@@ -29,6 +29,7 @@ package com.ticketbox.data.local
  *   CreateRecurringItem              POST   /api/recurring/items
  *   UpdateRecurringItem              PATCH  /api/recurring/items/{publicId}
  *   CreateExpense                    POST   /api/expenses/manual
+ *   CreateDebt                       POST   /api/debts
  *
  * Most creates / terminal lifecycle / batch routes are NOT in the
  * outbox — they go through the normal online-only ApiService path.
@@ -39,11 +40,18 @@ package com.ticketbox.data.local
  * ``expectedRowVersion = 0`` (the create has no prior version) and no
  * ``Idempotency-Key`` header. See ``ALLOWLIST`` in
  * ``backend/scripts/_audit_mutate_token_coverage.py``.
+ * [CreateDebt] also has no prior version; its original Idempotency-Key and complete
+ * command are persisted before dispatch, and remain unchanged across unknown-response retries.
  */
 enum class PendingMutationType(val wireValue: String) {
     PatchExpense("patch_expense"),
     CorrectExpense("correct_expense"),
     CreateExpense("create_expense"),
+    UploadScreenshot("upload_screenshot"),
+    CreateDebt("create_debt"),
+    CreateBillSplitInvitation("create_bill_split_invitation"),
+    RecordDebtAdjustment("record_debt_adjustment"),
+    RecordDebtRepayment("record_debt_repayment"),
     CreateExpenseOffset("create_expense_offset"),
     VoidExpenseOffset("void_expense_offset"),
     ConfirmExpense("confirm_expense"),
@@ -54,14 +62,20 @@ enum class PendingMutationType(val wireValue: String) {
     ReplaceItems("replace_items"),
     ReplaceSplits("replace_splits"),
     AcknowledgeItemsMismatch("acknowledge_items_mismatch"),
+    CreateCategoryRule("create_category_rule"),
     UpdateCategoryRule("update_category_rule"),
     DeleteCategoryRule("delete_category_rule"),
     UpdateMerchantAlias("update_merchant_alias"),
     DeleteMerchantAlias("delete_merchant_alias"),
     UpdateGoal("update_goal"),
+    CreateGoal("create_goal"),
+    CreateIncomePlan("create_income_plan"),
     UpdateIncomePlan("update_income_plan"),
+    SaveMonthlyBudget("save_monthly_budget"),
+    SaveManualExchangeRate("save_manual_exchange_rate"),
     CreateRecurringItem("create_recurring_item"),
     UpdateRecurringItem("update_recurring_item"),
+    SetRecurringOccurrencePayment("set_recurring_occurrence_payment"),
     Unknown("unknown");
 
     companion object {

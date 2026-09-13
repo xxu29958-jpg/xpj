@@ -43,7 +43,7 @@ def _seed_committed_debt(*, principal_amount_cents: int) -> tuple[str, int]:
             created_by_account_id=actor,
             owner_account_id=actor,
             payload=DebtCreateRequest(
-                direction="i_owe",
+                home_currency_code="CNY", direction="i_owe",
                 counterparty_type="external",
                 counterparty_label="信用卡",
                 principal_amount_cents=principal_amount_cents,

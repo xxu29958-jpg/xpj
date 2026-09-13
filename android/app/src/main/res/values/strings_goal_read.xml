@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="goal_read_title">已读取</string>
+    <string name="goal_read_body">数据时间：%1$s</string>
+    <string name="goal_read_cached_title">离线快照</string>
+    <string name="goal_read_cached_body">数据时间：%1$s。进度可能已变化，联网后刷新。</string>
+    <string name="goal_accepted_result_source">显示原提交已接受的结果；刷新后可查看最新进度。</string>
+</resources>

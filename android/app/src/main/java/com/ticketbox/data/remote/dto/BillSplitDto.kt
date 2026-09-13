@@ -7,11 +7,14 @@ import com.squareup.moshi.Json
  * See backend ``schemas/_bill_split.py`` for canonical reference.
  */
 
+@com.squareup.moshi.JsonClass(generateAdapter = true)
 data class BillSplitInviteRequestDto(
     @param:Json(name = "receiver_account_id")
     val receiverAccountId: Long,
     @param:Json(name = "amount_cents")
     val amountCents: Long,
+    @param:Json(name = "expected_row_version")
+    val expectedRowVersion: Long,
 )
 
 data class BillSplitAcceptRequestDto(
@@ -20,6 +23,7 @@ data class BillSplitAcceptRequestDto(
 )
 
 /** Sender view DTO — receiver_ledger_id absent by design (privacy). */
+@com.squareup.moshi.JsonClass(generateAdapter = true)
 data class BillSplitSentDto(
     @param:Json(name = "public_id")
     val publicId: String,
@@ -50,6 +54,8 @@ data class BillSplitSentDto(
     val receiverDisplayNameSnapshot: String?,
     @param:Json(name = "sender_expense_id")
     val senderExpenseId: Long,
+    @param:Json(name = "home_currency_code")
+    val homeCurrencyCode: String,
 )
 
 /** Receiver view DTO — sender_ledger_id / sender_expense_id absent. */
@@ -59,6 +65,8 @@ data class BillSplitInboxDto(
     val status: String,
     @param:Json(name = "amount_cents")
     val amountCents: Long,
+    @param:Json(name = "home_currency_code")
+    val homeCurrencyCode: String,
     @param:Json(name = "merchant_snapshot")
     val merchantSnapshot: String?,
     @param:Json(name = "category_suggestion")
@@ -81,6 +89,14 @@ data class BillSplitInboxDto(
     val senderAccountId: Long,
     @param:Json(name = "sender_display_name")
     val senderDisplayName: String,
+    @param:Json(name = "received_bill")
+    val receivedBill: BillSplitReceivedBillDto? = null,
+)
+
+data class BillSplitReceivedBillDto(
+    @param:Json(name = "expense_id") val expenseId: Long,
+    @param:Json(name = "ledger_id") val ledgerId: String,
+    @param:Json(name = "ledger_name") val ledgerName: String,
 )
 
 data class BillSplitSentListResponseDto(

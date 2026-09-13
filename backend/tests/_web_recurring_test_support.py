@@ -52,7 +52,7 @@ def seed_observed_item(
     now = now_utc()
     with SessionLocal() as db:
         resolve_write_capability(db)
-        item = RecurringItem(
+        item = RecurringItem(home_currency_code="CNY",
             tenant_id="owner",
             merchant_key=normalize_merchant(merchant),
             merchant_name=merchant,
@@ -111,7 +111,7 @@ def create_via_web(
 ):
     return web_client.post(
         "/web/recurring/create",
-        data={
+        data={"home_currency_code": "CNY",
             "ledger_id": "owner",
             "merchant": merchant,
             "baseline_amount_yuan": amount,
@@ -134,7 +134,7 @@ def edit_via_web(
 ):
     return web_client.post(
         f"/web/recurring/{public_id}/edit",
-        data={
+        data={"home_currency_code": "CNY",
             "ledger_id": "owner",
             "merchant": merchant,
             "baseline_amount_yuan": amount,
@@ -157,7 +157,7 @@ def post_confirm(
     """候选复核提交: 只带 merchant + amount 定位 + 可选日期 (provenance 服务端给)。"""
     return web_client.post(
         "/web/recurring/confirm-candidate",
-        data={
+        data={"home_currency_code": "CNY",
             "ledger_id": "owner",
             "merchant": merchant,
             "amount_cents": amount_cents,

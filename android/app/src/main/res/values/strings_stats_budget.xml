@@ -18,7 +18,6 @@
 
     <!-- StatsOverviewCard：本月支出 hero 卡 -->
     <string name="stats_overview_month_spend_label">本月已入账支出</string>
-    <string name="stats_overview_local_estimate_badge">离线数据</string>
     <string name="stats_overview_count_label">账单</string>
     <string name="stats_overview_count_value">%1$d 笔</string>
     <string name="stats_overview_recent7_label">最近 7 天</string>
@@ -28,7 +27,6 @@
     <string name="stats_overview_rhythm_caption_empty">确认账单后，会展示月内节奏和最近窗口。</string>
     <string name="stats_lead_title">本月支出</string>
     <string name="stats_lead_source_server_report">数据已更新</string>
-    <string name="stats_lead_source_local">离线数据</string>
     <string name="stats_lead_source_monthly">当前账本</string>
     <string name="stats_lead_total_label">已确认支出</string>
     <string name="stats_lead_total_caption">%1$d 笔已入账</string>
@@ -117,7 +115,6 @@
     <string name="stats_tag_scope_title">标签支出</string>
     <string name="stats_tag_scope_subtitle">#%1$s · %2$s</string>
     <string name="stats_tag_scope_source_monthly">账本汇总</string>
-    <string name="stats_tag_scope_source_local">本机估算</string>
     <string name="stats_tag_scope_source_pending">等待更新</string>
     <string name="stats_tag_scope_confirmed_caption">%1$d 笔已确认记录使用此标签。</string>
     <string name="stats_tag_scope_empty_caption">本月还没有使用此标签的确认记录。</string>
@@ -372,6 +369,10 @@
     <string name="debt_create_label_direction">方向</string>
     <string name="debt_create_label_counterparty">欠款对象</string>
     <string name="debt_create_label_amount">金额</string>
+    <string name="debt_create_label_note">往来说明（可选）</string>
+    <string name="debt_context_title">往来说明</string>
+    <string name="debt_context_hint">记下缘由或约定，方便以后核对</string>
+    <string name="debt_context_too_long">往来说明最多 500 字，请缩短后再保存。输入已保留。</string>
     <string name="debt_create_save">保存</string>
     <string name="debt_create_submitting">保存中…</string>
     <string name="debt_create_currency_unconfirmed">暂时无法确认账本币种口径，暂不能新建欠款。可检查网络后重试。</string>
@@ -428,6 +429,7 @@
     <!-- ADR-0049 §3 (slice 8c) 欠款详情 + 记还款 / 调整 / 作废管理。 -->
     <string name="debt_detail_back">返回</string>
     <string name="debt_detail_title">欠款详情</string>
+    <string name="debt_member_remaining_amount">剩余 %1$s</string>
     <string name="debt_detail_remaining">剩余</string>
     <string name="debt_detail_principal">本金</string>
     <string name="debt_detail_paid">已偿还</string>
@@ -450,10 +452,8 @@
     <string name="debt_action_submit">保存</string>
     <string name="debt_action_submitting">保存中…</string>
     <string name="debt_action_repayment_validation">请输入大于 0 的还款金额。</string>
-    <string name="debt_action_adjustment_validation">请输入大于 0 的调整金额并填写原因。</string>
+    <string name="debt_action_adjustment_validation">请输入大于 0 的调整金额，并填写不超过 500 个字符的原因。</string>
     <string name="debt_action_void_validation">请填写作废原因。</string>
-    <string name="debt_action_repayment_done">已记一笔还款。</string>
-    <string name="debt_action_adjustment_done">已记录调整。</string>
     <string name="debt_action_void_done">已作废这笔欠款。</string>
     <!-- 单笔还款作废（external/manual）：与整笔作废欠款不同——只撤销一条还款事实，原记录永久可追溯。 -->
     <string name="debt_action_repayment_void_title">作废这笔还款</string>
@@ -511,19 +511,19 @@
 
     <!-- ADR-0049 §3.2 (slice 8d) + §7.0 (slice 8e-2) 成员欠款 repayment 收发箱：① 暖措辞（关系化，
          去核验/收账味）。成员债 = Communal 不是 Market；仅成员债改，外部债 debt_action_* 不动。 -->
-    <string name="debt_proposal_debtor_title">把我那份补上</string>
-    <string name="debt_proposal_debtor_hint">这件事由 TA 记的账。补上你那份后，TA 确认一下就两清啦。</string>
+    <string name="debt_proposal_debtor_title">记录还款</string>
+    <string name="debt_proposal_debtor_hint">还款后填写这次金额，发给 TA 核对。确认后才会更新剩余金额。</string>
     <string name="debt_proposal_debtor_pending_hint">已经发给 TA 啦，等 TA 看到确认一下～</string>
-    <string name="debt_proposal_propose_action">把这份给 TA</string>
+    <string name="debt_proposal_propose_action">提交还款确认</string>
     <string name="debt_proposal_withdraw_action">撤回</string>
-    <string name="debt_proposal_creditor_title">TA 给你的</string>
+    <string name="debt_proposal_creditor_title">待核对的还款</string>
     <string name="debt_proposal_creditor_waiting">还没有新消息，有进展会出现在这里～</string>
-    <string name="debt_proposal_creditor_pending">TA 把 %1$s 那份给你啦，收到了就确认一下吧～</string>
+    <string name="debt_proposal_creditor_pending">TA 申报已还 %1$s，请核对实际收到的金额。</string>
     <string name="debt_proposal_confirm_action">收到啦，谢谢～</string>
     <string name="debt_proposal_reject_action">金额对不上？</string>
     <string name="debt_proposal_note_label">想说点什么？（可选）</string>
-    <string name="debt_proposal_propose_title">把我那份给 TA</string>
-    <string name="debt_proposal_confirm_title">收到 TA 的这份</string>
+    <string name="debt_proposal_propose_title">记录这次已还金额</string>
+    <string name="debt_proposal_confirm_title">核对实际收到的金额</string>
     <string name="debt_proposal_voided_note">这件事已经不用记啦。</string>
     <string name="debt_proposal_cleared_note">这件事你们已经两清啦 🌿</string>
     <string name="debt_proposal_readonly_note">你现在只能查看这件事，不能记账哦。</string>
@@ -531,15 +531,16 @@
     <string name="debt_proposal_amount_validation">请填一个大于 0 的金额～</string>
     <string name="debt_proposal_confirm_over">收到的不能比 TA 给的那份多哦。</string>
     <string name="debt_proposal_currency_mismatch">这笔还款与欠款的币种信息不一致，请刷新或升级小票夹后再确认。</string>
-    <string name="debt_proposal_propose_done">已经发给 TA 啦，等 TA 确认一下～</string>
-    <string name="debt_proposal_confirm_done">收到啦，谢谢 TA～</string>
+    <string name="debt_proposal_propose_done">已提交，等待 TA 确认还款。</string>
+    <string name="debt_proposal_confirm_done">这次还款已确认。</string>
     <string name="debt_proposal_withdraw_done">已经撤回啦。</string>
     <string name="debt_proposal_reject_done">已经回复 TA「金额对不上」啦。</string>
     <string name="debt_proposal_action_failed">没成功，待会儿再试一下～</string>
     <string name="debt_proposal_load_failed">往来记录没加载出来，待会儿再看看～</string>
-    <!-- 状态徽章：成员债历史一律 neutral（§3.4）；confirmed→已两清、rejected→在对账（去 shame）。 -->
+    <string name="debt_proposal_refresh_after_action_failed">操作已完成，往来列表暂未更新。已确认的结果仍保留，请刷新后继续。</string>
+    <!-- 状态徽章：成员债历史一律 neutral（§3.4）；confirmed→本次还款已确认、rejected→在对账（去 shame）。 -->
     <string name="debt_proposal_status_pending">待 TA 确认</string>
-    <string name="debt_proposal_status_confirmed">已两清</string>
+    <string name="debt_proposal_status_confirmed">已确认</string>
     <string name="debt_proposal_status_partially_confirmed">收了一部分</string>
     <string name="debt_proposal_status_rejected">在对账</string>
     <string name="debt_proposal_status_withdrawn">已撤回</string>
@@ -767,7 +768,6 @@
 
     <!-- MonthlyStatsViewModel / StatsReportsViewModel：统计屏 Snackbar/提示文案 -->
     <string name="stats_message_lifestyle_failed">生活统计暂时打不开，请稍后再试。</string>
-    <string name="stats_message_local_fallback">当前为离线数据，联网后自动更新。</string>
     <string name="stats_message_stats_failed">统计暂时打不开，请稍后再试。</string>
     <string name="stats_message_reports_failed">动态图表暂时打不开，稍后再试。</string>
     <string name="stats_message_trend_failed">趋势图暂时打不开，稍后再试。</string>
@@ -957,4 +957,13 @@
     <string name="repayment_draft_source_bank_sms">银行短信</string>
     <string name="repayment_draft_source_bank_app">银行 App</string>
     <string name="repayment_draft_source_other">其他还款</string>
+    <string name="budget_missing_conversion">缺少 %1$s 的汇率，部分金额暂无法汇总。</string>
+    <string name="budget_message_queued">预算提交已保留，等待服务器确认。</string>
+    <string name="budget_save_attention">预算提交需要处理，原金额已保留。</string>
+    <string name="budget_save_drop">停止此设备的重试</string>
+    <string name="budget_save_drop_explanation">将移除此设备保留的原提交。服务器可能已接收过这次保存，请先核对当前预算；移除不会撤销服务器上的改动。</string>
+    <string name="budget_save_unsupported">无法确认原预算提交的格式或币种，已保留记录。请升级客户端后核对，勿直接重复保存。</string>
+    <string name="budget_save_unverified">尚未确认服务器是否保存了原提交。请先核对当前预算；重试将沿用原金额与提交标识。</string>
+    <string name="budget_save_currency_conflict">原输入币种与这月预算不同。请核对原金额和当前预算，再决定是否停止原提交的重试。</string>
+    <string name="budget_save_open_month">查看这月预算</string>
 </resources>

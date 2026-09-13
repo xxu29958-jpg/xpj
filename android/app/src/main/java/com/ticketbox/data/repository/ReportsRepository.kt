@@ -1,26 +1,23 @@
 package com.ticketbox.data.repository
 
-import com.squareup.moshi.JsonAdapter
-import com.ticketbox.data.local.PendingMutationType
+import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.DebtGoalIntegrityReviewRequestDto
 import com.ticketbox.data.remote.dto.DebtGoalLinksReplaceRequestDto
 import com.ticketbox.data.remote.dto.DebtGoalTargetDateRequestDto
 import com.ticketbox.data.remote.dto.GoalCreateRequestDto
-import com.ticketbox.data.remote.dto.GoalUpdateRequestDto
+import com.ticketbox.data.remote.dto.GoalDto
 import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.DashboardCardUpdate
 import com.ticketbox.domain.model.DashboardCards
 import com.ticketbox.domain.model.DashboardSurface
 import com.ticketbox.domain.model.GOAL_TYPE_DEBT_REPAYMENT
 import com.ticketbox.domain.model.Goal
-import com.ticketbox.domain.model.GoalDraft
 import com.ticketbox.domain.model.GoalUpdate
 import com.ticketbox.domain.model.ReportsOverview
 import com.ticketbox.domain.model.ReportsOverviewQuery
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import com.ticketbox.domain.model.normalizeExpenseCategory
 import retrofit2.Response
-import java.io.IOException
 import java.time.YearMonth
 import java.util.TimeZone
 import java.util.UUID
@@ -40,10 +37,11 @@ interface DashboardCardsActions {
 }
 
 interface ReportsActions : DashboardCardsActions {
-    suspend fun reportsOverview(query: ReportsOverviewQuery = ReportsOverviewQuery()): Result<ReportsOverview>
-    suspend fun exportReportsOverviewCsv(query: ReportsOverviewQuery = ReportsOverviewQuery()): Result<CsvExport>
-    suspend fun goals(month: String? = null, includeArchived: Boolean = false): Result<List<Goal>>
-    suspend fun createGoal(draft: GoalDraft): Result<Goal>
+    fun observeReportsAccess(): kotlinx.coroutines.flow.Flow<LedgerAccessContext?> = kotlinx.coroutines.flow.flowOf(dashboardAccess())
+    suspend fun reportsOverview(query: ReportsOverviewQuery = ReportsOverviewQuery(), expectedBinding: LogicalSessionBinding? = null): Result<ReportsOverview>
+    suspend fun exportReportsOverviewCsv(query: ReportsOverviewQuery = ReportsOverviewQuery(), expectedBinding: LogicalSessionBinding? = null): Result<CsvExport>
+    suspend fun goals(month: String? = null, includeArchived: Boolean = false,
+        expectedBinding: LogicalSessionBinding? = null, timezone: String = TimeZone.getDefault().id): Result<ReadSnapshot<List<Goal>>>
 
     /**
      * ADR-0049 §6 (slice 8b): create a debt_repayment goal linking [debtPublicIds].
@@ -52,14 +50,15 @@ interface ReportsActions : DashboardCardsActions {
      * rules (≥1 debt id, no month/target/category) — the repository validates the
      * shape it can (non-blank name, ≥1 id) so a bad form fails fast without a call.
      */
-    suspend fun createDebtGoal(name: String, debtPublicIds: List<String>): Result<Goal>
-    suspend fun goal(publicId: String): Result<Goal>
-    suspend fun updateGoal(publicId: String, update: GoalUpdate): Result<Goal>
-    suspend fun archiveGoal(publicId: String): Result<Goal>
+    suspend fun createDebtGoal(name: String, debtPublicIds: List<String>, expectedBinding: LogicalSessionBinding): Result<Goal>
+    suspend fun goal(publicId: String, expectedBinding: LogicalSessionBinding? = null,
+        timezone: String = TimeZone.getDefault().id): Result<ReadSnapshot<Goal>>
+    suspend fun archiveGoal(publicId: String, expectedBinding: LogicalSessionBinding): Result<Goal>
 
     // ── ADR-0049 §6 (slice 7) debt_repayment goal surface ────────────────────
     /** List the (month-less) debt_repayment goals; [goal] reuses for the detail. */
-    suspend fun debtGoals(includeArchived: Boolean = false): Result<List<Goal>>
+    suspend fun debtGoals(includeArchived: Boolean = false, expectedBinding: LogicalSessionBinding? = null,
+        timezone: String = TimeZone.getDefault().id): Result<ReadSnapshot<List<Goal>>>
 
     /**
      * Replace a debt_repayment goal's linked Debt set (→ a new goal version). One of
@@ -96,16 +95,10 @@ interface ReportsActions : DashboardCardsActions {
 
 class ReportsRepository(
     private val apiProvider: ApiServiceProvider,
-    /**
-     * ADR-0042 Slice F: outbox surface for the offline-aware
-     * [updateGoalAllowingOffline] entrypoint. ``null`` keeps every test
-     * that doesn't wire the outbox at the old behaviour — the new method
-     * falls back to the direct failure path when outbox/adapter aren't
-     * both supplied. Mirrors [RuleRepository]'s nullable outbox wiring.
-     */
-    private val outbox: OutboxRepository? = null,
-    private val goalUpdateAdapter: JsonAdapter<GoalUpdateRequestDto>? = null,
+    expenseDao: com.ticketbox.data.local.ExpenseDao,
+    sessionCoordinator: LocalLedgerSessionCoordinator,
 ) : ReportsActions {
+    private val goalQueries = GoalQueryReader(apiProvider, expenseDao, sessionCoordinator)
     private val ledgerRequestGuard = LedgerRequestGuard(apiProvider)
     private val errorHandler = NetworkErrorHandler(
         serverUrlProvider = { apiProvider.currentSession()?.serverUrl },
@@ -115,23 +108,32 @@ class ReportsRepository(
 
     override fun canModifyLedger(): Boolean = ledgerRoleCanModify(apiProvider.currentLedgerRole())
 
-    override suspend fun reportsOverview(query: ReportsOverviewQuery): Result<ReportsOverview> {
+    override fun observeReportsAccess(): kotlinx.coroutines.flow.Flow<LedgerAccessContext?> = apiProvider.observeActiveLedgerAccess()
+
+    override suspend fun reportsOverview(query: ReportsOverviewQuery, expectedBinding: LogicalSessionBinding?): Result<ReportsOverview> {
         val cleanQuery = query.validated()
             .getOrElse { return Result.failure(it) }
         return errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
+            val request = expectedBinding?.let(ledgerRequestGuard::bindExact) ?: ledgerRequestGuard.bind()
+            request.call { api ->
                 api.reportsOverview(
                     query = cleanQuery.toReportsOverviewApiQuery(timezone = currentTimezoneId()).toQueryMap(),
-                ).toDomain()
+                ).toDomain().also { result ->
+                    val matchesMonth = cleanQuery.month == null || result.month == cleanQuery.month
+                    val matchesHome = cleanQuery.homeCurrencyCode == null || result.homeCurrencyCode == cleanQuery.homeCurrencyCode
+                    val knownHome = com.ticketbox.domain.model.CurrencyCode.fromStorageKeyOrNull(result.homeCurrencyCode) != null
+                    if (!matchesMonth || !matchesHome || !knownHome) throw RepositoryException("")
+                }
             }
         }
     }
 
-    override suspend fun exportReportsOverviewCsv(query: ReportsOverviewQuery): Result<CsvExport> {
+    override suspend fun exportReportsOverviewCsv(query: ReportsOverviewQuery, expectedBinding: LogicalSessionBinding?): Result<CsvExport> {
         val cleanQuery = query.validated()
             .getOrElse { return Result.failure(it) }
         return errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
+            val request = expectedBinding?.let(ledgerRequestGuard::bindExact) ?: ledgerRequestGuard.bind()
+            request.call { api ->
                 val response = api.reportsOverviewCsv(
                     query = cleanQuery.toReportsOverviewApiQuery(timezone = currentTimezoneId()).toQueryMap(),
                 )
@@ -144,37 +146,10 @@ class ReportsRepository(
         }
     }
 
-    override suspend fun goals(month: String?, includeArchived: Boolean): Result<List<Goal>> {
-        val cleanMonth = month.cleanMonthOrNull()
-            .getOrElse { return Result.failure(it) }
-        return errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
-                api.goals(
-                    month = cleanMonth,
-                    includeArchived = includeArchived,
-                    timezone = currentTimezoneId(),
-                ).items.map { it.toDomain() }
-            }
-        }
-    }
+    override suspend fun goals(month: String?, includeArchived: Boolean, expectedBinding: LogicalSessionBinding?,
+        timezone: String): Result<ReadSnapshot<List<Goal>>> = goalQueries.goals(month, includeArchived, expectedBinding, timezone)
 
-    override suspend fun createGoal(draft: GoalDraft): Result<Goal> {
-        if (!canModifyLedger()) {
-            return Result.failure(RepositoryException("当前角色为只读，无法修改账本。"))
-        }
-        val cleanDraft = draft.validated()
-            .getOrElse { return Result.failure(it) }
-        return errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
-                api.createGoal(
-                    request = cleanDraft.toRequest(),
-                    timezone = currentTimezoneId(),
-                ).toDomain()
-            }
-        }
-    }
-
-    override suspend fun createDebtGoal(name: String, debtPublicIds: List<String>): Result<Goal> {
+    override suspend fun createDebtGoal(name: String, debtPublicIds: List<String>, expectedBinding: LogicalSessionBinding): Result<Goal> {
         if (!canModifyLedger()) {
             return Result.failure(RepositoryException("当前角色为只读，无法修改账本。"))
         }
@@ -182,208 +157,40 @@ class ReportsRepository(
             .getOrElse { return Result.failure(it) }
         val cleanIds = debtPublicIds.cleanDebtPublicIds()
             .getOrElse { return Result.failure(it) }
-        return errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
-                // No Idempotency-Key: POST /api/goals declares none (in-line create, not an
-                // outbox replay surface). Debt-goal shape = name + goal_type + debt_public_ids;
-                // month/target/category omitted (Moshi drops nulls — the backend 422s a debt
-                // goal carrying them). Built inline like replaceDebtLinks' request DTO.
-                api.createGoal(
-                    request = GoalCreateRequestDto(
-                        name = cleanName,
-                        goalType = GOAL_TYPE_DEBT_REPAYMENT,
-                        debtPublicIds = cleanIds,
-                    ),
-                    timezone = currentTimezoneId(),
-                ).toDomain()
-            }
-        }
-    }
-
-    override suspend fun goal(publicId: String): Result<Goal> {
-        val cleanPublicId = publicId.cleanPublicId()
-            .getOrElse { return Result.failure(it) }
-        return errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
-                api.goal(
-                    publicId = cleanPublicId,
-                    timezone = currentTimezoneId(),
-                ).toDomain()
-            }
-        }
-    }
-
-    override suspend fun updateGoal(publicId: String, update: GoalUpdate): Result<Goal> {
-        if (!canModifyLedger()) {
-            return Result.failure(RepositoryException("当前角色为只读，无法修改账本。"))
-        }
-        val cleanPublicId = publicId.cleanPublicId()
-            .getOrElse { return Result.failure(it) }
-        val cleanUpdate = update.validated()
-            .getOrElse { return Result.failure(it) }
-        return errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
-                api.updateGoal(
-                    publicId = cleanPublicId,
-                    request = cleanUpdate.toRequest(),
-                    // ADR-0042: single-use key — direct-only path, no replay.
-                    idempotencyKey = UUID.randomUUID().toString(),
-                    timezone = currentTimezoneId(),
-                ).toDomain()
-            }
-        }
-    }
-
-    /**
-     * ADR-0042 Slice F: offline-aware version of [updateGoal]. Mirrors
-     * [RuleRepository.updateCategoryRuleAllowingOffline] /
-     * [MerchantRepository.updateMerchantAliasAllowingOffline].
-     *
-     * Direct PATCH first; on IOException AND with outbox wiring present,
-     * enqueue an [PendingMutationType.UpdateGoal] row and return
-     * [GoalSaveOutcome.Queued] with an optimistic projection. Any other
-     * failure (4xx / 409 / 5xx HttpException) propagates to safeCall and
-     * surfaces as Result.failure.
-     *
-     * Foundation-only in Slice F — no UI yet calls this (the goal-edit
-     * screen doesn't exist). The method itself is the enqueue site the
-     * outbox-coverage audit needs to consider [UpdateGoal] "wired".
-     */
-    suspend fun updateGoalAllowingOffline(
-        baseline: Goal,
-        update: GoalUpdate,
-    ): Result<GoalSaveOutcome> {
-        if (!canModifyLedger()) {
-            return Result.failure(RepositoryException("当前角色为只读，无法修改账本。"))
-        }
-        val cleanPublicId = baseline.publicId.cleanPublicId()
-            .getOrElse { return Result.failure(it) }
-        // Reuse the same validation as the direct path, then pin the token to
-        // the baseline's row_version (the OCC anchor for this edit).
-        val cleanUpdate = update.copy(expectedRowVersion = baseline.rowVersion).validated()
-            .getOrElse { return Result.failure(it) }
-        return errorHandler.safeCall {
-            val request = cleanUpdate.toRequest()
-            // [codex round-13 P1] Explicit bind so the IOException catch can
-            // re-check session activity before enqueue — see RuleRepository.
-            val bound = ledgerRequestGuard.bind()
-            // ADR-0042: ONE intent-time key shared by the direct attempt and the
-            // outbox replay. A committed-but-unseen PATCH replays with this SAME
-            // key — the server HITs the recorded success instead of false-409ing
-            // on the now-stale token. The dispatcher replays it from
-            // row.idempotencyKey.
-            val idempotencyKey = UUID.randomUUID().toString()
-            val outboxRef = outbox
-            val adapter = goalUpdateAdapter
-            if (outboxRef == null || adapter == null) {
-                // Wiring missing — direct-only; failures surface as Result.failure.
-                val updated = bound.call { api ->
-                    api.updateGoal(
-                        publicId = cleanPublicId,
-                        request = request,
-                        idempotencyKey = idempotencyKey,
-                        timezone = currentTimezoneId(),
-                    ).toDomain()
-                }
-                return@safeCall GoalSaveOutcome.Synced(updated)
-            }
-            val enqueueContext = GoalOutboxContext(
-                bound = bound,
-                outbox = outboxRef,
-                cleanPublicId = cleanPublicId,
-                token = baseline.rowVersion,
-                idempotencyKey = idempotencyKey,
-            )
-            if (outboxRef.activeForTarget(bound, enqueueContext.targetId).isNotEmpty()) {
-                // Per-target FIFO guard (codex follow-up review) — a direct
-                // PATCH must not jump an unresolved queued mutation for the
-                // same goal. Same mechanism as the expense:{id} guards.
-                enqueueUpdateGoal(enqueueContext, adapter, request)
-                return@safeCall GoalSaveOutcome.Queued(projectOptimisticGoal(baseline, cleanUpdate))
-            }
-            try {
-                val updated = bound.call { api ->
-                    api.updateGoal(
-                        publicId = cleanPublicId,
-                        request = request,
-                        idempotencyKey = idempotencyKey,
-                        timezone = currentTimezoneId(),
-                    ).toDomain()
-                }
-                GoalSaveOutcome.Synced(updated) as GoalSaveOutcome
-            } catch (networkError: IOException) {
-                enqueueUpdateGoal(enqueueContext, adapter, request)
-                GoalSaveOutcome.Queued(
-                    projectOptimisticGoal(baseline, cleanUpdate),
-                ) as GoalSaveOutcome
-            }
-        }
-    }
-
-    /**
-     * Shared UpdateGoal enqueue for the queue-jump guard and the IOException
-     * fallback. [codex round-13 P1] session race guard before enqueue +
-     * [round-8 P3#5] payload token strip (row.expectedRowVersion is the
-     * single source of truth; dispatcher overwrites on replay).
-     */
-    private suspend fun enqueueUpdateGoal(
-        context: GoalOutboxContext,
-        adapter: JsonAdapter<GoalUpdateRequestDto>,
-        request: GoalUpdateRequestDto,
-    ) {
-        context.outbox.enqueue(
-            boundRequest = context.bound,
-            intent = PendingMutationIntent(
-                type = PendingMutationType.UpdateGoal,
-                targetId = context.targetId,
-                payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
-                expectedRowVersion = context.token,
-                idempotencyKey = context.idempotencyKey,
-            ),
-        )
-    }
-
-    /**
-     * Build the optimistic projection the UI shows while the queued PATCH
-     * waits for connectivity. The user's submitted fields overwrite the
-     * baseline; ``rowVersion`` / ``updatedAt`` stay at the pre-mutation
-     * values (NOT server-confirmed tokens). Spend-derived fields
-     * (spent/remaining/progress) are left as-is — the server recomputes them.
-     */
-    private fun projectOptimisticGoal(baseline: Goal, update: GoalUpdate): Goal =
-        baseline.copy(
-            name = update.name ?: baseline.name,
-            month = update.month ?: baseline.month,
-            targetAmountCents = update.targetAmountCents ?: baseline.targetAmountCents,
-            category = update.category ?: baseline.category,
-        )
-
-    override suspend fun archiveGoal(publicId: String): Result<Goal> {
-        if (!canModifyLedger()) {
-            return Result.failure(RepositoryException("当前角色为只读，无法修改账本。"))
-        }
-        val cleanPublicId = publicId.cleanPublicId()
-            .getOrElse { return Result.failure(it) }
-        return errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
-                api.archiveGoal(
-                    publicId = cleanPublicId,
-                    timezone = currentTimezoneId(),
-                ).toDomain()
-            }
-        }
-    }
-
-    override suspend fun debtGoals(includeArchived: Boolean): Result<List<Goal>> =
-        errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
-                api.goals(
+        return goalCommand(expectedBinding) { api ->
+            // Debt-clearance creation retains its nonmonetary, keyless request shape.
+            // month/target/category omitted (Moshi drops nulls — the backend 422s a debt
+            // goal carrying them). Built inline like replaceDebtLinks' request DTO.
+            api.createGoal(
+                request = GoalCreateRequestDto(
+                    name = cleanName,
                     goalType = GOAL_TYPE_DEBT_REPAYMENT,
-                    includeArchived = includeArchived,
-                    timezone = currentTimezoneId(),
-                ).items.map { it.toDomain() }
-            }
+                    debtPublicIds = cleanIds,
+                ),
+                timezone = currentTimezoneId(),
+            )
         }
+    }
+
+    override suspend fun goal(publicId: String, expectedBinding: LogicalSessionBinding?, timezone: String): Result<ReadSnapshot<Goal>> =
+        goalQueries.goal(publicId, expectedBinding, timezone)
+
+    override suspend fun archiveGoal(publicId: String, expectedBinding: LogicalSessionBinding): Result<Goal> {
+        if (!canModifyLedger()) {
+            return Result.failure(RepositoryException("当前角色为只读，无法修改账本。"))
+        }
+        val cleanPublicId = publicId.cleanPublicId()
+            .getOrElse { return Result.failure(it) }
+        return goalCommand(expectedBinding) { api ->
+            api.archiveGoal(
+                publicId = cleanPublicId,
+                timezone = currentTimezoneId(),
+            )
+        }
+    }
+
+    override suspend fun debtGoals(includeArchived: Boolean, expectedBinding: LogicalSessionBinding?,
+        timezone: String): Result<ReadSnapshot<List<Goal>>> = goalQueries.debtGoals(includeArchived, expectedBinding, timezone)
 
     override suspend fun replaceDebtLinks(
         publicId: String,
@@ -397,19 +204,17 @@ class ReportsRepository(
             .getOrElse { return Result.failure(it) }
         val cleanIds = debtPublicIds.cleanDebtPublicIds()
             .getOrElse { return Result.failure(it) }
-        return errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
-                api.replaceGoalDebtLinks(
-                    publicId = cleanPublicId,
-                    request = DebtGoalLinksReplaceRequestDto(
-                        expectedRowVersion = expectedRowVersion,
-                        debtPublicIds = cleanIds,
-                    ),
-                    // ADR-0042: single-use key — direct-only path, no offline replay.
-                    idempotencyKey = UUID.randomUUID().toString(),
-                    timezone = currentTimezoneId(),
-                ).toDomain()
-            }
+        return goalCommand { api ->
+            api.replaceGoalDebtLinks(
+                publicId = cleanPublicId,
+                request = DebtGoalLinksReplaceRequestDto(
+                    expectedRowVersion = expectedRowVersion,
+                    debtPublicIds = cleanIds,
+                ),
+                // ADR-0042: single-use key — direct-only path, no offline replay.
+                idempotencyKey = UUID.randomUUID().toString(),
+                timezone = currentTimezoneId(),
+            )
         }
     }
 
@@ -422,15 +227,13 @@ class ReportsRepository(
         }
         val cleanPublicId = publicId.cleanPublicId()
             .getOrElse { return Result.failure(it) }
-        return errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
-                api.acknowledgeGoalIntegrityReview(
-                    publicId = cleanPublicId,
-                    request = DebtGoalIntegrityReviewRequestDto(expectedRowVersion),
-                    idempotencyKey = UUID.randomUUID().toString(),
-                    timezone = currentTimezoneId(),
-                ).toDomain()
-            }
+        return goalCommand { api ->
+            api.acknowledgeGoalIntegrityReview(
+                publicId = cleanPublicId,
+                request = DebtGoalIntegrityReviewRequestDto(expectedRowVersion),
+                idempotencyKey = UUID.randomUUID().toString(),
+                timezone = currentTimezoneId(),
+            )
         }
     }
 
@@ -444,23 +247,41 @@ class ReportsRepository(
         }
         val cleanPublicId = publicId.cleanPublicId()
             .getOrElse { return Result.failure(it) }
-        return errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
-                // targetDate null → Moshi omits the field → the optional backend setter reads it as
-                // "clear" (a setter: omitted == clear, no partial-update ambiguity). A non-null ISO
-                // date sets the deadline.
-                api.setGoalTargetDate(
-                    publicId = cleanPublicId,
-                    request = DebtGoalTargetDateRequestDto(
-                        expectedRowVersion = expectedRowVersion,
-                        targetDate = targetDate,
-                    ),
-                    // ADR-0042: single-use key — direct-only path, no offline replay.
-                    idempotencyKey = UUID.randomUUID().toString(),
-                    timezone = currentTimezoneId(),
-                ).toDomain()
-            }
+        return goalCommand { api ->
+            // targetDate null → Moshi omits the field → the optional backend setter reads it as
+            // "clear" (a setter: omitted == clear, no partial-update ambiguity). A non-null ISO
+            // date sets the deadline.
+            api.setGoalTargetDate(
+                publicId = cleanPublicId,
+                request = DebtGoalTargetDateRequestDto(
+                    expectedRowVersion = expectedRowVersion,
+                    targetDate = targetDate,
+                ),
+                // ADR-0042: single-use key — direct-only path, no offline replay.
+                idempotencyKey = UUID.randomUUID().toString(),
+                timezone = currentTimezoneId(),
+            )
         }
+    }
+
+    private suspend fun goalCommand(
+        expectedBinding: LogicalSessionBinding? = null,
+        command: suspend (ApiService) -> GoalDto,
+    ): Result<Goal> = errorHandler.safeCall {
+        val binding = expectedBinding ?: requireNotNull(ledgerRequestGuard.captureLogicalBinding()) { "请重新绑定账本。" }
+        val accepted = ledgerRequestGuard.bindExact(binding).call { command(it).toDomain() }
+        goalQueries.invalidate(binding)
+        accepted
+    }
+
+    /** Runs under the original dispatch lease; never takes the session coordinator lock. */
+    internal suspend fun invalidateGoalReadsAfterDelivery(row: OutboxRow) {
+        val binding = requireNotNull(ledgerRequestGuard.captureLogicalBinding()) { "请重新绑定账本。" }
+        require(row.ledgerId == binding.ledgerId && row.ownerKey == binding.ownerKey &&
+            canonicalServerOriginOrNull(row.serverUrl) == canonicalServerOriginOrNull(binding.serverUrl)) {
+            "账本已切换，请重新操作。"
+        }
+        goalQueries.invalidate(binding)
     }
 
     override fun dashboardAccess(): LedgerAccessContext? = ledgerRequestGuard.captureLogicalBinding()?.let {
@@ -509,37 +330,6 @@ class ReportsRepository(
     }
 }
 
-/**
- * ADR-0042 Slice F sealed result for
- * [ReportsRepository.updateGoalAllowingOffline]. Mirrors
- * [CategoryRuleSaveOutcome] / [MerchantAliasSaveOutcome] — parallel-defined
- * so neither type's surface accidentally widens to the other's payload.
- */
-sealed interface GoalSaveOutcome {
-    val goal: Goal
-
-    /** Server confirmed the PATCH; [goal] carries the canonical post-mutation token. */
-    data class Synced(override val goal: Goal) : GoalSaveOutcome
-
-    /**
-     * Network failed; the mutation was persisted to the outbox and [goal] is
-     * the optimistic projection (baseline merged with the user's submitted
-     * fields). ``rowVersion`` is the pre-mutation token; chained POSTs must
-     * not consume it.
-     */
-    data class Queued(override val goal: Goal) : GoalSaveOutcome
-}
-
-private data class GoalOutboxContext(
-    val bound: BoundLedgerRequest,
-    val outbox: OutboxRepository,
-    val cleanPublicId: String,
-    val token: Long,
-    val idempotencyKey: String,
-) {
-    val targetId: String = "goal:$cleanPublicId"
-}
-
 private val REPORTS_MONTH_PATTERN = Regex("^\\d{4}-\\d{2}$")
 
 private const val GOAL_NAME_MAX = 80
@@ -574,20 +364,7 @@ private fun ReportsOverviewQuery.validated(): Result<ReportsOverviewQuery> {
 }
 
 
-private fun GoalDraft.validated(): Result<GoalDraft> {
-    return runCatching {
-        val cleanName = name.trim()
-        require(cleanName.isNotBlank()) { "请输入目标名称。" }
-        require(targetAmountCents > 0L) { "目标金额必须大于 0。" }
-        copy(
-            name = cleanName,
-            month = requireMonth(month, "目标月份不正确。"),
-            category = category?.trim()?.takeIf { it.isNotBlank() }?.let(::normalizeExpenseCategory),
-        )
-    }.mapError()
-}
-
-private fun GoalUpdate.validated(): Result<GoalUpdate> {
+internal fun GoalUpdate.validatedGoalUpdate(): Result<GoalUpdate> {
     return runCatching {
         if (name != null) {
             require(name.trim().isNotBlank()) { "请输入目标名称。" }
@@ -598,7 +375,7 @@ private fun GoalUpdate.validated(): Result<GoalUpdate> {
         copy(
             name = name?.trim(),
             month = month?.let { requireMonth(it, "目标月份不正确。") },
-            category = category?.trim()?.takeIf { it.isNotBlank() }?.let(::normalizeExpenseCategory),
+            category = category?.trim()?.let { if (it.isEmpty()) "" else normalizeExpenseCategory(it) },
         )
     }.mapError()
 }
@@ -620,10 +397,6 @@ private fun String.cleanPublicId(): Result<String> {
     return runCatching {
         trim().also { require(it.isNotBlank()) { "请选择一个目标。" } }
     }.mapError()
-}
-
-private fun String?.cleanMonthOrNull(): Result<String?> {
-    return runCatching { cleanMonthOrThrow("月份不正确。") }.mapError()
 }
 
 private fun String?.cleanMonthOrThrow(errorMessage: String): String? {

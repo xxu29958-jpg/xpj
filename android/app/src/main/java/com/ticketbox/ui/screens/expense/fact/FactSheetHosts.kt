@@ -1,6 +1,7 @@
 package com.ticketbox.ui.screens.expense.fact
 
 import androidx.compose.runtime.Composable
+import com.ticketbox.domain.model.canInitiateBillSplit
 import com.ticketbox.domain.model.recordCurrencyDisplay
 import com.ticketbox.ui.screens.expense.BillSplitInviteSheet
 import com.ticketbox.ui.screens.expense.BillSplitInviteSheetActions
@@ -20,7 +21,8 @@ import com.ticketbox.viewmodel.ExpenseFactViewModel
 import com.ticketbox.viewmodel.adoptCorrectionItems
 import com.ticketbox.viewmodel.adoptCorrectionSplits
 import com.ticketbox.viewmodel.addCorrectionItemRow
-import com.ticketbox.viewmodel.canSubmitCorrection
+import com.ticketbox.viewmodel.correctionAvailability
+import com.ticketbox.viewmodel.refreshCorrectionFact
 import com.ticketbox.viewmodel.cancelBillSplitInvitation
 import com.ticketbox.viewmodel.closeBillSplitInviteSheet
 import com.ticketbox.viewmodel.closeCorrectionSheet
@@ -73,12 +75,14 @@ private fun FactBillSplitInviteHost(
             selectedMemberId = state.billSplitInviteSelectedMemberId,
             amountText = state.billSplitInviteAmountText,
             sending = state.billSplitInviteSending,
+            canSend = state.authoritativeRootReady && expense.canInitiateBillSplit(state.readOnly),
             message = state.billSplitInviteMessage,
             messageTone = state.billSplitInviteMessageTone,
             display = expense.recordCurrencyDisplay(),
         ),
-        remainingCents = remainingCents,
-        remainingUnavailable = state.billSplitSentLoadState != BillSplitSentLoadState.Loaded,
+        remainingCents = remainingCents.takeIf { state.authoritativeRootReady },
+        remainingUnavailable = !state.authoritativeRootReady ||
+            state.billSplitSentLoadState != BillSplitSentLoadState.Loaded,
         actions = BillSplitInviteSheetActions(
             onSelectMember = viewModel::selectBillSplitInviteMember,
             onUpdateAmount = viewModel::updateBillSplitInviteAmount,
@@ -96,7 +100,7 @@ private fun FactCorrectionHost(
     if (!state.correction.open) return
     ExpenseCorrectionSheet(
         state = state,
-        canSubmit = viewModel.canSubmitCorrection(),
+        availability = viewModel.correctionAvailability(),
         actions = ExpenseCorrectionSheetActions(
             onReasonChange = { viewModel.updateCorrectionField(CorrectionScalarField.Reason, it) },
             onMerchantChange = { viewModel.updateCorrectionField(CorrectionScalarField.Merchant, it) },
@@ -109,6 +113,7 @@ private fun FactCorrectionHost(
             onScoreChange = viewModel::updateCorrectionScore,
             onOpenItems = viewModel::openCorrectionItemsEditor,
             onOpenSplits = viewModel::openCorrectionSplitsEditor,
+            onRefreshFact = viewModel::refreshCorrectionFact,
             onSubmit = viewModel::submitCorrection,
             onDismiss = viewModel::closeCorrectionSheet,
         ),
@@ -120,7 +125,7 @@ private fun FactCorrectionLinesHosts(
     state: ExpenseFactUiState,
     viewModel: ExpenseFactViewModel,
 ) {
-    val expense = state.expense ?: return
+    val expense = viewModel.correctionBaseline ?: return
     if (state.correction.itemsEditorOpen) {
         ItemsEditorSheet(
             state = ItemsEditorSheetState(

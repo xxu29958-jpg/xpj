@@ -41,6 +41,7 @@ from app.models import (
 )
 from app.services import bill_split_service as bsplit
 from app.services.identity_service import hash_secret, new_session_token
+from tests._runtime_protocol import current_protocol_headers
 
 # Reuse the slice-4 linkage helpers (owner expense → invite → service-level accept).
 from tests.test_bill_split_debt_linkage import (
@@ -106,7 +107,7 @@ def _mint_app_token(*, account_id: int, ledger_id: str) -> str:
 
 
 def _headers(token: str) -> dict[str, str]:
-    return {"Authorization": f"Bearer {token}"}
+    return current_protocol_headers({"Authorization": f"Bearer {token}"})
 
 
 def _idem(headers: dict[str, str]) -> dict[str, str]:

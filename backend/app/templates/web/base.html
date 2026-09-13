@@ -131,7 +131,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="csrf-token" content="{{ csrf_token }}">
-  <meta name="theme-color" content="#f6f2ea">
+  <meta name="theme-color" content="#f5f9f6">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="小票夹">
@@ -182,6 +182,10 @@
      executed earlier in document order. Keep echarts first within a page's block
      (the chart modules reference the global ``echarts``). #}
   {% block page_scripts %}{% endblock %}
+  {% if manual_draft_ack %}
+  <script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
+  <script defer src="/static/web/manual-draft-ack.js?v={{ asset_version }}"></script>
+  {% endif %}
   <script defer src="/static/web/desktop.js?v={{ asset_version }}"></script>
   <script defer src="/static/shared/confirm-modal.js?v={{ asset_version }}"></script>
 </head>
@@ -205,7 +209,6 @@
       <div class="topbar-context" aria-label="当前位置">
         <span class="topbar-domain">{{ _domain_label }}</span>
         <span class="topbar-title">{{ page_title or _domain_label }}</span>
-        <span class="topbar-ledger">{{ selected_ledger_name }}</span>
       </div>
       <div class="topbar-spacer"></div>
       {% if request.state.web_session_platform == "desktop" %}
@@ -215,13 +218,20 @@
       {% if show_month_picker %}
         {% include "_month_picker.html" %}
       {% endif %}
-      {# W1 IA-B: 全局安静入口 — 搜索全角色可达; 收票是 can_write-gated 的
-         真实 GET 导航 (#capture 锚到收件上传组), upload command owner 不变。
-         ≤40rem 两枚让位进「我」popover (见 _ledger_switcher.html)。 #}
+      {# W1 IA-B: 全局安静入口 — 搜索全角色可达；手动记账只在真实设备会话
+         + writer 身份下出现；收票是 can_write-gated 的真实 GET 导航
+         (#capture 锚到收件上传组), upload command owner 不变。
+         ≤40rem 搜索让位进「我」popover (见 _ledger_switcher.html)。 #}
       <a class="topbar-action topbar-search" href="/web/search{{ q }}"
          data-shell-shortcut="search" aria-keyshortcuts="/" title="搜索（/）">
         <span>搜索</span><kbd class="topbar-shortcut-hint" aria-hidden="true">/</kbd>
       </a>
+      {% if can_write and request.state.web_session_auth %}
+      <a class="topbar-action topbar-manual-expense" href="/web/expenses/new"
+         data-shell-shortcut="manual-expense" aria-keyshortcuts="N" title="手动记账（N）">
+        <span>记账</span><kbd class="topbar-shortcut-hint" aria-hidden="true">N</kbd>
+      </a>
+      {% endif %}
       {% if can_write %}
       <a class="topbar-action topbar-capture" href="/web/pending{{ q }}#capture"
          data-shell-shortcut="capture" aria-keyshortcuts="U" title="收票（U）">
@@ -246,6 +256,10 @@
       </div>
       {% endif %}
       {% block content %}{% endblock %}
+      {% if manual_draft_ack %}
+      <span hidden data-manual-draft-ack="{{ manual_draft_ack | tojson | forceescape }}"></span>
+      <p hidden data-manual-draft-ack-status role="status" class="product-feedback"></p>
+      {% endif %}
     </main>
     {# W1 IA-B: 五域主导航在 ≤64rem 是 fixed 底部 nav (拇指区), >64rem 由
        CSS 隐藏 (桌面 sidebar 域轨是唯一主导航)。 #}

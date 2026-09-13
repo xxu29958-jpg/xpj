@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -81,6 +82,7 @@ def test_web_inbox_replaces_sender_deictic_default_with_authorized_context(
             expense_id=expense_id,
             receiver_account_id=receiver_id,
             amount_cents=1500,
+            idempotency_key=str(uuid4()), expected_row_version=1,
         )
     token = _mint_receiver_web_session(account_id=receiver_id, ledger_id=receiver_ledger)
     public_client = TestClient(
@@ -110,6 +112,7 @@ def test_web_sent_shows_absolute_deadline_for_terminal_states(web_client: TestCl
             expense_id=expense_id,
             receiver_account_id=receiver_id,
             amount_cents=1500,
+            idempotency_key=str(uuid4()), expected_row_version=1,
         )
         bsplit.accept_invitation(
             db,
@@ -136,6 +139,7 @@ def test_web_sent_expired_row_shows_actual_expiry_boundary(web_client: TestClien
             expense_id=expense_id,
             receiver_account_id=receiver_id,
             amount_cents=1500,
+            idempotency_key=str(uuid4()), expected_row_version=1,
         )
         public_id = invitation.public_id
     past = now_utc() - timedelta(days=1)

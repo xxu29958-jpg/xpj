@@ -15,11 +15,8 @@ from app.canonical_money_facts import canonical_money_facts_sha256
 from app.database import SessionLocal, engine
 from app.database._managed_postgres_migration_runtime import _prearmed_transaction
 from app.models import (
-    Budget,
-    CsvImportRow,
     ExpenseItem,
     ExpenseSplit,
-    Goal,
     OcrFact,
 )
 from app.money_contract import MONEY_MINOR_MAX
@@ -208,16 +205,16 @@ def test_upgrade_preserves_legacy_values_and_exposes_c07_release_bounds() -> Non
     run_alembic(command.upgrade, HEAD_REVISION)
 
     with SessionLocal() as db:
-        budget = db.query(Budget).filter_by(month="2026-07").one()
-        assert budget.rollover_amount_cents == LEGACY_INT32_MIN
-        budget.rollover_amount_cents = LEGACY_INT32_MAX + 1
-        db.commit()
-        assert budget.rollover_amount_cents == LEGACY_INT32_MAX + 1
-        budget.rollover_amount_cents = MONEY_MINOR_MAX
-        db.commit()
-        assert budget.rollover_amount_cents == MONEY_MINOR_MAX
-        budget.rollover_amount_cents = MONEY_MINOR_MAX + 1
+        # This test stops at C07; its SQL must not depend on later ORM columns.
+        read_rollover = text("SELECT rollover_amount_cents FROM budgets WHERE month = '2026-07'")
+        write_rollover = text("UPDATE budgets SET rollover_amount_cents = :amount WHERE month = '2026-07'")
+        assert db.scalar(read_rollover) == LEGACY_INT32_MIN
+        for amount in (LEGACY_INT32_MAX + 1, MONEY_MINOR_MAX):
+            db.execute(write_rollover, {"amount": amount})
+            db.commit()
+            assert db.scalar(read_rollover) == amount
         with pytest.raises(IntegrityError):
+            db.execute(write_rollover, {"amount": MONEY_MINOR_MAX + 1})
             db.commit()
         db.rollback()
 
@@ -250,46 +247,25 @@ def test_goal_type_shape_rejects_null_truth_leaks_after_c07() -> None:
     seed_owner()
     run_alembic(command.upgrade, HEAD_REVISION)
 
-    with SessionLocal() as db:
-        spending = Goal(
-            tenant_id="owner",
-            name="spending shape",
-            goal_type="spending_limit",
-            period="monthly",
-            month="2026-07",
-            target_amount_cents=1,
-        )
-        debt = Goal(
-            tenant_id="owner",
-            name="debt shape",
-            goal_type="debt_repayment",
-            period="monthly",
-            month=None,
-            target_amount_cents=None,
-        )
-        db.add_all((spending, debt))
-        db.commit()
-        spending_id = spending.id
-        debt_id = debt.id
-
-        spending.target_amount_cents = None
-        with pytest.raises(IntegrityError):
-            db.commit()
-        db.rollback()
-
-        spending = db.get(Goal, spending_id)
-        assert spending is not None
-        spending.month = None
-        with pytest.raises(IntegrityError):
-            db.commit()
-        db.rollback()
-
-        debt = db.get(Goal, debt_id)
-        assert debt is not None
-        debt.month = "2026-07"
-        with pytest.raises(IntegrityError):
-            db.commit()
-        db.rollback()
+    # This verifies the frozen C07 schema, before captured goal currency existed.
+    # Keep its producer on that actual table shape instead of today's ORM model.
+    with engine.begin() as connection:
+        connection.execute(text("""
+            INSERT INTO goals (public_id, tenant_id, name, goal_type, period, month,
+                target_amount_cents, status, created_at, updated_at)
+            VALUES ('c07-spending-shape', 'owner', 'spending shape', 'spending_limit',
+                'monthly', '2026-07', 1, 'active', now(), now()),
+                ('c07-debt-shape', 'owner', 'debt shape', 'debt_repayment',
+                'monthly', NULL, NULL, 'active', now(), now())
+        """))
+    rejected_updates = (
+        "UPDATE goals SET target_amount_cents = NULL WHERE public_id = 'c07-spending-shape'",
+        "UPDATE goals SET month = NULL WHERE public_id = 'c07-spending-shape'",
+        "UPDATE goals SET month = '2026-07' WHERE public_id = 'c07-debt-shape'",
+    )
+    for statement in rejected_updates:
+        with pytest.raises(IntegrityError), engine.begin() as connection:
+            connection.execute(text(statement))
 
 
 def test_existing_cross_currency_snapshot_is_not_reinterpreted() -> None:
@@ -332,7 +308,10 @@ def test_legacy_csv_import_row_is_preserved_without_later_schema() -> None:
     run_alembic(command.upgrade, HEAD_REVISION)
 
     with SessionLocal() as db:
-        row = db.get(CsvImportRow, row_id)
+        row = db.execute(text(
+            "SELECT amount_cents, original_currency_code, original_amount_minor, "
+            "exchange_rate_to_cny, exchange_rate_source, status FROM csv_import_rows WHERE id = :id"
+        ), {"id": row_id}).one_or_none()
         assert row is not None
         assert row.amount_cents == 450
         assert row.original_currency_code == "CNY"

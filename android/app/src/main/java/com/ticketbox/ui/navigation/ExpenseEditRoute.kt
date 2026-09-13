@@ -11,6 +11,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -61,7 +62,7 @@ internal fun ExpenseEditRoute(
     screenFactory: MainScreenFactory,
     onBack: () -> Unit,
     onCompleted: (adviceInputsChanged: Boolean) -> Unit,
-    onOpenRepaymentDrafts: (String) -> Unit,
+    related: ExpenseFactNavigation,
 ) {
     val editViewModel: ExpenseEditViewModel = viewModel(
         key = "expense-edit-$expenseId",
@@ -69,6 +70,13 @@ internal fun ExpenseEditRoute(
     )
     val editState by editViewModel.uiState.collectAsStateWithLifecycle()
     val expense = editState.expense
+
+    LaunchedEffect(editState.done) {
+        if (editState.done && editViewModel.consumeDone()) {
+            onCompleted(editViewModel.consumeDoneAdviceInputsChanged())
+        }
+    }
+    if (editState.done) return
 
     if (expense == null) {
         ExpenseEditLoadingRoute(
@@ -79,18 +87,22 @@ internal fun ExpenseEditRoute(
         return
     }
 
+    if (expense.pendingSync) {
+        ManualExpenseSubmissionRoute(expense.clientRef.orEmpty(), screenFactory, onBack, onCompleted, related)
+        return
+    }
+
     // A1 责任分流：confirmed 账单的事实/更正是独立 Owner —— 旧编辑 VM 不再
     // 渲染 confirmed（save/reject/PUT affordance 物理失权），改交 Fact owner。
     // pending（及其它待整理状态）保持原编辑屏。
     if (expense.status == "confirmed") {
         ExpenseFactRoute(
-            expenseId = expenseId,
-            initialExpense = expense,
+            expenseId = expense.id,
             screenFactory = screenFactory,
             onExit = { adviceInputsChanged ->
                 if (adviceInputsChanged) onCompleted(true) else onBack()
             },
-            onOpenRepaymentDrafts = onOpenRepaymentDrafts,
+            related = related,
         )
         return
     }

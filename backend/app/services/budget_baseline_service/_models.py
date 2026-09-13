@@ -8,7 +8,7 @@ Two sources blend over time:
   (BLS Consumer Expenditure Survey 2024 quintile averages) — used the
   moment a user finishes onboarding.
 - Personal baseline (rolling P50/P75 from confirmed expenses) — folded
-  in once the user has enough history. Lives in a separate sub-module.
+  in once the user has enough history.
 
 This file defines the wire types only; algorithm and data files are in
 sibling modules.
@@ -38,6 +38,12 @@ class CategoryBaseline:
     category: str
     median_cents: int
     p75_cents: int
+
+
+@dataclass(frozen=True)
+class PersonalBaseline:
+    months_observed: int
+    categories: tuple[CategoryBaseline, ...]
 
 
 @dataclass(frozen=True)

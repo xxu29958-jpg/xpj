@@ -2,19 +2,9 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
-import com.ticketbox.domain.model.PendingUploadReceipt
 import com.ticketbox.domain.model.ProtectedImage
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
-
-data class ScreenshotUploadRequest(
-    val fileName: String,
-    val contentType: String?,
-    val bytes: ByteArray,
-    val preparationDurationMs: Long? = null,
-    val sourceSizeBytes: Long? = null,
-    val expectedLedgerId: String? = null,
-)
 
 /**
  * v0.4-alpha4 M1：PendingViewModel 依赖反转用接口。
@@ -40,6 +30,9 @@ interface PendingReviewActions {
      * GlobalSearch 复用，不碰缓存；getCachedPending 只读 Room、不发网络。
      */
     suspend fun getCachedPending(): Result<List<Expense>>
+
+    /** Existing confirmed cache, used to reconcile a retained list when its network refresh fails. */
+    fun observeConfirmed(): Flow<List<Expense>>
 
     /**
      * issue #64 A3：拉远端 pending 并写回本地缓存（write-through），供
@@ -159,7 +152,6 @@ interface PendingReviewActions {
      */
     suspend fun markNotDuplicateAllowingOffline(expense: Expense): Result<ExpenseStateOutcome>
     suspend fun categories(): Result<List<String>>
-    suspend fun uploadScreenshot(request: ScreenshotUploadRequest): Result<PendingUploadReceipt>
 }
 
 /**
@@ -193,7 +185,7 @@ sealed interface SaveOutcome {
  * [PendingReviewActions.rejectExpenseAllowingOffline]; PR-2g.8 adds
  * mark-not-duplicate). Parallel to [SaveOutcome] — same two-branch
  * shape, separate type so the confirm/reject surface can't silently
- * widen into the PATCH-save one (see the [CategoryRuleSaveOutcome]
+ * widen into the PATCH-save one (see the [PendingCategoryRuleSubmission]
  * KDoc for the convention).
  */
 sealed interface ExpenseStateOutcome {

@@ -12,12 +12,16 @@ import com.ticketbox.domain.model.ExpenseOffsetIntentKind
 import com.ticketbox.domain.model.ExpenseOffsetMutationOutcome
 import com.ticketbox.domain.model.PendingExpenseOffsetIntent
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.first
 import java.io.IOException
 import java.time.LocalDate
 import java.time.format.DateTimeParseException
 import java.util.UUID
 
-internal class ExpenseOffsetRepository(private val core: ExpenseRepositoryCore) {
+internal class ExpenseOffsetRepository(
+    private val core: ExpenseRepositoryCore,
+    private val corrections: ExpenseCorrectionRepository,
+) {
     suspend fun fetch(expenseId: Long): Result<ExpenseFactBundle> = core.errorHandler.safeCall {
         val bound = core.ledgerRequestGuard.bind()
         val dto = bound.call { it.expenseFactBundle(expenseId.toString()) }
@@ -26,10 +30,13 @@ internal class ExpenseOffsetRepository(private val core: ExpenseRepositoryCore) 
     }
 
     suspend fun createAllowingOffline(
+        expectedBinding: LogicalSessionBinding,
         expense: Expense,
         draft: ExpenseOffsetDraft,
     ): Result<ExpenseOffsetMutationOutcome> = core.errorHandler.safeCall {
+        val bound = core.ledgerRequestGuard.bindExact(expectedBinding)
         requireMutableRoot(expense)
+        requireAdoptedCorrectionRoot(bound, expectedBinding, expense)
         val reason = requiredReason(draft.reason)
         val accountingDate = validDate(draft.accountingDate)
         val amount = when (draft.kind) {
@@ -47,7 +54,6 @@ internal class ExpenseOffsetRepository(private val core: ExpenseRepositoryCore) 
             reason = reason,
             expectedRowVersion = expense.rowVersion,
         )
-        val bound = core.ledgerRequestGuard.bind()
         val key = UUID.randomUUID().toString()
         val targetId = expenseOutboxTargetId(expense)
         val outbox = core.outbox
@@ -104,6 +110,20 @@ internal class ExpenseOffsetRepository(private val core: ExpenseRepositoryCore) 
         }
     }
 
+    private suspend fun requireAdoptedCorrectionRoot(
+        bound: BoundLedgerRequest,
+        expectedBinding: LogicalSessionBinding,
+        expense: Expense,
+    ) {
+        val observation = corrections.observe().first()
+        bound.requireStillActive()
+        if (observation.access?.canModify != true) throw RepositoryException("当前角色为只读，无法修改账单事实。")
+        if (observation.access?.binding != expectedBinding || observation.corrections.any {
+                it.expenseId == expense.id && (!it.delivered || it.refreshRequired ||
+                    expense.rowVersion <= it.row.expectedRowVersion)
+            }) throw RepositoryException("这笔账单有待处理的提交，请先查看原提交。")
+    }
+
     private suspend fun synced(
         response: ExpenseFactBundleDto,
         bound: BoundLedgerRequest,
@@ -145,7 +165,7 @@ internal class ExpenseOffsetRepository(private val core: ExpenseRepositoryCore) 
                 type = PendingMutationType.CreateExpenseOffset,
                 targetId = targetId,
                 payloadJson = requireNotNull(core.offsetCreateAdapter)
-                    .toJson(request.copy(expectedRowVersion = 0)),
+                    .toJson(request),
                 expectedRowVersion = request.expectedRowVersion,
                 idempotencyKey = key,
             ),

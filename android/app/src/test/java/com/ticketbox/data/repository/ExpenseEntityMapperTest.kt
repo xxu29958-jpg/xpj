@@ -79,6 +79,11 @@ class ExpenseEntityMapperTest {
         assertEquals("USD", entity.originalCurrencyCode)
         assertEquals(1_250L, entity.originalAmountMinor)
         assertEquals("$12.50", formatExpensePrimaryAmount(entity.copy(id = 1L).toDomain()))
+        val request = draft.toManualCreateRequest(clientRef = "ref-fx")
+        assertEquals("JPY", request.homeCurrencyCode)
+        assertEquals("USD", request.originalCurrency)
+        assertEquals("12.50", request.originalAmount)
+        assertEquals("ref-fx", request.clientRef)
     }
 }
 

@@ -7,10 +7,9 @@ outbox-routed mutate route claims an ``Idempotency-Key`` (via the shared
 ``claim_idempotent_request``) BEFORE its OCC ``row_version`` claim. Two flavours
 of HIT re-serialisation are exercised end-to-end here:
 
-* updates re-serialise the *current* resource (``get_rule_for_tenant`` /
-  ``get_merchant_alias`` / ``list_expense_items``) — a committed-but-unseen
-  replay with a now-stale token returns canonical state, never the false-409 the
-  OCC claim would raise.
+* category-rule updates return the original accepted receipt, even after a
+  later edit. Alias and item updates retain their existing current-resource
+  responses. In each case a same-intent replay precedes OCC.
 * deletes are idempotent by construction — a HIT just returns ``StatusResponse``
   without re-running the soft-delete.
 
@@ -49,7 +48,7 @@ if TYPE_CHECKING:
 def _create_rule(client: TestClient, *, identity: TestIdentity, keyword: str = "IdemRuleCafe") -> dict:
     resp = client.post(
         "/api/rules/categories",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"keyword": keyword, "category": "餐饮", "enabled": True, "priority": 1},
     )
     assert resp.status_code == 200, resp.text
@@ -163,12 +162,10 @@ def test_mutation_requires_idempotency_key(
 # (b) committed-but-unseen replay → canonical (update_category_rule + replace_items)
 
 
-def test_update_rule_replay_same_key_returns_canonical_not_409(
+def test_update_rule_replay_same_key_returns_original_acceptance_after_later_edit(
     client: TestClient, identity: TestIdentity
 ) -> None:
-    """Committed-but-unseen: the SAME key + SAME now-stale token re-serialises
-    the (already-updated) rule rather than the false-409 the OCC claim would
-    otherwise raise on the bumped row_version."""
+    """An unseen acceptance proves this intent even when a peer has edited it."""
     rule = _create_rule(client, identity=identity)
     v0 = rule["row_version"]
     key = str(uuid4())
@@ -181,10 +178,17 @@ def test_update_rule_replay_same_key_returns_canonical_not_409(
     v1 = first.json()["row_version"]
     assert v1 != v0
 
+    later = client.patch(f"/api/rules/categories/{rule['id']}",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"category": "购物", "expected_row_version": v1})
+    assert later.status_code == 200, later.text
+
     replay = client.patch(f"/api/rules/categories/{rule['id']}", headers=headers, json=body)
     assert replay.status_code == 200, replay.text  # HIT, not 409
     assert replay.json()["category"] == "交通"
-    assert replay.json()["row_version"] == v1  # canonical, not re-applied
+    assert replay.json() == first.json()
+    current = client.get("/api/rules/categories", headers=identity.app_headers).json()
+    assert next(row for row in current if row["id"] == rule["id"])["category"] == "购物"
 
 
 def test_update_rule_stale_token_with_different_key_still_409s(

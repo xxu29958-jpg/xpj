@@ -11,7 +11,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -76,7 +75,7 @@ import com.ticketbox.ui.screens.expense.ExpenseEditTimeRowActions
 import com.ticketbox.ui.screens.expense.ExpenseEditTimeRowState
 import com.ticketbox.ui.screens.expense.ExpenseDetailActionButtonRow
 import com.ticketbox.ui.screens.expense.initialExpenseAmountInputMinor
-import com.ticketbox.ui.screens.expense.canonicalManualExchangeRateOrNull
+import com.ticketbox.domain.model.canonicalManualExchangeRateOrNull
 import com.ticketbox.ui.screens.expense.manualExchangeRateEditorVisible
 import com.ticketbox.ui.screens.expense.manualExchangeRateNeedsServerReview
 import com.ticketbox.ui.screens.expense.ItemsEditorSheetActions
@@ -339,10 +338,6 @@ fun ExpenseEditScreen(
             onConfirm = primaryActions.onReject,
             onDismiss = { showRejectDialog = false },
         )
-    }
-
-    LaunchedEffect(state.done) {
-        if (state.done) primaryActions.onDone()
     }
 
     fun parseScore(raw: String, label: String): Int? {

@@ -30,8 +30,9 @@ def _fx_context(request: Request, db: Session, *, refreshed: str | None = None) 
     vm = svc.get_fx_panel_vm(db, home_currency_code=home_currency)
     ctx.update(
         fx_source=vm.source,
-        fx_source_url=vm.source_url,
         fx_auto_enabled=vm.auto_enabled,
+        fx_scheduler_running=vm.scheduler_running,
+        fx_scheduler_config_error=vm.scheduler_config_error,
         fx_sync_times=vm.sync_times,
         fx_sync_timezone=vm.sync_timezone,
         fx_success_count=vm.success_count,

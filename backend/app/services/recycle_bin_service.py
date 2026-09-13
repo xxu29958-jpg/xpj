@@ -47,6 +47,7 @@ from app.services.soft_delete_policy import (
     is_within_recycle_bin_window,
     recycle_bin_retention_label,
 )
+from app.services.spending_contract_service import current_accounting_month
 from app.services.tag_undo_service import undo_tag_mutation
 
 
@@ -60,6 +61,7 @@ class RecycleBinItem:
     removed_at: datetime | None
     retention_label: str
     expected_row_version: int | None
+    restore_intent_month: str | None = None
 
 
 @dataclass(frozen=True)
@@ -94,14 +96,24 @@ def restore_recycle_bin_item(
     resource_id: str,
     expected_row_version: int | None,
     actor_account_id: int | None,
+    intent_month: str | None = None,
 ) -> str:
     clean_kind = (kind or "").strip()
     clean_resource_id = (resource_id or "").strip()
     if not clean_kind or not clean_resource_id:
         raise AppError("invalid_request", "恢复参数不完整。", status_code=422)
 
+    if clean_kind == "income_plan":
+        if not intent_month:
+            raise AppError("invalid_request", "请刷新后核对收入计划的恢复月份。", status_code=422)
+        restore_income_plan(
+            db, tenant_id=tenant_id, public_id=clean_resource_id,
+            expected_row_version=_require_token(expected_row_version),
+            intent_month=intent_month, actor_account_id=actor_account_id,
+        )
+        return "收入计划已恢复。"
+
     public_id_restore = {
-        "income_plan": (restore_income_plan, "收入记录已恢复。"),
         "category_preference": (restore_category_preference, "分类已恢复。"),
         "merchant_catalog": (restore_merchant_catalog, "商家已恢复。"),
         "recurring_item": (restore_recurring_item, "固定支出已恢复。"),
@@ -205,6 +217,7 @@ def _sort_key(row: RecycleBinItem) -> datetime:
 
 
 def _archived_income_rows(db: Session, tenant_id: str) -> list[RecycleBinItem]:
+    intent_month = current_accounting_month()
     rows = db.scalars(
         select(MonthlyIncomePlan)
         .where(MonthlyIncomePlan.tenant_id == tenant_id)
@@ -214,13 +227,14 @@ def _archived_income_rows(db: Session, tenant_id: str) -> list[RecycleBinItem]:
     return [
         RecycleBinItem(
             kind="income_plan",
-            kind_label="收入",
+            kind_label="收入计划",
             resource_id=item.public_id,
             title=item.label,
-            detail=_income_detail(item),
+            detail=_income_detail(item) + f" · 恢复从 {intent_month} 生效",
             removed_at=item.archived_at,
             retention_label="长期保留",
             expected_row_version=item.row_version,
+            restore_intent_month=intent_month,
         )
         for item in rows
     ]
@@ -313,7 +327,7 @@ def _archived_recurring_rows(db: Session, tenant_id: str) -> list[RecycleBinItem
             title=item.merchant_name,
             detail=recurring_item_monthly_detail(
                 item,
-                _money(item.baseline_amount_cents),
+                _money(item.baseline_amount_cents, item.home_currency_code) if item.home_currency_code else "币种待确认",
             ),
             removed_at=item.archived_at,
             retention_label="长期保留",
@@ -433,15 +447,17 @@ def _tag_undo_rows(db: Session, tenant_id: str) -> list[RecycleBinItem]:
 
 
 def _income_detail(item: MonthlyIncomePlan) -> str:
-    frequency = "每月固定" if item.frequency == "monthly" else f"{item.income_month} 到账"
-    return f"{frequency} · {_money(item.amount_cents)} · {item.pay_day} 号"
+    frequency = "每月固定" if item.frequency == "monthly" else f"{item.income_month} 预计"
+    return f"{frequency} · {_money(item.amount_cents, item.home_currency_code)} · {item.pay_day} 号"
 
 
 def _goal_detail(item: Goal) -> str:
     if item.goal_type == "debt_repayment":
         return "还债目标"
     scope = item.category or "总支出"
-    return f"{item.month} · {scope} · 目标 {_money(item.target_amount_cents)}"
+    amount = (f"{item.home_currency_code} {_money(item.target_amount_cents, item.home_currency_code)}"
+        if item.home_currency_code else f"{item.target_amount_cents}（最小单位，币种待确认）")
+    return f"{item.month} · {scope} · 目标 {amount}"
 
 
 def _budget_detail(db: Session, item: Budget) -> str:
@@ -451,22 +467,18 @@ def _budget_detail(db: Session, item: Budget) -> str:
         .where(BudgetCategory.month == item.month)
     )
     return (
-        f"总预算 {_money(item.total_amount_cents)} · "
+        f"总预算 {_money(item.total_amount_cents, item.home_currency_code)} · "
         f"分类预算 {int(category_count or 0)} 项"
     )
 
 
-def _money(amount_cents: int) -> str:
-    # Income/goal/budget/recurring rows carry no per-row currency column: their
-    # amounts are stored in home-currency minor units, so None lets
-    # currency_common resolve the deployment home code (JPY/KRW → zero
-    # fraction, divmod-based, no float).
+def _money(amount_cents: int, currency: str | None) -> str:
     return minor_amount_label(
         projection_sum_to_int(
             amount_cents,
             label="recycle_bin.money",
         ),
-        None,
+        currency,
     )
 
 

@@ -1534,8 +1534,10 @@ def test_product_mutations_honor_the_shutdown_seal() -> None:
         controller.switch_product_principal_ledger("family")
 
 
-def test_pair_reuses_the_provisional_attempt_after_response_loss() -> None:
-    sessions, recoveries, store = _stores(None)
+@pytest.mark.parametrize("has_previous_session", [False, True])
+def test_pair_reuses_the_provisional_attempt_after_response_loss(has_previous_session: bool) -> None:
+    previous = _product_session(ledger_id="archived") if has_previous_session else None
+    sessions, recoveries, store = _stores(previous)
     seen_attempts: list[tuple[str, str]] = []
     calls = {"count": 0}
 
@@ -1565,6 +1567,7 @@ def test_pair_reuses_the_provisional_attempt_after_response_loss() -> None:
         _config(),
         product_session_pairer=pairer,
         product_session_activator=_activate_pending,
+        product_session_revoker=lambda *_args, **_kwargs: None,
         **store,
     )
 
@@ -1575,6 +1578,29 @@ def test_pair_reuses_the_provisional_attempt_after_response_loss() -> None:
     assert _INSTALLATION_ID in recoveries
     assert recoveries[_INSTALLATION_ID].ledger_id == ""
 
+    # A restarted Manager must explain the durable attempt without spending it
+    # or exposing the proof. Only an explicit retry with the original code pairs.
+    controller = AppController(
+        FakeRuntime(), _config(), product_session_pairer=pairer,
+        product_session_activator=_activate_pending,
+        product_ledger_fetcher=lambda *_args, **_kwargs: [
+            {"ledger_id": "archived", "name": "原账本", "role": "owner", "is_default": True},
+        ],
+        product_session_revoker=lambda *_args, **_kwargs: None, **store,
+    )
+    assert controller.product_principal() == {
+        **(previous.public_projection() if previous else {"configured": False}),
+        "pairing_recovery": "original_code_required",
+    }
+    if previous is not None:
+        assert sessions[_INSTALLATION_ID] is previous
+        # Restored membership does not settle a possibly committed pairing attempt.
+        assert controller.product_ledgers() == [
+            {"ledger_id": "archived", "name": "原账本", "role": "owner", "is_default": True, "is_current": True},
+        ]
+        assert controller.product_principal()["pairing_recovery"] == "original_code_required"
+        assert _INSTALLATION_ID in recoveries
+    assert calls["count"] == 1
     projection = controller.pair_product_principal("12345678")
 
     assert projection["configured"] is True
@@ -1769,7 +1795,8 @@ def test_reused_provisional_with_mismatched_code_keeps_the_record() -> None:
 
     with pytest.raises(ProductDataError) as error:
         controller.pair_product_principal("99999999")
-    assert error.value.error == "invalid_pairing_code"
+    assert error.value.error == "product_pairing_original_code_required"
+    assert "原绑定码" in str(error.value)
     # A possibly-committed ceremony is never cleared by a mismatched retry.
     assert _INSTALLATION_ID in recoveries
 

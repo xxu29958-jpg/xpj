@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 
 from app.models import Debt
 from app.services.debt_service import installment_paid_count, installment_payoff_date
+from tests._runtime_protocol import negotiated_headers
 from tests.debt_repayment_goal_helpers import (
     _adjust_debt,
     _backdate_debt_created,
@@ -87,9 +88,9 @@ def test_create_installment_count_requires_installment_kind(client: TestClient, 
     # 期数 on a non-installment kind → 422 (the service's kind-pairing gate, not a silent ignore).
     response = client.post(
         "/api/debts",
-        headers=_idem(identity.app_headers),
+        headers=negotiated_headers(client, _idem(identity.app_headers)),
         json={
-            "direction": "i_owe", "counterparty_type": "external", "counterparty_label": "招行",
+            "home_currency_code": "CNY", "direction": "i_owe", "counterparty_type": "external", "counterparty_label": "招行",
             "principal_amount_cents": 10000, "debt_kind": "revolving", "installment_count": 6,
         },
     )
@@ -100,9 +101,9 @@ def test_create_installment_count_requires_installment_kind(client: TestClient, 
 def test_create_installment_period_without_count_rejected(client: TestClient, *, identity) -> None:
     response = client.post(
         "/api/debts",
-        headers=_idem(identity.app_headers),
+        headers=negotiated_headers(client, _idem(identity.app_headers)),
         json={
-            "direction": "i_owe", "counterparty_type": "external", "counterparty_label": "招行",
+            "home_currency_code": "CNY", "direction": "i_owe", "counterparty_type": "external", "counterparty_label": "招行",
             "principal_amount_cents": 10000, "debt_kind": "installment", "installment_period_months": 3,
         },
     )
@@ -240,9 +241,9 @@ def test_installment_count_over_cap_rejected(client: TestClient, *, identity) ->
     # (a self-inflicted 500 otherwise).
     response = client.post(
         "/api/debts",
-        headers=_idem(identity.app_headers),
+        headers=negotiated_headers(client, _idem(identity.app_headers)),
         json={
-            "direction": "i_owe", "counterparty_type": "external", "counterparty_label": "招行",
+            "home_currency_code": "CNY", "direction": "i_owe", "counterparty_type": "external", "counterparty_label": "招行",
             "principal_amount_cents": 10000, "debt_kind": "installment", "installment_count": 601,
         },
     )

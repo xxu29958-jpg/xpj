@@ -25,8 +25,6 @@ Navigation:
     GET  /owner/diagnostics         — diagnostics page
     GET  /owner/fx                  — FX rate sync status + latest rates
     POST /owner/fx/refresh          — run one FX sync now (manual trigger)
-    GET  /owner/recycle-bin         — unified archived/deleted restore surface
-    POST /owner/recycle-bin/restore — restore one recycle-bin item
     GET  /owner/settings(/*)        — runtime settings (5 endpoints)
 """
 
@@ -43,7 +41,6 @@ from app.routes.owner_console import (
     _index,
     _learning_maintenance,
     _pairing,
-    _recycle_bin,
     _settings,
     _tag_cleanup,
     _upload_links,
@@ -63,7 +60,6 @@ router.include_router(_ai_advisor.router)
 router.include_router(_algorithm_versions.router)
 router.include_router(_learning_maintenance.router)
 router.include_router(_tag_cleanup.router)
-router.include_router(_recycle_bin.router)
 router.include_router(_devices.router)
 router.include_router(_pairing.router)
 router.include_router(_upload_links.router)

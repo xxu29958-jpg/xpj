@@ -1,5 +1,8 @@
 package com.ticketbox.viewmodel
 
+import androidx.lifecycle.viewModelScope
+import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.ExpenseCorrectionDraft
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseFactBundle
@@ -13,6 +16,8 @@ import com.ticketbox.domain.model.ExpenseRelationshipImpacts
 import com.ticketbox.domain.model.PendingExpenseOffsetIntent
 import com.ticketbox.domain.model.StreamOffsetKind
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.job
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -29,6 +34,80 @@ import org.junit.Test
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 internal class ExpenseFactViewModelOffsetsTest : ExpenseFactViewModelTestBase() {
+
+    @Test
+    fun deliveredCurrencyCorrectionCannotReinterpretAnOpenRefundDraft() = edit { fake ->
+        val vm = viewModel(fake)
+        try {
+            vm.openOffsetSheet(StreamOffsetKind.Refund)
+            vm.updateOffsetFormField(OffsetFormField.Amount, "10.00")
+            vm.updateOffsetFormField(OffsetFormField.Reason, "Original CNY refund")
+            val original = vm.uiState.value.offsetForm
+            fake.submitCorrection(fake.correctionBinding, fake.baseExpense,
+                ExpenseCorrectionDraft("The receipt is in yen", originalCurrencyCode = CurrencyCode.JPY,
+                    originalAmountMinor = 1_000L)).getOrThrow()
+            advanceUntilIdle()
+            fake.baseExpense = fake.baseExpense.copy(rowVersion = 2, factRevision = 2,
+                originalCurrencyCode = CurrencyCode.JPY, originalCurrencyCodeRaw = "JPY", originalAmountMinor = 1_000L)
+            fake.settleCorrection(com.ticketbox.data.local.PendingMutationStatus.Done)
+            advanceUntilIdle()
+            assertTrue(vm.uiState.value.authoritativeRootReady)
+            assertEquals(CurrencyCode.JPY, vm.uiState.value.expense?.originalCurrencyCode)
+            assertEquals(original.amountText, vm.uiState.value.offsetForm.amountText)
+
+            assertFalse(vm.canSubmitOffset(), "adopting the root does not reinterpret the open CNY input as yen")
+            vm.submitOffset()
+            advanceUntilIdle()
+            assertEquals(0, fake.createOffsetCalls)
+            assertEquals(original.amountText, vm.uiState.value.offsetForm.amountText)
+            vm.reviewOffsetDraft()
+            assertEquals("", vm.uiState.value.offsetForm.amountText)
+            assertEquals(original.reason, vm.uiState.value.offsetForm.reason)
+            assertEquals(original.accountingDate, vm.uiState.value.offsetForm.accountingDate)
+            vm.updateOffsetFormField(OffsetFormField.Amount, "10")
+            assertTrue(vm.canSubmitOffset())
+            vm.submitOffset()
+            advanceUntilIdle()
+            assertEquals(1, fake.createOffsetCalls)
+            assertEquals(10L, fake.lastOffsetDraft?.originalAmountMinor)
+        } finally {
+            vm.viewModelScope.coroutineContext.job.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun `correction blocks new offsets without discarding the already open draft`() = edit { fake ->
+        val vm = viewModel(fake)
+        try {
+            vm.openOffsetSheet(StreamOffsetKind.Refund)
+            vm.updateOffsetFormField(OffsetFormField.Amount, "10.00")
+            vm.updateOffsetFormField(OffsetFormField.Reason, "Refund agreed in the original currency")
+            val originalForm = vm.uiState.value.offsetForm
+            assertTrue(originalForm.open)
+            fake.submitCorrection(fake.correctionBinding, fake.baseExpense,
+                ExpenseCorrectionDraft("The receipt is in yen", originalCurrencyCode = CurrencyCode.JPY,
+                    originalAmountMinor = 1_000L)).getOrThrow()
+            advanceUntilIdle()
+            val original = vm.uiState.value.corrections.single()
+            assertEquals("JPY", original.intent?.request?.originalCurrencyCode)
+            assertEquals(CurrencyCode.CNY, vm.uiState.value.expense?.originalCurrencyCode)
+
+            assertFalse(vm.canSubmitOffset())
+            vm.submitOffset()
+            advanceUntilIdle()
+            assertEquals(0, fake.createOffsetCalls)
+            assertEquals(originalForm, vm.uiState.value.offsetForm)
+            vm.closeOffsetSheet()
+            for (kind in listOf(StreamOffsetKind.Refund, StreamOffsetKind.Chargeback, StreamOffsetKind.Reversal)) {
+                vm.openOffsetSheet(kind)
+                assertFalse(vm.uiState.value.offsetForm.open)
+            }
+            assertEquals(original, vm.uiState.value.corrections.single())
+            assertEquals(1, fake.correctCalls)
+        } finally {
+            vm.viewModelScope.coroutineContext.job.cancelAndJoin()
+        }
+    }
 
     private fun bundleOf(
         root: Expense,
@@ -171,6 +250,10 @@ internal class ExpenseFactViewModelOffsetsTest : ExpenseFactViewModelTestBase() 
         assertFalse(refreshed.refreshingAfterConflict)
         assertEquals("再次提交", refreshed.reason)
         assertEquals(2L, vm.uiState.value.expense?.rowVersion)
+        assertFalse(vm.canSubmitOffset())
+        vm.reviewOffsetDraft()
+        assertEquals(refreshed.amountText, vm.uiState.value.offsetForm.amountText)
+        assertEquals(refreshed.reason, vm.uiState.value.offsetForm.reason)
         assertTrue(vm.canSubmitOffset())
     }
 

@@ -15,6 +15,7 @@ data class BudgetOverspendDecision(
     val ledgerId: String,
     val month: String,
     val overspentCents: Long,
+    val homeCurrencyCode: String,
 )
 
 /**
@@ -34,11 +35,13 @@ fun budgetOverspendSentKey(ledgerId: String, month: String): String = "v1:budget
  */
 fun evaluateBudgetOverspend(ledgerId: String, budget: BudgetMonthly): BudgetOverspendDecision? {
     if (!budget.configured) return null
-    if (budget.overspentAmountCents <= 0L) return null
+    val overspent = budget.overspentAmountCents?.takeIf { it > 0L } ?: return null
+    val currency = budget.homeCurrencyCode?.takeIf { it.isNotBlank() } ?: return null
     return BudgetOverspendDecision(
         key = budgetOverspendSentKey(ledgerId, budget.month),
         ledgerId = ledgerId,
         month = budget.month,
-        overspentCents = budget.overspentAmountCents,
+        overspentCents = overspent,
+        homeCurrencyCode = currency,
     )
 }

@@ -3,13 +3,24 @@ package com.ticketbox.ui.screens
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
-import com.ticketbox.domain.model.FxContract
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.MonthPickerListState
 import com.ticketbox.ui.components.MonthPickerSheet
+import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.screens.ledger.LedgerBulkEditSheetActions
 import com.ticketbox.ui.screens.ledger.LedgerBulkEditSheetState
 import com.ticketbox.ui.screens.ledger.LedgerBulkEditSheet
@@ -87,19 +98,44 @@ private fun LedgerManualSheetHost(
     }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(onDismissRequest = dismissManualSheet, sheetState = sheetState) {
+        PreparedManualExpenseSheet(state, actions, dismissManualSheet)
+    }
+}
+
+@Composable
+private fun PreparedManualExpenseSheet(state: LedgerUiState, actions: LedgerScreenActions, onDismiss: () -> Unit) {
+    var currency by rememberSaveable { mutableStateOf<CurrencyCode?>(null) }
+    var loading by remember { mutableStateOf(true) }
+    var attempt by remember { mutableIntStateOf(0) }
+    LaunchedEffect(attempt) {
+        if (currency != null) { loading = false; return@LaunchedEffect }
+        loading = true
+        currency = actions.onPrepareManualCreate()
+        loading = false
+    }
+    val captured = currency
+    if (captured == null) {
+        AppSheetScaffold(title = stringResource(R.string.ledger_manual_sheet_title)) {
+            if (loading) {
+                CircularProgressIndicator()
+                Text(stringResource(R.string.ledger_manual_currency_loading))
+            } else {
+                Text(stringResource(R.string.currency_unconfirmed_write_blocked))
+                TextButton(onClick = { attempt++ }) { Text(stringResource(R.string.common_retry)) }
+            }
+        }
+    } else {
         ManualExpenseSheet(
             state = ManualExpenseSheetState(
                 categories = state.categories,
                 saving = state.creatingManual,
                 recentMerchants = state.recentMerchants,
-                // R13-6：初始币种取账本 capability（未确认时落 display-home 兜底仅作展示，
-                // 提交由 VM 的 ledgerCurrency 门拦截）。
-                initialCurrency = state.ledgerCurrency ?: FxContract.HomeCurrency,
+                initialCurrency = captured,
                 errorMessage = state.manualCreateError?.asString(),
             ),
             actions = ManualExpenseSheetActions(
                 onCreate = actions.onManualCreate,
-                onDismiss = dismissManualSheet,
+                onDismiss = onDismiss,
             ),
         )
     }

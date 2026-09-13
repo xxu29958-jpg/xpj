@@ -17,8 +17,10 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterator
+from uuid import uuid4
 
 import pytest
+from _web_bulk_test_support import seed_pending_with_amount as _seed_pending_with_amount
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -225,7 +227,7 @@ def test_budgets_product_body_retires_legacy_stack(web_client: TestClient) -> No
         assert retired not in body
     assert "/static/web/pages/budgets.css" not in body
     assert "desktop-shell-active" not in body
-    assert '<span class="product-eyebrow">计划 / 月度预算</span>' in body
+    assert '<h1 class="page-title">月度预算</h1>' in body
     assert "<style" not in body
     assert 'style="' not in body
     _assert_shell_chrome_has_no_inline_style(body)
@@ -247,7 +249,7 @@ def test_confirmed_product_body_retires_legacy_stack_and_fake_filter(
     assert "/static/web/desktop/ledger-filter.js" not in body
     assert "data-ledger-filter" not in body
 
-    assert '<span class="product-eyebrow">流水 / 已确认</span>' in body
+    assert '<h1 class="page-title">已确认流水</h1>' in body
     assert "ledger-stream" in body
     assert 'aria-label="本月概况"' in body
     assert "每日分布" in body
@@ -370,9 +372,13 @@ def test_primary_mutations_keep_real_csrf_and_occ_contracts(
     web_client: TestClient,
     identity,
 ) -> None:
+    pending_id = _seed_pending_with_amount(web_client, "9.00", "X", identity=identity)
     pending = web_client.get("/web/pending?ledger_id=owner")
     assert pending.status_code == 200
     assert 'action="/web/review/bulk"' in pending.text
+    assert f'data-expense-id="{pending_id}"' in pending.text
+    assert 'name="expense_snapshot"' in pending.text
+    assert 'data-row-version="' in pending.text
     assert re.search(
         r'name="csrf_token" value="[^"]+"',
         pending.text,
@@ -391,7 +397,8 @@ def test_primary_mutations_keep_real_csrf_and_occ_contracts(
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
-            "amount_cents": 1234,
+            "client_ref": str(uuid4()),
+            "home_currency_code": "CNY", "amount_cents": 1234,
             "merchant": "产品壳测试",
             "category": "其他",
             "expense_time": "2026-07-18T08:00:00Z",

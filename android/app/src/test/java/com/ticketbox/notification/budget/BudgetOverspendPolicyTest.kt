@@ -52,6 +52,7 @@ internal fun budgetOf(
     configured: Boolean = true,
     overspentCents: Long = 0L,
 ): BudgetMonthly = BudgetMonthly(
+    homeCurrencyCode = "CNY",
     ledgerId = "ledger-1",
     month = month,
     configured = configured,

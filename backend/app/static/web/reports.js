@@ -64,6 +64,7 @@
   }
 
   function compactYuan(cents) {
+    if (cents === null || cents === undefined) return '待补汇率';
     var yuanValue = app.homeMinorToMajor(cents);
     if (yuanValue === null) return '金额不可用';
     var abs = Math.abs(yuanValue);
@@ -73,7 +74,7 @@
   }
 
   function homeMoneyCents(cents) {
-    return app.homeMoneyMinor(cents);
+    return cents === null || cents === undefined ? '待补汇率' : app.homeMoneyMinor(cents);
   }
 
   function homeCompactCents(cents) {
@@ -193,6 +194,7 @@
     if (!container || !rows.length) return null;
 
     var metric = report.ranking_metric === 'count' ? 'count' : 'amount';
+    if (metric === 'amount' && rows.some(function (row) { return row.amount_cents == null; })) return null;
     var reversedRows = rows.slice().reverse();
     var chart = window.echarts.init(container);
     chart.setOption({
@@ -272,8 +274,8 @@
         formatter: function (items) {
           if (!items || !items.length) return '';
           var row = rows[items[0].dataIndex];
-          var delta = Number(row.delta_amount_cents || 0);
-          var yoyDelta = Number(row.year_over_year_delta_amount_cents || 0);
+          var delta = row.delta_amount_cents;
+          var yoyDelta = row.year_over_year_delta_amount_cents;
           var prefix = delta > 0 ? '+' : '';
           var yoyPrefix = yoyDelta > 0 ? '+' : '';
           return row.category + '<br>本月 ' + homeMoneyCents(row.amount_cents)

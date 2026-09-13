@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from uuid import uuid4
 
 import pytest
 from alembic import command
@@ -10,12 +11,12 @@ from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
 from app.database import SessionLocal, engine
+from app.database._lifecycle import load_alembic_context
 from app.database._managed_postgres_migration_runtime import _prearmed_transaction
 from app.database._money_schema_attestation import (
     MoneySchemaAttestationError,
     read_money_schema_shape,
 )
-from app.models import RecurringItem
 from app.money_contract import (
     MONEY_COLUMNS_V1,
     MONEY_REMOVED_LEGACY_CHECKS_V1,
@@ -51,7 +52,7 @@ def test_money_widening_uses_caller_transaction_without_c07_context() -> None:
         config.attributes["connection"] = connection
         command.upgrade(config, "head")
 
-    assert current_revision() == "20260901_0001"
+    assert current_revision() == load_alembic_context().head_revision
 
 
 def test_frozen_migration_legacy_checks_match_ready_absence_contract() -> None:
@@ -110,15 +111,13 @@ def test_final_shape_violation_blocks_without_partial_ddl() -> None:
     run_alembic(command.upgrade, PREVIOUS_REVISION)
     seed_owner()
     with SessionLocal() as db:
-        db.add(
-            RecurringItem(
-                tenant_id="owner",
-                merchant_key="legacy-zero",
-                merchant_name="legacy-zero",
-                baseline_amount_cents=0,
-                last_amount_cents=0,
-            )
-        )
+        db.execute(text("""
+            INSERT INTO recurring_items (public_id, tenant_id, merchant_key, merchant_name,
+                frequency, baseline_amount_cents, last_amount_cents, occurrence_count,
+                status, source, row_version, created_at, updated_at)
+            VALUES (:key, 'owner', 'legacy-zero', 'legacy-zero', 'monthly', 0,
+                0, 0, 'active', 'candidate', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        """), {"key": str(uuid4())})
         db.commit()
     before = relfilenode("bill_split_invitations")
     with pytest.raises(Exception, match="target shape"):

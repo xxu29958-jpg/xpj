@@ -117,8 +117,7 @@ internal fun CategoryRuleCard(
     onEditRule: () -> Unit,
     onDeleteRule: () -> Unit,
 ) {
-    val currencyDisplay = LocalCurrencyDisplay.current
-    val conditionText = categoryRuleConditionText(rule, currencyDisplay)
+    val conditionText = categoryRuleConditionText(rule)
         ?: stringResource(R.string.category_rule_condition_none)
 
     Column(
@@ -253,16 +252,15 @@ private fun CategoryRuleActionMenu(
 @Composable
 private fun categoryRuleConditionText(
     rule: CategoryRule,
-    currencyDisplay: CurrencyDisplay,
 ): String? {
     if (!rule.hasConditions) return null
     val separator = stringResource(R.string.category_rule_condition_separator)
     val parts = buildList {
         rule.amountMinCents?.let {
-            add(stringResource(R.string.category_rule_condition_amount_min, formatDisplayAmount(it, currencyDisplay)))
+            add(stringResource(R.string.category_rule_condition_amount_min, com.ticketbox.ui.screens.settings.categoryrules.categoryRuleAmountText(it, rule.homeCurrencyCode)))
         }
         rule.amountMaxCents?.let {
-            add(stringResource(R.string.category_rule_condition_amount_max, formatDisplayAmount(it, currencyDisplay)))
+            add(stringResource(R.string.category_rule_condition_amount_max, com.ticketbox.ui.screens.settings.categoryrules.categoryRuleAmountText(it, rule.homeCurrencyCode)))
         }
         rule.sourceContains?.takeIf { it.isNotBlank() }?.let {
             add(stringResource(R.string.category_rule_condition_source_contains, it))

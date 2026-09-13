@@ -1,6 +1,5 @@
 package com.ticketbox.data.repository
 
-import com.ticketbox.data.remote.dto.DebtCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtBillParseResponseDto
 import com.ticketbox.data.remote.dto.DebtDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalDto
@@ -37,6 +36,7 @@ fun DebtDto.toDomain(): Debt = Debt(
     rowVersion = rowVersion,
     viewerIsDebtor = viewerIsDebtor,
     isForgiven = isForgiven,
+    note = note,
 )
 
 fun DebtBillParseResponseDto.toDomain(): DebtBillSuggestion = DebtBillSuggestion(
@@ -69,13 +69,15 @@ data class DebtDraft(
     val debtKind: String = DebtKinds.UNSPECIFIED,
     val installmentCount: Int? = null,
     val installmentPeriodMonths: Int? = null,
+    val note: String? = null,
 )
 
-fun DebtDraft.toCreateRequest(): DebtCreateRequestDto = DebtCreateRequestDto(
+fun DebtDraft.toOutboxRequest(): DebtCreateOutboxRequest = DebtCreateOutboxRequest(
     direction = direction,
     // Public create only accepts external/manual; member Debt is server-side (§5.2).
     counterpartyType = DebtCounterpartyTypes.EXTERNAL,
     counterpartyLabel = counterpartyLabel.trim(),
+    note = note?.trim()?.ifBlank { null },
     principalAmountCents = principalAmountCents,
     sourceType = DebtSourceTypes.MANUAL,
     debtKind = debtKind,

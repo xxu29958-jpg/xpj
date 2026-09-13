@@ -1,20 +1,7 @@
 """PG round-trip of 20260722_0001 (bind repayment_drafts idempotency to account).
 
-Issue #224 (C3): ``uq_repayment_drafts_idem`` was tenant-wide
-``(tenant_id, draft_idempotency_key)`` while a repayment capture is personal
-(ADR-0049 §8). The ORM now declares it account-scoped ``(tenant_id,
-created_by_account_id, draft_idempotency_key)``, so ``init_db`` on a fresh DB runs
-``create_all`` with the new shape then ``alembic stamp 20260722_0001`` — and the migration
-body never runs on the normal path. This drives the migration directly on
-PostgreSQL: create_all → assert the account-scoped columns → stamp the tested revision → downgrade
-to 20260720_0001 (``downgrade`` re-adds the tenant-wide constraint) → upgrade to
-head (``upgrade`` drops it via ``DROP CONSTRAINT IF EXISTS`` and re-creates the
-account-scoped one), asserting the constraint COLUMN SET at every step — not just
-the name, so a shape regression fails HERE (mirrors the sibling alembic round-trip
-tests).
-
-Marked ``real_db`` below because it issues DDL via its
-own ``engine.begin()`` connections outside the per-test transaction.
+Check current ORM shape independently, then round-trip the frozen migration
+on its actual PostgreSQL schema. Never stamp a current schema as a historical one.
 """
 
 from __future__ import annotations
@@ -76,13 +63,14 @@ def test_repayment_draft_account_scoped_idem_round_trips_on_postgres() -> None:
         # (tenant_id, created_by_account_id, draft_idempotency_key) constraint.
         assert _idem_constraint_columns() == _ACCOUNT_SCOPED_COLUMNS
 
-        _run_alembic(command.stamp, "20260722_0001")
+        _reset_empty_database()
+        _run_alembic(command.upgrade, "20260722_0001")
         # Downgrade past 20260722_0001 → downgrade() re-adds the tenant-wide constraint.
         _run_alembic(command.downgrade, "20260720_0001")
         assert _idem_constraint_columns() == _TENANT_SCOPED_COLUMNS
 
-        # Upgrade back to head → upgrade() restores the account-scoped constraint.
-        _run_alembic(command.upgrade, "head")
+        # Upgrade back to this revision → upgrade() restores the account-scoped constraint.
+        _run_alembic(command.upgrade, "20260722_0001")
         assert _idem_constraint_columns() == _ACCOUNT_SCOPED_COLUMNS
     finally:
         _reset_empty_database()

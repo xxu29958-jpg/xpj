@@ -1,18 +1,7 @@
 """PG round-trip of 20260619_0001 (ADR-0049 P2 Debt 母表 shape CHECK backstops).
 
-``init_db`` on a fresh DB runs ``create_all`` (the current ORM already carries the CHECKs) then
-``alembic stamp head``, so the migration's ADD bodies never run on the normal path — a divergence
-between the migration and the ORM would ship UNDETECTED by deployment. This drives the migration
-directly on PostgreSQL: create_all → stamp 20260619_0001 → downgrade past it (drops the two
-CHECKs) → upgrade to head (re-adds them via the migration body).
-
-It asserts the migration-built CHECK predicate sqltext is STRUCTURALLY IDENTICAL to the ORM-built
-one (not just the constraint NAME) — so a same-name migration↔ORM divergence (e.g. a tautology
-predicate, the exact failure mode the single-source design guards and which no machine diff
-otherwise enforces) fails HERE.
-
-Marked ``real_db`` below: it issues DDL via its own ``engine.begin()``
-connections outside the per-test transaction.
+Check current ORM shape independently, then round-trip the frozen migration
+on its actual PostgreSQL schema. Never stamp a current schema as a historical one.
 """
 
 from __future__ import annotations
@@ -98,11 +87,12 @@ def test_debt_shape_checks_round_trip_on_postgres() -> None:
         Base.metadata.create_all(bind=engine)
         expected = _capture_orm_checks()
 
-        _run_alembic(command.stamp, _REVISION)
+        _reset_empty_database()
+        _run_alembic(command.upgrade, _REVISION)
         _run_alembic(command.downgrade, _PRIOR_HEAD)
         _assert_absent()  # downgrade drops both by name
 
-        _run_alembic(command.upgrade, "head")
+        _run_alembic(command.upgrade, _REVISION)
         # Re-added via the migration's guarded ADD bodies — assert each CHECK is back AND its
         # predicate is structurally identical to the ORM (not just the name), so a same-name
         # divergence (tautology / wrong column) fails here.

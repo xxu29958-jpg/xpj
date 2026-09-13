@@ -9,6 +9,7 @@ silently un-achieve an achieved goal.
 from __future__ import annotations
 
 from datetime import date, timedelta
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
@@ -71,8 +72,9 @@ def test_create_debt_goal_with_target_date_echoes_it(client: TestClient, *, iden
 def test_spending_goal_rejects_target_date(client: TestClient, *, identity) -> None:
     response = client.post(
         "/api/goals",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
+            "home_currency_code": "CNY",
             "name": "本月餐饮",
             "goal_type": "spending_limit",
             "month": "2026-06",

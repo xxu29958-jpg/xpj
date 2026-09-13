@@ -14,6 +14,8 @@ response can't show per-version link freezing.
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 from fastapi.testclient import TestClient
 
 from app.config import get_settings
@@ -436,8 +438,8 @@ def test_not_evaluable_recovers_via_link_replace(client: TestClient, *, identity
 def test_debt_goals_listed_separately_from_spending_goals(client: TestClient, *, identity) -> None:
     spending = client.post(
         "/api/goals",
-        headers=identity.app_headers,
-        json={"name": "本月预算", "month": "2026-05", "target_amount_cents": 5000},
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "CNY", "name": "本月预算", "month": "2026-05", "target_amount_cents": 5000},
     )
     assert spending.status_code == 201, spending.json()
     a = _create_external_debt(client, identity.app_headers)
@@ -456,8 +458,8 @@ def test_debt_goals_listed_separately_from_spending_goals(client: TestClient, *,
 def test_spending_limit_goal_unaffected_by_slice6(client: TestClient, *, identity) -> None:
     created = client.post(
         "/api/goals?timezone=UTC",
-        headers=identity.app_headers,
-        json={"name": "支出上限", "month": "2026-05", "target_amount_cents": 5000},
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "CNY", "name": "支出上限", "month": "2026-05", "target_amount_cents": 5000},
     )
     assert created.status_code == 201, created.json()
     body = created.json()

@@ -26,7 +26,7 @@ def test_owner_index_renders_recurring_ops_status(local_client: TestClient, *, i
     with SessionLocal() as db:
         db.add_all(
             [
-                RecurringItem(
+                RecurringItem(home_currency_code="CNY",
                     tenant_id="owner",
                     merchant_key="chatgpt plus",
                     merchant_name="ChatGPT Plus",
@@ -39,7 +39,7 @@ def test_owner_index_renders_recurring_ops_status(local_client: TestClient, *, i
                     confidence="high",
                     source="candidate",
                 ),
-                RecurringItem(
+                RecurringItem(home_currency_code="CNY",
                     tenant_id="owner",
                     merchant_key="spotify",
                     merchant_name="Spotify",
@@ -52,7 +52,7 @@ def test_owner_index_renders_recurring_ops_status(local_client: TestClient, *, i
                     confidence="medium",
                     source="candidate",
                 ),
-                RecurringItem(
+                RecurringItem(home_currency_code="CNY",
                     tenant_id="owner",
                     merchant_key="old service",
                     merchant_name="Old Service",

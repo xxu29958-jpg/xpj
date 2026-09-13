@@ -13,7 +13,10 @@ from dataclasses import dataclass
 from typing import Literal
 
 RUNTIME_COMPATIBILITY_CONTRACT = "ticketbox-runtime-compatibility-v1"
-CURRENT_API_VERSION = "2026-08-02"
+# Manual creation requires its original client reference; reject older protocols before body validation.
+CURRENT_API_VERSION = "2026-09-09.1"
+# Optional keyed app uploads can replay their complete original committed receipt.
+UPLOAD_ORIGINAL_RECEIPT_VERSION = 1
 
 # RFC 6648 discourages new ``X-`` names.  The application prefix keeps these
 # limited-use fields unambiguous, as recommended for new HTTP fields by RFC
@@ -50,10 +53,8 @@ class RuntimeCompatibilityRequest:
 def parse_currency_binding(value: str) -> tuple[int, int, str]:
     """Parse ``<contract-version>:<revision>:<home-currency>`` strictly.
 
-    The currency is part of the proof even at revision zero.  Otherwise two
-    different EMPTY-installation offers would share the same token and a
-    configuration change between discovery and the first write could silently
-    reinterpret the client's minor units.
+    The currency is part of the proof. Revision zero remains parseable for
+    explicit refusal of old proposals; it never authorizes a money write.
     """
 
     match = _CURRENCY_BINDING_PATTERN.fullmatch(value.strip())
@@ -88,6 +89,7 @@ __all__ = [
     "RuntimeCompatibilityRequest",
     "TICKETBOX_API_VERSION_HEADER",
     "TICKETBOX_CURRENCY_BINDING_HEADER",
+    "UPLOAD_ORIGINAL_RECEIPT_VERSION",
     "format_currency_binding",
     "parse_currency_binding",
 ]

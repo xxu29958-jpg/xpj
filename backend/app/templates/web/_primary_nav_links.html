@@ -1,0 +1,27 @@
+{# One primary navigation vocabulary for the desktop rail and mobile tab bar.
+   The base template owns the active domain; icons are decorative. #}
+{% for key, label, path in [
+  ('inbox', '收件', '/web/pending'),
+  ('transactions', '流水', '/web/confirmed'),
+  ('obligations', '往来', '/web/debts'),
+  ('plans', '计划', '/web/budgets'),
+  ('insights', '洞察', '/web/overview')
+] %}
+<a class="nav-item {% if _domain == key %}active{% endif %}" href="{{ path }}{{ q }}"{% if _domain == key %} aria-current="location"{% endif %}>
+  <svg class="nav-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+    {% if key == 'inbox' %}
+    <path d="M5 4h14l2 10v6H3v-6L5 4Z"/><path d="M3 14h5l2 3h4l2-3h5M8 8h8"/>
+    {% elif key == 'transactions' %}
+    <path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3Z"/><path d="M9 7h6M9 11h6M9 15h3"/>
+    {% elif key == 'obligations' %}
+    <circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2M16 5a3 3 0 0 1 0 6M21 20v-2a6 6 0 0 0-4-5.65"/>
+    {% elif key == 'plans' %}
+    <rect x="4" y="5" width="16" height="16" rx="3"/><path d="M8 3v4M16 3v4M4 11h16M9 16l2 2 4-4"/>
+    {% else %}
+    <path d="M4 4v16h16M8 15l4-5 4 2 4-7"/>
+    {% endif %}
+  </svg>
+  <span class="nav-label">{{ label }}</span>
+  {% if key == 'inbox' and pending_count %}<span class="nav-badge">{{ pending_count }}</span>{% endif %}
+</a>
+{% endfor %}

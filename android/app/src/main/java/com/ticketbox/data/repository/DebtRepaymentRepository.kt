@@ -14,8 +14,8 @@ class DebtRepaymentRepository(apiProvider: ApiServiceProvider) : DebtRepaymentQu
         ),
     )
 
-    override suspend fun listRepayments(publicId: String, page: Int): Result<DebtRepaymentPage> =
+    override suspend fun listRepayments(task: DebtTask, page: Int): Result<DebtRepaymentPage> =
         errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api -> api.debtRepayments(publicId, page).toDomain() }
+            ledgerRequestGuard.bindExact(task.binding).call { api -> api.debtRepayments(task.debtPublicId, page).toDomain() }
         }
 }

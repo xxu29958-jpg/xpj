@@ -14,7 +14,7 @@ from app.errors import AppError
 from app.fx_constants import FX_STATUS_READY
 from app.models import Expense
 from app.schemas import ExpenseUpdateRequest
-from app.services.currency_binding_service import assert_currency_binding_consistent
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.currency_common import normalize_currency_code
 from app.services.exchange_rate_service import (
     amount_major_to_minor,
@@ -103,9 +103,10 @@ def _apply_frozen_snapshot_update(
             raise AppError("currency_snapshot_immutable", status_code=422)
         original_amount_minor = updates.get("amount_cents")
 
-    assert_currency_binding_consistent(db, expense.home_currency_code)
+    resolve_write_capability(db)
     expense.original_amount_minor = original_amount_minor
     expense.amount_cents = calculate_cny_cents(
+        home_currency_code=expense.home_currency_code,
         original_currency_code=current_currency,
         original_amount_minor=original_amount_minor,
         exchange_rate_to_cny=expense.exchange_rate_to_cny,
@@ -128,6 +129,7 @@ def _apply_update_currency(
         apply_currency_payload(
             db,
             tenant_id=tenant_id,
+            home_currency_code=expense.home_currency_code,
             expense=expense,
             payload=payload,
             amount_was_explicit="amount_cents" in updates,
@@ -151,6 +153,7 @@ def _apply_update_currency(
     apply_currency_payload(
         db,
         tenant_id=tenant_id,
+        home_currency_code=expense.home_currency_code,
         expense=expense,
         payload=payload,
         amount_was_explicit="amount_cents" in updates,

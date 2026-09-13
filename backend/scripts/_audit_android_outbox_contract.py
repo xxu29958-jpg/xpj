@@ -79,23 +79,39 @@ def _check_entity_contract() -> bool:
 
 def _check_dao_contract() -> bool:
     dao = _read("main/java/com/ticketbox/data/local/PendingMutationDao.kt")
-    return _requires(
+    predicates = _read("main/java/com/ticketbox/data/local/PendingMutationQueueSql.kt")
+    selection_ok = _requires(
         dao,
         (
             "fun nextRunnableBatch",
-            "WHERE pm.ownerKey = :ownerKey",
-            "AND pm.ledgerId = :ledgerId",
             "WHERE ownerKey = :ownerKey",
             "AND ledgerId = :ledgerId",
+            "AND id NOT IN (:excludedIds)",
             "NOT EXISTS (",
-            "sib.ownerKey = pm.ownerKey",
-            "older.ownerKey = pm.ownerKey",
-            "older.ledgerId = pm.ledgerId",
-            "older.targetId = pm.targetId",
+            "sib.ownerKey = pending_mutations.ownerKey",
+            "sib.ledgerId = pending_mutations.ledgerId",
+            "sib.targetId = pending_mutations.targetId",
             "LIMIT :limit",
         ),
         surface="PendingMutationDao nextRunnableBatch",
     )
+    predicates_ok = _requires(
+        predicates,
+        (
+            "(sib.status != 'failed' OR sib.blocksFollowing = 1)",
+            "older.ownerKey = pending_mutations.ownerKey",
+            "older.ledgerId = pending_mutations.ledgerId",
+            "older.targetId = pending_mutations.targetId",
+            "older.status = pending_mutations.status",
+            "older.createdAt < pending_mutations.createdAt",
+            "older.id < pending_mutations.id",
+        ),
+        surface="PendingMutationQueueSql shared claim/selection predicates",
+    )
+    shared_ok = dao.count("$OUTBOX_FAILED_ROW_BLOCKS") == 3 and dao.count("$OUTBOX_NO_EARLIER_PENDING_SIBLING") == 2
+    if not shared_ok:
+        _fail("Runnable selection, atomic claim and target inspection must consume their shared predicates")
+    return selection_ok and predicates_ok and shared_ok
 
 
 def _check_regression_tests() -> bool:

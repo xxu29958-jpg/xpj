@@ -81,7 +81,6 @@ _MONO_DEATH_PROOF_SOURCES: tuple[tuple[str, Path, str], ...] = (
     ("SwipeActionTokens.kt", _SWIPE_TOKENS, "AppSkin.Mono"),
     ("SkeletonTokens.kt", _SKELETON_TOKENS, "AppSkin.Mono"),
     ("StatsTokens.kt", _DESIGN / "StatsTokens.kt", "AppSkin.Mono"),
-    ("BackgroundVisuals.kt", _DESIGN / "BackgroundVisuals.kt", "AppSkin.Mono"),
     ("Theme.kt", _REPO / "android" / "app" / "src" / "main" / "java" / "com" / "ticketbox" / "ui" / "theme" / "Theme.kt", "AppSkin.Mono"),
     ("AppSkin.kt", _REPO / "android" / "app" / "src" / "main" / "java" / "com" / "ticketbox" / "domain" / "model" / "AppSkin.kt", "Mono"),
     ("BackgroundCatalog.kt", _REPO / "android" / "app" / "src" / "main" / "java" / "com" / "ticketbox" / "ui" / "appearance" / "BackgroundCatalog.kt", "AppSkin.Mono"),

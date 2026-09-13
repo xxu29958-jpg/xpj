@@ -88,6 +88,7 @@ from app.services.identity_service._seed import (
 from app.services.identity_service._web_auth import (
     authenticate_web_session_principal,
     authenticate_web_session_token,
+    live_web_device_public_ids,
 )
 from app.services.session_credential_lock import (
     lock_and_revalidate_credential_mint_context,
@@ -143,6 +144,7 @@ __all__ = [
     "is_legacy_upload_token",
     "installation_web_identity_present",
     "ledger_ids",
+    "live_web_device_public_ids",
     "lock_and_revalidate_credential_mint_context",
     "lock_bootstrap_owner_transaction",
     "pair_device",

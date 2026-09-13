@@ -2,11 +2,12 @@
 <head><meta charset="utf-8"></head>
 <body tabindex="-1">
   <a id="search" href="#search" data-shell-shortcut="search">搜索</a>
+  <a id="manual-expense" href="#manual-expense" data-shell-shortcut="manual-expense">记账</a>
   <a id="capture" href="#capture" data-shell-shortcut="capture">收票</a>
   <input id="editor" value="编辑中">
   <script>
     let drawerOpen = false;
-    const clicks = {search: 0, capture: 0};
+    const clicks = {search: 0, manualExpense: 0, capture: 0};
     document.getElementById("search").addEventListener("click", (event) => {
       event.preventDefault();
       clicks.search += 1;
@@ -14,6 +15,10 @@
     document.getElementById("capture").addEventListener("click", (event) => {
       event.preventDefault();
       clicks.capture += 1;
+    });
+    document.getElementById("manual-expense").addEventListener("click", (event) => {
+      event.preventDefault();
+      clicks.manualExpense += 1;
     });
     window.TicketboxWeb = {
       drawerApi: {isOpen: () => drawerOpen}
@@ -35,6 +40,7 @@
     window.TicketboxWeb.initShellKeyboard();
     document.body.focus();
     const search = press(document.body, "/");
+    const manualExpense = press(document.body, "n");
     const capture = press(document.body, "u");
     const modified = press(document.body, "/", {ctrlKey: true});
     const composing = press(document.body, "u", {isComposing: true});
@@ -47,15 +53,19 @@
     drawerOpen = false;
     document.getElementById("capture").remove();
     const absent = press(document.body, "u");
+    document.getElementById("manual-expense").remove();
+    const absentManualExpense = press(document.body, "n");
 
     window.__webConsumerProbe = {
       search,
+      manualExpense,
       capture,
       modified,
       composing,
       input,
       drawer,
       absent,
+      absentManualExpense,
       clicks
     };
   </script>

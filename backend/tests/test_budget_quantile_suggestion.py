@@ -39,6 +39,9 @@ def _seed(
         db.add(
             Expense(
                 tenant_id=tenant_id,
+                home_currency_code="CNY",
+                original_currency_code="CNY",
+                original_amount_minor=amount_cents,
                 amount_cents=amount_cents,
                 merchant="x",
                 category=category,

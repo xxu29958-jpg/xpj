@@ -4,15 +4,18 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.text.TextLayoutResult
@@ -25,6 +28,7 @@ import com.ticketbox.domain.model.ExpenseLineageStatus
 import com.ticketbox.domain.model.ExpenseSourceValues
 import com.ticketbox.domain.model.MONEY_MINOR_MAX
 import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.ui.screens.ledger.LedgerExpenseItemActions
 import com.ticketbox.ui.screens.ledger.LedgerExpenseItemState
 import com.ticketbox.ui.screens.ledger.LedgerExpenseListRow
@@ -56,7 +60,7 @@ class LedgerHeaderEntryTest {
             CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 1.8f)) {
                 TicketboxTheme(skin = AppSkin.Default) {
                     Box(Modifier.width(328.dp)) {
-                        LedgerHeader(LedgerUiState(items = listOf(confirmedRow(1234567890L))))
+                        LedgerHeader(LedgerUiState(items = listOf(ledgerHeaderConfirmedRow(1234567890L))))
                     }
                 }
             }
@@ -73,7 +77,7 @@ class LedgerHeaderEntryTest {
 
     @Test
     fun compactListRowKeepsWholeMaximumAmountAtLargeFont() {
-        val expense = (confirmedRow(MONEY_MINOR_MAX) as ConfirmedStreamItem.ExpenseRow).root
+        val expense = (ledgerHeaderConfirmedRow(MONEY_MINOR_MAX) as ConfirmedStreamItem.ExpenseRow).root
         composeRule.setContent {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 1.8f)) {
@@ -102,7 +106,7 @@ class LedgerHeaderEntryTest {
 
     @Test
     fun writerContentKeepsSingleRecordCta() {
-        render(LedgerUiState(items = listOf(confirmedRow()), syncedInCurrentSession = true))
+        render(LedgerUiState(items = listOf(ledgerHeaderConfirmedRow()), syncedInCurrentSession = true))
 
         assertRecordCtaCount(1)
     }
@@ -111,8 +115,12 @@ class LedgerHeaderEntryTest {
     fun writerEmptyUnfilteredHasSingleRecordCtaAndNoRefreshButton() {
         render(LedgerUiState(monthFilter = "", syncedInCurrentSession = true))
 
+        saveConsumerArtPreview("ledger-paper-writer", composeRule.onRoot().captureToImage().asAndroidBitmap())
+        composeRule.onNodeWithText("可以直接记一笔，或上传小票核对后入账。").assertIsDisplayed()
         assertRecordCtaCount(1)
         composeRule.onAllNodesWithText("更新账本").assertCountEquals(0)
+        composeRule.onNodeWithText("记一笔").performClick()
+        composeRule.onNodeWithText("手动记一笔").assertIsDisplayed()
     }
 
     @Test
@@ -138,7 +146,7 @@ class LedgerHeaderEntryTest {
     fun headerExposesSearchAsFirstClassEntry() {
         var searchOpened = false
         render(
-            LedgerUiState(items = listOf(confirmedRow()), syncedInCurrentSession = true),
+            LedgerUiState(items = listOf(ledgerHeaderConfirmedRow()), syncedInCurrentSession = true),
             actions = LedgerScreenActions(onOpenGlobalSearch = { searchOpened = true }),
         )
 
@@ -148,7 +156,7 @@ class LedgerHeaderEntryTest {
 
     @Test
     fun toolsEntryIsIconButtonNotTextLink() {
-        render(LedgerUiState(items = listOf(confirmedRow()), syncedInCurrentSession = true))
+        render(LedgerUiState(items = listOf(ledgerHeaderConfirmedRow()), syncedInCurrentSession = true))
 
         composeRule.onAllNodesWithText("工具").assertCountEquals(0)
         composeRule.onNodeWithContentDescription("账本工具").assertExists()
@@ -169,7 +177,7 @@ class LedgerHeaderEntryTest {
     }
 }
 
-private fun confirmedRow(amountCents: Long = 1280L): ConfirmedStreamItem = ConfirmedStreamItem.ExpenseRow(
+internal fun ledgerHeaderConfirmedRow(amountCents: Long = 1280L): ConfirmedStreamItem = ConfirmedStreamItem.ExpenseRow(
     streamDate = "2026-09-01",
     streamAmountCents = amountCents,
     root = Expense(
@@ -198,6 +206,7 @@ private fun confirmedRow(amountCents: Long = 1280L): ConfirmedStreamItem = Confi
         rowVersion = 1L,
         confirmedAt = "2026-09-01T08:05:00Z",
         rejectedAt = null,
+        homeCurrencyCode = "CNY",
     ),
     lineageStatus = ExpenseLineageStatus.Confirmed,
     lineageHomeNetCents = amountCents,

@@ -1,0 +1,34 @@
+<input type="hidden" name="home_currency_code" value="{{ rule_draft.get('home_currency_code', '') }}">
+<input type="hidden" name="idempotency_key" value="{{ rule_draft.get('idempotency_key', '') }}">
+<label class="product-field">
+  <span>关键词</span>
+  <input type="text" name="keyword" required placeholder="如：星巴克" value="{{ rule_draft.get('keyword', '') }}">
+</label>
+<label class="product-field">
+  <span>分类</span>
+  <input type="text" name="category" required placeholder="如：餐饮" value="{{ rule_draft.get('category', '') }}">
+</label>
+<label class="product-field">
+  <span>优先级（越小越优先）</span>
+  <input type="number" name="priority" value="{{ rule_draft.get('priority', '100') }}" min="0" max="9999">
+</label>
+<div class="library-field-pair">
+  <label class="product-field">
+    <span>金额下限（{{ rule_draft.get('home_currency_code') or '币种待确认' }}，可选）</span>
+    <input type="text" name="amount_min_yuan" inputmode="{{ rule_currency_input.inputmode or 'decimal' }}" placeholder="可不填" value="{{ rule_draft.get('amount_min_yuan', '') }}">
+  </label>
+  <label class="product-field">
+    <span>金额上限（{{ rule_draft.get('home_currency_code') or '币种待确认' }}，可选）</span>
+    <input type="text" name="amount_max_yuan" inputmode="{{ rule_currency_input.inputmode or 'decimal' }}" placeholder="可不填" value="{{ rule_draft.get('amount_max_yuan', '') }}">
+  </label>
+</div>
+{% if rule_currency_input %}<p class="meta">金额条件使用 {{ rule_currency_input.currency_code }}，{{ rule_currency_input.amount_input_hint }}。以后更改默认币种不会改变这条规则。</p>
+{% else %}<p class="meta">金额币种尚未确认。无金额条件的规则仍可保存。</p>{% endif %}
+<label class="product-field">
+  <span>来源包含（可选）</span>
+  <input type="text" name="source_contains" placeholder="如：微信 / 手动记账" value="{{ rule_draft.get('source_contains', '') }}">
+</label>
+<label class="product-field">
+  <span>标签等于（可选）</span>
+  <input type="text" name="tag_contains" placeholder="如：真香" value="{{ rule_draft.get('tag_contains', '') }}">
+</label>

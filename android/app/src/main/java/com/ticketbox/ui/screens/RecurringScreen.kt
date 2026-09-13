@@ -16,7 +16,6 @@ import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.data.repository.RecurringItemDraft
 import com.ticketbox.data.repository.RecurringItemPatch
-import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.ui.components.AppFilterChip
@@ -118,10 +117,9 @@ fun RecurringScreen(
             },
         ),
     ) {
-        recurringOverviewSection(state, derived, currencyDisplay, callbacks)
+        recurringOverviewSection(state, derived, callbacks)
         recurringRegistrySection(
             derived,
-            currencyDisplay,
             actions,
             callbacks,
             editEnabled = !state.manualSaveInFlight,
@@ -132,7 +130,6 @@ fun RecurringScreen(
         editor = editorHost.editor,
         uiState = state,
         environment = RecurringEditorEnvironment(
-            currencyDisplay = currencyDisplay,
             conflict = resolveRecurringDuplicateConflict(
                 state.duplicateConflict,
                 state.items,
@@ -160,6 +157,7 @@ data class RecurringItemActions(
     val onRestore: (String, Long) -> Unit,
     val onCreate: (RecurringItemDraft) -> Long,
     val onEdit: (RecurringItem, RecurringItemPatch) -> Long,
+    val onOpenOccurrence: (RecurringItem) -> Unit = {},
 )
 
 data class RecurringCandidateActions(
@@ -176,7 +174,6 @@ internal data class RecurringScreenCallbacks(
 private fun LazyListScope.recurringOverviewSection(
     state: RecurringUiState,
     derived: RecurringDerivedModel,
-    currencyDisplay: CurrencyDisplay,
     callbacks: RecurringScreenCallbacks,
 ) {
     state.message?.takeIf {
@@ -196,7 +193,7 @@ private fun LazyListScope.recurringOverviewSection(
         }
     }
     item {
-        RecurringHeroSection(model = derived.hero, currencyDisplay = currencyDisplay)
+        RecurringHeroSection(model = derived.hero)
     }
     if (state.canModify) {
         item {
@@ -214,7 +211,6 @@ private fun LazyListScope.recurringOverviewSection(
             RecurringPendingSection(
                 intents = state.pendingIntents,
                 items = state.items,
-                currencyDisplay = currencyDisplay,
             )
         }
     }
@@ -222,7 +218,6 @@ private fun LazyListScope.recurringOverviewSection(
 
 private fun LazyListScope.recurringRegistrySection(
     derived: RecurringDerivedModel,
-    currencyDisplay: CurrencyDisplay,
     actions: RecurringScreenActions,
     callbacks: RecurringScreenCallbacks,
     editEnabled: Boolean,
@@ -239,7 +234,6 @@ private fun LazyListScope.recurringRegistrySection(
             state = RecurringItemsCardState(
                 title = stringResource(derived.selectedTab.labelRes),
                 section = derived.itemSection,
-                currencyDisplay = currencyDisplay,
                 canModify = derived.canModify,
                 editEnabled = editEnabled,
             ),
@@ -251,7 +245,6 @@ private fun LazyListScope.recurringRegistrySection(
     item {
         RecurringCandidatesCard(
             section = derived.candidateSection,
-            currencyDisplay = currencyDisplay,
             options = RecurringCandidateSectionOptions(
                 canModify = derived.canModify,
                 itemsHealthy = derived.itemSection.bodyState != ReadableListBodyState.LoadFailed,

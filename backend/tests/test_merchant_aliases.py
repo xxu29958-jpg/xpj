@@ -232,7 +232,7 @@ def test_rules_preview_and_apply_use_enabled_merchant_alias(client: TestClient, 
 
     rule = client.post(
         "/api/rules/categories",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"keyword": "星巴克", "category": "餐饮", "enabled": True, "priority": 1},
     )
     assert rule.status_code == 200, rule.text

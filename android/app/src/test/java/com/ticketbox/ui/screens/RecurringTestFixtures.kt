@@ -31,6 +31,7 @@ internal class RecurringItemFixture {
         occurrenceCount = occurrenceCount,
         lastSeenAt = lastSeenAt,
         nextExpectedDate = nextExpectedDate,
+        nextDueDate = nextExpectedDate,
         status = status,
         confidence = null,
         source = source,
@@ -43,6 +44,7 @@ internal class RecurringItemFixture {
         rowVersion = rowVersion,
         pausedAt = null,
         archivedAt = null,
+        homeCurrencyCode = "CNY",
     )
 }
 

@@ -12,7 +12,7 @@
   "use strict";
 
   var AXES = {
-    texture: { storageKey: "ui-texture", attr: "data-texture", values: ["flat", "fiber"], fallback: "fiber" },
+    texture: { storageKey: "ui-texture", attr: "data-texture", values: ["flat", "fiber"], fallback: "flat" },
     accent: { storageKey: "ui-accent", attr: "data-accent", values: ["evergreen", "ink", "ochre", "plum"], fallback: "evergreen" }
   };
 
@@ -27,7 +27,7 @@
 
   window.TicketboxAppearance = {
     read: function read(axis) {
-      // 运行时读取: 无显式偏好回落默认 (fiber / evergreen)。
+      // 运行时读取: 无显式偏好回落默认 (flat / evergreen)。
       return stored(axis) || AXES[axis].fallback;
     },
     write: function write(axis, value) {
@@ -42,7 +42,7 @@
   };
 
   // anti-FOUC: 只还原显式偏好; 无偏好时不写属性, tokens.css 的 :root 默认
-  // (fiber / evergreen) 生效, 与 SSR 语义一致。
+  // (flat / evergreen) 生效, 与 SSR 语义一致。
   var root = document.documentElement;
   ["texture", "accent"].forEach(function (axis) {
     var value = stored(axis);

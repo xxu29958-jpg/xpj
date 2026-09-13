@@ -30,6 +30,7 @@ interface GoalsApi {
     suspend fun createGoal(
         @Body request: GoalCreateRequestDto,
         @Query("timezone") timezone: String? = null,
+        @Header("Idempotency-Key") idempotencyKey: String? = null,
     ): GoalDto
 
     @GET("api/goals/{publicId}")

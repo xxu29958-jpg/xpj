@@ -1,4 +1,6 @@
 package com.ticketbox.ui.screens.expense
+import com.ticketbox.domain.model.canonicalManualExchangeRateOrNull
+import com.ticketbox.domain.model.sanitizeManualExchangeRateInput
 
 import kotlin.test.Test
 import kotlin.test.assertEquals

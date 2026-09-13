@@ -17,6 +17,7 @@ import com.ticketbox.domain.model.BudgetMonthlyUpdate
 import com.ticketbox.security.LocalSessionIdentity
 import com.ticketbox.security.SessionCredentialProvider
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -80,15 +81,15 @@ class BudgetRepositoryTest {
     }
 
     @Test
-    fun saveMonthlyBudgetForwardsNormalizedRequest() = withTimezone("UTC") {
+    fun saveMonthlyBudgetPersistsNormalizedRequestBeforeHttp() = withTimezone("UTC") {
         runTest {
             val api = BudgetApiHandler()
             val (repository, binding) = repository(api)
 
-            val result = repository.saveMonthlyBudget(
+            val result = repository.enqueueSave(
                 binding,
                 " 2026-05 ",
-                BudgetMonthlyUpdate(
+                BudgetMonthlyUpdate(homeCurrencyCode = "CNY", expectedRowVersion = null,
                     totalAmountCents = 300000,
                     nonMonthlyAmountCents = 20000,
                     rolloverAmountCents = -10000,
@@ -100,7 +101,8 @@ class BudgetRepositoryTest {
                 ),
             ).getOrThrow()
 
-            val call = api.updateBudgetCalls.single()
+            val pending = repository.observeSaves(binding).first { it.isNotEmpty() }.single()
+            val call = requireNotNull(pending.intent)
             assertEquals("2026-05", call.month)
             assertEquals("UTC", call.timezone)
             assertEquals(300000L, call.request.totalAmountCents)
@@ -109,7 +111,9 @@ class BudgetRepositoryTest {
             assertEquals(1, call.request.categoryBudgets.size)
             assertEquals("餐饮", call.request.categoryBudgets.single().category)
             assertEquals(120000L, call.request.categoryBudgets.single().amountCents)
-            assertTrue(result.configured)
+            assertEquals(result, pending.row.id)
+            assertEquals(0L, pending.row.expectedRowVersion)
+            assertTrue(api.updateBudgetCalls.isEmpty())
         }
     }
 
@@ -118,10 +122,10 @@ class BudgetRepositoryTest {
         val api = BudgetApiHandler()
         val (repository, binding) = repository(api, role = "viewer")
 
-        val result = repository.saveMonthlyBudget(
+        val result = repository.enqueueSave(
             binding,
             "2026-05",
-            BudgetMonthlyUpdate(totalAmountCents = 300000),
+            BudgetMonthlyUpdate(homeCurrencyCode = "CNY", expectedRowVersion = null, totalAmountCents = 300000),
         )
 
         assertTrue(result.isFailure)
@@ -139,7 +143,7 @@ class BudgetRepositoryTest {
     }
 
     @Test
-    fun backendPermissionDeniedMapsToReadOnlyMessage() = runTest {
+    fun backendPermissionDeniedKeepsTheOriginalQueuedSave() = runTest {
         val api = BudgetApiHandler().apply {
             updateError = HttpException(
                 Response.error<BudgetMonthlyDto>(
@@ -151,14 +155,19 @@ class BudgetRepositoryTest {
         }
         val (repository, binding) = repository(api)
 
-        val result = repository.saveMonthlyBudget(
+        val result = repository.enqueueSave(
             binding,
             "2026-05",
-            BudgetMonthlyUpdate(totalAmountCents = 300000),
+            BudgetMonthlyUpdate(homeCurrencyCode = "CNY", expectedRowVersion = null, totalAmountCents = 300000),
         )
 
-        assertTrue(result.isFailure)
-        assertEquals("当前角色为只读，无法修改账本。", result.exceptionOrNull()?.message)
+        assertTrue(result.isSuccess)
+        val pending = repository.observeSaves(binding).first { it.isNotEmpty() }.single()
+        val adapters = com.ticketbox.OutboxAdapterGraph()
+        val refused = SaveMonthlyBudgetDispatcher({ api.service() }, adapters.budgetSaveAdapter,
+            adapters.budgetReceiptAdapter).dispatch(pending.row)
+        assertTrue(refused is DispatchResult.Failure)
+        assertEquals(pending.row, repository.observeSaves(binding).first().single().row)
     }
 
     @Test
@@ -268,7 +277,7 @@ class BudgetRepositoryTest {
         val apiClient = BudgetApiFactory(handler)
         val provider = testApiServiceProvider(apiClient, tokenStore)
         return BudgetRepositoryFixture(
-            repository = BudgetRepository(apiProvider = provider),
+            repository = testBudgetRepository(provider),
             binding = requireNotNull(LedgerRequestGuard(provider).captureLogicalBinding()),
         )
     }
@@ -537,8 +546,8 @@ class BudgetRepositoryAdviceBindingTest {
     private fun repository(
         handler: BudgetApiHandler,
         tokenStore: TestSessionFixture,
-    ): BudgetRepository = BudgetRepository(
-        apiProvider = testApiServiceProvider(BudgetApiFactory(handler), tokenStore),
+    ): BudgetRepository = testBudgetRepository(
+        provider = testApiServiceProvider(BudgetApiFactory(handler), tokenStore),
     )
 }
 
@@ -654,6 +663,7 @@ private class BudgetApiHandler : InvocationHandler {
 }
 
 private fun budgetDto(configured: Boolean = true): BudgetMonthlyDto = BudgetMonthlyDto(
+    homeCurrencyCode = "CNY",
     ledgerId = "owner",
     month = "2026-05",
     configured = configured,

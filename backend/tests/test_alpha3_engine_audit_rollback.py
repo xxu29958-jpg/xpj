@@ -1,6 +1,8 @@
 """v0.4-alpha3 Smart Ledger Engine — Rules preview/apply + Recurring candidates."""
 from __future__ import annotations
 
+from uuid import uuid4
+
 from api_contract_helpers import patch_expense, upload_png
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -53,7 +55,7 @@ def test_rule_application_audit_and_rollback_integration(client: TestClient, *, 
     _set_pending_merchant(client, pending_id, "AuditCafe 上海", identity=identity)
     created = client.post(
         "/api/rules/categories",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"keyword": "AuditCafe", "category": "餐饮", "enabled": True, "priority": 1},
     )
     assert created.status_code == 200
@@ -104,7 +106,7 @@ def test_rule_application_rollback_safety_boundaries_integration(client: TestCli
     _set_pending_merchant(client, pending_id, "BoundaryCafe", identity=identity)
     client.post(
         "/api/rules/categories",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"keyword": "BoundaryCafe", "category": "餐饮", "enabled": True, "priority": 1},
     )
     _apply_pending_rules(client, identity=identity)
@@ -150,7 +152,7 @@ def test_rule_application_rollback_skips_after_manual_edit_even_when_category_ma
     _set_pending_merchant(client, pending_id, "ManualEditCafe", identity=identity)
     client.post(
         "/api/rules/categories",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"keyword": "ManualEditCafe", "category": "餐饮", "enabled": True, "priority": 1},
     )
     applied = _apply_pending_rules(client, identity=identity)
@@ -184,7 +186,7 @@ def test_rule_application_cas_skips_stale_candidate_snapshot(client: TestClient,
     _set_pending_merchant(client, pending_id, "RaceCafe", identity=identity)
     created = client.post(
         "/api/rules/categories",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"keyword": "RaceCafe", "category": "餐饮", "enabled": True, "priority": 1},
     )
     assert created.status_code == 200
@@ -212,7 +214,8 @@ def test_rule_application_cas_skips_stale_candidate_snapshot(client: TestClient,
             tenant_id="owner",
             status="pending",
             expense=stale_expense,
-            rule=stale_rule,
+            rule_id=stale_rule.id,
+            matched_keyword=stale_rule.keyword,
             before_category="其他",
             after_category="餐饮",
             now=now_utc(),
@@ -231,7 +234,7 @@ def test_rule_application_rollback_cas_skips_stale_expense_snapshot(client: Test
     _set_pending_merchant(client, pending_id, "RollbackRaceCafe", identity=identity)
     client.post(
         "/api/rules/categories",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"keyword": "RollbackRaceCafe", "category": "Food", "enabled": True, "priority": 1},
     )
     applied = _apply_pending_rules(client, identity=identity)

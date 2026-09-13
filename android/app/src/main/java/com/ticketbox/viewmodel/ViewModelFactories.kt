@@ -2,9 +2,12 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.createSavedStateHandle
+import androidx.lifecycle.viewmodel.CreationExtras
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.repository.BudgetActions
 import com.ticketbox.data.repository.DebtActions
+import com.ticketbox.data.repository.DebtCreationActions
 import com.ticketbox.data.repository.DebtProposalActions
 import com.ticketbox.data.repository.DebtRepaymentQueries
 import com.ticketbox.data.repository.ExpenseRepositoryBackgroundTaskActions
@@ -21,6 +24,7 @@ import com.ticketbox.data.repository.RepaymentDraftActions
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.data.repository.RuleRepository
 import com.ticketbox.data.repository.TagActions
+import com.ticketbox.data.repository.UploadIntentActions
 import com.ticketbox.domain.model.DebtListLens
 
 @Suppress("UNCHECKED_CAST")
@@ -36,6 +40,7 @@ fun appViewModelFactory(
 /** [repositoryViewModelFactory] 的仓库打包（保持工厂签名在 detekt 参数门内）。 */
 data class RepositoryViewModelRepositories(
     val repository: ExpenseRepository,
+    val uploads: UploadIntentActions,
     val budgetRepository: BudgetActions? = null,
     val reportsRepository: ReportsActions? = null,
     val debtRepository: DebtActions? = null,
@@ -51,6 +56,7 @@ fun repositoryViewModelFactory(
         return when (modelClass) {
             PendingViewModel::class.java -> PendingViewModel(
                 repository = repository,
+                uploadIntents = repositories.uploads,
                 enrichmentTaskReader = repository.pendingEnrichmentTasks,
                 onDataChanged = onExpenseDataChanged,
             )
@@ -61,7 +67,7 @@ fun repositoryViewModelFactory(
             )
             GlobalSearchViewModel::class.java -> GlobalSearchViewModel(repository)
             MonthlyStatsViewModel::class.java -> MonthlyStatsViewModel(repository)
-            StatsBudgetViewModel::class.java -> StatsBudgetViewModel(repository, repositories.budgetRepository)
+            StatsBudgetViewModel::class.java -> StatsBudgetViewModel(checkNotNull(repositories.budgetRepository))
             StatsReportsViewModel::class.java -> StatsReportsViewModel(repositories.reportsRepository)
             else -> error("Unsupported ViewModel: ${modelClass.name}")
         } as T
@@ -71,11 +77,13 @@ fun repositoryViewModelFactory(
 @Suppress("UNCHECKED_CAST")
 fun budgetViewModelFactory(
     repository: BudgetActions,
-    debts: DebtActions,
     onDataChanged: () -> Unit = {},
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return BudgetViewModel(repository, debts, onDataChanged = onDataChanged) as T
+        return BudgetViewModel(repository, onDataChanged = onDataChanged) as T
+    }
+    override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T {
+        return BudgetViewModel(repository, onDataChanged = onDataChanged, savedStateHandle = extras.createSavedStateHandle()) as T
     }
 }
 
@@ -101,50 +109,52 @@ fun recurringViewModelFactory(
 @Suppress("UNCHECKED_CAST")
 fun incomePlanViewModelFactory(
     repository: IncomePlanActions,
-    debts: DebtActions,
     onDataChanged: () -> Unit = {},
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return IncomePlanViewModel(repository, debts, onDataChanged = onDataChanged) as T
+        return IncomePlanViewModel(repository, onDataChanged = onDataChanged) as T
     }
 }
 
 @Suppress("UNCHECKED_CAST")
 fun incomePlanEditViewModelFactory(
     repository: IncomePlanActions,
-    debts: DebtActions,
     onDataChanged: () -> Unit = {},
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return IncomePlanEditViewModel(repository, debts, onDataChanged = onDataChanged) as T
+        return IncomePlanEditViewModel(repository, onDataChanged = onDataChanged) as T
     }
 }
 
 @Suppress("UNCHECKED_CAST")
 fun debtGoalViewModelFactory(
     repository: ReportsActions,
+    writes: com.ticketbox.data.repository.DebtWriteActions,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return DebtGoalViewModel(repository) as T
+        return DebtGoalViewModel(repository, writes) as T
     }
 }
 
 @Suppress("UNCHECKED_CAST")
 fun debtViewModelFactory(
     repository: DebtActions,
+    creation: com.ticketbox.data.repository.DebtCreationActions,
+    writes: com.ticketbox.data.repository.DebtWriteActions,
     lens: DebtListLens = DebtListLens.Ledger,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return DebtListViewModel(repository, lens) as T
+        return DebtListViewModel(repository, creation, writes, lens) as T
     }
 }
 
 @Suppress("UNCHECKED_CAST")
 fun debtDetailViewModelFactory(
     repository: DebtActions,
+    writes: com.ticketbox.data.repository.DebtWriteActions,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return DebtDetailViewModel(repository) as T
+        return DebtDetailViewModel(repository, writes) as T
     }
 }
 
@@ -162,9 +172,10 @@ fun debtRepaymentHistoryViewModelFactory(
 @Suppress("UNCHECKED_CAST")
 fun receivablesViewModelFactory(
     repository: ReceivablesActions,
+    writes: com.ticketbox.data.repository.DebtWriteActions,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return ReceivablesViewModel(repository) as T
+        return ReceivablesViewModel(repository, writes) as T
     }
 }
 
@@ -181,9 +192,10 @@ fun memberRepaymentProposalViewModelFactory(
 fun repaymentDraftInboxViewModelFactory(
     drafts: RepaymentDraftActions,
     debts: DebtActions,
+    writes: com.ticketbox.data.repository.DebtWriteActions,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return RepaymentDraftInboxViewModel(drafts, debts) as T
+        return RepaymentDraftInboxViewModel(drafts, debts, writes) as T
     }
 }
 
@@ -191,19 +203,19 @@ fun repaymentDraftInboxViewModelFactory(
 fun createDebtGoalViewModelFactory(
     reportsRepository: ReportsActions,
     debtRepository: DebtActions,
+    writes: com.ticketbox.data.repository.DebtWriteActions,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return CreateDebtGoalViewModel(reportsRepository, debtRepository) as T
+        return CreateDebtGoalViewModel(reportsRepository, debtRepository, writes) as T
     }
 }
 
 @Suppress("UNCHECKED_CAST")
 fun createSpendingGoalViewModelFactory(
-    reportsRepository: ReportsActions,
-    debtRepository: DebtActions,
+    edits: com.ticketbox.data.repository.GoalEditActions,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return CreateSpendingGoalViewModel(reportsRepository, debtRepository) as T
+        return CreateSpendingGoalViewModel(edits) as T
     }
 }
 
@@ -274,10 +286,10 @@ fun expenseEditViewModelFactory(
 fun expenseFactViewModelFactory(
     expenseId: Long,
     repository: ExpenseFactActions,
-    initialExpense: com.ticketbox.domain.model.Expense? = null,
+    preferLocalCache: Boolean = false,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return ExpenseFactViewModel(expenseId, repository, initialExpense) as T
+        return ExpenseFactViewModel(expenseId, repository, preferLocalCache) as T
     }
 }
 
@@ -349,8 +361,9 @@ fun backgroundTasksViewModelFactory(
 fun outboxStatusViewModelFactory(
     outbox: OutboxRepository,
     expenseRepository: ExpenseRepository,
+    repositories: OutboxRecoveryRepositories,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return OutboxStatusViewModel(outbox, expenseRepository) as T
+        return OutboxStatusViewModel(outbox, expenseRepository, repositories) as T
     }
 }

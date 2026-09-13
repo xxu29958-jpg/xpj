@@ -1,4 +1,8 @@
-"""PG round-trip of 20260629_0001 income frequency fields."""
+"""PG round-trip of 20260629_0001 income frequency fields.
+
+Check current ORM shape independently, then round-trip the frozen migration
+on its actual PostgreSQL schema. Never stamp a current schema as a historical one.
+"""
 
 from __future__ import annotations
 
@@ -73,7 +77,8 @@ def test_add_income_frequency_round_trips_on_postgres() -> None:
         Base.metadata.create_all(bind=engine)
         _assert_full_shape()
 
-        _run_alembic(command.stamp, _REVISION)
+        _reset_empty_database()
+        _run_alembic(command.upgrade, _REVISION)
         _run_alembic(command.downgrade, _PRIOR)
         cols = _columns()
         assert "frequency" not in cols
@@ -82,7 +87,7 @@ def test_add_income_frequency_round_trips_on_postgres() -> None:
         assert "ck_monthly_income_plans_income_month_shape" not in _check_names()
         assert "ix_monthly_income_plans_tenant_status_frequency_month" not in _index_names()
 
-        _run_alembic(command.upgrade, "head")
+        _run_alembic(command.upgrade, _REVISION)
         _assert_full_shape()
     finally:
         _reset_empty_database()

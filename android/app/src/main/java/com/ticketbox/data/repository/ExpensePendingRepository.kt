@@ -1,26 +1,17 @@
 package com.ticketbox.data.repository
 
-import android.util.Log
 import com.squareup.moshi.JsonAdapter
-import com.ticketbox.BuildConfig
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
-import com.ticketbox.data.remote.dto.UploadResponseDto
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.FxContract
-import com.ticketbox.domain.model.PendingUploadReceipt
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.mergeExpenseCategories
 import kotlinx.coroutines.flow.Flow
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.MultipartBody
-import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
-import java.time.Instant
 import java.util.UUID
-import kotlin.system.measureTimeMillis
 
 internal class ExpensePendingRepository(
     private val core: ExpenseRepositoryCore,
@@ -43,59 +34,14 @@ internal class ExpensePendingRepository(
         core.getCachedPending()
     }
 
+    override fun observeConfirmed(): Flow<List<Expense>> = core.observeConfirmed()
+
     override suspend fun syncPending(): Result<List<Expense>> = core.errorHandler.safeCall {
         val ledgerId = core.ledgerRequestGuard.bind().ledgerId
         pendingSyncCoordinator.sync(ledgerId) {
             val bound = core.ledgerRequestGuard.bind(expectedLedgerId = ledgerId)
             core.syncPendingFromService(bound)
         }
-    }
-
-    override suspend fun uploadScreenshot(
-        request: ScreenshotUploadRequest,
-    ): Result<PendingUploadReceipt> = core.errorHandler.safeCall {
-        val fileName = request.fileName
-        val contentType = request.contentType
-        val bytes = request.bytes
-        val preparationDurationMs = request.preparationDurationMs
-        val sourceSizeBytes = request.sourceSizeBytes
-        require(bytes.isNotEmpty()) { "请选择一张账单截图。" }
-        val bound = core.ledgerRequestGuard.bind(
-            expectedLedgerId = request.expectedLedgerId,
-            ledgerChangedMessage = LedgerRequestGuard.UPLOAD_LEDGER_CHANGED_MESSAGE,
-        )
-        val cleanName = fileName
-            .trim()
-            .ifBlank { "ticketbox-screenshot.jpg" }
-            .replace(Regex("[\\\\/:*?\"<>|]"), "_")
-        val mediaType = (contentType?.takeIf { it.isNotBlank() } ?: "image/jpeg").toMediaTypeOrNull()
-        val body = bytes.toRequestBody(mediaType)
-        val filePart = MultipartBody.Part.createFormData("file", cleanName, body)
-        var uploadResponse: UploadResponseDto? = null
-        val networkDurationMs = measureTimeMillis {
-            uploadResponse = bound.call(
-                ledgerChangedMessage = LedgerRequestGuard.UPLOAD_LEDGER_CHANGED_MESSAGE,
-            ) { it.uploadScreenshot(filePart, timezone = core.currentTimezoneId()) }
-        }
-        val response = requireNotNull(uploadResponse)
-        if (BuildConfig.DEBUG) {
-            Log.d(
-                ExpenseRepositoryCore.NETWORK_LOG_TAG,
-                buildString {
-                    append("Screenshot upload timing: ")
-                    append("prepare_ms=").append(preparationDurationMs ?: -1)
-                    append(" network_ms=").append(networkDurationMs)
-                    append(" server_ms=").append(response.durationMs ?: -1)
-                    append(" source_bytes=").append(sourceSizeBytes ?: -1)
-                    append(" upload_bytes=").append(response.uploadSizeBytes ?: bytes.size)
-                    append(" server_breakdown=").append(response.timingMs.orEmpty())
-                },
-            )
-        }
-        core.withActiveBindingCommit(bound) {
-            core.settingsStore.saveLastUploadAtForLedger(bound.ledgerId, Instant.now().toString())
-        }
-        response.toPendingUploadReceipt()
     }
 
     override suspend fun updateExpense(
@@ -168,7 +114,7 @@ internal class ExpensePendingRepository(
         // FIFO guard; ``pathRef`` is the matching mutation-route path param.
         val targetId = expenseOutboxTargetId(optimistic)
         val pathRef = parseExpenseTargetRef(targetId) ?: id.toString()
-        if (outbox == null || adapter == null || token == null || token == 0L) {
+        if (outbox == null || adapter == null || token == null || !optimistic.hasExpenseMutationBaseline()) {
             // Outbox wiring missing OR baseline lacked a token — direct-only;
             // any failure (incl. IOException) surfaces as Result.failure so we
             // don't pretend we saved.

@@ -43,10 +43,16 @@ _PRIMITIVES = (
     "saveActiveLedger",
 )
 
-# A call/method-reference to one of the primitives: ``.saveX`` or ``::saveX``.
-# Definitions (``fun saveX`` / ``override fun saveX``) have no ``.``/``::`` prefix
-# and are intentionally not matched.
-_CALL_PATTERN = re.compile(r"(?:\.|::)\s*(" + "|".join(_PRIMITIVES) + r")\b")
+# Calls may use an implicit receiver inside a Kotlin extension or scope function.
+# Function declarations, including extension declarations, are not write sites.
+_PRIMITIVE_NAMES = "|".join(_PRIMITIVES)
+_CALL_PATTERN = re.compile(
+    r"\b(?P<call>" + _PRIMITIVE_NAMES + r")\s*\(|::\s*(?P<reference>" + _PRIMITIVE_NAMES + r")\b"
+)
+_DECLARATION_PATTERN = re.compile(
+    r"\bfun\s+(?:<[^>]+>\s*)?(?:[\w.<>?]+\s*\.\s*)?"
+    r"(?P<name>" + _PRIMITIVE_NAMES + r")\s*\("
+)
 
 # (sourceset/relative-posix-path :: primitive) -> why this site may write
 # credentials outside LocalLedgerSessionCoordinator. Each entry is an explicit
@@ -145,7 +151,12 @@ def _detected_site_counts() -> Counter[str]:
     for root in _production_source_roots():
         for path in sorted(root.rglob("*.kt")):
             code = _code_only(path.read_text(encoding="utf-8"))
-            primitives = [match.group(1) for match in _CALL_PATTERN.finditer(code)]
+            declarations = {match.start("name") for match in _DECLARATION_PATTERN.finditer(code)}
+            primitives = [
+                match.group("call") or match.group("reference")
+                for match in _CALL_PATTERN.finditer(code)
+                if match.start("call") not in declarations
+            ]
             if not primitives:
                 continue
             rel = f"{root.name}/{path.relative_to(root).as_posix()}"

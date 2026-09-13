@@ -51,7 +51,7 @@ class OutboxPayloadCodegenAdapterTest {
         assertEquals("alias", roundTrip(MerchantAliasUpdateRequest(12L, "canonical", "alias", true)).alias)
         assertEquals(12L, roundTrip(MerchantAliasDeleteRequest(expectedRowVersion = 12L)).expectedRowVersion)
         assertEquals("goal", roundTrip(GoalUpdateRequestDto(12L, name = "goal")).name)
-        assertEquals("salary", roundTrip(IncomePlanUpdateRequestDto(12L, label = "salary")).label)
+        assertEquals("salary", roundTrip(IncomePlanUpdateRequestDto(intentMonth = "2026-09", expectedRowVersion = 12L, label = "salary")).label)
     }
 
     private inline fun <reified T : Any> roundTrip(value: T): T {

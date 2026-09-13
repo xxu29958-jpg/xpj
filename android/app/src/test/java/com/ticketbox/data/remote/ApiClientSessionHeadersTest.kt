@@ -15,6 +15,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlin.test.assertFailsWith
 
 class ApiClientSessionHeadersTest {
@@ -64,6 +65,41 @@ class ApiClientSessionHeadersTest {
     }
 
     @Test
+    fun defaultRevisionChangesOnlyNegotiationEvidenceNotTheOriginalManualIntent() {
+        var currencyBinding = "1:1:CNY"
+        val sent = mutableListOf<Pair<Request, String>>()
+        val client = buildApiHttpClient(null, { "tbx_session" }, { "owner" }, null, null)
+            .newBuilder().addInterceptor { chain ->
+                val request = chain.request()
+                val body = if (request.method == "GET") {
+                    """{"api_version":"$CURRENT_TICKETBOX_API_VERSION","write_compatibility":"compatible","capabilities":{"currency":{"request_binding":"$currencyBinding"}}}"""
+                } else {
+                    val buffer = okio.Buffer()
+                    requireNotNull(request.body).writeTo(buffer)
+                    sent += request to buffer.readUtf8()
+                    "{}"
+                }
+                Response.Builder().request(request).protocol(Protocol.HTTP_1_1)
+                    .code(200).message("Response").body(body.toResponseBody("application/json".toMediaType())).build()
+            }.build()
+        val adapter = com.squareup.moshi.Moshi.Builder()
+            .add(com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory()).build()
+            .adapter(com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto::class.java)
+        val original = adapter.toJson(requireNotNull(adapter.fromJson(
+            """{"original_currency":"CNY","original_amount":"12.34","home_currency_code":"CNY","merchant":"shop","category":"other","note":null,"expense_time":"2026-09-09T00:00:00Z","tags":null,"value_score":null,"regret_score":null,"client_ref":"original-manual-intent"}""",
+        )))
+        val request = Request.Builder().url("https://example.test/api/expenses/manual")
+            .post(original.toRequestBody("application/json".toMediaType())).build()
+        client.newCall(request).execute().close()
+        currencyBinding = "1:2:JPY"
+        client.newCall(request).execute().close()
+        assertEquals(listOf(original, original), sent.map { it.second })
+        assertEquals(listOf<String?>("1:1:CNY", "1:2:JPY"), sent.map { it.first.header(TICKETBOX_CURRENCY_BINDING_HEADER) })
+        assertTrue(sent.all { it.first.header("Authorization") == "Bearer tbx_session" })
+        assertTrue(sent.all { it.first.header(LEDGER_ID_HEADER) == "owner" })
+    }
+
+    @Test
     fun unauthenticatedPairingMutationDoesNotRequireRuntimeNegotiation() {
         val client = buildApiHttpClient(
             routeProvider = null,
@@ -96,13 +132,35 @@ class ApiClientSessionHeadersTest {
     }
 
     @Test
-    fun bindingActivationRaceRemainsRetryableForTheOutbox() {
+    fun mismatchedProtocolNeverFallsBackToAnUnversionedIncomeMutation() {
+        var mutationSent = false
+        val client = buildApiHttpClient(null, { "tbx_session" }, { "owner" }, null, null)
+            .newBuilder().addInterceptor { chain ->
+                if (chain.request().method != "GET") mutationSent = true
+                val body = """{"api_version":"2026-08-02","write_compatibility":"compatible","capabilities":{"currency":{"request_binding":"1:1:CNY"}}}"""
+                Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1)
+                    .code(200).message("Response").body(body.toResponseBody("application/json".toMediaType())).build()
+            }.build()
+        val request = Request.Builder().url("https://example.test/api/income-plans")
+            .post("{}".toRequestBody()).build()
+
+        client.newCall(request).execute().use { response ->
+            assertEquals(409, response.code)
+            kotlin.test.assertTrue(response.body.string().contains("runtime_version_mismatch"))
+        }
+        assertFalse(mutationSent)
+    }
+
+    @Test
+    fun changedCurrencyBindingReturnsTheRefusalWithoutAnAutomaticRetry() {
+        var mutations = 0
         val client = buildApiHttpClient(null, { "tbx_session" }, { "owner" }, null, null)
             .newBuilder().addInterceptor { chain ->
                 val isRead = chain.request().method == "GET"
                 val body = if (isRead) {
-                    """{"api_version":"2026-08-02","write_compatibility":"compatible","capabilities":{"currency":{"request_binding":"1:0:JPY"}}}"""
+                    """{"api_version":"$CURRENT_TICKETBOX_API_VERSION","write_compatibility":"compatible","capabilities":{"currency":{"request_binding":"1:1:CNY"}}}"""
                 } else {
+                    mutations++
                     """{"error":"currency_binding_revision_conflict","message":"Currency binding changed"}"""
                 }
                 Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1)
@@ -112,7 +170,11 @@ class ApiClientSessionHeadersTest {
         val request = Request.Builder().url("https://example.test/api/expenses/manual")
             .post("{}".toRequestBody()).build()
 
-        assertFailsWith<IOException> { client.newCall(request).execute().close() }
+        client.newCall(request).execute().use { response ->
+            assertEquals(409, response.code)
+            assertTrue(response.body.string().contains("currency_binding_revision_conflict"))
+        }
+        assertEquals(1, mutations)
     }
 }
 
@@ -132,7 +194,7 @@ private fun captureNegotiatedMutation(client: OkHttpClient): List<Pair<String, M
                             repeat(headers["content-length"]?.toIntOrNull() ?: 0) { reader.read() }
                             add(requestLine to headers)
                             val responseBody = if (index == 0) {
-                                """{"api_version":"2026-08-02","write_compatibility":"compatible","capabilities":{"currency":{"request_binding":"1:1:JPY"}}}"""
+                                """{"api_version":"$CURRENT_TICKETBOX_API_VERSION","write_compatibility":"compatible","capabilities":{"currency":{"request_binding":"1:1:JPY"}}}"""
                             } else {
                                 ""
                             }

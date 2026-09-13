@@ -15,9 +15,10 @@ class DebtRepaymentRepositoryTest {
     @Test
     fun historyKeepsOriginalPaymentAndItsVoidWithServerPagingAndCurrency() = runTest {
         val api = RepaymentHistoryApi()
-        val repository = repaymentRepository(api).repayments
+        val repository = repaymentRepository(api)
+        val task = DebtTask(requireNotNull(repository.proposals.currentAccess()).binding, "debt-1")
 
-        val result = repository.listRepayments("debt-1", page = 2)
+        val result = repository.repayments.listRepayments(task, page = 2)
 
         assertTrue(result.isSuccess)
         val history = result.getOrThrow()

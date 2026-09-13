@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -21,10 +23,12 @@ from app.models import (
 from app.services import bill_split_service as bsplit
 from app.services.identity_service import hash_secret, new_session_token
 from app.services.time_service import now_utc
+from tests._runtime_protocol import current_protocol_headers
 from tests.test_bill_split import (
     _make_expense_for_owner,
     _owner_account_id,
     _seed_receiver,
+    _split_headers,
 )
 
 
@@ -48,7 +52,7 @@ def _bearer_for_account_ledger(account_id: int, ledger_id: str) -> dict[str, str
             )
         )
         db.commit()
-    return {"Authorization": f"Bearer {token}"}
+    return current_protocol_headers({"Authorization": f"Bearer {token}"})
 
 
 def _expense_snapshot(expense_id: int, tenant_id: str) -> dict[str, object]:
@@ -103,8 +107,8 @@ def test_accept_route_allows_current_viewer_when_target_ledger_is_writer(
 
     create_resp = client.post(
         f"/api/expenses/{expense_id}/split-invite",
-        headers=identity.app_headers,
-        json={"receiver_account_id": receiver_account_id, "amount_cents": 2500},
+        headers=_split_headers(client, identity.app_headers),
+        json={"expected_row_version": 1, "receiver_account_id": receiver_account_id, "amount_cents": 2500},
     )
     assert create_resp.status_code == 200, create_resp.json()
     public_id = create_resp.json()["public_id"]
@@ -134,8 +138,8 @@ def test_accept_route_attributes_confirmation_revision_to_authenticated_device(
     )
     created = client.post(
         f"/api/expenses/{expense_id}/split-invite",
-        headers=identity.app_headers,
-        json={"receiver_account_id": receiver_account_id, "amount_cents": 2500},
+        headers=_split_headers(client, identity.app_headers),
+        json={"expected_row_version": 1, "receiver_account_id": receiver_account_id, "amount_cents": 2500},
     )
     assert created.status_code == 200, created.json()
     public_id = created.json()["public_id"]
@@ -190,8 +194,8 @@ def test_reject_route_allows_current_viewer_ledger(
 
     create_resp = client.post(
         f"/api/expenses/{expense_id}/split-invite",
-        headers=identity.app_headers,
-        json={"receiver_account_id": receiver_account_id, "amount_cents": 2500},
+        headers=_split_headers(client, identity.app_headers),
+        json={"expected_row_version": 1, "receiver_account_id": receiver_account_id, "amount_cents": 2500},
     )
     assert create_resp.status_code == 200, create_resp.json()
     public_id = create_resp.json()["public_id"]
@@ -225,8 +229,8 @@ def test_cancel_route_checks_sender_ledger_not_current_ledger_writer_role(
 
     create_resp = client.post(
         f"/api/expenses/{expense_id}/split-invite",
-        headers=identity.app_headers,
-        json={"receiver_account_id": receiver_account_id, "amount_cents": 2500},
+        headers=_split_headers(client, identity.app_headers),
+        json={"expected_row_version": 1, "receiver_account_id": receiver_account_id, "amount_cents": 2500},
     )
     assert create_resp.status_code == 200, create_resp.json()
     public_id = create_resp.json()["public_id"]
@@ -258,6 +262,7 @@ def test_sender_expense_updates_do_not_change_receiver_snapshot() -> None:
             expense_id=expense_id,
             receiver_account_id=receiver_account_id,
             amount_cents=2500,
+            idempotency_key=str(uuid4()), expected_row_version=1,
         )
         _inv, received_expense = bsplit.accept_invitation(
             db,
@@ -297,6 +302,7 @@ def test_inbox_status_filter() -> None:
             expense_id=expense_id,
             receiver_account_id=receiver_account_id,
             amount_cents=2500,
+            idempotency_key=str(uuid4()), expected_row_version=1,
         )
         public_id = inv.public_id
 
@@ -326,6 +332,7 @@ def test_reject_audit_does_not_record_external_receiver_as_sender_ledger_actor()
             expense_id=expense_id,
             receiver_account_id=receiver_account_id,
             amount_cents=2500,
+            idempotency_key=str(uuid4()), expected_row_version=1,
         )
         public_id = inv.public_id
 
@@ -352,8 +359,8 @@ def test_sender_cannot_invite_self(client: TestClient, *, identity) -> None:
     expense_id = _make_expense_for_owner()
     response = client.post(
         f"/api/expenses/{expense_id}/split-invite",
-        headers=identity.app_headers,
-        json={"receiver_account_id": _owner_account_id(), "amount_cents": 2500},
+        headers=_split_headers(client, identity.app_headers),
+        json={"expected_row_version": 1, "receiver_account_id": _owner_account_id(), "amount_cents": 2500},
     )
     assert response.status_code == 422
     assert response.json()["error"] == "split_receiver_invalid"
@@ -365,8 +372,8 @@ def test_unknown_receiver_does_not_enumerate_accounts(
     expense_id = _make_expense_for_owner()
     response = client.post(
         f"/api/expenses/{expense_id}/split-invite",
-        headers=identity.app_headers,
-        json={"receiver_account_id": 999_999_999, "amount_cents": 2500},
+        headers=_split_headers(client, identity.app_headers),
+        json={"expected_row_version": 1, "receiver_account_id": 999_999_999, "amount_cents": 2500},
     )
     assert response.status_code == 422
     assert response.json()["error"] == "split_receiver_invalid"
@@ -379,15 +386,15 @@ def test_duplicate_pending_invite_to_same_receiver_rejected(
     receiver_account_id = _seed_receiver(name="B-dupe", ledger_id="receiver_dupe")
     first = client.post(
         f"/api/expenses/{expense_id}/split-invite",
-        headers=identity.app_headers,
-        json={"receiver_account_id": receiver_account_id, "amount_cents": 2500},
+        headers=_split_headers(client, identity.app_headers),
+        json={"expected_row_version": 1, "receiver_account_id": receiver_account_id, "amount_cents": 2500},
     )
     assert first.status_code == 200, first.json()
 
     second = client.post(
         f"/api/expenses/{expense_id}/split-invite",
-        headers=identity.app_headers,
-        json={"receiver_account_id": receiver_account_id, "amount_cents": 2500},
+        headers=_split_headers(client, identity.app_headers),
+        json={"expected_row_version": 1, "receiver_account_id": receiver_account_id, "amount_cents": 2500},
     )
     assert second.status_code == 409
     assert second.json()["error"] == "split_invitation_already_pending"
@@ -411,6 +418,7 @@ def test_duplicate_pending_invite_integrity_error_maps_to_contract(
             expense_id=expense_id,
             receiver_account_id=receiver_account_id,
             amount_cents=2500,
+            idempotency_key=str(uuid4()), expected_row_version=1,
         )
 
     with SessionLocal() as db:
@@ -442,6 +450,7 @@ def test_duplicate_pending_invite_integrity_error_maps_to_contract(
                 expense_id=expense_id,
                 receiver_account_id=receiver_account_id,
                 amount_cents=2500,
+                idempotency_key=str(uuid4()), expected_row_version=1,
             )
 
         assert exc_info.value.error == "split_invitation_already_pending"

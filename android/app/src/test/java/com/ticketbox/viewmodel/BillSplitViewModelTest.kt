@@ -1,5 +1,9 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.LedgerAccessContext
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import com.ticketbox.data.repository.BillSplitActions
 import com.ticketbox.data.repository.BillSplitLedgerActions
 import com.ticketbox.domain.model.BillSplitInbox
@@ -7,6 +11,7 @@ import com.ticketbox.domain.model.BillSplitSent
 import com.ticketbox.domain.model.BillSplitStatusValues
 import com.ticketbox.domain.model.LEDGER_ROLE_OWNER
 import com.ticketbox.domain.model.LedgerSummary
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -104,25 +109,111 @@ class BillSplitViewModelTest {
 
         assertEquals(listOf(BillSplitTargetLedger("fresh", "Fresh ledger")), vm.uiState.value.candidateTargetLedgers)
     }
+
+    @Test
+    fun acceptedResultIsKeptWhenTheFollowingListRefreshFails() = billSplitTest {
+        val fake = FakeBillSplitActions(inboxResult = Result.success(listOf(inboxInvite())))
+        val vm = BillSplitViewModel(fake, FakeBillSplitLedgerActions())
+        vm.refresh()
+        advanceUntilIdle()
+        fake.inboxResult = Result.failure(IllegalStateException("refresh unavailable"))
+
+        vm.accept(requireNotNull(fake.currentAccess()).binding, "split_in_1", "receiver")
+        advanceUntilIdle()
+
+        assertEquals(BillSplitStatusValues.ACCEPTED, vm.uiState.value.inbox.single().status)
+        assertEquals(false, vm.uiState.value.loading)
+        assertNotNull(vm.uiState.value.message)
+    }
+
+    @Test
+    fun repeatedAcceptTapDoesNotStartAnotherCommand() = billSplitTest {
+        val fake = FakeBillSplitActions()
+        val gate = CompletableDeferred<Unit>()
+        fake.acceptGate = gate
+        val vm = BillSplitViewModel(fake, FakeBillSplitLedgerActions())
+        try {
+            vm.accept(requireNotNull(fake.currentAccess()).binding, "split_in_1", "receiver")
+            vm.accept(requireNotNull(fake.currentAccess()).binding, "split_in_1", "receiver")
+            advanceUntilIdle()
+            assertEquals(1, fake.acceptCalls)
+        } finally {
+            gate.complete(Unit)
+            advanceUntilIdle()
+        }
+    }
+
+    @Test
+    fun oldRenderedBindingCannotAcceptAgainstAReplacementAtTheSameLedgerId() = billSplitTest {
+        val fake = FakeBillSplitActions(inboxResult = Result.success(listOf(inboxInvite())))
+        val vm = BillSplitViewModel(fake, FakeBillSplitLedgerActions())
+        vm.refresh()
+        advanceUntilIdle()
+        val original = requireNotNull(fake.currentAccess())
+        fake.access.value = original.copy(binding = original.binding.copy(serverUrl = "https://replacement.example"))
+
+        vm.accept(original.binding, "split_in_1", "receiver")
+        advanceUntilIdle()
+
+        assertEquals(0, fake.acceptCalls)
+        assertEquals(emptyList(), vm.uiState.value.inbox)
+        assertEquals(fake.currentAccess(), vm.uiState.value.access)
+    }
+
+    @Test
+    fun oldReadCannotRepublishRowsAfterBindingReplacement() = billSplitTest {
+        val fake = FakeBillSplitActions(inboxResult = Result.success(listOf(inboxInvite())))
+        val gate = CompletableDeferred<Unit>()
+        fake.inboxGate = gate
+        val vm = BillSplitViewModel(fake, FakeBillSplitLedgerActions())
+        vm.refresh()
+        advanceUntilIdle()
+        val original = requireNotNull(fake.currentAccess())
+        fake.access.value = original.copy(binding = original.binding.copy(sessionGeneration = "replacement-session"))
+        advanceUntilIdle()
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(emptyList(), vm.uiState.value.inbox)
+        assertEquals(false, vm.uiState.value.loading)
+        assertEquals(fake.currentAccess(), vm.uiState.value.access)
+    }
 }
 
 private class FakeBillSplitActions(
     var inboxResult: Result<List<BillSplitInbox>> = Result.success(emptyList()),
     var sentResult: Result<List<BillSplitSent>> = Result.success(emptyList()),
 ) : BillSplitActions {
-    override suspend fun fetchBillSplitInbox(): Result<List<BillSplitInbox>> = inboxResult
+    val access = MutableStateFlow<LedgerAccessContext?>(LedgerAccessContext(
+        LogicalSessionBinding("https://split-test.example", "owner", "test-owner", "session", "revision"), true))
+    override fun currentAccess(): LedgerAccessContext? = access.value
+    override fun observeAccess(): Flow<LedgerAccessContext?> = access
 
-    override suspend fun fetchBillSplitSent(): Result<List<BillSplitSent>> = sentResult
+    var inboxGate: CompletableDeferred<Unit>? = null
+    var acceptGate: CompletableDeferred<Unit>? = null
+    var acceptCalls = 0
+    override suspend fun fetchBillSplitInbox(binding: LogicalSessionBinding): Result<List<BillSplitInbox>> {
+        val original = inboxResult
+        inboxGate?.let { gate -> kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { gate.await() } }
+        return original
+    }
+
+    override suspend fun fetchBillSplitSent(binding: LogicalSessionBinding): Result<List<BillSplitSent>> = sentResult
 
     override suspend fun acceptBillSplitInvitation(
+        binding: LogicalSessionBinding,
         publicId: String,
         targetLedgerId: String,
-    ): Result<BillSplitInbox> = Result.success(inboxInvite(publicId = publicId))
+    ): Result<BillSplitInbox> {
+        acceptCalls += 1
+        acceptGate?.await()
+        return Result.success(inboxInvite(publicId = publicId, status = BillSplitStatusValues.ACCEPTED))
+    }
 
-    override suspend fun rejectBillSplitInvitation(publicId: String): Result<BillSplitInbox> =
+    override suspend fun rejectBillSplitInvitation(binding: LogicalSessionBinding, publicId: String): Result<BillSplitInbox> =
         Result.success(inboxInvite(publicId = publicId, status = BillSplitStatusValues.REJECTED))
 
-    override suspend fun cancelBillSplitInvitation(publicId: String): Result<BillSplitSent> =
+    override suspend fun cancelBillSplitInvitation(binding: LogicalSessionBinding, publicId: String): Result<BillSplitSent> =
         Result.success(sentInvite(publicId = publicId, status = BillSplitStatusValues.CANCELLED))
 }
 
@@ -149,6 +240,7 @@ private fun inboxInvite(
     publicId = publicId,
     status = status,
     amountCents = 1200,
+    homeCurrencyCode = "CNY",
     merchantSnapshot = "Cafe",
     categorySuggestion = "Food",
     expenseTimeSnapshot = "2026-07-01T00:00:00Z",
@@ -169,6 +261,7 @@ private fun sentInvite(
     publicId = publicId,
     status = status,
     amountCents = 1200,
+    homeCurrencyCode = "CNY",
     merchantSnapshot = "Cafe",
     categorySuggestion = "Food",
     expenseTimeSnapshot = "2026-07-01T00:00:00Z",

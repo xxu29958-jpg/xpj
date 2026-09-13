@@ -82,9 +82,11 @@ from app.models.identity import (
     LedgerMember,
 )
 from app.models.import_csv import CsvImportBatch, CsvImportRow
+from app.models.income_plan_revision import IncomePlanRevision
 from app.models.learning import AlgorithmDecision, LedgerLearningEvent
 from app.models.ocr_facts import OcrFact
 from app.models.recurring import RecurringItem
+from app.models.recurring_occurrence import RecurringOccurrence, RecurringOccurrenceRevision
 from app.models.system import (
     BootstrapSecretConsumption,
     InstallationOwnerClaim,
@@ -144,12 +146,15 @@ __all__ = [
     "MerchantAlias",
     "MerchantCatalog",
     "MonthlyIncomePlan",
+    "IncomePlanRevision",
     "OcrFact",
     "PairingAttemptFailure",
     "DesktopActivationAttempt",
     "DeviceEnrollmentAttempt",
     "PairingCode",
     "RecurringItem",
+    "RecurringOccurrence",
+    "RecurringOccurrenceRevision",
     "Repayment",
     "RepaymentDraft",
     "RepaymentVoid",

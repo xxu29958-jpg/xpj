@@ -54,6 +54,7 @@ from app.services.bill_split_service._query import (
 from app.services.bill_split_service._serializers import (
     receiver_sender_presentation,
     to_inbox_response_dict,
+    to_received_bill_reference,
     to_sent_response_dict,
 )
 from app.services.bill_split_service._source_financial_change import (
@@ -91,5 +92,6 @@ __all__ = [
     "settle_source_financial_change",
     "source_impact_pending_invitation_ids",
     "to_inbox_response_dict",
+    "to_received_bill_reference",
     "to_sent_response_dict",
 ]

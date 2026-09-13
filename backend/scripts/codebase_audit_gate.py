@@ -2,7 +2,8 @@
 
 ``CODEBASE_DEBT_LIMITS`` is a one-way debt ceiling for
 ``_audit_codebase.py``: regressions fail, improvements print INFO so the
-baseline can be lowered in the same cleanup slice.
+baseline can be lowered in the same cleanup slice. Physical size entries are
+review references only; their counts and completeness remain visible.
 
 ``STRICT_EQUALITY_BASELINE`` protects PR-Δ counters from
 ``_audit_pr_delta_metrics.py``. Structural counters use exact current
@@ -30,6 +31,7 @@ from adr_contract_git import has_auditable_ci_context, select_ratchet_base
 from pr_delta_baselines import (
     TEST_COUNT_BASELINES,
     baseline_policy_mismatches,
+    baseline_retirement_allowed,
     git_show_text,
     load_current_test_count_baselines,
     parse_count_baseline,
@@ -45,11 +47,13 @@ _strict_baseline_selected_commit: str | None = None
 # ``CODEBASE_DEBT_LIMITS`` is active configuration, not an audit log. Keep the
 # current ceilings here and put detailed ratchet provenance in commits/PR notes.
 # Zero ceilings mean the scanner lane is now strict and any reintroduction fails.
+CODEBASE_SIZE_SIGNALS = frozenset({"files_over_500", "long_functions"})
+
 CODEBASE_DEBT_LIMITS: DebtCounts = {
     # Keep active ceilings here. Older ratchet provenance belongs in git history,
     # not in executable override chains.
-    "files_over_500": 12,
-    "long_functions": 4,
+    "files_over_500": 11,  # Historical reference for review, not a debt ceiling.
+    "long_functions": 3,  # Physical spans include fixtures, declarations and comments.
     "deep_nesting_functions": 0,
     "route_layer_imports": 0,
     "service_public_no_private": 2,
@@ -63,7 +67,7 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
     "hardcoded_urls": 5,  # 2026-07-08: removed prose/comment URL examples; production endpoint defaults remain explicit debt.
     "credentials_risk": 0,
     "n_plus_one": 0,
-    "unreferenced_modules": 59,
+    "unreferenced_modules": 2,
     "import_cycles": 0,
     "sql_outside_database": 0,
     "import_star": 0,
@@ -79,18 +83,22 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
 def evaluate_debt(counts: DebtCounts) -> int:
     missing = sorted(set(CODEBASE_DEBT_LIMITS) - set(counts))
     extras = sorted(set(counts) - set(CODEBASE_DEBT_LIMITS))
+    measured_keys = sorted((counts.keys() & CODEBASE_DEBT_LIMITS.keys()) - CODEBASE_SIZE_SIGNALS)
     regressions = [
         (key, counts[key], CODEBASE_DEBT_LIMITS[key])
-        for key in sorted(CODEBASE_DEBT_LIMITS)
-        if key in counts and counts[key] > CODEBASE_DEBT_LIMITS[key]
+        for key in measured_keys
+        if counts[key] > CODEBASE_DEBT_LIMITS[key]
     ]
     improvements = [
         (key, counts[key], CODEBASE_DEBT_LIMITS[key])
-        for key in sorted(CODEBASE_DEBT_LIMITS)
-        if key in counts and counts[key] < CODEBASE_DEBT_LIMITS[key]
+        for key in measured_keys
+        if counts[key] < CODEBASE_DEBT_LIMITS[key]
     ]
 
     print("== Gate. Known-debt baseline ==")
+    print("REVIEW: physical size signals require responsibility review, not mechanical splitting:")
+    for key in sorted(CODEBASE_SIZE_SIGNALS & counts.keys()):
+        print(f"  - {key}={counts[key]} (reference={CODEBASE_DEBT_LIMITS[key]})")
     if missing:
         print("FAIL: configured codebase debt counters were not reported:")
         for key in missing:
@@ -108,7 +116,7 @@ def evaluate_debt(counts: DebtCounts) -> int:
         for key, actual, limit in improvements:
             print(f"  - {key}: actual={actual}, old_limit={limit}")
     if not missing and not extras and not regressions:
-        print(f"OK: {len(CODEBASE_DEBT_LIMITS)} counters at or below baseline.")
+        print(f"OK: all {len(CODEBASE_DEBT_LIMITS)} counters reported; hard debt counters at or below baseline.")
     print()
     return 1 if missing or extras or regressions else 0
 
@@ -131,19 +139,19 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # main. See ``_audit_pr_delta_metrics.py`` docstring for what each
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
-    "mutate_token_carriers": 104,
-    "mutate_token_exempted": 129,
+    "mutate_token_carriers": 115,
+    "mutate_token_exempted": 124,
     "mutate_token_reason_admin_single_writer": 10,
     "mutate_token_reason_append_only_fact": 4,
     "mutate_token_reason_batch_db_write": 17,
-    "mutate_token_reason_create_row": 38,
+    "mutate_token_reason_create_row": 36,
     "mutate_token_reason_enqueue_task": 0,
     "mutate_token_reason_external_side_effect": 3,
     "mutate_token_reason_governance_action": 8,
     "mutate_token_reason_read_only_compute": 4,
     "mutate_token_reason_session_rotation": 8,
     "mutate_token_reason_terminal_flag_flip": 30,
-    "mutate_token_reason_upsert_bucket": 7,
+    "mutate_token_reason_upsert_bucket": 4,
 }
 STRICT_EQUALITY_BASELINE.update(load_current_test_count_baselines())
 
@@ -177,30 +185,6 @@ _A3_MUTATE_TOKEN_EXEMPTION_GRANDFATHER = (
     128,
     130,
 )  # A3 adds the API/Web twins of one manual fixed-expense create capability. Both insert a new recurring_items row and require one durable Idempotency-Key; neither has a predecessor row_version to carry. The exact base binding makes this single topology hop non-replayable.
-_PORTABLE_INSTALLER_TEST_RETIREMENT_GRANDFATHER = (
-    "051464999fc1f71d9072bb5c9cfc012b521181cd",
-    387,
-    379,
-)  # The portable installer owner and its dedicated security harness were physically retired together. The active Inno installer retains its release-critical suite, and the portable surface has a negative retirement oracle. The canonical base binding prevents a future 387-to-379 count cycle from replaying this exception.
-_GENERATION_OWNER_TEST_RETIREMENT_GRANDFATHER = (
-    "9d74b04f318362d5e222d897787db074bb5ca8ab",
-    379,
-    282,
-)  # R025 physically retires the C07 lifecycle/recovery/current producers and their stage-specific scenario palaces. The remaining suite retains generic lock, CAS, restore, failure, shipment, and real Generation Owner contracts. Exact base and hop binding make this exception self-extinguishing.
-_SUPERUSER_CAPABILITY_TEST_RETIREMENT_GRANDFATHER = (
-    "ce9a5aa413f20e5455fe0572d9416187038135b0",
-    283,
-    260,
-)  # The HBA/IDENT cluster-admin recovery owner and its 31 collected dedicated scenarios were physically retired; eight bounded Generation Owner and pinned-PG lifecycle oracles were added, for a net reduction of 23. Generation Owner now consumes the initdb bootstrap authority once, while generic credential, host, source, target, projection, cleanup, and real-PG contracts remain. Exact base and hop binding make this exception self-extinguishing.
-_WINDOWS_VNEXT_CONTROL_PLANE_TEST_RETIREMENT_GRANDFATHER = (
-    "6557125826d7c76a06568164814b4e5cb9e08f88",
-    369,
-    76,
-)
-# Windows vNext physically replaces the old Generation/receipt/restore harness.
-# The retained 76 tests cover the shipped build, runtime authority, service
-# identity, atomic settings, and resource-serial PostgreSQL lifecycle behavior.
-# Exact base and hop binding make this exception self-extinguishing.
 
 # ``mutate_token_reason_<code>`` counters are NOT in either ratchet set:
 # they're distribution-shift indicators (PR-D's ``terminal_flag_flip``
@@ -320,18 +304,8 @@ def _compute_ratchet_findings(
             and base_commit == a3_base_commit
             and (base_val, current_val) == (a3_base_count, a3_current_count)
         )
-        test_retirement = key == "installer_pytest_count" and any(
-            base_commit == candidate_commit
-            and base_val == candidate_base
-            and current_val >= candidate_floor
-            for candidate_commit, candidate_base, candidate_floor in (
-                _PORTABLE_INSTALLER_TEST_RETIREMENT_GRANDFATHER,
-                _GENERATION_OWNER_TEST_RETIREMENT_GRANDFATHER,
-                _SUPERUSER_CAPABILITY_TEST_RETIREMENT_GRANDFATHER,
-                _WINDOWS_VNEXT_CONTROL_PLANE_TEST_RETIREMENT_GRANDFATHER,
-            )
-        )
-        if key in BASELINE_RATCHET_UP and current_val < base_val and not test_retirement:
+        retirement = baseline_retirement_allowed(key, base_commit, base_val, current_val)
+        if key in BASELINE_RATCHET_UP and current_val < base_val and not retirement:
             movement_violations.append(
                 f"  - {key} (UP-only): base={base_val}, current={current_val} "
                 f"(dropped by {base_val - current_val}). Tests/coverage should "

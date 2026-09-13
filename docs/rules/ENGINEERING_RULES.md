@@ -115,7 +115,7 @@
 - 同步必须按 ledger/resource identity 隔离。投影可以重建，用户 intent、冲突状态和已提交未观察结果不能被刷新吞掉。
 - upgrade/repair/rollback/downgrade 的允许面由当前 Windows 生命周期合同裁决；“服务能启动”不等于数据、身份、schema 和消费者都兼容。
 - recovery 只恢复可证明属于同一主体、同一 operation 或明确 clone 语义的数据；不得凭盘符、目录存在或旧标记猜身份。
-- 备份存在不等于可恢复。任务触及持久化或生命周期时，按风险验证实际 restore/repair 路径，而不是新增一份形式化清单。
+- 备份存在不等于可恢复。普通持久化变更验证受影响的事务、迁移及重放恢复；实际 restore/repair 仅在当前 Goal 授权，或可执行反例要求解除当前阻断的必要范围内验证，遵守 Windows 生命周期 HOLD 边界。
 
 ---
 

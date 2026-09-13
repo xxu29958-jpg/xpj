@@ -142,7 +142,6 @@ _RULES_APPLY = ("expenses", "rule_application_batches", "rule_application_change
 _LEARNING_PRUNE = ("algorithm_decisions", "ledger_learning_events", "ocr_facts")
 _SUGGESTION_EVENT = ("algorithm_decisions", "ledger_learning_events")
 _ADVISOR_WRITE = ("budget_advisor_audit_logs", "budget_advisor_quota_locks")
-_BUDGET_BUCKET = ("budgets", "budget_categories")
 _LEDGER_CREATE = ("ledgers", "ledger_members")
 _LEDGER_ARCHIVE = ("ledgers", "ledger_audit_logs")
 _OWNER_TRANSFER = ("ledger_members", "ledgers")
@@ -196,7 +195,6 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /api/repayment-drafts": Exempt("create_row", "debts", _REPAYMENT_DRAFTS),
     "POST /api/expenses/manual": Exempt("create_row", "expenses", ("expenses",)),
     "POST /api/expenses/notification-drafts": Exempt("create_row", "expenses", ("expenses",)),
-    "POST /api/expenses/{expense_id}/split-invite": Exempt("create_row", "bill_split", _BILL_SPLIT),
     "POST /api/goals": Exempt("create_row", "goals", ("goals",)),
     "POST /api/imports/csv": Exempt("create_row", "imports", _IMPORT_CREATE),
     "POST /api/income-plans": Exempt("create_row", "budget", _INCOME_PLAN),
@@ -325,16 +323,11 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /api/ledgers/{ledger_id}/members/{member_id}/transfer-owner": Exempt(
         "governance_action", "identity", _OWNER_TRANSFER, "high"
     ),
-    "PUT /api/exchange-rates/{currency_code}/{rate_date}": Exempt(
-        "upsert_bucket", "exchange_rates", ("exchange_rates",)
-    ),
 
     # --- /api upsert / replace-all / lifecycle (tenant/account-keyed bucket) ---
-    "PUT /api/budgets/monthly/{month}": Exempt("upsert_bucket", "budget", _BUDGET_BUCKET),
     "PUT /api/dashboard/cards": Exempt("upsert_bucket", "budget", _DASHBOARD),
 
     # --- /web mutate forms / create / batch / terminal ---
-    "POST /web/budgets/save": Exempt("upsert_bucket", "budget", _BUDGET_BUCKET),
     "POST /web/budget-advise": Exempt("append_only_fact", "budget", _ADVISOR_WRITE, "high"),
     "POST /web/bill-splits/{public_id}/accept": Exempt("terminal_flag_flip", "bill_split", _BILL_SPLIT, "medium"),
     "POST /web/bill-splits/{public_id}/cancel": Exempt("terminal_flag_flip", "bill_split", _BILL_SPLIT),
@@ -342,7 +335,6 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /web/categories/uncategorized/bulk-set": Exempt("batch_db_write", "expenses", ("expenses",)),
     "POST /web/dashboard/cards/reset": Exempt("upsert_bucket", "budget", _DASHBOARD),
     "POST /web/dashboard/cards/save": Exempt("upsert_bucket", "budget", _DASHBOARD),
-    "POST /web/expenses/{expense_id}/split-invite": Exempt("create_row", "bill_split", _BILL_SPLIT),
     "POST /web/family/invitations": Exempt("create_row", "identity", ("invitations",)),
     "POST /web/family/invitations/{public_id}/revoke": Exempt(
         "governance_action", "identity", ("invitations",)

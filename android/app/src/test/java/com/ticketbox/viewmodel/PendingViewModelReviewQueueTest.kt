@@ -31,7 +31,7 @@ internal class PendingViewModelReviewQueueTest : PendingViewModelReviewTestBase(
         val fake = FakeReviewActions(pending = threeMissingMerchant())
         // 保存后该票补上商家（不再缺），其余两张仍缺。
         fake.updateResponder = { id, draft -> Result.success(expense(id = id, merchant = draft.merchant)) }
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         // 从列表点开 A 的快补 sheet：开启一轮连续审阅，还剩 3 条（含当前 A）。
@@ -55,7 +55,7 @@ internal class PendingViewModelReviewQueueTest : PendingViewModelReviewTestBase(
     @Test
     fun skipReviewFieldAdvancesToNextWithoutSavingOrMutating() = review {
         val fake = FakeReviewActions(pending = threeMissingMerchant())
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         vm.openQuickMerchant(vm.uiState.value.items.first { it.id == 1L })
@@ -81,7 +81,7 @@ internal class PendingViewModelReviewQueueTest : PendingViewModelReviewTestBase(
     fun skippingLastTicketExhaustsQueueAndClosesSheet() = review {
         // 只有一张缺商家的票：跳过它 = 队列耗尽。
         val fake = FakeReviewActions(pending = listOf(expense(id = 1L, merchant = null)))
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         vm.openQuickMerchant(vm.uiState.value.items.first { it.id == 1L })
@@ -101,7 +101,7 @@ internal class PendingViewModelReviewQueueTest : PendingViewModelReviewTestBase(
     fun savingLastTicketExhaustsQueueAndClosesSheet() = review {
         val fake = FakeReviewActions(pending = listOf(expense(id = 1L, merchant = null)))
         fake.updateResponder = { id, draft -> Result.success(expense(id = id, merchant = draft.merchant)) }
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         vm.openQuickMerchant(vm.uiState.value.items.first { it.id == 1L })
@@ -120,7 +120,7 @@ internal class PendingViewModelReviewQueueTest : PendingViewModelReviewTestBase(
     fun saveFailureStaysOnCurrentTicketWithErrorAndDoesNotAdvance() = review {
         val fake = FakeReviewActions(pending = threeMissingMerchant())
         fake.updateResponder = { _, _ -> Result.failure(RuntimeException("网络忙")) }
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         vm.openQuickMerchant(vm.uiState.value.items.first { it.id == 1L })

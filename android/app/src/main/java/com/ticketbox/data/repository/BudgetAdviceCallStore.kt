@@ -69,11 +69,13 @@ internal class BudgetAdviceCallStore(
     suspend fun attachOrRequest(
         binding: LogicalSessionBinding,
         month: String,
+        homeCurrencyCode: String?,
     ): Result<BudgetAdviceResult> {
         val (key, deferred, isOwner) = synchronized(lock) {
             val key = AdviceRequestKey(
                 binding = binding,
                 month = month,
+                homeCurrencyCode = homeCurrencyCode,
                 timezone = currentTimezoneId(),
                 dataGeneration = dataGeneration,
             )
@@ -105,8 +107,13 @@ internal class BudgetAdviceCallStore(
                     BudgetAdviseRequestDto(
                         month = month,
                         timezone = key.timezone,
+                        homeCurrencyCode = key.homeCurrencyCode,
                     ),
-                ).toDomain()
+                ).toDomain().also { result ->
+                    if (key.homeCurrencyCode != null && result.homeCurrencyCode != key.homeCurrencyCode) {
+                        throw RepositoryException("budget_advice_inputs_unverified", localFailure = LocalRepositoryFailure.BudgetInputsUnverified)
+                    }
+                }
             }
         }
         synchronized(lock) {
@@ -131,12 +138,13 @@ internal class BudgetAdviceCallStore(
      *  null-advice results leave the cache absent. Nothing is persisted; an
      *  app restart simply starts cold. The binding is part of the lookup key,
      *  so a re-paired household never sees a previous binding's entry. */
-    fun cached(binding: LogicalSessionBinding, month: String): BudgetAdviceResult? =
+    fun cached(binding: LogicalSessionBinding, month: String, homeCurrencyCode: String?): BudgetAdviceResult? =
         synchronized(lock) {
             lastSuccess[
                 AdviceRequestKey(
                     binding = binding,
                     month = month,
+                    homeCurrencyCode = homeCurrencyCode,
                     timezone = currentTimezoneId(),
                     dataGeneration = dataGeneration,
                 ),
@@ -184,6 +192,7 @@ internal class BudgetAdviceCallStore(
 private data class AdviceRequestKey(
     val binding: LogicalSessionBinding,
     val month: String,
+    val homeCurrencyCode: String?,
     val timezone: String,
     val dataGeneration: Int,
 )

@@ -1,7 +1,7 @@
 {# 事实页小票明细（只读呈现 —— 与编辑表格是两个语义，勿合并；唯一例外是
    mismatch_known 时的「原小票如此」确认命令：它不是字段编辑，而是经 revision
    owner 的状态确认，入口贴在其回答的警告下）。
-   契约：receipt_items（rows/status/mismatch_yuan）, can_write, home_currency_symbol；
+   契约：receipt_items（rows/status/mismatch_yuan）, can_write, currency_input；
    渲染确认表单时另需 csrf_token / selected_ledger_id / expense.row_version /
    edit_return_fields / items_ack_idempotency_key（均由 web_fact_context 提供）。 #}
 <section class="product-panel product-panel--padded" aria-label="小票明细">
@@ -12,7 +12,7 @@
     </div>
   </div>
   {% if receipt_items.status == 'mismatch_known' %}
-  <div class="product-feedback product-feedback--warning">明细合计与账单金额差 {{ home_currency_symbol }}{{ receipt_items.mismatch_yuan }}。</div>
+  <div class="product-feedback product-feedback--warning">明细合计与账单金额差 {{ currency_input.currency_symbol }}{{ receipt_items.mismatch_yuan }}。</div>
   {% if can_write %}
   {# 「原小票如此」真实命令入口：消费现有 acknowledge-mismatch route
      （csrf/ledger/row_version/return context），成功 303 与冲突呈现均由 route 表达。
@@ -27,7 +27,7 @@
   </form>
   {% endif %}
   {% elif receipt_items.status == 'mismatch_acknowledged' %}
-  <div class="product-feedback">已确认原小票合计与明细存在 {{ home_currency_symbol }}{{ receipt_items.mismatch_yuan }} 差异。</div>
+  <div class="product-feedback">已确认原小票合计与明细存在 {{ currency_input.currency_symbol }}{{ receipt_items.mismatch_yuan }} 差异。</div>
   {% endif %}
   {% set visible_items = receipt_items.rows | selectattr('name') | list %}
   {% if visible_items %}

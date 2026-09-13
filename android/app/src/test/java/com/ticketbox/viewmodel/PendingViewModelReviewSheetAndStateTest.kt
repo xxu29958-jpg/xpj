@@ -1,10 +1,11 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.repository.UploadBatchRequest
+
 import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.upload.PreparedUploadImage
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -12,8 +13,6 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -35,11 +34,11 @@ internal class PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewT
     fun viewerWriteActionsShortCircuitWithoutRepositoryCalls() = review {
         val target = expense(id = 42L, amountCents = 100L, merchant = "M")
         val fake = FakeReviewActions(pending = listOf(target), canModifyLedger = false)
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         assertTrue(vm.uiState.value.readOnly)
-        assertNull(vm.beginUploadPreparation())
+        assertFalse(vm.acceptUploads(UploadBatchRequest(UPLOAD_TEST_BATCH, listOf("blocked"), uploadTestBinding(), "Asia/Shanghai") { error("viewer must not prepare") }))
         vm.openQuickCategory(target)
         vm.saveQuickCategory(target.id, "交通")
         vm.confirm(target)
@@ -54,14 +53,14 @@ internal class PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewT
         assertEquals(0, fake.confirmCalls)
         assertEquals(0, fake.rejectCalls)
         assertEquals(0, fake.markNotDuplicateCalls)
-        assertEquals(0, fake.uploadCalls)
+        assertTrue(fake.uploadIntents.accepted.isEmpty())
     }
 
     @Test
     fun openAndCloseSheetTogglesActiveSheet() = review {
         val target = expense(id = 50L)
         val fake = FakeReviewActions(pending = listOf(target))
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         vm.openQuickCategory(target)
@@ -184,7 +183,7 @@ internal class PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewT
             pending = listOf(expense(id = 80L, merchant = "Old Ledger")),
             activeLedgerFlow = ledgerFlow,
         )
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         assertEquals(listOf("Old Ledger"), vm.uiState.value.items.map { it.merchant })
@@ -209,7 +208,7 @@ internal class PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewT
             fetchIndex += 1
             if (fetchIndex == 1) firstResponse.await() else secondResponse.await()
         }
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         fake.pending = emptyList()
@@ -242,7 +241,7 @@ internal class PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewT
             activeLedgerFlow = ledgerFlow,
         )
         fake.thumbnailResponder = { thumbnailResponse.await() }
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         fake.pending = emptyList()
@@ -256,28 +255,12 @@ internal class PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewT
     }
 
     @Test
-    fun uploadPreparedBeforeLedgerChangeIsDroppedBeforeRepositoryCall() = review {
-        val ledgerFlow = MutableStateFlow<String?>("owner")
-        val fake = FakeReviewActions(activeLedgerFlow = ledgerFlow, activeLedgerIdProvider = { ledgerFlow.value })
-        val vm = PendingViewModel(fake)
+    fun bindingChangeBeforeItsObservationCannotAcceptAnOldScreenSelection() = review {
+        val fake = FakeReviewActions()
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
-
-        val uploadAttempt = assertNotNull(vm.beginUploadPreparation())
-        ledgerFlow.value = "family"
-        advanceUntilIdle()
-
-        vm.uploadScreenshot(
-            PreparedUploadImage(
-                fileName = "receipt.jpg",
-                contentType = "image/jpeg",
-                bytes = byteArrayOf(1, 2, 3),
-                sourceSizeBytes = 3L,
-            ),
-            attempt = uploadAttempt,
-        )
-        advanceUntilIdle()
-
-        assertEquals(0, fake.uploadCalls)
-        assertEquals(UiText.res(R.string.pending_msg_upload_ledger_switched), vm.uiState.value.message)
+        fake.uploadIntents.currentBinding = uploadTestBinding().copy(ledgerId = "family")
+        assertFalse(vm.acceptUploads(UploadBatchRequest(UPLOAD_TEST_BATCH, listOf("receipt.jpg"), uploadTestBinding(), "Asia/Shanghai") { error("stale binding") }))
+        assertTrue(fake.uploadIntents.accepted.isEmpty())
     }
 }

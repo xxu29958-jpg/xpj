@@ -30,7 +30,7 @@ from app.services.rule_service import update_rule
 def _create_rule(client: TestClient, *, identity, keyword: str = "TestCafe") -> dict:
     resp = client.post(
         "/api/rules/categories",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "keyword": keyword,
             "category": "餐饮",

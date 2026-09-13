@@ -172,14 +172,12 @@ def test_web_recurring_edit_rename_conflict_guides_to_existing(web_client: TestC
     assert edited.status_code == 200
     assert "已经在你的固定支出里" in edited.text
     assert "去编辑现有记录" in edited.text
-    # 链接落点 = 展开碰撞项的编辑表单, 不只是锚定一个关闭的 details。
-    form = re.search(
-        r'<details class="plan-edit" open>.*?action="/web/recurring/([^"]+)/edit"',
-        edited.text,
-        re.DOTALL,
-    )
-    assert form is not None
-    assert form.group(1) == keep_id
+    # 保留原填写并展开碰撞项；两项都必须可见，不能依赖列表顺序。
+    for item_id in (keep_id, other_id):
+        row = re.search(rf'<li\b[^>]*id="item-{re.escape(item_id)}".*?</li>', edited.text, re.DOTALL)
+        assert row is not None
+        assert '<details class="plan-edit" open>' in row.group(0)
+        assert f'action="/web/recurring/{item_id}/edit"' in row.group(0)
 
 
 def test_web_recurring_candidate_confirm_conflict_consumes_details(

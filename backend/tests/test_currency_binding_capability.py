@@ -53,71 +53,20 @@ def test_runtime_compatibility_is_the_only_client_currency_capability(client) ->
 
 
 @pytest.mark.real_db
-def test_first_fact_claim_is_transactional_and_audited(identity) -> None:
+def test_ordinary_money_writes_cannot_choose_or_activate_currency(identity) -> None:
     _ = identity
-    # Session A caches EMPTY before session B wins the first-fact claim.  The
-    # subsequent FOR UPDATE in A must refresh to B's committed ACTIVE row,
-    # not attempt a second state transition with stale ORM attributes.
-    with SessionLocal() as second_writer:
-        assert get_capability(second_writer).state == "EMPTY"
-        with SessionLocal() as first_writer:
-            capability = resolve_write_capability(first_writer)
-            assert capability.state == "ACTIVE"
-            assert capability.home_currency_code == "CNY"
-            first_writer.add(
-                Budget(
-                    tenant_id="owner",
-                    month="2026-08",
-                    total_amount_cents=100,
-                    non_monthly_amount_cents=0,
-                    rollover_amount_cents=0,
-                )
-            )
-            first_writer.commit()
-
-        capability = resolve_write_capability(second_writer)
-        assert capability.state == "ACTIVE"
-        assert capability.home_currency_code == "CNY"
-        second_writer.add(
-            Budget(
-                tenant_id="owner",
-                month="2026-09",
-                total_amount_cents=200,
-                non_monthly_amount_cents=0,
-                rollover_amount_cents=0,
-            )
-        )
-        second_writer.commit()
-
+    for _attempt in range(2):
+        with SessionLocal() as db:
+            with pytest.raises(AppError) as refused:
+                resolve_write_capability(db)
+            assert refused.value.error == "currency_adoption_required"
+            db.rollback()
     with SessionLocal() as db:
         binding = db.get(InstallationCurrencyBinding, 1)
-        assert binding is not None
-        assert binding.state == "ACTIVE"
-        assert binding.binding_revision == 1
-        assert binding.minor_unit_exponent == 2
-        assert binding.rounding_mode == "ROUND_HALF_UP"
-        audit = db.query(InstallationCurrencyAuditLog).one()
-        assert audit.action == "FIRST_FACT_CLAIM"
-        assert audit.before_snapshot["state"] == "EMPTY"
-        assert audit.after_snapshot["state"] == "ACTIVE"
-        assert db.query(Budget).count() == 2
-
-
-def test_first_fact_claim_rolls_back_with_abandoned_write(identity) -> None:
-    _ = identity
-    with SessionLocal() as db:
-        resolve_write_capability(db)
-        db.add(
-            Budget(
-                tenant_id="owner",
-                month="2026-08",
-                total_amount_cents=100,
-                non_monthly_amount_cents=0,
-                rollover_amount_cents=0,
-            )
-        )
-        db.rollback()
-
-    with SessionLocal() as db:
-        assert get_capability(db).state == "EMPTY"
+        assert binding.state == "EMPTY"
+        assert binding.home_currency_code is None
+        assert binding.binding_revision == 0
         assert db.query(InstallationCurrencyAuditLog).count() == 0
+        assert db.query(Budget).count() == 0
+
+

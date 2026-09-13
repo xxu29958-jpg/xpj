@@ -18,6 +18,7 @@ from app.routes.web_debts import (
     _member_headline,
     _split_debt_views,
 )
+from tests._runtime_protocol import negotiated_headers
 
 # Uses the shared ``web_client`` fixture (conftest.py) which bypasses the /web
 # loopback gate by overriding _require_local; the plain ``client`` fixture keeps
@@ -37,13 +38,13 @@ def _create_external_debt(
     principal_cents: int = 50000,
 ) -> dict:
     body: dict[str, object] = {
-        "direction": direction,
+        "home_currency_code": "CNY", "direction": direction,
         "counterparty_type": "external",
         "principal_amount_cents": principal_cents,
     }
     if label is not None:
         body["counterparty_label"] = label
-    resp = web_client.post("/api/debts", headers=_idem(identity.app_headers), json=body)
+    resp = web_client.post("/api/debts", headers=negotiated_headers(web_client, _idem(identity.app_headers)), json=body)
     assert resp.status_code == 201, resp.text
     return resp.json()
 
@@ -53,7 +54,7 @@ def _seed_member_debt(*, direction: str = "i_owe", principal_cents: int = 12000)
 
     ``POST /api/debts`` only creates external debt (a member obligation needs the
     other party's confirmation — it arrives via bill_split accept), so member debts
-    are inserted directly. No counterparty_label → exercises the 家庭成员 fallback.
+    are inserted directly. No stored label: the canonical query resolves the known member name.
     """
     with SessionLocal() as db:
         member = Account(display_name="家人")
@@ -189,12 +190,13 @@ def test_web_debts_lists_member_debt_communal(web_client: TestClient) -> None:
     # slice 1A: member (bill_split) debts render as a COMMUNAL relational row, not the
     # accounting framing. The viewer (loopback owner = the i_owe debtor) sees the relational
     # headline + 家人 section header + neutral status, NEVER 应付/应收 and NEVER danger (red-line ②).
-    # No counterparty_label → the 家庭成员 fallback. (Drop the viewer pass → headline degrades to
+    # The known creditor name comes from the query owner. (Drop the viewer pass → headline degrades to
     # the third-party "这件事还在进行中" and this fails.)
     _seed_member_debt(direction="i_owe")
     resp = web_client.get("/web/debts")
     assert resp.status_code == 200
-    assert "家庭成员" in resp.text  # counterparty fallback name
+    assert '<div class="debt-name">家人</div>' in resp.text
+    assert '<div class="debt-member-remaining">剩余 ¥120.00</div>' in resp.text
     assert 'id="debt-section-member">家人</h2>' in resp.text  # 家人 section header
     # Communal relational headline (viewer=owner=debtor, open, ratio 0).
     assert "你帮我垫了，慢慢还给你" in resp.text
@@ -240,6 +242,7 @@ def _stub_debt(**overrides) -> SimpleNamespace:
     base = {
         "public_id": "dbt_1",
         "counterparty_label": "招商信用卡",
+        "note": None,
         "counterparty_type": "external",
         "direction": "i_owe",
         "status": "open",
@@ -304,6 +307,7 @@ def test_debt_view_member_branch_is_communal() -> None:
     # A member row never carries the external accounting fields.
     assert "direction_label" not in member
     assert "remaining_segments" not in member
+    assert member["remaining_label"] == "¥500.00"
 
     # Cleared member debt → recede (sunk), success status, no progress bar.
     cleared = _debt_view(
@@ -391,8 +395,7 @@ def test_web_debt_detail_external_renders_summary(web_client: TestClient, *, ide
 
 def test_web_debt_detail_member_renders_communal(web_client: TestClient) -> None:
     # Owner viewing their own ledger's member debt → viewer resolves to a party
-    # → communal card: 一起处理 eyebrow + relational headline + 看看账, NO accounting
-    # framing (应付/应收/剩余) and NO danger tone (red-line ②).
+    # The relationship summary exposes the remaining amount before expanding supporting totals.
     public_id = _seed_member_debt(direction="i_owe", principal_cents=20000)
     detail = web_client.get(f"/web/debts/{public_id}")
     assert detail.status_code == 200
@@ -402,7 +405,8 @@ def test_web_debt_detail_member_renders_communal(web_client: TestClient) -> None
     # Red lines: member detail must not show accounting framing or danger tone.
     assert "应付" not in detail.text
     assert "应收" not in detail.text
-    assert "剩余" not in detail.text  # member card never surfaces remaining
+    before_details = detail.text.split('<details class="debt-look">')[0]
+    assert '<div class="debt-member-remaining">剩余 ¥200.00</div>' in before_details
     assert "product-status--danger" not in detail.text  # never red for member debt
     assert "进行中" in detail.text  # member open status badge (neutral)
 

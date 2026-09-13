@@ -30,7 +30,7 @@ def _freeze_recurring_candidate_clock(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_recurring_candidate_confirmation_service_creates_item_directly() -> None:
     last_seen = _seed_monthly_candidate()
-    payload = RecurringCandidateConfirmRequest(
+    payload = RecurringCandidateConfirmRequest(home_currency_code="CNY",
         merchant="ChatGPT Plus",
         amount_cents=20000,
         occurrence_count=3,
@@ -70,7 +70,7 @@ def test_candidate_confirmation_rejects_normalized_merchant_key_overflow(
     rejected = client.post(
         "/api/recurring/from-candidate?timezone=UTC",
         headers=identity.app_headers,
-        json={
+        json={"home_currency_code": "CNY",
             "merchant": expanding_merchant,
             "amount_cents": 20000,
             "occurrence_count": 3,
@@ -118,7 +118,7 @@ def _confirm_candidate(
     response = client.post(
         "/api/recurring/from-candidate?timezone=UTC",
         headers=identity.app_headers,
-        json={
+        json={"home_currency_code": "CNY",
             "merchant": merchant,
             "amount_cents": amount_cents,
             "occurrence_count": 3,
@@ -164,7 +164,7 @@ def test_recurring_candidate_confirm_creates_item_and_is_idempotent(client: Test
     again = client.post(
         "/api/recurring/from-candidate?timezone=UTC",
         headers=identity.app_headers,
-        json={
+        json={"home_currency_code": "CNY",
             "merchant": "ChatGPT Plus",
             "amount_cents": 20000,
             "occurrence_count": 3,
@@ -190,7 +190,7 @@ def test_recurring_candidate_confirm_uses_server_observation_not_client_provenan
     response = client.post(
         "/api/recurring/from-candidate?timezone=UTC",
         headers=identity.app_headers,
-        json={
+        json={"home_currency_code": "CNY",
             "merchant": "ChatGPT Plus",
             "amount_cents": 20_000,
             "occurrence_count": 999,
@@ -227,7 +227,7 @@ def test_recurring_candidate_next_expected_uses_local_expense_date(client: TestC
     response = client.post(
         "/api/recurring/from-candidate?timezone=Asia/Shanghai",
         headers=identity.app_headers,
-        json={
+        json={"home_currency_code": "CNY",
             "merchant": merchant,
             "amount_cents": amount_cents,
             "occurrence_count": 3,
@@ -303,7 +303,7 @@ def test_confirm_candidate_never_resurrects_archived_item(client: TestClient, *,
     response = client.post(
         "/api/recurring/from-candidate?timezone=UTC",
         headers=identity.app_headers,
-        json={
+        json={"home_currency_code": "CNY",
             "merchant": "ChatGPT Plus",
             "amount_cents": 20000,
             "occurrence_count": 3,
@@ -343,7 +343,7 @@ def test_confirm_candidate_never_overwrites_manual_commitment(client: TestClient
     manual = client.post(
         "/api/recurring/items",
         headers=headers,
-        json={
+        json={"home_currency_code": "CNY",
             "merchant": "ChatGPT Plus",
             "baseline_amount_cents": 18_000,
             "next_expected_date": "2026-06-06",
@@ -355,7 +355,7 @@ def test_confirm_candidate_never_overwrites_manual_commitment(client: TestClient
     confirmation = client.post(
         "/api/recurring/from-candidate?timezone=UTC",
         headers=identity.app_headers,
-        json={
+        json={"home_currency_code": "CNY",
             "merchant": "ChatGPT Plus",
             "amount_cents": 20_000,
             "occurrence_count": 3,
@@ -389,7 +389,7 @@ def test_candidate_recurring_rejects_cross_key_rename_without_reopening_claimed_
     renamed = client.patch(
         f"/api/recurring/items/{item['public_id']}",
         headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
-        json={
+        json={"home_currency_code": "CNY",
             "merchant": "AI Family Plan",
             "expected_row_version": item["row_version"],
         },
@@ -421,7 +421,7 @@ def test_viewer_cannot_mutate_recurring_items(client: TestClient, *, identity) -
     create_response = client.post(
         "/api/recurring/from-candidate?timezone=UTC",
         headers=identity.app_headers,
-        json={
+        json={"home_currency_code": "CNY",
             "merchant": "ChatGPT Plus",
             "amount_cents": 20000,
             "occurrence_count": 3,

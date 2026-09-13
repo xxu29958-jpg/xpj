@@ -19,9 +19,10 @@ def owner_devices(
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    devices = svc.get_devices(db)
+    inventory = svc.get_devices(db)
     ctx = _base(request, db)
-    ctx["devices"] = devices
+    ctx["devices"] = inventory.devices
+    ctx["ended_browser_sessions"] = inventory.ended_browser_sessions
     return templates.TemplateResponse(request=request, name="devices.html", context=ctx)
 
 

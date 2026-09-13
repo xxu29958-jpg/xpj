@@ -1,6 +1,7 @@
 package com.ticketbox.data.remote.dto
 
 import com.squareup.moshi.Json
+import com.squareup.moshi.JsonClass
 
 /**
  * ADR-0049 §2 (slice 8) — Android contract for the Debt entity surface.
@@ -91,6 +92,7 @@ data class DebtDto(
     // the server computes it (get_participant_debt_response), the client never derives it.
     @param:Json(name = "is_forgiven")
     val isForgiven: Boolean = false,
+    val note: String? = null,
 )
 
 data class DebtListResponseDto(
@@ -136,8 +138,11 @@ data class DebtBillParseResponseDto(
  * this body `additionalProperties=false`, so the DTO field set must stay a subset of the
  * schema (the contract gate's forward check is the forbid protection).
  */
+@JsonClass(generateAdapter = true)
 data class DebtCreateRequestDto(
     val direction: String,
+    @param:Json(name = "home_currency_code")
+    val homeCurrencyCode: String,
     @param:Json(name = "counterparty_type")
     val counterpartyType: String,
     @param:Json(name = "counterparty_label")
@@ -155,26 +160,30 @@ data class DebtCreateRequestDto(
     // §B 完整 installment 期数 + 周期（均仅 kind=='installment' 时有效）。DEFAULTED/可空 — count 留空即不排期；
     // period 留空（null）后端默认按月（每月一期）= 国内分期的压倒性默认。两者都是 DebtCreateRequest 的已声明属性
     // （additionalProperties=false → 正向检查只对已声明字段通过）；后端 CHECK 把 count/period 配对，故 period
-    // 只在 count 也给时随车（见 DebtMappers.toCreateRequest 的 chokepoint）。
+    // 只在 count 也给时随车；持久化意图由 DebtCreateOutboxPayload 投影到此协议。
     @param:Json(name = "installment_count")
     val installmentCount: Long? = null,
     @param:Json(name = "installment_period_months")
     val installmentPeriodMonths: Long? = null,
+    val note: String? = null,
 )
 
 /**
  * Body for `POST /api/debts/{id}/repayments` — record one committed repayment fact (ADR-0049 §3.1,
  * slice 8c). slice 8c submits the home-currency path only (`amountCents`); the foreign-currency path
- * (`original_currency` + `original_amount` + `paid_at`) is deferred. [expectedRowVersion] is the
+ * (`original_currency` + `original_amount`) is deferred. The original `paid_at` is frozen before local publication. [expectedRowVersion] is the
  * §2.1 stale-intent token (carries the Debt's `row_version`) + the §3.6 idempotency fingerprint
  * component. The backend marks this body `additionalProperties=false`, so the DTO field set must
  * stay a subset of the schema (the contract gate's forward check is the forbid protection).
  */
+@JsonClass(generateAdapter = true)
 data class RepaymentCreateRequestDto(
     @param:Json(name = "amount_cents")
     val amountCents: Long,
     @param:Json(name = "expected_row_version")
     val expectedRowVersion: Long,
+    @param:Json(name = "paid_at")
+    val paidAt: String,
 )
 
 /**
@@ -183,6 +192,7 @@ data class RepaymentCreateRequestDto(
  * `remaining`, never below 0); [reason] is required. [expectedRowVersion] is the §2.1 stale-intent
  * token + §3.6 fingerprint component.
  */
+@JsonClass(generateAdapter = true)
 data class DebtAdjustmentCreateRequestDto(
     @param:Json(name = "amount_cents")
     val amountCents: Long,

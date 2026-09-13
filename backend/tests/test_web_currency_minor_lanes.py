@@ -8,6 +8,7 @@ R15a-3 起补渲染侧：rules 列表金额条件回显、budget-advise breakdow
 from __future__ import annotations
 
 import re
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -18,10 +19,11 @@ from app.errors import AppError
 from app.models import CategoryRule, Expense
 from app.routes.web_bill_split import _cents_to_yuan, _yuan_to_cents
 from app.routes.web_income_plans import _parse_yuan
-from app.routes.web_rules import _parse_optional_amount_cents
+from app.routes.web_rule_forms import parse_rule_amount
 from app.services.budget_advisor_service import _providers as providers_module
 from app.services.time_service import now_utc
 from tests._infra.currency import activate_test_currency_authority
+from tests._web_rule_form_support import submit_rule_form
 
 
 @pytest.fixture
@@ -46,9 +48,9 @@ def test_income_parse_rejects_fraction_under_zero_decimal_home(jpy_env) -> None:
 
 
 def test_rules_optional_amount_follow_zero_decimal_home(jpy_env) -> None:
-    assert _parse_optional_amount_cents("1200", currency_code="JPY") == 1200
+    assert parse_rule_amount("1200", currency_code="JPY") == 1200
     with pytest.raises(AppError) as excinfo:
-        _parse_optional_amount_cents("12.5", currency_code="JPY")
+        parse_rule_amount("12.5", currency_code="JPY")
     assert excinfo.value.error == "invalid_request"
 
 
@@ -61,7 +63,7 @@ def test_web_lanes_still_work_on_cny_default() -> None:
     # CNY 既有口径回归（不随 JPY 切换）：分 = 元 ×100。
     assert _parse_yuan("12.50", currency_code="CNY", label="收入金额") == 1250
     assert _cents_to_yuan(1250, "CNY") == "12.50"
-    assert _parse_optional_amount_cents("12.50", currency_code="CNY") == 1250
+    assert parse_rule_amount("12.50", currency_code="CNY") == 1250
     assert _yuan_to_cents("12.50", "CNY") == 1250
 
 
@@ -73,7 +75,7 @@ def test_explicit_persisted_currency_parser_ignores_runtime_env_drift(
         currency_code="CNY",
         label="收入金额",
     ) == 1234
-    assert _parse_optional_amount_cents(
+    assert parse_rule_amount(
         "12.34",
         currency_code="CNY",
     ) == 1234
@@ -135,6 +137,7 @@ def _seed_jpy_amount_rule() -> None:
                 enabled=True,
                 priority=100,
                 amount_min_cents=1200,
+                home_currency_code="JPY",
                 created_at=timestamp,
                 updated_at=timestamp,
             )
@@ -166,12 +169,13 @@ def test_rules_page_render_follows_zero_decimal_home(jpy_env, web_client: TestCl
 
     page = web_client.get("/web/rules?ledger_id=owner")
     assert page.status_code == 200, page.text
-    assert "≥ ¥1200" in page.text
+    assert "≥ JPY ¥1,200" in page.text
     assert "¥12.00" not in page.text
 
 
+@pytest.mark.currency_binding_unbound
 def test_budget_advise_render_follows_zero_decimal_home(jpy_env, web_client: TestClient, *, identity) -> None:
-    # R15a-3：JPY env 下 advise breakdown 回显零缩放 + 输入 step 走零小数元数据。
+    _activate_jpy_authority()
     page = web_client.get(
         "/web/budget-advise?ledger_id=owner&month=2026-05&savings_target_yuan=1200",
     )
@@ -188,18 +192,19 @@ def test_budget_advise_render_follows_zero_decimal_home(jpy_env, web_client: Tes
     assert "备用金（JPY）" in page.text
     assert "储蓄目标（元）" not in page.text
     assert "备用金（元）" not in page.text
-    assert 'step="1"' in page.text
+    assert 'name="savings_target_yuan" inputmode="numeric"' in page.text
 
 
+@pytest.mark.currency_binding_unbound
 def test_budget_advise_suggestion_table_follows_zero_decimal_home(
     jpy_env, web_client: TestClient, live_provider_env, monkeypatch, *, identity
 ) -> None:
-    # R15a-3：AI 建议表回显零缩放 —— suggested_amount_cents=1200 亮 "¥1200"，不 ÷100。
+    _activate_jpy_authority()
     _patch_provider_suggestion(monkeypatch, 1200)
 
     page = web_client.post(
         "/web/budget-advise",
-        data={"ledger_id": "owner", "month": "2026-05", "run_advise": "true"},
+        data={"ledger_id": "owner", "month": "2026-05", "home_currency_code": "JPY", "run_advise": "true"},
     )
     assert page.status_code == 200, page.text
     assert "¥1200" in page.text
@@ -208,7 +213,7 @@ def test_budget_advise_suggestion_table_follows_zero_decimal_home(
 
 def test_render_lanes_still_work_on_cny_default(web_client: TestClient, *, identity) -> None:
     # CNY 回归：渲染侧分→元 ÷100 两位口径不变。
-    resp = web_client.post(
+    resp = submit_rule_form(web_client,
         "/web/rules/create",
         data={
             "keyword": "餐饮",
@@ -222,7 +227,7 @@ def test_render_lanes_still_work_on_cny_default(web_client: TestClient, *, ident
 
     page = web_client.get("/web/rules?ledger_id=owner")
     assert page.status_code == 200, page.text
-    assert "≥ ¥12.50" in page.text
+    assert "≥ CNY ¥12.50" in page.text
 
     advise = web_client.get(
         "/web/budget-advise?ledger_id=owner&month=2026-05&savings_target_yuan=12",
@@ -232,7 +237,12 @@ def test_render_lanes_still_work_on_cny_default(web_client: TestClient, *, ident
         r"<small>\s*储蓄目标\s*</small>\s*<strong>\s*−\s*¥12\.00\s*</strong>",
         advise.text,
     )
-    assert 'step="0.01"' in advise.text
+    assert re.search(
+        r'<input(?=[^>]*\bname="savings_target_yuan")'
+        r'(?=[^>]*\btype="text")(?=[^>]*\binputmode="decimal")'
+        r'(?=[^>]*\bvalue="12")[^>]*>',
+        advise.text,
+    )
 
 
 @pytest.mark.currency_binding_unbound
@@ -245,7 +255,7 @@ def test_zero_fraction_no_js_forms_and_dashboard_share_input_contract(
     _activate_jpy_authority()
     saved = web_client.post(
         "/web/budgets/save",
-        data={
+        data={"home_currency_code": "JPY", "expected_row_version": "null", "idempotency_key": str(uuid4()),
             "ledger_id": "owner",
             "month": "2026-05",
             "total_amount_yuan": "1200",
@@ -278,11 +288,14 @@ def test_zero_fraction_no_js_forms_and_dashboard_share_input_contract(
 
     goals = web_client.get("/web/goals?ledger_id=owner&month=2026-05")
     assert goals.status_code == 200, goals.text
-    assert 'name="target_amount_yuan" step="1" min="1" inputmode="numeric"' in goals.text
+    assert 'name="home_currency_code" value="JPY"' in goals.text
+    assert 'name="target_amount_yuan" value="" inputmode="numeric"' in goals.text
+    assert "目标金额（JPY，仅支持整数）" in goals.text
 
     rules = web_client.get("/web/rules?ledger_id=owner")
     assert rules.status_code == 200, rules.text
-    assert 'name="amount_min_yuan" min="0" step="1" inputmode="numeric"' in rules.text
+    assert 'type="text" name="amount_min_yuan" inputmode="numeric"' in rules.text
+    assert 'name="home_currency_code" value="JPY"' in rules.text
     assert "金额下限（JPY，可选）" in rules.text
 
 

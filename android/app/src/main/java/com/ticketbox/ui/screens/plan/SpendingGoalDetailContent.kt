@@ -25,15 +25,12 @@ import com.ticketbox.ui.components.AppAmountInput
 import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
 import com.ticketbox.ui.components.AppContentCard
-import com.ticketbox.ui.components.AppProgressBar
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.components.displayMonthLabel
-import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.ui.screens.budget.MonthSwitcher
@@ -61,7 +58,6 @@ internal fun SpendingGoalViewContent(
 
 @Composable
 private fun SpendingGoalSummaryCard(goal: Goal) {
-    val currency = LocalCurrencyDisplay.current
     AppContentCard {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -74,32 +70,14 @@ private fun SpendingGoalSummaryCard(goal: Goal) {
             )
             StatusPill(text = goal.statusText(), tone = goal.stateTone())
         }
-        Text(
-            text = stringResource(
-                R.string.spending_goal_progress_percent,
-                goal.progressPercent.coerceAtLeast(0),
-            ),
-            color = goal.stateTone().fg,
-            style = MaterialTheme.typography.headlineMedium.tabularNum(),
-            fontWeight = FontWeight.SemiBold,
-        )
-        AppProgressBar(
-            fraction = goal.progress,
-            tone = goal.stateTone(),
-            height = AppSpacing.smallGap,
-            contentDescription = stringResource(
-                R.string.spending_goal_progress_a11y,
-                goal.name,
-                goal.progressPercent,
-            ),
-        )
+        SpendingGoalProgress(goal, showPercent = true)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
         ) {
             SpendingGoalMetric(
                 label = stringResource(R.string.spending_goal_spent_label),
-                value = formatDisplayAmount(goal.spentAmountCents, currency),
+                value = spendingGoalAmountText(goal.spentAmountCents, goal.homeCurrencyCode),
                 modifier = Modifier.weight(1f),
             )
             SpendingGoalMetric(
@@ -108,7 +86,7 @@ private fun SpendingGoalSummaryCard(goal: Goal) {
                 } else {
                     stringResource(R.string.spending_goal_remaining_label)
                 },
-                value = formatDisplayAmount(kotlin.math.abs(goal.remainingAmountCents), currency),
+                value = spendingGoalAmountText(goal.remainingAmountCents?.let { kotlin.math.abs(it) }, goal.homeCurrencyCode),
                 modifier = Modifier.weight(1f),
             )
         }
@@ -141,7 +119,6 @@ private fun SpendingGoalMetric(
 
 @Composable
 private fun SpendingGoalFactsCard(goal: Goal) {
-    val currency = LocalCurrencyDisplay.current
     AppContentCard {
         Text(
             text = stringResource(R.string.spending_goal_details_section),
@@ -160,7 +137,7 @@ private fun SpendingGoalFactsCard(goal: Goal) {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         SpendingGoalFactRow(
             label = stringResource(R.string.spending_goal_limit_label),
-            value = formatDisplayAmount(goal.targetAmountCents, currency),
+            value = spendingGoalAmountText(goal.targetAmountCents, goal.homeCurrencyCode),
         )
     }
 }
@@ -193,8 +170,7 @@ internal fun SpendingGoalEditContent(
     state: SpendingGoalDetailUiState,
     viewModel: SpendingGoalDetailViewModel,
 ) {
-    // R14-2：同 CreateSpendingGoalScreen —— 标签随 VM 已解析 capability，未确认落兜底展示。
-    val currency = state.ledgerCurrency ?: LocalCurrencyDisplay.current.homeCurrency
+    val currency = state.goalCurrency
     AppContentCard {
         Text(
             text = stringResource(R.string.spending_goal_edit_section),
@@ -203,8 +179,8 @@ internal fun SpendingGoalEditContent(
         )
         MonthSwitcher(
             month = displayMonthLabel(state.month),
-            onPreviousMonth = viewModel::previousMonth,
-            onNextMonth = viewModel::nextMonth,
+            onPreviousMonth = { viewModel.shiftMonth(-1) },
+            onNextMonth = { viewModel.shiftMonth(1) },
         )
         AppTextInput(
             state = AppTextInputState(
@@ -218,6 +194,7 @@ internal fun SpendingGoalEditContent(
             ),
             modifier = Modifier.fillMaxWidth(),
         )
+        if (currency != null) {
         AppAmountInput(
             state = AppAmountInputState(
                 label = stringResource(R.string.spending_goal_create_amount_label),
@@ -232,6 +209,9 @@ internal fun SpendingGoalEditContent(
             ),
             modifier = Modifier.fillMaxWidth(),
         )
+        } else {
+            Text(stringResource(R.string.spending_goal_currency_loading))
+        }
         SpendingGoalCategoryInput(state = state, viewModel = viewModel)
     }
 }

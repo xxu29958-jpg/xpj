@@ -248,7 +248,7 @@ class ExpenseRepositoryBindServerTest {
         apiFactory: FakeApiServiceFactory,
         settingsStore: FakeTicketboxSettingsStore,
         tokenStore: TestSessionFixture,
-    ): ExpenseRepository = ExpenseRepository(
+    ): ExpenseRepository = com.ticketbox.data.repository.expenseRepositoryFixture(
         expenseDao = dao,
         binding = testServerSessionBinding(
             apiClient = apiFactory,
@@ -256,5 +256,5 @@ class ExpenseRepositoryBindServerTest {
             tokenStore = tokenStore,
         ),
         deviceNameProvider = { "Android Test Device" },
-    )
+        )
 }

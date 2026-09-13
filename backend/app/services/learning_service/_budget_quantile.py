@@ -40,8 +40,16 @@ from app.money_contract import (
     projection_sum_to_int,
     round_minor_ratio_half_up,
 )
+from app.services.currency_binding_service import require_runtime_home_currency_code
+from app.services.currency_common import normalize_currency_code
 from app.services.learning_service._algorithm_registry import (
     BUDGET_SUGGESTION,
+)
+from app.services.money_projection_service import (
+    ProjectionGap,
+    ordered_projection_gaps,
+    project_recorded_amount,
+    sum_projected_amounts,
 )
 from app.services.spending_contract_service import (
     accounting_timezone_key,
@@ -62,10 +70,12 @@ DEFAULT_MIN_MONTHS = 3
 @dataclass(frozen=True)
 class BudgetQuantileSuggestion:
     category: str
-    p50_cents: int
-    p75_cents: int
+    p50_cents: int | None
+    p75_cents: int | None
     sample_months: int
+    home_currency_code: str
     algorithm_version: str = ALGORITHM_VERSION
+    missing_rates: tuple[ProjectionGap, ...] = ()
 
 
 def _quantile(sorted_values: list[int], numerator: int, denominator: int) -> int:
@@ -108,17 +118,6 @@ def _quantile(sorted_values: list[int], numerator: int, denominator: int) -> int
     )
 
 
-def _checked_month_total(current: int, amount_minor: int | None) -> int:
-    amount = projection_sum_to_int(
-        amount_minor,
-        label="budget_quantile.expense",
-    )
-    return projection_sum_to_int(
-        current + amount,
-        label="budget_quantile.month_total",
-    )
-
-
 def _lookback_months(
     *, now: datetime, look_back_months: int, timezone_name: str | None
 ) -> list[str]:
@@ -141,6 +140,7 @@ def compute_budget_quantile_suggestion(
     include_zero_months: bool = True,
     now: datetime | None = None,
     timezone_name: str | None = None,
+    home_currency_code: str | None = None,
 ) -> BudgetQuantileSuggestion | None:
     """Return monthly P50/P75 for the requested category set."""
 
@@ -162,24 +162,30 @@ def compute_budget_quantile_suggestion(
         timezone_name=zone.key,
         amount_required=True,
     )
-    monthly_totals: dict[str, int] = defaultdict(int)
+    home = normalize_currency_code(home_currency_code or require_runtime_home_currency_code(db))
+    gaps: set[ProjectionGap] = set()
+    monthly_totals: dict[str, int | None] = defaultdict(int)
     rows = db.execute(
-        select(stream.c.stream_date, stream.c.stream_amount_cents)
+        select(stream.c.stream_date, stream.c.stream_amount_cents, stream.c.home_currency_code)
         .where(stream.c.category.in_(match_values))
         .where(stream.c.stream_date >= earliest_start.astimezone(zone).date())
         .where(stream.c.stream_date < latest_end.astimezone(zone).date())
     )
-    for stream_date, stream_amount in rows:
+    for stream_date, stream_amount, source_currency in rows:
         key = stream_date.strftime("%Y-%m")
         if key not in months:
             continue
-        monthly_totals[key] = _checked_month_total(
-            monthly_totals[key], stream_amount
-        )
+        amount = project_recorded_amount(db, tenant_id=tenant_id, amount_minor=stream_amount,
+            source_currency=source_currency, home_currency=home, rate_date=stream_date, missing_rates=gaps)
+        monthly_totals[key] = sum_projected_amounts((monthly_totals[key], amount), label="budget_quantile.month_total")
 
     if include_zero_months:
         for month in months:
             monthly_totals.setdefault(month, 0)
+
+    if gaps:
+        return BudgetQuantileSuggestion(category=category, p50_cents=None, p75_cents=None,
+            sample_months=len(monthly_totals), home_currency_code=home, missing_rates=ordered_projection_gaps(gaps))
 
     values = sorted(
         max(
@@ -198,6 +204,7 @@ def compute_budget_quantile_suggestion(
         p50_cents=p50,
         p75_cents=p75,
         sample_months=len(values),
+        home_currency_code=home,
     )
 
 

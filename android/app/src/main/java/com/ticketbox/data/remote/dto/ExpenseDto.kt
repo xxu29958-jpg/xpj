@@ -3,6 +3,7 @@ package com.ticketbox.data.remote.dto
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 
+@JsonClass(generateAdapter = true)
 data class UploadResponseDto(
     val id: Long,
     @param:Json(name = "public_id")
@@ -11,6 +12,14 @@ data class UploadResponseDto(
     val enrichmentTaskPublicId: String,
     val status: String,
     val message: String,
+    @param:Json(name = "image_hash")
+    val imageHash: String,
+    @param:Json(name = "thumbnail_path")
+    val thumbnailPath: String?,
+    @param:Json(name = "duplicate_status")
+    val duplicateStatus: String,
+    @param:Json(name = "duplicate_of_id")
+    val duplicateOfId: Long?,
     @param:Json(name = "upload_size_bytes")
     val uploadSizeBytes: Long? = null,
     @param:Json(name = "duration_ms")
@@ -176,13 +185,13 @@ data class ExpenseManualCreateRequestDto(
     @param:Json(name = "regret_score")
     val regretScore: Int?,
     // issue #65 slice 4: device-unique idempotency ref for offline-capable
-    // manual create. The backend (Slice 1) keys dedup on
-    // ``{device_id}:{client_ref}`` so the SAME ref retried after a lost response
-    // HITs the existing row instead of double-creating. Optional (non-required in
-    // the OpenAPI schema), so this addition keeps the contract gate green with no
-    // snapshot change; Moshi omits it when null (the online quick-add path).
+    // manual create. New submissions always capture a UUID before persistence.
+    // Nullable only to read legacy durable JSON; a missing ref requires review
+    // and must never be regenerated during replay.
     @param:Json(name = "client_ref")
     val clientRef: String? = null,
+    @param:Json(name = "home_currency_code")
+    val homeCurrencyCode: String? = null,
 )
 
 /**

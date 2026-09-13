@@ -65,7 +65,7 @@ internal class ExpenseRepositoryPendingSyncTest {
             }
         }
         val dao = FakeExpenseDao()
-        val repository = ExpenseRepository(
+        val repository = com.ticketbox.data.repository.expenseRepositoryFixture(
             expenseDao = dao,
             binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(api),
@@ -93,6 +93,8 @@ internal class ExpenseRepositoryPendingSyncTest {
     }
 
     private fun pendingDto(merchant: String, rowVersion: Long): ExpenseDto = ExpenseDto(
+        homeCurrency = "CNY",
+        originalCurrencyCode = "CNY",
         id = 42L,
         publicId = "pending-public-id",
         amountCents = 1234L,

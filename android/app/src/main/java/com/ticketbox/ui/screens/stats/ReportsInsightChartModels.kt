@@ -7,8 +7,6 @@ import com.ticketbox.domain.model.ReportGranularity
 import com.ticketbox.domain.model.ReportTrendPoint
 import com.ticketbox.domain.model.ReportsOverview
 import com.ticketbox.ui.components.formatDisplayAmount
-import java.math.BigDecimal
-import java.math.RoundingMode
 import java.time.DateTimeException
 import java.time.LocalDate
 import java.time.YearMonth
@@ -23,11 +21,11 @@ internal data class ReportTrendChartPoint(
 )
 
 internal fun reportTrendChartPoints(trend: List<ReportTrendPoint>): List<ReportTrendChartPoint> =
-    trend.mapIndexed { index, point ->
+    if (trend.any { it.amountCents == null }) emptyList() else trend.mapIndexed { index, point ->
         ReportTrendChartPoint(
             x = index,
             label = point.label.ifBlank { point.bucket.takeLast(5) },
-            amountCents = point.amountCents.coerceAtLeast(0L),
+            amountCents = requireNotNull(point.amountCents).coerceAtLeast(0L),
             count = point.count.coerceAtLeast(0),
         )
     }
@@ -49,13 +47,15 @@ internal fun reportsRecentWindowTrend(
     today: LocalDate = currentLocalDate(overview.timezone),
 ): List<DailySpend> {
     if (overview.granularity != ReportGranularity.Day) return emptyList()
-    return elapsedReportTrend(overview, today)
+    val elapsed = elapsedReportTrend(overview, today)
+    if (elapsed.any { it.amountCents == null }) return emptyList()
+    return elapsed
         .asSequence()
         .map { point ->
             DailySpend(
                 date = point.bucket,
                 label = point.label.ifBlank { point.bucket.takeLast(5) },
-                amountCents = point.amountCents.coerceAtLeast(0L),
+                amountCents = requireNotNull(point.amountCents).coerceAtLeast(0L),
             )
         }
         .toList()
@@ -95,15 +95,15 @@ internal fun categoryComparisonMode(rows: List<CategoryComparisonChartRow>): Cat
 internal fun categoryComparisonChartRows(
     rows: List<ReportCategoryComparison>,
 ): List<CategoryComparisonChartRow> =
-    rows.asSequence()
+    if (rows.any { it.amountCents == null || it.previousAmountCents == null || it.yearOverYearAmountCents == null }) emptyList() else rows.asSequence()
         .map { row ->
-            val hasPrevious = row.previousCount > 0 && row.previousAmountCents > 0L
-            val hasYearOverYear = row.yearOverYearCount > 0 && row.yearOverYearAmountCents > 0L
+            val hasPrevious = row.previousCount > 0 && row.previousAmountCents?.let { it > 0L } == true
+            val hasYearOverYear = row.yearOverYearCount > 0 && row.yearOverYearAmountCents?.let { it > 0L } == true
             CategoryComparisonChartRow(
                 category = row.category,
-                currentAmountCents = row.amountCents.coerceAtLeast(0L),
-                previousAmountCents = if (hasPrevious) row.previousAmountCents.coerceAtLeast(0L) else 0L,
-                yearOverYearAmountCents = if (hasYearOverYear) row.yearOverYearAmountCents.coerceAtLeast(0L) else 0L,
+                currentAmountCents = requireNotNull(row.amountCents).coerceAtLeast(0L),
+                previousAmountCents = if (hasPrevious) requireNotNull(row.previousAmountCents).coerceAtLeast(0L) else 0L,
+                yearOverYearAmountCents = if (hasYearOverYear) requireNotNull(row.yearOverYearAmountCents).coerceAtLeast(0L) else 0L,
                 hasPrevious = hasPrevious,
                 hasYearOverYear = hasYearOverYear,
             )
@@ -115,22 +115,6 @@ internal fun categoryComparisonChartRows(
         }
         .take(5)
         .toList()
-
-internal fun compactAmountCentsLabel(amountCents: Long): String {
-    val sign = if (amountCents < 0L) "-" else ""
-    val absCents = abs(amountCents)
-    return when {
-        absCents >= 1_000_000L -> "${sign}¥${decimal(absCents, 1_000_000L)}万"
-        absCents >= 100_000L -> "${sign}¥${decimal(absCents, 100_000L)}k"
-        else -> "${sign}¥${decimal(absCents, 100L)}"
-    }
-}
-
-private fun decimal(value: Long, divisor: Long): String =
-    BigDecimal(value)
-        .divide(BigDecimal(divisor), 1, RoundingMode.HALF_UP)
-        .stripTrailingZeros()
-        .toPlainString()
 
 // ── WCAG 1.1.1 图表文本替代(纯函数,单测直测)─────────────────────────────
 // 自绘柱图对 TalkBack 仍是图形节点,给图表节点补 contentDescription 文本替代;

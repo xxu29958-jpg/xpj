@@ -11,28 +11,27 @@ selection, view-models) and concentrates the SQL here next to the other
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import AuthToken, Device, Expense, LedgerMember
-from app.money_contract import projection_sum_to_int
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import (
     minor_amount_major_number,
-    minor_amount_value,
 )
 from app.services.data_quality_service import is_usable_pending_merchant
 from app.services.expense_service import NOTIFICATION_DRAFT_SOURCE_PREFIX
+from app.services.money_projection_service import sum_projected_amounts
 from app.services.spending_contract_service import (
     accounting_zone,
     clean_month,
     confirmed_query,
-    confirmed_stream_query,
     month_bounds_utc,
 )
+from app.services.spending_projection_service import entry_gaps, read_projected_entries
 from app.services.time_service import now_utc
 
 # Keys are the literal ``Expense.source`` values the write paths persist
@@ -85,52 +84,6 @@ def sidebar_counts(db: Session, ledger_id: str) -> tuple[int, int]:
     return pending_count, suspected_count
 
 
-def trend14_amounts(
-    db: Session,
-    ledger_id: str,
-    *,
-    currency_code: str | None = None,
-) -> list[dict]:
-    """近 14 个日历日（含今天）的每日确认金额，按 expense_time/confirmed_at 聚合。"""
-    zone = _web_stats_zone()
-    today = now_utc().astimezone(zone).date()
-    start = today - timedelta(days=13)
-    end_day = today + timedelta(days=1)
-    stream = confirmed_stream_query(
-        tenant_id=ledger_id,
-        timezone_name=zone.key,
-        amount_required=True,
-    )
-    by_day: dict[str, int] = defaultdict(int)
-    rows = db.execute(
-        select(stream.c.stream_date, stream.c.stream_amount_cents)
-        .where(stream.c.stream_date >= start)
-        .where(stream.c.stream_date < end_day)
-    )
-    for stream_date, stream_amount_cents in rows:
-        key = stream_date.strftime("%m-%d")
-        by_day[key] = projection_sum_to_int(
-            by_day[key]
-            + projection_sum_to_int(
-                stream_amount_cents,
-                label="web_stats.trend_entry",
-            ),
-            label="web_stats.trend_day",
-        )
-    home = currency_code or require_runtime_home_currency_code(db)
-    result: list[dict] = []
-    for i in range(14):
-        d = start + timedelta(days=i)
-        label = d.strftime("%m-%d")
-        result.append({
-            "d": label,
-            "amount_yuan": minor_amount_major_number(by_day.get(label, 0), home),
-            "amount_cents": by_day.get(label, 0),
-            "amount_major_text": minor_amount_value(by_day.get(label, 0), home),
-        })
-    return result
-
-
 def confirmed_by_day(
     db: Session,
     ledger_id: str,
@@ -139,45 +92,22 @@ def confirmed_by_day(
     currency_code: str | None = None,
     tag: str | None = None,
 ) -> list[dict]:
-    """已确认账单在指定月内的每日金额，用于日历热力图。"""
+    """Project each recorded contribution before grouping calendar days."""
     month = _clean_month_filter(month)
     zone = _web_stats_zone()
-    stream = confirmed_stream_query(
-        tenant_id=ledger_id,
-        month=month,
-        tag=tag,
-        timezone_name=zone.key,
-        amount_required=True,
-    )
-    by_day: dict[str, dict[str, int]] = defaultdict(lambda: {"amount_cents": 0, "count": 0})
-    for stream_date, stream_amount_cents in db.execute(
-        select(stream.c.stream_date, stream.c.stream_amount_cents)
-    ):
-        if stream_date is None or stream_amount_cents is None:
-            continue
-        key = stream_date.isoformat()
-        by_day[key]["amount_cents"] = projection_sum_to_int(
-            by_day[key]["amount_cents"]
-            + projection_sum_to_int(
-                stream_amount_cents,
-                label="web_stats.calendar_entry",
-            ),
-            label="web_stats.calendar_day",
-        )
-        by_day[key]["count"] += 1
     home = currency_code or require_runtime_home_currency_code(db)
-    return [
-        {
-            "date": day,
-            "amount_cents": values["amount_cents"],
-            "amount_yuan": minor_amount_major_number(
-                values["amount_cents"],
-                home,
-            ),
-            "count": values["count"],
-        }
-        for day, values in sorted(by_day.items())
-    ]
+    entries = read_projected_entries(db, tenant_id=ledger_id, ranges=[month_bounds_utc(month, zone.key)],
+        timezone_name=zone.key, home=home, tag=tag)
+    days = defaultdict(list)
+    for entry in entries:
+        days[entry.stream_date.isoformat()].append(entry)
+    result = []
+    for day, rows in sorted(days.items()):
+        amount = sum_projected_amounts((row.amount_cents for row in rows), label="web_stats.calendar_day")
+        result.append({"date": day, "home_currency_code": home, "amount_cents": amount,
+            "amount_yuan": None if amount is None else minor_amount_major_number(amount, home),
+            "count": len(rows), "missing_rates": entry_gaps(rows)})
+    return result
 
 
 def source_breakdown(

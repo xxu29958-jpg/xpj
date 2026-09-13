@@ -90,6 +90,7 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("GET", "/web/library"): "local-only-rendering",
     ("GET", "/web/currency-adoption"): "desktop-installation-owner",
     ("POST", "/web/currency-adoption"): "desktop-installation-owner",
+    ("POST", "/web/currency-adoption/change"): "desktop-installation-owner",
     # Account flows
     ("GET", "/web/confirmed"): "local-only-rendering",
     ("POST", "/web/confirmed/batch-update"): "writer-only",
@@ -101,7 +102,11 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     # v1.1 AI budget advisor + income plan (PR-9)
     ("GET", "/web/budget-advise"): "local-only-rendering",
     ("POST", "/web/budget-advise"): "owner-live-provider",
+    ("GET", "/web/budget-advise/rates"): "local-only-rendering",
+    ("POST", "/web/budget-advise/rates"): "writer-only",
     ("GET", "/web/income-plans"): "local-only-rendering",
+    ("GET", "/web/income-plans/{public_id}/edit"): "writer-only",
+    ("POST", "/web/income-plans/{public_id}/edit"): "writer-only",
     ("POST", "/web/income-plans/create"): "writer-only",
     ("POST", "/web/income-plans/{public_id}/archive"): "writer-only",
     ("POST", "/web/income-plans/{public_id}/restore"): "writer-only",
@@ -120,6 +125,7 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("GET", "/web/debts"): "local-only-rendering",
     ("GET", "/web/debts/new"): "local-only-rendering",
     ("GET", "/web/debts/{public_id}"): "local-only-rendering",
+    ("GET", "/web/debts/{public_id}/repayments"): "local-only-rendering",
     ("POST", "/web/debts"): "writer-only",
     ("POST", "/web/debts/{public_id}/adjustments"): "writer-only",
     ("POST", "/web/debts/{public_id}/forgive"): "writer-only",
@@ -152,10 +158,13 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("POST", "/web/duplicates/{expense_id}/reject-current"): "writer-only",
     ("POST", "/web/duplicates/{expense_id}/reject-original"): "writer-only",
     # Expense edit / confirmed fact correction
+    ("GET", "/web/expenses/new"): "local-only-rendering",
+    ("POST", "/web/expenses/new"): "writer-only",
     ("GET", "/web/expenses/{expense_id}/edit"): "local-only-rendering",
     ("GET", "/web/expenses/{expense_id}/correct"): "local-only-rendering",
     ("POST", "/web/expenses/{expense_id}/save"): "writer-only",
     ("POST", "/web/expenses/{expense_id}/corrections"): "writer-only",
+    ("POST", "/web/expenses/{expense_id}/correction-rate"): "writer-only",
     ("POST", "/web/expenses/{expense_id}/confirm"): "writer-only",
     ("POST", "/web/expenses/{expense_id}/items/save"): "writer-only",
     ("POST", "/web/expenses/{expense_id}/items/acknowledge-mismatch"): "writer-only",
@@ -189,6 +198,8 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("POST", "/web/family/members/{member_id}/transfer-owner"): "writer-only",
     # Goals
     ("GET", "/web/goals"): "local-only-rendering",
+    ("GET", "/web/goals/{public_id}/edit"): "writer-only",
+    ("POST", "/web/goals/{public_id}/edit"): "writer-only",
     ("POST", "/web/goals/create"): "writer-only",
     ("POST", "/web/goals/{public_id}/archive"): "writer-only",
     # CSV import
@@ -219,6 +230,8 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("POST", "/web/review/bulk"): "writer-only",
     # Recurring
     ("GET", "/web/recurring"): "local-only-rendering",
+    ("GET", "/web/recurring/{public_id}/occurrence"): "local-only-rendering",
+    ("POST", "/web/recurring/{public_id}/occurrence"): "writer-only",
     # A3 manual create/edit: web surface of POST/PATCH /api/recurring/items.
     ("POST", "/web/recurring/create"): "writer-only",
     ("POST", "/web/recurring/{public_id}/edit"): "writer-only",
@@ -236,6 +249,8 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     # Rules
     ("GET", "/web/rules"): "local-only-rendering",
     ("POST", "/web/rules/create"): "writer-only",
+    ("GET", "/web/rules/{rule_id}/edit"): "writer-only",
+    ("POST", "/web/rules/{rule_id}/edit"): "writer-only",
     ("POST", "/web/rules/applications/{public_id}/rollback"): "writer-only",
     ("POST", "/web/rules/{rule_id}/toggle"): "writer-only",
     ("POST", "/web/rules/{rule_id}/delete"): "writer-only",

@@ -30,7 +30,7 @@ def _create_external_debt(*, principal_amount_cents: int) -> str:
             created_by_account_id=1,
             owner_account_id=1,
             payload=DebtCreateRequest(
-                direction="i_owe",
+                home_currency_code="CNY", direction="i_owe",
                 counterparty_type="external",
                 counterparty_label="测试外部债",
                 principal_amount_cents=principal_amount_cents,

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="category_rule_currency_choose">选择金额币种</string>
+    <string name="category_rule_currency_review">原金额币种尚未确认，原数值已保留，请先核对规则。</string>
+    <string name="category_rule_amount_min">金额下限（可不填）</string>
+    <string name="category_rule_amount_max">金额上限（可不填）</string>
+    <string name="category_rule_amount_optional">不填上下限时不限制金额；填写后按所选币种判断。</string>
+    <string name="category_rule_submission_saved">原规则提交已保存在本机，等待服务器确认。</string>
+    <string name="category_rule_submission_waiting">这份规则提交尚未确认，下面保留已确认的规则。</string>
+    <string name="category_rule_submission_done">服务器已确认这份规则提交。</string>
+    <string name="category_rule_submission_review">原规则提交需要核对，内容已保留。</string>
+    <string name="category_rule_submission_retry">重试原提交</string>
+    <string name="category_rule_submission_details">提交详情</string>
+    <string name="category_rule_submission_key">原提交：%1$s</string>
+    <string name="category_rule_submission_version">原规则版本：%1$d</string>
+    <string name="category_rule_submission_unknown">未保留完整规则，请核对原记录。</string>
+    <string name="category_rule_apply_currency_unavailable">%1$d 条账单因币种或换算信息不完整暂不处理（%2$s）；请补齐后重新预览。</string>
+    <string name="category_rule_currency_unknown">币种未确认</string>
+    <string name="category_rule_amount_unlimited">金额不限</string>
+    <string name="category_rule_validation_fields">请填写关键词和分类。</string>
+    <string name="category_rule_validation_priority">优先级需要填写整数。</string>
+    <string name="category_rule_validation_range">金额下限不能大于上限。</string>
+    <string name="category_rule_validation_currency">请先选择金额条件使用的币种。</string>
+    <string name="category_rule_validation_amount">请按所选币种填写有效金额。</string>
+</resources>

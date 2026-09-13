@@ -5,6 +5,18 @@ import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.UiText
 
 internal object PendingUiStateReducer {
+    fun afterKnownConfirmed(current: PendingUiState, confirmed: List<Expense>): PendingUiState {
+        val pending = current.items.associateBy { it.id }
+        return confirmed.fold(current) { state, fact ->
+            val item = pending[fact.id]
+            if (item != null && item.publicId == fact.publicId && item.rowVersion <= fact.rowVersion) {
+                afterConfirmed(state, fact, message = null)
+            } else {
+                state
+            }
+        }
+    }
+
     fun afterRefresh(
         current: PendingUiState,
         expenses: List<Expense>,

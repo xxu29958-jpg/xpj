@@ -41,6 +41,7 @@ from app.models import Expense, LedgerAuditLog
 from app.services.soft_delete_policy import SOFT_DELETE_RETENTION
 from app.services.time_service import now_utc
 from tests._infra.assets import PNG_BYTES
+from tests._runtime_protocol import current_protocol_headers
 
 
 def _create_pending(client: TestClient, *, identity) -> int:
@@ -203,7 +204,7 @@ def test_undo_from_different_ledger_returns_404(client: TestClient, *, identity)
         headers=identity.app_headers,
     )
     assert switch.status_code == 200, switch.text
-    other_headers = {"Authorization": f"Bearer {switch.json()['session_token']}"}
+    other_headers = current_protocol_headers({"Authorization": f"Bearer {switch.json()['session_token']}"})
 
     response = undo_expense_api(client, expense_id, headers=other_headers)
     assert response.status_code == 404, response.text

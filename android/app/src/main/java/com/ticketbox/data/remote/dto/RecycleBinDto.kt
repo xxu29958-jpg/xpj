@@ -16,6 +16,7 @@ data class RecycleBinItemDto(
     val retentionLabel: String,
     @param:Json(name = "expected_row_version")
     val expectedRowVersion: Int? = null,
+    @param:Json(name = "restore_intent_month") val restoreIntentMonth: String? = null,
 )
 
 data class RecycleBinListResponseDto(
@@ -30,6 +31,7 @@ data class RecycleBinRestoreRequestDto(
     val resourceId: String,
     @param:Json(name = "expected_row_version")
     val expectedRowVersion: Int? = null,
+    @param:Json(name = "intent_month") val intentMonth: String? = null,
 )
 
 data class RecycleBinRestoreResponseDto(

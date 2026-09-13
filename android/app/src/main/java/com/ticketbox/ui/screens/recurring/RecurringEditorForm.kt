@@ -45,7 +45,7 @@ internal data class RecurringEditorFormState(
     val merchant: String,
     val merchantEditable: Boolean,
     val amountText: String,
-    val currency: CurrencyCode,
+    val currency: CurrencyCode?,
     val dateIso: String?,
     val showDatePicker: Boolean,
     val awaiting: Boolean,
@@ -115,17 +115,7 @@ internal fun RecurringEditorForm(
                 )
             }
         }
-        AppAmountInput(
-            state = AppAmountInputState(
-                label = stringResource(R.string.recurring_form_amount_label),
-                currency = state.currency,
-                value = state.amountText,
-                placeholder = stringResource(R.string.components_amount_input_placeholder),
-                enabled = state.draftEnabled,
-                isError = feedback.errorText == stringResource(R.string.recurring_form_error_amount),
-            ),
-            actions = AppAmountInputActions(onValueChange = callbacks.onAmount),
-        )
+        RecurringEditorAmountField(state, callbacks.onAmount, feedback.errorText)
         RecurringDateField(
             dateIso = state.dateIso,
             enabled = state.draftEnabled,
@@ -141,6 +131,37 @@ internal fun RecurringEditorForm(
 }
 
 @Composable
+private fun RecurringEditorAmountField(
+    state: RecurringEditorFormState,
+    onAmount: (String) -> Unit,
+    errorText: String?,
+) {
+    val currency = state.currency
+    if (currency == null) {
+        AppTextInput(
+            state = AppTextInputState(
+                label = stringResource(R.string.recurring_amount_currency_unknown),
+                value = state.amountText,
+                enabled = false,
+            ),
+            actions = AppTextInputActions(onValueChange = onAmount),
+        )
+    } else {
+        AppAmountInput(
+            state = AppAmountInputState(
+                label = stringResource(R.string.recurring_form_amount_label),
+                currency = currency,
+                value = state.amountText,
+                placeholder = stringResource(R.string.components_amount_input_placeholder),
+                enabled = state.draftEnabled,
+                isError = errorText == stringResource(R.string.recurring_form_error_amount),
+            ),
+            actions = AppAmountInputActions(onValueChange = onAmount),
+        )
+    }
+}
+
+@Composable
 private fun RecurringEditorFeedbackSlot(
     feedback: RecurringEditorFeedback,
     state: RecurringEditorFormState,
@@ -151,7 +172,7 @@ private fun RecurringEditorFeedbackSlot(
         feedback.conflictStatus?.let { (text, tone) ->
             AppStatusBanner(message = UiText.raw(text), tone = tone)
         }
-        if (feedback.overlaps.isNotEmpty()) {
+        if (feedback.overlaps.isNotEmpty() && state.currency != null) {
             RecurringOverlapComparisonSection(feedback.overlaps, state.currency)
         }
         AppSheetActionFeedback(

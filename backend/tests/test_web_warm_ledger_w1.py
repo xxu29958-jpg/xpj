@@ -57,19 +57,20 @@ def test_web_pending_touch_targets_and_file_picker_markup(
     assert 'id="capture"' in capture_form.group(0)
 
 
-def test_inbox_empty_state_shows_mascot_illustration(web_client: TestClient) -> None:
-    """The empty queue uses the real decorative brand asset."""
+def test_inbox_empty_state_shows_decorative_receipt_illustration(web_client: TestClient) -> None:
+    """Task copy remains semantic; the shared receipt art is decorative."""
     response = web_client.get("/web/pending?ledger_id=owner")
 
     assert response.status_code == 200
     state = re.search(
-        r'<div class="product-state">.*?<a class="product-state-action"',
+        r'<div class="product-state inbox-empty">.*?<a class="product-state-action"',
         response.text,
         re.S,
     )
     assert state is not None
     assert '<div class="product-state-figure" aria-hidden="true">' in state.group(0)
-    assert '<img src="/static/web/product/mascot/jiajia-dozing.png" alt=""' in state.group(0)
+    assert '<img src="/static/web/product/art/receipt-tray.png" alt=""' in state.group(0)
+    assert web_client.get("/static/web/product/art/receipt-tray.png").status_code == 200
 
 
 def test_inbox_row_meta_drops_engineering_id_and_keeps_command_contract(

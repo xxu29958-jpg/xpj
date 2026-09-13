@@ -20,7 +20,6 @@ import com.ticketbox.data.remote.dto.ReportsOverviewDto
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.DashboardCardUpdate
 import com.ticketbox.domain.model.DashboardSurface
-import com.ticketbox.domain.model.GoalDraft
 import com.ticketbox.domain.model.GoalProgressState
 import com.ticketbox.domain.model.GoalUpdate
 import com.ticketbox.domain.model.ReportGranularity
@@ -44,6 +43,23 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ReportsRepositoryTest {
+    @Test fun readAndExportUseCapturedProjectionAndRejectOldBinding() = runTest {
+        val api = ReportsApiHandler()
+        val repo = repository(api)
+        val binding = requireNotNull(repo.dashboardAccess()).binding
+        val query = ReportsOverviewQuery(month = "2026-05", homeCurrencyCode = "JPY", timezone = "Asia/Tokyo")
+        assertTrue(repo.reportsOverview(query, binding).isFailure)
+        assertEquals("JPY", api.reportCalls.single().homeCurrencyCode)
+        assertEquals("Asia/Tokyo", api.reportCalls.single().timezone)
+        repo.exportReportsOverviewCsv(query, binding).getOrThrow()
+        assertEquals("JPY", api.csvReportCalls.single().homeCurrencyCode)
+        val old = binding.copy(bindingRevision = "old")
+        assertTrue(repo.reportsOverview(query, old).isFailure)
+        assertTrue(repo.exportReportsOverviewCsv(query, old).isFailure)
+        assertEquals(1, api.reportCalls.size)
+        assertEquals(1, api.csvReportCalls.size)
+    }
+
     @Test
     fun reportsOverviewForwardsNormalizedQueryAndMapsDomain() = withReportsTimezone("Asia/Shanghai") {
         runTest {
@@ -108,22 +124,6 @@ class ReportsRepositoryTest {
             val repository = repository(api)
 
             val goals = repository.goals(month = " 2026-05 ", includeArchived = true).getOrThrow()
-            val created = repository.createGoal(
-                GoalDraft(
-                    name = " 本月餐饮 ",
-                    month = " 2026-05 ",
-                    targetAmountCents = 80000,
-                    category = "吃饭",
-                ),
-            ).getOrThrow()
-            val updated = repository.updateGoal(
-                publicId = " goal-1 ",
-                update = GoalUpdate(
-                    expectedRowVersion = 1L,
-                    targetAmountCents = 90000,
-                    category = "购物",
-                ),
-            ).getOrThrow()
             val binding = repository.dashboardAccess()!!.binding
             val cards = repository.dashboardCards(binding, DashboardSurface.Android).getOrThrow()
             val savedCards = repository.updateDashboardCards(
@@ -138,12 +138,8 @@ class ReportsRepositoryTest {
             assertEquals("2026-05", api.goalsCalls.single().month)
             assertEquals(true, api.goalsCalls.single().includeArchived)
             assertEquals("UTC", api.goalsCalls.single().timezone)
-            assertEquals(GoalProgressState.NearLimit, goals.single().progressState)
-            assertEquals("餐饮", created.category)
-            assertEquals("购物", updated.category)
-            assertEquals("本月餐饮", api.createGoalCalls.single().request.name)
-            assertEquals("餐饮", api.createGoalCalls.single().request.category)
-            assertEquals("goal-1", api.updateGoalCalls.single().publicId)
+            assertEquals(GoalProgressState.NearLimit, goals.value.single().progressState)
+            assertEquals("CNY", goals.value.single().homeCurrencyCode)
             assertEquals("android", api.dashboardCardCalls.single())
             assertEquals("goals", api.updateDashboardCardCalls.single().request.cards.first().key)
             assertEquals("reports", savedCards.items[1].key)
@@ -160,6 +156,7 @@ class ReportsRepositoryTest {
             val created = repository.createDebtGoal(
                 name = " 还清欠款 ",
                 debtPublicIds = listOf(" debt-a ", "", "debt-b", "debt-a"),
+                expectedBinding = requireNotNull(repository.dashboardAccess()).binding,
             ).getOrThrow()
 
             val call = api.createGoalCalls.single()
@@ -173,6 +170,9 @@ class ReportsRepositoryTest {
             assertNull(call.request.category)
             assertEquals("UTC", call.timezone)
             assertTrue(created.isDebtRepayment)
+            val stale = requireNotNull(repository.dashboardAccess()).binding.copy(sessionGeneration = "previous-session")
+            assertTrue(repository.createDebtGoal("原目标", listOf("debt-a"), stale).isFailure)
+            assertEquals(1, api.createGoalCalls.size)
         }
     }
 
@@ -181,7 +181,7 @@ class ReportsRepositoryTest {
         val api = ReportsApiHandler()
         val repository = repository(api, role = "viewer")
 
-        val result = repository.createDebtGoal("还清欠款", listOf("debt-a"))
+        val result = repository.createDebtGoal("还清欠款", listOf("debt-a"), requireNotNull(repository.dashboardAccess()).binding)
 
         assertTrue(result.isFailure)
         assertEquals("当前角色为只读，无法修改账本。", result.exceptionOrNull()?.message)
@@ -193,7 +193,7 @@ class ReportsRepositoryTest {
         val api = ReportsApiHandler()
         val repository = repository(api)
 
-        val result = repository.createDebtGoal("还清欠款", listOf("  ", ""))
+        val result = repository.createDebtGoal("还清欠款", listOf("  ", ""), requireNotNull(repository.dashboardAccess()).binding)
 
         assertTrue(result.isFailure)
         assertEquals("请至少关联一笔欠款。", result.exceptionOrNull()?.message)
@@ -205,7 +205,7 @@ class ReportsRepositoryTest {
         val api = ReportsApiHandler()
         val repository = repository(api)
 
-        val result = repository.createDebtGoal("   ", listOf("debt-a"))
+        val result = repository.createDebtGoal("   ", listOf("debt-a"), requireNotNull(repository.dashboardAccess()).binding)
 
         assertTrue(result.isFailure)
         assertEquals("请输入目标名称。", result.exceptionOrNull()?.message)
@@ -217,13 +217,7 @@ class ReportsRepositoryTest {
         val api = ReportsApiHandler()
         val repository = repository(api, role = "viewer")
 
-        val goalResult = repository.createGoal(
-            GoalDraft(
-                name = "本月餐饮",
-                month = "2026-05",
-                targetAmountCents = 80000,
-            ),
-        )
+        val goalResult = repository.createDebtGoal("清偿", listOf("debt-a"), repository.dashboardAccess()!!.binding)
         val cardsResult = repository.updateDashboardCards(
             binding = repository.dashboardAccess()!!.binding,
             updates = listOf(DashboardCardUpdate("goals", visible = true, position = 0)),
@@ -265,13 +259,7 @@ class ReportsRepositoryTest {
         }
         val repository = repository(api)
 
-        val result = repository.createGoal(
-            GoalDraft(
-                name = "本月餐饮",
-                month = "2026-05",
-                targetAmountCents = 80000,
-            ),
-        )
+        val result = repository.createDebtGoal("清偿", listOf("debt-a"), repository.dashboardAccess()!!.binding)
 
         assertTrue(result.isFailure)
         assertEquals("当前角色为只读，无法修改账本。", result.exceptionOrNull()?.message)
@@ -306,7 +294,7 @@ class ReportsRepositoryTest {
             assertEquals("debt_repayment", api.goalsCalls.single().goalType)
             assertEquals(true, api.goalsCalls.single().includeArchived)
             assertEquals("UTC", api.goalsCalls.single().timezone)
-            val goal = goals.single()
+            val goal = goals.value.single()
             assertTrue(goal.isDebtRepayment)
             val evaluation = goal.debtRepayment
             assertEquals("in_progress", evaluation?.evaluationState)
@@ -455,8 +443,11 @@ class ReportsRepositoryTest {
             ),
         ).apply { saveToken("session-token") }
         val apiClient = ReportsApiFactory(handler)
+        val dao = FakeExpenseDao()
         return ReportsRepository(
             apiProvider = testApiServiceProvider(apiClient, tokenStore),
+            expenseDao = dao,
+            sessionCoordinator = LocalLedgerSessionCoordinator(boundSettingsStore(), tokenStore.sessionStore, dao),
         )
     }
 }
@@ -468,6 +459,7 @@ private data class ReportsOverviewCall(
     val merchantCategory: String?,
     val rankingMetric: String,
     val timezone: String?,
+    val homeCurrencyCode: String?,
 )
 
 private data class GoalsCall(
@@ -503,13 +495,6 @@ private data class CreateGoalCall(
     val timezone: String?,
 )
 
-private data class UpdateGoalCall(
-    val publicId: String,
-    val request: GoalUpdateRequestDto,
-    val idempotencyKey: String?,
-    val timezone: String?,
-)
-
 private data class UpdateDashboardCardsCall(
     val request: DashboardCardsUpdateRequestDto,
     val surface: String,
@@ -532,7 +517,6 @@ private class ReportsApiHandler : InvocationHandler {
     val csvReportCalls = mutableListOf<ReportsOverviewCall>()
     val goalsCalls = mutableListOf<GoalsCall>()
     val createGoalCalls = mutableListOf<CreateGoalCall>()
-    val updateGoalCalls = mutableListOf<UpdateGoalCall>()
     val archiveGoalCalls = mutableListOf<Pair<String, String?>>()
     val replaceDebtLinksCalls = mutableListOf<ReplaceDebtLinksCall>()
     val acknowledgeIntegrityCalls = mutableListOf<AcknowledgeIntegrityCall>()
@@ -563,6 +547,10 @@ private class ReportsApiHandler : InvocationHandler {
         }
         val values = args.orEmpty()
         return when (method.name) {
+            "runtimeCompatibility" -> com.ticketbox.data.remote.dto.RuntimeCompatibilityDto(
+                com.ticketbox.data.remote.CURRENT_TICKETBOX_API_VERSION, "compatible",
+                com.ticketbox.data.remote.dto.RuntimeProductCapabilitiesDto(
+                    com.ticketbox.data.remote.dto.RuntimeCurrencyCapabilityDto("1:1:JPY", "JPY", 0, "compatible")))
             "reportsOverview" -> {
                 @Suppress("UNCHECKED_CAST")
                 val query = values[0] as Map<String, String>
@@ -573,6 +561,7 @@ private class ReportsApiHandler : InvocationHandler {
                     merchantCategory = query["merchant_category"],
                     rankingMetric = query.getValue("ranking_metric"),
                     timezone = query["timezone"],
+                    homeCurrencyCode = query["home_currency_code"],
                 )
                 reportsDto(
                     granularity = query.getValue("granularity"),
@@ -589,6 +578,7 @@ private class ReportsApiHandler : InvocationHandler {
                     merchantCategory = query["merchant_category"],
                     rankingMetric = query.getValue("ranking_metric"),
                     timezone = query["timezone"],
+                    homeCurrencyCode = query["home_currency_code"],
                 )
                 Response.success("csv".toResponseBody("text/csv".toMediaType()))
             }
@@ -649,17 +639,6 @@ private class ReportsApiHandler : InvocationHandler {
                 if (request.goalType == "debt_repayment") debtGoalDto() else goalDto(category = request.category)
             }
             "goal" -> goalDto()
-            "updateGoal" -> {
-                // ADR-0042 Slice F: arg order is now
-                // [publicId, request, idempotencyKey, timezone].
-                updateGoalCalls += UpdateGoalCall(
-                    publicId = values[0] as String,
-                    request = values[1] as GoalUpdateRequestDto,
-                    idempotencyKey = values[2] as String?,
-                    timezone = values[3] as String?,
-                )
-                goalDto(category = (values[1] as GoalUpdateRequestDto).category)
-            }
             "archiveGoal" -> {
                 archiveGoalCalls += (values[0] as String) to (values[1] as String?)
                 goalDto(status = "archived", progressState = "archived", archivedAt = "2026-05-14T00:00:00Z")
@@ -716,6 +695,8 @@ private fun reportsDto(
             yearOverYearDeltaCount = 1,
         ),
     ),
+    homeCurrencyCode = "CNY",
+    missingRates = emptyList(),
 )
 
 private fun goalDto(
@@ -741,6 +722,7 @@ private fun goalDto(
     updatedAt = "2026-05-13T00:00:00Z",
     rowVersion = 1L,
     archivedAt = archivedAt,
+    homeCurrencyCode = "CNY",
 )
 
 private fun debtGoalDto(

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from typing import Any
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
 OWNER_EXPENSES: list[dict[str, Any]] = [
     {
+        "home_currency_code": "CNY",
         "amount_cents": 29800,
         "merchant": "真香年费",
         "category": "AI订阅",
@@ -14,6 +16,7 @@ OWNER_EXPENSES: list[dict[str, Any]] = [
         "regret_score": 1,
     },
     {
+        "home_currency_code": "CNY",
         "amount_cents": 1200,
         "merchant": "真香小吃",
         "category": "餐饮",
@@ -22,6 +25,7 @@ OWNER_EXPENSES: list[dict[str, Any]] = [
         "regret_score": 2,
     },
     {
+        "home_currency_code": "CNY",
         "amount_cents": 8800,
         "merchant": "后悔桌搭",
         "category": "数码",
@@ -30,6 +34,7 @@ OWNER_EXPENSES: list[dict[str, Any]] = [
         "regret_score": 5,
     },
     {
+        "home_currency_code": "CNY",
         "amount_cents": 3900,
         "merchant": "后悔游戏",
         "category": "娱乐",
@@ -38,12 +43,14 @@ OWNER_EXPENSES: list[dict[str, Any]] = [
         "regret_score": 5,
     },
     {
+        "home_currency_code": "CNY",
         "amount_cents": 999,
         "merchant": "未评分账单",
         "category": "生活",
         "expense_time": "2026-05-07T10:00:00Z",
     },
     {
+        "home_currency_code": "CNY",
         "amount_cents": 19900,
         "merchant": "上月真香",
         "category": "生活",
@@ -54,6 +61,7 @@ OWNER_EXPENSES: list[dict[str, Any]] = [
 ]
 
 GRAY_EXPENSE: dict[str, Any] = {
+    "home_currency_code": "CNY",
     "amount_cents": 99999,
     "merchant": "灰度账本真香",
     "category": "数码",
@@ -67,8 +75,8 @@ def test_lifestyle_stats_returns_value_and_regret_rankings(
     client: TestClient, *, identity
 ) -> None:
     for payload in OWNER_EXPENSES:
-        _post_manual_expense(client, identity.app_headers, payload)
-    _post_manual_expense(client, identity.gray_app_headers, GRAY_EXPENSE)
+        _post_manual_expense(client, identity.app_headers, {**payload, "client_ref": str(uuid4())})
+    _post_manual_expense(client, identity.gray_app_headers, {**GRAY_EXPENSE, "client_ref": str(uuid4())})
 
     payload = _get_lifestyle_stats(client, identity.app_headers)
     assert [item["merchant"] for item in payload["frequent_merchants"][:3]] == [

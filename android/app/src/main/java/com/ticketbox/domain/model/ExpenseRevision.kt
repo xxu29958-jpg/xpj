@@ -44,15 +44,3 @@ data class ExpenseCorrectionDraft(
     val items: List<ExpenseItemDraft>? = null,
     val splits: List<ExpenseSplitDraft>? = null,
 )
-
-sealed interface ExpenseCorrectionOutcome {
-    data class Synced(
-        val expense: Expense,
-        val revision: ExpenseRevision,
-        val refreshPending: Boolean = false,
-    ) : ExpenseCorrectionOutcome
-
-    data class Queued(
-        val expense: Expense,
-    ) : ExpenseCorrectionOutcome
-}

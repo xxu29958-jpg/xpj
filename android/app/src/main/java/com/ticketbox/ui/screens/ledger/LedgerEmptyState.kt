@@ -4,7 +4,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -18,10 +19,11 @@ import com.ticketbox.ui.components.AppListStateContent
 import com.ticketbox.ui.components.AppListStateSpec
 import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppOutlinedButtonOptions
+import com.ticketbox.ui.components.AppPrimaryButton
+import com.ticketbox.ui.components.ReceiptEmptyIllustration
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
-import com.ticketbox.ui.mascot.MascotEmptyIllustration
 import com.ticketbox.ui.screens.LedgerRecordCtaSlot
 import com.ticketbox.viewmodel.LedgerUiState
 
@@ -80,12 +82,12 @@ private fun LedgerEmptyCta(
             }
         }
         recordCtaSlot == LedgerRecordCtaSlot.EmptyState -> {
-            Button(
+            AppPrimaryButton(
+                text = stringResource(R.string.ledger_header_add_button),
+                icon = Icons.Filled.Add,
                 modifier = Modifier.fillMaxWidth(),
                 onClick = onManualAdd,
-            ) {
-                Text(stringResource(R.string.ledger_header_add_button))
-            }
+            )
         }
     }
 }
@@ -107,9 +109,9 @@ internal fun EmptyLedgerState(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // 只有「账本真的空了」才是吉祥物时刻；筛选无结果是操作态，不插画。
+        // An unfiltered empty task may show receipt art; a filter miss stays operational.
         if (recordCtaSlot == LedgerRecordCtaSlot.EmptyState) {
-            MascotEmptyIllustration(
+            ReceiptEmptyIllustration(
                 modifier = Modifier.padding(bottom = AppSpacing.miniGap),
             )
         }

@@ -24,6 +24,11 @@
 | 嵌套深度 | 4 | `NestedBlockDepth` |
 | 文件函数数 | 11 | `TooManyFunctions` |
 
+单测源集通过 `android/detekt-tests.yml` 后置覆盖：`@Test` 场景不计入函数数量，
+线性测试正文不受函数行数限制，fixture 参数只计必填项。辅助函数仍检查数量与长度；
+所有测试仍检查圈复杂度、嵌套和类大小。不得为容纳独立场景而拆散合同断言。
+生产源集继续使用上表全部门槛，测试断言和既有 baseline 不变。
+
 **机器守护（2026-06 接线）**：detekt **2.0.0-alpha.3**（plugin id `dev.detekt`，
 Apache-2.0，版本进 `android/gradle/libs.versions.toml`）。**预发布版本是 owner
 显式拍板的例外**（2026-06-12「内嵌的去更新掉」）：理由 = 2.0 内嵌 Kotlin 与本项目
@@ -45,6 +50,25 @@ full analysis 下运行，plain 会**静默跳过它**（实验实证：plain �
 机器门：`lintGrayDebug`、`assertAndroidTestCountEqualsBaseline`（Gradle 实际
 JUnit XML 结果、零 skipped 与双 lane baseline ratchet）、Room schema 漂移门、
 R8 release 编译、apksigner 指纹钉。
+
+## 全仓工程地图（CI）
+
+`Backend contracts` 的 release audit 必须包含 `_audit_repository_weight.py`。同一次 Git base/head 测量写入 CI Summary 和 `repository-codebase-weight` JSON artifact，不另维护一份数字 baseline。开发时按需查看当前 exact SHA 的报告，从模块/语言进入目录、文件、函数热点；文件内容改变但 LOC 不变也会列入变更清单。历史数字不能替当前版本背书。
+
+- Production、Test、Tooling 分开；migrations 单列且纳入 Production；可选 Public edge Worker 运行源码也属于 Production，其部署配置属于 Tooling。
+- LOC 是物理源码行数，并提供 code/comment-only/blank 组成。每个文件只有一个模块、角色和主语言；HTML 内嵌 JS 的函数分析不重复增加 LOC。常用活动配置计入工具规模；文档、图片/字体/二进制、lockfile、generated/vendor/build output、Room schema JSON 和 analyzer baseline XML 不计 LOC。baseline XML 仍作为债务元数据读取。
+- 总 LOC 只看趋势；大文件 `>500/>800/>1000` 数量和物理函数跨度 `>80` 的增长保持显眼提示，要求按职责审查。SQL、注释、fixture 和线性断言的物理长度不自动等于复杂度债务，不得为计数碎拆唯一 owner、拆散合同或压缩排版。硬门仍比较实际 Ruff C901 数量/超额、Android 已登记 Detekt 债务与既有规则、源代码新 suppression，以及各语言/模块/角色的函数复杂度超额；不得增债后抬高 baseline。
+- 后端 `_audit_codebase.py` 的体积计数遵循同一审查口径，仍核对指标完整性。异常扫描仅识别严格的无参数 `db.rollback()` 随即 bare `raise` 为原错传播；吞错、异常转换、条件返回和业务调用仍受原硬门约束，不得为消计数缩窄必要的事务回滚。
+- 函数导航：Lizard 的 Python/Kotlin/Java/JS/TS（含 HTML JS）CCN **估计值**；PowerShell 原生 AST 的决策计数；Inno 的例程词法分支计数。后两者不冒充统一 CFG 圈复杂度；分别显示热点。复杂度 `>15` 仍作债务比较；物理跨度保留原始数据、增量和热点，不放宽已有 Ruff/Detekt 更严格的门。
+- CSS/XML/声明式配置不编造函数圈复杂度；模板渲染、动态字符串/嵌入代码、Inno 预处理与嵌套例程的语义不在这些估计的证明范围。分析器版本、覆盖边界与具体文件/行号随报告提供。数字不能自动证明架构健康、旧 writer 已退役或产品已完成。
+
+日常使用云端报告。需要定向复算时，在已有开发依赖、Git 和 PowerShell 的环境使用明确提交：
+
+```powershell
+python backend/scripts/_audit_repository_weight.py --base BASE_SHA --head HEAD_SHA --json weight.json
+```
+
+脚本只读提交中的源码，不执行被测代码，也不计本机 dirty/untracked 文件。无法完成分析时退出 2；债务回归退出 1；测量范围内没有回归退出 0。报告的健康判定不取代原生编译、测试、审查或最终 RC 验收。
 
 ## Pull Request
 

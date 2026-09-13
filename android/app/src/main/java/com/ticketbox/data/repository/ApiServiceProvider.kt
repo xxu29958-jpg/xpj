@@ -49,6 +49,8 @@ class ApiServiceProvider(
 
     internal fun currentSession(): LocalSessionRecord? = sessionStore.currentSession()
 
+    internal fun observeSession(): Flow<LocalSessionRecord?> = sessionStore.observeSession()
+
     internal fun currentLedgerRole(): String? = currentSession()?.identity?.role
 
     internal fun currentLedgerId(): String? = currentSession()?.identity?.ledgerId

@@ -11,6 +11,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppAmountInput
@@ -25,19 +26,12 @@ import com.ticketbox.viewmodel.BudgetCategoryInput
 
 @Composable
 internal fun MoneyField(
-    value: String,
+    state: AppAmountInputState,
     onValueChange: (String) -> Unit,
-    label: String,
-    placeholder: String,
     modifier: Modifier = Modifier,
 ) {
     AppAmountInput(
-        state = AppAmountInputState(
-            label = label,
-            currency = LocalCurrencyDisplay.current.homeCurrency,
-            value = value,
-            placeholder = placeholder,
-        ),
+        state = state,
         actions = AppAmountInputActions(onValueChange = onValueChange),
         modifier = modifier.fillMaxWidth(),
     )
@@ -49,6 +43,7 @@ internal fun CategoryInputRow(
     canRemove: Boolean,
     onChange: (String, String) -> Unit,
     onRemove: () -> Unit,
+    enabled: Boolean,
 ) {
     val trimmedCategory = row.category.takeIf { it.isNotBlank() }
     val removeDescription = if (trimmedCategory != null) {
@@ -62,9 +57,10 @@ internal fun CategoryInputRow(
                 label = stringResource(R.string.budget_field_category_label),
                 value = row.category,
                 placeholder = stringResource(R.string.budget_field_category_placeholder),
+                enabled = enabled,
             ),
             actions = AppTextInputActions(onValueChange = { onChange(it, row.amount) }),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().testTag("budget_category_name"),
         )
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -72,14 +68,18 @@ internal fun CategoryInputRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             MoneyField(
-                value = row.amount,
+                state = AppAmountInputState(
+                    value = row.amount,
+                    currency = LocalCurrencyDisplay.current.homeCurrency,
+                    label = stringResource(R.string.budget_field_amount_label),
+                    placeholder = stringResource(R.string.budget_field_amount_placeholder),
+                    enabled = enabled,
+                ),
                 onValueChange = { onChange(row.category, it) },
-                label = stringResource(R.string.budget_field_amount_label),
-                placeholder = stringResource(R.string.budget_field_amount_placeholder),
                 modifier = Modifier.weight(1f),
             )
             IconButton(
-                enabled = canRemove,
+                enabled = enabled && canRemove,
                 onClick = onRemove,
             ) {
                 Icon(

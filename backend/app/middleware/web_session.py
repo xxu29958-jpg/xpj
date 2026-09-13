@@ -2,9 +2,10 @@
 
 Same /web router serves three audiences:
 
-- **Loopback Host** (127.0.0.1 / localhost / etc): Owner Console operator
-  on the local machine. Behaves exactly as before — no cookie required,
-  ``_require_local`` (LoopbackOnly) was the only gate.
+- **Installed loopback browser**: requires a Web cookie for the installation
+  Account after explicit local identity confirmation. Missing or invalid
+  installation identity enters recovery. Development datasets without a claim
+  retain their local compatibility path; ``/owner`` stays separately local-only.
 
 - **Desktop product bridge** (loopback + explicit bridge marker): a paired
   ``platform=desktop`` app bearer becomes the application principal for the
@@ -60,7 +61,7 @@ from app.tenants import AuthContext, SessionPrincipal
 
 DESKTOP_BRIDGE_HEADER = "X-Ticketbox-Desktop-Bridge"
 DESKTOP_BRIDGE_VERSION = "v1"
-_DESKTOP_ONLY_WEB_PATHS = frozenset({"/web/currency-adoption"})
+_DESKTOP_ONLY_WEB_PATHS = frozenset({"/web/currency-adoption", "/web/currency-adoption/change"})
 
 
 def _request_id(request: Request) -> str | None:
@@ -124,7 +125,7 @@ def _normalized_recovery_target(raw: str | None) -> str:
         [
             (key, value)
             for key, value in parse_qsl(parsed.query, keep_blank_values=True)
-            if key != "ledger_id"
+            if key not in {"ledger_id", "msg", "flash_type"}
         ]
     )
     return urlunsplit(("", "", parsed.path, query, ""))

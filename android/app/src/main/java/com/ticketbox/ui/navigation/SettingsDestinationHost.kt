@@ -10,12 +10,13 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.integerResource
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.R
+import com.ticketbox.data.repository.DebtCreationActions
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.data.repository.OutboxRepository
@@ -85,13 +86,23 @@ internal data class SettingsDestinationChromeState(
 )
 
 internal data class SettingsDestinationNavigation(
+    val onOpenExpense: (Long) -> Unit,
+    val onOpenInbox: () -> Unit,
+    val onOpenBudget: (String) -> Unit,
+    val onOpenRecurring: () -> Unit,
+    val onOpenGoalCreation: (Long) -> Unit,
+    val onOpenGoalEdit: (String) -> Unit,
+    val onOpenRuleSubmission: (Long) -> Unit,
+    val onOpenIncomeSubmission: (Long) -> Unit,
+    val onOpenRateSubmission: (Long) -> Unit,
+    val onRepairCorrectionRate: com.ticketbox.ui.screens.expense.fact.CorrectionRateAction,
     val onSecondaryActiveChange: (Boolean) -> Unit = {},
     val onCloseRoot: () -> Unit = {},
 )
 
 internal data class SettingsRouteActions(
-    val onTestConnection: () -> Unit,
     val onRunDiagnostics: () -> Unit,
+    val onCancelConnectionWork: () -> Unit,
     val onRefreshServerSettings: () -> Unit,
     val onSync: () -> Unit,
     val onClearCache: () -> Unit,
@@ -118,18 +129,26 @@ internal data class SettingsRouteRepositories(
     val ledgerRepository: LedgerRepository,
     val expenseRepository: ExpenseRepository,
     val outboxRepository: OutboxRepository,
+    val debtCreationRepository: DebtCreationActions,
     val activeLedgerId: String?,
+    val recurringOccurrences: com.ticketbox.data.repository.RecurringOccurrenceActions? = null,
+    val incomePlans: com.ticketbox.data.repository.IncomePlanActions,
+    val debtWrites: com.ticketbox.data.repository.DebtWriteActions,
+    val goalEdits: com.ticketbox.data.repository.GoalEditActions,
+    val budgetSaves: com.ticketbox.data.repository.BudgetActions,
+    val recurringItems: com.ticketbox.data.repository.RecurringManualMutationActions,
+    val rules: com.ticketbox.data.repository.RuleRepository,
 )
 
 @Composable
 internal fun SettingsDestinationHost(
     states: SettingsRouteStates,
     chromeState: SettingsDestinationChromeState,
-    navigation: SettingsDestinationNavigation = SettingsDestinationNavigation(),
+    navigation: SettingsDestinationNavigation,
     actions: SettingsRouteActions,
     repositories: SettingsRouteRepositories,
 ) {
-    var route by remember { mutableStateOf<SettingsDestination>(SettingsDestination.Root) }
+    var route by rememberSaveable { mutableStateOf(SettingsDestination.Root) }
     val appVersionName = stringResource(R.string.app_version_name)
     val appVersionCode = integerResource(R.integer.app_version_code)
 
@@ -210,10 +229,11 @@ internal fun SettingsDestinationHost(
             ),
             actions = ServerSettingsScreenActions(
                 onBack = { route = SettingsDestination.Root },
-                onTestConnection = actions.onTestConnection,
                 onRunDiagnostics = actions.onRunDiagnostics,
+                onCancelConnectionWork = actions.onCancelConnectionWork,
                 onRefreshServerSettings = actions.onRefreshServerSettings,
                 onSync = actions.onSync,
+                onOpenSyncStatus = { route = SettingsDestination.SyncStatus },
             ),
         )
 
@@ -361,6 +381,7 @@ internal fun SettingsDestinationHost(
             BackgroundTasksScreen(
                 viewModel = vm,
                 onBack = { route = SettingsDestination.Root },
+                onOpenExpense = navigation.onOpenExpense,
             )
         }
 
@@ -370,9 +391,14 @@ internal fun SettingsDestinationHost(
                 factory = outboxStatusViewModelFactory(
                     repositories.outboxRepository,
                     repositories.expenseRepository,
+                    com.ticketbox.viewmodel.OutboxRecoveryRepositories(repositories.debtCreationRepository,
+                        repositories.recurringOccurrences, repositories.incomePlans, repositories.debtWrites, repositories.goalEdits, repositories.budgetSaves, repositories.recurringItems, repositories.rules),
                 ),
             )
             SyncStatusScreen(
+                navigation = com.ticketbox.ui.screens.settings.SyncStatusNavigation(
+                    navigation.onOpenExpense, navigation.onOpenInbox, navigation.onOpenBudget, navigation.onOpenRecurring, navigation.onOpenGoalCreation, navigation.onOpenGoalEdit, navigation.onOpenRuleSubmission, navigation.onOpenIncomeSubmission, navigation.onOpenRateSubmission, navigation.onRepairCorrectionRate,
+                ),
                 viewModel = vm,
                 onBack = { route = SettingsDestination.Root },
             )

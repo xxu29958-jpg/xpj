@@ -13,10 +13,12 @@
       <h2>Provider 状态</h2>
       <p class="text-meta">当前账本：<code>{{ tenant_id }}</code></p>
     </div>
-    {% if status.needs_confirmation %}
+    {% if not status.configuration_valid %}
+      <span class="badge badge-warn">配置不完整或无效</span>
+    {% elif status.needs_confirmation %}
       <span class="badge badge-warn">需要 Owner 确认</span>
     {% elif status.is_live %}
-      <span class="badge badge-ok">可调用外部 AI</span>
+      <span class="badge badge-ok">配置有效，已允许请求</span>
     {% else %}
       <span class="badge badge-off">本地 / 空 Provider</span>
     {% endif %}
@@ -26,7 +28,6 @@
       <tbody>
         <tr><th>Provider</th><td><code>{{ status.provider }}</code></td></tr>
         <tr><th>Model</th><td>{{ status.model or "未配置" }}</td></tr>
-        <tr><th>Base URL</th><td>{{ status.base_url or "未配置" }}</td></tr>
         <tr><th>Owner 确认</th><td>{{ "已确认" if status.owner_confirmed else "未确认" }}</td></tr>
         <tr><th>最近调用</th><td>{{ status.last_called_at|owner_datetime }}</td></tr>
         <tr><th>最近结果</th><td>
@@ -41,6 +42,10 @@
       </tbody>
     </table>
   </div>
+  {% if not status.configuration_valid %}
+  <p class="text-meta">请检查服务配置中的提供方、模型、接口地址和密钥。修正后刷新此页。</p>
+  {% endif %}
+  <p class="text-meta">配置检查不会发起外部请求；网络可用性与实际结果以最近调用为准。</p>
   <form method="post" action="/owner/ai-advisor/confirmation" class="mt-5">
     <label class="label-check-row">
       <input type="checkbox" name="confirmed" value="on" {% if status.owner_confirmed %}checked{% endif %}>

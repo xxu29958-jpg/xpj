@@ -227,6 +227,7 @@ def _search_goals(db: Session, tenant_id: str, term: str, limit: int) -> list[We
             href=f"/web/goals?{urlencode({'ledger_id': tenant_id, 'month': goal.month})}",
             badge="目标" if goal.status == "active" else "已归档",
             amount_cents=goal.target_amount_cents,
+            currency_code=goal.home_currency_code,
         )
         for goal in db.scalars(_limited(statement, limit)).all()
     ]

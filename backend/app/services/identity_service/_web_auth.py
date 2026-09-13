@@ -6,16 +6,36 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.models import AuthToken, Device
+from app.models import Account, AuthToken, Device
 from app.services.identity_service._auth import (
     _auth_context_from_parts,
     _context_parts_from_token,
     _principal_from_token,
 )
 from app.services.identity_service._models import WebSessionAuthResult
-from app.services.session_lifecycle_service import hash_secret
+from app.services.session_lifecycle_service import WEB_SESSION_TTL_SECONDS, hash_secret
 from app.services.time_service import ensure_utc, now_utc
 from app.tenants import SessionPrincipal
+
+
+def live_web_device_public_ids(db: Session, *, account_id: int) -> set[str]:
+    """Read browser-session availability without changing credentials or devices."""
+    checked_at = now_utc()
+    legacy_cutoff = checked_at - timedelta(seconds=WEB_SESSION_TTL_SECONDS)
+    return set(db.scalars(
+        select(Device.public_id)
+        .join(AuthToken, AuthToken.device_id == Device.id)
+        .join(Account, Account.id == Device.account_id)
+        .where(Device.account_id == account_id, AuthToken.account_id == account_id)
+        .where(Account.disabled_at.is_(None), Device.revoked_at.is_(None))
+        .where(Device.platform == "web", AuthToken.scope == "app")
+        .where(AuthToken.revoked_at.is_(None))
+        .where(
+            (AuthToken.expires_at > checked_at)
+            | (AuthToken.expires_at.is_(None) & (AuthToken.created_at > legacy_cutoff))
+        )
+        .distinct()
+    ))
 
 
 def _load_web_session_token(

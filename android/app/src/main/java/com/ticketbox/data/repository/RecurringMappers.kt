@@ -3,9 +3,11 @@ package com.ticketbox.data.repository
 import com.ticketbox.data.remote.dto.RecurringCandidateConfirmRequestDto
 import com.ticketbox.data.remote.dto.RecurringItemDto
 import com.ticketbox.domain.model.RecurringCandidate
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.RecurringItem
 
 fun RecurringItemDto.toDomain(): RecurringItem = RecurringItem(
+    homeCurrencyCode = homeCurrencyCode,
     publicId = publicId,
     ledgerId = ledgerId,
     merchant = merchant,
@@ -28,10 +30,12 @@ fun RecurringItemDto.toDomain(): RecurringItem = RecurringItem(
     rowVersion = rowVersion,
     pausedAt = pausedAt,
     archivedAt = archivedAt,
+    nextDueDate = nextDueDate,
 )
 
 fun RecurringCandidate.toConfirmRequest(nextExpectedDate: String? = null): RecurringCandidateConfirmRequestDto =
     RecurringCandidateConfirmRequestDto(
+        homeCurrencyCode = requireNotNull(CurrencyCode.fromStorageKeyOrNull(homeCurrencyCode)).storageKey,
         merchant = merchant,
         amountCents = amountCents,
         frequency = "monthly",

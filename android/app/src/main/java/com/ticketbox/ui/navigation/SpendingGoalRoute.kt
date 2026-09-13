@@ -14,6 +14,7 @@ import com.ticketbox.ui.screens.plan.SpendingGoalsScreen
 import com.ticketbox.ui.screens.plan.SpendingGoalsScreenActions
 import com.ticketbox.viewmodel.CreateSpendingGoalViewModel
 import com.ticketbox.viewmodel.SpendingGoalDetailViewModel
+import com.ticketbox.viewmodel.SpendingGoalDetailUiState
 import com.ticketbox.viewmodel.SpendingGoalsViewModel
 import com.ticketbox.viewmodel.createSpendingGoalViewModelFactory
 import com.ticketbox.viewmodel.spendingGoalDetailViewModelFactory
@@ -39,23 +40,29 @@ private data class SpendingGoalRouteModels(
 internal fun SpendingGoalsRoute(
     screenFactory: MainScreenFactory,
     onBack: () -> Unit,
+    originalCreationId: Long? = null,
+    originalGoalPublicId: String? = null,
+    financialDataRevision: Int = 0,
 ) {
     SpendingGoalRouteContent(
         models = SpendingGoalRouteModels(
             list = viewModel(
                 key = SpendingGoalsViewModelKey,
-                factory = spendingGoalsViewModelFactory(screenFactory.reportsRepository),
+                factory = spendingGoalsViewModelFactory(screenFactory.reportsRepository, screenFactory.goalEditRepository),
             ),
             detail = viewModel(
                 key = SpendingGoalDetailViewModelKey,
-                factory = spendingGoalDetailViewModelFactory(screenFactory.reportsRepository, screenFactory.debtRepository),
+                factory = spendingGoalDetailViewModelFactory(screenFactory.reportsRepository, screenFactory.goalEditRepository),
             ),
             create = viewModel(
                 key = CreateSpendingGoalViewModelKey,
-                factory = createSpendingGoalViewModelFactory(screenFactory.reportsRepository, screenFactory.debtRepository),
+                factory = createSpendingGoalViewModelFactory(screenFactory.goalEditRepository),
             ),
         ),
         onBack = onBack,
+        originalCreationId = originalCreationId,
+        originalGoalPublicId = originalGoalPublicId,
+        financialDataRevision = financialDataRevision,
     )
 }
 
@@ -63,25 +70,32 @@ internal fun SpendingGoalsRoute(
 private fun SpendingGoalRouteContent(
     models: SpendingGoalRouteModels,
     onBack: () -> Unit,
+    originalCreationId: Long?,
+    originalGoalPublicId: String?,
+    financialDataRevision: Int,
 ) {
-    var page by rememberSaveable { mutableStateOf(SpendingGoalPage.List) }
-    var detailPublicId by rememberSaveable { mutableStateOf<String?>(null) }
+    var page by rememberSaveable(originalCreationId, originalGoalPublicId) { mutableStateOf(when {
+        originalCreationId != null -> SpendingGoalPage.Create
+        originalGoalPublicId != null -> SpendingGoalPage.Detail
+        else -> SpendingGoalPage.List
+    }) }
+    var creationToOpen by rememberSaveable(originalCreationId) { mutableStateOf(originalCreationId) }
+    var detailPublicId by rememberSaveable(originalGoalPublicId) { mutableStateOf(originalGoalPublicId) }
     var createMonth by rememberSaveable { mutableStateOf(models.list.state.value.month) }
     val detailState by models.detail.state.collectAsStateWithLifecycle()
 
-    LaunchedEffect(page, detailPublicId) {
-        if (page == SpendingGoalPage.Detail) {
+    LaunchedEffect(financialDataRevision) {
+        if (financialDataRevision > 0) models.list.refresh()
+    }
+    LaunchedEffect(page, detailPublicId, financialDataRevision, detailState.isEditing) {
+        if (page == SpendingGoalPage.Detail && !detailState.isEditing) {
             detailPublicId?.let(models.detail::load)
         }
     }
-    LaunchedEffect(detailState.mutationRevision, detailState.archiveCompleted) {
-        if (detailState.mutationRevision > 0) {
-            models.list.refresh()
-            if (detailState.archiveCompleted) {
-                detailPublicId = null
-                page = SpendingGoalPage.List
-            }
-        }
+    SpendingGoalDetailResultEffect(detailState, models.list::refresh) {
+        models.detail.acceptedArchive?.let { (binding, archived) -> models.list.acceptArchived(binding, archived) }
+        detailPublicId = null
+        page = SpendingGoalPage.List
     }
 
     when (page) {
@@ -90,6 +104,7 @@ private fun SpendingGoalRouteContent(
             actions = SpendingGoalsScreenActions(
                 onBack = onBack,
                 onCreate = {
+                    creationToOpen = null
                     createMonth = models.list.state.value.month
                     page = SpendingGoalPage.Create
                 },
@@ -102,8 +117,10 @@ private fun SpendingGoalRouteContent(
         SpendingGoalPage.Create -> CreateSpendingGoalScreen(
             viewModel = models.create,
             initialMonth = createMonth,
-            onBack = { page = SpendingGoalPage.List },
+            originalId = creationToOpen,
+            onBack = { creationToOpen = null; page = SpendingGoalPage.List },
             onCreated = {
+                creationToOpen = null
                 models.list.refresh()
                 page = SpendingGoalPage.List
             },
@@ -115,5 +132,15 @@ private fun SpendingGoalRouteContent(
                 page = SpendingGoalPage.List
             },
         )
+    }
+}
+
+@Composable
+private fun SpendingGoalDetailResultEffect(state: SpendingGoalDetailUiState, refreshList: () -> Unit, onArchived: () -> Unit) {
+    LaunchedEffect(state.mutationRevision, state.archiveCompleted) {
+        if (state.mutationRevision > 0) {
+            if (state.archiveCompleted) onArchived()
+            refreshList()
+        }
     }
 }

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -165,7 +166,7 @@ def test_web_split_invite_success_flashes_from_fact_page(
 
     resp = web_client.post(
         f"/web/expenses/{expense_id}/split-invite",
-        data={
+        data={"idempotency_key": str(uuid4()), "expected_row_version": "1",
             "ledger_id": "owner",
             "receiver_account_id": str(receiver_id),
             "amount_yuan": "12.00",
@@ -188,17 +189,16 @@ def test_web_split_invite_amount_exceeds_parent_flashes(web_client: TestClient) 
 
     resp = web_client.post(
         f"/web/expenses/{expense_id}/split-invite",
-        data={
+        data={"idempotency_key": str(uuid4()), "expected_row_version": "1",
             "ledger_id": "owner",
             "receiver_account_id": str(receiver_id),
             "amount_yuan": "99.00",  # > 40.00 parent
         },
         follow_redirects=False,
     )
-    assert resp.status_code == 303
-    followed = web_client.get(resp.headers["location"])
-    assert followed.status_code == 200
-    assert "拆账金额不能超过原账单金额" in followed.text
+    assert resp.status_code == 422
+    assert "拆账金额不能超过原账单金额" in resp.text
+    assert 'value="99.00"' in resp.text
 
 
 def test_web_edit_card_lists_sent_invitation_with_cancel(
@@ -217,6 +217,7 @@ def test_web_edit_card_lists_sent_invitation_with_cancel(
             expense_id=expense_id,
             receiver_account_id=receiver_id,
             amount_cents=1500,
+            idempotency_key=str(uuid4()), expected_row_version=1,
         )
         public_id = inv.public_id
 
@@ -242,6 +243,7 @@ def test_web_edit_card_expired_cancel_returns_with_error_tone(
             expense_id=expense_id,
             receiver_account_id=receiver_id,
             amount_cents=1500,
+            idempotency_key=str(uuid4()), expected_row_version=1,
         )
         public_id = inv.public_id
         db.execute(
@@ -269,7 +271,7 @@ def test_build_split_invite_context_hidden_for_viewer_render() -> None:
     returns None so the卡 never renders (POST 403 is enforced separately by
     ``_require_selected_ledger_write`` — see test_web_route_inventory +
     test_web_session_write_gate)."""
-    from app.routes.web_bill_split import build_split_invite_context
+    from app.routes._web_bill_split_context import build_split_invite_context
 
     expense = {
         "id": 1,
@@ -288,3 +290,33 @@ def test_build_split_invite_context_hidden_for_viewer_render() -> None:
             )
             is None
         )
+
+
+def test_native_split_form_replays_the_same_invitation_after_acceptance(web_client: TestClient) -> None:
+    import re
+
+    receiver_id = _add_owner_ledger_member(display="原邀请接收人")
+    expense_id = _make_owner_expense(amount_cents=5000)
+    page = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
+    assert page.status_code == 200
+    key = re.search(r'name="idempotency_key" value="([^"]+)"', page.text[page.text.index('class="split-invite-form"'):]).group(1)
+    form = {"ledger_id": "owner", "receiver_account_id": str(receiver_id), "amount_yuan": "12.00",
+            "idempotency_key": key, "expected_row_version": "1"}
+    first = web_client.post(f"/web/expenses/{expense_id}/split-invite", data=form, follow_redirects=False)
+    assert first.status_code == 303
+    with SessionLocal() as db:
+        original = bsplit.list_sent_for_expense(db, sender_account_id=_owner_account_id(), expense_id=expense_id)[0]
+        original_id = original.public_id
+        # Receiver accepts into their own independently owned ledger.
+        from app.models import Ledger, LedgerMember
+        ledger = Ledger(ledger_id="web-replay-receiver", name="接收账本", owner_account_id=receiver_id)
+        db.add(ledger)
+        db.flush()
+        db.add(LedgerMember(ledger_id=ledger.ledger_id, account_id=receiver_id, role="owner"))
+        db.commit()
+        bsplit.accept_invitation(db, public_id=original_id, accepting_account_id=receiver_id, target_ledger_id=ledger.ledger_id)
+    replay = web_client.post(f"/web/expenses/{expense_id}/split-invite", data=form, follow_redirects=False)
+    assert replay.status_code == 303
+    with SessionLocal() as db:
+        sent = bsplit.list_sent_for_expense(db, sender_account_id=_owner_account_id(), expense_id=expense_id)
+        assert [(row.public_id, row.status) for row in sent] == [(original_id, "accepted")]

@@ -10,10 +10,10 @@
     <string name="components_safe_badge_label">安全</string>
 
     <!-- AppDataAuthorityStrip：跨页面数据来源 / 缓存降级提示 -->
-    <string name="components_data_authority_backend_title">已更新</string>
-    <string name="components_data_authority_backend_body">可离线查看。</string>
-    <string name="components_data_authority_refreshing_title">同步中</string>
-    <string name="components_data_authority_refreshing_body">显示离线数据。</string>
+    <string name="components_data_authority_backend_title">账本数据</string>
+    <string name="components_data_authority_backend_body">显示已取得的账本结果。</string>
+    <string name="components_data_authority_refreshing_title">处理中</string>
+    <string name="components_data_authority_refreshing_body">当前操作尚未完成。</string>
     <string name="components_data_authority_cache_title">离线数据</string>
     <string name="components_data_authority_cache_body">可能不是最新。</string>
     <string name="components_data_authority_pending_cache_body">可能不是最新。</string>

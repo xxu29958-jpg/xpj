@@ -13,17 +13,26 @@ data class RuntimeCompatibilityDto(
 
 data class RuntimeProductCapabilitiesDto(
     val currency: RuntimeCurrencyCapabilityDto,
+    @param:Json(name = "upload_original_receipt_version")
+    val uploadOriginalReceiptVersion: Int? = null,
 )
 
 data class RuntimeCurrencyCapabilityDto(
     @param:Json(name = "request_binding")
     val requestBinding: String?,
+    @param:Json(name = "home_currency_code")
+    val homeCurrencyCode: String? = null,
+    @param:Json(name = "minor_unit_exponent")
+    val minorUnitExponent: Int? = null,
+    @param:Json(name = "read_compatibility")
+    val readCompatibility: String? = null,
 )
 
 data class RuntimeWriteCompatibility(
     val conclusion: String,
     val apiVersion: String?,
     val requestBinding: String?,
+    val uploadOriginalReceiptVersion: Int? = null,
 ) {
     val canWrite: Boolean
         get() = conclusion == "compatible" &&
@@ -44,4 +53,5 @@ fun RuntimeCompatibilityDto.toWriteCompatibility(): RuntimeWriteCompatibility =
         conclusion = writeCompatibility,
         apiVersion = apiVersion,
         requestBinding = capabilities.currency.requestBinding,
+        uploadOriginalReceiptVersion = capabilities.uploadOriginalReceiptVersion,
     )

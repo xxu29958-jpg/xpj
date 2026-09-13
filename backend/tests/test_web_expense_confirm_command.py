@@ -379,6 +379,7 @@ def _assert_failed_confirmation_rolls_back_form_edits(
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
+            "client_ref": str(uuid4()),
             "original_currency_code": "USD",
             "original_amount_minor": 1000,
             "merchant": "Before Failed Confirm",
@@ -406,7 +407,7 @@ def _assert_failed_confirmation_rolls_back_form_edits(
         follow_redirects=False,
     )
     assert response.status_code == 409, response.text
-    assert "汇率还没同步完成" in response.text
+    assert "这笔账单缺少换算汇率，请补齐后再继续。" in response.text
     assert _expense_payload(web_client, expense_id, identity=identity) == before
 
 

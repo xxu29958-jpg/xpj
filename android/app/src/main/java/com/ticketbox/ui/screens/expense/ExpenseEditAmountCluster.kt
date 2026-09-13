@@ -1,4 +1,5 @@
 package com.ticketbox.ui.screens.expense
+import com.ticketbox.domain.model.sanitizeManualExchangeRateInput
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column

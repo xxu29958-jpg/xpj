@@ -153,10 +153,16 @@ class LedgerRepository(
     }
 
     /** Select [ledgerId] without replacing or rotating the device session. */
-    suspend fun switchLedger(ledgerId: String): Result<LedgerSummary> = wrap {
+    suspend fun switchLedger(
+        ledgerId: String,
+        expectedBinding: LogicalSessionBinding? = null,
+    ): Result<LedgerSummary> = wrap {
         switchLedgerMutex.withLock {
             val session = sessionCoordinator.currentSnapshot()
-            val bound = requestGuard.bind(expectedLedgerId = session.activeLedgerId)
+            // A fact reference requires its captured context; ordinary ledger selection
+            // retains the existing serialized latest-selection behavior.
+            val bound = if (expectedBinding != null) requestGuard.bindExact(expectedBinding)
+                else requestGuard.bind(expectedLedgerId = session.activeLedgerId)
             val response = bound.call { api -> api.switchLedger(ledgerId) }
             // The response field is a compatibility echo, not credential authority.
             // A same-session refresh may rotate the token after this operation captured
@@ -377,6 +383,7 @@ class LedgerRepository(
                     kind = item.kind,
                     resourceId = item.resourceId,
                     expectedRowVersion = item.expectedRowVersion,
+                    intentMonth = item.restoreIntentMonth,
                 ),
             ).message
         }
@@ -617,6 +624,7 @@ private fun RecycleBinItemDto.toRecycleBinItem(): RecycleBinItem = RecycleBinIte
     removedAt = removedAt,
     retentionLabel = retentionLabel,
     expectedRowVersion = expectedRowVersion,
+    restoreIntentMonth = restoreIntentMonth,
 )
 
 private fun InvitationPreviewResponseDto.toInvitationPreview(): InvitationPreview = InvitationPreview(

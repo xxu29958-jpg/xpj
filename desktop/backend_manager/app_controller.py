@@ -318,7 +318,11 @@ class AppController:
                 self._loopback_origin(config),
                 session,
             )
-            return session.public_projection() if session is not None else {"configured": False}
+            projection = session.public_projection() if session is not None else {"configured": False}
+            recovery = self._load_rebind_recovery(config)
+            if recovery is not None and not recovery.ledger_id and not _provisional_expired(recovery):
+                projection["pairing_recovery"] = "original_code_required"
+            return projection
 
     def product_bridge_context(self) -> BridgeContext:
         """Return secrets only to the in-process Manager BFF."""
@@ -504,6 +508,12 @@ class AppController:
                 # resolves honestly.
                 with suppress(ProductDataError):
                     self._delete_rebind_recovery(config)
+            elif exc.error == "invalid_pairing_code":
+                raise ProductDataError(
+                    "上次绑定结果尚未确认，请用原绑定码继续。若原码已丢失，请等待几分钟，状态更新后再获取新码。",
+                    error="product_pairing_original_code_required",
+                    status_code=409,
+                ) from exc
             raise
         if current is not None and secrets.compare_digest(
             current.session_token,

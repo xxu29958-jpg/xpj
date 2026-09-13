@@ -14,7 +14,6 @@ writes, FX-aware amount calculation) stays in exchange_rate_service.
 
 from __future__ import annotations
 
-import logging
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from app.config import get_settings
@@ -32,8 +31,6 @@ from app.money_contract import (
     round_minor_ratio_half_up,
 )
 
-logger = logging.getLogger(__name__)
-
 __all__ = [
     "MAX_STORED_EXCHANGE_RATE",
     "RATE_QUANT",
@@ -41,8 +38,6 @@ __all__ = [
     "currency_input_metadata",
     "currency_symbol",
     "format_decimal_rate",
-    "home_currency_code",
-    "home_currency_code_or_none",
     "major_amount_to_minor",
     "minor_amount_label",
     "minor_amount_major_number",
@@ -83,39 +78,7 @@ def _clean_currency_code(value: str | None) -> str | None:
     return code
 
 
-def home_currency_code() -> str:
-    configured = get_settings().fx_home_currency_code
-    code = _clean_currency_code(configured)
-    if code is None or code not in DEFAULT_SUPPORTED_CURRENCY_CODES:
-        raise AppError("currency_not_supported", status_code=422)
-    return code
-
-
-def home_currency_code_or_none() -> str | None:
-    """Best-effort read-path variant of :func:`home_currency_code` (PR#255 R8-3).
-
-    The write path stamps records with :func:`home_currency_code` and keeps
-    failing fast on a misconfigured/unsupported env; read paths (the debt-list
-    envelope's installation capability) must degrade instead — raising there
-    would take down every historical list even though each record still carries
-    its frozen currency. ``None`` tells clients "capability unknown", and
-    clients already fail closed on a null capability for writes, so degrading
-    is safe.
-    """
-    try:
-        return home_currency_code()
-    except AppError:
-        logger.warning(
-            "fx_home_currency_code misconfigured/unsupported; degrading read-path "
-            "currency capability to null (write path still fails closed)",
-            exc_info=True,
-        )
-        return None
-
-
-def _currency_code_or_home(value: str | None) -> str:
-    if value is None or not str(value).strip():
-        return home_currency_code()
+def _require_currency_code(value: str | None) -> str:
     code = _clean_currency_code(value)
     if code is None:
         raise AppError("currency_not_supported", status_code=422)
@@ -131,7 +94,7 @@ def minor_unit_digits(currency_code: str | None) -> int:
     product currencies with explicit minor-unit metadata.
     """
 
-    code = _currency_code_or_home(currency_code)
+    code = _require_currency_code(currency_code)
     try:
         return CURRENCY_MINOR_UNIT_DIGITS[code]
     except KeyError as exc:
@@ -139,7 +102,7 @@ def minor_unit_digits(currency_code: str | None) -> int:
 
 
 def currency_symbol(currency_code: str | None) -> str:
-    code = _currency_code_or_home(currency_code)
+    code = _require_currency_code(currency_code)
     try:
         return CURRENCY_SYMBOLS[code]
     except KeyError as exc:
@@ -149,7 +112,7 @@ def currency_symbol(currency_code: str | None) -> str:
 def currency_input_metadata(currency_code: str | None) -> dict[str, object]:
     """HTML major-unit input metadata derived from the currency fraction digits."""
 
-    code = _currency_code_or_home(currency_code)
+    code = _require_currency_code(currency_code)
     digits = minor_unit_digits(code)
     zero_fraction = digits == 0
     return {
@@ -268,13 +231,12 @@ def supported_currency_codes() -> set[str]:
         configured.add(code)
     if not configured:
         configured = set(DEFAULT_SUPPORTED_CURRENCY_CODES)
-    configured.add(home_currency_code())
     return configured
 
 
 def normalize_currency_code(value: str | None) -> str:
-    code = _currency_code_or_home(value)
-    if code not in supported_currency_codes():
+    code = _require_currency_code(value)
+    if code not in DEFAULT_SUPPORTED_CURRENCY_CODES:
         raise AppError("currency_not_supported", status_code=422)
     return code
 

@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import com.ticketbox.R
+import com.ticketbox.data.repository.DebtTask
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Debt
@@ -71,12 +72,15 @@ internal fun MemberProposalSection(
         when {
             debt.isVoided -> DebtNoteCard(stringResource(R.string.debt_proposal_voided_note))
             debt.isCleared -> DebtNoteCard(stringResource(R.string.debt_proposal_cleared_note))
+            state.task == null -> Unit
             !state.canModify -> DebtNoteCard(stringResource(R.string.debt_proposal_readonly_note))
-            // Role is the server-authoritative Debt.viewerIsDebtor (§3.2); null = the viewer is not a
-            // party to this member Debt (a third ledger member), so neither action card applies.
+            debt.viewerIsDebtor == null -> DebtNoteCard(stringResource(R.string.debt_proposal_not_party_note))
+            state.isLoading && state.proposals.isEmpty() -> Unit
+            state.error != null && state.proposals.isEmpty() && state.committedDebt == null -> {
+                TextButton(onClick = viewModel::refresh) { Text(stringResource(R.string.common_retry)) }
+            }
             debt.viewerIsDebtor == true -> DebtorProposalCard(state = state, viewModel = viewModel)
-            debt.viewerIsDebtor == false -> CreditorProposalCard(debt = debt, state = state, viewModel = viewModel)
-            else -> DebtNoteCard(stringResource(R.string.debt_proposal_not_party_note))
+            else -> CreditorProposalCard(debt = debt, state = state, viewModel = viewModel)
         }
         // ③ 沉降：只已解决进历史 (空集时整卡不渲染，§3.2/3.6)；在途 pending 在上面的动作卡里。
         val resolved = state.proposals.filter { !it.isPending }
@@ -88,6 +92,7 @@ internal fun MemberProposalSection(
 
 @Composable
 private fun DebtorProposalCard(state: MemberProposalUiState, viewModel: MemberRepaymentProposalViewModel) {
+    val task = state.task ?: return
     val pending = state.pendingProposal
     AppPaperCard(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -106,7 +111,7 @@ private fun DebtorProposalCard(state: MemberProposalUiState, viewModel: MemberRe
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 OutlinedButton(
-                    onClick = { viewModel.withdraw(pending.publicId) },
+                    onClick = { viewModel.withdraw(task, pending.publicId) },
                     enabled = !state.isSubmitting,
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text(stringResource(R.string.debt_proposal_withdraw_action)) }
@@ -126,7 +131,7 @@ private fun DebtorProposalCard(state: MemberProposalUiState, viewModel: MemberRe
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Button(
-                    onClick = { viewModel.openForm(ProposalForm.Propose) },
+                    onClick = { viewModel.openForm(task, ProposalForm.Propose) },
                     enabled = !state.isSubmitting,
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text(stringResource(R.string.debt_proposal_propose_action)) }
@@ -141,6 +146,7 @@ private fun CreditorProposalCard(
     state: MemberProposalUiState,
     viewModel: MemberRepaymentProposalViewModel,
 ) {
+    val task = state.task ?: return
     val pending = state.pendingProposal
     AppPaperCard(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -160,7 +166,7 @@ private fun CreditorProposalCard(
                 )
                 // 8e ④ forgive：仅债权人 + open 成员债 + 无在途 proposal（pending==null）时显示，低调
                 // TextButton，不与「确认收款」抢主操作（pending 时只给确认/拒绝，避免与债务人在途请求并存）。
-                CreditorForgiveAction(debt = debt, isSubmitting = state.isSubmitting, viewModel = viewModel)
+                CreditorForgiveAction(task = task, debt = debt, isSubmitting = state.isSubmitting, viewModel = viewModel)
             } else {
                 Text(
                     stringResource(
@@ -177,7 +183,7 @@ private fun CreditorProposalCard(
                 pending.note?.takeIf { it.isNotBlank() }?.let { note ->
                     Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                CreditorActionButtons(pending = pending, isSubmitting = state.isSubmitting, viewModel = viewModel)
+                CreditorActionButtons(task = task, pending = pending, isSubmitting = state.isSubmitting, viewModel = viewModel)
             }
         }
     }
@@ -185,19 +191,20 @@ private fun CreditorProposalCard(
 
 @Composable
 private fun CreditorActionButtons(
+    task: DebtTask,
     pending: MemberRepaymentProposal,
     isSubmitting: Boolean,
     viewModel: MemberRepaymentProposalViewModel,
 ) {
     Row(modifier = Modifier.fillMaxWidth()) {
         Button(
-            onClick = { viewModel.openForm(ProposalForm.Confirm, pending) },
+            onClick = { viewModel.openForm(task, ProposalForm.Confirm, pending) },
             enabled = !isSubmitting,
             modifier = Modifier.weight(1f),
         ) { Text(stringResource(R.string.debt_proposal_confirm_action)) }
         Spacer(Modifier.width(AppSpacing.smallGap))
         OutlinedButton(
-            onClick = { viewModel.reject(pending.publicId) },
+            onClick = { viewModel.reject(task, pending.publicId) },
             enabled = !isSubmitting,
             modifier = Modifier.weight(1f),
         ) { Text(stringResource(R.string.debt_proposal_reject_action)) }
@@ -208,11 +215,12 @@ private fun CreditorActionButtons(
 // viewModel.forgive 把欠款折成 cleared(forgiven)，详情屏重拉到 is_forgiven 暖语；OCC 冲突走 neutral 提示。
 @Composable
 private fun CreditorForgiveAction(
+    task: DebtTask,
     debt: Debt,
     isSubmitting: Boolean,
     viewModel: MemberRepaymentProposalViewModel,
 ) {
-    var showConfirm by rememberSaveable { mutableStateOf(false) }
+    var showConfirm by rememberSaveable(task) { mutableStateOf(false) }
     val haptic = rememberAppHaptics()
     TextButton(
         onClick = { showConfirm = true },
@@ -229,7 +237,7 @@ private fun CreditorForgiveAction(
                     onClick = {
                         showConfirm = false
                         haptic.confirm()
-                        viewModel.forgive(debt.rowVersion)
+                        viewModel.forgive(task, debt.rowVersion)
                     },
                 ) { Text(stringResource(R.string.debt_member_forgive_confirm_action)) }
             },
@@ -253,6 +261,7 @@ internal fun ProposalFormSheet(
     debt: Debt,
     onClose: () -> Unit,
 ) {
+    val task = state.task ?: return
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val recordDisplay = CurrencyDisplay.forRecord(debt.homeCurrencyCode)
     ModalBottomSheet(onDismissRequest = onClose, sheetState = sheetState) {
@@ -262,6 +271,7 @@ internal fun ProposalFormSheet(
             viewModel = viewModel,
             onSubmit = {
                 viewModel.submit(
+                    task = task,
                     expectedRowVersion = debt.rowVersion,
                     // 严格解析（R7-2）：未知 record 码传 null，VM fail closed 禁用表单写。
                     currency = CurrencyCode.fromStorageKeyOrNull(debt.homeCurrencyCode),
@@ -290,7 +300,7 @@ private fun ProposalForm(
                 placeholder = stringResource(R.string.components_amount_input_placeholder),
                 isError = state.validationError != null,
             ),
-            actions = AppAmountInputActions(onValueChange = viewModel::updateAmount),
+            actions = AppAmountInputActions(onValueChange = { value -> state.task?.let { viewModel.updateAmount(it, value) } }),
             modifier = Modifier.fillMaxWidth(),
         )
         if (form == ProposalForm.Propose) {
@@ -299,7 +309,7 @@ private fun ProposalForm(
                     label = stringResource(R.string.debt_proposal_note_label),
                     value = state.noteInput,
                 ),
-                actions = AppTextInputActions(onValueChange = viewModel::updateNote),
+                actions = AppTextInputActions(onValueChange = { value -> state.task?.let { viewModel.updateNote(it, value) } }),
                 modifier = Modifier.fillMaxWidth(),
             )
         }

@@ -41,6 +41,7 @@
       <form method="post" action="/web/auth/join/accept" autocomplete="off">
         {{ csrf_field|safe }}
         <input type="hidden" name="invite_token" value="{{ invite_token }}">
+        <input type="hidden" name="expected_account_public_id" value="{{ expected_account_public_id }}">
         {% if current_account_name %}
         <div class="join-identity">
           <span>你将以当前身份加入</span>

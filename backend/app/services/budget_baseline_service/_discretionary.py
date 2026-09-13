@@ -23,19 +23,19 @@ class DiscretionaryBreakdown:
     without each surface duplicating the maths.
     """
 
-    monthly_income_cents: int
-    fixed_expenses_cents: int
-    spent_amount_cents: int
+    monthly_income_cents: int | None
+    fixed_expenses_cents: int | None
+    spent_amount_cents: int | None
     savings_target_cents: int
     reserved_buffer_cents: int
-    discretionary_cents: int
+    discretionary_cents: int | None
 
 
 def compute_monthly_discretionary(
     *,
-    monthly_income_cents: int,
-    fixed_expenses_cents: int = 0,
-    spent_amount_cents: int = 0,
+    monthly_income_cents: int | None,
+    fixed_expenses_cents: int | None = 0,
+    spent_amount_cents: int | None = 0,
     savings_target_cents: int = 0,
     reserved_buffer_cents: int = 0,
 ) -> DiscretionaryBreakdown:
@@ -46,7 +46,7 @@ def compute_monthly_discretionary(
     is floored at zero so downstream UI never has to deal with a
     "negative spendable" oxymoron.
     """
-    raw = (
+    raw = None if None in (monthly_income_cents, fixed_expenses_cents, spent_amount_cents) else (
         monthly_income_cents
         - fixed_expenses_cents
         - spent_amount_cents
@@ -59,5 +59,5 @@ def compute_monthly_discretionary(
         spent_amount_cents=spent_amount_cents,
         savings_target_cents=savings_target_cents,
         reserved_buffer_cents=reserved_buffer_cents,
-        discretionary_cents=max(0, raw),
+        discretionary_cents=None if raw is None else max(0, raw),
     )

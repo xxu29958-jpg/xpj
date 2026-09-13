@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import logging
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -34,18 +35,29 @@ class FxRateSyncStatus:
     failed_count: int = 0
     last_error: str | None = None
     last_success_at: datetime | None = None
+    scheduler_running: bool = False
+    scheduler_config_error: bool = False
 
 
-_status = FxRateSyncStatus()
+@dataclass
+class _FxRateRuntime:
+    counters: FxRateSyncStatus = field(default_factory=FxRateSyncStatus)
+    scheduler: FxRateScheduler | None = None
+    config_error: bool = False
+
+
+_runtime = _FxRateRuntime()
 
 
 def fx_rate_sync_status() -> FxRateSyncStatus:
     """Snapshot of the background FX sync counters (read-only)."""
     return FxRateSyncStatus(
-        success_count=_status.success_count,
-        failed_count=_status.failed_count,
-        last_error=_status.last_error,
-        last_success_at=_status.last_success_at,
+        success_count=_runtime.counters.success_count,
+        failed_count=_runtime.counters.failed_count,
+        last_error=_runtime.counters.last_error,
+        last_success_at=_runtime.counters.last_success_at,
+        scheduler_running=_runtime.scheduler is not None and _runtime.scheduler.thread.is_alive(),
+        scheduler_config_error=_runtime.config_error,
     )
 
 
@@ -97,30 +109,32 @@ def run_fx_sync_once(db: Session) -> bool:
     network / TLS drop (this machine intermittently kills outbound handshakes —
     same flakiness that hits Maven; the fetch already retried) degrades
     gracefully to last-known rates and logs at WARNING with no traceback.
-    Anything else is unexpected (provider schema change, DB lock, bug): logged at
-    ERROR with the full traceback so the owner status page can surface it. Either
-    way the caller is never crashed — critical for the daemon thread.
+    Failures expose bounded reason codes, not exception messages or configured
+    URLs. The loop also owns failures when opening its sessions or claiming its
+    lease, before this function is reached.
     """
     try:
         rows = refresh_ecb_fx_rates(
             db,
             home_currency_code=require_runtime_home_currency_code(db),
         )
-    except FxFetchError as exc:
-        _status.failed_count += 1
-        _status.last_error = str(exc)[:200]
-        logger.warning("FX sync skipped (network); keeping last-known rates: %s", exc)
+    except FxFetchError:
+        _record_sync_failure("provider_unavailable")
         return False
-    except Exception as exc:  # noqa: BLE001 — daemon thread + UI trigger must not crash
-        _status.failed_count += 1
-        _status.last_error = f"{type(exc).__name__}: {exc}"[:200]
-        logger.exception("FX sync failed (unexpected)")
+    except Exception:  # noqa: BLE001 — daemon thread + UI trigger must not crash
+        _record_sync_failure("sync_failed")
         return False
-    _status.success_count += 1
-    _status.last_success_at = now_utc()
-    _status.last_error = None
+    _runtime.counters.success_count += 1
+    _runtime.counters.last_success_at = now_utc()
+    _runtime.counters.last_error = None
     logger.info("FX sync completed: %s rates", len(rows))
     return True
+
+
+def _record_sync_failure(code: str) -> None:
+    _runtime.counters.failed_count += 1
+    _runtime.counters.last_error = code
+    logger.warning("FX sync failed (%s); keeping last-known rates", code)
 
 
 def _scheduler_loop(stop_event: threading.Event, sync_times: list[time], timezone: ZoneInfo) -> None:
@@ -128,19 +142,24 @@ def _scheduler_loop(stop_event: threading.Event, sync_times: list[time], timezon
         delay_seconds = _seconds_until_next_run(datetime.now(timezone), sync_times)
         if stop_event.wait(delay_seconds):
             return
-        with SessionLocal() as db:
-            if not try_claim_scheduler_lease(
-                db,
-                name="fx_rate_sync",
-                lease_seconds=_SCHEDULER_LEASE_SECONDS,
-            ):
-                logger.info("FX sync skipped: scheduler lease is held")
-                continue
-        with SessionLocal() as db:
-            run_fx_sync_once(db)
+        try:
+            with SessionLocal() as db:
+                if not try_claim_scheduler_lease(
+                    db,
+                    name="fx_rate_sync",
+                    lease_seconds=_SCHEDULER_LEASE_SECONDS,
+                ):
+                    logger.info("FX sync skipped: scheduler lease is held")
+                    continue
+            with SessionLocal() as db:
+                run_fx_sync_once(db)
+        except SQLAlchemyError:
+            _record_sync_failure("storage_unavailable")
 
 
 def start_fx_rate_scheduler() -> FxRateScheduler | None:
+    _runtime.scheduler = None
+    _runtime.config_error = False
     settings = get_settings()
     if not settings.fx_rate_auto_sync_enabled:
         return None
@@ -148,7 +167,8 @@ def start_fx_rate_scheduler() -> FxRateScheduler | None:
         sync_times = _parse_sync_times(settings.fx_rate_sync_times)
         timezone = ZoneInfo(settings.fx_rate_sync_timezone)
     except (ValueError, ZoneInfoNotFoundError):
-        logger.exception("FX rate scheduler config is invalid")
+        _runtime.config_error = True
+        logger.warning("FX rate scheduler config is invalid")
         return None
 
     stop_event = threading.Event()
@@ -158,5 +178,7 @@ def start_fx_rate_scheduler() -> FxRateScheduler | None:
         name="fx-rate-scheduler",
         daemon=True,
     )
+    scheduler = FxRateScheduler(thread=thread, stop_event=stop_event)
+    _runtime.scheduler = scheduler
     thread.start()
-    return FxRateScheduler(thread=thread, stop_event=stop_event)
+    return scheduler

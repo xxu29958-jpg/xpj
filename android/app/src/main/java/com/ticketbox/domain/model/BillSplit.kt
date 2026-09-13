@@ -27,6 +27,7 @@ data class BillSplitSent(
     val publicId: String,
     val status: String,
     val amountCents: Long,
+    val homeCurrencyCode: String,
     val merchantSnapshot: String?,
     val categorySuggestion: String?,
     val expenseTimeSnapshot: String?,
@@ -45,6 +46,7 @@ data class BillSplitInbox(
     val publicId: String,
     val status: String,
     val amountCents: Long,
+    val homeCurrencyCode: String,
     val merchantSnapshot: String?,
     val categorySuggestion: String?,
     val expenseTimeSnapshot: String?,
@@ -56,6 +58,14 @@ data class BillSplitInbox(
     val expiredAt: String?,
     val senderAccountId: Long,
     val senderDisplayName: String,
+    val receivedBill: BillSplitReceivedBill? = null,
+)
+
+/** The receiver's own canonical fact, exposed only while its ledger is readable. */
+data class BillSplitReceivedBill(
+    val expenseId: Long,
+    val ledgerId: String,
+    val ledgerName: String,
 )
 
 /**

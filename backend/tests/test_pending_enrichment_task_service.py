@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
@@ -68,6 +70,50 @@ def _ocr_result() -> list[OcrExtraction]:
             ),
         )
     ]
+
+
+@pytest.mark.real_db
+def test_restart_replay_finishes_the_committed_result_without_repeating_enrichment(monkeypatch, *, identity) -> None:
+    from app.services import background_task_service
+    from app.services.pending_enrichment_task_service import resume_pending_expense_enrichment
+
+    expense_id, predecessor, task_id = _seed_pending_enrichment_task()
+    payload = {"expense_id": expense_id, "tenant_id": "owner", "timezone_name": "Asia/Shanghai",
+        "expected_row_version": predecessor}
+    provider_calls = []
+
+    def extract(*_args, **_kwargs):
+        provider_calls.append(expense_id)
+        return _ocr_result()
+
+    monkeypatch.setattr(enrich_service, "collect_auto_ocr_extractions", extract)
+    monkeypatch.setattr(enrich_service, "_try_stage_thumbnail", lambda *_args: None)
+    with SessionLocal() as db:
+        task = db.get(BackgroundTask, task_id)
+        task.input_payload_json = json.dumps(payload)
+        db.commit()
+        run_pending_expense_enrichment_task(db, task, payload)
+        public_id, committed_result = task.public_id, task.result_summary_json
+        progress = (task.progress_current, task.progress_total, task.progress_message)
+        assert task.status == "running", "The interruption is after handler commit, before worker completion"
+        assert json.loads(committed_result)["outcome"] == "updated"
+
+    assert background_task_service.recover_orphaned_tasks() >= 1
+    monkeypatch.setattr(background_task_service, "_submit_task",
+        lambda task_id, payload, *, registry: background_task_worker.run_task(task_id, payload, registry))
+    with SessionLocal() as db:
+        task = db.get(BackgroundTask, task_id)
+        assert task.status == "failed" and task.error_code == "orphaned_after_restart"
+        assert task.result_summary_json == committed_result
+        resume_pending_expense_enrichment(db, task_public_id=public_id, expense_id=expense_id, tenant_id="owner")
+    with SessionLocal() as db:
+        task, expense = db.get(BackgroundTask, task_id), db.get(Expense, expense_id)
+        assert task.status == "completed"
+        assert task.result_summary_json == committed_result
+        assert (task.progress_current, task.progress_total, task.progress_message) == progress
+        assert task.input_payload_json == json.dumps(payload)
+        assert (expense.amount_cents, expense.merchant, expense.row_version) == (1990, "盒马", predecessor + 1)
+        assert provider_calls == [expense_id]
 
 
 @pytest.mark.real_db

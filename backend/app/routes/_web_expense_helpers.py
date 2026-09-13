@@ -15,12 +15,11 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.routes._web_expense_manual_fx_presenter import project_manual_fx_edit_views
 from app.routes._web_expense_return_context import (
+    ExpenseReturnContext,
     edit_context_params,
-    flow_href,
+    edit_navigation_view,
     resolve_return_to,
     return_context_params,
-    return_href,
-    return_label,
 )
 from app.routes._web_expense_split_presenter import web_split_members, web_split_rows
 from app.routes.web_common import (
@@ -33,6 +32,7 @@ from app.routes.web_common import (
 )
 from app.services.category_service import list_ledger_category_options
 from app.services.expense_service import get_expense
+from app.services.manual_expense_draft_presenter import manual_draft_ack
 from app.services.receipt_item_service import list_expense_items
 
 
@@ -51,12 +51,7 @@ def _edit_page_or_flash_redirect(
     conflict: bool = False,
     receipt_item_rows: list[dict] | None = None,
     split_form_rows: list[dict] | None = None,
-    return_to: str = "",
-    return_month: str = "",
-    return_filter: str = "",
-    return_page: str = "",
-    return_tag: str = "",
-    return_query: str = "",
+    return_context: ExpenseReturnContext = ExpenseReturnContext(),
 ) -> Response:
     """Re-render edit.html with ``error_msg`` — or flash-redirect when the row
     itself is gone.
@@ -81,27 +76,15 @@ def _edit_page_or_flash_redirect(
             form_values=form_values,
             field_errors=field_errors,
             conflict=conflict,
-            return_to=return_to,
-            return_month=return_month,
-            return_filter=return_filter,
-            return_page=return_page,
-            return_tag=return_tag,
-            return_query=return_query,
+            return_context=return_context,
         )
     except AppError as exc:
         return _web_redirect(
-            resolve_return_to(return_to, fallback_path),
+            resolve_return_to(return_context.return_to, fallback_path),
             selected_id,
             msg=exc.message,
             flash_type="error",
-            **return_context_params(
-                return_to,
-                return_month=return_month,
-                return_filter=return_filter,
-                return_page=return_page,
-                return_tag=return_tag,
-                return_query=return_query,
-            ),
+            **return_context_params(**return_context.as_kwargs()),
         )
     ctx[error_key] = error_msg
     if receipt_item_rows is not None:
@@ -162,7 +145,7 @@ def drawer_fragment_error(
             form_values=form_values,
             field_errors=field_errors,
             conflict=conflict,
-            return_to="pending",
+            return_context=ExpenseReturnContext(return_to="pending"),
         )
     except AppError as exc:
         return HTMLResponse(
@@ -220,12 +203,7 @@ def web_edit_context(
     form_values: dict[str, str] | None = None,
     field_errors: dict[str, str] | None = None,
     conflict: bool = False,
-    return_to: str = "",
-    return_month: str = "",
-    return_filter: str = "",
-    return_page: str = "",
-    return_tag: str = "",
-    return_query: str = "",
+    return_context: ExpenseReturnContext = ExpenseReturnContext(),
 ) -> dict:
     expense = get_expense(db, expense_id, selected_id)
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id)
@@ -239,6 +217,7 @@ def web_edit_context(
     if form_values and not conflict and form_values.get("expected_row_version"):
         expense_view["row_version"] = form_values["expected_row_version"]
     ctx["expense"] = expense_view
+    ctx["manual_draft_ack"] = manual_draft_ack(db, getattr(request.state, "web_session_auth", None), expense)
     ctx["conflict_current"] = current_expense_view if conflict else None
     ctx["confirm_idempotency_key"] = (form_values or {}).get("idempotency_key") or str(uuid4())
     ctx["error"] = None
@@ -246,30 +225,7 @@ def web_edit_context(
     ctx["items_error"] = None
     ctx["splits_error"] = None
     ctx["field_errors"] = field_errors or {}
-    ctx["edit_return_fields"] = edit_context_params(
-        return_to,
-        return_month=return_month,
-        return_filter=return_filter,
-        return_page=return_page,
-        return_tag=return_tag,
-        return_query=return_query,
-    )
-    ctx["edit_current_href"] = flow_href(
-        f"/web/expenses/{expense_id}/edit",
-        ledger_id=selected_id,
-        **ctx["edit_return_fields"],
-    )
-    ctx["edit_return_href"] = return_href(
-        return_to,
-        ledger_id=selected_id,
-        default_path="/web/pending",
-        return_month=return_month,
-        return_filter=return_filter,
-        return_page=return_page,
-        return_tag=return_tag,
-        return_query=return_query,
-    )
-    ctx["edit_return_label"] = return_label(return_to)
+    ctx.update(edit_navigation_view(return_context, expense_id=expense_id, ledger_id=selected_id))
     record_currency = expense.home_currency_code or ctx["home_currency_code"]
     ctx["currency_input"] = _currency_input_view(record_currency)
     ctx["expense_currency_input"] = _currency_input_view(
@@ -356,12 +312,7 @@ def confirm_reject_error(
     fragment: int,
     *,
     status_code: int,
-    return_to: str = "",
-    return_month: str = "",
-    return_filter: str = "",
-    return_page: str = "",
-    return_tag: str = "",
-    return_query: str = "",
+    return_context: ExpenseReturnContext = ExpenseReturnContext(),
     form_values: dict[str, str] | None = None,
     field_errors: dict[str, str] | None = None,
     conflict: bool = False,
@@ -391,12 +342,7 @@ def confirm_reject_error(
         form_values=form_values,
         field_errors=field_errors,
         conflict=conflict,
-        return_to=return_to,
-        return_month=return_month,
-        return_filter=return_filter,
-        return_page=return_page,
-        return_tag=return_tag,
-        return_query=return_query,
+        return_context=return_context,
     )
 
 
@@ -413,12 +359,7 @@ def web_save_response(
     field_errors: dict[str, str] | None,
     conflict: bool,
     fragment: int,
-    return_to: str,
-    return_month: str,
-    return_filter: str,
-    return_page: str,
-    return_tag: str,
-    return_query: str,
+    return_context: ExpenseReturnContext = ExpenseReturnContext(),
 ) -> Response:
     if error is not None:
         if fragment:
@@ -446,12 +387,7 @@ def web_save_response(
             form_values=form_values,
             field_errors=field_errors,
             conflict=conflict,
-            return_to=return_to,
-            return_month=return_month,
-            return_filter=return_filter,
-            return_page=return_page,
-            return_tag=return_tag,
-            return_query=return_query,
+            return_context=return_context,
         )
     if fragment:
         return drawer_fragment_ok("save")
@@ -462,7 +398,7 @@ def web_save_response(
         (
             f"/web/expenses/{expense_id}/edit"
             if manual_rate_submitted
-            else resolve_return_to(return_to, f"/web/expenses/{expense_id}/edit")
+            else resolve_return_to(return_context.return_to, f"/web/expenses/{expense_id}/edit")
         ),
         selected_id,
         msg=(
@@ -470,12 +406,5 @@ def web_save_response(
             if manual_rate_submitted
             else None
         ),
-        **return_context_params(
-            return_to,
-            return_month=return_month,
-            return_filter=return_filter,
-            return_page=return_page,
-            return_tag=return_tag,
-            return_query=return_query,
-        ),
+        **(edit_context_params if manual_rate_submitted else return_context_params)(**return_context.as_kwargs()),
     )

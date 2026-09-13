@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from tests.test_bill_split import _make_expense_for_owner, _seed_receiver
+from tests.test_bill_split import _make_expense_for_owner, _seed_receiver, _split_headers
 from tests.test_bill_split_security_regressions import _bearer_for_account_ledger
 
 
@@ -34,8 +34,8 @@ def _create_invited_split(
     expense_id = _make_expense_for_owner()
     resp = client.post(
         f"/api/expenses/{expense_id}/split-invite",
-        headers=identity.app_headers,
-        json={"receiver_account_id": receiver_account_id, "amount_cents": amount_cents},
+        headers=_split_headers(client, identity.app_headers),
+        json={"expected_row_version": 1, "receiver_account_id": receiver_account_id, "amount_cents": amount_cents},
     )
     assert resp.status_code == 200, resp.json()
     return resp.json()["public_id"]

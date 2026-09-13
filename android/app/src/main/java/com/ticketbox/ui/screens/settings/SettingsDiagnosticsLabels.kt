@@ -22,6 +22,7 @@ internal fun diagnosticCheckDetail(check: DiagnosticCheck): String = when (check
 @StringRes
 private fun diagnosticCheckNameRes(kind: DiagnosticCheckKind): Int = when (kind) {
     DiagnosticCheckKind.Auth -> R.string.settings_diagnostics_check_auth_name
+    DiagnosticCheckKind.WriteCompatibility -> R.string.settings_diagnostics_check_write_name
     DiagnosticCheckKind.ServerSettings -> R.string.settings_diagnostics_check_server_name
     DiagnosticCheckKind.PendingExpenses -> R.string.settings_diagnostics_check_pending_name
     DiagnosticCheckKind.ConfirmedExpenses -> R.string.settings_diagnostics_check_confirmed_name
@@ -34,6 +35,7 @@ private fun diagnosticCheckNameRes(kind: DiagnosticCheckKind): Int = when (kind)
 @StringRes
 private fun diagnosticCheckPassDetailRes(kind: DiagnosticCheckKind): Int = when (kind) {
     DiagnosticCheckKind.Auth -> R.string.settings_diagnostics_check_auth_pass
+    DiagnosticCheckKind.WriteCompatibility -> R.string.settings_diagnostics_check_write_pass
     DiagnosticCheckKind.ServerSettings -> R.string.settings_diagnostics_check_server_pass
     DiagnosticCheckKind.PendingExpenses -> R.string.settings_diagnostics_check_pending_pass
     DiagnosticCheckKind.ConfirmedExpenses -> R.string.settings_diagnostics_check_confirmed_pass

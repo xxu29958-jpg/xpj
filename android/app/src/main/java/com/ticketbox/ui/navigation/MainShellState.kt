@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
@@ -74,6 +75,7 @@ internal enum class ProductSecondaryPage(val route: String) {
     DebtGoals("product/obligations/repayment-plans"),
     // 往来域：全账本往来（个人透镜之上的账本完整视图，W2-C）。
     AllDebts("product/obligations/debts"),
+    ObligationSync("product/obligations/sync-status"),
     // 往来域：还款复核。
     RepaymentDrafts(REPAYMENT_DRAFT_BASE_ROUTE),
 }
@@ -100,7 +102,7 @@ internal sealed interface MainNavigationRequest {
     data object Back : MainNavigationRequest
 }
 
-internal class MainShellState {
+internal class MainShellState(val launchAction: LaunchActionState = LaunchActionState()) {
     var selectedDomain by mutableStateOf(PrimaryDomain.Inbox)
         private set
 
@@ -120,17 +122,11 @@ internal class MainShellState {
     val accountOpen: Boolean
         get() = activeDestination == MainProductDestination.Workspace
 
-    var insightsDataRevision by mutableStateOf(0)
-
-    var planDataRevision by mutableStateOf(0)
+    var financialDataRevision by mutableStateOf(0)
 
     var expenseEditCompletionRevision by mutableStateOf(0)
 
     var transactionVocabularyRevision by mutableStateOf(0)
-
-    // 系统分享 / 启动器 shortcut 的一次性入口动作（W1），单独成类（见 LaunchActionState）：
-    // MainShellState 已贴着 detekt 每文件函数上限，把那两个 post/consume 方法外置避免触顶。
-    val launchAction = LaunchActionState()
 
     // §三报表钻取：统计分类行 → 账本带筛选打开的一次性请求（同上外置成类）。
     val ledgerDrill = LedgerDrillState()
@@ -180,6 +176,12 @@ internal class MainShellState {
         navigationRequest = MainNavigationRequest.OpenSecondary(page)
     }
 
+    fun openBudget(month: String) {
+        navigationRequest = MainNavigationRequest.OpenSecondary(
+            page = ProductSecondaryPage.Budget, route = budgetRoute(month),
+        )
+    }
+
     fun openRepaymentDrafts(focusedDraftPublicId: String? = null) {
         navigationRequest = MainNavigationRequest.OpenSecondary(
             page = ProductSecondaryPage.RepaymentDrafts,
@@ -225,7 +227,7 @@ internal class MainShellState {
 
     fun surfaceRole(currentRoute: String?): SurfaceRole {
         return when {
-            currentRoute == EXPENSE_ROUTE -> SurfaceRole.Edit
+            currentRoute in setOf(EXPENSE_ROUTE, MANUAL_EXPENSE_SUBMISSION_ROUTE, CORRECTION_RATE_ROUTE) -> SurfaceRole.Edit
             activeDestination == MainProductDestination.Workspace -> SurfaceRole.Settings
             activeDestination is MainProductDestination.Secondary ->
                 (activeDestination as MainProductDestination.Secondary).page.surfaceRole
@@ -236,38 +238,35 @@ internal class MainShellState {
     }
 }
 
-internal fun MainShellState.markInsightsDataChanged() {
-    insightsDataRevision += 1
-}
-
-internal fun MainShellState.markPlanDataChanged() {
-    planDataRevision += 1
-    markInsightsDataChanged()
+internal fun MainShellState.markFinancialDataChanged() {
+    financialDataRevision += 1
 }
 
 internal fun MainShellState.markExpenseEditCompleted() {
     expenseEditCompletionRevision += 1
-    markInsightsDataChanged()
+    markFinancialDataChanged()
 }
 
 internal fun MainShellState.markTransactionVocabularyChanged() {
     transactionVocabularyRevision += 1
-    markInsightsDataChanged()
+    markFinancialDataChanged()
 }
 
 /**
  * Recycle-bin restores can revive rows from BOTH the transactions vocabulary
  * domain (category preferences) and the plan domain (budget / income plans /
- * recurring / goals), so a restore invalidates the two channels together.
- * Insights gets a single bump — the two marks above would double-count it.
+ * recurring / goals). Refresh the vocabulary and the shared financial reads.
  */
 internal fun MainShellState.markRecycleBinRestoreCompleted() {
     transactionVocabularyRevision += 1
-    markPlanDataChanged()
+    markFinancialDataChanged()
 }
 
 @Composable
-internal fun rememberMainShellState(): MainShellState = remember { MainShellState() }
+internal fun rememberMainShellState(): MainShellState {
+    val launchAction = rememberSaveable(saver = LaunchActionState.Saver) { LaunchActionState() }
+    return remember(launchAction) { MainShellState(launchAction) }
+}
 
 internal val PrimaryDomain.surfaceRole: SurfaceRole
     get() = when (this) {
@@ -287,6 +286,8 @@ internal val ProductSecondaryPage.surfaceRole: SurfaceRole
         ProductSecondaryPage.AllDebts,
         ProductSecondaryPage.RepaymentDrafts,
         -> SurfaceRole.Ledger
+
+        ProductSecondaryPage.ObligationSync -> SurfaceRole.Settings
 
         ProductSecondaryPage.SpendingGoal,
         ProductSecondaryPage.Budget,

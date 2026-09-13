@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -68,7 +69,10 @@ internal fun PendingReviewSheetHost(
     actions: PendingReviewSheetHostActions,
 ) {
     if (state.sheet == PendingSheet.None) return
-    ModalBottomSheet(onDismissRequest = actions.onDismiss) {
+    ModalBottomSheet(
+        onDismissRequest = actions.onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    ) {
         PendingReviewSheetContent(sheet = state.sheet, state = state, actions = actions)
     }
 }

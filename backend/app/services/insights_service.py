@@ -14,9 +14,13 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.errors import AppError
 from app.models import Expense, RecurringItem
 from app.money_contract import projection_sum_to_int
+from app.services.currency_binding_service import require_runtime_home_currency_code
+from app.services.currency_common import normalize_currency_code
 from app.services.merchant_service import normalize_merchant
+from app.services.money_projection_service import project_recorded_amount
 from app.services.time_service import ensure_utc, local_month_label, now_utc, safe_zone
 
 _RecurringEntry = tuple[datetime, int, str]
@@ -100,12 +104,15 @@ def _confirmed_expenses_for_recurring(
     )
 
 
-def _group_recurring_entries(expenses: Iterable[Expense]) -> dict[str, list[_RecurringEntry]]:
+def _group_recurring_entries(
+    db: Session, expenses: Iterable[Expense], *, tenant_id: str, home: str,
+    timezone_name: str, formal_keys: set[str],
+) -> dict[str, list[_RecurringEntry]]:
     grouped: dict[str, list[_RecurringEntry]] = defaultdict(list)
     for expense in expenses:
         merchant_raw = (expense.merchant or "").strip()
         key = normalize_merchant(merchant_raw)
-        if not key:
+        if not key or key in formal_keys:
             continue
         when = ensure_utc(expense.expense_time) or ensure_utc(expense.confirmed_at)
         if when is None:
@@ -117,6 +124,11 @@ def _group_recurring_entries(expenses: Iterable[Expense]) -> dict[str, list[_Rec
         )
         if amount <= 0:
             continue
+        amount = project_recorded_amount(db, tenant_id=tenant_id, amount_minor=amount,
+            source_currency=expense.home_currency_code, home_currency=home,
+            rate_date=when.astimezone(safe_zone(timezone_name)).date())
+        if amount is None:
+            raise AppError("recurring_projection_unavailable", "部分账目的币种或汇率待补充，暂时无法生成固定支出建议。", status_code=409)
         grouped[key].append((when, amount, merchant_raw))
     return grouped
 
@@ -185,6 +197,7 @@ def recurring_candidates(
     tenant_id: str,
     timezone_name: str | None = None,
     min_occurrences: int = 2,
+    home_currency_code: str | None = None,
 ) -> list[dict]:
     """Detect merchants that recur across distinct recent months with stable amounts.
 
@@ -201,24 +214,25 @@ def recurring_candidates(
     Never writes.
     """
     tz = _recurring_timezone(timezone_name)
-    grouped = _group_recurring_entries(
-        _confirmed_expenses_for_recurring(db, tenant_id=tenant_id, timezone_name=timezone_name)
-    )
+    home = normalize_currency_code(home_currency_code) if home_currency_code is not None else require_runtime_home_currency_code(db)
     formal_keys = set(
         db.scalars(
             select(RecurringItem.merchant_key)
             .where(RecurringItem.tenant_id == tenant_id)
         ).all()
     )
+    grouped = _group_recurring_entries(
+        db, _confirmed_expenses_for_recurring(db, tenant_id=tenant_id, timezone_name=timezone_name),
+        tenant_id=tenant_id, home=home, timezone_name=tz, formal_keys=formal_keys,
+    )
 
     candidates: list[_RecurringCandidate] = []
-    for key, entries in grouped.items():
-        if key in formal_keys:
-            continue
+    for entries in grouped.values():
         candidate = _candidate_from_entries(
             entries, timezone_name=tz, min_occurrences=min_occurrences
         )
         if candidate is not None:
+            candidate["home_currency_code"] = home
             candidates.append(candidate)
     return list(_sort_recurring_candidates(candidates))
 

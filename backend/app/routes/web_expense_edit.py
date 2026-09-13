@@ -17,6 +17,7 @@ from app.routes._web_expense_helpers import (
     web_save_response,
 )
 from app.routes._web_expense_return_context import (
+    ExpenseReturnContext,
     expense_return_query_context,
     resolve_return_to,
     return_context_params,
@@ -39,12 +40,7 @@ def web_edit_get(
     request: Request,
     ledger_id: str | None = None,
     fragment: int = 0,
-    return_to: str = "",
-    return_month: str = "",
-    return_filter: str = "",
-    return_page: str = "",
-    return_tag: str = "",
-    return_query: str = "",
+    return_context: ExpenseReturnContext = Depends(expense_return_query_context),
     flash_type: str = "",
     rev_page: int = Query(default=1, ge=1),
     # A1 P2: 变更记录在同一服务端快照内翻页；缺省 = 重新进入事实页，取新锚。
@@ -54,9 +50,6 @@ def web_edit_get(
 ) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
-    return_context = expense_return_query_context(
-        return_to, return_month, return_filter, return_page, return_tag, return_query
-    )
     try:
         ctx = web_edit_context(
             db,
@@ -64,7 +57,7 @@ def web_edit_get(
             options,
             selected_id,
             expense_id,
-            **return_context.as_kwargs(),
+            return_context=return_context,
         )
     except AppError as exc:
         # A deleted / cross-ledger expense (stale link, switched ledger) must
@@ -130,6 +123,7 @@ def web_save(
         expense_id,
         error_code="expense_correction_required",
         fragment=bool(form.fragment),
+        return_context=form.return_context,
     )
     if guarded is not None:
         return guarded
@@ -151,5 +145,5 @@ def web_save(
         field_errors=outcome.field_errors,
         conflict=outcome.conflict,
         fragment=form.fragment,
-        **form.return_context.as_kwargs(),
+        return_context=form.return_context,
     )

@@ -40,7 +40,7 @@ internal class PendingViewModelReviewStateActionsTest : PendingViewModelReviewTe
             pending = listOf(ready, missingAmount, missingMerchant, suspected, missingCategory),
         )
         fake.confirmResponder = { id -> Result.success(ready.copy(id = id, status = "confirmed")) }
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         vm.confirmReadyExpenses()
@@ -69,7 +69,7 @@ internal class PendingViewModelReviewStateActionsTest : PendingViewModelReviewTe
             pending = listOf(ready, fxPending, noiseMerchant, rawBlankCategory),
         )
         fake.confirmResponder = { id -> Result.success(ready.copy(id = id, status = "confirmed")) }
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         vm.confirmReadyExpenses()
@@ -93,7 +93,7 @@ internal class PendingViewModelReviewStateActionsTest : PendingViewModelReviewTe
             if (id == 21L) Result.failure(RuntimeException("server_error"))
             else Result.success(a.copy(id = id, status = "confirmed"))
         }
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         vm.confirmReadyExpenses()
@@ -115,7 +115,7 @@ internal class PendingViewModelReviewStateActionsTest : PendingViewModelReviewTe
             details = PendingExpenseDetails(duplicateStatus = "suspected"),
         )
         val fake = FakeReviewActions(pending = listOf(onlyDup))
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         vm.confirmReadyExpenses()
@@ -130,7 +130,7 @@ internal class PendingViewModelReviewStateActionsTest : PendingViewModelReviewTe
         val target = expense(id = 40L, details = PendingExpenseDetails(duplicateStatus = "suspected"))
         val fake = FakeReviewActions(pending = listOf(target))
         fake.markNotDuplicateResponder = { Result.success(target.copy(duplicateStatus = "none")) }
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         vm.openDuplicateAction(target)
@@ -155,7 +155,7 @@ internal class PendingViewModelReviewStateActionsTest : PendingViewModelReviewTe
                 com.ticketbox.data.repository.ExpenseStateOutcome.Queued(target.copy(duplicateStatus = "none")),
             )
         }
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         vm.openDuplicateAction(target)
@@ -174,7 +174,7 @@ internal class PendingViewModelReviewStateActionsTest : PendingViewModelReviewTe
         val target = expense(id = 41L, details = PendingExpenseDetails(duplicateStatus = "suspected"))
         val fake = FakeReviewActions(pending = listOf(target))
         fake.rejectResponder = { Result.success(target) }
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         vm.openDuplicateAction(target)
@@ -198,7 +198,7 @@ internal class PendingViewModelReviewStateActionsTest : PendingViewModelReviewTe
                 com.ticketbox.data.repository.ExpenseStateOutcome.Queued(target.copy(status = "confirmed")),
             )
         }
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         vm.confirm(target)
@@ -218,7 +218,7 @@ internal class PendingViewModelReviewStateActionsTest : PendingViewModelReviewTe
                 com.ticketbox.data.repository.ExpenseStateOutcome.Queued(target.copy(status = "rejected")),
             )
         }
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         vm.openDuplicateAction(target)

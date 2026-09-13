@@ -69,7 +69,7 @@ class ConfirmedStreamObservationTest {
     }
 }
 
-private fun observedRepository(dao: ExpenseDao): ExpenseRepository = ExpenseRepository(
+private fun observedRepository(dao: ExpenseDao): ExpenseRepository = com.ticketbox.data.repository.expenseRepositoryFixture(
     expenseDao = dao,
     binding = testServerSessionBinding(
         apiClient = FakeApiServiceFactory(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0)),
@@ -77,7 +77,7 @@ private fun observedRepository(dao: ExpenseDao): ExpenseRepository = ExpenseRepo
         tokenStore = TestSessionFixture().apply { saveToken("session-token") },
     ),
     deviceNameProvider = { "Android Test Device" },
-)
+        )
 
 private fun observedRefund() = ExpenseOffsetStreamEntity(
     ledgerId = "owner",

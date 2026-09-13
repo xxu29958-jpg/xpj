@@ -4,6 +4,7 @@ import androidx.annotation.StringRes
 import com.ticketbox.R
 import com.ticketbox.data.repository.RecurringDateEdit
 import com.ticketbox.data.repository.RecurringItemPatch
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.data.repository.RecurringPendingKind
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.RecurringItem
@@ -41,7 +42,7 @@ internal val recurringDefaultTab: RecurringTab = RecurringTab.Active
 internal data class RecurringHeroModel(
     /** false = 列表尚未给出可读事实（读取中 / 待刷新），总额不可信，不渲染数字。 */
     val factual: Boolean,
-    val totalCents: Long,
+    val amountsByCurrency: Map<String, Long?>,
     val activeCount: Int,
     val nearestNextDate: String?,
 )
@@ -53,9 +54,12 @@ internal fun recurringHeroModel(
     val active = items.filter { it.status == "active" }
     return RecurringHeroModel(
         factual = items.isNotEmpty() || loadState == RecurringListLoadState.Loaded,
-        totalCents = active.sumOf { it.baselineAmountCents },
+        amountsByCurrency = active.groupBy { it.homeCurrencyCode ?: "UNKNOWN" }.toSortedMap().mapValues { (code, rows) ->
+            if (CurrencyCode.fromStorageKeyOrNull(code) == null) null
+            else runCatching { rows.fold(0L) { total, item -> Math.addExact(total, item.baselineAmountCents) } }.getOrNull()
+        },
         activeCount = active.size,
-        nearestNextDate = active.mapNotNull { it.nextExpectedDate }.minOrNull(),
+        nearestNextDate = active.mapNotNull { it.nextDueDate }.minOrNull(),
     )
 }
 
@@ -75,7 +79,7 @@ internal data class RecurringItemMeta(
 internal fun recurringItemMeta(item: RecurringItem): RecurringItemMeta {
     val observed = item.occurrenceCount > 0
     return RecurringItemMeta(
-        nextExpectedDate = item.nextExpectedDate,
+        nextExpectedDate = item.nextDueDate,
         observedCount = if (observed) item.occurrenceCount else null,
         lastObservedDate = if (observed) item.lastSeenAt?.take(10) else null,
         anomalyDeltaPercent = item.amountDeltaPercent
@@ -107,10 +111,10 @@ internal fun recurringScreenDerived(state: RecurringUiState, tab: RecurringTab):
     val paused = state.items.filter { it.status == "paused" }
     val archived = state.items.filter { it.status == "archived" }
     // 即将 ≠ 活跃换序：严格定义为 active 且下次日期非空；无日期项只留在活跃。
-    val upcoming = active.filter { it.nextExpectedDate != null }
+    val upcoming = active.filter { it.nextDueDate != null }
     val visible = when (tab) {
         RecurringTab.Upcoming -> upcoming.sortedWith(
-            compareBy<RecurringItem> { it.nextExpectedDate }.thenBy { it.merchant },
+            compareBy<RecurringItem> { it.nextDueDate }.thenBy { it.merchant },
         )
         RecurringTab.Active -> active.sortedBy { it.merchant }
         RecurringTab.Paused -> paused.sortedBy { it.merchant }
@@ -175,6 +179,7 @@ internal fun buildRecurringItemPatch(
     }
     if (merchantEdit == null && amountEdit == null && !dateEdit.changed) return null
     return RecurringItemPatch(
+        homeCurrencyCode = requireNotNull(baseline.homeCurrencyCode),
         merchant = merchantEdit,
         baselineAmountCents = amountEdit,
         nextExpectedDate = dateEdit,

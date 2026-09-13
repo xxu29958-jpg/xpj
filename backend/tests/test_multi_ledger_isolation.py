@@ -25,6 +25,7 @@ from app.routes.owner_console import _pairing as owner_pairing_route
 from app.routes.owner_console import _require_local as _owner_console_require_local
 from app.routes.owner_ledgers import _require_local as _owner_ledgers_require_local
 from tests._infra.assets import PNG_BYTES
+from tests._runtime_protocol import current_protocol_headers
 from tests.pairing_test_support import pairing_payload
 
 
@@ -230,7 +231,7 @@ def test_pairing_to_new_ledger_yields_isolated_token(
     )
     assert pair.status_code == 200, pair.text
     new_token = pair.json()["session_token"]
-    new_headers = {"Authorization": f"Bearer {new_token}"}
+    new_headers = current_protocol_headers({"Authorization": f"Bearer {new_token}"})
 
     # The new token's ledger must be the new one, not the default.
     check = local_client.get("/api/auth/check", headers=new_headers)

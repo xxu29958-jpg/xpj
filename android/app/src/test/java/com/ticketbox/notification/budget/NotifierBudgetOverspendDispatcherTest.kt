@@ -15,6 +15,7 @@ class NotifierBudgetOverspendDispatcherTest {
         ledgerId = "ledger-1",
         month = "2026-06",
         overspentCents = overspentCents,
+        homeCurrencyCode = "CNY",
     )
 
     @Test

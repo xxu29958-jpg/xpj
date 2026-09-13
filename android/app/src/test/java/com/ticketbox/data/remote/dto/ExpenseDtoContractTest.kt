@@ -13,33 +13,54 @@ class ExpenseDtoContractTest {
         .build()
 
     @Test
+    fun offsetListProjectionAcceptsAdditiveFrozenExportEvidence() {
+        val adapter = moshi.adapter(ConfirmedOffsetStreamDto::class.java)
+        val dto = requireNotNull(adapter.fromJson("""
+            {
+              "public_id":"offset-frozen",
+              "kind":"refund",
+              "amount_cents":3728,
+              "original_amount_minor":2500,
+              "original_currency_code":"USD",
+              "home_currency_code":"JPY",
+              "category":"购物",
+              "exchange_rate_to_cny":"149.12345678",
+              "exchange_rate_date":"2026-05-05",
+              "exchange_rate_source":"manual"
+            }
+        """.trimIndent()))
+
+        assertEquals(
+            ConfirmedOffsetStreamDto("offset-frozen", ExpenseOffsetKindDto.Refund, 3728, 2500, "USD", "JPY", "购物"),
+            dto,
+        )
+    }
+
+    @Test
     fun uploadResponseDtoPreservesRequiredEnrichmentTaskReceipt() {
         val adapter = moshi.adapter(UploadResponseDto::class.java)
-        val dto = requireNotNull(
-            adapter.fromJson(
-                """
-                {
-                  "id": 1,
-                  "public_id": "018f4f90-2c20-7a2f-9d1c-6a6b81e69b2d",
-                  "enrichment_task_public_id": "019ad890-619f-72f0-8762-2f3ce1ad0b44",
-                  "status": "pending",
-                  "message": "uploaded",
-                  "image_hash": "sha256",
-                  "thumbnail_path": "uploads/owner/2026/05/thumbs/example.jpg",
-                  "duplicate_status": "none",
-                  "duplicate_of_id": null,
-                  "upload_size_bytes": 348120,
-                  "duration_ms": 86,
-                  "timing_ms": {
-                    "form_parse_ms": 8,
-                    "file_save_ms": 18,
-                    "db_create_ms": 24,
-                    "total_ms": 86
-                  }
-                }
-                """.trimIndent(),
-            ),
-        )
+        val wireReceipt = """
+            {
+              "id": 1,
+              "public_id": "018f4f90-2c20-7a2f-9d1c-6a6b81e69b2d",
+              "enrichment_task_public_id": "019ad890-619f-72f0-8762-2f3ce1ad0b44",
+              "status": "pending",
+              "message": "uploaded",
+              "image_hash": "sha256",
+              "thumbnail_path": "uploads/owner/2026/05/thumbs/example.jpg",
+              "duplicate_status": "none",
+              "duplicate_of_id": null,
+              "upload_size_bytes": 348120,
+              "duration_ms": 86,
+              "timing_ms": {
+                "form_parse_ms": 8,
+                "file_save_ms": 18,
+                "db_create_ms": 24,
+                "total_ms": 86
+              }
+            }
+            """.trimIndent()
+        val dto = requireNotNull(adapter.fromJson(wireReceipt))
 
         assertEquals(1L, dto.id)
         assertEquals("018f4f90-2c20-7a2f-9d1c-6a6b81e69b2d", dto.publicId)
@@ -47,6 +68,10 @@ class ExpenseDtoContractTest {
         assertEquals(348120L, dto.uploadSizeBytes)
         assertEquals(86L, dto.durationMs)
         assertEquals(24L, dto.timingMs?.get("db_create_ms"))
+        val storedReceipt = adapter.serializeNulls().toJson(dto)
+        val jsonAdapter = moshi.adapter(Any::class.java)
+        assertEquals(jsonAdapter.fromJson(wireReceipt), jsonAdapter.fromJson(storedReceipt))
+        assertEquals(dto, adapter.fromJson(storedReceipt))
     }
 
     @Test

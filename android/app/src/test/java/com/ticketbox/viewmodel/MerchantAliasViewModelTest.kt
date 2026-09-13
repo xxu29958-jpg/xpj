@@ -1,10 +1,8 @@
 package com.ticketbox.viewmodel
 
-import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.local.PersistedLedgerIdentity
 
 import com.ticketbox.R
-import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.FakeApiService
 import com.ticketbox.data.repository.FakeApiServiceFactory
 import com.ticketbox.data.repository.FakeExpenseDao
@@ -21,7 +19,6 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -44,7 +41,7 @@ class MerchantAliasViewModelTest {
             block()
         } finally {
             advanceUntilIdle()
-            activeViewModels.forEach { it.viewModelScope.cancel() }
+            cancelMerchantAliasTestViewModels(activeViewModels)
             advanceUntilIdle()
             activeViewModels.clear()
             Dispatchers.resetMain()
@@ -229,7 +226,7 @@ class MerchantAliasViewModelTest {
                 tokenStore = tokenStore,
             ),
         )
-        val expenseRepository = ExpenseRepository(
+        val expenseRepository = com.ticketbox.data.repository.expenseRepositoryFixture(
             expenseDao = FakeExpenseDao(),
             binding = testServerSessionBinding(
                 apiClient = apiFactory,

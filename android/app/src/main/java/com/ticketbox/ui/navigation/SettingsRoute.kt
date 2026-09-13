@@ -24,7 +24,7 @@ internal fun SettingsRoute(
     screenFactory: MainScreenFactory,
     preferenceControls: SettingsPreferenceControls,
     onBindingCleared: () -> Unit,
-    onClose: () -> Unit,
+    navigation: SettingsDestinationNavigation,
 ) {
     val settingsViewModel: SettingsViewModel = viewModel(
         factory = screenFactory.settingsViewModelFactory,
@@ -47,10 +47,10 @@ internal fun SettingsRoute(
             currentCurrency = preferenceControls.currentCurrency,
             showAdvancedTools = BuildConfig.SHOW_ADVANCED_TOOLS,
         ),
-        navigation = SettingsDestinationNavigation(onCloseRoot = onClose),
+        navigation = navigation,
         actions = SettingsRouteActions(
-            onTestConnection = settingsViewModel::testConnection,
             onRunDiagnostics = settingsViewModel::runDiagnostics,
+            onCancelConnectionWork = settingsViewModel::cancelConnectionWork,
             onRefreshServerSettings = settingsViewModel::refreshServerSettings,
             onSync = settingsViewModel::sync,
             onClearCache = settingsViewModel::clearLocalCache,
@@ -74,7 +74,15 @@ internal fun SettingsRoute(
             ledgerRepository = screenFactory.ledgerRepository,
             expenseRepository = screenFactory.repository,
             outboxRepository = screenFactory.outboxRepository,
+            debtCreationRepository = screenFactory.debtCreationRepository,
             activeLedgerId = screenFactory.ledgerRepository.activeLedgerId(),
+            recurringOccurrences = screenFactory.recurringRepository.occurrences,
+            incomePlans = screenFactory.incomePlanRepository,
+            debtWrites = screenFactory.debtWriteRepository,
+            goalEdits = screenFactory.goalEditRepository,
+            budgetSaves = screenFactory.budgetRepository,
+            recurringItems = screenFactory.recurringRepository,
+            rules = screenFactory.ruleRepository,
         ),
     )
 }

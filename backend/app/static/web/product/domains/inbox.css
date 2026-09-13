@@ -9,6 +9,46 @@
     gap: var(--space-3);
 }
 
+.inbox-empty {
+    grid-template-columns: minmax(0, 12rem) minmax(0, 1fr);
+    align-items: center;
+    gap: var(--space-8);
+    padding: var(--space-8);
+}
+
+.inbox-empty-content {
+    display: grid;
+    min-width: 0;
+    gap: var(--space-4);
+}
+
+.inbox-empty-content > h2,
+.inbox-empty-content > p {
+    margin: 0;
+}
+
+.inbox-empty-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3) var(--space-5);
+}
+
+@media (max-width: 48rem) {
+    .inbox-empty {
+        grid-template-columns: minmax(0, 1fr);
+        gap: var(--space-4);
+        padding: var(--space-4);
+    }
+
+    .inbox-empty .product-state-figure {
+        justify-self: center;
+    }
+
+    .inbox-empty .product-state-figure img {
+        width: 9rem;
+    }
+}
+
 /* K3: enrichment ambient 状态带 — OCR/后台识别不再占用通用 flash。
    选择器 data-inbox-enrichment-watch/-terminal 与 aria-busy 是 core.js 轮询
    合同, 样式只挂类名; 带内首个 <span> 永远是消息本体。表达只靠真实文案、

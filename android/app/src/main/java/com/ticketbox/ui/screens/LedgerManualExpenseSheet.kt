@@ -30,7 +30,6 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.ExpenseDraft
-import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.RecentMerchant
 import com.ticketbox.domain.model.normalizeExpenseCategory
@@ -63,7 +62,7 @@ data class ManualExpenseSheetState(
     val categories: List<String>,
     val saving: Boolean,
     val recentMerchants: List<RecentMerchant> = emptyList(),
-    val initialCurrency: CurrencyCode = FxContract.HomeCurrency,
+    val initialCurrency: CurrencyCode,
     val errorMessage: String? = null,
 )
 
@@ -79,7 +78,8 @@ fun ManualExpenseSheet(
     actions: ManualExpenseSheetActions,
 ) {
     var amountText by rememberSaveable { mutableStateOf("") }
-    var currency by rememberSaveable(state.initialCurrency) { mutableStateOf(state.initialCurrency) }
+    val homeCurrency by rememberSaveable { mutableStateOf(state.initialCurrency) }
+    var currency by rememberSaveable { mutableStateOf(state.initialCurrency) }
     var merchant by rememberSaveable { mutableStateOf("") }
     var category by rememberSaveable { mutableStateOf(DEFAULT_EXPENSE_CATEGORIES.first()) }
     var note by rememberSaveable { mutableStateOf("") }
@@ -180,6 +180,7 @@ fun ManualExpenseSheet(
             tags = null,
             valueScore = null,
             regretScore = null,
+            ledgerHomeCurrency = homeCurrency,
         )
     }
 

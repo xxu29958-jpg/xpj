@@ -67,6 +67,10 @@ data class StatsReportActions(
     val onDrillToLedger: (String) -> Unit,
     val onGranularityChange: (ReportGranularity) -> Unit,
     val onRankingMetricChange: (ReportRankingMetric) -> Unit,
+    val onMerchantCategoryChange: (String?) -> Unit = {},
+    val onRepairRates: (com.ticketbox.domain.model.CurrencyProjectionGap?) -> Unit = {},
+    val onExport: () -> Unit = {},
+    val onRepairStatsRates: (com.ticketbox.domain.model.CurrencyProjectionGap) -> Unit = {},
 )
 
 /**
@@ -317,14 +321,16 @@ private fun StatsUiState.monthPickerListState(): MonthPickerListState = when (mo
 private fun statsAuthorityTone(state: StatsUiState): DataAuthorityTone? = when {
     StatsRefreshIndicator.isActive(loading = state.loading, hasReadableData = state.stats != null) ->
         DataAuthorityTone.Refreshing
-    state.statsSource == StatsSource.LocalFallback -> DataAuthorityTone.LocalCache
+    state.statsSource == StatsSource.CachedSnapshot -> DataAuthorityTone.LocalCache
     state.statsSource == StatsSource.Backend -> DataAuthorityTone.Backend
     else -> null
 }
 
 internal fun overviewRecent7DaysAmount(state: StatsUiState): Long? {
     if (state.statsSource != StatsSource.Backend || state.selectedTag.isNotBlank()) return null
-    return state.lifestyleStats?.recent7DaysAmountCents?.coerceAtLeast(0L)
+    val lifestyle = state.lifestyleStats ?: return null
+    if (lifestyle.month != state.month || lifestyle.homeCurrencyCode != state.stats?.homeCurrencyCode || state.lifestyleFromCache) return null
+    return lifestyle.recent7DaysAmountCents
 }
 
 internal fun overviewMonthComparison(state: StatsUiState): MonthComparison? {
@@ -335,16 +341,17 @@ internal fun overviewMonthComparison(state: StatsUiState): MonthComparison? {
 }
 
 private fun ReportsOverview.toAuthoritativeMonthComparison(): MonthComparison? {
-    if (previousCount <= 0 || previousTotalAmountCents <= 0L) return null
-    val currentAmount = totalAmountCents.coerceAtLeast(0L)
-    val delta = currentAmount - previousTotalAmountCents
+    val previousAmount = previousTotalAmountCents ?: return null
+    val currentAmount = totalAmountCents?.coerceAtLeast(0L) ?: return null
+    if (previousCount <= 0 || previousAmount <= 0L) return null
+    val delta = currentAmount - previousAmount
     return MonthComparison(
         currentMonth = month,
         previousMonth = previousMonth,
         currentAmountCents = currentAmount,
-        previousAmountCents = previousTotalAmountCents,
+        previousAmountCents = previousAmount,
         deltaAmountCents = delta,
-        percentChange = moneyPercent(delta, previousTotalAmountCents),
+        percentChange = moneyPercent(delta, previousAmount),
     )
 }
 

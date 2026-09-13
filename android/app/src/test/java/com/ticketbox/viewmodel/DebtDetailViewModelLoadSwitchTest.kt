@@ -1,7 +1,8 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.repository.LogicalSessionBinding
+
 import com.ticketbox.data.repository.DebtActions
-import com.ticketbox.data.repository.DebtDraft
 import com.ticketbox.data.repository.DebtListPage
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtBillSuggestion
@@ -43,7 +44,7 @@ class DebtDetailViewModelLoadSwitchTest {
     @Test
     fun loadingNewDebtClearsPreviousDebtUntilFreshDetailArrives() = runTest(dispatcher) {
         val repository = SwitchingDebtActions(getResult = Result.success(switchDebt("A")))
-        val viewModel = DebtDetailViewModel(repository)
+        val viewModel = DebtDetailViewModel(repository, FakeDebtWriteActions())
         viewModel.loadDebt("A")
         advanceUntilIdle()
         assertEquals("A", viewModel.state.value.debt?.publicId)
@@ -78,26 +79,14 @@ private class SwitchingDebtActions(
         return captured
     }
 
-    override suspend fun createDebt(draft: DebtDraft): Result<Debt> = Result.success(switchDebt("created"))
 
     override suspend fun parseDebtBillImage(
+        expectedBinding: LogicalSessionBinding,
         fileName: String,
         contentType: String?,
         bytes: ByteArray,
     ): Result<DebtBillSuggestion> = Result.failure(UnsupportedOperationException())
 
-    override suspend fun recordRepayment(
-        publicId: String,
-        expectedRowVersion: Long,
-        amountCents: Long,
-    ): Result<Debt> = Result.success(switchDebt(publicId))
-
-    override suspend fun recordAdjustment(
-        publicId: String,
-        expectedRowVersion: Long,
-        amountCents: Long,
-        reason: String,
-    ): Result<Debt> = Result.success(switchDebt(publicId))
 
     override suspend fun voidRepayment(
         publicId: String,

@@ -3,6 +3,9 @@ package com.ticketbox.ui.screens
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.Composable
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppAdaptiveSupportingPane
 import com.ticketbox.ui.components.AppDataAuthorityStrip
@@ -33,8 +36,9 @@ internal fun LedgerSupportingPane(
             chromeState = chromeState,
             showSummaryHeader = false,
         )
-        if (ledgerStatusVisible(state, authorityTone)) {
-            LedgerStatusContent(state = state, authorityTone = authorityTone)
+        if (ledgerStatusVisible(state, authorityTone) || chromeState.lastManualCreation != null) {
+            LedgerStatusContent(state = state, authorityTone = authorityTone,
+                onOpenManualSubmission = chromeState.lastManualCreation?.clientRef?.let { ref -> { actions.onOpenManualSubmission(ref) } })
         }
     }
 }
@@ -79,6 +83,7 @@ internal fun LedgerTopChrome(
 internal fun LedgerStatusContent(
     state: LedgerUiState,
     authorityTone: DataAuthorityTone,
+    onOpenManualSubmission: (() -> Unit)? = null,
 ) {
     Column(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
@@ -94,6 +99,9 @@ internal fun LedgerStatusContent(
         }
         state.message?.takeIf(::ledgerPageMessageVisible)?.let { message ->
             LedgerInlineStatusMessage(message = message, tone = state.messageTone)
+        }
+        onOpenManualSubmission?.let { open ->
+            TextButton(onClick = open) { Text(stringResource(R.string.manual_submission_view_original)) }
         }
     }
 }

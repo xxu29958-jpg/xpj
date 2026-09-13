@@ -18,7 +18,7 @@ from app.services.debt_service._repayment_draft_match import (
 
 def _candidate(public_id: str, label: str | None, remaining: int) -> RepaymentMatchCandidate:
     return RepaymentMatchCandidate(
-        public_id=public_id, counterparty_label=label, remaining_amount_cents=remaining
+        public_id=public_id, counterparty_label=label, remaining_amount_cents=remaining, home_currency_code="CNY"
     )
 
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
 
 from app.schemas._money import NonNegativeMoneyMinor
 from app.services.time_service import to_iso
@@ -54,8 +54,15 @@ class CategoryRuleCreateRequest(BaseModel):
     priority: int = 100
     amount_min_cents: NonNegativeMoneyMinor | None = None
     amount_max_cents: NonNegativeMoneyMinor | None = None
+    home_currency_code: str | None = Field(default=None, min_length=3, max_length=3)
     source_contains: str | None = None
     tag_contains: str | None = None
+
+    @model_validator(mode="after")
+    def require_threshold_currency(self):
+        if (self.amount_min_cents is not None or self.amount_max_cents is not None) and self.home_currency_code is None:
+            raise ValueError("home_currency_code is required for monetary conditions")
+        return self
 
 
 class CategoryRuleUpdateRequest(BaseModel):
@@ -68,8 +75,15 @@ class CategoryRuleUpdateRequest(BaseModel):
     priority: int | None = None
     amount_min_cents: NonNegativeMoneyMinor | None = None
     amount_max_cents: NonNegativeMoneyMinor | None = None
+    home_currency_code: str | None = Field(default=None, min_length=3, max_length=3)
     source_contains: str | None = None
     tag_contains: str | None = None
+
+    @model_validator(mode="after")
+    def require_threshold_currency(self):
+        if (self.amount_min_cents is not None or self.amount_max_cents is not None) and self.home_currency_code is None:
+            raise ValueError("home_currency_code is required for monetary conditions")
+        return self
 
 
 class CategoryRuleDeleteRequest(BaseModel):
@@ -96,6 +110,7 @@ class CategoryRuleResponse(BaseModel):
     priority: int
     amount_min_cents: NonNegativeMoneyMinor | None = None
     amount_max_cents: NonNegativeMoneyMinor | None = None
+    home_currency_code: str | None = None
     source_contains: str | None = None
     tag_contains: str | None = None
     created_at: datetime
@@ -246,6 +261,7 @@ class RulePreviewItem(BaseModel):
     id: int
     merchant: str | None
     amount_cents: NonNegativeMoneyMinor | None
+    home_currency_code: str | None = None
     current_category: str
     suggested_category: str | None
     reason: str
@@ -259,6 +275,8 @@ class RulePreviewResponse(BaseModel):
 class RuleApplyPendingResponse(BaseModel):
     pending_scanned: int
     changed_count: int
+    unavailable_count: int = 0
+    missing_currency_codes: list[str] = Field(default_factory=list)
     scan_limit_reached: bool = False
     scan_limit: int = 0
 
@@ -324,6 +342,8 @@ class RuleApplyPendingPreviewResponse(BaseModel):
     skipped_non_default_category: int
     no_match_count: int
     unchanged_count: int
+    unavailable_count: int = 0
+    missing_currency_codes: list[str] = Field(default_factory=list)
     conflict_count: int = 0
     scan_limit_reached: bool = False
     scan_limit: int = 0
@@ -338,6 +358,8 @@ class RuleApplyConfirmedResponse(BaseModel):
     skipped_non_default_category: int = 0
     no_match_count: int = 0
     unchanged_count: int = 0
+    unavailable_count: int = 0
+    missing_currency_codes: list[str] = Field(default_factory=list)
     conflict_count: int = 0
     scan_limit_reached: bool = False
     scan_limit: int = 0

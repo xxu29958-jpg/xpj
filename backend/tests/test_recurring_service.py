@@ -7,7 +7,7 @@ from app.services.recurring_service import _historical_average_amount
 
 
 def test_recurring_history_average_accepts_wide_exact_numerator() -> None:
-    item = RecurringItem(
+    item = RecurringItem(home_currency_code="CNY",
         merchant_key="large-subscription",
         merchant_name="Large subscription",
         frequency="monthly",

@@ -8,6 +8,12 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class StatsLeadDeltaEvidenceTest {
+    @Test fun unknownReportAmountCannotBecomeAZeroBasedLeadComparison() {
+        val report = overview(1200, 800, 2)
+        assertNull(monthDeltaEvidence(report.copy(totalAmountCents = null)))
+        assertNull(monthDeltaEvidence(report.copy(previousTotalAmountCents = null)))
+    }
+
     @Test
     fun serverReportRequiresPositivePreviousAmountBeforeShowingMonthDelta() {
         val evidence = monthDeltaEvidence(
@@ -60,5 +66,6 @@ class StatsLeadDeltaEvidenceTest {
         trend = emptyList(),
         merchantRanking = emptyList(),
         categoryComparison = emptyList(),
-    )
+        homeCurrencyCode = "CNY",
+)
 }

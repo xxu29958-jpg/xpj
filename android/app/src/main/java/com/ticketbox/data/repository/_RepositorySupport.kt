@@ -15,7 +15,10 @@ class RepositoryException(
     message: String,
     val errorCode: String? = null,
     val conflict: RepositoryConflictDetails = RepositoryConflictDetails(),
-) : RuntimeException(message) {
+    val localFailure: LocalRepositoryFailure? = null,
+    val httpStatusCode: Int? = null,
+    cause: Throwable? = null,
+) : RuntimeException(message, cause) {
     val conflictTagPublicId: String? get() = conflict.tag.publicId
     val conflictTagRowVersion: Long? get() = conflict.tag.rowVersion
     val conflictMerchantPublicId: String? get() = conflict.merchant.publicId
@@ -29,6 +32,15 @@ class RepositoryException(
     val conflictAliasDeleted: Boolean? get() = conflict.alias.deleted
     val conflictRecurringPublicId: String? get() = conflict.recurring.publicId
     val conflictRecurringStatus: String? get() = conflict.recurring.status
+}
+
+/** Client validation outcomes are separate from the server's error-code protocol. */
+enum class LocalRepositoryFailure {
+    ManualRateReviewRequired,
+    ManualRateUnresolved,
+    ManualRateChanged,
+    BudgetInputsUnverified,
+    StatsProjectionUnverified,
 }
 
 data class RepositoryConflictDetails(
@@ -95,7 +107,7 @@ private val backendErrorUserMessages = mapOf(
     "currency_not_supported" to "暂不支持这个币种。",
     "currency_adoption_required" to "这台小票夹正在等待安装拥有者在电脑端确认本位币。你的草稿和待同步操作会保留，确认后请重试。",
     "exchange_rate_required" to "请先填写这一天的汇率。",
-    "exchange_rate_pending" to "汇率还没同步完成，稍后再确认。",
+    "exchange_rate_pending" to "这笔账单缺少换算汇率，请补齐后再继续。",
     "exchange_rate_invalid" to "汇率格式不正确。",
     "exchange_rate_base_currency" to "人民币是基准币种，不需要维护汇率。",
     "image_not_found" to "图片不存在。",

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModelProvider
 import com.ticketbox.data.repository.BudgetRepository
 import com.ticketbox.data.repository.CategoryPreferenceRepository
 import com.ticketbox.data.repository.DebtRepository
+import com.ticketbox.data.repository.DebtCreationActions
 import com.ticketbox.data.repository.DebtRepaymentQueries
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.IncomePlanActions
@@ -13,6 +14,7 @@ import com.ticketbox.data.repository.RecurringRepository
 import com.ticketbox.data.repository.RepaymentDraftRepository
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.data.repository.TagRepository
+import com.ticketbox.data.repository.UploadIntentActions
 import com.ticketbox.viewmodel.RepositoryViewModelRepositories
 import com.ticketbox.viewmodel.repositoryViewModelFactory as createRepositoryViewModelFactory
 
@@ -24,9 +26,13 @@ internal class MainScreenFactory(
     val ledgerRepository: LedgerRepository get() = repositories.ledgerRepository
     val recurringRepository: RecurringRepository get() = repositories.recurringRepository
     val budgetRepository: BudgetRepository get() = repositories.budgetRepository
+    val ruleRepository get() = repositories.ruleRepository
+    val goalEditRepository get() = repositories.goalEditRepository
     val reportsRepository: ReportsActions get() = repositories.reportsRepository
     val incomePlanRepository: IncomePlanActions get() = repositories.incomePlanRepository
     val debtRepository: DebtRepository get() = repositories.debtRepository
+    val debtCreationRepository: DebtCreationActions get() = repositories.debtCreationRepository
+    val debtWriteRepository: com.ticketbox.data.repository.DebtWriteActions get() = repositories.debtWriteRepository
     val debtRepaymentRepository: DebtRepaymentQueries get() = repositories.debtRepository.repayments
     val repaymentDraftRepository: RepaymentDraftRepository get() = repositories.repaymentDraftRepository
     val outboxRepository: OutboxRepository get() = repositories.outboxRepository
@@ -43,6 +49,7 @@ internal class MainScreenFactory(
     val repositoryViewModelFactory: ViewModelProvider.Factory = createRepositoryViewModelFactory(
         RepositoryViewModelRepositories(
             repository = repositories.repository,
+            uploads = repositories.uploadIntents,
             budgetRepository = repositories.budgetRepository,
             reportsRepository = repositories.reportsRepository,
             debtRepository = repositories.debtRepository,
@@ -54,6 +61,7 @@ internal class MainScreenFactory(
     ): ViewModelProvider.Factory = createRepositoryViewModelFactory(
         RepositoryViewModelRepositories(
             repository = repositories.repository,
+            uploads = repositories.uploadIntents,
             budgetRepository = repositories.budgetRepository,
             reportsRepository = repositories.reportsRepository,
             debtRepository = repositories.debtRepository,
@@ -64,12 +72,17 @@ internal class MainScreenFactory(
 
 internal data class MainFeatureRepositories(
     val repository: ExpenseRepository,
+    val uploadIntents: UploadIntentActions,
     val ledgerRepository: LedgerRepository,
     val recurringRepository: RecurringRepository,
     val budgetRepository: BudgetRepository,
     val reportsRepository: ReportsActions,
+    val goalEditRepository: com.ticketbox.data.repository.GoalEditActions,
+    val ruleRepository: com.ticketbox.data.repository.RuleRepository,
     val incomePlanRepository: IncomePlanActions,
     val debtRepository: DebtRepository,
+    val debtCreationRepository: DebtCreationActions,
+    val debtWriteRepository: com.ticketbox.data.repository.DebtWriteActions,
     val repaymentDraftRepository: RepaymentDraftRepository,
     val outboxRepository: OutboxRepository,
     val tagRepository: TagRepository,

@@ -8,6 +8,16 @@ import kotlin.test.assertNull
 class DebtDraftUiTest {
 
     @Test
+    fun noteLengthValidationPreservesInput() {
+        val withinLimit = DebtDraftUi(counterpartyLabel = "同行人", amountYuanInput = "12", note = "事".repeat(500))
+        assertEquals(true, withinLimit.isValid)
+        val tooLong = withinLimit.copy(note = "事".repeat(501))
+        assertEquals(true, tooLong.noteTooLong)
+        assertEquals(false, tooLong.isValid)
+        assertEquals(501, tooLong.note.length)
+    }
+
+    @Test
     fun parsedAmountCentsConvertsYuanAndRejectsInvalidInput() {
         // yuan → cents (2-decimal home currency), trimming whitespace.
         assertEquals(12_345L, DebtDraftUi(amountYuanInput = "123.45").parsedAmountCents())

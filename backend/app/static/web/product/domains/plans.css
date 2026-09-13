@@ -430,6 +430,24 @@
     font-weight: var(--type-subtitle-weight);
 }
 
+.budget-total-field {
+    max-inline-size: 32rem;
+}
+
+.budget-first-step {
+    max-inline-size: 48rem;
+}
+
+.budget-first-heading {
+    display: grid;
+    gap: var(--space-2);
+    margin-block-end: var(--space-6);
+}
+
+.budget-first-heading .hint {
+    margin: 0;
+}
+
 .budget-fields {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));

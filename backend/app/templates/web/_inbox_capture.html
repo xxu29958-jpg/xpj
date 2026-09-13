@@ -1,0 +1,11 @@
+{# One native upload form, placed in the empty-state task or populated-page header.
+   Authorize ledger in the query before multipart parsing; CSRF stays in the body.
+   JS may add timezone to the action; no-JS retains the backend default.
+   Native file input owns selection and visible filename. Never auto-submit. #}
+<form class="inbox-upload-form" id="capture" method="post" action="/web/pending/upload{{ _q }}" data-inbox-capture enctype="multipart/form-data">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <span class="file-picker">
+    <input class="file-picker-input" id="inbox-upload-file" type="file" name="file" accept="image/*" required aria-label="选择小票图片">
+  </span>
+  <button class="product-button product-button--primary" type="submit">上传小票</button>
+</form>

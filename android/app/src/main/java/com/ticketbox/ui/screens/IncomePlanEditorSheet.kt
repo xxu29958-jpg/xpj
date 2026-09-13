@@ -10,7 +10,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
-import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.components.AppAction
 import com.ticketbox.ui.components.AppBusyGuardedSheet
 import com.ticketbox.ui.components.AppSheetActionRow
@@ -32,7 +31,6 @@ internal data class IncomePlanEditSheetCallbacks(
 @Composable
 internal fun IncomePlanEditSheetHost(
     state: IncomePlanEditUiState,
-    currency: CurrencyDisplay,
     editViewModel: IncomePlanEditViewModel,
 ) {
     if (state.session == null) return
@@ -42,7 +40,6 @@ internal fun IncomePlanEditSheetHost(
     ) {
         EditIncomePlanSheet(
             state = state,
-            currency = currency,
             callbacks = IncomePlanEditSheetCallbacks(
                 fields = IncomePlanDraftFieldCallbacks(
                     onLabel = { editViewModel.updateDraftField(IncomePlanDraftField.Label, it) },
@@ -68,7 +65,6 @@ internal fun IncomePlanEditSheetHost(
 @Composable
 private fun EditIncomePlanSheet(
     state: IncomePlanEditUiState,
-    currency: CurrencyDisplay,
     callbacks: IncomePlanEditSheetCallbacks,
 ) {
     val session = state.session ?: return
@@ -79,7 +75,6 @@ private fun EditIncomePlanSheet(
                 isSubmitting = state.isSubmitting,
                 currencyPending = state.currencyPending,
             ),
-            currency = currency,
             fieldCallbacks = callbacks.fields,
             choiceCallbacks = callbacks.choices,
         )

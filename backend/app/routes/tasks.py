@@ -14,7 +14,7 @@ from app.auth import get_current_app_context, get_current_writer_context
 from app.database import get_db
 from app.schemas import BackgroundTaskListResponse, BackgroundTaskResponse
 from app.services import background_task_service as bgtasks
-from app.services.background_task_response import to_response_dict
+from app.services.background_task_response import task_response_dicts
 from app.tenants import AuthContext
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
@@ -27,7 +27,7 @@ def list_my_tasks(
 ) -> BackgroundTaskListResponse:
     rows = bgtasks.list_recent_tasks(db, account_id=auth.account_id, tenant_id=auth.tenant_id)
     return BackgroundTaskListResponse(
-        items=[BackgroundTaskResponse.model_validate(to_response_dict(t)) for t in rows]
+        items=[BackgroundTaskResponse.model_validate(item) for item in task_response_dicts(db, rows, tenant_id=auth.tenant_id)]
     )
 
 
@@ -38,7 +38,7 @@ def get_task(
     db: Session = Depends(get_db),
 ) -> BackgroundTaskResponse:
     task = bgtasks.get_task(db, public_id, account_id=auth.account_id, tenant_id=auth.tenant_id)
-    return BackgroundTaskResponse.model_validate(to_response_dict(task))
+    return BackgroundTaskResponse.model_validate(task_response_dicts(db, [task], tenant_id=auth.tenant_id)[0])
 
 
 @router.post("/{public_id}/cancel", response_model=BackgroundTaskResponse)
@@ -50,4 +50,4 @@ def cancel_task(
     task = bgtasks.request_cancellation(
         db, public_id, account_id=auth.account_id, tenant_id=auth.tenant_id
     )
-    return BackgroundTaskResponse.model_validate(to_response_dict(task))
+    return BackgroundTaskResponse.model_validate(task_response_dicts(db, [task], tenant_id=auth.tenant_id)[0])

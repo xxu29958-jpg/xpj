@@ -89,15 +89,18 @@ internal fun BudgetRoute(
     screenFactory: MainScreenFactory,
     onBack: () -> Unit,
     onDataChanged: () -> Unit = {},
+    financialDataRevision: Int = 0,
 ) {
     val budgetViewModel: BudgetViewModel = viewModel(
         factory = budgetViewModelFactory(
             repository = screenFactory.budgetRepository,
-            debts = screenFactory.debtRepository,
             onDataChanged = onDataChanged,
         ),
     )
     val state by budgetViewModel.uiState.collectAsStateWithLifecycle()
+    LaunchedEffect(financialDataRevision, state.saving) {
+        if (financialDataRevision > 0 && !state.saving) budgetViewModel.refresh()
+    }
     BudgetScreen(
         state = state,
         actions = BudgetScreenActions(
@@ -112,6 +115,7 @@ internal fun BudgetRoute(
             onAddCategoryRow = budgetViewModel::addCategoryRow,
             onRemoveCategoryRow = budgetViewModel::removeCategoryRow,
             onSave = budgetViewModel::save,
+            onRecoverSave = budgetViewModel::recoverSave,
         ),
         onBack = onBack,
     )
@@ -122,12 +126,13 @@ internal fun IncomePlanRoute(
     screenFactory: MainScreenFactory,
     onBack: () -> Unit,
     onDataChanged: () -> Unit = {},
+    originalSubmissionId: Long? = null,
+    financialDataRevision: Int = 0,
 ) {
     val incomePlanViewModel: IncomePlanViewModel = viewModel(
         key = IncomePlanViewModelKey,
         factory = incomePlanViewModelFactory(
             repository = screenFactory.incomePlanRepository,
-            debts = screenFactory.debtRepository,
             onDataChanged = onDataChanged,
         ),
     )
@@ -137,14 +142,18 @@ internal fun IncomePlanRoute(
         key = IncomePlanEditViewModelKey,
         factory = incomePlanEditViewModelFactory(
             repository = screenFactory.incomePlanRepository,
-            debts = screenFactory.debtRepository,
             onDataChanged = onDataChanged,
         ),
     )
+    LaunchedEffect(incomePlanViewModel, originalSubmissionId) {
+        originalSubmissionId?.let(incomePlanViewModel::openSubmission)
+    }
+    LaunchedEffect(financialDataRevision) {
+        if (financialDataRevision > 0) incomePlanViewModel.refresh()
+    }
     IncomePlanScreen(
         viewModel = incomePlanViewModel,
         editViewModel = incomePlanEditViewModel,
-        currency = LocalCurrencyDisplay.current,
         onBack = onBack,
     )
 }
@@ -209,10 +218,12 @@ internal fun DebtGoalRoute(
     }
 }
 
+internal data class DebtRouteActions(val onBack: () -> Unit, val onOpenSyncStatus: () -> Unit)
+
 @Composable
 internal fun DebtRoute(
     screenFactory: MainScreenFactory,
-    onBack: () -> Unit,
+    actions: DebtRouteActions,
     chromeOverride: RelationsListChrome? = null,
     lens: DebtListLens = DebtListLens.Ledger,
     listRefreshRevision: Int = 0,
@@ -221,11 +232,11 @@ internal fun DebtRoute(
     // ViewModelStore 内「我欠」(payables) 与全账本页 (ledger) 是两份实例）。
     val debtListViewModel: DebtListViewModel = viewModel(
         key = "$DebtListViewModelKey:${lens.name}",
-        factory = debtViewModelFactory(screenFactory.debtRepository, lens),
+        factory = debtViewModelFactory(screenFactory.debtRepository, screenFactory.debtCreationRepository, screenFactory.debtWriteRepository, lens),
     )
     val detailViewModel: DebtDetailViewModel = viewModel(
         key = DebtDetailViewModelKey,
-        factory = debtDetailViewModelFactory(screenFactory.debtRepository),
+        factory = debtDetailViewModelFactory(screenFactory.debtRepository, screenFactory.debtWriteRepository),
     )
     // ADR-0049 §3.2 (slice 8d): 成员欠款的 proposal 收发箱 VM,与详情 VM 同为 overlay 内单例(常量 key),
     // 详情屏在加载到成员欠款时用 loadProposals 拉取(见 DebtDetailScreen 内 LaunchedEffect)。
@@ -265,7 +276,8 @@ internal fun DebtRoute(
         DebtListScreen(
             viewModel = debtListViewModel,
             actions = DebtListScreenActions(
-                onBack = onBack,
+                onBack = actions.onBack,
+                onOpenSyncStatus = actions.onOpenSyncStatus,
                 onOpenDebt = { detailDebtId = it.publicId },
                 onParseBillImage = openDebtBillPicker,
             ),
@@ -282,18 +294,10 @@ internal fun rememberDebtBillImageLauncher(
 ): ManagedActivityResultLauncher<PickVisualMediaRequest, Uri?> =
     rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
-        if (!viewModel.markBillParsePreparing()) return@rememberLauncherForActivityResult
+        val attempt = viewModel.markBillParsePreparing() ?: return@rememberLauncherForActivityResult
         scope.launch {
             val selected = withContext(Dispatchers.IO) { context.prepareScreenshotUpload(uri) }
-            if (selected == null) {
-                viewModel.billParsePreparationFailed()
-                return@launch
-            }
-            viewModel.parseDebtBillImage(
-                fileName = selected.fileName,
-                contentType = selected.contentType,
-                bytes = selected.bytes,
-            )
+            viewModel.parseDebtBillImage(attempt, selected)
         }
     }
 
@@ -352,11 +356,11 @@ internal fun ReceivablesRoute(
 ) {
     val viewModel: ReceivablesViewModel = viewModel(
         key = ReceivablesViewModelKey,
-        factory = receivablesViewModelFactory(screenFactory.debtRepository),
+        factory = receivablesViewModelFactory(screenFactory.debtRepository, screenFactory.debtWriteRepository),
     )
     val detailViewModel: DebtDetailViewModel = viewModel(
         key = ReceivablesDetailViewModelKey,
-        factory = debtDetailViewModelFactory(screenFactory.debtRepository),
+        factory = debtDetailViewModelFactory(screenFactory.debtRepository, screenFactory.debtWriteRepository),
     )
     val proposalViewModel: MemberRepaymentProposalViewModel = viewModel(
         key = ReceivablesProposalViewModelKey,
@@ -408,6 +412,7 @@ internal fun RepaymentDraftRoute(
         factory = repaymentDraftInboxViewModelFactory(
             drafts = screenFactory.repaymentDraftRepository,
             debts = screenFactory.debtRepository,
+            writes = screenFactory.debtWriteRepository,
         ),
     )
     LaunchedEffect(Unit) {

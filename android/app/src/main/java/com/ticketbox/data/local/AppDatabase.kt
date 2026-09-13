@@ -9,8 +9,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.ticketbox.domain.model.FxContract
 
 @Database(
-    entities = [ExpenseEntity::class, PendingMutationEntity::class, ExpenseOffsetStreamEntity::class],
-    version = 17,
+    entities = [ExpenseEntity::class, PendingMutationEntity::class, ExpenseOffsetStreamEntity::class, StatsProjectionCacheEntity::class, GoalQueryCacheEntity::class],
+    version = 20,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -498,6 +498,52 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        internal val MIGRATION_17_18_STATEMENTS: List<String> = listOf(
+            "ALTER TABLE pending_mutations ADD COLUMN receiptJson TEXT DEFAULT NULL",
+            "ALTER TABLE pending_mutations ADD COLUMN blocksFollowing INTEGER NOT NULL DEFAULT 1",
+        )
+
+        internal val Migration17To18 = object : Migration(17, 18) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_17_18_STATEMENTS.forEach(db::execSQL)
+            }
+        }
+
+        internal val MIGRATION_18_19_STATEMENTS: List<String> = listOf(
+            """
+            CREATE TABLE IF NOT EXISTS stats_projection_cache (
+                bindingKey TEXT NOT NULL, ledgerId TEXT NOT NULL, kind TEXT NOT NULL,
+                month TEXT NOT NULL, tag TEXT NOT NULL, homeCurrencyCode TEXT NOT NULL,
+                timezone TEXT NOT NULL, responseJson TEXT NOT NULL, fetchedAt TEXT NOT NULL,
+                PRIMARY KEY(bindingKey, kind, month, tag, homeCurrencyCode, timezone)
+            )
+            """.trimIndent(),
+            "CREATE INDEX IF NOT EXISTS index_stats_projection_cache_ledgerId ON stats_projection_cache (ledgerId)",
+        )
+
+        internal val Migration18To19 = object : Migration(18, 19) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_18_19_STATEMENTS.forEach(db::execSQL)
+            }
+        }
+
+        internal val MIGRATION_19_20_STATEMENTS: List<String> = listOf(
+            """
+            CREATE TABLE IF NOT EXISTS goal_query_cache (
+                bindingKey TEXT NOT NULL, ledgerId TEXT NOT NULL, timezone TEXT NOT NULL,
+                queryKey TEXT NOT NULL, responseJson TEXT NOT NULL, fetchedAt TEXT NOT NULL,
+                PRIMARY KEY(bindingKey, timezone, queryKey)
+            )
+            """.trimIndent(),
+            "CREATE INDEX IF NOT EXISTS index_goal_query_cache_ledgerId ON goal_query_cache (ledgerId)",
+        )
+
+        internal val Migration19To20 = object : Migration(19, 20) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_19_20_STATEMENTS.forEach(db::execSQL)
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -522,6 +568,9 @@ abstract class AppDatabase : RoomDatabase() {
                         Migration14To15,
                         Migration15To16,
                         Migration16To17,
+                        Migration17To18,
+                        Migration18To19,
+                        Migration19To20,
                     )
                     .build()
                     .also { instance = it }

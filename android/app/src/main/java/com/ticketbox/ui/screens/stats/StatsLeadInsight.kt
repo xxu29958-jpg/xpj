@@ -15,7 +15,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import com.ticketbox.R
 import com.ticketbox.domain.model.MonthlyStats
-import com.ticketbox.domain.model.ReportCategoryComparison
+import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.ReportRankingMetric
 import com.ticketbox.domain.model.ReportsOverview
 import com.ticketbox.domain.model.moneyPercent
@@ -113,12 +113,12 @@ private fun totalLeadLine(
     overview: ReportsOverview?,
     stats: MonthlyStats,
 ): StatsLeadLine {
-    val currencyDisplay = LocalCurrencyDisplay.current
-    val amount = overview?.totalAmountCents ?: stats.totalAmountCents
+    val currencyDisplay = CurrencyDisplay.forRecord(overview?.homeCurrencyCode ?: stats.homeCurrencyCode)
+    val amount = if (overview != null) overview.totalAmountCents else stats.totalAmountCents
     val count = overview?.count ?: stats.count
     return StatsLeadLine(
         label = stringResource(R.string.stats_lead_total_label),
-        value = formatDisplayAmount(amount, currencyDisplay),
+        value = amount?.let { formatDisplayAmount(it, currencyDisplay) } ?: stringResource(R.string.reports_amount_unavailable),
         caption = stringResource(R.string.stats_lead_total_caption, count),
     )
 }
@@ -128,7 +128,7 @@ private fun monthDeltaLeadLine(
     overview: ReportsOverview?,
 ): StatsLeadLine? {
     val evidence = monthDeltaEvidence(overview) ?: return null
-    val currencyDisplay = LocalCurrencyDisplay.current
+    val currencyDisplay = CurrencyDisplay.forRecord(overview?.homeCurrencyCode)
     val delta = evidence.deltaAmountCents
     val percent = monthDeltaPercent(delta, evidence.previousAmountCents)
     return StatsLeadLine(
@@ -148,19 +148,20 @@ private fun monthDeltaLeadLine(
 @Composable
 private fun variableLeadLine(overview: ReportsOverview?): StatsLeadLine? {
     if (overview == null) return null
-    val category = overview.categoryComparison
-        .filter { it.previousCount > 0 && it.previousAmountCents > 0L && it.deltaAmountCents != 0L }
-        .maxByOrNull { abs(it.deltaAmountCents) }
+    val category = overview.categoryComparison.takeIf { rows -> rows.all { it.deltaAmountCents != null } }
+        ?.filter { it.previousCount > 0 && (it.previousAmountCents?.let { amount -> amount > 0L } == true) && it.deltaAmountCents != 0L }
+        ?.maxByOrNull { abs(requireNotNull(it.deltaAmountCents)) }
     if (category != null) {
         return StatsLeadLine(
             label = stringResource(R.string.stats_lead_variable_label),
             value = category.category,
-            caption = categoryDeltaCaption(category),
+            caption = categoryDeltaCaption(requireNotNull(category.deltaAmountCents), CurrencyDisplay.forRecord(overview.homeCurrencyCode)),
         )
     }
     val topMerchant = overview.merchantRanking.firstOrNull() ?: return null
-    val currencyDisplay = LocalCurrencyDisplay.current
-    val amountText = formatDisplayAmount(topMerchant.amountCents, currencyDisplay)
+    val currencyDisplay = CurrencyDisplay.forRecord(overview.homeCurrencyCode)
+    val amountText = topMerchant.amountCents?.let { formatDisplayAmount(it, currencyDisplay) }
+        ?: stringResource(R.string.reports_amount_unavailable)
     val caption = when (overview.rankingMetric) {
         ReportRankingMetric.Amount -> stringResource(
             R.string.stats_lead_top_merchant_amount_caption,
@@ -220,13 +221,12 @@ private fun StatsLeadInline(line: StatsLeadLine) {
 @Composable
 private fun sourceLabel(statsSource: StatsSource, hasServerReport: Boolean): String = when {
     hasServerReport -> stringResource(R.string.stats_lead_source_server_report)
-    statsSource == StatsSource.LocalFallback -> stringResource(R.string.stats_lead_source_local)
+    statsSource == StatsSource.CachedSnapshot -> stringResource(R.string.stats_snapshot_badge)
     else -> stringResource(R.string.stats_lead_source_monthly)
 }
 
 @Composable
-private fun deltaLabel(deltaAmountCents: Long): String {
-    val currencyDisplay = LocalCurrencyDisplay.current
+private fun deltaLabel(deltaAmountCents: Long, currencyDisplay: CurrencyDisplay): String {
     return when {
         deltaAmountCents > 0L -> stringResource(
             R.string.stats_lead_delta_more,
@@ -248,14 +248,14 @@ private fun monthDeltaLabel(deltaAmountCents: Long): String = when {
 }
 
 @Composable
-private fun categoryDeltaCaption(category: ReportCategoryComparison): String = when {
-    category.deltaAmountCents > 0L -> stringResource(
+private fun categoryDeltaCaption(delta: Long, currencyDisplay: CurrencyDisplay): String = when {
+    delta > 0L -> stringResource(
         R.string.stats_lead_category_more,
-        deltaLabel(category.deltaAmountCents),
+        deltaLabel(delta, currencyDisplay),
     )
-    category.deltaAmountCents < 0L -> stringResource(
+    delta < 0L -> stringResource(
         R.string.stats_lead_category_less,
-        deltaLabel(category.deltaAmountCents),
+        deltaLabel(delta, currencyDisplay),
     )
     else -> stringResource(R.string.stats_lead_delta_flat)
 }

@@ -54,38 +54,14 @@
     {% if can_write %}
     <form method="post" action="/web/rules/create" class="product-form-grid"{% if rule_form_error %} aria-describedby="rule-create-error"{% endif %}>
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-      <label class="product-field">
-        <span>关键词</span>
-        <input type="text" name="keyword" required placeholder="如：星巴克" value="{{ rule_draft.get('keyword', '') }}">
-      </label>
-      <label class="product-field">
-        <span>分类</span>
-        <input type="text" name="category" required placeholder="如：餐饮" value="{{ rule_draft.get('category', '') }}">
-      </label>
-      <label class="product-field">
-        <span>优先级（越小越优先）</span>
-        <input type="number" name="priority" value="{{ rule_draft.get('priority', '100') }}" min="0" max="9999">
-      </label>
-      <div class="library-field-pair">
-        <label class="product-field">
-          <span>金额下限（{{ currency_input.currency_code }}，可选）</span>
-          <input type="number" name="amount_min_yuan" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="如：{{ currency_input.amount_example }}" value="{{ rule_draft.get('amount_min_yuan', '') }}">
-        </label>
-        <label class="product-field">
-          <span>金额上限（{{ currency_input.currency_code }}，可选）</span>
-          <input type="number" name="amount_max_yuan" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="如：{{ currency_input.amount_example }}" value="{{ rule_draft.get('amount_max_yuan', '') }}">
-        </label>
-      </div>
-      <label class="product-field">
-        <span>来源包含（可选）</span>
-        <input type="text" name="source_contains" placeholder="如：微信 / 手动记账" value="{{ rule_draft.get('source_contains', '') }}">
-      </label>
-      <label class="product-field">
-        <span>标签等于（可选）</span>
-        <input type="text" name="tag_contains" placeholder="如：真香" value="{{ rule_draft.get('tag_contains', '') }}">
-      </label>
+      {% include 'partials/rule_fields.html' %}
       <div class="actions">
+        {% if rule_form_review %}
+        <p class="meta">这份表单已提交过。请先核对下方规则列表；继续将保留输入并准备一个新规则，这一步不会保存。</p>
+        <button type="submit" name="review_new" value="true" class="product-button">已核对，准备新规则</button>
+        {% else %}
         <button type="submit" class="product-button product-button--primary">添加规则</button>
+        {% endif %}
       </div>
     </form>
     {% else %}
@@ -172,6 +148,9 @@
       <span>没有规则命中</span>
     </div>
   </div>
+  {% if bulk_preview.unavailable_count %}
+  <div class="product-feedback product-feedback--warning" role="status">{{ bulk_preview.unavailable_count }} 条金额条件暂不可判断，已保留原分类。请补齐记录金额、日期、币种或对应汇率，再重新预览。</div>
+  {% endif %}
   {% if bulk_preview['items'] %}
   <div class="product-table-wrap library-table-flush">
     <table class="product-table">
@@ -253,6 +232,9 @@
   </div>
   {% if confirmed_bulk_preview.scan_limit_reached %}
   <div class="product-feedback product-feedback--warning" role="status">本次只扫描前 {{ confirmed_bulk_preview.scan_limit }} 条，确认后可再次预览剩余账单。</div>
+  {% endif %}
+  {% if confirmed_bulk_preview.unavailable_count %}
+  <div class="product-feedback product-feedback--warning" role="status">{{ confirmed_bulk_preview.unavailable_count }} 条金额条件暂不可判断，已保留原分类。请补齐记录金额、日期、币种或对应汇率，再重新预览。</div>
   {% endif %}
   {% if confirmed_bulk_preview['items'] %}
   <div class="product-table-wrap library-table-flush">
@@ -390,8 +372,8 @@
           <td><span class="product-status product-status--info">{{ r.category }}</span></td>
           <td>
             {% set conditions = [] %}
-            {% if r.amount_min_cents is not none %}{% set _ = conditions.append('≥ ' ~ home_currency_symbol ~ minor_amount_label(r.amount_min_cents)) %}{% endif %}
-            {% if r.amount_max_cents is not none %}{% set _ = conditions.append('≤ ' ~ home_currency_symbol ~ minor_amount_label(r.amount_max_cents)) %}{% endif %}
+            {% if r.amount_min_cents is not none %}{% set _ = conditions.append('≥ ' ~ rule_amount_label(r.amount_min_cents, r.home_currency_code)) %}{% endif %}
+            {% if r.amount_max_cents is not none %}{% set _ = conditions.append('≤ ' ~ rule_amount_label(r.amount_max_cents, r.home_currency_code)) %}{% endif %}
             {% if r.source_contains %}{% set _ = conditions.append('来源含「' ~ r.source_contains ~ '」') %}{% endif %}
             {% if r.tag_contains %}{% set _ = conditions.append('标签「' ~ r.tag_contains ~ '」') %}{% endif %}
             {{ conditions|join(' · ') if conditions else '—' }}
@@ -406,9 +388,12 @@
             <div id="rule-toggle-error" class="product-feedback product-feedback--danger library-row-error" role="alert">{{ rule_toggle_error }}{% if rule_toggle_recycle %} 请先恢复分类，再重新启用这条规则；也可以删除本规则。<a class="product-feedback-link" href="/web/recycle-bin{{ q }}">查看回收站</a>{% endif %}</div>
             {% endif %}
             <div class="library-ops">
+              <a href="/web/rules/{{ r.id }}/edit{{ q }}" class="product-button product-button--small">编辑</a>
               <form method="post" action="/web/rules/{{ r.id }}/toggle">
                 <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
                 <input type="hidden" name="expected_row_version" value="{{ r.row_version }}">
+                <input type="hidden" name="enabled" value="{{ 'false' if r.enabled else 'true' }}">
+                <input type="hidden" name="idempotency_key" value="{{ new_rule_key() }}">
                 <button type="submit" class="product-button product-button--small">
                   {% if r.enabled %}停用{% else %}启用{% endif %}
                 </button>

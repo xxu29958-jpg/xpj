@@ -4,10 +4,12 @@ Each invocation of an outbound advisor (anything other than ``empty`` /
 ``mock``) writes a single row to ``budget_advisor_audit_logs``. The
 Owner Console "AI 状态" panel reads those rows to surface:
 
-* current provider config (with secrets masked),
+* current provider configuration validity and request eligibility,
 * whether the owner has explicitly confirmed AI calls
   (``BUDGET_ADVISOR_OWNER_CONFIRMED``), and
 * the most recent call result + timestamp.
+
+Raw configured URLs are absent from the public status projection.
 
 The input hash is HMAC-SHA256 over the outbound-guarded JSON payload — same
 bytes that actually leave the box, keyed by the local deployment secret. We
@@ -34,9 +36,9 @@ from app.services import app_meta_service
 from app.services.budget_advisor_service._models import BudgetAdvisorOutboundPayload
 from app.services.budget_advisor_service._provider_names import (
     LIVE_PROVIDER_NAMES,
-    canonical_provider_name,
     clean_provider_name,
 )
+from app.services.budget_advisor_service._readiness import get_advisor_readiness
 from app.services.time_service import ensure_utc, now_utc, to_iso
 
 IN_PROGRESS_ERROR_CODE = "ai_advisor_in_progress"
@@ -56,10 +58,12 @@ def is_live_provider(name: str | None) -> bool:
 class AdvisorStatus:
     provider: str
     model: str | None
-    base_url: str | None
     owner_confirmed: bool
     is_live: bool
     needs_confirmation: bool
+    configuration_valid: bool
+    can_request: bool
+    unavailable_reason: str | None
     last_called_at: str | None
     last_success: bool | None
     last_error_code: str | None
@@ -356,20 +360,22 @@ def cleanup_expired_audit_logs(
     return len(expired)
 
 
-def advisor_status_for_tenant(db: Session, *, tenant_id: str) -> AdvisorStatus:
+def advisor_status_for_tenant(db: Session, *, tenant_id: str, actor_role: str = "owner") -> AdvisorStatus:
     cfg = get_settings()
-    provider = canonical_provider_name(cfg.budget_advisor_provider)
-    is_live = is_live_provider(provider)
+    readiness = get_advisor_readiness()
+    blocked_reason = readiness.blocked_reason(actor_role)
     latest = latest_audit_row(db, tenant_id=tenant_id)
     return AdvisorStatus(
-        provider=provider,
+        provider=readiness.provider,
         model=cfg.budget_advisor_model or None,
-        base_url=mask_base_url(cfg.budget_advisor_base_url or None),
-        owner_confirmed=cfg.budget_advisor_owner_confirmed,
-        is_live=is_live,
+        owner_confirmed=readiness.owner_confirmed,
+        is_live=readiness.is_live,
         # ``empty`` / ``mock`` never need owner confirmation because they
         # don't leave the box. ``openai_compat`` and friends do.
-        needs_confirmation=is_live and not cfg.budget_advisor_owner_confirmed,
+        needs_confirmation=readiness.is_live and not readiness.owner_confirmed,
+        configuration_valid=readiness.configuration_valid,
+        can_request=blocked_reason is None,
+        unavailable_reason=blocked_reason,
         last_called_at=to_iso(ensure_utc(latest.called_at)) if latest else None,
         last_success=bool(latest.success) if latest else None,
         last_error_code=latest.error_code if latest else None,

@@ -1,16 +1,7 @@
 """PG round-trip of 20260620_0003 (add debts.installment_count / _period_months, ADR-0049 §B).
 
-``init_db`` on a fresh DB runs ``create_all`` (the current ORM already carries the two
-installment columns + the ``ck_debts_installment_valid`` CHECK) then ``alembic stamp head``, so
-the migration body never runs on the normal path — a divergence between the migration's
-hand-written ADD and the ORM would ship UNDETECTED by the deployment path. This drives it
-directly on PostgreSQL (the prod dialect): create_all → stamp head → downgrade past 20260620_0003
-(drops the CHECK + both columns) → upgrade to head (re-adds them), then asserts both columns are
-NULLABLE and the CHECK is back — not just that the names exist, so a flipped nullability / a
-typo'd CHECK in the migration fails HERE.
-
-Marked ``real_db`` below because it issues DDL via its own
-``engine.begin()`` connections outside the per-test transaction.
+Check current ORM shape independently, then round-trip the frozen migration
+on its actual PostgreSQL schema. Never stamp a current schema as a historical one.
 """
 
 from __future__ import annotations
@@ -78,14 +69,15 @@ def test_add_debt_installment_round_trips_on_postgres() -> None:
         Base.metadata.create_all(bind=engine)
         _assert_full_shape()  # the current ORM shape
 
-        _run_alembic(command.stamp, "20260620_0003")
+        _reset_empty_database()
+        _run_alembic(command.upgrade, "20260620_0003")
         _run_alembic(command.downgrade, "20260620_0002")
         cols = _debts_columns()
         for name in _COLS:
             assert name not in cols  # downgrade drops the columns
         assert _CHECK not in _debts_check_names()  # and the CHECK
 
-        _run_alembic(command.upgrade, "head")
+        _run_alembic(command.upgrade, "20260620_0003")
         # Re-added via the migration's hand-written ALTER — assert nullability + CHECK, not
         # just the column names, so a migration↔ORM divergence fails here.
         _assert_full_shape()

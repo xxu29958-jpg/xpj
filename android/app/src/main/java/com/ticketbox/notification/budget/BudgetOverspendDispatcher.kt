@@ -1,6 +1,7 @@
 package com.ticketbox.notification.budget
 
-import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.domain.model.CurrencyDisplay
 
 /**
  * 一次预算超支提醒投递的结果。**只有 [SENT] 允许调用 store.markSent(key)**（镜像 recurring 的
@@ -29,7 +30,7 @@ fun interface BudgetOverspendDispatcher {
 }
 
 /**
- * 生产实现：把超出金额格式化成本位币串（[formatAmount]，不散写 ÷100），委托
+ * 生产实现：把超出金额格式化成本位币串（[formatDisplayAmount]，不散写 ÷100），委托
  * [TicketboxNotifier.onBudgetOverspent][com.ticketbox.notification.TicketboxNotifier.onBudgetOverspent]。
  *
  * 依赖窄函数接缝 `(overspentAmount, dedupeTag) -> outcome` 而非具体 notifier（镜像
@@ -42,5 +43,5 @@ class NotifierBudgetOverspendDispatcher(
     private val onBudgetOverspent: (overspentAmount: String, dedupeTag: String) -> BudgetOverspendDispatchOutcome,
 ) : BudgetOverspendDispatcher {
     override fun dispatch(decision: BudgetOverspendDecision): BudgetOverspendDispatchOutcome =
-        onBudgetOverspent(formatAmount(decision.overspentCents), decision.key)
+        onBudgetOverspent(formatDisplayAmount(decision.overspentCents, CurrencyDisplay.forRecord(decision.homeCurrencyCode)), decision.key)
 }

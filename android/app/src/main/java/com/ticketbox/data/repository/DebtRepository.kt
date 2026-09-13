@@ -1,6 +1,5 @@
 package com.ticketbox.data.repository
 
-import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtForgiveCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtKindSetRequestDto
 import com.ticketbox.data.remote.dto.DebtVoidCreateRequestDto
@@ -8,11 +7,9 @@ import com.ticketbox.data.remote.dto.MemberRepaymentProposalConfirmRequestDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalCreateRequestDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalRejectRequestDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalWithdrawRequestDto
-import com.ticketbox.data.remote.dto.RepaymentCreateRequestDto
 import com.ticketbox.data.remote.dto.RepaymentVoidCreateRequestDto
 import com.ticketbox.domain.model.DebtBillSuggestion
 import com.ticketbox.domain.model.Debt
-import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.domain.model.DebtListLens
 import com.ticketbox.domain.model.MemberRepaymentProposal
 import com.ticketbox.domain.model.ledgerRoleCanModify
@@ -20,29 +17,21 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.UUID
+import kotlinx.coroutines.flow.Flow
 
 /**
- * ADR-0049 §2 (slice 8) Debt entity repository: list the active ledger's debts and create
- * external/manual ones. Direct-only online (no outbox) — a debt create is not part of the
- * offline outbox surface. Failure semantics follow the rest of the repository layer: every
- * suspend method returns `Result<T>`; viewer role short-circuits the write before the network.
+ * Canonical Debt queries and existing online fact/proposal operations.
+ * External creation and adjustment belong to [DebtCreationActions] and [DebtWriteActions].
  */
 interface DebtActions {
     fun canModifyLedger(): Boolean
     suspend fun listDebts(lens: DebtListLens = DebtListLens.Ledger): Result<DebtListPage>
     suspend fun getDebt(publicId: String): Result<Debt>
-    suspend fun createDebt(draft: DebtDraft): Result<Debt>
-    suspend fun parseDebtBillImage(fileName: String, contentType: String?, bytes: ByteArray): Result<DebtBillSuggestion>
+    suspend fun parseDebtBillImage(expectedBinding: LogicalSessionBinding, fileName: String,
+        contentType: String?, bytes: ByteArray): Result<DebtBillSuggestion>
     // ADR-0049 §3 (slice 8c) direct fact writes on an external/manual Debt. [expectedRowVersion]
     // is the §2.1 OCC carrier (the local Debt's row_version); the response is the fold-after Debt
     // (status / remaining / paid / a fresh row_version) the detail screen swaps in.
-    suspend fun recordRepayment(publicId: String, expectedRowVersion: Long, amountCents: Long): Result<Debt>
-    suspend fun recordAdjustment(
-        publicId: String,
-        expectedRowVersion: Long,
-        amountCents: Long,
-        reason: String,
-    ): Result<Debt>
     suspend fun voidDebt(publicId: String, expectedRowVersion: Long, reason: String): Result<Debt>
 
     suspend fun voidRepayment(
@@ -78,47 +67,16 @@ interface ReceivablesActions {
     suspend fun listReceivables(): Result<List<Debt>>
 }
 
-/**
- * ADR-0049 §3.2 (slice 8d) member repayment-proposal operations, split from [DebtActions] so the
- * proposal ViewModel depends only on this narrow surface (and its test fakes stay small). The two
- * parties of a member Debt can live in different ledgers (§5.2), so these are participant-scoped on
- * the server, not ledger-scoped. The debtor proposes "I paid" / withdraws; the creditor confirms
- * (full or partial) / rejects. Confirm is the only fold-changing op (carries the §2.1 OCC carrier
- * [Debt.rowVersion]) and replies with the fold-after [Debt]; the others reply with the proposal.
- * Direct-only online (no offline outbox); viewer role short-circuits writes before the network.
- */
+/** Participant commands reuse the canonical server owners and the original displayed task. */
 interface DebtProposalActions {
-    fun canModifyLedger(): Boolean
-    suspend fun listRepaymentProposals(debtPublicId: String): Result<List<MemberRepaymentProposal>>
-    suspend fun proposeRepayment(
-        debtPublicId: String,
-        proposedAmountCents: Long,
-        note: String?,
-        supersedesProposalPublicId: String?,
-    ): Result<MemberRepaymentProposal>
-    suspend fun withdrawRepaymentProposal(
-        debtPublicId: String,
-        proposalPublicId: String,
-    ): Result<MemberRepaymentProposal>
-    suspend fun confirmRepaymentProposal(
-        debtPublicId: String,
-        proposalPublicId: String,
-        expectedRowVersion: Long,
-        confirmedAmountCents: Long?,
-    ): Result<Debt>
-    suspend fun rejectRepaymentProposal(
-        debtPublicId: String,
-        proposalPublicId: String,
-    ): Result<MemberRepaymentProposal>
-
-    /**
-     * ADR-0049 §3.7 / §4 (slice 8e-3) — the creditor forgives the member Debt's remaining
-     * ("算了，不用还了"). One-sided (no debtor confirmation) but fold-changing → carries the §2.1 OCC
-     * carrier [Debt.rowVersion] and replies with the fold-after [Debt] (cleared, is_forgiven). The
-     * UI gates this to the creditor (viewerIsDebtor==false) on an open member Debt with no pending
-     * proposal; the server enforces member + creditor (403 / 409 otherwise). Direct-only online.
-     */
-    suspend fun forgiveDebt(debtPublicId: String, expectedRowVersion: Long): Result<Debt>
+    fun currentAccess(): LedgerAccessContext?
+    fun observeAccess(): Flow<LedgerAccessContext?>
+    suspend fun listRepaymentProposals(task: DebtTask): Result<List<MemberRepaymentProposal>>
+    suspend fun submit(
+        task: DebtTask,
+        command: MemberSettlementCommand,
+        idempotencyKey: String,
+    ): Result<MemberSettlementResult>
 }
 
 class DebtRepository(
@@ -194,24 +152,8 @@ class DebtRepository(
             }
         }
 
-    override suspend fun createDebt(draft: DebtDraft): Result<Debt> {
-        if (!canModifyLedger()) {
-            return Result.failure(RepositoryException(DEBT_VIEWER_READONLY))
-        }
-        val cleanDraft = draft.validated()
-            .getOrElse { return Result.failure(it) }
-        return errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
-                api.createDebt(
-                    request = cleanDraft.toCreateRequest(),
-                    // ADR-0042: single-use key — direct-only path, no offline replay.
-                    idempotencyKey = UUID.randomUUID().toString(),
-                ).toDomain()
-            }
-        }
-    }
-
     override suspend fun parseDebtBillImage(
+        expectedBinding: LogicalSessionBinding,
         fileName: String,
         contentType: String?,
         bytes: ByteArray,
@@ -226,55 +168,8 @@ class DebtRepository(
             val mediaType = (contentType?.takeIf { it.isNotBlank() } ?: "image/jpeg").toMediaTypeOrNull()
             val body = bytes.toRequestBody(mediaType)
             val filePart = MultipartBody.Part.createFormData("file", cleanName, body)
-            ledgerRequestGuard.guardedCall { api ->
+            ledgerRequestGuard.bindExact(expectedBinding).call { api ->
                 api.parseDebtBill(filePart).toDomain()
-            }
-        }
-    }
-
-    override suspend fun recordRepayment(
-        publicId: String,
-        expectedRowVersion: Long,
-        amountCents: Long,
-    ): Result<Debt> {
-        if (!canModifyLedger()) return Result.failure(RepositoryException(DEBT_VIEWER_READONLY))
-        if (amountCents <= 0L) return Result.failure(RepositoryException("还款金额必须大于 0。"))
-        return errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
-                api.recordDebtRepayment(
-                    publicId = publicId,
-                    request = RepaymentCreateRequestDto(
-                        amountCents = amountCents,
-                        expectedRowVersion = expectedRowVersion,
-                    ),
-                    // ADR-0042: single-use key — direct-only path, no offline replay.
-                    idempotencyKey = UUID.randomUUID().toString(),
-                ).toDomain()
-            }
-        }
-    }
-
-    override suspend fun recordAdjustment(
-        publicId: String,
-        expectedRowVersion: Long,
-        amountCents: Long,
-        reason: String,
-    ): Result<Debt> {
-        if (!canModifyLedger()) return Result.failure(RepositoryException(DEBT_VIEWER_READONLY))
-        if (amountCents == 0L) return Result.failure(RepositoryException("调整金额不能为 0。"))
-        val cleanReason = reason.trim()
-        if (cleanReason.isEmpty()) return Result.failure(RepositoryException("请填写调整原因。"))
-        return errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
-                api.recordDebtAdjustment(
-                    publicId = publicId,
-                    request = DebtAdjustmentCreateRequestDto(
-                        amountCents = amountCents,
-                        reason = cleanReason,
-                        expectedRowVersion = expectedRowVersion,
-                    ),
-                    idempotencyKey = UUID.randomUUID().toString(),
-                ).toDomain()
             }
         }
     }
@@ -322,123 +217,56 @@ class DebtRepository(
         }
     }
 
-    /**
-     * ADR-0049 §3.2 (slice 8d) member repayment-proposal operations, exposed as a focused
-     * sub-surface so the proposal ViewModel depends only on [DebtProposalActions] (and its test
-     * fakes stay small) while DebtRepository keeps a single cohesive Debt concern. The inner class
-     * reuses the parent's [ledgerRequestGuard] / [errorHandler] / [canModifyLedger], so no IO infra
-     * is duplicated.
-     */
     val proposals: DebtProposalActions = ProposalActions()
 
     private inner class ProposalActions : DebtProposalActions {
-        override fun canModifyLedger(): Boolean = this@DebtRepository.canModifyLedger()
+        override fun currentAccess(): LedgerAccessContext? {
+            val session = apiProvider.currentSession() ?: return null
+            val binding = session.toBoundSessionSnapshotOrNull()?.logicalBinding ?: return null
+            return LedgerAccessContext(binding, ledgerRoleCanModify(session.identity.role))
+        }
 
-        override suspend fun listRepaymentProposals(
-            debtPublicId: String,
-        ): Result<List<MemberRepaymentProposal>> =
+        override fun observeAccess(): Flow<LedgerAccessContext?> = apiProvider.observeActiveLedgerAccess()
+
+        override suspend fun listRepaymentProposals(task: DebtTask): Result<List<MemberRepaymentProposal>> =
             errorHandler.safeCall {
-                ledgerRequestGuard.guardedCall { api ->
-                    api.repaymentProposals(debtPublicId).items.map { it.toDomain() }
+                ledgerRequestGuard.bindExact(task.binding).call { api ->
+                    api.repaymentProposals(task.debtPublicId).items.map { it.toDomain() }
                 }
             }
 
-        override suspend fun proposeRepayment(
-            debtPublicId: String,
-            proposedAmountCents: Long,
-            note: String?,
-            supersedesProposalPublicId: String?,
-        ): Result<MemberRepaymentProposal> {
-            if (!canModifyLedger()) return Result.failure(RepositoryException(DEBT_VIEWER_READONLY))
-            if (proposedAmountCents <= 0L) return Result.failure(RepositoryException("还款金额必须大于 0。"))
-            return errorHandler.safeCall {
-                ledgerRequestGuard.guardedCall { api ->
-                    api.createRepaymentProposal(
-                        publicId = debtPublicId,
-                        request = MemberRepaymentProposalCreateRequestDto(
-                            proposedAmountCents = proposedAmountCents,
-                            note = note?.trim()?.ifBlank { null },
-                            supersedesProposalPublicId = supersedesProposalPublicId,
-                        ),
-                        // ADR-0042: single-use key — direct-only path, no offline replay.
-                        idempotencyKey = UUID.randomUUID().toString(),
-                    ).toDomain()
-                }
+        override suspend fun submit(
+            task: DebtTask,
+            command: MemberSettlementCommand,
+            idempotencyKey: String,
+        ): Result<MemberSettlementResult> = errorHandler.safeCall {
+            if (currentAccess()?.canModify != true) throw RepositoryException(DEBT_VIEWER_READONLY)
+            if (idempotencyKey.isBlank()) throw RepositoryException("缺少原提交标识，请重新核对。")
+            if (command is MemberSettlementCommand.Propose && command.amountCents <= 0L) {
+                throw RepositoryException("还款金额必须大于 0。")
             }
-        }
-
-        override suspend fun withdrawRepaymentProposal(
-            debtPublicId: String,
-            proposalPublicId: String,
-        ): Result<MemberRepaymentProposal> {
-            if (!canModifyLedger()) return Result.failure(RepositoryException(DEBT_VIEWER_READONLY))
-            return errorHandler.safeCall {
-                ledgerRequestGuard.guardedCall { api ->
-                    api.withdrawRepaymentProposal(
-                        publicId = debtPublicId,
-                        proposalPublicId = proposalPublicId,
-                        request = MemberRepaymentProposalWithdrawRequestDto(),
-                        idempotencyKey = UUID.randomUUID().toString(),
-                    ).toDomain()
-                }
+            if (command is MemberSettlementCommand.Confirm && command.amountCents != null && command.amountCents <= 0L) {
+                throw RepositoryException("确认金额必须大于 0。")
             }
-        }
-
-        override suspend fun confirmRepaymentProposal(
-            debtPublicId: String,
-            proposalPublicId: String,
-            expectedRowVersion: Long,
-            confirmedAmountCents: Long?,
-        ): Result<Debt> {
-            if (!canModifyLedger()) return Result.failure(RepositoryException(DEBT_VIEWER_READONLY))
-            if (confirmedAmountCents != null && confirmedAmountCents <= 0L) {
-                return Result.failure(RepositoryException("确认金额必须大于 0。"))
-            }
-            return errorHandler.safeCall {
-                ledgerRequestGuard.guardedCall { api ->
-                    api.confirmRepaymentProposal(
-                        publicId = debtPublicId,
-                        proposalPublicId = proposalPublicId,
-                        request = MemberRepaymentProposalConfirmRequestDto(
-                            confirmedAmountCents = confirmedAmountCents,
-                            expectedRowVersion = expectedRowVersion,
-                        ),
-                        idempotencyKey = UUID.randomUUID().toString(),
-                    ).toDomain()
-                }
-            }
-        }
-
-        override suspend fun rejectRepaymentProposal(
-            debtPublicId: String,
-            proposalPublicId: String,
-        ): Result<MemberRepaymentProposal> {
-            if (!canModifyLedger()) return Result.failure(RepositoryException(DEBT_VIEWER_READONLY))
-            return errorHandler.safeCall {
-                ledgerRequestGuard.guardedCall { api ->
-                    api.rejectRepaymentProposal(
-                        publicId = debtPublicId,
-                        proposalPublicId = proposalPublicId,
-                        request = MemberRepaymentProposalRejectRequestDto(),
-                        idempotencyKey = UUID.randomUUID().toString(),
-                    ).toDomain()
-                }
-            }
-        }
-
-        override suspend fun forgiveDebt(
-            debtPublicId: String,
-            expectedRowVersion: Long,
-        ): Result<Debt> {
-            if (!canModifyLedger()) return Result.failure(RepositoryException(DEBT_VIEWER_READONLY))
-            return errorHandler.safeCall {
-                ledgerRequestGuard.guardedCall { api ->
-                    api.forgiveDebt(
-                        publicId = debtPublicId,
-                        request = DebtForgiveCreateRequestDto(expectedRowVersion = expectedRowVersion),
-                        // ADR-0042: single-use key — direct-only path, no offline replay.
-                        idempotencyKey = UUID.randomUUID().toString(),
-                    ).toDomain()
+            ledgerRequestGuard.bindExact(task.binding).call { api ->
+                when (command) {
+                    is MemberSettlementCommand.Propose -> MemberSettlementResult.Proposal(
+                        api.createRepaymentProposal(task.debtPublicId, MemberRepaymentProposalCreateRequestDto(
+                            proposedAmountCents = command.amountCents, note = command.note,
+                            supersedesProposalPublicId = command.supersedesProposalPublicId), idempotencyKey).toDomain())
+                    is MemberSettlementCommand.Confirm -> MemberSettlementResult.DebtChanged(
+                        api.confirmRepaymentProposal(task.debtPublicId, command.proposalPublicId,
+                            MemberRepaymentProposalConfirmRequestDto(confirmedAmountCents = command.amountCents, expectedRowVersion = command.expectedRowVersion),
+                            idempotencyKey).toDomain())
+                    is MemberSettlementCommand.Withdraw -> MemberSettlementResult.Proposal(
+                        api.withdrawRepaymentProposal(task.debtPublicId, command.proposalPublicId,
+                            MemberRepaymentProposalWithdrawRequestDto(), idempotencyKey).toDomain())
+                    is MemberSettlementCommand.Reject -> MemberSettlementResult.Proposal(
+                        api.rejectRepaymentProposal(task.debtPublicId, command.proposalPublicId,
+                            MemberRepaymentProposalRejectRequestDto(), idempotencyKey).toDomain())
+                    is MemberSettlementCommand.Forgive -> MemberSettlementResult.DebtChanged(
+                        api.forgiveDebt(task.debtPublicId, DebtForgiveCreateRequestDto(command.expectedRowVersion),
+                            idempotencyKey).toDomain())
                 }
             }
         }
@@ -447,21 +275,3 @@ class DebtRepository(
 
 /** Shared viewer short-circuit copy (kept in sync with [DebtListViewModel] expectations). */
 private const val DEBT_VIEWER_READONLY = "当前角色为只读，无法修改账本。"
-
-private const val DEBT_COUNTERPARTY_LABEL_MAX = 255
-
-private fun DebtDraft.validated(): Result<DebtDraft> = runCatching {
-    val cleanLabel = counterpartyLabel.trim()
-    require(cleanLabel.isNotBlank()) { "请填写欠款对象。" }
-    require(cleanLabel.length <= DEBT_COUNTERPARTY_LABEL_MAX) { "欠款对象名称太长。" }
-    require(direction == DebtDirections.I_OWE || direction == DebtDirections.OWED_TO_ME) {
-        "请选择欠款方向。"
-    }
-    require(principalAmountCents > 0L) { "金额必须大于 0。" }
-    copy(counterpartyLabel = cleanLabel)
-}.mapDebtError()
-
-private fun <T> Result<T>.mapDebtError(): Result<T> = fold(
-    onSuccess = { Result.success(it) },
-    onFailure = { Result.failure(RepositoryException(it.message ?: "请求参数不正确。")) },
-)

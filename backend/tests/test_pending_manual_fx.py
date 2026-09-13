@@ -21,6 +21,7 @@ def _pending(client, identity, *, currency="USD", amount=12345):
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
+            "client_ref": str(uuid4()),
             "original_currency_code": currency,
             "original_amount_minor": amount,
             "merchant": f"Foreign receipt {uuid4()}",

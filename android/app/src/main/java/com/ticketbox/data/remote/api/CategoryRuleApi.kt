@@ -23,7 +23,8 @@ interface CategoryRuleApi {
     suspend fun categoryRules(): List<CategoryRuleDto>
 
     @POST("api/rules/categories")
-    suspend fun createCategoryRule(@Body request: CategoryRuleRequest): CategoryRuleDto
+    suspend fun createCategoryRule(@Body request: CategoryRuleRequest,
+        @Header("Idempotency-Key") idempotencyKey: String): CategoryRuleDto
 
     @PATCH("api/rules/categories/{id}")
     suspend fun updateCategoryRule(

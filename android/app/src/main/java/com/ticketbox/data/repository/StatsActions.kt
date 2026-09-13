@@ -7,14 +7,13 @@ import com.ticketbox.domain.model.MonthlyStats
 import kotlinx.coroutines.flow.Flow
 
 interface StatsActions {
-    fun observeActiveLedgerId(): Flow<String?>
-    fun observeConfirmed(): Flow<List<Expense>>
-    fun monthlyBudgetCents(): Long?
+    fun observeStatsBinding(): Flow<LogicalSessionBinding?>
+    fun statsBinding(): LogicalSessionBinding?
     fun lastUploadAt(): String?
     suspend fun months(): Result<List<String>>
     suspend fun tags(): Result<List<String>>
-    suspend fun monthlyStats(month: String? = null, tag: String? = null): Result<MonthlyStats>
-    suspend fun lifestyleStats(month: String? = null): Result<LifestyleStats>
+    suspend fun monthlyStats(query: StatsQuery): Result<ReadSnapshot<MonthlyStats>>
+    suspend fun lifestyleStats(query: StatsQuery): Result<ReadSnapshot<LifestyleStats>>
     suspend fun syncConfirmed(
         month: String?,
         category: String?,
@@ -22,3 +21,11 @@ interface StatsActions {
     ): Result<List<Expense>>
     suspend fun dataQualitySummary(): Result<DataQualitySummary>
 }
+
+data class StatsQuery(
+    val binding: LogicalSessionBinding,
+    val month: String,
+    val tag: String = "",
+    val homeCurrencyCode: String? = null,
+    val timezone: String = java.util.TimeZone.getDefault().id,
+)

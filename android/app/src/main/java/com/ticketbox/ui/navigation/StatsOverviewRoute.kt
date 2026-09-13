@@ -1,5 +1,12 @@
 package com.ticketbox.ui.navigation
 
+import androidx.compose.runtime.DisposableEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.ticketbox.domain.model.CurrencyProjectionGap
+import com.ticketbox.domain.model.ReportsOverview
+import com.ticketbox.data.repository.LogicalSessionBinding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -21,7 +28,9 @@ import com.ticketbox.viewmodel.mergeStatsUiState
 import com.ticketbox.viewmodel.recurringViewModelFactory
 
 @Composable
-internal fun StatsRoute(shellState: MainShellState, screenFactory: MainScreenFactory) {
+internal fun StatsRoute(shellState: MainShellState, screenFactory: MainScreenFactory,
+    onRepairReport: (ReportRateContext) -> Unit,
+) {
     val monthly: MonthlyStatsViewModel = viewModel(factory = screenFactory.repositoryViewModelFactory)
     val budget: StatsBudgetViewModel = viewModel(factory = screenFactory.repositoryViewModelFactory)
     val reports: StatsReportsViewModel = viewModel(factory = screenFactory.repositoryViewModelFactory)
@@ -35,33 +44,40 @@ internal fun StatsRoute(shellState: MainShellState, screenFactory: MainScreenFac
     val layoutState by layout.uiState.collectAsStateWithLifecycle()
     val recurringState by recurring.uiState.collectAsStateWithLifecycle()
 
-    LaunchedEffect(shellState.insightsDataRevision, monthlyState.ledgerReady) {
-        if (shellState.insightsDataRevision > 0 && monthlyState.ledgerReady) reloadAllStats(monthly, reports)
+    LaunchedEffect(shellState.financialDataRevision, monthlyState.ledgerReady) {
+        if (shellState.financialDataRevision > 0 && monthlyState.ledgerReady) {
+            reloadAllStats(monthly, reports)
+            recurring.refresh()
+        }
     }
-    LaunchedEffect(monthlyState.ledgerReady, monthlyState.activeLedgerId) {
+    LaunchedEffect(monthlyState.ledgerReady, monthlyState.binding) {
         layout.refresh()
         if (monthlyState.ledgerReady) recurring.refresh()
     }
-    LaunchedEffect(monthlyState.ledgerReady, monthlyState.activeLedgerId, monthlyState.month, monthlyState.selectedTag) {
+    LaunchedEffect(monthlyState.ledgerReady, monthlyState.binding, monthlyState.month, monthlyState.selectedTag) {
         if (monthlyState.ledgerReady) reports.refresh(monthlyState.month, monthlyState.selectedTag)
     }
     LaunchedEffect(
-        monthlyState.ledgerReady, monthlyState.activeLedgerId, monthlyState.month,
-        monthlyState.selectedTag, monthlyState.stats, monthlyState.primaryRefreshRevision,
+        monthlyState.ledgerReady, monthlyState.binding, monthlyState.month,
+        monthlyState.primaryRefreshRevision,
     ) {
-        if (monthlyState.ledgerReady) budget.refresh(monthlyState.month, monthlyState.stats)
+        if (monthlyState.ledgerReady) budget.refresh(monthlyState.month, force = true)
     }
+
+    StatsReportExportDestination(reports, reportsState)
+    RefreshStatsOnResume(monthly, reports)
 
     StatsScreen(
         state = mergeStatsUiState(monthlyState, budgetState, reportsState),
         overview = OverviewModulesState(layoutState, recurringState),
         actions = statsScreenActions(
-            monthly, reports, shellState, monthlyState.month,
-            OverviewInteractionActions(dashboardLayoutActions(layout), overviewModuleActions(shellState)),
+            monthly, reports, shellState,
+            OverviewInteractionActions(dashboardLayoutActions(layout), overviewModuleActions(shellState, monthlyState.month)),
+            onRepairReport,
         ).copy(
             onRefresh = {
                 reloadAllStats(monthly, reports)
-                budget.refresh(monthlyState.month, monthlyState.stats, force = true)
+                budget.refresh(monthlyState.month, force = true)
                 recurring.refresh()
                 layout.refresh()
             },
@@ -81,9 +97,23 @@ internal fun dashboardLayoutActions(layout: DashboardLayoutViewModel) = Dashboar
     onMove = layout::move, onSave = layout::save, onCancel = layout::cancelEdit, onReset = layout::reset,
 )
 
-internal fun overviewModuleActions(shell: MainShellState) = OverviewModuleActions(
+internal fun overviewModuleActions(shell: MainShellState, month: String) = OverviewModuleActions(
     onInbox = { shell.openPrimaryDomainRoot(PrimaryDomain.Inbox) },
-    onBudget = { shell.openSecondaryPage(ProductSecondaryPage.Budget) },
+    onBudget = { shell.openBudget(month) },
     onGoals = { shell.openSecondaryPage(ProductSecondaryPage.SpendingGoal) },
     onRecurring = { shell.openSecondaryPage(ProductSecondaryPage.Recurring) },
 )
+
+@Composable
+private fun RefreshStatsOnResume(monthly: MonthlyStatsViewModel, reports: StatsReportsViewModel) {
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle, monthly, reports) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                reloadAllStats(monthly, reports)
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
+}

@@ -164,13 +164,16 @@ _EDGE_PROBE = """
 
 _THEME_PROBE = """
 (() => {
-  const theme = document.documentElement.getAttribute("data-theme");
+  const root = document.documentElement;
+  const systemButton = document.querySelector('[data-theme-mode="system"]');
+  if (!root || !systemButton || document.readyState === "loading") return undefined;
+  const theme = root.getAttribute("data-theme");
   if (theme === "paper" || !theme) return undefined;
   return JSON.stringify({
     theme,
     storedTheme: localStorage.getItem("ui-theme-mode"),
     cookie: document.cookie,
-    systemPressed: document.querySelector('[data-theme-mode="system"]').getAttribute("aria-pressed")
+    systemPressed: systemButton.getAttribute("aria-pressed")
   });
 })()
 """
@@ -316,22 +319,30 @@ def test_real_edge_navigates_manager_session_and_uses_bff_consumer(tmp_path: Pat
     consumer = _AuditedConsumerServer()
     backend_origin = f"http://127.0.0.1:{consumer.server_address[1]}"
     manager = _manager(tmp_path, backend_origin)
-    bootstrap_path = tmp_path / "desktop-bootstrap.html"
-    bootstrap_url = manager.prepare_web_bootstrap(bootstrap_path)
-    assert _INSTANCE_SECRET not in bootstrap_url
+    bootstrap_paths: list[Path] = []
+
+    def prepare_url(attempt: int) -> str:
+        path = tmp_path / f"desktop-bootstrap-{attempt}.html"
+        bootstrap_paths.append(path)
+        bootstrap_url = manager.prepare_web_bootstrap(path)
+        assert _INSTANCE_SECRET not in bootstrap_url
+        return bootstrap_url
+
     assert _INSTANCE_SECRET not in str(tmp_path / "edge-bff-e2e-profile")
 
     with _serving(consumer), _serving(manager):
         value = evaluate_page(
             edge,
             profile=tmp_path / "edge-bff-e2e-profile",
-            url=bootstrap_url,
+            prepare_url=prepare_url,
             width=820,
             height=660,
             expression=_EDGE_PROBE,
+            document_url_prefix=manager.expected_origin + "/web",
         )
 
-    assert not bootstrap_path.exists()
+    assert bootstrap_paths
+    assert all(not path.exists() for path in bootstrap_paths)
     assert isinstance(value, str)
     dom = json.loads(value)
     assert dom == {
@@ -372,16 +383,16 @@ def test_real_edge_theme_change_stays_in_the_browser(tmp_path: Path) -> None:
     consumer = _AuditedConsumerServer(theme_fixture=True)
     backend_origin = f"http://127.0.0.1:{consumer.server_address[1]}"
     manager = _manager(tmp_path, backend_origin)
-    bootstrap_url = manager.prepare_web_bootstrap(tmp_path / "theme-bootstrap.html")
 
     with _serving(consumer), _serving(manager):
         value = evaluate_page(
             edge,
             profile=tmp_path / "edge-theme-bridge-profile",
-            url=bootstrap_url,
+            prepare_url=lambda attempt: manager.prepare_web_bootstrap(tmp_path / f"theme-bootstrap-{attempt}.html"),
             width=820,
             height=660,
             expression=_THEME_PROBE,
+            document_url_prefix=manager.expected_origin + "/web",
         )
 
     assert json.loads(value) == {
@@ -406,12 +417,14 @@ _REAL_RENDER_PROBE = """
   const done = globalThis.__probeResult;
   if (done) return done;
   const atWeb = location.pathname === "/web" || location.pathname === "/web/pending";
-  const ready = atWeb && document.querySelector("#main-content");
+  const ready = atWeb && document.readyState === "complete" && document.querySelector("#main-content");
   if (!ready || globalThis.__probeStarted) return undefined;
   globalThis.__probeStarted = true;
   const overflow = document.documentElement.scrollWidth > document.documentElement.clientWidth + 1;
   const snapshot = {
     overflow,
+    viewportWidth: document.documentElement.clientWidth,
+    scrollWidth: document.documentElement.scrollWidth,
     ledgerChip: Boolean(document.querySelector(".ledger-role-chip")),
     hasOwnerLedger: document.body.innerText.includes("我的小票夹"),
     href: location.href,
@@ -457,22 +470,38 @@ def test_real_backend_bootstrap_pair_bridge_render_probe(
         assert projection["role"] == "owner"
         assert "session_token" not in projection
 
-        bootstrap_path = tmp_path / f"render-{width}x{height}" / "bootstrap.html"
-        bootstrap_url = manager.prepare_web_bootstrap(bootstrap_path)
-        assert _INSTANCE_SECRET not in bootstrap_url
-        value = evaluate_page(
-            edge,
-            profile=tmp_path / f"edge-real-{width}x{height}",
-            url=bootstrap_url,
-            width=width,
-            height=height,
-            expression=_REAL_RENDER_PROBE,
-        )
+        bootstrap_paths: list[Path] = []
 
-    assert not bootstrap_path.exists()
+        def prepare_url(attempt: int) -> str:
+            path = tmp_path / f"render-{width}x{height}" / f"bootstrap-{attempt}.html"
+            bootstrap_paths.append(path)
+            bootstrap_url = manager.prepare_web_bootstrap(path)
+            assert _INSTANCE_SECRET not in bootstrap_url
+            return bootstrap_url
+
+        try:
+            value = evaluate_page(
+                edge,
+                profile=tmp_path / f"edge-real-{width}x{height}",
+                prepare_url=prepare_url,
+                width=width,
+                height=height,
+                expression=_REAL_RENDER_PROBE,
+                document_url_prefix=manager.expected_origin + "/web",
+            )
+        except AssertionError as exc:
+            try:
+                remaining = str(sum(path.exists() for path in bootstrap_paths))
+            except OSError:
+                remaining = "unavailable"
+            exc.add_note(f"bootstrap_files_created={len(bootstrap_paths)}; remaining={remaining}")
+            raise
+
+    assert bootstrap_paths
+    assert all(not path.exists() for path in bootstrap_paths)
     assert isinstance(value, str)
     probe = json.loads(value)
-    assert probe["overflow"] is False
+    assert probe["overflow"] is False, (probe["viewportWidth"], probe["scrollWidth"])
     assert probe["ledgerChip"] is True
     assert probe["hasOwnerLedger"] is True
     # The server-side LedgerRequestGuard: a foreign ledger_id is refused.
@@ -499,7 +528,7 @@ def test_real_backend_unpaired_bridge_renders_manager_recovery_action(
     assert _INSTANCE_SECRET not in body
 
 
-def test_real_backend_reconcile_after_manager_death_mid_pair(
+def test_real_backend_resumes_a_persisted_activation_receipt(
     tmp_path: Path,
     real_backend: RealBackend,
 ) -> None:

@@ -324,7 +324,7 @@ def test_confirm_retry_with_different_amount_points_to_existing_item(
         created = confirm_recurring_candidate(
             db,
             tenant_id="owner",
-            payload=RecurringCandidateConfirmRequest(
+            payload=RecurringCandidateConfirmRequest(home_currency_code="CNY",
                 merchant="ChatGPT Plus",
                 amount_cents=20000,
                 frequency="monthly",
@@ -335,7 +335,7 @@ def test_confirm_retry_with_different_amount_points_to_existing_item(
         same = confirm_recurring_candidate(
             db,
             tenant_id="owner",
-            payload=RecurringCandidateConfirmRequest(
+            payload=RecurringCandidateConfirmRequest(home_currency_code="CNY",
                 merchant="ChatGPT Plus",
                 amount_cents=20000,
                 frequency="monthly",
@@ -348,7 +348,7 @@ def test_confirm_retry_with_different_amount_points_to_existing_item(
             confirm_recurring_candidate(
                 db,
                 tenant_id="owner",
-                payload=RecurringCandidateConfirmRequest(
+                payload=RecurringCandidateConfirmRequest(home_currency_code="CNY",
                     merchant="ChatGPT Plus",
                     amount_cents=21000,
                     frequency="monthly",
@@ -371,7 +371,7 @@ def test_confirm_candidate_race_returns_existing_after_candidate_disappears(
     from app.services.recurring_candidate_confirmation_service import confirm_recurring_candidate
 
     seed_candidate()
-    payload = RecurringCandidateConfirmRequest(
+    payload = RecurringCandidateConfirmRequest(home_currency_code="CNY",
         merchant="ChatGPT Plus",
         amount_cents=20000,
         frequency="monthly",
@@ -413,7 +413,7 @@ def test_confirm_candidate_insert_race_returns_one_shared_fact(
     from app.services import recurring_candidate_confirmation_service as confirmation
 
     seed_candidate()
-    payload = RecurringCandidateConfirmRequest(
+    payload = RecurringCandidateConfirmRequest(home_currency_code="CNY",
         merchant="ChatGPT Plus",
         amount_cents=20000,
         frequency="monthly",

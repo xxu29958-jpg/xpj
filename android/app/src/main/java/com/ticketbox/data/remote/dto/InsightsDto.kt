@@ -12,6 +12,8 @@ data class RecurringCandidateItemDto(
     val lastSeenAt: String?,
     val confidence: String,
     val reason: String,
+    @param:Json(name = "home_currency_code")
+    val homeCurrencyCode: String? = null,
 )
 
 data class RecurringCandidatesResponseDto(

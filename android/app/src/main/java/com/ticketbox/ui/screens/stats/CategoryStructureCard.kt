@@ -43,129 +43,59 @@ import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalThemeVisuals
 
 @Composable
-internal fun CategoryStructureCard(
-    categories: List<CategoryStats>,
-    tags: List<TagStats>,
-    totalAmountCents: Long,
-    onCategoryClick: ((String) -> Unit)? = null,
+internal fun ComparableCategoryStructureCard(
+    categories: List<CategoryStats>, tags: List<TagStats>, totalAmountCents: Long,
+    homeCurrencyCode: String, onCategoryClick: ((String) -> Unit)?,
 ) {
-    val currencyDisplay = LocalCurrencyDisplay.current
-    val visuals = LocalThemeVisuals.current
-    val sortedCategories = remember(categories) {
-        categories
-            .filter { it.amountCents > 0L && it.count > 0 }
-            .sortedByDescending { it.amountCents }
-    }
-    val visibleTags = remember(tags) {
-        tags
-            .filter { it.amountCents > 0L && it.count > 0 }
-            .sortedByDescending { it.amountCents }
-            .take(6)
-    }
-    val topCategories = remember(sortedCategories) { sortedCategories.take(5) }
-    val topCategory = topCategories.firstOrNull()
-    val categoryCount = sortedCategories.size
-    val topShareLabel = topCategory?.let { categoryShareLabel(it.amountCents, totalAmountCents) }
-    val topAmountLabel = topCategory?.let { formatDisplayAmount(it.amountCents, currencyDisplay) }
-    val otherCount = (categoryCount - 1).coerceAtLeast(0)
-    val otherAmountCents = remember(sortedCategories) { sortedCategories.drop(1).sumOf { it.amountCents } }
-
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
-            Text(
-                stringResource(R.string.stats_category_structure_title),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = AppTextHierarchy.body.weight,
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = if (topCategory != null) {
-                        stringResource(R.string.stats_category_structure_top, topCategory.category)
-                    } else {
-                        stringResource(R.string.stats_category_structure_empty)
-                    },
-                    modifier = Modifier.weight(1f),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = AppTextHierarchy.heading.weight,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                topAmountLabel?.let {
-                    AppEndAlignedAmountText(
-                        text = it,
-                        modifier = Modifier.weight(CategoryStructureTopAmountWeight),
-                        role = AppAmountRole.Compact,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                }
-            }
-            Text(
-                text = if (topShareLabel != null) {
-                    stringResource(
-                        R.string.stats_category_structure_insight,
-                        topShareLabel,
-                        categoryCount,
-                    )
-                } else {
-                    stringResource(R.string.stats_category_structure_count, categoryCount)
-                },
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingSmall),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            CategoryDonut(
-                categories = topCategories,
-                totalAmountCents = totalAmountCents,
-            )
-            if (topCategory != null && otherCount > 0 && otherAmountCents > 0L) {
-                Text(
-                    text = stringResource(
-                        R.string.stats_category_structure_remainder,
-                        otherCount,
-                        formatDisplayAmount(otherAmountCents, currencyDisplay),
-                    ),
-                    modifier = Modifier.weight(1f),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap)) {
-            topCategories.forEachIndexed { index, category ->
-                CategoryStructureBarRow(
-                    category = category,
-                    totalAmountCents = totalAmountCents,
-                    index = index,
-                    currencyDisplay = currencyDisplay,
-                    onClick = onCategoryClick?.let { handler -> { handler(category.category) } },
-                )
-            }
+    val currency = CurrencyDisplay.forRecord(homeCurrencyCode)
+    val sorted = remember(categories) { categories.filter { requireNotNull(it.amountCents) > 0L && it.count > 0 }.sortedByDescending { it.amountCents } }
+    val visibleTags = remember(tags) { tags.filter { requireNotNull(it.amountCents) > 0L && it.count > 0 }.sortedByDescending { it.amountCents }.take(6) }
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap)) {
+        CategoryStructureHeadline(sorted, totalAmountCents, currency)
+        CategoryStructureOverview(sorted, totalAmountCents, currency)
+        sorted.take(5).forEachIndexed { index, category ->
+            CategoryStructureBarRow(category, totalAmountCents, index, currency,
+                onClick = onCategoryClick?.let { handler -> { handler(category.category) } })
         }
         if (visibleTags.isNotEmpty()) {
-            HorizontalDivider(color = visuals.chipUnselected.copy(alpha = AppAlpha.heavy))
-            TagDistributionSection(
-                tags = visibleTags,
-                totalAmountCents = totalAmountCents,
-                currencyDisplay = currencyDisplay,
-            )
+            HorizontalDivider(color = LocalThemeVisuals.current.chipUnselected.copy(alpha = AppAlpha.heavy))
+            TagDistributionSection(visibleTags, totalAmountCents, currency)
+        }
+    }
+}
+
+@Composable
+private fun CategoryStructureHeadline(categories: List<CategoryStats>, total: Long, currency: CurrencyDisplay) {
+    val top = categories.firstOrNull()
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
+        Text(stringResource(R.string.stats_category_structure_title),
+            color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelLarge)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+            verticalAlignment = Alignment.CenterVertically) {
+            Text(text = top?.let { stringResource(R.string.stats_category_structure_top, it.category) }
+                ?: stringResource(R.string.stats_category_structure_empty), modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleMedium, fontWeight = AppTextHierarchy.heading.weight,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+            top?.let { AppEndAlignedAmountText(formatDisplayAmount(it.amountCents, currency),
+                modifier = Modifier.weight(CategoryStructureTopAmountWeight), role = AppAmountRole.Compact) }
+        }
+        Text(text = top?.let { stringResource(R.string.stats_category_structure_insight,
+            categoryShareLabel(requireNotNull(it.amountCents), total), categories.size) }
+            ?: stringResource(R.string.stats_category_structure_count, categories.size),
+            color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
+private fun CategoryStructureOverview(categories: List<CategoryStats>, total: Long, currency: CurrencyDisplay) {
+    val remaining = categories.drop(1).sumOf { requireNotNull(it.amountCents) }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingSmall),
+        verticalAlignment = Alignment.CenterVertically) {
+        CategoryDonut(categories.take(5), total)
+        if (categories.size > 1 && remaining > 0L) {
+            Text(stringResource(R.string.stats_category_structure_remainder, categories.size - 1, formatDisplayAmount(remaining, currency)),
+                modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -179,9 +109,9 @@ private fun CategoryStructureBarRow(
     onClick: (() -> Unit)? = null,
 ) {
     val colors = statsCategoryColors()
-    val percentLabel = categoryShareLabel(category.amountCents, totalAmountCents)
+    val percentLabel = categoryShareLabel(requireNotNull(category.amountCents), totalAmountCents)
     val progress = if (totalAmountCents > 0L) {
-        (category.amountCents.toFloat() / totalAmountCents.toFloat()).coerceIn(0f, 1f)
+        (requireNotNull(category.amountCents).toFloat() / totalAmountCents.toFloat()).coerceIn(0f, 1f)
     } else {
         0f
     }
@@ -209,7 +139,7 @@ private fun CategoryStructureBarRow(
                 overflow = TextOverflow.Ellipsis,
             )
             AppEndAlignedAmountText(
-                text = formatDisplayAmount(category.amountCents, currencyDisplay),
+                text = formatDisplayAmount(requireNotNull(category.amountCents), currencyDisplay),
                 modifier = Modifier.weight(CategoryStructureRowAmountWeight),
                 role = AppAmountRole.Compact,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -271,7 +201,7 @@ private fun CategoryDonut(
         )
         var startAngle = -90f
         categories.forEachIndexed { index, category ->
-            val sweep = 360f * (category.amountCents.toFloat() / totalAmountCents.toFloat()).coerceIn(0f, 1f)
+            val sweep = 360f * (requireNotNull(category.amountCents).toFloat() / totalAmountCents.toFloat()).coerceIn(0f, 1f)
             drawArc(
                 color = colors[index % colors.size],
                 startAngle = startAngle,
@@ -293,7 +223,7 @@ private fun TagDistributionSection(
     val visuals = LocalThemeVisuals.current
     val showBars = remember(tags) {
         val firstAmount = tags.firstOrNull()?.amountCents
-        tags.size > 1 && firstAmount != null && tags.any { it.amountCents != firstAmount }
+        tags.size > 1 && firstAmount != null && tags.any { requireNotNull(it.amountCents) != firstAmount }
     }
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap)) {
         Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
@@ -336,12 +266,12 @@ private fun TagStatsRow(
     val colors = statsCategoryColors()
     val color = colors[(colorIndex + 1) % colors.size]
     val progress = if (totalAmountCents > 0L) {
-        (tag.amountCents.toFloat() / totalAmountCents.toFloat()).coerceIn(0f, 1f)
+        (requireNotNull(tag.amountCents).toFloat() / totalAmountCents.toFloat()).coerceIn(0f, 1f)
     } else {
         0f
     }
     val percent = if (totalAmountCents > 0L) {
-        (tag.amountCents * 100 / totalAmountCents).toInt().coerceIn(0, 100)
+        (requireNotNull(tag.amountCents) * 100 / totalAmountCents).toInt().coerceIn(0, 100)
     } else {
         0
     }
@@ -385,7 +315,7 @@ private fun TagStatsContentRow(
             overflow = TextOverflow.Ellipsis,
         )
         AppEndAlignedAmountText(
-            text = formatDisplayAmount(tag.amountCents, currencyDisplay),
+            text = formatDisplayAmount(requireNotNull(tag.amountCents), currencyDisplay),
             modifier = Modifier.weight(CategoryStructureRowAmountWeight),
             role = AppAmountRole.Compact,
             color = MaterialTheme.colorScheme.onSurface,

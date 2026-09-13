@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 
 from app.routes.web_common import _home_amount_label
 from app.routes.web_debts import _installment_view
+from tests._runtime_protocol import negotiated_headers
 
 # Uses the shared ``web_client`` / ``identity`` fixtures (conftest.py): web_client bypasses the
 # /web loopback gate, identity carries the app auth headers for the create API.
@@ -31,7 +32,7 @@ def _create_installment_debt(
     period_months: int | None = None,
 ) -> dict:
     body: dict[str, object] = {
-        "direction": "i_owe",
+        "home_currency_code": "CNY", "direction": "i_owe",
         "counterparty_type": "external",
         "counterparty_label": "花呗分期",
         "principal_amount_cents": principal_cents,
@@ -41,7 +42,7 @@ def _create_installment_debt(
     if period_months is not None:
         body["installment_period_months"] = period_months
     headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
-    resp = web_client.post("/api/debts", headers=headers, json=body)
+    resp = web_client.post("/api/debts", headers=negotiated_headers(web_client, headers), json=body)
     assert resp.status_code == 201, resp.text
     return resp.json()
 

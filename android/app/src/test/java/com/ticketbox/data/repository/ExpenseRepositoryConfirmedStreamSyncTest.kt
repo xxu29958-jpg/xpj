@@ -89,6 +89,33 @@ class ExpenseRepositoryConfirmedStreamSyncTest {
     }
 
     @Test
+    fun missingCurrencyInALaterRowPreservesTheWholeExistingCache() = runTest {
+        val dao = FakeExpenseDao()
+        val cachedRoot = cachedConfirmedEntity(9, "root-9", "高德")
+        val cachedRefund = cachedOffset("refund-existing", "2026-05-10", "交通")
+        dao.insert(cachedRoot)
+        dao.upsertConfirmedStreamOffsets(listOf(cachedRefund))
+        val rootsBefore = dao.getConfirmed("owner")
+        val offsetsBefore = dao.getConfirmedStreamOffsets("owner")
+        val api = FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0).apply {
+            confirmedResponses[1] = PaginatedExpensesDto(
+                items = listOf(
+                    confirmedStreamEnvelopeFixture(),
+                    confirmedStreamEnvelopeFixture(ConfirmedStreamFixture(
+                        root = confirmedExpenseDtoFixture().copy(id = 10, homeCurrency = null),
+                    )),
+                ), page = 1, pageSize = 200, total = 2,
+            )
+        }
+
+        val failure = confirmedRepository(dao, api).syncConfirmed().exceptionOrNull()
+
+        assertTrue(failure is RepositoryException)
+        assertEquals(rootsBefore, dao.getConfirmed("owner"))
+        assertEquals(offsetsBefore, dao.getConfirmedStreamOffsets("owner"))
+    }
+
+    @Test
     fun filteredSyncPrunesOnlyMissingOffsetsInsideItsServerScope() = runTest {
         val dao = FakeExpenseDao()
         dao.insert(cachedConfirmedEntity(9, "root-9", "高德").copy(tags = "AI"))
@@ -114,7 +141,7 @@ class ExpenseRepositoryConfirmedStreamSyncTest {
 private fun confirmedRepository(
     dao: FakeExpenseDao,
     apiService: FakeApiService,
-): ExpenseRepository = ExpenseRepository(
+): ExpenseRepository = com.ticketbox.data.repository.expenseRepositoryFixture(
     expenseDao = dao,
     binding = testServerSessionBinding(
         apiClient = FakeApiServiceFactory(apiService),
@@ -122,7 +149,7 @@ private fun confirmedRepository(
         tokenStore = TestSessionFixture().apply { saveToken("session-token") },
     ),
     deviceNameProvider = { "Android Test Device" },
-)
+        )
 
 private fun refundOffsetFixture(): ConfirmedOffsetStreamDto = ConfirmedOffsetStreamDto(
     publicId = "refund-1",

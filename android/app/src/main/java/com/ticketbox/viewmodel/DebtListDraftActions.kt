@@ -1,8 +1,19 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.domain.model.CurrencyCode
+
+/** Identity and editor generation accepted before asynchronous image preparation. */
+class DebtBillParseAttempt internal constructor(
+    val binding: LogicalSessionBinding,
+    val homeCurrency: CurrencyCode,
+    internal val generation: Long,
+)
+
 enum class DebtDraftField {
     Direction,
     Counterparty,
+    Note,
     Amount,
     Kind,
     InstallmentCount,
@@ -14,6 +25,9 @@ fun DebtListViewModel.updateDraftDirection(value: String) =
 
 fun DebtListViewModel.updateDraftCounterparty(value: String) =
     updateDraftField(DebtDraftField.Counterparty, value)
+
+fun DebtListViewModel.updateDraftNote(value: String) =
+    updateDraftField(DebtDraftField.Note, value)
 
 fun DebtListViewModel.updateDraftAmount(value: String) =
     updateDraftField(DebtDraftField.Amount, value)

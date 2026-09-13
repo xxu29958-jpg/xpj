@@ -27,6 +27,7 @@ def get_reports_overview(
     merchant_category: str | None = Query(default=None, max_length=64),
     ranking_metric: Literal["amount", "count"] = "amount",
     timezone: str | None = None,
+    home_currency_code: str | None = Query(default=None, pattern=r"^[A-Z]{3}$"),
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> ReportsOverviewResponse:
@@ -42,6 +43,7 @@ def get_reports_overview(
             top_n=top_n,
             merchant_category=merchant_category,
             ranking_metric=ranking_metric,
+            home_currency_code=home_currency_code,
         )
     )
 
@@ -54,6 +56,7 @@ def get_reports_overview_csv(
     merchant_category: str | None = Query(default=None, max_length=64),
     ranking_metric: Literal["amount", "count"] = "amount",
     timezone: str | None = None,
+    home_currency_code: str | None = Query(default=None, pattern=r"^[A-Z]{3}$"),
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> Response:
@@ -68,6 +71,7 @@ def get_reports_overview_csv(
         top_n=top_n,
         merchant_category=merchant_category,
         ranking_metric=ranking_metric,
+        home_currency_code=home_currency_code,
     )
     filename = f"ticketbox-reports-overview-{target_month}-{granularity}"
     return Response(

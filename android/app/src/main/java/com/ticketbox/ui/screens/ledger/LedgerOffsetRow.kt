@@ -184,7 +184,9 @@ private fun LedgerOffsetInflowAmount(
     modifier: Modifier = Modifier,
     constrainInline: Boolean = true,
 ) {
-    val text = stringResource(
+    val text = if (offset.originalCurrencyCode.isBlank()) {
+        stringResource(R.string.ledger_item_currency_unknown)
+    } else stringResource(
         R.string.ledger_offset_inflow_amount,
         formatDisplayAmount(
             offset.originalAmountMinor,

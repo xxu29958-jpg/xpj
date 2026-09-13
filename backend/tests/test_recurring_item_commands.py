@@ -26,7 +26,7 @@ def _intent_headers(identity, key: str | None = None) -> dict[str, str]:
 
 
 def _manual_payload(*, merchant: str = "房租", amount_cents: int = 680_000) -> dict[str, object]:
-    return {
+    return {"home_currency_code": "CNY",
         "merchant": merchant,
         "baseline_amount_cents": amount_cents,
         "next_expected_date": "2026-09-05",
@@ -37,7 +37,7 @@ def _seed_candidate_item() -> RecurringItem:
     now = now_utc()
     with SessionLocal() as db:
         resolve_write_capability(db)
-        item = RecurringItem(
+        item = RecurringItem(home_currency_code="CNY",
             tenant_id="owner",
             merchant_key="cloud storage",
             merchant_name="Cloud Storage",
@@ -159,7 +159,7 @@ def test_recurring_success_does_not_depend_on_post_commit_refresh(
     updated = client.patch(
         f"/api/recurring/items/{created.json()['public_id']}",
         headers=_intent_headers(identity, update_key),
-        json={
+        json={"home_currency_code": "CNY",
             "baseline_amount_cents": 9_900,
             "expected_row_version": created.json()["row_version"],
         },
@@ -170,7 +170,7 @@ def test_recurring_success_does_not_depend_on_post_commit_refresh(
     confirmed = client.post(
         "/api/recurring/from-candidate?timezone=UTC",
         headers=identity.app_headers,
-        json={
+        json={"home_currency_code": "CNY",
             "merchant": "云存储",
             "amount_cents": 8_800,
             "frequency": "monthly",
@@ -225,7 +225,7 @@ def test_manual_recurring_create_requires_idempotency_and_writer(client: TestCli
     denied_edit = client.patch(
         f"/api/recurring/items/{editable.public_id}",
         headers=_intent_headers(identity, str(uuid4())),
-        json={
+        json={"home_currency_code": "CNY",
             "baseline_amount_cents": 2_100,
             "expected_row_version": editable.row_version,
         },
@@ -307,7 +307,7 @@ def test_manual_recurring_rejects_normalized_merchant_key_overflow(
     rejected_update = client.patch(
         f"/api/recurring/items/{created.json()['public_id']}",
         headers=_intent_headers(identity, rejected_update_key),
-        json={
+        json={"home_currency_code": "CNY",
             "merchant": expanding_merchant,
             "expected_row_version": created.json()["row_version"],
         },
@@ -333,7 +333,7 @@ def test_manual_recurring_rejects_normalized_merchant_key_overflow(
 def test_recurring_edit_preserves_observed_facts_and_replays_before_occ(client: TestClient, *, identity) -> None:
     original = _seed_candidate_item()
     key = str(uuid4())
-    payload = {
+    payload = {"home_currency_code": "CNY",
         "baseline_amount_cents": 2_500,
         "next_expected_date": None,
         "expected_row_version": original.row_version,
@@ -369,7 +369,7 @@ def test_recurring_edit_preserves_observed_facts_and_replays_before_occ(client: 
     stale_new_intent = client.patch(
         f"/api/recurring/items/{original.public_id}",
         headers=_intent_headers(identity, str(uuid4())),
-        json={**payload, "baseline_amount_cents": 2_600},
+        json={"home_currency_code": "CNY", **payload, "baseline_amount_cents": 2_600},
     )
     assert stale_new_intent.status_code == 409, stale_new_intent.json()
     assert stale_new_intent.json()["error"] == "state_conflict"
@@ -390,7 +390,7 @@ def test_manual_recurring_edit_keeps_legacy_seed_aligned_with_user_baseline(
     updated = client.patch(
         f"/api/recurring/items/{created.json()['public_id']}",
         headers=_intent_headers(identity, str(uuid4())),
-        json={
+        json={"home_currency_code": "CNY",
             "baseline_amount_cents": 9_900,
             "expected_row_version": created.json()["row_version"],
         },
@@ -419,7 +419,7 @@ def test_recurring_edit_rejects_no_effective_change_without_bumping_revision(
     unchanged = client.patch(
         f"/api/recurring/items/{original['public_id']}",
         headers=_intent_headers(identity, str(uuid4())),
-        json={
+        json={"home_currency_code": "CNY",
             "merchant": original["merchant"],
             "baseline_amount_cents": original["baseline_amount_cents"],
             "next_expected_date": original["next_expected_date"],

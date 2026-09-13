@@ -12,8 +12,8 @@ import com.ticketbox.data.repository.RecurringLifecycleActions
 import com.ticketbox.data.repository.RecurringManualMutationActions
 import com.ticketbox.data.repository.RecurringPendingIntent
 import com.ticketbox.data.repository.RecurringPendingKind
+import com.ticketbox.data.repository.RecurringPendingState
 import com.ticketbox.data.repository.RecurringQueryActions
-import com.ticketbox.data.repository.RecurringSaveOutcome
 import com.ticketbox.data.repository.RepositoryConflictDetails
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.MessageTone
@@ -24,7 +24,9 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -179,6 +181,24 @@ class RecurringViewModelTest {
 @OptIn(ExperimentalCoroutinesApi::class)
 class RecurringViewModelMutationTest {
     @Test
+    fun completionObservedWithoutAnIntermediatePendingEmissionRefreshesThePublishedFact() = recurringTest {
+        val rows = MutableStateFlow<List<RecurringPendingIntent>>(emptyList())
+        val fake = FakeRecurringActions(manual = FakeRecurringManualActions(pendingIntentsFlow = rows))
+        var invalidations = 0
+        val vm = RecurringViewModel(fake) { invalidations += 1 }
+        advanceUntilIdle()
+        val published = item(merchant = "月票")
+        fake.itemsResult = Result.success(listOf(published))
+        rows.value = listOf(RecurringPendingIntent(
+            RecurringPendingKind.CREATE, "recurring_item_create:accepted-key", "accepted-key", RecurringPendingState.DONE,
+        ))
+        advanceUntilIdle()
+        assertEquals(listOf(published), vm.uiState.value.items)
+        assertEquals(emptyList(), vm.uiState.value.pendingIntents)
+        assertEquals(1, invalidations)
+    }
+
+    @Test
     fun queuedManualCreateIsVisibleButNeverFabricatesPublishedItem() = recurringTest {
         val pending = RecurringPendingIntent(
             kind = RecurringPendingKind.CREATE,
@@ -190,13 +210,13 @@ class RecurringViewModelMutationTest {
         )
         val fake = FakeRecurringActions(
             manual = FakeRecurringManualActions(
-                createResult = Result.success(RecurringSaveOutcome.Queued(pending)),
+                createResult = Result.success(pending),
             ),
         )
         val vm = RecurringViewModel(fake)
         advanceUntilIdle()
 
-        vm.saveManual(RecurringManualSaveCommand.Create(RecurringItemDraft("房租", 350000, null)))
+        vm.saveManual(RecurringManualSaveCommand.Create(RecurringItemDraft("房租", 350000, null, homeCurrencyCode = "CNY")))
         advanceUntilIdle()
 
         assertEquals(1, fake.createCalls)
@@ -226,7 +246,7 @@ class RecurringViewModelMutationTest {
         val fake = FakeRecurringActions(
             itemsResult = Result.success(listOf(observed)),
             manual = FakeRecurringManualActions(
-                updateResult = Result.success(RecurringSaveOutcome.Queued(pending)),
+                updateResult = Result.success(pending),
             ),
         )
         val vm = RecurringViewModel(fake)
@@ -238,6 +258,7 @@ class RecurringViewModelMutationTest {
                 patch = RecurringItemPatch(
                     baselineAmountCents = 355000,
                     nextExpectedDate = RecurringDateEdit.changed(null),
+                    homeCurrencyCode = "CNY",
                 ),
             ),
         )
@@ -290,7 +311,7 @@ class RecurringViewModelMutationTest {
         advanceUntilIdle()
         fake.itemsResult = Result.failure(IllegalStateException("owner refresh failed"))
 
-        vm.saveManual(RecurringManualSaveCommand.Create(RecurringItemDraft("旧订阅", 350000, null)))
+        vm.saveManual(RecurringManualSaveCommand.Create(RecurringItemDraft("旧订阅", 350000, null, homeCurrencyCode = "CNY")))
         advanceUntilIdle()
 
         assertEquals(
@@ -322,7 +343,7 @@ class RecurringViewModelMutationTest {
         advanceUntilIdle()
         fake.itemsResult = Result.success(listOf(existing))
 
-        vm.saveManual(RecurringManualSaveCommand.Create(RecurringItemDraft("房租", 350000, null)))
+        vm.saveManual(RecurringManualSaveCommand.Create(RecurringItemDraft("房租", 350000, null, homeCurrencyCode = "CNY")))
         advanceUntilIdle()
 
         assertEquals(
@@ -353,7 +374,7 @@ class RecurringViewModelMutationTest {
     fun refreshStartedBeforeManualEditCannotSettleThatEdit() = recurringTest {
         val existing = item(publicId = "rec-refresh-race", merchant = "房租")
         val staleRefresh = CompletableDeferred<Result<List<RecurringItem>>>()
-        val pendingUpdate = CompletableDeferred<Result<RecurringSaveOutcome>>()
+        val pendingUpdate = CompletableDeferred<Result<RecurringPendingIntent>>()
         val fake = FakeRecurringActions(itemsResult = Result.success(listOf(existing)))
         val vm = RecurringViewModel(fake)
         advanceUntilIdle()
@@ -363,7 +384,7 @@ class RecurringViewModelMutationTest {
         vm.refresh()
         advanceUntilIdle()
         vm.saveManual(
-            RecurringManualSaveCommand.Edit(existing, RecurringItemPatch(baselineAmountCents = 360000)),
+            RecurringManualSaveCommand.Edit(existing, RecurringItemPatch(baselineAmountCents = 360000, homeCurrencyCode = "CNY")),
         )
         advanceUntilIdle()
         staleRefresh.complete(Result.success(listOf(existing)))
@@ -387,7 +408,7 @@ class RecurringViewModelMutationTest {
     fun refreshStartedAfterManualEditCannotOwnThatSettlement() = recurringTest {
         val existing = item(publicId = "rec-refresh-after", merchant = "房租")
         val refreshItems = CompletableDeferred<Result<List<RecurringItem>>>()
-        val pendingUpdate = CompletableDeferred<Result<RecurringSaveOutcome>>()
+        val pendingUpdate = CompletableDeferred<Result<RecurringPendingIntent>>()
         val updated = existing.copy(rowVersion = 2, baselineAmountCents = 360000)
         val fake = FakeRecurringActions(itemsResult = Result.success(listOf(existing)))
         val vm = RecurringViewModel(fake)
@@ -396,7 +417,7 @@ class RecurringViewModelMutationTest {
         fake.updateResponder = { pendingUpdate.await() }
 
         val attemptId = vm.saveManual(
-            RecurringManualSaveCommand.Edit(existing, RecurringItemPatch(baselineAmountCents = 360000)),
+            RecurringManualSaveCommand.Edit(existing, RecurringItemPatch(baselineAmountCents = 360000, homeCurrencyCode = "CNY")),
         )
         advanceUntilIdle()
         vm.refresh()
@@ -411,7 +432,7 @@ class RecurringViewModelMutationTest {
             "a later refresh failure cannot settle the editor's mutation",
         )
 
-        pendingUpdate.complete(Result.success(RecurringSaveOutcome.Synced(updated)))
+        pendingUpdate.complete(Result.success(RecurringPendingIntent(RecurringPendingKind.UPDATE, "recurring_item:${updated.publicId}", "saved-key")))
         advanceUntilIdle()
 
         assertEquals(attemptId, vm.uiState.value.manualSaveFeedback?.attemptId)
@@ -424,7 +445,7 @@ class RecurringViewModelAttemptOwnershipTest {
     @Test
     fun manualSaveIsSingleFlightAcrossEditorReentry() = recurringTest {
         val existing = item(publicId = "rec-single-flight", merchant = "房租")
-        val pendingUpdate = CompletableDeferred<Result<RecurringSaveOutcome>>()
+        val pendingUpdate = CompletableDeferred<Result<RecurringPendingIntent>>()
         val updated = existing.copy(rowVersion = 2, baselineAmountCents = 360000)
         val fake = FakeRecurringActions(itemsResult = Result.success(listOf(existing)))
         fake.updateResponder = { pendingUpdate.await() }
@@ -432,7 +453,7 @@ class RecurringViewModelAttemptOwnershipTest {
         advanceUntilIdle()
         val command = RecurringManualSaveCommand.Edit(
             existing,
-            RecurringItemPatch(baselineAmountCents = updated.baselineAmountCents),
+            RecurringItemPatch(baselineAmountCents = updated.baselineAmountCents, homeCurrencyCode = "CNY"),
         )
 
         val firstAttempt = vm.saveManual(command)
@@ -444,7 +465,7 @@ class RecurringViewModelAttemptOwnershipTest {
         assertEquals(1, fake.updateCalls)
         assertEquals(true, vm.uiState.value.manualSaveInFlight)
 
-        pendingUpdate.complete(Result.success(RecurringSaveOutcome.Synced(updated)))
+        pendingUpdate.complete(Result.success(RecurringPendingIntent(RecurringPendingKind.UPDATE, "recurring_item:${updated.publicId}", "saved-key")))
         advanceUntilIdle()
 
         assertEquals(firstAttempt, vm.uiState.value.manualSaveFeedback?.attemptId)
@@ -456,7 +477,7 @@ class RecurringViewModelAttemptOwnershipTest {
     fun roleOnlyAccessProjectionCannotInvalidateManualSettlement() = recurringTest {
         val accessFlow = MutableStateFlow(planAccess(canModify = true))
         val existing = item(publicId = "rec-role-change", merchant = "房租")
-        val pendingUpdate = CompletableDeferred<Result<RecurringSaveOutcome>>()
+        val pendingUpdate = CompletableDeferred<Result<RecurringPendingIntent>>()
         val updated = existing.copy(rowVersion = 2, baselineAmountCents = 360000)
         val fake = FakeRecurringActions(
             itemsResult = Result.success(listOf(existing)),
@@ -469,7 +490,7 @@ class RecurringViewModelAttemptOwnershipTest {
         val attemptId = vm.saveManual(
             RecurringManualSaveCommand.Edit(
                 existing,
-                RecurringItemPatch(baselineAmountCents = updated.baselineAmountCents),
+                RecurringItemPatch(baselineAmountCents = updated.baselineAmountCents, homeCurrencyCode = "CNY"),
             ),
         )
         advanceUntilIdle()
@@ -480,7 +501,7 @@ class RecurringViewModelAttemptOwnershipTest {
         assertEquals(attemptId, vm.uiState.value.manualSaveFeedback?.attemptId)
         assertEquals(RecurringManualSaveSettlement.InFlight, vm.uiState.value.manualSaveFeedback?.settlement)
 
-        pendingUpdate.complete(Result.success(RecurringSaveOutcome.Synced(updated)))
+        pendingUpdate.complete(Result.success(RecurringPendingIntent(RecurringPendingKind.UPDATE, "recurring_item:${updated.publicId}", "saved-key")))
         advanceUntilIdle()
 
         assertEquals(attemptId, vm.uiState.value.manualSaveFeedback?.attemptId)
@@ -502,7 +523,7 @@ class RecurringViewModelAttemptOwnershipTest {
         val fake = FakeRecurringActions(
             itemsResult = Result.success(listOf(existing)),
             manual = FakeRecurringManualActions(
-                updateResult = Result.success(RecurringSaveOutcome.Queued(pending)),
+                updateResult = Result.success(pending),
             ),
         )
         val vm = RecurringViewModel(fake)
@@ -514,7 +535,7 @@ class RecurringViewModelAttemptOwnershipTest {
         vm.saveManual(
             RecurringManualSaveCommand.Edit(
                 existing,
-                RecurringItemPatch(baselineAmountCents = 360000),
+                RecurringItemPatch(baselineAmountCents = 360000, homeCurrencyCode = "CNY"),
             ),
         )
         advanceUntilIdle()
@@ -538,7 +559,7 @@ class RecurringViewModelAttemptOwnershipTest {
         )
         val fake = FakeRecurringActions(
             manual = FakeRecurringManualActions(
-                createResult = Result.success(RecurringSaveOutcome.Queued(pending)),
+                createResult = Result.success(pending),
             ),
         )
         val vm = RecurringViewModel(fake)
@@ -548,7 +569,7 @@ class RecurringViewModelAttemptOwnershipTest {
 
         vm.saveManual(
             RecurringManualSaveCommand.Create(
-                RecurringItemDraft("宽带", 12000, "2026-09-01"),
+                RecurringItemDraft("宽带", 12000, "2026-09-01", homeCurrencyCode = "CNY"),
             ),
         )
         advanceUntilIdle()
@@ -573,7 +594,7 @@ class RecurringViewModelAttemptOwnershipTest {
 
         vm.saveManual(
             RecurringManualSaveCommand.Create(
-                RecurringItemDraft("宽带", 12000, "2026-09-01"),
+                RecurringItemDraft("宽带", 12000, "2026-09-01", homeCurrencyCode = "CNY"),
             ),
         )
         advanceUntilIdle()
@@ -591,7 +612,7 @@ class RecurringViewModelFailureRecoveryTest {
         val fake = FakeRecurringActions(activeAccessFlow = flowOf(null))
         val vm = RecurringViewModel(fake)
         advanceUntilIdle()
-        val draft = RecurringItemDraft("房租", 350000, null)
+        val draft = RecurringItemDraft("房租", 350000, null, homeCurrencyCode = "CNY")
 
         val firstAttempt = vm.saveManual(RecurringManualSaveCommand.Create(draft))
         val firstFeedback = vm.uiState.value.manualSaveFeedback
@@ -618,7 +639,7 @@ class RecurringViewModelFailureRecoveryTest {
         fake.itemsResult = Result.success(listOf(fresh))
 
         vm.saveManual(
-            RecurringManualSaveCommand.Edit(stale, RecurringItemPatch(baselineAmountCents = 370000)),
+            RecurringManualSaveCommand.Edit(stale, RecurringItemPatch(baselineAmountCents = 370000, homeCurrencyCode = "CNY")),
         )
         advanceUntilIdle()
 
@@ -666,7 +687,7 @@ class RecurringViewModelFailureRecoveryTest {
         advanceUntilIdle()
         fake.itemsResult = Result.success(listOf(archived))
 
-        vm.saveManual(RecurringManualSaveCommand.Create(RecurringItemDraft("房租", 350000, null)))
+        vm.saveManual(RecurringManualSaveCommand.Create(RecurringItemDraft("房租", 350000, null, homeCurrencyCode = "CNY")))
         advanceUntilIdle()
 
         assertEquals(listOf(archived), vm.uiState.value.items)
@@ -738,7 +759,7 @@ private class FakeRecurringActions private constructor(
     var itemsResponder: (suspend () -> Result<List<RecurringItem>>)?
         get() = queryDelegate.itemsResponder
         set(value) { queryDelegate.itemsResponder = value }
-    var updateResponder: (suspend () -> Result<RecurringSaveOutcome>)?
+    var updateResponder: (suspend () -> Result<RecurringPendingIntent>)?
         get() = manual.updateResponder
         set(value) { manual.updateResponder = value }
     val updateCalls: Int get() = manual.updateCalls
@@ -772,32 +793,37 @@ private class FakeRecurringQueryActions(
     ): Result<List<RecurringCandidate>> = candidatesResult
 }
 
+@OptIn(ExperimentalCoroutinesApi::class)
 private class FakeRecurringManualActions(
-    var createResult: Result<RecurringSaveOutcome> = Result.failure(IllegalStateException("create not configured")),
-    var updateResult: Result<RecurringSaveOutcome> = Result.failure(IllegalStateException("update not configured")),
+    var createResult: Result<RecurringPendingIntent> = Result.failure(IllegalStateException("create not configured")),
+    var updateResult: Result<RecurringPendingIntent> = Result.failure(IllegalStateException("update not configured")),
     private val pendingIntentsFlow: Flow<List<RecurringPendingIntent>> = flowOf(emptyList()),
 ) : RecurringManualMutationActions {
-    var updateResponder: (suspend () -> Result<RecurringSaveOutcome>)? = null
+    private val queued = MutableSharedFlow<List<RecurringPendingIntent>>(replay = 1)
+    var updateResponder: (suspend () -> Result<RecurringPendingIntent>)? = null
     var createCalls: Int = 0
         private set
     var updateCalls: Int = 0
         private set
 
-    override fun observePendingIntents(): Flow<List<RecurringPendingIntent>> = pendingIntentsFlow
+    override fun describeManualIntent(row: com.ticketbox.data.repository.OutboxRow): RecurringPendingIntent? = null
+    override suspend fun recoverManualIntent(binding: LogicalSessionBinding, row: com.ticketbox.data.repository.OutboxRow,
+        drop: Boolean): Result<Unit> = Result.failure(IllegalStateException("recovery not configured"))
+    override fun observePendingIntents(): Flow<List<RecurringPendingIntent>> = merge(pendingIntentsFlow, queued)
     override suspend fun createAllowingOffline(
         expectedBinding: LogicalSessionBinding,
         draft: RecurringItemDraft,
-    ): Result<RecurringSaveOutcome> {
+    ): Result<RecurringPendingIntent> {
         createCalls += 1
-        return createResult
+        return createResult.onSuccess { queued.emit(listOf(it)) }
     }
     override suspend fun updateAllowingOffline(
         expectedBinding: LogicalSessionBinding,
         baseline: RecurringItem,
         patch: RecurringItemPatch,
-    ): Result<RecurringSaveOutcome> {
+    ): Result<RecurringPendingIntent> {
         updateCalls += 1
-        return updateResponder?.invoke() ?: updateResult
+        return (updateResponder?.invoke() ?: updateResult).onSuccess { queued.emit(listOf(it)) }
     }
 }
 
@@ -868,6 +894,7 @@ private fun candidate(merchant: String): RecurringCandidate = RecurringCandidate
     lastSeenAt = "2026-05-01T00:00:00Z",
     confidence = "high",
     reason = "monthly",
+    homeCurrencyCode = "CNY",
 )
 
 private fun item(
@@ -896,4 +923,5 @@ private fun item(
     rowVersion = 1L,
     pausedAt = null,
     archivedAt = null,
+    homeCurrencyCode = "CNY",
 )

@@ -1,10 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 
-from sqlalchemy import func, select
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -14,40 +11,30 @@ from app.money_contract import (
     MoneySign,
     ensure_money_minor,
     projection_sum_to_int,
-    projection_values_sum_to_int,
 )
 from app.schemas import (
     BudgetCategoryRequest,
     BudgetCategoryResponse,
     BudgetExcludedCategoryResponse,
     BudgetMonthlyResponse,
-    BudgetMonthlyUpdateRequest,
 )
 from app.services.budget_money import (
     budget_amount_breakdown as _budget_amount_breakdown,
 )
-from app.services.budget_money import (
-    validated_monthly_budget_amounts as _validated_monthly_budget_amounts,
-)
 from app.services.category_service import normalize_category
 from app.services.currency_binding_service import (
-    assert_currency_binding_consistent,
+    require_runtime_home_currency_code,
     resolve_write_capability,
 )
-from app.services.currency_common import home_currency_code
-from app.services.optimistic_concurrency import bump_row_version, claim_row_with_token
+from app.services.money_projection_service import CategorySpend, project_category_spend, sum_projected_amounts
+from app.services.optimistic_concurrency import claim_row_with_token
+from app.services.recurring_service import recurring_monthly_total
 from app.services.spending_contract_service import (
     clean_month,
     confirmed_amount_query,
-    monthly_recurring_fixed_amount_query,
+    monthly_recurring_items_query,
 )
 from app.services.time_service import now_utc
-
-
-@dataclass(frozen=True)
-class CategorySpend:
-    amount_cents: int = 0
-    count: int = 0
 
 
 def _clean_month(month: str) -> str:
@@ -164,19 +151,16 @@ def _fixed_amount_cents_for_month(
     tenant_id: str,
     month: str,
     timezone_name: str | None,
-) -> int:
-    amount = db.scalar(
-        monthly_recurring_fixed_amount_query(
+    home_currency_code: str,
+) -> int | None:
+    items = db.scalars(
+        monthly_recurring_items_query(
             tenant_id=tenant_id,
             month=month,
             timezone_name=timezone_name,
         )
     )
-    return projection_sum_to_int(
-        amount,
-        label="budget.fixed_recurring_total",
-        empty_is_zero=True,
-    )
+    return recurring_monthly_total(db, tenant_id=tenant_id, items=items, home_currency_code=home_currency_code, month=month)
 
 
 def _month_spend_by_category(
@@ -185,43 +169,19 @@ def _month_spend_by_category(
     tenant_id: str,
     month: str,
     timezone_name: str | None,
-) -> dict[str, CategorySpend]:
-    filtered = confirmed_amount_query(
+    home_currency_code: str,
+) -> tuple[dict[str, CategorySpend], set[str]]:
+    rows = db.execute(confirmed_amount_query(
         tenant_id=tenant_id,
         month=month,
         timezone_name=timezone_name,
-    ).subquery()
-    rows = db.execute(
-        select(
-            filtered.c.category,
-            func.coalesce(func.sum(filtered.c.amount_cents), 0),
-            func.count(filtered.c.id),
-        )
-        .select_from(filtered)
-        .group_by(filtered.c.category)
-    )
-    spend: dict[str, CategorySpend] = {}
-    for category_value, amount_value, count_value in rows:
-        category = normalize_category(category_value)
-        current = spend.get(category, CategorySpend())
-        amount_cents = projection_sum_to_int(
-            amount_value,
-            label="budget.category_spend_row",
-            empty_is_zero=True,
-        )
-        spend[category] = CategorySpend(
-            amount_cents=projection_sum_to_int(
-                current.amount_cents + amount_cents,
-                label="budget.category_spend_total",
-            ),
-            count=current.count + int(count_value or 0),
-        )
-    return spend
+    ))
+    return project_category_spend(db, tenant_id=tenant_id, home=home_currency_code, rows=rows)
 
 
 def _build_excluded_breakdown(
     spend_by_category: dict[str, CategorySpend], excluded_set: set[str]
-) -> tuple[list[BudgetExcludedCategoryResponse], int]:
+) -> tuple[list[BudgetExcludedCategoryResponse], int | None]:
     breakdown = [
         BudgetExcludedCategoryResponse(
             category=category,
@@ -231,7 +191,7 @@ def _build_excluded_breakdown(
         for category, spend in sorted(spend_by_category.items())
         if category in excluded_set
     ]
-    return breakdown, projection_values_sum_to_int(
+    return breakdown, sum_projected_amounts(
         (item.amount_cents for item in breakdown),
         label="budget.excluded_total",
     )
@@ -246,7 +206,7 @@ def _build_category_budgets(category_rows, spend_by_category: dict[str, Category
             category_budget.amount_cents,
             label="budget.category_limit",
         )
-        remaining = projection_sum_to_int(
+        remaining = None if spent is None else projection_sum_to_int(
             amount_cents - spent,
             label="budget.category_remaining",
         )
@@ -256,7 +216,7 @@ def _build_category_budgets(category_rows, spend_by_category: dict[str, Category
                 amount_cents=amount_cents,
                 spent_amount_cents=spent,
                 remaining_amount_cents=remaining,
-                overspent_amount_cents=max(-remaining, 0),
+                overspent_amount_cents=None if remaining is None else max(-remaining, 0),
             )
         )
     return out
@@ -270,18 +230,22 @@ def _budget_response(
     timezone_name: str | None,
 ) -> BudgetMonthlyResponse:
     budget = _get_budget(db, tenant_id=tenant_id, month=month)
+    home = budget.home_currency_code if budget else require_runtime_home_currency_code(db)
     category_rows = _list_category_budgets(db, tenant_id=tenant_id, month=month) if budget is not None else []
-    spend_by_category = _month_spend_by_category(db, tenant_id=tenant_id, month=month, timezone_name=timezone_name)
+    spend_by_category, missing = _month_spend_by_category(db, tenant_id=tenant_id, month=month,
+        timezone_name=timezone_name, home_currency_code=home)
     excluded_categories = _parse_excluded_categories(budget.excluded_categories if budget else None)
     excluded_set = set(excluded_categories)
     excluded_breakdown, excluded_amount_cents = _build_excluded_breakdown(spend_by_category, excluded_set)
-    spent_amount_cents = projection_sum_to_int(
-        sum(spend.amount_cents for category, spend in spend_by_category.items() if category not in excluded_set),
+    spent_amount_cents = sum_projected_amounts(
+        (spend.amount_cents for category, spend in spend_by_category.items() if category not in excluded_set),
         label="budget.spent_total",
     )
     fixed_amount_cents = _fixed_amount_cents_for_month(
-        db, tenant_id=tenant_id, month=month, timezone_name=timezone_name
+        db, tenant_id=tenant_id, month=month, timezone_name=timezone_name, home_currency_code=home
     )
+    if fixed_amount_cents is None:
+        missing.add("UNKNOWN")
     (
         total_amount_cents,
         rollover_amount_cents,
@@ -297,6 +261,8 @@ def _budget_response(
 
     return BudgetMonthlyResponse(
         ledger_id=tenant_id,
+        home_currency_code=home,
+        missing_currency_codes=sorted(missing),
         month=month,
         configured=budget is not None,
         row_version=budget.row_version if budget else None,
@@ -312,7 +278,7 @@ def _budget_response(
         excluded_categories=excluded_categories,
         excluded_breakdown=sorted(
             excluded_breakdown,
-            key=lambda item: item.amount_cents,
+            key=lambda item: (item.amount_cents is not None, item.amount_cents or 0),
             reverse=True,
         ),
         category_budgets=_build_category_budgets(category_rows, spend_by_category),
@@ -334,79 +300,6 @@ def get_monthly_budget(
         month=clean_month,
         timezone_name=timezone_name,
     )
-
-
-def upsert_monthly_budget(
-    db: Session,
-    *,
-    tenant_id: str,
-    month: str,
-    payload: BudgetMonthlyUpdateRequest,
-    timezone_name: str | None = None,
-) -> BudgetMonthlyResponse:
-    clean_month = _clean_month(month)
-    total_amount_cents, non_monthly_amount_cents, rollover_amount_cents = _validated_monthly_budget_amounts(payload)
-    excluded_categories = _clean_excluded_categories(payload.excluded_categories)
-    category_budget_rows = _clean_category_budget_rows(payload.category_budgets)
-    now = now_utc()
-    # R13-2：无币种列的预算写也按 env 盖章口径入账 —— 先过绑定门（漂移/未决拒写，
-    # 否则 env 回摆后永久错值且无列可识别）。
-    assert_currency_binding_consistent(db, home_currency_code())
-
-    budget = _get_any_budget(db, tenant_id=tenant_id, month=clean_month)
-    if budget is None:
-        budget = Budget(
-            tenant_id=tenant_id,
-            month=clean_month,
-            created_at=now,
-        )
-        db.add(budget)
-    elif budget.archived_at is not None:
-        raise AppError(
-            "state_conflict",
-            "这月预算已在回收站，请先恢复后再修改。",
-            status_code=409,
-        )
-    else:
-        bump_row_version(budget)
-    budget.total_amount_cents = total_amount_cents
-    budget.non_monthly_amount_cents = non_monthly_amount_cents
-    budget.rollover_amount_cents = rollover_amount_cents
-    budget.excluded_categories = _serialize_excluded_categories(excluded_categories)
-    budget.updated_at = now
-
-    existing = {row.category: row for row in _list_category_budgets(db, tenant_id=tenant_id, month=clean_month)}
-    requested_categories = {category for category, _ in category_budget_rows}
-    for category, amount_cents in category_budget_rows:
-        row = existing.get(category)
-        if row is None:
-            row = BudgetCategory(
-                tenant_id=tenant_id,
-                month=clean_month,
-                category=category,
-                created_at=now,
-            )
-            db.add(row)
-        row.amount_cents = amount_cents
-        row.updated_at = now
-
-    for category, row in existing.items():
-        if category not in requested_categories:
-            db.delete(row)
-
-    try:
-        db.flush()
-        response = _budget_response(
-            db,
-            tenant_id=tenant_id,
-            month=clean_month,
-            timezone_name=timezone_name,
-        )
-        db.commit()
-    except SQLAlchemyError:
-        db.rollback()
-        raise
-    return response
 
 
 def archive_monthly_budget(

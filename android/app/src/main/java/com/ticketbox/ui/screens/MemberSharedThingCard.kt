@@ -37,19 +37,10 @@ import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
 import kotlin.math.roundToInt
 
-/**
- * ADR-0049 §7.0 (slice 8e ②) 成员债关系卡 —— [DebtDetailScreen] 对**成员**欠款渲染的主卡，替换会计味的
- * [DebtSummaryCard] (外部债仍用后者，一字不改)。换轴 (Communal not Market)：金额不当英雄，主视觉是
- * "一起处理这件事 → 关系进度语 → 进度条"；精确数字降到"看看账"展开区 (变 frame 不变 visibility)。
- * 状态/角色全读服务端权威 (status / [Debt.viewerIsDebtor])，客户端只算渲染比例 ([communalRatio])。
- * 独立成文件而非堆进 DebtDetailScreen.kt，避免顶破后者的文件级 TooManyFunctions 门
- * ([[project_android_compose_detekt_limits]])；复用 DebtDetailScreen 的 internal [DebtSummaryCard] /
- * [DebtSummaryRow] 与 DebtGoalLabels 的 [DebtStatusBadge]。
- */
+/** Member relationship summary: identify the other party and the remaining frozen amount before acting. */
 @Composable
 internal fun MemberSharedThingCard(debt: Debt) {
-    // §2.6 外币防御：成员债当前必是 home-shape (slice4 把 received Debt 冻结成严格本位币)，但若未来放开
-    // 外币 member Debt，关系叙事的"无金额主句 + 单币进度"语义不再成立 → 退回会计卡的中性金额渲染。
+    // The shared summary retains both currencies when the record carries an original foreign amount.
     if (debt.originalCurrencyCode != null && debt.originalCurrencyCode != debt.homeCurrencyCode) {
         DebtSummaryCard(debt = debt)
         return
@@ -81,6 +72,11 @@ internal fun MemberSharedThingCard(debt: Debt) {
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = headlineColor,
+            )
+            Spacer(Modifier.size(AppSpacing.compactGap))
+            DebtSummaryRow(
+                label = stringResource(R.string.debt_detail_remaining),
+                value = formatDisplayAmount(debt.remainingAmountCents, CurrencyDisplay.forRecord(debt.homeCurrencyCode)),
             )
             if (debt.isOpen) {
                 Spacer(Modifier.size(AppSpacing.compactGap))
@@ -116,13 +112,13 @@ private fun CommunalProgressBar(ratio: Float) {
     }
 }
 
-/** "看看账"可展开明细：只两个真实数 (一共/已对上) + 状态徽章，无 remaining 欠条行 (§2.3 businesslike F4)。 */
+/** Supporting totals and status remain available beneath the always-visible remaining amount. */
 @Composable
 private fun MemberDebtDetailExpander(debt: Debt) {
     // 与 DebtSummaryCard 同一 record 口径（PR#255 R5 P1）：环境 display 恒 Base，必须按
     // debt.homeCurrencyCode 渲染，否则 JPY/KRW 欠款金额小数位走样。
     val recordDisplay = CurrencyDisplay.forRecord(debt.homeCurrencyCode)
-    var expanded by rememberSaveable { mutableStateOf(false) }
+    var expanded by rememberSaveable(debt.publicId) { mutableStateOf(false) }
     Row(
         modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded }.padding(vertical = AppSpacing.smallGap),
         verticalAlignment = Alignment.CenterVertically,

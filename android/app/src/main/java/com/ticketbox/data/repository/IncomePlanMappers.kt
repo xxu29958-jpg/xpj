@@ -21,9 +21,12 @@ fun IncomePlanDto.toDomain(): IncomePlan = IncomePlan(
     updatedAt = updatedAt,
     rowVersion = rowVersion,
     archivedAt = archivedAt,
+    homeCurrencyCode = homeCurrencyCode,
 )
 
 data class IncomePlanDraft(
+    val intentMonth: String,
+    val homeCurrencyCode: String,
     val label: String,
     val sourceType: IncomeSourceType,
     val frequency: IncomeFrequency = IncomeFrequency.MONTHLY,
@@ -34,6 +37,8 @@ data class IncomePlanDraft(
 
 fun IncomePlanDraft.toCreateRequest(): IncomePlanCreateRequestDto =
     IncomePlanCreateRequestDto(
+        intentMonth = intentMonth,
+        homeCurrencyCode = homeCurrencyCode,
         label = label.trim(),
         sourceType = sourceType.wireValue,
         frequency = frequency.wireValue,
@@ -43,6 +48,7 @@ fun IncomePlanDraft.toCreateRequest(): IncomePlanCreateRequestDto =
     )
 
 data class IncomePlanPatch(
+    val intentMonth: String,
     val expectedRowVersion: Long,
     val label: String? = null,
     val sourceType: IncomeSourceType? = null,
@@ -54,6 +60,7 @@ data class IncomePlanPatch(
 
 fun IncomePlanPatch.toUpdateRequest(): IncomePlanUpdateRequestDto =
     IncomePlanUpdateRequestDto(
+        intentMonth = intentMonth,
         expectedRowVersion = expectedRowVersion,
         label = label?.trim(),
         sourceType = sourceType?.wireValue,

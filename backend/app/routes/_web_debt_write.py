@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, time
 from uuid import uuid4
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import Request
 from sqlalchemy.orm import Session
@@ -16,7 +17,6 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.routes.web_common import (
     _base_ctx,
-    _currency_input_view,
     _home_amount_label,
     _minor_amount_value,
     _require_selected_ledger_write,
@@ -27,7 +27,7 @@ from app.services.time_service import now_utc
 
 _PROPOSAL_STATUS_LABELS = {
     "pending": "待 TA 确认",
-    "confirmed": "已两清",
+    "confirmed": "已确认",
     "partially_confirmed": "收了一部分",
     "rejected": "在对账",
     "withdrawn": "已撤回",
@@ -50,7 +50,7 @@ PROPOSAL_CONFIRM_AMOUNT_FIELD = "confirmed_amount_major"
 PROPOSAL_CONFIRM_AMOUNT_FIELD_LEGACY = "amount_major"
 
 
-def _parse_paid_at(raw: str) -> datetime | None:
+def _parse_paid_at(raw: str, timezone_name: str = "") -> datetime | None:
     text = (raw or "").strip()
     if not text:
         return None
@@ -62,7 +62,11 @@ def _parse_paid_at(raw: str) -> datetime | None:
             "请选择正确的还款日期。",
             status_code=422,
         ) from exc
-    return datetime.combine(selected_date, time.min, tzinfo=accounting_zone())
+    try:
+        zone = ZoneInfo(timezone_name) if timezone_name else accounting_zone()
+    except (ValueError, ZoneInfoNotFoundError) as exc:
+        raise AppError("invalid_request", "原还款日期的时区无法读取，请核对后重新填写。", status_code=422) from exc
+    return datetime.combine(selected_date, time.min, tzinfo=zone)
 
 
 def _day_label(value) -> str:
@@ -73,17 +77,12 @@ def _day_label(value) -> str:
 
 
 def _proposal_pending_line(pending, viewer_is_debtor: bool | None) -> str:
-    """在途 proposal 的一行关系状态句 (「谁该接下一步」)。
-
-    web 只读=描述非「立即确认」CTA：债务人侧「你说还了，等家人确认」、债权人侧「TA 说还了 ¥X，看看
-    对不对」、第三方中性。**不复用** Android 的 debt_proposal_creditor_pending (那条带「确认一下吧」动作
-    hint，web 没有确认钮、会误导)；确认/拒绝/撤回都在手机 App + /api。
-    """
+    """Describe an unconfirmed repayment claim and the participant who should review it."""
     if viewer_is_debtor is True:
         return "你说你还了这一份，等家人确认一下"
     if viewer_is_debtor is False:
         amount = _home_amount_label(pending.proposed_amount_cents, pending.home_currency_code)
-        return f"TA 把 {amount} 那份给你啦，看看对不对"
+        return f"TA 申报已还 {amount}，请核对实际收到的金额"
     return "他们之间有一笔正在确认"
 
 
@@ -185,7 +184,7 @@ def _debt_create_context(
     values: dict[str, str] | None = None,
     error: str | None = None,
 ) -> dict:
-    """新建欠款页上下文：币种感知的金额输入 + 每渲染一套幂等键。"""
+    """Render a creation intent without replacing its currency or retry key."""
 
     ctx = _base_ctx(
         request,
@@ -204,13 +203,16 @@ def _debt_create_context(
         for value, label, hint in _DEBT_DIRECTION_OPTIONS
     ]
     home = ctx["home_currency_code"]
-    ctx["currency_input"] = _currency_input_view(home)
     from app.services.currency_common import supported_currency_codes
 
     ctx["currency_options"] = [home, *sorted(supported_currency_codes() - {home})]
-    ctx["idempotency_key"] = str(uuid4())
+    values = values or {}
+    captured_home = values.get("home_currency_code", "")
+    ctx["form_home_currency_code"] = captured_home if captured_home in supported_currency_codes() else home
+    ctx["selected_currency_code"] = values.get("currency_code") or ctx["form_home_currency_code"]
+    ctx["idempotency_key"] = values.get("idempotency_key") or str(uuid4())
     ctx["today"] = now_utc().astimezone(accounting_zone()).strftime("%Y-%m-%d")
-    ctx["values"] = values or {}
+    ctx["values"] = values
     ctx["form_error"] = error
     return ctx
 

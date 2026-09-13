@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.models import BackgroundTask
 from app.services.background_task_handler_api import TaskCancelledError
+from app.services.background_task_handler_api import mark_failed as _mark_failed
 from app.services.background_task_registry import TaskHandlerRegistry, runtime_handler_registry
 from app.services.time_service import now_utc
 
@@ -36,9 +37,10 @@ def run_task(
         active_registry = registry or runtime_handler_registry()
         handler = active_registry.get(task.task_type)
         if handler is None:
-            mark_failed(
+            _mark_failed(
                 db,
                 task_id,
+                expected_status="running",
                 error_code="unknown_task_type",
                 error_message=f"No handler registered for {task.task_type!r}.",
             )
@@ -50,9 +52,10 @@ def run_task(
             _mark_cancelled(db, task_id)
         except Exception as exc:  # noqa: BLE001 - top-of-task outcome barrier
             logger.exception("background task %s (%s) failed", task_id, task.task_type)
-            mark_failed(
+            _mark_failed(
                 db,
                 task_id,
+                expected_status="running",
                 error_code=type(exc).__name__,
                 error_message=str(exc)[:500],
             )
@@ -79,17 +82,6 @@ def claim_queued_task(db: Session, task_id: int) -> BackgroundTask | None:
     return db.get(BackgroundTask, task_id) if result.rowcount == 1 else None
 
 
-def mark_failed(db: Session, task_id: int, *, error_code: str, error_message: str) -> None:
-    task = db.get(BackgroundTask, task_id)
-    if task is None or task.status in _TERMINAL_STATUSES:
-        return
-    task.status = "failed"
-    task.completed_at = now_utc()
-    task.error_code = error_code
-    task.error_message = error_message
-    db.commit()
-
-
 def _mark_completed(db: Session, task_id: int) -> None:
     task = db.get(BackgroundTask, task_id)
     if task is None or task.status in _TERMINAL_STATUSES:
@@ -108,4 +100,4 @@ def _mark_cancelled(db: Session, task_id: int) -> None:
     db.commit()
 
 
-__all__ = ["claim_queued_task", "mark_failed", "run_task"]
+__all__ = ["claim_queued_task", "run_task"]

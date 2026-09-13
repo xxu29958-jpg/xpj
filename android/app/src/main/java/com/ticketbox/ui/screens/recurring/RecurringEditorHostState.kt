@@ -116,6 +116,7 @@ private fun recurringEditorHostStateSaver(editorEpoch: Long, runtimeId: String) 
     )
 
 private fun MutableList<String>.addSession(session: RecurringEditorSession) {
+    addNullable(session.homeCurrencyCode)
     val baseline = session.editing
     add(if (baseline == null) VALUE_ABSENT else VALUE_PRESENT)
     baseline?.let(::addRecurringItem)
@@ -137,6 +138,7 @@ private fun MutableList<String>.addSession(session: RecurringEditorSession) {
 }
 
 private fun Iterator<String>.readSession(): RecurringEditorSession {
+    val home = next().decodeNullable()
     val baseline = when (next()) {
         VALUE_ABSENT -> null
         VALUE_PRESENT -> readRecurringItem()
@@ -168,12 +170,13 @@ private fun Iterator<String>.readSession(): RecurringEditorSession {
             rebaseAttempt?.let { RecurringRebaseUi(it, overlappingFields) },
         ),
     )
-    return RecurringEditorSession(draft, interaction)
+    return RecurringEditorSession(draft, interaction, home)
 }
 
 private fun MutableList<String>.addRecurringItem(item: RecurringItem) {
     add(item.publicId)
     add(item.ledgerId)
+    addNullable(item.homeCurrencyCode)
     add(item.merchant)
     add(item.merchantKey)
     add(item.frequency)
@@ -199,6 +202,7 @@ private fun MutableList<String>.addRecurringItem(item: RecurringItem) {
 private fun Iterator<String>.readRecurringItem(): RecurringItem = RecurringItem(
     publicId = next(),
     ledgerId = next(),
+    homeCurrencyCode = next().decodeNullable(),
     merchant = next(),
     merchantKey = next(),
     frequency = next(),

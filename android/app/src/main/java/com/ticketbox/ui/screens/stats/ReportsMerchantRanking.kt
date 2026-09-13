@@ -47,6 +47,7 @@ internal fun MerchantRankingBlock(
             rankingMetric = rankingMetric,
             onRankingMetricChange = onRankingMetricChange,
         )
+        if (visibleRows.isEmpty()) Text(stringResource(R.string.reports_no_merchants))
         visibleRows.forEach { row ->
             MerchantRankingRow(
                 label = row.merchant.ifBlank { merchantFallback },
@@ -102,15 +103,15 @@ private fun MerchantRankingRow(
 ) {
     val currencyDisplay = LocalCurrencyDisplay.current
     val value = merchantRankingBarValue(row, rankingMetric)
-    val progress = if (maxValue > 0L) (value.toFloat() / maxValue.toFloat()).coerceIn(0f, 1f) else 0f
+    val progress = value?.let { if (maxValue > 0L) (it.toFloat() / maxValue.toFloat()).coerceIn(0f, 1f) else 0f }
     val primaryText = when (rankingMetric) {
         ReportRankingMetric.Count -> stringResource(R.string.stats_reports_bar_count, row.count)
-        ReportRankingMetric.Amount -> formatDisplayAmount(row.amountCents, currencyDisplay)
+        ReportRankingMetric.Amount -> row.amountCents?.let { formatDisplayAmount(it, currencyDisplay) } ?: stringResource(R.string.reports_amount_unavailable)
     }
     val supportingText = when (rankingMetric) {
         ReportRankingMetric.Count -> stringResource(
             R.string.stats_reports_merchant_total_amount,
-            formatDisplayAmount(row.amountCents, currencyDisplay),
+            row.amountCents?.let { formatDisplayAmount(it, currencyDisplay) } ?: stringResource(R.string.reports_amount_unavailable),
         )
         ReportRankingMetric.Amount -> stringResource(R.string.stats_reports_bar_count, row.count)
     }
@@ -121,7 +122,7 @@ private fun MerchantRankingRow(
             primaryText = primaryText,
             primaryIsAmount = rankingMetric == ReportRankingMetric.Amount,
         )
-        MerchantRankingBar(progress = progress)
+        progress?.let { MerchantRankingBar(progress = it) }
         Text(
             text = supportingText,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -198,31 +199,31 @@ private fun MerchantRankingBar(progress: Float) {
     }
 }
 
-internal fun merchantRankingBarValue(row: ReportMerchantRanking, rankingMetric: ReportRankingMetric): Long =
+internal fun merchantRankingBarValue(row: ReportMerchantRanking, rankingMetric: ReportRankingMetric): Long? =
     when (rankingMetric) {
         ReportRankingMetric.Count -> row.count.coerceAtLeast(0).toLong()
-        ReportRankingMetric.Amount -> row.amountCents.coerceAtLeast(0L)
+        ReportRankingMetric.Amount -> row.amountCents?.coerceAtLeast(0L)
     }
 
 internal fun merchantRankingMaxValue(rows: List<ReportMerchantRanking>, rankingMetric: ReportRankingMetric): Long =
-    rows.maxOfOrNull { merchantRankingBarValue(it, rankingMetric) }?.coerceAtLeast(1L) ?: 1L
+    rows.mapNotNull { merchantRankingBarValue(it, rankingMetric) }.maxOrNull()?.coerceAtLeast(1L) ?: 1L
 
 internal fun merchantRankingVisibleRows(
     rows: List<ReportMerchantRanking>,
     rankingMetric: ReportRankingMetric,
     limit: Int = MerchantRankingVisibleLimit,
 ): List<ReportMerchantRanking> =
-    rows.sortedWith(
+    if (rankingMetric == ReportRankingMetric.Amount && rows.any { it.amountCents == null }) emptyList() else rows.sortedWith(
         when (rankingMetric) {
             ReportRankingMetric.Count -> compareByDescending<ReportMerchantRanking> {
                 it.count.coerceAtLeast(0)
             }.thenByDescending {
-                it.amountCents.coerceAtLeast(0L)
+                it.amountCents?.coerceAtLeast(0L)
             }.thenBy {
                 it.merchant
             }
             ReportRankingMetric.Amount -> compareByDescending<ReportMerchantRanking> {
-                it.amountCents.coerceAtLeast(0L)
+                it.amountCents?.coerceAtLeast(0L)
             }.thenByDescending {
                 it.count.coerceAtLeast(0)
             }.thenBy {

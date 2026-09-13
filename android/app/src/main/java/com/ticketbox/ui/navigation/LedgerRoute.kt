@@ -1,24 +1,23 @@
 package com.ticketbox.ui.navigation
 
 import android.content.ActivityNotFoundException
-import android.content.Context
-import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.key
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
-import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.ui.screens.LedgerLaunchRequest
 import com.ticketbox.ui.screens.LedgerScreen
 import com.ticketbox.ui.screens.LedgerScreenActions
 import com.ticketbox.viewmodel.LedgerExportOutcome
 import com.ticketbox.viewmodel.LedgerViewModel
+import kotlinx.coroutines.flow.map
 
 @Composable
 internal fun LedgerRoute(
@@ -26,10 +25,12 @@ internal fun LedgerRoute(
     shellState: MainShellState,
     screenFactory: MainScreenFactory,
 ) {
+    val binding by remember(screenFactory) { screenFactory.repository.observeLedgerAccess().map { it?.binding } }
+        .collectAsStateWithLifecycle(initialValue = screenFactory.repository.captureDeferredLedgerBinding())
     val ledgerFactory = remember(screenFactory, shellState) {
-        screenFactory.repositoryViewModelFactory(shellState::markInsightsDataChanged)
+        screenFactory.repositoryViewModelFactory(shellState::markFinancialDataChanged)
     }
-    val ledgerViewModel: LedgerViewModel = viewModel(factory = ledgerFactory)
+    val ledgerViewModel: LedgerViewModel = viewModel(key = "ledger-$binding", factory = ledgerFactory)
     // Narrow hook (218-B4 review P2-23): manual creates and category batch
     // edits invalidate the advice cache; tag-only batches preserve it.
     LaunchedEffect(ledgerViewModel) {
@@ -72,7 +73,7 @@ internal fun LedgerRoute(
         }
     }
 
-    LedgerScreen(
+    key(binding) { LedgerScreen(
         state = state,
         launchRequest = LedgerLaunchRequest(
             openManualEntryRequested = shellState.launchAction.pending is LaunchAction.OpenManualEntry,
@@ -81,7 +82,7 @@ internal fun LedgerRoute(
             },
         ),
         actions = ledgerScreenActions(ledgerViewModel, navController, shellState),
-    )
+    ) }
 }
 
 private fun ledgerScreenActions(
@@ -101,8 +102,10 @@ private fun ledgerScreenActions(
         shellState.openSecondaryPage(ProductSecondaryPage.TransactionsLibrary)
     },
     onManualCreate = ledgerViewModel::createManualExpense,
+    onPrepareManualCreate = ledgerViewModel::prepareManualEntry,
     onViewModeChange = ledgerViewModel::setViewMode,
     onEdit = { navController.openExpense(it.id) },
+    onOpenManualSubmission = { navController.navigate(manualExpenseSubmissionRoute(it)) },
     onEnterSelection = ledgerViewModel::enterSelection,
     onExitSelection = ledgerViewModel::exitSelection,
     onToggleSelect = ledgerViewModel::toggleSelected,
@@ -153,19 +156,4 @@ private fun ApplyPendingLedgerDrill(
             null -> Unit
         }
     }
-}
-
-private fun writeCsvExport(
-    context: Context,
-    uri: Uri,
-    exportFile: CsvExport,
-    onResult: (Boolean) -> Unit,
-) {
-    runCatching {
-        context.contentResolver.openOutputStream(uri)?.use { output ->
-            output.write(exportFile.bytes)
-        } ?: error("Output stream is null")
-    }
-        .onSuccess { onResult(true) }
-        .onFailure { onResult(false) }
 }

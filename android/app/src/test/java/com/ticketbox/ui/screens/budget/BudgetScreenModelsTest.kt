@@ -55,6 +55,7 @@ class BudgetScreenModelsTest {
     }
 
     private fun budget(configured: Boolean): BudgetMonthly = BudgetMonthly(
+    homeCurrencyCode = "CNY",
         ledgerId = "ledger-1",
         month = "2026-07",
         configured = configured,

@@ -209,4 +209,4 @@ def test_web_confirmed_stream_sums_and_selection(web_client: TestClient, *, iden
     # stream_date desc: 05-06 冲销事件 = ¥0.00; 05-05 退款/拒付 = -¥40.00;
     # 05-04 两个 root (reversed 计 0) = ¥120.00, 不是 gross 之和 ¥200.00。
     assert probe.day_counts == ["1 笔", "2 笔", "2 笔"]
-    assert probe.day_sums == ["¥0.00", "-¥40.00", "¥120.00"]
+    assert probe.day_sums == ["本页 ¥0.00", "本页 -¥40.00", "本页 ¥120.00"]

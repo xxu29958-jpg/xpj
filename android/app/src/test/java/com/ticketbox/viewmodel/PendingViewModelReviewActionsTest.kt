@@ -36,7 +36,7 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
             assertNull(draft.merchant)
             Result.success(target.copy(category = "交通"))
         }
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         vm.saveQuickCategory(target.id, "  交通  ")
@@ -55,7 +55,7 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
         val target = expense(id = 2L, category = "未分类")
         val fake = FakeReviewActions(pending = listOf(target))
         fake.updateResponder = { _, _ -> Result.failure(RuntimeException("网络忙")) }
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         vm.saveQuickCategory(target.id, "餐饮")
@@ -71,7 +71,7 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
     fun saveQuickMerchantRejectsBlankAndDoesNotCallRepository() = review {
         val target = expense(id = 3L, merchant = null)
         val fake = FakeReviewActions(pending = listOf(target))
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         vm.saveQuickMerchant(target.id, "   ")
@@ -89,7 +89,7 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
             assertEquals("星巴克", draft.merchant)
             Result.success(target.copy(merchant = "星巴克"))
         }
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         vm.saveQuickMerchant(target.id, "  星巴克 ")
@@ -103,7 +103,7 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
     fun saveAmountDraftRejectsZeroAndNegative() = review {
         val target = expense(id = 5L, amountCents = null)
         val fake = FakeReviewActions(pending = listOf(target))
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         vm.saveAmountDraft(target.id, 0L)
@@ -126,7 +126,7 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
             assertEquals(1234L, draft.originalAmountMinor)
             Result.success(target.copy(amountCents = 1234L, originalAmountMinor = 1234L))
         }
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         vm.saveAmountDraft(target.id, 1234L)
@@ -154,7 +154,7 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
             assertEquals(12345L, draft.originalAmountMinor)
             Result.success(target.copy(originalAmountMinor = 12345L))
         }
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         vm.saveAmountDraft(target.id, 12345L)
@@ -173,7 +173,7 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
             Result.success(target.copy(amountCents = 4200L, originalAmountMinor = 4200L))
         }
         fake.confirmResponder = { Result.success(target.copy(amountCents = 4200L, status = "confirmed")) }
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         vm.saveAmountAndConfirm(target.id, 4200L)
@@ -192,7 +192,7 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
         // 解析会 100× 缩放），repository 不可达 + 明示文案（sheet 层同门，此为 VM 防线）。
         val target = expense(id = 5L, amountCents = null).copy(originalCurrencyCodeRaw = "VND")
         val fake = FakeReviewActions(pending = listOf(target))
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         vm.saveAmountDraft(target.id, 1200L)
@@ -211,7 +211,7 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
         val target = expense(id = 8L, amountCents = null)
         val fake = FakeReviewActions(pending = listOf(target))
         fake.updateResponder = { _, _ -> Result.failure(RuntimeException("amount_required")) }
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         vm.saveAmountAndConfirm(target.id, 5000L)

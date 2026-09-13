@@ -82,13 +82,16 @@ from app.routes import (
     web_debts,
     web_duplicates,
     web_expense_correction,
+    web_expense_create,
     web_expense_edit,
     web_expense_items,
     web_expense_lifecycle,
     web_expense_splits,
+    web_goal_edit,
     web_goals,
     web_import_export,
     web_inbox_capture,
+    web_income_edit,
     web_income_plans,
     web_media,
     web_merchants,
@@ -98,6 +101,7 @@ from app.routes import (
     web_recycle_bin,
     web_repayment_drafts,
     web_reports,
+    web_rule_edit,
     web_search,
     web_tags,
 )
@@ -146,39 +150,8 @@ _RUNTIME_WRITE_PARAMETER_REFS = (
 _logger = logging.getLogger(__name__)
 
 
-class UnsafeAdminApiConfigurationError(RuntimeError):
-    """Startup configuration would expose admin routes without the required edge gate."""
-
-
-def _assert_admin_api_gate_safe() -> None:
-    """v1.1 Batch 1: if the owner explicitly opted into a public admin API
-    (``ALLOW_PUBLIC_ADMIN_API=true``), refuse to boot unless Cloudflare
-    Access is also wired up. The admin API does mutating ops with the
-    admin token alone; without a real identity gate in front of it,
-    anyone who can reach the public hostname can DOS or probe it.
-
-    Loopback-only deployments (the default) skip this check.
-    """
-
-    cfg = get_settings()
-    if not cfg.allow_public_admin_api:
-        return
-    missing = []
-    if not cfg.cloudflare_access_required:
-        missing.append("CLOUDFLARE_ACCESS_REQUIRED=true")
-    if not cfg.cloudflare_access_team_domain:
-        missing.append("CLOUDFLARE_ACCESS_TEAM_DOMAIN")
-    if not cfg.cloudflare_access_aud:
-        missing.append("CLOUDFLARE_ACCESS_AUD")
-    if missing:
-        raise UnsafeAdminApiConfigurationError(
-            "ALLOW_PUBLIC_ADMIN_API=true requires Cloudflare Access to be configured. Missing: " + ", ".join(missing)
-        )
-
-
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    _assert_admin_api_gate_safe()
     # ADR-0047 §3: under the Windows-service model the SCM can mark the PostgreSQL
     # service RUNNING before it accepts connections, so block (bounded) until the
     # DB is reachable before init_db()'s first connection. No-op when the DB is
@@ -256,6 +229,25 @@ def _uses_project_error_envelope(path: str) -> bool:
     return path.startswith("/api/") or path.startswith("/u/")
 
 
+def _apply_protocol_header_contract(operation: dict, parameter_components: dict, *, runtime_write: bool) -> None:
+    if runtime_write:
+        parameters = operation.setdefault("parameters", [])
+        existing_names = {parameter.get("name") for parameter in parameters if isinstance(parameter, dict)}
+        parameters.extend(
+            dict(parameter_ref)
+            for parameter_ref in _RUNTIME_WRITE_PARAMETER_REFS
+            if parameter_components[parameter_ref["$ref"].rsplit("/", 1)[-1]]["name"] not in existing_names
+        )
+    for parameter in operation.get("parameters", []):
+        # A runtime optional declaration preserves the custom refusal envelope;
+        # consume the guard's metadata here so clients see its real requirement.
+        runtime_required = parameter.get("schema", {}).pop(
+            "x-ticketbox-runtime-required", parameter.get("name") == "Idempotency-Key",
+        )
+        if parameter.get("in") == "header" and runtime_required:
+            parameter["required"] = True
+
+
 def _custom_openapi() -> dict:
     """OpenAPI document with project-level protocol fixes applied.
 
@@ -273,9 +265,9 @@ def _custom_openapi() -> dict:
     infer ``required: false``, which would tell a generated client the header is
     optional — callers would omit it and hit the runtime 422. The header IS
     contractually required, so we post-process the generated schema to say so
-    without changing the runtime 422 body shape (ADR-0042 §4.4). The flip is
-    safe blanket-wide: every ``Idempotency-Key`` parameter in this app belongs to
-    an outbox-routed mutate route that runtime-requires it.
+    without changing the runtime 422 body shape (ADR-0042 §4.4). Screenshot
+    upload explicitly opts out through the same runtime-required metadata:
+    existing headerless callers remain valid while keyed callers get replay.
     """
     if app.openapi_schema:
         return app.openapi_schema
@@ -313,19 +305,10 @@ def _custom_openapi() -> dict:
         for method, operation in path_item.items():
             if not isinstance(operation, dict):
                 continue
-            if path.startswith("/api/") and method.lower() in _RUNTIME_WRITE_METHODS:
-                operation_parameters = operation.setdefault("parameters", [])
-                existing_refs = {
-                    parameter.get("$ref") for parameter in operation_parameters if isinstance(parameter, dict)
-                }
-                operation_parameters.extend(
-                    dict(parameter_ref)
-                    for parameter_ref in _RUNTIME_WRITE_PARAMETER_REFS
-                    if parameter_ref["$ref"] not in existing_refs
-                )
-            for parameter in operation.get("parameters", []):
-                if parameter.get("in") == "header" and parameter.get("name") == "Idempotency-Key":
-                    parameter["required"] = True
+            _apply_protocol_header_contract(
+                operation, parameter_components,
+                runtime_write=path.startswith("/api/") and method.lower() in _RUNTIME_WRITE_METHODS,
+            )
             if _uses_project_error_envelope(path):
                 responses = operation.setdefault("responses", {})
                 responses["422"] = _project_error_response(responses.get("422"))
@@ -339,8 +322,7 @@ app.openapi = _custom_openapi
 add_exception_handlers(app)
 app.add_middleware(SanitizedLoggingMiddleware)
 # Starlette executes the most recently registered HTTP middleware first.
-# Keep response hardening outermost, then Access, then our web session gate,
-# then CSRF for the route body itself.
+# Order: response hardening outermost, Access, web session, then CSRF at the body.
 app.middleware("http")(csrf_loopback_form_guard)
 app.middleware("http")(web_session_gate)
 app.middleware("http")(static_owner_guard)
@@ -385,8 +367,7 @@ app.include_router(merchants.router)
 app.include_router(admin_routes.router)
 app.include_router(owner_console.router)
 app.include_router(owner_ledgers.router)
-# web_auth must come before web_app so its /web/auth/* routes win over any
-# generic /web matcher (FastAPI registers first-mounted-first-matched).
+# Mount web_auth before generic /web matchers: FastAPI uses first-mounted-first-matched.
 app.include_router(web_auth.router)
 app.include_router(web_invitation_join.router)
 app.include_router(web_currency_adoption.router)
@@ -394,6 +375,7 @@ app.include_router(web_app.router)
 app.include_router(web_confirmed_batch.router)
 app.include_router(web_bill_split.router)
 app.include_router(web_dashboard.router)
+app.include_router(web_expense_create.router)
 app.include_router(web_expense_edit.router)
 app.include_router(web_expense_correction.router)
 app.include_router(web_expense_offsets.router)
@@ -405,12 +387,15 @@ app.include_router(web_media.router)
 app.include_router(web_pending.router)
 app.include_router(web_inbox_capture.router)
 app.include_router(web_rules_routes.router)
+app.include_router(web_rule_edit.router)
 app.include_router(web_budgets.router)
 app.include_router(web_budget_advise.router)
 app.include_router(web_income_plans.router)
+app.include_router(web_income_edit.router)
 app.include_router(web_library.router)
 app.include_router(web_reports.router)
 app.include_router(web_goals.router)
+app.include_router(web_goal_edit.router)
 app.include_router(web_search.router)
 app.include_router(web_data_quality.router)
 app.include_router(web_debts.router)

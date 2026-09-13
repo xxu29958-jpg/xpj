@@ -1,32 +1,58 @@
 package com.ticketbox.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ticketbox.R
+import com.ticketbox.domain.model.UiText
+import com.ticketbox.ui.screens.BillSplitNavigation
 import com.ticketbox.ui.screens.BillSplitScreen
 import com.ticketbox.viewmodel.BillSplitViewModel
 import com.ticketbox.viewmodel.billSplitViewModelFactory
+import com.ticketbox.viewmodel.toUiText
+import kotlinx.coroutines.launch
 
-/**
- * 拆账中心二级页路由（A3 IA）。与 [BudgetRoute] / [RecurringRoute] 同形——构建 VM + 渲染屏，
- * 返回交回 [MainShellState.closeSecondaryPage]。
- *
- * 单独成文件而不并入 [StatsRoutes]：拆账是账本域功能（从账本动作区进入、背景走 Ledger surface），
- * 与统计/规划面不同源；放进 stats 命名的文件会误导读者。仍由 [MainNavGraph] 的二级页 overlay
- * 统一承载（设置树里的 BillSplits 入口保持不变，二者是各自独立的渲染路径）。
- */
+/** Relationships entry; the existing ledger switch and fact routes own result navigation. */
 @Composable
 internal fun BillSplitRoute(
     screenFactory: MainScreenFactory,
     onBack: () -> Unit,
+    onOpenExpense: (Long) -> Unit,
 ) {
-    val billSplitViewModel: BillSplitViewModel = viewModel(
-        factory = billSplitViewModelFactory(
-            screenFactory.repository,
-            screenFactory.ledgerRepository,
-        ),
+    val viewModel: BillSplitViewModel = viewModel(
+        factory = billSplitViewModelFactory(screenFactory.repository, screenFactory.ledgerRepository),
     )
-    BillSplitScreen(
-        viewModel = billSplitViewModel,
-        onBack = onBack,
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+    var opening by remember { mutableStateOf(false) }
+    var openError by remember { mutableStateOf<UiText?>(null) }
+    LaunchedEffect(state.access?.binding) { openError = null }
+    BillSplitScreen(viewModel = viewModel, onBack = onBack,
+        navigation = BillSplitNavigation(busy = opening, error = openError, openBill = { binding, expenseId, ledgerId ->
+            if (!opening) {
+                opening = true
+                openError = null
+                scope.launch {
+                    try {
+                        if (screenFactory.repository.captureDeferredLedgerBinding() != binding) return@launch
+                        val switched = if (ledgerId == binding.ledgerId) Result.success(Unit)
+                        else screenFactory.ledgerRepository.switchLedger(ledgerId, expectedBinding = binding).map { }
+                        switched.onSuccess { onOpenExpense(expenseId) }.onFailure { error ->
+                            if (screenFactory.repository.captureDeferredLedgerBinding() == binding) {
+                                openError = error.toUiText(R.string.bill_split_open_failed)
+                            }
+                        }
+                    } finally {
+                        opening = false
+                    }
+                }
+            }
+        }),
     )
 }

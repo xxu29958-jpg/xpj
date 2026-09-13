@@ -2,6 +2,7 @@ package com.ticketbox.ui.navigation
 
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.local.AppDatabase
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiService
@@ -11,8 +12,10 @@ import com.ticketbox.data.repository.ApiServiceProvider
 import com.ticketbox.data.repository.BudgetRepository
 import com.ticketbox.data.repository.CategoryPreferenceRepository
 import com.ticketbox.data.repository.DebtRepository
+import com.ticketbox.data.repository.DebtCreationRepository
+import com.ticketbox.data.repository.toOutboxBinding
 import com.ticketbox.data.repository.ExpenseRepository
-import com.ticketbox.data.repository.IncomePlanActions
+import com.ticketbox.data.repository.IncomePlanRepository
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.data.repository.OutboxRepository
 import com.ticketbox.data.repository.RecurringRepository
@@ -83,7 +86,6 @@ internal class DataQualityConnectedHarness : AutoCloseable {
         }
         val settingsStore = interfaceProxy<TicketboxSettingsStore> { name ->
             when (name) {
-                "monthlyBudgetCents" -> null
                 "lastUploadAtForLedger" -> null
                 else -> Unhandled
             }
@@ -97,8 +99,21 @@ internal class DataQualityConnectedHarness : AutoCloseable {
             credentials = credentials,
             apiProvider = apiProvider,
         )
+        val outbox = OutboxRepository(
+            onRowsDeleted = {},
+            dao = database.pendingMutationDao(),
+            bindingProvider = { sessionRecord.toOutboxBinding() },
+        )
+        val adapters = OutboxAdapterGraph()
         val repositories = MainFeatureRepositories(
-            repository = ExpenseRepository(database.expenseDao(), binding),
+            uploadIntents = com.ticketbox.data.repository.UploadIntentRepository(apiProvider, outbox,
+                com.ticketbox.data.repository.UploadIntentFileStore(context), adapters.uploadPayloadAdapter,
+                adapters.uploadReceiptAdapter, settingsStore),
+            repository = ExpenseRepository(database.expenseDao(), binding, offlineMutations =
+                com.ticketbox.data.repository.ExpenseOfflineMutationWiring(outbox, adapters.correctionAdapter, adapters.legacyCorrectionAdapter,
+                    adapters.billSplitCreateAdapter, adapters.billSplitReceiptAdapter,
+                    manualCreateAdapter = com.ticketbox.OutboxAdapterGraph().manualCreateAdapter,
+                )),
             ledgerRepository = LedgerRepository(
                 settingsStore = settingsStore,
                 expenseDao = database.expenseDao(),
@@ -106,15 +121,20 @@ internal class DataQualityConnectedHarness : AutoCloseable {
                 apiProvider = apiProvider,
             ),
             recurringRepository = RecurringRepository(apiProvider),
-            budgetRepository = BudgetRepository(apiProvider),
+            budgetRepository = BudgetRepository(apiProvider, outbox, adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter,
+                adapters.manualRateAdapter, adapters.manualRateReceiptAdapter),
             reportsRepository = interfaceProxy<ReportsActions>(),
-            incomePlanRepository = interfaceProxy<IncomePlanActions>(),
+            goalEditRepository = com.ticketbox.data.repository.GoalEditRepository(apiProvider, outbox,
+                adapters.goalUpdateAdapter, adapters.goalReceiptAdapter, adapters.goalCreateAdapter),
+            ruleRepository = com.ticketbox.data.repository.RuleRepository(binding, offlineMutations = com.ticketbox.data.repository.CategoryRuleOfflineMutationWiring(
+                outbox, adapters.categoryRuleUpdateAdapter, adapters.categoryRuleDeleteAdapter,
+                adapters.categoryRuleSubmissionAdapter, adapters.categoryRuleReceiptAdapter)),
+            incomePlanRepository = IncomePlanRepository(apiProvider, outbox, adapters.incomePlanSubmissionAdapter, adapters.incomePlanReceiptAdapter),
             debtRepository = DebtRepository(apiProvider),
+            debtCreationRepository = DebtCreationRepository(apiProvider, outbox, adapters.debtCreateAdapter),
+            debtWriteRepository = com.ticketbox.data.repository.DebtWriteRepository(apiProvider, outbox, adapters.debtAdjustmentAdapter, adapters.debtRepaymentAdapter),
             repaymentDraftRepository = RepaymentDraftRepository(apiProvider),
-            outboxRepository = OutboxRepository(
-                dao = database.pendingMutationDao(),
-                bindingProvider = { com.ticketbox.data.repository.OutboxBinding.DEFAULT },
-            ),
+            outboxRepository = outbox,
             tagRepository = TagRepository(apiProvider),
             categoryPreferenceRepository = CategoryPreferenceRepository(apiProvider),
         )

@@ -332,7 +332,7 @@ def test_web_debt_detail_pending_proposal_creditor_view(web_client: TestClient) 
     )
     resp = web_client.get(f"/web/debts/{public_id}")
     assert resp.status_code == 200
-    assert "TA 把 ¥80.00 那份给你啦，看看对不对" in resp.text  # creditor-side pending line w/ amount
+    assert "TA 申报已还 ¥80.00，请核对实际收到的金额" in resp.text  # creditor-side pending line w/ amount
     assert f"/web/debts/{public_id}/repayment-proposals/" in resp.text
     assert "/confirm" in resp.text
     assert "/reject" in resp.text
@@ -359,7 +359,8 @@ def test_web_debt_detail_resolved_history_is_sunk_and_neutral(web_client: TestCl
     resp = web_client.get(f"/web/debts/{public_id}")
     assert resp.status_code == 200
     assert "过往" in resp.text  # history block title
-    assert "已两清" in resp.text  # confirmed → 已两清 label
+    assert "已确认" in resp.text  # Only this repayment was confirmed.
+    assert "已两清" not in resp.text  # The parent debt remains open.
     assert "对上" in resp.text  # confirmed date prefix
     # An optional note renders in the history row (the {% if row.note %} path).
     assert "微信转的" in resp.text
@@ -398,7 +399,7 @@ def test_web_debt_detail_member_no_proposals_renders_debtor_action(web_client: T
     assert resp.status_code == 200
     assert "过往" not in resp.text
     assert f'action="/web/debts/{public_id}/repayment-proposals"' in resp.text
-    assert "把这份给 TA" in resp.text
+    assert "提交还款确认" in resp.text
 
 
 def test_web_debt_detail_external_has_no_proposal_section(web_client: TestClient) -> None:
@@ -432,13 +433,13 @@ def test_proposal_pending_line_by_role() -> None:
     debtor_pending = _stub_proposal(status="pending")
     assert _proposal_pending_line(debtor_pending, True) == "你说你还了这一份，等家人确认一下"
     creditor_pending = _stub_proposal(status="pending", proposed_amount_cents=8000)
-    assert _proposal_pending_line(creditor_pending, False) == "TA 把 ¥80.00 那份给你啦，看看对不对"
+    assert _proposal_pending_line(creditor_pending, False) == "TA 申报已还 ¥80.00，请核对实际收到的金额"
     assert _proposal_pending_line(debtor_pending, None) == "他们之间有一笔正在确认"
 
 
 def test_resolved_proposal_row_date_prefix_and_neutral_status() -> None:
     confirmed = _resolved_proposal_row(_stub_proposal(status="confirmed"))
-    assert confirmed["status_label"] == "已两清"
+    assert confirmed["status_label"] == "已确认"
     assert confirmed["date_text"].endswith(" 对上")
     partial = _resolved_proposal_row(_stub_proposal(status="partially_confirmed"))
     assert partial["status_label"] == "收了一部分"

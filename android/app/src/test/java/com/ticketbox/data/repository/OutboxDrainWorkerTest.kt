@@ -1,5 +1,7 @@
 package com.ticketbox.data.repository
 
+import com.ticketbox.data.remote.CURRENT_TICKETBOX_API_VERSION
+
 import com.ticketbox.data.repository.OutboxDrainWorker.DrainOutcome
 import com.ticketbox.data.remote.dto.RuntimeWriteCompatibility
 import com.ticketbox.security.LocalSessionIdentity
@@ -80,12 +82,10 @@ class OutboxDrainWorkerTest {
     }
 
     @Test
-    fun `mixed retryable plus done → SUCCESS`() {
-        // At least one row moved forward. SUCCESS lets the next
-        // periodic tick start fresh on the existing schedule rather
-        // than waiting out a backoff window.
+    fun `mixed retryable plus done → RETRY for remaining originals`() {
+        // A completed sibling cannot make the still-pending work wait for the periodic tick.
         assertEquals(
-            DrainOutcome.SUCCESS,
+            DrainOutcome.RETRY,
             OutboxDrainWorker.classify(
                 summary(DrainSummaryFixture(attempted = 4, done = 1, retryable = 3)),
             ),
@@ -114,8 +114,8 @@ class OutboxDrainWorkerTest {
 
     @Test
     fun `discarded only → SUCCESS`() {
-        // Server told us the row is moot (404 / structural 409).
-        // No backoff needed.
+        // The dispatcher has already established a legitimate terminal result.
+        // This scheduler test does not classify raw HTTP refusals.
         assertEquals(
             DrainOutcome.SUCCESS,
             OutboxDrainWorker.classify(summary(DrainSummaryFixture(attempted = 1, discarded = 1))),
@@ -160,12 +160,10 @@ class OutboxDrainWorkerTest {
     }
 
     @Test
-    fun `mixed done plus aborted → SUCCESS`() {
-        // At least one row resolved cleanly. SUCCESS keeps the normal periodic
-        // cadence — the aborted rows will be picked up by the next tick under
-        // the post-binding-transition state.
+    fun `mixed done plus aborted → RETRY for remaining originals`() {
+        // The next bound attempt must retain a wakeup for the commands that did not run.
         assertEquals(
-            DrainOutcome.SUCCESS,
+            DrainOutcome.RETRY,
             OutboxDrainWorker.classify(summary(DrainSummaryFixture(attempted = 4, done = 1, aborted = 3))),
         )
     }
@@ -229,7 +227,7 @@ class OutboxDrainWorkerTest {
     @Test
     fun `compatible runtime proceeds to the existing drain owner`() = runTest {
         val outcome = OutboxDrainWorker.runCompatibleDrain(
-            compatibility = { RuntimeWriteCompatibility.compatible("2026-08-02", "1:1:JPY") },
+            compatibility = { RuntimeWriteCompatibility.compatible(CURRENT_TICKETBOX_API_VERSION, "1:1:JPY") },
         ) {
             summary(DrainSummaryFixture(attempted = 1, done = 1))
         }

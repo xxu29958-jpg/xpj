@@ -80,6 +80,7 @@ def preview_rule_for_pending(
                 "id": expense.id,
                 "merchant": expense.merchant,
                 "amount_cents": expense.amount_cents,
+                "home_currency_code": expense.home_currency_code,
                 "current_category": normalize_category(expense.category or "其他"),
                 "suggested_category": suggested,
                 "reason": f"{field_label}包含 {keyword_clean}",
@@ -168,10 +169,7 @@ def _preview_apply_rules_to_status(
     max_scan: int | None,
 ) -> dict:
     expenses, scan_limit_reached = _rule_application_candidates(
-        db,
-        tenant_id=tenant_id,
-        status=status,
-        max_scan=max_scan,
+        db, tenant_id=tenant_id, status=status, max_scan=max_scan,
     )
     rules = _enabled_rules(db, tenant_id=tenant_id)
     alias_map = enabled_merchant_alias_map(db, tenant_id=tenant_id)
@@ -182,41 +180,40 @@ def _preview_apply_rules_to_status(
 
     changed_count = 0
     skipped_non_default_category = _non_auto_fillable_category_count(
-        db,
-        tenant_id=tenant_id,
-        status=status,
+        db, tenant_id=tenant_id, status=status,
     )
     no_match_count = 0
     unchanged_count = 0
+    unavailable_count = 0
+    missing_currency_codes: set[str] = set()
+    matches = []
     items: list[dict] = []
     for expense in expenses:
         current_category = normalize_category(expense.category or "其他")
         match = _matching_rule_category(
-            expense,
-            rules,
-            alias_map,
-            ocr_text=ocr_text_by_id.get(int(expense.id), ""),
+            db, expense, rules, alias_map, ocr_text=ocr_text_by_id.get(int(expense.id), ""),
         )
-        if match is None:
+        matches.append(match)
+        if match.unavailable:
+            unavailable_count += 1
+            missing_currency_codes.add(expense.home_currency_code or "UNKNOWN")
+            continue
+        if match.rule_id is None or match.category is None:
             no_match_count += 1
             continue
-        rule, suggested_category = match
+        suggested_category = match.category
         if suggested_category == current_category:
             unchanged_count += 1
             continue
         changed_count += 1
         if len(items) >= capped:
             continue
-        items.append(
-            {
-                "id": expense.id,
-                "merchant": expense.merchant,
-                "current_category": current_category,
-                "suggested_category": suggested_category,
-                "rule_keyword": rule.keyword,
-                "reason": f"规则「{rule.keyword}」将分类改为 {suggested_category}",
-            }
-        )
+        items.append({
+            "id": expense.id, "merchant": expense.merchant,
+            "current_category": current_category, "suggested_category": suggested_category,
+            "rule_keyword": match.matched_keyword,
+            "reason": f"规则「{match.matched_keyword}」将分类改为 {suggested_category}",
+        })
 
     return {
         "scanned": len(expenses),
@@ -227,15 +224,13 @@ def _preview_apply_rules_to_status(
         "skipped_non_default_category": skipped_non_default_category,
         "no_match_count": no_match_count,
         "unchanged_count": unchanged_count,
+        "unavailable_count": unavailable_count,
+        "missing_currency_codes": sorted(missing_currency_codes),
         "conflict_count": 0,
         "scan_limit_reached": scan_limit_reached,
         "scan_limit": _clamp_rule_application_scan_limit(max_scan),
         "preview_token": _rule_application_preview_token(
-            status=status,
-            max_scan=max_scan,
-            expenses=expenses,
-            rules=rules,
-            alias_map=alias_map,
-            ocr_text_by_id=ocr_text_by_id,
+            status=status, max_scan=max_scan, expenses=expenses, rules=rules,
+            alias_map=alias_map, ocr_text_by_id=ocr_text_by_id, matches=matches,
         ),
     }

@@ -30,7 +30,6 @@ import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
-import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalThemeVisuals
 
 @Composable
@@ -39,7 +38,7 @@ internal fun StatsMetricGrid(
     budgetStatus: BudgetProgressStatus,
     onOpenBudget: () -> Unit,
 ) {
-    val currencyDisplay = LocalCurrencyDisplay.current
+    val currencyDisplay = CurrencyDisplay.forRecord(budget?.homeCurrencyCode ?: "UNKNOWN")
 
     StatsInsightSurface {
         if (budget != null) {

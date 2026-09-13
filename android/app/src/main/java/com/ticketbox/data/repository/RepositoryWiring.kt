@@ -30,19 +30,21 @@ data class ServerSessionBinding(
 )
 
 /**
- * Offline replay wiring for expense mutations. Tests and feature surfaces wire
- * only the mutation adapters they exercise; a missing adapter keeps that path
- * on the direct-call failure behavior.
+ * Correction publication requires its durable owner and both supported/display-only codecs.
+ * Other mutation adapters retain their existing independently scoped behavior.
  */
 data class ExpenseOfflineMutationWiring(
-    val outbox: OutboxRepository? = null,
+    val outbox: OutboxRepository,
+    val correctionAdapter: JsonAdapter<ExpenseCorrectionPayload>,
+    val legacyCorrectionAdapter: JsonAdapter<ExpenseCorrectionRequestDto>,
+    val billSplitCreateAdapter: JsonAdapter<BillSplitCreatePayload>,
+    val billSplitReceiptAdapter: JsonAdapter<com.ticketbox.data.remote.dto.BillSplitSentDto>,
     val patchExpenseAdapter: JsonAdapter<ExpenseUpdateRequest>? = null,
-    val correctionAdapter: JsonAdapter<ExpenseCorrectionRequestDto>? = null,
     val expenseStateTokenAdapter: JsonAdapter<ExpenseStateTokenRequest>? = null,
     val replaceItemsAdapter: JsonAdapter<ExpenseItemReplaceRequestDto>? = null,
     val replaceSplitsAdapter: JsonAdapter<ExpenseSplitReplaceRequestDto>? = null,
     val recognizeTextAdapter: JsonAdapter<ExpenseRecognizeTextRequestDto>? = null,
-    val manualCreateAdapter: JsonAdapter<ExpenseManualCreateRequestDto>? = null,
+    val manualCreateAdapter: JsonAdapter<ExpenseManualCreateRequestDto>,
     val offsetCreateAdapter: JsonAdapter<ExpenseOffsetCreateRequestDto>? = null,
     val offsetVoidAdapter: JsonAdapter<ExpenseOffsetVoidOutboxPayload>? = null,
 )
@@ -54,6 +56,8 @@ data class CategoryRuleOfflineMutationWiring(
     val outbox: OutboxRepository? = null,
     val updateAdapter: JsonAdapter<CategoryRuleUpdateRequest>? = null,
     val deleteAdapter: JsonAdapter<CategoryRuleDeleteRequest>? = null,
+    val submissionAdapter: JsonAdapter<CategoryRuleSubmissionPayload>? = null,
+    val receiptAdapter: JsonAdapter<com.ticketbox.data.remote.dto.CategoryRuleDto>? = null,
 )
 
 /**

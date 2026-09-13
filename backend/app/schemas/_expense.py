@@ -76,6 +76,9 @@ class UploadResponse(BaseModel):
 class ExpenseManualCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    home_currency_code: str | None = Field(default=None, min_length=3, max_length=3,
+        description="Currency captured when this manual draft began; independent of the current default. "
+        "Legacy requests may omit it only with complete original money, or to replay an accepted client_ref.")
     amount_cents: NonNegativeMoneyMinor | None = None
     original_currency: str | None = Field(default=None, min_length=3, max_length=3)
     original_amount: NonNegativeCanonicalDecimalInput | None = None
@@ -89,11 +92,16 @@ class ExpenseManualCreateRequest(BaseModel):
     tags: str | None = Field(default=None, max_length=500)
     value_score: int | None = Field(default=None, ge=1, le=5)
     regret_score: int | None = Field(default=None, ge=1, le=5)
-    # Issue #65 slice 1: optional device-scoped idempotency ref. Present → the server
-    # dedups on (device_id, client_ref) and rejects a replay carrying a materially
-    # different body under the same ref. Absent → no dedup (online-only create,
-    # unchanged pre-#65 behavior). The Android outbox (slice 4) generates it.
-    client_ref: str | None = Field(default=None, max_length=64)
+    # One original device-scoped reference is required before creating a fact.
+    # Preserve its bytes: legacy local:<client_ref> consumers use the same key.
+    client_ref: str = Field(min_length=1, max_length=64)
+
+    @field_validator("client_ref")
+    @classmethod
+    def client_reference_is_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("client_ref must not be blank")
+        return value
 
     _tags_fit_mirror = field_validator("tags")(validate_tags_fit_storage)
 

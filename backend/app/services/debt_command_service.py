@@ -11,6 +11,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
+from app.models import ApiIdempotencyKey
 from app.schemas import (
     DebtAdjustmentCreateRequest,
     DebtCreateRequest,
@@ -22,6 +23,7 @@ from app.schemas import (
     RepaymentCreateResponse,
     RepaymentVoidCreateRequest,
 )
+from app.services.currency_common import normalize_currency_code
 from app.services.debt_service import (
     create_debt,
     forgive_debt,
@@ -37,6 +39,7 @@ from app.services.debt_service import (
     void_repayment,
 )
 from app.services.idempotency import (
+    IDEMPOTENCY_STATUS_SUCCEEDED,
     IdempotencyOutcomeKind,
     claim_idempotency_key,
     claim_idempotent_request,
@@ -70,6 +73,27 @@ def _actor_scoped_body(
         exclude={"expected_row_version"},
     )
     return {**body, "actor_account_id": actor_account_id}
+
+
+def _legacy_create_receipt(
+    db: Session, *, row: ApiIdempotencyKey, tenant_id: str, actor_account_id: int,
+    payload: DebtCreateRequest, idempotency_key: str,
+) -> DebtResponse | None:
+    """An accepted pre-currency request is evidence; a matching key alone is not."""
+    legacy_fingerprint = fingerprint_request(
+        operation=_CREATE_OPERATION, target_id=idempotency_key,
+        body={**payload.model_dump(mode="json", exclude_unset=True, exclude={"home_currency_code"}),
+              "actor_account_id": actor_account_id}, expected_row_version=None,
+    )
+    if (
+        row.status != IDEMPOTENCY_STATUS_SUCCEEDED or row.request_fingerprint != legacy_fingerprint
+        or row.operation != _CREATE_OPERATION or row.target_type != _DEBT_TARGET_TYPE
+        or row.target_id != idempotency_key or row.resource_type != _DEBT_TARGET_TYPE
+        or not row.resource_id
+    ):
+        return None
+    result = get_debt_response(db, tenant_id=tenant_id, public_id=row.resource_id)
+    return result if result.home_currency_code == normalize_currency_code(payload.home_currency_code) else None
 
 
 def create_debt_idempotently(
@@ -115,6 +139,12 @@ def create_debt_idempotently(
     if outcome.kind is IdempotencyOutcomeKind.IN_PROGRESS:
         raise AppError("idempotency_key_in_progress", status_code=409)
     if outcome.kind is IdempotencyOutcomeKind.FINGERPRINT_MISMATCH:
+        legacy = _legacy_create_receipt(
+            db, row=outcome.row, tenant_id=tenant_id, actor_account_id=actor_account_id,
+            payload=payload, idempotency_key=idempotency_key,
+        )
+        if legacy is not None:
+            return legacy
         raise AppError("idempotency_key_reused", status_code=422)
 
     debt = create_debt(

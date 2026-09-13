@@ -17,9 +17,8 @@ claim.
                               transaction.
     - ``HIT``                 key already ``succeeded`` with a matching
                               fingerprint → caller skips the OCC claim and
-                              either re-serialises an ordinary resource's
-                              canonical current state or returns an aggregate
-                              command's stored typed success result.
+                              returns the command's stored accepted result
+                              when that command retains an original receipt.
     - ``IN_PROGRESS``         a concurrent same-key request holds the claim →
                               caller returns 409 ``idempotency_key_in_progress``.
     - ``FINGERPRINT_MISMATCH`` same key, different request → caller returns 422
@@ -31,9 +30,8 @@ claim.
 
 Only *committed-success* is ever recorded — validation / OCC-409 / permission /
 pre-commit-5xx leave no ``succeeded`` row, so a later legitimate retry still
-runs (§4.9). This is an outbox mutation-dedupe table, NOT a Stripe-style generic
-response cache: errors are never cached, and typed success payload storage is
-reserved for aggregates that cannot be reconstructed from one resource.
+runs (§4.9). Errors are never cached. The command owner determines its accepted
+result; reading the latest resource does not reconstruct a historical receipt.
 """
 
 from __future__ import annotations

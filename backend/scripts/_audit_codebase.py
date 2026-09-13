@@ -1,4 +1,4 @@
-"""Read-only codebase audit. Walks app/, scripts/, tests/ and reports symptoms
+"""Read-only Backend Python audit. Walks app/, scripts/, tests/ and reports symptoms
 across 7 dimensions (A-G). Writes nothing to the codebase."""
 
 from __future__ import annotations
@@ -725,10 +725,24 @@ def _collect_exception_handler_debt(
     else:
         t = ast.unparse(node.type)
         is_broad_or_bare = t in {"Exception", "BaseException"}
-        if is_broad_or_bare and node.lineno not in ble001_lines:
+        if is_broad_or_bare and node.lineno not in ble001_lines and not _is_rollback_reraise(node):
             broad.append((p, node.lineno, t))
     if _is_swallowed_broad_handler(node, is_broad_or_bare, ble001_lines):
         swallow.append((p, node.lineno))
+
+
+def _is_rollback_reraise(node: ast.ExceptHandler) -> bool:
+    """A failed transaction cleans up and propagates the original error unchanged."""
+    if len(node.body) != 2:
+        return False
+    cleanup, propagation = node.body
+    if not isinstance(propagation, ast.Raise) or propagation.exc is not None or propagation.cause is not None:
+        return False
+    if not isinstance(cleanup, ast.Expr) or not isinstance(cleanup.value, ast.Call):
+        return False
+    call = cleanup.value
+    return (isinstance(call.func, ast.Attribute) and isinstance(call.func.value, ast.Name)
+        and call.func.attr == "rollback" and not call.args and not call.keywords)
 
 
 def _is_swallowed_broad_handler(
@@ -1114,9 +1128,18 @@ def audit_test_coverage_by_module() -> DebtCounts:
     reference_sources: list[tuple[pathlib.Path, str]] = []
     for p in (*walk(TESTS), *walk(APP)):
         with contextlib.suppress(Exception):
-            reference_sources.append(
-                (p, p.read_text(encoding="utf-8", errors="ignore"))
+            body = p.read_text(encoding="utf-8", errors="ignore")
+            reference_sources.append((p, body))
+            # Grouped/aliased imports reference child modules without spelling
+            # their full names in source (for example router registration).
+            imported_modules = (
+                f"{node.module}.{alias.name}"
+                for node in ast.walk(ast.parse(body))
+                if isinstance(node, ast.ImportFrom) and node.module and node.level == 0
+                for alias in node.names
+                if alias.name != "*"
             )
+            reference_sources.append((p, "\n".join(imported_modules)))
 
     unreferenced = sorted(
         mod
@@ -1145,7 +1168,7 @@ AUDITS = tuple(
 
 def main() -> int:
     print("=" * 78)
-    print("CODEBASE AUDIT — read-only")
+    print("BACKEND PYTHON AUDIT — read-only (not whole repository)")
     print("=" * 78)
     counts: DebtCounts = {}
     for audit in AUDITS:

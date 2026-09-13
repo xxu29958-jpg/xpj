@@ -22,6 +22,28 @@ class RecurringEditorRestorationTest {
     val composeRule = createComposeRule()
 
     @Test
+    fun recordedJpyAndRawInputSurviveRestorationUnderAnotherDefault() {
+        val restorationTester = StateRestorationTester(composeRule)
+        var displayCurrency = CurrencyCode.CNY
+        lateinit var openAndEdit: () -> Unit
+        restorationTester.setContent {
+            val host = rememberRecurringEditorHostState(editorEpoch = 7L, runtimeId = "runtime-currency")
+            openAndEdit = {
+                host.openEdit(item().copy(homeCurrencyCode = "JPY", baselineAmountCents = 1200), displayCurrency)
+                checkNotNull(host.editor).session.amountText = "1300"
+            }
+            val session = host.editor?.session
+            BasicText(listOf(session?.homeCurrencyCode, session?.editing?.homeCurrencyCode,
+                session?.editing?.rowVersion, session?.amountText).joinToString("|"), Modifier.testTag(EDITOR_STATE_TAG))
+        }
+        composeRule.runOnIdle(openAndEdit)
+        composeRule.onNodeWithTag(EDITOR_STATE_TAG).assertTextEquals("JPY|JPY|7|1300")
+        displayCurrency = CurrencyCode.USD
+        restorationTester.emulateSavedInstanceStateRestore()
+        composeRule.onNodeWithTag(EDITOR_STATE_TAG).assertTextEquals("JPY|JPY|7|1300")
+    }
+
+    @Test
     fun targetDraftOccBaselineAndAttemptRestoreAsOneEditorSession() {
         val restorationTester = StateRestorationTester(composeRule)
         lateinit var openAndEdit: () -> Unit
@@ -163,6 +185,7 @@ class RecurringEditorRestorationTest {
         rowVersion = 7L,
         pausedAt = null,
         archivedAt = null,
+        homeCurrencyCode = "CNY",
     )
 
     private companion object {

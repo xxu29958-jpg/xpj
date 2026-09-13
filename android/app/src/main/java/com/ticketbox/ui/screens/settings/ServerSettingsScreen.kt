@@ -1,23 +1,21 @@
 package com.ticketbox.ui.screens.settings
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppStatusBanner
-import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.SettingsUiState
 
 @Immutable
@@ -29,10 +27,11 @@ data class ServerSettingsScreenState(
 @Immutable
 data class ServerSettingsScreenActions(
     val onBack: () -> Unit,
-    val onTestConnection: () -> Unit,
     val onRunDiagnostics: () -> Unit,
+    val onCancelConnectionWork: () -> Unit,
     val onRefreshServerSettings: () -> Unit,
     val onSync: () -> Unit,
+    val onOpenSyncStatus: () -> Unit,
 )
 
 @Composable
@@ -41,7 +40,9 @@ fun ServerSettingsScreen(
     actions: ServerSettingsScreenActions,
 ) {
     val settings = state.settings
-    var showDiagnosticsDetails by remember { mutableStateOf(false) }
+    var showDiagnosticsDetails by remember(settings.access?.binding) { mutableStateOf(false) }
+    LaunchedEffect(settings.access?.binding) { actions.onRefreshServerSettings() }
+    DisposableEffect(Unit) { onDispose { actions.onCancelConnectionWork() } }
     val pageTitle = if (state.showAdvancedTools) {
         stringResource(R.string.settings_server_page_title_advanced)
     } else {
@@ -71,41 +72,32 @@ fun ServerSettingsScreen(
                 busy = settings.busy,
             ),
             actions = AccountStatusCardActions(
-                onCheckConnection = actions.onTestConnection,
-                onSync = {
-                    actions.onSync()
-                    actions.onRefreshServerSettings()
-                },
+                onCheckConnection = actions.onRunDiagnostics,
+                onSync = actions.onSync,
             ),
         )
-        if (state.showAdvancedTools) {
-            SettingsSection(title = stringResource(R.string.settings_server_section_internal_tools), icon = Icons.Filled.Settings) {
-                Text(
-                    text = stringResource(R.string.settings_server_internal_tools_hint),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-                    OutlinedButton(
-                        modifier = Modifier.weight(1f),
-                        enabled = !settings.busy,
-                        onClick = actions.onRunDiagnostics,
-                    ) {
-                        Text(stringResource(R.string.settings_server_button_run_diagnostics))
-                    }
-                    OutlinedButton(
-                        modifier = Modifier.weight(1f),
-                        enabled = !settings.busy,
-                        onClick = actions.onRefreshServerSettings,
-                    ) {
-                        Text(stringResource(R.string.settings_server_button_refresh_settings))
-                    }
+        SettingsSection(title = stringResource(R.string.settings_server_section_diagnostics), icon = Icons.Filled.Settings) {
+            Text(
+                text = stringResource(R.string.settings_server_diagnostics_hint),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            ConnectionDiagnosticsCard(
+                diagnostics = settings.diagnostics,
+                expanded = showDiagnosticsDetails,
+                showTiming = state.showAdvancedTools,
+                onToggleExpanded = { showDiagnosticsDetails = !showDiagnosticsDetails },
+            )
+            OutlinedButton(onClick = actions.onOpenSyncStatus) {
+                Text(stringResource(R.string.settings_server_open_pending_operations))
+            }
+            if (state.showAdvancedTools) {
+                OutlinedButton(
+                    enabled = !settings.busy,
+                    onClick = actions.onRefreshServerSettings,
+                ) {
+                    Text(stringResource(R.string.settings_server_button_refresh_settings))
                 }
-                AdvancedStatusCard(
-                    diagnostics = settings.diagnostics,
-                    expanded = showDiagnosticsDetails,
-                    onToggleExpanded = { showDiagnosticsDetails = !showDiagnosticsDetails },
-                )
             }
         }
     }

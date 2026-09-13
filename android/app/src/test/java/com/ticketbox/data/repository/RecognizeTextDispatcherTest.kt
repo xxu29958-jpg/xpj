@@ -33,6 +33,8 @@ class RecognizeTextDispatcherTest {
     private fun moshi(): Moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
 
     private fun recognizedExpenseDto(rowVersion: Long): ExpenseDto = ExpenseDto(
+        homeCurrency = "CNY",
+        originalCurrencyCode = "CNY",
         id = 42L,
         publicId = "test-public-id",
         amountCents = 3500L,

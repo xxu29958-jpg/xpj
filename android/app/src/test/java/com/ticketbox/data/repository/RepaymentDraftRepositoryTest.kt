@@ -107,10 +107,12 @@ class RepaymentDraftRepositoryTest {
             confirmResult = draftDto(publicId = "d1", status = RepaymentDraftStatuses.CONFIRMED)
         }
 
-        val confirmed = repository(handler).confirmDraft(
+        val repository = repository(handler)
+        val confirmed = repository.confirmDraft(
             draftPublicId = "d1",
             targetDebtPublicId = "debt-9",
             expectedRowVersion = 3L,
+            expectedBinding = assertNotNull(repository.captureDeferredLedgerBinding()),
         ).getOrThrow()
 
         val call = handler.confirmCalls.single()
@@ -125,8 +127,9 @@ class RepaymentDraftRepositoryTest {
     fun confirmDraftViewerShortCircuitsWithoutApiCall() = runTest {
         val handler = RepaymentDraftApiHandler()
 
-        val result = repository(handler, role = "viewer")
-            .confirmDraft("d1", targetDebtPublicId = "debt-9", expectedRowVersion = 1L)
+        val repository = repository(handler, role = "viewer")
+        val result = repository.confirmDraft("d1", targetDebtPublicId = "debt-9", expectedRowVersion = 1L,
+            expectedBinding = assertNotNull(repository.captureDeferredLedgerBinding()))
 
         assertTrue(result.isFailure)
         assertEquals("当前角色为只读，无法修改账本。", result.exceptionOrNull()?.message)
@@ -138,12 +141,15 @@ class RepaymentDraftRepositoryTest {
         val handler = RepaymentDraftApiHandler()
         val repository = repository(handler)
 
-        repository.confirmDraft("d1", targetDebtPublicId = "debt-9", expectedRowVersion = 1L).getOrThrow()
-        repository.confirmDraft("d1", targetDebtPublicId = "debt-9", expectedRowVersion = 2L).getOrThrow()
+        val binding = assertNotNull(repository.captureDeferredLedgerBinding())
+        repository.confirmDraft("d1", targetDebtPublicId = "debt-9", expectedRowVersion = 1L, expectedBinding = binding).getOrThrow()
+        repository.confirmDraft("d1", targetDebtPublicId = "debt-9", expectedRowVersion = 2L, expectedBinding = binding).getOrThrow()
 
         val keys = handler.confirmCalls.mapNotNull { it.idempotencyKey }
         assertEquals(2, keys.size)
         assertEquals(2, keys.toSet().size)
+        assertTrue(repository.confirmDraft("d1", "debt-9", 2L, binding.copy(sessionGeneration = "previous-session")).isFailure)
+        assertEquals(2, handler.confirmCalls.size)
     }
 
     @Test

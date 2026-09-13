@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -156,7 +157,7 @@ def _render_with_edge(tmp_path: Path, *, width: int, height: int, degraded: bool
     value = evaluate_page(
         edge,
         profile=profile,
-        url=page.as_uri(),
+        prepare_url=lambda _attempt: page.as_uri(),
         width=width,
         height=height,
         expression="document.body && document.body.getAttribute('data-layout-probe') || undefined",
@@ -327,7 +328,7 @@ def _render_behavior_probe(tmp_path: Path) -> dict[str, object]:
     value = evaluate_page(
         edge,
         profile=tmp_path / "edge-profile-behavior",
-        url=page.as_uri(),
+        prepare_url=lambda _attempt: page.as_uri(),
         width=820,
         height=660,
         expression="document.body && document.body.getAttribute('data-behavior-probe') || undefined",
@@ -464,9 +465,11 @@ def test_layout_probe_retries_a_fresh_edge_session_after_transport_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     profiles: list[Path] = []
+    urls: list[str] = []
 
-    def evaluate_once(_edge: str, *, profile: Path, **_kwargs: object) -> object:
+    def evaluate_once(_edge: str, *, profile: Path, url: str, **_kwargs: object) -> object:
         profiles.append(profile)
+        urls.append(url)
         if len(profiles) == 1:
             raise TimeoutError("synthetic DevTools stall")
         return {"ready": True}
@@ -476,7 +479,7 @@ def test_layout_probe_retries_a_fresh_edge_session_after_transport_timeout(
     result = evaluate_page(
         "edge.exe",
         profile=tmp_path / "profile",
-        url="file:///manager.html",
+        prepare_url=lambda attempt: f"file:///manager-{attempt}.html",
         width=390,
         height=844,
         expression="window.__layoutProbe",
@@ -487,6 +490,7 @@ def test_layout_probe_retries_a_fresh_edge_session_after_transport_timeout(
         tmp_path / "profile" / "attempt-1",
         tmp_path / "profile" / "attempt-2",
     ]
+    assert urls == ["file:///manager-1.html", "file:///manager-2.html"]
 
 
 def test_layout_probe_does_not_retry_a_semantic_assertion(
@@ -505,13 +509,37 @@ def test_layout_probe_does_not_retry_a_semantic_assertion(
         evaluate_page(
             "edge.exe",
             profile=tmp_path / "profile",
-            url="file:///manager.html",
+            prepare_url=lambda _attempt: "file:///manager.html",
             width=390,
             height=844,
             expression="window.__layoutProbe",
         )
 
     assert profiles == [tmp_path / "profile" / "attempt-1"]
+
+
+def test_layout_probe_does_not_retry_or_relabel_url_preparation_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    attempts: list[int] = []
+    preparation_error = OSError("bootstrap material could not be prepared")
+
+    def prepare_url(attempt: int) -> str:
+        attempts.append(attempt)
+        raise preparation_error
+
+    def evaluate_once(*_args: object, **_kwargs: object) -> object:
+        pytest.fail("a failed URL preparation must not launch Edge")
+
+    monkeypatch.setattr(_edge_cdp, "_evaluate_page_once", evaluate_once)
+    with pytest.raises(OSError) as raised:
+        evaluate_page(
+            "edge.exe", profile=tmp_path / "profile", prepare_url=prepare_url,
+            width=390, height=844, expression="window.__layoutProbe",
+        )
+    assert raised.value is preparation_error
+    assert attempts == [1]
 
 
 def test_edge_teardown_reaps_process_when_websocket_cleanup_fails(monkeypatch) -> None:
@@ -586,8 +614,9 @@ def test_production_edge_process_tracks_the_visible_window_lifetime(tmp_path: Pa
     assert discover_edge_executable() is not None
     page = tmp_path / "close-window.html"
     page.write_text(
-        "<!doctype html><title>Ticketbox close test</title>"
-        "<script>setTimeout(() => window.close(), 2000)</script>",
+        "<!doctype html><title>Ticketbox lifetime loaded</title>"
+        "<script>setTimeout(() => {document.title = 'Ticketbox lifetime closing';"
+        "window.close(); document.title = 'Ticketbox lifetime returned';}, 2000)</script>",
         encoding="utf-8",
     )
 
@@ -597,18 +626,38 @@ def test_production_edge_process_tracks_the_visible_window_lifetime(tmp_path: Pa
     )
 
     assert window is not None
-    assert window.is_open()
-    time.sleep(0.75)
-    assert window.is_open(), "Edge launcher exited before the visible app window"
-    window.process.wait(timeout=10)
-    assert window.is_open() is False
+    observations: list[dict[str, object]] = []
+    try:
+        assert window.is_open()
+        time.sleep(0.75)
+        assert window.is_open(), "Edge launcher exited before the visible app window"
+        # File/renderer startup is separate from the fixture's actual window-close lifecycle.
+        deadline = time.monotonic() + 30
+        document_seen = False
+        while time.monotonic() < deadline:
+            snapshot = _edge_cdp.app_window_snapshot(window.process.pid, "Ticketbox lifetime")
+            snapshot["processOpen"] = window.is_open()
+            if snapshot["stages"] and not document_seen:
+                document_seen = True
+                deadline = time.monotonic() + 10
+            if not observations or observations[-1] != snapshot:
+                observations.append(snapshot)
+            if not window.is_open():
+                break
+            time.sleep(0.05)
+        assert window.is_open() is False, observations
+        assert any(row["stages"] for row in observations), observations
+        assert observations[-1]["ownedVisible"] == 0, observations
+        assert observations[-1]["otherProbeVisible"] == 0, observations
+    finally:
+        window.close()
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows Edge app-window gate")
 def test_host_can_close_real_edge_when_the_page_never_acknowledges(tmp_path: Path) -> None:
     assert discover_edge_executable() is not None
     page = tmp_path / "stalled-window.html"
-    page.write_text("<!doctype html><title>Ticketbox stalled test</title>", encoding="utf-8")
+    page.write_text("<!doctype html><title>Ticketbox lifetime control stalled</title>", encoding="utf-8")
 
     window = desktop_shell.open_app_window(
         page.as_uri(),
@@ -616,9 +665,23 @@ def test_host_can_close_real_edge_when_the_page_never_acknowledges(tmp_path: Pat
     )
 
     assert window is not None
-    assert window.is_open()
-    assert window.close(timeout=5) is True
-    assert window.is_open() is False
+    try:
+        deadline = time.monotonic() + 10
+        snapshot: dict[str, object] = {}
+        while time.monotonic() < deadline:
+            snapshot = _edge_cdp.app_window_snapshot(window.process.pid, "Ticketbox lifetime control")
+            if snapshot["stages"] == ["stalled"]:
+                break
+            time.sleep(0.05)
+        assert snapshot["stages"] == ["stalled"], snapshot
+        assert snapshot["ownedVisible"] > 0, snapshot
+        assert snapshot["otherProbeVisible"] == 0, snapshot
+        assert window.is_open()
+        assert window.close(timeout=5) is True
+        assert window.is_open() is False
+        assert _edge_cdp.app_window_snapshot(window.process.pid, "Ticketbox lifetime control")["stages"] == []
+    finally:
+        window.close()
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows Edge app-window gate")
@@ -666,7 +729,7 @@ pytest_plugins = ["tests._real_backend"]
 _SERVED_WEB_PROBE = """
 (() => {
   const atWeb = location.pathname === "/web" || location.pathname === "/web/pending";
-  if (!atWeb || !document.querySelector("#main-content")) return undefined;
+  if (!atWeb || document.readyState !== "complete" || !document.querySelector("#main-content")) return undefined;
   const interactive = [...document.querySelectorAll("button, a, input, select, textarea")];
   const visible = interactive.filter((el) => {
     const style = getComputedStyle(el);
@@ -675,6 +738,8 @@ _SERVED_WEB_PROBE = """
   });
   return JSON.stringify({
     overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+    viewportWidth: document.documentElement.clientWidth,
+    scrollWidth: document.documentElement.scrollWidth,
     ledgerChip: Boolean(document.querySelector(".ledger-role-chip")),
     hasOwnerLedger: document.body.innerText.includes("我的小票夹"),
     unnamedControls: visible.filter((el) =>
@@ -686,13 +751,59 @@ _SERVED_WEB_PROBE = """
 """
 
 
+def _assert_served_web_layout(value: object) -> None:
+    assert isinstance(value, str)
+    probe = json.loads(value)
+    assert probe["overflow"] is False, (probe["viewportWidth"], probe["scrollWidth"])
+    assert probe["ledgerChip"] is True
+    assert probe["hasOwnerLedger"] is True
+    assert probe["unnamedControls"] == 0
+
+
+def _lose_first_completed_served_web_response(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    bootstrap_path: Path,
+    profile: Path,
+    record_property: Callable[[str, object], None],
+) -> None:
+    real_request = _edge_cdp._WebSocket.request
+    dropped = False
+
+    def request(page, method: str, params=None):
+        nonlocal dropped
+        result = real_request(page, method, params)
+        if dropped or method != "Runtime.evaluate" or params is None:
+            return result
+        if params.get("expression") != _SERVED_WEB_PROBE or "exceptionDetails" in result:
+            return result
+        remote = result.get("result", {})
+        if not isinstance(remote, dict) or remote.get("type") != "string":
+            return result
+        _assert_served_web_layout(remote.get("value"))
+        assert not (profile / "attempt-2").exists(), "fault prerequisite: first profile must finish the real DOM"
+        assert not bootstrap_path.exists(), "fault prerequisite: real bootstrap must already be consumed"
+        dropped = True
+        record_property("cdp_response_loss_after_consumed_bootstrap_dom", "attempt-1")
+        raise TimeoutError("injected CDP response loss after completed served-Web DOM")
+
+    monkeypatch.setattr(_edge_cdp._WebSocket, "request", request)
+
+
 @pytest.mark.skipif(os.name != "nt", reason="Windows Edge consumer gate")
-@pytest.mark.parametrize(("width", "height"), [(1180, 760), (820, 660)])
+@pytest.mark.parametrize(("width", "height", "lose_first_response"), [
+    pytest.param(1180, 760, False, id="1180-760"),
+    pytest.param(820, 660, False, id="820-660"),
+    pytest.param(1180, 760, True, id="1180x760-cdp-response-loss"),
+])
 def test_served_web_layout_through_manager_bff(
     tmp_path: Path,
     real_backend: RealBackend,
     width: int,
     height: int,
+    lose_first_response: bool,
+    monkeypatch: pytest.MonkeyPatch,
+    record_property: Callable[[str, object], None],
 ) -> None:
     """The BFF-served /web stays usable at both supported app-window sizes."""
     edge = discover_edge_executable()
@@ -709,25 +820,45 @@ def test_served_web_layout_through_manager_bff(
             origin=manager_origin,
         )
         assert status == 200, projection
-        bootstrap_path = tmp_path / f"served-web-{width}x{height}" / "bootstrap.html"
-        bootstrap_url = manager.prepare_web_bootstrap(bootstrap_path)
-        value = evaluate_page(
-            edge,
-            profile=tmp_path / f"edge-served-web-{width}x{height}",
-            url=bootstrap_url,
-            width=width,
-            height=height,
-            expression=_SERVED_WEB_PROBE,
-        )
+        bootstrap_dir = tmp_path / f"served-web-{width}x{height}"
+        bootstrap_paths: list[Path] = []
 
-    assert not bootstrap_path.exists()
-    assert isinstance(value, str)
-    probe = json.loads(value)
-    assert probe["overflow"] is False
-    assert probe["ledgerChip"] is True
-    assert probe["hasOwnerLedger"] is True
-    assert probe["unnamedControls"] == 0
+        def prepare_url(attempt: int) -> str:
+            path = bootstrap_dir / f"bootstrap-{attempt}.html"
+            bootstrap_paths.append(path)
+            return manager.prepare_web_bootstrap(path)
+
+        profile = tmp_path / f"edge-served-web-{width}x{height}"
+        if lose_first_response:
+            _lose_first_completed_served_web_response(
+                monkeypatch, bootstrap_path=bootstrap_dir / "bootstrap-1.html",
+                profile=profile, record_property=record_property,
+            )
+        try:
+            value = evaluate_page(
+                edge,
+                profile=profile,
+                prepare_url=prepare_url,
+                width=width,
+                height=height,
+                expression=_SERVED_WEB_PROBE,
+                document_url_prefix=manager.expected_origin + "/web",
+            )
+        except AssertionError as exc:
+            try:
+                remaining = str(sum(path.exists() for path in bootstrap_paths))
+            except OSError:
+                remaining = "unavailable"
+            exc.add_note(f"bootstrap_files_created={len(bootstrap_paths)}; remaining={remaining}")
+            raise
+
+    assert bootstrap_paths
+    assert all(not path.exists() for path in bootstrap_paths)
+    _assert_served_web_layout(value)
     assert stores.sessions
+    if lose_first_response:
+        assert (profile / "attempt-2").is_dir()
+        assert bootstrap_paths == [bootstrap_dir / "bootstrap-1.html", bootstrap_dir / "bootstrap-2.html"]
 
 
 # ── Manager product card: hidden-authority + live ledger switching (218-E) ──
@@ -812,7 +943,7 @@ def test_product_card_visibility_matrix_is_hidden_authoritative(
     value = evaluate_page(
         edge,
         profile=tmp_path / f"edge-product-visibility-{width}x{height}",
-        url=page.as_uri(),
+        prepare_url=lambda _attempt: page.as_uri(),
         width=width,
         height=height,
         expression="document.body && document.body.getAttribute('data-visibility-probe') || undefined",
@@ -969,7 +1100,7 @@ def test_prompt_product_failures_retire_prior_dom_without_erasing_public_status(
     value = evaluate_page(
         edge,
         profile=tmp_path / "edge-product-prompt-degradation",
-        url=page.as_uri(),
+        prepare_url=lambda _attempt: page.as_uri(),
         width=820,
         height=660,
         expression=(
@@ -1006,7 +1137,7 @@ def test_prompt_product_failures_retire_prior_dom_without_erasing_public_status(
     assert probe["sessionSchemaRejected"] == degraded
     assert probe["sessionRoleSchemaRejected"] == degraded
     assert probe["unpaired"] == {
-        "productState": "输入安装器提供的“绑定此电脑”码，连接桌面账本。",
+        "productState": "获取自己的设备绑定码，连接这台电脑上的桌面账本。",
         "productHomeHidden": True,
         "productPairHidden": False,
         "productManageHidden": True,
@@ -1069,7 +1200,7 @@ def test_ledger_select_keeps_dirty_selection_until_successful_switch(tmp_path: P
     value = evaluate_page(
         edge,
         profile=tmp_path / "edge-product-dirty-selection",
-        url=page.as_uri(),
+        prepare_url=lambda _attempt: page.as_uri(),
         width=820,
         height=660,
         expression="document.body && document.body.getAttribute('data-dirty-probe') || undefined",
@@ -1129,7 +1260,7 @@ def test_ledger_list_refreshes_on_cadence_without_clobbering_dirty_selection(tmp
     value = evaluate_page(
         edge,
         profile=tmp_path / "edge-product-ledger-cadence",
-        url=page.as_uri(),
+        prepare_url=lambda _attempt: page.as_uri(),
         width=820,
         height=660,
         expression="document.body && document.body.getAttribute('data-cadence-probe') || undefined",
@@ -1201,7 +1332,7 @@ def test_product_card_role_follows_live_membership_and_handles_vanished_ledger(t
     value = evaluate_page(
         edge,
         profile=tmp_path / "edge-product-live-role",
-        url=page.as_uri(),
+        prepare_url=lambda _attempt: page.as_uri(),
         width=820,
         height=660,
         expression="document.body && document.body.getAttribute('data-live-role-probe') || undefined",

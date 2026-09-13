@@ -59,6 +59,8 @@ def test_confirmed_tag_filter_shares_list_total_calendar_and_source_cohort(
         assert confirmed_by_day(db, "owner", "2026-05", tag="家庭") == [
             {
                 "date": "2026-05-04",
+                "home_currency_code": "CNY",
+                "missing_rates": (),
                 "amount_cents": 1200,
                 "amount_yuan": 12.0,
                 "count": 1,
@@ -159,7 +161,7 @@ def test_web_correction_rejects_unavailable_currency_without_mutation(
     )
 
     assert response.status_code == 409, response.text
-    assert "汇率还没同步完成" in response.text
+    assert "这笔账单缺少换算汇率，请补齐后再继续。" in response.text
     after = _expense_payload(web_client, expense_id, identity=identity)
     assert after == before
 

@@ -545,6 +545,18 @@
             ],
             "title": "Result Summary"
           },
+          "source_expense_id": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Expense Id"
+          },
           "started_at": {
             "anyOf": [
               {
@@ -784,6 +796,16 @@
             "title": "Public Id",
             "type": "string"
           },
+          "received_bill": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BillSplitReceivedBillResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "rejected_at": {
             "anyOf": [
               {
@@ -840,6 +862,11 @@
             "title": "Amount Cents",
             "type": "integer"
           },
+          "expected_row_version": {
+            "minimum": 1.0,
+            "title": "Expected Row Version",
+            "type": "integer"
+          },
           "receiver_account_id": {
             "title": "Receiver Account Id",
             "type": "integer"
@@ -847,9 +874,33 @@
         },
         "required": [
           "receiver_account_id",
-          "amount_cents"
+          "amount_cents",
+          "expected_row_version"
         ],
         "title": "BillSplitInviteRequest",
+        "type": "object"
+      },
+      "BillSplitReceivedBillResponse": {
+        "properties": {
+          "expense_id": {
+            "title": "Expense Id",
+            "type": "integer"
+          },
+          "ledger_id": {
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "ledger_name": {
+            "title": "Ledger Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expense_id",
+          "ledger_id",
+          "ledger_name"
+        ],
+        "title": "BillSplitReceivedBillResponse",
         "type": "object"
       },
       "BillSplitSentListResponse": {
@@ -1183,34 +1234,6 @@
         "title": "Body_owner_pairing_post_owner_pairing_post",
         "type": "object"
       },
-      "Body_owner_recycle_bin_restore_owner_recycle_bin_restore_post": {
-        "properties": {
-          "expected_row_version": {
-            "default": "",
-            "title": "Expected Row Version",
-            "type": "string"
-          },
-          "kind": {
-            "title": "Kind",
-            "type": "string"
-          },
-          "ledger_id": {
-            "default": "",
-            "title": "Ledger Id",
-            "type": "string"
-          },
-          "resource_id": {
-            "title": "Resource Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "kind",
-          "resource_id"
-        ],
-        "title": "Body_owner_recycle_bin_restore_owner_recycle_bin_restore_post",
-        "type": "object"
-      },
       "Body_owner_rename_device_owner_devices__public_id__rename_post": {
         "properties": {
           "device_name": {
@@ -1332,6 +1355,17 @@
       },
       "Body_page_budget_advise_run_web_budget_advise_post": {
         "properties": {
+          "home_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Currency Code"
+          },
           "ledger_id": {
             "anyOf": [
               {
@@ -1380,6 +1414,10 @@
             "title": "Expected Row Version",
             "type": "string"
           },
+          "intent_month": {
+            "title": "Intent Month",
+            "type": "string"
+          },
           "ledger_id": {
             "anyOf": [
               {
@@ -1392,6 +1430,9 @@
             "title": "Ledger Id"
           }
         },
+        "required": [
+          "intent_month"
+        ],
         "title": "Body_post_archive_web_income_plans__public_id__archive_post",
         "type": "object"
       },
@@ -1405,6 +1446,16 @@
           "frequency": {
             "default": "one_time",
             "title": "Frequency",
+            "type": "string"
+          },
+          "home_currency_code": {
+            "default": "",
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
             "type": "string"
           },
           "income_month": {
@@ -1440,6 +1491,11 @@
             ],
             "title": "Income Month Year"
           },
+          "intent_month": {
+            "default": "",
+            "title": "Intent Month",
+            "type": "string"
+          },
           "label": {
             "default": "",
             "title": "Label",
@@ -1460,6 +1516,11 @@
             "default": "",
             "title": "Pay Day",
             "type": "string"
+          },
+          "review_new": {
+            "default": false,
+            "title": "Review New",
+            "type": "boolean"
           },
           "source_type": {
             "default": "salary",
@@ -1505,6 +1566,17 @@
             "title": "Expected Row Version",
             "type": "string"
           },
+          "intent_month": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intent Month"
+          },
           "kind": {
             "default": "",
             "title": "Kind",
@@ -1537,6 +1609,10 @@
             "title": "Expected Row Version",
             "type": "string"
           },
+          "intent_month": {
+            "title": "Intent Month",
+            "type": "string"
+          },
           "ledger_id": {
             "anyOf": [
               {
@@ -1549,7 +1625,244 @@
             "title": "Ledger Id"
           }
         },
+        "required": [
+          "intent_month"
+        ],
         "title": "Body_post_restore_web_income_plans__public_id__restore_post",
+        "type": "object"
+      },
+      "Body_save_correction_rate_web_expenses__expense_id__correction_rate_post": {
+        "properties": {
+          "amount_yuan": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Yuan"
+          },
+          "category": {
+            "default": "",
+            "title": "Category",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "expense_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expense Time"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "item_amount_yuan": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Item Amount Yuan",
+            "type": "array"
+          },
+          "item_category": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Item Category",
+            "type": "array"
+          },
+          "item_kind": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Item Kind",
+            "type": "array"
+          },
+          "item_name": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Item Name",
+            "type": "array"
+          },
+          "item_public_id": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Item Public Id",
+            "type": "array"
+          },
+          "item_quantity": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Item Quantity",
+            "type": "array"
+          },
+          "item_unit_price_yuan": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Item Unit Price Yuan",
+            "type": "array"
+          },
+          "merchant": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          },
+          "original_currency": {
+            "default": "",
+            "title": "Original Currency",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          },
+          "regret_score": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Regret Score"
+          },
+          "return_filter": {
+            "default": "",
+            "title": "Return Filter",
+            "type": "string"
+          },
+          "return_granularity": {
+            "default": "",
+            "title": "Return Granularity",
+            "type": "string"
+          },
+          "return_home_currency_code": {
+            "default": "",
+            "title": "Return Home Currency Code",
+            "type": "string"
+          },
+          "return_merchant_category": {
+            "default": "",
+            "title": "Return Merchant Category",
+            "type": "string"
+          },
+          "return_month": {
+            "default": "",
+            "title": "Return Month",
+            "type": "string"
+          },
+          "return_page": {
+            "default": "",
+            "title": "Return Page",
+            "type": "string"
+          },
+          "return_query": {
+            "default": "",
+            "title": "Return Query",
+            "type": "string"
+          },
+          "return_ranking_metric": {
+            "default": "",
+            "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_tag": {
+            "default": "",
+            "title": "Return Tag",
+            "type": "string"
+          },
+          "return_to": {
+            "default": "",
+            "title": "Return To",
+            "type": "string"
+          },
+          "split_amount_yuan": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Split Amount Yuan",
+            "type": "array"
+          },
+          "split_member_id": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Split Member Id",
+            "type": "array"
+          },
+          "split_note": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Split Note",
+            "type": "array"
+          },
+          "split_public_id": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Split Public Id",
+            "type": "array"
+          },
+          "tags": {
+            "default": "",
+            "title": "Tags",
+            "type": "string"
+          },
+          "value_score": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Score"
+          }
+        },
+        "title": "Body_save_correction_rate_web_expenses__expense_id__correction_rate_post",
         "type": "object"
       },
       "Body_web_budgets_save_web_budgets_save_post": {
@@ -1591,13 +1904,24 @@
             "title": "Excluded Category",
             "type": "array"
           },
+          "expected_row_version": {
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "home_currency_code": {
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "title": "Idempotency Key",
+            "type": "string"
+          },
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
             "type": "string"
           },
           "month": {
-            "default": "",
             "title": "Month",
             "type": "string"
           },
@@ -1605,6 +1929,11 @@
             "default": "",
             "title": "Non Monthly Amount Yuan",
             "type": "string"
+          },
+          "review_latest": {
+            "default": false,
+            "title": "Review Latest",
+            "type": "boolean"
           },
           "rollover_amount_yuan": {
             "default": "",
@@ -1617,6 +1946,12 @@
             "type": "string"
           }
         },
+        "required": [
+          "month",
+          "home_currency_code",
+          "expected_row_version",
+          "idempotency_key"
+        ],
         "title": "Body_web_budgets_save_web_budgets_save_post",
         "type": "object"
       },
@@ -1784,6 +2119,21 @@
             "title": "Return Filter",
             "type": "string"
           },
+          "return_granularity": {
+            "default": "",
+            "title": "Return Granularity",
+            "type": "string"
+          },
+          "return_home_currency_code": {
+            "default": "",
+            "title": "Return Home Currency Code",
+            "type": "string"
+          },
+          "return_merchant_category": {
+            "default": "",
+            "title": "Return Merchant Category",
+            "type": "string"
+          },
           "return_month": {
             "default": "",
             "title": "Return Month",
@@ -1797,6 +2147,11 @@
           "return_query": {
             "default": "",
             "title": "Return Query",
+            "type": "string"
+          },
+          "return_ranking_metric": {
+            "default": "",
+            "title": "Return Ranking Metric",
             "type": "string"
           },
           "return_tag": {
@@ -1857,6 +2212,16 @@
             },
             "title": "Expense Snapshot",
             "type": "array"
+          },
+          "filter": {
+            "default": "",
+            "title": "Filter",
+            "type": "string"
+          },
+          "home_currency_code": {
+            "default": "",
+            "title": "Home Currency Code",
+            "type": "string"
           },
           "idempotency_key": {
             "default": "",
@@ -2042,6 +2407,21 @@
             "title": "Return Filter",
             "type": "string"
           },
+          "return_granularity": {
+            "default": "",
+            "title": "Return Granularity",
+            "type": "string"
+          },
+          "return_home_currency_code": {
+            "default": "",
+            "title": "Return Home Currency Code",
+            "type": "string"
+          },
+          "return_merchant_category": {
+            "default": "",
+            "title": "Return Merchant Category",
+            "type": "string"
+          },
           "return_month": {
             "default": "",
             "title": "Return Month",
@@ -2055,6 +2435,11 @@
           "return_query": {
             "default": "",
             "title": "Return Query",
+            "type": "string"
+          },
+          "return_ranking_metric": {
+            "default": "",
+            "title": "Return Ranking Metric",
             "type": "string"
           },
           "return_tag": {
@@ -2156,6 +2541,11 @@
             "title": "Event Time",
             "type": "string"
           },
+          "home_currency_code": {
+            "default": "",
+            "title": "Home Currency Code",
+            "type": "string"
+          },
           "idempotency_key": {
             "default": "",
             "title": "Idempotency Key",
@@ -2174,6 +2564,11 @@
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
+            "type": "string"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
             "type": "string"
           }
         },
@@ -2222,6 +2617,21 @@
             "title": "Return Filter",
             "type": "string"
           },
+          "return_granularity": {
+            "default": "",
+            "title": "Return Granularity",
+            "type": "string"
+          },
+          "return_home_currency_code": {
+            "default": "",
+            "title": "Return Home Currency Code",
+            "type": "string"
+          },
+          "return_merchant_category": {
+            "default": "",
+            "title": "Return Merchant Category",
+            "type": "string"
+          },
           "return_month": {
             "default": "",
             "title": "Return Month",
@@ -2235,6 +2645,11 @@
           "return_query": {
             "default": "",
             "title": "Return Query",
+            "type": "string"
+          },
+          "return_ranking_metric": {
+            "default": "",
+            "title": "Return Ranking Metric",
             "type": "string"
           },
           "return_tag": {
@@ -2736,6 +3151,57 @@
         "title": "Body_web_forgive_member_debt_web_debts__public_id__forgive_post",
         "type": "object"
       },
+      "Body_web_goal_save_web_goals__public_id__edit_post": {
+        "properties": {
+          "category": {
+            "default": "",
+            "title": "Category",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "home_currency_code": {
+            "default": "",
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "month": {
+            "default": "",
+            "title": "Month",
+            "type": "string"
+          },
+          "name": {
+            "default": "",
+            "title": "Name",
+            "type": "string"
+          },
+          "review_latest": {
+            "default": false,
+            "title": "Review Latest",
+            "type": "boolean"
+          },
+          "target_amount_yuan": {
+            "default": "",
+            "title": "Target Amount Yuan",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_goal_save_web_goals__public_id__edit_post",
+        "type": "object"
+      },
       "Body_web_goals_archive_web_goals__public_id__archive_post": {
         "properties": {
           "ledger_id": {
@@ -2757,6 +3223,16 @@
           "category": {
             "default": "",
             "title": "Category",
+            "type": "string"
+          },
+          "home_currency_code": {
+            "default": "",
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
             "type": "string"
           },
           "ledger_id": {
@@ -2834,6 +3310,67 @@
         "title": "Body_web_import_preview_web_import_preview_post",
         "type": "object"
       },
+      "Body_web_income_save_web_income_plans__public_id__edit_post": {
+        "properties": {
+          "amount_yuan": {
+            "default": "",
+            "title": "Amount Yuan",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "frequency": {
+            "default": "",
+            "title": "Frequency",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "income_month": {
+            "default": "",
+            "title": "Income Month",
+            "type": "string"
+          },
+          "intent_month": {
+            "default": "",
+            "title": "Intent Month",
+            "type": "string"
+          },
+          "label": {
+            "default": "",
+            "title": "Label",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "pay_day": {
+            "default": "",
+            "title": "Pay Day",
+            "type": "string"
+          },
+          "review_latest": {
+            "default": false,
+            "title": "Review Latest",
+            "type": "boolean"
+          },
+          "source_type": {
+            "default": "",
+            "title": "Source Type",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_income_save_web_income_plans__public_id__edit_post",
+        "type": "object"
+      },
       "Body_web_items_acknowledge_mismatch_web_expenses__expense_id__items_acknowledge_mismatch_post": {
         "properties": {
           "expected_row_version": {
@@ -2856,6 +3393,21 @@
             "title": "Return Filter",
             "type": "string"
           },
+          "return_granularity": {
+            "default": "",
+            "title": "Return Granularity",
+            "type": "string"
+          },
+          "return_home_currency_code": {
+            "default": "",
+            "title": "Return Home Currency Code",
+            "type": "string"
+          },
+          "return_merchant_category": {
+            "default": "",
+            "title": "Return Merchant Category",
+            "type": "string"
+          },
           "return_month": {
             "default": "",
             "title": "Return Month",
@@ -2869,6 +3421,11 @@
           "return_query": {
             "default": "",
             "title": "Return Query",
+            "type": "string"
+          },
+          "return_ranking_metric": {
+            "default": "",
+            "title": "Return Ranking Metric",
             "type": "string"
           },
           "return_tag": {
@@ -2950,6 +3507,21 @@
             "title": "Return Filter",
             "type": "string"
           },
+          "return_granularity": {
+            "default": "",
+            "title": "Return Granularity",
+            "type": "string"
+          },
+          "return_home_currency_code": {
+            "default": "",
+            "title": "Return Home Currency Code",
+            "type": "string"
+          },
+          "return_merchant_category": {
+            "default": "",
+            "title": "Return Merchant Category",
+            "type": "string"
+          },
           "return_month": {
             "default": "",
             "title": "Return Month",
@@ -2963,6 +3535,11 @@
           "return_query": {
             "default": "",
             "title": "Return Query",
+            "type": "string"
+          },
+          "return_ranking_metric": {
+            "default": "",
+            "title": "Return Ranking Metric",
             "type": "string"
           },
           "return_tag": {
@@ -3258,9 +3835,19 @@
             "title": "Csrf Token",
             "type": "string"
           },
+          "debt_public_id": {
+            "default": "",
+            "title": "Debt Public Id",
+            "type": "string"
+          },
           "expected_row_version": {
             "default": "",
             "title": "Expected Row Version",
+            "type": "string"
+          },
+          "home_currency_code": {
+            "default": "",
+            "title": "Home Currency Code",
             "type": "string"
           },
           "idempotency_key": {
@@ -3273,9 +3860,19 @@
             "title": "Ledger Id",
             "type": "string"
           },
+          "origin_binding": {
+            "default": "",
+            "title": "Origin Binding",
+            "type": "string"
+          },
           "paid_at": {
             "default": "",
             "title": "Paid At",
+            "type": "string"
+          },
+          "paid_at_timezone": {
+            "default": "",
+            "title": "Paid At Timezone",
             "type": "string"
           }
         },
@@ -3297,6 +3894,11 @@
         "properties": {
           "amount_cents": {
             "title": "Amount Cents",
+            "type": "string"
+          },
+          "home_currency_code": {
+            "default": "",
+            "title": "Home Currency Code",
             "type": "string"
           },
           "ledger_id": {
@@ -3328,6 +3930,11 @@
             "title": "Baseline Amount Yuan",
             "type": "string"
           },
+          "home_currency_code": {
+            "default": "",
+            "title": "Home Currency Code",
+            "type": "string"
+          },
           "idempotency_key": {
             "default": "",
             "title": "Idempotency Key",
@@ -3346,6 +3953,11 @@
           "next_expected_date": {
             "default": "",
             "title": "Next Expected Date",
+            "type": "string"
+          },
+          "review_latest": {
+            "default": "",
+            "title": "Review Latest",
             "type": "string"
           }
         },
@@ -3364,6 +3976,11 @@
             "title": "Expected Row Version",
             "type": "string"
           },
+          "home_currency_code": {
+            "default": "",
+            "title": "Home Currency Code",
+            "type": "string"
+          },
           "idempotency_key": {
             "default": "",
             "title": "Idempotency Key",
@@ -3382,6 +3999,11 @@
           "next_expected_date": {
             "default": "",
             "title": "Next Expected Date",
+            "type": "string"
+          },
+          "review_latest": {
+            "default": "",
+            "title": "Review Latest",
             "type": "string"
           }
         },
@@ -3479,6 +4101,21 @@
             "title": "Return Filter",
             "type": "string"
           },
+          "return_granularity": {
+            "default": "",
+            "title": "Return Granularity",
+            "type": "string"
+          },
+          "return_home_currency_code": {
+            "default": "",
+            "title": "Return Home Currency Code",
+            "type": "string"
+          },
+          "return_merchant_category": {
+            "default": "",
+            "title": "Return Merchant Category",
+            "type": "string"
+          },
           "return_month": {
             "default": "",
             "title": "Return Month",
@@ -3492,6 +4129,11 @@
           "return_query": {
             "default": "",
             "title": "Return Query",
+            "type": "string"
+          },
+          "return_ranking_metric": {
+            "default": "",
+            "title": "Return Ranking Metric",
             "type": "string"
           },
           "return_tag": {
@@ -3570,6 +4212,72 @@
         "title": "Body_web_review_bulk_web_review_bulk_post",
         "type": "object"
       },
+      "Body_web_rule_save_web_rules__rule_id__edit_post": {
+        "properties": {
+          "amount_max_yuan": {
+            "default": "",
+            "title": "Amount Max Yuan",
+            "type": "string"
+          },
+          "amount_min_yuan": {
+            "default": "",
+            "title": "Amount Min Yuan",
+            "type": "string"
+          },
+          "category": {
+            "default": "",
+            "title": "Category",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "home_currency_code": {
+            "default": "",
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "keyword": {
+            "default": "",
+            "title": "Keyword",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "priority": {
+            "default": "100",
+            "title": "Priority",
+            "type": "string"
+          },
+          "review_latest": {
+            "default": false,
+            "title": "Review Latest",
+            "type": "boolean"
+          },
+          "source_contains": {
+            "default": "",
+            "title": "Source Contains",
+            "type": "string"
+          },
+          "tag_contains": {
+            "default": "",
+            "title": "Tag Contains",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_rule_save_web_rules__rule_id__edit_post",
+        "type": "object"
+      },
       "Body_web_rules_application_rollback_web_rules_applications__public_id__rollback_post": {
         "properties": {
           "ledger_id": {
@@ -3640,6 +4348,16 @@
             "title": "Category",
             "type": "string"
           },
+          "home_currency_code": {
+            "default": "",
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
           "keyword": {
             "default": "",
             "title": "Keyword",
@@ -3654,6 +4372,11 @@
             "default": "100",
             "title": "Priority",
             "type": "string"
+          },
+          "review_new": {
+            "default": false,
+            "title": "Review New",
+            "type": "boolean"
           },
           "source_contains": {
             "default": "",
@@ -3687,9 +4410,18 @@
       },
       "Body_web_rules_toggle_web_rules__rule_id__toggle_post": {
         "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
           "expected_row_version": {
             "default": "",
             "title": "Expected Row Version",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
             "type": "string"
           },
           "ledger_id": {
@@ -3698,6 +4430,9 @@
             "type": "string"
           }
         },
+        "required": [
+          "enabled"
+        ],
         "title": "Body_web_rules_toggle_web_rules__rule_id__toggle_post",
         "type": "object"
       },
@@ -3792,6 +4527,21 @@
             "title": "Return Filter",
             "type": "string"
           },
+          "return_granularity": {
+            "default": "",
+            "title": "Return Granularity",
+            "type": "string"
+          },
+          "return_home_currency_code": {
+            "default": "",
+            "title": "Return Home Currency Code",
+            "type": "string"
+          },
+          "return_merchant_category": {
+            "default": "",
+            "title": "Return Merchant Category",
+            "type": "string"
+          },
           "return_month": {
             "default": "",
             "title": "Return Month",
@@ -3805,6 +4555,11 @@
           "return_query": {
             "default": "",
             "title": "Return Query",
+            "type": "string"
+          },
+          "return_ranking_metric": {
+            "default": "",
+            "title": "Return Ranking Metric",
             "type": "string"
           },
           "return_tag": {
@@ -3862,6 +4617,52 @@
         "title": "Body_web_set_debt_kind_web_debts__public_id__kind_post",
         "type": "object"
       },
+      "Body_web_set_recurring_occurrence_web_recurring__public_id__occurrence_post": {
+        "properties": {
+          "action": {
+            "default": "",
+            "title": "Action",
+            "type": "string"
+          },
+          "expected_expense_row_version": {
+            "default": "",
+            "title": "Expected Expense Row Version",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "expected_series_row_version": {
+            "default": "",
+            "title": "Expected Series Row Version",
+            "type": "string"
+          },
+          "expense_public_id": {
+            "default": "",
+            "title": "Expense Public Id",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "month": {
+            "default": "",
+            "title": "Month",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_set_recurring_occurrence_web_recurring__public_id__occurrence_post",
+        "type": "object"
+      },
       "Body_web_split_accept_web_bill_splits__public_id__accept_post": {
         "properties": {
           "ledger_id": {
@@ -3891,6 +4692,56 @@
             "default": 0,
             "title": "Return Expense Id",
             "type": "integer"
+          },
+          "return_filter": {
+            "default": "",
+            "title": "Return Filter",
+            "type": "string"
+          },
+          "return_granularity": {
+            "default": "",
+            "title": "Return Granularity",
+            "type": "string"
+          },
+          "return_home_currency_code": {
+            "default": "",
+            "title": "Return Home Currency Code",
+            "type": "string"
+          },
+          "return_merchant_category": {
+            "default": "",
+            "title": "Return Merchant Category",
+            "type": "string"
+          },
+          "return_month": {
+            "default": "",
+            "title": "Return Month",
+            "type": "string"
+          },
+          "return_page": {
+            "default": "",
+            "title": "Return Page",
+            "type": "string"
+          },
+          "return_query": {
+            "default": "",
+            "title": "Return Query",
+            "type": "string"
+          },
+          "return_ranking_metric": {
+            "default": "",
+            "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_tag": {
+            "default": "",
+            "title": "Return Tag",
+            "type": "string"
+          },
+          "return_to": {
+            "default": "",
+            "title": "Return To",
+            "type": "string"
           }
         },
         "title": "Body_web_split_cancel_web_bill_splits__public_id__cancel_post",
@@ -3902,6 +4753,16 @@
             "title": "Amount Yuan",
             "type": "string"
           },
+          "expected_row_version": {
+            "default": 0,
+            "title": "Expected Row Version",
+            "type": "integer"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
@@ -3910,6 +4771,56 @@
           "receiver_account_id": {
             "title": "Receiver Account Id",
             "type": "integer"
+          },
+          "return_filter": {
+            "default": "",
+            "title": "Return Filter",
+            "type": "string"
+          },
+          "return_granularity": {
+            "default": "",
+            "title": "Return Granularity",
+            "type": "string"
+          },
+          "return_home_currency_code": {
+            "default": "",
+            "title": "Return Home Currency Code",
+            "type": "string"
+          },
+          "return_merchant_category": {
+            "default": "",
+            "title": "Return Merchant Category",
+            "type": "string"
+          },
+          "return_month": {
+            "default": "",
+            "title": "Return Month",
+            "type": "string"
+          },
+          "return_page": {
+            "default": "",
+            "title": "Return Page",
+            "type": "string"
+          },
+          "return_query": {
+            "default": "",
+            "title": "Return Query",
+            "type": "string"
+          },
+          "return_ranking_metric": {
+            "default": "",
+            "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_tag": {
+            "default": "",
+            "title": "Return Tag",
+            "type": "string"
+          },
+          "return_to": {
+            "default": "",
+            "title": "Return To",
+            "type": "string"
           }
         },
         "required": [
@@ -3947,6 +4858,21 @@
             "title": "Return Filter",
             "type": "string"
           },
+          "return_granularity": {
+            "default": "",
+            "title": "Return Granularity",
+            "type": "string"
+          },
+          "return_home_currency_code": {
+            "default": "",
+            "title": "Return Home Currency Code",
+            "type": "string"
+          },
+          "return_merchant_category": {
+            "default": "",
+            "title": "Return Merchant Category",
+            "type": "string"
+          },
           "return_month": {
             "default": "",
             "title": "Return Month",
@@ -3960,6 +4886,11 @@
           "return_query": {
             "default": "",
             "title": "Return Query",
+            "type": "string"
+          },
+          "return_ranking_metric": {
+            "default": "",
+            "title": "Return Ranking Metric",
             "type": "string"
           },
           "return_tag": {
@@ -4151,6 +5082,21 @@
             "title": "Return Filter",
             "type": "string"
           },
+          "return_granularity": {
+            "default": "",
+            "title": "Return Granularity",
+            "type": "string"
+          },
+          "return_home_currency_code": {
+            "default": "",
+            "title": "Return Home Currency Code",
+            "type": "string"
+          },
+          "return_merchant_category": {
+            "default": "",
+            "title": "Return Merchant Category",
+            "type": "string"
+          },
           "return_month": {
             "default": "",
             "title": "Return Month",
@@ -4164,6 +5110,11 @@
           "return_query": {
             "default": "",
             "title": "Return Query",
+            "type": "string"
+          },
+          "return_ranking_metric": {
+            "default": "",
+            "title": "Return Ranking Metric",
             "type": "string"
           },
           "return_tag": {
@@ -4383,6 +5334,18 @@
         "additionalProperties": false,
         "description": "Caller picks the month (YYYY-MM); other inputs are read from the\nuser's existing data (income plan, recurring items, confirmed\nexpenses, personal baseline) by the builder service.",
         "properties": {
+          "home_currency_code": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z]{3}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Currency Code"
+          },
           "month": {
             "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
             "title": "Month",
@@ -4450,16 +5413,13 @@
       "BudgetAdvisorStatusResponse": {
         "description": "v1.1 Batch 2 owner-facing visibility surface.\n\nSurfaces the configured AI provider, the explicit owner-confirmation\nflag, and the most recent audit row so the Owner Console panel can\nanswer \"is this thing on?\" / \"did the last call succeed?\" without\nrunning a fresh call.",
         "properties": {
-          "base_url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Base Url"
+          "can_request": {
+            "title": "Can Request",
+            "type": "boolean"
+          },
+          "configuration_valid": {
+            "title": "Configuration Valid",
+            "type": "boolean"
           },
           "is_live": {
             "title": "Is Live",
@@ -4542,15 +5502,28 @@
           "provider": {
             "title": "Provider",
             "type": "string"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
           }
         },
         "required": [
           "provider",
           "model",
-          "base_url",
           "owner_confirmed",
           "is_live",
           "needs_confirmation",
+          "configuration_valid",
+          "can_request",
+          "unavailable_reason",
           "last_called_at",
           "last_success",
           "last_error_code",
@@ -4598,25 +5571,46 @@
             "type": "string"
           },
           "overspent_amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": 0.0,
-            "title": "Overspent Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overspent Amount Cents"
           },
           "remaining_amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "title": "Remaining Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remaining Amount Cents"
           },
           "spent_amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "title": "Spent Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spent Amount Cents"
           }
         },
         "required": [
@@ -4632,11 +5626,18 @@
       "BudgetExcludedCategoryResponse": {
         "properties": {
           "amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "title": "Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Cents"
           },
           "category": {
             "title": "Category",
@@ -4653,6 +5654,48 @@
           "count"
         ],
         "title": "BudgetExcludedCategoryResponse",
+        "type": "object"
+      },
+      "BudgetInputsResponse": {
+        "properties": {
+          "breakdown": {
+            "$ref": "#/components/schemas/DiscretionaryResponse"
+          },
+          "home_currency_code": {
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "inputs_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inputs Fingerprint"
+          },
+          "missing_rates": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectionGapDto"
+            },
+            "title": "Missing Rates",
+            "type": "array"
+          },
+          "month": {
+            "title": "Month",
+            "type": "string"
+          }
+        },
+        "required": [
+          "month",
+          "home_currency_code",
+          "breakdown",
+          "missing_rates",
+          "inputs_fingerprint"
+        ],
+        "title": "BudgetInputsResponse",
         "type": "object"
       },
       "BudgetMonthlyArchiveRequest": {
@@ -4696,11 +5739,18 @@
             "type": "boolean"
           },
           "excluded_amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "title": "Excluded Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excluded Amount Cents"
           },
           "excluded_breakdown": {
             "items": {
@@ -4717,22 +5767,54 @@
             "type": "array"
           },
           "fixed_amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": 0.0,
-            "title": "Fixed Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fixed Amount Cents"
           },
           "flex_budget_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": 0.0,
-            "title": "Flex Budget Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flex Budget Cents"
+          },
+          "home_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Currency Code"
           },
           "ledger_id": {
             "title": "Ledger Id",
             "type": "string"
+          },
+          "missing_currency_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Currency Codes",
+            "type": "array"
           },
           "month": {
             "title": "Month",
@@ -4746,18 +5828,32 @@
             "type": "integer"
           },
           "overspent_amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": 0.0,
-            "title": "Overspent Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overspent Amount Cents"
           },
           "remaining_amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "title": "Remaining Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remaining Amount Cents"
           },
           "rollover_amount_cents": {
             "format": "int64",
@@ -4778,11 +5874,18 @@
             "title": "Row Version"
           },
           "spent_amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "title": "Spent Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spent Amount Cents"
           },
           "total_amount_cents": {
             "format": "int64",
@@ -4805,6 +5908,7 @@
         },
         "required": [
           "ledger_id",
+          "home_currency_code",
           "month",
           "configured",
           "total_amount_cents",
@@ -4840,6 +5944,24 @@
             "title": "Excluded Categories",
             "type": "array"
           },
+          "expected_row_version": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Row Version"
+          },
+          "home_currency_code": {
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Home Currency Code",
+            "type": "string"
+          },
           "non_monthly_amount_cents": {
             "default": 0,
             "format": "int64",
@@ -4865,9 +5987,108 @@
           }
         },
         "required": [
+          "home_currency_code",
+          "expected_row_version",
           "total_amount_cents"
         ],
         "title": "BudgetMonthlyUpdateRequest",
+        "type": "object"
+      },
+      "BudgetRateForm": {
+        "description": "Raw native fields survive validation before the command owner parses them.",
+        "properties": {
+          "currency_code": {
+            "default": "",
+            "title": "Currency Code",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "filter": {
+            "default": "",
+            "title": "Filter",
+            "type": "string"
+          },
+          "granularity": {
+            "default": "",
+            "title": "Granularity",
+            "type": "string"
+          },
+          "home_currency_code": {
+            "default": "",
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "merchant_category": {
+            "default": "",
+            "title": "Merchant Category",
+            "type": "string"
+          },
+          "month": {
+            "default": "",
+            "title": "Month",
+            "type": "string"
+          },
+          "page": {
+            "default": "",
+            "title": "Page",
+            "type": "string"
+          },
+          "ranking_metric": {
+            "default": "",
+            "title": "Ranking Metric",
+            "type": "string"
+          },
+          "rate_date": {
+            "default": "",
+            "title": "Rate Date",
+            "type": "string"
+          },
+          "rate_to_cny": {
+            "default": "",
+            "title": "Rate To Cny",
+            "type": "string"
+          },
+          "reserved_buffer_yuan": {
+            "default": "",
+            "title": "Reserved Buffer Yuan",
+            "type": "string"
+          },
+          "return_to": {
+            "default": "",
+            "title": "Return To",
+            "type": "string"
+          },
+          "review_latest": {
+            "default": "",
+            "title": "Review Latest",
+            "type": "string"
+          },
+          "savings_target_yuan": {
+            "default": "",
+            "title": "Savings Target Yuan",
+            "type": "string"
+          },
+          "tag": {
+            "default": "",
+            "title": "Tag",
+            "type": "string"
+          }
+        },
+        "title": "BudgetRateForm",
         "type": "object"
       },
       "BudgetSuggestionDto": {
@@ -5080,6 +6301,19 @@
             "title": "Enabled",
             "type": "boolean"
           },
+          "home_currency_code": {
+            "anyOf": [
+              {
+                "maxLength": 3,
+                "minLength": 3,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Currency Code"
+          },
           "keyword": {
             "title": "Keyword",
             "type": "string"
@@ -5182,6 +6416,17 @@
           "enabled": {
             "title": "Enabled",
             "type": "boolean"
+          },
+          "home_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Currency Code"
           },
           "id": {
             "title": "Id",
@@ -5303,6 +6548,19 @@
             "title": "Expected Row Version",
             "type": "integer"
           },
+          "home_currency_code": {
+            "anyOf": [
+              {
+                "maxLength": 3,
+                "minLength": 3,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Currency Code"
+          },
           "keyword": {
             "anyOf": [
               {
@@ -5357,11 +6615,18 @@
       "CategoryStatsResponse": {
         "properties": {
           "amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "title": "Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Cents"
           },
           "category": {
             "title": "Category",
@@ -5556,6 +6821,40 @@
           "category": {
             "title": "Category",
             "type": "string"
+          },
+          "exchange_rate_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exchange Rate Date"
+          },
+          "exchange_rate_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exchange Rate Source"
+          },
+          "exchange_rate_to_cny": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exchange Rate To Cny"
           },
           "home_currency_code": {
             "title": "Home Currency Code",
@@ -5840,6 +7139,17 @@
             ],
             "title": "Expense Time"
           },
+          "home_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Currency Code"
+          },
           "line_number": {
             "title": "Line Number",
             "type": "integer"
@@ -5917,6 +7227,7 @@
           "error_code",
           "error_message",
           "amount_cents",
+          "home_currency_code",
           "original_currency_code",
           "original_amount_minor",
           "exchange_rate_to_cny",
@@ -6319,6 +7630,12 @@
             ],
             "title": "Event Time"
           },
+          "home_currency_code": {
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Home Currency Code",
+            "type": "string"
+          },
           "installment_count": {
             "anyOf": [
               {
@@ -6344,6 +7661,18 @@
               }
             ],
             "title": "Installment Period Months"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
           },
           "original_amount": {
             "anyOf": [
@@ -6393,6 +7722,7 @@
         },
         "required": [
           "direction",
+          "home_currency_code",
           "counterparty_type"
         ],
         "title": "DebtCreateRequest",
@@ -6867,6 +8197,17 @@
             ],
             "title": "Ledger Id"
           },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
           "original_amount_minor": {
             "anyOf": [
               {
@@ -7099,25 +8440,46 @@
         "description": "Inspectable breakdown of \"本月可自由支配\".\n\nMirrors :class:`DiscretionaryBreakdown` so the UI can render the\nsubtraction step by step.",
         "properties": {
           "discretionary_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": 0.0,
-            "title": "Discretionary Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discretionary Cents"
           },
           "fixed_expenses_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": 0.0,
-            "title": "Fixed Expenses Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fixed Expenses Cents"
           },
           "monthly_income_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": 0.0,
-            "title": "Monthly Income Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Income Cents"
           },
           "reserved_buffer_cents": {
             "format": "int64",
@@ -7134,11 +8496,18 @@
             "type": "integer"
           },
           "spent_amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "title": "Spent Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spent Amount Cents"
           }
         },
         "required": [
@@ -7287,9 +8656,45 @@
             "default": null,
             "title": "Conflict Tag Row Version"
           },
+          "currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Currency Code"
+          },
           "error": {
             "title": "Error",
             "type": "string"
+          },
+          "expense_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Expense Id"
+          },
+          "home_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Home Currency Code"
           },
           "message": {
             "title": "Message",
@@ -7306,6 +8711,18 @@
             ],
             "default": null,
             "title": "Public Id"
+          },
+          "rate_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rate Date"
           },
           "request_id": {
             "anyOf": [
@@ -7364,6 +8781,17 @@
             "title": "Currency Code",
             "type": "string"
           },
+          "expected_row_version": {
+            "minimum": 0.0,
+            "title": "Expected Row Version",
+            "type": "integer"
+          },
+          "home_currency_code": {
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Home Currency Code",
+            "type": "string"
+          },
           "rate_date": {
             "format": "date",
             "title": "Rate Date",
@@ -7391,8 +8819,10 @@
         },
         "required": [
           "currency_code",
+          "home_currency_code",
           "rate_date",
-          "rate_to_cny"
+          "rate_to_cny",
+          "expected_row_version"
         ],
         "title": "ExchangeRateRequest",
         "type": "object"
@@ -7414,6 +8844,10 @@
             "title": "Currency Code",
             "type": "string"
           },
+          "home_currency_code": {
+            "title": "Home Currency Code",
+            "type": "string"
+          },
           "public_id": {
             "title": "Public Id",
             "type": "string"
@@ -7426,6 +8860,11 @@
           "rate_to_cny": {
             "title": "Rate To Cny",
             "type": "string"
+          },
+          "row_version": {
+            "minimum": 1.0,
+            "title": "Row Version",
+            "type": "integer"
           },
           "source": {
             "title": "Source",
@@ -7446,11 +8885,13 @@
         "required": [
           "public_id",
           "currency_code",
+          "home_currency_code",
           "rate_date",
           "rate_to_cny",
           "source",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "row_version"
         ],
         "title": "ExchangeRateResponse",
         "type": "object"
@@ -8247,16 +9688,10 @@
             "title": "Category"
           },
           "client_ref": {
-            "anyOf": [
-              {
-                "maxLength": 64,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Client Ref"
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Client Ref",
+            "type": "string"
           },
           "expense_time": {
             "anyOf": [
@@ -8269,6 +9704,20 @@
               }
             ],
             "title": "Expense Time"
+          },
+          "home_currency_code": {
+            "anyOf": [
+              {
+                "maxLength": 3,
+                "minLength": 3,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Currency captured when this manual draft began; independent of the current default. Legacy requests may omit it only with complete original money, or to replay an accepted client_ref.",
+            "title": "Home Currency Code"
           },
           "merchant": {
             "anyOf": [
@@ -8397,6 +9846,9 @@
             "title": "Value Score"
           }
         },
+        "required": [
+          "client_ref"
+        ],
         "title": "ExpenseManualCreateRequest",
         "type": "object"
       },
@@ -9928,6 +11380,19 @@
             "title": "Goal Type",
             "type": "string"
           },
+          "home_currency_code": {
+            "anyOf": [
+              {
+                "maxLength": 3,
+                "minLength": 3,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Currency Code"
+          },
           "month": {
             "anyOf": [
               {
@@ -10049,6 +11514,17 @@
           "goal_type": {
             "title": "Goal Type",
             "type": "string"
+          },
+          "home_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Currency Code"
           },
           "ledger_id": {
             "title": "Ledger Id",
@@ -10206,6 +11682,12 @@
             "title": "Expected Row Version",
             "type": "integer"
           },
+          "home_currency_code": {
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Home Currency Code",
+            "type": "string"
+          },
           "month": {
             "anyOf": [
               {
@@ -10248,7 +11730,8 @@
           }
         },
         "required": [
-          "expected_row_version"
+          "expected_row_version",
+          "home_currency_code"
         ],
         "title": "GoalUpdateRequest",
         "type": "object"
@@ -10384,6 +11867,12 @@
             "title": "Frequency",
             "type": "string"
           },
+          "home_currency_code": {
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Home Currency Code",
+            "type": "string"
+          },
           "income_month": {
             "anyOf": [
               {
@@ -10395,6 +11884,11 @@
               }
             ],
             "title": "Income Month"
+          },
+          "intent_month": {
+            "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+            "title": "Intent Month",
+            "type": "string"
           },
           "label": {
             "maxLength": 64,
@@ -10417,6 +11911,8 @@
           }
         },
         "required": [
+          "intent_month",
+          "home_currency_code",
           "label",
           "amount_cents",
           "pay_day"
@@ -10426,6 +11922,28 @@
       },
       "IncomePlanListResponse": {
         "properties": {
+          "effective_plan_count": {
+            "title": "Effective Plan Count",
+            "type": "integer"
+          },
+          "expected_amount_cents": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Amount Cents"
+          },
+          "home_currency_code": {
+            "title": "Home Currency Code",
+            "type": "string"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/IncomePlanResponse"
@@ -10433,17 +11951,55 @@
             "title": "Items",
             "type": "array"
           },
+          "missing_currency_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Currency Codes",
+            "type": "array"
+          },
+          "month": {
+            "title": "Month",
+            "type": "string"
+          },
+          "scheduled_amount_cents": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheduled Amount Cents"
+          },
           "total_active_amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": 0.0,
-            "title": "Total Active Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Active Amount Cents"
           }
         },
         "required": [
           "items",
-          "total_active_amount_cents"
+          "month",
+          "home_currency_code",
+          "missing_currency_codes",
+          "total_active_amount_cents",
+          "expected_amount_cents",
+          "scheduled_amount_cents",
+          "effective_plan_count"
         ],
         "title": "IncomePlanListResponse",
         "type": "object"
@@ -10486,6 +12042,17 @@
             ],
             "title": "Frequency",
             "type": "string"
+          },
+          "home_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Currency Code"
           },
           "income_month": {
             "anyOf": [
@@ -10562,10 +12129,16 @@
           "expected_row_version": {
             "title": "Expected Row Version",
             "type": "integer"
+          },
+          "intent_month": {
+            "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+            "title": "Intent Month",
+            "type": "string"
           }
         },
         "required": [
-          "expected_row_version"
+          "expected_row_version",
+          "intent_month"
         ],
         "title": "IncomePlanTokenRequest",
         "type": "object"
@@ -10619,6 +12192,11 @@
             ],
             "title": "Income Month"
           },
+          "intent_month": {
+            "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+            "title": "Intent Month",
+            "type": "string"
+          },
           "label": {
             "anyOf": [
               {
@@ -10660,7 +12238,8 @@
           }
         },
         "required": [
-          "expected_row_version"
+          "expected_row_version",
+          "intent_month"
         ],
         "title": "IncomePlanUpdateRequest",
         "type": "object"
@@ -11855,11 +13434,18 @@
       "LifestyleFrequentMerchantResponse": {
         "properties": {
           "amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "title": "Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Cents"
           },
           "count": {
             "title": "Count",
@@ -11881,11 +13467,18 @@
       "LifestyleStatsResponse": {
         "properties": {
           "ai_subscription_amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "title": "Ai Subscription Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Subscription Amount Cents"
           },
           "best_value_expenses": {
             "items": {
@@ -11895,11 +13488,18 @@
             "type": "array"
           },
           "digital_amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "title": "Digital Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Digital Amount Cents"
           },
           "frequent_merchants": {
             "items": {
@@ -11907,6 +13507,10 @@
             },
             "title": "Frequent Merchants",
             "type": "array"
+          },
+          "home_currency_code": {
+            "title": "Home Currency Code",
+            "type": "string"
           },
           "max_expense": {
             "anyOf": [
@@ -11917,6 +13521,13 @@
                 "type": "null"
               }
             ]
+          },
+          "missing_rates": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectionGapDto"
+            },
+            "title": "Missing Rates",
+            "type": "array"
           },
           "month": {
             "title": "Month",
@@ -11930,15 +13541,24 @@
             "type": "array"
           },
           "recent_7_days_amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "title": "Recent 7 Days Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recent 7 Days Amount Cents"
           }
         },
         "required": [
           "month",
+          "home_currency_code",
+          "missing_rates",
           "ai_subscription_amount_cents",
           "digital_amount_cents",
           "max_expense",
@@ -12828,20 +14448,40 @@
             "title": "Count",
             "type": "integer"
           },
+          "home_currency_code": {
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "missing_rates": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectionGapDto"
+            },
+            "title": "Missing Rates",
+            "type": "array"
+          },
           "month": {
             "title": "Month",
             "type": "string"
           },
           "total_amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "title": "Total Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Amount Cents"
           }
         },
         "required": [
           "month",
+          "home_currency_code",
+          "missing_rates",
           "total_amount_cents",
           "count",
           "by_category"
@@ -13433,6 +15073,44 @@
         "title": "PendingDuplicateCandidateResponse",
         "type": "object"
       },
+      "ProjectionGapDto": {
+        "properties": {
+          "home_currency_code": {
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "rate_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Date"
+          },
+          "source_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Currency Code"
+          }
+        },
+        "required": [
+          "source_currency_code",
+          "home_currency_code",
+          "rate_date"
+        ],
+        "title": "ProjectionGapDto",
+        "type": "object"
+      },
       "RecurringCandidateConfirmRequest": {
         "additionalProperties": false,
         "properties": {
@@ -13461,6 +15139,12 @@
             "default": "monthly",
             "maxLength": 32,
             "title": "Frequency",
+            "type": "string"
+          },
+          "home_currency_code": {
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Home Currency Code",
             "type": "string"
           },
           "last_seen_at": {
@@ -13505,6 +15189,7 @@
           }
         },
         "required": [
+          "home_currency_code",
           "merchant",
           "amount_cents"
         ],
@@ -13522,6 +15207,10 @@
           },
           "confidence": {
             "title": "Confidence",
+            "type": "string"
+          },
+          "home_currency_code": {
+            "title": "Home Currency Code",
             "type": "string"
           },
           "last_seen_at": {
@@ -13549,6 +15238,7 @@
           }
         },
         "required": [
+          "home_currency_code",
           "merchant",
           "amount_cents",
           "occurrence_count",
@@ -13585,6 +15275,12 @@
             "title": "Baseline Amount Cents",
             "type": "integer"
           },
+          "home_currency_code": {
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Home Currency Code",
+            "type": "string"
+          },
           "merchant": {
             "maxLength": 255,
             "minLength": 1,
@@ -13605,6 +15301,7 @@
           }
         },
         "required": [
+          "home_currency_code",
           "merchant",
           "baseline_amount_cents"
         ],
@@ -13717,6 +15414,17 @@
             ],
             "title": "Historical Average Amount Cents"
           },
+          "home_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Currency Code"
+          },
           "last_amount_cents": {
             "format": "int64",
             "maximum": 9000000000000.0,
@@ -13746,6 +15454,18 @@
           "merchant_key": {
             "title": "Merchant Key",
             "type": "string"
+          },
+          "next_due_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Due Date"
           },
           "next_expected_date": {
             "anyOf": [
@@ -13857,6 +15577,12 @@
             "title": "Expected Row Version",
             "type": "integer"
           },
+          "home_currency_code": {
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Home Currency Code",
+            "type": "string"
+          },
           "merchant": {
             "anyOf": [
               {
@@ -13884,9 +15610,205 @@
           }
         },
         "required": [
+          "home_currency_code",
           "expected_row_version"
         ],
         "title": "RecurringItemUpdateRequest",
+        "type": "object"
+      },
+      "RecurringOccurrenceResponse": {
+        "properties": {
+          "expense_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expense Id"
+          },
+          "expense_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expense Public Id"
+          },
+          "expense_row_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expense Row Version"
+          },
+          "home_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Currency Code"
+          },
+          "next_due_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Due Date"
+          },
+          "paid_amount_cents": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid Amount Cents"
+          },
+          "paid_home_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid Home Currency Code"
+          },
+          "period": {
+            "title": "Period",
+            "type": "string"
+          },
+          "planned_amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 1.0,
+            "title": "Planned Amount Cents",
+            "type": "integer"
+          },
+          "reserved_amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "Reserved Amount Cents",
+            "type": "integer"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "series_public_id": {
+            "title": "Series Public Id",
+            "type": "string"
+          },
+          "series_row_version": {
+            "title": "Series Row Version",
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "unfulfilled",
+              "fulfilled",
+              "needs_review"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "series_public_id",
+          "period",
+          "series_row_version",
+          "row_version",
+          "state",
+          "planned_amount_cents",
+          "reserved_amount_cents",
+          "expense_public_id",
+          "expense_id",
+          "expense_row_version",
+          "paid_amount_cents",
+          "next_due_date"
+        ],
+        "title": "RecurringOccurrenceResponse",
+        "type": "object"
+      },
+      "RecurringOccurrenceWriteRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "link",
+              "clear"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "expected_expense_row_version": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Expense Row Version"
+          },
+          "expected_row_version": {
+            "minimum": 0.0,
+            "title": "Expected Row Version",
+            "type": "integer"
+          },
+          "expected_series_row_version": {
+            "minimum": 1.0,
+            "title": "Expected Series Row Version",
+            "type": "integer"
+          },
+          "expense_public_id": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expense Public Id"
+          }
+        },
+        "required": [
+          "action",
+          "expected_row_version",
+          "expected_series_row_version"
+        ],
+        "title": "RecurringOccurrenceWriteRequest",
         "type": "object"
       },
       "RecycleBinItemResponse": {
@@ -13928,6 +15850,17 @@
           "resource_id": {
             "title": "Resource Id",
             "type": "string"
+          },
+          "restore_intent_month": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Restore Intent Month"
           },
           "retention_label": {
             "title": "Retention Label",
@@ -13985,6 +15918,18 @@
               }
             ],
             "title": "Expected Row Version"
+          },
+          "intent_month": {
+            "anyOf": [
+              {
+                "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intent Month"
           },
           "kind": {
             "maxLength": 32,
@@ -14313,6 +16258,17 @@
               }
             ],
             "title": "Ledger Id"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
           },
           "original_amount_minor": {
             "anyOf": [
@@ -14875,11 +16831,18 @@
       "ReportCategoryComparisonResponse": {
         "properties": {
           "amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "title": "Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Cents"
           },
           "category": {
             "title": "Category",
@@ -14890,44 +16853,72 @@
             "type": "integer"
           },
           "delta_amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "title": "Delta Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta Amount Cents"
           },
           "delta_count": {
             "title": "Delta Count",
             "type": "integer"
           },
           "previous_amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "title": "Previous Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Amount Cents"
           },
           "previous_count": {
             "title": "Previous Count",
             "type": "integer"
           },
           "year_over_year_amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "title": "Year Over Year Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year Over Year Amount Cents"
           },
           "year_over_year_count": {
             "title": "Year Over Year Count",
             "type": "integer"
           },
           "year_over_year_delta_amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "title": "Year Over Year Delta Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year Over Year Delta Amount Cents"
           },
           "year_over_year_delta_count": {
             "title": "Year Over Year Delta Count",
@@ -14953,11 +16944,18 @@
       "ReportMerchantRankingResponse": {
         "properties": {
           "amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "title": "Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Cents"
           },
           "count": {
             "title": "Count",
@@ -14979,11 +16977,18 @@
       "ReportTrendPointResponse": {
         "properties": {
           "amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "title": "Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Cents"
           },
           "bucket": {
             "title": "Bucket",
@@ -15024,6 +17029,10 @@
             "title": "Granularity",
             "type": "string"
           },
+          "home_currency_code": {
+            "title": "Home Currency Code",
+            "type": "string"
+          },
           "merchant_category": {
             "anyOf": [
               {
@@ -15042,6 +17051,13 @@
             "title": "Merchant Ranking",
             "type": "array"
           },
+          "missing_rates": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectionGapDto"
+            },
+            "title": "Missing Rates",
+            "type": "array"
+          },
           "month": {
             "title": "Month",
             "type": "string"
@@ -15055,11 +17071,18 @@
             "type": "string"
           },
           "previous_total_amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "title": "Previous Total Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Total Amount Cents"
           },
           "ranking_metric": {
             "title": "Ranking Metric",
@@ -15070,11 +17093,18 @@
             "type": "string"
           },
           "total_amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "title": "Total Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Amount Cents"
           },
           "trend": {
             "items": {
@@ -15088,11 +17118,18 @@
             "type": "integer"
           },
           "year_over_year_delta_amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "title": "Year Over Year Delta Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year Over Year Delta Amount Cents"
           },
           "year_over_year_delta_count": {
             "title": "Year Over Year Delta Count",
@@ -15103,15 +17140,24 @@
             "type": "string"
           },
           "year_over_year_total_amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "title": "Year Over Year Total Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year Over Year Total Amount Cents"
           }
         },
         "required": [
           "month",
+          "home_currency_code",
+          "missing_rates",
           "timezone",
           "granularity",
           "total_amount_cents",
@@ -15287,6 +17333,13 @@
             "title": "Items",
             "type": "array"
           },
+          "missing_currency_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Currency Codes",
+            "type": "array"
+          },
           "no_match_count": {
             "default": 0,
             "title": "No Match Count",
@@ -15316,6 +17369,11 @@
           "skipped_non_default_category": {
             "default": 0,
             "title": "Skipped Non Default Category",
+            "type": "integer"
+          },
+          "unavailable_count": {
+            "default": 0,
+            "title": "Unavailable Count",
             "type": "integer"
           },
           "unchanged_count": {
@@ -15395,6 +17453,13 @@
             "title": "Items",
             "type": "array"
           },
+          "missing_currency_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Currency Codes",
+            "type": "array"
+          },
           "no_match_count": {
             "title": "No Match Count",
             "type": "integer"
@@ -15426,6 +17491,11 @@
           },
           "skipped_non_default_category": {
             "title": "Skipped Non Default Category",
+            "type": "integer"
+          },
+          "unavailable_count": {
+            "default": 0,
+            "title": "Unavailable Count",
             "type": "integer"
           },
           "unchanged_count": {
@@ -15473,6 +17543,13 @@
             "title": "Changed Count",
             "type": "integer"
           },
+          "missing_currency_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Currency Codes",
+            "type": "array"
+          },
           "pending_scanned": {
             "title": "Pending Scanned",
             "type": "integer"
@@ -15486,6 +17563,11 @@
             "default": false,
             "title": "Scan Limit Reached",
             "type": "boolean"
+          },
+          "unavailable_count": {
+            "default": 0,
+            "title": "Unavailable Count",
+            "type": "integer"
           }
         },
         "required": [
@@ -15514,6 +17596,17 @@
           "current_category": {
             "title": "Current Category",
             "type": "string"
+          },
+          "home_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Currency Code"
           },
           "id": {
             "title": "Id",
@@ -15814,9 +17907,15 @@
         "properties": {
           "currency": {
             "$ref": "#/components/schemas/RuntimeCurrencyCapabilityResponse"
+          },
+          "upload_original_receipt_version": {
+            "minimum": 1.0,
+            "title": "Upload Original Receipt Version",
+            "type": "integer"
           }
         },
         "required": [
+          "upload_original_receipt_version",
           "currency"
         ],
         "title": "RuntimeProductCapabilitiesResponse",
@@ -16103,11 +18202,18 @@
       "TagStatsResponse": {
         "properties": {
           "amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "title": "Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Cents"
           },
           "count": {
             "title": "Count",
@@ -16914,6 +19020,24 @@
                 }
               ],
               "title": "X-Timezone"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
             }
           },
           {
@@ -18016,6 +20140,148 @@
         ]
       }
     },
+    "/api/budget/advisor/inputs": {
+      "get": {
+        "operationId": "get_advisor_inputs_api_budget_advisor_inputs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "month",
+            "required": true,
+            "schema": {
+              "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+              "title": "Month",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "timezone",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Timezone"
+            }
+          },
+          {
+            "in": "query",
+            "name": "home_currency_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Z]{3}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Home Currency Code"
+            }
+          },
+          {
+            "in": "query",
+            "name": "savings_target_cents",
+            "required": false,
+            "schema": {
+              "default": "0",
+              "maxLength": 13,
+              "pattern": "^(?:0|[1-9][0-9]{0,12})$",
+              "title": "Savings Target Cents",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "reserved_buffer_cents",
+            "required": false,
+            "schema": {
+              "default": "0",
+              "maxLength": 13,
+              "pattern": "^(?:0|[1-9][0-9]{0,12})$",
+              "title": "Reserved Buffer Cents",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetInputsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Get Advisor Inputs",
+        "tags": [
+          "budget-advisor"
+        ]
+      }
+    },
     "/api/budget/advisor/status": {
       "get": {
         "operationId": "get_advisor_status_api_budget_advisor_status_get",
@@ -18438,6 +20704,40 @@
           },
           {
             "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "description": "Required API contract version from the runtime compatibility handshake.",
+            "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required API contract version from the runtime compatibility handshake.",
+              "title": "Ticketbox-Api-Version"
+            }
+          },
+          {
+            "in": "header",
             "name": "authorization",
             "required": false,
             "schema": {
@@ -18467,9 +20767,6 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
-          },
-          {
-            "$ref": "#/components/parameters/TicketboxApiVersion"
           },
           {
             "$ref": "#/components/parameters/TicketboxCurrencyBinding"
@@ -18815,6 +21112,24 @@
             }
           },
           {
+            "description": "Required API contract version from the runtime compatibility handshake.",
+            "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required API contract version from the runtime compatibility handshake.",
+              "title": "Ticketbox-Api-Version"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -18845,9 +21160,6 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
-          },
-          {
-            "$ref": "#/components/parameters/TicketboxApiVersion"
           },
           {
             "$ref": "#/components/parameters/TicketboxCurrencyBinding"
@@ -20627,6 +22939,39 @@
           },
           {
             "in": "query",
+            "name": "home_currency_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Home Currency Code"
+            }
+          },
+          {
+            "in": "query",
+            "name": "rate_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rate Date"
+            }
+          },
+          {
+            "in": "query",
             "name": "limit",
             "required": false,
             "schema": {
@@ -20733,6 +23078,40 @@
           },
           {
             "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "description": "Required API contract version from the runtime compatibility handshake.",
+            "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required API contract version from the runtime compatibility handshake.",
+              "title": "Ticketbox-Api-Version"
+            }
+          },
+          {
+            "in": "header",
             "name": "authorization",
             "required": false,
             "schema": {
@@ -20762,9 +23141,6 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
-          },
-          {
-            "$ref": "#/components/parameters/TicketboxApiVersion"
           },
           {
             "$ref": "#/components/parameters/TicketboxCurrencyBinding"
@@ -21579,6 +23955,24 @@
         "operationId": "post_manual_expense_api_expenses_manual_post",
         "parameters": [
           {
+            "description": "Required API contract version from the runtime compatibility handshake.",
+            "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required API contract version from the runtime compatibility handshake.",
+              "title": "Ticketbox-Api-Version"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -21609,9 +24003,6 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
-          },
-          {
-            "$ref": "#/components/parameters/TicketboxApiVersion"
           },
           {
             "$ref": "#/components/parameters/TicketboxCurrencyBinding"
@@ -23981,6 +26372,34 @@
           },
           {
             "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "default": "",
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Required API contract version from the runtime compatibility handshake.",
+            "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required API contract version from the runtime compatibility handshake.",
+              "title": "Ticketbox-Api-Version"
+            }
+          },
+          {
+            "in": "header",
             "name": "authorization",
             "required": false,
             "schema": {
@@ -24010,9 +26429,6 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
-          },
-          {
-            "$ref": "#/components/parameters/TicketboxApiVersion"
           },
           {
             "$ref": "#/components/parameters/TicketboxCurrencyBinding"
@@ -24797,6 +27213,40 @@
           },
           {
             "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "description": "Required API contract version from the runtime compatibility handshake.",
+            "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required API contract version from the runtime compatibility handshake.",
+              "title": "Ticketbox-Api-Version"
+            }
+          },
+          {
+            "in": "header",
             "name": "authorization",
             "required": false,
             "schema": {
@@ -24826,9 +27276,6 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
-          },
-          {
-            "$ref": "#/components/parameters/TicketboxApiVersion"
           },
           {
             "$ref": "#/components/parameters/TicketboxCurrencyBinding"
@@ -25026,6 +27473,24 @@
             }
           },
           {
+            "description": "Required API contract version from the runtime compatibility handshake.",
+            "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required API contract version from the runtime compatibility handshake.",
+              "title": "Ticketbox-Api-Version"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -25056,9 +27521,6 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
-          },
-          {
-            "$ref": "#/components/parameters/TicketboxApiVersion"
           },
           {
             "$ref": "#/components/parameters/TicketboxCurrencyBinding"
@@ -26360,6 +28822,40 @@
         "parameters": [
           {
             "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "description": "Required API contract version from the runtime compatibility handshake.",
+            "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required API contract version from the runtime compatibility handshake.",
+              "title": "Ticketbox-Api-Version"
+            }
+          },
+          {
+            "in": "header",
             "name": "authorization",
             "required": false,
             "schema": {
@@ -26389,9 +28885,6 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
-          },
-          {
-            "$ref": "#/components/parameters/TicketboxApiVersion"
           },
           {
             "$ref": "#/components/parameters/TicketboxCurrencyBinding"
@@ -26459,6 +28952,24 @@
             }
           },
           {
+            "description": "Required API contract version from the runtime compatibility handshake.",
+            "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required API contract version from the runtime compatibility handshake.",
+              "title": "Ticketbox-Api-Version"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -26489,9 +29000,6 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
-          },
-          {
-            "$ref": "#/components/parameters/TicketboxApiVersion"
           },
           {
             "$ref": "#/components/parameters/TicketboxCurrencyBinding"
@@ -26573,6 +29081,24 @@
             }
           },
           {
+            "description": "Required API contract version from the runtime compatibility handshake.",
+            "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required API contract version from the runtime compatibility handshake.",
+              "title": "Ticketbox-Api-Version"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -26603,9 +29129,6 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
-          },
-          {
-            "$ref": "#/components/parameters/TicketboxApiVersion"
           },
           {
             "$ref": "#/components/parameters/TicketboxCurrencyBinding"
@@ -26673,6 +29196,24 @@
             }
           },
           {
+            "description": "Required API contract version from the runtime compatibility handshake.",
+            "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required API contract version from the runtime compatibility handshake.",
+              "title": "Ticketbox-Api-Version"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -26703,9 +29244,6 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
-          },
-          {
-            "$ref": "#/components/parameters/TicketboxApiVersion"
           },
           {
             "$ref": "#/components/parameters/TicketboxCurrencyBinding"
@@ -29902,6 +32440,24 @@
             }
           },
           {
+            "description": "Required API contract version from the runtime compatibility handshake.",
+            "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required API contract version from the runtime compatibility handshake.",
+              "title": "Ticketbox-Api-Version"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -29932,9 +32488,6 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
-          },
-          {
-            "$ref": "#/components/parameters/TicketboxApiVersion"
           },
           {
             "$ref": "#/components/parameters/TicketboxCurrencyBinding"
@@ -30140,6 +32693,24 @@
             }
           },
           {
+            "description": "Required API contract version from the runtime compatibility handshake.",
+            "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required API contract version from the runtime compatibility handshake.",
+              "title": "Ticketbox-Api-Version"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -30170,9 +32741,6 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
-          },
-          {
-            "$ref": "#/components/parameters/TicketboxApiVersion"
           },
           {
             "$ref": "#/components/parameters/TicketboxCurrencyBinding"
@@ -30370,6 +32938,24 @@
             }
           },
           {
+            "description": "Required API contract version from the runtime compatibility handshake.",
+            "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required API contract version from the runtime compatibility handshake.",
+              "title": "Ticketbox-Api-Version"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -30400,9 +32986,6 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
-          },
-          {
-            "$ref": "#/components/parameters/TicketboxApiVersion"
           },
           {
             "$ref": "#/components/parameters/TicketboxCurrencyBinding"
@@ -30541,6 +33124,222 @@
           }
         },
         "summary": "Post Recurring Archive",
+        "tags": [
+          "recurring"
+        ]
+      }
+    },
+    "/api/recurring/items/{public_id}/occurrences/{month}": {
+      "get": {
+        "operationId": "get_recurring_occurrence_api_recurring_items__public_id__occurrences__month__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "month",
+            "required": true,
+            "schema": {
+              "title": "Month",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecurringOccurrenceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Get Recurring Occurrence",
+        "tags": [
+          "recurring"
+        ]
+      },
+      "put": {
+        "operationId": "put_recurring_occurrence_api_recurring_items__public_id__occurrences__month__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "month",
+            "required": true,
+            "schema": {
+              "title": "Month",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecurringOccurrenceWriteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecurringOccurrenceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Put Recurring Occurrence",
         "tags": [
           "recurring"
         ]
@@ -30926,6 +33725,24 @@
         "operationId": "restore_recycle_bin_api_recycle_bin_restore_post",
         "parameters": [
           {
+            "description": "Required current API version when kind is income_plan; optional for other restore kinds.",
+            "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required current API version when kind is income_plan; optional for other restore kinds.",
+              "title": "Ticketbox-Api-Version"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -30956,9 +33773,6 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
-          },
-          {
-            "$ref": "#/components/parameters/TicketboxApiVersion"
           },
           {
             "$ref": "#/components/parameters/TicketboxCurrencyBinding"
@@ -31497,6 +34311,23 @@
             }
           },
           {
+            "in": "query",
+            "name": "home_currency_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Z]{3}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Home Currency Code"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -31659,6 +34490,23 @@
                 }
               ],
               "title": "Timezone"
+            }
+          },
+          {
+            "in": "query",
+            "name": "home_currency_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Z]{3}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Home Currency Code"
             }
           },
           {
@@ -32327,6 +35175,40 @@
         "parameters": [
           {
             "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "description": "Required API contract version from the runtime compatibility handshake.",
+            "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required API contract version from the runtime compatibility handshake.",
+              "title": "Ticketbox-Api-Version"
+            }
+          },
+          {
+            "in": "header",
             "name": "authorization",
             "required": false,
             "schema": {
@@ -32356,9 +35238,6 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
-          },
-          {
-            "$ref": "#/components/parameters/TicketboxApiVersion"
           },
           {
             "$ref": "#/components/parameters/TicketboxCurrencyBinding"
@@ -32556,6 +35435,24 @@
             }
           },
           {
+            "description": "Required API contract version from the runtime compatibility handshake.",
+            "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required API contract version from the runtime compatibility handshake.",
+              "title": "Ticketbox-Api-Version"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -32586,9 +35483,6 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
-          },
-          {
-            "$ref": "#/components/parameters/TicketboxApiVersion"
           },
           {
             "$ref": "#/components/parameters/TicketboxCurrencyBinding"
@@ -32935,6 +35829,23 @@
             }
           },
           {
+            "in": "query",
+            "name": "home_currency_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Z]{3}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Home Currency Code"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -33055,6 +35966,23 @@
                 }
               ],
               "title": "Timezone"
+            }
+          },
+          {
+            "in": "query",
+            "name": "home_currency_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Z]{3}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Home Currency Code"
             }
           },
           {
@@ -34684,100 +37612,6 @@
         ]
       }
     },
-    "/owner/recycle-bin": {
-      "get": {
-        "operationId": "owner_recycle_bin_get_owner_recycle_bin_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "msg",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Msg",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "error",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Error",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "text/html": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Owner Recycle Bin Get",
-        "tags": [
-          "owner"
-        ]
-      }
-    },
-    "/owner/recycle-bin/restore": {
-      "post": {
-        "operationId": "owner_recycle_bin_restore_owner_recycle_bin_restore_post",
-        "requestBody": {
-          "content": {
-            "application/x-www-form-urlencoded": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_owner_recycle_bin_restore_owner_recycle_bin_restore_post"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "text/html": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Owner Recycle Bin Restore",
-        "tags": [
-          "owner"
-        ]
-      }
-    },
     "/owner/rule-applications": {
       "get": {
         "operationId": "owner_rule_applications_owner_rule_applications_get",
@@ -35816,6 +38650,38 @@
               "title": "Run Advise",
               "type": "boolean"
             }
+          },
+          {
+            "in": "query",
+            "name": "home_currency_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Home Currency Code"
+            }
+          },
+          {
+            "in": "query",
+            "name": "msg",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Msg"
+            }
           }
         ],
         "responses": {
@@ -35880,6 +38746,68 @@
         },
         "summary": "Page Budget Advise Run",
         "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/budget-advise/rates": {
+      "get": {
+        "operationId": "page_budget_rates_web_budget_advise_rates_get",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Page Budget Rates",
+        "tags": [
+          "web",
+          "web"
+        ]
+      },
+      "post": {
+        "operationId": "save_budget_rate_web_budget_advise_rates_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/BudgetRateForm"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Budget Rate",
+        "tags": [
+          "web",
           "web"
         ]
       }
@@ -35975,7 +38903,8 @@
                 "$ref": "#/components/schemas/Body_web_budgets_save_web_budgets_save_post"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -36286,6 +39215,32 @@
                 }
               ],
               "title": "Msg"
+            }
+          },
+          {
+            "in": "query",
+            "name": "filter",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Filter",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "home_currency_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Home Currency Code"
             }
           }
         ],
@@ -38049,6 +41004,46 @@
               "title": "Return Query",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "return_home_currency_code",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Home Currency Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_granularity",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Granularity",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_ranking_metric",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Ranking Metric",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_merchant_category",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Merchant Category",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -38074,6 +41069,55 @@
           }
         },
         "summary": "Web Correct Get",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/expenses/{expense_id}/correction-rate": {
+      "post": {
+        "operationId": "save_correction_rate_web_expenses__expense_id__correction_rate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "expense_id",
+            "required": true,
+            "schema": {
+              "title": "Expense Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_save_correction_rate_web_expenses__expense_id__correction_rate_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Correction Rate",
         "tags": [
           "web"
         ]
@@ -38171,6 +41215,44 @@
           },
           {
             "in": "query",
+            "name": "flash_type",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Flash Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "rev_page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Rev Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "rev_snapshot",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rev Snapshot"
+            }
+          },
+          {
+            "in": "query",
             "name": "return_to",
             "required": false,
             "schema": {
@@ -38231,40 +41313,42 @@
           },
           {
             "in": "query",
-            "name": "flash_type",
+            "name": "return_home_currency_code",
             "required": false,
             "schema": {
               "default": "",
-              "title": "Flash Type",
+              "title": "Return Home Currency Code",
               "type": "string"
             }
           },
           {
             "in": "query",
-            "name": "rev_page",
+            "name": "return_granularity",
             "required": false,
             "schema": {
-              "default": 1,
-              "minimum": 1,
-              "title": "Rev Page",
-              "type": "integer"
+              "default": "",
+              "title": "Return Granularity",
+              "type": "string"
             }
           },
           {
             "in": "query",
-            "name": "rev_snapshot",
+            "name": "return_ranking_metric",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "minimum": 1,
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Rev Snapshot"
+              "default": "",
+              "title": "Return Ranking Metric",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_merchant_category",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Merchant Category",
+              "type": "string"
             }
           }
         ],
@@ -39419,6 +42503,107 @@
         ]
       }
     },
+    "/web/goals/{public_id}/edit": {
+      "get": {
+        "operationId": "web_goal_edit_web_goals__public_id__edit_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Ledger Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Goal Edit",
+        "tags": [
+          "web"
+        ]
+      },
+      "post": {
+        "operationId": "web_goal_save_web_goals__public_id__edit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_goal_save_web_goals__public_id__edit_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Goal Save",
+        "tags": [
+          "web"
+        ]
+      }
+    },
     "/web/import": {
       "get": {
         "operationId": "web_import_form_web_import_get",
@@ -39435,11 +42620,41 @@
           },
           {
             "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
             "name": "msg",
             "required": false,
             "schema": {
               "default": "",
               "title": "Msg",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "flash_type",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Flash Type",
               "type": "string"
             }
           }
@@ -39617,6 +42832,16 @@
             "schema": {
               "default": "",
               "title": "Msg",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "flash_type",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Flash Type",
               "type": "string"
             }
           }
@@ -39888,7 +43113,8 @@
                 "$ref": "#/components/schemas/Body_post_archive_web_income_plans__public_id__archive_post"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -39916,6 +43142,117 @@
         ]
       }
     },
+    "/web/income-plans/{public_id}/edit": {
+      "get": {
+        "operationId": "web_income_edit_web_income_plans__public_id__edit_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "intent_month",
+            "required": true,
+            "schema": {
+              "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+              "title": "Intent Month",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Ledger Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Income Edit",
+        "tags": [
+          "web"
+        ]
+      },
+      "post": {
+        "operationId": "web_income_save_web_income_plans__public_id__edit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_income_save_web_income_plans__public_id__edit_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Income Save",
+        "tags": [
+          "web"
+        ]
+      }
+    },
     "/web/income-plans/{public_id}/restore": {
       "post": {
         "operationId": "post_restore_web_income_plans__public_id__restore_post",
@@ -39937,7 +43274,8 @@
                 "$ref": "#/components/schemas/Body_post_restore_web_income_plans__public_id__restore_post"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -40527,6 +43865,54 @@
                 }
               ],
               "title": "Ledger Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "month",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Month"
+            }
+          },
+          {
+            "in": "query",
+            "name": "home_currency_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Home Currency Code"
+            }
+          },
+          {
+            "in": "query",
+            "name": "msg",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Msg"
             }
           }
         ],
@@ -41196,6 +44582,172 @@
         ]
       }
     },
+    "/web/recurring/{public_id}/occurrence": {
+      "get": {
+        "operationId": "web_recurring_occurrence_web_recurring__public_id__occurrence_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ledger Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "month",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Month"
+            }
+          },
+          {
+            "in": "query",
+            "name": "payment_month",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Payment Month"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 150,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "message",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Message"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Recurring Occurrence",
+        "tags": [
+          "web"
+        ]
+      },
+      "post": {
+        "operationId": "web_set_recurring_occurrence_web_recurring__public_id__occurrence_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_set_recurring_occurrence_web_recurring__public_id__occurrence_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Set Recurring Occurrence",
+        "tags": [
+          "web"
+        ]
+      }
+    },
     "/web/recurring/{public_id}/pause": {
       "post": {
         "operationId": "web_recurring_pause_web_recurring__public_id__pause_post",
@@ -41721,6 +45273,22 @@
           },
           {
             "in": "query",
+            "name": "home_currency_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Home Currency Code"
+            }
+          },
+          {
+            "in": "query",
             "name": "ledger_id",
             "required": false,
             "schema": {
@@ -41733,6 +45301,38 @@
                 }
               ],
               "title": "Ledger Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "msg",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Msg"
+            }
+          },
+          {
+            "in": "query",
+            "name": "flash_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Flash Type"
             }
           }
         ],
@@ -41831,6 +45431,22 @@
                 }
               ],
               "title": "Merchant Category"
+            }
+          },
+          {
+            "in": "query",
+            "name": "home_currency_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Home Currency Code"
             }
           },
           {
@@ -42242,6 +45858,107 @@
         ]
       }
     },
+    "/web/rules/{rule_id}/edit": {
+      "get": {
+        "operationId": "web_rule_edit_web_rules__rule_id__edit_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rule_id",
+            "required": true,
+            "schema": {
+              "title": "Rule Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Ledger Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Rule Edit",
+        "tags": [
+          "web"
+        ]
+      },
+      "post": {
+        "operationId": "web_rule_save_web_rules__rule_id__edit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rule_id",
+            "required": true,
+            "schema": {
+              "title": "Rule Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_rule_save_web_rules__rule_id__edit_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Rule Save",
+        "tags": [
+          "web"
+        ]
+      }
+    },
     "/web/rules/{rule_id}/toggle": {
       "post": {
         "operationId": "web_rules_toggle_web_rules__rule_id__toggle_post",
@@ -42263,7 +45980,8 @@
                 "$ref": "#/components/schemas/Body_web_rules_toggle_web_rules__rule_id__toggle_post"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {

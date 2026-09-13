@@ -12,6 +12,7 @@ from app.routes._web_expense_fact import (
     web_fact_context,
 )
 from app.routes._web_expense_fact_pager import timeline_page_url
+from app.routes._web_expense_return_context import ExpenseReturnContext
 from app.schemas import ExpenseRevisionListResponse, ExpenseRevisionResponse
 from app.services.invitation_members import MemberSummary
 
@@ -48,7 +49,6 @@ def test_timeline_reads_requested_page_and_exposes_reachability() -> None:
             object(),
             tenant_id="owner",
             expense_id=7,
-            home_currency_code="CNY",
             current_revision=120,
             page=2,
             page_size=50,
@@ -78,6 +78,7 @@ def test_collection_changes_expose_full_snapshots_without_inventing_row_identity
             "change_kind": "correction",
             "changed_fields": ["items", "splits"],
             "before": {
+                "home_currency_code": "CNY",
                 "amount_cents": 500,
                 "items": [
                     {
@@ -92,6 +93,7 @@ def test_collection_changes_expose_full_snapshots_without_inventing_row_identity
                 "splits": [{"position": 0, "member_id": 7, "amount_cents": 500, "note": "早餐"}],
             },
             "after": {
+                "home_currency_code": "CNY",
                 "amount_cents": 500,
                 "items": [
                     {
@@ -106,7 +108,6 @@ def test_collection_changes_expose_full_snapshots_without_inventing_row_identity
                 "splits": [{"position": 0, "member_id": 9, "amount_cents": 500, "note": None}],
             },
         },
-        "CNY",
         member_names={7: "小明"},
     )
 
@@ -135,42 +136,27 @@ def test_collection_changes_expose_full_snapshots_without_inventing_row_identity
 
 
 def test_timeline_page_url_keeps_the_fact_page_and_return_context() -> None:
-    class RequestStub:
-        query_params = {
-            "ledger_id": "stale-ledger",
-            "return_to": "/web/confirmed",
-            "return_month": "2026-08",
-            "msg": "do-not-carry-flash",
-        }
-
     assert timeline_page_url(
-        RequestStub(),
+        ExpenseReturnContext(return_to="confirmed", return_month="2026-08"),
         expense_id=7,
         selected_ledger_id="owner",
         page=2,
     ) == (
         "/web/expenses/7/edit?ledger_id=owner&rev_page=2"
-        "&return_to=%2Fweb%2Fconfirmed&return_month=2026-08#fact-timeline"
+        "&return_to=confirmed&return_month=2026-08#fact-timeline"
     )
 
 
 def test_timeline_page_url_pins_the_snapshot_inside_one_history_view() -> None:
-    class RequestStub:
-        query_params = {
-            "ledger_id": "stale-ledger",
-            "rev_snapshot": "100",
-            "return_to": "/web/confirmed",
-        }
-
     assert timeline_page_url(
-        RequestStub(),
+        ExpenseReturnContext(return_to="confirmed"),
         expense_id=7,
         selected_ledger_id="owner",
         page=3,
         snapshot=100,
     ) == (
         "/web/expenses/7/edit?ledger_id=owner&rev_page=3&rev_snapshot=100"
-        "&return_to=%2Fweb%2Fconfirmed#fact-timeline"
+        "&return_to=confirmed#fact-timeline"
     )
 
 
@@ -184,10 +170,12 @@ def _disabled_member_revision_page() -> ExpenseRevisionListResponse:
                 reason="调整拆账",
                 changed_fields=["splits"],
                 before={
+                    "home_currency_code": "CNY",
                     "amount_cents": 500,
                     "splits": [{"member_id": 7, "amount_cents": 200}],
                 },
                 after={
+                    "home_currency_code": "CNY",
                     "amount_cents": 500,
                     "splits": [{"member_id": 7, "amount_cents": 300}],
                 },
@@ -308,7 +296,7 @@ def test_anchored_timeline_pager_keeps_one_snapshot_across_pages() -> None:
             "ledger_id": "owner",
             "rev_page": "2",
             "rev_snapshot": "120",
-            "return_to": "/web/confirmed",
+            "return_to": "confirmed",
         }
 
     with (
@@ -354,6 +342,7 @@ def test_anchored_timeline_pager_keeps_one_snapshot_across_pages() -> None:
             7,
             revision_page=2,
             revision_snapshot=120,
+            return_context=ExpenseReturnContext(return_to="confirmed"),
         )
 
     assert reader.kwargs["current_revision"] == 140
@@ -362,6 +351,6 @@ def test_anchored_timeline_pager_keeps_one_snapshot_across_pages() -> None:
     assert pager["snapshot_revision"] == 120
     assert "rev_page=1" in pager["newer_url"]
     assert "rev_snapshot=120" in pager["newer_url"]
-    assert "return_to=%2Fweb%2Fconfirmed" in pager["newer_url"]
+    assert "return_to=confirmed" in pager["newer_url"]
     assert "rev_page=3" in pager["older_url"]
     assert "rev_snapshot=120" in pager["older_url"]

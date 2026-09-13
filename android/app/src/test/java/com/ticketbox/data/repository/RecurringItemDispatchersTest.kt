@@ -27,25 +27,26 @@ class RecurringItemDispatchersTest {
         .add(KotlinJsonAdapterFactory())
         .build()
 
-    private fun itemDto(rowVersion: Long = 8): RecurringItemDto = RecurringItemDto(
+    private fun itemDto(rowVersion: Long = 1): RecurringItemDto = RecurringItemDto(
         publicId = "recurring-1",
         ledgerId = "owner",
         merchant = "房租",
         merchantKey = "房租",
         frequency = "monthly",
         baselineAmountCents = 350000,
-        lastAmountCents = 360000,
-        occurrenceCount = 8,
-        lastSeenAt = "2026-08-01T00:00:00Z",
-        nextExpectedDate = "2026-09-01",
+        lastAmountCents = 350000,
+        occurrenceCount = 0,
+        lastSeenAt = null,
+        nextExpectedDate = null,
         status = "active",
         confidence = "high",
-        source = "candidate",
+        source = "manual",
         createdAt = "2026-01-01T00:00:00Z",
         updatedAt = "2026-08-30T00:00:00Z",
         rowVersion = rowVersion,
         pausedAt = null,
         archivedAt = null,
+        homeCurrencyCode = "CNY",
     )
 
     private class Stub(
@@ -83,7 +84,7 @@ class RecurringItemDispatchersTest {
         type = PendingMutationType.CreateRecurringItem,
         targetId = "recurring_item_create:${key ?: "missing"}",
         payloadJson = moshi.adapter(RecurringItemCreateRequestDto::class.java).toJson(
-            RecurringItemCreateRequestDto("房租", 350000, null),
+            RecurringItemCreateRequestDto("房租", 350000, null, homeCurrencyCode = "CNY"),
         ),
         expectedRowVersion = 0,
         status = PendingMutationStatus.InFlight,
@@ -99,7 +100,7 @@ class RecurringItemDispatchersTest {
         type = PendingMutationType.UpdateRecurringItem,
         targetId = "recurring_item:recurring-1",
         payloadJson = moshi.adapter(RecurringItemUpdateRequestDto::class.java).toJson(
-            RecurringItemUpdateRequestDto(expectedRowVersion = 0, baselineAmountCents = 355000),
+            RecurringItemUpdateRequestDto(expectedRowVersion = 7, baselineAmountCents = 355000, homeCurrencyCode = "CNY"),
         ),
         expectedRowVersion = 7,
     )
@@ -118,8 +119,8 @@ class RecurringItemDispatchersTest {
     }
 
     @Test
-    fun `update replay uses row OCC token and returns fresh token`() = runTest {
-        val stub = Stub(Result.success(itemDto()), Result.success(itemDto(rowVersion = 8)))
+    fun `update replays its captured OCC basis without rebasing another original`() = runTest {
+        val stub = Stub(Result.success(itemDto()), Result.success(itemDto(rowVersion = 8).copy(baselineAmountCents = 355000)))
 
         val result = UpdateRecurringItemDispatcher(
             apiProvider = { stub },
@@ -128,7 +129,16 @@ class RecurringItemDispatchersTest {
 
         assertEquals("update-key", stub.updateKey)
         assertEquals(7, stub.updateRequest?.expectedRowVersion)
-        assertEquals(DispatchResult.Success(newRowVersion = 8), result)
+        assertEquals(DispatchResult.Success(), result)
+        val original = updateRow()
+        stub.updateKey = null
+        val altered = UpdateRecurringItemDispatcher(
+            apiProvider = { stub },
+            payloadAdapter = moshi.adapter(RecurringItemUpdateRequestDto::class.java),
+        ).dispatch(original.copy(expectedRowVersion = 8))
+        assertTrue(altered is DispatchResult.Failure)
+        assertEquals(null, stub.updateKey, "A mutated row token cannot rewrite the captured request")
+        assertTrue("\"expected_row_version\":7" in original.payloadJson)
     }
 
     @Test
@@ -167,6 +177,26 @@ class RecurringItemDispatchersTest {
         ).dispatch(createRow())
 
         assertTrue(result is DispatchResult.RetryableFailure)
+    }
+
+    @Test
+    fun `a missing create route cannot settle an unsent intention`() = runTest {
+        val stub = Stub(Result.failure(httpException(404, """{"error":"not_found"}""")))
+        val result = CreateRecurringItemDispatcher(
+            apiProvider = { stub },
+            payloadAdapter = moshi.adapter(RecurringItemCreateRequestDto::class.java),
+        ).dispatch(createRow())
+        assertTrue(result is DispatchResult.Failure)
+    }
+
+    @Test
+    fun `create cannot accept another ledgers receipt`() = runTest {
+        val stub = Stub(Result.success(itemDto().copy(ledgerId = "other-ledger")))
+        val result = CreateRecurringItemDispatcher(
+            apiProvider = { stub },
+            payloadAdapter = moshi.adapter(RecurringItemCreateRequestDto::class.java),
+        ).dispatch(createRow())
+        assertTrue(result is DispatchResult.Failure)
     }
 
     private fun httpException(code: Int, body: String): HttpException {

@@ -20,6 +20,7 @@ from app.services.identity_service import (
 )
 from app.services.session_lifecycle_service import upload_link_expires_at
 from app.services.time_service import now_utc
+from tests._runtime_protocol import current_protocol_headers
 
 
 @dataclass(frozen=True)
@@ -32,8 +33,12 @@ class TestIdentity:
     tenant_upload_key: str
 
     @property
-    def app_headers(self) -> dict[str, str]:
+    def auth_headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.app_token}"}
+
+    @property
+    def app_headers(self) -> dict[str, str]:
+        return current_protocol_headers(self.auth_headers)
 
     @property
     def admin_headers(self) -> dict[str, str]:
@@ -45,7 +50,7 @@ class TestIdentity:
 
     @property
     def gray_app_headers(self) -> dict[str, str]:
-        return {"Authorization": f"Bearer {self.tenant_app_token}"}
+        return current_protocol_headers({"Authorization": f"Bearer {self.tenant_app_token}"})
 
     @property
     def gray_upload_headers(self) -> dict[str, str]:

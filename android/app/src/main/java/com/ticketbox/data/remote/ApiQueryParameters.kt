@@ -35,6 +35,7 @@ data class ConfirmedExpensesApiQuery(
 data class ReportsWindowQuery(
     val month: String? = null,
     val timezone: String? = null,
+    val homeCurrencyCode: String? = null,
 )
 
 data class ReportsOverviewBreakdownQuery(
@@ -55,6 +56,7 @@ data class ReportsOverviewApiQuery(
         putIfPresent("merchant_category", breakdown.merchantCategory)
         put("ranking_metric", breakdown.rankingMetric)
         putIfPresent("timezone", window.timezone)
+        putIfPresent("home_currency_code", window.homeCurrencyCode)
     }
 }
 

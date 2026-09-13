@@ -15,11 +15,18 @@ from uuid import uuid4
 from app.errors import AppError
 from app.money_contract import projection_sum_to_int
 from app.routes.web_common import _amount_yuan, _with_ledger
-from app.services.currency_common import major_amount_to_minor
+from app.services.currency_common import currency_input_metadata, major_amount_to_minor
 from app.services.spending_contract_service import accounting_zone
 from app.services.time_service import ensure_utc
 
 # ── view projections ─────────────────────────────────────────────────────────
+
+
+def _draft_currency_input(code: str | None) -> dict:
+    try:
+        return currency_input_metadata(code)
+    except AppError:
+        return {}
 
 
 def status_label(status: str) -> str:
@@ -33,6 +40,7 @@ def status_label(status: str) -> str:
 def anomaly_label(status: str) -> str:
     return {
         "higher_than_average": "本月偏高",
+        "unavailable": "币种或汇率待补充，暂时无法比较",
         "none": "正常",
     }.get(status, status)
 
@@ -45,20 +53,24 @@ def local_date_iso(value: datetime | None) -> str:
     return aware.astimezone(accounting_zone()).date().isoformat()
 
 
-def item_view(item, anomaly, *, currency_code: str) -> dict:
+def item_view(item, anomaly, *, due_date: date | None) -> dict:
     observed = item.occurrence_count > 0
+    currency_code = item.home_currency_code
     return {
+        "home_currency_code": currency_code,
+        "currency_input": _draft_currency_input(currency_code),
         "public_id": item.public_id,
         "merchant": item.merchant_name,
         "merchant_editable": item.source == "manual",
-        "baseline_amount_yuan": _amount_yuan(item.baseline_amount_cents, currency_code),
-        "last_amount_yuan": _amount_yuan(item.last_amount_cents, currency_code),
+        "baseline_amount_yuan": _amount_yuan(item.baseline_amount_cents, currency_code) if currency_code else "币种待确认",
+        "last_amount_yuan": _amount_yuan(item.last_amount_cents, currency_code) if currency_code else "币种待确认",
         # A3 诚实合同: manual + occurrence=0 只能称「每月预计」, 观察来源
         # (上次/最近发生) 仅在 occurrence>0 时渲染。
         "observed": observed,
         "occurrence_count": item.occurrence_count,
         "last_seen_date": local_date_iso(item.last_seen_at) if observed else "",
         "next_expected_date": item.next_expected_date.isoformat() if item.next_expected_date else "",
+        "next_due_date": due_date.isoformat() if due_date else "",
         "status": item.status,
         "status_label": status_label(item.status),
         # ADR-0041: OCC token (row_version) for the hidden pause/resume form
@@ -76,10 +88,56 @@ def item_view(item, anomaly, *, currency_code: str) -> dict:
             currency_code,
         ),
         "amount_delta_percent": anomaly.amount_delta_percent,
-        # 每次渲染生成一次: 编辑表单的 durable intent key (ADR-0042)。双击/重试
-        # 同一提交 → 服务端 replay; 重新渲染 = 新 intent, 换新键。
-        "edit_idempotency_key": uuid4().hex,
+        "edit_form": {
+            "home_currency_code": currency_code,
+            "currency_input": _draft_currency_input(currency_code),
+            "merchant": item.merchant_name,
+            "baseline_amount_yuan": _amount_yuan(item.baseline_amount_cents, currency_code) if currency_code else "",
+            "review_required": not currency_code,
+            "next_expected_date": item.next_expected_date.isoformat() if item.next_expected_date else "",
+            "expected_row_version": str(item.row_version),
+            "idempotency_key": uuid4().hex,
+        },
     }
+
+
+def apply_form_draft(ctx: dict, draft: dict | None, *, prepare_review: bool) -> None:
+    """Keep form continuation separate from canonical cards and action tokens."""
+    ctx["create_form"] = {
+        "home_currency_code": ctx["home_currency_code"],
+        "currency_input": currency_input_metadata(ctx["home_currency_code"]),
+        "merchant": "", "baseline_amount_yuan": "", "next_expected_date": ctx["suggested_next_date"],
+        "idempotency_key": uuid4().hex,
+    }
+    ctx["draft_public_id"] = draft.get("public_id") if draft else None
+    if draft is None:
+        return
+    target = next((item for item in ctx["items"] if item["public_id"] == draft.get("public_id")), None)
+    if draft.get("public_id") and target is None:
+        raise AppError("recurring_item_not_found", status_code=404)
+    draft, message = _review_form_draft(draft, target=target, prepare_review=prepare_review)
+    if message:
+        ctx["flash_message"] = message
+    if target:
+        if draft.get("currency_conflict"):
+            target["current_edit_form"] = target["edit_form"]
+        target["edit_form"] = draft
+    else:
+        ctx["create_form"] = draft
+
+
+def _review_form_draft(draft: dict, *, target: dict | None, prepare_review: bool) -> tuple[dict, str | None]:
+    draft = {**draft, "currency_input": _draft_currency_input(draft.get("home_currency_code"))}
+    compatible = bool(draft["currency_input"]) and (
+        target is None or draft["home_currency_code"] == target["home_currency_code"])
+    if not compatible:
+        return {**draft, "review_required": True, "currency_conflict": True}, None
+    if prepare_review and (target is None or target["status"] != "archived"):
+        draft = {**draft, "idempotency_key": uuid4().hex, "review_required": False}
+        if target:
+            draft["expected_row_version"] = str(target["row_version"])
+        return draft, "填写已保留，尚未保存。核对已保存记录后，点击保存提交。"
+    return draft, None
 
 
 def _candidate_amount_cents(candidate: dict) -> int:
@@ -89,7 +147,8 @@ def _candidate_amount_cents(candidate: dict) -> int:
     )
 
 
-def candidate_view(candidate: dict, *, currency_code: str, ledger_id: str) -> dict:
+def candidate_view(candidate: dict, *, ledger_id: str) -> dict:
+    currency_code = candidate["home_currency_code"]
     amount_cents = _candidate_amount_cents(candidate)
     merchant = str(candidate.get("merchant") or "")
     raw_seen = candidate.get("last_seen_at")
@@ -99,6 +158,7 @@ def candidate_view(candidate: dict, *, currency_code: str, ledger_id: str) -> di
     review_href = "/web/recurring?" + urlencode({"ledger_id": ledger_id, "review": merchant}) + "#add"
     return {
         "merchant": merchant,
+        "home_currency_code": currency_code,
         "amount_yuan": _amount_yuan(amount_cents, currency_code),
         "occurrence_count": int(candidate.get("occurrence_count") or 0),
         "last_seen_date": last_seen_date,
@@ -108,14 +168,16 @@ def candidate_view(candidate: dict, *, currency_code: str, ledger_id: str) -> di
     }
 
 
-def candidate_review_prefill(candidate: dict, *, currency_code: str) -> dict:
+def candidate_review_prefill(candidate: dict) -> dict:
     """统一表单的候选复核模式: 服务端候选扫描的 provenance, 仅用于展示;
     提交时只回传 merchant + amount_cents 定位候选。"""
     amount_cents = _candidate_amount_cents(candidate)
+    currency_code = candidate["home_currency_code"]
     raw_seen = candidate.get("last_seen_at")
     last_seen_date = local_date_iso(raw_seen) if isinstance(raw_seen, datetime) else str(raw_seen or "")[:10]
     return {
         "merchant": str(candidate.get("merchant") or ""),
+        "home_currency_code": currency_code,
         "amount_cents": amount_cents,
         "amount_yuan": _amount_yuan(amount_cents, currency_code),
         "occurrence_count": int(candidate.get("occurrence_count") or 0),
@@ -124,22 +186,22 @@ def candidate_review_prefill(candidate: dict, *, currency_code: str) -> dict:
     }
 
 
-def hero_view(items, *, currency_code: str) -> dict | None:
+def hero_view(items, *, currency_code: str, total_cents: int | None, due_dates: dict[int, date | None]) -> dict | None:
     """Hero 只汇总 active 正式项, 与列表状态筛选解耦: 每月合计 + 下一笔到期。"""
     active = [item for item in items if item.status == "active"]
     if not active:
         return None
-    total_cents = sum(int(item.baseline_amount_cents) for item in active)
-    dated = [item for item in active if item.next_expected_date is not None]
-    next_item = min(dated, key=lambda item: (item.next_expected_date, item.merchant_name)) if dated else None
+    dated = [item for item in active if due_dates[item.id] is not None]
+    next_item = min(dated, key=lambda item: (due_dates[item.id], item.merchant_name)) if dated else None
     return {
         "active_count": len(active),
-        "monthly_total_yuan": _amount_yuan(total_cents, currency_code),
+        "monthly_total_yuan": _amount_yuan(total_cents, currency_code) if total_cents is not None else "待补充汇率或币种",
         "next_due": (
             {
                 "merchant": next_item.merchant_name,
-                "date": next_item.next_expected_date.isoformat(),
-                "amount_yuan": _amount_yuan(next_item.baseline_amount_cents, currency_code),
+                "date": due_dates[next_item.id].isoformat(),
+                "home_currency_code": next_item.home_currency_code,
+                "amount_yuan": _amount_yuan(next_item.baseline_amount_cents, next_item.home_currency_code) if next_item.home_currency_code else "币种待确认",
             }
             if next_item is not None
             else None
@@ -253,7 +315,7 @@ def conflict_error_kwargs(
         if public_id:
             kwargs["error_guidance"] = _archived_guidance(selected_id, public_id)
     elif exc.error == "state_conflict":
-        kwargs["error_message"] = "这条记录刚在别处被修改，已为你刷新最新值，请核对后再保存。"
+        kwargs["error_message"] = "这条记录刚在别处被修改，你填的内容仍保留；请核对后再保存。"
     elif exc.error in {"idempotency_key_required", "idempotency_key_reused"}:
         kwargs["error_message"] = stale_page_flash
     elif exc.error == "idempotency_key_in_progress":

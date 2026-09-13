@@ -6,7 +6,7 @@ import com.ticketbox.R
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.RecurringActions
 import com.ticketbox.data.repository.RecurringPendingIntent
-import com.ticketbox.data.repository.RecurringSaveOutcome
+import com.ticketbox.data.repository.RecurringPendingState
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.RecurringCandidate
@@ -64,7 +64,7 @@ class RecurringViewModel(
     private var refreshGeneration = 0
     private var activeBinding: LogicalSessionBinding? = null
     private var activeCanModify = false
-    private var observedPendingKeys: Set<String>? = null
+    private var observedCompletedKeys: Set<String> = emptySet()
     private var manualSaveSequence = 0L
     private var activeManualAttemptId: Long? = null
     private var editorEpoch = 0L
@@ -85,6 +85,7 @@ class RecurringViewModel(
                     requestGeneration += 1
                     refreshGeneration += 1
                     activeManualAttemptId = null
+                    observedCompletedKeys = emptySet()
                     editorEpoch += 1
                     _uiState.value = RecurringUiState(
                         loading = access != null,
@@ -108,11 +109,17 @@ class RecurringViewModel(
         viewModelScope.launch {
             repository.observePendingIntents()
                 .collect { intents ->
-                    val currentKeys = intents.mapTo(mutableSetOf(), RecurringPendingIntent::idempotencyKey)
-                    val resolved = observedPendingKeys?.minus(currentKeys).orEmpty().isNotEmpty()
-                    observedPendingKeys = currentKeys
-                    _uiState.update { it.copy(pendingIntents = intents) }
-                    if (resolved && activeBinding != null) refresh()
+                    val completedKeys = intents.filter { it.state == RecurringPendingState.DONE }
+                        .mapTo(mutableSetOf(), RecurringPendingIntent::idempotencyKey)
+                    val accepted = (completedKeys - observedCompletedKeys).isNotEmpty()
+                    observedCompletedKeys = completedKeys
+                    _uiState.update { state ->
+                        state.copy(pendingIntents = intents.filter { it.state != RecurringPendingState.DONE })
+                    }
+                    if (accepted && activeBinding != null) {
+                        onDataChanged()
+                        refreshInternal(preserveMutationFeedback = true)
+                    }
                 }
         }
     }
@@ -241,11 +248,11 @@ class RecurringViewModel(
             val displacedOwnerRefresh = _uiState.value.ownerRefreshInFlight
             refreshGeneration += 1
             result.fold(
-                onSuccess = { outcome ->
+                onSuccess = {
                     _uiState.update { state ->
-                        state.withManualSaveOutcome(outcome, activeCanModify, attemptId)
+                        state.withQueuedManualSave(activeCanModify, attemptId)
                     }
-                    outcome.finishManualSave(displacedOwnerRefresh, onDataChanged) {
+                    if (displacedOwnerRefresh) {
                         refreshInternal(preserveMutationFeedback = true)
                     }
                 },
@@ -378,47 +385,21 @@ private val RecurringUiState.ownerRefreshInFlight: Boolean
     get() = itemsLoadState == RecurringListLoadState.Loading ||
         candidatesLoadState == RecurringListLoadState.Loading
 
-private fun RecurringSaveOutcome.finishManualSave(
-    displacedOwnerRefresh: Boolean,
-    onSynced: () -> Unit,
-    refreshOwner: () -> Unit,
-) {
-    if (this is RecurringSaveOutcome.Synced) onSynced()
-    if (this is RecurringSaveOutcome.Synced || displacedOwnerRefresh) refreshOwner()
-}
-
-private fun RecurringUiState.withManualSaveOutcome(
-    outcome: RecurringSaveOutcome,
+private fun RecurringUiState.withQueuedManualSave(
     canModify: Boolean,
     attemptId: Long,
-): RecurringUiState = when (outcome) {
-    is RecurringSaveOutcome.Synced -> copy(
-        loading = false,
-        items = items.withRecurringItem(outcome.item),
-        message = UiText.res(R.string.recurring_message_updated),
-        messageTone = MessageTone.Success,
-        duplicateConflict = null,
-        canModify = canModify,
-        manualSaveFeedback = RecurringManualSaveFeedback(
-            attemptId = attemptId,
-            settlement = RecurringManualSaveSettlement.Accepted,
-            message = UiText.res(R.string.recurring_message_updated),
-        ),
-    )
-    is RecurringSaveOutcome.Queued -> copy(
-        loading = false,
-        pendingIntents = pendingIntents.withPendingIntent(outcome.intent),
+): RecurringUiState = copy(
+    loading = false,
+    message = UiText.res(R.string.recurring_message_queued),
+    messageTone = MessageTone.Info,
+    duplicateConflict = null,
+    canModify = canModify,
+    manualSaveFeedback = RecurringManualSaveFeedback(
+        attemptId = attemptId,
+        settlement = RecurringManualSaveSettlement.Accepted,
         message = UiText.res(R.string.recurring_message_queued),
-        messageTone = MessageTone.Info,
-        duplicateConflict = null,
-        canModify = canModify,
-        manualSaveFeedback = RecurringManualSaveFeedback(
-            attemptId = attemptId,
-            settlement = RecurringManualSaveSettlement.Accepted,
-            message = UiText.res(R.string.recurring_message_queued),
-        ),
-    )
-}
+    ),
+)
 
 private fun RecurringUiState.shouldKeepMutationFeedback(explicit: Boolean): Boolean =
     explicit || duplicateConflict != null
@@ -431,15 +412,6 @@ private fun List<RecurringItem>.withRecurringItem(item: RecurringItem): List<Rec
         map { existing -> if (existing.publicId == item.publicId) item else existing }
     } else {
         listOf(item) + this
-    }
-
-private fun List<RecurringPendingIntent>.withPendingIntent(
-    intent: RecurringPendingIntent,
-): List<RecurringPendingIntent> =
-    if (any { it.idempotencyKey == intent.idempotencyKey }) {
-        map { existing -> if (existing.idempotencyKey == intent.idempotencyKey) intent else existing }
-    } else {
-        this + intent
     }
 
 private fun Throwable.toRecurringDuplicateConflict(): RecurringDuplicateConflict? {

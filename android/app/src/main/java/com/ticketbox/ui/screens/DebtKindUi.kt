@@ -20,6 +20,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -32,6 +33,7 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtKinds
 import com.ticketbox.ui.components.AppFilterChip
+import com.ticketbox.ui.components.AppFilterChipOptions
 import com.ticketbox.ui.components.AppListRow
 import com.ticketbox.ui.components.AppSectionGroup
 import com.ticketbox.ui.components.AppSheetScaffold
@@ -71,7 +73,8 @@ internal fun debtKindDescriptionRes(kind: String): Int = when (kind) {
 internal fun DebtKindCardWithEditor(debt: Debt, canModify: Boolean, onSelect: (String) -> Unit) {
     var sheetOpen by rememberSaveable { mutableStateOf(false) }
     DebtKindCard(debt = debt, canModify = canModify, onEdit = { sheetOpen = true })
-    if (sheetOpen) {
+    LaunchedEffect(canModify) { if (!canModify) sheetOpen = false }
+    if (sheetOpen && canModify) {
         DebtKindSheet(
             currentKind = debt.debtKind,
             onSelect = { sheetOpen = false; onSelect(it) },
@@ -184,7 +187,7 @@ private fun DebtKindOptionRow(
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun DebtKindCreateField(selected: String, onSelect: (String) -> Unit) {
+internal fun DebtKindCreateField(selected: String, enabled: Boolean, onSelect: (String) -> Unit) {
     Text(
         stringResource(R.string.debt_create_label_kind),
         style = MaterialTheme.typography.labelMedium,
@@ -197,6 +200,7 @@ internal fun DebtKindCreateField(selected: String, onSelect: (String) -> Unit) {
                 selected = selected == kind,
                 onClick = { onSelect(kind) },
                 label = stringResource(debtKindLabelRes(kind)),
+                options = AppFilterChipOptions(enabled = enabled),
             )
         }
     }

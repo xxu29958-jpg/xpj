@@ -112,6 +112,10 @@ private fun ConfirmedRulePreviewSummary(result: RuleApplyConfirmedResult) {
         ),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
+    if (result.unavailableCount > 0) {
+        Text(stringResource(R.string.category_rule_apply_currency_unavailable, result.unavailableCount,
+            result.missingCurrencyCodes.joinToString("、")), color = MaterialTheme.colorScheme.secondary)
+    }
     if (result.scanLimitReached) {
         Text(
             text = stringResource(R.string.category_rule_apply_preview_scan_limit, result.scanLimit),

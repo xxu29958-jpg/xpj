@@ -7,7 +7,6 @@ Routes and page assembly only. Pure presenter/form helpers live in
 from __future__ import annotations
 
 import logging
-from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -17,6 +16,7 @@ from app.database import get_db
 from app.errors import AppError
 from app.money_contract import MoneySign, parse_canonical_money_minor
 from app.routes._web_recurring_presenter import (
+    apply_form_draft,
     candidate_review_prefill,
     candidate_view,
     conflict_error_kwargs,
@@ -34,31 +34,36 @@ from app.routes.web_common import (
     _resolve_selected_ledger_id,
     _web_redirect,
     parse_form_row_version_token,
+    preserve_original_ledger_form,
     templates,
 )
+from app.routes.web_recurring_occurrences import router as occurrences_router
 from app.schemas import RecurringCandidateConfirmRequest
-from app.services.currency_binding_service import require_runtime_home_currency_code
+from app.services.currency_common import normalize_currency_code
 from app.services.insights_service import recurring_candidates
 from app.services.recurring_candidate_confirmation_service import confirm_recurring_candidate
 from app.services.recurring_item_command_service import (
     create_manual_recurring_item,
     update_recurring_item,
 )
+from app.services.recurring_occurrence_query import next_due_dates
 from app.services.recurring_service import (
     RecurringAmountAnomaly,
     archive_recurring_item,
     list_recurring_items,
     pause_recurring_item,
     recurring_amount_anomalies,
+    recurring_monthly_total,
     restore_recurring_item,
     resume_recurring_item,
 )
-from app.services.spending_contract_service import accounting_zone
+from app.services.spending_contract_service import accounting_zone, current_accounting_month
 from app.services.time_service import now_utc
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/web/recurring", tags=["web"])
+router.include_router(occurrences_router)
 
 _STALE_PAGE_FLASH = "页面已过期，请刷新后重新操作。"
 _VALID_STATUS_FILTERS = {"active", "paused", "archived"}
@@ -85,7 +90,6 @@ def _candidate_review(
     candidate_rows: list[dict],
     *,
     review_merchant: str | None,
-    currency_code: str,
     can_write: bool,
     candidates_error: bool,
 ) -> dict | None:
@@ -95,7 +99,14 @@ def _candidate_review(
         (candidate for candidate in candidate_rows if str(candidate.get("merchant") or "") == review_merchant),
         None,
     )
-    return None if matched is None else candidate_review_prefill(matched, currency_code=currency_code)
+    return None if matched is None else candidate_review_prefill(matched)
+
+
+def _recurring_hero(db, *, selected_id, items, currency_code, due_dates):
+    active = [item for item in items if item.status == "active"]
+    total = recurring_monthly_total(db, tenant_id=selected_id, items=active,
+        home_currency_code=currency_code, month=current_accounting_month())
+    return hero_view(active, currency_code=currency_code, total_cents=total, due_dates=due_dates)
 
 
 def _render_recurring(
@@ -110,6 +121,8 @@ def _render_recurring(
     error_guidance: dict | None = None,
     review_merchant: str | None = None,
     open_edit_id: str | None = None,
+    draft: dict | None = None,
+    prepare_review: bool = False,
 ) -> HTMLResponse:
     if status and status not in _VALID_STATUS_FILTERS:
         raise AppError("recurring_status_invalid", status_code=422)
@@ -135,12 +148,13 @@ def _render_recurring(
     if status:
         visible = [item for item in all_items if item.status == status]
     else:
-        visible = [item for item in all_items if item.status != "archived"]
+        visible = [item for item in all_items if item.status != "archived" or (draft and item.public_id == draft.get("public_id"))]
+    due_dates = next_due_dates(db, tenant_id=selected_id, items=all_items)
     ctx["items"] = [
         item_view(
             item,
             anomalies.get(item.public_id) or RecurringAmountAnomaly(),
-            currency_code=currency_code,
+            due_date=due_dates[item.id],
         )
         for item in visible
     ]
@@ -150,7 +164,6 @@ def _render_recurring(
     ctx["candidates"] = [
         candidate_view(
             candidate,
-            currency_code=currency_code,
             ledger_id=selected_id,
         )
         for candidate in candidate_rows
@@ -160,19 +173,17 @@ def _render_recurring(
     ctx["review"] = _candidate_review(
         candidate_rows,
         review_merchant=review_merchant,
-        currency_code=currency_code,
         can_write=ctx["can_write"],
         candidates_error=candidates_error,
     )
-    ctx["hero"] = hero_view(all_items, currency_code=currency_code)
+    ctx["hero"] = _recurring_hero(db, selected_id=selected_id, items=all_items, currency_code=currency_code, due_dates=due_dates)
     ctx["status_filter"] = status or ""
     ctx["flash_message"] = flash_message
     ctx["error_message"] = error_message
     ctx["error_guidance"] = error_guidance
     today = now_utc().astimezone(accounting_zone()).date()
     ctx["suggested_next_date"] = suggest_next_expected_date(today).isoformat()
-    # 创建表单的 durable intent key: 一次渲染一把, 同一提交的重试/双击都回放它。
-    ctx["create_idempotency_key"] = uuid4().hex
+    apply_form_draft(ctx, draft, prepare_review=prepare_review)
     ctx["open_edit_id"] = open_edit_id
     return templates.TemplateResponse(request=request, name="recurring.html", context=ctx)
 
@@ -206,8 +217,10 @@ def web_recurring_create(
     ledger_id: str = Form(default=""),
     merchant: str = Form(default=""),
     baseline_amount_yuan: str = Form(default=""),
+    home_currency_code: str = Form(default=""),
     next_expected_date: str = Form(default=""),
     idempotency_key: str = Form(default=""),
+    review_latest: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ):
@@ -218,9 +231,18 @@ def web_recurring_create(
     """
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
+    draft = {"merchant": merchant, "baseline_amount_yuan": baseline_amount_yuan, "home_currency_code": home_currency_code,
+             "next_expected_date": next_expected_date, "idempotency_key": idempotency_key}
+    retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
+        fields={**draft, "ledger_id": ledger_id, "review_latest": review_latest}, task="添加固定支出")
+    if retained is not None:
+        return retained
     _require_selected_ledger_write(options, selected_id)
+    if review_latest == "true":
+        return _render_recurring(request=request, db=db, selected_id=selected_id, options=options,
+                                 draft=draft, prepare_review=True)
     try:
-        currency_code = require_runtime_home_currency_code(db)
+        currency_code = normalize_currency_code(home_currency_code)
         amount_cents = parse_baseline_yuan(baseline_amount_yuan, currency_code=currency_code)
         expected_date = parse_optional_date(next_expected_date)
         create_manual_recurring_item(
@@ -228,6 +250,7 @@ def web_recurring_create(
             tenant_id=selected_id,
             idempotency_key=(idempotency_key or "").strip() or None,
             merchant=merchant,
+            home_currency_code=currency_code,
             baseline_amount_cents=amount_cents,
             next_expected_date=expected_date,
         )
@@ -238,6 +261,7 @@ def web_recurring_create(
             db=db,
             selected_id=selected_id,
             options=options,
+            draft={**draft, "review_required": exc.error in {"idempotency_key_required", "idempotency_key_reused"}},
             **_conflict_kwargs(exc, selected_id=selected_id, merchant=merchant),
         )
     return _web_redirect("/web/recurring", selected_id, flash="已加入你的固定支出。")
@@ -249,6 +273,7 @@ def web_recurring_confirm_candidate(
     ledger_id: str = Form(default=""),
     merchant: str = Form(...),
     amount_cents: str = Form(...),
+    home_currency_code: str = Form(default=""),
     next_expected_date: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
@@ -259,6 +284,11 @@ def web_recurring_confirm_candidate(
     409 conflict/archived 消费 details 给出可行动下一步。"""
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
+    retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
+        fields={"ledger_id": ledger_id, "merchant": merchant, "amount_cents": amount_cents,
+            "home_currency_code": home_currency_code, "next_expected_date": next_expected_date}, task="采用固定支出建议")
+    if retained is not None:
+        return retained
     _require_selected_ledger_write(options, selected_id)
     try:
         parsed_amount_cents = parse_canonical_money_minor(
@@ -268,6 +298,7 @@ def web_recurring_confirm_candidate(
         )
         payload = RecurringCandidateConfirmRequest(
             merchant=merchant,
+            home_currency_code=normalize_currency_code(home_currency_code),
             amount_cents=parsed_amount_cents,
             frequency="monthly",
             next_expected_date=parse_optional_date(next_expected_date),
@@ -292,9 +323,11 @@ def web_recurring_edit(
     ledger_id: str = Form(default=""),
     merchant: str = Form(default=""),
     baseline_amount_yuan: str = Form(default=""),
+    home_currency_code: str = Form(default=""),
     next_expected_date: str = Form(default=""),
     expected_row_version: str = Form(default=""),
     idempotency_key: str = Form(default=""),
+    review_latest: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ):
@@ -304,12 +337,22 @@ def web_recurring_edit(
     重放拿成功而不是 false-409。"""
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
+    draft = {"public_id": public_id, "merchant": merchant, "baseline_amount_yuan": baseline_amount_yuan, "home_currency_code": home_currency_code,
+             "next_expected_date": next_expected_date, "idempotency_key": idempotency_key,
+             "expected_row_version": expected_row_version}
+    retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
+        fields={**draft, "ledger_id": ledger_id, "review_latest": review_latest}, task="修改固定支出")
+    if retained is not None:
+        return retained
     _require_selected_ledger_write(options, selected_id)
+    if review_latest == "true":
+        return _render_recurring(request=request, db=db, selected_id=selected_id, options=options,
+                                 draft=draft, prepare_review=True)
     parsed = parse_form_row_version_token(expected_row_version)
-    if parsed is None:
-        return _web_redirect("/web/recurring", selected_id, flash=_STALE_PAGE_FLASH)
     try:
-        currency_code = require_runtime_home_currency_code(db)
+        if parsed is None:
+            raise AppError("invalid_request", _STALE_PAGE_FLASH, status_code=422)
+        currency_code = normalize_currency_code(home_currency_code)
         amount_cents = parse_baseline_yuan(baseline_amount_yuan, currency_code=currency_code)
         expected_date = parse_optional_date(next_expected_date)
         update_recurring_item(
@@ -318,6 +361,7 @@ def web_recurring_edit(
             public_id=public_id,
             idempotency_key=(idempotency_key or "").strip() or None,
             expected_row_version=parsed,
+            home_currency_code=currency_code,
             merchant=merchant,
             merchant_provided=True,
             baseline_amount_cents=amount_cents,
@@ -332,6 +376,9 @@ def web_recurring_edit(
             db=db,
             selected_id=selected_id,
             options=options,
+            draft={**draft, "review_required": parsed is None or exc.error in {
+                "state_conflict", "idempotency_key_required", "idempotency_key_reused",
+            }},
             **_conflict_kwargs(exc, selected_id=selected_id, merchant=merchant),
         )
     return _web_redirect("/web/recurring", selected_id, flash="固定支出已保存。")

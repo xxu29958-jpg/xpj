@@ -18,7 +18,8 @@
 </header>
 
 {% if flash_message %}
-<div class="product-feedback product-feedback--success" role="status">{{ flash_message }}</div>
+<div class="product-feedback product-feedback--{{ 'error' if flash_type == 'error' else 'success' }}"
+     role="{{ 'alert' if flash_type == 'error' else 'status' }}">{{ flash_message }}</div>
 {% endif %}
 
 <div class="import-export-workspace">
@@ -85,4 +86,57 @@
     </form>
   </section>
 </div>
+
+<section class="product-panel product-panel--padded import-batch-rows" aria-label="导入记录">
+  <div class="product-panel-header">
+    <div>
+      <h2 class="product-panel-title">导入记录</h2>
+      <p class="product-panel-subtitle">离开后可在这里继续原批次，或查看已导入的结果与错误行。重新上传会创建新批次。</p>
+    </div>
+  </div>
+  <div class="product-table-wrap">
+    <table class="product-table">
+      <thead>
+        <tr>
+          <th scope="col">文件 / 上传时间</th>
+          <th scope="col">结果</th>
+          <th scope="col">剩余可导入</th>
+          <th scope="col">已导入</th>
+          <th scope="col">错误行</th>
+          <th scope="col">操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for progress in batch_page.items %}
+        {% set batch = progress.batch %}
+        {% set status_label, status_tone = progress.display_status %}
+        <tr>
+          <td>{{ batch.file_name }}<div class="text-meta">{{ batch_created_labels[batch.id] }}</div></td>
+          <td><span class="product-status {{ status_tone }}">{{ status_label }}</span></td>
+          <td>{{ progress.row_counts.remaining_valid_rows }}</td>
+          <td>{{ progress.row_counts.applied_rows }}</td>
+          <td>{{ progress.row_counts.error_rows }}</td>
+          <td>
+            <a class="product-button product-button--quiet" href="/web/import/{{ batch.public_id }}{{ q }}">{{ '继续导入' if can_write and progress.row_counts.remaining_valid_rows > 0 else '查看结果' }}</a>
+            {% if progress.row_counts.error_rows > 0 %}
+            <a href="/web/import/{{ batch.public_id }}/errors.csv{{ q }}">下载错误行</a>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-meta">当前账本还没有导入记录。</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="product-pagination">
+    {% if batch_page.page > 1 %}
+    <a class="product-button product-button--quiet" href="/web/import{{ q }}&page={{ batch_page.page - 1 }}&page_size={{ batch_page.page_size }}">上一页</a>
+    {% endif %}
+    <span class="text-meta">第 {{ batch_page.page }} / {{ batch_page.total_pages }} 页 · 共 {{ batch_page.total }} 个批次</span>
+    {% if batch_page.page < batch_page.total_pages %}
+    <a class="product-button product-button--quiet" href="/web/import{{ q }}&page={{ batch_page.page + 1 }}&page_size={{ batch_page.page_size }}">下一页</a>
+    {% endif %}
+  </div>
+</section>
 {% endblock %}

@@ -40,14 +40,7 @@ internal class NetworkErrorHandler(
         } catch (error: CancellationException) {
             throw error
         } catch (error: HttpException) {
-            val parsed = parseHttpError(error)
-            Result.failure(
-                RepositoryException(
-                    parsed.message,
-                    parsed.errorCode,
-                    conflict = parsed.conflict,
-                )
-            )
+            Result.failure(httpFailure(error))
         } catch (error: RepositoryException) {
             Result.failure(error)
         } catch (error: IOException) {
@@ -60,22 +53,28 @@ internal class NetworkErrorHandler(
             // path — that's a real contract (chained confirm
             // depends on it failing) we need to keep testable.
             logNetworkWarning(networkDiagnosticMessage(error, serverUrl), error)
-            Result.failure(RepositoryException(userNetworkMessage(error, serverUrl)))
+            Result.failure(RepositoryException(userNetworkMessage(error, serverUrl), cause = error))
         } catch (error: IllegalArgumentException) {
             if (BuildConfig.DEBUG) {
                 logNetworkWarning("$context request argument error: ${error.message}", error)
             }
-            Result.failure(RepositoryException(error.message ?: "请求参数不正确。"))
+            Result.failure(RepositoryException(error.message ?: "请求参数不正确。", cause = error))
         } catch (error: Exception) {
             if (BuildConfig.DEBUG) {
                 logNetworkWarning("$context request failed: ${error::class.java.name}: ${error.message}", error)
             }
-            Result.failure(RepositoryException(error.message ?: "操作失败。"))
+            Result.failure(RepositoryException(error.message ?: "操作失败。", cause = error))
         }
     }
 
     fun parseHttpError(error: HttpException): ParsedError =
         parseErrorMessage(error.code(), error.response()?.errorBody()?.string())
+
+    fun httpFailure(error: HttpException): RepositoryException {
+        val parsed = try { parseHttpError(error) } catch (_: IOException) { parseErrorMessage(error.code(), null) }
+        return RepositoryException(parsed.message, parsed.errorCode, conflict = parsed.conflict,
+            httpStatusCode = error.code(), cause = error)
+    }
 
     fun parseErrorMessage(statusCode: Int, body: String?): ParsedError {
         if (!body.isNullOrBlank()) {
@@ -86,6 +85,10 @@ internal class NetworkErrorHandler(
                         backendErrorUserMessage(it.error, it.message),
                         it.error.trim(),
                         conflict = it.toConflictDetails(),
+                        expenseId = it.expenseId,
+                        missingExchangeRate = it.homeCurrencyCode?.let { home ->
+                            com.ticketbox.data.remote.dto.MissingExchangeRateDto(it.currencyCode, home, it.rateDate)
+                        },
                     )
                 }
         }
@@ -103,6 +106,8 @@ internal class NetworkErrorHandler(
         val message: String,
         val errorCode: String?,
         val conflict: RepositoryConflictDetails = RepositoryConflictDetails(),
+        val expenseId: Long? = null,
+        val missingExchangeRate: com.ticketbox.data.remote.dto.MissingExchangeRateDto? = null,
     ) {
         val conflictTagPublicId: String? get() = conflict.tag.publicId
         val conflictTagRowVersion: Long? get() = conflict.tag.rowVersion

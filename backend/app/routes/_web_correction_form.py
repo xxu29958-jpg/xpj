@@ -124,6 +124,13 @@ async def _submitted_form_field_names(request: Request) -> frozenset[str]:
     return frozenset((await request.form()).keys())
 
 
+async def correction_original_fields(request: Request) -> dict:
+    """Keep repeated native rows and original tokens; recovery supplies current CSRF."""
+    raw = await request.form()
+    return {key: raw.getlist(key) if len(raw.getlist(key)) > 1 else raw[key]
+        for key in raw if key != "csrf_token"}
+
+
 def correction_form_data(
     reason: str = Form(default=""),
     amount_yuan: str | None = Form(default=None),
@@ -283,7 +290,8 @@ def _score_change(
     return candidate != current, candidate, None
 
 
-def _correction_outcome(form: CorrectionFormData) -> CorrectionParseOutcome:
+def correction_form_projection(form: CorrectionFormData) -> CorrectionParseOutcome:
+    """Retain raw scalar and child-row intent without reading or adopting a newer fact."""
     outcome = CorrectionParseOutcome(
         form_values=_form_values_from(form),
         item_form_rows=submitted_item_form_rows(
@@ -434,7 +442,7 @@ def parse_correction_form(
 ) -> CorrectionParseOutcome:
     """Validate + diff one correction POST against the current fact snapshot."""
 
-    outcome = _correction_outcome(form)
+    outcome = correction_form_projection(form)
     reason = _reason_or_error(form, outcome)
     if reason is None:
         return outcome

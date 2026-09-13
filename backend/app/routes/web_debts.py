@@ -22,9 +22,11 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.errors import AppError
 from app.routes._web_debt_write import (
     PROPOSAL_CONFIRM_AMOUNT_FIELD,
     _debt_action_keys,
@@ -88,25 +90,6 @@ _MEMBER_EYEBROW_THIRD = "他们的一件事 · {}"
 # 成员债状态徽章：cleared→success，其余(open/voided)→neutral，**永不 danger/红** (红线②)。
 _MEMBER_STATUS = {"open": ("进行中", ""), "cleared": ("已两清", "ok"), "voided": ("已不算", "")}
 
-# ── slice 2b: 成员 proposal 状态 + 过往历史 (复用 list_repayment_proposals，无新端点) ──
-# 已解决态状态标签 + 日期前缀 + 标题/折叠 逐字镜像 strings_stats_budget.xml (debt_proposal_status_* /
-# debt_proposal_history_*，§14 三端 copy 同步)；rejected→「在对账」(不读作失败)、voided/expired 永不 danger。
-_PROPOSAL_STATUS_LABELS = {
-    "pending": "待 TA 确认",
-    "confirmed": "已两清",
-    "partially_confirmed": "收了一部分",
-    "rejected": "在对账",
-    "withdrawn": "已撤回",
-    "expired": "这次没对上",
-    "superseded": "重记过了",
-}
-_PROPOSAL_HISTORY_TITLE = "过往"
-_PROPOSAL_HISTORY_COLLAPSED = 3  # 折叠时显示前 3 条，其余进 <details> (镜像 ResolvedHistoryCard 的 take(3))
-# 解决日期前缀 (mirror resolvedDateText)：confirmed 标「对上」、partial「收了一部分」、其余纯日期不加负面前缀。
-_PROPOSAL_DATE_CONFIRMED = "{} 对上"
-_PROPOSAL_DATE_PARTIAL = "{} 收了一部分"
-
-
 def _is_member_view(debt) -> bool:
     """成员债行 (communal) 判定，镜像 :func:`_detail_view` 的 FX 防御：外币成员债退回外部
     会计行 (「无金额关系主句 + 单币进度」在多币种下崩)。slice 4 已把 bill_split 成员债冻结成
@@ -125,7 +108,7 @@ def _debt_view(debt) -> dict:
     """列表行视图模型 (slice 1A：按角色分轴)。
 
     外部债 = businesslike 会计行 (应付/应收 + 本位币剩余 editorial 拆分英雄 + 本金脚注 + 状态色含
-    danger)。成员债 = communal 关系行 (对手方名 + viewer-相对关系主句〔无金额、永不应付应收剩余〕 +
+    danger)。成员债 = communal 关系行 (对手方名 + viewer-相对关系主句与冻结币种下的剩余金额 +
     open 时细 success 进度条 + 状态徽章〔neutral/success **永不 danger** 红线②〕)，作废/已结清沉降。
 
     成员行的角色 (你帮我垫的/我帮你垫的/第三方) 读服务端权威 ``debt.viewer_is_debtor`` (由
@@ -146,6 +129,7 @@ def _debt_view(debt) -> dict:
         view.update(
             {
                 # 关系主句逐字复用详情 headline (无金额)；列表与详情同一句。
+                "remaining_label": _home_amount_label(debt.remaining_amount_cents, debt.home_currency_code),
                 "member_headline": _member_headline(
                     debt.viewer_is_debtor, debt.status, debt.is_forgiven, ratio
                 ),
@@ -218,6 +202,7 @@ def _detail_view(debt) -> dict:
         "public_id": debt.public_id,
         "name": name,
         "is_member": use_member,
+        "note": debt.note,
         "is_voided": status == "voided",
         "debt_kind": debt.debt_kind,
         # External keeps the editorial split hero; member detail uses one quiet exact
@@ -422,6 +407,9 @@ def _render_debt_detail(
     flash_message: str = "",
     flash_type: str = "",
     status_code: int = 200,
+    repayment_ack: dict | None = None,
+    repayment_result: str = "",
+    repayment_rejected: bool = False,
 ) -> HTMLResponse:
     """详情页唯一渲染入口：GET 与 proposal 确认 422 原地重渲染共用 (照
     ``web_repayment_drafts._render_repayment_drafts`` 同页重渲染范式)，保证错误重渲染
@@ -460,6 +448,22 @@ def _render_debt_detail(
         )
     )
     ctx["today"] = now_utc().astimezone(accounting_zone()).strftime("%Y-%m-%d")
+    from app.routes._web_debt_repayment import repayment_context
+
+    ctx["repayment_form"] = repayment_context(
+        request, db, selected_id=selected_id, public_id=public_id,
+        currency_code=debt.home_currency_code, expected_row_version=str(debt.row_version),
+        can_create=ctx["can_write"] and debt.status == "open" and not ctx["debt"]["is_member"],
+        can_recover=ctx["can_write"] and not ctx["debt"]["is_member"],
+        values=action_draft if action_kind == "repayment" else None,
+        error=action_error if action_kind == "repayment" else "",
+        result=repayment_result, ack=repayment_ack, rejected=repayment_rejected,
+    )
+    if action_kind == "repayment":
+        # The retained form owns external repayment feedback, including unknown
+        # post-commit outcomes. The old terminal fallback's "not saved" claim
+        # cannot describe those commands. Member debts retain their static guard.
+        ctx["action_form"]["fallback"] = ctx["debt"]["is_member"]
     ctx["repayment_facts"] = _repayment_fact_rows(
         db,
         selected_id=selected_id,
@@ -486,12 +490,17 @@ def web_debt_detail(
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
-    return _render_debt_detail(
-        request,
-        db,
-        options=options,
-        selected_id=selected_id,
-        public_id=public_id,
-        flash_message=msg,
-        flash_type=flash_type,
-    )
+    try:
+        return _render_debt_detail(
+            request, db, options=options, selected_id=selected_id, public_id=public_id,
+            flash_message=msg, flash_type=flash_type,
+        )
+    except (AppError, SQLAlchemyError) as exc:
+        if isinstance(exc, AppError) and exc.status_code < 500:
+            raise
+        from app.routes._web_debt_repayment import render_repayment_recovery
+
+        db.rollback()
+        return render_repayment_recovery(
+            request, db, options=options, selected_id=selected_id, public_id=public_id,
+        )

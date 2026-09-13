@@ -21,9 +21,9 @@ from app.config import get_settings
 from app.errors import AppError
 from app.models import CsvImportBatch
 from app.services.csv_import_batch_service._csv_io import _refresh_batch_counts
+from app.services.csv_import_batch_service._queries import _remaining_importable_rows
 from app.services.csv_import_batch_service._row_claim import (
     _applying_row_count,
-    _remaining_importable_rows,
 )
 from app.services.time_service import ensure_utc, now_utc
 
@@ -44,7 +44,7 @@ def _claim_apply_lease(
         update(CsvImportBatch)
         .where(CsvImportBatch.tenant_id == tenant_id)
         .where(CsvImportBatch.public_id == public_id)
-        .where(CsvImportBatch.status.in_(("parsed", "parsed_with_errors", "applying")))
+        .where(CsvImportBatch.status.in_(("parsed", "parsed_with_errors", "applying", "applied", "applied_with_errors")))
         .where(
             or_(
                 CsvImportBatch.locked_until.is_(None),

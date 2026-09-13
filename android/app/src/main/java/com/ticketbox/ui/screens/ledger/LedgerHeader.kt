@@ -19,11 +19,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
-import com.ticketbox.ui.components.AppAmountText
-import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.LocalCurrencyCode
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.LedgerUiState
@@ -62,11 +59,10 @@ internal fun LedgerHeader(
                 style = MaterialTheme.typography.labelSmall,
                 maxLines = 1,
             )
-            AppAmountText(
-                text = formatAmount(summary.totalAmountCents, LocalCurrencyCode.current),
+            LedgerAmounts(
+                amounts = summary.amountsByCurrency,
                 modifier = Modifier.fillMaxWidth(),
                 role = AppAmountRole.Hero,
-                color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
                 text = stringResource(R.string.ledger_header_count_value, summary.itemCount) +

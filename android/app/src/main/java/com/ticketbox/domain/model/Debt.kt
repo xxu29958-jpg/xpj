@@ -94,6 +94,7 @@ data class Debt(
      * construction sites that don't care need not name it; the mapper carries the server value through.
      */
     val isForgiven: Boolean = false,
+    val note: String? = null,
 ) {
     val isOpen: Boolean get() = status == DebtLinkStatuses.OPEN
     val isCleared: Boolean get() = status == DebtLinkStatuses.CLEARED

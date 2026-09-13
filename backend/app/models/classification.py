@@ -4,8 +4,10 @@ from datetime import datetime
 from uuid import uuid4
 
 from sqlalchemy import (
+    DDL,
     BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
@@ -13,6 +15,7 @@ from sqlalchemy import (
     Integer,
     String,
     UniqueConstraint,
+    event,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -24,7 +27,8 @@ from app.tenant_contract import DEFAULT_TENANT_ID
 
 class CategoryRule(Base):
     __tablename__ = "category_rules"
-    __table_args__ = money_check_constraints_for_table("category_rules")
+    __table_args__ = (*money_check_constraints_for_table("category_rules"),
+        CheckConstraint("home_currency_code IN ('CNY', 'USD', 'EUR', 'GBP', 'JPY', 'HKD', 'KRW')", name="ck_category_rule_currency"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     tenant_id: Mapped[str] = mapped_column(
@@ -40,6 +44,7 @@ class CategoryRule(Base):
     priority: Mapped[int] = mapped_column(Integer, default=100, nullable=False, index=True)
     amount_min_cents: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     amount_max_cents: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    home_currency_code: Mapped[str | None] = mapped_column(String(3), nullable=True)
     source_contains: Mapped[str | None] = mapped_column(String(64), nullable=True)
     tag_contains: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
@@ -51,6 +56,24 @@ class CategoryRule(Base):
     # Indexed via the module-level composite below (not column-level, to keep
     # create_all and the startup migrator declaring the same index set).
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+event.listen(CategoryRule.__table__, "after_create", DDL("""
+    CREATE OR REPLACE FUNCTION ticketbox_category_rule_currency_required()
+    RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+        IF (NEW.amount_min_cents IS NOT NULL OR NEW.amount_max_cents IS NOT NULL)
+           AND NEW.home_currency_code IS NULL THEN
+            RAISE EXCEPTION 'monetary rule requires its captured currency' USING ERRCODE = '23514';
+        END IF;
+        IF TG_OP = 'UPDATE' AND OLD.home_currency_code IS NOT NULL
+           AND NEW.home_currency_code IS DISTINCT FROM OLD.home_currency_code THEN
+            RAISE EXCEPTION 'rule currency cannot relabel saved thresholds' USING ERRCODE = '23514';
+        END IF;
+        RETURN NEW;
+    END $$;
+    CREATE TRIGGER trg_category_rule_currency_required BEFORE INSERT OR UPDATE ON category_rules
+    FOR EACH ROW EXECUTE FUNCTION ticketbox_category_rule_currency_required();
+""").execute_if(dialect="postgresql"))
 
 
 class RuleApplicationBatch(Base):

@@ -36,9 +36,12 @@ def _row_id_set(html: str) -> set[str]:
 def test_web_ledger_selector_present(web_client: TestClient) -> None:
     resp = web_client.get("/web")
     assert resp.status_code == 200
-    assert 'name="ledger_id"' in resp.text
-    assert "owner" in resp.text  # default ledger id in <option>
-    assert "tester_1" in resp.text  # secondary ledger id in <option>
+    selector = re.search(r'<details class="ledger-switcher".*?</details>', resp.text, re.S)
+    assert selector is not None
+    # This development-only compatibility client switches with real links,
+    # not a select or an unrelated hidden field in the pending bulk form.
+    assert 'href="/web/pending?ledger_id=owner"' in selector.group(0)
+    assert 'href="/web/pending?ledger_id=tester_1"' in selector.group(0)
 
 
 def test_web_invalid_ledger_rejected(web_client: TestClient) -> None:

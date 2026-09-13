@@ -13,7 +13,7 @@
   <div class="product-page-heading">
     <span class="product-eyebrow">往来 / 新建欠款</span>
     <h1 class="page-title">新建欠款</h1>
-    <p class="product-page-summary">记一笔和账本外的人之间的往来。所有提交走服务端幂等事务，重复点击不会记成两笔。</p>
+    <p class="product-page-summary">记下你与账本外的人或机构之间的应付和应收，方便后续核对。</p>
   </div>
 </header>
 
@@ -23,6 +23,7 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
     <input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
+    <input type="hidden" name="home_currency_code" value="{{ form_home_currency_code }}">
 
     <fieldset class="debt-choice-group">
       <legend>谁欠谁</legend>
@@ -46,22 +47,23 @@
         <label for="debt-new-currency">币种</label>
         <select id="debt-new-currency" class="product-input" name="currency_code">
           {% for code in currency_options %}
-          <option value="{{ code }}"{% if loop.first or values.currency_code == code %} selected{% endif %}>{{ code }}</option>
+          <option value="{{ code }}"{% if selected_currency_code == code %} selected{% endif %}>{{ code }}</option>
           {% endfor %}
         </select>
       </div>
       <div class="product-field">
-        <label for="debt-new-amount">金额（{{ currency_input.currency_code }}，{{ currency_input.amount_input_hint }}）</label>
-        <input id="debt-new-amount" class="product-input" name="amount_major" type="number" step="{{ currency_input.amount_step }}" min="{{ currency_input.positive_amount_min }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}" value="{{ values.amount_major or '' }}" required>
-        <p class="hint">外币按所选币种记账，服务端按发生日冻结汇率。</p>
+        <label for="debt-new-amount">金额（所选币种）</label>
+        <input id="debt-new-amount" class="product-input" name="amount_major" type="text" inputmode="decimal" placeholder="输入金额" value="{{ values.amount_major or '' }}" required>
+        <p class="hint">保留原币金额，按发生日折算为 {{ form_home_currency_code }}。</p>
       </div>
       <div class="product-field">
         <label for="debt-new-event-time">发生日期</label>
         <input id="debt-new-event-time" class="product-input" name="event_time" type="date" value="{{ values.event_time or today }}" required>
       </div>
       <div class="product-field">
-        <label for="debt-new-note">备注（可选）</label>
-        <input id="debt-new-note" class="product-input" name="note" type="text" maxlength="80" placeholder="比如：一起出差垫的" value="{{ values.note or '' }}">
+        <label for="debt-new-note">往来说明（可选）</label>
+        <textarea id="debt-new-note" class="product-input" name="note" rows="3" maxlength="500" aria-describedby="debt-new-note-hint" placeholder="比如：一起出差垫付的交通费">{{ values.note or '' }}</textarea>
+        <p id="debt-new-note-hint" class="hint">记下缘由或约定，方便以后核对。最多 500 字。</p>
       </div>
     </div>
 

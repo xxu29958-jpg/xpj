@@ -21,7 +21,6 @@ from app.database._managed_postgres_migration_runtime import (
 from tests.test_managed_postgres_migration_runtime import (
     _C02_TARGET_REVISION,
     _C07_TARGET_REVISION,
-    _RELEASE_HEAD_REVISION,
     _managed_topology,
     _ManagedTopology,
     _revision,
@@ -36,7 +35,7 @@ def _migration_arguments(topology: _ManagedTopology) -> dict[str, object]:
         "pgpassfile": topology.pgpass,
         "program": topology.program,
         "source_revision": _C07_TARGET_REVISION,
-        "target_revision": _RELEASE_HEAD_REVISION,
+        "target_revision": topology.program.target_revision,
         "generation_operation_id": topology.operation_id,
     }
 
@@ -63,8 +62,8 @@ def _assert_alembic_owns_the_exact_transition(
     monkeypatch.setattr(generation_executor.command, "upgrade", original_upgrade)
     assert len(observed) == 1
     assert observed[0][0] is not None
-    assert observed[0][1:] == (_RELEASE_HEAD_REVISION, topology.program)
-    assert _revision(topology.admin_database_url) == _RELEASE_HEAD_REVISION
+    assert observed[0][1:] == (topology.program.target_revision, topology.program)
+    assert _revision(topology.admin_database_url) == topology.program.target_revision
 
 
 def _assert_intermediate_postcondition_is_mandatory(
@@ -118,7 +117,7 @@ def _assert_target_retry_revalidates_postcondition(
             topology.runtime.run(**_migration_arguments(topology))
     finally:
         owner_engine.dispose()
-    assert _revision(topology.admin_database_url) == _RELEASE_HEAD_REVISION
+    assert _revision(topology.admin_database_url) == topology.program.target_revision
 
 
 def _assert_executor_requires_caller_transaction(topology: _ManagedTopology) -> None:
@@ -132,7 +131,7 @@ def _assert_executor_requires_caller_transaction(topology: _ManagedTopology) -> 
                 connection,
                 program=topology.program,
                 source_revision=_C07_TARGET_REVISION,
-                target_revision=_RELEASE_HEAD_REVISION,
+                target_revision=topology.program.target_revision,
             )
     finally:
         engine.dispose()
@@ -187,7 +186,7 @@ def test_generation_alembic_boundary_rejects_invalid_rows_and_owns_transition(
         _assert_intermediate_postcondition_is_mandatory(
             topology,
             monkeypatch,
-            expected_revision=_RELEASE_HEAD_REVISION,
+            expected_revision=topology.program.target_revision,
         )
         _assert_target_retry_revalidates_postcondition(topology)
 
@@ -223,7 +222,7 @@ def test_target_verification_consumer_is_read_only(
             operation_id=topology.operation_id,
             database=topology.database,
             restore_attempt_id="",
-            target_revision=_RELEASE_HEAD_REVISION,
+            target_revision=topology.program.target_revision,
         )
-        assert result["alembic_revision"] == _RELEASE_HEAD_REVISION
+        assert result["alembic_revision"] == topology.program.target_revision
         assert observations == ["on"]

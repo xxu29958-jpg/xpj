@@ -16,7 +16,7 @@ class ExpenseRepositoryExpenseDetailTest {
     fun expenseItemsAndSplitsUseV1DetailEndpoints() = runTest {
         val settingsStore = boundSettingsStore(role = "member")
         val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
-        val repository = ExpenseRepository(
+        val repository = com.ticketbox.data.repository.expenseRepositoryFixture(
             expenseDao = FakeExpenseDao(),
             binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(apiService),
@@ -83,7 +83,7 @@ class ExpenseRepositoryExpenseDetailTest {
             )
         }
         val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
-        val repository = ExpenseRepository(
+        val repository = com.ticketbox.data.repository.expenseRepositoryFixture(
             expenseDao = dao,
             binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(apiService),
@@ -123,7 +123,7 @@ class ExpenseRepositoryExpenseDetailTest {
                 tokenStore.switchLedgerForFixture("family", "Family Ledger", role = "member")
             }
         }
-        val repository = ExpenseRepository(
+        val repository = com.ticketbox.data.repository.expenseRepositoryFixture(
             expenseDao = dao,
             binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(apiService),
@@ -164,7 +164,7 @@ class ExpenseRepositoryExpenseDetailTest {
             }
         }
         val apiClient = FakeApiServiceFactory(apiService)
-        val repository = ExpenseRepository(
+        val repository = com.ticketbox.data.repository.expenseRepositoryFixture(
             expenseDao = dao,
             binding = testServerSessionBinding(
                 apiClient = apiClient,
@@ -186,7 +186,7 @@ class ExpenseRepositoryExpenseDetailTest {
     @Test
     fun markNotDuplicateRefreshesConfirmedCacheForActiveLedger() = runTest {
         val dao = FakeExpenseDao()
-        val repository = ExpenseRepository(
+        val repository = com.ticketbox.data.repository.expenseRepositoryFixture(
             expenseDao = dao,
             binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0)),
@@ -219,7 +219,7 @@ class ExpenseRepositoryExpenseDetailTest {
             )
         }
         val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
-        val repository = ExpenseRepository(
+        val repository = com.ticketbox.data.repository.expenseRepositoryFixture(
             expenseDao = FakeExpenseDao(),
             binding = testServerSessionBinding(
                 apiClient = FakeApiServiceFactory(apiService),

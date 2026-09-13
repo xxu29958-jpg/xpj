@@ -30,9 +30,9 @@ package com.ticketbox.data.local
  *  └─── manual retry ◄──────────┘
  * ```
  *
- * Terminal states (``DONE`` / ``CONFLICT`` resolved / ``FAILED``
- * dismissed) are garbage-collected by the cleanup path after a
- * grace window so undo / audit can still see them briefly.
+ * Debt adjustments retain an explicit ABANDONED row after a local stop.
+ * It never claims server delivery and is outside runnable/expiry/Done-GC scopes.
+ * Other mutation types retain their existing explicit Drop behavior.
  */
 enum class PendingMutationStatus(val wireValue: String) {
     Pending("pending"),
@@ -40,6 +40,8 @@ enum class PendingMutationStatus(val wireValue: String) {
     Conflict("conflict"),
     Failed("failed"),
     Done("done"),
+    /** This device stopped sending the retained Debt command; server delivery remains unknown. */
+    Abandoned("abandoned"),
     Unknown("unknown");
 
     companion object {

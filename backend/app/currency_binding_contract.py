@@ -26,6 +26,7 @@ CURRENCY_EVIDENCE_TABLES = (
     "expenses",
     "exchange_rates",
     "goals",
+    "income_plan_revisions",
     "member_repayment_proposals",
     "monthly_income_plans",
     "ocr_facts",

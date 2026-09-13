@@ -31,6 +31,7 @@ class RecurringMappersTest {
             rowVersion = 1L,
             pausedAt = null,
             archivedAt = null,
+            homeCurrencyCode = "CNY",
         ).toDomain()
 
         assertEquals("recurring-1", item.publicId)
@@ -53,6 +54,7 @@ class RecurringMappersTest {
             lastSeenAt = "2026-05-05T12:00:00Z",
             confidence = "high",
             reason = "近 3 个月金额接近，每月出现",
+            homeCurrencyCode = "CNY",
         ).toConfirmRequest(nextExpectedDate = "2026-06-05")
 
         assertEquals("ChatGPT Plus", request.merchant)

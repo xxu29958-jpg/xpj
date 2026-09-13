@@ -38,6 +38,10 @@ internal class PendingEnrichmentMappersTest {
         enrichmentTaskPublicId = "task-41",
         status = "pending",
         message = "uploaded",
+        imageHash = "a".repeat(64),
+        thumbnailPath = null,
+        duplicateStatus = "none",
+        duplicateOfId = null,
     )
 
     private fun backgroundTask(

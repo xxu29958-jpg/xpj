@@ -21,6 +21,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
+import com.ticketbox.data.repository.DebtTask
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Debt
@@ -50,6 +51,7 @@ import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.DebtAction
 import com.ticketbox.viewmodel.DebtDetailUiState
 import com.ticketbox.viewmodel.DebtDetailViewModel
+import com.ticketbox.viewmodel.DebtRepaymentHistoryUiState
 import com.ticketbox.viewmodel.DebtRepaymentHistoryViewModel
 import com.ticketbox.viewmodel.MemberProposalUiState
 import com.ticketbox.viewmodel.MemberRepaymentProposalViewModel
@@ -64,11 +66,10 @@ private const val DebtDetailFlashDismissMillis = 4000L
  * 镜像 [DebtListScreen] 的生活流骨架（[AppScrollableContent] + secondary header + [AppPaperCard] +
  * [AppStatusBanner]）。记还款 / 调整 / 作废三类直接写只对 external/manual 欠款开放（[Debt.isDirectWritable]）；
  * 成员/拆账欠款显示走对方确认流程的提示而非按钮。统一动作面板（[DebtActionSheet]）按 [DebtAction] 渲染
- * 相应字段，写成功后 ViewModel 把折叠后的欠款换入本地态。
+ * 相应字段；还款与调整先保留原提交，确认同步后再读取服务端欠款。
  */
 // ADR-0049 §3.2 (slice 8d): the detail screen's side-effects, extracted so the screen composable
-// stays under the LongMethod gate. Loads the member proposal收发箱 on entry, refreshes the Debt
-// summary after a fold-changing confirm, and auto-dismisses both VMs' success flashes.
+// loads the participant task, adopts acknowledged folds, and dismisses temporary feedback.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DebtDetailScreen(
@@ -78,8 +79,14 @@ fun DebtDetailScreen(
     onBack: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val proposalState by proposalViewModel.state.collectAsStateWithLifecycle()
-    val historyState by historyViewModel.state.collectAsStateWithLifecycle()
+    val observedProposalState by proposalViewModel.state.collectAsStateWithLifecycle()
+    val proposalState = observedProposalState.takeIf {
+        it.task?.binding == state.binding && it.task?.debtPublicId == state.debt?.publicId
+    } ?: MemberProposalUiState()
+    val observedHistoryState by historyViewModel.state.collectAsStateWithLifecycle()
+    val historyState = observedHistoryState.takeIf {
+        it.binding == state.binding && it.debtPublicId == state.debt?.publicId
+    } ?: DebtRepaymentHistoryUiState()
     val debt = state.debt
 
     DebtDetailEffects(
@@ -99,6 +106,7 @@ fun DebtDetailScreen(
         },
         onSelectKind = viewModel::selectKind,
         onOpenAction = viewModel::openAction,
+        onRecoverDebtWrite = viewModel::recoverDebtWrite,
     )
     DebtDetailContent(
         state = state,
@@ -126,7 +134,7 @@ fun DebtDetailScreen(
             state = proposalState,
             viewModel = proposalViewModel,
             debt = debt,
-            onClose = proposalViewModel::dismissForm,
+            onClose = { proposalState.task?.let(proposalViewModel::dismissForm) },
         )
     }
 }
@@ -139,15 +147,19 @@ private fun DebtDetailEffects(
     historyViewModel: DebtRepaymentHistoryViewModel,
 ) {
     val debt = state.debt
-    LaunchedEffect(debt?.publicId, debt?.isMember) {
-        if (debt != null && debt.isMember) proposalViewModel.load(debt.publicId)
+    LaunchedEffect(state.binding, debt?.publicId, debt?.isMember) {
+        if (debt != null && debt.isMember) state.binding?.let { binding ->
+            proposalViewModel.load(DebtTask(binding, debt.publicId))
+        }
     }
     // canonical 版本变化（还款/调整/作废/单笔还款作废成功后折叠换入）使旧记录失效，重读历史。
-    LaunchedEffect(debt?.publicId, debt?.rowVersion) {
-        if (debt != null) historyViewModel.loadDebt(debt.publicId, debt.rowVersion)
+    LaunchedEffect(state.binding, debt?.publicId, debt?.rowVersion) {
+        val task = state.binding?.let { binding -> debt?.let { DebtTask(binding, it.publicId) } }
+        historyViewModel.loadDebt(task, debt?.rowVersion ?: 0)
     }
-    LaunchedEffect(proposalState.foldChangedAt) {
-        if (proposalState.foldChangedAt > 0) viewModel.refresh()
+    LaunchedEffect(proposalState.task, proposalState.committedDebt) {
+        val task = proposalState.task ?: return@LaunchedEffect
+        proposalState.committedDebt?.let { viewModel.applyMemberResult(task, it) }
     }
     LaunchedEffect(state.flashMessage) {
         if (state.flashMessage == null) return@LaunchedEffect
@@ -204,6 +216,15 @@ internal fun DebtSummaryCard(debt: Debt) {
                 text = stringResource(debtLinkStatusLabelRes(debt.status)),
                 tone = debtLinkStatusTone(debt.status),
             )
+        }
+        debt.note?.takeIf { it.isNotBlank() }?.let { note ->
+            HorizontalDivider()
+            Text(
+                stringResource(R.string.debt_context_title),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(note, style = MaterialTheme.typography.bodyMedium)
         }
     }
 }
@@ -388,12 +409,12 @@ private fun DebtActionForm(
                     placeholder = stringResource(R.string.components_amount_input_placeholder),
                     isError = state.validationError != null,
                 ),
-                actions = AppAmountInputActions(onValueChange = viewModel::updateAmount),
+                actions = AppAmountInputActions(onValueChange = { viewModel.updateActionInput(amount = it) }),
                 modifier = Modifier.fillMaxWidth(),
             )
         }
         if (action == DebtAction.Adjustment) {
-            DebtAdjustmentSignChips(increase = state.adjustmentIncrease, onSelect = viewModel::setAdjustmentSign)
+            DebtAdjustmentSignChips(increase = state.adjustmentIncrease, onSelect = { viewModel.updateActionInput(adjustmentIncrease = it) })
         }
         // 单笔还款作废：选中还款的只读摘要确认作废对象，无金额输入。
         if (action == DebtAction.RepaymentVoid) {
@@ -407,11 +428,12 @@ private fun DebtActionForm(
                     label = stringResource(R.string.debt_action_reason_label),
                     value = state.reasonInput,
                 ),
-                actions = AppTextInputActions(onValueChange = viewModel::updateReason),
+                actions = AppTextInputActions(onValueChange = { viewModel.updateActionInput(reason = it) }),
                 modifier = Modifier.fillMaxWidth(),
             )
         }
         DebtActionWarning(action)
+        state.writeMessage?.let { message -> AppStatusBanner(message = message, tone = MessageTone.Info) }
         state.validationError?.let { err ->
             AppStatusBanner(message = err, tone = MessageTone.Danger)
         }
@@ -423,7 +445,7 @@ private fun DebtActionForm(
                     stringResource(R.string.debt_action_submit)
                 },
                 onClick = onSubmit,
-                enabled = !state.isSubmitting,
+                enabled = state.canWriteActions,
             ),
             secondary = AppSheetAction(
                 text = stringResource(R.string.common_cancel),

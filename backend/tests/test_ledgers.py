@@ -30,6 +30,7 @@ from app.routes.owner_console import _pairing as owner_pairing_route
 from app.routes.owner_console import _require_local as _owner_console_require_local
 from app.routes.owner_ledgers import _require_local as _owner_ledgers_require_local
 from app.services import ledger_service
+from tests._runtime_protocol import current_protocol_headers
 
 
 class _PairingPageProbe(HTMLParser):
@@ -82,7 +83,7 @@ def test_list_ledgers_returns_active_memberships(client: TestClient, *, identity
 
 def test_list_ledgers_requires_app_token(client: TestClient) -> None:
     assert client.get("/api/ledgers").status_code == 401
-    assert client.get("/api/ledgers", headers={"Authorization": "Bearer not-a-real-token"}).status_code == 401
+    assert client.get("/api/ledgers", headers=current_protocol_headers({"Authorization": "Bearer not-a-real-token"})).status_code == 401
 
 
 def test_create_ledger_with_admin_token_adds_membership(client: TestClient, *, identity) -> None:

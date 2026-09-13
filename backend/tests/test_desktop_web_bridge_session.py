@@ -217,7 +217,10 @@ def test_desktop_bridge_options_fall_back_to_session_record_off_console_roster(
     assert response.status_code == 200, response.text
     assert "外部家庭账本" in response.text
     assert "ledger-role-member" in response.text
-    assert 'name="ledger_id" value="ledger_foreign"' in response.text
+    assert 'href="/web/pending?ledger_id=ledger_foreign"' in response.text
+    capture = re.search(r'<form[^>]+id="capture"[^>]+>', response.text)
+    assert capture is not None
+    assert 'action="/web/pending/upload?ledger_id=ledger_foreign"' in capture.group(0)
     # Neither console-roster ledger leaks into the bridged page.
     assert "我的小票夹" not in response.text
     assert "tester_1" not in response.text

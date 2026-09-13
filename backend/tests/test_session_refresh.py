@@ -21,6 +21,7 @@ from app.models import AuthToken, Device, Ledger, LedgerMember, SessionRefreshAt
 from app.services import identity_service
 from app.services.identity_service import authenticate_session_token, hash_secret
 from app.services.time_service import ensure_utc, now_utc
+from tests._runtime_protocol import current_protocol_headers
 from tests.pairing_test_support import pairing_payload, session_refresh_payload
 
 
@@ -35,10 +36,7 @@ def ttl_env(monkeypatch: pytest.MonkeyPatch):
 
 
 def _pair(client: TestClient, *, code: str) -> dict:
-    response = client.post(
-        "/api/auth/pair",
-        json=pairing_payload(code, device_name="pytest-rotate"),
-    )
+    response = client.post("/api/auth/pair", json=pairing_payload(code, device_name="pytest-rotate"))
     assert response.status_code == 200, response.text
     return response.json()
 
@@ -85,7 +83,7 @@ def test_refresh_rotates_token_and_graces_previous(client: TestClient, *, identi
     refresh = session_refresh_payload()
     response = client.post(
         "/api/auth/refresh",
-        headers={"Authorization": f"Bearer {old_token}"},
+        headers=current_protocol_headers({"Authorization": f"Bearer {old_token}"}),
         json=refresh,
     )
     assert response.status_code == 200, response.text
@@ -97,14 +95,14 @@ def test_refresh_rotates_token_and_graces_previous(client: TestClient, *, identi
 
     grace_check = client.get(
         "/api/auth/check",
-        headers={"Authorization": f"Bearer {old_token}"},
+        headers=current_protocol_headers({"Authorization": f"Bearer {old_token}"}),
     )
     assert grace_check.status_code == 200, grace_check.text
     assert grace_check.json()["credential_state"] == "grace"
 
     current_check = client.get(
         "/api/auth/check",
-        headers={"Authorization": f"Bearer {new_token}"},
+        headers=current_protocol_headers({"Authorization": f"Bearer {new_token}"}),
     )
     assert current_check.status_code == 200, current_check.text
     assert current_check.json()["credential_state"] == "current"
@@ -127,7 +125,7 @@ def test_refresh_rotates_token_and_graces_previous(client: TestClient, *, identi
 
     expired_grace = client.get(
         "/api/auth/check",
-        headers={"Authorization": f"Bearer {old_token}"},
+        headers=current_protocol_headers({"Authorization": f"Bearer {old_token}"}),
     )
     assert expired_grace.status_code == 401
 
@@ -146,7 +144,7 @@ def test_legacy_refresh_keeps_the_same_session_recoverable(
 
     first = client.post(
         "/api/auth/refresh",
-        headers={"Authorization": f"Bearer {old_token}"},
+        headers=current_protocol_headers({"Authorization": f"Bearer {old_token}"}),
     )
     assert first.status_code == 200, first.text
     assert first.json()["session_token"] == old_token
@@ -156,7 +154,7 @@ def test_legacy_refresh_keeps_the_same_session_recoverable(
 
     retry_after_response_loss = client.post(
         "/api/auth/refresh",
-        headers={"Authorization": f"Bearer {old_token}"},
+        headers=current_protocol_headers({"Authorization": f"Bearer {old_token}"}),
     )
     assert retry_after_response_loss.status_code == 200, retry_after_response_loss.text
     assert retry_after_response_loss.json()["session_token"] == old_token
@@ -178,7 +176,7 @@ def test_refresh_retry_recovers_same_token_after_grace_expires(
     refresh = session_refresh_payload()
     first = client.post(
         "/api/auth/refresh",
-        headers={"Authorization": f"Bearer {old_token}"},
+        headers=current_protocol_headers({"Authorization": f"Bearer {old_token}"}),
         json=refresh,
     )
     assert first.status_code == 200, first.text
@@ -191,7 +189,7 @@ def test_refresh_retry_recovers_same_token_after_grace_expires(
 
     retry = client.post(
         "/api/auth/refresh",
-        headers={"Authorization": f"Bearer {old_token}"},
+        headers=current_protocol_headers({"Authorization": f"Bearer {old_token}"}),
         json=refresh,
     )
     assert retry.status_code == 200, retry.text
@@ -210,7 +208,7 @@ def test_refresh_retry_replays_frozen_soft_refresh_receipt(
     refresh = session_refresh_payload()
     first = client.post(
         "/api/auth/refresh",
-        headers={"Authorization": f"Bearer {old_token}"},
+        headers=current_protocol_headers({"Authorization": f"Bearer {old_token}"}),
         json=refresh,
     )
     assert first.status_code == 200, first.text
@@ -231,7 +229,7 @@ def test_refresh_retry_replays_frozen_soft_refresh_receipt(
     reset_settings_cache()
     retry = client.post(
         "/api/auth/refresh",
-        headers={"Authorization": f"Bearer {old_token}"},
+        headers=current_protocol_headers({"Authorization": f"Bearer {old_token}"}),
         json=refresh,
     )
     assert retry.status_code == 200, retry.text
@@ -276,17 +274,17 @@ def test_refresh_survives_disabled_default_ledger_when_account_has_another_ledge
 
     refresh = client.post(
         "/api/auth/refresh",
-        headers={"Authorization": f"Bearer {old_token}"},
+        headers=current_protocol_headers({"Authorization": f"Bearer {old_token}"}),
         json=session_refresh_payload(),
     )
     assert refresh.status_code == 200, refresh.text
 
     selected = client.get(
         "/api/auth/check",
-        headers={
+        headers=current_protocol_headers({
             "Authorization": f"Bearer {refresh.json()['session_token']}",
             "X-Ticketbox-Ledger-ID": fallback_ledger_id,
-        },
+        }),
     )
     assert selected.status_code == 200, selected.text
     assert selected.json()["ledger_id"] == fallback_ledger_id
@@ -324,45 +322,45 @@ def test_graced_source_switch_updates_the_entire_refresh_receipt_chain(
     proof = session_refresh_payload()
     refreshed = client.post(
         "/api/auth/refresh",
-        headers={"Authorization": f"Bearer {old_token}"},
+        headers=current_protocol_headers({"Authorization": f"Bearer {old_token}"}),
         json=proof,
     )
     assert refreshed.status_code == 200, refreshed.text
 
     switched = client.post(
         f"/api/ledgers/{target_ledger_id}/switch",
-        headers={"Authorization": f"Bearer {old_token}"},
+        headers=current_protocol_headers({"Authorization": f"Bearer {old_token}"}),
     )
     assert switched.status_code == 200, switched.text
     assert switched.json()["session_token"] == old_token
 
     selected_replacement = client.get(
         "/api/auth/check",
-        headers={"Authorization": f"Bearer {refreshed.json()['session_token']}"},
+        headers=current_protocol_headers({"Authorization": f"Bearer {refreshed.json()['session_token']}"}),
     )
     assert selected_replacement.status_code == 200, selected_replacement.text
     assert selected_replacement.json()["ledger_id"] == target_ledger_id
 
     selected_predecessor = client.get(
         "/api/auth/check",
-        headers={"Authorization": f"Bearer {old_token}"},
+        headers=current_protocol_headers({"Authorization": f"Bearer {old_token}"}),
     )
     assert selected_predecessor.status_code == 200, selected_predecessor.text
     assert selected_predecessor.json()["ledger_id"] == target_ledger_id
 
     explicitly_selected = client.get(
         "/api/auth/check",
-        headers={
+        headers=current_protocol_headers({
             "Authorization": f"Bearer {refreshed.json()['session_token']}",
             "X-Ticketbox-Ledger-ID": target_ledger_id,
-        },
+        }),
     )
     assert explicitly_selected.status_code == 200, explicitly_selected.text
     assert explicitly_selected.json()["ledger_id"] == target_ledger_id
 
     replay = client.post(
         "/api/auth/refresh",
-        headers={"Authorization": f"Bearer {old_token}"},
+        headers=current_protocol_headers({"Authorization": f"Bearer {old_token}"}),
         json=proof,
     )
     assert replay.status_code == 200, replay.text
@@ -379,7 +377,7 @@ def test_refresh_retry_rejects_a_different_proof(
     first = session_refresh_payload()
     response = client.post(
         "/api/auth/refresh",
-        headers={"Authorization": f"Bearer {old_token}"},
+        headers=current_protocol_headers({"Authorization": f"Bearer {old_token}"}),
         json=first,
     )
     assert response.status_code == 200, response.text
@@ -387,7 +385,7 @@ def test_refresh_retry_rejects_a_different_proof(
     wrong = session_refresh_payload()
     retry = client.post(
         "/api/auth/refresh",
-        headers={"Authorization": f"Bearer {old_token}"},
+        headers=current_protocol_headers({"Authorization": f"Bearer {old_token}"}),
         json=wrong,
     )
     assert retry.status_code == 401
@@ -401,7 +399,7 @@ def test_refresh_with_ttl_disabled_is_noop(client: TestClient, *, identity, monk
         old_token = pair_payload["session_token"]
         response = client.post(
             "/api/auth/refresh",
-            headers={"Authorization": f"Bearer {old_token}"},
+            headers=current_protocol_headers({"Authorization": f"Bearer {old_token}"}),
         )
         assert response.status_code == 200
         body = response.json()
@@ -425,7 +423,7 @@ def test_expired_app_token_is_rejected_and_revoked(client: TestClient, *, identi
         row.expires_at = datetime.now(UTC) - timedelta(minutes=1)
         db.commit()
 
-    response = client.get("/api/auth/check", headers={"Authorization": f"Bearer {token}"})
+    response = client.get("/api/auth/check", headers=current_protocol_headers({"Authorization": f"Bearer {token}"}))
     assert response.status_code == 401
 
     with SessionLocal() as db:

@@ -6,9 +6,13 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.R
 import com.ticketbox.domain.model.DebtListLens
 import com.ticketbox.ui.screens.RelationsListChrome
+import com.ticketbox.ui.screens.settings.SyncStatusScreen
+import com.ticketbox.viewmodel.OutboxStatusViewModel
+import com.ticketbox.viewmodel.outboxStatusViewModelFactory
 
 internal class MainProductRouteDependencies(
     val runtime: MainNavigationRuntime,
@@ -54,6 +58,7 @@ internal fun NavGraphBuilder.addPrimaryDomainRoutes(
             StatsRoute(
                 shellState = shellState,
                 screenFactory = screenFactory,
+                onRepairReport = { context -> runtime.navController.navigate(reportRateRoute(context)) },
             )
         }
     }
@@ -65,82 +70,21 @@ internal fun NavGraphBuilder.addWorkspaceRoute(
     with(dependencies) {
         composable(WORKSPACE_ROUTE) {
             SettingsRoute(
+                navigation = SettingsDestinationNavigation(onOpenExpense = runtime.navController::openExpense,
+                    onOpenInbox = { shellState.openPrimaryDomainRoot(PrimaryDomain.Inbox) },
+                    onOpenBudget = { month -> navController.navigate(budgetRoute(month)) },
+                    onOpenGoalCreation = { id -> navController.navigate(spendingGoalCreationRoute(id)) },
+                    onOpenGoalEdit = { id -> navController.navigate(spendingGoalEditRoute(id)) },
+                    onOpenRuleSubmission = { id -> navController.navigate(categoryRuleSubmissionRoute(id)) },
+                    onOpenIncomeSubmission = { id -> navController.navigate(incomePlanSubmissionRoute(id)) },
+                    onOpenRateSubmission = { id -> navController.navigate(budgetAdviceSubmissionRoute(id)) },
+                    onRepairCorrectionRate = { binding, gap -> navController.navigate(correctionRateRoute(binding, gap)) },
+                    onOpenRecurring = { shellState.openSecondaryPage(ProductSecondaryPage.Recurring) }, onCloseRoot = onBack),
                 screenFactory = screenFactory,
                 preferenceControls = workspaceControls.preferences,
                 onBindingCleared = workspaceControls.onBindingCleared,
-                onClose = onBack,
             )
         }
-    }
-}
-
-internal fun NavGraphBuilder.addPlanRoutes(
-    dependencies: MainProductRouteDependencies,
-) {
-    with(dependencies) {
-        composable(ProductSecondaryPage.SpendingGoal.route) {
-            SpendingGoalsRoute(
-                screenFactory = screenFactory,
-                onBack = onBack,
-            )
-        }
-        composable(ProductSecondaryPage.Budget.route) {
-            BudgetRoute(
-                screenFactory = screenFactory,
-                onBack = onBack,
-                // The monthly-budget row is NOT an advisor input
-                // (_inputs_builder.py) — a budget save must not invalidate.
-                onDataChanged = {
-                    markPlanWriteCompleted(shellState, invalidatesAdvice = false) {
-                        screenFactory.budgetRepository.invalidateBudgetAdvice()
-                    }
-                },
-            )
-        }
-        composable(ProductSecondaryPage.BudgetAdvice.route) {
-            BudgetAdviceRoute(
-                screenFactory = screenFactory,
-                onBack = onBack,
-            )
-        }
-        composable(ProductSecondaryPage.Recurring.route) {
-            RecurringRoute(
-                screenFactory = screenFactory,
-                onBack = onBack,
-                onDataChanged = {
-                    markPlanWriteCompleted(shellState, invalidatesAdvice = true) {
-                        screenFactory.budgetRepository.invalidateBudgetAdvice()
-                    }
-                },
-            )
-        }
-        composable(ProductSecondaryPage.IncomePlans.route) {
-            IncomePlanRoute(
-                screenFactory = screenFactory,
-                onBack = onBack,
-                onDataChanged = {
-                    markPlanWriteCompleted(shellState, invalidatesAdvice = true) {
-                        screenFactory.budgetRepository.invalidateBudgetAdvice()
-                    }
-                },
-            )
-        }
-    }
-}
-
-/** Plan-write refresh composition: every plan save bumps the plan revision;
- *  only saves that feed the budget-advisor inputs (income plans, recurring —
- *  NOT the monthly-budget row, see _inputs_builder.py) also drop the
- *  process-lifetime advice cache, so a reopened advice page recomputes
- *  instead of restoring pre-write limits without wasting quota on no-ops. */
-internal fun markPlanWriteCompleted(
-    shellState: MainShellState,
-    invalidatesAdvice: Boolean,
-    invalidateBudgetAdvice: () -> Unit,
-) {
-    shellState.markPlanDataChanged()
-    if (invalidatesAdvice) {
-        invalidateBudgetAdvice()
     }
 }
 
@@ -197,10 +141,8 @@ internal fun NavGraphBuilder.addObligationRoutes(
 ) {
     with(dependencies) {
         composable(ProductSecondaryPage.BillSplits.route) {
-            BillSplitRoute(
-                screenFactory = screenFactory,
-                onBack = onBack,
-            )
+            BillSplitRoute(screenFactory = screenFactory, onBack = onBack,
+                onOpenExpense = runtime.navController::openExpense)
         }
         composable(ProductSecondaryPage.DebtGoals.route) {
             DebtGoalRoute(
@@ -212,7 +154,10 @@ internal fun NavGraphBuilder.addObligationRoutes(
         composable(ProductSecondaryPage.AllDebts.route) {
             DebtRoute(
                 screenFactory = screenFactory,
-                onBack = onBack,
+                actions = DebtRouteActions(
+                    onBack = onBack,
+                    onOpenSyncStatus = { shellState.openSecondaryPage(ProductSecondaryPage.ObligationSync) },
+                ),
                 lens = DebtListLens.Ledger,
                 chromeOverride = RelationsListChrome(
                     title = stringResource(R.string.relations_all_debts),
@@ -222,6 +167,7 @@ internal fun NavGraphBuilder.addObligationRoutes(
                 ),
             )
         }
+        addObligationSyncRoute(dependencies)
         composable(
             route = REPAYMENT_DRAFT_ROUTE,
             arguments = listOf(
@@ -237,6 +183,34 @@ internal fun NavGraphBuilder.addObligationRoutes(
                 focusedDraftPublicId = entry.arguments?.getString(REPAYMENT_DRAFT_FOCUS_ARG),
                 onBack = onBack,
             )
+        }
+    }
+}
+
+private fun NavGraphBuilder.addObligationSyncRoute(dependencies: MainProductRouteDependencies) {
+    with(dependencies) {
+        composable(ProductSecondaryPage.ObligationSync.route) {
+            val vm: OutboxStatusViewModel = viewModel(
+                factory = outboxStatusViewModelFactory(
+                    screenFactory.outboxRepository, screenFactory.repository,
+                    com.ticketbox.viewmodel.OutboxRecoveryRepositories(screenFactory.debtCreationRepository,
+                        screenFactory.recurringRepository.occurrences, screenFactory.incomePlanRepository,
+                        screenFactory.debtWriteRepository, screenFactory.goalEditRepository, screenFactory.budgetRepository, screenFactory.recurringRepository, screenFactory.ruleRepository),
+                ),
+            )
+            SyncStatusScreen(viewModel = vm, onBack = onBack,
+                navigation = com.ticketbox.ui.screens.settings.SyncStatusNavigation(
+                    onOpenExpense = runtime.navController::openExpense,
+                    onOpenInbox = { shellState.openPrimaryDomainRoot(PrimaryDomain.Inbox) },
+                    onOpenBudget = { month -> navController.navigate(budgetRoute(month)) },
+                    onOpenGoalCreation = { id -> navController.navigate(spendingGoalCreationRoute(id)) },
+                    onOpenGoalEdit = { id -> navController.navigate(spendingGoalEditRoute(id)) },
+                    onOpenRuleSubmission = { id -> navController.navigate(categoryRuleSubmissionRoute(id)) },
+                    onOpenIncomeSubmission = { id -> navController.navigate(incomePlanSubmissionRoute(id)) },
+                    onOpenRateSubmission = { id -> navController.navigate(budgetAdviceSubmissionRoute(id)) },
+                    onRepairCorrectionRate = { binding, gap -> navController.navigate(correctionRateRoute(binding, gap)) },
+                    onOpenRecurring = { shellState.openSecondaryPage(ProductSecondaryPage.Recurring) },
+                ))
         }
     }
 }

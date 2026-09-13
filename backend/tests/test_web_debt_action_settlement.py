@@ -10,6 +10,7 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import Account, Debt, LedgerMember
+from tests._runtime_protocol import negotiated_headers
 
 
 def _api_headers(identity) -> dict[str, str]:
@@ -19,9 +20,9 @@ def _api_headers(identity) -> dict[str, str]:
 def _create_external_debt(web_client: TestClient, *, identity) -> dict:
     response = web_client.post(
         "/api/debts",
-        headers=_api_headers(identity),
+        headers=negotiated_headers(web_client, _api_headers(identity)),
         json={
-            "direction": "i_owe",
+            "home_currency_code": "CNY", "direction": "i_owe",
             "counterparty_type": "external",
             "counterparty_label": "测试信用卡",
             "principal_amount_cents": 10_000,
@@ -95,7 +96,10 @@ def test_terminal_conflict_keeps_honest_attempt_receipt(
     assert "2026-07-19" in stale.text
     assert "已结清" in stale.text
     assert "你填写的内容还在" not in stale.text
-    assert f'action="/web/debts/{debt["public_id"]}/repayments"' not in stale.text
+    assert 'data-repayment-can-create="false"' in stale.text
+    assert 'data-repayment-result="blocked"' in stale.text
+    assert f'action="/web/debts/{debt["public_id"]}/repayments"' in stale.text
+    assert f'name="expected_row_version" value="{debt["row_version"]}"' in stale.text
     current = web_client.get(
         f"/api/debts/{debt['public_id']}",
         headers=identity.app_headers,

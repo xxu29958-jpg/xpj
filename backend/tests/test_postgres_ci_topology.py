@@ -10,7 +10,6 @@ import yaml
 from tests._infra.ci_gap import load_ci_gap_audit
 
 _ROOT = Path(__file__).resolve().parents[2]
-_CI_JOB_TIMEOUT_CEILING_MINUTES = 12
 _SCOPE_IF = (
     "${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.postgres != 'false') }}"
 )
@@ -69,10 +68,10 @@ def _assert_managed_python_precedes(job: dict[str, object], *python_step_names: 
     assert all(setup_index < step_names.index(name) for name in python_step_names)
 
 
-def _assert_bounded_timeout(job: dict[str, object]) -> None:
+def _assert_bounded_timeout(job: dict[str, object], *, ceiling: int = 12) -> None:
     timeout = job["timeout-minutes"]
     assert isinstance(timeout, int)
-    assert 0 < timeout <= _CI_JOB_TIMEOUT_CEILING_MINUTES
+    assert 0 < timeout <= ceiling
 
 
 def _assert_no_continue_on_error(job: dict[str, object]) -> None:
@@ -92,9 +91,10 @@ def _assert_postgres_job_contract(
         "postgres": "${{ fromJSON(needs.scope.outputs.postgres_matrix).include }}",
     }
     if sharded:
+        shard_count = 2 if ordinary else 3
         matrix["shard"] = [
-            {"index": 0, "count": 2, "label": "1/2"},
-            {"index": 1, "count": 2, "label": "2/2"},
+            {"index": index, "count": shard_count, "label": f"{index + 1}/{shard_count}"}
+            for index in range(shard_count)
         ]
     assert job["strategy"] == {
         "fail-fast": False,
@@ -183,7 +183,7 @@ def _assert_lane(
     _assert_postgres_job_contract(job, ordinary=lane == "ordinary", sharded=shard_index is not None)
     assert job["outputs"]["qualification_sha"] == "${{ steps.qualification.outputs.sha }}"
     assert job["outputs"]["qualification_source_sha"] == ("${{ steps.qualification.outputs.source_sha }}")
-    _assert_bounded_timeout(job)
+    _assert_bounded_timeout(job, ceiling=15 if lane == "ordinary" else 12)
     _assert_no_continue_on_error(job)
     _assert_managed_python_precedes(job, "Verify qualification SHA", "Load test PostgreSQL contract")
     steps = _steps(job)
@@ -403,7 +403,7 @@ def test_github_postgres_jobs_bind_scope_resources_commands_auth_and_sha() -> No
     _assert_bounded_timeout(jobs["backend_frozen"])
     _assert_windows_release_lanes(jobs, windows_jobs)
 
-    assert jobs["backend_postgres_ordinary"]["strategy"] == jobs["backend_postgres_real_db"]["strategy"]
+    assert jobs["backend_postgres_ordinary"]["strategy"] != jobs["backend_postgres_real_db"]["strategy"]
     assert jobs["backend_postgres_real_db"]["strategy"] != jobs["backend_postgres_recovery"]["strategy"]
 
     _assert_lane(

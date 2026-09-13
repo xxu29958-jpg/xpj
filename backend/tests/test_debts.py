@@ -19,6 +19,7 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.models import Account, Debt, ExchangeRate, LedgerMember
 from app.services.currency_binding_service import resolve_write_capability
+from tests._runtime_protocol import negotiated_headers
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
 
@@ -41,6 +42,7 @@ def _seed_usd_rate(*, tenant_id: str, rate_date: date, rate_to_cny: str) -> None
         db.add(
             ExchangeRate(
                 tenant_id=tenant_id,
+                home_currency_code="CNY",
                 currency_code="USD",
                 rate_date=rate_date,
                 rate_to_cny=Decimal(rate_to_cny),
@@ -63,9 +65,9 @@ def _set_owner_ledger_role(role: str) -> None:
 def test_create_external_debt_freezes_home_principal(client: TestClient, *, identity) -> None:
     response = client.post(
         "/api/debts",
-        headers=_idem_headers(identity.app_headers),
+        headers=negotiated_headers(client, _idem_headers(identity.app_headers)),
         json={
-            "direction": "i_owe",
+            "home_currency_code": "CNY", "direction": "i_owe",
             "counterparty_type": "external",
             "counterparty_label": "招商信用卡",
             "principal_amount_cents": 50000,
@@ -95,9 +97,9 @@ def test_create_member_debt_is_deferred_to_confirmation_flow(
     member_account_id = _seed_member_account()
     response = client.post(
         "/api/debts",
-        headers=_idem_headers(identity.app_headers),
+        headers=negotiated_headers(client, _idem_headers(identity.app_headers)),
         json={
-            "direction": "owed_to_me",
+            "home_currency_code": "CNY", "direction": "owed_to_me",
             "counterparty_type": "member",
             "counterparty_account_id": member_account_id,
             "principal_amount_cents": 12000,
@@ -110,9 +112,9 @@ def test_create_member_debt_is_deferred_to_confirmation_flow(
     # committed-create path remains closed until the confirmation flow lands.
     missing = client.post(
         "/api/debts",
-        headers=_idem_headers(identity.app_headers),
+        headers=negotiated_headers(client, _idem_headers(identity.app_headers)),
         json={
-            "direction": "owed_to_me",
+            "home_currency_code": "CNY", "direction": "owed_to_me",
             "counterparty_type": "member",
             "principal_amount_cents": 12000,
         },
@@ -124,9 +126,9 @@ def test_create_member_debt_is_deferred_to_confirmation_flow(
 def test_list_debts_is_ledger_scoped(client: TestClient, *, identity) -> None:
     owner = client.post(
         "/api/debts",
-        headers=_idem_headers(identity.app_headers),
+        headers=negotiated_headers(client, _idem_headers(identity.app_headers)),
         json={
-            "direction": "i_owe",
+            "home_currency_code": "CNY", "direction": "i_owe",
             "counterparty_type": "external",
             "counterparty_label": "房东",
             "principal_amount_cents": 30000,
@@ -135,9 +137,9 @@ def test_list_debts_is_ledger_scoped(client: TestClient, *, identity) -> None:
     assert owner.status_code == 201, owner.json()
     gray = client.post(
         "/api/debts",
-        headers=_idem_headers(identity.gray_app_headers),
+        headers=negotiated_headers(client, _idem_headers(identity.gray_app_headers)),
         json={
-            "direction": "owed_to_me",
+            "home_currency_code": "CNY", "direction": "owed_to_me",
             "counterparty_type": "external",
             "counterparty_label": "同事",
             "principal_amount_cents": 8000,
@@ -197,9 +199,9 @@ def test_list_debts_carries_viewer_is_debtor(client: TestClient, *, identity) ->
     member_public_id = _seed_owner_ledger_member_debt(direction="i_owe")
     ext = client.post(
         "/api/debts",
-        headers=_idem_headers(identity.app_headers),
+        headers=negotiated_headers(client, _idem_headers(identity.app_headers)),
         json={
-            "direction": "i_owe",
+            "home_currency_code": "CNY", "direction": "i_owe",
             "counterparty_type": "external",
             "counterparty_label": "房东",
             "principal_amount_cents": 30000,
@@ -217,9 +219,9 @@ def test_list_debts_carries_viewer_is_debtor(client: TestClient, *, identity) ->
 def test_get_debt_by_public_id_and_cross_ledger_404(client: TestClient, *, identity) -> None:
     created = client.post(
         "/api/debts",
-        headers=_idem_headers(identity.app_headers),
+        headers=negotiated_headers(client, _idem_headers(identity.app_headers)),
         json={
-            "direction": "i_owe",
+            "home_currency_code": "CNY", "direction": "i_owe",
             "counterparty_type": "external",
             "counterparty_label": "花呗",
             "principal_amount_cents": 9900,
@@ -248,9 +250,9 @@ def test_viewer_cannot_create_debt(client: TestClient, *, identity) -> None:
     _set_owner_ledger_role("viewer")
     response = client.post(
         "/api/debts",
-        headers=_idem_headers(identity.app_headers),
+        headers=negotiated_headers(client, _idem_headers(identity.app_headers)),
         json={
-            "direction": "i_owe",
+            "home_currency_code": "CNY", "direction": "i_owe",
             "counterparty_type": "external",
             "counterparty_label": "只读不能写",
             "principal_amount_cents": 10000,
@@ -266,9 +268,9 @@ def test_foreign_currency_debt_pending_rate_is_rejected(client: TestClient, *, i
     # principal → reject rather than commit an un-foldable Debt (§2.2).
     response = client.post(
         "/api/debts",
-        headers=_idem_headers(identity.app_headers),
+        headers=negotiated_headers(client, _idem_headers(identity.app_headers)),
         json={
-            "direction": "i_owe",
+            "home_currency_code": "CNY", "direction": "i_owe",
             "counterparty_type": "external",
             "counterparty_label": "美元借款",
             "original_currency": "USD",
@@ -287,9 +289,9 @@ def test_foreign_currency_debt_freezes_home_principal_from_snapshot(
     _seed_usd_rate(tenant_id="owner", rate_date=date(2026, 5, 10), rate_to_cny="7.20000000")
     response = client.post(
         "/api/debts",
-        headers=_idem_headers(identity.app_headers),
+        headers=negotiated_headers(client, _idem_headers(identity.app_headers)),
         json={
-            "direction": "i_owe",
+            "home_currency_code": "CNY", "direction": "i_owe",
             "counterparty_type": "external",
             "counterparty_label": "美元借款",
             "original_currency": "USD",
@@ -311,9 +313,9 @@ def test_foreign_currency_debt_freezes_home_principal_from_snapshot(
 def test_create_debt_rejects_unknown_field(client: TestClient, *, identity) -> None:
     response = client.post(
         "/api/debts",
-        headers=_idem_headers(identity.app_headers),
+        headers=negotiated_headers(client, _idem_headers(identity.app_headers)),
         json={
-            "direction": "i_owe",
+            "home_currency_code": "CNY", "direction": "i_owe",
             "counterparty_type": "external",
             "counterparty_label": "未知字段",
             "principal_amount_cents": 1000,
@@ -328,9 +330,9 @@ def test_create_debt_accepts_and_echoes_debt_kind(client: TestClient, *, identit
     # (create response + GET detail) echo it.
     created = client.post(
         "/api/debts",
-        headers=_idem_headers(identity.app_headers),
+        headers=negotiated_headers(client, _idem_headers(identity.app_headers)),
         json={
-            "direction": "i_owe",
+            "home_currency_code": "CNY", "direction": "i_owe",
             "counterparty_type": "external",
             "counterparty_label": "招商信用卡",
             "principal_amount_cents": 50000,
@@ -349,9 +351,9 @@ def test_create_debt_defaults_to_unspecified_kind(client: TestClient, *, identit
     # 8e-6e: omitting debt_kind classifies as unspecified (keeps current projecting behavior).
     response = client.post(
         "/api/debts",
-        headers=_idem_headers(identity.app_headers),
+        headers=negotiated_headers(client, _idem_headers(identity.app_headers)),
         json={
-            "direction": "i_owe",
+            "home_currency_code": "CNY", "direction": "i_owe",
             "counterparty_type": "external",
             "counterparty_label": "招商信用卡",
             "principal_amount_cents": 1000,
@@ -365,9 +367,9 @@ def test_create_debt_rejects_invalid_debt_kind(client: TestClient, *, identity) 
     # 8e-6e: the DebtKind Literal rejects an out-of-enum value (the DB CHECK is the backstop).
     response = client.post(
         "/api/debts",
-        headers=_idem_headers(identity.app_headers),
+        headers=negotiated_headers(client, _idem_headers(identity.app_headers)),
         json={
-            "direction": "i_owe",
+            "home_currency_code": "CNY", "direction": "i_owe",
             "counterparty_type": "external",
             "counterparty_label": "非法分类",
             "principal_amount_cents": 1000,
@@ -381,9 +383,9 @@ def test_create_debt_requires_idempotency_key(client: TestClient, *, identity) -
     # coverage: auth-401
     response = client.post(
         "/api/debts",
-        headers=identity.app_headers,  # no Idempotency-Key header
+        headers=negotiated_headers(client, identity.app_headers),  # no Idempotency-Key header
         json={
-            "direction": "i_owe",
+            "home_currency_code": "CNY", "direction": "i_owe",
             "counterparty_type": "external",
             "counterparty_label": "缺幂等键",
             "principal_amount_cents": 1000,
@@ -398,7 +400,7 @@ def test_create_debt_unauthenticated_is_401(client: TestClient, *, identity) -> 
         "/api/debts",
         headers={"Idempotency-Key": str(uuid4())},  # no Authorization
         json={
-            "direction": "i_owe",
+            "home_currency_code": "CNY", "direction": "i_owe",
             "counterparty_type": "external",
             "counterparty_label": "未登录",
             "principal_amount_cents": 1000,
@@ -413,18 +415,18 @@ def test_create_debt_idempotent_replay_and_fingerprint_mismatch(
     key = str(uuid4())
     headers = {**identity.app_headers, "Idempotency-Key": key}
     payload = {
-        "direction": "i_owe",
+        "home_currency_code": "CNY", "direction": "i_owe",
         "counterparty_type": "external",
         "counterparty_label": "重试一次",
         "principal_amount_cents": 4500,
     }
-    first = client.post("/api/debts", headers=headers, json=payload)
+    first = client.post("/api/debts", headers=negotiated_headers(client, headers), json=payload)
     assert first.status_code == 201, first.json()
     public_id = first.json()["public_id"]
 
     # Same key + same fingerprint → the same committed Debt, not a second row
     # (assert against the rendered response, not a DB peek).
-    replay = client.post("/api/debts", headers=headers, json=payload)
+    replay = client.post("/api/debts", headers=negotiated_headers(client, headers), json=payload)
     assert replay.status_code == 201, replay.json()
     assert replay.json()["public_id"] == public_id
 
@@ -435,7 +437,7 @@ def test_create_debt_idempotent_replay_and_fingerprint_mismatch(
     # Same key + different request → reuse is rejected.
     mismatch = client.post(
         "/api/debts",
-        headers=headers,
+        headers=negotiated_headers(client, headers),
         json={**payload, "principal_amount_cents": 9999},
     )
     assert mismatch.status_code == 422

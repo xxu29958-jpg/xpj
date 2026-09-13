@@ -84,6 +84,7 @@ _SERVICE_OP_ALIASES: dict[str, frozenset[str]] = {
 # service delegate. Each is a web-surface-only flow; keep the reason current.
 WEB_ONLY_ROUTES: dict[str, str] = {
     "POST /web/currency-adoption": "Desktop installation-owner ceremony; the legacy maintenance API is retired",
+    "POST /web/currency-adoption/change": "Paired Desktop installation-owner default setting; shared ledgers and remote clients do not own this command",
     "POST /web/categories/uncategorized/bulk-set": "bulk classify uncategorized — no /api equivalent",
     "POST /web/review/bulk": "web-only pending bulk-review action",
     "POST /web/import/confirm": "web-only preview→confirm step; the apply step has the /api pair",

@@ -27,8 +27,8 @@ import com.ticketbox.data.local.PendingMutationType
  *      - 408 / 429 / 5xx / network ``IOException`` →
  *        [DispatchResult.RetryableFailure] (drain keeps the row
  *        PENDING for the next tick instead of marking FAILED)
- *      - payload deserialise errors (Moshi exceptions) and other
- *        non-recoverable 4xx → [DispatchResult.Failure]
+ *      - payload deserialise errors, protocol refusals, unrecognized
+ *        409 errors and other non-recoverable 4xx → [DispatchResult.Failure]
  *      - "the row's already been resolved by another path" /
  *        "the target was deleted" / 404 / status-specific 409 →
  *        [DispatchResult.Discarded]
@@ -67,8 +67,10 @@ sealed interface DispatchResult {
      *
      * Routes that don't return a token (creates / terminal
      * lifecycle that has its own state machine) pass ``null``.
+     * Corrections additionally retain their receipt version when cache publication
+     * fails; this is a local refresh requirement, never permission to resend.
      */
-    data class Success(val newRowVersion: Long? = null) : DispatchResult
+    data class Success(val newRowVersion: Long? = null, val cacheRefreshVersion: Long? = null, val receiptJson: String? = null) : DispatchResult
 
     /**
      * Server returned 409 ``state_conflict``. The row goes to
@@ -85,7 +87,7 @@ sealed interface DispatchResult {
      * the drain engine will NOT auto-retry — the user has to
      * fix the input or dismiss the row.
      */
-    data class Failure(val message: String) : DispatchResult
+    data class Failure(val message: String, val blocksFollowing: Boolean = true) : DispatchResult
 
     /**
      * Transient failure that the drain engine should retry on a
@@ -109,11 +111,10 @@ sealed interface DispatchResult {
     data class RetryableFailure(val message: String) : DispatchResult
 
     /**
-     * Server returned a "row no longer exists / already in a
-     * terminal state" response (404, or status-specific 409 like
-     * ``items_sum_not_in_mismatch``). Row is removed from the
-     * outbox without bothering the user — the divergence already
-     * happened and there's nothing meaningful to "keep" or "drop".
+     * The dispatcher has positive domain evidence that the target no longer
+     * exists or the requested terminal state is already established. A generic
+     * HTTP refusal, a changed precondition or protocol incompatibility is not
+     * that evidence. The engine retires this row from active recovery.
      */
     data class Discarded(val reason: String) : DispatchResult
 }

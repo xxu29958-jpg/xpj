@@ -1,231 +1,126 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.repository.UploadBatchRequest
+
 import com.ticketbox.R
-import com.ticketbox.data.repository.RepositoryException
-import com.ticketbox.domain.model.PendingUploadReceipt
+import com.ticketbox.data.local.PendingMutationStatus
+import com.ticketbox.data.repository.UploadAcceptance
+import com.ticketbox.data.repository.UploadIntentActions
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.navigation.uploadSharedImageSequence
 import com.ticketbox.upload.PreparedUploadImage
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
-/**
- * W1：系统分享多图直传的 ViewModel 契约。验证 [PendingViewModel.uploadPreparedImage]
- * 顺序逐张走在线-only 上传链、计数/顺序正确、单张失败不阻断其余张、在线-only 失败
- * 会冒泡到 message。纯 JVM（FakeReviewActions），不碰 android.net.Uri。
- */
+/** VM projections only. File/key/HTTP order is covered by real Repository/Room/engine producers. */
 @OptIn(ExperimentalCoroutinesApi::class)
 internal class PendingViewModelShareUploadTest : PendingViewModelReviewTestBase() {
-
-    private fun preparedImage(name: String): PreparedUploadImage = PreparedUploadImage(
-        fileName = name,
-        contentType = "image/jpeg",
-        bytes = name.encodeToByteArray(),
-        sourceSizeBytes = name.length.toLong(),
-    )
-
     @Test
-    fun multipleSharedImagesUploadSequentiallyInOrder() = review {
-        val ledgerFlow = MutableStateFlow<String?>("owner")
-        val fake = FakeReviewActions(activeLedgerFlow = ledgerFlow, activeLedgerIdProvider = { ledgerFlow.value })
-        fake.uploadResponder = {
-            Result.success(PendingUploadReceipt(it.length.toLong(), "task-$it"))
-        }
-        val vm = PendingViewModel(fake)
-        advanceUntilIdle()
-
-        uploadSharedImageSequence(vm, listOf("a.jpg", "b.jpg", "c.jpg")) { preparedImage(it) }
-        advanceUntilIdle()
-
-        assertEquals(3, fake.uploadCalls)
-        assertEquals(listOf("a.jpg", "b.jpg", "c.jpg"), fake.uploadedFileNames)
-        // 每张完成后回到非上传态（成功后会触发 refresh，故不在此断言瞬时的成功文案）。
-        assertFalse(vm.uiState.value.uploading)
+    fun wholeOriginalSelectionIsAcceptedBeforeTheRouteMayConsumeIt() = review {
+        val fake = FakeReviewActions()
+        val accepted = CompletableDeferred<Result<UploadAcceptance>>()
+        fake.uploadIntents.accept = { accepted.await() }
+        var dataChanges = 0
+        val vm = pendingViewModel(fake, onDataChanged = { dataChanges++ })
+        runCurrent()
+        var consumed = false
+        val prepare: suspend (String) -> PreparedUploadImage? = { error("VM must not prepare individual slots") }
+        val job = launch { consumed = vm.acceptUploads(UploadBatchRequest(UPLOAD_TEST_BATCH, listOf("a", "b", "c"), uploadTestBinding(), "Asia/Shanghai", prepare)) }
+        runCurrent()
+        assertFalse(consumed)
+        assertTrue(vm.uiState.value.uploading)
+        val request = fake.uploadIntents.accepted.single()
+        assertEquals(listOf("a", "b", "c"), request.imageRefs)
+        assertEquals(UPLOAD_TEST_BATCH, request.id)
+        assertEquals(uploadTestBinding(), request.expectedBinding)
+        assertEquals(prepare, request.prepare)
+        accepted.complete(Result.success(UploadAcceptance(UPLOAD_TEST_BATCH, listOf(1, 2, 3))))
+        job.join()
+        assertTrue(consumed)
+        assertEquals(0, dataChanges) // Local acceptance is not a server receipt.
     }
 
     @Test
-    fun secondImageStillUploadsAfterFirstFails() = review {
-        val ledgerFlow = MutableStateFlow<String?>("owner")
-        val fake = FakeReviewActions(activeLedgerFlow = ledgerFlow, activeLedgerIdProvider = { ledgerFlow.value })
-        // First call fails (online-only error), the rest succeed.
-        fake.uploadResponder = { name ->
-            if (name == "fail.jpg") {
-                Result.failure(IllegalStateException("boom"))
-            } else {
-                Result.success(PendingUploadReceipt(1L, "task-$name"))
-            }
-        }
-        val vm = PendingViewModel(fake)
+    fun reopenedCapacityGroupSurvivesFailedListReadAndRetriesOnlyTheOriginalGroup() = review {
+        val fake = FakeReviewActions().apply { fetchPendingResponder = { Result.failure(IllegalStateException()) } }
+        val original = listOf(observedUpload(1, PendingMutationStatus.Done),
+            observedUpload(2, PendingMutationStatus.Failed, "enrichment_capacity_full"), observedUpload(3))
+        fake.uploadIntents.publish(*original.toTypedArray())
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
-
-        uploadSharedImageSequence(vm, listOf("fail.jpg", "ok.jpg")) { preparedImage(it) }
-        advanceUntilIdle()
-
-        assertEquals(2, fake.uploadCalls)
-        assertEquals(listOf("fail.jpg", "ok.jpg"), fake.uploadedFileNames)
-        assertEquals(UiText.res(R.string.pending_msg_share_partial_failure, 1), vm.uiState.value.message)
-    }
-
-    @Test
-    fun capacityFailureRetainsPreparedBytesForOneTapRetry() = review {
-        val ledgerFlow = MutableStateFlow<String?>("owner")
-        var attempt = 0
-        val fake = FakeReviewActions(activeLedgerFlow = ledgerFlow, activeLedgerIdProvider = { ledgerFlow.value })
-        fake.uploadResponder = {
-            attempt += 1
-            if (attempt == 1) {
-                Result.failure(
-                    RepositoryException(
-                        message = "识别队列暂时已满。",
-                        errorCode = "enrichment_capacity_full",
-                    ),
-                )
-            } else {
-                Result.success(PendingUploadReceipt(8L, "task-retry"))
-            }
-        }
-        val vm = PendingViewModel(fake)
-        advanceUntilIdle()
-
-        val uploadAttempt = assertNotNull(vm.beginUploadPreparation())
-        assertFalse(vm.uploadPreparedImage(preparedImage("retry.jpg"), uploadAttempt))
-        advanceUntilIdle()
-
+        assertEquals(PendingListLoadState.Failed, vm.uiState.value.listLoadState)
         assertTrue(vm.uiState.value.canRetryUpload)
-        assertEquals(UiText.res(R.string.pending_msg_upload_capacity_full), vm.uiState.value.message)
-
+        assertTrue(vm.uiState.value.canStopUpload)
+        assertEquals(
+            listOf(PendingUploadOriginalUi(2, "2.jpg"), PendingUploadOriginalUi(3, "3.jpg")),
+            vm.uiState.value.upload.originals,
+        )
+        assertEquals(UiText.res(R.string.pending_msg_upload_capacity_full), vm.uiState.value.uploadMessage)
         vm.retryCapacityUpload()
         advanceUntilIdle()
-
-        assertEquals(listOf("retry.jpg", "retry.jpg"), fake.uploadedFileNames)
-        assertFalse(vm.uiState.value.canRetryUpload)
-        assertTrue(vm.uiState.value.message == null)
+        assertEquals(listOf(Triple(uploadTestBinding(), UPLOAD_TEST_BATCH, false)), fake.uploadIntents.recoveries)
+        assertEquals(original, fake.uploadIntents.snapshots.value.uploads)
+        assertTrue(fake.uploadIntents.accepted.isEmpty())
     }
 
     @Test
-    fun multiImageShareStopsBeforeDiscardingCapacityRetainedImage() = review {
-        val ledgerFlow = MutableStateFlow<String?>("owner")
-        val fake = FakeReviewActions(activeLedgerFlow = ledgerFlow, activeLedgerIdProvider = { ledgerFlow.value })
-        fake.uploadResponder = { name ->
-            if (name == "first.jpg") {
-                Result.failure(
-                    RepositoryException(
-                        message = "识别队列暂时已满。",
-                        errorCode = "enrichment_capacity_full",
-                    ),
-                )
-            } else {
-                Result.success(PendingUploadReceipt(8L, "task-$name"))
-            }
-        }
-        val vm = PendingViewModel(fake)
+    fun ordinaryFailureDoesNotHideTheRunnableTailOrBlockAnotherSelection() = review {
+        val fake = FakeReviewActions()
+        fake.uploadIntents.publish(observedUpload(1, PendingMutationStatus.Failed, "http_503"), observedUpload(2))
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
-
-        uploadSharedImageSequence(vm, listOf("first.jpg", "second.jpg")) { preparedImage(it) }
-        advanceUntilIdle()
-
-        assertEquals(listOf("first.jpg"), fake.uploadedFileNames)
         assertTrue(vm.uiState.value.canRetryUpload)
-        assertEquals(UiText.res(R.string.pending_msg_upload_capacity_full), vm.uiState.value.message)
+        assertTrue(vm.uiState.value.canStartUpload)
+        assertEquals(1, vm.uiState.value.uploadFailedCount)
+        assertEquals(UiText.res(R.string.pending_msg_share_partial_failure, 1), vm.uiState.value.uploadMessage)
+        fake.uploadIntents.publish(observedUpload(1, PendingMutationStatus.Failed, "http_503"), observedUpload(2, PendingMutationStatus.Done))
+        advanceUntilIdle()
+        assertEquals(1, vm.uiState.value.uploadFailedCount)
+        assertTrue(vm.uiState.value.canStopUpload)
     }
 
     @Test
-    fun capacityRetryNeverRebindsOldImageToAChangedLedger() = review {
-        val ledgerFlow = MutableStateFlow<String?>("owner")
-        var currentLedgerId: String? = "owner"
-        var attempt = 0
-        val fake = FakeReviewActions(
-            activeLedgerFlow = ledgerFlow,
-            // Model the real propagation window where the binding source has
-            // changed but the observer coroutine has not published its event.
-            activeLedgerIdProvider = { currentLedgerId },
-        )
-        fake.uploadResponder = {
-            attempt += 1
-            if (attempt == 1) {
-                Result.failure(
-                    RepositoryException(
-                        message = "识别队列暂时已满。",
-                        errorCode = "enrichment_capacity_full",
-                    ),
-                )
-            } else {
-                Result.success(PendingUploadReceipt(8L, "task-wrong-ledger"))
-            }
-        }
-        val vm = PendingViewModel(fake)
+    fun aNewReceiptRefreshesOnceAndAnUnrelatedEmissionDoesNotReplayCompletion() = review {
+        val fake = FakeReviewActions()
+        var changes = 0
+        val vm = pendingViewModel(fake, onDataChanged = { changes++ })
         advanceUntilIdle()
-
-        val uploadAttempt = assertNotNull(vm.beginUploadPreparation())
-        assertFalse(vm.uploadPreparedImage(preparedImage("owner-receipt.jpg"), uploadAttempt))
-        assertTrue(vm.uiState.value.canRetryUpload)
-
-        currentLedgerId = "family"
-        vm.retryCapacityUpload()
+        fake.uploadIntents.publish(observedUpload(1, PendingMutationStatus.Done))
         advanceUntilIdle()
-
-        assertEquals(1, fake.uploadCalls)
-        assertFalse(vm.uiState.value.canRetryUpload)
-        assertEquals(UiText.res(R.string.pending_msg_upload_ledger_switched), vm.uiState.value.message)
+        val refreshes = fake.fetchPendingCalls
+        fake.uploadIntents.publish(observedUpload(1, PendingMutationStatus.Done), observedUpload(2))
+        advanceUntilIdle()
+        assertEquals(1, changes)
+        assertEquals(refreshes, fake.fetchPendingCalls)
     }
 
     @Test
-    fun stalePreparedImageCannotBorrowANewerLedgerAttempt() = review {
-        val ledgerFlow = MutableStateFlow<String?>("ledger-a")
-        var activeLedgerId: String? = "ledger-a"
-        val fake = FakeReviewActions(
-            activeLedgerFlow = ledgerFlow,
-            activeLedgerIdProvider = { activeLedgerId },
-        )
-        fake.uploadResponder = { name ->
-            Result.success(PendingUploadReceipt(name.length.toLong(), "task-$name"))
-        }
-        val vm = PendingViewModel(fake)
-        val firstPreparing = CompletableDeferred<Unit>()
-        val releaseFirst = CompletableDeferred<Unit>()
-        val secondPreparing = CompletableDeferred<Unit>()
-        val releaseSecond = CompletableDeferred<Unit>()
-        advanceUntilIdle()
-
-        val firstJob = launch {
-            uploadSharedImageSequence(vm, listOf("ledger-a.jpg")) {
-                firstPreparing.complete(Unit)
-                releaseFirst.await()
-                preparedImage(it)
+    fun firstAuthoritativeReadWaitsForTheRequiredRoomSnapshot() = review {
+        val fake = FakeReviewActions(pending = listOf(expense(1, merchant = "current")))
+        fake.uploadIntents.publish(observedUpload(1, PendingMutationStatus.Done))
+        val ready = CompletableDeferred<Unit>()
+        val uploads = object : UploadIntentActions by fake.uploadIntents {
+            override fun observeUploadIntents() = flow {
+                ready.await()
+                emit(fake.uploadIntents.snapshots.value)
             }
         }
-        firstPreparing.await()
-
-        activeLedgerId = "ledger-b"
-        ledgerFlow.value = activeLedgerId
+        var changes = 0
+        val vm = pendingViewModel(fake, uploads, onDataChanged = { changes++ })
+        runCurrent()
+        assertEquals(0, fake.fetchPendingCalls)
+        ready.complete(Unit)
         advanceUntilIdle()
-
-        val secondJob = launch {
-            uploadSharedImageSequence(vm, listOf("ledger-b.jpg")) {
-                secondPreparing.complete(Unit)
-                releaseSecond.await()
-                preparedImage(it)
-            }
-        }
-        secondPreparing.await()
-
-        releaseFirst.complete(Unit)
-        firstJob.join()
-
-        assertTrue(fake.uploadedFileNames.isEmpty())
-
-        releaseSecond.complete(Unit)
-        secondJob.join()
-
-        assertEquals(listOf("ledger-b.jpg"), fake.uploadedFileNames)
-        assertEquals("ledger-b", fake.uploadedLedgerIds.single())
+        assertEquals(1, fake.fetchPendingCalls)
+        assertEquals("current", vm.uiState.value.items.single().merchant)
+        assertEquals(uploadTestBinding(), vm.uiState.value.uploadBinding)
+        assertEquals(0, changes)
     }
 }

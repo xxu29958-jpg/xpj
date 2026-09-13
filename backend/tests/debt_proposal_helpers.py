@@ -20,6 +20,7 @@ from app.models import (
 )
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.identity_service import hash_secret, new_session_token
+from tests._runtime_protocol import current_protocol_headers, negotiated_headers
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
 
@@ -35,6 +36,7 @@ def _seed_usd_rate(*, tenant_id: str, rate_date: date, rate_to_cny: str) -> None
         db.add(
             ExchangeRate(
                 tenant_id=tenant_id,
+                home_currency_code="CNY",
                 currency_code="USD",
                 rate_date=rate_date,
                 rate_to_cny=Decimal(rate_to_cny),
@@ -79,7 +81,7 @@ def _mint_member_actor(*, ledger_id: str = "owner", role: str = "member") -> tup
 
 
 def _member_headers(token: str) -> dict[str, str]:
-    return {"Authorization": f"Bearer {token}"}
+    return current_protocol_headers({"Authorization": f"Bearer {token}"})
 
 
 def _create_member_debt(
@@ -134,9 +136,9 @@ def _create_external_debt(
 ) -> dict:
     response = client.post(
         "/api/debts",
-        headers=_idem(headers),
+        headers=negotiated_headers(client, _idem(headers)),
         json={
-            "direction": "i_owe",
+            "home_currency_code": "CNY", "direction": "i_owe",
             "counterparty_type": "external",
             "counterparty_label": "招商信用卡",
             "principal_amount_cents": principal_amount_cents,

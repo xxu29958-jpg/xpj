@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_app_context
@@ -22,21 +22,25 @@ def get_monthly_stats(
     month: str | None = None,
     tag: str | None = None,
     timezone: str | None = None,
+    home_currency_code: str | None = Query(default=None, pattern=r"^[A-Z]{3}$"),
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> MonthlyStatsResponse:
     timezone_name = timezone or get_settings().ocr_default_timezone
     target_month = month or current_month(timezone_name)
-    return MonthlyStatsResponse(**monthly_stats(db, target_month, auth.tenant_id, timezone_name=timezone_name, tag=tag))
+    return MonthlyStatsResponse(**monthly_stats(db, target_month, auth.tenant_id,
+        timezone_name=timezone_name, tag=tag, home_currency_code=home_currency_code))
 
 
 @router.get("/lifestyle", response_model=LifestyleStatsResponse)
 def get_lifestyle_stats(
     month: str | None = None,
     timezone: str | None = None,
+    home_currency_code: str | None = Query(default=None, pattern=r"^[A-Z]{3}$"),
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> LifestyleStatsResponse:
     timezone_name = timezone or get_settings().ocr_default_timezone
     target_month = month or current_month(timezone_name)
-    return LifestyleStatsResponse(**lifestyle_stats(db, target_month, auth.tenant_id, timezone_name=timezone_name))
+    return LifestyleStatsResponse(**lifestyle_stats(db, target_month, auth.tenant_id,
+        timezone_name=timezone_name, home_currency_code=home_currency_code))

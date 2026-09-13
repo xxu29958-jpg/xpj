@@ -4,6 +4,9 @@
   只放用户可见中文；每处一个 key，不按中文值去重。
 -->
 <resources>
+    <string name="sync_status_upload_recovery_body">原上传记录已保留。请到收件箱查看原截图，并继续或停止原批次。</string>
+    <string name="sync_status_open_uploads">查看待上传截图</string>
+    <string name="sync_status_overview_caption_refresh_required">%1$d 笔更正已送达，仍需刷新并核对账单。</string>
 
     <!-- 设置 根屏（SettingsRootScreen）：分组标题、入口标题/副标题、连接入口动态文案 -->
     <string name="settings_root_connection_title_advanced">连接与同步</string>
@@ -17,7 +20,7 @@
     <string name="settings_root_entry_offline_sync_title">离线同步</string>
     <string name="settings_root_entry_offline_sync_subtitle">离线改动的同步状态，处理冲突与失败</string>
     <string name="settings_root_entry_background_tasks_title">后台任务</string>
-    <string name="settings_root_entry_background_tasks_subtitle">导入任务与处理进度</string>
+    <string name="settings_root_entry_background_tasks_subtitle">小票识别进度与原账单</string>
     <string name="settings_root_entry_ledgers_title">账本</string>
     <string name="settings_root_entry_ledgers_subtitle">查看、切换、新建账本</string>
     <string name="settings_root_section_bookkeeping_data">记账规则与数据</string>
@@ -93,11 +96,13 @@
     <string name="settings_account_button_check_connection">检查连接</string>
     <string name="settings_account_button_update_ledger">更新账本</string>
     <string name="settings_account_diagnostics_failed">发现 %1$d 个问题</string>
-    <string name="settings_account_diagnostics_warning">可用，有 %1$d 个提醒</string>
-    <string name="settings_account_diagnostics_ok">连接检测正常</string>
+    <string name="settings_account_diagnostics_warning">检查已完成，有 %1$d 项未检查</string>
+    <string name="settings_account_diagnostics_ok">本次检查通过</string>
     <string name="settings_account_diagnostics_not_run">尚未运行检测</string>
     <string name="settings_account_diagnostics_elapsed">%1$d ms</string>
     <string name="settings_diagnostics_check_auth_name">身份验证</string>
+    <string name="settings_diagnostics_check_write_name">版本与保存条件</string>
+    <string name="settings_diagnostics_check_write_pass">版本匹配，服务端允许提交；能否修改仍取决于账本角色。</string>
     <string name="settings_diagnostics_check_server_name">账本状态</string>
     <string name="settings_diagnostics_check_pending_name">待确认账单</string>
     <string name="settings_diagnostics_check_confirmed_name">已入账记录</string>
@@ -108,7 +113,7 @@
     <string name="settings_diagnostics_check_auth_pass">访问凭证有效</string>
     <string name="settings_diagnostics_check_server_pass">小票夹服务正常</string>
     <string name="settings_diagnostics_check_pending_pass">可以读取待确认账单</string>
-    <string name="settings_diagnostics_check_confirmed_pass">可以更新账本</string>
+    <string name="settings_diagnostics_check_confirmed_pass">可以读取已入账记录</string>
     <string name="settings_diagnostics_check_stats_pass">可以读取月度统计</string>
     <string name="settings_diagnostics_check_categories_pass">可以读取分类和月份</string>
     <string name="settings_diagnostics_check_duplicates_pass">可以读取疑似重复账单</string>
@@ -127,10 +132,10 @@
     <string name="settings_server_page_title_advanced">连接与同步</string>
     <string name="settings_server_page_title_basic">账本连接</string>
     <string name="settings_server_page_subtitle_advanced">查看连接状态、更新账本，并运行连接检测。</string>
-    <string name="settings_server_page_subtitle_basic">确认此设备连接的账本，并手动更新账本状态。</string>
-    <string name="settings_server_section_internal_tools">连接检测</string>
-    <string name="settings_server_internal_tools_hint">用于检查账本连接、授权和同步状态；仅内部版显示检测明细。</string>
-    <string name="settings_server_button_run_diagnostics">运行检测</string>
+    <string name="settings_server_page_subtitle_basic">检查连接和保存条件，查看结果并继续未完成的操作。</string>
+    <string name="settings_server_section_diagnostics">连接检测</string>
+    <string name="settings_server_diagnostics_hint">检查连接会读取账本状态，不会试写账单。未发送的操作保留在本机，可在离线同步中查看和继续。</string>
+    <string name="settings_server_open_pending_operations">查看未发送的操作</string>
     <string name="settings_server_button_refresh_settings">刷新设置</string>
 
     <!-- 数据与导出页（DataExportScreen） -->
@@ -199,6 +204,8 @@
 
     <!-- 离线同步页（SyncStatusScreen） -->
     <string name="sync_status_page_title">离线同步</string>
+    <string name="sync_status_binding_loading">正在读取当前账本的同步状态…</string>
+    <string name="sync_status_binding_unavailable">账本连接已变化，请重新打开同步状态。</string>
     <string name="sync_status_page_subtitle">联网后会自动把离线改动同步到账本；有冲突或失败时在这里处理。</string>
     <string name="sync_status_section_needs_action">需要你确认</string>
     <string name="sync_status_section_failed">同步失败</string>
@@ -220,6 +227,7 @@
     <string name="sync_status_overview_quarantined_caption">已停止发送</string>
     <string name="sync_status_overview_caption_quarantined">有 %1$d 笔旧操作已隔离，不会自动发送。</string>
     <string name="sync_status_overview_caption_needs_action">%1$d 笔需要处理，处理后才会继续进入账本。</string>
+    <string name="sync_status_overview_caption_review_required">%1$d 笔旧提交需要核对当前事实，送达情况尚未确认。</string>
     <string name="sync_status_overview_caption_queued">离线改动已保留，恢复连接后会自动同步。</string>
     <string name="sync_status_overview_caption_settled">没有等待处理的离线改动。</string>
     <string name="sync_status_quarantined_body">这 %1$d 笔操作不属于当前已验证的成员与设备。带原设备身份的操作会在恢复同一设备后重新出现；旧版本未记录主体的操作无法安全认领，只能继续保留或由你明确移除。</string>
@@ -250,8 +258,7 @@
     <string name="sync_status_drop_dialog_confirm_remove">确定移除</string>
 
     <!-- SettingsViewModel 用户可见反馈消息。 -->
-    <string name="settings_vm_connection_ok">连接正常</string>
-    <string name="settings_vm_connection_failed">暂时连不上小票夹，请稍后再试。</string>
+    <string name="settings_vm_sync_state_unavailable">账单已更新；连接状态暂时不可用，可再次检查连接。</string>
     <string name="settings_vm_sync_done">更新完成</string>
     <string name="settings_vm_sync_failed">暂时更新不了，请稍后再试。</string>
     <string name="settings_vm_diagnostics_passed">连接检测通过</string>
@@ -260,8 +267,6 @@
     <string name="settings_vm_server_settings_failed">账本状态暂时没有更新，稍后再试。</string>
     <string name="settings_vm_cache_cleared">离线副本已清除</string>
     <string name="settings_vm_cache_clear_failed">离线副本暂时没有清除，请稍后再试。</string>
-    <string name="settings_vm_monthly_budget_off">月预算已关闭</string>
-    <string name="settings_vm_monthly_budget_saved">月预算已保存</string>
     <string name="settings_vm_notifications_saved">通知偏好已保存</string>
 
     <!-- OutboxStatusViewModel 用户可见反馈消息。 -->
@@ -270,6 +275,7 @@
     <!-- 离线同步卡改动类型标签。 -->
     <string name="sync_status_mutation_patch_expense">修改账单</string>
     <string name="sync_status_mutation_correct_expense">更正已入账记录</string>
+    <string name="sync_status_mutation_upload_screenshot">上传小票</string>
     <string name="sync_status_mutation_create_expense">新建账单</string>
     <string name="sync_status_mutation_confirm_expense">确认入账</string>
     <string name="sync_status_mutation_reject_expense">删除账单</string>
@@ -284,7 +290,7 @@
     <string name="sync_status_mutation_update_merchant_alias">修改商家别名</string>
     <string name="sync_status_mutation_delete_merchant_alias">删除商家别名</string>
     <string name="sync_status_mutation_update_goal">修改目标</string>
-    <string name="sync_status_mutation_update_income_plan">修改收入记录</string>
+    <string name="sync_status_mutation_update_income_plan">修改收入计划</string>
     <string name="sync_status_mutation_create_recurring_item">新建固定支出</string>
     <string name="sync_status_mutation_update_recurring_item">修改固定支出</string>
     <string name="sync_status_mutation_create_expense_offset">登记退回或冲销</string>
@@ -296,5 +302,6 @@
     <string name="sync_status_error_no_dispatcher">App 版本不支持此操作,请升级后再重试。</string>
     <string name="sync_status_error_expired">这笔改动太久没能同步,已过期,请重新操作。</string>
     <string name="sync_status_error_rule_category_deleted">目标分类已移入回收站。请先在资料库回收站恢复该分类，再重试。</string>
+    <string name="sync_status_error_protocol_mismatch">客户端与服务器版本不匹配。原提交已保留，请更新为配套版本后重试。</string>
 
 </resources>

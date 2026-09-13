@@ -19,7 +19,6 @@ import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppAmountInput
 import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
-import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.components.AppFloatingActionBar
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppPrimaryButton
@@ -31,10 +30,8 @@ import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
-import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.screens.budget.MonthSwitcher
 import com.ticketbox.viewmodel.CreateSpendingGoalUiState
 import com.ticketbox.viewmodel.CreateSpendingGoalViewModel
@@ -46,9 +43,10 @@ fun CreateSpendingGoalScreen(
     initialMonth: String = YearMonth.now().toString(),
     onBack: () -> Unit,
     onCreated: () -> Unit,
+    originalId: Long? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    LaunchedEffect(initialMonth) { viewModel.reset(initialMonth) }
+    LaunchedEffect(viewModel, initialMonth, originalId) { viewModel.reset(initialMonth, originalId) }
     LaunchedEffect(state.createdPublicId) {
         if (state.createdPublicId != null) {
             onCreated()
@@ -68,7 +66,12 @@ fun CreateSpendingGoalScreen(
         ),
         refresh = AppSecondaryRefreshState(isRefreshing = false, onRefresh = {}),
         slots = AppSecondaryPageSlots(
-            status = { CreateSpendingGoalStatusStack(state = state) },
+            status = { CreateSpendingGoalStatusStack(state = state)
+                state.pending?.let { GoalCreationSubmissionStatus(it, state.isSubmitting, state.canModify, viewModel::recover) }
+                if (state.ledgerCurrency == null && state.originalSubmissionId == null) androidx.compose.material3.TextButton(onClick = viewModel::retryCurrency) {
+                    Text(stringResource(R.string.common_retry))
+                }
+            },
             bottomBar = {
                 CreateSpendingGoalFooter(
                     canSubmit = state.canSubmit,
@@ -78,19 +81,19 @@ fun CreateSpendingGoalScreen(
             },
         ),
     ) {
-        item {
+        if (state.pending == null) item {
             DebtGoalOpenSection(
                 title = stringResource(R.string.spending_goal_create_month_section),
                 subtitle = stringResource(R.string.spending_goal_create_month_hint),
             ) {
                 MonthSwitcher(
                     month = displayMonthLabel(state.month),
-                    onPreviousMonth = viewModel::previousMonth,
-                    onNextMonth = viewModel::nextMonth,
+                    onPreviousMonth = { viewModel.shiftMonth(-1) },
+                    onNextMonth = { viewModel.shiftMonth(1) },
                 )
             }
         }
-        item {
+        if (state.pending == null) item {
             DebtGoalOpenSection(
                 title = stringResource(R.string.spending_goal_create_form_section),
                 subtitle = stringResource(R.string.spending_goal_create_form_hint),
@@ -104,9 +107,6 @@ fun CreateSpendingGoalScreen(
 @Composable
 private fun CreateSpendingGoalStatusStack(state: CreateSpendingGoalUiState) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        AppDataAuthorityStrip(
-            tone = if (state.isSubmitting) DataAuthorityTone.Refreshing else DataAuthorityTone.Backend,
-        )
         if (!state.canModify) {
             AppStatusBanner(message = UiText.res(R.string.common_readonly_ledger), tone = MessageTone.Info)
         }
@@ -119,38 +119,40 @@ private fun SpendingGoalForm(
     state: CreateSpendingGoalUiState,
     viewModel: CreateSpendingGoalViewModel,
 ) {
-    // R14-2：金额输入标签随 VM 已解析的账本 capability（JPY 亮 ¥ 即 JPY 语义+整数口径），
-    // 未确认时落 display-home 兜底仅作展示（写面由 VM canSubmit/禁写门拦截）。
-    val currency = state.ledgerCurrency ?: LocalCurrencyDisplay.current.homeCurrency
+    val currency = state.ledgerCurrency
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
         AppTextInput(
             state = AppTextInputState(
                 label = stringResource(R.string.spending_goal_create_name_label),
                 value = state.name,
                 placeholder = stringResource(R.string.spending_goal_create_name_placeholder),
-                enabled = !state.isSubmitting && state.canModify,
+                enabled = state.editable,
             ),
             actions = AppTextInputActions(onValueChange = viewModel::updateName),
             modifier = Modifier.fillMaxWidth(),
         )
+        if (currency != null) {
         AppAmountInput(
             state = AppAmountInputState(
                 label = stringResource(R.string.spending_goal_create_amount_label),
                 currency = currency,
                 value = state.targetAmountInput,
                 placeholder = stringResource(R.string.components_amount_input_placeholder),
-                enabled = !state.isSubmitting && state.canModify,
+                enabled = state.editable,
                 isError = state.formError != null && state.targetAmountInput.isBlank(),
             ),
             actions = AppAmountInputActions(onValueChange = viewModel::updateTargetAmount),
             modifier = Modifier.fillMaxWidth(),
         )
+        } else {
+            Text(stringResource(R.string.spending_goal_currency_loading))
+        }
         AppTextInput(
             state = AppTextInputState(
                 label = stringResource(R.string.spending_goal_create_category_label),
                 value = state.category,
                 placeholder = stringResource(R.string.spending_goal_create_category_placeholder),
-                enabled = !state.isSubmitting && state.canModify,
+                enabled = state.editable,
             ),
             actions = AppTextInputActions(onValueChange = viewModel::updateCategory),
             modifier = Modifier.fillMaxWidth(),

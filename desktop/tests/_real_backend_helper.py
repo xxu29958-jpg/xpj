@@ -32,7 +32,7 @@ def main() -> int:
     database_url = os.environ.get("SMOKE_DATABASE_URL") or os.environ.get("DATABASE_URL")
     cluster_identity = os.environ.get("XPJ_TEST_CLUSTER_IDENTITY")
     passfile = os.environ.get("PGPASSFILE")
-    if not database_url or not cluster_identity:
+    if not database_url and not cluster_identity:
         rendered = render_environment(
             host="localhost",
             port=TEST_POSTGRES_CONTRACT.ports.local,
@@ -46,10 +46,12 @@ def main() -> int:
                 TEST_POSTGRES_CONTRACT.ports.local
             ),
         )
-        database_url = database_url or rendered["SMOKE_DATABASE_URL"]
-        cluster_identity = cluster_identity or rendered["XPJ_TEST_CLUSTER_IDENTITY"]
-        passfile = passfile or rendered["PGPASSFILE"]
-        os.environ.setdefault("PGPASSFILE", passfile)
+        database_url = rendered["SMOKE_DATABASE_URL"]
+        cluster_identity = rendered["XPJ_TEST_CLUSTER_IDENTITY"]
+        passfile = rendered["PGPASSFILE"]
+    elif not all((database_url, cluster_identity, passfile)):
+        raise ValueError("Explicit test database authority must be complete: URL, cluster identity and passfile.")
+    os.environ["PGPASSFILE"] = passfile
     os.environ["DATABASE_URL"] = database_url
     os.environ["XPJ_TEST_CLUSTER_IDENTITY"] = cluster_identity
     port = int(os.environ["XPJ_E2E_BACKEND_PORT"])
@@ -68,6 +70,7 @@ def main() -> int:
             hash_secret,
             new_session_token,
         )
+        from tests._infra.currency import activate_test_currency_authority
 
         init_db()
         with SessionLocal() as db:
@@ -78,6 +81,10 @@ def main() -> int:
                 device_name="e2e-owner-console",
             )
         with SessionLocal() as db:
+            # These bridge/pairing tests start with configured CNY money semantics.
+            # Initial Owner choice is exercised by the currency product tests
+            # and the standalone HTTP smoke, not by an implicit first writer.
+            activate_test_currency_authority(db, "CNY")
             owner = db.query(Account).order_by(Account.id.asc()).first()
             assert owner is not None
             tester = Ledger(ledger_id="tester_1", name="另一账本", owner_account_id=owner.id)

@@ -12,25 +12,22 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/**
- * ADR-0049 §6 (slice 7): the debt_repayment goal DTO → domain mapping. A debt goal's
- * spending-shape fields are null on the wire and coalesce to 0 / "" so the domain
- * [com.ticketbox.domain.model.Goal] stays non-null for the spending-goal UI, while the
- * nested evaluation block carries the real debt state.
- */
+/** Debt goals keep their own linked-debt evaluation without inventing spend totals. */
 class DebtGoalMappersTest {
 
     @Test
-    fun debtGoalDtoCoalescesNullSpendFieldsAndMapsEvaluation() {
+    fun debtGoalKeepsNonMonetaryShapeAndMapsEvaluation() {
         val domain = debtGoalDto().toDomain()
 
         assertTrue(domain.isDebtRepayment)
-        // null spend fields coalesce — the debt UI ignores these and reads debtRepayment.
+        // A debt-clearance goal has no monetary target or spending progress.
         assertEquals("", domain.month)
-        assertEquals(0L, domain.targetAmountCents)
-        assertEquals(0L, domain.spentAmountCents)
-        assertEquals(0L, domain.remainingAmountCents)
-        assertEquals(0, domain.progressPercent)
+        assertNull(domain.targetAmountCents)
+        assertNull(domain.spentAmountCents)
+        assertNull(domain.remainingAmountCents)
+        assertNull(domain.progressPercent)
+        assertNull(domain.progress)
+        assertNull(domain.homeCurrencyCode)
 
         val evaluation = requireNotNull(domain.debtRepayment)
         assertEquals(2, evaluation.goalVersion)

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.BackgroundTaskActions
+import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.domain.model.BackgroundTask
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
@@ -13,44 +14,52 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/**
- * ADR-0030 background_tasks UI.
- *
- * Manual refresh + tap-to-cancel. Polling is intentionally not built in;
- * task types like csv_import are operator-initiated and rare, so a passive
- * list with a pull-to-refresh button is enough. Adding a 3-second poll
- * would burn battery for a feature triggered maybe once a month per account.
- */
+/** Server task history; source bills own review and recognition recovery. */
 data class BackgroundTasksUiState(
     val tasks: List<BackgroundTask> = emptyList(),
     val loading: Boolean = false,
     val busyTaskId: String? = null,
     val message: UiText? = null,
     val messageTone: MessageTone = MessageTone.Neutral,
-    val canModify: Boolean = false,
-)
+    val access: LedgerAccessContext? = null,
+) {
+    val canModify: Boolean get() = access?.canModify == true
+}
 
 class BackgroundTasksViewModel(
     private val repository: BackgroundTaskActions,
 ) : ViewModel() {
-
     private val _uiState = MutableStateFlow(
-        BackgroundTasksUiState(canModify = repository.canModifyLedger()),
+        BackgroundTasksUiState(access = repository.currentAccess()),
     )
     val uiState: StateFlow<BackgroundTasksUiState> = _uiState.asStateFlow()
 
+    init {
+        viewModelScope.launch { repository.observeAccess().collect(::acceptAccess) }
+    }
+
+    private fun acceptAccess(updated: LedgerAccessContext?) {
+        _uiState.update {
+            if (it.access?.binding != updated?.binding) BackgroundTasksUiState(access = updated)
+            else it.copy(access = updated)
+        }
+    }
+
+    private fun refreshAccess(): LedgerAccessContext? = repository.currentAccess().also(::acceptAccess)
+
+    fun sourceExpenseId(publicId: String): Long? {
+        refreshAccess() ?: return null
+        return _uiState.value.tasks.firstOrNull { it.publicId == publicId }?.sourceExpenseId
+    }
+
     fun refresh() {
+        val binding = refreshAccess()?.binding ?: return
         if (_uiState.value.loading) return
+        _uiState.update { it.copy(loading = true, message = null, messageTone = MessageTone.Neutral) }
         viewModelScope.launch {
-            _uiState.update {
-                it.copy(
-                    loading = true,
-                    message = null,
-                    messageTone = MessageTone.Neutral,
-                    canModify = repository.canModifyLedger(),
-                )
-            }
-            repository.fetchBackgroundTasks()
+            val result = repository.fetchBackgroundTasks(binding)
+            if (refreshAccess()?.binding != binding) return@launch
+            result
                 .onSuccess { tasks ->
                     _uiState.update {
                         it.copy(
@@ -79,13 +88,16 @@ class BackgroundTasksViewModel(
     }
 
     fun cancel(publicId: String) {
+        val currentAccess = refreshAccess() ?: return
+        if (!currentAccess.canModify) return
         val current = _uiState.value
-        if (!current.canModify) return
         if (current.busyTaskId != null) return
         if (current.tasks.firstOrNull { it.publicId == publicId }?.isCancellable != true) return
+        _uiState.update { it.copy(busyTaskId = publicId, message = null, messageTone = MessageTone.Neutral) }
         viewModelScope.launch {
-            _uiState.update { it.copy(busyTaskId = publicId, message = null, messageTone = MessageTone.Neutral) }
-            repository.cancelBackgroundTask(publicId)
+            val result = repository.cancelBackgroundTask(currentAccess.binding, publicId)
+            if (refreshAccess()?.binding != currentAccess.binding) return@launch
+            result
                 .onSuccess { updated ->
                     _uiState.update {
                         it.copy(

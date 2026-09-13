@@ -7,18 +7,20 @@ import com.squareup.moshi.Json
  * `backend/app/schemas/_budget_advisor.py`. The advice round-trip is
  * one-shot per AI call; nothing here is persisted on device.
  */
+@com.squareup.moshi.JsonClass(generateAdapter = true)
 data class DiscretionaryResponseDto(
-    @param:Json(name = "monthly_income_cents") val monthlyIncomeCents: Long,
-    @param:Json(name = "fixed_expenses_cents") val fixedExpensesCents: Long,
-    @param:Json(name = "spent_amount_cents") val spentAmountCents: Long = 0L,
+    @param:Json(name = "monthly_income_cents") val monthlyIncomeCents: Long?,
+    @param:Json(name = "fixed_expenses_cents") val fixedExpensesCents: Long?,
+    @param:Json(name = "spent_amount_cents") val spentAmountCents: Long?,
     @param:Json(name = "savings_target_cents") val savingsTargetCents: Long,
     @param:Json(name = "reserved_buffer_cents") val reservedBufferCents: Long,
-    @param:Json(name = "discretionary_cents") val discretionaryCents: Long,
+    @param:Json(name = "discretionary_cents") val discretionaryCents: Long?,
 )
 
 data class BudgetAdviseRequestDto(
     val month: String,
     val timezone: String? = null,
+    @param:Json(name = "home_currency_code") val homeCurrencyCode: String? = null,
 )
 
 data class BudgetSuggestionDto(

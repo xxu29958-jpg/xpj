@@ -32,7 +32,7 @@ class LedgerGroupingTest {
             ),
         )
 
-        assertEquals(4650L, group.dayTotalCents)
+        assertEquals(mapOf<String?, Long?>("CNY" to 4650L), group.amountsByCurrency)
     }
 
     @Test
@@ -59,7 +59,7 @@ class LedgerGroupingTest {
 
         // 120.00 - 30.00 - 10.00: the gross root amount (12_000) plus the two
         // negative server contributions — never a recomputed net of amounts.
-        assertEquals(8000L, group.dayTotalCents)
+        assertEquals(mapOf<String?, Long?>("CNY" to 8000L), group.amountsByCurrency)
     }
 
     @Test
@@ -84,7 +84,7 @@ class LedgerGroupingTest {
             ),
         )
 
-        assertEquals(0L, group.dayTotalCents)
+        assertEquals(mapOf<String?, Long?>("CNY" to 0L), group.amountsByCurrency)
         assertEquals(2, group.itemCount)
     }
 
@@ -113,22 +113,22 @@ class LedgerGroupingTest {
     }
 
     @Test
-    fun dayPreviewLabelsPrioritizeLargeAmounts() {
+    fun dayPreviewLabelsPreserveServerOrderAcrossDifferentCurrencies() {
         val labels = ledgerDayPreviewLabels(
             items = listOf(
                 expenseRow(id = 1, amountCents = 900).withRoot { it.copy(merchant = "Coffee") },
-                expenseRow(id = 2, amountCents = 30_000).withRoot { it.copy(merchant = "Rent") },
+                expenseRow(id = 2, amountCents = 30_000).withRoot { it.copy(merchant = "Rent", homeCurrencyCode = "JPY") },
                 expenseRow(id = 3, amountCents = 5_000).withRoot { it.copy(merchant = "Market") },
                 expenseRow(id = 4, amountCents = 12_000).withRoot { it.copy(merchant = "Pharmacy") },
             ),
             limit = 3,
         )
 
-        assertEquals(listOf("Rent", "Pharmacy", "Market"), labels)
+        assertEquals(listOf("Coffee", "Rent", "Market"), labels)
     }
 
     @Test
-    fun dayPreviewLabelsDeduplicateMerchantByLargestAmount() {
+    fun dayPreviewLabelsDeduplicateInEncounterOrder() {
         val labels = ledgerDayPreviewLabels(
             items = listOf(
                 expenseRow(id = 1, amountCents = 900).withRoot { it.copy(merchant = "Coffee") },
@@ -142,7 +142,7 @@ class LedgerGroupingTest {
     }
 
     @Test
-    fun offsetRowPreviewUsesRootMerchantWithOffsetMagnitude() {
+    fun offsetRowPreviewUsesRootMerchantInOriginalPosition() {
         val labels = ledgerDayPreviewLabels(
             items = listOf(
                 expenseRow(id = 1, amountCents = 900).withRoot { it.copy(merchant = "Coffee") },
@@ -157,9 +157,42 @@ class LedgerGroupingTest {
             limit = 2,
         )
 
-        // The refund event surfaces by its root merchant, weighted by its own
-        // magnitude — a large refund is as salient as a large bill.
-        assertEquals(listOf("Hotel", "Coffee"), labels)
+        assertEquals(listOf("Coffee", "Hotel"), labels)
+    }
+
+    @Test
+    fun groupAndPageSummariesKeepEachRowsOwnCurrency() {
+        val refund = offsetRow("jpy-refund", StreamOffsetKind.Refund, 50, -50)
+        val items = listOf(
+            expenseRow(1, amountCents = 100),
+            expenseRow(2, amountCents = 100).withRoot { it.copy(homeCurrencyCode = "JPY") },
+            refund.copy(offset = refund.offset.copy(homeCurrencyCode = "JPY")),
+        )
+        val expected = mapOf<String?, Long?>("CNY" to 100L, "JPY" to 50L)
+        assertEquals(expected, LedgerStreamGroup("2026-05-17", "date", items).amountsByCurrency)
+        assertEquals(expected, com.ticketbox.viewmodel.LedgerUiState(items = items).summary.amountsByCurrency)
+    }
+
+    @Test
+    fun missingCurrencyAndMissingAmountNeverBecomeYuanOrZero() {
+        val items = listOf(
+            expenseRow(1, amountCents = 100).withRoot { it.copy(homeCurrencyCode = null) },
+            expenseRow(2, amountCents = 100).withRoot { it.copy(homeCurrencyCode = "  ") },
+            expenseRow(3, amountCents = null),
+            expenseRow(4, amountCents = 100),
+        )
+        assertEquals(mapOf<String?, Long?>(null to null, "CNY" to null), LedgerStreamGroup("date", "date", items).amountsByCurrency)
+    }
+
+    @Test
+    fun declaredUnknownCodeRemainsRawAndOverflowRemainsUnavailable() {
+        val items = listOf(
+            expenseRow(1, amountCents = 100).withRoot { it.copy(homeCurrencyCode = "ZZZ") },
+            expenseRow(2, amountCents = 50).withRoot { it.copy(homeCurrencyCode = " zzz ") },
+            expenseRow(3, amountCents = Long.MAX_VALUE),
+            expenseRow(4, amountCents = 1),
+        )
+        assertEquals(mapOf<String?, Long?>("ZZZ" to 150L, "CNY" to null), LedgerStreamGroup("date", "date", items).amountsByCurrency)
     }
 }
 
@@ -233,4 +266,5 @@ private fun expense(id: Long, amountCents: Long?): Expense = Expense(
     rowVersion = 1L,
     confirmedAt = "2026-05-17T08:01:00Z",
     rejectedAt = null,
+    homeCurrencyCode = "CNY",
 )

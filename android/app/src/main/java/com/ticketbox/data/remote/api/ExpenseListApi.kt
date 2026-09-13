@@ -65,6 +65,7 @@ interface ExpenseListApi {
     suspend fun uploadScreenshot(
         @Part file: MultipartBody.Part,
         @Header("X-Timezone") timezone: String? = null,
+        @Header("Idempotency-Key") idempotencyKey: String? = null,
     ): UploadResponseDto
 
     @GET("api/duplicates")

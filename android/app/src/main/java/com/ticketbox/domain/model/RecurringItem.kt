@@ -23,4 +23,6 @@ data class RecurringItem(
     val rowVersion: Long,
     val pausedAt: String?,
     val archivedAt: String?,
+    val nextDueDate: String? = null,
+    val homeCurrencyCode: String? = null,
 )

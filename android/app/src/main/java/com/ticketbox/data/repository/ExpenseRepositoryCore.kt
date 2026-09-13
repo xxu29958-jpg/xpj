@@ -14,9 +14,7 @@ import com.ticketbox.data.remote.PageQuery
 import com.ticketbox.data.remote.dto.AuthCheckDto
 import com.ticketbox.data.remote.dto.ConfirmedExpenseStreamItemDto
 import com.ticketbox.data.remote.dto.ExpenseDto
-import com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto
 import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
-import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
 import com.ticketbox.data.remote.dto.ExpenseOffsetCreateRequestDto
 import com.ticketbox.data.remote.dto.ExpenseRecognizeTextRequestDto
 import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
@@ -31,9 +29,11 @@ import com.ticketbox.domain.model.ledgerRoleCanModify
 import com.ticketbox.domain.model.normalizedTagNames
 import com.ticketbox.security.SessionCredentialProvider
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import okhttp3.ResponseBody
 import retrofit2.HttpException
@@ -50,7 +50,9 @@ internal data class ConfirmedSyncRequest(
     val tag: String? = null,
     val replaceCache: Boolean = false,
     val recordSyncTimestamp: Boolean = true,
-)
+) {
+    val isFullLedger: Boolean get() = month == null && category == null && tag == null
+}
 
 private fun ConfirmedSyncRequest.matchesCachedOffset(
     offset: ExpenseOffsetStreamEntity,
@@ -69,7 +71,7 @@ internal class ExpenseRepositoryCore(
     val binding: ServerSessionBinding,
     val deviceNameProvider: () -> String,
     val sessionCoordinator: LocalLedgerSessionCoordinator,
-    val offlineMutations: ExpenseOfflineMutationWiring = ExpenseOfflineMutationWiring(),
+    val offlineMutations: ExpenseOfflineMutationWiring,
 ) {
     val settingsStore: TicketboxSettingsStore
         get() = binding.settingsStore
@@ -81,8 +83,6 @@ internal class ExpenseRepositoryCore(
         get() = offlineMutations.outbox
     val patchExpenseAdapter: JsonAdapter<ExpenseUpdateRequest>?
         get() = offlineMutations.patchExpenseAdapter
-    val correctionAdapter: JsonAdapter<ExpenseCorrectionRequestDto>?
-        get() = offlineMutations.correctionAdapter
     val expenseStateTokenAdapter: JsonAdapter<ExpenseStateTokenRequest>?
         get() = offlineMutations.expenseStateTokenAdapter
     val replaceItemsAdapter: JsonAdapter<ExpenseItemReplaceRequestDto>?
@@ -91,8 +91,6 @@ internal class ExpenseRepositoryCore(
         get() = offlineMutations.replaceSplitsAdapter
     val recognizeTextAdapter: JsonAdapter<ExpenseRecognizeTextRequestDto>?
         get() = offlineMutations.recognizeTextAdapter
-    val manualCreateAdapter: JsonAdapter<ExpenseManualCreateRequestDto>?
-        get() = offlineMutations.manualCreateAdapter
     val offsetCreateAdapter: JsonAdapter<ExpenseOffsetCreateRequestDto>?
         get() = offlineMutations.offsetCreateAdapter
     val offsetVoidAdapter: JsonAdapter<ExpenseOffsetVoidOutboxPayload>?
@@ -248,10 +246,38 @@ internal class ExpenseRepositoryCore(
         return dto
     }
 
+    suspend fun fetchAuthoritativeExpense(bound: BoundLedgerRequest, id: Long): ExpenseDto {
+        val dto = bound.call { it.expense(id) }
+        if (dto.status == "confirmed") {
+            cacheIfConfirmed(dto, bound)
+            val needsProjection = outbox?.observeActiveByTypes(setOf(PendingMutationType.CorrectExpense),
+                includeCompleted = true)?.first()?.any {
+                it.targetId == "expense:$id" && correctionRefreshVersion(it.lastError) != null
+            } == true
+            if (needsProjection) syncConfirmedFromService(bound)
+            return dto
+        }
+        withActiveBindingCommit(bound) { expenseDao.retireConfirmedRoot(bound.ledgerId, id, dto.rowVersion) }
+        acknowledgeCorrectionRefresh(bound, mapOf(id to dto.rowVersion))
+        return dto
+    }
+
+    /** Marker cleanup must not turn a successful mutation into an offline enqueue. */
+    suspend fun acknowledgeCorrectionRefresh(bound: BoundLedgerRequest, versions: Map<Long, Long>) {
+        try {
+            outbox?.acknowledgeCorrectionRefresh(bound, versions)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (bindingError: RepositoryException) {
+            throw bindingError
+        } catch (_: Exception) {
+            // The durable requirement remains visible and can be acknowledged by the next read.
+        }
+    }
+
     private suspend fun confirmedStreamPruneScope(
         bound: BoundLedgerRequest,
         request: ConfirmedSyncRequest,
-        isFullLedgerSync: Boolean,
     ): ConfirmedStreamPruneScope {
         if (request.replaceCache) return ConfirmedStreamPruneScope(null, null)
         return withActiveBindingCommit(bound) {
@@ -260,7 +286,7 @@ internal class ExpenseRepositoryCore(
                 .mapNotNull { root -> root.serverId?.let { it to root.toDomain() } }
                 .toMap()
             ConfirmedStreamPruneScope(
-                rootServerIds = if (isFullLedgerSync) rootsByServerId.keys else null,
+                rootServerIds = if (request.isFullLedger) rootsByServerId.keys else null,
                 offsetPublicIds = expenseDao.getConfirmedStreamOffsets(ledgerId)
                     .filter { offset -> request.matchesCachedOffset(offset, rootsByServerId[offset.rootServerId]) }
                     .mapTo(mutableSetOf()) { it.publicId },
@@ -303,12 +329,12 @@ internal class ExpenseRepositoryCore(
     suspend fun syncConfirmedFromService(
         bound: BoundLedgerRequest,
         request: ConfirmedSyncRequest = ConfirmedSyncRequest(),
+        requiredCorrection: ExpenseDto? = null,
     ): List<Expense> {
         val ledgerIdAtRequest = bound.ledgerId
-        val isFullLedgerSync = request.month == null && request.category == null && request.tag == null
         // Snapshot prune eligibility before the first page request. Rows cached
         // during pagination must survive until the next reconciliation.
-        val pruneScope = confirmedStreamPruneScope(bound, request, isFullLedgerSync)
+        val pruneScope = confirmedStreamPruneScope(bound, request)
         val collectedDtos = fetchConfirmedStream(bound, request)
 
         val cacheItems = collectedDtos.map { it.toConfirmedStreamCacheItem(ledgerIdAtRequest) }
@@ -319,22 +345,32 @@ internal class ExpenseRepositoryCore(
                 candidates.firstOrNull { it.root.streamDate != null }?.root ?: candidates.first().root
             }
         val offsets = cacheItems.mapNotNull { it.offset }
+        if (requiredCorrection != null && roots.none {
+                it.serverId == requiredCorrection.id && it.publicId == requiredCorrection.publicId &&
+                    it.rowVersion >= requiredCorrection.rowVersion && it.streamDate != null
+            }) throw RepositoryException("更正已送达，流水投影尚待刷新。")
         val collected = roots.map { it.toDomain() }
-        withActiveBindingCommit(bound) {
-            expenseDao.applyConfirmedStreamSyncForLedger(
+        val acceptedRootIds = withActiveBindingCommit(bound) {
+            val accepted = expenseDao.applyConfirmedStreamSyncForLedger(
                 ledgerId = ledgerIdAtRequest,
                 roots = roots,
                 offsets = offsets,
                 replaceCache = request.replaceCache,
                 pruneScope = pruneScope,
             )
-            if (request.recordSyncTimestamp && isFullLedgerSync) {
+            if (requiredCorrection != null && requiredCorrection.id !in accepted) {
+                throw RepositoryException("更正已送达，流水投影尚待刷新。")
+            }
+            if (request.recordSyncTimestamp && request.isFullLedger) {
                 settingsStore.saveLastConfirmedSyncAtForLedger(ledgerIdAtRequest, Instant.now().toString())
             }
+            accepted
         }
+        acknowledgeCorrectionRefresh(bound, roots.filter { it.streamDate != null && it.serverId in acceptedRootIds }
+            .associate { requireNotNull(it.serverId) to it.rowVersion })
         // Only a full-ledger sync delivers the confirmed set the budget
         // advisor consumes; filtered syncs fingerprint a subset and would flap.
-        if (isFullLedgerSync) {
+        if (request.isFullLedger) {
             onFullConfirmedSyncSnapshot(
                 "entries=${collectedDtos.size};roots=${roots.size};" +
                     "rv=${roots.maxOfOrNull { it.rowVersion } ?: 0};" +
@@ -386,7 +422,7 @@ internal class ExpenseRepositoryCore(
             bound.requireStillActive()
             block()
         } else {
-            outboxRef.withActiveBinding(bound, block)
+            outboxRef.withActiveBinding(bound) { block() }
         }
     }
 
@@ -418,7 +454,7 @@ internal class ExpenseRepositoryCore(
     fun activeLedgerIdOrLegacy(): String = ledgerRequestGuard.activeLedgerIdOrLegacy()
 
     suspend fun clearLocalCache() {
-        expenseDao.clearAllExpenseCaches()
+        sessionCoordinator.clearLocalCache()
         apiProvider.currentLedgerId()?.let(settingsStore::clearLastConfirmedSyncAtForLedger)
     }
 
@@ -450,7 +486,7 @@ internal class ExpenseRepositoryCore(
      * ``networkError = null`` call never hits the rethrow path.
      */
     fun canEnqueueStateTransition(expense: Expense): Boolean =
-        outbox != null && expenseStateTokenAdapter != null && expense.rowVersion != 0L
+        outbox != null && expenseStateTokenAdapter != null && expense.hasExpenseMutationBaseline()
 
     /**
      * ADR-0038 PR-2g.7/8: shared IOException → outbox fallback for the
@@ -491,7 +527,7 @@ internal class ExpenseRepositoryCore(
     ) {
         val outboxRef = outbox
         val adapter = expenseStateTokenAdapter
-        if (outboxRef == null || adapter == null || expense.rowVersion == 0L) {
+        if (outboxRef == null || adapter == null || !expense.hasExpenseMutationBaseline()) {
             throw networkError ?: IllegalStateException(
                 "enqueueStateTransition without outbox wiring — guard callers must pre-check canEnqueueStateTransition",
             )
@@ -515,45 +551,34 @@ internal class ExpenseRepositoryCore(
         )
     }
 
-    /**
-     * issue #65 slice 4: offline-aware manual create. The caller (online attempt
-     * failed with [java.io.IOException], or there's a queued sibling) writes the
-     * optimistic local row to Room and queues a [PendingMutationType.CreateExpense]
-     * row keyed by ``expense:local:{clientRef}``; the returned [Expense] is the
-     * optimistic projection surfaced to the UI immediately (negative local id,
-     * ``pendingSync = true``).
-     *
-     * Mirrors [enqueueStateTransition]'s session-race guard: re-checks the bound
-     * ledger is still active BEFORE writing so a mid-flight ledger switch can't
-     * land a stale-session create in the now-current ledger. ``onConfirmedCommitted``
-     * fires for the new confirmed row (轴 6 budget detection). The CreateExpense
-     * row carries ``expectedRowVersion = 0`` (no prior version) and no
-     * ``Idempotency-Key`` header — idempotency is the body ``client_ref``.
-     */
+    /** One bound transaction saves the original command and its optimistic negative-ID projection. */
     suspend fun enqueueLocalCreate(
         bound: BoundLedgerRequest,
-        outbox: OutboxRepository,
-        adapter: JsonAdapter<ExpenseManualCreateRequestDto>,
         draft: ExpenseDraft,
         clientRef: String,
     ): Expense {
         val entity = draft.toLocalCreateEntity(bound.ledgerId, clientRef)
         var rowId = 0L
-        outbox.enqueue(
+        offlineMutations.outbox.enqueue(
             boundRequest = bound,
             intent = PendingMutationIntent(
                 type = PendingMutationType.CreateExpense,
                 targetId = expenseLocalTargetId(clientRef),
-                payloadJson = adapter.toJson(draft.toManualCreateRequest(clientRef = clientRef)),
+                payloadJson = offlineMutations.manualCreateAdapter.toJson(draft.toManualCreateRequest(clientRef = clientRef)),
                 expectedRowVersion = FIRST_WRITE_ROW_VERSION,
             ),
             afterPersisted = {
                 rowId = expenseDao.insert(entity)
             },
         )
-        // The durable intent is committed before its optimistic projection in
-        // one binding lease. Process death can lose UI sugar, never the intent.
-        onConfirmedCommitted(bound.ledgerId)
+        // Notification cannot turn a committed original into an apparent save failure.
+        try {
+            onConfirmedCommitted(bound.ledgerId)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // The Room observation and ordinary sync still expose the saved original.
+        }
         return entity.copy(id = rowId).toDomain()
     }
 

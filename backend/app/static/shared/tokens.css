@@ -19,31 +19,32 @@
 
 :root,
 :root[data-theme="paper"] {
-    /* Surface — 暖纸工作区 + 实色业务面板 (W1 Warm Ledger: 分层靠色调与暖阴影,
-       不靠描边相框) */
-    --surface-app: #f6f2ea;
-    --surface-card: #fffdf8;
-    --surface-raised: #fffdf8;
-    --surface-nav: #faf6ee;
-    --surface-sunken: #efe9dc;
+    /* Low-chroma OKLCH neutrals (hue 155, chroma 0.002–0.014), exported as sRGB
+       for Android and the shipped ECharts color parser, which rejects OKLCH.
+       Light surfaces span L=0.946–0.997; text spans L=0.235–0.660. */
+    --surface-app: #f5f9f6;
+    --surface-card: #fdfefd;
+    --surface-raised: #fdfefd;
+    --surface-nav: #f8fbf9;
+    --surface-sunken: #e9efeb;
     /* 自定义背景遮罩（全局背景批）：用户照片亮度不可预知，同一固定层上叠
        --surface-app 基调 veil 保正文可读；reader/render owner 是
        appearance-bootstrap.js TicketboxBackground，消费点 shell.css /
        auth-login.css 的 body::before。 */
-    --surface-user-veil: linear-gradient(rgba(246, 242, 234, 0.58), rgba(246, 242, 234, 0.58));
+    --surface-user-veil: linear-gradient(rgba(245, 249, 246, 0.58), rgba(245, 249, 246, 0.58));
 
     /* Text — 暖墨四级, meta 级在暖纸/卡上保 ≥4.5:1, 最重 SemiBold 即止 */
-    --text-default: #1d1a15;
-    --text-muted: #57514a;
-    --text-meta: #6f6860;
-    --text-faint: #aba294;
-    --text-on-primary: #ffffff;
+    --text-default: #1a201c;
+    --text-muted: #49504c;
+    --text-meta: #606762;
+    --text-faint: #8f9490;
+    --text-on-primary: #fdfefd;
 
     /* Brand — 深常青印泥, 只用于主 CTA、选中态与焦点 */
     --brand-primary: #14504a;
     --brand-primary-strong: #0d3d38;
     --brand-accent: #7fae9f;
-    --brand-primary-bg: #e2ecdf;
+    --brand-primary-bg: #e3eeea;
     --brand-focus-ring: rgba(20, 80, 74, 0.42);
     /* 票夹 coral — 品牌右侧夹的专用色: 只做票据「夹」形 / 当期聚焦标记,
        不承载状态语义 (状态留在 state/goal 族), 镜像 Android ThemeVisuals.clipCoral */
@@ -57,18 +58,17 @@
     --state-neutral-bg: #eeede7; --state-neutral-fg: #66716b; --state-neutral-border: #dcdad2;
 
     /* Borders / radii / shadows — border 语义收窄为发丝分隔与输入控件 */
-    --border-card: #e9e2d2;
-    --border-input: #d8d0bd;
+    --border-card: #dee4e0;
+    --border-input: #b5beb7;
     --control-border: rgba(20, 80, 74, 0.28);
     --control-border-hover: rgba(20, 80, 74, 0.46);
     --control-border-active: rgba(20, 80, 74, 0.64);
     --control-press-bg: rgba(20, 80, 74, 0.10);
     --radius-card: 14px;
-    --radius-input: 6px;
+    --radius-input: 10px;
     --radius-pill: 999px;
-    /* 暖墨柔阴影, 让实色面板从暖纸工作区中分层 */
-    --shadow-card: 0 1px 2px rgba(58, 48, 32, .06), 0 8px 24px rgba(58, 48, 32, .07);
-    --shadow-raised: 0 2px 6px rgba(58, 48, 32, .07), 0 16px 40px rgba(58, 48, 32, .10);
+    --shadow-card: 0 1px 3px rgba(26, 32, 28, .05), 0 6px 18px rgba(26, 32, 28, .03);
+    --shadow-raised: 0 2px 6px rgba(26, 32, 28, .06), 0 16px 40px rgba(26, 32, 28, .10);
 
     /* Chart — 8 色调色板 */
     --chart-series-1: #14504a;
@@ -150,21 +150,21 @@
 
 
 :root[data-theme="midnight"] {
-    /* Surface — 深墨纸工作区 (W1 Warm Ledger 夜间人格: 暖底, 非冷石墨) */
-    --surface-app: #14120d;
-    --surface-card: #1d1a13;
-    --surface-raised: #272319;
-    --surface-nav: #12100b;
-    --surface-sunken: #221e15;
+    /* After-hours use: quiet graphite, with distinct solid reading surfaces. */
+    --surface-app: #111512;
+    --surface-card: #1b1f1c;
+    --surface-raised: #252b26;
+    --surface-nav: #161917;
+    --surface-sunken: #212623;
     /* 自定义背景遮罩（全局背景批）：同 paper 块注释；深色下文为浅色，
        veil 略强一档。 */
-    --surface-user-veil: linear-gradient(rgba(20, 18, 13, 0.66), rgba(20, 18, 13, 0.66));
+    --surface-user-veil: linear-gradient(rgba(17, 21, 18, 0.66), rgba(17, 21, 18, 0.66));
 
     /* Text */
-    --text-default: #ece7db;
-    --text-muted: #b3ab9c;
-    --text-meta: #8a8172;
-    --text-faint: #57503f;
+    --text-default: #e9edea;
+    --text-muted: #afb6b1;
+    --text-meta: #909893;
+    --text-faint: #5c625e;
     --text-on-primary: #0e1a17;
 
     /* Brand — 夜间常青高亮 */
@@ -183,14 +183,14 @@
     --state-info-bg:    rgba(132, 188, 212, 0.12); --state-info-fg:    #8db8c0; --state-info-border:    rgba(132, 188, 212, 0.30);
     --state-neutral-bg: #1c1f25;                   --state-neutral-fg: #aab5af; --state-neutral-border: #2a2d35;
 
-    --border-card: #262932;
-    --border-input: #3a3e48;
+    --border-card: #303632;
+    --border-input: #4f5852;
     --control-border: rgba(105, 191, 164, 0.28);
     --control-border-hover: rgba(105, 191, 164, 0.46);
     --control-border-active: rgba(105, 191, 164, 0.68);
     --control-press-bg: rgba(105, 191, 164, 0.12);
     --radius-card: 10px;
-    --radius-input: 6px;
+    --radius-input: 10px;
     --radius-pill: 999px;
     --shadow-card: 0 1px 3px rgba(0,0,0,.40);
     --shadow-raised: 0 6px 24px rgba(0,0,0,.45);
@@ -384,9 +384,8 @@
  * prefers-contrast: more 时质感强制关闭 (见文件末尾媒体查询)。
  * ─────────────────────────────────────────────────────────────────────────── */
 :root {
-    /* W1: fiber 成为无偏好新会话默认 — 默认即在 app 背景层铺真实纸纹;
-       显式 flat (已有用户选择或 prefers-contrast) 才关闭。 */
-    --surface-app-image: url("/static/web/product/textures/paper-fiber.webp");
+    /* Clean by default; stored texture choices remain independently selectable. */
+    --surface-app-image: none;
 
     /* 外观 popover 色板预览 (与下方 accent 轴同值, 只服务 swatch 展示) */
     --accent-swatch-evergreen: #14504a;
@@ -396,15 +395,21 @@
 }
 
 :root[data-theme="midnight"] {
-    --surface-app-image: url("/static/web/product/textures/midnight-grain.webp");
-
     --accent-swatch-evergreen: #70bfa5;
     --accent-swatch-ink: #7aa8e0;
     --accent-swatch-ochre: #d9a45c;
     --accent-swatch-plum: #d98bab;
 }
 
-/* 质感轴：真实 raster 资产, 不用 CSS/SVG/伪元素造纹理。显式 flat 关闭。 */
+/* 质感轴仍使用真实 raster 资产，只在该偏好被选中时铺设。 */
+:root[data-texture="fiber"] {
+    --surface-app-image: url("/static/web/product/textures/paper-fiber.webp");
+}
+
+:root[data-texture="fiber"][data-theme="midnight"] {
+    --surface-app-image: url("/static/web/product/textures/midnight-grain.webp");
+}
+
 :root[data-texture="flat"] {
     --surface-app-image: none;
 }

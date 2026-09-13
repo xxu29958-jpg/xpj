@@ -1,4 +1,8 @@
-"""PG round-trip of 20260629_0002 budget archive fields."""
+"""PG round-trip of 20260629_0002 budget archive fields.
+
+Check current ORM shape independently, then round-trip the frozen migration
+on its actual PostgreSQL schema. Never stamp a current schema as a historical one.
+"""
 
 from __future__ import annotations
 
@@ -67,14 +71,15 @@ def test_add_budget_archive_fields_round_trips_on_postgres() -> None:
         Base.metadata.create_all(bind=engine)
         _assert_full_shape()
 
-        _run_alembic(command.stamp, _REVISION)
+        _reset_empty_database()
+        _run_alembic(command.upgrade, _REVISION)
         _run_alembic(command.downgrade, _PRIOR)
         cols = _columns()
         assert "row_version" not in cols
         assert "archived_at" not in cols
         assert _INDEX not in _index_names()
 
-        _run_alembic(command.upgrade, "head")
+        _run_alembic(command.upgrade, _REVISION)
         _assert_full_shape()
     finally:
         _reset_empty_database()

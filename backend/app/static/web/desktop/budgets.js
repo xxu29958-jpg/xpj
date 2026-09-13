@@ -1,13 +1,26 @@
-/* 月度预算「再加一行」渐进增强 (C1).
+/* 月度预算的可选设置与「再加一行」渐进增强。
  *
- * 边界: 只做纯 DOM 克隆 —— 不校验、不 normalize、不预测保存结果; 分类名
- * 规范化/存在性/重复判定永远归服务端 Budget Owner。无 JS 时模板自带的两个
- * 真实添加行完整可提交, 「再加一行」按钮保持 hidden, 不做可见但无用的控件。
+ * 边界: 只展开可选设置与克隆添加行, 不校验、不 normalize、不预测保存结果。
+ * 分类名规范化/存在性/重复判定永远归服务端 Budget Owner。无 JS 时全部字段
+ * 和两个真实添加行保持可见, 折叠入口及「再加一行」按钮保持 hidden。
  */
 (function (window, document) {
   "use strict";
 
-  function initBudgetAddRow() {
+  function initBudgetForm() {
+    const options = document.querySelector("#budget-options");
+    const summary = options && options.querySelector("summary");
+    const form = options && options.closest("form");
+    if (options && summary && form) {
+      // invalid 不冒泡；同步显露后由浏览器继续聚焦原生非法字段。
+      // 不读取金额、不复制约束，也不把折叠状态变成第二份表单数据。
+      form.addEventListener("invalid", function (event) {
+        if (options.contains(event.target)) options.open = true;
+      }, true);
+      options.open = options.getAttribute("data-start-expanded") !== "false";
+      summary.hidden = false;
+    }
+
     const zone = document.querySelector("[data-budget-add-zone]");
     if (!zone) return;
     const rows = zone.querySelector(".budget-add-rows");
@@ -31,8 +44,8 @@
   }
 
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", initBudgetAddRow);
+    document.addEventListener("DOMContentLoaded", initBudgetForm);
   } else {
-    initBudgetAddRow();
+    initBudgetForm();
   }
 })(window, document);

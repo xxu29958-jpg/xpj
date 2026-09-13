@@ -1,0 +1,7 @@
+<resources>
+    <string name="category_rule_submission_create">创建分类规则</string>
+    <string name="category_rule_submission_unavailable">这笔规则提交需要核对原始内容，暂时不能重试。</string>
+    <string name="category_rule_submission_open">查看这笔规则提交</string>
+    <string name="category_rule_submission_stop">停止本机重试</string>
+    <string name="category_rule_submission_stop_body">只停止这台设备继续发送这一笔规则提交。服务器可能已经接受了它；这不会撤销已经创建、修改或删除的规则。请核对原始内容后再决定。</string>
+</resources>

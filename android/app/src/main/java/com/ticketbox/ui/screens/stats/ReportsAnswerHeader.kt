@@ -65,7 +65,7 @@ private fun ReportsAnswerTotal(model: ReportsAnswerModel) {
             )
         }
         AppAmountText(
-            text = formatDisplayAmount(model.totalAmountCents, currencyDisplay),
+            text = model.totalAmountCents?.let { formatDisplayAmount(it, currencyDisplay) } ?: stringResource(R.string.reports_amount_unavailable),
             color = MaterialTheme.colorScheme.onSurface,
             role = AppAmountRole.Medium,
             minFontSize = 18.sp,
@@ -90,7 +90,7 @@ private fun ReportsAnswerMetrics(model: ReportsAnswerModel) {
             ReportsAnswerMetric(
                 label = stringResource(R.string.stats_reports_answer_current_label),
                 value = stringResource(R.string.stats_reports_answer_count_value, model.count),
-                caption = stringResource(R.string.stats_reports_answer_no_previous_caption),
+                caption = stringResource(if (model.monthDeltaAmountCents == null) R.string.reports_comparison_unavailable else R.string.stats_reports_answer_no_previous_caption),
                 modifier = Modifier.weight(1f),
             )
         }
@@ -104,11 +104,9 @@ private fun ReportsAnswerMetrics(model: ReportsAnswerModel) {
         }
         ReportsAnswerMetric(
             label = stringResource(R.string.stats_reports_answer_active_label),
-            value = stringResource(
-                R.string.stats_reports_answer_active_value,
-                model.trendEvidence.positiveBucketCount,
-            ),
-            caption = peakCaption(model.trendEvidence),
+            value = model.trendEvidence?.let { stringResource(R.string.stats_reports_answer_active_value, it.positiveBucketCount) }
+                ?: stringResource(R.string.reports_amount_unavailable),
+            caption = model.trendEvidence?.let { peakCaption(it) } ?: stringResource(R.string.reports_comparison_unavailable),
             modifier = Modifier.weight(1f),
         )
     }
@@ -157,7 +155,7 @@ private fun ReportsAnswerMetric(
 
 @Composable
 private fun monthDeltaValue(model: ReportsAnswerModel): String =
-    if (model.previousTotalAmountCents <= 0L && model.monthDeltaAmountCents > 0L) {
+    if (model.previousTotalAmountCents?.let { it <= 0L } == true && model.monthDeltaAmountCents?.let { it > 0L } == true) {
         stringResource(R.string.stats_reports_answer_no_previous)
     } else {
         signedDeltaValue(model.monthDeltaAmountCents)
@@ -170,7 +168,8 @@ private fun monthDeltaCaption(model: ReportsAnswerModel): String =
     } ?: displayMonthLabel(model.previousMonth)
 
 @Composable
-private fun signedDeltaValue(deltaAmountCents: Long): String {
+private fun signedDeltaValue(deltaAmountCents: Long?): String {
+    if (deltaAmountCents == null) return stringResource(R.string.reports_amount_unavailable)
     val currencyDisplay = LocalCurrencyDisplay.current
     return when {
         deltaAmountCents > 0L -> stringResource(

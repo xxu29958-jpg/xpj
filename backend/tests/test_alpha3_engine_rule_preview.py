@@ -120,7 +120,7 @@ def test_apply_pending_rules_uses_latest_ocr_fact(
     _record_ocr_fact(expense_id, "FactApplyCafe 38.00")
     created = client.post(
         "/api/rules/categories",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "keyword": "FactApplyCafe",
             "category": "Food",
@@ -192,7 +192,7 @@ def test_rule_preview_caps_items_by_limit(client: TestClient, *, identity) -> No
 def test_rule_patch_can_clear_optional_filters(client: TestClient, *, identity) -> None:
     created = client.post(
         "/api/rules/categories",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "keyword": "Coffee",
             "category": "餐饮",
@@ -200,6 +200,7 @@ def test_rule_patch_can_clear_optional_filters(client: TestClient, *, identity) 
             "priority": 9,
             "amount_min_cents": 100,
             "amount_max_cents": 9999,
+            "home_currency_code": "CNY",
             "source_contains": "alipay",
             "tag_contains": "work",
         },
@@ -213,6 +214,7 @@ def test_rule_patch_can_clear_optional_filters(client: TestClient, *, identity) 
         json={
             "amount_min_cents": None,
             "amount_max_cents": None,
+            "home_currency_code": created.json()["home_currency_code"],
             "source_contains": None,
             "tag_contains": None,
             "expected_row_version": created.json()["row_version"],

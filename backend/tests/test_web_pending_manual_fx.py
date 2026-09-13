@@ -14,6 +14,7 @@ def _pending_foreign_expense(client: TestClient, *, identity) -> dict:
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
+            "client_ref": str(uuid4()),
             "original_currency_code": "USD",
             "original_amount_minor": 12345,
             "merchant": "Pending FX Cafe",

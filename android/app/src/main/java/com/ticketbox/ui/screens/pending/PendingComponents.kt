@@ -116,6 +116,7 @@ internal fun PendingTop(
             ) {
                 PendingUploadAction(
                     uploading = state.uploading,
+                    enabled = state.canStartUpload,
                     onUploadScreenshot = onUploadScreenshot,
                 )
                 Spacer(modifier = Modifier.weight(1f))
@@ -129,11 +130,13 @@ internal data class PendingTopState(
     val uploading: Boolean,
     val readOnly: Boolean,
     val showUploadAction: Boolean,
+    val canStartUpload: Boolean = !uploading && !readOnly,
 )
 
 @Composable
 private fun PendingUploadAction(
     uploading: Boolean,
+    enabled: Boolean,
     onUploadScreenshot: () -> Unit,
 ) {
     val text = if (uploading) {
@@ -144,7 +147,7 @@ private fun PendingUploadAction(
     TextButton(
         onClick = onUploadScreenshot,
         modifier = Modifier.heightIn(min = AppSpacing.controlMinHeight),
-        enabled = !uploading,
+        enabled = enabled,
         shape = RoundedCornerShape(AppRadius.small),
     ) {
         Icon(

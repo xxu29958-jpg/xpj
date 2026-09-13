@@ -70,9 +70,11 @@ class DebtCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     direction: str
+    home_currency_code: str = Field(min_length=3, max_length=3)
     counterparty_type: str
     counterparty_account_id: int | None = None
     counterparty_label: str | None = Field(default=None, max_length=255)
+    note: str | None = Field(default=None, max_length=500)
     principal_amount_cents: PositiveMoneyMinor | None = None
     original_currency: str | None = Field(default=None, min_length=3, max_length=3)
     original_amount: PositiveCanonicalDecimalInput | None = None
@@ -106,6 +108,7 @@ class DebtResponse(BaseModel):
     counterparty_type: str
     counterparty_account_id: int | None = None
     counterparty_label: str | None = None
+    note: str | None = None
     principal_amount_cents: PositiveMoneyMinor
     # A fold can sum multiple individually bounded facts, so read projections
     # use the exact-JSON aggregate envelope rather than the command envelope.

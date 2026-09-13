@@ -12,6 +12,7 @@ from sqlalchemy import inspect, text
 from app.database import SessionLocal, engine
 from app.services.currency_binding_service import resolve_write_capability
 from tests._infra.alembic_runtime import reset_public_schema, run_alembic_for_test
+from tests._infra.currency import activate_test_currency_authority
 
 pytestmark = pytest.mark.real_db
 
@@ -79,7 +80,7 @@ def _downgrade_to_parent(command) -> None:
 def _seed_legacy_confirmed_expense() -> int:
     confirmed_at = datetime(2026, 8, 20, 8, 30, tzinfo=UTC)
     with SessionLocal.begin() as db:
-        resolve_write_capability(db)
+        activate_test_currency_authority(db, "CNY")
         account_id = db.execute(
             text(
                 "INSERT INTO accounts (public_id, display_name, created_at) "

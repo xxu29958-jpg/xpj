@@ -23,6 +23,7 @@ from app.models import Account, AuthToken, Device, LedgerMember
 from app.routes import web_repayment_drafts as web_repayment_drafts_module
 from app.routes.web_common import LedgerOption
 from app.services.identity_service import hash_secret, new_session_token
+from tests._runtime_protocol import current_protocol_headers, negotiated_headers
 
 
 # ── /api seeding helpers ─────────────────────────────────────────────────────
@@ -54,13 +55,13 @@ def _create_debt(
     principal_cents: int = 50000,
 ) -> dict:
     body: dict[str, object] = {
-        "direction": "i_owe",
+        "home_currency_code": "CNY", "direction": "i_owe",
         "counterparty_type": "external",
         "principal_amount_cents": principal_cents,
     }
     if label is not None:
         body["counterparty_label"] = label
-    resp = web_client.post("/api/debts", headers=_idem(headers), json=body)
+    resp = web_client.post("/api/debts", headers=negotiated_headers(web_client, _idem(headers)), json=body)
     assert resp.status_code == 201, resp.text
     return resp.json()
 
@@ -101,7 +102,7 @@ def _seed_member_token(*, name: str, ledger_id: str = "owner") -> dict[str, str]
             )
         )
         db.commit()
-        return {"Authorization": f"Bearer {token}"}
+        return current_protocol_headers({"Authorization": f"Bearer {token}"})
 
 
 def _page(web_client: TestClient) -> str:

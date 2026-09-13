@@ -14,6 +14,7 @@ from app.schemas import (
 )
 from app.services.csv_import_batch_service import (
     apply_csv_import_batch,
+    build_csv_import_batch_response,
     build_csv_import_errors_csv,
     create_csv_import_batch,
     get_csv_import_batch,
@@ -37,7 +38,7 @@ async def post_csv_import_batch(
         file_name=csv_file.filename,
         file_obj=csv_file.file,
     )
-    return CsvImportBatchResponse.model_validate(batch)
+    return build_csv_import_batch_response(db, batch=batch)
 
 
 @router.get("/{public_id}", response_model=CsvImportBatchResponse)
@@ -47,7 +48,7 @@ def get_csv_import_batch_detail(
     db: Session = Depends(get_db),
 ) -> CsvImportBatchResponse:
     batch = get_csv_import_batch(db, tenant_id=auth.tenant_id, public_id=public_id)
-    return CsvImportBatchResponse.model_validate(batch)
+    return build_csv_import_batch_response(db, batch=batch)
 
 
 @router.get("/{public_id}/rows", response_model=CsvImportRowsResponse)

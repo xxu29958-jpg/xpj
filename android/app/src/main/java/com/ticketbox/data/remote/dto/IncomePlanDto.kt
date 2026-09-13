@@ -10,6 +10,7 @@ import com.squareup.moshi.JsonClass
  * `source_type` value is one of the few fields that DOES go out to the
  * AI advisor — see allowed-fields list in ADR-0036).
  */
+@JsonClass(generateAdapter = true)
 data class IncomePlanDto(
     @param:Json(name = "public_id") val publicId: String,
     val label: String,
@@ -23,20 +24,30 @@ data class IncomePlanDto(
     @param:Json(name = "updated_at") val updatedAt: String,
     @param:Json(name = "row_version") val rowVersion: Long,
     @param:Json(name = "archived_at") val archivedAt: String?,
+    @param:Json(name = "home_currency_code") val homeCurrencyCode: String? = null,
 )
 
 data class IncomePlanListResponseDto(
     val items: List<IncomePlanDto>,
-    @param:Json(name = "total_active_amount_cents") val totalActiveAmountCents: Long,
+    @param:Json(name = "total_active_amount_cents") val totalActiveAmountCents: Long?,
+    val month: String,
+    @param:Json(name = "scheduled_amount_cents") val scheduledAmountCents: Long?,
+    @param:Json(name = "effective_plan_count") val effectivePlanCount: Int,
+    @param:Json(name = "expected_amount_cents") val expectedAmountCents: Long?,
+    @param:Json(name = "home_currency_code") val homeCurrencyCode: String? = null,
+    @param:Json(name = "missing_currency_codes") val missingCurrencyCodes: List<String> = emptyList(),
 )
 
+@JsonClass(generateAdapter = true)
 data class IncomePlanCreateRequestDto(
+    @param:Json(name = "intent_month") val intentMonth: String,
     val label: String,
     @param:Json(name = "source_type") val sourceType: String,
     val frequency: String = "monthly",
     @param:Json(name = "income_month") val incomeMonth: String? = null,
     @param:Json(name = "amount_cents") val amountCents: Long,
     @param:Json(name = "pay_day") val payDay: Int,
+    @param:Json(name = "home_currency_code") val homeCurrencyCode: String,
 )
 
 /**
@@ -46,6 +57,7 @@ data class IncomePlanCreateRequestDto(
  */
 @JsonClass(generateAdapter = true)
 data class IncomePlanUpdateRequestDto(
+    @param:Json(name = "intent_month") val intentMonth: String,
     @param:Json(name = "expected_row_version") val expectedRowVersion: Long,
     val label: String? = null,
     @param:Json(name = "source_type") val sourceType: String? = null,
@@ -55,11 +67,8 @@ data class IncomePlanUpdateRequestDto(
     @param:Json(name = "pay_day") val payDay: Int? = null,
 )
 
-/**
- * ADR-0038 PR-B: archive (DELETE) / restore (POST) body. Carries only the OCC
- * token — backend ``IncomePlanTokenRequest`` is ``extra="forbid"``, so reusing
- * the richer update DTO would be rejected. Mirrors RecurringItemTokenRequest.
- */
+/** Archive/restore retain the displayed month and the current OCC token. */
 data class IncomePlanTokenRequestDto(
     @param:Json(name = "expected_row_version") val expectedRowVersion: Long,
+    @param:Json(name = "intent_month") val intentMonth: String,
 )

@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% set product_body_domain = 'obligations' %}
+{% block title %}核对还款 · 小票夹{% endblock %}
+{% block page_scripts %}
+<script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/repayment-entry.js?v={{ asset_version }}"></script>
+{% endblock %}
+{% block content %}
+<header class="product-page-header"><h1 class="page-title">核对这次还款</h1></header>
+{% if not repayment_form.ack %}<p class="product-page-summary">欠款详情暂时无法读取。原提交仍可保留；请继续核实原来这一笔，避免重复记录。</p>{% endif %}
+{% include '_debt_repayment_form.html' %}
+<a class="product-state-action" href="/web/debts/{{ repayment_form.public_id }}?ledger_id={{ selected_ledger_id }}">返回这笔欠款</a>
+{% endblock %}

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.canonical_money_facts_contract import INSTALLATION_HOME_CURRENCY_KEY
 from app.database import SessionLocal, engine
+from app.database._lifecycle import load_alembic_context
 from app.errors import AppError
 from app.models import (
     InstallationCurrencyAuditLog,
@@ -38,7 +39,6 @@ pytestmark = [pytest.mark.real_db, pytest.mark.currency_binding_unbound]
 
 PREVIOUS_REVISION = "20260729_0001"
 TARGET_REVISION = "20260802_0001"
-HEAD_REVISION = "20260901_0001"
 EVIDENCE_TABLES = (
     "bill_split_invitations",
     "budget_categories",
@@ -70,15 +70,17 @@ def _binding_row() -> dict[str, object]:
         )
 
 
-def _budget_insert_sql() -> str:
-    return """
+def _budget_insert_sql(*, captured_currency: bool = False) -> str:
+    currency_column = ", home_currency_code" if captured_currency else ""
+    currency_value = ", 'CNY'" if captured_currency else ""
+    return f"""
         INSERT INTO budgets (
             public_id, tenant_id, month, total_amount_cents,
             non_monthly_amount_cents, rollover_amount_cents,
-            excluded_categories, created_at, updated_at, row_version
+            excluded_categories, created_at, updated_at, row_version{currency_column}
         ) VALUES (
             :public_id, 'owner', '2026-08', 100,
-            0, 0, '[]', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1
+            0, 0, '[]', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1{currency_value}
         )
     """
 
@@ -109,7 +111,7 @@ def test_fresh_upgrade_has_complete_authority_shape() -> None:
     reset_schema()
     run_alembic(command.upgrade, "head")
 
-    assert current_revision() == HEAD_REVISION
+    assert current_revision() == load_alembic_context().head_revision
     binding = _binding_row()
     assert binding["state"] == "EMPTY"
     assert binding["currency_contract_version"] == 1
@@ -241,7 +243,7 @@ def test_writer_fence_requires_active_revision_proof() -> None:
         ),
     ):
         connection.execute(
-            text(_budget_insert_sql()),
+            text(_budget_insert_sql(captured_currency=True)),
             {"public_id": str(uuid4())},
         )
 
@@ -255,14 +257,14 @@ def test_writer_fence_requires_active_revision_proof() -> None:
         ),
     ):
         connection.execute(
-            text(_budget_insert_sql()),
+            text(_budget_insert_sql(captured_currency=True)),
             {"public_id": str(uuid4())},
         )
 
     with engine.begin() as connection:
         connection.execute(text("SELECT set_config('xpj.currency_writer', '1:1', true)"))
         connection.execute(
-            text(_budget_insert_sql()),
+            text(_budget_insert_sql(captured_currency=True)),
             {"public_id": str(uuid4())},
         )
 

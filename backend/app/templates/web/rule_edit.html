@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% set page_title = '编辑规则' %}
+{% set product_body_domain = 'transactions' %}
+{% block title %}编辑规则 · 小票夹{% endblock %}
+{% block content %}
+<nav class="library-breadcrumb" aria-label="面包屑"><a class="library-breadcrumb-parent" href="/web/rules{{ q }}">规则</a><span class="library-breadcrumb-sep" aria-hidden="true">/</span><span aria-current="page">编辑</span></nav>
+<header class="product-page-header"><div class="product-page-heading"><h1 class="page-title page-title--compact">编辑规则</h1><p class="product-page-summary">保存后用于新录入。已有账单仍需先预览、再确认应用。</p></div></header>
+{% if error %}<div class="product-feedback product-feedback--danger" role="alert">{{ error }}</div>{% endif %}
+{% if not currency_matches %}<div class="product-feedback product-feedback--warning" role="status">原金额的币种尚未确认或与当前规则不一致。原输入已保留，暂不能重新提交。</div>{% endif %}
+<section class="product-panel product-panel--padded">
+  <form method="post" action="/web/rules/{{ rule_id }}/edit" class="product-form-grid">
+    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <input type="hidden" name="expected_row_version" value="{{ rule_draft.expected_row_version }}">
+    {% include 'partials/rule_fields.html' %}
+    {% if conflict %}
+    <div class="product-feedback product-feedback--warning">
+      当前规则：{{ rule.keyword }} → {{ rule.category }}，优先级 {{ rule.priority }}。
+      {% if rule.amount_min_cents is not none %}下限 {{ rule_amount_label(rule.amount_min_cents, rule.home_currency_code) }}。{% endif %}
+      {% if rule.amount_max_cents is not none %}上限 {{ rule_amount_label(rule.amount_max_cents, rule.home_currency_code) }}。{% endif %}
+      核对后保留输入并重新准备表单；这一步不会保存。
+    </div>
+    {% endif %}
+    <div class="actions">
+      {% if currency_matches %}
+        {% if conflict %}<button type="submit" name="review_latest" value="true" class="product-button">已核对，准备新修改</button>
+        {% else %}<button type="submit" class="product-button product-button--primary">保存规则</button>{% endif %}
+      {% else %}<a class="product-button" href="/web/rules/{{ rule_id }}/edit{{ q }}" target="_blank" rel="noopener">另页查看当前规则</a>{% endif %}
+      <a class="product-button" href="/web/rules{{ q }}">返回规则</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

@@ -2,8 +2,8 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
-import com.ticketbox.domain.model.PendingUploadReceipt
 import com.ticketbox.domain.model.ProtectedImage
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -79,6 +79,8 @@ private class ThumbnailFakeReviewActions(
 
     override suspend fun getCachedPending(): Result<List<Expense>> = Result.success(emptyList())
 
+    override fun observeConfirmed() = flowOf(emptyList<Expense>())
+
     override suspend fun syncPending(): Result<List<Expense>> = Result.success(emptyList())
 
     override suspend fun fetchThumbnail(id: Long): Result<ProtectedImage> {
@@ -122,8 +124,6 @@ private class ThumbnailFakeReviewActions(
 
     override suspend fun categories(): Result<List<String>> = Result.success(emptyList())
 
-    override suspend fun uploadScreenshot(request: ScreenshotUploadRequest): Result<PendingUploadReceipt> =
-        Result.failure(IllegalStateException("not exercised"))
 }
 
 private fun image(label: String): ProtectedImage =

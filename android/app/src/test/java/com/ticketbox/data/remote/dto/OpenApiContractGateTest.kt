@@ -45,6 +45,7 @@ class OpenApiContractGateTest {
         Pairing(RefreshSessionResponseDto::class, "RefreshSessionResponse"),
         Pairing(LedgerSwitchResponseDto::class, "LedgerSwitchResponse"),
         Pairing(ExpenseDto::class, "ExpenseResponse"),
+        Pairing(UploadResponseDto::class, "UploadResponse"),
         // Dedicated manual-create DTO (no OCC-token field) + the PATCH body it
         // was split from — the forward check is the forbid-protection: a DTO
         // field the backend model doesn't declare would 422 at runtime.
@@ -59,9 +60,24 @@ class OpenApiContractGateTest {
         Pairing(BillSplitAcceptRequestDto::class, "BillSplitAcceptRequest"),
         Pairing(BillSplitSentDto::class, "BillSplitSentResponse"),
         Pairing(BillSplitInboxDto::class, "BillSplitInboxResponse"),
+        Pairing(BillSplitReceivedBillDto::class, "BillSplitReceivedBillResponse"),
         Pairing(BillSplitSentListResponseDto::class, "BillSplitSentListResponse"),
         Pairing(BillSplitInboxListResponseDto::class, "BillSplitInboxListResponse"),
+        Pairing(MonthlyStatsDto::class, "MonthlyStatsResponse"),
+        Pairing(CategoryStatsDto::class, "CategoryStatsResponse"),
+        Pairing(TagStatsDto::class, "TagStatsResponse"),
+        Pairing(LifestyleStatsDto::class, "LifestyleStatsResponse"),
+        Pairing(FrequentMerchantDto::class, "LifestyleFrequentMerchantResponse"),
+        Pairing(ReportsOverviewDto::class, "ReportsOverviewResponse"),
+        Pairing(ReportTrendPointDto::class, "ReportTrendPointResponse"),
+        Pairing(ReportMerchantRankingDto::class, "ReportMerchantRankingResponse"),
+        Pairing(ReportCategoryComparisonDto::class, "ReportCategoryComparisonResponse"),
         Pairing(DiscretionaryResponseDto::class, "DiscretionaryResponse"),
+        Pairing(BudgetAdviceInputsDto::class, "BudgetInputsResponse"),
+        Pairing(MissingExchangeRateDto::class, "ProjectionGapDto"),
+        Pairing(ExchangeRateRequestDto::class, "ExchangeRateRequest"),
+        Pairing(ExchangeRateDto::class, "ExchangeRateResponse"),
+        Pairing(ExchangeRateListDto::class, "ExchangeRateListResponse"),
         Pairing(BudgetAdviseRequestDto::class, "BudgetAdviseRequest"),
         Pairing(BudgetSuggestionDto::class, "BudgetSuggestionDto"),
         Pairing(BudgetAdviceDto::class, "BudgetAdviceDto"),
@@ -146,6 +162,7 @@ class OpenApiContractGateTest {
         // properties (reverse check needs every required field; +is_forgiven in slice 8e-3); the
         // create body is additionalProperties=false → the forward check is the forbid protection.
         Pairing(DebtDto::class, "DebtResponse"),
+        Pairing(DebtRepaymentReceiptDto::class, "RepaymentCreateResponse"),
         // Transient OCR/vision parse suggestions (POST /api/debts/parse-bill). The schema
         // has no required fields; the DTO keeps source_text non-null with a default so the
         // reverse check stays trivially satisfied while the forward check pins the wire names.
@@ -200,12 +217,13 @@ class OpenApiContractGateTest {
     // consume them). Keyed by backend schema name. Anything a schema requires but the
     // DTO omits AND is not listed here is drift → CI red. Populated from a real gate run.
     private val ignoredRequiredFields: Map<String, Set<String>> = mapOf(
-        // Bill-split DTOs model only `amount_cents` (the home-currency cents the UI shows);
-        // the backend's currency-code fields are intentionally not consumed — bill-split
-        // does not surface original-currency detail (ADR-0029, pre-existing). The reverse
-        // check surfaced this real omission; revisit if bill-split grows multi-currency UI.
-        "BillSplitSentResponse" to setOf("home_currency_code", "original_currency_code"),
-        "BillSplitInboxResponse" to setOf("home_currency_code", "original_currency_code"),
+        // This command consumer retains acceptance identity; canonical Debt/history queries own the fold.
+        "RepaymentCreateResponse" to setOf("direction", "counterparty_type", "principal_amount_cents",
+            "remaining_amount_cents", "paid_amount_cents", "status", "source_type", "created_at", "updated_at"),
+        // Split lists consume the frozen home amount and currency. Original-currency
+        // detail is not part of these rows; its required code remains intentionally omitted.
+        "BillSplitSentResponse" to setOf("original_currency_code"),
+        "BillSplitInboxResponse" to setOf("original_currency_code"),
         "RuntimeCompatibilitySnapshotResponse" to setOf(
             "contract",
             "observed_at",

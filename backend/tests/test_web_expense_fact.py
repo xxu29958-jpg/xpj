@@ -10,10 +10,12 @@ from __future__ import annotations
 import re
 from html import unescape
 from urllib.parse import parse_qs, urlparse
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 
+from tests._runtime_protocol import negotiated_headers
 from tests.web_expense_fact_test_support import create_confirmed as _create_confirmed
 from tests.web_expense_fact_test_support import owner_member_id as _owner_member_id
 from tests.web_expense_fact_test_support import row_version as _row_version
@@ -47,6 +49,12 @@ def _hidden_input(body: str, name: str) -> str:
     match = re.search(rf'name="{name}" value="([^"]*)"', body)
     assert match is not None, name
     return unescape(match.group(1))
+
+
+def _correction_key(client: TestClient, expense_id: int) -> str:
+    form = client.get(f"/web/expenses/{expense_id}/correct?ledger_id=owner")
+    assert form.status_code == 200, form.text
+    return _hidden_input(form.text, "idempotency_key")
 
 
 def test_confirmed_fact_page_read_first_and_pending_keeps_edit(web_client: TestClient, *, identity) -> None:
@@ -128,6 +136,7 @@ def test_composite_correction_closes_scalar_items_and_splits(web_client: TestCli
             "reason": "小票商家和明细看错了",
             "merchant": "更正后的商家",
             "expected_row_version": str(_row_version(web_client, expense_id, identity)),
+            "idempotency_key": _hidden_input(form.text, "idempotency_key"),
             "item_name": ["苹果"],
             "item_kind": ["product"],
             "item_quantity": ["2个"],
@@ -212,6 +221,7 @@ def test_correction_row_errors_open_the_fold_for_no_js_recovery(
             "reason": "验证错误恢复路径",
             "original_currency": "CNY",
             "expected_row_version": str(_row_version(web_client, expense_id, identity)),
+            "idempotency_key": _correction_key(web_client, expense_id),
             **invalid_rows,
         },
         follow_redirects=False,
@@ -228,8 +238,10 @@ def test_web_correction_can_change_original_currency_through_existing_fx_owner(
 ) -> None:
     rate = web_client.put(
         "/api/exchange-rates/USD/2026-05-04",
-        headers=identity.app_headers,
+        headers={**negotiated_headers(web_client, identity.app_headers), "Idempotency-Key": str(uuid4())},
         json={
+            "expected_row_version": 0,
+            "home_currency_code": "CNY",
             "currency_code": "USD",
             "rate_date": "2026-05-04",
             "rate_to_cny": "7.0000",
@@ -252,6 +264,7 @@ def test_web_correction_can_change_original_currency_through_existing_fx_owner(
             "original_currency": "USD",
             "amount_yuan": "10.00",
             "expected_row_version": str(_row_version(web_client, expense_id, identity)),
+            "idempotency_key": _hidden_input(form.text, "idempotency_key"),
         },
         follow_redirects=False,
     )
@@ -269,7 +282,8 @@ def test_web_correction_preserves_absent_and_clears_blank_time_and_scores(web_cl
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
-            "amount_cents": 1234,
+            "client_ref": str(uuid4()),
+            "home_currency_code": "CNY", "amount_cents": 1234,
             "merchant": "待清空附加事实",
             "category": "餐饮",
             "expense_time": "2026-05-04T12:00:00Z",
@@ -287,6 +301,7 @@ def test_web_correction_preserves_absent_and_clears_blank_time_and_scores(web_cl
             "reason": "只修正商家",
             "merchant": "正确商家",
             "expected_row_version": str(expense["row_version"]),
+            "idempotency_key": _correction_key(web_client, expense["id"]),
         },
         follow_redirects=False,
     )
@@ -306,6 +321,7 @@ def test_web_correction_preserves_absent_and_clears_blank_time_and_scores(web_cl
             "value_score": "",
             "regret_score": "",
             "expected_row_version": str(preserved.json()["row_version"]),
+            "idempotency_key": _correction_key(web_client, expense["id"]),
         },
         follow_redirects=False,
     )
@@ -321,6 +337,9 @@ def test_web_correction_preserves_absent_and_clears_blank_time_and_scores(web_cl
 def test_correction_stale_token_shows_conflict_with_fresh_values(web_client: TestClient, *, identity) -> None:
     expense_id = _create_confirmed(web_client, identity=identity)
     stale_token = _row_version(web_client, expense_id, identity)
+    # Two pages own distinct commands against the same original version.
+    first_key = _correction_key(web_client, expense_id)
+    stale_key = _correction_key(web_client, expense_id)
     first = web_client.post(
         f"/web/expenses/{expense_id}/corrections",
         data={
@@ -328,6 +347,7 @@ def test_correction_stale_token_shows_conflict_with_fresh_values(web_client: Tes
             "reason": "第一次更正",
             "merchant": "第一次的值",
             "expected_row_version": str(stale_token),
+            "idempotency_key": first_key,
         },
         follow_redirects=False,
     )
@@ -340,6 +360,7 @@ def test_correction_stale_token_shows_conflict_with_fresh_values(web_client: Tes
             "reason": "拿着旧页面再改",
             "merchant": "过期页面提交的值",
             "expected_row_version": str(stale_token),
+            "idempotency_key": stale_key,
             "return_to": "search",
             "return_query": "上下文咖啡",
         },

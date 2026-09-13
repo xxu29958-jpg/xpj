@@ -30,6 +30,49 @@ data class ConfirmedStreamSnapshot(
  */
 @Dao
 interface ExpenseDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveGoalSnapshots(snapshots: List<GoalQueryCacheEntity>)
+
+    @Query("SELECT * FROM goal_query_cache WHERE bindingKey = :bindingKey AND timezone = :timezone AND queryKey = :queryKey")
+    suspend fun goalSnapshot(bindingKey: String, timezone: String, queryKey: String): GoalQueryCacheEntity?
+
+    @Query("DELETE FROM goal_query_cache")
+    suspend fun clearGoalSnapshots()
+
+    @Query("DELETE FROM goal_query_cache WHERE ledgerId = :ledgerId")
+    suspend fun clearGoalSnapshotsForLedger(ledgerId: String)
+
+    @Query("DELETE FROM goal_query_cache WHERE bindingKey = :bindingKey")
+    suspend fun clearGoalSnapshotsForBinding(bindingKey: String)
+
+    @Query("DELETE FROM stats_projection_cache WHERE bindingKey = :bindingKey")
+    suspend fun clearStatsProjectionsForBinding(bindingKey: String)
+
+    @Transaction
+    suspend fun clearReadSnapshotsForBinding(bindingKey: String) {
+        clearGoalSnapshotsForBinding(bindingKey)
+        clearStatsProjectionsForBinding(bindingKey)
+    }
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveStatsProjection(snapshot: StatsProjectionCacheEntity)
+
+    @Query("""
+        SELECT * FROM stats_projection_cache
+        WHERE bindingKey = :bindingKey AND kind = :kind AND month = :month AND tag = :tag
+          AND timezone = :timezone
+        ORDER BY fetchedAt DESC
+    """)
+    suspend fun statsProjections(
+        bindingKey: String, kind: String, month: String, tag: String, timezone: String,
+    ): List<StatsProjectionCacheEntity>
+
+    @Query("DELETE FROM stats_projection_cache")
+    suspend fun clearStatsProjections()
+
+    @Query("DELETE FROM stats_projection_cache WHERE ledgerId = :ledgerId")
+    suspend fun clearStatsProjectionsForLedger(ledgerId: String)
+
     @Query(
         """
         SELECT * FROM expenses
@@ -204,8 +247,8 @@ interface ExpenseDao {
     /**
      * issue #65 slice 4: write the server-assigned identity back onto the
      * optimistic offline-create row once its CreateExpense outbox row drains.
-     * [serverEntity] is the server's canonical row (``serverId`` + ``publicId`` +
-     * ``rowVersion`` set) carrying the original [ExpenseEntity.clientRef].
+     * [serverEntity] is the original accepted creation response carrying its [ExpenseEntity.clientRef].
+     * It establishes identity; a newer cached fact remains authoritative for money and fields.
      *
      * Resolves by clientRef and promotes the row IN PLACE (same Room PK), so the
      * domain id flips from its negative local stand-in to the real server id
@@ -228,17 +271,20 @@ interface ExpenseDao {
             "applyLocalCreateServerIdentity requires a server id from the create response"
         }
         val localId = localRowIdForClientRef(ledgerId, clientRef)
-        if (localId == null) {
-            upsertByServerIdForLedger(ledgerId, serverEntity)
+        val existingServer = findByServerId(ledgerId, serverId)
+        if (localId == null && existingServer == null) {
+            insert(serverEntity.copy(id = 0))
             return
         }
-        val existingServer = findByServerId(ledgerId, serverId)
-        if (existingServer != null && existingServer.id != localId) {
+        if (localId != null && existingServer != null && existingServer.id != localId) {
             deleteByLocalId(localId)
-            update(serverEntity.copy(id = existingServer.id))
-        } else {
-            update(serverEntity.copy(id = localId))
         }
+        val canonical = when {
+            existingServer == null -> serverEntity
+            existingServer.rowVersion > serverEntity.rowVersion -> existingServer
+            else -> serverEntity.withPreservedStreamProjection(existingServer)
+        }
+        update(canonical.copy(id = existingServer?.id ?: requireNotNull(localId), clientRef = clientRef))
     }
 
     @Query("DELETE FROM expenses")
@@ -288,16 +334,29 @@ interface ExpenseDao {
     )
     suspend fun deleteConfirmedStreamOffsetsForRoot(ledgerId: String, rootServerId: Long)
 
+    /** Retire a non-confirmed root without erasing a newer confirmed projection installed during the GET. */
+    @Transaction
+    suspend fun retireConfirmedRoot(ledgerId: String, rootServerId: Long, rowVersion: Long) {
+        val current = findByServerId(ledgerId, rootServerId)
+        if (current != null && current.rowVersion > rowVersion) return
+        deleteConfirmedByServerIds(ledgerId, listOf(rootServerId))
+        deleteConfirmedStreamOffsetsForRoot(ledgerId, rootServerId)
+    }
+
     @Transaction
     suspend fun clearAllExpenseCaches() {
         clear()
         clearConfirmedStreamOffsets()
+        clearStatsProjections()
+        clearGoalSnapshots()
     }
 
     @Transaction
     suspend fun clearAllExpenseCachesForLedger(ledgerId: String) {
         clearForLedger(ledgerId)
         clearConfirmedStreamOffsetsForLedger(ledgerId)
+        clearStatsProjectionsForLedger(ledgerId)
+        clearGoalSnapshotsForLedger(ledgerId)
     }
 
     @Transaction
@@ -348,7 +407,7 @@ interface ExpenseDao {
         }
     }
 
-    /** Atomically applies the server-owned typed confirmed stream projection. */
+    /** Atomically applies the server-owned typed stream and returns the roots actually accepted. */
     @Transaction
     suspend fun applyConfirmedStreamSyncForLedger(
         ledgerId: String,
@@ -356,7 +415,7 @@ interface ExpenseDao {
         offsets: List<ExpenseOffsetStreamEntity>,
         replaceCache: Boolean,
         pruneScope: ConfirmedStreamPruneScope,
-    ) {
+    ): Set<Long> {
         if (replaceCache) {
             clearForLedger(ledgerId)
             clearConfirmedStreamOffsetsForLedger(ledgerId)
@@ -392,6 +451,7 @@ interface ExpenseDao {
                 if (chunk.isNotEmpty()) deleteConfirmedStreamOffsetsByPublicIds(ledgerId, chunk)
             }
         }
+        return acceptedRootIds
     }
 
     /**

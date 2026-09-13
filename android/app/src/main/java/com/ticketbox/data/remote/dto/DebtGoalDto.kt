@@ -1,6 +1,7 @@
 package com.ticketbox.data.remote.dto
 
 import com.squareup.moshi.Json
+import com.squareup.moshi.JsonClass
 
 /**
  * ADR-0049 §6 (slice 7) — Android contract for the `debt_repayment` goal surface.
@@ -11,6 +12,7 @@ import com.squareup.moshi.Json
  * names mirror `DebtRepaymentEvaluation` / `DebtGoalLinkView` in the backend OpenAPI
  * snapshot (gated by `OpenApiContractGateTest`).
  */
+@JsonClass(generateAdapter = true)
 data class DebtRepaymentEvaluationDto(
     @param:Json(name = "goal_version")
     val goalVersion: Int,
@@ -54,6 +56,7 @@ data class DebtRepaymentEvaluationDto(
 )
 
 /** One linked Debt's shell inside a debt_repayment goal's evaluation block. */
+@JsonClass(generateAdapter = true)
 data class DebtGoalLinkViewDto(
     @param:Json(name = "debt_public_id")
     val debtPublicId: String,

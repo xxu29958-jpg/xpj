@@ -51,7 +51,7 @@ internal fun LazyListScope.ledgerDaySection(
         LedgerDayHeader(
             state = LedgerDayHeaderUi(
                 label = group.label,
-                dayTotalCents = group.dayTotalCents,
+                amountsByCurrency = group.amountsByCurrency,
                 itemCount = group.itemCount,
                 previewText = group.previewText().takeUnless { sectionState.expanded },
                 expandable = sectionState.compactGroups,

@@ -1,6 +1,5 @@
 package com.ticketbox.ui.screens.settings
 
-import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,11 +9,10 @@ import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.SyncProblem
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import com.ticketbox.data.repository.manualCreateReviewExpenseId
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -23,11 +21,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.repository.OutboxRow
+import com.ticketbox.data.repository.PendingDebtCreation
+import com.ticketbox.data.repository.parseExpenseTargetRef
 import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
 import com.ticketbox.ui.components.AppAdaptiveEditActionMode
 import com.ticketbox.ui.components.AppAdaptiveTrailingActionRow
@@ -36,6 +37,9 @@ import com.ticketbox.ui.components.AppOutlinedButtonOptions
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.screens.DebtCreationIntentSummary
+import com.ticketbox.ui.screens.expense.fact.CorrectionSubmissionOptions
+import com.ticketbox.ui.screens.expense.fact.CorrectionSubmissionActions
 import com.ticketbox.viewmodel.OutboxStatusUiState
 import com.ticketbox.viewmodel.OutboxStatusViewModel
 
@@ -43,27 +47,61 @@ import com.ticketbox.viewmodel.OutboxStatusViewModel
 fun SyncStatusScreen(
     viewModel: OutboxStatusViewModel,
     onBack: () -> Unit,
+    navigation: SyncStatusNavigation,
+    manualClientRef: String? = null,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val actions = remember(viewModel) {
+    val actions = remember(viewModel, navigation) {
         SyncStatusActions(
+            onOpenExpense = navigation.onOpenExpense,
             onKeepMine = viewModel::keepMine,
             onDropMine = viewModel::dropMine,
             onRetry = viewModel::retry,
             onDropFailed = viewModel::dropFailed,
             onClearQuarantined = viewModel::clearQuarantined,
+            onOpenBudget = navigation.onOpenBudget,
+            onOpenRecurring = navigation.onOpenRecurring,
+            onOpenGoalCreation = navigation.onOpenGoalCreation,
+            onOpenGoalEdit = navigation.onOpenGoalEdit,
+            onOpenRuleSubmission = navigation.onOpenRuleSubmission,
+            onOpenIncomeSubmission = navigation.onOpenIncomeSubmission,
+            onOpenRateSubmission = navigation.onOpenRateSubmission,
+            onRepairCorrectionRate = navigation.onRepairCorrectionRate,
         )
     }
-    SyncStatusScreenContent(state = state, actions = actions, onBack = onBack)
+    SyncStatusScreenContent(state = state, actions = actions, onBack = onBack, onOpenInbox = navigation.onOpenInbox,
+        manualClientRef = manualClientRef)
 }
+
+data class SyncStatusNavigation(
+    val onOpenExpense: (Long) -> Unit,
+    val onOpenInbox: () -> Unit,
+    val onOpenBudget: (String) -> Unit,
+    val onOpenRecurring: () -> Unit,
+    val onOpenGoalCreation: (Long) -> Unit,
+    val onOpenGoalEdit: (String) -> Unit,
+    val onOpenRuleSubmission: (Long) -> Unit,
+    val onOpenIncomeSubmission: (Long) -> Unit,
+    val onOpenRateSubmission: (Long) -> Unit,
+    val onRepairCorrectionRate: com.ticketbox.ui.screens.expense.fact.CorrectionRateAction,
+)
 
 /** Row callbacks grouped to keep the content API small and testable. */
 internal data class SyncStatusActions(
+    val onOpenExpense: (Long) -> Unit,
     val onKeepMine: (OutboxRow) -> Unit,
     val onDropMine: (OutboxRow) -> Unit,
     val onRetry: (OutboxRow) -> Unit,
     val onDropFailed: (OutboxRow) -> Unit,
     val onClearQuarantined: () -> Unit,
+    val onOpenBudget: (String) -> Unit,
+    val onOpenRecurring: () -> Unit,
+    val onOpenGoalCreation: (Long) -> Unit,
+    val onOpenGoalEdit: (String) -> Unit,
+    val onOpenRuleSubmission: (Long) -> Unit,
+    val onOpenIncomeSubmission: (Long) -> Unit,
+    val onOpenRateSubmission: (Long) -> Unit,
+    val onRepairCorrectionRate: com.ticketbox.ui.screens.expense.fact.CorrectionRateAction,
 )
 
 private data class SyncStatusActionButton(
@@ -78,34 +116,22 @@ internal fun SyncStatusScreenContent(
     state: OutboxStatusUiState,
     actions: SyncStatusActions,
     onBack: () -> Unit,
+    onOpenInbox: () -> Unit,
+    manualClientRef: String? = null,
 ) {
     // Dropping an offline edit is irreversible, so both paths require confirmation.
-    var confirmingDropMine by remember { mutableStateOf<OutboxRow?>(null) }
-    var confirmingDropFailed by remember { mutableStateOf<OutboxRow?>(null) }
-    var confirmingClearQuarantined by remember { mutableStateOf(false) }
+    var confirmingDrop by remember(state.binding) { mutableStateOf<SyncStatusDropSelection?>(null) }
+    var confirmingClearQuarantined by remember(state.binding) { mutableStateOf(false) }
 
-    confirmingDropMine?.let { row ->
-        DropConfirmDialog(
-            row = row,
-            failed = false,
+    confirmingDrop?.let { selection ->
+        SyncStatusDropDialog(
+            selection = selection,
             busy = state.busyRowId != null,
             onConfirm = {
-                confirmingDropMine = null
-                actions.onDropMine(row)
+                confirmingDrop = null
+                if (selection.failed) actions.onDropFailed(selection.row) else actions.onDropMine(selection.row)
             },
-            onDismiss = { confirmingDropMine = null },
-        )
-    }
-    confirmingDropFailed?.let { row ->
-        DropConfirmDialog(
-            row = row,
-            failed = true,
-            busy = state.busyRowId != null,
-            onConfirm = {
-                confirmingDropFailed = null
-                actions.onDropFailed(row)
-            },
-            onDismiss = { confirmingDropFailed = null },
+            onDismiss = { confirmingDrop = null },
         )
     }
     if (confirmingClearQuarantined) {
@@ -128,9 +154,16 @@ internal fun SyncStatusScreenContent(
     ) {
         SyncStatusPageBody(
             state = state,
+            manualClientRef = manualClientRef,
+            onOpenInbox = onOpenInbox,
             actions = actions.copy(
-                onDropMine = { confirmingDropMine = it },
-                onDropFailed = { confirmingDropFailed = it },
+                onDropMine = { confirmingDrop = SyncStatusDropSelection(it, failed = false, debtCreation = null,
+                    recurringOccurrence = state.recurringOccurrences[it.id], incomeSubmission = state.incomeSubmissions[it.id], debtWrite = state.debtWrites[it.id], budgetSave = state.budgetSaves[it.id], recurringOriginal = state.recurringItems[it.id], goalCreation = state.goalCreations[it.id], goalEdit = state.goalEdits[it.id], categoryRule = state.categoryRules[it.id]) },
+                onDropFailed = { row ->
+                    if (row.type in setOf(PendingMutationType.CorrectExpense, PendingMutationType.CreateBillSplitInvitation)) actions.onDropFailed(row)
+                    else confirmingDrop = SyncStatusDropSelection(row, failed = true, debtCreation = state.failedDebtCreations[row.id],
+                        recurringOccurrence = state.recurringOccurrences[row.id], incomeSubmission = state.incomeSubmissions[row.id], debtWrite = state.debtWrites[row.id], budgetSave = state.budgetSaves[row.id], recurringOriginal = state.recurringItems[row.id], goalCreation = state.goalCreations[row.id], goalEdit = state.goalEdits[row.id], categoryRule = state.categoryRules[row.id])
+                },
                 onClearQuarantined = { confirmingClearQuarantined = true },
             ),
         )
@@ -141,11 +174,95 @@ internal fun SyncStatusScreenContent(
 private fun SyncStatusPageBody(
     state: OutboxStatusUiState,
     actions: SyncStatusActions,
+    onOpenInbox: () -> Unit,
+    manualClientRef: String?,
 ) {
+    if (!state.bindingReady) {
+        Text(stringResource(if (state.binding == null) R.string.sync_status_binding_unavailable else R.string.sync_status_binding_loading))
+        return
+    }
     val status = state.status
-    SyncStatusOverviewSection(status)
+    ManualCreationSubmissionSection(state, actions, manualClientRef)
+    if (manualClientRef != null) return
+    SyncStatusOverviewSection(status, state.correctionObservation.corrections, state.debtWrites.values.toList(), state.incomeSubmissions.values.toList(), state.manualRates.values.toList())
+    SyncStatusIncomeReviews(state, actions)
+    SyncStatusRateReviews(state, actions)
+    SyncStatusBillSplitSection(state, actions)
+    SyncStatusCorrectionSection(state, actions)
+    SyncStatusUploadSection(state, onOpenInbox)
 
-    if (status.quarantinedCount > 0) {
+    SyncStatusQuarantineSection(
+        count = status.quarantinedCount,
+        clearEnabled = !state.isClearingQuarantine && state.busyRowId == null,
+        onClear = actions.onClearQuarantined,
+    )
+
+    SyncStatusDebtSections(state)
+
+    val conflicts = status.conflicts.filter { it.type !in SEPARATE_RECOVERY_TYPES }
+    if (conflicts.isNotEmpty()) {
+        SettingsSection(title = stringResource(R.string.sync_status_section_needs_action), icon = Icons.Filled.SyncProblem) {
+            conflicts.forEach { row ->
+                SyncStatusOriginalIntentSummary(row, state, actions)
+                ConflictCard(
+                    row = row,
+                    busy = state.busyRowId == row.id,
+                    actions = actions,
+                )
+            }
+        }
+    }
+
+    val failures = status.failed.filter { it.type !in SEPARATE_RECOVERY_TYPES }
+    if (failures.isNotEmpty()) {
+        SettingsSection(title = stringResource(R.string.sync_status_section_failed), icon = Icons.Filled.ErrorOutline) {
+            failures.forEach { row ->
+                SyncStatusOriginalIntentSummary(row, state, actions)
+                FailedCard(
+                    row = row,
+                    debtCreation = state.failedDebtCreations[row.id],
+                    busy = state.busyRowId == row.id,
+                    onRetry = { actions.onRetry(row) }.takeIf { state.offersRetry(row) },
+                    actions = actions,
+                )
+            }
+        }
+    }
+}
+
+private val SEPARATE_RECOVERY_TYPES = setOf(PendingMutationType.CreateExpense, PendingMutationType.CreateBillSplitInvitation,
+    PendingMutationType.CorrectExpense, PendingMutationType.UploadScreenshot)
+
+@Composable
+private fun SyncStatusUploadSection(state: OutboxStatusUiState, onOpenInbox: () -> Unit) {
+    val rows = (state.status.conflicts + state.status.failed).filter { it.type == PendingMutationType.UploadScreenshot }
+    if (rows.isEmpty()) return
+    SettingsSection(title = stringResource(R.string.sync_status_mutation_upload_screenshot), icon = Icons.Filled.CloudUpload) {
+        Text(stringResource(R.string.sync_status_upload_recovery_body), style = MaterialTheme.typography.bodyMedium)
+        AppPrimaryButton(text = stringResource(R.string.sync_status_open_uploads), icon = Icons.Filled.CloudUpload,
+            onClick = onOpenInbox)
+    }
+}
+
+@Composable
+private fun SyncStatusCorrectionSection(state: OutboxStatusUiState, actions: SyncStatusActions) {
+    state.correctionObservation.corrections.filter { !it.delivered || it.refreshRequired }.forEach { pending ->
+        com.ticketbox.ui.screens.expense.fact.ExpenseCorrectionSubmissionCard(
+            pending = pending,
+            options = CorrectionSubmissionOptions(state.correctionObservation.access?.canModify == true, state.busyRowId != null, false),
+            actions = CorrectionSubmissionActions(
+                recover = { drop -> if (drop) actions.onDropFailed(pending.row) else actions.onRetry(pending.row) },
+                reviewFact = pending.expenseId?.let { id -> { actions.onOpenExpense(id) } },
+                repairRate = state.correctionObservation.access?.binding?.let { binding ->
+                    { gap -> actions.onRepairCorrectionRate(binding, gap) }
+                }),
+        )
+    }
+}
+
+@Composable
+private fun SyncStatusQuarantineSection(count: Int, clearEnabled: Boolean, onClear: () -> Unit) {
+    if (count > 0) {
         SettingsSection(
             title = stringResource(R.string.sync_status_section_quarantined),
             icon = Icons.Filled.SyncProblem,
@@ -154,7 +271,7 @@ private fun SyncStatusPageBody(
                 Text(
                     text = stringResource(
                         R.string.sync_status_quarantined_body,
-                        status.quarantinedCount,
+                        count,
                     ),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium,
@@ -162,9 +279,9 @@ private fun SyncStatusPageBody(
                 AppAdaptiveTrailingActionRow {
                     AppOutlinedButton(
                         modifier = it,
-                        onClick = actions.onClearQuarantined,
+                        onClick = onClear,
                         options = AppOutlinedButtonOptions(
-                            enabled = !state.isClearingQuarantine && state.busyRowId == null,
+                            enabled = clearEnabled,
                             danger = true,
                         ),
                     ) {
@@ -174,89 +291,18 @@ private fun SyncStatusPageBody(
             }
         }
     }
-
-    if (status.conflicts.isNotEmpty()) {
-        SettingsSection(title = stringResource(R.string.sync_status_section_needs_action), icon = Icons.Filled.SyncProblem) {
-            status.conflicts.forEach { row ->
-                ConflictCard(
-                    row = row,
-                    busy = state.busyRowId == row.id,
-                    onKeepMine = { actions.onKeepMine(row) },
-                    onDropMine = { actions.onDropMine(row) },
-                )
-            }
-        }
-    }
-
-    if (status.failed.isNotEmpty()) {
-        SettingsSection(title = stringResource(R.string.sync_status_section_failed), icon = Icons.Filled.ErrorOutline) {
-            status.failed.forEach { row ->
-                FailedCard(
-                    row = row,
-                    busy = state.busyRowId == row.id,
-                    onRetry = { actions.onRetry(row) },
-                    onDrop = { actions.onDropFailed(row) },
-                )
-            }
-        }
-    }
-}
-
-/** Confirm wording reflects whether the app is dropping a conflict or removing an expired row. */
-@Composable
-private fun DropConfirmDialog(
-    row: OutboxRow,
-    failed: Boolean,
-    busy: Boolean,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val expired = failed && isExpiredFailure(row.lastError)
-    val label = mutationLabel(row.type)
-    val title: String
-    val text: String
-    val confirmWord: String
-    when {
-        !failed -> {
-            title = stringResource(R.string.sync_status_conflict_drop_dialog_title)
-            text = stringResource(R.string.sync_status_conflict_drop_dialog_text, label)
-            confirmWord = stringResource(R.string.sync_status_drop_dialog_confirm)
-        }
-        expired -> {
-            title = stringResource(R.string.sync_status_failed_drop_dialog_title_expired)
-            text = stringResource(R.string.sync_status_failed_drop_dialog_text_expired, label)
-            confirmWord = stringResource(R.string.sync_status_drop_dialog_confirm_remove)
-        }
-        else -> {
-            title = stringResource(R.string.sync_status_failed_drop_dialog_title)
-            text = stringResource(R.string.sync_status_failed_drop_dialog_text, label)
-            confirmWord = stringResource(R.string.sync_status_drop_dialog_confirm)
-        }
-    }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = { Text(text) },
-        confirmButton = {
-            TextButton(enabled = !busy, onClick = onConfirm) {
-                Text(confirmWord, color = MaterialTheme.colorScheme.error)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
-        },
-    )
 }
 
 @Composable
-private fun ConflictCard(
+internal fun ConflictCard(
     row: OutboxRow,
     busy: Boolean,
-    onKeepMine: () -> Unit,
-    onDropMine: () -> Unit,
+    actions: SyncStatusActions,
 ) {
     // Only expense mutations can refresh state and retry as "keep mine".
-    val canKeep = row.targetId.startsWith("expense:")
+    val originalOffset = row.type == PendingMutationType.CreateExpenseOffset
+    val canKeep = row.type !in com.ticketbox.viewmodel.incomePlanSubmissionTypes && !originalOffset && row.type !in com.ticketbox.viewmodel.categoryRuleSubmissionTypes &&
+        row.type !in setOf(PendingMutationType.CreateExpense, PendingMutationType.CorrectExpense, PendingMutationType.CreateBillSplitInvitation) && row.targetId.startsWith("expense:")
     SettingsOpenPanel(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
     ) {
@@ -265,22 +311,23 @@ private fun ConflictCard(
             verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         ) {
             Text(
-                text = stringResource(R.string.sync_status_conflict_offline_prefix, mutationLabel(row.type)),
+                text = stringResource(R.string.sync_status_conflict_offline_prefix, stringResource(syncStatusMutationLabelResources.getValue(row.type))),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                text = friendlyLastError(row.lastError, fallback = stringResource(R.string.sync_status_conflict_fallback)),
+                text = if (originalOffset) stringResource(R.string.expense_offset_original_requires_review)
+                    else friendlyLastError(row.lastError, fallback = stringResource(R.string.sync_status_conflict_fallback)),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             SyncStatusRecoveryActions(
-                primary = if (canKeep) {
+                primary = if (originalOffset) offsetReviewAction(row, busy, actions) else if (canKeep) {
                     SyncStatusActionButton(
                         text = stringResource(R.string.sync_status_conflict_button_keep_mine),
                         icon = Icons.Filled.CloudUpload,
                         enabled = !busy,
-                        onClick = onKeepMine,
+                        onClick = { actions.onKeepMine(row) },
                     )
                 } else {
                     null
@@ -288,7 +335,7 @@ private fun ConflictCard(
                 danger = SyncStatusActionButton(
                     text = stringResource(R.string.sync_status_conflict_button_drop_mine),
                     enabled = !busy,
-                    onClick = onDropMine,
+                    onClick = { actions.onDropMine(row) },
                 ),
             )
         }
@@ -296,15 +343,17 @@ private fun ConflictCard(
 }
 
 @Composable
-private fun FailedCard(
+internal fun FailedCard(
     row: OutboxRow,
+    debtCreation: PendingDebtCreation?,
     busy: Boolean,
-    onRetry: () -> Unit,
-    onDrop: () -> Unit,
+    onRetry: (() -> Unit)?,
+    actions: SyncStatusActions,
 ) {
     // Expired rows cannot be retried because the server-side idempotency key may be gone.
     val expired = isExpiredFailure(row.lastError)
     SettingsOpenPanel(
+        modifier = Modifier.semantics(mergeDescendants = true) {},
         verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
     ) {
         Column(
@@ -312,17 +361,26 @@ private fun FailedCard(
             verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         ) {
             Text(
-                text = stringResource(R.string.sync_status_failed_offline_prefix, mutationLabel(row.type)),
+                text = if (row.type == PendingMutationType.CreateDebt) stringResource(syncStatusMutationLabelResources.getValue(row.type))
+                else stringResource(R.string.sync_status_failed_offline_prefix, stringResource(syncStatusMutationLabelResources.getValue(row.type))),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
             )
+            debtCreation?.let { DebtCreationIntentSummary(it) }
             Text(
-                text = friendlyLastError(row.lastError, fallback = stringResource(R.string.sync_status_failed_fallback)),
+                text = if (row.type == PendingMutationType.CreateExpenseOffset && onRetry == null)
+                    stringResource(R.string.expense_offset_original_requires_review)
+                    else friendlyLastError(row.lastError, fallback = stringResource(R.string.sync_status_failed_fallback)),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             SyncStatusRecoveryActions(
-                primary = if (expired) {
+                primary = if (row.type == PendingMutationType.CreateExpenseOffset && onRetry == null) {
+                    offsetReviewAction(row, busy, actions)
+                } else if (row.manualCreateReviewExpenseId() != null) {
+                    SyncStatusActionButton(text = stringResource(R.string.ledger_manual_review_existing), enabled = !busy,
+                        onClick = { row.manualCreateReviewExpenseId()?.let(actions.onOpenExpense) })
+                } else if (expired || onRetry == null) {
                     null
                 } else {
                     SyncStatusActionButton(
@@ -339,11 +397,18 @@ private fun FailedCard(
                         stringResource(R.string.sync_status_failed_button_drop)
                     },
                     enabled = !busy,
-                    onClick = onDrop,
+                    onClick = { actions.onDropFailed(row) },
                 ),
             )
         }
     }
+}
+
+@Composable
+private fun offsetReviewAction(row: OutboxRow, busy: Boolean, actions: SyncStatusActions): SyncStatusActionButton? {
+    val id = parseExpenseTargetRef(row.targetId)?.toLongOrNull()?.takeIf { it > 0 } ?: return null
+    return SyncStatusActionButton(text = stringResource(R.string.expense_offset_review_current), enabled = !busy,
+        onClick = { actions.onOpenExpense(id) })
 }
 
 @Composable
@@ -410,17 +475,15 @@ private fun SyncStatusRecoveryActions(
 internal fun isExpiredFailure(lastError: String?): Boolean =
     lastError?.startsWith("outbox_row_expired") == true
 
-@Composable
-private fun mutationLabel(type: PendingMutationType): String = stringResource(syncStatusMutationLabelRes(type))
-
-@StringRes
-internal fun syncStatusMutationLabelRes(type: PendingMutationType): Int =
-    syncStatusMutationLabelResources.getValue(type)
-
 internal val syncStatusMutationLabelResources = mapOf(
+    PendingMutationType.UploadScreenshot to R.string.sync_status_mutation_upload_screenshot,
     PendingMutationType.PatchExpense to R.string.sync_status_mutation_patch_expense,
     PendingMutationType.CorrectExpense to R.string.sync_status_mutation_correct_expense,
     PendingMutationType.CreateExpense to R.string.sync_status_mutation_create_expense,
+    PendingMutationType.CreateBillSplitInvitation to R.string.sync_status_mutation_create_bill_split,
+    PendingMutationType.CreateDebt to R.string.sync_status_mutation_create_debt,
+    PendingMutationType.RecordDebtAdjustment to R.string.debt_action_adjustment_title,
+    PendingMutationType.RecordDebtRepayment to R.string.debt_action_repayment_title,
     PendingMutationType.ConfirmExpense to R.string.sync_status_mutation_confirm_expense,
     PendingMutationType.RejectExpense to R.string.sync_status_mutation_reject_expense,
     PendingMutationType.MarkNotDuplicate to R.string.sync_status_mutation_mark_not_duplicate,
@@ -430,33 +493,20 @@ internal val syncStatusMutationLabelResources = mapOf(
     PendingMutationType.ReplaceSplits to R.string.sync_status_mutation_replace_splits,
     PendingMutationType.AcknowledgeItemsMismatch to R.string.sync_status_mutation_acknowledge_items_mismatch,
     PendingMutationType.UpdateCategoryRule to R.string.sync_status_mutation_update_category_rule,
+    PendingMutationType.CreateCategoryRule to R.string.category_rule_submission_create,
     PendingMutationType.DeleteCategoryRule to R.string.sync_status_mutation_delete_category_rule,
     PendingMutationType.UpdateMerchantAlias to R.string.sync_status_mutation_update_merchant_alias,
     PendingMutationType.DeleteMerchantAlias to R.string.sync_status_mutation_delete_merchant_alias,
     PendingMutationType.UpdateGoal to R.string.sync_status_mutation_update_goal,
+    PendingMutationType.CreateGoal to R.string.goal_creation_label,
+    PendingMutationType.CreateIncomePlan to R.string.income_plan_submission_create,
     PendingMutationType.UpdateIncomePlan to R.string.sync_status_mutation_update_income_plan,
+    PendingMutationType.SaveMonthlyBudget to R.string.budget_editor_save,
+    PendingMutationType.SaveManualExchangeRate to R.string.advice_rate_submit,
     PendingMutationType.CreateRecurringItem to R.string.sync_status_mutation_create_recurring_item,
     PendingMutationType.UpdateRecurringItem to R.string.sync_status_mutation_update_recurring_item,
+    PendingMutationType.SetRecurringOccurrencePayment to R.string.sync_status_mutation_recurring_occurrence,
     PendingMutationType.CreateExpenseOffset to R.string.sync_status_mutation_create_expense_offset,
     PendingMutationType.VoidExpenseOffset to R.string.sync_status_mutation_void_expense_offset,
     PendingMutationType.Unknown to R.string.sync_status_mutation_unknown,
-)
-
-/** Translate known outbox error markers; never expose raw transport or engine errors to users. */
-@Composable
-private fun friendlyLastError(raw: String?, fallback: String): String {
-    val text = raw?.trim().orEmpty()
-    if (text.isEmpty()) return fallback
-    return when {
-        text.startsWith("max_attempts_exceeded") -> stringResource(R.string.sync_status_error_max_attempts)
-        text.startsWith("no_dispatcher_registered") -> stringResource(R.string.sync_status_error_no_dispatcher)
-        text.startsWith("outbox_row_expired") -> stringResource(R.string.sync_status_error_expired)
-        text in syncStatusExactErrorMessageResources ->
-            stringResource(syncStatusExactErrorMessageResources.getValue(text))
-        else -> fallback
-    }
-}
-
-internal val syncStatusExactErrorMessageResources = mapOf(
-    "rule_category_deleted" to R.string.sync_status_error_rule_category_deleted,
 )

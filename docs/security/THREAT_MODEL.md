@@ -16,9 +16,11 @@ runtime settings.
   Cloudflare Worker 30 req/min/IP edge limit.
 - `/web` is browser-session gated. Controls: cookie/session auth, CSRF tests,
   ledger scoping, and no Owner Console exposure.
-- `/api/admin/*` is local-only by default. If `ALLOW_PUBLIC_ADMIN_API=true`,
-  startup requires Cloudflare Access configuration and requests require Access
-  JWT validation.
+- `/api/admin/*`, `/api/maintenance/*` and `/api/bootstrap/pairing-codes`
+  always require a loopback peer and Host, then a valid maintenance session and
+  the existing ledger permissions. There is no public opt-in; Cloudflare Access
+  never authorizes governance over a public Host. Ledger-scoped product APIs
+  retain their authenticated remote access.
 - `/owner` manages devices, upload links, settings, backups, and AI advisor
   confirmation. Controls: loopback boundary, CSRF, no raw token/key listing,
   and explicit runtime-edit whitelist.

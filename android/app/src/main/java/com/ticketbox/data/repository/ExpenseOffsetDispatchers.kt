@@ -21,16 +21,17 @@ class CreateExpenseOffsetDispatcher(
 
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
         val expenseRef = parseExpenseTargetRef(row.targetId)
-            ?: return DispatchResult.Discarded("invalid target id: ${row.targetId}")
-        val request = decode(payloadAdapter, row) { it.copy(expectedRowVersion = row.expectedRowVersion) }
-            ?: return DispatchResult.Failure("offset create payload is invalid")
+            ?: return DispatchResult.Failure("offset_create_requires_review")
+        val request = payloadAdapter.readSupportedOffsetCreate(row)
+            ?: return DispatchResult.Failure("offset_create_requires_review")
         val key = row.idempotencyKey
             ?: return DispatchResult.Failure("CreateExpenseOffset row missing idempotency key")
-        return dispatchOffsetCommand {
+        val result = dispatchOffsetCommand {
             val bundle = apiProvider(row).createExpenseOffset(expenseRef, request, key)
             publishBundle(row.ledgerId, bundle)
             DispatchResult.Success(bundle.root.rowVersion)
         }
+        return if (result is DispatchResult.Discarded) DispatchResult.Failure("offset_create_requires_review") else result
     }
 }
 

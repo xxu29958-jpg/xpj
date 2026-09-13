@@ -1,0 +1,10 @@
+# Independent test cases and linear assertions are not production responsibilities.
+# Keep base limits for helpers, branching, nesting and class size. Named fixture
+# defaults do not increase the number of inputs a test must supply.
+complexity:
+  LongMethod:
+    ignoreAnnotated: [Test]
+  LongParameterList:
+    ignoreDefaultParameters: true
+  TooManyFunctions:
+    ignoreAnnotatedFunctions: [Test]

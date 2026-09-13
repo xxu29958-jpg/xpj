@@ -185,7 +185,7 @@ def test_web_receivable_preserves_remaining_and_opens_redacted_detail(
     html = _page(web_client)
     assert "还剩 ¥15.00" in html
     assert f'href="/web/debts/{public_id}?ledger_id=owner"' in html
-    assert "还剩" in detail.text
+    assert '<div class="debt-member-remaining">剩余 ¥15.00</div>' in detail.text.split('<details class="debt-look">')[0]
     assert "¥15.00" in detail.text
 
 
@@ -332,7 +332,7 @@ def test_web_receivables_external_row_uses_accounting_framing(web_client: TestCl
             created_by_account_id=owner_id,
             owner_account_id=owner_id,
             payload=DebtCreateRequest(
-                direction="owed_to_me",
+                home_currency_code="CNY", direction="owed_to_me",
                 counterparty_type="external",
                 counterparty_label="小周 · 演出票",
                 principal_amount_cents=32_000,

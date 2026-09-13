@@ -124,6 +124,9 @@ internal fun computeCorrectionItemsChange(
     baseline: ExpenseItems?,
 ): List<ExpenseItemDraft>? {
     if (!form.itemsTouched) return null
+    if (!expense.matchesFactVersion(baseline?.expenseId, baseline?.parentRowVersion)) {
+        throw CorrectionValidationError(R.string.expense_correction_collections_not_current)
+    }
     val currency = expense.editParseCurrency()
     val baselineProjection = (baseline?.items ?: emptyList()).map {
         itemProjection(it.name, it.amountCents, it.kind)
@@ -142,6 +145,9 @@ internal fun computeCorrectionSplitsChange(
     baseline: ExpenseSplits?,
 ): List<ExpenseSplitDraft>? {
     if (!form.splitsTouched) return null
+    if (!expense.matchesFactVersion(baseline?.expenseId, baseline?.parentRowVersion)) {
+        throw CorrectionValidationError(R.string.expense_correction_collections_not_current)
+    }
     val currency = expense.editParseCurrency()
     val baselineProjection = (baseline?.splits ?: emptyList())
         .map { Triple(it.memberId, it.amountCents, it.note.orEmpty()) }

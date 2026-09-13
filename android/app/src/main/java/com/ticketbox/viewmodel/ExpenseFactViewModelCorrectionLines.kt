@@ -12,8 +12,13 @@ import kotlinx.coroutines.launch
  */
 
 fun ExpenseFactViewModel.openCorrectionItemsEditor() {
-    val items = _uiState.value.expenseItems ?: return
-    val expense = _uiState.value.expense ?: return
+    if (!requireCurrentCorrectionContext() || !canEditCorrectionItems()) return
+    if (_uiState.value.correction.itemsTouched) {
+        updateCorrection { it.copy(itemsEditorOpen = true) }
+        return
+    }
+    val items = correctionOriginalItems ?: _uiState.value.currentCorrectionItems?.also { correctionOriginalItems = it } ?: return
+    val expense = correctionBaseline ?: return
     val displayCurrency = expense.editDisplayParseCurrency()
     val drafts = items.items.map { item ->
         EditableItem(
@@ -67,12 +72,21 @@ fun ExpenseFactViewModel.dismissCorrectionItemsEditor() = updateCorrection {
 }
 
 fun ExpenseFactViewModel.openCorrectionSplitsEditor() {
-    val currentSplits = _uiState.value.expenseSplits ?: return
-    val expense = _uiState.value.expense ?: return
+    if (!requireCurrentCorrectionContext() || !canEditCorrectionSplits()) return
+    val generation = ++correctionSplitMemberGeneration
+    if (_uiState.value.correction.splitsTouched) {
+        updateCorrection { it.copy(splitEditorOpen = true, splitMembersLoading = false) }
+        return
+    }
+    val currentSplits = correctionOriginalSplits ?: _uiState.value.currentCorrectionSplits?.also { correctionOriginalSplits = it } ?: return
+    val expense = correctionBaseline ?: return
+    val binding = correctionBinding ?: return
     updateCorrection { it.copy(splitEditorOpen = true, splitMembersLoading = true) }
     viewModelScope.launch {
+        if (!isCurrentCorrectionSplitMemberRead(generation, binding, expense)) return@launch
         repository.fetchSplitMembers()
             .onSuccess { members ->
+                if (!isCurrentCorrectionSplitMemberRead(generation, binding, expense)) return@onSuccess
                 updateCorrection {
                     it.copy(
                         splitDrafts = buildCorrectionSplitDrafts(
@@ -85,6 +99,7 @@ fun ExpenseFactViewModel.openCorrectionSplitsEditor() {
                 }
             }
             .onFailure { error ->
+                if (!isCurrentCorrectionSplitMemberRead(generation, binding, expense)) return@onFailure
                 updateCorrection { it.copy(splitMembersLoading = false) }
                 _uiState.update {
                     it.copy(
@@ -116,36 +131,41 @@ fun ExpenseFactViewModel.updateCorrectionSplitDraft(
     )
 }
 
-fun ExpenseFactViewModel.adoptCorrectionSplits() = updateCorrection {
-    it.copy(splitEditorOpen = false, splitsTouched = true)
+fun ExpenseFactViewModel.adoptCorrectionSplits() {
+    correctionSplitMemberGeneration++
+    updateCorrection { it.copy(splitEditorOpen = false, splitsTouched = true, splitMembersLoading = false) }
 }
 
 /** 均分：把「父金额 − 停用成员固定额」按最大余数法摊到勾选的活跃成员，
  *  与编辑流同一算法（SplitsEditorSheet.evenSplitActiveCents）。 */
-fun ExpenseFactViewModel.evenCorrectionSplitAmounts() = updateCorrection { state ->
-    val parent = _uiState.value.expenseSplits?.parentAmountCents ?: return@updateCorrection state
-    val checked = state.splitDrafts.filter { it.included && !it.disabled }
-    if (checked.isEmpty()) return@updateCorrection state
-    val currency = _uiState.value.expense.editDisplayParseCurrency()
-    val fixedDisabledTotal = state.splitDrafts
-        .filter { it.disabled }
-        .sumOf { com.ticketbox.ui.components.parseAmountCents(it.amountText, currency) ?: 0L }
-    val shares = com.ticketbox.ui.screens.expense.evenSplitActiveCents(parent, fixedDisabledTotal, checked.size)
-    val shareByMember = checked.mapIndexed { index, draft -> draft.memberId to shares[index] }.toMap()
-    state.copy(
-        splitDrafts = state.splitDrafts.map { draft ->
-            val share = shareByMember[draft.memberId]
-            if (share == null) {
-                draft
-            } else {
-                draft.copy(
-                    amountText = com.ticketbox.ui.components.formatMinorAmountInput(share, currency),
-                )
-            }
-        },
-    )
+fun ExpenseFactViewModel.evenCorrectionSplitAmounts() {
+    if (!requireCurrentCorrectionContext()) return
+    updateCorrection { state ->
+        val parent = correctionOriginalSplits?.parentAmountCents ?: return@updateCorrection state
+        val checked = state.splitDrafts.filter { it.included && !it.disabled }
+        if (checked.isEmpty()) return@updateCorrection state
+        val currency = correctionBaseline.editDisplayParseCurrency()
+        val fixedDisabledTotal = state.splitDrafts
+            .filter { it.disabled }
+            .sumOf { com.ticketbox.ui.components.parseAmountCents(it.amountText, currency) ?: 0L }
+        val shares = com.ticketbox.ui.screens.expense.evenSplitActiveCents(parent, fixedDisabledTotal, checked.size)
+        val shareByMember = checked.mapIndexed { index, draft -> draft.memberId to shares[index] }.toMap()
+        state.copy(
+            splitDrafts = state.splitDrafts.map { draft ->
+                val share = shareByMember[draft.memberId]
+                if (share == null) {
+                    draft
+                } else {
+                    draft.copy(
+                        amountText = com.ticketbox.ui.components.formatMinorAmountInput(share, currency),
+                    )
+                }
+            },
+        )
+    }
 }
 
-fun ExpenseFactViewModel.dismissCorrectionSplitsEditor() = updateCorrection {
-    it.copy(splitEditorOpen = false)
+fun ExpenseFactViewModel.dismissCorrectionSplitsEditor() {
+    correctionSplitMemberGeneration++
+    updateCorrection { it.copy(splitEditorOpen = false, splitMembersLoading = false) }
 }

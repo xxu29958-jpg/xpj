@@ -150,17 +150,3 @@ def _applying_row_count(db: Session, batch: CsvImportBatch, tenant_id: str) -> i
         )
         or 0
     )
-
-
-def _remaining_importable_rows(db: Session, batch: CsvImportBatch, tenant_id: str) -> int:
-    return int(
-        db.scalar(
-            select(func.count()).select_from(
-                ledger_scoped_select(CsvImportRow, tenant_id)
-                .where(CsvImportRow.batch_id == batch.id)
-                .where(CsvImportRow.status.in_(("valid", "applying")))
-                .subquery()
-            )
-        )
-        or 0
-    )

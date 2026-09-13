@@ -3,7 +3,6 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
-import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.IncomePlanActions
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.domain.model.CurrencyCode
@@ -24,13 +23,14 @@ import java.time.YearMonth
 /**
  * 编辑会话：openEdit 时捕获当前 binding + 行 rowVersion 作 baseline（OCC token）；
  * 账本切换时整态随 binding 收集重置——进行中的草稿随之失效，不再写向新账本（切账本失权）。
- * [sourceAmountCents] 仅用于币种晚解析时的后补种子（弱网点了行才等到 capability 的路径）。
+ * [sourceAmountCents] 用于核对缺少币种的旧缓存；只从同一计划版本补齐记录币种。
  */
 data class IncomePlanEditSession(
     val publicId: String,
     val baselineRowVersion: Long,
     val binding: LogicalSessionBinding,
     val sourceAmountCents: Long,
+    val baseline: IncomePlan,
     val draft: IncomePlanDraftUi,
 )
 
@@ -46,12 +46,11 @@ data class IncomePlanEditUiState(
 
 /**
  * W2-C 收入编辑的伴随 ViewModel（与列表 VM 分离，同 DebtRepaymentHistoryViewModel 先例）：
- * 直连 [IncomePlanActions.update]（OCC baseline + origin binding，不假离线承诺）；
+ * 编辑先持久化原月份、金额、OCC 与身份，再由待同步队列发布；
  * 归档收进编辑器（archiveFromEdit），成功才关会话，失败留草稿。
  */
 class IncomePlanEditViewModel(
     private val repository: IncomePlanActions,
-    private val debts: DebtActions,
     private val onDataChanged: () -> Unit = {},
 ) : ViewModel() {
 
@@ -60,8 +59,6 @@ class IncomePlanEditViewModel(
     private var bindingGeneration = 0
     private var activeBinding: LogicalSessionBinding? = null
     private var activeCanModify = false
-    private var homeCurrency: CurrencyCode? = null
-    private var homeCurrencyBinding: LogicalSessionBinding? = null
 
     init {
         viewModelScope.launch {
@@ -71,45 +68,17 @@ class IncomePlanEditViewModel(
                     activeBinding = access?.binding
                     activeCanModify = access?.canModify ?: false
                     bindingGeneration += 1
-                    _state.value = IncomePlanEditUiState(currencyPending = access != null)
-                    // R12-D + R14-6 同源裁决：币种在收集内挂起解析并盖上所属 binding——
-                    // openEdit 只接受与打开时 binding 同一份的币种（漂移间隙 fail closed 归 null，
-                    // 不拿旧账本的币种给新 binding 的编辑种子）。
-                    homeCurrency = resolveLedgerCurrency(debts.listDebts().getOrNull())
-                    homeCurrencyBinding = access?.binding
-                    reseedOpenSessionDraft()
-                    _state.update { it.copy(currencyPending = false) }
+                    _state.value = IncomePlanEditUiState()
                 }
         }
     }
 
-    /** 币种晚解析闭合：已开会话属当前 binding、尚未持币种且金额仍空白时补种子；
-     *  用户已输入的金额不覆盖。 */
-    private fun reseedOpenSessionDraft() {
-        val session = _state.value.session ?: return
-        if (session.binding != homeCurrencyBinding) return
-        if (session.draft.homeCurrency != null) return
-        val currency = homeCurrency ?: return
-        _state.update { state ->
-            state.copy(
-                session = session.copy(
-                    draft = session.draft.copy(
-                        homeCurrency = currency,
-                        amountYuanInput = session.draft.amountYuanInput.ifBlank {
-                            formatAmountInput(session.sourceAmountCents, currency)
-                        },
-                    ),
-                ),
-            )
-        }
-    }
-
-    fun openEdit(plan: IncomePlan) {
+    fun openEdit(plan: IncomePlan, intentMonth: String) {
         val binding = activeBinding ?: return
         if (!activeCanModify) return
         // busy 期间不切 target：在途提交的结果只归属原会话（sheet 忙碌时行不可点，此为双守门）。
         if (_state.value.isSubmitting) return
-        val currency = homeCurrency.takeIf { homeCurrencyBinding == binding }
+        val currency = CurrencyCode.fromStorageKeyOrNull(plan.homeCurrencyCode)
         _state.update {
             it.copy(
                 session = IncomePlanEditSession(
@@ -117,11 +86,13 @@ class IncomePlanEditViewModel(
                     baselineRowVersion = plan.rowVersion,
                     binding = binding,
                     sourceAmountCents = plan.amountCents,
+                    baseline = plan,
                     draft = IncomePlanDraftUi(
+                        intentMonth = intentMonth,
                         label = plan.label,
                         sourceType = plan.sourceType,
                         frequency = plan.frequency,
-                        incomeMonthInput = plan.incomeMonth ?: YearMonth.now().toString(),
+                        incomeMonthInput = plan.incomeMonth ?: intentMonth,
                         amountYuanInput = currency
                             ?.let { code -> formatAmountInput(plan.amountCents, code) }
                             .orEmpty(),
@@ -130,6 +101,7 @@ class IncomePlanEditViewModel(
                     ),
                 ),
                 succeeded = false,
+                currencyPending = false,
             )
         }
     }
@@ -187,20 +159,32 @@ class IncomePlanEditViewModel(
         }
     }
 
-    /**
-     * 币种未确认时的手动重试（编辑器「正在准备/未确认」状态行的恢复入口）：按当前 binding
-     * 重新解析并补种子；已持币种则无事可做。解析仍 fail closed——失败只回到「未确认可重试」，
-     * 不落兜底币种。
-     */
+    /** Refresh an unknown currency from the same plan version, preserving the entered draft. */
     fun retryCurrencyResolution() {
-        val binding = activeBinding ?: return
-        if (homeCurrencyBinding == binding && homeCurrency != null) return
+        val session = _state.value.session ?: return
+        if (session.draft.homeCurrency != null || _state.value.currencyPending) return
+        val generation = bindingGeneration
         _state.update { it.copy(currencyPending = true) }
         viewModelScope.launch {
-            homeCurrency = resolveLedgerCurrency(debts.listDebts().getOrNull())
-            homeCurrencyBinding = binding
-            reseedOpenSessionDraft()
-            _state.update { it.copy(currencyPending = false) }
+            val result = repository.listIncluding(session.binding, session.baseline.status)
+            if (generation != bindingGeneration) return@launch
+            val current = result.getOrNull()?.firstOrNull { it.publicId == session.publicId }
+            val currency = CurrencyCode.fromStorageKeyOrNull(current?.homeCurrencyCode)
+            _state.update { state ->
+                val currentSession = state.session ?: return@update state
+                if (currentSession.publicId != session.publicId || currentSession.baselineRowVersion != session.baselineRowVersion) return@update state
+                val draft = currentSession.draft
+                val verified = current != null && current.rowVersion == session.baselineRowVersion &&
+                    current.amountCents == session.sourceAmountCents && currency != null
+                state.copy(currencyPending = false, session = currentSession.copy(
+                    baseline = if (verified) requireNotNull(current) else currentSession.baseline,
+                    draft = if (verified) draft.copy(homeCurrency = currency,
+                        amountYuanInput = draft.amountYuanInput.ifBlank { formatAmountInput(session.sourceAmountCents, requireNotNull(currency)) },
+                        validationError = null) else draft.copy(validationError =
+                            result.exceptionOrNull()?.toUiText(R.string.error_generic)
+                                ?: UiText.res(R.string.income_plan_currency_refresh_required)),
+                ))
+            }
         }
     }
 
@@ -232,7 +216,7 @@ class IncomePlanEditViewModel(
         val binding = bindingGeneration
         _state.update { it.copy(isSubmitting = true) }
         viewModelScope.launch {
-            val result = repository.update(session.binding, session.publicId, patch)
+            val result = repository.enqueueUpdate(session.binding, session.baseline, patch, requireNotNull(session.draft.homeCurrency))
             if (binding != bindingGeneration) return@launch
             result.fold(
                 onSuccess = {
@@ -240,7 +224,7 @@ class IncomePlanEditViewModel(
                         it.copy(
                             isSubmitting = false,
                             succeeded = true,
-                            flashMessage = UiText.res(R.string.income_plan_updated),
+                            flashMessage = UiText.res(R.string.income_plan_edit_saved_locally),
                         )
                     }
                     onDataChanged()
@@ -262,7 +246,7 @@ class IncomePlanEditViewModel(
         val binding = bindingGeneration
         _state.update { it.copy(isSubmitting = true) }
         viewModelScope.launch {
-            val result = repository.archive(session.binding, session.publicId, session.baselineRowVersion)
+            val result = repository.archive(session.binding, session.publicId, session.baselineRowVersion, session.draft.intentMonth)
             if (binding != bindingGeneration) return@launch
             result.fold(
                 onSuccess = {

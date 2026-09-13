@@ -224,32 +224,28 @@ def test_receivables_detail_matches_list_for_creditor(client: TestClient, *, ide
     assert detail_row["viewer_is_debtor"] is False
 
 
-def test_participant_detail_for_same_ledger_debtor_stays_generic(
+def test_participant_detail_for_same_ledger_debtor_names_creditor(
     client: TestClient, *, identity
 ) -> None:
-    # The DEBTOR's own SAME-LEDGER detail view: the enrichment block (`if not is_ledger_member`)
-    # never fires, so the ledger id is kept and counterparty stays generic (the counterparty
-    # there is the creditor, framed by the communal headline, not named).
+    # Debtors need the known creditor name; their selected ledger remains visible.
     owner_id = _owner_account_id()
     debtor_id = _seed_account_with_ledger("自视", "receiver_self")
     public_id = _seed_receivable(creditor_id=owner_id, debtor_id=debtor_id, debtor_ledger="receiver_self")
 
     with SessionLocal() as db:
+        creditor_name = db.scalar(select(Account.display_name).where(Account.id == owner_id))
         response = get_participant_debt_response(
             db, public_id=public_id, ledger_id="receiver_self", account_id=debtor_id
         )
     assert response.viewer_is_debtor is True
-    assert response.counterparty_label is None  # stays generic for the debtor's own view
+    assert response.counterparty_label == creditor_name
     assert response.ledger_id == "receiver_self"  # same-ledger → not redacted
 
 
-def test_participant_detail_for_cross_ledger_debtor_stays_generic(
+def test_participant_detail_for_cross_ledger_debtor_names_creditor_without_ledger(
     client: TestClient, *, identity
 ) -> None:
-    # The creditor-only enrichment guard: a CROSS-LEDGER DEBTOR (owed_to_me member Debt where the
-    # viewer is the counterparty-debtor) reaches the redaction branch but must NOT be enriched
-    # with the creditor's name — only viewer_is_debtor==False (the creditor) is named. Removing
-    # the `viewer_is_debtor is False` guard would wrongly leak the creditor's name to the debtor.
+    # Both participants share counterparty identity, never the other private ledger.
     owner_id = _owner_account_id()  # the test owner acts as the cross-ledger DEBTOR here
     creditor_id = _seed_account_with_ledger("外部债权人", "receiver_creditor")
     with SessionLocal() as db:
@@ -280,7 +276,7 @@ def test_participant_detail_for_cross_ledger_debtor_stays_generic(
         )
     assert response.viewer_is_debtor is True  # the viewer is the debtor of this payable
     assert response.ledger_id is None  # cross-ledger → redacted
-    assert response.counterparty_label is None  # NOT enriched — the debtor is not named the creditor
+    assert response.counterparty_label == "外部债权人"
 
 
 def test_participant_detail_for_cross_ledger_creditor_is_enriched(

@@ -19,7 +19,6 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.asString
-import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.components.AppErrorState
 import com.ticketbox.ui.components.AppFloatingActionBar
 import com.ticketbox.ui.components.AppLoadingState
@@ -31,7 +30,6 @@ import com.ticketbox.ui.components.AppSecondaryPageSlots
 import com.ticketbox.ui.components.AppSecondaryRefreshState
 import com.ticketbox.ui.components.AppSecondaryScrollableContent
 import com.ticketbox.ui.components.AppStatusBanner
-import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.SpendingGoalDetailUiState
@@ -70,7 +68,7 @@ internal fun SpendingGoalDetailScreen(
             },
         ),
         slots = AppSecondaryPageSlots(
-            status = { SpendingGoalDetailStatus(state) },
+            status = { SpendingGoalDetailStatus(state, viewModel) },
             bottomBar = if (goal != null && state.canModify && !goal.isArchived) {
                 { SpendingGoalDetailFooter(state = state, viewModel = viewModel) }
             } else {
@@ -91,17 +89,14 @@ internal fun SpendingGoalDetailScreen(
 }
 
 @Composable
-private fun SpendingGoalDetailStatus(state: SpendingGoalDetailUiState) {
+private fun SpendingGoalDetailStatus(state: SpendingGoalDetailUiState, viewModel: SpendingGoalDetailViewModel) {
     androidx.compose.foundation.layout.Column(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
-        AppDataAuthorityStrip(
-            tone = when {
-                !state.canModify -> DataAuthorityTone.ReadOnly
-                state.isLoading || state.isSaving || state.isArchiving -> DataAuthorityTone.Refreshing
-                else -> DataAuthorityTone.Backend
-            },
-        )
+        GoalReadSource(state.fetchedAt, state.fromCache, state.isLoading)
+        if (state.goal != null && state.fetchedAt == null && state.pendingEdits.any { it.confirmed == state.goal }) {
+            androidx.compose.material3.Text(stringResource(R.string.goal_accepted_result_source))
+        }
         if (!state.canModify) {
             AppStatusBanner(
                 message = UiText.res(R.string.common_readonly_ledger),
@@ -115,6 +110,11 @@ private fun SpendingGoalDetailStatus(state: SpendingGoalDetailUiState) {
         state.formError?.let {
             AppStatusBanner(message = it, tone = MessageTone.Danger)
         }
+        if (state.goal != null) state.loadError?.let {
+            AppStatusBanner(message = it, tone = MessageTone.Danger)
+            TextButton(onClick = { viewModel.load() }) { Text(stringResource(R.string.common_retry)) }
+        }
+        SpendingGoalSubmissionStatus(state, viewModel)
     }
 }
 
@@ -143,8 +143,8 @@ private fun SpendingGoalDetailBody(
         state.isEditing -> SpendingGoalEditContent(state = state, viewModel = viewModel)
         else -> SpendingGoalViewContent(
             goal = state.goal,
-            canModify = state.canModify,
-            onArchive = viewModel::requestArchive,
+            canModify = state.canModify && !state.hasPendingEdit,
+            onArchive = { viewModel.showArchiveConfirmation(true) },
         )
     }
 }
@@ -184,8 +184,8 @@ private fun SpendingGoalDetailFooter(
                 text = stringResource(R.string.spending_goal_edit_action),
                 icon = Icons.Filled.Edit,
                 modifier = Modifier.fillMaxWidth(),
-                // R14-5：账本币种未确认时禁入编辑（回填币种必须与 save 同源，VM 同门兜底）。
-                enabled = state.ledgerCurrency != null,
+                // 编辑和保存都使用这个目标自身已确认的币种。
+                enabled = state.goalCurrency != null && !state.hasPendingEdit && !state.isSaving,
                 onClick = viewModel::beginEdit,
             )
         }
@@ -198,7 +198,7 @@ private fun SpendingGoalArchiveDialog(
     viewModel: SpendingGoalDetailViewModel,
 ) {
     AlertDialog(
-        onDismissRequest = viewModel::dismissArchive,
+        onDismissRequest = { viewModel.showArchiveConfirmation(false) },
         title = { Text(stringResource(R.string.spending_goal_archive_dialog_title)) },
         text = { Text(stringResource(R.string.spending_goal_archive_dialog_body)) },
         confirmButton = {
@@ -218,7 +218,7 @@ private fun SpendingGoalArchiveDialog(
         dismissButton = {
             TextButton(
                 enabled = !state.isArchiving,
-                onClick = viewModel::dismissArchive,
+                onClick = { viewModel.showArchiveConfirmation(false) },
             ) {
                 Text(stringResource(R.string.common_cancel))
             }

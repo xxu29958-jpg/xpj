@@ -336,10 +336,12 @@
         <div class="eyebrow">日常账务</div>
         <h1 class="service-title" id="productTitle">桌面账本</h1>
         <div class="service-detail" id="productState">正在读取绑定状态</div>
+        <p class="service-detail" id="productFirstUseHelp" hidden>账本数据和原始附件保存在这台 Windows 电脑。拥有者可在本机获取自己的设备绑定码；家庭成员请从自己已绑定的设备授权新设备。首次加入家庭需使用邀请。</p>
       </div>
       <div class="service-actions product-actions">
         <span class="product-actions" id="productPairGroup" hidden>
-          <input type="text" id="pairingCodeInput" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" placeholder="安装器提供的 8 位码" aria-label="绑定此电脑的 8 位码">
+          <button class="button" id="desktopPairingCodeAction" type="button" disabled onclick="act('open_pairing', this)">获取拥有者绑定码</button>
+          <input type="text" id="pairingCodeInput" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" placeholder="8 位设备码" aria-label="绑定此电脑的 8 位码">
           <button class="button button-primary" id="pairAction" type="button" onclick="pairProduct()">绑定此电脑</button>
         </span>
         <span class="product-actions" id="productManageGroup" hidden>
@@ -387,7 +389,7 @@
         <div class="task-title">连接设备</div>
         <div class="task-state" id="connectState">服务正常后可以生成一次性绑定码。</div>
         <div class="task-actions">
-          <button class="button manager-action owner-action" id="androidAction" type="button" onclick="act('open_pairing', this)">设备绑定</button>
+          <button class="button manager-action owner-action" id="androidAction" type="button" disabled onclick="act('open_pairing', this)">设备绑定</button>
           <button class="button manager-action owner-action" id="iphoneAction" type="button" onclick="act('open_upload_links', this)">iPhone 上传</button>
           <button class="button manager-action owner-action" type="button" title="查看已连接设备" onclick="act('open_devices', this)">设备</button>
         </div>
@@ -560,9 +562,9 @@
       $("importExportAction").disabled = actionInFlight
         || !productAvailable
         || !Boolean(productSession && productSession.configured);
-      $("androidAction").disabled = actionInFlight || !productAvailable || s.android_binding_state !== "configured_unverified";
       $("iphoneAction").disabled = actionInFlight || !productAvailable || s.iphone_upload_state !== "configured_unverified";
       $("diagnosticExportAction").disabled = actionInFlight;
+      applyDesktopPairingAvailability();
       applyPublicConnectivityActionAvailability(hasStatus ? s.public_connectivity : null);
       document.querySelector("main").setAttribute("aria-busy", String(actionInFlight));
     }
@@ -688,7 +690,8 @@
 
     function isProductSessionPayload(payload) {
       if (!isPlainObject(payload) || typeof payload.configured !== "boolean") return false;
-      if (!payload.configured) return true;
+      if (!payload.configured) return payload.pairing_recovery === undefined
+        || payload.pairing_recovery === "original_code_required";
       return ["account_name", "ledger_id", "ledger_name", "device_name"]
         .every((key) => isNonEmptyText(payload[key]))
         && isProductRole(payload.role)
@@ -728,15 +731,26 @@
       return payload;
     }
 
+    function applyDesktopPairingAvailability() {
+      const disabled = actionInFlight || productBusy
+        || !Boolean(latestStatus && latestStatus.product_available)
+        || !productSession || productSessionReadFailed || productLedgersReadFailed
+        || productSession.pairing_recovery === "original_code_required";
+      for (const id of ["desktopPairingCodeAction", "androidAction"]) $(id).disabled = disabled;
+    }
+
     function renderProduct() {
       const configured = Boolean(productSession && productSession.configured);
       const available = Boolean(latestStatus && latestStatus.product_available);
-      const productReadFailed = productSessionReadFailed || (configured && productLedgersReadFailed);
       const liveRow = configured
         ? productLedgers.find((row) => row.ledger_id === productSession.ledger_id)
         : null;
       const membershipLost = configured && productLedgers.length > 0 && !liveRow;
-      const showManage = configured && !membershipLost;
+      const pending = productSession && productSession.pairing_recovery === "original_code_required";
+      const showManage = configured && !membershipLost && !pending;
+      const productReadFailed = productSessionReadFailed || (showManage && productLedgersReadFailed);
+      applyDesktopPairingAvailability();
+      $("productFirstUseHelp").hidden = showManage || productReadFailed;
       if (productReadFailed) {
         $("productHomeLink").hidden = true;
         $("productPairGroup").hidden = true;
@@ -756,18 +770,12 @@
       // The import/export entry opens the bound ledger's product page; without a
       // live binding it stays disabled so the card never offers a dead click.
       $("importExportAction").disabled = productBusy || !available || !showManage;
-      if (!configured) {
-        $("productState").textContent = available
-          ? "输入安装器提供的“绑定此电脑”码，连接桌面账本。"
-          : "服务正常后可以把这台电脑连接到账本。";
-        $("pairAction").disabled = productBusy || !available;
-        $("pairingCodeInput").disabled = productBusy || !available;
-        return;
-      }
-      if (membershipLost) {
-        // The bound ledger vanished from the account's memberships: the stored
-        // session is dead weight — offer the re-pair path, not a phantom role.
-        $("productState").textContent = "原绑定已失效，请使用新的绑定码重新连接。";
+      if (!showManage) {
+        $("productState").textContent = pending
+          ? "上次绑定结果尚未确认，请输入原绑定码继续。若原码已丢失，请等待几分钟，状态更新后再获取新码。"
+          : membershipLost ? "原绑定已失效，请使用新的绑定码重新连接。"
+            : available ? "获取自己的设备绑定码，连接这台电脑上的桌面账本。"
+              : "服务正常后可以把这台电脑连接到账本。";
         $("pairAction").disabled = productBusy || !available;
         $("pairingCodeInput").disabled = productBusy || !available;
         return;
@@ -875,11 +883,17 @@
     async function pairProduct() {
       const code = $("pairingCodeInput").value.trim();
       if (!/^\d{8}$/.test(code)) {
-        setMessage("productError", "请输入安装器提供的 8 位“绑定此电脑”码。");
+        setMessage("productError", "请输入 8 位设备绑定码。");
         return;
       }
       await productAction(async () => {
-        await productFetch("/api/product/pair", {method: "POST", body: JSON.stringify({pairing_code: code})});
+        try {
+          await productFetch("/api/product/pair", {method: "POST", body: JSON.stringify({pairing_code: code})});
+        } catch (error) {
+          // The Controller owns whether an unknown result can start a new attempt.
+          await loadProductSession();
+          throw error;
+        }
         $("pairingCodeInput").value = "";
       });
     }

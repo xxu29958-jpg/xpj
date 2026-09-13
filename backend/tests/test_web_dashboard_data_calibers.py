@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 from datetime import timedelta
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 from _web_overview_test_support import (
@@ -169,7 +170,8 @@ def test_recurring_candidate_count_excludes_formalized_merchants(
             "/api/expenses/manual",
             headers=identity.app_headers,
             json={
-                "amount_cents": 9900,
+                "client_ref": str(uuid4()),
+                "home_currency_code": "CNY", "amount_cents": 9900,
                 "merchant": "国家电网",
                 "category": "居家",
                 "expense_time": f"{target_month}-10T04:00:00Z",
@@ -180,7 +182,7 @@ def test_recurring_candidate_count_excludes_formalized_merchants(
     with SessionLocal() as db:
         assert unclaimed_recurring_candidate_count(db, tenant_id="owner") == 1
         db.add(
-            RecurringItem(
+            RecurringItem(home_currency_code="CNY",
                 tenant_id="owner",
                 merchant_key=normalize_merchant("国家电网"),
                 merchant_name="国家电网",
@@ -333,7 +335,7 @@ def test_dashboard_reports_card_list_matches_donut_caliber_on_zero_fraction_curr
         )
         # 数据层: amount_label / amount_major 同按 minor digits 投影 (donut 优先消费后者)。
         with SessionLocal() as db:
-            payload = web_common._dashboard_data_payload(db, "owner", include_trend=False)
+            payload = web_common._dashboard_data_payload(db, "owner")
         row = payload["category_share"][0]
         assert row["amount_major"] == 1234
         assert row["amount_major_text"] == "1234"

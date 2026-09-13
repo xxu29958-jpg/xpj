@@ -14,7 +14,7 @@ from app.config import get_settings
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import CsvImportBatch, CsvImportRow
-from app.schemas import CsvImportBatchResponse, CsvImportRowsResponse
+from app.schemas import CsvImportRowsResponse
 from app.services.csv_import_batch_service._common import (
     CREATE_BATCH_INSERT_CHUNK_SIZE,
     MAX_CSV_IMPORT_ROWS,
@@ -23,9 +23,11 @@ from app.services.csv_import_batch_service._csv_io import (
     _clean_file_name,
     _row_from_parsed,
 )
-from app.services.csv_import_batch_service._queries import get_csv_import_batch
-from app.services.currency_binding_service import resolve_write_capability
-from app.services.currency_common import home_currency_code
+from app.services.csv_import_batch_service._queries import (
+    build_csv_import_batch_response,
+    get_csv_import_batch,
+)
+from app.services.currency_binding_service import require_runtime_home_currency_code, resolve_write_capability
 from app.services.import_service import (
     ParsedRow,
     parse_csv_row,
@@ -182,7 +184,7 @@ def create_csv_import_batch(
 ) -> CsvImportBatch:
     max_bytes, max_cell_bytes, max_data_rows, chunk_size, timezone_name = _csv_import_limits()
     try:
-        parsed_home_currency = home_currency_code()
+        parsed_home_currency = require_runtime_home_currency_code(db)
         parsed_rows, total_rows, valid_rows, error_rows = _parse_csv_import_rows(
             file_obj,
             max_bytes=max_bytes,
@@ -237,7 +239,7 @@ def list_csv_import_rows(
         db.scalars(query.order_by(CsvImportRow.line_number.asc()).offset((page - 1) * page_size).limit(page_size))
     )
     return CsvImportRowsResponse(
-        batch=CsvImportBatchResponse.model_validate(batch),
+        batch=build_csv_import_batch_response(db, batch=batch),
         items=rows,
         page=page,
         page_size=page_size,

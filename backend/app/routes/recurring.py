@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_app_context, get_current_writer_context
+from app.auth import get_current_app_context, get_current_protocol_writer_context, get_current_writer_context
 from app.database import get_db
 from app.schemas import (
     RecurringCandidateConfirmRequest,
@@ -13,11 +13,14 @@ from app.schemas import (
     RecurringItemTokenRequest,
     RecurringItemUpdateRequest,
 )
+from app.schemas._recurring_occurrence import RecurringOccurrenceResponse, RecurringOccurrenceWriteRequest
 from app.services.recurring_candidate_confirmation_service import confirm_recurring_candidate
 from app.services.recurring_item_command_service import (
     create_manual_recurring_item,
     update_recurring_item,
 )
+from app.services.recurring_occurrence_command import set_occurrence_payment
+from app.services.recurring_occurrence_query import next_due_dates, occurrence_period, occurrence_response
 from app.services.recurring_service import (
     archive_recurring_item,
     get_recurring_item,
@@ -34,6 +37,37 @@ router = APIRouter(
     prefix="/api/recurring",
     tags=["recurring"],
 )
+
+
+def _response(db, item, anomaly=None):
+    dates = next_due_dates(db, tenant_id=item.tenant_id, items=[item])
+    return recurring_item_response(item, anomaly, next_due_date=dates[item.id])
+
+
+@router.get("/items/{public_id}/occurrences/{month}", response_model=RecurringOccurrenceResponse)
+def get_recurring_occurrence(
+    public_id: str,
+    month: str,
+    auth: AuthContext = Depends(get_current_app_context),
+    db: Session = Depends(get_db),
+) -> RecurringOccurrenceResponse:
+    item = get_recurring_item(db, tenant_id=auth.tenant_id, public_id=public_id)
+    return occurrence_response(db, item=item, period=occurrence_period(None if month == "current" else month))
+
+
+@router.put("/items/{public_id}/occurrences/{month}", response_model=RecurringOccurrenceResponse)
+def put_recurring_occurrence(
+    public_id: str,
+    month: str,
+    payload: RecurringOccurrenceWriteRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> RecurringOccurrenceResponse:
+    return set_occurrence_payment(
+        db, tenant_id=auth.tenant_id, public_id=public_id, month=month,
+        actor_account_id=auth.account_id, idempotency_key=idempotency_key, payload=payload,
+    )
 
 
 @router.get("/items", response_model=RecurringItemListResponse)
@@ -58,27 +92,28 @@ def get_recurring_items(
         month=month,
         timezone_name=timezone,
     )
-    return RecurringItemListResponse(
-        items=[recurring_item_response(item, anomalies.get(item.public_id)) for item in items]
-    )
+    dates = next_due_dates(db, tenant_id=auth.tenant_id, items=items)
+    return RecurringItemListResponse(items=[
+        recurring_item_response(item, anomalies.get(item.public_id), next_due_date=dates[item.id])
+        for item in items
+    ])
 
 
 @router.post("/items", response_model=RecurringItemResponse, status_code=201)
 def post_recurring_item(
     payload: RecurringItemCreateRequest,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    auth: AuthContext = Depends(get_current_writer_context),
+    auth: AuthContext = Depends(get_current_protocol_writer_context),
     db: Session = Depends(get_db),
 ) -> RecurringItemResponse:
-    return recurring_item_response(
-        create_manual_recurring_item(
-            db,
-            tenant_id=auth.tenant_id,
-            idempotency_key=idempotency_key,
-            merchant=payload.merchant,
-            baseline_amount_cents=payload.baseline_amount_cents,
-            next_expected_date=payload.next_expected_date,
-        )
+    return create_manual_recurring_item(
+        db,
+        tenant_id=auth.tenant_id,
+        idempotency_key=idempotency_key,
+        merchant=payload.merchant,
+        home_currency_code=payload.home_currency_code,
+        baseline_amount_cents=payload.baseline_amount_cents,
+        next_expected_date=payload.next_expected_date,
     )
 
 
@@ -86,7 +121,7 @@ def post_recurring_item(
 def post_recurring_from_candidate(
     payload: RecurringCandidateConfirmRequest,
     timezone: str | None = Query(default=None),
-    auth: AuthContext = Depends(get_current_writer_context),
+    auth: AuthContext = Depends(get_current_protocol_writer_context),
     db: Session = Depends(get_db),
 ) -> RecurringItemResponse:
     item = confirm_recurring_candidate(
@@ -95,7 +130,7 @@ def post_recurring_from_candidate(
         payload=payload,
         timezone_name=timezone,
     )
-    return recurring_item_response(item)
+    return _response(db, item)
 
 
 @router.get("/items/{public_id}", response_model=RecurringItemResponse)
@@ -114,7 +149,7 @@ def get_recurring_item_detail(
         month=month,
         timezone_name=timezone,
     )
-    return recurring_item_response(item, anomalies.get(item.public_id))
+    return _response(db, item, anomalies.get(item.public_id))
 
 
 @router.patch("/items/{public_id}", response_model=RecurringItemResponse)
@@ -122,23 +157,22 @@ def patch_recurring_item(
     public_id: str,
     payload: RecurringItemUpdateRequest,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    auth: AuthContext = Depends(get_current_writer_context),
+    auth: AuthContext = Depends(get_current_protocol_writer_context),
     db: Session = Depends(get_db),
 ) -> RecurringItemResponse:
-    return recurring_item_response(
-        update_recurring_item(
-            db,
-            tenant_id=auth.tenant_id,
-            public_id=public_id,
-            idempotency_key=idempotency_key,
-            expected_row_version=payload.expected_row_version,
-            merchant=payload.merchant,
-            merchant_provided="merchant" in payload.model_fields_set,
-            baseline_amount_cents=payload.baseline_amount_cents,
-            baseline_provided="baseline_amount_cents" in payload.model_fields_set,
-            next_expected_date=payload.next_expected_date,
-            next_expected_date_provided="next_expected_date" in payload.model_fields_set,
-        )
+    return update_recurring_item(
+        db,
+        tenant_id=auth.tenant_id,
+        public_id=public_id,
+        idempotency_key=idempotency_key,
+        expected_row_version=payload.expected_row_version,
+        home_currency_code=payload.home_currency_code,
+        merchant=payload.merchant,
+        merchant_provided="merchant" in payload.model_fields_set,
+        baseline_amount_cents=payload.baseline_amount_cents,
+        baseline_provided="baseline_amount_cents" in payload.model_fields_set,
+        next_expected_date=payload.next_expected_date,
+        next_expected_date_provided="next_expected_date" in payload.model_fields_set,
     )
 
 
@@ -149,7 +183,7 @@ def post_recurring_pause(
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> RecurringItemResponse:
-    return recurring_item_response(pause_recurring_item(
+    return _response(db, pause_recurring_item(
         db,
         tenant_id=auth.tenant_id,
         public_id=public_id,
@@ -164,7 +198,7 @@ def post_recurring_resume(
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> RecurringItemResponse:
-    return recurring_item_response(resume_recurring_item(
+    return _response(db, resume_recurring_item(
         db,
         tenant_id=auth.tenant_id,
         public_id=public_id,
@@ -178,7 +212,7 @@ def post_recurring_archive(
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> RecurringItemResponse:
-    return recurring_item_response(archive_recurring_item(db, tenant_id=auth.tenant_id, public_id=public_id))
+    return _response(db, archive_recurring_item(db, tenant_id=auth.tenant_id, public_id=public_id))
 
 
 @router.post("/items/{public_id}/restore", response_model=RecurringItemResponse)
@@ -190,7 +224,7 @@ def post_recurring_restore(
 ) -> RecurringItemResponse:
     # ADR-0051 recycle-bin restore: OCC-gated reactivate (stale token → 409),
     # mirror of the pause/resume toggle. Archive stays keyless (one-way).
-    return recurring_item_response(restore_recurring_item(
+    return _response(db, restore_recurring_item(
         db,
         tenant_id=auth.tenant_id,
         public_id=public_id,

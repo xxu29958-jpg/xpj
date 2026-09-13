@@ -50,7 +50,7 @@ OR
 
 
 class InstallationCurrencyBinding(Base):
-    """The one persisted interpretation for every installation money integer."""
+    """Default currency for new work and reports; each money fact owns its recorded currency."""
 
     __tablename__ = "installation_currency_bindings"
     __table_args__ = (
@@ -146,7 +146,7 @@ class InstallationCurrencyAuditLog(Base):
     __tablename__ = "installation_currency_audit_log"
     __table_args__ = (
         CheckConstraint(
-            "action IN ('FIRST_FACT_CLAIM', 'OWNER_ADOPTION')",
+            "action IN ('FIRST_FACT_CLAIM', 'OWNER_ADOPTION', 'OWNER_DEFAULT_CHANGE')",
             name="ck_installation_currency_audit_action",
         ),
         CheckConstraint(

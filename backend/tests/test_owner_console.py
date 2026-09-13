@@ -16,6 +16,7 @@ import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -1119,7 +1120,8 @@ def test_owner_dashboard_budget_status_uses_primary_visible_ledger(
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
-            "amount_cents": 12000,
+            "client_ref": str(uuid4()),
+            "home_currency_code": "CNY", "amount_cents": 12000,
             "merchant": "预算状态餐饮",
             "category": "餐饮",
             "expense_time": f"{month}-05T12:00:00Z",
@@ -1128,8 +1130,8 @@ def test_owner_dashboard_budget_status_uses_primary_visible_ledger(
     assert created.status_code == 200, created.json()
     budget = local_client.put(
         f"/api/budgets/monthly/{month}?timezone=Asia/Shanghai",
-        headers=identity.app_headers,
-        json={
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "CNY", "expected_row_version": None,
             "total_amount_cents": 100000,
             "category_budgets": [{"category": "餐饮", "amount_cents": 10000}],
         },
@@ -1170,7 +1172,7 @@ def test_owner_dashboard_budget_status_hides_external_ledger_budget(
         )
         db.flush()
         db.add(
-            Budget(
+            Budget(home_currency_code="CNY",
                 tenant_id="external_budget_status",
                 month=month,
                 total_amount_cents=999999,
@@ -1395,39 +1397,6 @@ def test_owner_console_remote_peer_rejected() -> None:
         require_owner_console_local(_FakeRequest("203.0.113.5", "127.0.0.1:8000"))
     with pytest.raises(AppError):
         require_owner_console_local(_FakeRequest("testclient", "testserver"))
-
-
-def test_admin_boundary_local_allowed() -> None:
-    from app.network_boundary import require_admin_network_boundary
-
-    require_admin_network_boundary(_FakeRequest("127.0.0.1", "127.0.0.1:8000"))
-
-
-def test_admin_boundary_public_host_rejected_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app import network_boundary
-    from app.errors import AppError
-
-    # Defensive: ensure the public-allow flag is not enabled by env leakage.
-    monkeypatch.setenv("ALLOW_PUBLIC_ADMIN_API", "false")
-    network_boundary.get_settings.cache_clear()  # type: ignore[attr-defined]
-    try:
-        with pytest.raises(AppError) as excinfo:
-            network_boundary.require_admin_network_boundary(_FakeRequest("127.0.0.1", "api.zen70.cn"))
-        assert excinfo.value.status_code == 403
-    finally:
-        network_boundary.get_settings.cache_clear()  # type: ignore[attr-defined]
-
-
-def test_admin_boundary_public_host_allowed_when_flag_true(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app import network_boundary
-
-    monkeypatch.setenv("ALLOW_PUBLIC_ADMIN_API", "true")
-    network_boundary.get_settings.cache_clear()  # type: ignore[attr-defined]
-    try:
-        network_boundary.require_admin_network_boundary(_FakeRequest("127.0.0.1", "api.zen70.cn"))
-    finally:
-        monkeypatch.setenv("ALLOW_PUBLIC_ADMIN_API", "false")
-        network_boundary.get_settings.cache_clear()  # type: ignore[attr-defined]
 
 
 # ── PUBLIC_BASE_URL origin-only validation ───────────────────────────────────

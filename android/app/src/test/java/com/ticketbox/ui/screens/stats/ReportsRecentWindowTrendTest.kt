@@ -96,7 +96,7 @@ class ReportsRecentWindowTrendTest {
         month = month,
         timezone = "Asia/Shanghai",
         granularity = granularity,
-        totalAmountCents = trend.sumOf { it.amountCents.coerceAtLeast(0L) },
+        totalAmountCents = if (trend.any { it.amountCents == null }) null else trend.sumOf { requireNotNull(it.amountCents).coerceAtLeast(0L) },
         count = trend.sumOf { it.count.coerceAtLeast(0) },
         previousMonth = "2026-04",
         previousTotalAmountCents = 0L,
@@ -111,5 +111,6 @@ class ReportsRecentWindowTrendTest {
         trend = trend,
         merchantRanking = emptyList(),
         categoryComparison = emptyList(),
-    )
+        homeCurrencyCode = "CNY",
+)
 }

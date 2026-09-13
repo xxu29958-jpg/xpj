@@ -9,6 +9,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.navigation
 import com.ticketbox.R
@@ -55,6 +57,7 @@ internal const val TRANSACTIONS_LIBRARY_CATEGORIES_ROUTE = "$TRANSACTIONS_LIBRAR
 internal const val TRANSACTIONS_LIBRARY_MERCHANTS_ROUTE = "$TRANSACTIONS_LIBRARY_ROUTE/merchants"
 internal const val TRANSACTIONS_LIBRARY_TAGS_ROUTE = "$TRANSACTIONS_LIBRARY_ROUTE/tags"
 internal const val TRANSACTIONS_LIBRARY_RULES_ROUTE = "$TRANSACTIONS_LIBRARY_ROUTE/rules"
+internal fun categoryRuleSubmissionRoute(id: Long): String = "$TRANSACTIONS_LIBRARY_RULES_ROUTE?submission=$id"
 internal const val TRANSACTIONS_LIBRARY_RECYCLE_BIN_ROUTE = "$TRANSACTIONS_LIBRARY_ROUTE/recycle-bin"
 
 /**
@@ -105,12 +108,15 @@ internal fun NavGraphBuilder.transactionsLibraryGraph(
                 onVocabularyChanged = onVocabularyChanged,
             )
         }
-        composable(TRANSACTIONS_LIBRARY_RULES_ROUTE) {
+        composable("$TRANSACTIONS_LIBRARY_RULES_ROUTE?submission={submission}", arguments = listOf(
+            navArgument("submission") { type = NavType.StringType; nullable = true; defaultValue = null },
+        )) { entry ->
             CategoryRulesLibraryRoute(
                 navController = navController,
                 screenFactory = screenFactory,
                 onVocabularyChanged = onVocabularyChanged,
                 onTransactionRowsChanged = onTransactionRowsChanged,
+                originalSubmissionId = entry.arguments?.getString("submission")?.toLongOrNull(),
             )
         }
         composable(TRANSACTIONS_LIBRARY_RECYCLE_BIN_ROUTE) {
@@ -205,14 +211,13 @@ private fun CategoryRulesLibraryRoute(
     screenFactory: MainScreenFactory,
     onVocabularyChanged: () -> Unit,
     onTransactionRowsChanged: () -> Unit,
+    originalSubmissionId: Long?,
 ) {
     val viewModel: CategoryRulesViewModel = viewModel(
-        key = transactionsLibraryViewModelKey(
-            "category-rules",
-            screenFactory.ledgerRepository.activeLedgerId(),
-        ),
+        key = transactionsLibraryViewModelKey("category-rules", screenFactory.ledgerRepository.activeLedgerId()),
         factory = screenFactory.categoryRulesViewModelFactory,
     )
+    LaunchedEffect(viewModel, originalSubmissionId) { originalSubmissionId?.let(viewModel::openSubmission) }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     ReportSuccessfulLibraryWrites(viewModel.uiState, onVocabularyChanged) { it.changedRevision }
     ReportSuccessfulLibraryWrites(viewModel.uiState, onTransactionRowsChanged) { it.applicationRevision }
@@ -224,7 +229,7 @@ private fun CategoryRulesLibraryRoute(
             ),
             interaction = CategoryRulesInteractionState(
                 busy = state.busy,
-                readOnly = !screenFactory.repository.canModifyLedger(),
+                readOnly = !state.canModify,
             ),
             status = CategoryRulesStatusState(
                 message = state.message,
@@ -236,6 +241,8 @@ private fun CategoryRulesLibraryRoute(
                 confirmedPreview = state.confirmedRulesPreview,
             ),
             undoableRule = state.undoableRule,
+            submissions = state.pendingSubmissions, selectedSubmissionId = state.selectedSubmissionId,
+            submittedRevision = state.submittedRevision, binding = state.binding,
         ),
         actions = CategoryRulesScreenActions(
             onBack = navController::popBackStack,
@@ -244,6 +251,7 @@ private fun CategoryRulesLibraryRoute(
                 onUpdate = viewModel::updateCategoryRule,
                 onToggle = viewModel::toggleCategoryRule,
                 onDelete = viewModel::deleteCategoryRule,
+                onRecoverSubmission = viewModel::recoverSubmission,
             ),
             applications = CategoryRulesApplicationActions(
                 onPreviewApplyConfirmedRules = viewModel::previewApplyConfirmedRules,

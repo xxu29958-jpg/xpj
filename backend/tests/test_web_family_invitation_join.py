@@ -28,6 +28,10 @@ def _csrf(html: str) -> str:
     return match.group(1)
 
 
+def _hidden_fields(html: str) -> dict[str, str]:
+    return dict(re.findall(r'<input type="hidden" name="([^"]+)" value="([^"]*)"', html))
+
+
 def test_public_native_form_previews_invitation_without_consuming_it() -> None:
     _, invite_token = _mint_foreign_ledger_invitation(role="viewer")
     browser = public_client()
@@ -114,6 +118,7 @@ def test_new_browser_identity_accepts_then_reviews_the_joined_family() -> None:
     accepted = browser.post(
         "/web/auth/join/accept",
         data={
+            **_hidden_fields(preview.text),
             "csrf_token": _csrf(preview.text),
             "invite_token": invite_token,
             "account_name": "阿青",
@@ -201,7 +206,7 @@ def test_existing_browser_identity_joins_after_old_membership_is_disabled(
     assert browser.cookies.get(PAIRING_ATTEMPT_COOKIE_NAME) is None
     accepted = browser.post(
         "/web/auth/join/accept",
-        data={"csrf_token": _csrf(preview.text), "invite_token": invite_token},
+        data=_hidden_fields(preview.text),
         headers={"Origin": f"https://{PUBLIC_HOST}"},
         follow_redirects=False,
     )
@@ -238,6 +243,7 @@ def test_blank_new_identity_name_keeps_the_invitation_form_recoverable() -> None
     rejected = browser.post(
         "/web/auth/join/accept",
         data={
+            **_hidden_fields(preview.text),
             "csrf_token": _csrf(preview.text),
             "invite_token": invite_token,
             "account_name": "   ",
@@ -261,6 +267,7 @@ def test_blank_new_identity_name_keeps_the_invitation_form_recoverable() -> None
     corrected = browser.post(
         "/web/auth/join/accept",
         data={
+            **_hidden_fields(rejected.text),
             "csrf_token": _csrf(rejected.text),
             "invite_token": invite_token,
             "account_name": "阿青",
@@ -290,6 +297,7 @@ def test_invalid_browser_cookie_cannot_silently_create_a_new_identity() -> None:
     rejected = browser.post(
         "/web/auth/join/accept",
         data={
+            **_hidden_fields(preview.text),
             "csrf_token": _csrf(preview.text),
             "invite_token": invite_token,
             "account_name": "不应创建的身份",
@@ -342,6 +350,7 @@ def test_two_preview_tabs_keep_their_own_invitation_target() -> None:
     first_accept = browser.post(
         "/web/auth/join/accept",
         data={
+            **_hidden_fields(first_preview.text),
             "csrf_token": _csrf(first_preview.text),
             "invite_token": first_token,
             "account_name": "双标签成员",
@@ -355,6 +364,7 @@ def test_two_preview_tabs_keep_their_own_invitation_target() -> None:
     second_accept = browser.post(
         "/web/auth/join/accept",
         data={
+            **_hidden_fields(second_preview.text),
             "csrf_token": _csrf(second_preview.text),
             "invite_token": second_token,
             "account_name": "不应成为第二身份",
@@ -403,6 +413,7 @@ def test_lost_first_accept_response_recovers_with_the_same_enrollment_proof() ->
             path=cookie.path,
         )
     form = {
+        **_hidden_fields(preview.text),
         "csrf_token": _csrf(preview.text),
         "invite_token": invite_token,
         "account_name": "断线后恢复",

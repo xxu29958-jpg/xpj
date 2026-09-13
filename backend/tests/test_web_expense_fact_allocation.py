@@ -7,6 +7,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from app.routes._web_expense_fact import _timeline_changes
+from tests._web_native_form_support import hidden_post_forms
 from tests.web_expense_fact_test_support import create_confirmed, owner_member_id
 
 
@@ -16,15 +17,16 @@ def test_split_timeline_prioritizes_changed_allocation_over_unchanged_line_count
             "change_kind": "correction",
             "changed_fields": ["splits"],
             "before": {
+                "home_currency_code": "CNY",
                 "amount_cents": 1_200,
                 "splits": [{"member_id": 7, "amount_cents": 1_200}],
             },
             "after": {
+                "home_currency_code": "CNY",
                 "amount_cents": 1_200,
                 "splits": [{"member_id": 7, "amount_cents": 1_100}],
             },
         },
-        "CNY",
         member_names={7: "我"},
     )
 
@@ -60,6 +62,9 @@ def test_amount_correction_rejects_overallocation_in_split_fold_and_timeline_sho
     )
     assert seeded.status_code == 201, seeded.text
     split = web_client.get(f"/api/expenses/{expense_id}/splits", headers=identity.app_headers).json()["splits"][0]
+    form = web_client.get(f"/web/expenses/{expense_id}/correct?ledger_id=owner")
+    assert form.status_code == 200, form.text
+    key = hidden_post_forms(form.text)[f"/web/expenses/{expense_id}/corrections"]["idempotency_key"]
 
     rejected = web_client.post(
         f"/web/expenses/{expense_id}/corrections",
@@ -68,6 +73,7 @@ def test_amount_correction_rejects_overallocation_in_split_fold_and_timeline_sho
             "reason": "账单金额应更低",
             "amount_yuan": "10.00",
             "expected_row_version": str(seeded.json()["expense"]["row_version"]),
+            "idempotency_key": key,
             "split_public_id": [split["public_id"]],
             "split_member_id": [str(member_id)],
             "split_amount_yuan": ["12.34"],
@@ -87,6 +93,7 @@ def test_amount_correction_rejects_overallocation_in_split_fold_and_timeline_sho
             "reason": "账单金额应更高",
             "amount_yuan": "13.34",
             "expected_row_version": str(seeded.json()["expense"]["row_version"]),
+            "idempotency_key": key,
             "split_public_id": [split["public_id"]],
             "split_member_id": [str(member_id)],
             "split_amount_yuan": ["12.34"],

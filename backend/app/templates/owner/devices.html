@@ -1,14 +1,6 @@
 {% extends "base.html" %}
 {% block title %}设备管理 — 小票夹{% endblock %}
-{% block content %}
-<h1>设备管理</h1>
-<details class="page-help">
-  <summary>这是什么</summary>
-  <p>这里列出绑定到本机账号的所有手机。换了手机、想让某台旧手机退出，或要给设备改个看得懂的名字时进来；停用后那台手机会立即退出登录。</p>
-</details>
-
-<div class="card">
-  {% if devices %}
+{% macro device_table(rows, ended_session=false) %}
   <table>
     <thead>
       <tr>
@@ -23,7 +15,7 @@
       </tr>
     </thead>
     <tbody>
-    {% for d in devices %}
+    {% for d in rows %}
       <tr>
         <td>{{ d.device_name }}</td>
         <td>{{ d.platform }}</td>
@@ -34,6 +26,10 @@
         <td>
           {% if d.revoked_at %}
             <span class="badge badge-off">已停用</span>
+          {% elif ended_session %}
+            <span class="badge badge-off">会话已结束</span>
+          {% elif d.platform == 'web' %}
+            <span class="badge badge-ok">会话有效</span>
           {% else %}
             <span class="badge badge-ok">正常</span>
           {% endif %}
@@ -42,7 +38,7 @@
           <div class="actions">
             {% if not d.revoked_at %}
             <form class="inline" method="post" action="/owner/devices/{{ d.public_id }}/revoke"
-                  data-confirm="确认停用设备「{{ d.device_name }}」？停用后该设备所有 token 将失效。">
+                  data-confirm="确认停用设备「{{ d.device_name }}」？停用后该设备的登录和上传入口将失效。">
               <button type="submit" class="btn btn-danger">停用</button>
             </form>
             <form class="inline" method="post" action="/owner/devices/{{ d.public_id }}/rename">
@@ -53,7 +49,7 @@
               </div>
             </form>
             {% else %}
-            <a class="btn btn-secondary" href="/owner/pairing?recovery_device={{ d.public_id }}">恢复/替换</a>
+            {% if d.platform != 'web' %}<a class="btn btn-secondary" href="/owner/pairing?recovery_device={{ d.public_id }}">恢复/替换</a>{% endif %}
             <form class="inline" method="post" action="/owner/devices/{{ d.public_id }}/delete"
                   data-confirm="确认从列表移除设备「{{ d.device_name }}」？将永久移除该设备及其历史 token / 上传链接记录，账单数据保留。">
               <button type="submit" class="btn btn-danger">移除记录</button>
@@ -65,10 +61,29 @@
     {% endfor %}
     </tbody>
   </table>
+{% endmacro %}
+{% block content %}
+<h1>设备管理</h1>
+<details class="page-help">
+  <summary>这是什么</summary>
+  <p>管理这个账号的手机和浏览器。停用设备会撤销它的登录和上传入口；浏览器退出或会话到期后，记录保留在历史中，不再计入已连接设备。</p>
+</details>
+
+<div class="card">
+  {% if devices %}
+    {{ device_table(devices) }}
   {% else %}
-    <p class="empty-note">暂无设备。使用绑定码绑定 Android 设备后显示在此处。</p>
+    <p class="empty-note">暂无设备。手机绑定或浏览器确认身份后显示在此处。</p>
   {% endif %}
 </div>
+
+{% if ended_browser_sessions %}
+<details class="card" id="browser-session-history">
+  <summary>已结束的浏览器会话 · {{ ended_browser_sessions|length }} 条</summary>
+  <p class="text-meta">这些浏览器已退出、到期或被停用。重新确认身份会建立新会话，历史设备记录用于保留操作归属。</p>
+  {{ device_table(ended_browser_sessions, true) }}
+</details>
+{% endif %}
 
 <div class="card">
   <h2>添加设备</h2>

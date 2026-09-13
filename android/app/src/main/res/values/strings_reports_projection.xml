@@ -1,0 +1,22 @@
+<resources>
+    <string name="reports_amount_unavailable">暂不可计算</string>
+    <string name="reports_projection_incomplete">换算依据尚未齐全，金额、占比和金额排名暂不展示；笔数仍可查看。</string>
+    <string name="reports_currency">报告币种：%1$s</string>
+    <string name="reports_repair_rates">补齐或纠正汇率</string>
+    <string name="reports_export">导出当前报告 CSV</string>
+    <string name="reports_exporting">正在准备报告…</string>
+    <string name="reports_export_failed">报告未能保存，请重试。当前月份与筛选条件已保留。</string>
+    <string name="reports_export_saved">报告已保存。</string>
+    <string name="reports_export_cancelled">已取消保存报告。</string>
+    <string name="reports_comparison_unavailable">换算依据不全，暂不能比较</string>
+    <string name="reports_trend_unavailable">部分日期金额尚不能换算，补齐后再查看趋势和占比。</string>
+    <string name="reports_categories_unavailable">分类金额尚不能完整比较，以下仅列原分类与已确认金额。</string>
+    <string name="reports_month_granularity">按月</string>
+    <string name="reports_merchant_category">商家排名的分类</string>
+    <string name="reports_all_categories">全部分类</string>
+    <string name="reports_no_merchants">当前范围没有可展示的商家排名。</string>
+    <string name="reports_rate_gap">%1$s → %2$s · %3$s · 补汇率</string>
+    <string name="reports_unknown_fact">部分原记录缺少币种或日期，请先核对原记录；不能用汇率补成确定金额。</string>
+    <string name="reports_binding_changed">连接或账本已切换，请回原报告重新打开汇率。</string>
+    <string name="reports_category_confirmed">%1$s · %2$s · %3$d 笔</string>
+</resources>

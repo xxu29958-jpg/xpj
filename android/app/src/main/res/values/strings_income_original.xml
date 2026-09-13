@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="income_plan_submission_saved">原收入提交已保存在本机，可在下方查看同步结果。</string>
+    <string name="income_plan_submission_done">原收入提交已获服务器确认。</string>
+    <string name="income_plan_submission_review">原收入提交结果待核对。旧记录没有可验证的服务器回执，请刷新核对当前计划；原提交不会自动重试。</string>
+    <string name="income_plan_submission_stop_record">移除本机记录</string>
+    <string name="income_plan_submission_stop_record_explanation">仅移除这条本机保留记录，不会撤销服务器可能已接受的收入计划。请先刷新核对当前计划，再决定是否重新编辑。</string>
+    <string name="income_plan_submission_details">查看原提交详情</string>
+    <string name="income_plan_submission_key">原提交标识：%1$s</string>
+    <string name="income_plan_submission_version">原计划版本：%1$d</string>
+    <string name="income_plan_submission_pay_day">预计日期：%1$d 日</string>
+</resources>

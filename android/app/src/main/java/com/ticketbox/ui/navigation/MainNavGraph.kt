@@ -59,6 +59,7 @@ import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.toAppAdaptiveLayoutPolicy
 import com.ticketbox.ui.design.toAppAdaptivePaneDirective
 import com.ticketbox.ui.design.toAppPostureSafeHingeBounds
+import kotlinx.coroutines.flow.collect
 
 internal data class MainNavigationRuntime(
     val navController: NavHostController,
@@ -87,6 +88,14 @@ internal fun MainNavGraph(
     preferenceControls: SettingsPreferenceControls,
     onBindingCleared: () -> Unit,
 ) {
+    val outbox = runtime.screenFactory.outboxRepository
+    val shell = runtime.shellState
+    // Keep acceptance observable while an outer fact/submission page covers the product graph.
+    LaunchedEffect(outbox, shell) {
+        outbox.acceptedReplayRevision.collect { revision ->
+            if (revision > 0L) shell.markFinancialDataChanged()
+        }
+    }
     NavHost(
         navController = runtime.navController,
         startDestination = MAIN_ROUTE,
@@ -100,6 +109,8 @@ internal fun MainNavGraph(
                 onBindingCleared = onBindingCleared,
             )
         }
+        addManualExpenseSubmissionRoute(runtime)
+        addCorrectionRateRoute(runtime.screenFactory) { runtime.navController.popBackStack() }
         composable(
             route = EXPENSE_ROUTE,
             arguments = listOf(navArgument(EXPENSE_ID_ARG) { type = NavType.LongType }),
@@ -124,10 +135,10 @@ internal fun MainNavGraph(
                     }
                     runtime.navController.popBackStack()
                 },
-                onOpenRepaymentDrafts = { draftPublicId ->
+                related = ExpenseFactNavigation(onOpenRepaymentDrafts = { draftPublicId ->
                     runtime.shellState.openRepaymentDrafts(draftPublicId)
                     runtime.navController.popBackStack()
-                },
+                }, onRepairRate = { binding, gap -> runtime.navController.navigate(correctionRateRoute(binding, gap)) }),
             )
         }
     }
@@ -322,6 +333,7 @@ private fun MainProductNavHost(
         addPlanRoutes(dependencies)
         addInsightsRoutes(dependencies)
         addTransactionRoutes(dependencies)
+        addCorrectionRateRoute(runtime.screenFactory) { navController.popBackStack() }
         addObligationRoutes(dependencies)
     }
 }

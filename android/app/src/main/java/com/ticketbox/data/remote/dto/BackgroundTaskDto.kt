@@ -37,6 +37,8 @@ data class BackgroundTaskDto(
     val lastProgressAt: String? = null,
     @param:Json(name = "cancellation_requested_at")
     val cancellationRequestedAt: String? = null,
+    @param:Json(name = "source_expense_id")
+    val sourceExpenseId: Long? = null,
 )
 
 data class BackgroundTaskListResponseDto(

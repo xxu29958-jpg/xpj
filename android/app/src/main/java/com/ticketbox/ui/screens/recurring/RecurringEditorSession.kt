@@ -58,6 +58,7 @@ internal class RecurringInteractionStates(
 internal class RecurringEditorSession internal constructor(
     private val draft: RecurringDraftStates,
     private val interaction: RecurringInteractionStates,
+    val homeCurrencyCode: String?,
 ) {
     var editing by draft.editing
     var merchant by draft.merchant
@@ -68,7 +69,9 @@ internal class RecurringEditorSession internal constructor(
     var submitUi by interaction.submitUi
     var rebaseUi by interaction.rebaseUi
 
-    fun applyRebase(rebase: RecurringEditorRebase, attemptId: Long, currency: CurrencyCode) {
+    fun applyRebase(rebase: RecurringEditorRebase, attemptId: Long) {
+        val currency = CurrencyCode.fromStorageKeyOrNull(homeCurrencyCode) ?: return
+        if (rebase.baseline.homeCurrencyCode != homeCurrencyCode) return
         merchant = rebase.merchant
         amountText = formatAmountInput(rebase.baselineAmountCents, currency)
         dateIso = rebase.nextExpectedDate
@@ -79,15 +82,24 @@ internal class RecurringEditorSession internal constructor(
 
     fun submit(
         actions: RecurringItemActions,
-        currency: CurrencyCode,
         merchantError: String,
         amountError: String,
+        currencyError: String,
         onDismiss: () -> Unit,
     ) {
+        val currency = CurrencyCode.fromStorageKeyOrNull(homeCurrencyCode)
+        if (currency == null) {
+            submitUi = RecurringSubmitUi(error = currencyError)
+            return
+        }
         val input = RecurringFormInput(merchant, amountText, dateTouched, dateIso)
         when (val result = resolveRecurringFormSubmit(editing, input, currency)) {
             is RecurringFormSubmit.Invalid -> submitUi = RecurringSubmitUi(
-                error = if (result.reason == RecurringFormInvalid.Merchant) merchantError else amountError,
+                error = when (result.reason) {
+                    RecurringFormInvalid.Merchant -> merchantError
+                    RecurringFormInvalid.Amount -> amountError
+                    RecurringFormInvalid.Currency -> currencyError
+                },
             )
             RecurringFormSubmit.DismissUnchanged -> onDismiss()
             is RecurringFormSubmit.Create -> startAttempt(actions.onCreate(result.draft))
@@ -104,11 +116,17 @@ internal fun newRecurringEditorSession(
     baseline: RecurringItem?,
     currency: CurrencyCode,
 ): RecurringEditorSession {
+    val home = if (baseline == null) currency.storageKey else baseline.homeCurrencyCode
+    val recordedCurrency = CurrencyCode.fromStorageKeyOrNull(home)
     val draft = RecurringDraftStates(
         editing = mutableStateOf(baseline),
         merchant = mutableStateOf(baseline?.merchant.orEmpty()),
         amountText = mutableStateOf(
-            baseline?.let { formatAmountInput(it.baselineAmountCents, currency) } ?: "",
+            if (baseline != null && recordedCurrency != null) {
+                formatAmountInput(baseline.baselineAmountCents, recordedCurrency)
+            } else {
+                baseline?.baselineAmountCents?.toString().orEmpty()
+            },
         ),
         dateIso = mutableStateOf(baseline?.nextExpectedDate ?: recurringDefaultNextDate()),
         dateTouched = mutableStateOf(false),
@@ -118,7 +136,7 @@ internal fun newRecurringEditorSession(
         submitUi = mutableStateOf(RecurringSubmitUi()),
         rebaseUi = mutableStateOf(null),
     )
-    return RecurringEditorSession(draft, interaction)
+    return RecurringEditorSession(draft, interaction, home)
 }
 
 internal data class RecurringEditorOwnerState(

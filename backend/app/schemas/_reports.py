@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from app.schemas._budget_advisor import ProjectionGapDto
 from app.schemas._expense import ExpenseResponse
 from app.schemas._money import SignedMoneyAggregate
 
@@ -25,43 +26,45 @@ __all__ = [
 class ReportTrendPointResponse(BaseModel):
     bucket: str
     label: str
-    amount_cents: SignedMoneyAggregate
+    amount_cents: SignedMoneyAggregate | None
     count: int
 
 
 class ReportMerchantRankingResponse(BaseModel):
     merchant: str
-    amount_cents: SignedMoneyAggregate
+    amount_cents: SignedMoneyAggregate | None
     count: int
 
 
 class ReportCategoryComparisonResponse(BaseModel):
     category: str
-    amount_cents: SignedMoneyAggregate
+    amount_cents: SignedMoneyAggregate | None
     count: int
-    previous_amount_cents: SignedMoneyAggregate
+    previous_amount_cents: SignedMoneyAggregate | None
     previous_count: int
-    delta_amount_cents: SignedMoneyAggregate
+    delta_amount_cents: SignedMoneyAggregate | None
     delta_count: int
-    year_over_year_amount_cents: SignedMoneyAggregate
+    year_over_year_amount_cents: SignedMoneyAggregate | None
     year_over_year_count: int
-    year_over_year_delta_amount_cents: SignedMoneyAggregate
+    year_over_year_delta_amount_cents: SignedMoneyAggregate | None
     year_over_year_delta_count: int
 
 
 class ReportsOverviewResponse(BaseModel):
     month: str
+    home_currency_code: str
+    missing_rates: list[ProjectionGapDto]
     timezone: str
     granularity: str
-    total_amount_cents: SignedMoneyAggregate
+    total_amount_cents: SignedMoneyAggregate | None
     count: int
     previous_month: str
-    previous_total_amount_cents: SignedMoneyAggregate
+    previous_total_amount_cents: SignedMoneyAggregate | None
     previous_count: int
     year_over_year_month: str
-    year_over_year_total_amount_cents: SignedMoneyAggregate
+    year_over_year_total_amount_cents: SignedMoneyAggregate | None
     year_over_year_count: int
-    year_over_year_delta_amount_cents: SignedMoneyAggregate
+    year_over_year_delta_amount_cents: SignedMoneyAggregate | None
     year_over_year_delta_count: int
     merchant_category: str | None = None
     ranking_metric: str
@@ -73,15 +76,17 @@ class ReportsOverviewResponse(BaseModel):
 class LifestyleFrequentMerchantResponse(BaseModel):
     merchant: str
     count: int
-    amount_cents: SignedMoneyAggregate
+    amount_cents: SignedMoneyAggregate | None
 
 
 class LifestyleStatsResponse(BaseModel):
     month: str
-    ai_subscription_amount_cents: SignedMoneyAggregate
-    digital_amount_cents: SignedMoneyAggregate
+    home_currency_code: str
+    missing_rates: list[ProjectionGapDto]
+    ai_subscription_amount_cents: SignedMoneyAggregate | None
+    digital_amount_cents: SignedMoneyAggregate | None
     max_expense: ExpenseResponse | None
-    recent_7_days_amount_cents: SignedMoneyAggregate
+    recent_7_days_amount_cents: SignedMoneyAggregate | None
     frequent_merchants: list[LifestyleFrequentMerchantResponse]
     best_value_expenses: list[ExpenseResponse] = Field(default_factory=list)
     most_regretted_expenses: list[ExpenseResponse] = Field(default_factory=list)

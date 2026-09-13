@@ -17,6 +17,7 @@ data class IncomePlan(
     val updatedAt: String,
     val rowVersion: Long,
     val archivedAt: String?,
+    val homeCurrencyCode: String? = null,
 ) {
     val isActive: Boolean get() = status == IncomePlanStatus.ACTIVE
     val isArchived: Boolean get() = status == IncomePlanStatus.ARCHIVED

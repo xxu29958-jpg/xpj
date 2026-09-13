@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -14,7 +16,8 @@ def create_confirmed(client: TestClient, *, identity, merchant: str = "测试商
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
-            "amount_cents": 1234,
+            "client_ref": str(uuid4()),
+            "home_currency_code": "CNY", "amount_cents": 1234,
             "merchant": merchant,
             "category": "餐饮",
             "expense_time": "2026-05-04T12:00:00Z",

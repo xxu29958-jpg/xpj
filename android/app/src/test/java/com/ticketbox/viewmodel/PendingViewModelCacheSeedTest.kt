@@ -24,7 +24,7 @@ internal class PendingViewModelCacheSeedTest : PendingViewModelReviewTestBase() 
         fake.cachedPending = listOf(expense(id = 1L, merchant = "Cached"))
         fake.fetchPendingResponder = { networkResponse.await() }
 
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         runCurrent()
 
         // 种子已铺：列表先显示缓存行，loading 仍 true（网络在飞）。
@@ -49,7 +49,7 @@ internal class PendingViewModelCacheSeedTest : PendingViewModelReviewTestBase() 
         fake.cachedPending = listOf(expense(id = 1L, merchant = "Cached"))
         fake.fetchPendingResponder = { Result.failure(IOException("offline")) }
 
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         // 飞行模式：缓存留在列表，网络失败只落 loading + 提示，不清空 items。
@@ -62,12 +62,34 @@ internal class PendingViewModelCacheSeedTest : PendingViewModelReviewTestBase() 
     }
 
     @Test
+    fun failedRefreshRemovesOnlyTheSameFactWithANonOlderConfirmedVersion() = review {
+        val rows = (1L..4L).map { expense(it).copy(rowVersion = 5L) }
+        val fake = FakeReviewActions(pending = rows)
+        val vm = pendingViewModel(fake)
+        advanceUntilIdle()
+        fake.cachedConfirmed = listOf(
+            rows[0].copy(status = "confirmed", rowVersion = 6L),
+            rows[1].copy(status = "confirmed", publicId = "different-fact", rowVersion = 6L),
+            rows[2].copy(status = "confirmed", rowVersion = 4L),
+        )
+        fake.fetchPendingResponder = { Result.failure(IOException("offline after confirmation")) }
+
+        vm.refresh()
+        advanceUntilIdle()
+
+        assertEquals(rows.drop(1), vm.uiState.value.items)
+        assertEquals(PendingListLoadState.Failed, vm.uiState.value.listLoadState)
+        assertTrue(vm.uiState.value.message != null)
+        assertFalse(vm.uiState.value.loading)
+    }
+
+    @Test
     fun emptyCacheWithInitialSyncFailureDoesNotLookLikeLoadedEmpty() = review {
         val fake = FakeReviewActions()
         fake.cachedPending = emptyList()
         fake.fetchPendingResponder = { Result.failure(IOException("offline")) }
 
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         assertTrue(vm.uiState.value.items.isEmpty())
@@ -86,7 +108,7 @@ internal class PendingViewModelCacheSeedTest : PendingViewModelReviewTestBase() 
         fake.cachedPending = listOf(expense(id = 1L, merchant = "Cached"))
         fake.pending = emptyList()
 
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
         assertTrue(vm.uiState.value.items.isEmpty())
 
@@ -107,7 +129,7 @@ internal class PendingViewModelCacheSeedTest : PendingViewModelReviewTestBase() 
         fake.cachedPending = emptyList()
         fake.fetchPendingResponder = { networkResponse.await() }
 
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         runCurrent()
 
         assertTrue(vm.uiState.value.loading)
@@ -132,7 +154,7 @@ internal class PendingViewModelCacheSeedTest : PendingViewModelReviewTestBase() 
         fake.cachedPending = listOf(expense(id = 1L, merchant = "Cached"))
         fake.fetchPendingResponder = { networkResponse.await() }
 
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         runCurrent()
 
         assertTrue(vm.uiState.value.loading)

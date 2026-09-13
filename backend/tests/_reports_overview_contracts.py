@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
@@ -22,7 +23,8 @@ def _manual_report_expense(
         "/api/expenses/manual",
         headers=headers,
         json={
-            "amount_cents": amount_cents,
+            "client_ref": str(uuid4()),
+            "home_currency_code": "CNY", "amount_cents": amount_cents,
             "merchant": merchant,
             "category": category,
             "expense_time": expense_time,
@@ -46,6 +48,9 @@ def _insert_report_expense(
             Expense(
                 tenant_id="owner",
                 amount_cents=amount_cents,
+                home_currency_code="CNY",
+                original_currency_code="CNY",
+                original_amount_minor=amount_cents,
                 merchant=merchant,
                 category=category,
                 note="",

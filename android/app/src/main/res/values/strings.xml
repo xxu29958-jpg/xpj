@@ -103,10 +103,13 @@
     <string name="error_expense_not_found">账单不存在。</string>
     <string name="error_amount_required">请先填写金额。</string>
     <string name="error_amount_invalid">金额格式不正确。</string>
+    <string name="error_money_projection_unavailable">换算所需的信息尚未补齐。请核对原币种和日期、补充汇率后再继续，原记录会保留。</string>
     <string name="error_currency_not_supported">暂不支持这个币种。</string>
+    <string name="error_manual_currency_context_required">这份草稿缺少币种依据，请先核对输入与已有流水。</string>
+    <string name="error_manual_create_original_requires_review">无法核实这笔提交最初的保存结果。原输入已保留，请核对已有账单后再处理。</string>
     <string name="error_currency_adoption_required">这台小票夹正在等待安装拥有者在电脑端确认本位币。你的草稿和待同步操作会保留，确认后请重试。</string>
     <string name="error_exchange_rate_required">请先填写这一天的汇率。</string>
-    <string name="error_exchange_rate_pending">汇率还没同步完成，稍后再确认。</string>
+    <string name="error_exchange_rate_pending">这笔账单缺少换算汇率，请补齐后再继续。</string>
     <string name="error_exchange_rate_invalid">汇率格式不正确。</string>
     <string name="error_exchange_rate_base_currency">人民币是基准币种，不需要维护汇率。</string>
     <string name="error_image_not_found">图片不存在。</string>
@@ -155,4 +158,13 @@
     <string name="error_not_found">没有找到对应的记录。</string>
     <string name="error_task_not_found">后台任务不存在或已结束。</string>
     <string name="error_generic">操作失败。</string>
+    <string name="sync_status_mutation_create_bill_split">拆账邀请原提交</string>
+    <string name="bill_split_submission_saved">拆账提交已保存，发送结果会显示在这笔账单中。</string>
+    <string name="bill_split_submission_pending">请先处理这笔账单的原拆账提交。</string>
+    <string name="bill_split_submission_recipient">给 %1$s · %2$s</string>
+    <string name="bill_split_submission_waiting">已保存在本机，等待服务器确认发送。</string>
+    <string name="bill_split_submission_unsupported">当前版本无法读取原提交。请更新应用，原提交仍保留。</string>
+    <string name="bill_split_submission_review">来源账单已经变化，本次邀请未发出。请停止原提交，核对当前账单后重新发起。</string>
+    <string name="bill_split_submission_stop">停止这次提交</string>
+    <string name="bill_split_submission_stop_explanation">停止后将不再重试。若服务器已经收到邀请，它仍然有效；请先查看已发邀请，需要取消时使用撤回。</string>
 </resources>

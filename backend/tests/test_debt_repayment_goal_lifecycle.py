@@ -241,7 +241,7 @@ def test_patch_rejects_debt_goal(client: TestClient, *, identity) -> None:
     response = client.patch(
         f"/api/goals/{goal['public_id']}",
         headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
-        json={"expected_row_version": goal["row_version"], "name": "改名"},
+        json={"home_currency_code": "CNY", "expected_row_version": goal["row_version"], "name": "改名"},
     )
     assert response.status_code == 422, response.json()
     assert response.json()["error"] == "invalid_request"
@@ -262,8 +262,8 @@ def test_replace_links_rejects_spending_goal(client: TestClient, *, identity) ->
     a = _create_external_debt(client, identity.app_headers)
     spending = client.post(
         "/api/goals",
-        headers=identity.app_headers,
-        json={"name": "支出上限", "month": "2026-05", "target_amount_cents": 5000},
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "CNY", "name": "支出上限", "month": "2026-05", "target_amount_cents": 5000},
     ).json()
     response = _replace_links(
         client,

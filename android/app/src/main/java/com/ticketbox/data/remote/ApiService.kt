@@ -55,6 +55,7 @@ interface ApiService :
     RepaymentDraftApi,
     DashboardApi,
     BudgetApi,
+    com.ticketbox.data.remote.api.ExchangeRateApi,
     IncomePlanApi,
     RecurringApi,
     LedgerApi,

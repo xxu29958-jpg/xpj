@@ -2,8 +2,7 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.domain.model.PendingEnrichmentOutcome
 import com.ticketbox.domain.model.PendingEnrichmentTask
-import com.ticketbox.domain.model.PendingUploadReceipt
-import com.ticketbox.upload.PreparedUploadImage
+import com.ticketbox.data.local.PendingMutationStatus
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -11,29 +10,10 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 internal class PendingViewModelEnrichmentTest : PendingViewModelReviewTestBase() {
-
-    @Test
-    fun everyTerminalTaskOutcomeHasAnHonestConsumerState() {
-        val cases = listOf(
-            task("completed", PendingEnrichmentOutcome.Updated) to PendingEnrichmentFeedbackKind.Updated,
-            task("completed", PendingEnrichmentOutcome.NoResult) to PendingEnrichmentFeedbackKind.NoResult,
-            task("completed", PendingEnrichmentOutcome.Conflict) to PendingEnrichmentFeedbackKind.Conflict,
-            task("completed", PendingEnrichmentOutcome.NotPending) to PendingEnrichmentFeedbackKind.NotPending,
-            task("completed") to PendingEnrichmentFeedbackKind.Failed,
-            task("failed") to PendingEnrichmentFeedbackKind.Failed,
-            task("cancelled") to PendingEnrichmentFeedbackKind.Cancelled,
-        )
-
-        cases.forEach { (task, expected) ->
-            assertEquals(expected, task.toPendingEnrichmentFeedbackKind())
-        }
-    }
 
     @Test
     fun completedEnrichmentRefreshesTheInitiatingPendingConsumer() = review {
@@ -42,8 +22,6 @@ internal class PendingViewModelEnrichmentTest : PendingViewModelReviewTestBase()
             activeLedgerFlow = ledgerFlow,
             activeLedgerIdProvider = { ledgerFlow.value },
         )
-        val receipt = PendingUploadReceipt(expenseId = 7L, enrichmentTaskPublicId = "task-7")
-        fake.uploadResponder = { Result.success(receipt) }
         var taskFetches = 0
         fake.enrichmentTasks.responder = {
             taskFetches += 1
@@ -54,11 +32,11 @@ internal class PendingViewModelEnrichmentTest : PendingViewModelReviewTestBase()
                 Result.success(task(status = "completed", outcome = PendingEnrichmentOutcome.Updated))
             }
         }
-        val vm = PendingViewModel(fake, enrichmentTaskReader = fake.enrichmentTasks)
+        val vm = pendingViewModel(fake, enrichmentTaskReader = fake.enrichmentTasks)
         advanceUntilIdle()
 
-        val uploadAttempt = assertNotNull(vm.beginUploadPreparation())
-        assertTrue(vm.uploadPreparedImage(preparedImage("receipt.jpg"), uploadAttempt))
+        fake.uploadIntents.publish(observedUpload(7, PendingMutationStatus.Done, binding = fake.uploadIntents.currentBinding))
+        runCurrent()
         advanceUntilIdle()
 
         assertEquals(2, fake.enrichmentTasks.calls)
@@ -76,7 +54,6 @@ internal class PendingViewModelEnrichmentTest : PendingViewModelReviewTestBase()
             activeLedgerFlow = ledgerFlow,
             activeLedgerIdProvider = { ledgerFlow.value },
         )
-        fake.uploadResponder = { Result.success(PendingUploadReceipt(8L, "task-8")) }
         var taskFetches = 0
         fake.enrichmentTasks.responder = {
             taskFetches += 1
@@ -86,11 +63,11 @@ internal class PendingViewModelEnrichmentTest : PendingViewModelReviewTestBase()
                 Result.success(task(status = "completed", outcome = PendingEnrichmentOutcome.NoResult))
             }
         }
-        val vm = PendingViewModel(fake, enrichmentTaskReader = fake.enrichmentTasks)
+        val vm = pendingViewModel(fake, enrichmentTaskReader = fake.enrichmentTasks)
         advanceUntilIdle()
 
-        val uploadAttempt = assertNotNull(vm.beginUploadPreparation())
-        assertTrue(vm.uploadPreparedImage(preparedImage("receipt.jpg"), uploadAttempt))
+        fake.uploadIntents.publish(observedUpload(8, PendingMutationStatus.Done, binding = fake.uploadIntents.currentBinding))
+        runCurrent()
         advanceUntilIdle()
 
         assertEquals(1, fake.enrichmentTasks.calls)
@@ -112,13 +89,12 @@ internal class PendingViewModelEnrichmentTest : PendingViewModelReviewTestBase()
             activeLedgerFlow = ledgerFlow,
             activeLedgerIdProvider = { ledgerFlow.value },
         )
-        fake.uploadResponder = { Result.success(PendingUploadReceipt(9L, "task-9")) }
         fake.enrichmentTasks.responder = { taskResponse.await() }
-        val vm = PendingViewModel(fake, enrichmentTaskReader = fake.enrichmentTasks)
+        val vm = pendingViewModel(fake, enrichmentTaskReader = fake.enrichmentTasks)
         advanceUntilIdle()
 
-        val uploadAttempt = assertNotNull(vm.beginUploadPreparation())
-        assertTrue(vm.uploadPreparedImage(preparedImage("receipt.jpg"), uploadAttempt))
+        fake.uploadIntents.publish(observedUpload(9, PendingMutationStatus.Done, binding = fake.uploadIntents.currentBinding))
+        runCurrent()
         runCurrent()
         assertEquals(1, vm.uiState.value.enrichment.activeCount)
 
@@ -130,6 +106,7 @@ internal class PendingViewModelEnrichmentTest : PendingViewModelReviewTestBase()
         assertEquals(1, fake.enrichmentTasks.calls)
         assertEquals(0, vm.uiState.value.enrichment.activeCount)
         assertNull(vm.uiState.value.enrichment.feedback)
+        assertEquals(listOf(uploadTestBinding().copy(ledgerId = "owner")), fake.enrichmentTasks.fetchedBindings)
     }
 
     @Test
@@ -137,26 +114,24 @@ internal class PendingViewModelEnrichmentTest : PendingViewModelReviewTestBase()
         val ledgerFlow = MutableStateFlow<String?>("owner")
         val first = CompletableDeferred<Result<PendingEnrichmentTask>>()
         val second = CompletableDeferred<Result<PendingEnrichmentTask>>()
-        var uploadNumber = 0
         val fake = FakeReviewActions(
             activeLedgerFlow = ledgerFlow,
             activeLedgerIdProvider = { ledgerFlow.value },
         )
-        fake.uploadResponder = {
-            uploadNumber += 1
-            Result.success(PendingUploadReceipt(uploadNumber.toLong(), "task-$uploadNumber"))
-        }
         fake.enrichmentTasks.responder = { publicId ->
             if (publicId == "task-1") first.await() else second.await()
         }
-        val vm = PendingViewModel(fake, enrichmentTaskReader = fake.enrichmentTasks)
+        val vm = pendingViewModel(fake, enrichmentTaskReader = fake.enrichmentTasks)
         advanceUntilIdle()
 
-        val firstAttempt = assertNotNull(vm.beginUploadPreparation())
-        assertTrue(vm.uploadPreparedImage(preparedImage("first.jpg"), firstAttempt))
+        fake.uploadIntents.publish(observedUpload(1, PendingMutationStatus.Done, binding = fake.uploadIntents.currentBinding))
         runCurrent()
-        val secondAttempt = assertNotNull(vm.beginUploadPreparation())
-        assertTrue(vm.uploadPreparedImage(preparedImage("second.jpg"), secondAttempt))
+        runCurrent()
+        fake.uploadIntents.publish(
+            observedUpload(1, PendingMutationStatus.Done, binding = fake.uploadIntents.currentBinding),
+            observedUpload(2, PendingMutationStatus.Done, binding = fake.uploadIntents.currentBinding),
+        )
+        runCurrent()
         runCurrent()
         assertEquals(2, vm.uiState.value.enrichment.activeCount)
 
@@ -188,7 +163,7 @@ internal class PendingViewModelEnrichmentTest : PendingViewModelReviewTestBase()
                 }
             }
         }
-        val vm = PendingViewModel(fake)
+        val vm = pendingViewModel(fake)
         advanceUntilIdle()
 
         vm.refresh()
@@ -203,12 +178,60 @@ internal class PendingViewModelEnrichmentTest : PendingViewModelReviewTestBase()
         assertEquals("识别后", vm.uiState.value.items.single().merchant)
     }
 
-    private fun preparedImage(name: String): PreparedUploadImage = PreparedUploadImage(
-        fileName = name,
-        contentType = "image/jpeg",
-        bytes = name.encodeToByteArray(),
-        sourceSizeBytes = name.length.toLong(),
-    )
+    @Test
+    fun reopeningResumesOnlyReceiptsStillInTheAuthoritativePendingList() = review {
+        val fake = FakeReviewActions(pending = listOf(expense(1)))
+        fake.uploadIntents.publish(observedUpload(1, PendingMutationStatus.Done), observedUpload(2, PendingMutationStatus.Done))
+        var changes = 0
+        fake.enrichmentTasks.responder = {
+            if (fake.enrichmentTasks.calls == 1) Result.success(task("running"))
+            else {
+                fake.pending = listOf(expense(1, merchant = "restored result"))
+                Result.success(task("completed", PendingEnrichmentOutcome.Updated))
+            }
+        }
+        val vm = pendingViewModel(fake, enrichmentTaskReader = fake.enrichmentTasks, onDataChanged = { changes++ })
+        advanceUntilIdle()
+        assertEquals(listOf("task-1", "task-1"), fake.enrichmentTasks.fetchedTaskIds)
+        assertEquals("restored result", vm.uiState.value.items.single().merchant)
+        assertEquals(0, changes) // Historical delivery is not a newly accepted receipt.
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(2, fake.enrichmentTasks.calls)
+    }
+
+    @Test
+    fun historicalNoResultTaskIsProbedOnceWithoutReplayingFeedbackOrRefresh() = review {
+        val fake = FakeReviewActions(pending = listOf(expense(1)))
+        fake.uploadIntents.publish(observedUpload(1, PendingMutationStatus.Done))
+        val vm = pendingViewModel(fake, enrichmentTaskReader = fake.enrichmentTasks)
+        advanceUntilIdle()
+        assertEquals(1, fake.enrichmentTasks.calls)
+        assertEquals(1, fake.fetchPendingCalls)
+        assertNull(vm.uiState.value.enrichment.feedback)
+        fake.uploadIntents.publish(observedUpload(1, PendingMutationStatus.Done), observedUpload(2))
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(1, fake.enrichmentTasks.calls)
+    }
+
+    @Test
+    fun aRestoredTaskCommittedAfterTheFirstPendingReadStillInstallsItsResult() = review {
+        val fake = FakeReviewActions(pending = listOf(expense(1, merchant = "before enrichment")))
+        fake.uploadIntents.publish(observedUpload(1, PendingMutationStatus.Done))
+        fake.enrichmentTasks.responder = {
+            fake.pending = listOf(expense(1, merchant = "after enrichment"))
+            Result.success(task("completed", PendingEnrichmentOutcome.Updated))
+        }
+        var changes = 0
+        val vm = pendingViewModel(fake, enrichmentTaskReader = fake.enrichmentTasks, onDataChanged = { changes++ })
+        advanceUntilIdle()
+        assertEquals("after enrichment", vm.uiState.value.items.single().merchant)
+        assertEquals(1, fake.enrichmentTasks.calls)
+        assertEquals(2, fake.fetchPendingCalls)
+        assertNull(vm.uiState.value.enrichment.feedback)
+        assertEquals(0, changes)
+    }
 
     private fun task(
         status: String,

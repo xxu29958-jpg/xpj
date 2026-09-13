@@ -6,7 +6,7 @@ import pytest
 
 from app.database import SessionLocal
 from app.models import BackgroundTask
-from app.services import background_task_worker
+from app.services import background_task_service, background_task_worker
 from app.services.background_task_registry import TaskHandlerRegistry
 
 pytestmark = pytest.mark.real_db
@@ -56,3 +56,32 @@ def test_run_task_does_not_execute_already_claimed_row(*, identity) -> None:
     with SessionLocal() as db:
         row = db.get(BackgroundTask, task_id)
         assert row.status == "running"
+
+
+@pytest.mark.parametrize("concurrent_status", ["queued", "running", "completed", "cancelled"])
+def test_submission_refusal_cannot_overwrite_a_concurrent_task_outcome(monkeypatch, *, identity, concurrent_status) -> None:
+    with SessionLocal() as db:
+        task = BackgroundTask(task_type="test_replay_refusal", status="queued")
+        db.add(task)
+        db.commit()
+        db.refresh(task)
+        task_id = task.id
+
+        def race_then_refuse(*_args, **_kwargs):
+            with SessionLocal() as worker_db:
+                row = worker_db.get(BackgroundTask, task_id)
+                row.status = concurrent_status
+                row.result_summary_json = '{"original_worker":true}'
+                worker_db.commit()
+            assert task.status == "queued", "The request still holds its original stale task snapshot"
+            raise RuntimeError("duplicate wakeup was not accepted")
+
+        monkeypatch.setattr(background_task_service, "_submit_task", race_then_refuse)
+        with pytest.raises(background_task_service.BackgroundTaskSubmissionError):
+            background_task_service.submit_existing(db, task, {})
+
+    with SessionLocal() as db:
+        row = db.get(BackgroundTask, task_id)
+        assert row.status == ("failed" if concurrent_status == "queued" else concurrent_status)
+        assert row.error_code == ("task_submission_failed" if concurrent_status == "queued" else None)
+        assert row.result_summary_json == '{"original_worker":true}'

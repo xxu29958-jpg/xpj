@@ -14,6 +14,8 @@ ledger from the receiver's side.
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 import pytest
 from sqlalchemy import select
 
@@ -76,6 +78,7 @@ def test_accept_to_archived_ledger_409(client, *, identity) -> None:  # noqa: AR
             expense_id=expense_id,
             receiver_account_id=receiver_account_id,
             amount_cents=2500,
+            idempotency_key=str(uuid4()), expected_row_version=1,
         )
         public_id = inv.public_id
 
@@ -113,6 +116,7 @@ def test_accept_to_active_ledger_still_succeeds(client, *, identity) -> None:  #
             expense_id=expense_id,
             receiver_account_id=receiver_account_id,
             amount_cents=2500,
+            idempotency_key=str(uuid4()), expected_row_version=1,
         )
         public_id = inv.public_id
 

@@ -89,6 +89,8 @@ class ExpenseMappersDataQualityTest {
         category: String = "餐饮",
         imagePath: String? = null,
     ): ExpenseDto = ExpenseDto(
+        homeCurrency = "CNY",
+        originalCurrencyCode = "CNY",
         id = 42L,
         publicId = "dq-mapper-public-id",
         amountCents = 12345L,

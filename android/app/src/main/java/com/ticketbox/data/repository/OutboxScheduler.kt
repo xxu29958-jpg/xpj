@@ -30,11 +30,9 @@ import java.util.concurrent.TimeUnit
  *     contract from ADR-0038.
  *
  *  2. [ONE_TIME_WORK_NAME] — the immediate trigger. Mutation call
- *     sites invoke [enqueueOnce] right after enqueueing a new
- *     outbox row, so the user doesn't wait up to 15 min for
- *     the periodic tick. ``KEEP`` policy means a second call while
- *     a one-time worker is already queued is a no-op — no
- *     thundering herd if 20 rows are enqueued in a burst.
+ *     sites invoke [enqueueOnce] after persisting an original intent.
+ *     A durable successor covers arrivals after a running worker's
+ *     final empty read without cancelling that worker.
  *
  * ``BackoffPolicy.EXPONENTIAL`` with a 30s minimum: after the first
  * [Result.retry], retries land at 30s, 1m, 2m, 4m… up to
@@ -72,14 +70,13 @@ class OutboxScheduler(
      * is called, the worker queues until network returns. Mutation
      * call sites call this right after [OutboxRepository.enqueue].
      *
-     * [ExistingWorkPolicy.KEEP] makes back-to-back calls
-     * idempotent: a burst of 20 enqueues during one connectivity
-     * window collapses into a single drain pass.
+     * [ExistingWorkPolicy.APPEND_OR_REPLACE] preserves a successor even
+     * during the final-read/result gap and starts a new chain after cancellation.
      */
     fun enqueueOnce(context: Context) {
         workManagerProvider(context).enqueueUniqueWork(
             ONE_TIME_WORK_NAME,
-            ExistingWorkPolicy.KEEP,
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
             buildOneTimeRequest(),
         )
     }

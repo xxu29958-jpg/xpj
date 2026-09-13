@@ -1,5 +1,6 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.repository.ReadSnapshot
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.DashboardCardUpdate
@@ -8,7 +9,6 @@ import com.ticketbox.domain.model.DashboardSurface
 import com.ticketbox.domain.model.DebtGoalLink
 import com.ticketbox.domain.model.DebtRepaymentEvaluation
 import com.ticketbox.domain.model.Goal
-import com.ticketbox.domain.model.GoalDraft
 import com.ticketbox.domain.model.GoalProgressState
 import com.ticketbox.domain.model.GoalUpdate
 import com.ticketbox.domain.model.ReportsOverview
@@ -49,7 +49,7 @@ class DebtGoalViewModelTest {
     @Test
     fun initLoadsDebtGoalsAndReflectsRole() = runTest(dispatcher) {
         val repo = FakeReportsActions(canModify = false, debtGoalsResult = Result.success(listOf(debtGoal())))
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, writes = FakeDebtWriteActions())
         advanceUntilIdle()
 
         assertEquals(1, viewModel.state.value.goals.size)
@@ -60,7 +60,7 @@ class DebtGoalViewModelTest {
     @Test
     fun refreshFailureSetsError() = runTest(dispatcher) {
         val repo = FakeReportsActions(debtGoalsResult = Result.failure(RuntimeException("offline")))
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, writes = FakeDebtWriteActions())
         advanceUntilIdle()
 
         assertTrue(viewModel.state.value.goals.isEmpty())
@@ -75,7 +75,7 @@ class DebtGoalViewModelTest {
             debtGoalsResult = Result.success(listOf(listed)),
             goalResult = Result.success(latched),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, writes = FakeDebtWriteActions())
         advanceUntilIdle()
 
         viewModel.openDetail(listed)
@@ -92,7 +92,7 @@ class DebtGoalViewModelTest {
         val repo = FakeReportsActions(
             debtGoalsResult = Result.success(listOf(latched)),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, writes = FakeDebtWriteActions())
         advanceUntilIdle()
 
         assertTrue(repo.goalCalls.isEmpty())
@@ -107,7 +107,7 @@ class DebtGoalViewModelTest {
             debtGoalsResult = Result.success(listOf(goal)),
             goalResult = Result.success(goal),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, writes = FakeDebtWriteActions())
         advanceUntilIdle()
         viewModel.openDetail(goal)
         advanceUntilIdle()
@@ -126,7 +126,7 @@ class DebtGoalViewModelTest {
             goalResult = Result.success(goal),
             replaceResult = Result.success(replaced),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, writes = FakeDebtWriteActions())
         advanceUntilIdle()
         viewModel.openDetail(goal)
         advanceUntilIdle()
@@ -151,7 +151,7 @@ class DebtGoalViewModelTest {
             debtGoalsResult = Result.success(listOf(goal)),
             goalResult = Result.success(goal),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, writes = FakeDebtWriteActions())
         advanceUntilIdle()
         viewModel.openDetail(goal)
         advanceUntilIdle()
@@ -172,7 +172,7 @@ class DebtGoalViewModelTest {
             goalResult = Result.success(goal),
             acknowledgeResult = Result.success(acked),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, writes = FakeDebtWriteActions())
         advanceUntilIdle()
         viewModel.openDetail(goal)
         advanceUntilIdle()
@@ -195,7 +195,7 @@ class DebtGoalViewModelTest {
             goalResult = Result.success(debtGoal(needsReview = true)),
             acknowledgeResult = Result.success(acked),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, writes = FakeDebtWriteActions())
         advanceUntilIdle()
         viewModel.openDetail(debtGoal(needsReview = true))
         advanceUntilIdle()
@@ -217,46 +217,54 @@ class DebtGoalViewModelTest {
     }
 
     @Test
-    fun refreshRelatchesOpenDetailViaDetailEndpoint() = runTest(dispatcher) {
-        // An open detail still gets one canonical detail refresh after the list load.
+    fun refreshUsesTheCompleteListedEvaluationWithoutAnotherDetailRequest() = runTest(dispatcher) {
+        // The list contains the full server evaluation and OCC for the selected detail.
         val listSnapshot = debtGoal(evaluationState = "in_progress")
         val latchedDetail = debtGoal(evaluationState = "achieved")
         val repo = FakeReportsActions(
             debtGoalsResult = Result.success(listOf(listSnapshot)),
             goalResult = Result.success(latchedDetail),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, writes = FakeDebtWriteActions())
         advanceUntilIdle()
         viewModel.openDetail(listSnapshot)
         advanceUntilIdle()
         val goalCallsBefore = repo.goalCalls.size
+        repo.debtGoalsResult = Result.success(listOf(latchedDetail))
 
         viewModel.refresh()
         advanceUntilIdle()
 
-        assertTrue(repo.goalCalls.size > goalCallsBefore)
-        // selectedGoal came from the latching detail endpoint, not the in_progress list.
+        assertEquals(goalCallsBefore, repo.goalCalls.size)
+        // The same complete list result supplies both surfaces.
         assertEquals("achieved", viewModel.state.value.selectedGoal?.debtRepayment?.evaluationState)
     }
 
     @Test
-    fun archiveSelectedClearsDetailAndReloads() = runTest(dispatcher) {
+    fun archiveSelectedKeepsOtherGoalsWhenTheFollowingListRefreshIsOffline() = runTest(dispatcher) {
         val goal = debtGoal(needsReview = true)
+        val other = goal.copy(publicId = "other-goal", name = "保留的目标")
         val repo = FakeReportsActions(
-            debtGoalsResult = Result.success(listOf(goal)),
+            debtGoalsResult = Result.success(listOf(goal, other)),
             goalResult = Result.success(goal),
-            archiveResult = Result.success(debtGoal(needsReview = true)),
+            archiveResult = Result.success(goal.copy(status = "archived", rowVersion = goal.rowVersion + 1,
+                archivedAt = "2026-09-09T00:00:00Z")),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, writes = FakeDebtWriteActions())
         advanceUntilIdle()
         viewModel.openDetail(goal)
         advanceUntilIdle()
+        repo.debtGoalsResult = Result.failure(java.net.ConnectException("offline after archive"))
 
         viewModel.archiveSelected()
         advanceUntilIdle()
 
         assertEquals(listOf("debt-goal-1"), repo.archiveCalls)
         assertNull(viewModel.state.value.selectedGoal)
+        assertEquals(listOf(other), viewModel.state.value.goals)
+        assertNull(viewModel.state.value.fetchedAt)
+        assertNull(viewModel.state.value.selectedFetchedAt)
+        assertNotNull(viewModel.state.value.error)
         assertTrue(viewModel.state.value.flashMessage != null)
     }
 
@@ -266,7 +274,7 @@ class DebtGoalViewModelTest {
             debtGoalsResult = Result.success(listOf(debtGoal())),
             goalResult = Result.success(debtGoal()),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, writes = FakeDebtWriteActions())
         advanceUntilIdle()
 
         // a slow refresh stalls in debtGoals()...
@@ -293,7 +301,7 @@ class DebtGoalViewModelTest {
             debtGoalsResult = Result.success(listOf(goal)),
             goalResult = Result.success(goal),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, writes = FakeDebtWriteActions())
         advanceUntilIdle()
         viewModel.openDetail(goal)
         advanceUntilIdle()
@@ -316,7 +324,7 @@ class DebtGoalViewModelTest {
             goalResult = Result.success(goal),
             acknowledgeResult = Result.failure(RuntimeException("conflict")),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, writes = FakeDebtWriteActions())
         advanceUntilIdle()
         viewModel.openDetail(goal)
         advanceUntilIdle()
@@ -338,7 +346,7 @@ class DebtGoalViewModelTest {
             goalResult = Result.success(goal),
         )
         repo.setTargetDateResult = Result.success(debtGoal(rowVersion = 5L))
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, writes = FakeDebtWriteActions())
         advanceUntilIdle()
         viewModel.openDetail(goal)
         advanceUntilIdle()
@@ -373,7 +381,7 @@ class DebtGoalViewModelTest {
             goalResult = Result.success(goal),
         )
         repo.setTargetDateResult = Result.success(debtGoal(rowVersion = 5L))
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, writes = FakeDebtWriteActions())
         advanceUntilIdle()
         viewModel.openDetail(goal)
         advanceUntilIdle()
@@ -398,7 +406,7 @@ class DebtGoalViewModelTest {
             debtGoalsResult = Result.success(listOf(listed)),
             goalResult = Result.success(achieved),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, writes = FakeDebtWriteActions())
         advanceUntilIdle()
 
         viewModel.openDetail(listed)
@@ -418,7 +426,7 @@ class DebtGoalViewModelTest {
             debtGoalsResult = Result.success(listOf(listed)),
             goalResult = Result.success(achieved),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, writes = FakeDebtWriteActions())
         advanceUntilIdle()
 
         viewModel.openDetail(listed)
@@ -445,7 +453,7 @@ class DebtGoalViewModelTest {
             debtGoalsResult = Result.success(listOf(listed)),
             goalResult = Result.success(achieved),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, writes = FakeDebtWriteActions())
         advanceUntilIdle()
 
         viewModel.openDetail(listed)
@@ -463,7 +471,7 @@ class DebtGoalViewModelTest {
             debtGoalsResult = Result.success(listOf(achieved)),
             goalResult = Result.success(achieved),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, writes = FakeDebtWriteActions())
         advanceUntilIdle()
 
         viewModel.openDetail(achieved)
@@ -481,7 +489,7 @@ class DebtGoalViewModelTest {
             debtGoalsResult = Result.success(listOf(listed)),
             goalResult = Result.success(achieved),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, writes = FakeDebtWriteActions())
         advanceUntilIdle()
 
         viewModel.openDetail(listed)
@@ -504,7 +512,7 @@ class DebtGoalViewModelTest {
             debtGoalsResult = Result.success(listOf(listed)),
             goalResult = Result.success(achieved),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, writes = FakeDebtWriteActions())
         advanceUntilIdle()
         viewModel.openDetail(listed)
         advanceUntilIdle()
@@ -531,7 +539,7 @@ class DebtGoalViewModelTest {
             goalResult = Result.success(needsReview),
             replaceResult = Result.success(completed),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, writes = FakeDebtWriteActions())
         advanceUntilIdle()
         viewModel.openDetail(needsReview)
         advanceUntilIdle()
@@ -552,18 +560,41 @@ class DebtGoalViewModelTest {
             debtGoalsResult = Result.success(listOf(inProgress)),
             goalResult = Result.success(inProgress),
         )
-        val viewModel = DebtGoalViewModel(repo)
+        val viewModel = DebtGoalViewModel(repo, writes = FakeDebtWriteActions())
         advanceUntilIdle()
         viewModel.openDetail(inProgress)
         advanceUntilIdle()
         assertNull(viewModel.celebration.value) // openDetail fetched in_progress → no edge yet
 
         // 详情打开期间最后一笔在别处被清，detail 重拉将翻 achieved。
-        repo.goalResultOverride = Result.success(achieved)
+        repo.debtGoalsResult = Result.success(listOf(achieved))
         viewModel.refresh()
         advanceUntilIdle()
 
         assertNotNull(viewModel.celebration.value) // latchSelectedDetail in_progress→achieved 边沿撒花
+    }
+
+    @Test
+    fun cachedEvaluationDoesNotCelebrateAndDetailRefusalClearsTheReadSurfaces() = runTest(dispatcher) {
+        val listed = debtGoal(evaluationState = "in_progress", links = listOf(memberLink("open")))
+        val achieved = debtGoal(evaluationState = "achieved", links = listOf(memberLink("cleared")))
+        val repo = FakeReportsActions(debtGoalsResult = Result.success(listOf(listed)),
+            goalResult = Result.success(achieved)).apply { fromCache = true }
+        val viewModel = DebtGoalViewModel(repo, FakeDebtWriteActions())
+        advanceUntilIdle()
+        viewModel.openDetail(listed)
+        advanceUntilIdle()
+        assertEquals(achieved, viewModel.state.value.selectedGoal)
+        assertTrue(viewModel.state.value.selectedFromCache)
+        assertNotNull(viewModel.state.value.selectedFetchedAt)
+        assertNull(viewModel.celebration.value)
+        repo.goalResultOverride = Result.failure(com.ticketbox.data.repository.RepositoryException(
+            "Forbidden", httpStatusCode = 403))
+        viewModel.openDetail(achieved)
+        advanceUntilIdle()
+        assertNull(viewModel.state.value.selectedGoal)
+        assertNull(viewModel.state.value.fetchedAt)
+        assertTrue(viewModel.state.value.goals.isEmpty())
     }
 
     // ── fixtures ─────────────────────────────────────────────────────────────
@@ -655,12 +686,13 @@ private data class ReplaceCall(
 
 private class FakeReportsActions(
     private val canModify: Boolean = true,
-    private val debtGoalsResult: Result<List<Goal>> = Result.success(emptyList()),
+    var debtGoalsResult: Result<List<Goal>> = Result.success(emptyList()),
     private val goalResult: Result<Goal> = Result.failure(UnsupportedOperationException()),
     private val replaceResult: Result<Goal> = Result.failure(UnsupportedOperationException()),
     private val acknowledgeResult: Result<Goal> = Result.failure(UnsupportedOperationException()),
     private val archiveResult: Result<Goal> = Result.failure(UnsupportedOperationException()),
 ) : ReportsActions {
+    var fromCache = false
     val goalCalls = mutableListOf<String>()
     val replaceCalls = mutableListOf<ReplaceCall>()
     val acknowledgeCalls = mutableListOf<Pair<String, Long>>()
@@ -681,15 +713,15 @@ private class FakeReportsActions(
 
     override fun canModifyLedger(): Boolean = canModify
 
-    override suspend fun debtGoals(includeArchived: Boolean): Result<List<Goal>> {
+    override suspend fun debtGoals(includeArchived: Boolean, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?, timezone: String): Result<ReadSnapshot<List<Goal>>> {
         debtGoalsCalls += 1
         debtGoalsGate?.await()
-        return debtGoalsResult
+        return debtGoalsResult.map { ReadSnapshot(it, "2026-09-09T00:00:00Z", fromCache) }
     }
 
-    override suspend fun goal(publicId: String): Result<Goal> {
+    override suspend fun goal(publicId: String, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?, timezone: String): Result<ReadSnapshot<Goal>> {
         goalCalls += publicId
-        return goalResultOverride ?: goalResult
+        return (goalResultOverride ?: goalResult).map { ReadSnapshot(it, "2026-09-09T00:00:00Z", fromCache) }
     }
 
     override suspend fun replaceDebtLinks(
@@ -719,25 +751,19 @@ private class FakeReportsActions(
     }
 
     // ── unused ReportsActions surface ────────────────────────────────────────
-    override suspend fun reportsOverview(query: ReportsOverviewQuery): Result<ReportsOverview> =
+    override suspend fun reportsOverview(query: ReportsOverviewQuery, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?): Result<ReportsOverview> =
         Result.failure(UnsupportedOperationException())
 
-    override suspend fun exportReportsOverviewCsv(query: ReportsOverviewQuery): Result<CsvExport> =
+    override suspend fun exportReportsOverviewCsv(query: ReportsOverviewQuery, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?): Result<CsvExport> =
         Result.failure(UnsupportedOperationException())
 
-    override suspend fun goals(month: String?, includeArchived: Boolean): Result<List<Goal>> =
-        Result.success(emptyList())
+    override suspend fun goals(month: String?, includeArchived: Boolean, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?, timezone: String): Result<ReadSnapshot<List<Goal>>> =
+        Result.success(ReadSnapshot(emptyList(), "2026-09-09T00:00:00Z", false))
 
-    override suspend fun createGoal(draft: GoalDraft): Result<Goal> =
+    override suspend fun createDebtGoal(name: String, debtPublicIds: List<String>, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding): Result<Goal> =
         Result.failure(UnsupportedOperationException())
 
-    override suspend fun createDebtGoal(name: String, debtPublicIds: List<String>): Result<Goal> =
-        Result.failure(UnsupportedOperationException())
-
-    override suspend fun updateGoal(publicId: String, update: GoalUpdate): Result<Goal> =
-        Result.failure(UnsupportedOperationException())
-
-    override suspend fun archiveGoal(publicId: String): Result<Goal> {
+    override suspend fun archiveGoal(publicId: String, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding): Result<Goal> {
         archiveCalls += publicId
         return archiveResult
     }

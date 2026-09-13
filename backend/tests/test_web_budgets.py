@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -39,7 +40,7 @@ def _owner_budget_total() -> int | None:
 def _save_budget(web_client: TestClient, *, total: str = "1000.00") -> None:
     response = web_client.post(
         "/web/budgets/save",
-        data={
+        data={"home_currency_code": "CNY", "expected_row_version": "null", "idempotency_key": str(uuid4()),
             "ledger_id": "owner",
             "month": "2026-05",
             "total_amount_yuan": total,
@@ -55,8 +56,65 @@ def _save_budget(web_client: TestClient, *, total: str = "1000.00") -> None:
     assert response.status_code == 303, response.text
 
 
+def test_budget_conflict_keeps_input_and_key_until_explicit_nonwriting_review(web_client, identity):
+    _save_budget(web_client)
+    newer = web_client.put("/api/budgets/monthly/2026-05", headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "CNY", "expected_row_version": 1, "total_amount_cents": 200000})
+    assert newer.status_code == 200, newer.text
+    key = str(uuid4())
+    form = {"ledger_id": "owner", "month": "2026-05", "home_currency_code": "CNY",
+        "expected_row_version": "1", "idempotency_key": key, "total_amount_yuan": "1500.00"}
+    refused = web_client.post("/web/budgets/save", data=form)
+    assert refused.status_code == 409, refused.text
+    assert 'name="expected_row_version" value="1"' in refused.text
+    assert 'name="total_amount_yuan" value="1500.00"' in refused.text
+    assert f'name="idempotency_key" value="{key}"' in refused.text
+    assert _owner_budget_total() == 200000
+    review = web_client.post("/web/budgets/save", data={**form, "review_latest": "true"})
+    assert review.status_code == 200, review.text
+    assert 'name="expected_row_version" value="2"' in review.text
+    assert f'name="idempotency_key" value="{key}"' in review.text
+    assert _owner_budget_total() == 200000
+    accepted = web_client.post("/web/budgets/save", data={**form, "expected_row_version": "2"}, follow_redirects=False)
+    assert accepted.status_code == 303, accepted.text
+    assert _owner_budget_total() == 150000
+
+
+def test_budget_jpy_draft_survives_validation_under_cny_default(web_client):
+    key = str(uuid4())
+    form = {"ledger_id": "owner", "month": "2026-05", "home_currency_code": "JPY",
+        "expected_row_version": "null", "idempotency_key": key, "total_amount_yuan": "1.5"}
+    refused = web_client.post("/web/budgets/save", data=form)
+    assert refused.status_code == 422, refused.text
+    assert 'name="home_currency_code" value="JPY"' in refused.text
+    assert 'name="total_amount_yuan" value="1.5"' in refused.text
+    assert 'type="submit">保存预算</button>' in refused.text
+    accepted = web_client.post("/web/budgets/save", data={**form, "total_amount_yuan": "1200"}, follow_redirects=False)
+    assert accepted.status_code == 303, accepted.text
+    with SessionLocal() as db:
+        budget = db.scalar(select(Budget).where(Budget.tenant_id == "owner", Budget.month == "2026-05"))
+        assert (budget.home_currency_code, budget.total_amount_cents) == ("JPY", 1200)
+
+
+def test_budget_currency_conflict_offers_new_editor_without_relabelling_draft(web_client):
+    _save_budget(web_client)
+    key = str(uuid4())
+    form = {"ledger_id": "owner", "month": "2026-05", "home_currency_code": "JPY",
+        "expected_row_version": "null", "idempotency_key": key, "total_amount_yuan": "1200"}
+    for changes in ({}, {"review_latest": "true"}):
+        response = web_client.post("/web/budgets/save", data={**form, **changes})
+        assert response.status_code == (200 if changes else 409), response.text
+        assert 'name="home_currency_code" value="JPY"' in response.text
+        assert 'name="expected_row_version" value="null"' in response.text
+        assert f'name="idempotency_key" value="{key}"' in response.text
+        assert 'name="total_amount_yuan" value="1200"' in response.text
+        assert 'target="_blank" rel="noopener">打开当前预算重新编辑</a>' in response.text
+        assert 'type="submit">保存预算</button>' not in response.text
+        assert _owner_budget_total() == 100000
+
+
 def test_budget_presenter_keeps_fresh_execution_identity_when_draft_renames_row() -> None:
-    fresh = BudgetMonthlyResponse(
+    fresh = BudgetMonthlyResponse(home_currency_code="CNY",
         ledger_id="owner",
         month="2026-05",
         configured=True,
@@ -106,8 +164,11 @@ def test_web_budgets_renders_unconfigured_state_and_nav(web_client: TestClient) 
     response = web_client.get("/web/budgets?ledger_id=owner&month=2026-05")
 
     assert response.status_code == 200
-    assert "还没有本月预算" in response.text
-    assert "开始跟踪本月预算执行" in response.text
+    start = re.search(r'<section[^>]+aria-label="开始设置预算"[^>]*>(.*?)</section>', response.text, re.S)
+    assert start is not None
+    assert 'action="/web/budgets/save"' in start.group(1)
+    assert "本月已确认支出" in start.group(1)
+    assert response.text.count('action="/web/budgets/save"') == 1
     assert "本月预算剩余" not in response.text
     assert "/web/budgets?ledger_id=owner" in response.text
     assert 'name="total_amount_yuan"' in response.text
@@ -116,6 +177,18 @@ def test_web_budgets_renders_unconfigured_state_and_nav(web_client: TestClient) 
     assert 'aria-label="分类预算金额"' in response.text
     assert response.text.count("data-budget-add-row") == 2
     assert "保存预算" in response.text
+    options = re.search(r'<details[^>]+id="budget-options"([^>]*)>', response.text)
+    assert options is not None
+    # No-script form stays open; collapse is allowed only after the native
+    # invalid-event reveal handler has been attached by budgets.js.
+    assert "open" in options.group(1).split()
+    assert 'data-start-expanded="false"' in options.group(1)
+    assert '<summary hidden>' in response.text[options.end():]
+    assert response.text.index('name="total_amount_yuan"') < options.start()
+    options_end = response.text.index("</details>", options.end())
+    assert response.text.index("保存预算</button>") > options_end
+    for name in ("rollover_amount_yuan", "non_monthly_amount_yuan", "excluded_category", "category_budget_category"):
+        assert f'name="{name}"' in response.text[options.end():options_end]
 
 
 def test_web_budgets_save_and_display_budget_dashboard(web_client: TestClient, *, identity) -> None:
@@ -123,7 +196,8 @@ def test_web_budgets_save_and_display_budget_dashboard(web_client: TestClient, *
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
-            "amount_cents": 12500,
+            "client_ref": str(uuid4()),
+            "home_currency_code": "CNY", "amount_cents": 12500,
             "merchant": "五月餐饮",
             "category": "餐饮",
             "expense_time": "2026-05-05T12:00:00Z",
@@ -133,7 +207,8 @@ def test_web_budgets_save_and_display_budget_dashboard(web_client: TestClient, *
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
-            "amount_cents": 3000,
+            "client_ref": str(uuid4()),
+            "home_currency_code": "CNY", "amount_cents": 3000,
             "merchant": "医保报销",
             "category": "医疗",
             "expense_time": "2026-05-06T12:00:00Z",
@@ -159,6 +234,28 @@ def test_web_budgets_save_and_display_budget_dashboard(web_client: TestClient, *
     assert "服务端预算" not in page.text
     assert page.text.count("data-budget-add-row") == 2
     assert page.text.count('name="category_budget_remove"') == 2
+    assert re.search(r'<details[^>]+id="budget-options"[^>]*data-start-expanded="true"', page.text)
+
+
+def test_first_budget_total_only_save_and_optional_error_remain_operable(web_client: TestClient) -> None:
+    form = {"home_currency_code": "CNY", "expected_row_version": "null", "idempotency_key": str(uuid4()),
+        "ledger_id": "owner",
+        "month": "2026-05",
+        "total_amount_yuan": "3000.00",
+    }
+    rejected = web_client.post(
+        "/web/budgets/save",
+        data={**form, "non_monthly_amount_yuan": "-1.00"},
+    )
+    assert rejected.status_code == 422
+    assert _owner_budget_total() is None
+    assert re.search(r'<details[^>]+id="budget-options"[^>]*data-start-expanded="true"', rejected.text)
+    assert 'name="total_amount_yuan" value="3000.00"' in rejected.text
+    assert 'name="non_monthly_amount_yuan" value="-1.00"' in rejected.text
+
+    saved = web_client.post("/web/budgets/save", data=form, follow_redirects=False)
+    assert saved.status_code == 303, saved.text
+    assert _owner_budget_total() == 300000
 
 
 def test_web_budgets_viewer_read_only_and_post_denied(web_client: TestClient) -> None:
@@ -174,7 +271,7 @@ def test_web_budgets_viewer_read_only_and_post_denied(web_client: TestClient) ->
 
     denied = web_client.post(
         "/web/budgets/save",
-        data={
+        data={"home_currency_code": "CNY", "expected_row_version": "1", "idempotency_key": str(uuid4()),
             "ledger_id": "owner",
             "month": "2026-05",
             "total_amount_yuan": "2000.00",
@@ -191,14 +288,16 @@ def test_web_budgets_selected_ledger_isolated(web_client: TestClient, *, identit
 
     assert response.status_code == 200
     assert "灰度用户1" in response.text
-    assert "还没有本月预算" in response.text
+    assert "从一个总额开始" in response.text
+    assert "本月预算剩余" not in response.text
     assert "¥1000.00" not in response.text
 
     gray_expense = web_client.post(
         "/api/expenses/manual",
         headers=identity.gray_app_headers,
         json={
-            "amount_cents": 6600,
+            "client_ref": str(uuid4()),
+            "home_currency_code": "CNY", "amount_cents": 6600,
             "merchant": "灰度餐饮",
             "category": "餐饮",
             "expense_time": "2026-05-05T12:00:00Z",
@@ -219,7 +318,8 @@ def test_web_budgets_invalid_amount_shows_error_without_mutating(
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
-            "amount_cents": 12500,
+            "client_ref": str(uuid4()),
+            "home_currency_code": "CNY", "amount_cents": 12500,
             "merchant": "五月餐饮",
             "category": "餐饮",
             "expense_time": "2026-05-05T12:00:00Z",
@@ -230,7 +330,7 @@ def test_web_budgets_invalid_amount_shows_error_without_mutating(
 
     response = web_client.post(
         "/web/budgets/save",
-        data={
+        data={"home_currency_code": "CNY", "expected_row_version": "1", "idempotency_key": str(uuid4()),
             "ledger_id": "owner",
             "month": "2026-05",
             "total_amount_yuan": "-1.00",
@@ -269,7 +369,7 @@ def test_web_budgets_too_long_category_preserves_full_draft(web_client: TestClie
 
     response = web_client.post(
         "/web/budgets/save",
-        data={
+        data={"home_currency_code": "CNY", "expected_row_version": "1", "idempotency_key": str(uuid4()),
             "ledger_id": "owner",
             "month": "2026-05",
             "total_amount_yuan": "1000.00",
@@ -303,7 +403,7 @@ def test_web_budgets_combines_exclusions_and_removes_marked_category(
 
     response = web_client.post(
         "/web/budgets/save",
-        data={
+        data={"home_currency_code": "CNY", "expected_row_version": "1", "idempotency_key": str(uuid4()),
             "ledger_id": "owner",
             "month": "2026-05",
             "total_amount_yuan": "1000.00",

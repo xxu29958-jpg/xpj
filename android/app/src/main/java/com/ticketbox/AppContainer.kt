@@ -1,5 +1,7 @@
 package com.ticketbox
 
+import com.ticketbox.data.local.PendingMutationType
+
 import android.content.Context
 import com.ticketbox.data.local.AppDatabase
 import com.ticketbox.data.local.LocalSettingsStore
@@ -16,7 +18,7 @@ import com.ticketbox.data.repository.CorrectExpenseDispatcher
 import com.ticketbox.data.repository.CreateExpenseDispatcher
 import com.ticketbox.data.repository.CreateExpenseOffsetDispatcher
 import com.ticketbox.data.repository.CreateRecurringItemDispatcher
-import com.ticketbox.data.repository.DeleteCategoryRuleDispatcher
+import com.ticketbox.data.repository.CreateDebtDispatcher
 import com.ticketbox.data.repository.DeleteMerchantAliasDispatcher
 import com.ticketbox.data.repository.MarkNotDuplicateDispatcher
 import com.ticketbox.data.repository.LedgerRequestGuard
@@ -26,15 +28,18 @@ import com.ticketbox.data.repository.OutboxRepository
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.OutboxScheduler
 import com.ticketbox.data.repository.OutboxWriteBlock
+import com.ticketbox.data.repository.UploadIntentFileStore
+import com.ticketbox.data.repository.UploadIntentRepository
+import com.ticketbox.data.repository.UploadScreenshotDispatcher
 import com.ticketbox.data.repository.PatchExpenseDispatcher
 import com.ticketbox.data.repository.RecognizeTextDispatcher
 import com.ticketbox.data.repository.RejectExpenseDispatcher
 import com.ticketbox.data.repository.ReplaceItemsDispatcher
 import com.ticketbox.data.repository.ReplaceSplitsDispatcher
 import com.ticketbox.data.repository.RetryOcrDispatcher
-import com.ticketbox.data.repository.UpdateCategoryRuleDispatcher
+import com.ticketbox.data.repository.CategoryRuleDispatcher
 import com.ticketbox.data.repository.UpdateGoalDispatcher
-import com.ticketbox.data.repository.UpdateIncomePlanDispatcher
+import com.ticketbox.data.repository.IncomePlanDispatcher
 import com.ticketbox.data.repository.UpdateMerchantAliasDispatcher
 import com.ticketbox.data.repository.UpdateRecurringItemDispatcher
 import com.ticketbox.data.repository.VoidExpenseOffsetDispatcher
@@ -78,6 +83,7 @@ class AppContainer(context: Context) {
     private val apiServiceProvider = ApiServiceProvider(apiClient, sessionStore, credentials)
     private val outboxRequestGuard = LedgerRequestGuard(apiServiceProvider)
     private val outboxAdapters = OutboxAdapterGraph()
+    private val uploadFiles = UploadIntentFileStore(appContext)
     private val outboxWriteBlock = MutableStateFlow<OutboxWriteBlock?>(null)
 
     val outboxScheduler = OutboxScheduler()
@@ -118,6 +124,12 @@ class AppContainer(context: Context) {
             }
         },
         writeBlock = outboxWriteBlock,
+        onRowsDeleted = { uploadIntentRepository.collectOrphans() },
+    )
+
+    val uploadIntentRepository: UploadIntentRepository = UploadIntentRepository(
+        apiServiceProvider, outboxRepository, uploadFiles,
+        outboxAdapters.uploadPayloadAdapter, outboxAdapters.uploadReceiptAdapter, settingsStore,
     )
 
     private fun outboxApi(row: OutboxRow) = outboxRequestGuard
@@ -151,8 +163,8 @@ class AppContainer(context: Context) {
      * Registered dispatchers. PR-2g.2 wired the first dispatcher
      * [PatchExpenseDispatcher]; PR-2g.3 routed the matching call
      * site (PATCH expense). PR-2g.4 added
-     * [UpdateCategoryRuleDispatcher] + matching call site. PR-2g.5
-     * added [DeleteCategoryRuleDispatcher] +
+     * [CategoryRuleDispatcher] + matching call site. PR-2g.5
+     * added [CategoryRuleDispatcher] +
      * [DeleteMerchantAliasDispatcher] + matching call sites
      * (2 DELETE shapes, shared [DeleteOutcome] sealed). PR-2g.6
      * added [UpdateMerchantAliasDispatcher] + matching call site
@@ -171,6 +183,12 @@ class AppContainer(context: Context) {
      */
     private val outboxDispatchers: List<OutboxMutationDispatcher> by lazy {
         listOf(
+            UploadScreenshotDispatcher(
+                apiProvider = ::outboxApi,
+                payloadAdapter = outboxAdapters.uploadPayloadAdapter,
+                receiptAdapter = outboxAdapters.uploadReceiptAdapter,
+                readOriginal = uploadFiles::read,
+            ),
             PatchExpenseDispatcher(
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.patchExpenseAdapter,
@@ -178,12 +196,8 @@ class AppContainer(context: Context) {
             CorrectExpenseDispatcher(
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.correctionAdapter,
-                cacheAuthoritativeExpense = { ledgerId, expense ->
-                    database.expenseDao().upsertByServerIdForLedger(
-                        ledgerId,
-                        expense.toEntity(ledgerId),
-                    )
-                },
+                publishAuthoritativeProjection = { row, expense -> expenseRepository.publishDeliveredCorrection(row, expense) },
+                onConfirmedCommitted = { ledgerId -> expenseRepository.onConfirmedCommitted(ledgerId) },
             ),
             // issue #65 slice 4: POST /api/expenses/manual via outbox (offline manual
             // create). On success, write the server-assigned id/public_id/row_version
@@ -209,16 +223,12 @@ class AppContainer(context: Context) {
                 payloadAdapter = outboxAdapters.offsetVoidAdapter,
                 publishBundle = ::publishExpenseFactBundle,
             ),
-            // PR-2g.4: PATCH /api/rules/categories/{id} via outbox.
-            UpdateCategoryRuleDispatcher(
-                apiProvider = ::outboxApi,
-                payloadAdapter = outboxAdapters.categoryRuleUpdateAdapter,
-            ),
-            // PR-2g.5: DELETE /api/rules/categories/{id} via outbox.
-            DeleteCategoryRuleDispatcher(
-                apiProvider = ::outboxApi,
-                payloadAdapter = outboxAdapters.categoryRuleDeleteAdapter,
-            ),
+            CategoryRuleDispatcher(PendingMutationType.CreateCategoryRule, ::outboxApi,
+                outboxAdapters.categoryRuleSubmissionAdapter, outboxAdapters.categoryRuleReceiptAdapter),
+            CategoryRuleDispatcher(PendingMutationType.UpdateCategoryRule, ::outboxApi,
+                outboxAdapters.categoryRuleSubmissionAdapter, outboxAdapters.categoryRuleReceiptAdapter),
+            CategoryRuleDispatcher(PendingMutationType.DeleteCategoryRule, ::outboxApi,
+                outboxAdapters.categoryRuleSubmissionAdapter, outboxAdapters.categoryRuleReceiptAdapter),
             // PR-2g.5: DELETE /api/merchants/aliases/{publicId} via outbox.
             DeleteMerchantAliasDispatcher(
                 apiProvider = ::outboxApi,
@@ -272,19 +282,55 @@ class AppContainer(context: Context) {
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.recognizeTextAdapter,
             ),
+            com.ticketbox.data.repository.CreateGoalDispatcher(
+                apiProvider = ::outboxApi,
+                payloadAdapter = outboxAdapters.goalCreateAdapter,
+                receiptAdapter = outboxAdapters.goalReceiptAdapter,
+                onAccepted = reportsRepository::invalidateGoalReadsAfterDelivery,
+            ),
             // ADR-0042 Slice F: PATCH /api/goals/{publicId} via outbox.
             UpdateGoalDispatcher(
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.goalUpdateAdapter,
+                receiptAdapter = outboxAdapters.goalReceiptAdapter,
+                onAccepted = reportsRepository::invalidateGoalReadsAfterDelivery,
             ),
             // ADR-0042 Slice F: PATCH /api/income-plans/{publicId} via outbox.
-            UpdateIncomePlanDispatcher(
+            IncomePlanDispatcher(PendingMutationType.CreateIncomePlan, ::outboxApi,
+                outboxAdapters.incomePlanSubmissionAdapter, outboxAdapters.incomePlanReceiptAdapter),
+            IncomePlanDispatcher(PendingMutationType.UpdateIncomePlan, ::outboxApi,
+                outboxAdapters.incomePlanSubmissionAdapter, outboxAdapters.incomePlanReceiptAdapter),
+            com.ticketbox.data.repository.SaveMonthlyBudgetDispatcher(
                 apiProvider = ::outboxApi,
-                payloadAdapter = outboxAdapters.incomePlanUpdateAdapter,
+                payloadAdapter = outboxAdapters.budgetSaveAdapter,
+                receiptAdapter = outboxAdapters.budgetReceiptAdapter,
             ),
+            com.ticketbox.data.repository.ManualExchangeRateDispatcher(::outboxApi,
+                outboxAdapters.manualRateAdapter, outboxAdapters.manualRateReceiptAdapter),
             CreateRecurringItemDispatcher(
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.recurringCreateAdapter,
+            ),
+            com.ticketbox.data.repository.RecordDebtAdjustmentDispatcher(
+                apiProvider = ::outboxApi,
+                adapter = outboxAdapters.debtAdjustmentAdapter,
+            ),
+            com.ticketbox.data.repository.RecordDebtRepaymentDispatcher(
+                apiProvider = ::outboxApi, adapter = outboxAdapters.debtRepaymentAdapter,
+                receiptAdapter = outboxAdapters.debtRepaymentReceiptAdapter,
+            ),
+            CreateDebtDispatcher(
+                apiProvider = ::outboxApi,
+                payloadAdapter = outboxAdapters.debtCreateAdapter,
+            ),
+            com.ticketbox.data.repository.CreateBillSplitDispatcher(
+                apiProvider = ::outboxApi,
+                payloadAdapter = outboxAdapters.billSplitCreateAdapter,
+                receiptAdapter = outboxAdapters.billSplitReceiptAdapter,
+            ),
+            com.ticketbox.data.repository.RecurringOccurrenceDispatcher(
+                apiProvider = ::outboxApi,
+                payloadAdapter = outboxAdapters.recurringOccurrenceAdapter,
             ),
             UpdateRecurringItemDispatcher(
                 apiProvider = ::outboxApi,
@@ -340,8 +386,11 @@ class AppContainer(context: Context) {
 
     val incomePlanRepository = repositories.incomePlanRepository
     val debtRepository = repositories.debtRepository
+    val debtCreationRepository = repositories.debtCreationRepository
+    val debtWriteRepository = repositories.debtWriteRepository
     val repaymentDraftRepository = repositories.repaymentDraftRepository
     val reportsRepository = repositories.reportsRepository
+    val goalEditRepository = repositories.goalEditRepository
     val ruleRepository = repositories.ruleRepository
     val merchantRepository = repositories.merchantRepository
     val tagRepository = repositories.tagRepository

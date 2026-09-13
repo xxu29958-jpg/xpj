@@ -2,17 +2,22 @@
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 from fastapi.testclient import TestClient
 
+from tests._runtime_protocol import negotiated_headers
 from tests.expense_correction_support import idem, manual_confirmed
-from tests.test_bill_split import _seed_receiver
+from tests.test_bill_split import _seed_receiver, _split_headers
 
 
-def _seed_usd_rate(client: TestClient, identity, rate_date: str, rate: str) -> None:
+def _seed_usd_rate(client: TestClient, identity, rate_date: str, rate: str, *, expected_row_version: int = 0) -> dict:
     response = client.put(
         f"/api/exchange-rates/USD/{rate_date}",
-        headers=identity.app_headers,
+        headers={**negotiated_headers(client, identity.app_headers), "Idempotency-Key": str(uuid4())},
         json={
+            "expected_row_version": expected_row_version,
+            "home_currency_code": "CNY",
             "currency_code": "USD",
             "rate_date": rate_date,
             "rate_to_cny": rate,
@@ -20,6 +25,7 @@ def _seed_usd_rate(client: TestClient, identity, rate_date: str, rate: str) -> N
         },
     )
     assert response.status_code == 200, response.text
+    return response.json()
 
 
 def _foreign_expense(client: TestClient, identity, merchant: str) -> dict:
@@ -27,6 +33,7 @@ def _foreign_expense(client: TestClient, identity, merchant: str) -> dict:
         "/api/expenses/manual",
         headers=identity.app_headers,
         json={
+            "client_ref": str(uuid4()),
             "original_currency_code": "USD",
             "original_amount_minor": 10000,
             "expense_time": "2026-05-04T08:00:00Z",
@@ -87,12 +94,12 @@ def test_amount_only_offset_correction_reuses_its_frozen_rate_and_occ_baseline(
     *,
     identity,
 ) -> None:
-    for rate_date, rate in (("2026-05-04", "7"), ("2026-05-05", "8")):
-        _seed_usd_rate(client, identity, rate_date, rate)
+    original_rates = {rate_date: _seed_usd_rate(client, identity, rate_date, rate)
+        for rate_date, rate in (("2026-05-04", "7"), ("2026-05-05", "8"))}
     expense = _foreign_expense(client, identity, "更正汇率订单")
     created_body = _create_refund(client, identity, expense)
     offset = created_body["active_offsets"][0]
-    _seed_usd_rate(client, identity, "2026-05-05", "9")
+    _seed_usd_rate(client, identity, "2026-05-05", "9", expected_row_version=original_rates["2026-05-05"]["row_version"])
     payload = {
         "original_amount_minor": 2000,
         "accounting_date": "2026-05-05",
@@ -198,8 +205,9 @@ def test_void_offset_restores_net_but_never_resurrects_cancelled_invites(
     )
     invited = client.post(
         f"/api/expenses/{expense['id']}/split-invite",
-        headers=identity.app_headers,
-        json={"receiver_account_id": receiver_account_id, "amount_cents": 500},
+        headers=_split_headers(client, identity.app_headers),
+        json={"receiver_account_id": receiver_account_id, "amount_cents": 500,
+              "expected_row_version": expense["row_version"]},
     )
     assert invited.status_code == 200, invited.text
     invitation_public_id = invited.json()["public_id"]

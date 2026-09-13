@@ -9,7 +9,9 @@
     if (!el || typeof echarts === "undefined") return;
     let data;
     try { data = JSON.parse(el.getAttribute("data-categories") || "[]"); } catch (_) { return; }
-    if (!data.length) return;
+    if (!data.length || data.some(function (d) {
+      return d.amount_major == null || !Number.isFinite(d.amount_major) || d.amount_major < 0;
+    }) || !data.some(function (d) { return d.amount_major > 0; })) return;
 
     const chart = echarts.init(el, null, { renderer: "canvas" });
     function build() {
@@ -65,7 +67,7 @@
           data: data.slice(0, 6).map(function (d, i) {
             return {
               name: d.name,
-              value: d.amount_major == null ? d.amount_yuan : d.amount_major,
+              value: d.amount_major,
               amountLabel: d.amount_label,
               itemStyle: { color: palette[i % palette.length] },
             };
@@ -80,6 +82,10 @@
     }
     chart.setOption(build());
     new ResizeObserver(function () { chart.resize(); }).observe(el);
+    // Canvas does not inherit changed CSS colors. Reproject the same data/instance.
+    new MutationObserver(function () { chart.setOption(build()); }).observe(document.documentElement, {
+      attributes: true, attributeFilter: ["data-theme", "data-accent"],
+    });
 
     // 把环图 legend dots 的颜色也按 chart-series 涂上
     document.querySelectorAll(".chart-legend-0").forEach(function (n) { n.style.background = app.readVar("--chart-series-1"); });

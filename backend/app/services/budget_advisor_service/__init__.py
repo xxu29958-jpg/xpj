@@ -13,6 +13,8 @@ private sub-modules carry the implementation:
   HTTP body is built. Fail-closed on any drift.
 - ``_providers``: ``EmptyBudgetAdvisor`` (default) / ``MockBudgetAdvisor``
   (dev) / ``OpenAiCompatBudgetAdvisor`` (production) + factory.
+- ``_readiness``: read-only factory validation, consent and role eligibility;
+  configuration validity never asserts network reachability or call success.
 - ``_inputs_builder``: turns live DB state into a ready-to-send
   ``BudgetInputs`` — the trust boundary between raw data and the
   outbound payload.
@@ -50,7 +52,8 @@ from app.services.budget_advisor_service._audit import (
     reserve_live_call_budget,
 )
 from app.services.budget_advisor_service._inputs_builder import (
-    build_budget_inputs,
+    BudgetInputProjection,
+    read_budget_inputs,
 )
 from app.services.budget_advisor_service._models import (
     BudgetAdvice,
@@ -76,6 +79,7 @@ from app.services.budget_advisor_service._providers import (
     OpenAiCompatBudgetAdvisor,
     get_budget_advisor,
 )
+from app.services.budget_advisor_service._readiness import get_advisor_readiness
 from app.services.budget_advisor_service._runner import AdvisorRunResult, run_budget_advisor
 
 __all__ = [
@@ -95,7 +99,8 @@ __all__ = [
     "OpenAiCompatBudgetAdvisor",
     "advisor_status_for_tenant",
     "assign_transaction_temp_id",
-    "build_budget_inputs",
+    "BudgetInputProjection",
+    "read_budget_inputs",
     "canonical_provider_name",
     "cleanup_session",
     "cleanup_expired_audit_logs",
@@ -104,6 +109,7 @@ __all__ = [
     "compute_input_hash",
     "enforce_live_call_budget",
     "get_budget_advisor",
+    "get_advisor_readiness",
     "get_or_create_member_anon",
     "get_or_create_merchant_anon",
     "is_live_provider",

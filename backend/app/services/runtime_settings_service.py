@@ -75,7 +75,6 @@ class RecognitionSettingsView:
 
 @dataclass(frozen=True)
 class SecurityView:
-    allow_public_admin_api: bool
     enable_api_docs: bool
     enable_http_bootstrap: bool
     public_base_url_configured: bool
@@ -150,7 +149,6 @@ def get_recognition_view(
 def get_security_view() -> SecurityView:
     cfg = get_settings()
     return SecurityView(
-        allow_public_admin_api=cfg.allow_public_admin_api,
         enable_api_docs=cfg.enable_api_docs,
         enable_http_bootstrap=cfg.enable_http_bootstrap,
         public_base_url_configured=bool(cfg.public_base_url),

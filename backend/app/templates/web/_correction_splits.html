@@ -13,9 +13,9 @@
   <div class="correction-fold-body">
     {% if split_rows.total_yuan %}
     <div class="fact-reconcile">
-      账单 {{ home_currency_symbol }}{{ split_rows.parent_amount_yuan }} · 已拆 {{ home_currency_symbol }}{{ split_rows.total_yuan }}
-      {% if split_rows.reconcile_state == 'partial' %}· 还差 {{ home_currency_symbol }}{{ split_rows.reconcile_delta_yuan }} 未分配{% endif %}
-      {% if split_rows.reconcile_state == 'overallocated' %}<span class="field-error">· 已拆超出 {{ home_currency_symbol }}{{ split_rows.reconcile_delta_yuan }}</span>{% endif %}
+      账单 {{ currency_input.currency_symbol }}{{ split_rows.parent_amount_yuan }} · 已拆 {{ currency_input.currency_symbol }}{{ split_rows.total_yuan }}
+      {% if split_rows.reconcile_state == 'partial' %}· 还差 {{ currency_input.currency_symbol }}{{ split_rows.reconcile_delta_yuan }} 未分配{% endif %}
+      {% if split_rows.reconcile_state == 'overallocated' %}<span class="field-error">· 已拆超出 {{ currency_input.currency_symbol }}{{ split_rows.reconcile_delta_yuan }}</span>{% endif %}
     </div>
     {% endif %}
     {% include "_expense_splits_table.html" %}

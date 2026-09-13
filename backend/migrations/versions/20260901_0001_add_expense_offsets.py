@@ -358,5 +358,9 @@ def assert_postcondition(bind: sa.Connection) -> None:
     } - writer_triggers:
         raise RuntimeError("Expense offset currency writer fence is missing")
     authority_revision = bind.scalar(sa.text("SELECT schema_revision FROM dataset_authority WHERE singleton_id = 1"))
-    if authority_revision != revision:
+    live_revision = bind.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one()
+    # Inline upgrade precedes Alembic's version-row update. Later generation
+    # verification must compare against the actual head, not this checkpoint.
+    expected_revision = revision if live_revision == down_revision else live_revision
+    if authority_revision != expected_revision:
         raise RuntimeError("dataset authority revision is not aligned with Alembic head")

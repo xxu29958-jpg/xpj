@@ -32,12 +32,15 @@ internal fun editPlan(
     updatedAt = "2026-05-01T00:00:00Z",
     rowVersion = rowVersion,
     archivedAt = if (status == IncomePlanStatus.ARCHIVED) "2026-05-15T00:00:00Z" else null,
+    homeCurrencyCode = "CNY",
 )
 
 internal data class IncomePlanUpdateCall(
     val binding: LogicalSessionBinding,
     val publicId: String,
     val patch: IncomePlanPatch,
+    val baseline: IncomePlan,
+    val currency: com.ticketbox.domain.model.CurrencyCode,
 )
 
 internal data class IncomePlanArchiveCall(
@@ -47,17 +50,24 @@ internal data class IncomePlanArchiveCall(
 )
 
 internal class FakeIncomePlanEditRepository(
-    var active: IncomePlanListing = IncomePlanListing(emptyList(), 0L),
+    var active: IncomePlanListing = IncomePlanListing(emptyList(), 0L, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0, homeCurrencyCode = "CNY"),
     canModify: Boolean = true,
 ) : IncomePlanActions {
     val activeAccessFlow = MutableStateFlow<LedgerAccessContext?>(editAccess(canModify = canModify))
     val updateCalls = mutableListOf<IncomePlanUpdateCall>()
     val archiveCalls = mutableListOf<IncomePlanArchiveCall>()
-    var updateResult: Result<IncomePlan>? = null
+    var updateResult: Result<Long>? = null
     var archiveResult: Result<IncomePlan>? = null
 
     /** 测试延迟钩：挂起 update 直至放行（模拟在途保存期间的 Back/手势/切 target）。 */
     var updateGate: (suspend () -> Unit)? = null
+    var listGate: (suspend () -> Unit)? = null
+
+    override fun describeSubmission(row: com.ticketbox.data.repository.OutboxRow): com.ticketbox.data.repository.PendingIncomePlanSubmission? = null
+    override fun observeSubmissions(expectedBinding: LogicalSessionBinding) =
+        kotlinx.coroutines.flow.flowOf(emptyList<com.ticketbox.data.repository.PendingIncomePlanSubmission>())
+    override suspend fun recoverSubmission(expectedBinding: LogicalSessionBinding,
+        pending: com.ticketbox.data.repository.PendingIncomePlanSubmission, drop: Boolean) = Result.success(Unit)
 
     override fun canModifyLedger(): Boolean = activeAccessFlow.value?.canModify ?: false
 
@@ -69,42 +79,32 @@ internal class FakeIncomePlanEditRepository(
     override suspend fun listIncluding(
         expectedBinding: LogicalSessionBinding,
         status: IncomePlanStatus,
-    ): Result<List<IncomePlan>> = Result.success(emptyList())
+    ): Result<List<IncomePlan>> {
+        listGate?.invoke()
+        return Result.success(active.plans.filter { it.status == status })
+    }
 
     override suspend fun create(
         expectedBinding: LogicalSessionBinding,
         draft: IncomePlanDraft,
-    ): Result<IncomePlan> = throw UnsupportedOperationException("create not used in edit tests")
+    ): Result<Long> = throw UnsupportedOperationException("create not used in edit tests")
 
-    override suspend fun update(
+    override suspend fun enqueueUpdate(
         expectedBinding: LogicalSessionBinding,
-        publicId: String,
+        baseline: IncomePlan,
         patch: IncomePlanPatch,
-    ): Result<IncomePlan> {
-        updateCalls += IncomePlanUpdateCall(expectedBinding, publicId, patch)
+        currency: com.ticketbox.domain.model.CurrencyCode,
+    ): Result<Long> {
+        updateCalls += IncomePlanUpdateCall(expectedBinding, baseline.publicId, patch, baseline, currency)
         updateGate?.invoke()
-        return updateResult ?: Result.success(
-            IncomePlan(
-                publicId = publicId,
-                label = patch.label.orEmpty(),
-                sourceType = patch.sourceType ?: IncomeSourceType.SALARY,
-                frequency = patch.frequency ?: IncomeFrequency.MONTHLY,
-                incomeMonth = patch.incomeMonth,
-                amountCents = patch.amountCents ?: 0L,
-                payDay = patch.payDay ?: 10,
-                status = IncomePlanStatus.ACTIVE,
-                createdAt = "2026-05-01T00:00:00Z",
-                updatedAt = "2026-05-02T00:00:00Z",
-                rowVersion = patch.expectedRowVersion + 1,
-                archivedAt = null,
-            ),
-        )
+        return updateResult ?: Result.success(1L)
     }
 
     override suspend fun archive(
         expectedBinding: LogicalSessionBinding,
         publicId: String,
         expectedRowVersion: Long,
+        intentMonth: String,
     ): Result<IncomePlan> {
         archiveCalls += IncomePlanArchiveCall(expectedBinding, publicId, expectedRowVersion)
         return archiveResult ?: Result.success(
@@ -129,6 +129,7 @@ internal class FakeIncomePlanEditRepository(
         expectedBinding: LogicalSessionBinding,
         publicId: String,
         expectedRowVersion: Long,
+        intentMonth: String,
     ): Result<IncomePlan> = throw UnsupportedOperationException("restore not used in edit tests")
 }
 
@@ -150,4 +151,19 @@ internal fun editAccess(
 ): LedgerAccessContext = LedgerAccessContext(
     binding = editBinding(ledgerId, ownerKey),
     canModify = canModify,
+)
+
+internal fun incomeViewModelStub(id: String, status: IncomePlanStatus = IncomePlanStatus.ACTIVE) = IncomePlan(
+    publicId = id,
+    label = id,
+    sourceType = IncomeSourceType.SALARY,
+    frequency = IncomeFrequency.MONTHLY,
+    incomeMonth = null,
+    amountCents = 100,
+    payDay = 1,
+    status = status,
+    createdAt = "2026-05-01T00:00:00Z",
+    updatedAt = "2026-05-01T00:00:00Z",
+    rowVersion = 1L,
+    archivedAt = if (status == IncomePlanStatus.ARCHIVED) "2026-05-15T00:00:00Z" else null,
 )

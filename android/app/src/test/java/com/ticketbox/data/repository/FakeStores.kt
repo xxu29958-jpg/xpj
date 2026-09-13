@@ -73,7 +73,6 @@ internal class FakeTicketboxSettingsStore(
     private var boundAt: String? = null
     private val lastConfirmedSyncAtByLedger = mutableMapOf<String, String>()
     private var lastUploadAt: String? = null
-    private var monthlyBudgetCents: Long? = null
     private var notificationPreferences: NotificationPreferences = NotificationPreferences()
     private var appThemeModeKey: String? = null
     var onSaveIdentity: (() -> Unit)? = null
@@ -83,12 +82,6 @@ internal class FakeTicketboxSettingsStore(
     fun serverUrl(): String? = serverUrl
 
     override fun appThemeModeKey(): String? = appThemeModeKey
-
-    override fun monthlyBudgetCents(): Long? = monthlyBudgetCents
-
-    override fun saveMonthlyBudgetCents(amountCents: Long?) {
-        monthlyBudgetCents = amountCents
-    }
 
     override fun notificationPreferences(): NotificationPreferences = notificationPreferences
 

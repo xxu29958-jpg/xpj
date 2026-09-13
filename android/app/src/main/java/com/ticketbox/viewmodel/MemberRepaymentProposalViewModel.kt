@@ -5,35 +5,35 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.DebtProposalActions
+import com.ticketbox.data.repository.DebtTask
+import com.ticketbox.data.repository.MemberSettlementCommand
+import com.ticketbox.data.repository.MemberSettlementResult
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.MemberProposalStatuses
 import com.ticketbox.domain.model.MemberRepaymentProposal
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.formatMinorAmountInput
 import com.ticketbox.ui.components.parseAmountCents
+import java.util.UUID
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/**
- * ADR-0049 §3.2 (slice 8d) 成员欠款 repayment proposal 收发箱 —— 详情屏对**成员**欠款渲染的
- * proposal 收发箱所用 ViewModel（与处理 external/manual 直接写的 [DebtDetailViewModel] 互斥）。
- *
- * 角色由**服务端权威字段** [com.ticketbox.domain.model.Debt.viewerIsDebtor] 给出（客户端不推导——它不
- * 知自己的 account_id，且成员债的同账本 owner 与同账本成员 counterparty 后端都返回 ledgerId 非空，§5.2）：
- * **债务人**发起「我已还款」/ 撤回（§3.2），**债权人**确认（全额或部分）/ 拒绝。只有 confirm 改变折叠（带 §2.1 OCC 载体=宿主 [Debt] 的
- * `rowVersion`，由详情屏在 [submit] 时传入），成功后 [MemberProposalUiState.foldChangedAt] 自增让宿主详
- * 情屏刷新欠款摘要；propose/withdraw/reject 不动折叠。所有写直接在线提交（无 outbox）；viewer 角色由
- * repository 在网络前短路。
- */
 data class MemberProposalUiState(
+    val task: DebtTask? = null,
     val isLoading: Boolean = false,
-    val canModify: Boolean = true,
+    val canModify: Boolean = false,
     val proposals: List<MemberRepaymentProposal> = emptyList(),
     val error: UiText? = null,
+    val errorTone: MessageTone = MessageTone.Danger,
     val activeForm: ProposalForm? = null,
     val targetProposalPublicId: String? = null,
     val amountInput: String = "",
@@ -41,9 +41,7 @@ data class MemberProposalUiState(
     val validationError: UiText? = null,
     val isSubmitting: Boolean = false,
     val flashMessage: UiText? = null,
-    // 每次 confirm 提交还款（改变折叠）后自增，让宿主详情屏据此刷新欠款摘要；
-    // propose/withdraw/reject 不改折叠，故不动它。
-    val foldChangedAt: Int = 0,
+    val committedDebt: Debt? = null,
 ) {
     /** 唯一的待确认 proposal（§3.2 一债一待确认），没有则为 null。 */
     val pendingProposal: MemberRepaymentProposal? get() = proposals.firstOrNull { it.isPending }
@@ -59,225 +57,186 @@ data class MemberProposalUiState(
         get() = pendingProposal == null && latestResolvedProposal?.status == MemberProposalStatuses.REJECTED
 }
 
-/** 详情屏 proposal 收发箱里需要表单输入的两类动作（withdraw/reject 无输入，直接触发）。 */
 enum class ProposalForm { Propose, Confirm }
 
-class MemberRepaymentProposalViewModel(
-    private val repository: DebtProposalActions,
-) : ViewModel() {
-
-    private val _state = MutableStateFlow(MemberProposalUiState(canModify = repository.canModifyLedger()))
+/** Owns the current editing task and online attempt; the server owns proposals and committed folds. */
+class MemberRepaymentProposalViewModel(private val repository: DebtProposalActions) : ViewModel() {
+    private val _state = MutableStateFlow(MemberProposalUiState())
     val state: StateFlow<MemberProposalUiState> = _state.asStateFlow()
+    private var readJob: Job? = null
+    private var commandJob: Job? = null
+    private var attempt: MemberSettlementAttempt? = null
 
-    private var debtPublicId: String? = null
+    init {
+        viewModelScope.launch {
+            repository.observeAccess().collect {
+                val access = repository.currentAccess()
+                if (_state.value.task?.binding != null && _state.value.task?.binding != access?.binding) {
+                    readJob?.cancel()
+                    commandJob?.cancel()
+                    attempt = null
+                    _state.value = MemberProposalUiState()
+                }
+                _state.update { state -> state.copy(canModify = access?.canModify == true) }
+            }
+        }
+    }
 
-    // Monotonic load token (mirrors DebtGoalViewModel): a refresh applies its proposals only if it
-    // is still the latest. Overlapping refreshes — switching member debts via load(), and the
-    // refresh after propose/confirm/reject/withdraw/forgive — each bump it, so a slow earlier list
-    // fetch can't revert to a stale 收发箱 (another debt's proposals, or the pre-action list). Every
-    // bump is a refresh, so a superseded load is always replaced by a newer refresh that owns the
-    // loading flag — it just drops.
-    private var loadGeneration = 0L
+    private fun matches(task: DebtTask): Boolean =
+        _state.value.task == task && repository.currentAccess()?.binding == task.binding
 
-    fun load(publicId: String) {
-        debtPublicId = publicId
-        // 切换到另一笔成员欠款时先清空旧 proposal，避免在新欠款下短暂看到上一笔的收发箱（隔离）。
-        _state.update { it.copy(proposals = emptyList(), error = null, activeForm = null, validationError = null) }
+    fun load(task: DebtTask) {
+        val access = repository.currentAccess() ?: return
+        if (access.binding != task.binding) return
+        if (_state.value.task == task) { refresh(); return }
+        readJob?.cancel()
+        commandJob?.cancel()
+        attempt = null
+        _state.value = MemberProposalUiState(task = task, canModify = access.canModify)
         refresh()
     }
 
     fun refresh() {
-        val publicId = debtPublicId ?: return
-        val gen = ++loadGeneration
-        _state.update { it.copy(isLoading = true, error = null, canModify = repository.canModifyLedger()) }
-        viewModelScope.launch {
-            val result = repository.listRepaymentProposals(publicId)
-            // Drop a load superseded by a newer refresh (which set isLoading and owns clearing it).
-            if (gen != loadGeneration) return@launch
-            result.fold(
-                onSuccess = { proposals ->
-                    _state.update { it.copy(isLoading = false, proposals = proposals, error = null) }
+        if (_state.value.isSubmitting) return
+        _state.value.task?.takeIf(::matches)?.let { reload(it) }
+    }
+
+    private fun reload(task: DebtTask, acknowledged: Boolean = false) {
+        readJob?.cancel()
+        _state.update { it.copy(isLoading = true, error = null) }
+        readJob = viewModelScope.launch {
+            val result = repository.listRepaymentProposals(task)
+            currentCoroutineContext().ensureActive()
+            if (!matches(task)) return@launch
+            _state.update { current -> current.copy(
+                isLoading = false,
+                proposals = result.getOrNull() ?: current.proposals,
+                error = result.exceptionOrNull()?.let { error ->
+                    if (acknowledged) UiText.res(R.string.debt_proposal_refresh_after_action_failed)
+                    else error.toUiText(R.string.debt_proposal_load_failed)
                 },
-                onFailure = { err ->
-                    _state.update { it.copy(isLoading = false, error = err.toUiText(R.string.debt_proposal_load_failed)) }
-                },
-            )
+                errorTone = if (acknowledged) MessageTone.Info else MessageTone.Danger,
+            ) }
         }
     }
 
-    fun openForm(form: ProposalForm, proposal: MemberRepaymentProposal? = null) {
-        _state.update {
-            it.copy(
-                activeForm = form,
-                targetProposalPublicId = proposal?.publicId,
-                // 确认表单预填 proposal 提出的金额（债权人可下调成部分确认）；发起表单留空。
-                // 预填按 proposal 自带的服务端 homeCurrencyCode 渲染 minor（零小数币种不 ÷100），
-                // 与 submit 的解析口径一致（R7-3）。proposal 码在支持集外 → 不预填（R7-2：
-                // 禁落 CNY 兜底渲染；submit 会 fail closed）。
-                amountInput = proposal?.let { p ->
-                    CurrencyCode.fromStorageKeyOrNull(p.homeCurrencyCode)
-                        ?.let { currency -> formatMinorAmountInput(p.proposedAmountCents, currency) }
-                }.orEmpty(),
-                noteInput = "",
-                validationError = null,
-            )
+    fun openForm(task: DebtTask, form: ProposalForm, proposal: MemberRepaymentProposal? = null) {
+        if (!matches(task) || _state.value.isSubmitting || repository.currentAccess()?.canModify != true) return
+        _state.update { it.copy(activeForm = form, targetProposalPublicId = proposal?.publicId,
+            amountInput = proposal?.let { row -> CurrencyCode.fromStorageKeyOrNull(row.homeCurrencyCode)
+                ?.let { currency -> formatMinorAmountInput(row.proposedAmountCents, currency) } }.orEmpty(),
+            noteInput = "", validationError = null) }
+    }
+
+    fun updateAmount(task: DebtTask, value: String) {
+        if (matches(task) && !_state.value.isSubmitting) _state.update { it.copy(amountInput = value, validationError = null) }
+    }
+
+    fun updateNote(task: DebtTask, value: String) {
+        if (matches(task) && !_state.value.isSubmitting) _state.update { it.copy(noteInput = value, validationError = null) }
+    }
+
+    fun dismissForm(task: DebtTask) {
+        if (matches(task) && !_state.value.isSubmitting) _state.update {
+            it.copy(activeForm = null, targetProposalPublicId = null, amountInput = "", noteInput = "", validationError = null)
         }
     }
 
-    fun updateAmount(value: String) {
-        _state.update { it.copy(amountInput = value, validationError = null) }
-    }
-
-    fun updateNote(value: String) {
-        _state.update { it.copy(noteInput = value, validationError = null) }
-    }
-
-    fun dismissForm() {
-        _state.update {
-            it.copy(
-                activeForm = null,
-                targetProposalPublicId = null,
-                amountInput = "",
-                noteInput = "",
-                validationError = null,
-                isSubmitting = false,
-            )
-        }
-    }
-
-    /**
-     * 提交当前激活的表单。[expectedRowVersion] 是宿主欠款当前的 `row_version`（fold-changing 的确认走 §2.1
-     * OCC 载体）；发起 proposal 不改折叠，忽略该参数。[currency] 取宿主欠款服务端 `homeCurrencyCode` 的
-     * **严格解析**（调用屏持该 Debt；未知码必须传 null —— 无 CNY 默认参，R7-2 起 fail closed）。
-     * R7-3：确认表单的金额按 **proposal 冻结币种**解析（服务端把 `confirmed_amount_cents` 与
-     * `proposed_amount_cents` 同单位比较，_proposal.py `_confirmed_amount`）；proposal 码未知或与
-     * 宿主欠款币种不一致 = installation 漂移 → fail closed 禁确认（服务端会把 repayment 按
-     * proposal 口径折进异币种欠款，客户端不得放行），超额校验随之同币种化。
-     */
-    fun submit(expectedRowVersion: Long, currency: CurrencyCode?) {
-        val publicId = debtPublicId ?: return
+    fun submit(task: DebtTask, expectedRowVersion: Long, currency: CurrencyCode?) {
+        if (!matches(task) || _state.value.isSubmitting) return
         val current = _state.value
         val form = current.activeForm ?: return
-        // R7-2 fail closed：宿主欠款 record 币种未知 → 一切表单写禁用（禁落 CNY 解析）。
         if (currency == null) {
             _state.update { it.copy(validationError = UiText.res(R.string.debt_action_currency_unsupported)) }
             return
         }
-        // 元→分走共享 BigDecimal 解析器（§3 禁 Double 存金额）；>0 由 proposalValidationError 校验。
-        val amountCents = when (form) {
+        val amount = when (form) {
             ProposalForm.Propose -> parseAmountCents(current.amountInput, currency)
             ProposalForm.Confirm -> {
                 val pending = current.pendingProposal ?: return
                 val proposalCurrency = CurrencyCode.fromStorageKeyOrNull(pending.homeCurrencyCode)
                 if (proposalCurrency == null || proposalCurrency != currency) {
-                    _state.update {
-                        it.copy(validationError = UiText.res(R.string.debt_proposal_currency_mismatch))
-                    }
+                    _state.update { it.copy(validationError = UiText.res(R.string.debt_proposal_currency_mismatch)) }
                     return
                 }
                 parseAmountCents(current.amountInput, proposalCurrency)
             }
         }
-        proposalValidationError(form, amountCents, current.pendingProposal?.proposedAmountCents)?.let { res ->
-            _state.update { it.copy(validationError = UiText.res(res)) }
+        proposalValidationError(form, amount, current.pendingProposal?.proposedAmountCents)?.let { error ->
+            _state.update { it.copy(validationError = UiText.res(error)) }
             return
         }
-        val amount = amountCents ?: return
-        _state.update { it.copy(isSubmitting = true) }
-        viewModelScope.launch {
-            val result: Result<Any> = when (form) {
-                ProposalForm.Propose ->
-                    repository.proposeRepayment(publicId, amount, current.noteInput, supersedesProposalPublicId = null)
-                ProposalForm.Confirm ->
-                    repository.confirmRepaymentProposal(
-                        debtPublicId = publicId,
-                        proposalPublicId = current.targetProposalPublicId.orEmpty(),
-                        expectedRowVersion = expectedRowVersion,
-                        // 等于提出金额=全额确认（confirmedAmountCents=null），否则=部分确认。
-                        confirmedAmountCents = amount.takeIf { it != current.pendingProposal?.proposedAmountCents },
-                    )
-            }
+        val command = when (form) {
+            ProposalForm.Propose -> MemberSettlementCommand.Propose(requireNotNull(amount), current.noteInput.trim().ifBlank { null })
+            ProposalForm.Confirm -> MemberSettlementCommand.Confirm(current.targetProposalPublicId.orEmpty(), expectedRowVersion,
+                amount.takeIf { it != current.pendingProposal?.proposedAmountCents })
+        }
+        execute(task, command)
+    }
+
+    fun withdraw(task: DebtTask, proposalPublicId: String) = execute(task, MemberSettlementCommand.Withdraw(proposalPublicId))
+    fun reject(task: DebtTask, proposalPublicId: String) = execute(task, MemberSettlementCommand.Reject(proposalPublicId))
+    fun forgive(task: DebtTask, expectedRowVersion: Long) = execute(task, MemberSettlementCommand.Forgive(expectedRowVersion))
+
+    private fun execute(task: DebtTask, command: MemberSettlementCommand) {
+        if (!matches(task) || _state.value.isSubmitting || repository.currentAccess()?.canModify != true) return
+        val original = attempt?.takeIf { it.command == command }
+            ?: MemberSettlementAttempt(command, UUID.randomUUID().toString()).also { attempt = it }
+        readJob?.cancel()
+        _state.update { it.copy(isSubmitting = true, isLoading = false, error = null, validationError = null, flashMessage = null) }
+        commandJob = viewModelScope.launch {
+            if (!matches(task)) return@launch
+            val result = repository.submit(task, command, original.key)
+            currentCoroutineContext().ensureActive()
+            if (!matches(task)) return@launch
             result.fold(
-                onSuccess = { onActionSucceeded(actionDoneRes(form), foldChanged = form == ProposalForm.Confirm) },
-                onFailure = { err ->
-                    _state.update { it.copy(isSubmitting = false, validationError = err.toUiText(R.string.debt_proposal_action_failed)) }
+                onSuccess = { outcome ->
+                    attempt = null
+                    _state.update { it.withMemberResult(command, outcome) }
+                    reload(task, acknowledged = true)
                 },
+                onFailure = { error -> _state.update { it.withMemberFailure(command, error) } },
             )
         }
     }
 
-    fun withdraw(proposalPublicId: String) {
-        val publicId = debtPublicId ?: return
-        _state.update { it.copy(isSubmitting = true) }
-        viewModelScope.launch {
-            repository.withdrawRepaymentProposal(publicId, proposalPublicId).fold(
-                onSuccess = { onActionSucceeded(R.string.debt_proposal_withdraw_done, foldChanged = false) },
-                onFailure = { err ->
-                    _state.update { it.copy(isSubmitting = false, error = err.toUiText(R.string.debt_proposal_action_failed)) }
-                },
-            )
-        }
-    }
+    fun dismissFlash() { _state.update { it.copy(flashMessage = null) } }
+}
 
-    fun reject(proposalPublicId: String) {
-        val publicId = debtPublicId ?: return
-        _state.update { it.copy(isSubmitting = true) }
-        viewModelScope.launch {
-            repository.rejectRepaymentProposal(publicId, proposalPublicId).fold(
-                onSuccess = { onActionSucceeded(R.string.debt_proposal_reject_done, foldChanged = false) },
-                onFailure = { err ->
-                    _state.update { it.copy(isSubmitting = false, error = err.toUiText(R.string.debt_proposal_action_failed)) }
-                },
-            )
-        }
-    }
+private data class MemberSettlementAttempt(val command: MemberSettlementCommand, val key: String)
 
-    /**
-     * 8e ④ 债权人放弃受偿（「算了，不用还了」，ADR-0049 §3.7/§4）—— 单边、改折叠（清零→cleared(forgiven)）。
-     * [expectedRowVersion] 是宿主欠款当前的 row_version（§2.1 OCC 载体，由详情屏传入）。成功后走
-     * [onActionSucceeded] 暖 toast + 标记折叠已变让详情屏重拉到服务端 cleared+is_forgiven（ShareCard 转
-     * forgiven 暖语 + 创建者卡换成已两清说明）。OCC/已两清冲突后端返回 `state_conflict`，走 neutral 的「有人
-     * 刚记了一笔」提示而非吓人的失败文案（completeness P2#10，errorCode 分支而非本地化 message）。
-     */
-    fun forgive(expectedRowVersion: Long) {
-        val publicId = debtPublicId ?: return
-        _state.update { it.copy(isSubmitting = true) }
-        viewModelScope.launch {
-            repository.forgiveDebt(publicId, expectedRowVersion).fold(
-                onSuccess = { onActionSucceeded(R.string.debt_member_forgive_done, foldChanged = true) },
-                onFailure = { err ->
-                    val message = if ((err as? RepositoryException)?.errorCode == "state_conflict") {
-                        UiText.res(R.string.debt_member_forgive_conflict)
-                    } else {
-                        err.toUiText(R.string.debt_member_forgive_failed)
-                    }
-                    _state.update { it.copy(isSubmitting = false, error = message) }
-                },
-            )
-        }
+private fun MemberProposalUiState.withMemberResult(
+    command: MemberSettlementCommand,
+    outcome: MemberSettlementResult,
+): MemberProposalUiState {
+    val nextProposals = when (outcome) {
+        is MemberSettlementResult.Proposal -> listOf(outcome.value) + proposals.filterNot { it.publicId == outcome.value.publicId }
+        is MemberSettlementResult.DebtChanged -> if (command is MemberSettlementCommand.Confirm) {
+            proposals.filterNot { it.publicId == command.proposalPublicId }
+        } else proposals
     }
+    return copy(isSubmitting = false, activeForm = null, targetProposalPublicId = null, amountInput = "", noteInput = "",
+        validationError = null, error = null, proposals = nextProposals,
+        committedDebt = (outcome as? MemberSettlementResult.DebtChanged)?.value ?: committedDebt,
+        flashMessage = UiText.res(memberCommandDoneRes(command)))
+}
 
-    fun dismissFlash() {
-        _state.update { it.copy(flashMessage = null) }
-    }
+private fun MemberProposalUiState.withMemberFailure(command: MemberSettlementCommand, error: Throwable): MemberProposalUiState {
+    val message = if (command is MemberSettlementCommand.Forgive) {
+        if ((error as? RepositoryException)?.errorCode == "state_conflict") UiText.res(R.string.debt_member_forgive_conflict)
+        else error.toUiText(R.string.debt_member_forgive_failed)
+    } else error.toUiText(R.string.debt_proposal_action_failed)
+    return if (activeForm != null) copy(isSubmitting = false, validationError = message)
+        else copy(isSubmitting = false, error = message, errorTone = MessageTone.Danger)
+}
 
-    /** 写成功的统一收尾：清表单 + 提示 + （仅 confirm）标记折叠已变 + 重拉 proposal 列表。 */
-    private fun onActionSucceeded(@StringRes doneRes: Int, foldChanged: Boolean) {
-        _state.update {
-            it.copy(
-                isSubmitting = false,
-                activeForm = null,
-                targetProposalPublicId = null,
-                amountInput = "",
-                noteInput = "",
-                validationError = null,
-                error = null,
-                flashMessage = UiText.res(doneRes),
-                foldChangedAt = if (foldChanged) it.foldChangedAt + 1 else it.foldChangedAt,
-            )
-        }
-        refresh()
-    }
+@StringRes
+private fun memberCommandDoneRes(command: MemberSettlementCommand): Int = when (command) {
+    is MemberSettlementCommand.Propose -> R.string.debt_proposal_propose_done
+    is MemberSettlementCommand.Confirm -> R.string.debt_proposal_confirm_done
+    is MemberSettlementCommand.Withdraw -> R.string.debt_proposal_withdraw_done
+    is MemberSettlementCommand.Reject -> R.string.debt_proposal_reject_done
+    is MemberSettlementCommand.Forgive -> R.string.debt_member_forgive_done
 }
 
 /** 表单输入的校验文案 res，输入可接受时返回 null。 */
@@ -292,10 +251,4 @@ private fun proposalValidationError(
     form == ProposalForm.Confirm && proposedAmountCents != null && amountCents > proposedAmountCents ->
         R.string.debt_proposal_confirm_over
     else -> null
-}
-
-@StringRes
-private fun actionDoneRes(form: ProposalForm): Int = when (form) {
-    ProposalForm.Propose -> R.string.debt_proposal_propose_done
-    ProposalForm.Confirm -> R.string.debt_proposal_confirm_done
 }

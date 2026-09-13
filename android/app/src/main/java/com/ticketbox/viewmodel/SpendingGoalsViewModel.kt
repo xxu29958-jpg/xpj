@@ -20,45 +20,62 @@ data class SpendingGoalsUiState(
     val goals: List<Goal> = emptyList(),
     val isLoading: Boolean = true,
     val loadError: UiText? = null,
+    val fetchedAt: String? = null,
+    val fromCache: Boolean = false,
 )
 
 class SpendingGoalsViewModel(
     private val reports: ReportsActions,
+    private val edits: com.ticketbox.data.repository.GoalEditActions,
     initialMonth: String = YearMonth.now().toString(),
 ) : ViewModel() {
     private val _state = MutableStateFlow(
         SpendingGoalsUiState(
-            canModify = reports.canModifyLedger(),
+            canModify = edits.currentAccess()?.canModify == true,
             month = initialMonth.validGoalMonth(),
         ),
     )
     val state: StateFlow<SpendingGoalsUiState> = _state.asStateFlow()
     private var loadJob: Job? = null
     private var loadGeneration = 0L
+    private val timezone = java.util.TimeZone.getDefault().id
 
+    private var binding: com.ticketbox.data.repository.LogicalSessionBinding? = null
     init {
-        refresh()
+        viewModelScope.launch {
+            edits.observeAccess().collect { access ->
+                if (binding != access?.binding) {
+                    binding = access?.binding
+                    loadGeneration += 1
+                    loadJob?.cancel()
+                    _state.update { it.copy(goals = emptyList(), fetchedAt = null, fromCache = false, canModify = access?.canModify == true, isLoading = false) }
+                    if (access != null) refresh()
+                } else _state.update { it.copy(canModify = access?.canModify == true) }
+            }
+        }
     }
 
     fun refresh() {
+        val origin = edits.currentAccess()?.binding ?: return
         val requestedMonth = _state.value.month
         val generation = ++loadGeneration
         loadJob?.cancel()
         _state.update {
             it.copy(
-                canModify = reports.canModifyLedger(),
+                canModify = edits.currentAccess()?.canModify == true,
                 isLoading = true,
                 loadError = null,
             )
         }
         loadJob = viewModelScope.launch {
-            val result = reports.goals(month = requestedMonth, includeArchived = false)
-            if (generation != loadGeneration || _state.value.month != requestedMonth) return@launch
+            val result = reports.goals(month = requestedMonth, includeArchived = false, expectedBinding = origin, timezone = timezone)
+            if (generation != loadGeneration || edits.currentAccess()?.binding != origin || _state.value.month != requestedMonth) return@launch
             result.fold(
-                onSuccess = { goals ->
+                onSuccess = { read ->
                     _state.update {
                         it.copy(
-                            goals = goals.filter { goal -> goal.isSpendingLimit && !goal.isArchived },
+                            goals = read.value.filter { goal -> goal.isSpendingLimit && !goal.isArchived },
+                            fetchedAt = read.fetchedAt, fromCache = read.fromCache,
                             isLoading = false,
                             loadError = null,
                         )
@@ -69,11 +86,24 @@ class SpendingGoalsViewModel(
                         it.copy(
                             isLoading = false,
                             loadError = error.toUiText(R.string.spending_goals_load_failed),
+                            goals = if (error.isReadAccessDenied()) emptyList() else it.goals,
+                            fetchedAt = if (error.isReadAccessDenied()) null else it.fetchedAt,
+                            fromCache = !error.isReadAccessDenied() && it.fromCache,
                         )
                     }
                 },
             )
         }
+    }
+
+    fun acceptArchived(expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding, archived: Goal) {
+        if (expectedBinding != binding || expectedBinding != edits.currentAccess()?.binding ||
+            archived.ledgerId != expectedBinding.ledgerId || !archived.isArchived) return
+        val remaining = _state.value.goals.filterNot { it.publicId == archived.publicId && it.rowVersion <= archived.rowVersion }
+        if (remaining == _state.value.goals) return
+        loadGeneration += 1
+        loadJob?.cancel()
+        _state.update { it.copy(goals = remaining, fetchedAt = null, fromCache = false, isLoading = false) }
     }
 
     fun previousMonth() {
@@ -87,7 +117,7 @@ class SpendingGoalsViewModel(
     private fun shiftMonth(delta: Long) {
         _state.update {
             val nextMonth = YearMonth.parse(it.month).plusMonths(delta).toString()
-            it.copy(month = nextMonth, goals = emptyList(), loadError = null)
+            it.copy(month = nextMonth, goals = emptyList(), fetchedAt = null, fromCache = false, loadError = null)
         }
         refresh()
     }

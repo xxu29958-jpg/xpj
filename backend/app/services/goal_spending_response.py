@@ -1,28 +1,21 @@
-"""Spending-limit goal serialization helpers.
-
-Split out of :mod:`app.services.goal_service` so the mutation/lifecycle surface
-(create / update / archive / restore) stays under the file-LOC gate. Pure
-read-side: aggregate a tenant's confirmed spend for a month and render a
-``GoalResponse`` for a spending_limit goal. No mutation, no debt-goal logic, so
-this module never imports back into ``goal_service`` (one-directional).
-"""
+"""Spending-goal progress compares confirmed spending in the target's recorded currency."""
 
 from __future__ import annotations
 
-from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import Goal
 from app.money_contract import projection_sum_to_int
 from app.schemas import GoalResponse
-from app.services.category_service import normalize_category
+from app.services.money_projection_service import project_category_spend, sum_projected_amounts
 from app.services.spending_contract_service import confirmed_amount_query
 
 
 class GoalSpendTotals:
-    def __init__(self, total_amount_cents: int, by_category: dict[str, int]) -> None:
+    def __init__(self, total_amount_cents: int | None, by_category: dict[str, int | None], *, home_currency_code: str | None) -> None:
         self.total_amount_cents = total_amount_cents
         self.by_category = by_category
+        self.home_currency_code = home_currency_code
 
 
 def month_spend_totals(
@@ -30,44 +23,25 @@ def month_spend_totals(
     *,
     tenant_id: str,
     month: str,
+    home_currency_code: str | None,
     timezone_name: str | None = None,
 ) -> GoalSpendTotals:
-    filtered = confirmed_amount_query(
-        tenant_id=tenant_id,
-        month=month,
-        timezone_name=timezone_name,
-    ).subquery()
-    rows = db.execute(
-        select(
-            filtered.c.category,
-            func.coalesce(func.sum(filtered.c.amount_cents), 0),
-        )
-        .select_from(filtered)
-        .group_by(filtered.c.category)
+    if home_currency_code is None:
+        return GoalSpendTotals(None, {}, home_currency_code=None)
+    rows = db.execute(confirmed_amount_query(tenant_id=tenant_id, month=month, timezone_name=timezone_name))
+    spending, _ = project_category_spend(db, tenant_id=tenant_id, home=home_currency_code, rows=rows)
+    by_category = {category: value.amount_cents for category, value in spending.items()}
+    return GoalSpendTotals(
+        sum_projected_amounts(by_category.values(), label="goal_spending.total"),
+        by_category, home_currency_code=home_currency_code,
     )
-    total_amount_cents = 0
-    by_category: dict[str, int] = {}
-    for category_raw, amount_value in rows:
-        amount = projection_sum_to_int(
-            amount_value,
-            label="goal_spending.category",
-            empty_is_zero=True,
-        )
-        total_amount_cents = projection_sum_to_int(
-            total_amount_cents + amount,
-            label="goal_spending.total",
-        )
-        category = normalize_category(category_raw)
-        by_category[category] = projection_sum_to_int(
-            by_category.get(category, 0) + amount,
-            label="goal_spending.normalized_category",
-        )
-    return GoalSpendTotals(total_amount_cents, by_category)
 
 
-def _progress_state(goal: Goal, spent_amount_cents: int) -> str:
+def _progress_state(goal: Goal, spent_amount_cents: int | None) -> str:
     if goal.status == "archived":
         return "archived"
+    if spent_amount_cents is None:
+        return "unavailable"
     if spent_amount_cents <= 0:
         return "not_started"
     if spent_amount_cents >= goal.target_amount_cents:
@@ -79,11 +53,13 @@ def _progress_state(goal: Goal, spent_amount_cents: int) -> str:
 
 def goal_response(goal: Goal, totals: GoalSpendTotals) -> GoalResponse:
     spent = totals.by_category.get(goal.category, 0) if goal.category else totals.total_amount_cents
+    if goal.home_currency_code is None or goal.home_currency_code != totals.home_currency_code:
+        spent = None
     target = projection_sum_to_int(
         goal.target_amount_cents,
         label="goal_spending.target",
     )
-    remaining = projection_sum_to_int(
+    remaining = None if spent is None else projection_sum_to_int(
         target - spent,
         label="goal_spending.remaining",
     )
@@ -93,6 +69,7 @@ def goal_response(goal: Goal, totals: GoalSpendTotals) -> GoalResponse:
         name=goal.name,
         goal_type=goal.goal_type,
         period=goal.period,
+        home_currency_code=goal.home_currency_code,
         month=goal.month,
         category=goal.category,
         target_amount_cents=target,
@@ -102,7 +79,7 @@ def goal_response(goal: Goal, totals: GoalSpendTotals) -> GoalResponse:
         # spent/target/remaining and ``progress_state=over_limit``; emitting an
         # unbounded percentage would be both inaccessible as a progressbar and
         # unsafe for ECMAScript consumers after C07 aggregate widening.
-        progress_percent=max(0, min(100, (spent * 100) // target)),
+        progress_percent=None if spent is None else max(0, min(100, (spent * 100) // target)),
         progress_state=_progress_state(goal, spent),
         status=goal.status,
         created_at=goal.created_at,

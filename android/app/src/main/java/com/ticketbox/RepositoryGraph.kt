@@ -8,6 +8,7 @@ import com.ticketbox.data.repository.BudgetRepository
 import com.ticketbox.data.repository.CategoryPreferenceRepository
 import com.ticketbox.data.repository.CategoryRuleOfflineMutationWiring
 import com.ticketbox.data.repository.DebtRepository
+import com.ticketbox.data.repository.DebtCreationRepository
 import com.ticketbox.data.repository.ExpenseOfflineMutationWiring
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.IncomePlanRepository
@@ -77,6 +78,9 @@ internal class RepositoryGraph(
             outbox = outbox,
             patchExpenseAdapter = outboxAdapters.patchExpenseAdapter,
             correctionAdapter = outboxAdapters.correctionAdapter,
+            legacyCorrectionAdapter = outboxAdapters.legacyCorrectionAdapter,
+            billSplitCreateAdapter = outboxAdapters.billSplitCreateAdapter,
+            billSplitReceiptAdapter = outboxAdapters.billSplitReceiptAdapter,
             expenseStateTokenAdapter = outboxAdapters.expenseStateTokenAdapter,
             replaceItemsAdapter = outboxAdapters.replaceItemsAdapter,
             replaceSplitsAdapter = outboxAdapters.replaceSplitsAdapter,
@@ -101,22 +105,38 @@ internal class RepositoryGraph(
         outbox = outbox,
         createAdapter = outboxAdapters.recurringCreateAdapter,
         updateAdapter = outboxAdapters.recurringUpdateAdapter,
+        occurrenceAdapter = outboxAdapters.recurringOccurrenceAdapter,
     )
 
     val budgetRepository = BudgetRepository(
         apiProvider = apiServiceProvider,
+        outbox = outbox,
+        saveAdapter = outboxAdapters.budgetSaveAdapter,
+        receiptAdapter = outboxAdapters.budgetReceiptAdapter,
+        rateAdapter = outboxAdapters.manualRateAdapter,
+        rateReceiptAdapter = outboxAdapters.manualRateReceiptAdapter,
     )
 
     val incomePlanRepository = IncomePlanRepository(
         apiProvider = apiServiceProvider,
-        // ADR-0042 Slice F: outbox + adapter for updateAllowingOffline.
+        // The editor persists its month-bearing original intent before dispatch.
         outbox = outbox,
-        incomePlanUpdateAdapter = outboxAdapters.incomePlanUpdateAdapter,
+        incomePlanSubmissionAdapter = outboxAdapters.incomePlanSubmissionAdapter,
+        incomePlanReceiptAdapter = outboxAdapters.incomePlanReceiptAdapter,
     )
 
-    // ADR-0049 §2 (slice 8): Debt entity repository. Direct-only online (no outbox surface).
     val debtRepository = DebtRepository(
         apiProvider = apiServiceProvider,
+    )
+
+    val debtWriteRepository = com.ticketbox.data.repository.DebtWriteRepository(
+        apiServiceProvider, outbox, outboxAdapters.debtAdjustmentAdapter, outboxAdapters.debtRepaymentAdapter,
+    )
+
+    val debtCreationRepository = DebtCreationRepository(
+        apiProvider = apiServiceProvider,
+        outbox = outbox,
+        payloadAdapter = outboxAdapters.debtCreateAdapter,
     )
 
     // ADR-0049 §杠杆③ (slice 3a): NLS 还款捕获复核箱仓库。direct-only online；NLS service 路由还款草稿到它。
@@ -124,22 +144,26 @@ internal class RepositoryGraph(
         apiProvider = apiServiceProvider,
     )
 
+    val goalEditRepository = com.ticketbox.data.repository.GoalEditRepository(
+        apiServiceProvider, outbox, outboxAdapters.goalUpdateAdapter, outboxAdapters.goalReceiptAdapter,
+        outboxAdapters.goalCreateAdapter,
+    )
+
     val reportsRepository = ReportsRepository(
         apiProvider = apiServiceProvider,
-        // ADR-0042 Slice F: outbox + adapter for updateGoalAllowingOffline.
-        outbox = outbox,
-        goalUpdateAdapter = outboxAdapters.goalUpdateAdapter,
+        expenseDao = database.expenseDao(),
+        sessionCoordinator = ledgerSessionCoordinator,
     )
 
     val ruleRepository = RuleRepository(
         binding = serverSessionBinding,
         onConfirmedChanged = { expenseRepository.syncConfirmed() },
-        // PR-2g.4: outbox + adapter for updateCategoryRuleAllowingOffline.
-        // PR-2g.5: + deleteAdapter for deleteCategoryRuleAllowingOffline.
         offlineMutations = CategoryRuleOfflineMutationWiring(
             outbox = outbox,
             updateAdapter = outboxAdapters.categoryRuleUpdateAdapter,
             deleteAdapter = outboxAdapters.categoryRuleDeleteAdapter,
+            submissionAdapter = outboxAdapters.categoryRuleSubmissionAdapter,
+            receiptAdapter = outboxAdapters.categoryRuleReceiptAdapter,
         ),
     )
 

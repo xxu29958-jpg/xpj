@@ -1,8 +1,6 @@
 package com.ticketbox.data.repository
 
 import com.squareup.moshi.JsonAdapter
-import com.squareup.moshi.JsonDataException
-import com.squareup.moshi.JsonEncodingException
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.RecurringItemUpdateRequestDto
@@ -19,29 +17,25 @@ class UpdateRecurringItemDispatcher(
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
         val publicId = row.targetId.removePrefix(UPDATE_TARGET_PREFIX).takeIf {
             row.targetId.startsWith(UPDATE_TARGET_PREFIX) && it.isNotBlank()
-        } ?: return DispatchResult.Discarded("invalid target id: ${row.targetId}")
-        val key = row.idempotencyKey
-            ?: return DispatchResult.Failure("UpdateRecurringItem row missing idempotency key")
-        val request = try {
-            val stored = payloadAdapter.fromJson(row.payloadJson)
-                ?: return DispatchResult.Failure("payload deserialised to null")
-            stored.copy(expectedRowVersion = row.expectedRowVersion)
-        } catch (error: JsonDataException) {
-            return DispatchResult.Failure("payload JSON shape changed: ${error.message.orEmpty()}")
-        } catch (error: JsonEncodingException) {
-            return DispatchResult.Failure("payload JSON malformed: ${error.message.orEmpty()}")
-        }
+        } ?: return DispatchResult.Failure(RECURRING_ORIGINAL_UNSUPPORTED)
+        val key = row.idempotencyKey?.takeIf(String::isNotBlank)
+            ?: return DispatchResult.Failure(RECURRING_ORIGINAL_UNSUPPORTED)
+        val request = runCatching { payloadAdapter.fromJson(row.payloadJson) }.getOrNull()
+            ?.takeIf { it.matchesOriginal(row) }
+            ?: return DispatchResult.Failure(RECURRING_ORIGINAL_UNSUPPORTED)
         return try {
-            val updated = apiProvider(row).updateRecurringItem(publicId, request, key)
-            DispatchResult.Success(newRowVersion = updated.rowVersion)
+            val receipt = apiProvider(row).updateRecurringItem(publicId, request, key)
+            // Each later original retains its own OCC basis; accepting this one cannot rebase it.
+            if (receipt.confirms(row, request)) DispatchResult.Success()
+            else DispatchResult.Failure(RECURRING_RECEIPT_UNVERIFIED)
         } catch (error: HttpException) {
             mapRecurringHttpException(error, stateConflictIsResolvable = true)
-        } catch (error: IOException) {
-            DispatchResult.RetryableFailure(error.message ?: "network IO failure")
+        } catch (_: IOException) {
+            DispatchResult.RetryableFailure(RECURRING_CONNECTION_INTERRUPTED)
         } catch (error: CancellationException) {
             throw error
-        } catch (error: Exception) {
-            DispatchResult.Failure(error.message ?: "PATCH recurring item threw")
+        } catch (_: Exception) {
+            DispatchResult.Failure(RECURRING_RECEIPT_UNVERIFIED)
         }
     }
 

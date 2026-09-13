@@ -12,7 +12,6 @@ import com.ticketbox.domain.model.DataQualitySummary
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.ExpenseCorrectionDraft
-import com.ticketbox.domain.model.ExpenseCorrectionOutcome
 import com.ticketbox.domain.model.ExpenseFactBundle
 import com.ticketbox.domain.model.ExpenseRevisionPage
 import com.ticketbox.domain.model.ExpenseOffsetDraft
@@ -25,7 +24,6 @@ import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.LifestyleStats
 import com.ticketbox.domain.model.MonthlyStats
-import com.ticketbox.domain.model.PendingUploadReceipt
 import com.ticketbox.domain.model.NotificationDraft
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.RepaymentDraft
@@ -48,7 +46,7 @@ class ExpenseRepository(
         expenseDao = expenseDao,
     ),
     deviceNameProvider: () -> String = ::defaultAndroidDeviceName,
-    offlineMutations: ExpenseOfflineMutationWiring = ExpenseOfflineMutationWiring(),
+    offlineMutations: ExpenseOfflineMutationWiring,
 ) : ServerBindingRepository,
     PendingReviewActions,
     LedgerActions,
@@ -90,8 +88,9 @@ class ExpenseRepository(
     private val statsRepository = ExpenseStatsRepositoryActions(core, ledgerRepository)
     private val searchRepository = ExpenseSearchRepositoryActions(core, pendingRepository, binding.settingsStore)
     private val detailRepository = ExpenseDetailRepository(core)
-    private val correctionRepository = ExpenseCorrectionRepository(core)
-    private val offsetRepository = ExpenseOffsetRepository(core)
+    private val correctionRepository = ExpenseCorrectionRepository(core, offlineMutations.outbox,
+        offlineMutations.correctionAdapter, offlineMutations.legacyCorrectionAdapter)
+    private val offsetRepository = ExpenseOffsetRepository(core, correctionRepository)
     private val billSplitRepository = ExpenseBillSplitRepository(core)
     private val backgroundTaskRepository = ExpenseBackgroundTaskRepository(core)
 
@@ -115,6 +114,7 @@ class ExpenseRepository(
 
     override fun currentActiveLedgerId(): String? = pendingRepository.currentActiveLedgerId()
 
+
     override suspend fun bindServer(serverUrl: String, pairingCode: String): Result<BindServerResult> =
         bindingRepository.bindServer(serverUrl, pairingCode)
 
@@ -129,8 +129,8 @@ class ExpenseRepository(
 
     suspend fun testConnection(): Result<Unit> = connectionRepository.testConnection()
 
-    suspend fun runConnectionDiagnostics(): Result<ConnectionDiagnostics> =
-        connectionRepository.runConnectionDiagnostics()
+    suspend fun runConnectionDiagnostics(binding: LogicalSessionBinding): Result<ConnectionDiagnostics> =
+        connectionRepository.runConnectionDiagnostics(binding)
 
     override suspend fun fetchPending(): Result<List<Expense>> =
         pendingRepository.fetchPending()
@@ -154,19 +154,28 @@ class ExpenseRepository(
         snapshotRevision: Long?,
     ): Result<ExpenseRevisionPage> = correctionRepository.fetchRevisions(id, page, pageSize, snapshotRevision)
 
-    override suspend fun correctExpenseAllowingOffline(
-        expense: Expense,
-        correction: ExpenseCorrectionDraft,
-    ): Result<ExpenseCorrectionOutcome> =
-        correctionRepository.correctAllowingOffline(expense, correction)
+    override fun observeCorrections(): Flow<ExpenseCorrectionObservation> = correctionRepository.observe()
+
+    internal suspend fun publishDeliveredCorrection(row: OutboxRow, expense: com.ticketbox.data.remote.dto.ExpenseDto) =
+        correctionRepository.publishDelivered(row, expense)
+
+    override suspend fun submitCorrection(expectedBinding: LogicalSessionBinding, expense: Expense,
+        correction: ExpenseCorrectionDraft): Result<Long> = correctionRepository.submit(expectedBinding, expense, correction)
+
+    override suspend fun recoverCorrection(expectedBinding: LogicalSessionBinding, rowId: Long, drop: Boolean): Result<Unit> =
+        correctionRepository.recover(expectedBinding, rowId, drop)
 
     override suspend fun fetchExpenseFactBundle(id: Long): Result<ExpenseFactBundle> =
         offsetRepository.fetch(id)
 
     override suspend fun createExpenseOffsetAllowingOffline(
+        expectedBinding: LogicalSessionBinding,
         expense: Expense,
         draft: ExpenseOffsetDraft,
-    ): Result<ExpenseOffsetMutationOutcome> = offsetRepository.createAllowingOffline(expense, draft)
+    ): Result<ExpenseOffsetMutationOutcome> = offsetRepository.createAllowingOffline(expectedBinding, expense, draft)
+
+    internal fun canReplayExpenseOffset(row: OutboxRow): Boolean =
+        row.lastError != "offset_create_requires_review" && core.offsetCreateAdapter?.readSupportedOffsetCreate(row) != null
 
     override suspend fun voidExpenseOffsetAllowingOffline(
         expense: Expense,
@@ -174,8 +183,6 @@ class ExpenseRepository(
         reason: String,
     ): Result<ExpenseOffsetMutationOutcome> = offsetRepository.voidAllowingOffline(expense, offset, reason)
 
-    override suspend fun uploadScreenshot(request: ScreenshotUploadRequest): Result<PendingUploadReceipt> =
-        pendingRepository.uploadScreenshot(request)
 
     override suspend fun updateExpense(
         id: Long,
@@ -219,37 +226,47 @@ class ExpenseRepository(
         detailRepository.replaceExpenseItemsAllowingOffline(expense, items, currentItems)
 
     override suspend fun createBillSplitInvitation(
-        expenseId: Long,
+        expectedBinding: LogicalSessionBinding,
+        expense: Expense,
         receiverAccountId: Long,
+        receiverName: String,
         amountCents: Long,
-    ): Result<BillSplitSent> = billSplitRepository.createBillSplitInvitation(
-        expenseId = expenseId,
+    ): Result<Long> = billSplitRepository.createBillSplitInvitation(
+        expectedBinding = expectedBinding,
+        expense = expense,
         receiverAccountId = receiverAccountId,
+        receiverName = receiverName,
         amountCents = amountCents,
     )
 
-    suspend fun fetchBillSplitInbox(): Result<List<BillSplitInbox>> =
-        billSplitRepository.fetchBillSplitInbox()
+    override fun observeBillSplitCreations(): Flow<BillSplitCreationObservation> = billSplitRepository.observeCreations()
+    fun describeBillSplitCreation(row: OutboxRow): PendingBillSplitCreation? = billSplitRepository.describeCreation(row)
+    override suspend fun recoverBillSplitCreation(expectedBinding: LogicalSessionBinding, id: Long, drop: Boolean): Result<Unit> =
+        billSplitRepository.recover(expectedBinding, id, drop)
 
-    override suspend fun fetchBillSplitSent(): Result<List<BillSplitSent>> =
-        billSplitRepository.fetchBillSplitSent()
+    suspend fun fetchBillSplitInbox(binding: LogicalSessionBinding): Result<List<BillSplitInbox>> =
+        billSplitRepository.fetchBillSplitInbox(binding)
+
+    override suspend fun fetchBillSplitSent(binding: LogicalSessionBinding): Result<List<BillSplitSent>> =
+        billSplitRepository.fetchBillSplitSent(binding)
 
     suspend fun acceptBillSplitInvitation(
+        binding: LogicalSessionBinding,
         publicId: String,
         targetLedgerId: String,
-    ): Result<BillSplitInbox> = billSplitRepository.acceptBillSplitInvitation(publicId, targetLedgerId)
+    ): Result<BillSplitInbox> = billSplitRepository.acceptBillSplitInvitation(binding, publicId, targetLedgerId)
 
-    suspend fun rejectBillSplitInvitation(publicId: String): Result<BillSplitInbox> =
-        billSplitRepository.rejectBillSplitInvitation(publicId)
+    suspend fun rejectBillSplitInvitation(binding: LogicalSessionBinding, publicId: String): Result<BillSplitInbox> =
+        billSplitRepository.rejectBillSplitInvitation(binding, publicId)
 
-    override suspend fun cancelBillSplitInvitation(publicId: String): Result<BillSplitSent> =
-        billSplitRepository.cancelBillSplitInvitation(publicId)
+    override suspend fun cancelBillSplitInvitation(binding: LogicalSessionBinding, publicId: String): Result<BillSplitSent> =
+        billSplitRepository.cancelBillSplitInvitation(binding, publicId)
 
-    suspend fun fetchBackgroundTasks(): Result<List<BackgroundTask>> =
-        backgroundTaskRepository.fetchBackgroundTasks()
+    suspend fun fetchBackgroundTasks(binding: LogicalSessionBinding): Result<List<BackgroundTask>> =
+        backgroundTaskRepository.fetchBackgroundTasks(binding)
 
-    suspend fun cancelBackgroundTask(publicId: String): Result<BackgroundTask> =
-        backgroundTaskRepository.cancelBackgroundTask(publicId)
+    suspend fun cancelBackgroundTask(binding: LogicalSessionBinding, publicId: String): Result<BackgroundTask> =
+        backgroundTaskRepository.cancelBackgroundTask(binding, publicId)
 
     override suspend fun fetchExpenseSplits(id: Long): Result<ExpenseSplits> =
         detailRepository.fetchExpenseSplits(id)
@@ -290,8 +307,16 @@ class ExpenseRepository(
     internal fun captureDeferredLedgerBinding(): LogicalSessionBinding? =
         core.ledgerRequestGuard.captureLogicalBinding()
 
-    override suspend fun createRepaymentDraftFromExpense(expense: Expense): Result<RepaymentDraft> =
-        detailRepository.createRepaymentDraftFromExpense(expense)
+    internal fun observeLedgerAccess(): Flow<LedgerAccessContext?> = core.apiProvider.observeActiveLedgerAccess()
+
+    internal suspend fun describeManualCreation(row: OutboxRow): ManualExpenseCreationProjection? = core.describeManualCreation(row)
+
+    internal suspend fun stopManualCreation(row: OutboxRow): Result<Unit> = core.stopManualCreation(row)
+
+    override suspend fun createRepaymentDraftFromExpense(
+        expectedBinding: LogicalSessionBinding,
+        expense: Expense,
+    ): Result<RepaymentDraft> = detailRepository.createRepaymentDraftFromExpense(expectedBinding, expense)
 
     override suspend fun confirmExpense(id: Long, expectedRowVersion: Long): Result<Expense> =
         pendingRepository.confirmExpense(id, expectedRowVersion)
@@ -373,11 +398,15 @@ class ExpenseRepository(
     override fun saveRecentSearches(queries: List<String>) =
         searchRepository.saveRecentSearches(queries)
 
-    override suspend fun monthlyStats(month: String?, tag: String?): Result<MonthlyStats> =
-        statsRepository.monthlyStats(month, tag)
+    override fun observeStatsBinding(): Flow<LogicalSessionBinding?> = statsRepository.observeStatsBinding()
 
-    override suspend fun lifestyleStats(month: String?): Result<LifestyleStats> =
-        statsRepository.lifestyleStats(month)
+    override fun statsBinding(): LogicalSessionBinding? = statsRepository.statsBinding()
+
+    override suspend fun monthlyStats(query: StatsQuery): Result<ReadSnapshot<MonthlyStats>> =
+        statsRepository.monthlyStats(query)
+
+    override suspend fun lifestyleStats(query: StatsQuery): Result<ReadSnapshot<LifestyleStats>> =
+        statsRepository.lifestyleStats(query)
 
     override suspend fun dataQualitySummary(): Result<DataQualitySummary> =
         statsRepository.dataQualitySummary()
@@ -385,18 +414,11 @@ class ExpenseRepository(
     suspend fun serverSettings(): Result<ServerSettings> =
         connectionRepository.serverSettings()
 
-    override fun monthlyBudgetCents(): Long? =
-        connectionRepository.monthlyBudgetCents()
-
     override fun lastConfirmedSyncAt(): String? =
         connectionRepository.lastConfirmedSyncAt()
 
     override fun lastUploadAt(): String? =
         connectionRepository.lastUploadAt()
-
-    fun saveMonthlyBudgetCents(amountCents: Long?) {
-        connectionRepository.saveMonthlyBudgetCents(amountCents)
-    }
 
     suspend fun clearLocalCache() {
         connectionRepository.clearLocalCache()

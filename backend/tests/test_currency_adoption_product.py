@@ -16,6 +16,7 @@ from app.models import (
     Account,
     AuthToken,
     Device,
+    Goal,
     InstallationCurrencyAuditLog,
     InstallationCurrencyBinding,
     InstallationOwnerClaim,
@@ -27,6 +28,7 @@ from app.services.identity_service import (
     new_session_token,
 )
 from tests._infra.env import ADMIN_TEST_DATABASE_URL
+from tests._web_native_form_support import hidden_post_forms
 from tests.desktop_activation_support import activate, pair_desktop
 
 pytestmark = [pytest.mark.currency_binding_unbound, pytest.mark.real_db]
@@ -74,7 +76,7 @@ def _force_adoption_required() -> None:
 
 
 @pytest.fixture()
-def adoption_browser() -> Iterator[_AdoptionBrowser]:
+def adoption_browser(request: pytest.FixtureRequest) -> Iterator[_AdoptionBrowser]:
     with SessionLocal() as db:
         bootstrap = bootstrap_installation_owner(
             db,
@@ -86,7 +88,8 @@ def adoption_browser() -> Iterator[_AdoptionBrowser]:
             device_name="Windows 后端",
         )
         db.commit()
-    _force_adoption_required()
+    if getattr(request, "param", "ADOPTION_REQUIRED") != "EMPTY":
+        _force_adoption_required()
 
     with TestClient(
         app,
@@ -113,6 +116,65 @@ def _hidden_value(html: str, name: str) -> str:
     return match.group(1)
 
 
+@pytest.mark.parametrize("adoption_browser", ["EMPTY"], indirect=True)
+def test_fresh_currency_requires_choice_before_exposing_a_money_basis(
+    adoption_browser: _AdoptionBrowser,
+) -> None:
+    browser = adoption_browser
+    snapshot = browser.client.get("/api/system/runtime-compatibility", headers=browser.headers)
+    assert snapshot.status_code == 200
+    currency = snapshot.json()["capabilities"]["currency"]
+    assert currency["home_currency_code"] is None
+    assert currency["request_binding"] is None
+    assert currency["write_compatibility"] == "owner_action_required"
+    entry = browser.client.get("/web/goals", headers=browser.headers, follow_redirects=False)
+    assert entry.status_code == 303
+    assert entry.headers["location"] == "/web/currency-adoption"
+    page = browser.client.get(entry.headers["location"], headers=browser.headers)
+    assert page.status_code == 200
+    assert 'name="home_currency_code"' in page.text
+    assert not re.search(r'<input\b[^>]*name="home_currency_code"[^>]*\bchecked', page.text)
+    with SessionLocal() as db:
+        assert db.get(InstallationCurrencyBinding, 1).state == "EMPTY"
+
+
+@pytest.mark.parametrize("adoption_browser", ["EMPTY"], indirect=True)
+def test_explicit_jpy_choice_drives_real_goal_write_despite_cny_environment(
+    adoption_browser: _AdoptionBrowser,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    browser = adoption_browser
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "CNY")
+    page = browser.client.get("/web/currency-adoption", headers=browser.headers)
+    fields = {name: _hidden_value(page.text, name) for name in (
+        "csrf_token", "currency_contract_version", "expected_state",
+        "expected_binding_revision", "evidence_token", "idempotency_key",
+    )}
+    chosen = browser.client.post(
+        "/web/currency-adoption", headers=browser.headers,
+        data={**fields, "home_currency_code": "JPY"}, follow_redirects=False,
+    )
+    assert chosen.status_code == 303, chosen.text
+    snapshot = browser.client.get("/api/system/runtime-compatibility", headers=browser.headers).json()
+    assert snapshot["capabilities"]["currency"]["home_currency_code"] == "JPY"
+    assert snapshot["write_compatibility"] == "compatible"
+    page = browser.client.get("/web/goals", headers=browser.headers)
+    assert page.status_code == 200
+    created = browser.client.post(
+        "/web/goals/create", headers=browser.headers,
+        data={**hidden_post_forms(page.text)["/web/goals/create"],
+              "name": "明确选择日元后的目标", "target_amount_yuan": "1000", "month": "2026-09"},
+        follow_redirects=False,
+    )
+    assert created.status_code == 303, created.text
+    with SessionLocal() as db:
+        goal = db.scalar(select(Goal).where(Goal.name == "明确选择日元后的目标"))
+        assert goal is not None
+        assert goal.target_amount_cents == 1000
+        assert goal.home_currency_code == "JPY"
+        assert db.get(InstallationCurrencyBinding, 1).home_currency_code == "JPY"
+
+
 def test_installation_owner_desktop_can_complete_currency_adoption(
     adoption_browser: _AdoptionBrowser,
 ) -> None:
@@ -132,7 +194,7 @@ def test_installation_owner_desktop_can_complete_currency_adoption(
     assert preview.status_code == 200, preview.text
     assert "确认这台小票夹的本位币" in preview.text
     assert "不会换算或改写已有金额" in preview.text
-    assert "确认后不能在这里更改" in preview.text
+    assert "以后可以修改新录入的默认币种" in preview.text
     assert not re.search(r"[0-9a-f]{64}", preview.text)
 
     response = adoption_browser.client.post(
@@ -163,7 +225,8 @@ def test_installation_owner_desktop_can_complete_currency_adoption(
         headers=adoption_browser.headers,
     )
     assert completed.status_code == 200, completed.text
-    assert "本位币已确认" in completed.text
+    assert "默认币种已设置" in completed.text
+    assert 'href="/web/currency-adoption?change=true"' in completed.text
     assert "日元" in completed.text
     assert "JPY" in completed.text
 

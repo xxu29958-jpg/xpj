@@ -3,6 +3,8 @@ package com.ticketbox.data.repository
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 /**
  * Issue #65 slice 3b: the outbox ``expense:<ref>`` target encoding is the single
@@ -16,6 +18,16 @@ import kotlin.test.assertNull
  * only to borrow ``baselineExpense()`` for the [Expense] builder.
  */
 internal class OutboxExpenseTargetTest : ExpensePendingRepositoryOutboxTestBase() {
+    @Test
+    fun `first write baseline is usable only with the original local ref`() {
+        val local = baselineExpense().copy(id = -5, rowVersion = 0, pendingSync = true, clientRef = "original")
+        assertTrue(local.hasExpenseMutationBaseline())
+        assertFalse(local.copy(clientRef = null).hasExpenseMutationBaseline())
+        assertFalse(local.copy(clientRef = "").hasExpenseMutationBaseline())
+        assertFalse(local.copy(id = 42, pendingSync = false).hasExpenseMutationBaseline())
+        assertTrue(baselineExpense().hasExpenseMutationBaseline())
+    }
+
     @Test
     fun `expenseTargetId encodes a server id`() {
         assertEquals("expense:42", expenseTargetId(42L))

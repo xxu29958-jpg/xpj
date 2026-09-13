@@ -212,7 +212,7 @@ class MerchantRepository(
     /**
      * ADR-0038 PR-2g.5: offline-aware version of [deleteMerchantAlias].
      *
-     * Same pattern as [RuleRepository.deleteCategoryRuleAllowingOffline]:
+     * Same pattern as [RuleRepository.deleteCategoryRule]:
      * IOException → enqueue + [DeleteOutcome.Queued]; anything else
      * (HttpException 4xx / 409 / 5xx) → ``Result.failure``.
      * Direct [deleteMerchantAlias] above preserved for callers that
@@ -225,7 +225,7 @@ class MerchantRepository(
         require(cleanPublicId.isNotBlank()) { "请选择一个商家别名。" }
         val request = MerchantAliasDeleteRequest(expectedRowVersion = alias.rowVersion)
         // [codex round-13 P1] Explicit bind for IOException-catch
-        // session re-check. See [RuleRepository.deleteCategoryRuleAllowingOffline]
+        // session re-check. See [RuleRepository.deleteCategoryRule]
         // for the rationale: ``guardedCall``'s post-check is
         // skipped on exception paths, so without this an old-
         // ledger DELETE could land in the new ledger's outbox
@@ -296,7 +296,7 @@ class MerchantRepository(
     /**
      * ADR-0038 PR-2g.6: offline-aware version of [updateMerchantAlias].
      *
-     * Mirrors [RuleRepository.updateCategoryRuleAllowingOffline]
+     * Mirrors [RuleRepository.updateCategoryRule]
      * exactly (PR-2g.4): direct PATCH first; IOException after
      * session re-check → enqueue + [MerchantAliasSaveOutcome.Queued]
      * with an optimistic projection; HttpException
@@ -415,7 +415,7 @@ private data class MerchantAliasOutboxContext(
 /**
  * ADR-0038 PR-2g.6 sealed result for
  * [MerchantRepository.updateMerchantAliasAllowingOffline]. Mirrors
- * [SaveOutcome] (expense) and [CategoryRuleSaveOutcome] (rule).
+ * [SaveOutcome] (expense) and [PendingCategoryRuleSubmission] (rule).
  * Parallel-defined; future PR may generic-ify into ``SaveOutcome<T>``.
  */
 sealed interface MerchantAliasSaveOutcome {

@@ -6,9 +6,11 @@ Split from ``web_app.py`` in v0.4-alpha3 slice 2.
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -22,12 +24,18 @@ from app.routes.web_common import (
     _resolve_selected_ledger_id,
     _web_redirect,
     parse_form_row_version_token,
+    preserve_original_ledger_form,
     templates,
 )
+from app.routes.web_rule_forms import (
+    parse_rule_form,
+    rule_amount_label,
+    rule_currency_input,
+)
+from app.schemas import CategoryRuleCreateRequest, CategoryRuleUpdateRequest
 from app.services.classify_service import (
     apply_rules_to_confirmed,
     apply_rules_to_pending,
-    create_rule,
     delete_rule,
     find_rule_for_tenant,
     list_rule_applications,
@@ -37,33 +45,14 @@ from app.services.classify_service import (
     preview_rule_for_pending,
     rollback_rule_application,
     undo_delete_rule,
-    update_rule,
     validate_rule_application_preview,
 )
-from app.services.currency_binding_service import require_runtime_home_currency_code
-from app.services.currency_common import (
-    major_amount_to_minor,
-    minor_amount_value,
-)
+from app.services.rule_command_service import create_rule_idempotently, update_rule_idempotently
 
 if TYPE_CHECKING:
     from app.models import CategoryRule
 
 router = APIRouter(prefix="/web", tags=["web"])
-
-
-def _parse_optional_amount_cents(raw: str, *, currency_code: str) -> int | None:
-    text = raw or ""
-    if not text:
-        return None
-    try:
-        return major_amount_to_minor(text, currency_code)
-    except AppError as exc:
-        raise AppError(
-            "invalid_request",
-            "金额条件不是合法金额或超出当前版本可支持范围。",
-            status_code=422,
-        ) from exc
 
 
 def _rule_preview(
@@ -111,6 +100,7 @@ def _render_rules(
     rule_form_error: str = "",
     rule_form_draft: dict[str, str] | None = None,
     rule_form_recycle: bool = False,
+    rule_form_review: bool = False,
     rule_toggle_error: str = "",
     rule_toggle_rule_id: int | None = None,
     rule_toggle_recycle: bool = False,
@@ -139,17 +129,15 @@ def _render_rules(
             limit=20,
         )
     ctx = _base_ctx(
-        request,
-        db=db,
-        options=options,
-        selected_ledger_id=selected_id,
+        request, db=db, options=options, selected_ledger_id=selected_id,
     )
-    presentation_currency = ctx["home_currency_code"]
+    draft = rule_form_draft if rule_form_draft is not None else {
+        "home_currency_code": ctx["home_currency_code"] or "", "idempotency_key": str(uuid4()),
+    }
     ctx.update(
-        minor_amount_label=lambda cents: minor_amount_value(
-            cents,
-            presentation_currency,
-        ),
+        rule_amount_label=rule_amount_label,
+        rule_currency_input=rule_currency_input(draft.get("home_currency_code")),
+        new_rule_key=lambda: str(uuid4()),
         rules=rules,
         rule_applications=rule_applications,
         preview=preview,
@@ -161,8 +149,9 @@ def _render_rules(
         flash_message=msg,
         undo_rule_id=undo,
         rule_form_error=rule_form_error,
-        rule_form_draft=rule_form_draft or {},
+        rule_form_draft=draft,
         rule_form_recycle=rule_form_recycle,
+        rule_form_review=rule_form_review,
         rule_toggle_error=rule_toggle_error,
         rule_toggle_rule_id=rule_toggle_rule_id,
         rule_toggle_recycle=rule_toggle_recycle,
@@ -215,13 +204,15 @@ def web_rules_create(
     amount_max_yuan: str = Form(""),
     source_contains: str = Form(""),
     tag_contains: str = Form(""),
+    home_currency_code: str = Form(""),
+    idempotency_key: str = Form(""),
+    review_new: bool = Form(False),
     ledger_id: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
-    _require_selected_ledger_write(options, selected_id)
     draft = {
         "keyword": keyword,
         "category": category,
@@ -230,47 +221,35 @@ def web_rules_create(
         "amount_max_yuan": amount_max_yuan,
         "source_contains": source_contains,
         "tag_contains": tag_contains,
+        "home_currency_code": home_currency_code,
+        "idempotency_key": idempotency_key,
     }
+    retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
+        fields={**draft, "ledger_id": ledger_id, "review_new": review_new}, task="添加分类规则")
+    if retained is not None:
+        return retained
+    _require_selected_ledger_write(options, selected_id)
+    if review_new:
+        draft["idempotency_key"] = str(uuid4())
+        return _render_rules(request, db, options=options, selected_id=selected_id, rule_form_draft=draft)
     try:
-        try:
-            parsed_priority = int(priority)
-        except ValueError as exc:
-            raise AppError(
-                "invalid_request",
-                "优先级必须是整数。",
-                status_code=422,
-            ) from exc
-        presentation_currency = require_runtime_home_currency_code(db)
-        create_rule(
-            db,
-            tenant_id=selected_id,
-            keyword=keyword,
-            category=category,
-            enabled=True,
-            priority=parsed_priority,
-            amount_min_cents=_parse_optional_amount_cents(
-                amount_min_yuan,
-                currency_code=presentation_currency,
-            ),
-            amount_max_cents=_parse_optional_amount_cents(
-                amount_max_yuan,
-                currency_code=presentation_currency,
-            ),
-            source_contains=source_contains,
-            tag_contains=tag_contains,
+        result = create_rule_idempotently(
+            db, tenant_id=selected_id, payload=CategoryRuleCreateRequest(**parse_rule_form(draft)),
+            idempotency_key=idempotency_key,
         )
-        msg = f"已新增规则：{keyword.strip()} → {category.strip()}"
-    except AppError as exc:
+        msg = f"已新增规则：{result.keyword} → {result.category}"
+    except (AppError, ValidationError) as exc:
         db.rollback()
         return _render_rules(
             request,
             db,
             options=options,
             selected_id=selected_id,
-            rule_form_error=exc.message or "请检查关键词与分类。",
+            rule_form_error=exc.message if isinstance(exc, AppError) else "请检查关键词、分类和金额条件。输入已保留。",
             rule_form_draft=draft,
-            rule_form_recycle=exc.error == "rule_category_deleted",
-            status_code=422,
+            rule_form_recycle=isinstance(exc, AppError) and exc.error == "rule_category_deleted",
+            rule_form_review=isinstance(exc, AppError) and exc.error == "idempotency_key_reused",
+            status_code=exc.status_code if isinstance(exc, AppError) else 422,
         )
     return _web_redirect("/web/rules", selected_id, msg=msg)
 
@@ -311,42 +290,37 @@ def web_rules_toggle(
     rule_id: int,
     ledger_id: str = Form(""),
     expected_row_version: str = Form(""),
+    enabled: bool = Form(...),
+    idempotency_key: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> Response:
-    # ADR-0038 PR-1 (form-token follow-up): /web is no longer loopback-
-    # only — ADR-0028 PR-4 lets a public-host request with a valid
-    # ``__Host-session`` cookie reach /web too. The pre-PR-4 comment
-    # claimed "no race window under loopback" was sufficient; that
-    # assumption broke when /web went cookie-accessible. Carry a
-    # hidden ``expected_row_version`` per row instead.
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
+    retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
+        fields={"ledger_id": ledger_id, "expected_row_version": expected_row_version,
+            "idempotency_key": idempotency_key, "enabled": enabled}, task="启用或停用分类规则")
+    if retained is not None:
+        return retained
     _require_selected_ledger_write(options, selected_id)
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
         return _web_redirect("/web/rules", selected_id, msg="页面已过期，请刷新后重试。")
-    rule = _get_rule(db, rule_id, selected_id)
-    if rule is None:
-        msg = "规则不存在。"
-    else:
-        try:
-            updated_rule = update_rule(db, rule, expected_row_version=parsed, enabled=not rule.enabled)
-            msg = f"规则「{updated_rule.keyword}」{'已启用' if updated_rule.enabled else '已停用'}。"
-        except AppError as exc:
-            db.rollback()
-            if exc.error == "rule_category_deleted":
-                return _render_rules(
-                    request,
-                    db,
-                    options=options,
-                    selected_id=selected_id,
-                    rule_toggle_error=exc.message,
-                    rule_toggle_rule_id=rule_id,
-                    rule_toggle_recycle=True,
-                    status_code=422,
-                )
-            msg = "规则已在其它端被修改，请刷新后重试。" if exc.error == "state_conflict" else exc.message
+    try:
+        updated_rule = update_rule_idempotently(
+            db, tenant_id=selected_id, rule_id=rule_id, idempotency_key=idempotency_key,
+            payload=CategoryRuleUpdateRequest(expected_row_version=parsed, enabled=enabled),
+        )
+        msg = f"规则「{updated_rule.keyword}」{'已启用' if updated_rule.enabled else '已停用'}。"
+    except AppError as exc:
+        db.rollback()
+        if exc.error == "rule_category_deleted":
+            return _render_rules(
+                request, db, options=options, selected_id=selected_id,
+                rule_toggle_error=exc.message, rule_toggle_rule_id=rule_id,
+                rule_toggle_recycle=True, status_code=422,
+            )
+        msg = "规则已在其它端被修改，请刷新后重试。" if exc.error == "state_conflict" else exc.message
     return _web_redirect("/web/rules", selected_id, msg=msg)
 
 
@@ -434,7 +408,13 @@ def web_rules_apply_pending(
     if not preview_token or not current_preview or current_preview["preview_token"] != preview_token:
         msg = "待确认账单预览已过期，请重新预览后再确认应用。"
         return _web_redirect("/web/rules", selected_id, apply_preview="1", msg=msg)
-    pending_scanned, changed_count, limited = apply_rules_to_pending(db, tenant_id=selected_id)
+    try:
+        pending_scanned, changed_count, limited = apply_rules_to_pending(
+            db, tenant_id=selected_id, preview_token=preview_token,
+        )
+    except AppError as exc:
+        db.rollback()
+        return _web_redirect("/web/rules", selected_id, apply_preview="1", msg=exc.message)
     suffix = " 还有未扫描账单，可再次预览并应用。" if limited else ""
     msg = f"扫描了 {pending_scanned} 条待确认；改写了 {changed_count} 条分类。{suffix}"
     return _web_redirect("/web/rules", selected_id, msg=msg)
@@ -468,12 +448,14 @@ def web_rules_apply_confirmed(
         msg = "历史账单预览已过期，请重新预览后再确认应用。"
         return _web_redirect("/web/rules", selected_id, confirmed_preview="1", msg=msg)
     actor_account_id, actor_device_id = resolve_web_actor(db, request, selected_id)
-    confirmed_scanned, changed_count, limited = apply_rules_to_confirmed(
-        db,
-        tenant_id=selected_id,
-        actor_account_id=actor_account_id,
-        actor_device_id=actor_device_id,
-    )
+    try:
+        confirmed_scanned, changed_count, limited = apply_rules_to_confirmed(
+            db, tenant_id=selected_id, preview_token=preview_token,
+            actor_account_id=actor_account_id, actor_device_id=actor_device_id,
+        )
+    except AppError as exc:
+        db.rollback()
+        return _web_redirect("/web/rules", selected_id, confirmed_preview="1", msg=exc.message)
     suffix = " 还有未扫描账单，可再次预览并应用。" if limited else ""
     msg = f"扫描了 {confirmed_scanned} 条已确认；改写了 {changed_count} 条分类。{suffix}"
     return _web_redirect("/web/rules", selected_id, msg=msg)

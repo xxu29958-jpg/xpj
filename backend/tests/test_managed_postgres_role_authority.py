@@ -12,7 +12,6 @@ from app.database._managed_postgres_migration_runtime import (
 )
 from tests.test_managed_postgres_migration_runtime import (
     _C07_TARGET_REVISION,
-    _RELEASE_HEAD_REVISION,
     _managed_topology,
     _revision,
 )
@@ -55,7 +54,7 @@ def test_role_authority_drift_refuses_before_alembic(
                 pgpassfile=topology.pgpass,
                 program=topology.program,
                 source_revision=_C07_TARGET_REVISION,
-                target_revision=_RELEASE_HEAD_REVISION,
+                target_revision=topology.program.target_revision,
                 generation_operation_id=topology.operation_id,
             )
         assert _revision(topology.admin_database_url) == _C07_TARGET_REVISION

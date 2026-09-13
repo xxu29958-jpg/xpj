@@ -35,6 +35,7 @@ enum class DataAuthorityTone {
     ReadOnly,
 }
 
+/** Callers must have a result before using Backend; neither Backend nor Refreshing implies offline storage. */
 @Composable
 fun AppDataAuthorityStrip(
     tone: DataAuthorityTone,

@@ -8,8 +8,15 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
-from app.money_contract import projection_sum_to_int, projection_values_sum_to_int
-from app.routes._web_expense_return_context import flow_href
+from app.routes._web_bill_split_context import _cents_to_yuan, _fmt_local
+from app.routes._web_expense_return_context import (
+    ExpenseReturnContext,
+    edit_context_params,
+    expense_return_form_context,
+    flow_href,
+    resolve_return_to,
+    return_context_params,
+)
 from app.routes._web_session_common import (
     resolve_web_actor,
     resolve_web_actor_account_id,
@@ -28,15 +35,11 @@ from app.services.currency_binding_service import require_runtime_home_currency_
 from app.services.currency_common import (
     currency_symbol,
     major_amount_to_minor,
-    minor_amount_value,
 )
-from app.services.invitation_members import list_members
 from app.services.ledger_service import (
-    get_ledger_for_account,
     list_ledgers_for_account,
     list_writer_ledger_ids_for_account,
 )
-from app.services.spending_contract_service import accounting_zone
 from app.services.time_service import ensure_utc, now_utc
 
 router = APIRouter(prefix="/web", tags=["web"])
@@ -44,11 +47,6 @@ router = APIRouter(prefix="/web", tags=["web"])
 _FLASH_TYPES = frozenset({"success", "error", "warning"})
 
 
-def _fmt_local(value) -> str:
-    """Render a snapshot datetime in the accounting timezone."""
-    if value is None:
-        return ""
-    return ensure_utc(value).astimezone(accounting_zone()).strftime("%Y-%m-%d %H:%M")
 
 
 def _accepted_receipt(
@@ -56,34 +54,28 @@ def _accepted_receipt(
     *,
     public_id: str | None,
     receiver_account_id: int,
+    visible_ledger_names: dict[str, str],
 ) -> dict | None:
     """Hydrate a receiver-authorized receipt from the accepted invitation."""
     if not public_id:
         return None
     try:
         inv = bsplit.get_invitation(db, public_id)
-        if (
-            inv.receiver_account_id != receiver_account_id
-            or inv.status != "accepted"
-            or inv.received_expense_id is None
-            or inv.receiver_ledger_id is None
-        ):
-            return None
-        ledger, _role = get_ledger_for_account(
-            db,
-            account_id=receiver_account_id,
-            ledger_id=inv.receiver_ledger_id,
-        )
     except AppError:
+        return None
+    received = bsplit.to_received_bill_reference(
+        inv, receiver_account_id=receiver_account_id, visible_ledger_names=visible_ledger_names,
+    )
+    if received is None:
         return None
     return {
         "amount_label": (
             f"{currency_symbol(inv.home_currency_code)}{_cents_to_yuan(inv.amount_cents, inv.home_currency_code)}"
         ),
-        "ledger_name": ledger.name,
+        "ledger_name": received["ledger_name"],
         "fact_href": flow_href(
-            f"/web/expenses/{inv.received_expense_id}/edit",
-            ledger_id=inv.receiver_ledger_id,
+            f"/web/expenses/{received['expense_id']}/edit",
+            ledger_id=received["ledger_id"],
             return_to="bill_splits_inbox",
         ),
     }
@@ -91,109 +83,6 @@ def _accepted_receipt(
 
 def _clean_flash_type(value: str | None) -> str:
     return value if value in _FLASH_TYPES else ""
-
-
-# -------------------------------------------------------------------------
-# Split-invite card (rendered on the /web edit page for a confirmed expense)
-
-
-_INVITE_ACTIVE_STATUSES = ("invited", "accepted")
-
-
-def _remaining_split_capacity(
-    expense: dict,
-    invitations: list,
-    *,
-    presentation_currency: str,
-) -> tuple[str, int]:
-    currency_code = expense.get("home_currency_code") or presentation_currency
-    active_total = projection_values_sum_to_int(
-        (invitation.amount_cents for invitation in invitations if invitation.status in _INVITE_ACTIVE_STATUSES),
-        label="web_bill_split.active_total",
-    )
-    raw_parent = expense.get("amount_cents")
-    parent = 0 if raw_parent is None else projection_sum_to_int(raw_parent, label="web_bill_split.parent_amount")
-    remaining = projection_sum_to_int(
-        parent - active_total,
-        label="web_bill_split.remaining",
-    )
-    return currency_code, max(remaining, 0)
-
-
-def build_split_invite_context(
-    db: Session,
-    request: Request,
-    *,
-    selected_ledger_id: str,
-    expense: dict,
-    can_write: bool,
-) -> dict | None:
-    """Context for the confirmed fact page's "找家人分摊" card, or ``None``.
-
-    The card only makes sense for a **confirmed** expense that has an amount,
-    is writable by the caller, and is not itself a received split (no chain
-    split — ``create_invitation`` 也会兜底). When any of those fail, return
-    ``None`` so the template skips the whole block (A8 wires the form to the
-    pre-existing ``POST /web/expenses/{id}/split-invite`` route).
-
-    The receiver dropdown lists the *current ledger's* other active members
-    (拆账=发邀请到 TA 自己的账本，对照 Android 批 13 的概念区分；份额=记在本账本
-    走编辑页下方的"家庭拆账"卡)。``account_id`` rides each option value as the
-    ``receiver_account_id`` the route expects — an internal int, never shown.
-    """
-    if not (
-        can_write
-        and expense.get("status") == "confirmed"
-        and expense.get("amount_cents") is not None
-        and not expense.get("is_split_received")
-    ):
-        return None
-
-    # Resolving the acting account can fail in loopback when no owner row
-    # exists for the selected ledger; degrade to no-card rather than 500 the
-    # whole edit page.
-    try:
-        sender_account_id = resolve_web_actor_account_id(db, request, selected_ledger_id)
-    except AppError:
-        return None
-
-    members = [
-        {
-            "account_id": summary.account_id,
-            "account_name": summary.account_name,
-            "role": summary.role,
-        }
-        for summary in list_members(db, ledger_id=selected_ledger_id, requester_account_id=sender_account_id)
-        if not summary.is_self and summary.disabled_at is None
-    ]
-
-    invitations = bsplit.list_sent_for_expense(db, sender_account_id=sender_account_id, expense_id=expense["id"])
-    expense_currency, remaining_cents = _remaining_split_capacity(
-        expense,
-        invitations,
-        presentation_currency=require_runtime_home_currency_code(db),
-    )
-    presented_at = now_utc()
-    sent_rows = []
-    for inv in invitations:
-        is_expired = inv.status == "invited" and ensure_utc(inv.expires_at) <= presented_at
-        sent_rows.append(
-            {
-                "public_id": inv.public_id,
-                "status": "expired" if is_expired else inv.status,
-                "amount_yuan": _cents_to_yuan(inv.amount_cents, inv.home_currency_code),
-                "receiver_display_name": inv.receiver_display_name_snapshot or "",
-                "expires_at": _fmt_local(inv.expires_at),
-                "is_cancellable": inv.status == "invited" and not is_expired,
-            }
-        )
-
-    return {
-        "members": members,
-        "sent_rows": sent_rows,
-        "remaining_yuan": _cents_to_yuan(remaining_cents, expense_currency),
-        "has_capacity": remaining_cents > 0,
-    }
 
 
 # -------------------------------------------------------------------------
@@ -271,6 +160,7 @@ def web_bill_split_inbox(
         db,
         public_id=accepted,
         receiver_account_id=account_id,
+        visible_ledger_names=ledger_names,
     )
     return templates.TemplateResponse(request=request, name="bill_splits_inbox.html", context=ctx)
 
@@ -338,7 +228,10 @@ def web_split_invite(
     request: Request,
     receiver_account_id: int = Form(),
     amount_yuan: str = Form(),
+    idempotency_key: str = Form(default=""),
+    expected_row_version: int = Form(default=0),
     ledger_id: str = Form(default=""),
+    return_context: ExpenseReturnContext = Depends(expense_return_form_context),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -364,18 +257,42 @@ def web_split_invite(
             expense_id=expense_id,
             receiver_account_id=receiver_account_id,
             amount_cents=amount_cents,
+            idempotency_key=idempotency_key,
+            expected_row_version=expected_row_version,
         )
         msg = "已发起拆账邀请。"
         flash_type = "success"
     except AppError as exc:
-        msg = exc.message
-        flash_type = "error"
+        return _invite_error_response(db, request, options, selected_id, expense_id, exc,
+            return_context=return_context,
+            draft={"receiver_account_id": receiver_account_id, "amount_yuan": amount_yuan,
+                   "idempotency_key": idempotency_key, "expected_row_version": expected_row_version})
     return _web_redirect(
         "/web/bill-splits/sent",
         selected_id,
         msg=msg,
         flash_type=flash_type,
     )
+
+
+def _invite_error_response(
+    db, request, options, selected_id, expense_id, exc, *, draft, return_context: ExpenseReturnContext,
+):
+    from app.routes._web_expense_fact import web_fact_context
+
+    db.rollback()
+    try:
+        ctx = web_fact_context(db, request, options, selected_id, expense_id,
+            error=exc.message, return_context=return_context)
+    except AppError:
+        return _web_redirect(resolve_return_to(return_context.return_to, "/web/bill-splits/sent"),
+            selected_id, msg=exc.message, flash_type="error", **return_context_params(**return_context.as_kwargs()))
+    if ctx["split_invite"] is not None:
+        ctx["split_invite"].update(draft, requires_review=exc.error in {
+            "state_conflict", "idempotency_key_required", "idempotency_key_reused",
+        })
+    return templates.TemplateResponse(request=request, name="expense_fact.html", context=ctx,
+        status_code=exc.status_code)
 
 
 @router.post(
@@ -457,6 +374,7 @@ def web_split_cancel(
     request: Request,
     ledger_id: str = Form(default=""),
     return_expense_id: int = Form(default=0),
+    return_context: ExpenseReturnContext = Depends(expense_return_form_context),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -474,18 +392,14 @@ def web_split_cancel(
     # 编辑页发起卡的撤回带 return_expense_id 回编辑页(int 类型天然挡住任意
     # 跳转目标;0=未带,落已发列表——sent 页自己的撤回表单不带此字段)。
     target = f"/web/expenses/{return_expense_id}/edit" if return_expense_id > 0 else "/web/bill-splits/sent"
-    return _web_redirect(target, selected_id, msg=msg, flash_type=flash_type)
+    origin = edit_context_params(**return_context.as_kwargs()) if return_expense_id > 0 else {}
+    return _web_redirect(target, selected_id, msg=msg, flash_type=flash_type, **origin)
 
 
 # -------------------------------------------------------------------------
 # Money helpers (kept local to avoid expense-module coupling)
 
 
-def _cents_to_yuan(cents: int | None, currency_code: str) -> str:
-    # Frozen invitation/expense currency is presentation authority.
-    if cents is None:
-        cents = 0
-    return minor_amount_value(cents, currency_code)
 
 
 def _yuan_to_cents(value: str, currency_code: str) -> int | None:

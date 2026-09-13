@@ -30,6 +30,7 @@ from tests._infra.debt_aggregate_assertions import (
     assert_paid_aggregate_crosses_single_command_ceiling,
     create_repayment_goal,
 )
+from tests._runtime_protocol import negotiated_headers
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
 
@@ -51,9 +52,9 @@ def _set_owner_ledger_role(role: str) -> None:
 def _create_debt(client: TestClient, identity, *, principal_amount_cents: int = 50000) -> dict:
     response = client.post(
         "/api/debts",
-        headers=_idem(identity.app_headers),
+        headers=negotiated_headers(client, _idem(identity.app_headers)),
         json={
-            "direction": "i_owe",
+            "home_currency_code": "CNY", "direction": "i_owe",
             "counterparty_type": "external",
             "counterparty_label": "信用卡",
             "principal_amount_cents": principal_amount_cents,

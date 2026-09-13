@@ -18,10 +18,11 @@ from app.services.expense_revision_service import (
 )
 from app.services.ocr_service import ocr_draft_fields_after_clearing
 from app.services.optimistic_concurrency import claim_row_with_token
-from app.services.rule_service import (
-    _casefold_join,
-    _merchant_context,
-    _rule_conditions_match,
+from app.services.rule_matching import (
+    RuleMatch,
+    casefold_join,
+    match_category_rule,
+    merchant_context,
 )
 
 # Categories that are considered "untouched" and safe for rule auto-fill.
@@ -148,17 +149,24 @@ def _rule_application_preview_token(
     rules: list[CategoryRule],
     alias_map: dict[str, str],
     ocr_text_by_id: dict[int, str],
+    matches: list[RuleMatch],
 ) -> str:
     payload = {
-        "version": 1,
+        "version": 2,
         "status": status,
         "scan_limit": _clamp_rule_application_scan_limit(max_scan),
         "aliases": sorted(alias_map.items()),
+        "evaluations": [{"rule_id": match.rule_id, "matched_keyword": match.matched_keyword, "category": match.category,
+            "unavailable": match.unavailable, "money": match.money_evidence} for match in matches],
         "expenses": [
             {
                 "id": expense.id,
+                "row_version": expense.row_version,
                 "category": normalize_category(expense.category or ""),
                 "amount_cents": expense.amount_cents,
+                "home_currency_code": expense.home_currency_code,
+                "expense_time": _iso_or_none(expense.expense_time),
+                "confirmed_at": _iso_or_none(expense.confirmed_at),
                 "merchant": expense.merchant or "",
                 "raw_text": ocr_text_by_id.get(expense.id, ""),
                 "note": expense.note or "",
@@ -176,6 +184,7 @@ def _rule_application_preview_token(
                 "priority": rule.priority,
                 "amount_min_cents": rule.amount_min_cents,
                 "amount_max_cents": rule.amount_max_cents,
+                "home_currency_code": rule.home_currency_code,
                 "source_contains": rule.source_contains,
                 "tag_contains": rule.tag_contains,
                 "updated_at": _iso_or_none(rule.updated_at),
@@ -196,11 +205,11 @@ def _haystack_for(
 ) -> str:
     field = (match_field or "merchant").strip().lower()
     if field == "merchant":
-        return _casefold_join(_merchant_context(expense, alias_map))
+        return casefold_join(merchant_context(expense, alias_map))
     if field in {"raw_text", "raw"}:
         return ocr_text.casefold()
     # "any" or unrecognized → match against merchant + ocr text + note
-    return _casefold_join([*_merchant_context(expense, alias_map), ocr_text, expense.note or ""])
+    return casefold_join([*merchant_context(expense, alias_map), ocr_text, expense.note or ""])
 
 
 def _changed_after_rule_application(expense: Expense, change: RuleApplicationChange) -> bool:
@@ -215,12 +224,14 @@ def _try_apply_rule_category(
     tenant_id: str,
     status: str,
     expense: Expense,
-    rule: CategoryRule,
+    rule_id: int,
+    matched_keyword: str,
     before_category: str,
     after_category: str,
     now,
     actor_account_id: int | None = None,
     actor_device_id: int | None = None,
+    expected_row_version: int | None = None,
 ) -> tuple[int, int, str, str, str] | None:
     # ADR-0038: same atomic UPDATE WHERE row_version = expected pattern as
     # the user-facing optimistic-concurrency endpoints. Previously had its
@@ -241,7 +252,7 @@ def _try_apply_rule_category(
         Expense,
         pk_id=int(expense.id),
         tenant_id=tenant_id,
-        expected_row_version=expense.row_version,
+        expected_row_version=expense.row_version if expected_row_version is None else expected_row_version,
         set_values=set_values,
         extra_where=(
             Expense.status == status,
@@ -260,11 +271,11 @@ def _try_apply_rule_category(
             db,
             updated,
             prepared,
-            reason=f"规则“{rule.keyword}”更正分类",
+            reason=f"规则“{matched_keyword}”更正分类",
             actor_account_id=actor_account_id,
             actor_device_id=actor_device_id,
         )
-    return (int(expense.id), int(rule.id), rule.keyword, before_category, after_category)
+    return (int(expense.id), rule_id, matched_keyword, before_category, after_category)
 
 
 def _try_rollback_rule_change(
@@ -310,19 +321,12 @@ def _try_rollback_rule_change(
 
 
 def _matching_rule_category(
+    db: Session,
     expense: Expense,
     rules: list[CategoryRule],
     alias_map: dict[str, str],
     *,
     ocr_text: str = "",
-) -> tuple[CategoryRule, str] | None:
+) -> RuleMatch:
     haystack = _haystack_for(expense, "any", alias_map, ocr_text=ocr_text)
-    if not haystack:
-        return None
-    for rule in rules:
-        if rule.keyword.casefold() in haystack and _rule_conditions_match(expense, rule):
-            category = normalize_category(rule.category)
-            if category:
-                return rule, category
-            return None
-    return None
+    return match_category_rule(db, expense, rules, haystack=haystack)

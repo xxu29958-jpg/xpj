@@ -17,11 +17,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
 import com.ticketbox.data.repository.RecurringPendingIntent
 import com.ticketbox.data.repository.RecurringPendingState
-import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.AppSectionGroup
-import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
@@ -37,7 +35,6 @@ import com.ticketbox.ui.design.LocalStateTokens
 internal fun RecurringPendingSection(
     intents: List<RecurringPendingIntent>,
     items: List<RecurringItem>,
-    currencyDisplay: CurrencyDisplay,
 ) {
     AppSectionGroup(
         contentPadding = PaddingValues(vertical = AppSpacing.contentGap),
@@ -62,7 +59,6 @@ internal fun RecurringPendingSection(
             RecurringPendingRow(
                 model = resolveRecurringPendingRow(intent, items),
                 intentState = intent.state,
-                currencyDisplay = currencyDisplay,
             )
         }
     }
@@ -72,7 +68,6 @@ internal fun RecurringPendingSection(
 private fun RecurringPendingRow(
     model: RecurringPendingRowModel,
     intentState: RecurringPendingState,
-    currencyDisplay: CurrencyDisplay,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -86,12 +81,11 @@ private fun RecurringPendingRow(
             RecurringPendingRowTexts(
                 model = model,
                 intentState = intentState,
-                currencyDisplay = currencyDisplay,
             )
         }
         model.amountCents?.let {
             Text(
-                text = formatDisplayAmount(it, currencyDisplay),
+                text = recurringRecordedAmountText(it, model.homeCurrencyCode),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium,
                 maxLines = 1,
@@ -104,7 +98,6 @@ private fun RecurringPendingRow(
 private fun RecurringPendingRowTexts(
     model: RecurringPendingRowModel,
     intentState: RecurringPendingState,
-    currencyDisplay: CurrencyDisplay,
 ) {
     val stateColor = if (intentState == RecurringPendingState.WAITING) {
         MaterialTheme.colorScheme.onSurfaceVariant
@@ -127,7 +120,7 @@ private fun RecurringPendingRowTexts(
         style = MaterialTheme.typography.bodySmall,
     )
     if (model.changes.isNotEmpty()) {
-        val changeTexts = model.changes.map { change -> recurringPendingChangeText(change, currencyDisplay) }
+        val changeTexts = model.changes.map { change -> recurringPendingChangeText(change, model.homeCurrencyCode) }
         Text(
             text = changeTexts.joinToString(" · "),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -148,7 +141,7 @@ private fun RecurringPendingRowTexts(
 @Composable
 private fun recurringPendingChangeText(
     change: RecurringPendingChange,
-    currencyDisplay: CurrencyDisplay,
+    homeCurrencyCode: String?,
 ): String = when (change) {
     is RecurringPendingChange.MerchantTo -> stringResource(
         R.string.recurring_pending_change_merchant,
@@ -156,7 +149,7 @@ private fun recurringPendingChangeText(
     )
     is RecurringPendingChange.AmountTo -> stringResource(
         R.string.recurring_pending_change_amount,
-        formatDisplayAmount(change.cents, currencyDisplay),
+        recurringRecordedAmountText(change.cents, homeCurrencyCode),
     )
     is RecurringPendingChange.DateTo -> stringResource(
         R.string.recurring_pending_change_date,
