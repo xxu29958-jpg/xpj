@@ -33,6 +33,7 @@ from typing import Literal
 from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy.exc import SQLAlchemyError
+from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
 from starlette.responses import RedirectResponse, Response
 
@@ -47,7 +48,6 @@ from app.routes.web_auth import (
     clear_session_cookie,
     read_session_token,
 )
-from app.runtime_isolation import AuthOffloadTimeout, run_blocking_auth
 from app.services.identity_service import (
     WebSessionAuthResult,
     authenticate_desktop_session_token,
@@ -256,19 +256,9 @@ async def _desktop_bridge_session_gate(
         )
 
     try:
-        auth = await run_blocking_auth(
-            "desktop_bridge_auth",
-            lambda: _desktop_bridge_authenticate(token),
-        )
+        auth = await run_in_threadpool(_desktop_bridge_authenticate, token)
     except AppError as exc:
         return _app_error_response(request, exc)
-    except AuthOffloadTimeout:
-        return error_response(
-            "server_error",
-            "Desktop 登录状态暂时不可用，请稍后再试。",
-            status_code=503,
-            request_id=_request_id(request),
-        )
     except SQLAlchemyError:
         return error_response(
             "server_error",
@@ -297,21 +287,15 @@ async def _browser_cookie_session_gate(
         return RedirectResponse(url=login_url, status_code=303)
 
     try:
-        outcome = await run_blocking_auth(
-            "web_session_auth",
-            lambda: _browser_cookie_authenticate(token, required_account_id),
+        outcome = await run_in_threadpool(
+            _browser_cookie_authenticate,
+            token,
+            required_account_id,
         )
     except AppError:
         redirect = RedirectResponse(url=login_url, status_code=303)
         clear_session_cookie(redirect)
         return redirect
-    except AuthOffloadTimeout:
-        return error_response(
-            "server_error",
-            "网页版登录状态暂时不可用，请稍后再试。",
-            status_code=503,
-            request_id=_request_id(request),
-        )
     except SQLAlchemyError:
         return error_response(
             "server_error",
@@ -361,19 +345,9 @@ async def web_session_gate(
         and is_loopback_request(request)
     ):
         try:
-            installation = await run_blocking_auth(
-                "local_identity_lookup",
-                _loopback_installation_identity,
-            )
+            installation = await run_in_threadpool(_loopback_installation_identity)
         except AppError as exc:
             return _app_error_response(request, exc)
-        except AuthOffloadTimeout:
-            return error_response(
-                "server_error",
-                "本机身份暂时不可用，请稍后再试。",
-                status_code=503,
-                request_id=_request_id(request),
-            )
         except SQLAlchemyError:
             return error_response(
                 "server_error",

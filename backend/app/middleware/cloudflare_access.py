@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 
+from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
 from starlette.responses import Response
 
 from app.config import get_settings
 from app.errors import error_response
 from app.network_boundary import is_loopback_request
-from app.runtime_isolation import AuthOffloadTimeout, run_blocking_auth
 from app.services.cloudflare_access_service import (
     CloudflareAccessVerificationError,
     verify_cloudflare_access_jwt,
@@ -60,20 +60,11 @@ async def cloudflare_access_guard(
             request_id=getattr(request.state, "request_id", None),
         )
     try:
-        claims = await run_blocking_auth(
-            "cloudflare_access_jwt",
-            lambda: verify_cloudflare_access_jwt(
-                token,
-                team_domain=cfg.cloudflare_access_team_domain,
-                audience=cfg.cloudflare_access_aud,
-            ),
-        )
-    except AuthOffloadTimeout:
-        return error_response(
-            "server_error",
-            "Cloudflare Access 身份校验暂时不可用，请稍后再试。",
-            status_code=503,
-            request_id=getattr(request.state, "request_id", None),
+        claims = await run_in_threadpool(
+            verify_cloudflare_access_jwt,
+            token,
+            team_domain=cfg.cloudflare_access_team_domain,
+            audience=cfg.cloudflare_access_aud,
         )
     except CloudflareAccessVerificationError:
         return error_response(
