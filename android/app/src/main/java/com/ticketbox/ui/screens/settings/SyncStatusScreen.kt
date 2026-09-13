@@ -423,7 +423,6 @@ internal fun FailedCard(
     }
 }
 
-@Composable
 @StringRes
 private fun failedRowReviewMessage(row: OutboxRow, onRetry: (() -> Unit)?): Int? = when {
     row.lastError == EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW ->
@@ -435,6 +434,7 @@ private fun failedRowReviewMessage(row: OutboxRow, onRetry: (() -> Unit)?): Int?
     else -> null
 }
 
+@Composable
 private fun expenseReviewAction(row: OutboxRow, busy: Boolean, actions: SyncStatusActions): SyncStatusActionButton? {
     val id = com.ticketbox.data.repository.expenseRefreshTargetId(row.targetId, row.receiptJson) ?: return null
     return SyncStatusActionButton(text = stringResource(R.string.expense_offset_review_current), enabled = !busy,
