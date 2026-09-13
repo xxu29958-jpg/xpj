@@ -4,6 +4,7 @@ import androidx.annotation.StringRes
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
+import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.repository.ExpenseCommandAcceptance
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.domain.model.Expense
@@ -30,7 +31,13 @@ internal fun ExpenseEditViewModel.submitExpenseCommand(
         else -> null
     }
     if (refusal != null) {
-        _uiState.update { it.copy(message = UiText.res(refusal), messageTone = MessageTone.Danger) }
+        _uiState.update {
+            it.copy(
+                readOnly = !repository.canModifyLedger() || it.readOnly,
+                message = UiText.res(refusal),
+                messageTone = MessageTone.Danger,
+            )
+        }
         return
     }
     val expense = requireNotNull(state.expense)
@@ -75,7 +82,13 @@ internal fun ExpenseEditViewModel.reconcileExpenseCommands() {
     val originals = observation.commands.filter { it.row.id in ids }
     val complete = originals.size == ids.size && originals.all { it.row.status == PendingMutationStatus.Done }
     val failed = originals.any { it.row.status in setOf(PendingMutationStatus.Failed, PendingMutationStatus.Conflict) }
+    val leavesEditor = complete && originals.any {
+        it.row.type == PendingMutationType.ConfirmExpense || it.row.type == PendingMutationType.RejectExpense
+    }
     _uiState.update { it.copy(commandsCompleted = complete,
+        done = it.done || leavesEditor,
+        doneAdviceInputsChanged = it.doneAdviceInputsChanged ||
+            (complete && originals.any { command -> command.row.type == PendingMutationType.ConfirmExpense }),
         message = UiText.res(when {
             complete -> R.string.expense_command_completed
             failed -> R.string.expense_command_needs_attention

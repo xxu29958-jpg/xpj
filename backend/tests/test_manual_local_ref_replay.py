@@ -40,12 +40,20 @@ def test_accepted_local_operation_replays_when_legacy_creation_receipt_is_missin
         state.writes += 1
         expense.row_version, expense.status = 4, "rejected" if operation == "reject" else "confirmed"
         return expense
-    owner = {"patch": edit, "confirm": expense_review_command_service, "reject": expenses}[operation]
+    owner = {"patch": edit, "confirm": expense_review_command_service, "reject": expense_review_command_service}[operation]
     writer = {"patch": "update_expense", "confirm": "confirm_expense", "reject": "reject_expense"}[operation]
     monkeypatch.setattr(owner, writer, write)
     monkeypatch.setattr(owner, "get_expense", lambda *_a, **_k: expense)
     monkeypatch.setattr(expense_review_command_service, "cleanup_after_confirm", lambda *_a: False)
     monkeypatch.setattr(expenses, "expense_to_response", lambda _db, *, expense, tenant_id: expense)
+    if operation == "reject":
+        monkeypatch.setattr(expense_review_command_service, "claim_idempotency_key", claim)
+        monkeypatch.setattr(expense_review_command_service, "expense_to_response",
+            lambda _db, *, expense, tenant_id: expense)
+        monkeypatch.setattr(expense_review_command_service, "mark_idempotency_succeeded",
+            lambda _db, row, **_k: setattr(row, "status", "succeeded"))
+        monkeypatch.setattr(expense_review_command_service, "_replayed_rejection_receipt",
+            lambda outcome: expense if outcome.kind is idempotency.IdempotencyOutcomeKind.HIT else None)
     route, payload = {
         "patch": (expenses.patch_expense, ExpenseUpdateRequest(expected_row_version=0, note="Original edit")),
         "confirm": (expenses.post_confirm_expense, ExpenseConfirmRequest(expected_row_version=0)),
@@ -76,8 +84,13 @@ def test_fresh_zero_cannot_accept_a_terminal_state_without_original_operation_re
     write = Mock(return_value=0)
     monkeypatch.setattr(_update, "claim_row_with_token", write)
     claim = SimpleNamespace(target_type="expense", target_id="42")
-    owner = expense_review_command_service if operation == "confirm" else expenses
+    owner = expense_review_command_service
     monkeypatch.setattr(owner, "claim_idempotent_request", lambda *_a, **_k: claim)
+    monkeypatch.setattr(
+        owner,
+        "claim_idempotency_key",
+        lambda *_a, **_k: SimpleNamespace(kind=idempotency.IdempotencyOutcomeKind.PROCEED, row=claim),
+    )
     accepted = Mock()
     monkeypatch.setattr(owner, "mark_idempotency_succeeded", accepted)
     cleanup = Mock(return_value=False)

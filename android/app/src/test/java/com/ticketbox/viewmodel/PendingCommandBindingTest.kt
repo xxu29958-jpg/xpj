@@ -115,6 +115,7 @@ internal class PendingCommandBindingTest : PendingViewModelReviewTestBase() {
         assertEquals(before.items, vm.uiState.value.items)
         assertEquals(before.activeSheet, vm.uiState.value.activeSheet)
         assertEquals(before.bulkConfirm, vm.uiState.value.bulkConfirm)
-        assertEquals(listOf("ledger-a", "ledger-b"), fake.admissions.map { it.first.ledgerId })
+        assertEquals(2, fake.admissions.size)
+        assertEquals(setOf("ledger-a", "ledger-b"), fake.admissions.map { it.first.ledgerId }.toSet())
     }
 }

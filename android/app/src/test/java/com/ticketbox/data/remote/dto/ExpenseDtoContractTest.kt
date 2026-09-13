@@ -213,4 +213,11 @@ class ExpenseDtoContractTest {
             json,
         )
     }
+
+    @Test
+    fun stateTokenRequestSerializesOnlyTheReviewedVersion() {
+        val json = moshi.adapter(ExpenseStateTokenRequest::class.java)
+            .toJson(ExpenseStateTokenRequest(expectedRowVersion = 1L))
+        assertEquals("""{"expected_row_version":1}""", json)
+    }
 }

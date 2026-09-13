@@ -18,6 +18,7 @@ isolation via ``selected_id``.
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -44,13 +45,13 @@ from app.routes.web_common import (
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.expense_review_command_service import (
     reject_duplicate_original_keep_current,
+    submit_expense_rejection,
 )
 from app.services.expense_service import (
     get_expense,
     list_duplicate_expenses,
     list_expenses_by_ids,
     mark_expense_not_duplicate,
-    reject_expense,
 )
 
 if TYPE_CHECKING:
@@ -83,6 +84,7 @@ def _duplicate_expense_view(
     )
     view["status_label"] = status_label
     view["status_tone"] = status_tone
+    view["reject_idempotency_key"] = str(uuid4())
     return view
 
 
@@ -252,6 +254,7 @@ def web_duplicate_reject_current(
     expense_id: int,
     ledger_id: str = Form(""),
     expected_row_version: str = Form(""),
+    idempotency_key: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
@@ -265,7 +268,16 @@ def web_duplicate_reject_current(
         )
     error_msg: str | None = None
     try:
-        reject_expense(db, expense_id, selected_id, expected_row_version=parsed)
+        submit_expense_rejection(
+            db,
+            operation="reject_expense",
+            expense_id=expense_id,
+            tenant_id=selected_id,
+            expected_row_version=parsed,
+            request_expected_row_version=parsed,
+            idempotency_key=idempotency_key.strip() or str(uuid4()),
+            actor_account_id=None,
+        )
         msg = "已忽略当前记录。"
     except AppError as exc:
         error_msg = _STALE_DUPLICATE_MSG if exc.error == "state_conflict" else exc.message

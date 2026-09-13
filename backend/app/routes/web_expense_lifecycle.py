@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.exc import SQLAlchemyError
@@ -29,7 +31,7 @@ from app.routes.web_common import (
     _web_redirect,
     parse_form_row_version_token,
 )
-from app.services.expense_service import reject_expense, undo_reject_expense
+from app.services.expense_review_command_service import submit_expense_rejection
 
 router = APIRouter(prefix="/web", tags=["web"])
 
@@ -111,6 +113,7 @@ def web_reject(
     expense_id: int,
     ledger_id: str = Form(default=""),
     expected_row_version: str = Form(default=""),
+    reject_idempotency_key: str = Form(default=""),
     return_context: ExpenseReturnContext = Depends(expense_return_form_context),
     fragment: int = Form(default=0),
     _local: None = LocalOnly,
@@ -145,7 +148,16 @@ def web_reject(
             return_context,
         )
     try:
-        reject_expense(db, expense_id, selected_id, expected_row_version=parsed)
+        submit_expense_rejection(
+            db,
+            operation="reject_expense",
+            expense_id=expense_id,
+            tenant_id=selected_id,
+            expected_row_version=parsed,
+            request_expected_row_version=parsed,
+            idempotency_key=reject_idempotency_key.strip() or str(uuid4()),
+            actor_account_id=None,
+        )
     except AppError as exc:
         db.rollback()
         message = "账单已在其它端被修改，请刷新后重新操作。" if exc.error == "state_conflict" else exc.message
@@ -178,6 +190,7 @@ def web_expense_undo(
     expense_id: int,
     ledger_id: str = Form(default=""),
     expected_row_version: str = Form(default=""),
+    idempotency_key: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
@@ -194,8 +207,16 @@ def web_expense_undo(
         )
     actor_account_id, _ = resolve_web_actor(db, request, selected_id)
     try:
-        undo_reject_expense(db, expense_id, selected_id, parsed, actor_account_id=actor_account_id)
-        db.commit()
+        submit_expense_rejection(
+            db,
+            operation="undo_expense",
+            expense_id=expense_id,
+            tenant_id=selected_id,
+            expected_row_version=parsed,
+            request_expected_row_version=parsed,
+            idempotency_key=idempotency_key.strip() or str(uuid4()),
+            actor_account_id=actor_account_id,
+        )
         message, flash_type = "已撤销，账单已恢复待确认。", "success"
     except AppError:
         db.rollback()

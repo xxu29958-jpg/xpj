@@ -52,7 +52,7 @@ internal fun PendingViewModel.reconcileExpenseCommands() {
                 (it.row.type == PendingMutationType.UndoExpense && it.acceptedExpense?.status == "confirmed") }) {
             onAdviceInputsChanged()
         }
-        if (completed.any { it.row.type != PendingMutationType.UndoExpense }) refresh()
+        if (completed.any { it.row.type != PendingMutationType.UndoExpense }) refresh(clearMessage = false)
     }
 }
 

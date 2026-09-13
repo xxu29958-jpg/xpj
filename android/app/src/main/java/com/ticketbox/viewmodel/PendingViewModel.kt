@@ -245,7 +245,7 @@ class PendingViewModel(
         }
     }
 
-    fun refresh() {
+    fun refresh(clearMessage: Boolean = true) {
         // Issued synchronously (not inside the launch) so call order always
         // matches sequence order even if the coroutine body runs later.
         val binding = uploadObservation?.access?.binding ?: return
@@ -258,7 +258,7 @@ class PendingViewModel(
                 it.copy(
                     loading = true,
                     listLoadState = PendingListLoadState.Loading,
-                    message = null,
+                    message = if (clearMessage) null else it.message,
                 )
             }
             // A3: 先用本地缓存铺首屏（仅首次 / 换账本后那次），再走网络 write-through。

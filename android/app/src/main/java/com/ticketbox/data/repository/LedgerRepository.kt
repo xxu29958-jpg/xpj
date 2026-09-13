@@ -504,7 +504,7 @@ class LedgerRepository(
             val parsed = body
                 ?.let { runCatching { errorAdapter.fromJson(it) }.getOrNull() }
             val message = parsed
-                ?.let { backendErrorUserMessage(it.error, it.message) }
+                ?.let { backendErrorUserMessage(it.error, it.message.orEmpty()) }
                 ?: defaultHttpMessage(error.code())
             Result.failure(RepositoryException(message))
         } catch (error: IOException) {

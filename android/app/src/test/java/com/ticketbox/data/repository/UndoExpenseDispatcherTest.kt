@@ -3,10 +3,17 @@ package com.ticketbox.data.repository
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
+import com.ticketbox.data.remote.buildApiHttpClient
+import com.ticketbox.data.remote.buildApiService
 import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.Protocol
+import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
+import okio.Buffer
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -27,17 +34,22 @@ internal class UndoExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestBas
     fun `wire sends original key and token and retains historical confirmed acceptance when publication fails`() = runTest {
         val original = row()
         val response = successExpenseDto().copy(status = "confirmed", confirmedAt = "2026-05-01T12:00:00Z")
-        var capturedId: Long? = null
-        var capturedRequest: ExpenseStateTokenRequest? = null
+        var capturedPath: String? = null
         var capturedKey: String? = null
-        val api = object : ApiService by ApiServiceStub() {
-            override suspend fun undoExpense(id: Long, request: ExpenseStateTokenRequest, idempotencyKey: String): ExpenseDto {
-                capturedId = id
-                capturedRequest = request
-                capturedKey = idempotencyKey
-                return response
-            }
-        }
+        var capturedBody: String? = null
+        val client = buildApiHttpClient(null, { null }, { "owner" }, null, null)
+            .newBuilder().addInterceptor { chain ->
+                val request = chain.request()
+                capturedPath = request.url.encodedPath
+                capturedKey = request.header("Idempotency-Key")
+                capturedBody = Buffer().also { request.body!!.writeTo(it) }.readUtf8()
+                Response.Builder().request(request).protocol(Protocol.HTTP_1_1)
+                    .code(200).message("OK")
+                    .body(moshi().adapter(ExpenseDto::class.java).toJson(response)
+                        .toResponseBody("application/json".toMediaType()))
+                    .build()
+            }.build()
+        val api = buildApiService("https://api.example.com/", client)
         var publications = 0
         val result = dispatcher(api) { ledger, snapshot ->
             assertEquals("owner", ledger)
@@ -45,9 +57,9 @@ internal class UndoExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestBas
             publications++
             throw IllegalStateException("cache unavailable")
         }.dispatch(original)
-        assertEquals(42L, capturedId)
-        assertEquals(ExpenseStateTokenRequest(expectedRowVersion = original.expectedRowVersion), capturedRequest)
+        assertEquals("/api/expenses/42/undo", capturedPath)
         assertEquals(original.idempotencyKey, capturedKey)
+        assertEquals("""{"expected_row_version":1}""", capturedBody)
         assertEquals(1, publications)
         assertEquals(DispatchResult.Success(newRowVersion = 2L, cacheRefreshVersion = 2L,
             receiptJson = expenseAcceptanceReceiptJson(response)), result)

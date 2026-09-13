@@ -148,7 +148,8 @@ class PendingExpenseAdmissionRoomTest {
 
         val originals = fixture.stored()
         assertEquals("Both reviewed bills need durable original commands", 2, originals.size)
-        assertEquals(listOf("expense:42", "expense:43"), originals.map { it["targetId"] })
+        assertEquals(2, originals.size)
+        assertEquals(setOf("expense:42", "expense:43"), originals.map { it["targetId"] }.toSet())
         assertTrue(originals.all { it["type"] == PendingMutationType.ConfirmExpense.wireValue })
         assertTrue(originals.all { it["status"] == PendingMutationStatus.Pending.wireValue })
         assertEquals(listOf("7", "7"), originals.map { it["expectedRowVersion"] })

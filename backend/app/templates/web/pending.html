@@ -78,6 +78,7 @@
     {% for item in undo_items %}
     <input type="hidden" name="expense_ids" value="{{ item.id }}">
     <input type="hidden" name="expected_row_version" value="{{ item.row_version }}">
+    <input type="hidden" name="idempotency_key" value="{{ item.idempotency_key }}">
     {% endfor %}
     <button type="submit" class="product-button">撤销 {{ undo_items|length }} 条</button>
   </form>
@@ -89,6 +90,7 @@
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
     {# ADR-0038/0041: OCC token = rejected row's monotonic row_version at banner seed. #}
     <input type="hidden" name="expected_row_version" value="{{ undo_expected_row_version }}">
+    <input type="hidden" name="idempotency_key" value="{{ undo_idempotency_key }}">
     <button type="submit" class="product-button">撤销</button>
   </form>
   {% endif %}

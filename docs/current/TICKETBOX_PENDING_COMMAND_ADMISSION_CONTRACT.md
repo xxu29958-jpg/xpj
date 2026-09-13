@@ -20,22 +20,19 @@ it must not impersonate a confirmed financial fact. Preserve useful reject Undo.
 | Submission | ExpenseEdit save/confirm/reject/not-duplicate/retry-OCR/recognize-text; Pending single actions, amount-patch followed by confirmation, continuous review and batch-ready confirmation |
 | Original owner | Existing Expense repositories and bound Outbox admission. Reuse the existing worker, dispatchers, FIFO/OCC cascade, insertBatch and binding lease; retire migrated direct writer exits rather than adding an inline sender or polling engine |
 | Result and recovery | Existing SaveOutcome/ExpenseStateOutcome, editor exit and pending-list reducers, Sync and Fact receipt/refresh consumers. A local acceptance message must remain understandable after navigation |
-| Reject Undo | Pending currently starts its banner only from direct Synced success and calls a direct undo endpoint. Completion observation and original rejected version must remain correct; replacing all results with Queued without migrating this consumer loses an existing ability |
+| Reject Undo | Pending seeds Undo from the original rejected receipt after command completion. Web single, bulk and duplicate-current reject/undo call `submit_expense_rejection` with a form-carried original key. A stale receipt must not undo a later rejection. |
 | Persistence/protocol | Existing mutation rows, original create/local references, receiptJson, binding transition and read adoption. Reject/Undo must freeze the original acceptance using the existing server idempotency response_body; Undo consumes the original rejected version, never a later cascaded version |
 | Shared helper callers | Acknowledge-items-mismatch also uses enqueueStateTransition; preserve its real caller if that helper changes, without silently opening all item/split editing |
 | Direct proof producers | Actual RepositoryGraph + disk Room and ExpenseEditViewModel; existing repository state/save/recognition tests, Pending review/bulk/Undo tests, original dispatcher/OCC/binding tests |
 
 ## Minimum proof and closure
 
-The prepared Room tests exercise online save admission and interruption of the
-actual edit-page save/confirm chain. They have passed only short static checks;
-business RED and subsequent GREEN have not run. Add only the direct controls needed
-for atomic admission, binding refusal and preserved Undo when those owners change:
-completion-driven Undo, original-key replay after ACK loss/reopen, and an old reject
-receipt that cannot undo a newer rejection. The Undo transaction also has real Web
-single and bulk callers; migrate those callers with its commit ownership. Negotiate
-the original receipt protocol before business validation or sending an offline intent.
-Do not preserve obsolete direct-Synced assertions by restoring the unsafe exit.
+Room and unit producers already exercise online save admission, binding refusal,
+completion-driven Undo, ACK-loss replay and a stale reject receipt that cannot
+undo a newer rejection. Cloud Android fast on 28b0d649 executed those unit
+producers. Qualify the next exact candidate in cloud after the current
+Web/Android consumer and receipt-protocol migration. Do not restore
+direct-Synced exits to satisfy an obsolete assertion.
 
 After construction, recheck the table against production callers and retire the
 superseded methods/branches. Qualify the final exact candidate and integrated main

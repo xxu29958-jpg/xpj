@@ -7,6 +7,8 @@ modules under the 280-line budget. Business logic lives in
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.exc import SQLAlchemyError
@@ -42,10 +44,10 @@ from app.routes.web_common import (
 )
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.data_quality_service import is_ready_to_confirm_row, is_uncategorized_expense_category
+from app.services.expense_review_command_service import submit_expense_rejection
 from app.services.expense_service import (
     fetch_expense_row_version_in_status,
     list_pending,
-    undo_reject_expense,
 )
 from app.services.pending_review_bulk_service import (
     ALLOWED_ACTIONS,
@@ -124,7 +126,7 @@ def _resolve_batch_undo_items(
     selected_id: str,
     undo_ids: list[int],
     undo_tokens: list[str],
-) -> list[dict[str, int]]:
+) -> list[dict[str, int | str]]:
     if not undo_ids or len(undo_ids) != len(undo_tokens):
         return []
 
@@ -137,7 +139,7 @@ def _resolve_batch_undo_items(
             db, expense_id=expense_id, tenant_id=selected_id, status="rejected"
         )
         if row_version == parsed:
-            items.append({"id": expense_id, "row_version": parsed})
+            items.append({"id": expense_id, "row_version": parsed, "idempotency_key": str(uuid4())})
     return items
 
 
@@ -206,6 +208,7 @@ def web_pending(
     undo_expense_id, undo_expected_row_version = _resolve_single_undo(db, selected_id=selected_id, undo=undo)
     ctx["undo_expense_id"] = undo_expense_id
     ctx["undo_expected_row_version"] = undo_expected_row_version
+    ctx["undo_idempotency_key"] = str(uuid4()) if undo_expense_id is not None else ""
     ctx["undo_items"] = _resolve_batch_undo_items(db, selected_id=selected_id, undo_ids=undo_id, undo_tokens=undo_rv)
     ctx["needs_amount_count"] = filter_counts["missing_amount"]
     ctx["missing_fx_count"] = filter_counts["missing_fx"]
@@ -301,6 +304,7 @@ def web_pending_batch_undo(
     ledger_id: str = Form(default=""),
     expense_ids: list[int] = Form(default=[]),
     expected_row_version: list[str] = Form(default=[]),
+    idempotency_key: list[str] = Form(default=[]),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
@@ -318,16 +322,27 @@ def web_pending_batch_undo(
         )
 
     actor_account_id, _ = resolve_web_actor(db, request, selected_id)
+    keys = list(idempotency_key)
+    if len(keys) != len(expense_ids):
+        keys = [str(uuid4()) for _ in expense_ids]
     restored = 0
     skipped = 0
-    for expense_id, raw_token in zip(expense_ids, expected_row_version, strict=True):
+    for expense_id, raw_token, key in zip(expense_ids, expected_row_version, keys, strict=True):
         parsed = parse_form_row_version_token(raw_token)
         if parsed is None:
             skipped += 1
             continue
         try:
-            undo_reject_expense(db, expense_id, selected_id, parsed, actor_account_id=actor_account_id)
-            db.commit()
+            submit_expense_rejection(
+                db,
+                operation="undo_expense",
+                expense_id=expense_id,
+                tenant_id=selected_id,
+                expected_row_version=parsed,
+                request_expected_row_version=parsed,
+                idempotency_key=key.strip() or str(uuid4()),
+                actor_account_id=actor_account_id,
+            )
             restored += 1
         except (AppError, SQLAlchemyError):
             db.rollback()

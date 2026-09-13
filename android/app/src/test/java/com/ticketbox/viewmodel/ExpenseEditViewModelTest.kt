@@ -333,6 +333,7 @@ internal class ExpenseEditViewModelTest {
             confirming.copy(row = confirming.row.copy(status = PendingMutationStatus.Done))))
         advanceUntilIdle()
         assertTrue(vm.uiState.value.commandsCompleted)
+        assertTrue(vm.uiState.value.done)
         assertEquals(reviewed, vm.uiState.value.expense, "receipt observation must preserve the raw form baseline")
     }
 
