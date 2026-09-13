@@ -121,6 +121,25 @@ def test_positional_enqueue_is_a_producer_but_catalogues_and_comments_are_not():
     }
 
 
+def test_state_intent_factory_counts_pending_expense_command_types():
+    mod = importlib.import_module("_audit_android_outbox_dispatcher_coverage")
+    source = """
+        admit(binding, listOf(stateIntent(PendingMutationType.ConfirmExpense, expense)))
+        acceptState(binding, expense, PendingMutationType.RejectExpense)
+        acceptState(binding, expense, PendingMutationType.MarkNotDuplicate)
+        acceptState(binding, expense, PendingMutationType.RetryOcr)
+        admit(binding, listOf(stateIntent(PendingMutationType.UndoExpense, expense)))
+        val catalog = setOf(PendingMutationType.DeleteCategoryRule)
+    """
+    assert mod.parse_enqueues({"ExpensePendingRepository.kt": source}, set()) == {
+        "ConfirmExpense": {"ExpensePendingRepository.kt"},
+        "RejectExpense": {"ExpensePendingRepository.kt"},
+        "MarkNotDuplicate": {"ExpensePendingRepository.kt"},
+        "RetryOcr": {"ExpensePendingRepository.kt"},
+        "UndoExpense": {"ExpensePendingRepository.kt"},
+    }
+
+
 def test_typed_intent_factory_counts_only_its_type_argument_not_catalogue_metadata():
     mod = importlib.import_module("_audit_android_outbox_dispatcher_coverage")
     source = '''

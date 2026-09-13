@@ -29,7 +29,8 @@ class PendingExpenseCacheRoomTest {
     private lateinit var sendingApi: ApiService
     private var offline = false
     private var pendingResponse: (suspend () -> List<ExpenseDto>)? = null
-    private val fixture = ExpenseCorrectionConnectedFixture(ApplicationProvider.getApplicationContext<Context>()) { api ->
+    private val fixture: ExpenseCorrectionConnectedFixture =
+        ExpenseCorrectionConnectedFixture(ApplicationProvider.getApplicationContext<Context>()) { api ->
         object : ApiService by api {
             override suspend fun expense(id: Long): ExpenseDto {
                 if (offline) throw IOException("Offline detail")

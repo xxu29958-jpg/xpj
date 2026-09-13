@@ -7,10 +7,6 @@ import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
-import okhttp3.mockwebserver.MockResponse
-import okhttp3.mockwebserver.MockWebServer
-import retrofit2.Retrofit
-import retrofit2.converter.moshi.MoshiConverterFactory
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -31,27 +27,32 @@ internal class UndoExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestBas
     fun `wire sends original key and token and retains historical confirmed acceptance when publication fails`() = runTest {
         val original = row()
         val response = successExpenseDto().copy(status = "confirmed", confirmedAt = "2026-05-01T12:00:00Z")
-        MockWebServer().use { server ->
-            server.enqueue(MockResponse().setBody(moshi().adapter(ExpenseDto::class.java).toJson(response)))
-            val api = Retrofit.Builder().baseUrl(server.url("/")).addConverterFactory(MoshiConverterFactory.create(moshi()))
-                .build().create(ApiService::class.java)
-            var publications = 0
-            val result = dispatcher(api) { ledger, snapshot ->
-                assertEquals("owner", ledger)
-                assertEquals(response, snapshot)
-                publications++
-                throw IllegalStateException("cache unavailable")
-            }.dispatch(original)
-            val request = server.takeRequest()
-            assertEquals("/api/expenses/42/undo", request.path)
-            assertEquals(original.idempotencyKey, request.getHeader("Idempotency-Key"))
-            assertEquals("""{"expected_row_version":1}""", request.body.readUtf8())
-            assertEquals(1, publications)
-            assertEquals(DispatchResult.Success(newRowVersion = 2L, cacheRefreshVersion = 2L,
-                receiptJson = expenseAcceptanceReceiptJson(response)), result)
-            assertEquals(response, expenseAcceptanceReceiptSnapshot(original.copy(status = PendingMutationStatus.Done,
-                receiptJson = (result as DispatchResult.Success).receiptJson)))
+        var capturedId: Long? = null
+        var capturedRequest: ExpenseStateTokenRequest? = null
+        var capturedKey: String? = null
+        val api = object : ApiService by ApiServiceStub() {
+            override suspend fun undoExpense(id: Long, request: ExpenseStateTokenRequest, idempotencyKey: String): ExpenseDto {
+                capturedId = id
+                capturedRequest = request
+                capturedKey = idempotencyKey
+                return response
+            }
         }
+        var publications = 0
+        val result = dispatcher(api) { ledger, snapshot ->
+            assertEquals("owner", ledger)
+            assertEquals(response, snapshot)
+            publications++
+            throw IllegalStateException("cache unavailable")
+        }.dispatch(original)
+        assertEquals(42L, capturedId)
+        assertEquals(ExpenseStateTokenRequest(expectedRowVersion = original.expectedRowVersion), capturedRequest)
+        assertEquals(original.idempotencyKey, capturedKey)
+        assertEquals(1, publications)
+        assertEquals(DispatchResult.Success(newRowVersion = 2L, cacheRefreshVersion = 2L,
+            receiptJson = expenseAcceptanceReceiptJson(response)), result)
+        assertEquals(response, expenseAcceptanceReceiptSnapshot(original.copy(status = PendingMutationStatus.Done,
+            receiptJson = (result as DispatchResult.Success).receiptJson)))
     }
 
     @Test
