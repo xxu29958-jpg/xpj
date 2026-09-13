@@ -368,7 +368,6 @@ internal fun FailedCard(
     onRetry: (() -> Unit)?,
     actions: SyncStatusActions,
 ) {
-    // Expired rows cannot be retried because the server-side idempotency key may be gone.
     val expired = isExpiredFailure(row.lastError)
     val reviewMessage = when {
         row.lastError == EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW ->
@@ -417,11 +416,7 @@ internal fun FailedCard(
                     )
                 },
                 danger = SyncStatusActionButton(
-                    text = if (expired) {
-                        stringResource(R.string.sync_status_failed_button_remove)
-                    } else {
-                        stringResource(R.string.sync_status_failed_button_drop)
-                    },
+                    text = stringResource(failedCardDangerLabels.getValue(expired)),
                     enabled = !busy,
                     onClick = { actions.onDropFailed(row) },
                 ),
@@ -500,6 +495,11 @@ private fun SyncStatusRecoveryActions(
 /** A reaper age-cap expiry is terminal; retry cannot help. */
 internal fun isExpiredFailure(lastError: String?): Boolean =
     lastError?.startsWith("outbox_row_expired") == true
+
+private val failedCardDangerLabels = mapOf(
+    true to R.string.sync_status_failed_button_remove,
+    false to R.string.sync_status_failed_button_drop,
+)
 
 internal val syncStatusMutationLabelResources = mapOf(
     PendingMutationType.UploadScreenshot to R.string.sync_status_mutation_upload_screenshot,

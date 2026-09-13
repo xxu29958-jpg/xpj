@@ -4,12 +4,15 @@ import com.ticketbox.data.local.PendingMutationDao
 import com.ticketbox.data.local.PendingMutationEntity
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -17,6 +20,7 @@ import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
 
 internal data class PendingMutationIntent(
@@ -80,13 +84,13 @@ private data class OutboxLifecycleHooks(
 )
 
 class OutboxRepository private constructor(
-    internal val dao: PendingMutationDao,
-    internal val clock: Clock,
+    private val dao: PendingMutationDao,
+    private val clock: Clock,
     bindingSource: OutboxBindingSource,
     lifecycleHooks: OutboxLifecycleHooks,
-    internal val writeBlock: Flow<OutboxWriteBlock?>,
+    private val writeBlock: Flow<OutboxWriteBlock?>,
 ) {
-    internal val bindingProvider = bindingSource.current
+    private val bindingProvider = bindingSource.current
     /**
      * Reactive binding source for the live UI streams ([observeStatus] and
      * friends). When supplied (AppContainer wires it from the active-ledger
@@ -96,7 +100,7 @@ class OutboxRepository private constructor(
      * the previous origin. Null keeps the same revision-driven behaviour for
      * tests and non-Android callers.
      */
-    internal val bindingChanges = bindingSource.changes
+    private val bindingChanges = bindingSource.changes
     /**
      * Fired immediately after a row is persisted by [enqueue]. Used
      * by AppContainer to schedule a one-time [OutboxDrainWorker]
@@ -109,7 +113,7 @@ class OutboxRepository private constructor(
      * caller can construct ``OutboxRepository`` without wiring the
      * scheduler.
      */
-    internal val onEnqueued = lifecycleHooks.onEnqueued
+    private val onEnqueued = lifecycleHooks.onEnqueued
     /**
      * Fired immediately after [clearAll] drains the DAO. AppContainer
      * wires this to [OutboxScheduler.cancel] FOLLOWED by
@@ -123,8 +127,8 @@ class OutboxRepository private constructor(
      * Same best-effort semantics as [onEnqueued] (we catch
      * [Exception] internally; JVM-level Errors propagate).
      */
-    internal val onClearAll = lifecycleHooks.onClearAll
-    internal val onRowsDeleted = lifecycleHooks.onRowsDeleted
+    private val onClearAll = lifecycleHooks.onClearAll
+    private val onRowsDeleted = lifecycleHooks.onRowsDeleted
 
     private val mutableAcceptedReplayRevision = MutableStateFlow(0L)
     val acceptedReplayRevision: StateFlow<Long> = mutableAcceptedReplayRevision.asStateFlow()
@@ -185,53 +189,16 @@ class OutboxRepository private constructor(
         sessionEpoch.incrementAndGet()
     }
 
-    /**
-     * ADR-0038 PR-2g.3 codex round-10 follow-up: dispatch lease.
-     *
-     * Closes the residual race after round-9's epoch guard:
-     *   1. drain captures epoch = N
-     *   2. drain tryClaim succeeds + post-claim epoch check passes
-     *      (still N)
-     *   3. coroutine suspends (scheduler yields)
-     *   4. a binding transition starts (epoch bumps to N+1)
-     *   5. session coordinator writes new serverUrl + sessionToken
-     *   6. drain resumes, calls dispatcher.dispatch(row)
-     *   7. dispatch could otherwise acquire a bound service for the
-     *      NEW session after the row was selected
-     *   8. request goes out under NEW session for OLD row →
-     *      wrong-session replay
-     *
-     * The epoch guard alone can't close this because the credential
-     * read inside dispatch happens AFTER the check. The fix is a
-     * [Mutex] held by:
-     *   - [OutboxDrainEngine.drainOnce] across BOTH the epoch check
-     *     AND the entire ``dispatcher.dispatch(row)`` (so the
-     *     OkHttp token-read inside dispatch can't be interleaved
-     *     with a binding transition).
-     *   - [withBindingTransition] across the epoch bump and all
-     *     credential/cache writes.
-     *
-     * Because [LocalLedgerSessionCoordinator] and
-     * [ExpenseRepositoryCore.clearBinding] mutate credentials inside
-     * [withBindingTransition], credential mutations always happen
-     * AFTER any in-flight dispatch completes. Worst case is
-     * "old-session in-flight at boundary moment" — the in-flight
-     * request finishes under the old session, then the session
-     * changes.
-     *
-     * Cost: a session transition may block up to one outbox call
-     * timeout. We trade latency for correctness.
-     */
-    internal val dispatchLease = Mutex()
-    internal val bindingTransitionLease = Mutex()
-    internal val bindingRevision = MutableStateFlow(0L)
+    private val dispatchLease = Mutex()
+    private val bindingTransitionLease = Mutex()
+    private val bindingRevision = MutableStateFlow(0L)
 
-    internal suspend fun currentBinding(): OutboxBinding =
+    private suspend fun currentBinding(): OutboxBinding =
         bindingTransitionLease.withLock {
             canonicalBindingWithAliasesMigratedLocked(bindingProvider())
         }
 
-    internal suspend fun canonicalBindingWithAliasesMigratedLocked(
+    private suspend fun canonicalBindingWithAliasesMigratedLocked(
         binding: OutboxBinding,
     ): OutboxBinding {
         val raw = binding.trimmed()
@@ -253,9 +220,10 @@ class OutboxRepository private constructor(
     }
 
     /**
-     * Run [block] while holding the dispatch lease. Used by
-     * [OutboxDrainEngine.drainOnce] to serialise dispatch against
-     * binding transitions. See [dispatchLease] KDoc for the race this closes.
+     * Hold the dispatch lease across the epoch check and
+     * [OutboxDrainEngine.drainOnce] dispatch so a binding transition cannot
+     * change credentials between claim and send. [withBindingTransition]
+     * takes the same lease for the epoch bump and credential writes.
      */
     suspend fun <T> withDispatchLease(block: suspend () -> T): T =
         dispatchLease.withLock { block() }
@@ -482,7 +450,7 @@ class OutboxRepository private constructor(
                     }
                     var expired = false
                     for (row in eligible) {
-                        if (expireOverAgeOnResolve(row.id, binding, PendingMutationStatus.Failed.wireValue)) {
+                        if (dao.expireBoundIfOverAge(row.id, binding, PendingMutationStatus.Failed.wireValue, overAgeCutoffIso())) {
                             expired = true
                         } else {
                             retried += dao.retryFailed(row.id, binding.ownerStorageKey, binding.ledgerId, NON_RETRYABLE_UPLOAD_ERRORS)
@@ -497,26 +465,197 @@ class OutboxRepository private constructor(
         return changed
     }
 
-    internal fun nowIso(): String = ISO.format(Instant.now(clock))
+    private suspend fun notifyRowsDeleted(removed: Int) {
+        if (removed <= 0) return
+        try {
+            onRowsDeleted()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun notifyClearBoundary() {
+        try {
+            onClearAll()
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun bindingFlow(): Flow<OutboxBinding> {
+        val invalidations = bindingChanges?.combine(bindingRevision) { _, revision ->
+            revision
+        } ?: bindingRevision
+        return invalidations.map { currentBinding() }.distinctUntilChanged()
+    }
+
+    suspend fun dequeueNextRunnable(limit: Int = DEFAULT_DRAIN_BATCH, excludedIds: List<Long> = emptyList()): List<OutboxRow> =
+        dao.nextRunnableRows(currentBinding(), UNRESOLVED_STATUS_VALUES, limit, excludedIds)
+
+    suspend fun recoverStaleInFlight(staleAfterMillis: Long = DEFAULT_STALE_IN_FLIGHT_MS): Int {
+        val binding = currentBinding()
+        return dao.recoverStaleInFlight(
+            ownerKey = binding.ownerStorageKey,
+            ledgerId = binding.ledgerId,
+            staleCutoffIso = ISO.format(Instant.now(clock).minusMillis(staleAfterMillis)),
+            recoveryMessage = "recovered_from_stuck_in_flight",
+        )
+    }
+
+    suspend fun tryClaim(id: Long): Boolean =
+        dao.markInFlightIfPending(id, PendingMutationStatus.Pending.wireValue, PendingMutationStatus.InFlight.wireValue, nowIso()) > 0
+
+    suspend fun markDone(id: Long, cacheRefreshVersion: Long? = null, receiptJson: String? = null) {
+        dao.markDone(id, PendingMutationStatus.Done.wireValue, nowIso(), cacheRefreshVersion?.let { "$EXPENSE_REFRESH_PREFIX$it" }, receiptJson)
+    }
+
+    internal suspend fun acknowledgeExpenseRefresh(boundRequest: BoundLedgerRequest, versions: Map<Long, Long>) =
+        bindingTransitionLease.withLock {
+            val binding = canonicalBindingWithAliasesMigratedLocked(bindingProvider())
+            try {
+                boundRequest.requireStillActiveFor(binding)
+            } catch (_: RepositoryException) {
+                return@withLock
+            }
+            dao.clearAdoptedExpenseRefreshes(binding, versions)
+        }
+
+    suspend fun cascadeFreshToken(targetId: String, newToken: Long): Int =
+        dao.cascadePreservedTokens(currentBinding(), targetId, newToken)
+    suspend fun markRetryable(id: Long, error: String) {
+        dao.markRetryable(id, PendingMutationStatus.Pending.wireValue, error)
+    }
+    internal suspend fun revertClaimWithoutAttempt(id: Long) {
+        dao.revertClaimWithoutAttempt(id, PendingMutationStatus.Pending.wireValue, PendingMutationStatus.InFlight.wireValue)
+    }
+    suspend fun markConflict(id: Long, serverMessage: String) {
+        dao.markConflict(id, PendingMutationStatus.Conflict.wireValue, serverMessage)
+    }
+    suspend fun markFailed(id: Long, error: String, blocksFollowing: Boolean = true) {
+        dao.markFailed(id, PendingMutationStatus.Failed.wireValue, error, blocksFollowing)
+    }
+    suspend fun reapExpiredPending(nowMillis: Long): Int =
+        dao.reapExpiredPendingRows(ISO.format(Instant.ofEpochMilli(nowMillis - OUTBOX_PENDING_AGE_CAP_MILLIS)))
+
+    suspend fun clearAll(): Int {
+        val removed = withBindingTransition(clearExistingRows = false) { dao.clearAll() }
+        notifyRowsDeleted(removed)
+        return removed
+    }
+
+    suspend fun clearQuarantined(): Int {
+        val removed = dispatchLease.withLock {
+            bindingTransitionLease.withLock {
+                val binding = canonicalBindingWithAliasesMigratedLocked(bindingProvider())
+                binding.requireReadyForEnqueue()
+                dao.deleteQuarantined(binding.ownerStorageKey)
+            }
+        }
+        if (removed > 0) notifyClearBoundary()
+        notifyRowsDeleted(removed)
+        return removed
+    }
+
+    internal suspend fun discardOriginalExpense(
+        boundRequest: BoundLedgerRequest,
+        row: OutboxRow,
+        afterDeleted: suspend () -> Unit = {},
+    ): Boolean = withActiveBinding(boundRequest) { binding ->
+        check(row.type in setOf(PendingMutationType.CreateExpense, PendingMutationType.CorrectExpense) && row.status in setOf(
+            PendingMutationStatus.Failed, PendingMutationStatus.Conflict, PendingMutationStatus.Done, PendingMutationStatus.Pending,
+        ))
+        check(row.type != PendingMutationType.CreateExpense || row.status in setOf(PendingMutationStatus.Failed, PendingMutationStatus.Conflict))
+        check(row.ownerKey == binding.ownerStorageKey && row.ledgerId == binding.ledgerId)
+        dao.deleteAndPublish(row.id, binding.ownerStorageKey, binding.ledgerId, row.status.wireValue, afterDeleted)
+    }.also { changed -> if (changed) { schedulePending(); if (row.type == PendingMutationType.CreateExpense) notifyRowsDeleted(1) } }
+
+    internal suspend fun resolveConflict(id: Long, resolution: ConflictResolution, boundRequest: BoundLedgerRequest? = null): Boolean =
+        resolveStatus(id, PendingMutationStatus.Conflict, resolution == ConflictResolution.DropMine,
+            (resolution as? ConflictResolution.KeepMine)?.freshToken, boundRequest)
+
+    internal suspend fun resolveFailed(id: Long, resolution: FailedResolution, boundRequest: BoundLedgerRequest? = null): Boolean =
+        resolveStatus(id, PendingMutationStatus.Failed, resolution == FailedResolution.Drop,
+            (resolution as? FailedResolution.Retry)?.freshToken, boundRequest)
+
+    internal suspend fun discardCompletedOriginalSubmission(boundRequest: BoundLedgerRequest, row: OutboxRow): Boolean {
+        require(row.type in setOf(PendingMutationType.CreateIncomePlan, PendingMutationType.UpdateIncomePlan,
+            PendingMutationType.SaveManualExchangeRate))
+        require(row.status == PendingMutationStatus.Done)
+        boundRequest.requireStillActiveFor(requireNotNull(row.bindingOrNull()))
+        return resolveStatus(row.id, PendingMutationStatus.Done, true, null, boundRequest)
+    }
+
+    private suspend fun resolveStatus(id: Long, status: PendingMutationStatus, drop: Boolean, freshToken: Long?, boundRequest: BoundLedgerRequest? = null): Boolean {
+        val requeue = if (status == PendingMutationStatus.Conflict) dao::requeueConflictWithFreshToken
+            else dao::requeueFailedWithFreshToken
+        var expired = false
+        val changed = bindingTransitionLease.withLock {
+            val binding = canonicalBindingWithAliasesMigratedLocked(bindingProvider())
+            boundRequest?.requireStillActiveFor(binding)
+            if (!drop && dao.refusesExpenseRecovery(binding, id, status, freshToken)) return@withLock false
+            when {
+                drop -> dao.deleteIfStatus(id, binding.ownerStorageKey, binding.ledgerId, status.wireValue) > 0
+                dao.expireBoundIfOverAge(id, binding, status.wireValue, overAgeCutoffIso()) -> {
+                    expired = true
+                    true
+                }
+                freshToken != null -> requeue(id, binding.ownerStorageKey, binding.ledgerId,
+                    freshToken, UUID.randomUUID().toString()) > 0
+                else -> dao.retryFailed(id, binding.ownerStorageKey, binding.ledgerId, NON_RETRYABLE_UPLOAD_ERRORS) > 0
+            }
+        }
+        if (changed && !expired) schedulePending()
+        if (changed && drop) notifyRowsDeleted(1)
+        return changed
+    }
+
+    suspend fun gcCompleted(retentionMillis: Long = DEFAULT_RETENTION_MS): Int {
+        val removed = dao.deleteResolvedBeforeCutoff(ISO.format(Instant.now(clock).minusMillis(retentionMillis)))
+        notifyRowsDeleted(removed)
+        return removed
+    }
+
+    private fun overAgeCutoffIso(): String =
+        ISO.format(Instant.now(clock).minusMillis(OUTBOX_PENDING_AGE_CAP_MILLIS))
+
+    fun observeActiveByTypes(types: Set<PendingMutationType>, includeCompleted: Boolean = false): Flow<List<OutboxRow>> {
+        val wireTypes = types.filterNot { it == PendingMutationType.Unknown }.map(PendingMutationType::wireValue)
+        val statuses = if (includeCompleted) ACTIVE_STATUS_VALUES + PendingMutationStatus.Done.wireValue else ACTIVE_STATUS_VALUES
+        return observeBoundActiveRows(dao, bindingFlow(), wireTypes, statuses)
+    }
+
+    fun observeStatus(): Flow<OutboxStatus> = observeBoundOutboxStatus(dao, bindingFlow(), writeBlock)
+
+    suspend fun activeForTarget(targetId: String): List<OutboxRow> =
+        dao.activeRowsForTarget(currentBinding(), targetId, ACTIVE_STATUS_VALUES)
+
+    internal suspend fun abandonDebtWrite(boundRequest: BoundLedgerRequest, row: OutboxRow): Boolean =
+        withActiveBinding(boundRequest) { binding ->
+            require(row.type in DEBT_WRITE_TYPES)
+            dao.abandonDebtWrite(row.id, binding.ownerStorageKey, binding.ledgerId,
+                row.status.wireValue, ISO.format(Instant.now(clock))) > 0
+        }.also { changed -> if (changed) schedulePending() }
+
+    internal fun observeDebtWrites(): Flow<List<OutboxRow>> = observeBoundDebtWrites(
+        dao,
+        bindingFlow(),
+        ACTIVE_STATUS_VALUES + listOf(PendingMutationStatus.Done.wireValue, PendingMutationStatus.Abandoned.wireValue),
+    )
+
+    internal suspend fun activeForTarget(boundRequest: BoundLedgerRequest, targetId: String): List<OutboxRow> =
+        withActiveBinding(boundRequest) { binding -> activeForTarget(binding, targetId) }
+
+    private suspend fun activeForTarget(
+        binding: OutboxBinding,
+        targetId: String,
+        statuses: List<String> = ACTIVE_STATUS_VALUES,
+    ): List<OutboxRow> = dao.activeRowsForTarget(binding, targetId, statuses)
+
+    private fun nowIso(): String = ISO.format(Instant.now(clock))
 
     companion object {
-        /**
-         * Fixed-width UTC timestamp formatter used everywhere outbox
-         * writes a time to a TEXT column.
-         *
-         * [codex round-6 P2] fix: SQLite compares TEXT columns
-         * lexicographically. ``DateTimeFormatter.ISO_INSTANT`` is
-         * variable-width — it omits fractional seconds when they're
-         * zero, so ``2026-05-04T12:00:00.001Z`` (later in time)
-         * actually sorts BEFORE ``2026-05-04T12:00:00Z`` because
-         * ``'.'`` (0x2E) < ``'Z'`` (0x5A). That breaks
-         * ``ORDER BY createdAt`` causality AND breaks the
-         * ``recoverStaleInFlight`` cutoff comparison.
-         *
-         * Fixed width (always ``yyyy-MM-ddTHH:mm:ss.SSS'Z'``, 24
-         * chars) makes lex order == time order.
-         */
-        internal val ISO: DateTimeFormatter = DateTimeFormatter
+        /** Fixed-width UTC text so SQLite lex order matches createdAt time order. */
+        private val ISO: DateTimeFormatter = DateTimeFormatter
             .ofPattern("uuuu-MM-dd'T'HH:mm:ss.SSS'Z'")
             .withZone(ZoneOffset.UTC)
 
@@ -528,12 +667,12 @@ class OutboxRepository private constructor(
          *  abandoned by a cancelled / dead worker and is swept
          *  back to PENDING at next drain start. */
         const val DEFAULT_STALE_IN_FLIGHT_MS: Long = 5L * 60L * 1000L
-        internal val UNRESOLVED_STATUS_VALUES = listOf(
+        private val UNRESOLVED_STATUS_VALUES = listOf(
             PendingMutationStatus.InFlight.wireValue,
             PendingMutationStatus.Conflict.wireValue,
             PendingMutationStatus.Failed.wireValue,
         )
-        internal val ACTIVE_STATUS_VALUES = listOf(
+        private val ACTIVE_STATUS_VALUES = listOf(
             PendingMutationStatus.Pending.wireValue,
             PendingMutationStatus.InFlight.wireValue,
             PendingMutationStatus.Conflict.wireValue,
@@ -702,15 +841,4 @@ private suspend fun PendingMutationDao.insertExpenseCommands(
         validateTargetRows(expenseAdmissionRows(binding, targetId, targetRows))
     }
     return insertBatch(intents.map { it.toEntity(binding, createdAt) })
-}
-
-private suspend fun PendingMutationDao.refusesExpenseRecovery(
-    binding: OutboxBinding, id: Long, status: PendingMutationStatus, freshToken: Long?,
-): Boolean {
-    val original = observeActiveByTypes(binding.ownerStorageKey, binding.ledgerId,
-        listOf(PendingMutationType.UndoExpense.wireValue, PendingMutationType.RejectExpense.wireValue),
-        listOf(status.wireValue)).first().firstOrNull { it.id == id } ?: return false
-    return original.lastError == EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW ||
-        (original.type == PendingMutationType.UndoExpense.wireValue &&
-            (freshToken != null || original.lastError == "expense_not_found"))
 }
