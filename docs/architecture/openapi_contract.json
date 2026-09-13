@@ -3001,6 +3001,11 @@
             "title": "Expected Row Version",
             "type": "string"
           },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
@@ -3041,6 +3046,11 @@
           "expected_row_version": {
             "default": "",
             "title": "Expected Row Version",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
             "type": "string"
           },
           "ledger_id": {
@@ -3850,6 +3860,14 @@
             "title": "Expense Ids",
             "type": "array"
           },
+          "idempotency_key": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Idempotency Key",
+            "type": "array"
+          },
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
@@ -4305,6 +4323,11 @@
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
+            "type": "string"
+          },
+          "reject_idempotency_key": {
+            "default": "",
+            "title": "Reject Idempotency Key",
             "type": "string"
           },
           "return_filter": {
@@ -10675,7 +10698,7 @@
       },
       "ExpenseRejectRequest": {
         "additionalProperties": false,
-        "description": "ADR-0038 PR-2b: ``POST /api/expenses/{id}/reject`` body — same\ncontract as ExpenseConfirmRequest; ``rejected`` is also terminal.",
+        "description": "Review token for rejecting a pending bill; original-key replay owns its receipt.",
         "properties": {
           "expected_row_version": {
             "title": "Expected Row Version",
@@ -27576,6 +27599,40 @@
           },
           {
             "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "description": "Required API contract version from the runtime compatibility handshake.",
+            "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required API contract version from the runtime compatibility handshake.",
+              "title": "Ticketbox-Api-Version"
+            }
+          },
+          {
+            "in": "header",
             "name": "authorization",
             "required": false,
             "schema": {
@@ -27605,9 +27662,6 @@
               ],
               "title": "X-Ticketbox-Ledger-Id"
             }
-          },
-          {
-            "$ref": "#/components/parameters/TicketboxApiVersion"
           },
           {
             "$ref": "#/components/parameters/TicketboxCurrencyBinding"
