@@ -59,20 +59,40 @@ private fun ExpenseEditViewModel.fxReviewStart(preserveDraft: Boolean): Pair<Log
     val state = uiState.value
     val expense = state.expense ?: return null
     val binding = fxBinding ?: run {
-        _uiState.update { it.copy(fx = it.fx.copy(message = UiText.res(R.string.expense_fx_binding_changed))) }
+        publishFxReviewMessage(R.string.expense_fx_binding_changed)
         return null
     }
-    if (state.fx.loading || state.expenseLoading || state.itemsLoading || state.splitsLoading) return null
-    if (state.saving || state.itemsSaving || state.splitsSaving) return null
-    if (state.commandRowIds.isNotEmpty() && !state.commandsCompleted) {
-        _uiState.update { it.copy(message = UiText.res(R.string.expense_command_needs_attention)) }
-        return null
-    }
-    if (preserveDraft || state.itemEditorOpen || state.splitEditorOpen) {
-        _uiState.update { it.copy(fx = it.fx.copy(message = UiText.res(R.string.expense_fx_save_draft_first))) }
+    if (fxReviewIsBusy(state)) return null
+    fxReviewRefusal(state, preserveDraft)?.let { refusal ->
+        applyFxReviewRefusal(refusal)
         return null
     }
     return binding to expense
+}
+
+private fun fxReviewIsBusy(state: ExpenseEditUiState) =
+    state.fx.loading || state.expenseLoading || state.itemsLoading || state.splitsLoading ||
+        state.saving || state.itemsSaving || state.splitsSaving
+
+private fun fxReviewRefusal(state: ExpenseEditUiState, preserveDraft: Boolean): FxReviewRefusal? = when {
+    state.commandRowIds.isNotEmpty() && !state.commandsCompleted -> FxReviewRefusal.NeedsAttention
+    preserveDraft || state.itemEditorOpen || state.splitEditorOpen -> FxReviewRefusal.SaveDraftFirst
+    else -> null
+}
+
+private enum class FxReviewRefusal { NeedsAttention, SaveDraftFirst }
+
+private fun ExpenseEditViewModel.applyFxReviewRefusal(refusal: FxReviewRefusal) {
+    when (refusal) {
+        FxReviewRefusal.NeedsAttention ->
+            _uiState.update { it.copy(message = UiText.res(R.string.expense_command_needs_attention)) }
+        FxReviewRefusal.SaveDraftFirst ->
+            publishFxReviewMessage(R.string.expense_fx_save_draft_first)
+    }
+}
+
+private fun ExpenseEditViewModel.publishFxReviewMessage(message: Int) {
+    _uiState.update { it.copy(fx = it.fx.copy(message = UiText.res(message))) }
 }
 
 private fun ExpenseEditViewModel.failFxReview(error: Throwable) {

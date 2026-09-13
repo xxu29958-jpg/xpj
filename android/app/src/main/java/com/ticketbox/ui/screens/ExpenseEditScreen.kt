@@ -269,7 +269,7 @@ fun ExpenseEditScreen(
     val previewImage = state.fullImage ?: state.thumbnail
     val readOnly = state.readOnly || state.loadingFxReview
     val commandOpen = state.commandRowIds.isNotEmpty()
-    val canMutateFact = !readOnly && !commandOpen
+    val canMutateFact = allowsFactMutation(readOnly, commandOpen)
     val haptics = rememberAppHaptics()
     // ADR-0044: stringResource is @Composable-only, but the validation messages
     // below are assigned inside non-composable local functions / onClick lambdas.
@@ -551,8 +551,8 @@ fun ExpenseEditScreen(
             ),
             actions = ExpenseEditDetailsActions(
                 onAcknowledgeItemsMismatch = itemizationActions.onAcknowledgeItemsMismatch,
-                onEditItems = if (state.readOnly || commandOpen) null else itemizationActions.onEditItems,
-                onEditSplits = if (state.readOnly || commandOpen) null else splitEditingActions.onEditSplits,
+                onEditItems = if (allowsFactMutation(state.readOnly, commandOpen)) itemizationActions.onEditItems else null,
+                onEditSplits = if (allowsFactMutation(state.readOnly, commandOpen)) splitEditingActions.onEditSplits else null,
             ),
         )
         ExpenseEditMoreSection(
@@ -699,6 +699,8 @@ private fun ExpenseEditTwoColumnLayout(
 // real category, or any unrelated save would silently recategorize the row
 // (PR #230 round 12). Valid raw values initialize to the display
 // (alias-normalized) category.
+private fun allowsFactMutation(readOnly: Boolean, commandOpen: Boolean) = !readOnly && !commandOpen
+
 internal fun editInitialCategory(expense: Expense): String {
     val raw = expense.serverCategory ?: expense.category
     return if (isUncategorizedExpenseCategory(raw)) "" else expense.category
