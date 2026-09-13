@@ -240,7 +240,7 @@ private fun PendingViewModel.advanceReviewOrClose(
     }
     // 推进到下一条：清掉上一条的状态文案（成功提示），这样 sheet 内的状态行
     // 只会显示**失败**（保存失败时不推进、文案留在当前票）；成功推进保持安静。
-    _uiState.update { it.copy(activeSheet = sheetForReviewField(field, next), message = null) }
+    _uiState.update { it.copy(activeSheet = sheetForReviewField(field, next)) }
     recomputeReviewRemaining()
 }
 

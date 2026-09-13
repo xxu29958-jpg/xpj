@@ -16,7 +16,7 @@ internal fun PendingViewModel.acceptExpenseCommand(accepted: ExpenseCommandAccep
     if (!offerUndo) ignoredRejectRows.addAll(accepted.rowIds)
     _uiState.update {
         PendingUiStateReducer.afterUpdated(it, accepted.expense, closeSheet = false,
-            message = UiText.res(R.string.expense_command_accepted))
+            message = UiText.res(R.string.expense_command_accepted), clearInProgress = false)
     }
     reconcileExpenseCommands()
 }
