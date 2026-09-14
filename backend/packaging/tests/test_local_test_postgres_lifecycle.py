@@ -141,6 +141,7 @@ def _run_powershell(
     command: list[str],
     *,
     environment: dict[str, str] | None = None,
+    timeout: int = 60,
 ) -> subprocess.CompletedProcess[str]:
     # A Windows background service can inherit redirected pipe handles. Regular
     # files let the parent exit independently while preserving diagnostic text.
@@ -154,7 +155,7 @@ def _run_powershell(
             stdout=stdout,
             stderr=stderr,
             env=environment,
-            timeout=60,
+            timeout=timeout,
         )
         stdout.seek(0)
         stderr.seek(0)
@@ -555,15 +556,11 @@ def _postgres_bin(engine: str) -> Path:
         "[Environment+SpecialFolder]::ProgramFiles) "
         "} | ConvertTo-Json -Compress"
     )
-    completed = subprocess.run(
+    completed = _run_powershell(
         [engine, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command],
-        check=True,
-        capture_output=True,
-        text=True,
-        encoding="utf-8-sig",
-        errors="replace",
         timeout=30,
     )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
     payload = json.loads(completed.stdout.strip())
     postgres_bin = Path(payload["bin"]).resolve()
     program_files = Path(payload["program_files"]).resolve()
@@ -1210,7 +1207,7 @@ def test_local_test_postgres_lock_serializes_same_data_dir_across_ports(
         assert holder.stdout.readline().decode(
             "utf-8-sig", errors="replace"
         ).strip() == "LOCKED"
-        contender = subprocess.run(
+        contender = _run_powershell(
             [
                 powershell_51,
                 "-NoLogo",
@@ -1219,11 +1216,6 @@ def test_local_test_postgres_lock_serializes_same_data_dir_across_ports(
                 "-Command",
                 contender_command,
             ],
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8-sig",
-            errors="replace",
             timeout=10,
         )
         assert contender.returncode != 0, contender.stdout + contender.stderr
