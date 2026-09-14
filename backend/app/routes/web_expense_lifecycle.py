@@ -20,6 +20,7 @@ from app.routes._web_expense_return_context import (
     ExpenseReturnContext,
     confirm_return_redirect,
     expense_return_form_context,
+    resolve_return_to,
     return_context_params,
 )
 from app.routes._web_session_common import resolve_web_actor
@@ -170,13 +171,20 @@ def web_reject(
         )
     if fragment:
         return drawer_fragment_ok("reject")
+    origin = return_context.as_kwargs()
+    if origin.get("return_to") == "recurring_occurrence":
+        path = resolve_return_to("recurring_occurrence", "/web/pending", **origin)
+        params = return_context_params(**origin)
+    else:
+        path = "/web/pending"
+        params = return_context_params("pending", return_filter=return_context.return_filter)
     return _web_redirect(
-        "/web/pending",
+        path,
         selected_id,
         msg="已忽略这笔账单。",
         undo=str(expense_id),
         flash_type="success",
-        **return_context_params("pending", return_filter=return_context.return_filter),
+        **params,
     )
 
 

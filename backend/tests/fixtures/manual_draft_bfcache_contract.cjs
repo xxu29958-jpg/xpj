@@ -5,8 +5,8 @@ const assert = require('node:assert/strict');
 const scope = {datasetId:'dataset', clientGeneration:'generation', accountId:'account', ledgerId:'ledger', deviceId:'device'};
 const original = 'a'.repeat(32), fresh = 'b'.repeat(32);
 const entries = new Map(), handlers = {}, requests = [];
-const names = ['amount_major','currency_code','merchant','category','spent_at','note','home_currency_code'];
-const defaults = ['', 'JPY', '', '其他', '2026-09-06T12:30', '', 'JPY'];
+const names = ['amount_major','currency_code','merchant','category','spent_at','note','home_currency_code','return_to','return_recurring_public_id','return_month','return_payment_expense_id'];
+const defaults = ['', 'JPY', '', '其他', '2026-09-06T12:30', '', 'JPY', '', '', '', ''];
 const elements = Object.fromEntries(names.map((name, i) => [name, {
   name, value:defaults[i], tagName:name === 'currency_code' ? 'SELECT' : 'INPUT',
 }]));

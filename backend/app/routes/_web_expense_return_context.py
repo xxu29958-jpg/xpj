@@ -70,6 +70,7 @@ class ExpenseReturnContext:
     return_ranking_metric: str = ""
     return_merchant_category: str = ""
     return_recurring_public_id: str = ""
+    return_payment_expense_id: str = ""
 
     def as_kwargs(self) -> dict[str, str]:
         return asdict(self)
@@ -87,6 +88,7 @@ def expense_return_query_context(
     return_ranking_metric: str = "",
     return_merchant_category: str = "",
     return_recurring_public_id: str = "",
+    return_payment_expense_id: str = "",
 ) -> ExpenseReturnContext:
     return ExpenseReturnContext(
         return_to=return_to,
@@ -100,6 +102,7 @@ def expense_return_query_context(
         return_ranking_metric=return_ranking_metric,
         return_merchant_category=return_merchant_category,
         return_recurring_public_id=return_recurring_public_id,
+        return_payment_expense_id=return_payment_expense_id,
     )
 
 
@@ -115,6 +118,7 @@ def expense_return_form_context(
     return_ranking_metric: str = Form(default=""),
     return_merchant_category: str = Form(default=""),
     return_recurring_public_id: str = Form(default=""),
+    return_payment_expense_id: str = Form(default=""),
 ) -> ExpenseReturnContext:
     return ExpenseReturnContext(
         return_to=return_to,
@@ -128,6 +132,7 @@ def expense_return_form_context(
         return_ranking_metric=return_ranking_metric,
         return_merchant_category=return_merchant_category,
         return_recurring_public_id=return_recurring_public_id,
+        return_payment_expense_id=return_payment_expense_id,
     )
 
 
@@ -143,16 +148,37 @@ def _recurring_period(raw: str) -> str:
     return month if _MONTH_RE.fullmatch(month) else ""
 
 
-def recurring_occurrence_origin(*, return_recurring_public_id: str, return_month: str) -> dict[str, str] | None:
+def _payment_expense_id(raw: str) -> str:
+    expense_id = (raw or "").strip()
+    if (
+        0 < len(expense_id) <= 10
+        and expense_id.isascii()
+        and expense_id.isdigit()
+        and 0 < int(expense_id) <= 2_147_483_647
+    ):
+        return expense_id
+    return ""
+
+
+def recurring_occurrence_origin(
+    *,
+    return_recurring_public_id: str,
+    return_month: str,
+    return_payment_expense_id: str = "",
+) -> dict[str, str] | None:
     series_id = _recurring_series_id(return_recurring_public_id)
     period = _recurring_period(return_month)
     if not series_id or not period:
         return None
-    return {
+    origin = {
         "return_to": "recurring_occurrence",
         "return_recurring_public_id": series_id,
         "return_month": period,
     }
+    payment_id = _payment_expense_id(return_payment_expense_id)
+    if payment_id:
+        origin["return_payment_expense_id"] = payment_id
+    return origin
 
 
 def clean_return_to(raw: str) -> str:
@@ -191,8 +217,14 @@ def return_context_params(return_to: str, **origin: str) -> dict[str, str]:
         kept = recurring_occurrence_origin(
             return_recurring_public_id=origin.get("return_recurring_public_id", ""),
             return_month=origin.get("return_month", ""),
+            return_payment_expense_id=origin.get("return_payment_expense_id", ""),
         )
-        return {"month": kept["return_month"]} if kept else {}
+        if not kept:
+            return {}
+        params = {"month": kept["return_month"]}
+        if kept.get("return_payment_expense_id"):
+            params["payment_id"] = kept["return_payment_expense_id"]
+        return params
     return {}
 
 
@@ -244,6 +276,7 @@ def edit_context_params(return_to: str, **origin: str) -> dict[str, str]:
         return recurring_occurrence_origin(
             return_recurring_public_id=origin.get("return_recurring_public_id", ""),
             return_month=origin.get("return_month", ""),
+            return_payment_expense_id=origin.get("return_payment_expense_id", ""),
         ) or {}
     if not token:
         return {}

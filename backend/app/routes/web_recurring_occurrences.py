@@ -10,8 +10,8 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.errors import AppError
-from app.routes._web_expense_return_context import flow_href
+from app.models import Expense
+from app.routes._web_expense_return_context import _payment_expense_id, flow_href
 from app.routes._web_session_common import resolve_web_actor
 from app.routes.web_common import (
     LocalOnly,
@@ -25,8 +25,14 @@ from app.routes.web_common import (
     templates,
 )
 from app.schemas._recurring_occurrence import RecurringOccurrenceWriteRequest
+from app.services.expense_query import resolve_expense
 from app.services.recurring_occurrence_command import set_occurrence_payment
-from app.services.recurring_occurrence_query import find_recurring_payments, occurrence_period, occurrence_response
+from app.services.recurring_occurrence_query import (
+    eligible_payment_query,
+    find_recurring_payments,
+    occurrence_period,
+    occurrence_response,
+)
 from app.services.recurring_service import get_recurring_item
 from app.services.spending_contract_service import (
     accounting_datetime_label,
@@ -36,21 +42,37 @@ from app.services.spending_contract_service import (
 router = APIRouter()
 
 
-def _payments(db, *, ledger_id, month, query):
-    rows = find_recurring_payments(db, tenant_id=ledger_id, month=month, query=query)
-    return [{
+def _payment_view(row) -> dict[str, object]:
+    return {
         "public_id": row.public_id, "id": row.id, "row_version": row.row_version,
         "merchant": row.merchant or "未填写商家",
         "home_currency_code": row.home_currency_code,
         "amount": _amount_yuan(row.amount_cents, row.home_currency_code) if row.home_currency_code else "币种待确认",
         "date": accounting_datetime_label(stat_time(row), pattern="%Y-%m-%d"),
         "key": uuid4().hex,
-    } for row in rows[:100]], len(rows) > 100
+    }
+
+
+def _payments(db, *, ledger_id, month, query):
+    rows = find_recurring_payments(db, tenant_id=ledger_id, month=month, query=query)
+    return [_payment_view(row) for row in rows[:100]], len(rows) > 100
+
+
+def _focused_payment(db, *, ledger_id, payment_id) -> dict[str, object] | None:
+    if not _payment_expense_id(payment_id):
+        return None
+    expense = resolve_expense(db, ledger_id, int(payment_id))
+    if expense is None or expense.status not in {"pending", "confirmed", "rejected"}:
+        return None
+    eligible = db.scalar(
+        eligible_payment_query(tenant_id=ledger_id).where(Expense.id == expense.id).limit(1)
+    )
+    return {**_payment_view(expense), "eligible": eligible is not None}
 
 
 def _page(
     request: Request, db: Session, *, public_id: str, ledger_id: str | None, month=None, payment_month=None,
-    query="", message=None, error=None, retry=None,
+    query="", message=None, error=None, retry=None, payment_id=None,
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
@@ -64,9 +86,12 @@ def _page(
     payments, limited = _payments(
         db, ledger_id=selected, month=selected_payment_month, query=query,
     )
+    focused = _focused_payment(db, ledger_id=selected, payment_id=payment_id)
     can_associate = context["can_write"] and item.status != "archived"
     context.update(
-        item=item, occurrence=occurrence, payments=payments, limited=limited,
+        item=item, occurrence=occurrence,
+        payments=[payment for payment in payments if not focused or payment["id"] != focused["id"]],
+        focused_payment=focused, limited=limited,
         payment_month=selected_payment_month, query=query,
         planned_amount=_amount_yuan(occurrence.planned_amount_cents, occurrence.home_currency_code) if occurrence.home_currency_code else "币种待确认",
         paid_amount=_amount_yuan(occurrence.paid_amount_cents, occurrence.paid_home_currency_code) if occurrence.paid_home_currency_code else "币种待确认",
@@ -94,11 +119,13 @@ def web_recurring_occurrence(
     request: Request, public_id: str, ledger_id: str | None = None,
     month: str | None = None, payment_month: str | None = None,
     q: str = Query(default="", max_length=150), message: str | None = None,
+    payment_id: str = "",
     _local: None = LocalOnly, db: Session = Depends(get_db),
 ):
     return _page(
         request, db, public_id=public_id, ledger_id=ledger_id, month=month,
         payment_month=payment_month, query=q.strip(), message=message,
+        payment_id=payment_id,
     )
 
 

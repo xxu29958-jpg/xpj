@@ -68,6 +68,7 @@
 </section>
 <form class="product-panel product-panel--padded budget-form" method="get">
   <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+  {% if focused_payment %}<input type="hidden" name="payment_id" value="{{ focused_payment.id }}">{% endif %}
   <div class="product-form-grid">
     <div class="product-field"><label for="occ-month">义务月份</label><input class="product-input" type="month" id="occ-month" name="month" value="{{ occurrence.period }}" required></div>
     <div class="product-field"><label for="pay-month">付款账单月份</label><input class="product-input" type="month" id="pay-month" name="payment_month" value="{{ payment_month }}"></div>
@@ -80,6 +81,22 @@
   <h2>记录本期付款</h2>
   <p>先记下原始付款账单，不自动把本期标成已履约。付款日期可以和义务月份不同。</p>
   <a class="product-button" href="{{ record_payment_href }}">记录本期付款</a>
+</section>
+{% endif %}
+{% if focused_payment %}
+<section class="product-panel product-panel--padded" aria-label="刚记录的付款">
+  <h2>刚记录的付款</h2>
+  <p>这笔账单对应当前任务，付款月份可以与义务月份不同。</p>
+  <div class="product-panel product-panel--padded">
+    <p><strong>{{ focused_payment.merchant }}</strong> · {{ focused_payment.date }} · {{ focused_payment.home_currency_code or '' }} {{ focused_payment.amount }}</p>
+    <a href="/web/expenses/{{ focused_payment.id }}/edit?ledger_id={{ selected_ledger_id }}">核对账单</a>
+    {% if focused_payment.eligible and can_associate and occurrence.state != 'fulfilled' %}
+    <form method="post" action="/web/recurring/{{ item.public_id }}/occurrence">
+      {{ command_fields('link', focused_payment.key, focused_payment.public_id, focused_payment.row_version) }}
+      <button class="product-button" type="submit">用这笔付款确认本期已付</button>
+    </form>
+    {% endif %}
+  </div>
 </section>
 {% endif %}
 {% if can_associate and occurrence.state != 'fulfilled' %}

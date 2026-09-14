@@ -70,6 +70,38 @@ def test_web_reject_redirects_with_undo_query_and_success_flash(
     assert "flash_type=success" in location  # review P2 #1: green banner
 
 
+def test_web_reject_from_recurring_occurrence_returns_to_the_original_period(
+    web_client: TestClient, *, identity
+) -> None:
+    from uuid import uuid4
+    from urllib.parse import parse_qs, urlsplit
+
+    expense_id = _create_pending(web_client, identity=identity)
+    snapshot = web_client.get(
+        f"/api/expenses/{expense_id}", headers=identity.app_headers
+    )
+    assert snapshot.status_code == 200, snapshot.text
+    series_id = str(uuid4())
+    response = web_client.post(
+        f"/web/expenses/{expense_id}/reject",
+        data={
+            "ledger_id": "owner",
+            "expected_row_version": snapshot.json()["row_version"],
+            "return_to": "recurring_occurrence",
+            "return_recurring_public_id": series_id,
+            "return_month": "2026-08",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303, response.text
+    target = urlsplit(response.headers.get("location", ""))
+    assert target.path == f"/web/recurring/{series_id}/occurrence"
+    query = parse_qs(target.query)
+    assert query.get("month") == ["2026-08"]
+    assert query.get("undo") == [str(expense_id)]
+    assert query.get("flash_type") == ["success"]
+
+
 def test_web_pending_renders_undo_banner_in_green_when_success_flash(
     web_client: TestClient, *, identity
 ) -> None:

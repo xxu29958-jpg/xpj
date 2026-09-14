@@ -28,6 +28,15 @@ interface LedgerActions {
     suspend fun createManualExpense(draft: ExpenseDraft): Result<Expense>
 
     /**
+     * Period-payment create must enqueue against the captured origin binding.
+     * Ordinary ledger-sheet create keeps [createManualExpense] and current-session [LedgerRequestGuard.bind].
+     */
+    suspend fun createManualExpense(
+        draft: ExpenseDraft,
+        expectedBinding: LogicalSessionBinding,
+    ): Result<Expense> = createManualExpense(draft)
+
+    /**
      * Apply one atomic correction to [expenses]. The server validates all OCC
      * tokens before publishing any fact; this command is intentionally online-only.
      */

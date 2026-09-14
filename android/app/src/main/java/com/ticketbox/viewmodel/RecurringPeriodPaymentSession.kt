@@ -115,9 +115,12 @@ internal class RecurringPeriodPaymentSession(
         if (error == null) {
             acceptPeriodPaymentAdmission(submitted.clientRef)
             mutate { state ->
-                if (state.periodPaymentInFlightClientRef == submitted.clientRef) {
+                val currentPeriod = state.occurrence?.period ?: state.requestedPeriod
+                val samePeriod = state.item?.publicId == submitted.seriesPublicId && currentPeriod == submitted.period
+                val cleared = if (state.periodPaymentInFlightClientRef == submitted.clientRef) {
                     state.copy(periodPaymentInFlightClientRef = null)
                 } else state
+                if (samePeriod) cleared.copy(preferredPaymentClientRef = submitted.clientRef) else cleared
             }
             if (sameVisible) dismissPeriodPayment()
             return sameVisible
@@ -156,6 +159,7 @@ internal class RecurringPeriodPaymentSession(
                 message = null,
                 requestedPeriod = session.period,
                 periodPaymentOrigin = null,
+                preferredPaymentClientRef = null,
             )
         }
         load(session.period)
@@ -180,7 +184,10 @@ internal class RecurringPeriodPaymentSession(
         val item = state.item ?: return
         val period = state.occurrence?.period ?: return
         val session = sessions[item.publicId to period] ?: return
-        if (session.admitted) return
+        if (session.admitted) {
+            mutate { it.copy(preferredPaymentClientRef = session.clientRef) }
+            return
+        }
         mutate {
             it.copy(periodPaymentOrigin = session.copy(binding = state.access?.binding ?: session.binding))
         }

@@ -304,6 +304,7 @@ class RecurringOccurrenceViewModelTest {
             assertEquals(listOf(originA.clientRef), ledger.createdClientRefs)
             assertTrue(admitted.isEmpty())
             assertTrue(actions.submissions.isEmpty())
+            assertNull(model.uiState.value.preferredPaymentClientRef)
         } finally {
             model.viewModelScope.coroutineContext.job.cancelAndJoin()
             Dispatchers.resetMain()
@@ -329,8 +330,10 @@ class RecurringOccurrenceViewModelTest {
             model.createPeriodPayment(periodPaymentDraft(origin), onAdmitted = { admitted += it })
             advanceUntilIdle()
             assertEquals(listOf(origin.clientRef), admitted)
+            assertEquals(listOf(origin.binding), ledger.createdBindings)
             assertEquals(listOf(origin.clientRef), ledger.createdClientRefs)
             assertNull(model.uiState.value.periodPaymentOrigin)
+            assertEquals(origin.clientRef, model.uiState.value.preferredPaymentClientRef)
             assertTrue(actions.submissions.isEmpty())
         } finally {
             model.viewModelScope.coroutineContext.job.cancelAndJoin()
@@ -630,6 +633,7 @@ private class OccurrenceChoiceLedger(
         if (emitConfirmedStream) listOf(payment.asPaymentRow()) else emptyList(),
     )
     val createdClientRefs = mutableListOf<String>()
+    val createdBindings = mutableListOf<LogicalSessionBinding>()
     var createGate: CompletableDeferred<Result<Expense>>? = null
     var syncCount = 0
     var failSync = false
@@ -661,6 +665,14 @@ private class OccurrenceChoiceLedger(
         if (failCreate) return Result.failure(IllegalStateException("账本不可写"))
         createdClientRefs += ref
         return Result.success(payment.copy(clientRef = ref, pendingSync = true))
+    }
+
+    override suspend fun createManualExpense(
+        draft: ExpenseDraft,
+        expectedBinding: LogicalSessionBinding,
+    ): Result<Expense> {
+        createdBindings += expectedBinding
+        return createManualExpense(draft)
     }
     override suspend fun applyConfirmedBatch(
         expenses: List<Expense>, category: String?, tags: String?, reason: String,

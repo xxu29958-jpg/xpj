@@ -131,6 +131,20 @@ def test_expense_return_adapter_keeps_the_original_series_and_period() -> None:
     assert not target.netloc
     assert target.path == f"/web/recurring/{series_id}/occurrence"
     assert parse_qs(target.query) == {"ledger_id": ["owner"], "month": ["2026-08"]}
+    focused = return_href(
+        ledger_id="owner",
+        default_path="/web/pending",
+        **{**origin, "return_payment_expense_id": "41"},
+    )
+    assert parse_qs(urlsplit(focused).query) == {
+        "ledger_id": ["owner"], "month": ["2026-08"], "payment_id": ["41"],
+    }
+    assert edit_context_params(**{**origin, "return_payment_expense_id": "41"}) == {
+        **origin, "return_payment_expense_id": "41",
+    }
+    assert "return_payment_expense_id" not in edit_context_params(
+        **{**origin, "return_payment_expense_id": "not-an-id"}
+    )
     escaped = return_href(
         ledger_id="owner",
         default_path="/web/pending",
@@ -152,6 +166,16 @@ def test_human_confirm_return_reopens_the_original_unpaid_period() -> None:
     )
     assert path == f"/web/recurring/{series_id}/occurrence"
     assert params == {"month": "2026-08"}
+    focused_path, focused_params = confirm_return_redirect(
+        ExpenseReturnContext(
+            return_to="recurring_occurrence",
+            return_recurring_public_id=series_id,
+            return_month="2026-08",
+            return_payment_expense_id="41",
+        ),
+    )
+    assert focused_path == path
+    assert focused_params == {"month": "2026-08", "payment_id": "41"}
     unsafe_path, _ = confirm_return_redirect(
         ExpenseReturnContext(
             return_to="recurring_occurrence",

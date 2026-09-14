@@ -1,6 +1,7 @@
 """Rejected native recurring forms preserve intentions independently of facts."""
 
 import re
+from html import unescape
 from uuid import uuid4
 
 import pytest
@@ -9,13 +10,13 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.errors import AppError
 from app.main import app
-from app.models import RecurringItem
+from app.models import RecurringItem, RecurringOccurrence
 from app.routes import web_recurring as recurring_routes
 from app.routes.web_app import _require_local as _web_require_local
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.time_service import now_utc
 from tests._web_native_form_support import hidden_post_forms
-from tests._web_recurring_test_support import row_version, seed_observed_item
+from tests._web_recurring_test_support import create_via_web, row_version, seed_observed_item
 
 
 @pytest.fixture()
@@ -28,7 +29,14 @@ def web_recurring(client):
 def _form(page, action):
     matched = re.search(r'<form[^>]*action="' + re.escape(action) + r'".*?</form>', page.text, re.DOTALL)
     assert matched is not None, page.text
-    return matched.group(0), hidden_post_forms(matched.group(0))[action]
+    form = matched.group(0)
+    fields = hidden_post_forms(form)[action]
+    selector = re.search(r'<select\b[^>]*name="home_currency_code"[^>]*>(.*?)</select>', form, re.DOTALL)
+    if selector:
+        selected = re.search(r'<option\b[^>]*value="([^"]*)"[^>]*selected', selector.group(1))
+        assert selected is not None, "The native form must select its captured original currency"
+        fields["home_currency_code"] = unescape(selected.group(1))
+    return form, fields
 
 
 def test_create_validation_preserves_fields_and_original_key_until_single_success(web_recurring):
@@ -151,3 +159,49 @@ def test_create_without_captured_currency_preserves_raw_text_and_does_not_infer_
     assert 'value="1200.50"' in form and 'name="review_latest"' not in form
     with SessionLocal() as db:
         assert db.scalar(select(RecurringItem).where(RecurringItem.merchant_name == fields["merchant"])) is None
+
+
+def test_create_entry_saves_jpy_and_usd_under_cny_ledger_without_paying(web_recurring):
+    client = web_recurring
+    assert create_via_web(client, merchant="房租", amount="3800.00").status_code == 303
+    page = client.get("/web/recurring?ledger_id=owner")
+    form, fields = _form(page, "/web/recurring/create")
+    assert re.search(r'<select[^>]*id="rc-add-currency"[^>]*name="home_currency_code"', form)
+    assert 'value="JPY"' in form and 'value="USD"' in form
+    assert fields["home_currency_code"] == "CNY"
+    jpy = {**fields, "merchant": "交通月票", "home_currency_code": "JPY", "baseline_amount_yuan": "1200",
+           "next_expected_date": ""}
+    assert client.post("/web/recurring/create", data=jpy, follow_redirects=False).status_code == 303
+    form, fields = _form(client.get("/web/recurring?ledger_id=owner"), "/web/recurring/create")
+    usd = {**fields, "merchant": "USD订阅", "home_currency_code": "USD", "baseline_amount_yuan": "12.34",
+           "next_expected_date": ""}
+    assert client.post("/web/recurring/create", data=usd, follow_redirects=False).status_code == 303
+    opened = client.get("/web/recurring?ledger_id=owner")
+    with SessionLocal() as db:
+        rent = db.scalar(select(RecurringItem).where(RecurringItem.merchant_name == "房租"))
+        jpy_item = db.scalar(select(RecurringItem).where(RecurringItem.merchant_name == "交通月票"))
+        usd_item = db.scalar(select(RecurringItem).where(RecurringItem.merchant_name == "USD订阅"))
+        assert (rent.home_currency_code, rent.baseline_amount_cents) == ("CNY", 380000)
+        assert (jpy_item.home_currency_code, jpy_item.baseline_amount_cents, jpy_item.occurrence_count,
+                jpy_item.source) == ("JPY", 1200, 0, "manual")
+        assert (usd_item.home_currency_code, usd_item.baseline_amount_cents, usd_item.occurrence_count,
+                usd_item.source) == ("USD", 1234, 0, "manual")
+        assert db.scalar(select(RecurringOccurrence).limit(1)) is None
+        jpy_id, usd_id = jpy_item.public_id, usd_item.public_id
+    jpy_form, jpy_fields = _form(opened, f"/web/recurring/{jpy_id}/edit")
+    usd_form, usd_fields = _form(opened, f"/web/recurring/{usd_id}/edit")
+    assert jpy_fields["home_currency_code"] == "JPY" and 'value="1200"' in jpy_form
+    assert usd_fields["home_currency_code"] == "USD" and 'value="12.34"' in usd_form
+
+
+def test_create_jpy_fraction_keeps_original_currency_and_amount(web_recurring):
+    action = "/web/recurring/create"
+    form, fields = _form(web_recurring.get("/web/recurring?ledger_id=owner"), action)
+    assert re.search(r'<select[^>]*id="rc-add-currency"', form)
+    fields.update(merchant="交通月票", home_currency_code="JPY", baseline_amount_yuan="12.34", next_expected_date="")
+    refused = web_recurring.post(action, data=fields)
+    form, retained = _form(refused, action)
+    assert retained["home_currency_code"] == "JPY" and retained["idempotency_key"] == fields["idempotency_key"]
+    assert 'value="12.34"' in form and 'value="交通月票"' in form
+    with SessionLocal() as db:
+        assert db.scalar(select(RecurringItem).where(RecurringItem.merchant_name == "交通月票")) is None

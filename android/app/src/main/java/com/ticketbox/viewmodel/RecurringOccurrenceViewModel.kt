@@ -43,6 +43,7 @@ data class RecurringOccurrenceUiState(
     val ledgerHomeCurrencyCode: String? = null,
     val periodPaymentInFlightClientRef: String? = null,
     val periodPaymentError: UiText? = null,
+    val preferredPaymentClientRef: String? = null,
 ) {
     val periodPaymentSaving: Boolean
         get() = periodPaymentInFlightClientRef != null &&
@@ -94,7 +95,7 @@ class RecurringOccurrenceViewModel(
 
     fun open(item: RecurringItem) {
         if (item.ledgerId != mutableState.value.access?.binding?.ledgerId) return
-        mutableState.update { it.copy(item = item, occurrence = null, choice = null, acceptedId = null, message = null, requestedPeriod = "current", periodPaymentOrigin = null, periodPaymentError = null) }
+        mutableState.update { it.copy(item = item, occurrence = null, choice = null, acceptedId = null, message = null, requestedPeriod = "current", periodPaymentOrigin = null, periodPaymentError = null, preferredPaymentClientRef = null) }
         load("current")
     }
 
@@ -106,7 +107,7 @@ class RecurringOccurrenceViewModel(
 
     fun changePeriod(period: String) {
         if (runCatching { YearMonth.parse(period).toString() == period }.getOrDefault(false)) {
-            mutableState.update { it.copy(occurrence = null, choice = null, acceptedId = null, requestedPeriod = period, periodPaymentOrigin = null) }
+            mutableState.update { it.copy(occurrence = null, choice = null, acceptedId = null, requestedPeriod = period, periodPaymentOrigin = null, preferredPaymentClientRef = null) }
             load(period)
         } else mutableState.update { it.copy(message = UiText.res(R.string.occurrence_invalid_month)) }
     }
@@ -137,6 +138,7 @@ class RecurringOccurrenceViewModel(
                     ledgerHomeCurrency = draft.ledgerHomeCurrency
                         ?: CurrencyCode.fromStorageKeyOrNull(submitted.ledgerHomeCurrencyCode),
                 ),
+                submitted.binding,
             )
             if (mutableState.value.access?.binding != submitted.binding) return@launch
             val error = if (result.isSuccess) null

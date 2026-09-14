@@ -116,8 +116,8 @@ def test_period_payment_fx_confirm_return_then_explicit_link_zeros_reserve_once(
     assert parse_qs(create_target.query).get("return_to") == ["recurring_occurrence"]
     assert parse_qs(create_target.query).get("return_recurring_public_id") == [series_id]
     assert parse_qs(create_target.query).get("return_month") == [_SERIES_PERIOD]
-
     created_id = int(create_target.path.split("/")[3])
+    assert parse_qs(create_target.query).get("return_payment_expense_id") == [str(created_id)]
     detail = browser.get(f"/api/expenses/{created_id}", headers=api)
     assert detail.status_code == 200, detail.text
     expense = detail.json()
@@ -180,7 +180,16 @@ def test_period_payment_fx_confirm_return_then_explicit_link_zeros_reserve_once(
     assert confirmed.status_code == 303, confirmed.text
     confirm_target = urlsplit(confirmed.headers["location"])
     assert confirm_target.path == occurrence_path
-    assert parse_qs(confirm_target.query) == {"ledger_id": [ledger_id], "month": [_SERIES_PERIOD]}
+    assert parse_qs(confirm_target.query) == {
+        "ledger_id": [ledger_id], "month": [_SERIES_PERIOD], "payment_id": [str(created_id)],
+    }
+    focused_page = browser.get(
+        confirmed.headers["location"],
+        headers={"Cookie": f"{SESSION_COOKIE_NAME}={session_token}"},
+    )
+    assert focused_page.status_code == 200, focused_page.text
+    assert "刚记录的付款" in focused_page.text
+    assert f"/web/expenses/{created_id}/edit" in focused_page.text
 
     after_confirm = browser.get(
         f"/api/recurring/items/{series_id}/occurrences/{_SERIES_PERIOD}",

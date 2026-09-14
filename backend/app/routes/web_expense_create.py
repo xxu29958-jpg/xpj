@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from decimal import Decimal, InvalidOperation
-from urllib.parse import urlencode
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -25,6 +25,7 @@ from app.routes._web_expense_return_context import (
     edit_context_params,
     expense_return_form_context,
     expense_return_query_context,
+    flow_href,
     return_href,
     return_label,
 )
@@ -80,6 +81,13 @@ def _manual_expense_context(
     current_values = values or {}
     origin = (return_context or ExpenseReturnContext()).as_kwargs()
     return_fields = edit_context_params(**origin)
+    for name in (
+        "return_to",
+        "return_month",
+        "return_recurring_public_id",
+        "return_payment_expense_id",
+    ):
+        return_fields.setdefault(name, origin.get(name, ""))
     context.update(
         {
             "category_options": list_ledger_category_options(
@@ -98,7 +106,11 @@ def _manual_expense_context(
             "manual_draft_scope": manual_draft_scope(db, _session_writer_auth(request, selected_id)),
             "manual_draft_result": draft_result,
             "manual_review_href": (
-                f"/web/expenses/{review_expense_id}/edit?{urlencode({'ledger_id': selected_id})}"
+                flow_href(
+                    f"/web/expenses/{review_expense_id}/edit",
+                    ledger_id=selected_id,
+                    **replace(return_context or ExpenseReturnContext(), return_payment_expense_id=str(review_expense_id)).as_kwargs(),
+                )
                 if type(review_expense_id) is int and review_expense_id > 0 else None
             ),
             "spent_at": current_values.get("spent_at")
@@ -329,6 +341,9 @@ def web_manual_expense_create(
         )
     return_fields = edit_context_params(**return_context.as_kwargs())
     if return_fields.get("return_to") == "recurring_occurrence":
+        return_fields = edit_context_params(
+            **replace(return_context, return_payment_expense_id=str(created.id)).as_kwargs()
+        )
         return _web_redirect(
             f"/web/expenses/{created.id}/edit",
             selected_id,
