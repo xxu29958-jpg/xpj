@@ -17,8 +17,8 @@ from app.models import Expense
 from app.routes.web_auth import SESSION_COOKIE_NAME
 from app.services.income_plan_service import create_income_plan
 from tests._local_web_identity_support import (
-    _InstalledWeb,
     _connect_local_session,
+    _InstalledWeb,
     installed_web_setup,
 )
 from tests._runtime_protocol import current_protocol_headers
@@ -124,7 +124,7 @@ def test_period_payment_fx_confirm_return_then_explicit_link_zeros_reserve_once(
     assert expense["status"] == "pending"
     assert expense["fx_status"] == "pending"
     assert expense["original_currency_code"] == "USD"
-    assert expense["home_currency_code"] == "CNY"
+    assert expense["home_currency"] == "CNY"
 
     before_confirm = browser.get(
         f"/api/recurring/items/{series_id}/occurrences/{_SERIES_PERIOD}",
@@ -192,7 +192,7 @@ def test_period_payment_fx_confirm_return_then_explicit_link_zeros_reserve_once(
     fact = browser.get(f"/api/expenses/{created_id}", headers=api).json()
     assert fact["status"] == "confirmed"
     assert fact["original_currency_code"] == "USD"
-    assert fact["home_currency_code"] == "CNY"
+    assert fact["home_currency"] == "CNY"
 
     replay = browser.post(
         "/web/expenses/new",

@@ -88,7 +88,7 @@ class RecurringOccurrenceViewModelTest {
         try {
             model.open(recurringItem { rowVersion = 7L }.copy(homeCurrencyCode = "JPY", merchant = "日元订阅"))
             advanceUntilIdle()
-            model.recordPeriodPayment()
+            model.periodPayment.recordPeriodPayment()
             val origin = assertNotNull(model.uiState.value.periodPaymentOrigin)
             assertEquals(actions.access.binding, origin.binding)
             assertEquals("rec-1", origin.seriesPublicId)
@@ -115,11 +115,11 @@ class RecurringOccurrenceViewModelTest {
         try {
             model.open(recurringItem { rowVersion = 7L }.copy(homeCurrencyCode = "JPY", merchant = "日元订阅"))
             advanceUntilIdle()
-            model.recordPeriodPayment()
+            model.periodPayment.recordPeriodPayment()
             val first = assertNotNull(model.uiState.value.periodPaymentOrigin)
-            val capture = RecurringOccurrenceViewModel::class.members.firstOrNull { it.name == "capturePeriodPaymentDraft" }
+            val capture = RecurringPeriodPaymentSession::class.members.firstOrNull { it.name == "capturePeriodPaymentDraft" }
             assertNotNull(capture, "User-entered category and note must stay on the captured origin across recreation")
-            capture.call(model, "订阅", "八月义务", "JPY", 1300L)
+            capture.call(model.periodPayment, "订阅", "八月义务", "JPY", 1300L)
             model.open(recurringItem { rowVersion = 7L }.copy(homeCurrencyCode = "JPY", merchant = "日元订阅"))
             advanceUntilIdle()
             val restored = assertNotNull(model.uiState.value.periodPaymentOrigin)
@@ -150,7 +150,7 @@ class RecurringOccurrenceViewModelTest {
             val syncsAfterLoad = ledger.syncCount
             actions.failReads = true
             ledger.failSync = true
-            model.recordPeriodPayment()
+            model.periodPayment.recordPeriodPayment()
             val origin = assertNotNull(model.uiState.value.periodPaymentOrigin)
             assertEquals(fetchesAfterLoad, actions.fetchCount)
             assertEquals(syncsAfterLoad, ledger.syncCount)
@@ -196,7 +196,7 @@ class RecurringOccurrenceViewModelTest {
         try {
             model.open(recurringItem { rowVersion = 7L }.copy(homeCurrencyCode = null, merchant = "旧订阅"))
             advanceUntilIdle()
-            model.recordPeriodPayment()
+            model.periodPayment.recordPeriodPayment()
             val origin = assertNotNull(model.uiState.value.periodPaymentOrigin)
             assertNull(origin.obligationCurrencyCode)
             assertEquals(1200L, origin.plannedAmountCents)
@@ -218,7 +218,7 @@ class RecurringOccurrenceViewModelTest {
         try {
             model.open(recurringItem { rowVersion = 7L }.copy(homeCurrencyCode = "JPY", merchant = "日元订阅"))
             advanceUntilIdle()
-            model.recordPeriodPayment()
+            model.periodPayment.recordPeriodPayment()
             val original = assertNotNull(model.uiState.value.periodPaymentOrigin).clientRef
             ledger.createManualExpense(
                 ExpenseDraft(
@@ -233,8 +233,8 @@ class RecurringOccurrenceViewModelTest {
                     clientRef = original,
                 ),
             ).getOrThrow()
-            model.dismissPeriodPayment()
-            model.recordPeriodPayment()
+            model.periodPayment.dismissPeriodPayment()
+            model.periodPayment.recordPeriodPayment()
             val reentered = assertNotNull(model.uiState.value.periodPaymentOrigin)
             assertEquals(original, reentered.clientRef)
             assertEquals(listOf(original), ledger.createdClientRefs)
@@ -263,7 +263,7 @@ class RecurringOccurrenceViewModelTest {
             advanceUntilIdle()
             model.changePeriod("2026-08")
             advanceUntilIdle()
-            model.recordPeriodPayment()
+            model.periodPayment.recordPeriodPayment()
             val origin = assertNotNull(model.uiState.value.periodPaymentOrigin)
             ledger.createManualExpense(
                 ExpenseDraft(
@@ -281,10 +281,10 @@ class RecurringOccurrenceViewModelTest {
                     clientRef = origin.clientRef,
                 ),
             ).getOrThrow()
-            model.acceptPeriodPaymentAdmission()
-            model.dismissPeriodPayment()
+            model.periodPayment.acceptPeriodPaymentAdmission()
+            model.periodPayment.dismissPeriodPayment()
             assertTrue(actions.submissions.isEmpty())
-            model.restoreAdmittedPeriodOccurrence(listOf(item))
+            model.periodPayment.restoreAdmittedPeriodOccurrence(listOf(item))
             advanceUntilIdle()
             assertEquals("2026-08", model.uiState.value.occurrence?.period)
             assertEquals("unfulfilled", model.uiState.value.occurrence?.state)

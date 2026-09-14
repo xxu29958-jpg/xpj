@@ -42,7 +42,7 @@ internal fun RecurringOccurrenceHost(
         onSubmit = model::submit,
         onRecover = model::recover,
         onOpenExpense = { id -> model.dismiss(); onOpenExpense(id) },
-        onRecordPayment = model::recordPeriodPayment,
+        onRecordPayment = model.periodPayment::recordPeriodPayment,
     ))
     val origin = state.periodPaymentOrigin
     val paymentCurrency = CurrencyCode.fromStorageKeyOrNull(origin?.obligationCurrencyCode)
@@ -59,7 +59,7 @@ internal fun RecurringOccurrenceHost(
                 onCreate = { draft ->
                     if (state.access?.binding != origin.binding) return@ManualExpenseSheetActions
                     scope.launch {
-                        model.capturePeriodPaymentDraft(
+                        model.periodPayment.capturePeriodPaymentDraft(
                             category = draft.category.orEmpty(),
                             note = draft.note.orEmpty(),
                             currencyCode = draft.originalCurrencyCode?.storageKey ?: paymentCurrency.storageKey,
@@ -72,13 +72,13 @@ internal fun RecurringOccurrenceHost(
                             ),
                         )
                         if (result.isSuccess) {
-                            model.acceptPeriodPaymentAdmission()
-                            model.dismissPeriodPayment()
+                            model.periodPayment.acceptPeriodPaymentAdmission()
+                            model.periodPayment.dismissPeriodPayment()
                             onOpenManualSubmission(origin.clientRef)
                         }
                     }
                 },
-                onDismiss = model::dismissPeriodPayment,
+                onDismiss = model.periodPayment::dismissPeriodPayment,
             ),
         )
     }
