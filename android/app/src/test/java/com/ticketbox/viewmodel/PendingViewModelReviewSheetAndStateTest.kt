@@ -154,6 +154,24 @@ internal class PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewT
     }
 
     @Test
+    fun reducerRejectedKeepsAnotherBillsOpenSheet() = review {
+        val rejected = expense(id = 42L)
+        val editing = expense(id = 99L, merchant = "B")
+        val state = PendingUiState(
+            items = listOf(rejected, editing),
+            actionInProgressIds = setOf(rejected.id),
+            activeSheet = PendingSheet.QuickMerchant(editing),
+        )
+
+        val next = PendingUiStateReducer.afterRejected(state, rejected, message = UiText.res(R.string.pending_msg_rejected))
+
+        assertEquals(listOf(editing), next.items)
+        assertEquals(PendingSheet.QuickMerchant(editing), next.activeSheet)
+        assertEquals(setOf<Long>(), next.actionInProgressIds)
+        assertEquals(UiText.res(R.string.pending_msg_rejected), next.message)
+    }
+
+    @Test
     fun reducerUpdatedReplacesItemAndRefreshesOpenSheetSnapshot() = review {
         val stale = expense(id = 74L, merchant = "旧商家")
         val updated = stale.copy(merchant = "新商家", updatedAt = "2025-01-01T00:02:00Z")

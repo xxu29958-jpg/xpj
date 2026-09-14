@@ -138,6 +138,7 @@ class PendingViewModel(
     private val observedUploadReceipts = mutableSetOf<Long>()
     internal var commandObservation: ExpenseCommandObservation? = null
     internal val commandRowsByExpense = mutableMapOf<Long, Set<Long>>()
+    internal val observedCommandRowIds = mutableSetOf<Long>()
     internal val seenCommandCompletions = mutableSetOf<Long>()
     internal val ignoredRejectRows = mutableSetOf<Long>()
     internal val bulkCommandRows = mutableSetOf<Long>()
@@ -161,6 +162,7 @@ class PendingViewModel(
                 commandObservation = commands
                 if (changed) {
                     commandRowsByExpense.clear()
+                    observedCommandRowIds.clear()
                     seenCommandCompletions.clear()
                     ignoredRejectRows.clear()
                     bulkCommandRows.clear()

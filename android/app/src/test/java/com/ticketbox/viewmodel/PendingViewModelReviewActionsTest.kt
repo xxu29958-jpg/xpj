@@ -7,8 +7,10 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -231,5 +233,34 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
         assertEquals(1, vm.uiState.value.items.size)
         assertEquals(0, fake.confirmCalls)
         assertEquals(UiText.raw("amount_required"), vm.uiState.value.message)
+    }
+
+    @Test
+    fun failedCommandStillOccupiesTheBillUntilItIsExplicitlyDropped() = review {
+        val target = expense(id = 42L, category = "未分类")
+        val fake = FakeReviewActions(pending = listOf(target))
+        fake.updateResponder = { _, draft -> Result.success(target.copy(category = requireNotNull(draft.category))) }
+        val vm = pendingViewModel(fake)
+        advanceUntilIdle()
+        vm.saveQuickCategory(target.id, "交通")
+        runCurrent()
+        val rowId = fake.commands.value.single().row.id
+        fake.publishCommand(target.id, PendingMutationType.PatchExpense, PendingMutationStatus.Failed)
+        runCurrent()
+        assertEquals(setOf(target.id), vm.uiState.value.actionInProgressIds)
+        assertEquals(setOf(rowId), vm.commandRowsByExpense[target.id])
+        vm.saveQuickCategory(target.id, "餐饮")
+        runCurrent()
+        assertEquals(1, fake.updateCalls, "Failed occupancy must block a new save")
+        fake.dropCommands(target.id)
+        runCurrent()
+        assertFalse(target.id in vm.uiState.value.actionInProgressIds)
+        assertNull(vm.commandRowsByExpense[target.id])
+        assertEquals(UiText.res(R.string.expense_command_needs_attention), vm.uiState.value.message)
+        vm.saveQuickCategory(target.id, "餐饮")
+        runCurrent()
+        assertEquals(2, fake.updateCalls)
+        assertEquals(setOf(target.id), vm.uiState.value.actionInProgressIds)
+        assertEquals(1, vm.commandRowsByExpense[target.id]?.size)
     }
 }

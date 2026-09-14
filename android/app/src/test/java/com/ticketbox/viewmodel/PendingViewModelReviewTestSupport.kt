@@ -249,6 +249,10 @@ internal class FakeReviewActions(
         }
     }
 
+    fun dropCommands(expenseId: Long) {
+        commands.value = commands.value.filterNot { it.row.targetId == "expense:$expenseId" }
+    }
+
     override suspend fun saveExpenseAllowingOffline(
         expectedBinding: LogicalSessionBinding, id: Long, draft: ExpenseDraft, baseline: Expense,
     ): Result<ExpenseCommandAcceptance> {

@@ -226,4 +226,22 @@ internal class PendingViewModelReviewUndoBannerTest : PendingViewModelReviewTest
         assertNull(vm.uiState.value.undoableExpense)
         assertEquals(0, changes)
     }
+
+    @Test
+    fun completedRejectionDoesNotCloseAnotherBillsOpenSheet() = review {
+        val rejected = expense(id = 42L)
+        val editing = expense(id = 99L, merchant = "B")
+        val fake = FakeReviewActions(pending = listOf(rejected, editing))
+        val vm = pendingViewModel(fake)
+        advanceUntilIdle()
+        vm.reject(rejected)
+        runCurrent()
+        vm.openQuickMerchant(editing)
+        assertEquals(PendingSheet.QuickMerchant(editing), vm.uiState.value.activeSheet)
+        fake.completeRejection(rejected)
+        runCurrent()
+        assertEquals(PendingSheet.QuickMerchant(editing), vm.uiState.value.activeSheet)
+        assertEquals(listOf(editing), vm.uiState.value.items)
+        assertEquals(rejected.id, vm.uiState.value.undoableExpense?.id)
+    }
 }
