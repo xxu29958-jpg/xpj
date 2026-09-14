@@ -34,6 +34,7 @@
     <string name="occurrence_drop">放弃本机提交</string>
     <string name="occurrence_drop_explanation">只移除这条待处理提交，不会撤销服务器已完成的关联。请先刷新核对本期结果；放弃后可重新选择。</string>
     <string name="occurrence_keep">继续保留</string>
+    <string name="occurrence_record_payment">记录本期付款</string>
     <string name="occurrence_pick_explanation">选择一张已确认账单，明确确认本期已完整付款。一张账单只能关联一个期次；暂不支持分次或拆分履约。</string>
     <string name="occurrence_payment_month">付款账期 · 留空查看全部缓存</string>
     <string name="occurrence_search">查找商家或备注</string>

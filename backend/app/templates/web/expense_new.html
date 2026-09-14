@@ -10,7 +10,7 @@
 
 {% block content %}
 <div class="manual-entry">
-<a class="product-state-action" href="/web/confirmed?ledger_id={{ selected_ledger_id }}">← 返回流水</a>
+<a class="product-state-action" href="{{ edit_return_href }}">← {{ edit_return_label }}</a>
 <header class="product-page-header">
   <div class="product-page-heading">
     <h1 class="page-title">手动记一笔</h1>
@@ -29,6 +29,9 @@
     <input type="hidden" name="expected_device_public_id" value="{{ form_device_public_id }}">
     <input type="hidden" name="client_ref" value="{{ client_ref }}">
     <input type="hidden" name="home_currency_code" value="{{ form_home_currency_code }}">
+    {% for field_name, field_value in edit_return_fields.items() %}
+    <input type="hidden" name="{{ field_name }}" value="{{ field_value }}">
+    {% endfor %}
 
     <fieldset class="manual-expense-fields" data-manual-edit-fields>
     <div class="manual-expense-money">

@@ -60,6 +60,7 @@ internal fun NavGraphBuilder.addPlanRoutes(
                 screenFactory = screenFactory,
                 onBack = onBack,
                 onOpenExpense = runtime.navController::openExpense,
+                onOpenManualSubmission = { runtime.navController.navigate(manualExpenseSubmissionRoute(it)) },
                 onDataChanged = onAdviceInputChanged,
                 financialDataRevision = shellState.financialDataRevision,
             )

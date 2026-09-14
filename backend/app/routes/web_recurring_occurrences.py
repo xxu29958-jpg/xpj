@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.errors import AppError
 from app.routes._web_session_common import resolve_web_actor
+from app.routes._web_expense_return_context import flow_href
 from app.routes.web_common import (
     LocalOnly,
     _amount_yuan,
@@ -63,12 +64,23 @@ def _page(
     payments, limited = _payments(
         db, ledger_id=selected, month=selected_payment_month, query=query,
     )
+    can_associate = context["can_write"] and item.status != "archived"
     context.update(
         item=item, occurrence=occurrence, payments=payments, limited=limited,
         payment_month=selected_payment_month, query=query,
         planned_amount=_amount_yuan(occurrence.planned_amount_cents, occurrence.home_currency_code) if occurrence.home_currency_code else "币种待确认",
         paid_amount=_amount_yuan(occurrence.paid_amount_cents, occurrence.paid_home_currency_code) if occurrence.paid_home_currency_code else "币种待确认",
-        can_associate=context["can_write"] and item.status != "archived",
+        can_associate=can_associate,
+        record_payment_href=(
+            flow_href(
+                "/web/expenses/new",
+                ledger_id=selected,
+                return_to="recurring_occurrence",
+                return_recurring_public_id=item.public_id,
+                return_month=occurrence.period,
+            )
+            if can_associate and occurrence.state == "unfulfilled" else None
+        ),
         command_key=uuid4().hex, message=message, error=error, retry=retry,
     )
     return templates.TemplateResponse(

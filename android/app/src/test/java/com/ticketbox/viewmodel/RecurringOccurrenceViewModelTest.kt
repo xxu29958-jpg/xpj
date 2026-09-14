@@ -72,6 +72,38 @@ class RecurringOccurrenceViewModelTest {
             Dispatchers.resetMain()
         }
     }
+
+    @Test
+    fun unpaidPeriodRecordPaymentCapturesOriginWithoutQueuingFulfillment() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val actions = OccurrenceChoiceActions()
+        actions.occurrence = actions.occurrence.copy(
+            period = "2026-08",
+            homeCurrencyCode = "JPY",
+            plannedAmountCents = 1200,
+            reservedAmountCents = 1200,
+        )
+        val model = RecurringOccurrenceViewModel(actions, OccurrenceChoiceLedger(confirmedExpenseDtoFixture().toDomain()))
+        try {
+            model.open(recurringItem { rowVersion = 7L }.copy(homeCurrencyCode = "JPY", merchant = "日元订阅"))
+            advanceUntilIdle()
+            model.recordPeriodPayment()
+            val origin = assertNotNull(model.uiState.value.periodPaymentOrigin)
+            assertEquals(actions.access.binding, origin.binding)
+            assertEquals("rec-1", origin.seriesPublicId)
+            assertEquals("2026-08", origin.period)
+            assertEquals("日元订阅", origin.merchant)
+            assertEquals("JPY", origin.obligationCurrencyCode)
+            assertEquals(1200L, origin.plannedAmountCents)
+            assertTrue(origin.clientRef.isNotBlank())
+            assertTrue(actions.submissions.isEmpty())
+            assertEquals("unfulfilled", model.uiState.value.occurrence?.state)
+            assertEquals(1200L, model.uiState.value.occurrence?.reservedAmountCents)
+        } finally {
+            model.viewModelScope.coroutineContext.job.cancelAndJoin()
+            Dispatchers.resetMain()
+        }
+    }
 }
 
 private class OccurrenceChoiceActions : RecurringOccurrenceActions {

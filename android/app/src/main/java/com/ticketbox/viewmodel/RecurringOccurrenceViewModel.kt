@@ -8,6 +8,7 @@ import com.ticketbox.data.remote.dto.RecurringOccurrenceDto
 import com.ticketbox.data.remote.dto.RecurringOccurrencePaymentRequestDto
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LedgerActions
+import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.OccurrencePaymentDraft
 import com.ticketbox.data.repository.PendingOccurrencePayment
 import com.ticketbox.data.repository.RecurringOccurrenceActions
@@ -15,6 +16,7 @@ import com.ticketbox.data.repository.occurrenceTarget
 import com.ticketbox.domain.model.ConfirmedStreamItem
 import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.domain.model.UiText
+import java.util.UUID
 import java.time.YearMonth
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,6 +24,16 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
+data class RecurringPeriodPaymentOrigin(
+    val binding: LogicalSessionBinding,
+    val seriesPublicId: String,
+    val period: String,
+    val clientRef: String,
+    val merchant: String,
+    val obligationCurrencyCode: String?,
+    val plannedAmountCents: Long?,
+)
 
 data class RecurringOccurrenceUiState(
     val access: LedgerAccessContext? = null,
@@ -35,6 +47,7 @@ data class RecurringOccurrenceUiState(
     val acceptedId: Long? = null,
     val requestedPeriod: String = "current",
     val message: UiText? = null,
+    val periodPaymentOrigin: RecurringPeriodPaymentOrigin? = null,
 ) {
     val seriesPending: List<PendingOccurrencePayment> get() = queue.filter {
         it.row.status != PendingMutationStatus.Done && it.row.targetId.startsWith("recurring_occurrence:" + item?.publicId + ":")
@@ -74,25 +87,51 @@ class RecurringOccurrenceViewModel(
 
     fun open(item: RecurringItem) {
         if (item.ledgerId != mutableState.value.access?.binding?.ledgerId) return
-        mutableState.update { it.copy(item = item, occurrence = null, choice = null, acceptedId = null, message = null, requestedPeriod = "current") }
+        mutableState.update { it.copy(item = item, occurrence = null, choice = null, acceptedId = null, message = null, requestedPeriod = "current", periodPaymentOrigin = null) }
         load("current")
     }
 
     fun dismiss() {
         if (mutableState.value.saving) return
         epoch++
-        mutableState.update { it.copy(item = null, occurrence = null, choice = null, loading = false) }
+        mutableState.update { it.copy(item = null, occurrence = null, choice = null, loading = false, periodPaymentOrigin = null) }
     }
 
     fun changePeriod(period: String) {
         if (runCatching { YearMonth.parse(period).toString() == period }.getOrDefault(false)) {
-            mutableState.update { it.copy(occurrence = null, choice = null, acceptedId = null, requestedPeriod = period) }
+            mutableState.update { it.copy(occurrence = null, choice = null, acceptedId = null, requestedPeriod = period, periodPaymentOrigin = null) }
             load(period)
         } else mutableState.update { it.copy(message = UiText.res(R.string.occurrence_invalid_month)) }
     }
 
     fun refresh() {
         load(mutableState.value.occurrence?.period ?: mutableState.value.requestedPeriod)
+    }
+
+    fun recordPeriodPayment() {
+        val state = mutableState.value
+        val binding = state.access?.binding ?: return
+        val item = state.item ?: return
+        val occurrence = state.occurrence ?: return
+        if (!state.canWrite || occurrence.state != "unfulfilled") return
+        if (state.periodPaymentOrigin != null) return
+        mutableState.update {
+            it.copy(
+                periodPaymentOrigin = RecurringPeriodPaymentOrigin(
+                    binding = binding,
+                    seriesPublicId = item.publicId,
+                    period = occurrence.period,
+                    clientRef = UUID.randomUUID().toString(),
+                    merchant = item.merchant,
+                    obligationCurrencyCode = occurrence.homeCurrencyCode,
+                    plannedAmountCents = occurrence.plannedAmountCents,
+                ),
+            )
+        }
+    }
+
+    fun dismissPeriodPayment() {
+        mutableState.update { it.copy(periodPaymentOrigin = null) }
     }
 
     fun choose(payment: ConfirmedStreamItem.ExpenseRow?) {

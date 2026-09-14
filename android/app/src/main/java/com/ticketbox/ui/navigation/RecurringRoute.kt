@@ -20,6 +20,7 @@ internal fun RecurringRoute(
     onBack: () -> Unit,
     onDataChanged: () -> Unit = {},
     onOpenExpense: (Long) -> Unit = {},
+    onOpenManualSubmission: (String) -> Unit = {},
     financialDataRevision: Int = 0,
 ) {
     val recurringViewModel: RecurringViewModel = viewModel(
@@ -62,5 +63,10 @@ internal fun RecurringRoute(
             onBack = onBack,
         ),
     )
-    RecurringOccurrenceHost(occurrenceModel, onOpenExpense)
+    RecurringOccurrenceHost(
+        occurrenceModel,
+        screenFactory.repository,
+        onOpenExpense,
+        onOpenManualSubmission,
+    )
 }

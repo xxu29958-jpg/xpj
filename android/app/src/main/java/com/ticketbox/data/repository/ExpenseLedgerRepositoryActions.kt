@@ -88,7 +88,7 @@ internal class ExpenseLedgerRepositoryActions(
     override suspend fun createManualExpense(draft: ExpenseDraft): Result<Expense> = core.errorHandler.safeCall {
         require(draft.amountCents != null || draft.originalAmountMinor != null) { "请先填写金额。" }
         val bound = core.ledgerRequestGuard.bind()
-        core.enqueueLocalCreate(bound, draft, UUID.randomUUID().toString())
+        core.enqueueLocalCreate(bound, draft, draft.clientRef?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString())
     }
 
     override suspend fun applyConfirmedBatch(

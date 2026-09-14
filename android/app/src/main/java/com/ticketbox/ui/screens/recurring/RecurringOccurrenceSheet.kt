@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -42,6 +43,7 @@ data class OccurrenceSheetActions(
     val onSubmit: () -> Unit,
     val onRecover: (PendingOccurrencePayment, Boolean) -> Unit,
     val onOpenExpense: (Long) -> Unit = {},
+    val onRecordPayment: () -> Unit = {},
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -70,6 +72,15 @@ fun RecurringOccurrenceSheet(
                     TextButton(onClick = { actions.onChoose(null) }, enabled = state.canWrite) { Text(stringResource(R.string.occurrence_clear)) }
                 }
                 if (state.access?.canModify == false) Text(stringResource(R.string.occurrence_readonly))
+                if (state.canWrite && occurrence.state == "unfulfilled") {
+                    AppPrimaryButton(
+                        text = stringResource(R.string.occurrence_record_payment),
+                        icon = Icons.Filled.Add,
+                        onClick = actions.onRecordPayment,
+                        enabled = state.canWrite,
+                        modifier = Modifier.fillMaxWidth().testTag("occurrence-record-payment"),
+                    )
+                }
                 OccurrenceChoice(state, actions.onSubmit)
                 if (state.canWrite) OccurrencePaymentPicker(state, actions.onChoose)
             }
