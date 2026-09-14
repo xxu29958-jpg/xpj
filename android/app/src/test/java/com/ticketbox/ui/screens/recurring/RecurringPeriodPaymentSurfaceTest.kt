@@ -48,4 +48,20 @@ class RecurringPeriodPaymentSurfaceTest {
             "A legacy unpaid period cannot open the existing manual sheet by guessing the ledger home currency",
         )
     }
+
+    @Test
+    fun periodPaymentSessionDoesNotDeriveLedgerHomeFromConfirmedPayments() {
+        val session = listOf(
+            File("src/main/java/com/ticketbox/viewmodel/RecurringPeriodPaymentSession.kt"),
+            File("app/src/main/java/com/ticketbox/viewmodel/RecurringPeriodPaymentSession.kt"),
+        ).first { it.exists() }.readText()
+        assertFalse(
+            "payments.firstOrNull()" in session,
+            "Ledger home must come from the ledger capability, not the first confirmed payment",
+        )
+        assertTrue(
+            "SavedStateHandle" in session,
+            "The return-to-period origin must survive process restoration on saved state",
+        )
+    }
 }

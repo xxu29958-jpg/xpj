@@ -1,11 +1,13 @@
 package com.ticketbox.viewmodel
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.remote.dto.RecurringOccurrenceDto
 import com.ticketbox.data.remote.dto.RecurringOccurrencePaymentRequestDto
+import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LedgerActions
 import com.ticketbox.data.repository.OccurrencePaymentDraft
@@ -36,6 +38,7 @@ data class RecurringOccurrenceUiState(
     val requestedPeriod: String = "current",
     val message: UiText? = null,
     val periodPaymentOrigin: RecurringPeriodPaymentOrigin? = null,
+    val ledgerHomeCurrencyCode: String? = null,
 ) {
     val seriesPending: List<PendingOccurrencePayment> get() = queue.filter {
         it.row.status != PendingMutationStatus.Done && it.row.targetId.startsWith("recurring_occurrence:" + item?.publicId + ":")
@@ -52,7 +55,9 @@ data class RecurringOccurrenceUiState(
 class RecurringOccurrenceViewModel(
     private val repository: RecurringOccurrenceActions,
     private val ledger: LedgerActions,
+    private val debts: DebtActions,
     private val onChanged: () -> Unit = {},
+    savedStateHandle: SavedStateHandle = SavedStateHandle(),
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(RecurringOccurrenceUiState(access = repository.currentAccess()))
     val uiState = mutableState.asStateFlow()
@@ -61,6 +66,7 @@ class RecurringOccurrenceViewModel(
         current = { mutableState.value },
         mutate = { reducer -> mutableState.update(reducer) },
         load = ::load,
+        savedState = savedStateHandle,
     )
 
     init {
@@ -174,7 +180,14 @@ class RecurringOccurrenceViewModel(
                 loading = false, occurrence = result.getOrNull() ?: it.occurrence,
                 message = if (result.isFailure) UiText.res(R.string.occurrence_refresh_failed) else null,
             ) }
+            val home = debts.listDebts().fold(
+                onSuccess = { page -> page.ledgerHomeCurrencyCode },
+                onFailure = { mutableState.value.ledgerHomeCurrencyCode },
+            )
             periodPayment.restoreVisibleOrigin()
+            if (requestEpoch == epoch && mutableState.value.access?.binding == binding && !home.isNullOrBlank()) {
+                periodPayment.applyLedgerHome(home)
+            }
             if (result.isSuccess) ledger.syncConfirmed().onFailure {
                 if (requestEpoch == epoch) mutableState.update { it.copy(message = UiText.res(R.string.occurrence_payment_refresh_failed)) }
             }

@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
@@ -21,7 +22,13 @@ import kotlinx.coroutines.launch
 internal fun recurringOccurrenceModel(factory: MainScreenFactory, onChanged: () -> Unit): RecurringOccurrenceViewModel =
     viewModel(factory = viewModelFactory {
         initializer {
-            RecurringOccurrenceViewModel(factory.recurringRepository.occurrences, factory.repository, onChanged)
+            RecurringOccurrenceViewModel(
+                factory.recurringRepository.occurrences,
+                factory.repository,
+                factory.debtRepository,
+                onChanged,
+                createSavedStateHandle(),
+            )
         }
     })
 

@@ -1,10 +1,14 @@
 package com.ticketbox.viewmodel
 
+import androidx.lifecycle.SavedStateHandle
+import com.squareup.moshi.JsonClass
+import com.squareup.moshi.Moshi
+import com.squareup.moshi.Types
 import com.ticketbox.data.repository.LogicalSessionBinding
-import com.ticketbox.domain.model.ConfirmedStreamItem
 import com.ticketbox.domain.model.RecurringItem
 import java.util.UUID
 
+@JsonClass(generateAdapter = true)
 data class RecurringPeriodPaymentOrigin(
     val binding: LogicalSessionBinding,
     val seriesPublicId: String,
@@ -23,16 +27,22 @@ data class RecurringPeriodPaymentOrigin(
 /**
  * Period-payment origin store for the existing occurrence ViewModel.
  * Not a second Owner: CreateExpense / Confirm / link stay on their current writers.
+ * Android saved state owns the unsubmitted return-to-period task context.
  */
 internal class RecurringPeriodPaymentSession(
     private val current: () -> RecurringOccurrenceUiState,
     private val mutate: ((RecurringOccurrenceUiState) -> RecurringOccurrenceUiState) -> Unit,
     private val load: (String) -> Unit,
+    private val savedState: SavedStateHandle,
 ) {
-    private val sessions = mutableMapOf<Pair<String, String>, RecurringPeriodPaymentOrigin>()
+    private val adapter = Moshi.Builder().build().adapter<List<RecurringPeriodPaymentOrigin>>(
+        Types.newParameterizedType(List::class.java, RecurringPeriodPaymentOrigin::class.java),
+    )
+    private val sessions = restore()
 
     fun clear() {
         sessions.clear()
+        persist()
     }
 
     fun recordPeriodPayment() {
@@ -54,9 +64,9 @@ internal class RecurringPeriodPaymentSession(
             merchant = item.merchant,
             obligationCurrencyCode = occurrence.homeCurrencyCode,
             plannedAmountCents = occurrence.plannedAmountCents,
-            ledgerHomeCurrencyCode = capturedLedgerHomeCurrency(state),
+            ledgerHomeCurrencyCode = state.ledgerHomeCurrencyCode,
         )).copy(binding = binding)
-        sessions[key] = origin
+        remember(origin)
         mutate { it.copy(periodPaymentOrigin = origin) }
     }
 
@@ -68,15 +78,24 @@ internal class RecurringPeriodPaymentSession(
             obligationCurrencyCode = currencyCode,
             capturedAmountCents = amountCents,
         )
-        sessions[origin.seriesPublicId to origin.period] = updated
+        remember(updated)
         mutate { it.copy(periodPaymentOrigin = updated) }
     }
 
     fun acceptPeriodPaymentAdmission() {
         val origin = current().periodPaymentOrigin ?: return
         val updated = origin.copy(admitted = true)
-        sessions[origin.seriesPublicId to origin.period] = updated
+        remember(updated)
         mutate { it.copy(periodPaymentOrigin = updated) }
+    }
+
+    fun applyLedgerHome(code: String) {
+        mutate { state ->
+            val origin = state.periodPaymentOrigin?.takeIf { it.ledgerHomeCurrencyCode != code }
+                ?.copy(ledgerHomeCurrencyCode = code)?.also { remember(it) }
+                ?: state.periodPaymentOrigin
+            state.copy(ledgerHomeCurrencyCode = code, periodPaymentOrigin = origin)
+        }
     }
 
     fun restoreAdmittedPeriodOccurrence(items: List<RecurringItem> = emptyList()) {
@@ -114,9 +133,22 @@ internal class RecurringPeriodPaymentSession(
             it.copy(periodPaymentOrigin = session.copy(binding = state.access?.binding ?: session.binding))
         }
     }
-}
 
-private fun capturedLedgerHomeCurrency(state: RecurringOccurrenceUiState): String? {
-    val row = state.payments.firstOrNull() as? ConfirmedStreamItem.ExpenseRow ?: return null
-    return row.root.homeCurrencyCode ?: row.root.homeCurrency.storageKey
+    private fun remember(origin: RecurringPeriodPaymentOrigin) {
+        sessions[origin.seriesPublicId to origin.period] = origin
+        persist()
+    }
+
+    private fun persist() {
+        savedState[SESSIONS_KEY] = adapter.toJson(sessions.values.toList())
+    }
+
+    private fun restore(): MutableMap<Pair<String, String>, RecurringPeriodPaymentOrigin> {
+        val json = savedState.get<String>(SESSIONS_KEY) ?: return mutableMapOf()
+        return adapter.fromJson(json).orEmpty().associateBy { it.seriesPublicId to it.period }.toMutableMap()
+    }
+
+    private companion object {
+        const val SESSIONS_KEY = "recurring.periodPayment.sessions"
+    }
 }

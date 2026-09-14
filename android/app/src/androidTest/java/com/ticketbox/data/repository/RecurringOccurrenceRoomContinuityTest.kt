@@ -13,6 +13,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.lifecycle.viewModelScope
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.ui.navigation.RecurringOccurrenceHost
 import com.ticketbox.ui.screens.recurring.OccurrenceSheetActions
 import com.ticketbox.ui.screens.recurring.RecurringOccurrenceSheet
 import com.ticketbox.ui.theme.TicketboxTheme
@@ -99,13 +100,17 @@ class RecurringOccurrenceRoomContinuityTest {
     private fun installModel() {
         val graph = fixture.reopen()
         compose.runOnIdle {
-            model.value = RecurringOccurrenceViewModel(graph.recurringRepository.occurrences, fixture.ledger)
-                .also { it.open(occurrenceConnectedItem()) }
+            model.value = RecurringOccurrenceViewModel(
+                graph.recurringRepository.occurrences,
+                fixture.ledger,
+                fixture.debts,
+            ).also { it.open(occurrenceConnectedItem()) }
         }
     }
 
     @Test
-    fun unpaidPeriodOffersRecordPaymentBesideExistingConfirmedPickerWithoutQueuingFulfillment() {
+    fun unpaidPeriodWithoutConfirmedStreamOpensExistingManualSheetFromRecordPayment() {
+        fixture.confirmedStream.value = emptyList()
         fixture.network.current = fixture.network.current.copy(
             period = "2026-08",
             homeCurrencyCode = "JPY",
@@ -115,23 +120,27 @@ class RecurringOccurrenceRoomContinuityTest {
         installModel()
         compose.setContent {
             val current = model.value ?: return@setContent
-            val state by current.uiState.collectAsState()
             TicketboxTheme(skin = AppSkin.Paper) {
-                RecurringOccurrenceSheet(state, OccurrenceSheetActions(
-                    current::dismiss, current::refresh, current::changePeriod,
-                    current::choose, current::submit, current::recover,
-                ))
+                RecurringOccurrenceHost(current, fixture.ledger, onOpenExpense = {})
             }
         }
-        compose.waitUntil(10_000) { model.value?.uiState?.value?.canWrite == true }
+        compose.waitUntil(10_000) {
+            model.value?.uiState?.value?.canWrite == true &&
+                model.value?.uiState?.value?.ledgerHomeCurrencyCode != null
+        }
         compose.onNodeWithTag("occurrence-state").assertTextEquals("本期尚未履约")
-        compose.onNodeWithText("记录本期付款").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("没有匹配的已确认付款。可调整付款月份、搜索词，或刷新流水。")
-            .performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("occurrence-record-payment").performScrollTo().performClick()
+        compose.waitUntil(10_000) {
+            val origin = model.value?.uiState?.value?.periodPaymentOrigin
+            origin != null && origin.ledgerHomeCurrencyCode != null
+        }
+        compose.onNodeWithText("手动记一笔").assertIsDisplayed()
+        compose.onNodeWithText("商家").assertIsDisplayed()
         assertEquals(emptyList<Any>(), fixture.stored())
         assertEquals("unfulfilled", model.value?.uiState?.value?.occurrence?.state)
         assertEquals(1200L, model.value?.uiState?.value?.occurrence?.reservedAmountCents)
         assertEquals("JPY", model.value?.uiState?.value?.occurrence?.homeCurrencyCode)
+        assertEquals("CNY", model.value?.uiState?.value?.periodPaymentOrigin?.ledgerHomeCurrencyCode)
         assertTrue(fixture.network.calls.isEmpty())
     }
 
