@@ -87,8 +87,26 @@ class RecurringPeriodPaymentSurfaceTest {
             File("src/main/java/com/ticketbox/ui/navigation/RecurringOccurrenceRoute.kt"),
             File("app/src/main/java/com/ticketbox/ui/navigation/RecurringOccurrenceRoute.kt"),
         ).first { it.exists() }.readText()
+        val vm = listOf(
+            File("src/main/java/com/ticketbox/viewmodel/RecurringOccurrenceViewModel.kt"),
+            File("app/src/main/java/com/ticketbox/viewmodel/RecurringOccurrenceViewModel.kt"),
+        ).first { it.exists() }.readText()
+        val session = listOf(
+            File("src/main/java/com/ticketbox/viewmodel/RecurringPeriodPaymentSession.kt"),
+            File("app/src/main/java/com/ticketbox/viewmodel/RecurringPeriodPaymentSession.kt"),
+        ).first { it.exists() }.readText()
         assertTrue("saving = state.periodPaymentSaving" in host)
         assertTrue("errorMessage = state.periodPaymentError" in host)
-        assertTrue("ledger_msg_manual_save_failed" in host)
+        assertTrue("createPeriodPayment" in host)
+        assertTrue("ManualExpenseSheetInitials" in host)
+        assertTrue("origin.merchant" in host)
+        assertTrue("capturedAmountCents" in host)
+        assertFalse("ledger.createManualExpense" in host)
+        assertFalse("markPeriodPaymentCreate" in host)
+        assertTrue("createPeriodPayment" in vm)
+        assertTrue("ledger_msg_manual_save_failed" in vm)
+        assertFalse("markPeriodPaymentCreate" in vm)
+        assertTrue("fun acceptPeriodPaymentAdmission(clientRef: String)" in session)
+        assertTrue("fun capturePeriodPaymentDraft(" in session && "clientRef: String" in session)
     }
 }

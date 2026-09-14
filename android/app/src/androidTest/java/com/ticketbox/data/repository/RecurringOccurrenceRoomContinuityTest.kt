@@ -5,6 +5,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -121,7 +123,7 @@ class RecurringOccurrenceRoomContinuityTest {
         compose.setContent {
             val current = model.value ?: return@setContent
             TicketboxTheme(skin = AppSkin.Paper) {
-                RecurringOccurrenceHost(current, fixture.ledger, onOpenExpense = {})
+                RecurringOccurrenceHost(current, onOpenExpense = {})
             }
         }
         compose.waitUntil(10_000) {
@@ -136,6 +138,8 @@ class RecurringOccurrenceRoomContinuityTest {
         }
         compose.onNodeWithText("手动记一笔").assertIsDisplayed()
         compose.onNodeWithText("商家").assertIsDisplayed()
+        compose.onNode(hasSetTextAction() and hasText("1200")).assertIsDisplayed()
+        compose.onNode(hasSetTextAction() and hasText("房租")).assertIsDisplayed()
         assertEquals(emptyList<Any>(), fixture.stored())
         assertEquals("unfulfilled", model.value?.uiState?.value?.occurrence?.state)
         assertEquals(1200L, model.value?.uiState?.value?.occurrence?.reservedAmountCents)

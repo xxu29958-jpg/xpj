@@ -15,6 +15,8 @@ import com.ticketbox.data.repository.PendingOccurrencePayment
 import com.ticketbox.data.repository.RecurringOccurrenceActions
 import com.ticketbox.data.repository.occurrenceTarget
 import com.ticketbox.domain.model.ConfirmedStreamItem
+import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.domain.model.UiText
 import java.time.YearMonth
@@ -39,9 +41,12 @@ data class RecurringOccurrenceUiState(
     val message: UiText? = null,
     val periodPaymentOrigin: RecurringPeriodPaymentOrigin? = null,
     val ledgerHomeCurrencyCode: String? = null,
-    val periodPaymentSaving: Boolean = false,
+    val periodPaymentInFlightClientRef: String? = null,
     val periodPaymentError: UiText? = null,
 ) {
+    val periodPaymentSaving: Boolean
+        get() = periodPaymentInFlightClientRef != null &&
+            periodPaymentOrigin?.clientRef == periodPaymentInFlightClientRef
     val seriesPending: List<PendingOccurrencePayment> get() = queue.filter {
         it.row.status != PendingMutationStatus.Done && it.row.targetId.startsWith("recurring_occurrence:" + item?.publicId + ":")
     }
@@ -89,14 +94,14 @@ class RecurringOccurrenceViewModel(
 
     fun open(item: RecurringItem) {
         if (item.ledgerId != mutableState.value.access?.binding?.ledgerId) return
-        mutableState.update { it.copy(item = item, occurrence = null, choice = null, acceptedId = null, message = null, requestedPeriod = "current", periodPaymentOrigin = null, periodPaymentSaving = false, periodPaymentError = null) }
+        mutableState.update { it.copy(item = item, occurrence = null, choice = null, acceptedId = null, message = null, requestedPeriod = "current", periodPaymentOrigin = null, periodPaymentError = null) }
         load("current")
     }
 
     fun dismiss() {
         if (mutableState.value.saving) return
         epoch++
-        mutableState.update { it.copy(item = null, occurrence = null, choice = null, loading = false, periodPaymentOrigin = null, periodPaymentSaving = false, periodPaymentError = null) }
+        mutableState.update { it.copy(item = null, occurrence = null, choice = null, loading = false, periodPaymentOrigin = null, periodPaymentError = null) }
     }
 
     fun changePeriod(period: String) {
@@ -114,8 +119,32 @@ class RecurringOccurrenceViewModel(
         periodPayment.restoreAdmittedPeriodOccurrence(items)
     }
 
-    fun markPeriodPaymentCreate(saving: Boolean, error: UiText? = null) {
-        mutableState.update { it.copy(periodPaymentSaving = saving, periodPaymentError = error) }
+    fun createPeriodPayment(draft: ExpenseDraft, onAdmitted: (String) -> Unit = {}) {
+        val submitted = mutableState.value.periodPaymentOrigin ?: return
+        if (mutableState.value.access?.binding != submitted.binding || mutableState.value.periodPaymentSaving) return
+        periodPayment.capturePeriodPaymentDraft(
+            submitted.clientRef,
+            draft.category.orEmpty(),
+            draft.note.orEmpty(),
+            draft.originalCurrencyCode?.storageKey ?: submitted.obligationCurrencyCode.orEmpty(),
+            draft.originalAmountMinor ?: draft.amountCents ?: 0L,
+        )
+        mutableState.update { it.copy(periodPaymentInFlightClientRef = submitted.clientRef, periodPaymentError = null) }
+        viewModelScope.launch {
+            val result = ledger.createManualExpense(
+                draft.copy(
+                    clientRef = submitted.clientRef,
+                    ledgerHomeCurrency = draft.ledgerHomeCurrency
+                        ?: CurrencyCode.fromStorageKeyOrNull(submitted.ledgerHomeCurrencyCode),
+                ),
+            )
+            if (mutableState.value.access?.binding != submitted.binding) return@launch
+            val error = if (result.isSuccess) null
+                else result.exceptionOrNull()?.message?.let(UiText::raw)
+                    ?: UiText.res(R.string.ledger_msg_manual_save_failed)
+            periodPayment.applyCreateOutcome(submitted, error)
+            if (result.isSuccess) onAdmitted(submitted.clientRef)
+        }
     }
 
     fun choose(payment: ConfirmedStreamItem.ExpenseRow?) {

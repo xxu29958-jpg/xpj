@@ -42,6 +42,7 @@ import com.ticketbox.ui.components.AppSheetActionFeedbackState
 import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.components.LocalAppImeVisible
 import com.ticketbox.ui.components.datePickerMillisToUtcIso
+import com.ticketbox.ui.components.formatMinorAmountInput
 import com.ticketbox.ui.components.nowUtcIso
 import com.ticketbox.ui.components.parseMinorAmount
 import com.ticketbox.ui.components.selectedDateMillisFromIso
@@ -72,18 +73,30 @@ data class ManualExpenseSheetActions(
     val onDismiss: () -> Unit,
 )
 
+data class ManualExpenseSheetInitials(
+    val merchant: String = "",
+    val category: String = DEFAULT_EXPENSE_CATEGORIES.first(),
+    val note: String = "",
+    val amountMinor: Long? = null,
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ManualExpenseSheet(
     state: ManualExpenseSheetState,
     actions: ManualExpenseSheetActions,
+    initials: ManualExpenseSheetInitials = ManualExpenseSheetInitials(),
 ) {
-    var amountText by rememberSaveable { mutableStateOf("") }
+    var amountText by rememberSaveable {
+        mutableStateOf(formatMinorAmountInput(initials.amountMinor, state.initialCurrency))
+    }
     val homeCurrency by rememberSaveable { mutableStateOf(state.ledgerHomeCurrency) }
     var currency by rememberSaveable { mutableStateOf(state.initialCurrency) }
-    var merchant by rememberSaveable { mutableStateOf("") }
-    var category by rememberSaveable { mutableStateOf(DEFAULT_EXPENSE_CATEGORIES.first()) }
-    var note by rememberSaveable { mutableStateOf("") }
+    var merchant by rememberSaveable { mutableStateOf(initials.merchant) }
+    var category by rememberSaveable {
+        mutableStateOf(initials.category.ifBlank { DEFAULT_EXPENSE_CATEGORIES.first() })
+    }
+    var note by rememberSaveable { mutableStateOf(initials.note) }
     var expenseTime by rememberSaveable { mutableStateOf(nowUtcIso()) }
     var message by rememberSaveable { mutableStateOf<String?>(null) }
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
