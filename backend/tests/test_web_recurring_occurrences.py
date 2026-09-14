@@ -56,7 +56,7 @@ def test_web_association_and_undo_share_the_api_result(client: TestClient, *, id
         app.dependency_overrides.pop(_require_local, None)
 
 
-def _record_payment_href(html: str, *, series_id: str, period: str) -> str:
+def _record_payment_href(html: str, *, series_id: str, period: str, ledger_id: str = "owner") -> str:
     section = re.search(r'<section\b[^>]*aria-label="记录本期付款"[^>]*>(.*?)</section>', html, flags=re.S)
     assert section is not None, "An unpaid period must offer a record-this-period payment task"
     for href in re.findall(r'href="([^"]+)"', section.group(1)):
@@ -67,7 +67,7 @@ def _record_payment_href(html: str, *, series_id: str, period: str) -> str:
         assert query.get("return_to") == ["recurring_occurrence"]
         assert query.get("return_recurring_public_id") == [series_id]
         assert query.get("return_month") == [period]
-        assert query.get("ledger_id") == ["owner"]
+        assert query.get("ledger_id") == [ledger_id]
         return unescape(href)
     raise AssertionError("The period payment entry must open the existing manual-expense owner")
 

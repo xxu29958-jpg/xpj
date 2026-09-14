@@ -244,6 +244,64 @@ class RecurringOccurrenceViewModelTest {
             Dispatchers.resetMain()
         }
     }
+
+    @Test
+    fun confirmCompletionRestoresOriginalPeriodWithoutFulfillingUntilExplicitLink() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val actions = OccurrenceChoiceActions()
+        seedUnpaidAugust(actions)
+        val payment = confirmedExpenseDtoFixture().toDomain().copy(
+            publicId = "september-pay",
+            homeCurrencyCode = "CNY",
+            originalCurrencyCode = com.ticketbox.domain.model.CurrencyCode.USD,
+        )
+        val ledger = OccurrenceChoiceLedger(payment)
+        val item = recurringItem { rowVersion = 7L }.copy(homeCurrencyCode = "USD", merchant = "海外订阅")
+        val model = RecurringOccurrenceViewModel(actions, ledger)
+        try {
+            model.open(item)
+            advanceUntilIdle()
+            model.changePeriod("2026-08")
+            advanceUntilIdle()
+            model.recordPeriodPayment()
+            val origin = assertNotNull(model.uiState.value.periodPaymentOrigin)
+            ledger.createManualExpense(
+                ExpenseDraft(
+                    amountCents = null,
+                    originalCurrencyCode = com.ticketbox.domain.model.CurrencyCode.USD,
+                    originalAmountMinor = 2000,
+                    merchant = origin.merchant,
+                    category = "订阅",
+                    note = "八月义务",
+                    expenseTime = "2026-09-03T10:00:00Z",
+                    tags = null,
+                    valueScore = null,
+                    regretScore = null,
+                    ledgerHomeCurrency = com.ticketbox.domain.model.CurrencyCode.CNY,
+                    clientRef = origin.clientRef,
+                ),
+            ).getOrThrow()
+            model.acceptPeriodPaymentAdmission()
+            model.dismissPeriodPayment()
+            assertTrue(actions.submissions.isEmpty())
+            model.restoreAdmittedPeriodOccurrence(listOf(item))
+            advanceUntilIdle()
+            assertEquals("2026-08", model.uiState.value.occurrence?.period)
+            assertEquals("unfulfilled", model.uiState.value.occurrence?.state)
+            assertEquals(1200L, model.uiState.value.occurrence?.reservedAmountCents)
+            assertNull(model.uiState.value.periodPaymentOrigin)
+            assertTrue(actions.submissions.isEmpty())
+            model.choose(model.uiState.value.payments.single() as ConfirmedStreamItem.ExpenseRow)
+            model.submit()
+            advanceUntilIdle()
+            assertEquals(1, actions.submissions.size)
+            assertEquals("link", actions.submissions.single().second.request.action)
+            assertEquals("september-pay", actions.submissions.single().second.request.expensePublicId)
+        } finally {
+            model.viewModelScope.coroutineContext.job.cancelAndJoin()
+            Dispatchers.resetMain()
+        }
+    }
 }
 
 private fun seedUnpaidAugust(actions: OccurrenceChoiceActions) {

@@ -37,6 +37,7 @@ data class RecurringPeriodPaymentOrigin(
     val category: String? = null,
     val note: String? = null,
     val capturedAmountCents: Long? = null,
+    val admitted: Boolean = false,
 )
 
 data class RecurringOccurrenceUiState(
@@ -151,6 +152,34 @@ class RecurringOccurrenceViewModel(
         mutableState.update { it.copy(periodPaymentOrigin = updated) }
     }
 
+    fun acceptPeriodPaymentAdmission() {
+        val origin = mutableState.value.periodPaymentOrigin ?: return
+        val updated = origin.copy(admitted = true)
+        periodPaymentSessions[origin.seriesPublicId to origin.period] = updated
+        mutableState.update { it.copy(periodPaymentOrigin = updated) }
+    }
+
+    fun restoreAdmittedPeriodOccurrence(items: List<RecurringItem> = emptyList()) {
+        val session = periodPaymentSessions.values.lastOrNull { it.admitted } ?: return
+        val item = mutableState.value.item?.takeIf { it.publicId == session.seriesPublicId }
+            ?: items.firstOrNull { it.publicId == session.seriesPublicId }
+            ?: return
+        val binding = mutableState.value.access?.binding
+        if (item.ledgerId != binding?.ledgerId) return
+        mutableState.update {
+            it.copy(
+                item = item,
+                occurrence = null,
+                choice = null,
+                acceptedId = null,
+                message = null,
+                requestedPeriod = session.period,
+                periodPaymentOrigin = null,
+            )
+        }
+        load(session.period)
+    }
+
     fun dismissPeriodPayment() {
         mutableState.update { it.copy(periodPaymentOrigin = null) }
     }
@@ -240,6 +269,7 @@ class RecurringOccurrenceViewModel(
         val item = state.item ?: return
         val period = state.occurrence?.period ?: return
         val session = periodPaymentSessions[item.publicId to period] ?: return
+        if (session.admitted) return
         mutableState.update {
             it.copy(periodPaymentOrigin = session.copy(binding = state.access?.binding ?: session.binding))
         }

@@ -37,6 +37,7 @@ internal fun RecurringRoute(
     LaunchedEffect(financialDataRevision) {
         if (financialDataRevision > 0) {
             recurringViewModel.refresh()
+            occurrenceModel.restoreAdmittedPeriodOccurrence(state.items)
             occurrenceModel.refresh()
         }
     }

@@ -72,6 +72,7 @@ internal fun RecurringOccurrenceHost(
                             ),
                         )
                         if (result.isSuccess) {
+                            model.acceptPeriodPaymentAdmission()
                             model.dismissPeriodPayment()
                             onOpenManualSubmission(origin.clientRef)
                         }
