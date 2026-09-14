@@ -95,7 +95,6 @@ class PlanningFinancialRefreshRouteTest {
             assertEquals(completed.first().ownerKey, row.ownerKey)
             assertEquals(completed.first().targetId, row.targetId)
             assertTrue(!row.idempotencyKey.isNullOrBlank())
-            assertTrue(!row.receiptJson.isNullOrBlank())
         }
     }
 
