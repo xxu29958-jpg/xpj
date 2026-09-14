@@ -102,7 +102,7 @@ def test_data_quality_routes_each_uncategorized_count_to_its_records() -> None:
         undefined=StrictUndefined,
     )
     summary = {
-        "pending_total": 2, "missing_amount": 0, "missing_merchant": 0,
+        "pending_total": 2, "missing_amount": 0, "missing_fx": 0, "missing_merchant": 0,
         "suspected_duplicates": 0, "ready_to_confirm_categorized": 0,
         "missing_category": 5, "missing_category_pending": 2, "missing_category_confirmed": 3,
         "confirmed_without_image": 0, "oldest_pending_age_days": None,

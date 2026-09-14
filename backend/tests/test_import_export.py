@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import csv as csv_module
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
@@ -19,7 +19,6 @@ from app.services.currency_binding_service import resolve_write_capability
 from app.services.fx_rate_provider import upsert_fx_rate
 from app.services.import_service import (
     MAX_PREVIEW_ROWS,
-    import_rows,
     parse_csv_preview,
 )
 
@@ -300,41 +299,55 @@ def test_web_import_no_secret_leak(web_client: TestClient, *, identity) -> None:
     assert identity.upload_key not in body
 
 
-# ── service-level smoke for import_rows directly ───────────────────────────
+# Saved CSV batches are the only CSV expense writer.
 
 
-def test_import_rows_skips_invalid() -> None:
-    preview = parse_csv_preview(
-        "amount_yuan,merchant\nabc,Bad\n3.00,Good\n",
-     home_currency="CNY")
+def test_csv_batch_apply_skips_invalid(client: TestClient, identity) -> None:
+    created = client.post(
+        "/api/imports/csv", headers=identity.app_headers,
+        files={"csv_file": ("mixed.csv", b"amount_yuan,merchant\nabc,Bad\n3.00,Good\n", "text/csv")},
+    )
+    assert created.status_code == 201, created.text
+    assert (created.json()["valid_rows"], created.json()["error_rows"]) == (1, 1)
+    applied = client.post(f"/api/imports/csv/{created.json()['public_id']}/apply", headers=identity.app_headers)
+    assert applied.status_code == 200, applied.text
+    assert applied.json()["inserted_count"] == 1
     with SessionLocal() as db:
-        inserted = import_rows(db, tenant_id="owner", rows=preview.rows)
-    assert inserted == 1
+        expense = db.scalar(select(Expense).where(Expense.tenant_id == "owner", Expense.merchant == "Good"))
+        assert expense is not None and expense.amount_cents == 300 and expense.status == "pending"
+        assert db.scalar(select(Expense.id).where(Expense.merchant == "Bad")) is None
 
 
-def test_import_rows_persists_foreign_currency_metadata() -> None:
-    preview = parse_csv_preview(
+def test_csv_batch_apply_persists_foreign_currency_metadata(client: TestClient, identity) -> None:
+    content = (
         "amount_cents,original_currency_code,original_amount_minor,"
         "exchange_rate_to_cny,exchange_rate_date,merchant\n"
-        "0,JPY,1200,0.048,2026-05-04,Tokyo Metro\n",
-     home_currency="CNY")
+        "0,JPY,1200,0.048,2026-05-04,Tokyo Metro\n"
+    )
     with SessionLocal() as db:
         upsert_fx_rate(
             db,
             currency_code="JPY",
-            rate_date=preview.rows[0].exchange_rate_date,
+            rate_date=date(2026, 5, 4),
             rate_to_home=Decimal("0.048"),
             home_currency_code="CNY",
         )
         db.commit()
-        inserted = import_rows(db, tenant_id="owner", rows=preview.rows)
+    created = client.post(
+        "/api/imports/csv", headers=identity.app_headers,
+        files={"csv_file": ("foreign.csv", content.encode(), "text/csv")},
+    )
+    assert created.status_code == 201, created.text
+    applied = client.post(f"/api/imports/csv/{created.json()['public_id']}/apply", headers=identity.app_headers)
+    assert applied.status_code == 200, applied.text
+    assert applied.json()["inserted_count"] == 1
+    with SessionLocal() as db:
         rows = db.execute(
             select(Expense)
             .where(Expense.tenant_id == "owner")
             .where(Expense.source == "CSV导入")
             .where(Expense.merchant == "Tokyo Metro")
         ).scalars().all()
-    assert inserted == 1
     assert len(rows) == 1
     expense = rows[0]
     assert expense.amount_cents == 5760

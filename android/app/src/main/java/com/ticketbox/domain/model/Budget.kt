@@ -34,6 +34,7 @@ data class BudgetMonthly(
     val rowVersion: Long? = null,
     val homeCurrencyCode: String? = null,
     val missingCurrencyCodes: List<String> = emptyList(),
+    val referenceRates: List<com.ticketbox.domain.model.CurrencyReferenceRate> = emptyList(),
 ) {
     val availableAmountCents: Long = totalAmountCents + rolloverAmountCents
     val isOverBudget: Boolean = overspentAmountCents?.let { it > 0L } == true ||

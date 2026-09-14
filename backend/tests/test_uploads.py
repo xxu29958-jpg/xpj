@@ -159,12 +159,11 @@ def test_upload_submission_failure_returns_failed_task_receipt_without_losing_ex
     path: str,
     headers: str,
 ) -> None:
-    from app.services import background_task_service
 
     def fail_submit(*_args, **_kwargs):
         raise RuntimeError("executor unavailable")
 
-    monkeypatch.setattr(background_task_service, "_submit_task", fail_submit)
+    monkeypatch.setattr("app.services.background_task_executor.submit_task", fail_submit)
     request_path = identity.upload_url_path if path == "upload-link" else path
     request_headers = identity.upload_headers if headers == "upload" else identity.app_headers
 

@@ -29,6 +29,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.test.core.app.ApplicationProvider
 import com.ticketbox.R
 import com.ticketbox.BuildConfig
+import com.ticketbox.data.local.PendingMutationType
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.data.remote.dto.BackgroundTaskListResponseDto
@@ -103,6 +104,7 @@ class FactEntryNavigationTest {
         val confirm = context.getString(R.string.expense_edit_confirm_button)
         waitForText(confirm)
         compose.onNodeWithText(confirm).performClick()
+        drainAdmittedConfirm()
         compose.waitUntil(5_000) { harness.shell.expenseEditCompletionRevision == 1 }
         compose.waitForIdle()
         compose.runOnIdle {
@@ -161,6 +163,7 @@ class FactEntryNavigationTest {
         val confirm = context.getString(R.string.expense_edit_confirm_button)
         waitForText(confirm)
         compose.onNodeWithText(confirm).performClick()
+        drainAdmittedConfirm()
         compose.waitUntil(5_000) { harness.shell.expenseEditCompletionRevision == 1 && network.failedPendingReads > 0 }
         compose.waitForIdle()
         compose.onAllNodesWithText(requireNotNull(network.current.merchant)).assertCountEquals(0)
@@ -326,6 +329,13 @@ class FactEntryNavigationTest {
         compose.onNode(hasContentDescription("") and hasClickAction()).performScrollTo().performClick()
         compose.waitForIdle()
         compose.runOnIdle { assertEquals(MAIN_ROUTE, outer.currentBackStackEntry?.destination?.route) }
+    }
+
+    private fun drainAdmittedConfirm() {
+        compose.waitUntil(5_000) {
+            harness.fixture.stored().any { it["type"] == PendingMutationType.ConfirmExpense.wireValue }
+        }
+        runBlocking { harness.fixture.drainExpenseLifecycle() }
     }
 
     private fun waitForText(text: String) {

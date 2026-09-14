@@ -32,6 +32,7 @@ def test_budget_line_uses_its_recorded_currency_and_target_month_date(monkeypatc
 
 def test_unknown_budget_line_does_not_become_zero_or_erase_known_spending(monkeypatch):
     monkeypatch.setattr(money, "resolve_payload_rate", lambda *a, **kw: (None, None, None, None))
+    monkeypatch.setattr(money, "resolve_valuation_rate", lambda *a, **kw: (None, None, None, None))
     monkeypatch.setattr(_history, "now_utc", lambda: datetime(2026, 9, 9, tzinfo=UTC))
     monkeypatch.setattr(_history, "_get_budget", lambda *a, **kw: SimpleNamespace(
         home_currency_code="CNY", total_amount_cents=10000, rollover_amount_cents=0))

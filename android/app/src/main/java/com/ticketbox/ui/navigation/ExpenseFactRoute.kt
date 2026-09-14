@@ -8,6 +8,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.ui.screens.expense.fact.ExpenseFactScreen
 import com.ticketbox.viewmodel.ExpenseFactUiState
 import com.ticketbox.viewmodel.ExpenseFactViewModel
+import com.ticketbox.viewmodel.loadExpenseFactBundle
+import com.ticketbox.viewmodel.loadExpenseRevisions
 import com.ticketbox.viewmodel.consumeOpenRepaymentDraftPublicId
 import com.ticketbox.viewmodel.expenseFactViewModelFactory
 
@@ -24,6 +26,7 @@ internal fun ExpenseFactRoute(
     screenFactory: MainScreenFactory,
     onExit: (adviceInputsChanged: Boolean) -> Unit,
     related: ExpenseFactNavigation,
+    financialDataRevision: Int = 0,
 ) {
     val factViewModel: ExpenseFactViewModel = viewModel(
         key = "expense-fact-$expenseId",
@@ -34,6 +37,13 @@ internal fun ExpenseFactRoute(
         ),
     )
     val factState by factViewModel.uiState.collectAsStateWithLifecycle()
+
+    LaunchedEffect(financialDataRevision) {
+        if (financialDataRevision > 0) {
+            factViewModel.loadExpenseFactBundle()
+            factViewModel.loadExpenseRevisions()
+        }
+    }
 
     FactRepaymentDraftOpenEffect(factState, factViewModel, related.onOpenRepaymentDrafts)
 

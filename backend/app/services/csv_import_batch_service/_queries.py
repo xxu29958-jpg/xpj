@@ -20,12 +20,12 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
-from app.models import CsvImportBatch, CsvImportRow
+from app.models import CsvImportBatch, CsvImportRow, Expense
 from app.schemas import CsvImportBatchResponse
 
 __all__ = [
     "build_csv_import_batch_response", "get_csv_import_batch",
-    "get_csv_import_batch_progress", "list_csv_import_batches",
+    "get_csv_import_batch_progress", "list_csv_import_batches", "list_imported_expenses",
 ]
 
 
@@ -34,6 +34,13 @@ class CsvImportRowCounts:
     remaining_valid_rows: int = 0
     applied_rows: int = 0
     error_rows: int = 0
+
+
+def list_imported_expenses(db: Session, *, tenant_id: str, expense_ids: list[int]) -> list[Expense]:
+    """Current financial records referenced by the selected import page."""
+    if not expense_ids:
+        return []
+    return list(db.scalars(ledger_scoped_select(Expense, tenant_id).where(Expense.id.in_(expense_ids))))
 
 
 @dataclass(frozen=True)

@@ -18,6 +18,7 @@ from app.services.csv_import_batch_service import (
     apply_csv_import_batch,
     create_csv_import_batch,
 )
+from app.services.ledger_service import find_owner_account_id_for_ledger
 from app.services.time_service import now_utc
 
 
@@ -123,6 +124,8 @@ def _assert_active_row_claim_blocks_retry(db, *, public_id: str) -> None:
         apply_csv_import_batch(
             db,
             tenant_id="owner",
+            initiator_account_id=find_owner_account_id_for_ledger(db, ledger_id="owner"),
+            initiator_device_id=None,
             public_id=public_id,
             batch_size=10,
         )
@@ -148,6 +151,8 @@ def test_csv_import_row_claim_recovers_stale_apply_after_batch_lease_expires(cli
         applied = apply_csv_import_batch(
             db,
             tenant_id="owner",
+            initiator_account_id=find_owner_account_id_for_ledger(db, ledger_id="owner"),
+            initiator_device_id=None,
             public_id=public_id,
             batch_size=10,
         )
@@ -162,6 +167,8 @@ def test_csv_import_row_claim_recovers_stale_apply_after_batch_lease_expires(cli
         recovered = apply_csv_import_batch(
             db,
             tenant_id="owner",
+            initiator_account_id=find_owner_account_id_for_ledger(db, ledger_id="owner"),
+            initiator_device_id=None,
             public_id=public_id,
             batch_size=10,
         )
@@ -206,6 +213,8 @@ def test_csv_import_recovers_legacy_stale_applying_row_without_apply_token(clien
         applied = apply_csv_import_batch(
             db,
             tenant_id="owner",
+            initiator_account_id=find_owner_account_id_for_ledger(db, ledger_id="owner"),
+            initiator_device_id=None,
             public_id=public_id,
             batch_size=10,
         )
@@ -266,6 +275,8 @@ def test_csv_import_stale_worker_token_cannot_apply_after_reclaim(client: TestCl
         applied = apply_csv_import_batch(
             db,
             tenant_id="owner",
+            initiator_account_id=find_owner_account_id_for_ledger(db, ledger_id="owner"),
+            initiator_device_id=None,
             public_id=public_id,
             batch_size=10,
         )
@@ -337,6 +348,8 @@ def test_csv_import_row_idempotency_prevents_duplicate_expense_after_stale_recla
         applied = apply_csv_import_batch(
             db,
             tenant_id="owner",
+            initiator_account_id=find_owner_account_id_for_ledger(db, ledger_id="owner"),
+            initiator_device_id=None,
             public_id=public_id,
             batch_size=10,
         )
@@ -462,6 +475,8 @@ def test_csv_import_success_clears_previous_apply_error(client: TestClient) -> N
         applied = apply_csv_import_batch(
             db,
             tenant_id="owner",
+            initiator_account_id=find_owner_account_id_for_ledger(db, ledger_id="owner"),
+            initiator_device_id=None,
             public_id=public_id,
             batch_size=10,
         )

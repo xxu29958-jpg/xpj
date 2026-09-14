@@ -150,6 +150,7 @@ def _render_income_plans(request, db, *, options, selected, message=None, error=
         total_yuan=minor_amount_value(forecast.expected_amount_cents, home) if forecast.expected_amount_cents is not None else None,
         scheduled_yuan=minor_amount_value(forecast.scheduled_amount_cents, home) if forecast.scheduled_amount_cents is not None else None,
         missing_currency_codes=forecast.missing_currency_codes,
+        reference_rates=forecast.reference_rates,
         intent_month=intent_month,
         minor_label=lambda plan: minor_amount_value(plan.amount_cents, plan.home_currency_code) if plan.home_currency_code else "待确认币种",
         currency_input=_currency_input_view(home),

@@ -2,18 +2,27 @@
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from html import escape
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
+from _web_native_form_support import hidden_post_forms
 from jinja2 import ChoiceLoader, DictLoader
 from starlette.requests import Request
 
+from app.middleware import csrf
 from app.models import Expense
 from app.routes import _web_bill_split_context as invites
 from app.routes import _web_correction_page as correction
 from app.routes import _web_expense_fact as fact
+from app.routes import _web_expense_fx as fx
 from app.routes import _web_expense_helpers as helpers
 from app.routes import _web_expense_split_presenter as splits
+from app.routes import _web_money_views as money_views
+from app.routes import web_expense_edit as edit
+from app.routes._web_expense_edit_form import WebExpenseEditForm
+from app.routes._web_expense_return_context import ExpenseReturnContext
 from app.routes.web_common import templates
 from app.schemas import ExpenseRevisionListResponse
 
@@ -32,6 +41,8 @@ def record_context(monkeypatch):
         "request": request, "home_currency_code": "USD", "home_currency_symbol": "$",
         "can_write": True, "csrf_token": "csrf", "selected_ledger_id": "owner"})
     monkeypatch.setattr(helpers, "manual_draft_ack", lambda *_a: None)
+    task_query = Mock(return_value={})
+    monkeypatch.setattr(money_views, "current_pending_expense_fx_tasks", task_query)
     monkeypatch.setattr(helpers, "web_split_members", lambda *_a: [])
     monkeypatch.setattr(helpers, "list_ledger_category_options", lambda *_a, **_k: [])
     item_response = SimpleNamespace(items_sum_status="mismatch_known", mismatch_cents=200, items=[
@@ -56,7 +67,12 @@ def record_context(monkeypatch):
             "path": "/web/expenses/41/edit", "query_string": b""})
         factory = {"fact": fact.web_fact_context, "correction": correction.web_correction_context,
             "pending": helpers.web_edit_context}[mode]
-        return factory(object(), request, [], "owner", 41)
+        before = task_query.call_count
+        context = factory(object(), request, [], "owner", 41)
+        assert task_query.call_count == before + (mode == "pending")
+        if mode != "pending":
+            assert context["expense_fx"] is None
+        return context
 
     return read
 
@@ -94,6 +110,55 @@ def test_pending_record_uses_the_same_record_basis_for_child_summaries(record_co
     assert "金额差 ¥2.00" in html and "金额差 $2.00" not in html
     assert "账单 ¥12.00 · 已拆 ¥10.00" in html
     assert "还差 ¥2.00 未分配" in html
+
+
+def test_fx_status_keeps_original_form_and_offers_review_when_current_bill_no_longer_needs_fx(
+    record_context, monkeypatch,
+):
+    expense = helpers.get_expense(None, 41, "owner")
+    expense.amount_cents = None
+    expense.fx_status = "pending"
+    assert record_context("pending")["expense_fx"]["current"]["fx_pending"]
+    # Another client corrected the pending original input to CNY. The recorded
+    # home basis stays CNY; the unsaved JPY form still belongs to the prior revision.
+    expense.original_currency_code = "CNY"
+    expense.original_amount_minor = 240
+    expense.amount_cents = 240
+    expense.fx_status = "ready"
+    expense.exchange_rate_to_cny = Decimal(1)
+    expense.exchange_rate_source = "base"
+    expense.row_version += 1
+    monkeypatch.setattr(fx, "_list_ledger_options", lambda _db: [])
+    monkeypatch.setattr(fx, "_resolve_selected_ledger_id", lambda *_a, **_k: "owner")
+    monkeypatch.setattr(fx, "preserve_original_ledger_form", lambda *_a, **_k: None)
+    monkeypatch.setattr(csrf, "_csrf_secret", lambda: b"synthetic-presenter-csrf-signing-key")
+    monkeypatch.setattr(templates.env, "loader", ChoiceLoader([
+        DictLoader({"base.html": "{% block content %}{% endblock %}"}), templates.env.loader]))
+    db = Mock()
+    for fragment in (0, 1):
+        request = Request({"type": "http", "method": "POST", "headers": [],
+            "path": "/web/expenses/41/fx-status", "query_string": b""})
+        form = WebExpenseEditForm(ledger_id="owner", expected_row_version="1",
+            idempotency_key="original-edit-key", save_before_confirm=True, amount_yuan="999",
+            original_currency="JPY", manual_exchange_rate="", merchant="Unsent merchant",
+            category="交通", note="Unsent note", tags="trip", expense_time="2026-09-01T12:00",
+            fragment=fragment, return_context=ExpenseReturnContext(return_to="pending"))
+        response = edit.web_refresh_expense_fx(41, request, form, db=db)
+        assert response.status_code == 200
+        assert response.context["expense_fx"] is None
+        assert response.context["conflict_current"] is None
+        body = response.body.decode()
+        retained = hidden_post_forms(body)["/web/expenses/41/save"]
+        assert (retained["expected_row_version"], retained["idempotency_key"],
+            retained["ledger_id"], retained["original_currency"]) == (
+                "1", "original-edit-key", "owner", "JPY")
+        assert 'value="999"' in body and 'value="Unsent merchant"' in body and "Unsent note" in body
+        assert (expense.home_currency_code, expense.original_currency_code, expense.row_version,
+            expense.original_amount_minor, expense.amount_cents) == ("CNY", "CNY", 2, 240, 240)
+        assert "载入最新账单（替换未保存填写）" in body
+        assert f'href="{escape(response.context["edit_current_href"])}" data-drawer-reload' in body
+        assert 'formaction="/web/expenses/41/confirm"' not in body
+    db.commit.assert_not_called()
 
 
 def test_source_invitation_uses_parent_basis_for_input_and_each_agreement_for_sent_rows(

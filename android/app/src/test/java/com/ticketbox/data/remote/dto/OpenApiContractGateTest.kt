@@ -75,6 +75,7 @@ class OpenApiContractGateTest {
         Pairing(DiscretionaryResponseDto::class, "DiscretionaryResponse"),
         Pairing(BudgetAdviceInputsDto::class, "BudgetInputsResponse"),
         Pairing(MissingExchangeRateDto::class, "ProjectionGapDto"),
+        Pairing(ProjectionReferenceDto::class, "ProjectionReferenceDto"),
         Pairing(ExchangeRateRequestDto::class, "ExchangeRateRequest"),
         Pairing(ExchangeRateDto::class, "ExchangeRateResponse"),
         Pairing(ExchangeRateListDto::class, "ExchangeRateListResponse"),

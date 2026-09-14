@@ -6,9 +6,7 @@ import com.ticketbox.R
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.repository.ExpenseEditActions
-import com.ticketbox.data.repository.ExpenseStateOutcome
-import com.ticketbox.data.repository.SaveOutcome
-import com.ticketbox.data.repository.changesAdvisorPayloadAgainst
+import com.ticketbox.data.repository.ExpenseCommandObservation
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.Expense
@@ -76,6 +74,11 @@ enum class ExpenseDetailDataLoadState {
 data class ExpenseEditUiState(
     val expense: Expense? = null,
     val expenseLoading: Boolean = true,
+    val fx: ExpenseFxUiState = ExpenseFxUiState(),
+    /** Explicit successful form adoption, independent of the server's financial revision. */
+    val formRevision: Int = 0,
+    val commandRowIds: List<Long> = emptyList(),
+    val commandsCompleted: Boolean = false,
     val thumbnail: ProtectedImage? = null,
     val fullImage: ProtectedImage? = null,
     val categories: List<String> = DEFAULT_EXPENSE_CATEGORIES,
@@ -111,7 +114,9 @@ data class ExpenseEditUiState(
      *  (confirm / reject). Consumed by the route to decide advice-cache
      *  invalidation; note/tag/merchant-only edits stay false. */
     val doneAdviceInputsChanged: Boolean = false,
-)
+) {
+    val loadingFxReview: Boolean get() = fx.loading && expenseLoading
+}
 
 /**
  * 主编辑面：加载（expense / categories / 图片 / items / splits）+ 保存 /
@@ -131,12 +136,16 @@ class ExpenseEditViewModel(
         const val IMAGE_LOG_TAG = "TicketboxImage"
     }
 
+    internal val fxBinding = repository.captureDeferredLedgerBinding()
+    internal var commandObservation: ExpenseCommandObservation? = null
+
     internal val _uiState = MutableStateFlow(
         ExpenseEditUiState(readOnly = !repository.canModifyLedger()),
     )
     val uiState: StateFlow<ExpenseEditUiState> = _uiState.asStateFlow()
 
     init {
+        observeExpenseCommands()
         loadExpense()
     }
 
@@ -151,11 +160,15 @@ class ExpenseEditViewModel(
             }
             // issue #65 slice 5: a not-yet-synced offline create has a NEGATIVE
             // local id the server can't resolve — load it from the local cache.
+            var cachedFallback = false
             val loaded = if (expenseId < 0) {
                 repository.fetchExpenseFromLocalCache(expenseId)
             } else {
                 repository.fetchExpense(expenseId).let { remote ->
-                    if (remote.isSuccess) remote else repository.fetchExpenseFromLocalCache(expenseId)
+                    if (remote.isSuccess) remote else {
+                        cachedFallback = true
+                        repository.fetchExpenseFromLocalCache(expenseId)
+                    }
                 }
             }
             loaded
@@ -163,6 +176,10 @@ class ExpenseEditViewModel(
                     _uiState.update {
                         it.copy(
                             expense = expense,
+                            fx = ExpenseFxUiState(
+                                task = expense.fxTask,
+                                message = if (cachedFallback) UiText.res(R.string.expense_fx_cached_read) else null,
+                            ),
                             expenseLoading = false,
                             message = null,
                             messageTone = MessageTone.Neutral,
@@ -351,251 +368,31 @@ class ExpenseEditViewModel(
         }
     }
 
-    fun save(draft: ExpenseDraft) {
-        if (blockReadOnlyWrite()) return
-        viewModelScope.launch {
-            val baseline = _uiState.value.expense
-            val savesManualRate = draft.manualExchangeRate != null
-            _uiState.update { it.copy(saving = true, message = null, messageTone = MessageTone.Neutral) }
-            // ADR-0038 PR-2g.3 round-8 P2: this is the only call
-            // site that doesn't chain on ``saved.updatedAt``. The
-            // chained ``confirm()`` flow below uses ``updateExpense``
-            // (direct only — fails on IOException so the chain
-            // aborts safely). Here we use the offline-aware
-            // ``saveExpenseAllowingOffline`` and branch on the
-            // sealed result so the UI tells the user whether the
-            // save was confirmed or just queued.
-            if (baseline == null) {
-                // No baseline → no optimistic-concurrency token.
-                // saveExpenseAllowingOffline requires non-null
-                // baseline; fall back to the direct path which
-                // will surface whatever error appropriate.
-                repository.updateExpense(expenseId, draft, baseline = null)
-                    .onSuccess { expense ->
-                        _uiState.update {
-                            it.copy(
-                                expense = expense,
-                                saving = false,
-                                message = UiText.res(R.string.expense_edit_save_success),
-                                messageTone = MessageTone.Success,
-                                done = true,
-                                // No baseline → full-field write → always
-                                // payload-relevant.
-                                doneAdviceInputsChanged = true,
-                            )
-                        }
-                    }
-                    .onFailure { error ->
-                        _uiState.update {
-                            it.copy(
-                                saving = false,
-                                message = error.toUiText(R.string.expense_edit_save_failed),
-                                messageTone = MessageTone.Danger,
-                            )
-                        }
-                    }
-                return@launch
-            }
-            repository.saveExpenseAllowingOffline(expenseId, draft, baseline)
-                .onSuccess { outcome ->
-                    val feedback = expenseEditSaveFeedback(outcome, savesManualRate)
-                    _uiState.update {
-                        it.copy(
-                            expense = outcome.expense,
-                            saving = false,
-                            message = feedback.message,
-                            messageTone = feedback.tone,
-                            done = feedback.done,
-                            doneAdviceInputsChanged = draft.changesAdvisorPayloadAgainst(baseline),
-                        )
-                    }
-                }
-                .onFailure { error ->
-                    _uiState.update {
-                        it.copy(
-                            saving = false,
-                            message = error.toUiText(R.string.expense_edit_save_failed),
-                            messageTone = MessageTone.Danger,
-                        )
-                    }
-                }
-        }
+    fun save(draft: ExpenseDraft) = submitExpenseCommand(R.string.expense_edit_save_failed) { binding, expense ->
+        repository.saveExpenseAllowingOffline(binding, expense.id, draft, expense)
     }
 
     fun confirm(draft: ExpenseDraft) {
-        if (blockReadOnlyWrite()) return
         if (draft.amountCents == null && draft.originalAmountMinor == null) {
-            _uiState.update {
-                it.copy(message = UiText.res(R.string.expense_edit_amount_required), messageTone = MessageTone.Danger)
-            }
+            _uiState.update { it.copy(message = UiText.res(R.string.expense_edit_amount_required), messageTone = MessageTone.Danger) }
             return
         }
-        val baseline = _uiState.value.expense
-        if (baseline == null) {
-            _uiState.update {
-                it.copy(message = UiText.res(R.string.expense_edit_page_not_loaded), messageTone = MessageTone.Danger)
-            }
-            return
-        }
-        viewModelScope.launch {
-            _uiState.update { it.copy(saving = true, message = null, messageTone = MessageTone.Neutral) }
-            // ADR-0042: route the edit-page save+confirm through the offline-aware
-            // path (like the pending-list confirm) instead of the direct
-            // updateExpense+confirmExpense chain, which failed entirely offline and
-            // lost the user's confirm intent. Offline, BOTH mutations queue; the
-            // outbox serialises same-target (PatchExpense before ConfirmExpense) and
-            // cascades the post-save row_version onto the queued confirm, so the
-            // optimistic (pre-save) token on the queued confirm is corrected on
-            // replay. Online, the save Syncs (server token) and the confirm runs
-            // direct against it — same result as before.
-            repository.saveExpenseAllowingOffline(expenseId, draft, baseline)
-                .onSuccess { saveOutcome ->
-                    repository.confirmExpenseAllowingOffline(saveOutcome.expense)
-                        .onSuccess { confirmOutcome ->
-                            // Queued = the confirm sits behind the queued save in the
-                            // outbox (per-target FIFO; the repository diverts the
-                            // confirm to the queue whenever the save queued first) —
-                            // surface the offline hint like reject/save do.
-                            val (message, tone) = when (confirmOutcome) {
-                                is ExpenseStateOutcome.Synced -> null to MessageTone.Neutral
-                                is ExpenseStateOutcome.Queued ->
-                                    UiText.res(R.string.expense_edit_confirm_offline_queued) to MessageTone.Info
-                            }
-                            _uiState.update { state ->
-                                state.copy(
-                                    expense = confirmOutcome.expense,
-                                    saving = false,
-                                    message = message,
-                                    messageTone = tone,
-                                    done = true,
-                                    // Confirm adds the row to the confirmed set
-                                    // the advisor aggregates — always relevant.
-                                    doneAdviceInputsChanged = true,
-                                )
-                            }
-                        }
-                        .onFailure { error ->
-                            // Keep the post-save expense as the page baseline. After a
-                            // Synced save it carries the server's bumped row_version
-                            // (retrying with the stale pre-save token would always
-                            // 409); after a Queued save it's the optimistic projection
-                            // whose pre-save token is exactly what the queued PATCH
-                            // will replay — and any follow-up mutate now queues behind
-                            // it via the per-target FIFO guard.
-                            _uiState.update { state ->
-                                state.copy(
-                                    expense = saveOutcome.expense,
-                                    saving = false,
-                                    message = error.toUiText(R.string.expense_edit_confirm_failed),
-                                    messageTone = MessageTone.Danger,
-                                )
-                            }
-                        }
-                }
-                .onFailure { error ->
-                    _uiState.update {
-                        it.copy(
-                            saving = false,
-                            message = error.toUiText(R.string.expense_edit_save_failed),
-                            messageTone = MessageTone.Danger,
-                        )
-                    }
-                }
+        submitExpenseCommand(R.string.expense_edit_confirm_failed) { binding, expense ->
+            repository.saveAndConfirmExpense(binding, expense, draft)
         }
     }
 
-    fun reject() {
-        if (blockReadOnlyWrite()) return
-        val expense = _uiState.value.expense
-        if (expense == null) {
-            _uiState.update {
-                it.copy(message = UiText.res(R.string.expense_edit_page_not_loaded), messageTone = MessageTone.Danger)
-            }
-            return
-        }
-        viewModelScope.launch {
-            _uiState.update { it.copy(saving = true, message = null, messageTone = MessageTone.Neutral) }
-            repository.rejectExpenseAllowingOffline(expense)
-                .onSuccess { outcome ->
-                    // Synced keeps the silent done→navigate-back behaviour;
-                    // Queued surfaces the offline hint (mirrors save).
-                    val (message, tone) = when (outcome) {
-                        is ExpenseStateOutcome.Synced -> null to MessageTone.Neutral
-                        is ExpenseStateOutcome.Queued ->
-                            UiText.res(R.string.expense_edit_reject_offline_queued) to MessageTone.Info
-                    }
-                    _uiState.update {
-                        it.copy(
-                            saving = false,
-                            message = message,
-                            messageTone = tone,
-                            done = true,
-                            // Reject pulls a confirmed row OUT of the aggregated
-                            // set — membership change is payload-relevant.
-                            doneAdviceInputsChanged = true,
-                        )
-                    }
-                }
-                .onFailure { error ->
-                    _uiState.update {
-                        it.copy(
-                            saving = false,
-                            message = error.toUiText(R.string.expense_edit_reject_failed),
-                            messageTone = MessageTone.Danger,
-                        )
-                    }
-                }
-        }
+    fun reject() = submitExpenseCommand(R.string.expense_edit_reject_failed) { binding, expense ->
+        repository.rejectExpenseAllowingOffline(binding, expense)
     }
 
-    fun retryOcr() {
-        if (blockReadOnlyWrite()) return
-        val expense = _uiState.value.expense
-        if (expense == null) {
-            _uiState.update {
-                it.copy(message = UiText.res(R.string.expense_edit_page_not_loaded), messageTone = MessageTone.Danger)
-            }
-            return
-        }
-        viewModelScope.launch {
-            _uiState.update { it.copy(ocrRunning = true, message = null, messageTone = MessageTone.Neutral) }
-            repository.retryOcrAllowingOffline(expense)
-                .onSuccess { outcome ->
-                    val (message, tone) = when (outcome) {
-                        is ExpenseStateOutcome.Synced ->
-                            UiText.res(R.string.expense_edit_ocr_retried) to MessageTone.Success
-                        is ExpenseStateOutcome.Queued ->
-                            UiText.res(R.string.expense_edit_ocr_retry_offline_queued) to MessageTone.Info
-                    }
-                    _uiState.update {
-                        it.copy(
-                            expense = outcome.expense,
-                            ocrRunning = false,
-                            message = message,
-                            messageTone = tone,
-                        )
-                    }
-                }
-                .onFailure { error ->
-                    _uiState.update {
-                        it.copy(
-                            ocrRunning = false,
-                            message = error.toUiText(R.string.expense_edit_recognize_failed),
-                            messageTone = MessageTone.Danger,
-                        )
-                    }
-                }
-        }
+    fun retryOcr() = submitExpenseCommand(R.string.expense_edit_recognize_failed) { binding, expense ->
+        repository.retryOcrAllowingOffline(binding, expense)
     }
 
-    /** Open / close the "粘贴文字识别" input dialog. Gated on read-only at the
-     *  UI layer (the affordance is hidden), but the open call also no-ops if the
-     *  expense hasn't loaded so the dialog never opens on a half-loaded page. */
     fun openRecognizeTextDialog() {
         if (_uiState.value.expense == null) {
-            _uiState.update {
-                it.copy(message = UiText.res(R.string.expense_edit_page_not_loaded), messageTone = MessageTone.Danger)
-            }
+            _uiState.update { it.copy(message = UiText.res(R.string.expense_edit_page_not_loaded), messageTone = MessageTone.Danger) }
             return
         }
         _uiState.update { it.copy(recognizeTextDialogOpen = true) }
@@ -605,105 +402,19 @@ class ExpenseEditViewModel(
         _uiState.update { it.copy(recognizeTextDialogOpen = false) }
     }
 
-    /**
-     * ADR-0042 Slice E-2: submit pasted receipt text for server-side parsing.
-     * Modeled on [retryOcr] (Synced/Queued ExpenseStateOutcome), but body-carrying
-     * — the pasted [rawText] travels to the server, which parses it into the
-     * empty draft fields (DISTINCT from retryOcr, which re-runs the OCR provider
-     * on the stored image). The parsed result only fills EMPTY fields — that's
-     * enforced server-side (recognize is pending-only + the OCR-apply owns only
-     * draft fields), so the copy is honest about it and there's no client-side
-     * overwrite logic.
-     */
     fun recognizeText(rawText: String) {
-        if (blockReadOnlyWrite()) return
-        val expense = _uiState.value.expense
-        if (expense == null) {
-            _uiState.update {
-                it.copy(message = UiText.res(R.string.expense_edit_page_not_loaded), messageTone = MessageTone.Danger)
-            }
-            return
-        }
         val text = rawText.trim()
         if (text.isBlank()) {
-            _uiState.update {
-                it.copy(
-                    message = UiText.res(R.string.expense_edit_recognize_text_required),
-                    messageTone = MessageTone.Danger,
-                )
-            }
+            _uiState.update { it.copy(message = UiText.res(R.string.expense_edit_recognize_text_required), messageTone = MessageTone.Danger) }
             return
         }
-        viewModelScope.launch {
-            _uiState.update {
-                it.copy(
-                    ocrRunning = true,
-                    recognizeTextDialogOpen = false,
-                    message = null,
-                    messageTone = MessageTone.Neutral,
-                )
-            }
-            repository.recognizeTextAllowingOffline(expense, text)
-                .onSuccess { outcome ->
-                    val (message, tone) = when (outcome) {
-                        // Server parsed the text and returned the refreshed expense;
-                        // the Screen re-derives its field state from it (parsed
-                        // result already filled the empty fields server-side).
-                        is ExpenseStateOutcome.Synced ->
-                            UiText.res(R.string.expense_edit_recognize_done) to MessageTone.Success
-                        is ExpenseStateOutcome.Queued ->
-                            UiText.res(R.string.expense_edit_recognize_offline_queued) to MessageTone.Info
-                    }
-                    _uiState.update {
-                        it.copy(
-                            expense = outcome.expense,
-                            ocrRunning = false,
-                            message = message,
-                            messageTone = tone,
-                        )
-                    }
-                }
-                .onFailure { error ->
-                    _uiState.update {
-                        it.copy(
-                            ocrRunning = false,
-                            message = error.toUiText(R.string.expense_edit_recognize_failed),
-                            messageTone = MessageTone.Danger,
-                        )
-                    }
-                }
+        submitExpenseCommand(R.string.expense_edit_recognize_failed) { binding, expense ->
+            repository.recognizeTextAllowingOffline(binding, expense, text)
         }
     }
 
-    fun markNotDuplicate() {
-        if (blockReadOnlyWrite()) return
-        val expense = _uiState.value.expense
-        if (expense == null) {
-            _uiState.update {
-                it.copy(message = UiText.res(R.string.expense_edit_page_not_loaded), messageTone = MessageTone.Danger)
-            }
-            return
-        }
-        viewModelScope.launch {
-            repository.markNotDuplicateAllowingOffline(expense)
-                .onSuccess { outcome ->
-                    val (message, tone) = when (outcome) {
-                        is ExpenseStateOutcome.Synced ->
-                            UiText.res(R.string.expense_edit_keep_duplicate_success) to MessageTone.Success
-                        is ExpenseStateOutcome.Queued ->
-                            UiText.res(R.string.expense_edit_keep_duplicate_offline_queued) to MessageTone.Info
-                    }
-                    _uiState.update { it.copy(expense = outcome.expense, message = message, messageTone = tone) }
-                }
-                .onFailure { error ->
-                    _uiState.update {
-                        it.copy(
-                            message = error.toUiText(R.string.expense_edit_keep_duplicate_failed),
-                            messageTone = MessageTone.Danger,
-                        )
-                    }
-                }
-        }
+    fun markNotDuplicate() = submitExpenseCommand(R.string.expense_edit_keep_duplicate_failed) { binding, expense ->
+        repository.markNotDuplicateAllowingOffline(binding, expense)
     }
 
     fun consumeDone(): Boolean {
@@ -722,54 +433,7 @@ class ExpenseEditViewModel(
         return changed
     }
 
-    private fun blockReadOnlyWrite(): Boolean {
-        if (repository.canModifyLedger()) {
-            _uiState.update { it.copy(readOnly = false) }
-            return false
-        }
-        _uiState.update {
-            it.copy(
-                readOnly = true,
-                saving = false,
-                ocrRunning = false,
-                message = UiText.res(R.string.common_readonly_ledger),
-                messageTone = MessageTone.Danger,
-            )
-        }
-        return true
-    }
-}
 
-private data class ExpenseEditSaveFeedback(
-    val message: UiText,
-    val tone: MessageTone,
-    val done: Boolean,
-)
-
-private fun expenseEditSaveFeedback(
-    outcome: SaveOutcome,
-    savesManualRate: Boolean,
-): ExpenseEditSaveFeedback = when (outcome) {
-    is SaveOutcome.Synced -> ExpenseEditSaveFeedback(
-        message = UiText.res(
-            if (savesManualRate) R.string.expense_edit_manual_rate_saved else R.string.expense_edit_save_success,
-        ),
-        tone = MessageTone.Success,
-        done = !savesManualRate,
-    )
-    // Queued state is only a local intent. Manual FX stays open until the
-    // canonical server projection arrives; ordinary edits keep prior behavior.
-    is SaveOutcome.Queued -> ExpenseEditSaveFeedback(
-        message = UiText.res(
-            if (savesManualRate) {
-                R.string.expense_edit_manual_rate_offline_queued
-            } else {
-                R.string.expense_edit_save_offline_queued
-            },
-        ),
-        tone = MessageTone.Info,
-        done = !savesManualRate,
-    )
 }
 
 /**

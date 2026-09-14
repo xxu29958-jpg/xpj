@@ -205,6 +205,14 @@ interface ExpenseDao {
         return false
     }
 
+    /** Keep the server's lifecycle version, including rejection, so older reads cannot revive the row. */
+    @Transaction
+    suspend fun applyServerExpense(ledgerId: String, expense: ExpenseEntity): Boolean {
+        if (!upsertByServerIdForLedger(ledgerId, expense)) return false
+        if (expense.status != "confirmed") deleteConfirmedStreamOffsetsForRoot(ledgerId, requireNotNull(expense.serverId))
+        return true
+    }
+
     @Transaction
     suspend fun upsertAllByServerIdForLedger(
         ledgerId: String,
@@ -296,9 +304,6 @@ interface ExpenseDao {
     @Query("DELETE FROM expenses WHERE ledgerId = :ledgerId AND status = 'confirmed'")
     suspend fun deleteConfirmedForLedger(ledgerId: String)
 
-    @Query("DELETE FROM expenses WHERE ledgerId = :ledgerId AND status = 'pending'")
-    suspend fun deletePendingForLedger(ledgerId: String)
-
     @Query(
         """
         DELETE FROM expenses
@@ -334,15 +339,6 @@ interface ExpenseDao {
     )
     suspend fun deleteConfirmedStreamOffsetsForRoot(ledgerId: String, rootServerId: Long)
 
-    /** Retire a non-confirmed root without erasing a newer confirmed projection installed during the GET. */
-    @Transaction
-    suspend fun retireConfirmedRoot(ledgerId: String, rootServerId: Long, rowVersion: Long) {
-        val current = findByServerId(ledgerId, rootServerId)
-        if (current != null && current.rowVersion > rowVersion) return
-        deleteConfirmedByServerIds(ledgerId, listOf(rootServerId))
-        deleteConfirmedStreamOffsetsForRoot(ledgerId, rootServerId)
-    }
-
     @Transaction
     suspend fun clearAllExpenseCaches() {
         clear()
@@ -364,14 +360,15 @@ interface ExpenseDao {
         ledgerId: String,
         root: ExpenseEntity,
         activeOffsets: List<ExpenseOffsetStreamEntity>,
-    ) {
+    ): Boolean {
         val rootServerId = requireNotNull(root.serverId)
         require(root.ledgerId == ledgerId && activeOffsets.all {
             it.ledgerId == ledgerId && it.rootServerId == rootServerId
         }) { "expense fact bundle crossed its ledger or root boundary" }
-        if (!upsertByServerIdForLedger(ledgerId, root)) return
+        if (!upsertByServerIdForLedger(ledgerId, root)) return false
         deleteConfirmedStreamOffsetsForRoot(ledgerId, rootServerId)
         if (activeOffsets.isNotEmpty()) upsertConfirmedStreamOffsets(activeOffsets)
+        return true
     }
 
     @Transaction
@@ -454,34 +451,28 @@ interface ExpenseDao {
         return acceptedRootIds
     }
 
-    /**
-     * issue #64 A3：pending 列表本地优先读的写回路。pending 取自一次性的
-     * `GET /api/expenses/pending`（非分页、单次原子调用，见
-     * ExpenseRepositoryCore.syncPendingFromService），故整张列表一并到达 —
-     * 直接 wholesale-replace（清掉本账本所有 pending → 重新插入响应里的 pending）
-     * 就是正确口径，无需 applyConfirmedSyncForLedger 那套 pruneScope/分页快照：
-     * confirmed 走分页、且 cacheIfConfirmed 会在分页 in-flight 时旁路写缓存，所以
-     * 才要 prune 来分辨「服务端删了」vs「分页期间新缓存的」；pending 两者都不存在
-     * （没有第二条写 pending 行的路径）。
-     *
-     * 只删 status='pending'（deletePendingForLedger，不是 clearForLedger）——
-     * confirmed 缓存与 pending 缓存共表，wholesale 清整张表会连带清掉 LedgerScreen
-     * 的 confirmed 缓存。
-     */
+    /** Only prune pending rows that were present and unchanged when the list request started. */
     @Transaction
     suspend fun applyPendingSyncForLedger(
         ledgerId: String,
         expenses: List<ExpenseEntity>,
+        pruneVersions: Map<Long, Long>,
     ) {
-        deletePendingForLedger(ledgerId)
+        require(expenses.all { it.ledgerId == ledgerId && it.status == "pending" })
+        val remoteIds = expenses.mapNotNull { it.serverId }.toSet()
+        getPending(ledgerId).filter { row ->
+            row.serverId !in remoteIds && pruneVersions[row.serverId] == row.rowVersion
+        }.forEach { deleteByLocalId(it.id) }
         expenses.chunked(SQLITE_BINDING_CHUNK_SIZE).forEach { chunk ->
-            upsertAllByServerIdForLedger(ledgerId, chunk)
+            upsertAllByServerIdForLedger(ledgerId, chunk).forEach { acceptedId ->
+                deleteConfirmedStreamOffsetsForRoot(ledgerId, acceptedId)
+            }
         }
     }
 }
 
 private fun ExpenseEntity.withPreservedStreamProjection(existing: ExpenseEntity): ExpenseEntity {
-    if (streamDate != null) return this
+    if (status != "confirmed" || streamDate != null) return this
     return copy(
         streamDate = existing.streamDate,
         streamSortTime = streamSortTime ?: existing.streamSortTime,

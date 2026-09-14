@@ -22,9 +22,6 @@ fun ExpenseFactViewModel.openVoidOffsetSheet(offset: ExpenseOffsetFact) {
             voidOffsetForm = VoidOffsetFormState(
                 open = true,
                 target = offset,
-                conflictMessage = UiText.res(R.string.expense_offset_conflict)
-                    .takeIf { state.offsetCommandsBlockedUntilRefresh },
-                refreshingAfterConflict = state.offsetCommandsBlockedUntilRefresh,
             ),
         )
     }
@@ -43,15 +40,16 @@ fun ExpenseFactViewModel.updateVoidOffsetReason(value: String) {
 fun ExpenseFactViewModel.canSubmitVoidOffset(): Boolean {
     val state = _uiState.value
     val form = state.voidOffsetForm
-    if (state.offsetCommandsBlockedUntilRefresh) return false
-    if (!form.open || form.saving || form.refreshingAfterConflict) return false
+    if (!form.open || form.saving) return false
     return form.target != null && form.reason.isNotBlank()
 }
 
 fun ExpenseFactViewModel.submitVoidOffset() {
     if (blockReadOnlyWrite()) return
-    val expense = _uiState.value.expense ?: return
-    val form = _uiState.value.voidOffsetForm
+    val state = _uiState.value
+    val expense = state.expense ?: return
+    val binding = state.correctionAccess?.binding ?: return
+    val form = state.voidOffsetForm
     val target = form.target ?: return
     if (form.reason.isBlank()) {
         _uiState.update {
@@ -64,11 +62,15 @@ fun ExpenseFactViewModel.submitVoidOffset() {
         return
     }
     viewModelScope.launch {
+        if (_uiState.value.correctionAccess?.binding != binding || blockReadOnlyWrite()) return@launch
         _uiState.update { it.copy(voidOffsetForm = it.voidOffsetForm.copy(saving = true)) }
-        repository.voidExpenseOffsetAllowingOffline(expense, target, form.reason.trim())
-            .onSuccess { outcome ->
-                publishOffsetOutcome(outcome, R.string.expense_offset_void_success)
+        repository.voidExpenseOffsetAllowingOffline(binding, expense, target, form.reason.trim())
+            .onSuccess {
+                if (_uiState.value.correctionAccess?.binding != binding) return@onSuccess
+                publishOffsetQueued()
             }
-            .onFailure { error -> publishOffsetFailure(error, isVoid = true) }
+            .onFailure { error ->
+                if (_uiState.value.correctionAccess?.binding == binding) publishOffsetFailure(error, isVoid = true)
+            }
     }
 }

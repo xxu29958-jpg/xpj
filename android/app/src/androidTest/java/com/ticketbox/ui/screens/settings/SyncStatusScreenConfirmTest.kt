@@ -10,6 +10,7 @@ import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.OutboxStatus
+import com.ticketbox.data.repository.correctionRateFailure
 import com.ticketbox.data.repository.PendingIncomePlanSubmission
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.ui.theme.TicketboxTheme
@@ -36,7 +37,7 @@ class SyncStatusScreenConfirmTest {
         var opened: Long? = null
         val original = outboxRow(PendingMutationStatus.Conflict, "state_conflict")
             .copy(type = PendingMutationType.CreateExpenseOffset)
-        setScreenContent(conflicts = listOf(original), actions = SyncStatusActions(onRepairCorrectionRate = { _, _ -> }, onOpenRateSubmission = {}, onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {},
+        setScreenContent(conflicts = listOf(original), actions = SyncStatusActions(onRefreshExpense = {}, onRepairCorrectionRate = { _, _ -> }, onOpenRateSubmission = {}, onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {},
             onOpenExpense = { opened = it }, onKeepMine = { error("Original refund cannot be rebased") },
             onDropMine = {}, onRetry = {}, onDropFailed = {}, onClearQuarantined = {},
         ))
@@ -54,7 +55,7 @@ class SyncStatusScreenConfirmTest {
         var opened: Long? = null
         val original = outboxRow(PendingMutationStatus.Failed, "offset_create_requires_review")
             .copy(type = PendingMutationType.CreateExpenseOffset)
-        setScreenContent(failed = listOf(original), actions = SyncStatusActions(onRepairCorrectionRate = { _, _ -> }, onOpenRateSubmission = {}, onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {},
+        setScreenContent(failed = listOf(original), actions = SyncStatusActions(onRefreshExpense = {}, onRepairCorrectionRate = { _, _ -> }, onOpenRateSubmission = {}, onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {},
             onOpenExpense = { opened = it }, onKeepMine = {}, onDropMine = {},
             onRetry = { error("Unverifiable original cannot replay") }, onDropFailed = {}, onClearQuarantined = {},
         ))
@@ -67,12 +68,46 @@ class SyncStatusScreenConfirmTest {
     }
 
     @Test
+    fun missingOffsetRateOpensOriginalPairAndDateWithoutRewritingOrRetryingCommand() {
+        val binding = com.ticketbox.data.repository.LogicalSessionBinding("https://qa.invalid", "ledger-1", "owner", "session", "first")
+        val error = com.ticketbox.data.repository.NetworkErrorHandler({ null }, "OffsetRecoveryTest").parseErrorMessage(409,
+            """{"error":"exchange_rate_pending","message":"这笔账单缺少换算汇率，请补齐后再继续。","currency_code":"USD","home_currency_code":"CNY","rate_date":"2026-09-03"}""")
+        assertEquals("exchange_rate_pending", error.errorCode)
+        assertEquals("2026-09-03", error.missingExchangeRate?.rateDate)
+        val original = outboxRow(PendingMutationStatus.Failed, error.correctionRateFailure())
+            .copy(type = PendingMutationType.CreateExpenseOffset, idempotencyKey = "original-refund")
+        var opened: Pair<com.ticketbox.data.repository.LogicalSessionBinding, com.ticketbox.data.remote.dto.MissingExchangeRateDto>? = null
+        var retried = 0
+        val state = OutboxStatusUiState(binding = binding, bindingReady = true,
+            retryableOffsetIds = setOf(original.id), status = OutboxStatus(0, emptyList(), listOf(original)),
+            correctionObservation = com.ticketbox.data.repository.ExpenseCorrectionObservation(
+                com.ticketbox.data.repository.LedgerAccessContext(binding, true), emptyList()))
+        composeRule.setContent { TicketboxTheme(skin = AppSkin.Default) {
+            SyncStatusScreenContent(state, SyncStatusActions(onRefreshExpense = {}, onRepairCorrectionRate = { owner, gap -> opened = owner to gap },
+                onOpenRateSubmission = {}, onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = {},
+                onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {}, onOpenExpense = {}, onKeepMine = {},
+                onDropMine = {}, onRetry = { retried++ }, onDropFailed = {}, onClearQuarantined = {}), {}, {})
+        } }
+        val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext
+        composeRule.onNodeWithText(context.getString(com.ticketbox.R.string.correction_rate_open)).performScrollTo().performClick()
+        composeRule.runOnIdle {
+            assertEquals(binding, opened?.first)
+            assertEquals("USD", opened?.second?.sourceCurrencyCode)
+            assertEquals("CNY", opened?.second?.homeCurrencyCode)
+            assertEquals("2026-09-03", opened?.second?.rateDate)
+            assertEquals(0, retried)
+            assertEquals("original-refund", state.status.failed.single().idempotencyKey)
+            assertEquals(original, state.status.failed.single())
+        }
+    }
+
+    @Test
     fun conflictDropAsksForConfirmationBeforeFiring() {
         var dropped: OutboxRow? = null
         val row = outboxRow(status = PendingMutationStatus.Conflict)
         setScreenContent(
             conflicts = listOf(row),
-            actions = SyncStatusActions(onRepairCorrectionRate = { _, _ -> }, onOpenRateSubmission = {}, onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {},
+            actions = SyncStatusActions(onRefreshExpense = {}, onRepairCorrectionRate = { _, _ -> }, onOpenRateSubmission = {}, onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {},
         onOpenExpense = {},
                 onKeepMine = {},
                 onDropMine = { dropped = it },
@@ -102,7 +137,7 @@ class SyncStatusScreenConfirmTest {
             status = OutboxStatus(0, listOf(original), emptyList())))
         var dropped: OutboxRow? = null
         composeRule.setContent { TicketboxTheme(skin = AppSkin.Default) {
-            SyncStatusScreenContent(state.value, SyncStatusActions(onRepairCorrectionRate = { _, _ -> }, onOpenRateSubmission = {}, onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {}, onOpenExpense = {}, onKeepMine = {},
+            SyncStatusScreenContent(state.value, SyncStatusActions(onRefreshExpense = {}, onRepairCorrectionRate = { _, _ -> }, onOpenRateSubmission = {}, onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {}, onOpenExpense = {}, onKeepMine = {},
                 onDropMine = { dropped = it }, onRetry = {}, onDropFailed = {}, onClearQuarantined = {}), {}, onOpenInbox = {})
         } }
         composeRule.onNodeWithText("放弃我的改动").performScrollTo().performClick()
@@ -122,7 +157,7 @@ class SyncStatusScreenConfirmTest {
         val row = outboxRow(status = PendingMutationStatus.Failed)
         setScreenContent(
             failed = listOf(row),
-            actions = SyncStatusActions(onRepairCorrectionRate = { _, _ -> }, onOpenRateSubmission = {}, onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {},
+            actions = SyncStatusActions(onRefreshExpense = {}, onRepairCorrectionRate = { _, _ -> }, onOpenRateSubmission = {}, onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {},
         onOpenExpense = {},
                 onKeepMine = {},
                 onDropMine = {},
@@ -152,7 +187,7 @@ class SyncStatusScreenConfirmTest {
         val row = outboxRow(status = PendingMutationStatus.Failed, lastError = "outbox_row_expired")
         setScreenContent(
             failed = listOf(row),
-            actions = SyncStatusActions(onRepairCorrectionRate = { _, _ -> }, onOpenRateSubmission = {}, onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {},
+            actions = SyncStatusActions(onRefreshExpense = {}, onRepairCorrectionRate = { _, _ -> }, onOpenRateSubmission = {}, onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {},
         onOpenExpense = {},
                 onKeepMine = {},
                 onDropMine = {},
@@ -176,7 +211,7 @@ class SyncStatusScreenConfirmTest {
             type = PendingMutationType.UpdateIncomePlan, targetId = "income_plan:old",
         )
         setScreenContent(failed = listOf(row), incomeSubmissions = mapOf(row.id to PendingIncomePlanSubmission(row, null)),
-            actions = SyncStatusActions(onRepairCorrectionRate = { _, _ -> }, onOpenRateSubmission = {}, onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {}, onOpenExpense = {}, onKeepMine = {}, onDropMine = {}, onRetry = { error("Unsupported retry") },
+            actions = SyncStatusActions(onRefreshExpense = {}, onRepairCorrectionRate = { _, _ -> }, onOpenRateSubmission = {}, onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {}, onOpenExpense = {}, onKeepMine = {}, onDropMine = {}, onRetry = { error("Unsupported retry") },
                 onDropFailed = {}, onClearQuarantined = {}))
         val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext
         composeRule.onNodeWithText(context.getString(com.ticketbox.R.string.income_plan_edit_unsupported)).assertIsDisplayed()
@@ -189,7 +224,7 @@ class SyncStatusScreenConfirmTest {
         var clearCount = 0
         setScreenContent(
             quarantinedCount = 2,
-            actions = SyncStatusActions(onRepairCorrectionRate = { _, _ -> }, onOpenRateSubmission = {}, onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {},
+            actions = SyncStatusActions(onRefreshExpense = {}, onRepairCorrectionRate = { _, _ -> }, onOpenRateSubmission = {}, onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {},
         onOpenExpense = {},
                 onKeepMine = {},
                 onDropMine = {},
@@ -215,7 +250,7 @@ class SyncStatusScreenConfirmTest {
     fun protocolRefusalExplainsTheUpgradeAndKeepsOriginalRetry() {
         var retried: OutboxRow? = null
         val original = outboxRow(PendingMutationStatus.Failed, lastError = "runtime_version_mismatch")
-        setScreenContent(failed = listOf(original), actions = SyncStatusActions(onRepairCorrectionRate = { _, _ -> }, onOpenRateSubmission = {}, onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {},
+        setScreenContent(failed = listOf(original), actions = SyncStatusActions(onRefreshExpense = {}, onRepairCorrectionRate = { _, _ -> }, onOpenRateSubmission = {}, onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {},
         onOpenExpense = {},
             onKeepMine = {}, onDropMine = {}, onRetry = { retried = it }, onDropFailed = {}, onClearQuarantined = {},
         ))
@@ -230,7 +265,7 @@ class SyncStatusScreenConfirmTest {
     fun failedUploadOpensItsOriginalInboxGroupInsteadOfUsingGenericRetry() {
         val original = outboxRow(PendingMutationStatus.Failed, "upload_payload_unsupported")
             .copy(type = PendingMutationType.UploadScreenshot, targetId = "upload_batch:original")
-        setScreenContent(failed = listOf(original), actions = SyncStatusActions(onRepairCorrectionRate = { _, _ -> }, onOpenRateSubmission = {}, onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {},
+        setScreenContent(failed = listOf(original), actions = SyncStatusActions(onRefreshExpense = {}, onRepairCorrectionRate = { _, _ -> }, onOpenRateSubmission = {}, onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {},
             onOpenExpense = {}, onKeepMine = {}, onDropMine = {},
             onRetry = { error("An upload must use the original group's recovery") },
             onDropFailed = {}, onClearQuarantined = {},

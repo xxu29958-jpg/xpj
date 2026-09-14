@@ -4,7 +4,8 @@ import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
-import com.ticketbox.data.repository.ExpenseStateOutcome
+import com.ticketbox.data.repository.ExpenseCommandAcceptance
+import com.ticketbox.data.repository.ExpenseCommandObservation
 import com.ticketbox.data.repository.PendingThumbnailLoader
 import com.ticketbox.data.repository.PendingEnrichmentTaskReader
 import com.ticketbox.data.repository.PendingReviewActions
@@ -24,6 +25,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -74,32 +76,7 @@ data class PendingUiState(
     val activeSheet: PendingSheet = PendingSheet.None,
     val categoryOptions: List<String> = emptyList(),
     val bulkConfirm: BulkConfirmRunState = BulkConfirmRunState(),
-    /**
-     * ADR-0038 undo: just-rejected Synced expense, surfaced for the 撤销
-     * snackbar. Non-null = render the snackbar; tapping 撤销 calls
-     * [PendingViewModel.undoReject], the VM's 5s display timer firing or
-     * the user moving to another action calls
-     * [PendingViewModel.dismissUndoable].
-     *
-     * **Two-clock split (intentional)**:
-     *  - **VM 5s** ([PendingViewModel.startUndoTimer]) = UI display window
-     *    only — when to hide the banner. Survives Compose lifecycle
-     *    (tab/back-stack/scroll).
-     *  - **Server 5-min retention** = actual undo authority. The button
-     *    stays clickable the whole time the banner shows; the server
-     *    decides per-request whether retention is still open. The VM
-     *    NEVER pre-judges "within 5s == definitely undoable" — see
-     *    [PendingViewModel.undoReject]'s onFailure 404-vs-transient
-     *    branching.
-     *
-     * Only Synced reject outcomes seed this (the server actually holds the
-     * rejected row to flip back); a Queued (offline) reject's mutation lives
-     * in the outbox, so there's nothing for /undo to find — Queued therefore
-     * leaves any pre-existing Synced banner intact rather than wiping it.
-     * The banner carries the [Expense] so the UI can render merchant /
-     * amount and disambiguate "撤的是 A 不是 B" in the Synced(A) followed
-     * by Queued(B) case.
-     */
+    /** Original accepted rejection receipt; the server decides whether Undo remains valid. */
     val undoableExpense: Expense? = null,
     /**
      * 连续审阅「还剩 N 条」计数：当前打开的快补 sheet 对应字段、本轮未跳过、仍
@@ -121,31 +98,6 @@ data class PendingUiState(
 
 }
 
-private data class PendingStateTransitionOperation(
-    val repoCall: suspend (Expense) -> Result<ExpenseStateOutcome>,
-    val dismissBanner: Boolean = true,
-    val preCheck: () -> UiText? = { null },
-    /** True only for transitions that LAND in confirmed expenses (the budget
-     *  advisor's expense input) — pending-side lifecycle (reject, duplicate
-     *  handling) leaves it false so no advice invalidation fires. */
-    val landsInConfirmed: Boolean = false,
-)
-
-private data class PendingStateTransitionMessages(
-    val synced: UiText,
-    val queued: UiText,
-    @param:StringRes val failureFallback: Int,
-)
-
-private data class PendingStateTransitionResultHandler(
-    val reduceOutcome: (
-        state: PendingUiState,
-        outcome: ExpenseStateOutcome,
-        message: UiText,
-    ) -> PendingUiState,
-    val afterSyncedSuccess: ((Expense) -> Unit)? = null,
-)
-
 class PendingViewModel(
     internal val repository: PendingReviewActions,
     private val uploadIntents: UploadIntentActions,
@@ -160,7 +112,7 @@ class PendingViewModel(
     internal var onAdviceInputsChanged: () -> Unit = {}
     internal val _uiState = MutableStateFlow(PendingUiState())
     val uiState: StateFlow<PendingUiState> = _uiState.asStateFlow()
-    private var requestGeneration = 0
+    internal var requestGeneration = 0
     // Only the latest issued refresh may publish into visible UI state.
     private var refreshSequence = 0
     // Bumped when undoReject commits its optimistic restore so any refresh
@@ -168,7 +120,7 @@ class PendingViewModel(
     // restored row) skips its afterRefresh wholesale-replace and doesn't
     // overwrite the row we just put back. requestGeneration is reserved for
     // ledger switches; we can't reuse it without cancelling unrelated flows.
-    private var refreshSkipEpoch = 0
+    internal var refreshSkipEpoch = 0
     // issue #64 A3: pending 本地优先读的「首屏种子」一次性闸。仅首屏 / 换账本后的
     // 第一次 refresh 从 Room 缓存铺列表（消空白间隙）；之后的下拉刷新不再回种，避免
     // 在用户已乐观移除（confirm/reject 只改内存不写 Room）后又从陈旧缓存把行复活
@@ -184,6 +136,11 @@ class PendingViewModel(
     private var enrichmentObserver: PendingEnrichmentObserver? = null
     private var uploadObservation: UploadIntentObservation? = null
     private val observedUploadReceipts = mutableSetOf<Long>()
+    internal var commandObservation: ExpenseCommandObservation? = null
+    internal val commandRowsByExpense = mutableMapOf<Long, Set<Long>>()
+    internal val seenCommandCompletions = mutableSetOf<Long>()
+    internal val ignoredRejectRows = mutableSetOf<Long>()
+    internal val bulkCommandRows = mutableSetOf<Long>()
 
     // 连续审阅（批量过堆积待确认票）本轮已「跳过」的票 id。快补 sheet 的
     // 保存并下一笔 / 跳过都朝列表后方推进，跳过的票留在 pending 列表里、不出队、
@@ -195,7 +152,24 @@ class PendingViewModel(
     init {
         _uiState.update { it.copy(readOnly = true) }
         viewModelScope.launch {
-            uploadIntents.observeUploadIntents().collect { installUploadObservation(it) }
+            combine(uploadIntents.observeUploadIntents(), repository.observeExpenseCommands()) { uploads, commands ->
+                uploads to commands
+            }.collect { (uploads, commands) ->
+                if (uploads.access?.binding != commands.access?.binding) return@collect
+                val initialize = commandObservation == null
+                val changed = commandObservation?.access?.binding != commands.access?.binding
+                commandObservation = commands
+                if (changed) {
+                    commandRowsByExpense.clear()
+                    seenCommandCompletions.clear()
+                    ignoredRejectRows.clear()
+                    bulkCommandRows.clear()
+                }
+                if (initialize || changed) seenCommandCompletions.addAll(
+                    commands.commands.filter { it.row.status == PendingMutationStatus.Done }.map { it.row.id })
+                installUploadObservation(uploads)
+                reconcileExpenseCommands()
+            }
         }
     }
 
@@ -233,7 +207,8 @@ class PendingViewModel(
     }
 
     private fun isReadOnly(): Boolean =
-        uploadObservation?.access?.canModify != true || !repository.canModifyLedger()
+        uploadObservation?.access?.canModify != true || commandObservation?.access?.canModify != true ||
+            commandObservation?.access?.binding != uploadIntents.currentUploadBinding() || !repository.canModifyLedger()
 
     internal fun blockReadOnlyWrite(closeSheet: Boolean = false): Boolean {
         if (!isReadOnly()) {
@@ -270,7 +245,7 @@ class PendingViewModel(
         }
     }
 
-    fun refresh() {
+    fun refresh(clearMessage: Boolean = true) {
         // Issued synchronously (not inside the launch) so call order always
         // matches sequence order even if the coroutine body runs later.
         val binding = uploadObservation?.access?.binding ?: return
@@ -283,7 +258,7 @@ class PendingViewModel(
                 it.copy(
                     loading = true,
                     listLoadState = PendingListLoadState.Loading,
-                    message = null,
+                    message = if (clearMessage) null else it.message,
                 )
             }
             // A3: 先用本地缓存铺首屏（仅首次 / 换账本后那次），再走网络 write-through。
@@ -444,247 +419,81 @@ class PendingViewModel(
         }
     }
 
-    /**
-     * Shared scaffolding for every state-machine POST on the pending list
-     * (confirm / reject / markNotDuplicate / ignoreDuplicate). Captures the
-     * pattern that every variant ran open-coded:
-     *
-     *  1. (optional) dismiss the prior 撤销 banner — user moved on to
-     *     another action.
-     *     [PendingStateTransitionOperation.dismissBanner] = false for
-     *     [reject], which re-seeds the banner itself on Synced.
-     *  2. read-only gate. [blockReadOnlyWrite] tears down the banner +
-     *     toast as a side effect (V11 fix).
-     *  3. optional per-call precondition (e.g. confirm needs an amount);
-     *     return [String] to set as the user-facing message.
-     *  4. in-progress guard against double-tap.
-     *  5. mark in-progress.
-     *  6. launch + generation snapshot for ledger-switch cancellation.
-     *  7. call repo; on success let the caller compose the new
-     *     [PendingUiState] via
-     *     [PendingStateTransitionResultHandler.reduceOutcome]
-     *     (typically a reducer call); on Synced run
-     *     [PendingStateTransitionResultHandler.afterSyncedSuccess]
-     *     for side effects like
-     *     seeding [undoableExpense] + [startUndoTimer].
-     *  8. on failure clear in-progress + show fallback message.
-     *
-     * Keeps the four call sites at ~7 lines each instead of ~40, and
-     * makes future race / cancellation fixes a single-edit affair.
-     */
-    private fun launchStateTransition(
+    internal fun commandBinding(): LogicalSessionBinding? {
+        if (holdsCommandBinding(commandObservation?.access?.binding)) return commandObservation?.access?.binding
+        _uiState.update { it.copy(message = UiText.res(R.string.expense_fx_binding_changed)) }
+        return null
+    }
+
+    internal fun holdsCommandBinding(expected: LogicalSessionBinding?): Boolean {
+        val binding = commandObservation?.access?.binding
+        return expected != null && binding != null && binding == expected &&
+            binding == currentUploadBinding() && binding == uploadIntents.currentUploadBinding()
+    }
+
+    internal fun submitPendingCommand(
         expense: Expense,
-        operation: PendingStateTransitionOperation,
-        messages: PendingStateTransitionMessages,
-        resultHandler: PendingStateTransitionResultHandler,
+        @StringRes failureFallback: Int,
+        offerUndo: Boolean = true,
+        onAccepted: (ExpenseCommandAcceptance) -> Unit = {},
+        call: suspend (LogicalSessionBinding) -> Result<ExpenseCommandAcceptance>,
     ) {
-        if (operation.dismissBanner) dismissUndoable()
-        if (blockReadOnlyWrite()) return
-        operation.preCheck()?.let { msg ->
-            _uiState.update { it.copy(message = msg) }
+        if (blockReadOnlyWrite() || expense.id in _uiState.value.actionInProgressIds) return
+        if (expense.id in commandRowsByExpense) {
+            _uiState.update { it.copy(message = UiText.res(R.string.expense_command_accepted)) }
             return
         }
-        if (expense.id in _uiState.value.actionInProgressIds) return
+        val binding = commandBinding() ?: return
+        _uiState.update { it.copy(actionInProgressIds = it.actionInProgressIds + expense.id, message = null) }
         viewModelScope.launch {
-            val generation = requestGeneration
-            _uiState.update { it.copy(actionInProgressIds = it.actionInProgressIds + expense.id, message = null) }
-            operation.repoCall(expense)
-                .onSuccess { outcome ->
-                    if (requestGeneration != generation) return@onSuccess
-                    val message = when (outcome) {
-                        is ExpenseStateOutcome.Synced -> messages.synced
-                        is ExpenseStateOutcome.Queued -> messages.queued
-                    }
-                    _uiState.update { state -> resultHandler.reduceOutcome(state, outcome, message) }
-                    onDataChanged()
-                    if (operation.landsInConfirmed) {
-                        onAdviceInputsChanged()
-                    }
-                    if (outcome is ExpenseStateOutcome.Synced) {
-                        resultHandler.afterSyncedSuccess?.invoke(outcome.expense)
-                    }
-                }
-                .onFailure { error ->
-                    if (requestGeneration != generation) return@onFailure
-                    _uiState.update {
-                        it.copy(
-                            actionInProgressIds = it.actionInProgressIds - expense.id,
-                            message = error.toUiText(messages.failureFallback),
-                        )
-                    }
-                }
+            call(binding).onSuccess { accepted ->
+                if (!holdsCommandBinding(binding)) return@onSuccess
+                acceptExpenseCommand(accepted, offerUndo)
+                onAccepted(accepted)
+            }.onFailure { error ->
+                if (!holdsCommandBinding(binding)) return@onFailure
+                _uiState.update { it.copy(actionInProgressIds = it.actionInProgressIds - expense.id,
+                    message = error.toUiText(failureFallback)) }
+            }
         }
     }
 
-    fun confirm(expense: Expense) = launchStateTransition(
-        expense = expense,
-        operation = PendingStateTransitionOperation(
-            repoCall = { repository.confirmExpenseAllowingOffline(it) },
-            preCheck = { if (expense.amountCents == null) UiText.res(R.string.error_amount_required) else null },
-            landsInConfirmed = true,
-        ),
-        messages = PendingStateTransitionMessages(
-            synced = UiText.res(R.string.pending_msg_confirmed),
-            queued = UiText.res(R.string.pending_msg_confirmed_offline),
-            failureFallback = R.string.pending_msg_confirm_failed,
-        ),
-        resultHandler = PendingStateTransitionResultHandler(
-            reduceOutcome = { state, outcome, message ->
-                PendingUiStateReducer.afterConfirmed(state, outcome.expense, message = message)
-            },
-        ),
-    )
+    fun confirm(expense: Expense) {
+        dismissUndoable()
+        if (expense.amountCents == null) {
+            _uiState.update { it.copy(message = UiText.res(R.string.error_amount_required)) }
+            return
+        }
+        submitPendingCommand(expense, R.string.pending_msg_confirm_failed) { binding ->
+            repository.confirmExpenseAllowingOffline(binding, expense)
+        }
+    }
 
-    fun reject(expense: Expense) = launchStateTransition(
-        expense = expense,
-        operation = PendingStateTransitionOperation(
-            // Reject does not pre-dismiss: Synced reject re-seeds the banner
-            // with the new row inside reduceOutcome; Queued reject preserves any
-            // prior Synced banner because it may still be server-side undoable.
-            dismissBanner = false,
-            repoCall = { repository.rejectExpenseAllowingOffline(it) },
-        ),
-        messages = PendingStateTransitionMessages(
-            synced = UiText.res(R.string.pending_msg_rejected),
-            queued = UiText.res(R.string.pending_msg_rejected_offline),
-            failureFallback = R.string.pending_msg_reject_failed,
-        ),
-        resultHandler = PendingStateTransitionResultHandler(
-            reduceOutcome = { state, outcome, message ->
-                val updated = PendingUiStateReducer.afterRejected(state, outcome.expense, message = message)
-                when (outcome) {
-                    is ExpenseStateOutcome.Synced -> updated.copy(undoableExpense = outcome.expense)
-                    is ExpenseStateOutcome.Queued -> updated
-                }
-            },
-            afterSyncedSuccess = { synced -> startUndoTimer(synced.id) },
-        ),
-    )
+    fun reject(expense: Expense) = submitPendingCommand(expense, R.string.pending_msg_reject_failed) { binding ->
+        repository.rejectExpenseAllowingOffline(binding, expense)
+    }
 
-    /**
-     * ADR-0038 undo: restore the most-recently-Synced-rejected expense back to
-     * the pending list. Only call from the 5s 撤销 snackbar; on 404
-     * (`expense_not_found`) the server's 5-min retention window already
-     * closed (or another surface restored it first), so we flash a failure
-     * message and stop showing the affordance. On transient errors
-     * (IOException / 5xx) the server window may still be open — we restore
-     * the banner so the user can retry.
-     */
     fun undoReject() {
-        val initial = _uiState.value
-        val target = initial.undoableExpense ?: return
         if (blockReadOnlyWrite()) return
-        if (target.id in initial.actionInProgressIds) return
-        // Atomic CAS claim (V9 double-tap / Sweep#3 concurrent-reject race).
-        // The synchronous prelude on the UI thread reads state.undoableExpense
-        // once; a concurrent reject's onSuccess between this prelude and the
-        // launch body below could replace undoableExpense with a different
-        // row (B) — clearing it later would silently wipe B's banner while
-        // we still hit /undo on A. Doing the claim inside `_uiState.update`
-        // (which is atomic on MutableStateFlow) and gating on
-        // `current.undoableExpense?.id == target.id` keeps the clear scoped
-        // to the same row the caller intended to undo.
-        var claimed = false
-        _uiState.update { current ->
-            if (current.undoableExpense?.id != target.id) return@update current
-            if (target.id in current.actionInProgressIds) return@update current
-            claimed = true
-            current.copy(
-                actionInProgressIds = current.actionInProgressIds + target.id,
-                undoableExpense = null,
-                message = null,
-            )
-        }
-        if (!claimed) return
-        cancelUndoTimer()
-        val generation = requestGeneration
-        // Bump epoch BEFORE the network call: any fetchPending already in
-        // flight (and still on the dispatcher / network) will see the bump
-        // when it returns and skip its wholesale afterRefresh replace,
-        // which would otherwise overwrite the row we're about to restore.
-        refreshSkipEpoch += 1
+        val target = _uiState.value.undoableExpense ?: return
+        if (target.id in _uiState.value.actionInProgressIds) return
+        val binding = commandBinding() ?: return
+        dismissUndoable()
+        _uiState.update { it.copy(actionInProgressIds = it.actionInProgressIds + target.id, message = null) }
         viewModelScope.launch {
-            // ADR-0041: undo carries the rejected row's row_version as
-            // the OCC token. ``target`` is the Synced reject's expense (set
-            // at seed time in reject()'s onSuccess), so its row_version is
-            // exactly what the banner showed. If the row's been re-rejected
-            // since, the server-side atomic UPDATE WHERE fails → 404 → the
-            // standard "无法撤销" flash.
-            repository.undoRejectExpense(target.id, target.rowVersion)
-                .onSuccess { restored ->
-                    if (requestGeneration != generation) return@onSuccess
-                    _uiState.update { state ->
-                        // Restore at the TOP — backend lists pending by
-                        // `created_at DESC`, so the just-rejected row was
-                        // originally near the top, not the bottom. Tail-
-                        // append would visually demote it across the
-                        // restore. distinctBy keeps the canonical server
-                        // copy if a refresh already re-added it.
-                        val merged = (listOf(restored) + state.items).distinctBy { it.id }
-                        state.copy(
-                            items = merged,
-                            actionInProgressIds = state.actionInProgressIds - target.id,
-                            message = UiText.res(R.string.pending_msg_undo_restored),
-                        )
-                    }
-                    onDataChanged()
-                    // V3 — afterRejected dropped the thumbnail; rehydrate
-                    // so the restored row renders with its image immediately.
-                    loadThumbnails(listOf(restored), generation)
-                }
-                .onFailure { error ->
-                    if (requestGeneration != generation) return@onFailure
-                    val errorCode = (error as? RepositoryException)?.errorCode
-                    when (errorCode) {
-                        "expense_not_found" -> {
-                            // 404: server window closed, row reaped, or
-                            // another surface already restored it. Banner
-                            // dead — leave undoableExpense null. Wording
-                            // matches the surface's own semantics rather
-                            // than the generic backend "账单不存在。".
-                            _uiState.update {
-                                it.copy(
-                                    actionInProgressIds = it.actionInProgressIds - target.id,
-                                    message = UiText.res(R.string.pending_msg_undo_window_closed),
-                                )
-                            }
-                        }
-                        else -> {
-                            // Transient (IOException / 5xx / unknown). The
-                            // server window may still be open — restore the
-                            // banner so the user can retry. Only restore if
-                            // no NEWER reject seeded a different row in the
-                            // meantime; never clobber a fresher Synced
-                            // banner. Restart the timer only if we actually
-                            // wrote the target back.
-                            var restoredTarget = false
-                            _uiState.update { state ->
-                                if (state.undoableExpense == null) {
-                                    restoredTarget = true
-                                    state.copy(
-                                        actionInProgressIds = state.actionInProgressIds - target.id,
-                                        undoableExpense = target,
-                                        message = error.toUiText(R.string.pending_msg_undo_failed),
-                                    )
-                                } else {
-                                    state.copy(
-                                        actionInProgressIds = state.actionInProgressIds - target.id,
-                                        message = error.toUiText(R.string.pending_msg_undo_failed),
-                                    )
-                                }
-                            }
-                            if (restoredTarget) startUndoTimer(target.id)
-                        }
-                    }
-                }
+            repository.undoRejectExpense(binding, target).onSuccess { accepted ->
+                if (!holdsCommandBinding(binding)) return@onSuccess
+                acceptExpenseCommand(accepted)
+            }.onFailure { error ->
+                if (!holdsCommandBinding(binding)) return@onFailure
+                _uiState.update { it.copy(actionInProgressIds = it.actionInProgressIds - target.id,
+                    undoableExpense = it.undoableExpense ?: target,
+                    message = error.toUiText(R.string.pending_msg_undo_failed)) }
+                if (_uiState.value.undoableExpense?.id == target.id) startUndoTimer(target.id)
+            }
         }
     }
 
-    /**
-     * ADR-0038 undo: dismiss the 撤销 snackbar without acting on it. Called
-     * by the VM's own 5s auto-dismiss timer or by user-initiated signals
-     * (confirm / markNotDuplicate / openSheet / ignoreDuplicate).
-     */
     fun dismissUndoable() {
         if (_uiState.value.undoableExpense == null) return
         cancelUndoTimer()
@@ -722,51 +531,20 @@ class PendingViewModel(
         undoTimerJob = null
     }
 
-    /**
-     * ADR-0038 onIgnoreDuplicate split (V14): same backend transition as
-     * [reject] (the row leaves pending), but UX-wise the user "忽略重复" — no
-     * 撤销 affordance, message wording matches intent. Routing the
-     * duplicate-sheet "忽略" button through [reject] inherited its banner
-     * + "已删除" message, confusing users on the duplicate sheet.
-     */
-    fun ignoreDuplicate(expense: Expense) = launchStateTransition(
-        expense = expense,
-        operation = PendingStateTransitionOperation(
-            repoCall = { repository.rejectExpenseAllowingOffline(it) },
-        ),
-        messages = PendingStateTransitionMessages(
-            synced = UiText.res(R.string.pending_msg_ignored_duplicate),
-            queued = UiText.res(R.string.pending_msg_ignored_duplicate_offline),
-            failureFallback = R.string.pending_msg_ignore_duplicate_failed,
-        ),
-        resultHandler = PendingStateTransitionResultHandler(
-            reduceOutcome = { state, outcome, message ->
-                PendingUiStateReducer.afterRejected(state, outcome.expense, message = message)
-            },
-        ),
-    )
+    fun ignoreDuplicate(expense: Expense) {
+        dismissUndoable()
+        submitPendingCommand(expense, R.string.pending_msg_ignore_duplicate_failed, offerUndo = false) { binding ->
+            repository.rejectExpenseAllowingOffline(binding, expense)
+        }
+    }
 
-    fun markNotDuplicate(expense: Expense) = launchStateTransition(
-        expense = expense,
-        operation = PendingStateTransitionOperation(
-            repoCall = { repository.markNotDuplicateAllowingOffline(it) },
-        ),
-        messages = PendingStateTransitionMessages(
-            synced = UiText.res(R.string.pending_msg_kept),
-            queued = UiText.res(R.string.pending_msg_kept_offline),
-            failureFallback = R.string.pending_msg_keep_failed,
-        ),
-        resultHandler = PendingStateTransitionResultHandler(
-            reduceOutcome = { state, outcome, message ->
-                PendingUiStateReducer.afterUpdated(
-                    current = state,
-                    updated = outcome.expense,
-                    closeSheet = true,
-                    message = message,
-                )
-            },
-        ),
-    )
+    fun markNotDuplicate(expense: Expense) {
+        dismissUndoable()
+        submitPendingCommand(expense, R.string.pending_msg_keep_failed) { binding ->
+            repository.markNotDuplicateAllowingOffline(binding, expense)
+        }
+    }
+
 }
 
 // ADR-0044 wave 2: read-only ledger copy, resource-backed like every other

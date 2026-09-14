@@ -91,7 +91,7 @@ def _assert_postgres_job_contract(
         "postgres": "${{ fromJSON(needs.scope.outputs.postgres_matrix).include }}",
     }
     if sharded:
-        shard_count = 2 if ordinary else 3
+        shard_count = 2 if ordinary else 4
         matrix["shard"] = [
             {"index": index, "count": shard_count, "label": f"{index + 1}/{shard_count}"}
             for index in range(shard_count)

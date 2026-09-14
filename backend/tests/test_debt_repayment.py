@@ -365,3 +365,6 @@ def test_foreign_currency_repayment_pending_rate_is_rejected(client: TestClient,
     )
     assert response.status_code == 409, response.json()
     assert response.json()["error"] == "exchange_rate_pending"
+    assert {key: response.json()[key] for key in ("currency_code", "home_currency_code", "rate_date")} == {
+        "currency_code": "USD", "home_currency_code": "CNY", "rate_date": "2026-05-10",
+    }

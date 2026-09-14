@@ -1,8 +1,10 @@
 package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.PendingMutationStatus
+import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
+import com.ticketbox.data.remote.ApiService
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -36,26 +38,59 @@ internal class RejectExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestB
     )
 
     private fun dispatcherFor(
-        stub: ApiServiceStub,
-        deleteConfirmedCache: suspend (String, List<Long>) -> Unit = { _, _ -> },
+        stub: ApiService,
+        publishExpense: suspend (String, ExpenseDto) -> Unit = { _, _ -> },
     ) = RejectExpenseDispatcher(
         apiProvider = { stub },
         payloadAdapter = moshi().adapter(ExpenseStateTokenRequest::class.java),
-        deleteConfirmedCache = deleteConfirmedCache,
+        publishExpense = publishExpense,
     )
 
     @Test
+    fun `accepted reject retains its receipt when cache publication fails`() = runTest {
+        val response = successExpenseDto().copy(status = "rejected")
+        val stub = ApiServiceStub(rejectExpenseResult = ApiResult.Success(response))
+        val row = rejectRow(idempotencyKey = "cache-failure-key")
+        val api = object : ApiService by stub {
+            override suspend fun rejectExpense(
+                id: String,
+                request: ExpenseStateTokenRequest,
+                idempotencyKey: String?,
+            ): ExpenseDto {
+                assertEquals("42", id)
+                assertEquals(ExpenseStateTokenRequest(expectedRowVersion = row.expectedRowVersion), request)
+                return stub.rejectExpense(id, request, idempotencyKey)
+            }
+        }
+        var publicationAttempts = 0
+        val result = dispatcherFor(api) { ledgerId, expense ->
+            assertEquals(row.ledgerId, ledgerId)
+            assertEquals(response, expense)
+            publicationAttempts++
+            throw IllegalStateException("cache unavailable")
+        }.dispatch(row)
+
+        assertEquals(row.idempotencyKey, stub.lastRejectIdempotencyKey)
+        assertEquals(1, publicationAttempts)
+        assertEquals(DispatchResult.Success(newRowVersion = 2L, cacheRefreshVersion = 2L,
+            receiptJson = expenseAcceptanceReceiptJson(response)), result)
+        assertEquals(response, expenseAcceptanceReceiptSnapshot(row.copy(status = PendingMutationStatus.Done,
+            receiptJson = (result as DispatchResult.Success).receiptJson)))
+    }
+
+    @Test
     fun `dispatch replays the row's idempotency key and returns the new row_version`() = runTest {
-        val deleted = mutableListOf<Pair<String, List<Long>>>()
+        val published = mutableListOf<Pair<String, ExpenseDto>>()
         val stub = ApiServiceStub(rejectExpenseResult = ApiResult.Success(successExpenseDto().copy(status = "rejected")))
 
-        val result = dispatcherFor(stub) { ledgerId, serverIds ->
-            deleted += ledgerId to serverIds
+        val result = dispatcherFor(stub) { ledgerId, expense ->
+            published += ledgerId to expense
         }.dispatch(rejectRow(idempotencyKey = "key-abc"))
 
         assertEquals("key-abc", stub.lastRejectIdempotencyKey, "dispatcher must send the row's key")
-        assertEquals(DispatchResult.Success(newRowVersion = 2L), result)
-        assertEquals(listOf("owner" to listOf(42L)), deleted)
+        assertEquals(DispatchResult.Success(newRowVersion = 2L,
+            receiptJson = expenseAcceptanceReceiptJson(successExpenseDto().copy(status = "rejected"))), result)
+        assertEquals(listOf("owner" to successExpenseDto().copy(status = "rejected")), published)
     }
 
     @Test
@@ -88,5 +123,13 @@ internal class RejectExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestB
         val result = dispatcherFor(stub).dispatch(rejectRow(idempotencyKey = "key-abc"))
 
         assertTrue(result is DispatchResult.Conflict, "state_conflict must stay Conflict: $result")
+    }
+
+    @Test
+    fun `unverified original acceptance keeps its recovery code`() = runTest {
+        val body = """{"error":"expense_rejection_original_requires_review","message":"原回执无法核对"}"""
+        val stub = ApiServiceStub(rejectExpenseResult = ApiResult.Throw(httpException(409, body)))
+        assertEquals(DispatchResult.Failure(EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW),
+            dispatcherFor(stub).dispatch(rejectRow("original-reject")))
     }
 }

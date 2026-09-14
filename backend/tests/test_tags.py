@@ -7,7 +7,6 @@ from sqlalchemy import func, select
 
 from app.database import SessionLocal
 from app.models import Expense, ExpenseTag, Tag
-from app.services.import_service import import_rows, parse_csv_preview
 from tests._confirmed_stream_test_support import confirmed_expense_roots
 
 
@@ -177,15 +176,17 @@ def test_tag_filters_are_ledger_scoped(client: TestClient, *, identity) -> None:
     assert "Owner Shared" not in gray_csv.text
 
 
-def test_import_rows_syncs_tag_relation_rows(client: TestClient) -> None:
-    preview = parse_csv_preview(
-        'amount_yuan,merchant,tags\n3.00,Imported,"外卖，AI，外卖"\n',
-        home_currency="CNY",
+def test_csv_batch_apply_syncs_tag_relation_rows(client: TestClient, identity) -> None:
+    content = 'amount_yuan,merchant,tags\n3.00,Imported,"外卖，AI，外卖"\n'
+    created = client.post(
+        "/api/imports/csv", headers=identity.app_headers,
+        files={"csv_file": ("tags.csv", content.encode(), "text/csv")},
     )
-
+    assert created.status_code == 201, created.text
+    applied = client.post(f"/api/imports/csv/{created.json()['public_id']}/apply", headers=identity.app_headers)
+    assert applied.status_code == 200, applied.text
+    assert applied.json()["inserted_count"] == 1
     with SessionLocal() as db:
-        inserted = import_rows(db, tenant_id="owner", rows=preview.rows)
-        assert inserted == 1
         expense = db.scalar(select(Expense).where(Expense.merchant == "Imported"))
         assert expense is not None
         assert expense.tags == "外卖, AI"

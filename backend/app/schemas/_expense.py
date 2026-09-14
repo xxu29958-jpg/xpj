@@ -12,6 +12,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 
+from app.schemas._background_task import BackgroundTaskResponse
 from app.schemas._money import (
     NonNegativeCanonicalDecimalInput,
     NonNegativeMoneyAggregate,
@@ -178,8 +179,7 @@ class ExpenseConfirmRequest(BaseModel):
 
 
 class ExpenseRejectRequest(BaseModel):
-    """ADR-0038 PR-2b: ``POST /api/expenses/{id}/reject`` body — same
-    contract as ExpenseConfirmRequest; ``rejected`` is also terminal."""
+    """Review token for rejecting a pending bill; original-key replay owns its receipt."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -316,6 +316,7 @@ class ExpenseResponse(BaseModel):
     fx_rate_date: date | None
     fx_source: str | None
     fx_status: str
+    fx_task: BackgroundTaskResponse | None = None
     original_currency_code: str
     original_amount_minor: NonNegativeMoneyMinor | None
     exchange_rate_to_cny: Decimal | None

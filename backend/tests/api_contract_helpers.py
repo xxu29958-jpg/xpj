@@ -99,7 +99,7 @@ def undo_expense_api(
         expected_row_version = snapshot.json()["row_version"]
     return client.post(
         f"/api/expenses/{expense_id}/undo",
-        headers=headers,
+        headers={"Idempotency-Key": str(uuid4()), **headers},
         json={"expected_row_version": expected_row_version},
     )
 

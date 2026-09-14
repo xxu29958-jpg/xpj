@@ -39,6 +39,9 @@ import com.ticketbox.ui.screens.ExpenseEditScreenState
 import com.ticketbox.ui.screens.ExpenseEditSplitEditingActions
 import com.ticketbox.ui.screens.expense.ItemsEditorSheetActions
 import com.ticketbox.ui.screens.expense.SplitsEditorSheetActions
+import com.ticketbox.viewmodel.refreshFx
+import com.ticketbox.viewmodel.retryFx
+import com.ticketbox.viewmodel.loadFxReview
 import com.ticketbox.viewmodel.ExpenseEditUiState
 import com.ticketbox.viewmodel.ExpenseEditViewModel
 import com.ticketbox.viewmodel.acknowledgeItemsMismatch
@@ -56,13 +59,18 @@ import com.ticketbox.viewmodel.updateItemDraft
 import com.ticketbox.viewmodel.updateSplitAmount
 import com.ticketbox.viewmodel.updateSplitIncluded
 
+internal data class ExpenseEditExitActions(
+    val onBack: () -> Unit,
+    val onCompleted: (adviceInputsChanged: Boolean) -> Unit,
+)
+
 @Composable
 internal fun ExpenseEditRoute(
     expenseId: Long,
     screenFactory: MainScreenFactory,
-    onBack: () -> Unit,
-    onCompleted: (adviceInputsChanged: Boolean) -> Unit,
+    exit: ExpenseEditExitActions,
     related: ExpenseFactNavigation,
+    financialDataRevision: Int = 0,
 ) {
     val editViewModel: ExpenseEditViewModel = viewModel(
         key = "expense-edit-$expenseId",
@@ -73,7 +81,7 @@ internal fun ExpenseEditRoute(
 
     LaunchedEffect(editState.done) {
         if (editState.done && editViewModel.consumeDone()) {
-            onCompleted(editViewModel.consumeDoneAdviceInputsChanged())
+            exit.onCompleted(editViewModel.consumeDoneAdviceInputsChanged())
         }
     }
     if (editState.done) return
@@ -81,14 +89,14 @@ internal fun ExpenseEditRoute(
     if (expense == null) {
         ExpenseEditLoadingRoute(
             state = editState,
-            onBack = onBack,
+            onBack = exit.onBack,
             onRetry = editViewModel::retryLoadExpense,
         )
         return
     }
 
     if (expense.pendingSync) {
-        ManualExpenseSubmissionRoute(expense.clientRef.orEmpty(), screenFactory, onBack, onCompleted, related)
+        ManualExpenseSubmissionRoute(expense.clientRef.orEmpty(), screenFactory, exit, related, financialDataRevision)
         return
     }
 
@@ -100,9 +108,10 @@ internal fun ExpenseEditRoute(
             expenseId = expense.id,
             screenFactory = screenFactory,
             onExit = { adviceInputsChanged ->
-                if (adviceInputsChanged) onCompleted(true) else onBack()
+                if (adviceInputsChanged) exit.onCompleted(true) else exit.onBack()
             },
             related = related,
+            financialDataRevision = financialDataRevision,
         )
         return
     }
@@ -119,7 +128,7 @@ internal fun ExpenseEditRoute(
             ),
         ),
         actions = ExpenseEditScreenActions(
-            primary = expenseEditPrimaryActions(editViewModel, onBack, onCompleted),
+            primary = expenseEditPrimaryActions(editViewModel, exit),
             media = expenseEditMediaActions(editViewModel),
             related = expenseEditRelatedActions(editViewModel),
             itemization = expenseEditItemizationActions(editViewModel),
@@ -130,17 +139,19 @@ internal fun ExpenseEditRoute(
 
 private fun expenseEditPrimaryActions(
     viewModel: ExpenseEditViewModel,
-    onBack: () -> Unit,
-    onCompleted: (adviceInputsChanged: Boolean) -> Unit,
+    exit: ExpenseEditExitActions,
 ): ExpenseEditPrimaryActions = ExpenseEditPrimaryActions(
     onSave = viewModel::save,
+    onRefreshFx = viewModel::refreshFx,
+    onRetryFx = viewModel::retryFx,
+    onLoadFxReview = viewModel::loadFxReview,
     onConfirm = viewModel::confirm,
     onReject = viewModel::reject,
     onDone = {
         if (viewModel.consumeDone()) {
-            onCompleted(viewModel.consumeDoneAdviceInputsChanged())
+            exit.onCompleted(viewModel.consumeDoneAdviceInputsChanged())
         } else {
-            onBack()
+            exit.onBack()
         }
     },
 )

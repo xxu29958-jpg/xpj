@@ -318,6 +318,25 @@ def test_legacy_writer_is_rejected_before_any_financial_side_effect(
         assert db.query(InstallationCurrencyAuditLog).count() == 0
 
 
+@pytest.mark.parametrize("api_version", [None, "2026-09-09.1"])
+def test_undo_rejects_pre_receipt_protocol_before_body_validation(
+    client: TestClient, activate_currency, identity, api_version,
+) -> None:
+    activate_currency("CNY")
+    headers = _runtime_headers(identity.app_headers, binding="1:1:CNY")
+    if api_version is None:
+        headers.pop(TICKETBOX_API_VERSION_HEADER)
+    else:
+        headers[TICKETBOX_API_VERSION_HEADER] = api_version
+
+    response = client.post("/api/expenses/999999/undo", headers=headers, json={})
+
+    assert response.status_code == 409, response.text
+    assert response.json()["error"] == "client_upgrade_required"
+    with SessionLocal() as db:
+        assert db.query(Expense).count() == 0
+
+
 @pytest.mark.parametrize(
     "extra_headers",
     [

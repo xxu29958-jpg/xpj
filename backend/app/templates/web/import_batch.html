@@ -109,7 +109,25 @@
         <tr>
           <td>{{ row.line_number }}</td>
           <td><span class="product-status {{ _row_tone.get(row.status, 'product-status--danger') }}">{{ _row_label.get(row.status, '错误') }}</span></td>
-          <td class="amount">{% if row.amount_cents is none %}—{% elif not row.home_currency_code %}待确认币种{% else %}{{ row.home_currency_code }} {{ row_amount_label(row.amount_cents, row.home_currency_code) }}{% endif %}</td>
+          <td class="amount">
+            {% if row.original_amount_minor is not none and row.original_currency_code %}
+            {{ row.original_currency_code }} {{ row_amount_label(row.original_amount_minor, row.original_currency_code) }}
+            {% elif row.amount_cents is none %}—{% elif not row.home_currency_code %}待确认币种{% else %}{{ row.home_currency_code }} {{ row_amount_label(row.amount_cents, row.home_currency_code) }}{% endif %}
+            {% if row.expense_id %}
+            {% set current = current_expenses.get(row.expense_id) %}
+            {% if current %}
+            <div class="text-meta" data-import-current-expense="{{ current.id }}">
+              <a href="/web/expenses/{{ current.id }}/edit?ledger_id={{ selected_ledger_id }}">查看当前账单</a>
+              <span>{{ current.original_currency_code }} {{ current.original_amount_value }}</span>
+              {% if current.status == 'rejected' %}<span>已忽略</span>
+              {% elif current.fx_pending %}<span>待补汇率 · 原币金额已保留</span>
+              {% elif current.status == 'pending' %}<span>待人工确认</span>
+              {% else %}<span>已入账</span>{% endif %}
+              {% if current.fx_meta %}<span>{{ current.fx_meta }}</span>{% endif %}
+            </div>
+            {% else %}<div class="text-meta">原账单已移除</div>{% endif %}
+            {% endif %}
+          </td>
           <td>{{ row.merchant or '—' }}</td>
           <td>{{ row.category }}</td>
           <td>{{ row.expense_time or '—' }}</td>

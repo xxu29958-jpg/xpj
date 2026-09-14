@@ -56,6 +56,19 @@ class QuerySite:
 
 EXEMPTIONS: tuple[ScopeExemption, ...] = (
     ScopeExemption(
+        path="services/pending_fx_task_service.py",
+        function="refill_pending_expense_fx",
+        model="Expense",
+        occurrences=1,
+        reason=(
+            "The existing FX scheduler discovers at most 32 saved pending bill identities "
+            "across the installation so every ledger resumes after task capacity frees. "
+            "This is not a request read: it selects only (id, tenant_id), then resolves and "
+            "prepares each bill through the captured ledger and existing locked task owner. "
+            "No user response or personal task-list access is broadened."
+        ),
+    ),
+    ScopeExemption(
         path="services/currency_adoption_service.py",
         function="_adopt_in_transaction",
         model="Goal",

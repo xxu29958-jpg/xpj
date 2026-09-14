@@ -9,6 +9,7 @@ that projection current again.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -107,7 +108,7 @@ def test_tag_rename_revises_a_historically_published_rejected_fact_before_undo(
 
     restored = client.post(
         f"/api/expenses/{expense_id}/undo",
-        headers=headers,
+        headers={**headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": current["row_version"]},
     )
     assert restored.status_code == 200, restored.text

@@ -82,7 +82,7 @@ internal class NetworkErrorHandler(
                 .getOrNull()
                 ?.let {
                     return ParsedError(
-                        backendErrorUserMessage(it.error, it.message),
+                        backendErrorUserMessage(it.error, it.message.orEmpty()),
                         it.error.trim(),
                         conflict = it.toConflictDetails(),
                         expenseId = it.expenseId,

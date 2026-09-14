@@ -91,7 +91,6 @@ fun PendingViewModel.saveQuickCategory(expenseId: Long, category: String) {
         expenseId = expenseId,
         field = ReviewField.CATEGORY,
         draft = blankDraft().copy(category = category.trim()),
-        successMessage = UiText.res(R.string.pending_review_category_updated),
         failureMessageFallback = R.string.pending_review_category_save_failed,
     )
 }
@@ -107,7 +106,6 @@ fun PendingViewModel.saveQuickMerchant(expenseId: Long, merchant: String) {
         expenseId = expenseId,
         field = ReviewField.MERCHANT,
         draft = blankDraft().copy(merchant = cleaned),
-        successMessage = UiText.res(R.string.pending_review_merchant_updated),
         failureMessageFallback = R.string.pending_review_merchant_save_failed,
     )
 }
@@ -127,7 +125,6 @@ fun PendingViewModel.saveAmountDraft(expenseId: Long, originalAmountMinor: Long)
             originalCurrencyCode = expense?.originalCurrencyCode,
             originalAmountMinor = originalAmountMinor,
         ),
-        successMessage = UiText.res(R.string.pending_review_amount_saved),
         failureMessageFallback = R.string.pending_review_amount_save_failed,
     )
 }
@@ -138,147 +135,50 @@ fun PendingViewModel.saveAmountAndConfirm(expenseId: Long, originalAmountMinor: 
         _uiState.update { it.copy(message = UiText.res(R.string.pending_review_amount_not_positive)) }
         return
     }
-    if (expenseId in _uiState.value.actionInProgressIds) return
-    val expense = _uiState.value.items.firstOrNull { it.id == expenseId }
+    val expense = _uiState.value.items.firstOrNull { it.id == expenseId } ?: return
     if (originalCurrencyUnsupportedOf(expense)) return
-    viewModelScope.launch {
-        _uiState.update {
-            it.copy(
-                actionInProgressIds = it.actionInProgressIds + expenseId,
-                message = null,
-            )
-        }
-        repository.updateExpense(
-            expenseId,
-            blankDraft().copy(
-                originalCurrencyCode = expense?.originalCurrencyCode,
-                originalAmountMinor = originalAmountMinor,
-            ),
-            baseline = expense,
-        )
-            .onSuccess { updated ->
-                _uiState.update { state ->
-                    PendingUiStateReducer.afterUpdated(
-                        current = state,
-                        updated = updated,
-                        closeSheet = false,
-                        message = null,
-                        clearInProgress = false,
-                    )
-                }
-                onDataChanged()
-                confirmAfterAmountPatch(expenseId, updated.rowVersion)
-            }
-            .onFailure { error ->
-                _uiState.update {
-                    it.copy(
-                        actionInProgressIds = it.actionInProgressIds - expenseId,
-                        message = error.toUiText(R.string.pending_review_amount_save_failed),
-                    )
-                }
-            }
+    val draft = blankDraft().copy(originalCurrencyCode = expense.originalCurrencyCode, originalAmountMinor = originalAmountMinor)
+    submitPendingCommand(
+        expense,
+        R.string.pending_review_amount_save_failed,
+        onAccepted = {
+            reviewSkippedIds.add(expenseId)
+            advanceReviewOrClose(ReviewField.AMOUNT, expenseId, UiText.res(R.string.expense_command_accepted))
+        },
+    ) { binding ->
+        repository.saveAndConfirmExpense(binding, expense, draft)
     }
-}
-
-/**
- * [saveAmountAndConfirm] 补金额成功后的确认步：ADR-0041 用 **PATCH 后**的
- * [expectedRowVersion]（非旧 baseline）做 OCC 令牌确认。确认成功 → 该票离开
- * pending（afterConfirmed 移除），连续审阅推进到下一条仍缺金额的票，耗尽则关闭并
- * 保留确认成功文案；确认失败 → 留守当前票，错误反馈进 message。
- */
-private suspend fun PendingViewModel.confirmAfterAmountPatch(expenseId: Long, expectedRowVersion: Long) {
-    repository.confirmExpense(expenseId, expectedRowVersion)
-        .onSuccess { confirmed ->
-            _uiState.update { state ->
-                PendingUiStateReducer.afterConfirmed(
-                    current = state,
-                    confirmed = confirmed,
-                    message = UiText.res(R.string.pending_review_amount_saved_confirmed),
-                )
-            }
-            onDataChanged()
-            onAdviceInputsChanged()
-            advanceReviewOrClose(
-                field = ReviewField.AMOUNT,
-                handledId = expenseId,
-                exhaustedMessage = UiText.res(R.string.pending_review_amount_saved_confirmed),
-            )
-        }
-        .onFailure { error ->
-            _uiState.update {
-                it.copy(
-                    actionInProgressIds = it.actionInProgressIds - expenseId,
-                    message = error.toUiText(R.string.pending_review_amount_saved_confirm_failed),
-                )
-            }
-        }
 }
 
 fun PendingViewModel.confirmReadyExpenses() {
     if (blockReadOnlyWrite(closeSheet = true)) return
     val state = _uiState.value
     if (state.bulkConfirm.running) return
-    // 与 ReadyToConfirm 筛选同一谓词（含类目原值/商家可用性/fx 维度，domain
-    // 层 pendingPrimaryReviewAction）——批量确认的可确认集就是筛选落地点，
-    // 杜绝两边对同一行 ready 判定不一致（PR #230）。
-    val ready = state.items.filter { pendingPrimaryReviewAction(it) == PendingPrimaryReviewAction.Confirm }
+    val ready = state.items.filter { pendingPrimaryReviewAction(it) == PendingPrimaryReviewAction.Confirm &&
+        it.id !in commandRowsByExpense }
     if (ready.isEmpty()) {
         _uiState.update { it.copy(message = UiText.res(R.string.pending_review_bulk_none_ready)) }
         return
     }
+    val binding = commandBinding() ?: return
+    val ids = ready.map { it.id }.toSet()
+    bulkCommandRows.clear()
+    _uiState.update { it.copy(bulkConfirm = BulkConfirmRunState(total = ready.size, running = true),
+        actionInProgressIds = it.actionInProgressIds + ids, message = null) }
     viewModelScope.launch {
-        _uiState.update {
-            it.copy(
-                bulkConfirm = BulkConfirmRunState(total = ready.size, running = true),
-                actionInProgressIds = it.actionInProgressIds + ready.map { e -> e.id }.toSet(),
-                message = null,
-            )
-        }
-        var succeeded = 0
-        var failed = 0
-        for (expense in ready) {
-            repository.confirmExpense(expense.id, expense.rowVersion)
-                .onSuccess { confirmed ->
-                    succeeded += 1
-                    _uiState.update { current ->
-                        PendingUiStateReducer.afterConfirmed(
-                            current = current,
-                            confirmed = confirmed,
-                            message = null,
-                        ).copy(
-                            bulkConfirm = current.bulkConfirm.copy(succeeded = succeeded),
-                        )
-                    }
-                }
-                .onFailure {
-                    failed += 1
-                    _uiState.update { current ->
-                        current.copy(
-                            actionInProgressIds = current.actionInProgressIds - expense.id,
-                            bulkConfirm = current.bulkConfirm.copy(failed = failed),
-                        )
-                    }
-                }
-        }
-        _uiState.update {
-            it.copy(
-                bulkConfirm = BulkConfirmRunState(
-                    total = ready.size,
-                    succeeded = succeeded,
-                    failed = failed,
-                    running = false,
-                ),
-                activeSheet = PendingSheet.None,
-                message = if (failed == 0) {
-                    UiText.res(R.string.pending_review_bulk_all_succeeded, succeeded)
-                } else {
-                    UiText.res(R.string.pending_review_bulk_partial, succeeded, failed)
-                },
-            )
-        }
-        if (succeeded > 0) {
-            onDataChanged()
-            onAdviceInputsChanged()
+        repository.confirmExpenses(binding, ready).onSuccess { accepted ->
+            if (!holdsCommandBinding(binding)) return@onSuccess
+            bulkCommandRows.addAll(accepted.flatMap { it.rowIds })
+            accepted.forEach { acceptExpenseCommand(it) }
+            _uiState.update { it.copy(bulkConfirm = it.bulkConfirm.copy(running = false),
+                activeSheet = PendingSheet.None, actionInProgressIds = it.actionInProgressIds - ids,
+                message = UiText.res(R.string.expense_command_accepted)) }
+            reconcileExpenseCommands()
+        }.onFailure { error ->
+            if (!holdsCommandBinding(binding)) return@onFailure
+            _uiState.update { it.copy(bulkConfirm = BulkConfirmRunState(total = ready.size, failed = ready.size),
+                actionInProgressIds = it.actionInProgressIds - ids,
+                message = error.toUiText(R.string.pending_msg_confirm_failed)) }
         }
     }
 }
@@ -340,7 +240,7 @@ private fun PendingViewModel.advanceReviewOrClose(
     }
     // 推进到下一条：清掉上一条的状态文案（成功提示），这样 sheet 内的状态行
     // 只会显示**失败**（保存失败时不推进、文案留在当前票）；成功推进保持安静。
-    _uiState.update { it.copy(activeSheet = sheetForReviewField(field, next), message = null) }
+    _uiState.update { it.copy(activeSheet = sheetForReviewField(field, next)) }
     recomputeReviewRemaining()
 }
 
@@ -348,51 +248,19 @@ private fun PendingViewModel.patchExpense(
     expenseId: Long,
     field: ReviewField,
     draft: ExpenseDraft,
-    successMessage: UiText,
     @StringRes failureMessageFallback: Int,
 ) {
     if (blockReadOnlyWrite(closeSheet = true)) return
-    if (expenseId in _uiState.value.actionInProgressIds) return
-    val baseline = _uiState.value.items.firstOrNull { it.id == expenseId }
-    viewModelScope.launch {
-        _uiState.update {
-            it.copy(
-                actionInProgressIds = it.actionInProgressIds + expenseId,
-                message = null,
-            )
-        }
-        repository.updateExpense(expenseId, draft, baseline)
-            .onSuccess { updated ->
-                // 先就地更新该票（closeSheet=false 保留 items / 清进行中标记），
-                // 再决定推进到下一条还是关闭——advanceReviewOrClose 会显式覆盖
-                // activeSheet，故这里 reconcile 出的「停在已补完的当前票」会被替换。
-                _uiState.update { state ->
-                    PendingUiStateReducer.afterUpdated(
-                        current = state,
-                        updated = updated,
-                        closeSheet = false,
-                        message = successMessage,
-                    )
-                }
-                onDataChanged()
-                // 连续审阅：保存成功后载入下一条仍缺同字段的票，不关 sheet；
-                // 队列耗尽才关。已补完的当前票不再缺字段会自然落选，无需进跳过集。
-                advanceReviewOrClose(
-                    field = field,
-                    handledId = expenseId,
-                    exhaustedMessage = successMessage,
-                )
-            }
-            .onFailure { error ->
-                // 保存失败不跳转：留在当前票，错误反馈进 message（sheet 内可见），
-                // sheet 不动（镜像批 9 编辑动作栏的消息锚定）。
-                _uiState.update {
-                    it.copy(
-                        actionInProgressIds = it.actionInProgressIds - expenseId,
-                        message = error.toUiText(failureMessageFallback),
-                    )
-                }
-            }
+    val baseline = _uiState.value.items.firstOrNull { it.id == expenseId } ?: return
+    submitPendingCommand(
+        baseline,
+        failureMessageFallback,
+        onAccepted = {
+            reviewSkippedIds.add(expenseId)
+            advanceReviewOrClose(field, expenseId, UiText.res(R.string.expense_command_accepted))
+        },
+    ) { binding ->
+        repository.saveExpenseAllowingOffline(binding, expenseId, draft, baseline)
     }
 }
 

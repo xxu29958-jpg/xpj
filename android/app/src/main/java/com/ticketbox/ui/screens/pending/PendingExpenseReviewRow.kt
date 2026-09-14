@@ -36,6 +36,7 @@ import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.pendingMerchantPresentation
 import com.ticketbox.domain.model.pendingNeedsCategory
+import com.ticketbox.domain.model.pendingNeedsFx
 import com.ticketbox.ui.components.AppAdaptiveAmountRowDefaults
 import com.ticketbox.ui.components.AppAdaptiveContentActionStateRow
 import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
@@ -252,7 +253,13 @@ private fun PendingAmountValue(expense: Expense) {
         if (amount == null) {
             AppEndAlignedAmountStatusText(
                 modifier = Modifier.fillMaxWidth(),
-                text = stringResource(R.string.pending_row_amount_missing),
+                text = stringResource(
+                    if (pendingNeedsFx(expense)) {
+                        R.string.expense_fx_waiting
+                    } else {
+                        R.string.pending_row_amount_missing
+                    },
+                ),
                 role = AppAmountRole.Compact,
             )
         } else {
@@ -289,7 +296,11 @@ private fun PendingExpenseExchangeMetaText(expense: Expense, stacked: Boolean) {
 private fun PendingExpenseSignals(expense: Expense) {
     val tones = LocalStateTokens.current
     if (expense.pendingSync) PendingSignalText(stringResource(R.string.pending_row_signal_pending_sync), tones.info)
-    if (expense.amountCents == null) PendingSignalText(stringResource(R.string.pending_row_signal_amount), tones.warn)
+    if (pendingNeedsFx(expense)) {
+        PendingSignalText(stringResource(com.ticketbox.ui.screens.expense.expenseFxTaskStatusRes(expense.fxTask)), tones.warn)
+    } else if (com.ticketbox.domain.model.pendingNeedsAmount(expense)) {
+        PendingSignalText(stringResource(R.string.pending_row_signal_amount), tones.warn)
+    }
     if (pendingMerchantPresentation(expense).needsReview) {
         PendingSignalText(stringResource(R.string.pending_row_signal_merchant), tones.warn)
     }

@@ -18,6 +18,7 @@ from app.services.csv_import_batch_service import (
     list_csv_import_rows,
 )
 from app.services.currency_binding_service import get_capability
+from app.services.ledger_service import find_owner_account_id_for_ledger
 from tests._runtime_protocol import negotiated_headers
 
 
@@ -74,6 +75,8 @@ def test_csv_import_batch_handles_more_than_legacy_preview_limit_with_paged_appl
             applied = apply_csv_import_batch(
                 db,
                 tenant_id="owner",
+                initiator_account_id=find_owner_account_id_for_ledger(db, ledger_id="owner"),
+                initiator_device_id=None,
                 public_id=batch.public_id,
                 batch_size=1000,
             )
@@ -85,6 +88,8 @@ def test_csv_import_batch_handles_more_than_legacy_preview_limit_with_paged_appl
 
         replay = apply_csv_import_batch(
             db, tenant_id="owner", public_id=batch.public_id, batch_size=700,
+                initiator_account_id=find_owner_account_id_for_ledger(db, ledger_id="owner"),
+                initiator_device_id=None,
         )
         assert replay.inserted_count == replay.remaining_valid_rows == 0
         assert replay.batch.status == "applied"

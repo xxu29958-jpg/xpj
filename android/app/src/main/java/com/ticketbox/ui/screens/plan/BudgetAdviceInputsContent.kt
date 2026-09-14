@@ -52,6 +52,7 @@ internal fun BudgetAdviceInputsContent(state: BudgetAdviceUiState, actions: Budg
                 Text(stringResource(label))
                 Text(amount?.let { formatDisplayAmount(it, currency) } ?: stringResource(R.string.advice_inputs_unknown))
             } }
+            com.ticketbox.ui.components.CurrencyReferenceDates(inputs.referenceRates.map { it.toDomain() })
             if (inputs.missingRates.isNotEmpty()) Text(stringResource(R.string.advice_missing_rates))
             inputs.missingRates.forEach { gap ->
                 if (!gap.canEnterManualRate()) Text(stringResource(R.string.advice_missing_fact))

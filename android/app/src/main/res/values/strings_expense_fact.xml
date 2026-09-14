@@ -171,15 +171,7 @@
     <string name="expense_offset_submit_refund">登记退款</string>
     <string name="expense_offset_submit_reversal">确认冲销</string>
     <string name="expense_offset_saving">保存中…</string>
-    <string name="expense_offset_success_refund">退款已登记。</string>
-    <string name="expense_offset_success_chargeback">拒付已登记。</string>
-    <string name="expense_offset_success_reversal">账单已冲销。</string>
-    <string name="expense_offset_success_refresh_pending">已登记；列表将在下次同步时刷新。</string>
-    <string name="expense_offset_cancelled_invites">%1$d 个待接受的拆账邀请已随之撤回。</string>
-    <string name="expense_offset_queued">操作已保存，联网后自动提交。</string>
-    <string name="expense_offset_conflict">退款或冲销记录刚在其它端发生变化；已载入最新事实，请核对草稿后重新提交。</string>
-    <string name="expense_offset_conflict_refreshing">退款或冲销记录刚在其它端发生变化，正在载入最新事实…</string>
-    <string name="expense_offset_conflict_refresh_failed">最新记录暂时取不到；重试刷新后再提交。</string>
+    <string name="expense_offset_queued">原操作已保存，将自动提交；可在同步页面查看结果或继续处理。</string>
     <string name="expense_offset_submit_failed">保存失败，请重试。</string>
 
     <!-- 撤销 sheet（只作用于已生效记录；记录本身保留在历史里） -->

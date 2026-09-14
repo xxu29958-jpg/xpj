@@ -138,6 +138,7 @@
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
           <input type="hidden" name="expected_row_version" value="{{ cur.row_version }}">
+          <input type="hidden" name="idempotency_key" value="{{ cur.reject_idempotency_key }}">
           <button class="product-button product-button--primary" type="submit">忽略当前记录</button>
         </form>
       </div>

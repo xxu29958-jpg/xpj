@@ -57,7 +57,6 @@ internal fun FactOffsetsSection(
     )
     // 状态诚实（共同裁决）：先渲染已知 bundle；null+Loading 给轻量加载表达；
     // Failed 无论有无 bundle 都给诚实文案+retry（有 bundle 说明显示的是已知记录）；
-    // queued intent chip 独立于 bundle 永远渲染 —— 离线排队恰好常伴随 bundle 不可读。
     val bundle = state.factBundle
     if (bundle != null) {
         FactOffsetsLoaded(state = state, bundle = bundle, viewModel = viewModel)
@@ -73,16 +72,6 @@ internal fun FactOffsetsSection(
             message = state.factBundleMessage,
             showsKnownRecords = bundle != null,
             onRetry = viewModel::loadExpenseFactBundle,
-        )
-    }
-    state.pendingOffsetIntent?.let { intent ->
-        StatusPill(
-            text = listOfNotNull(
-                intent.offsetKind?.let { offsetKindLabel(it) },
-                stringResource(R.string.expense_offset_pending_sync),
-            ).joinToString(" · "),
-            active = false,
-            tone = LocalStateTokens.current.info,
         )
     }
     // command 不依赖 read model（Product Owner 裁决）：已知 confirmed root + 写权限即可。

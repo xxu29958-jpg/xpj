@@ -24,7 +24,7 @@ from app.schemas import (
     ExpenseSplitsResponse,
 )
 from app.services.currency_binding_service import resolve_write_capability
-from app.services.expense_service import get_expense, resolve_expense
+from app.services.expense_query import get_expense, resolve_expense
 from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.time_service import now_utc
 

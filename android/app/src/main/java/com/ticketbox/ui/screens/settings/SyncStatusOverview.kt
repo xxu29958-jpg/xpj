@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
+import com.ticketbox.data.repository.readCorrectionRateFailure
 import com.ticketbox.data.repository.OutboxStatus
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.OutboxWriteBlock
@@ -22,6 +23,7 @@ import com.ticketbox.viewmodel.OutboxStatusUiState
 
 @Composable
 internal fun SyncStatusOriginalIntentSummary(row: OutboxRow, state: OutboxStatusUiState, actions: SyncStatusActions) {
+    OffsetRateRecovery(row, state, actions)
     state.manualRates[row.id]?.let { original ->
         com.ticketbox.ui.screens.plan.ManualRateSubmissionSummary(original)
         TextButton(onClick = { actions.onOpenRateSubmission(row.id) }) { Text(stringResource(R.string.advice_rate_submission_open)) }
@@ -70,6 +72,19 @@ internal fun SyncStatusOriginalIntentSummary(row: OutboxRow, state: OutboxStatus
     }
 }
 
+@Composable
+private fun OffsetRateRecovery(row: OutboxRow, state: OutboxStatusUiState, actions: SyncStatusActions) {
+    if (row.type != com.ticketbox.data.local.PendingMutationType.CreateExpenseOffset) return
+    val gap = row.lastError?.let(::readCorrectionRateFailure) ?: return
+    Text(stringResource(R.string.correction_rate_required))
+    Text(stringResource(R.string.advice_rate_pair_date, gap.sourceCurrencyCode.orEmpty(), gap.homeCurrencyCode, gap.rateDate.orEmpty()))
+    val binding = state.binding ?: return
+    TextButton(onClick = { actions.onRepairCorrectionRate(binding, gap) },
+        enabled = state.offersRetry(row) && state.correctionObservation.access?.canModify == true && state.busyRowId == null) {
+        Text(stringResource(R.string.correction_rate_open))
+    }
+}
+
 internal data class SyncStatusOverview(
     val queuedCount: Int,
     val conflictCount: Int,
@@ -98,7 +113,7 @@ internal fun syncStatusOverview(
         quarantinedCount = status.quarantinedCount.coerceAtLeast(0),
         reviewRequiredCount = corrections.count { !it.delivered && it.row.status == PendingMutationStatus.Done } +
             incomeSubmissions.count { it.requiresReview } + manualRates.count { it.row.status == PendingMutationStatus.Done && !it.isConfirmed },
-        refreshRequiredCount = corrections.count { it.refreshRequired },
+        refreshRequiredCount = status.refreshRequired.size,
         stoppedCount = writes.count { it.row.status == PendingMutationStatus.Abandoned },
         writeBlock = status.writeBlock,
     )

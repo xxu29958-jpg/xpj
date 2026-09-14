@@ -108,7 +108,8 @@ def test_enqueue_does_not_false_fail_after_durable_task_insert(
 
     def reject_post_commit_task_read(db: Session, instance, *args, **kwargs) -> None:
         nonlocal post_commit_refresh_attempted
-        if isinstance(instance, BackgroundTask) and instance.task_type == "test_post_commit_read":
+        # Reject a submission-response reread, not the worker's fresh terminal lock.
+        if db is submission_db and isinstance(instance, BackgroundTask) and instance.task_type == "test_post_commit_read":
             post_commit_refresh_attempted = True
             with SessionLocal() as probe_db:
                 persisted = probe_db.scalar(
@@ -118,10 +119,10 @@ def test_enqueue_does_not_false_fail_after_durable_task_insert(
             raise SQLAlchemyError("post-commit task refresh unavailable")
         real_refresh(db, instance, *args, **kwargs)
 
-    monkeypatch.setattr(Session, "refresh", reject_post_commit_task_read)
-    with SessionLocal() as db:
+    with SessionLocal() as submission_db:
+        monkeypatch.setattr(Session, "refresh", reject_post_commit_task_read)
         task = bgtasks.enqueue(
-            db,
+            submission_db,
             task_type="test_post_commit_read",
             initiator_account_id=_owner_account_id(),
             ledger_id="owner",

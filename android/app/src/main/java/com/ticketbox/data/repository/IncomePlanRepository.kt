@@ -41,6 +41,7 @@ data class IncomePlanListing(
     val effectivePlanCount: Int,
     val homeCurrencyCode: String? = null,
     val missingCurrencyCodes: List<String> = emptyList(),
+    val referenceRates: List<com.ticketbox.domain.model.CurrencyReferenceRate> = emptyList(),
 )
 
 class IncomePlanRepository(
@@ -91,7 +92,7 @@ class IncomePlanRepository(
             val response = api.listIncomePlans(status = "active")
             IncomePlanListing(response.items.map { it.toDomain() }, response.expectedAmountCents,
                 response.month, response.scheduledAmountCents, response.effectivePlanCount,
-                response.homeCurrencyCode, response.missingCurrencyCodes)
+                response.homeCurrencyCode, response.missingCurrencyCodes, response.referenceRates.map { it.toDomain() })
         }
     }.onSuccess { listing ->
         onActivePlansSnapshot("m=${listing.month};home=${listing.homeCurrencyCode};total=${listing.expectedAmountCents};" +

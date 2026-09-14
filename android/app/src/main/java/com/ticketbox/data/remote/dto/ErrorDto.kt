@@ -4,7 +4,7 @@ import com.squareup.moshi.Json
 
 data class ErrorDto(
     val error: String,
-    val message: String,
+    val message: String? = null,
     @param:Json(name = "expense_id") val expenseId: Long? = null,
     @param:Json(name = "currency_code") val currencyCode: String? = null,
     @param:Json(name = "home_currency_code") val homeCurrencyCode: String? = null,

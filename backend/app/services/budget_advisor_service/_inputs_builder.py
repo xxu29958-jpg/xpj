@@ -23,7 +23,7 @@ from app.services.category_common import DEFAULT_CATEGORIES, category_filter_val
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import normalize_currency_code
 from app.services.income_plan_service import income_forecast
-from app.services.money_projection_service import ProjectionGap, ordered_projection_gaps
+from app.services.money_projection_service import ProjectionGap, ProjectionReference, ordered_projection_gaps
 from app.services.monthly_report_service import MonthlyReport, compose_budget_explanation, compose_monthly_report
 from app.services.recurring_occurrence_query import total_outstanding_recurring_cents
 from app.services.recurring_service import recurring_monthly_total
@@ -36,6 +36,7 @@ class BudgetInputProjection:
     breakdown: DiscretionaryBreakdown
     missing_rates: tuple[ProjectionGap, ...]
     provider_inputs: BudgetInputs | None
+    reference_rates: tuple[ProjectionReference, ...] = ()
 
     @property
     def inputs_fingerprint(self) -> str | None:
@@ -58,11 +59,12 @@ def read_budget_inputs(
         timezone_name=timezone_name, home=home, gaps=gaps)
     forecast = income_forecast(db, tenant_id=tenant_id, month=month, timezone_name=timezone_name,
         home_currency_code=home, missing_rates=gaps)
+    references = set(forecast.reference_rates)
     items = _active_recurring_items(db, tenant_id=tenant_id)
     recurring = recurring_monthly_total(db, tenant_id=tenant_id, items=items,
-        home_currency_code=home, month=month, missing_rates=gaps)
+        home_currency_code=home, month=month, missing_rates=gaps, reference_rates=references)
     fixed = total_outstanding_recurring_cents(db, tenant_id=tenant_id, month=month,
-        home_currency_code=home, missing_rates=gaps)
+        home_currency_code=home, missing_rates=gaps, reference_rates=references)
     breakdown = compute_monthly_discretionary(monthly_income_cents=forecast.expected_amount_cents,
         fixed_expenses_cents=fixed, spent_amount_cents=report.total_cents,
         savings_target_cents=savings_target_cents, reserved_buffer_cents=reserved_buffer_cents)
@@ -71,7 +73,7 @@ def read_budget_inputs(
         inputs = BudgetInputs(month=month, home_currency=home, category_breakdown=_category_breakdown(report),
             historical_baseline=baseline, income_plan=_income_snapshots(forecast),
             recurring_total_monthly_cents=recurring, recurring_active_count=len(items))
-    return BudgetInputProjection(month, home, breakdown, ordered_projection_gaps(gaps), inputs)
+    return BudgetInputProjection(month, home, breakdown, ordered_projection_gaps(gaps), inputs, tuple(sorted(references)))
 
 
 def _active_recurring_items(db: Session, *, tenant_id: str) -> list[RecurringItem]:

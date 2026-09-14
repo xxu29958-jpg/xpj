@@ -1,4 +1,4 @@
-"""Parse CSV money and write pending expenses through the shared FX owner.
+"""Parse CSV money for the durable batch import owner.
 The durable batch service reuses this parser for larger, paged imports.
 
 Accepted columns (case-insensitive, BOM-aware):
@@ -33,18 +33,12 @@ from datetime import date, datetime
 from decimal import Decimal
 from io import StringIO
 
-from sqlalchemy.orm import Session
-
 from app.config import get_settings
 from app.errors import AppError
-from app.models import Expense
-from app.money_contract import MoneySign, ensure_optional_money_minor
 from app.services.category_service import normalize_category
-from app.services.currency_binding_service import resolve_write_capability
 from app.services.currency_common import supported_currency_codes
 from app.services.exchange_rate_service import (
     BASE_CURRENCY_CODE,
-    apply_currency_payload,
     normalize_currency_code,
 )
 from app.services.import_money import (
@@ -60,8 +54,8 @@ from app.services.import_money import (
     validate_csv_headers as validate_csv_headers,
 )
 from app.services.spending_contract_service import fx_rate_date_for_expense_time
-from app.services.tag_service import normalize_tags, sync_expense_tags
-from app.services.time_service import ensure_utc_assuming_local, now_utc
+from app.services.tag_service import normalize_tags
+from app.services.time_service import ensure_utc_assuming_local
 
 MAX_PREVIEW_ROWS = 500
 DEFAULT_SOURCE = "CSV导入"
@@ -437,64 +431,3 @@ def parse_csv_row(
         error_code=error_code,
         error=error,
     )
-
-
-def import_rows(
-    db: Session, *, tenant_id: str, rows: list[ParsedRow]
-) -> int:
-    """Insert valid rows as ``pending`` expenses. Returns the inserted count.
-
-    Rows with ``error`` set are silently skipped — the caller already
-    surfaced them in the preview UI.
-    """
-    for row in rows:
-        if not row.is_valid:
-            continue
-        ensure_optional_money_minor(
-            row.amount_cents,
-            sign=MoneySign.NONNEGATIVE,
-            label="csv_import.amount_cents",
-        )
-        ensure_optional_money_minor(
-            row.original_amount_minor,
-            sign=MoneySign.NONNEGATIVE,
-            label="csv_import.original_amount_minor",
-        )
-    # Legacy import is one transaction; the database fence remains the final guard.
-    resolve_write_capability(db)
-    inserted = 0
-    now = now_utc()
-    created: list[Expense] = []
-    for row in rows:
-        if not row.is_valid or (row.amount_cents is None and row.original_amount_minor is None):
-            continue
-        expense = Expense(
-            tenant_id=tenant_id,
-            amount_cents=None,
-            merchant=row.merchant or None,
-            category=row.category or "其他",
-            note=row.note or "",
-            source=row.source or DEFAULT_SOURCE,
-            tags=normalize_tags(row.tags),
-            expense_time=row.expense_time,
-            status="pending",
-            created_at=now,
-            updated_at=now,
-        )
-        apply_currency_payload(
-            db,
-            tenant_id=tenant_id,
-            home_currency_code=row.home_currency_code,
-            expense=expense,
-            payload=row,
-            amount_was_explicit=row.original_currency_code == row.home_currency_code and row.amount_cents is not None,
-        )
-        db.add(expense)
-        created.append(expense)
-        inserted += 1
-    if inserted:
-        db.flush()
-        for expense in created:
-            sync_expense_tags(db, expense)
-        db.commit()
-    return inserted

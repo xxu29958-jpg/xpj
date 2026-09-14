@@ -75,7 +75,11 @@ KNOWN_GAPS: frozenset[str] = frozenset()
 # it here so the audit doesn't get confused.
 QUERY_STRING_TOKEN_ROUTES: frozenset[str] = frozenset()
 
-TOKEN_FIELD_NAMES = frozenset({"expected_row_version", "expected_row_version_by_id"})
+# Native recovery posts the manual-rate token separately from the retained
+# original financial command's token. Both are real owner-consumed fields.
+TOKEN_FIELD_NAMES = frozenset({
+    "expected_row_version", "expected_row_version_by_id", "fx_expected_row_version",
+})
 
 
 def _load_openapi_app_schema() -> dict:

@@ -329,11 +329,12 @@ def test_confirm_via_local_ref_resolves(
 
 
 def _create_confirmable_pending_local_ref(client, identity, *, client_ref):
-    """A real foreign manual acceptance is pending until its missing rate is supplied."""
-    pending = client.post("/api/expenses/manual", headers=identity.app_headers, json={
+    """Saving a rate does not replace the accepted pending creation receipt."""
+    body = {
         "client_ref": client_ref, "home_currency_code": "CNY", "original_currency": "JPY",
         "original_amount": "300", "merchant": "本地确认", "category": "餐饮",
-        "expense_time": "2026-05-05T00:00:00Z"})
+        "expense_time": "2026-05-05T00:00:00Z"}
+    pending = client.post("/api/expenses/manual", headers=identity.app_headers, json=body)
     assert pending.status_code == 200, pending.text
     assert (pending.json()["status"], pending.json()["amount_cents"]) == ("pending", None)
     rate = client.put("/api/exchange-rates/JPY/2026-05-05",
@@ -341,26 +342,54 @@ def _create_confirmable_pending_local_ref(client, identity, *, client_ref):
             "currency_code": "JPY", "home_currency_code": "CNY", "rate_date": "2026-05-05",
             "rate_to_cny": "0.05", "source": "manual", "expected_row_version": 0})
     assert rate.status_code == 200, rate.text
+    return pending.json(), body
 
 
 def test_confirm_via_local_ref_first_write_runs_cas(
     client: TestClient, identity: TestIdentity
 ) -> None:
-    """An explicit-version route threads the EFFECTIVE version (not the raw
-    sentinel) into its CAS. confirm short-circuits a ``confirmed`` row before the
-    CAS, so this drives a real manual-created ``pending`` row: a local-ref
-    first-write (sentinel 0) uses its accepted creation version and confirms it. Were confirm to pass the raw sentinel 0, its CAS
-    (``WHERE row_version == 0``) would rowcount-0 → 409; asserting it confirms
-    proves the effective-version threading for the explicit-version family."""
+    """First-write CAS converts the original pending basis; confirmation needs review."""
     device_id = _owner_device_id(identity)
-    _create_confirmable_pending_local_ref(client, identity, client_ref="confirm-fw")
+    pending, creation_body = _create_confirmable_pending_local_ref(client, identity, client_ref="confirm-fw")
+    url = "/api/expenses/local:confirm-fw"
+    original_headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
 
-    resp = client.post(
-        "/api/expenses/local:confirm-fw/confirm",
-        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
-        json={"expected_row_version": 0},
-    )
+    refused = client.post(f"{url}/confirm", headers=original_headers, json={"expected_row_version": 0})
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["error"] == "exchange_rate_pending"
+    assert _row_version(client, pending["id"], identity=identity) == pending["row_version"]
+
+    edit_headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
+    edit_body = {"expected_row_version": 0, "original_currency_code": "JPY", "original_amount_minor": 300}
+    saved = client.patch(url, headers=edit_headers, json=edit_body)
+    assert saved.status_code == 200, saved.text
+    converted = saved.json()
+    assert (converted["status"], converted["fx_status"], converted["amount_cents"]) == ("pending", "ready", 1500)
+    assert converted["row_version"] > pending["row_version"]
+    replay_edit = client.patch(url, headers=edit_headers, json=edit_body)
+    assert replay_edit.status_code == 200, replay_edit.text
+    assert replay_edit.json()["row_version"] == converted["row_version"]
+
+    stale = client.post(f"{url}/confirm", headers=original_headers, json={"expected_row_version": 0})
+    assert stale.status_code == 409, stale.text
+    assert stale.json()["error"] == "state_conflict"
+    reviewed = client.get(f"/api/expenses/{pending['id']}", headers=identity.app_headers)
+    assert reviewed.status_code == 200, reviewed.text
+    assert reviewed.json()["row_version"] == converted["row_version"]
+    assert reviewed.json()["amount_cents"] == 1500 and reviewed.json()["status"] == "pending"
+
+    confirm_headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
+    confirm_body = {"expected_row_version": reviewed.json()["row_version"]}
+    resp = client.post(f"{url}/confirm", headers=confirm_headers, json=confirm_body)
     assert resp.status_code == 200, resp.text
+    assert resp.json()["row_version"] > converted["row_version"]
+    replay_confirm = client.post(f"{url}/confirm", headers=confirm_headers, json=confirm_body)
+    assert replay_confirm.status_code == 200, replay_confirm.text
+    assert replay_confirm.json()["row_version"] == resp.json()["row_version"]
+    creation_replay = client.post("/api/expenses/manual", headers=identity.app_headers, json=creation_body)
+    assert creation_replay.status_code == 200, creation_replay.text
+    assert {key: creation_replay.json()[key] for key in ("id", "status", "amount_cents", "row_version")} == {
+        key: pending[key] for key in ("id", "status", "amount_cents", "row_version")}
     with SessionLocal() as db:
         exp = (
             db.query(Expense)

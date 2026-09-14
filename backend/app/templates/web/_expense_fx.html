@@ -1,0 +1,36 @@
+{% if expense_fx %}
+<section class="expense-manual-fx" aria-labelledby="{{ _p }}-fx-title" data-expense-fx-state="{{ expense_fx.state }}">
+  <div class="expense-manual-fx-copy">
+    <strong id="{{ _p }}-fx-title">账单日期汇率</strong>
+    <span>已保存账单：{{ expense_fx.current.original_currency_code }} {{ expense_fx.current.original_amount_value }}{% if expense_fx.requested_date %} · 请求日期 {{ expense_fx.requested_date }}{% endif %}</span>
+    {% if expense_fx.current.fx_meta %}<span>{{ expense_fx.current.fx_meta }}</span>{% endif %}
+    <span role="status">
+      {% if expense_fx.state == 'queued' %}正在排队获取汇率。
+      {% elif expense_fx.state == 'running' %}正在获取汇率。
+      {% elif expense_fx.state == 'failed' %}本次未取得可用汇率。{{ expense_fx.message }}
+      {% elif expense_fx.state == 'cancelled' %}获取已取消，可以重新获取或填写本笔汇率。
+      {% elif expense_fx.state == 'completed' and expense_fx.current.fx_pending %}本次任务已结束，当前账单仍待补汇率。
+      {% elif expense_fx.state == 'completed' %}汇率已处理，账单仍需人工核对后确认。
+      {% elif expense_fx.current.fx_pending %}待补汇率。可按账单日期获取，也可填写本笔汇率。
+      {% else %}请核对折算金额和参考汇率日期。{% endif %}
+    </span>
+    {% if can_write %}
+    <span>获取与刷新只读取已保存的账单；不会保存下方未保存的填写。修改金额或日期后，请先保存草稿。</span>
+    {% endif %}
+  </div>
+  {% if can_write %}
+  <div class="product-page-actions">
+    <button type="submit" class="product-button" formaction="/web/expenses/{{ e.id }}/fx-status" formnovalidate>刷新汇率状态</button>
+    {% if expense_fx.can_request %}
+    <button type="submit" class="product-button" formaction="/web/expenses/{{ e.id }}/fx" formnovalidate>{% if expense_fx.state == 'failed' %}重试获取汇率{% else %}获取账单日期汇率{% endif %}</button>
+    {% endif %}
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+{% if fx_revision_changed %}
+<div class="product-feedback product-feedback--warning" role="status">
+  已保存账单有新结果。你的未保存填写和原提交版本仍保留；载入后请核对新金额，再确认入账。
+  <a href="{{ core_fields_reload_href }}" data-drawer-reload>载入最新账单（替换未保存填写）</a>
+</div>
+{% endif %}

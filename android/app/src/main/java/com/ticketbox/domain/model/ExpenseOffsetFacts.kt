@@ -90,10 +90,5 @@ data class PendingExpenseOffsetIntent(
 )
 
 sealed interface ExpenseOffsetMutationOutcome {
-    data class Synced(
-        val bundle: ExpenseFactBundle,
-        val refreshPending: Boolean,
-    ) : ExpenseOffsetMutationOutcome
-
     data class Queued(val intent: PendingExpenseOffsetIntent) : ExpenseOffsetMutationOutcome
 }

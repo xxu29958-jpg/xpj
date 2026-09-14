@@ -3,7 +3,6 @@ package com.ticketbox.data.repository
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.ExpenseFactBundleDto
 import com.ticketbox.data.remote.dto.ExpenseOffsetCreateRequestDto
-import com.ticketbox.data.remote.dto.ExpenseOffsetVoidRequestDto
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseFactBundle
 import com.ticketbox.domain.model.ExpenseOffsetDraft
@@ -13,7 +12,6 @@ import com.ticketbox.domain.model.ExpenseOffsetMutationOutcome
 import com.ticketbox.domain.model.PendingExpenseOffsetIntent
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
-import java.io.IOException
 import java.time.LocalDate
 import java.time.format.DateTimeParseException
 import java.util.UUID
@@ -55,52 +53,24 @@ internal class ExpenseOffsetRepository(
             expectedRowVersion = expense.rowVersion,
         )
         val key = UUID.randomUUID().toString()
-        val targetId = expenseOutboxTargetId(expense)
-        val outbox = core.outbox
-        val adapter = core.offsetCreateAdapter
-        if (outbox != null && adapter != null && core.hasUnresolvedQueuedMutationsFor(bound, targetId)) {
-            enqueueCreate(bound, targetId, request, key)
-            return@safeCall queuedCreate(draft, reason)
-        }
-        val response = try {
-            bound.call { it.createExpenseOffset(expense.id.toString(), request, key) }
-        } catch (networkError: IOException) {
-            if (outbox == null || adapter == null) throw networkError
-            enqueueCreate(bound, targetId, request, key)
-            return@safeCall queuedCreate(draft, reason)
-        }
-        synced(response, bound)
+        enqueueCreate(bound, expenseOutboxTargetId(expense), request, key)
+        queuedCreate(draft, reason)
     }
 
     suspend fun voidAllowingOffline(
+        expectedBinding: LogicalSessionBinding,
         expense: Expense,
         offset: ExpenseOffsetFact,
         reason: String,
     ): Result<ExpenseOffsetMutationOutcome> = core.errorHandler.safeCall {
+        val bound = core.ledgerRequestGuard.bindExact(expectedBinding)
         requireMutableRoot(expense)
         if (offset.rowVersion <= 0) throw RepositoryException("这条退款事实还不能撤销。")
         val cleanReason = requiredReason(reason)
-        val request = ExpenseOffsetVoidRequestDto(cleanReason, offset.rowVersion)
         val outboxPayload = ExpenseOffsetVoidOutboxPayload(offset.publicId, cleanReason)
-        val bound = core.ledgerRequestGuard.bind()
         val key = UUID.randomUUID().toString()
-        val targetId = expenseOutboxTargetId(expense)
-        val outbox = core.outbox
-        val adapter = core.offsetVoidAdapter
-        if (outbox != null && adapter != null && core.hasUnresolvedQueuedMutationsFor(bound, targetId)) {
-            enqueueVoid(bound, targetId, outboxPayload, offset.rowVersion, key)
-            return@safeCall queuedVoid(offset, cleanReason)
-        }
-        val response = try {
-            bound.call {
-                it.voidExpenseOffset(expense.id.toString(), offset.publicId, request, key)
-            }
-        } catch (networkError: IOException) {
-            if (outbox == null || adapter == null) throw networkError
-            enqueueVoid(bound, targetId, outboxPayload, offset.rowVersion, key)
-            return@safeCall queuedVoid(offset, cleanReason)
-        }
-        synced(response, bound)
+        enqueueVoid(bound, expenseOutboxTargetId(expense), outboxPayload, offset.rowVersion, key)
+        queuedVoid(offset, cleanReason)
     }
 
     private fun requireMutableRoot(expense: Expense) {
@@ -124,14 +94,6 @@ internal class ExpenseOffsetRepository(
             }) throw RepositoryException("这笔账单有待处理的提交，请先查看原提交。")
     }
 
-    private suspend fun synced(
-        response: ExpenseFactBundleDto,
-        bound: BoundLedgerRequest,
-    ): ExpenseOffsetMutationOutcome.Synced {
-        val refreshPending = !publish(response, bound)
-        return ExpenseOffsetMutationOutcome.Synced(response.toDomain(), refreshPending)
-    }
-
     private suspend fun publish(response: ExpenseFactBundleDto, bound: BoundLedgerRequest): Boolean {
         return try {
             val projection = response.toCacheProjection(bound.ledgerId)
@@ -141,7 +103,6 @@ internal class ExpenseOffsetRepository(
                     root = projection.root,
                     activeOffsets = projection.activeOffsets,
                 )
-                core.onConfirmedCommitted(bound.ledgerId)
             }
             true
         } catch (cancelled: CancellationException) {
@@ -169,6 +130,7 @@ internal class ExpenseOffsetRepository(
                 expectedRowVersion = request.expectedRowVersion,
                 idempotencyKey = key,
             ),
+            validateTargetRows = ::requireExpenseRefreshComplete,
         )
     }
 
@@ -189,6 +151,7 @@ internal class ExpenseOffsetRepository(
                 expectedRowVersion = expectedRowVersion,
                 idempotencyKey = key,
             ),
+            validateTargetRows = ::requireExpenseRefreshComplete,
         )
     }
 }

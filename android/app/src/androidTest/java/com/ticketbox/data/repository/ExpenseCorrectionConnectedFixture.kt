@@ -155,6 +155,20 @@ internal class ExpenseCorrectionConnectedFixture(
         )), maxAttempts = maxAttempts, now = clock::millis)
         .also { it.onAdviceInputReplaySucceeded = { adviceCallbacks++ } }.drainOnce()
 
+    /** Existing engine with the production Patch/Confirm dispatchers; callers drive it after admission. */
+    suspend fun drainExpenseLifecycle(maxAttempts: Int = 10) = OutboxDrainEngine(outbox,
+        listOf(
+            PatchExpenseDispatcher({ network.service }, adapters.patchExpenseAdapter, ::publishExpenseSnapshot),
+            ConfirmExpenseDispatcher({ network.service }, adapters.expenseStateTokenAdapter, ::publishExpenseSnapshot),
+        ), maxAttempts = maxAttempts, now = clock::millis).drainOnce()
+
+    private suspend fun publishExpenseSnapshot(ledgerId: String, expense: ExpenseDto) {
+        val accepted = expenseDao.applyServerExpense(ledgerId, expense.toEntity(ledgerId))
+        if (accepted && expense.status == "confirmed") {
+            notifyConfirmedExpenseWrite(ledgerId, graph.expenseRepository.onConfirmedCommitted)
+        }
+    }
+
     fun role(value: String) { session.value = session.value.copy(identity = session.value.identity.copy(role = value)) }
     fun switchLedger() { session.value = session.value.copy(bindingRevision = "another-binding",
         identity = session.value.identity.copy(ledgerId = "another-ledger")) }

@@ -7,27 +7,95 @@ cannot invent different save/confirm or duplicate-resolution ordering.
 
 from __future__ import annotations
 
+from typing import Literal
+
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.models import Expense
-from app.schemas import ExpenseUpdateRequest
+from app.schemas import ExpenseResponse, ExpenseUpdateRequest
 from app.services.cleanup_service import cleanup_after_confirm
+from app.services.expense_response_service import expense_to_response
 from app.services.expense_service import (
     confirm_expense,
     get_expense,
     mark_expense_not_duplicate,
     reject_expense,
+    undo_reject_expense,
     update_expense,
 )
 from app.services.idempotency import (
+    IdempotencyOutcome,
+    IdempotencyOutcomeKind,
+    claim_idempotency_key,
     claim_idempotent_request,
+    fingerprint_request,
     mark_idempotency_succeeded,
 )
 
 _CONFIRM_OPERATION = "confirm_expense"
+
+
+def _replayed_rejection_receipt(claim: IdempotencyOutcome) -> ExpenseResponse | None:
+    if claim.kind is IdempotencyOutcomeKind.IN_PROGRESS:
+        raise AppError("idempotency_key_in_progress", status_code=409)
+    if claim.kind is IdempotencyOutcomeKind.FINGERPRINT_MISMATCH:
+        raise AppError("idempotency_key_reused", status_code=422)
+    if claim.kind is not IdempotencyOutcomeKind.HIT:
+        return None
+    try:
+        receipt = ExpenseResponse.model_validate(claim.row.response_body)
+        statuses = {"rejected"} if claim.row.operation == "reject_expense" else {"pending", "confirmed"}
+        if (claim.row.resource_type != "expense" or str(receipt.id) != claim.row.resource_id
+                or str(receipt.id) != claim.row.target_id or receipt.row_version < 1 or receipt.status not in statuses):
+            raise ValueError("Original rejection receipt does not match its resource")
+        return receipt
+    except (ValueError, ValidationError) as exc:
+        raise AppError("expense_rejection_original_requires_review",
+            "原操作已被接受，但原回执无法核对。请查看账单，勿重新提交或撤销其它操作。", status_code=409) from exc
+
+
+def submit_expense_rejection(
+    db: Session,
+    *,
+    operation: Literal["reject_expense", "undo_expense"],
+    expense_id: int,
+    tenant_id: str,
+    expected_row_version: int,
+    request_expected_row_version: int,
+    idempotency_key: str | None,
+    actor_account_id: int | None,
+) -> ExpenseResponse:
+    """Accept one reviewed rejection/Undo and its original response in one transaction."""
+    try:
+        if not idempotency_key:
+            raise AppError("idempotency_key_required", status_code=422)
+        if len(idempotency_key) > 64:
+            raise AppError("invalid_request", status_code=422)
+        claim = claim_idempotency_key(db, tenant_id=tenant_id, idempotency_key=idempotency_key,
+            operation=operation, target_type="expense", target_id=str(expense_id),
+            request_fingerprint=fingerprint_request(operation=operation, target_id=str(expense_id),
+                body={}, expected_row_version=request_expected_row_version))
+        replayed = _replayed_rejection_receipt(claim)
+        if replayed is not None:
+            return replayed
+        if operation == "reject_expense":
+            expense = reject_expense(db, expense_id, tenant_id,
+                expected_row_version=expected_row_version, commit=False)
+        else:
+            expense = undo_reject_expense(db, expense_id, tenant_id, expected_row_version,
+                actor_account_id=actor_account_id)
+        response = expense_to_response(db, tenant_id=tenant_id, expense=expense)
+        mark_idempotency_succeeded(db, claim.row, resource_type="expense", resource_id=str(expense_id),
+            response_body=response.model_dump(mode="json"))
+        db.commit()
+        return response
+    except (AppError, SQLAlchemyError):
+        db.rollback()
+        raise
 
 
 def _commit_confirmation_and_cleanup(db: Session, expense: Expense) -> None:

@@ -35,6 +35,7 @@ data class BudgetAdviceInputsDto(
     @param:Json(name = "home_currency_code") val homeCurrencyCode: String,
     val breakdown: DiscretionaryResponseDto,
     @param:Json(name = "missing_rates") val missingRates: List<MissingExchangeRateDto>,
+    @param:Json(name = "reference_rates") val referenceRates: List<ProjectionReferenceDto> = emptyList(),
     @param:Json(name = "inputs_fingerprint") val inputsFingerprint: String? = null,
 ) {
     val readyForAdvice: Boolean get() = missingRates.isEmpty() && breakdown.monthlyIncomeCents != null &&

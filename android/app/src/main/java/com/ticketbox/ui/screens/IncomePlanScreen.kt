@@ -368,6 +368,7 @@ private fun IncomeTotalSummary(state: IncomePlanUiState) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        com.ticketbox.ui.components.CurrencyReferenceDates(state.referenceRates)
         if (state.missingCurrencyCodes.isNotEmpty()) {
             Text(stringResource(R.string.income_plan_missing_rates, state.missingCurrencyCodes.joinToString("、")),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

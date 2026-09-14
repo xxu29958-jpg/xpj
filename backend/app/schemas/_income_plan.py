@@ -7,6 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
+from app.schemas._exchange import ProjectionReferenceDto
 from app.schemas._money import NonNegativeMoneyAggregate, NonNegativeMoneyMinor
 from app.services.time_service import to_iso
 
@@ -102,3 +103,4 @@ class IncomePlanListResponse(BaseModel):
     expected_amount_cents: NonNegativeMoneyAggregate | None
     scheduled_amount_cents: NonNegativeMoneyAggregate | None
     effective_plan_count: int
+    reference_rates: list[ProjectionReferenceDto] = Field(default_factory=list)

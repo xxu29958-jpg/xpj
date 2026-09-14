@@ -63,9 +63,10 @@ internal class ExpenseCorrectionRepository(
                 type = PendingMutationType.CorrectExpense, targetId = target, payloadJson = adapter.toJson(payload),
                 expectedRowVersion = expense.rowVersion, idempotencyKey = UUID.randomUUID().toString()),
                 validateTargetRows = { rows ->
+                    requireExpenseRefreshComplete(rows)
                     if (rows.any { row -> row.status != PendingMutationStatus.Done ||
                         (row.type == PendingMutationType.CorrectExpense &&
-                            (adapter.readSupportedCorrection(row) == null || row.lastError?.startsWith(CORRECTION_REFRESH_PREFIX) == true))
+                            (adapter.readSupportedCorrection(row) == null || row.lastError?.startsWith(EXPENSE_REFRESH_PREFIX) == true))
                     }) throw RepositoryException("这笔账单有待处理的提交，请先查看原提交。")
                 })
         }

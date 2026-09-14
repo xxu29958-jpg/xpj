@@ -50,18 +50,9 @@ def task_response_dicts(
 
 
 def _source_expense_id(task: BackgroundTask, *, tenant_id: str) -> int | None:
-    if task.task_type != "expense_enrichment" or task.tenant_id != tenant_id:
+    if task.task_type not in {"expense_enrichment", "expense_fx"} or task.tenant_id != tenant_id:
         return None
-    try:
-        payload = json.loads(task.input_payload_json or "null")
-    except (TypeError, ValueError):
-        return None
-    if not isinstance(payload, dict) or payload.get("tenant_id") != task.tenant_id:
-        return None
-    expense_id = payload.get("expense_id")
-    if isinstance(expense_id, bool) or not isinstance(expense_id, int) or expense_id <= 0:
-        return None
-    return expense_id
+    return task.source_expense_id
 
 
 def _to_response_dict(task: BackgroundTask, *, source_expense_id: int | None) -> BackgroundTaskResponsePayload:

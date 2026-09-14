@@ -141,6 +141,15 @@ class ExpenseRepository(
     override suspend fun syncPending(): Result<List<Expense>> =
         pendingRepository.syncPending()
 
+    override suspend fun fetchExpenseFx(binding: LogicalSessionBinding, id: Long): Result<BackgroundTask?> =
+        backgroundTaskRepository.fetchExpenseFx(binding, id)
+
+    override suspend fun retryExpenseFx(binding: LogicalSessionBinding, expense: Expense): Result<BackgroundTask> =
+        backgroundTaskRepository.retryExpenseFx(binding, expense)
+
+    override suspend fun fetchExpenseForFxReview(binding: LogicalSessionBinding, id: Long): Result<Expense> =
+        backgroundTaskRepository.fetchExpenseForFxReview(binding, id)
+
     override suspend fun fetchExpense(id: Long): Result<Expense> =
         detailRepository.fetchExpense(id)
 
@@ -155,6 +164,8 @@ class ExpenseRepository(
     ): Result<ExpenseRevisionPage> = correctionRepository.fetchRevisions(id, page, pageSize, snapshotRevision)
 
     override fun observeCorrections(): Flow<ExpenseCorrectionObservation> = correctionRepository.observe()
+
+    override fun observeExpenseOutboxStatus(): Flow<OutboxStatus> = core.offlineMutations.outbox.observeStatus()
 
     internal suspend fun publishDeliveredCorrection(row: OutboxRow, expense: com.ticketbox.data.remote.dto.ExpenseDto) =
         correctionRepository.publishDelivered(row, expense)
@@ -178,23 +189,26 @@ class ExpenseRepository(
         row.lastError != "offset_create_requires_review" && core.offsetCreateAdapter?.readSupportedOffsetCreate(row) != null
 
     override suspend fun voidExpenseOffsetAllowingOffline(
+        expectedBinding: LogicalSessionBinding,
         expense: Expense,
         offset: ExpenseOffsetFact,
         reason: String,
-    ): Result<ExpenseOffsetMutationOutcome> = offsetRepository.voidAllowingOffline(expense, offset, reason)
+    ): Result<ExpenseOffsetMutationOutcome> = offsetRepository.voidAllowingOffline(expectedBinding, expense, offset, reason)
 
 
-    override suspend fun updateExpense(
-        id: Long,
-        draft: ExpenseDraft,
-        baseline: Expense?,
-    ): Result<Expense> = pendingRepository.updateExpense(id, draft, baseline)
+    override fun observeExpenseCommands(): Flow<ExpenseCommandObservation> = pendingRepository.observeExpenseCommands()
 
     override suspend fun saveExpenseAllowingOffline(
-        id: Long,
-        draft: ExpenseDraft,
-        baseline: Expense,
-    ): Result<SaveOutcome> = pendingRepository.saveExpenseAllowingOffline(id, draft, baseline)
+        expectedBinding: LogicalSessionBinding, id: Long, draft: ExpenseDraft, baseline: Expense,
+    ): Result<ExpenseCommandAcceptance> = pendingRepository.saveExpenseAllowingOffline(expectedBinding, id, draft, baseline)
+
+    override suspend fun saveAndConfirmExpense(
+        expectedBinding: LogicalSessionBinding, expense: Expense, draft: ExpenseDraft,
+    ): Result<ExpenseCommandAcceptance> = pendingRepository.saveAndConfirmExpense(expectedBinding, expense, draft)
+
+    override suspend fun confirmExpenses(
+        expectedBinding: LogicalSessionBinding, expenses: List<Expense>,
+    ): Result<List<ExpenseCommandAcceptance>> = pendingRepository.confirmExpenses(expectedBinding, expenses)
 
     override suspend fun fetchExpenseItems(id: Long): Result<ExpenseItems> =
         detailRepository.fetchExpenseItems(id)
@@ -304,7 +318,7 @@ class ExpenseRepository(
         notificationKey: String? = null,
     ): Result<Expense> = detailRepository.createNotificationDraft(draft, expectedBinding, notificationKey)
 
-    internal fun captureDeferredLedgerBinding(): LogicalSessionBinding? =
+    override fun captureDeferredLedgerBinding(): LogicalSessionBinding? =
         core.ledgerRequestGuard.captureLogicalBinding()
 
     internal fun observeLedgerAccess(): Flow<LedgerAccessContext?> = core.apiProvider.observeActiveLedgerAccess()
@@ -318,35 +332,29 @@ class ExpenseRepository(
         expense: Expense,
     ): Result<RepaymentDraft> = detailRepository.createRepaymentDraftFromExpense(expectedBinding, expense)
 
-    override suspend fun confirmExpense(id: Long, expectedRowVersion: Long): Result<Expense> =
-        pendingRepository.confirmExpense(id, expectedRowVersion)
+    override suspend fun confirmExpenseAllowingOffline(
+        expectedBinding: LogicalSessionBinding, expense: Expense,
+    ): Result<ExpenseCommandAcceptance> = pendingRepository.confirmExpenseAllowingOffline(expectedBinding, expense)
 
-    override suspend fun rejectExpense(id: Long, expectedRowVersion: Long): Result<Expense> =
-        pendingRepository.rejectExpense(id, expectedRowVersion)
+    override suspend fun rejectExpenseAllowingOffline(
+        expectedBinding: LogicalSessionBinding, expense: Expense,
+    ): Result<ExpenseCommandAcceptance> = pendingRepository.rejectExpenseAllowingOffline(expectedBinding, expense)
 
-    override suspend fun confirmExpenseAllowingOffline(expense: Expense): Result<ExpenseStateOutcome> =
-        pendingRepository.confirmExpenseAllowingOffline(expense)
+    override suspend fun undoRejectExpense(
+        expectedBinding: LogicalSessionBinding, expense: Expense,
+    ): Result<ExpenseCommandAcceptance> = pendingRepository.undoRejectExpense(expectedBinding, expense)
 
-    override suspend fun rejectExpenseAllowingOffline(expense: Expense): Result<ExpenseStateOutcome> =
-        pendingRepository.rejectExpenseAllowingOffline(expense)
+    override suspend fun markNotDuplicateAllowingOffline(
+        expectedBinding: LogicalSessionBinding, expense: Expense,
+    ): Result<ExpenseCommandAcceptance> = pendingRepository.markNotDuplicateAllowingOffline(expectedBinding, expense)
 
-    override suspend fun undoRejectExpense(id: Long, expectedRowVersion: Long): Result<Expense> =
-        pendingRepository.undoRejectExpense(id, expectedRowVersion)
+    override suspend fun retryOcrAllowingOffline(
+        expectedBinding: LogicalSessionBinding, expense: Expense,
+    ): Result<ExpenseCommandAcceptance> = pendingRepository.retryOcrAllowingOffline(expectedBinding, expense)
 
-    override suspend fun markNotDuplicateAllowingOffline(expense: Expense): Result<ExpenseStateOutcome> =
-        pendingRepository.markNotDuplicateAllowingOffline(expense)
-
-    suspend fun retryOcr(id: Long, expectedRowVersion: Long): Result<Expense> =
-        detailRepository.retryOcr(id, expectedRowVersion)
-
-    override suspend fun retryOcrAllowingOffline(expense: Expense): Result<ExpenseStateOutcome> =
-        detailRepository.retryOcrAllowingOffline(expense)
-
-    override suspend fun recognizeTextAllowingOffline(expense: Expense, rawText: String): Result<ExpenseStateOutcome> =
-        detailRepository.recognizeTextAllowingOffline(expense, rawText)
-
-    override suspend fun markNotDuplicate(id: Long, expectedRowVersion: Long): Result<Expense> =
-        pendingRepository.markNotDuplicate(id, expectedRowVersion)
+    override suspend fun recognizeTextAllowingOffline(
+        expectedBinding: LogicalSessionBinding, expense: Expense, rawText: String,
+    ): Result<ExpenseCommandAcceptance> = pendingRepository.recognizeTextAllowingOffline(expectedBinding, expense, rawText)
 
     suspend fun fetchDuplicates(): Result<List<Expense>> =
         detailRepository.fetchDuplicates()

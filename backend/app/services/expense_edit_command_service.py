@@ -13,6 +13,7 @@ from app.services.idempotency import (
     claim_idempotent_request,
     mark_idempotency_succeeded,
 )
+from app.services.pending_fx_task_service import prepare_pending_expense_fx, submit_pending_expense_fx
 
 _EDIT_OPERATION = "patch_expense"
 
@@ -22,6 +23,8 @@ def edit_expense_submission(
     *,
     expense_id: int,
     tenant_id: str,
+    initiator_account_id: int,
+    initiator_device_id: int | None,
     expected_row_version: int,
     request_expected_row_version: int,
     idempotency_key: str | None,
@@ -60,6 +63,8 @@ def edit_expense_submission(
             update_payload.model_copy(update={"expected_row_version": expected_row_version}),
             commit=False,
         )
+        fx_task = prepare_pending_expense_fx(db, expense=expense,
+            initiator_account_id=initiator_account_id, initiator_device_id=initiator_device_id)
         if claim is not None:
             mark_idempotency_succeeded(
                 db,
@@ -68,6 +73,8 @@ def edit_expense_submission(
                 resource_id=str(expense_id),
             )
         db.commit()
+        if fx_task is not None:
+            submit_pending_expense_fx(db, fx_task)
         db.refresh(expense)
         return expense
     except (AppError, SQLAlchemyError):

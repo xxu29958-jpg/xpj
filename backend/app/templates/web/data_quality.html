@@ -28,6 +28,12 @@
       <span>{% if can_write %}去补金额{% else %}查看缺金额{% endif %} →</span>
     </a>
     {% endif %}
+    {% if summary.missing_fx > 0 %}
+    <a class="quality-action" href="/web/pending?ledger_id={{ selected_ledger_id }}&amp;filter=missing_fx">
+      <span><strong>{{ summary.missing_fx }} 条待补汇率</strong><small>原币金额已保留，折算后仍需核对</small></span>
+      <span>{% if can_write %}去处理汇率{% else %}查看账单{% endif %} →</span>
+    </a>
+    {% endif %}
     {% if summary.missing_merchant > 0 %}
     <a class="quality-action" href="/web/pending?ledger_id={{ selected_ledger_id }}&amp;filter=missing_merchant">
       <span><strong>{{ summary.missing_merchant }} 条缺商家</strong></span>
@@ -73,7 +79,7 @@
   <div class="quality-metric is-primary">
     <span class="quality-metric-label">待确认总数</span>
     <span class="quality-metric-value">{{ summary.pending_total }}</span>
-    <span class="quality-metric-note">含缺金额 / 缺商家 / 疑似重复</span>
+    <span class="quality-metric-note">含缺金额 / 待补汇率 / 缺商家 / 疑似重复</span>
   </div>
   <div class="quality-metric{% if summary.missing_amount > 0 %} is-warning{% endif %}">
     <span class="quality-metric-label">缺金额</span>

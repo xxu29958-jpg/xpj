@@ -178,7 +178,7 @@ def test_an_intervening_correction_keeps_the_original_retry_in_occ_conflict_afte
     assert _claim(headers) is None
 
 
-def test_pending_confirmation_exposes_its_historical_basis_and_requires_explicit_retry_after_rate_save(client, identity):
+def test_pending_confirmation_requires_review_of_a_new_historical_conversion_after_rate_save(client, identity):
     expense_id = _historical_expense(confirmed=False)
     before = _stored_state(expense_id)
     url = f"/api/expenses/{expense_id}/confirm"
@@ -192,6 +192,18 @@ def test_pending_confirmation_exposes_its_historical_basis_and_requires_explicit
     ))
     assert _stored_state(expense_id) == before
     assert _claim(headers) is None
+    _missing_rate(client.post(url, headers=headers, json=body), currency_code="USD", rate_date="2026-05-04")
+    reviewed = client.patch(f"/api/expenses/{expense_id}", headers=idem(identity.app_headers), json={
+        **body, "original_currency_code": "USD", "original_amount_minor": 100,
+    })
+    assert reviewed.status_code == 200, reviewed.text
+    assert (reviewed.json()["status"], reviewed.json()["fx_status"], reviewed.json()["amount_cents"]) == (
+        "pending", "ready", 200,
+    )
+    assert reviewed.json()["row_version"] > body["expected_row_version"]
+    assert _claim(headers) is None
+    headers = idem(identity.app_headers)
+    body = {"expected_row_version": reviewed.json()["row_version"]}
     accepted = client.post(url, headers=headers, json=body)
     assert accepted.status_code == 200, accepted.text
     fact = accepted.json()

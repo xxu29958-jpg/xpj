@@ -2,123 +2,76 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
-import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseRecognizeTextRequestDto
 import kotlinx.coroutines.test.runTest
 import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
-/**
- * ADR-0042 Slice E-2 "粘贴文字识别" offline fallback
- * (``recognizeTextAllowingOffline``). Body-carrying like
- * [ExpensePendingRepositoryOutboxSplitsTest] (the pasted ``raw_text`` is
- * persisted on the row), but the response is an [Expense] so the outcome reuses
- * [ExpenseStateOutcome] (like retry-OCR): an IOException returns
- * [ExpenseStateOutcome.Queued] with the expense UNCHANGED (the server does the
- * parsing — nothing to project optimistically) and enqueues a body-carrying row
- * whose token is stripped to zero and whose idempotency key matches the direct
- * POST; a direct 2xx returns [ExpenseStateOutcome.Synced] with the parsed expense
- * and no enqueue.
- *
- * Shared identity/session setup lives in [ExpensePendingRepositoryOutboxTestBase].
- */
+/** Original pasted text is admitted unchanged; recognition results belong to worker completion. */
 internal class ExpensePendingRepositoryOutboxRecognizeTextTest : ExpensePendingRepositoryOutboxTestBase() {
-
     private val pastedText = "星巴克 拿铁 ¥35 2026-05-20"
 
-    private fun recognizeTextRepo(api: ApiService, outbox: OutboxRepository): ExpenseRepository = ExpenseRepository(
-        expenseDao = FakeExpenseDao(),
-        binding = testServerSessionBinding(
-            apiClient = TestApiServiceFactory(api),
-            settingsStore = seededSettingsStore(),
-            tokenStore = seededTokenStore(),
-        ),
-        deviceNameProvider = { "Android Test" },
-        offlineMutations = ExpenseOfflineMutationWiring(
-            outbox = outbox,
-            recognizeTextAdapter = moshi().adapter(ExpenseRecognizeTextRequestDto::class.java),
-            correctionAdapter = com.ticketbox.OutboxAdapterGraph().correctionAdapter,
-            billSplitReceiptAdapter = com.ticketbox.OutboxAdapterGraph().billSplitReceiptAdapter,
-            billSplitCreateAdapter = com.ticketbox.OutboxAdapterGraph().billSplitCreateAdapter,
-            legacyCorrectionAdapter = com.ticketbox.OutboxAdapterGraph().legacyCorrectionAdapter,
-            manualCreateAdapter = com.ticketbox.OutboxAdapterGraph().manualCreateAdapter,
-        ),
-    )
-
     @Test
-    fun `recognizeText IOException returns Queued unchanged + enqueues body without token`() = runTest {
+    fun `pasted text survives admission and a worker network failure with its original key`() = runTest {
         val baseline = baselineExpense()
         val dao = FakePendingMutationDao()
-        val outbox = testOutboxRepository(dao = dao)
-        // ADR-0042: capture the Idempotency-Key the repository supplied on the
-        // direct POST so we can assert the enqueued row carries the SAME key.
-        var directIdempotencyKey: String? = null
-        val api = object : ApiService by FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0) {
-            override suspend fun recognizeText(
-                id: String,
-                request: ExpenseRecognizeTextRequestDto,
-                idempotencyKey: String?,
-            ): ExpenseDto {
-                directIdempotencyKey = idempotencyKey
-                throw IOException("net out")
-            }
-        }
-
-        val outcome = recognizeTextRepo(api, outbox)
-            .recognizeTextAllowingOffline(baseline, pastedText)
-            .getOrThrow()
-
-        // Queued is the expense UNCHANGED — the server parses, nothing to project.
-        assertTrue(outcome is ExpenseStateOutcome.Queued)
-        assertEquals(baseline, outcome.expense, "offline Queued expense must be the unchanged baseline")
-
-        // One row enqueued; token authoritative on the row, stripped from payload,
-        // but the pasted raw_text is preserved so the replay re-sends it.
-        assertEquals(1, dao.rows.size)
-        val row = dao.rows.values.single()
-        assertEquals(PendingMutationType.RecognizeText.wireValue, row.type)
-        assertEquals("expense:${baseline.id}", row.targetId)
-        assertEquals(baseline.rowVersion, row.expectedRowVersion)
-        assertEquals(PendingMutationStatus.Pending.wireValue, row.status)
-        assertTrue("\"raw_text\":\"$pastedText\"" in row.payload, "payload must carry the pasted text: ${row.payload}")
-        assertTrue(
-            "\"expected_row_version\":0" in row.payload,
-            "payload token must be stripped to zero (row is the source of truth): ${row.payload}",
-        )
-        // ADR-0042: the direct attempt + the enqueued row share ONE intent-time
-        // key — that's what lets a committed-but-unseen replay HIT the server's
-        // recorded success instead of false-409ing on the stale token.
-        assertEquals(
-            directIdempotencyKey,
-            row.idempotencyKey,
-            "enqueued row must carry the same key the direct POST used",
-        )
-        assertTrue(row.idempotencyKey != null, "RecognizeText row must carry an idempotency key")
+        val outbox = testOutboxRepository(dao)
+        val api = ApiServiceStub(extras = ApiServiceStubExtras(recognizeTextResult = ApiResult.Throw(IOException("offline"))))
+        val repo = buildRepository(api, outbox)
+        val binding = requireNotNull(repo.captureDeferredLedgerBinding())
+        val accepted = repo.recognizeTextAllowingOffline(binding, baseline, pastedText).getOrThrow()
+        val original = dao.rows.values.single()
+        assertEquals(baseline, accepted.expense)
+        assertEquals(listOf(original.id), accepted.rowIds)
+        assertEquals(PendingMutationType.RecognizeText.wireValue, original.type)
+        assertEquals(PendingMutationStatus.Pending.wireValue, original.status)
+        assertEquals("expense:${baseline.id}", original.targetId)
+        assertEquals(binding.ownerKey, original.ownerKey)
+        assertEquals(binding.ledgerId, original.ledgerId)
+        assertEquals(binding.serverUrl, original.serverUrl)
+        assertEquals(baseline.rowVersion, original.expectedRowVersion)
+        val adapter = moshi().adapter(ExpenseRecognizeTextRequestDto::class.java)
+        val request = requireNotNull(adapter.fromJson(original.payload))
+        assertEquals(pastedText, request.rawText)
+        assertEquals(0L, request.expectedRowVersion)
+        assertNotNull(original.idempotencyKey)
+        assertNull(api.lastRecognizeTextRequest)
+        assertNull(api.lastRecognizeTextIdempotencyKey)
+        val dispatcher = RecognizeTextDispatcher(apiProvider = { api }, payloadAdapter = adapter,
+            publishExpense = { _, _ -> error("An unavailable transport cannot publish recognition") })
+        assertEquals(1, OutboxDrainEngine(outbox, listOf(dispatcher)).drainOnce().retryable)
+        val retained = dao.rows.values.single()
+        assertEquals(PendingMutationStatus.Pending.wireValue, retained.status)
+        assertEquals(original.idempotencyKey, api.lastRecognizeTextIdempotencyKey)
+        assertEquals(original.idempotencyKey, retained.idempotencyKey)
+        assertEquals(original.payload, retained.payload)
+        assertEquals(baseline.rowVersion, api.lastRecognizeTextRequest?.expectedRowVersion)
     }
 
     @Test
-    fun `recognizeText direct 2xx returns Synced parsed expense, no enqueue`() = runTest {
+    fun `only accepted worker recognition publishes the parsed snapshot`() = runTest {
         val baseline = baselineExpense()
         val dao = FakePendingMutationDao()
-        val outbox = testOutboxRepository(dao = dao)
-        val api = object : ApiService by FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0) {
-            override suspend fun recognizeText(
-                id: String,
-                request: ExpenseRecognizeTextRequestDto,
-                idempotencyKey: String?,
-            ): ExpenseDto = successExpenseDto()
-        }
-
-        val outcome = recognizeTextRepo(api, outbox)
-            .recognizeTextAllowingOffline(baseline, pastedText)
-            .getOrThrow()
-
-        assertTrue(outcome is ExpenseStateOutcome.Synced)
-        // Synced carries the server-parsed expense (row_version bumped to 2).
-        assertEquals(2L, outcome.expense.rowVersion)
-        assertEquals(0, dao.rows.size, "no row should be enqueued on direct success")
+        val outbox = testOutboxRepository(dao)
+        val parsed = successExpenseDto()
+        val api = ApiServiceStub(extras = ApiServiceStubExtras(recognizeTextResult = ApiResult.Success(parsed)))
+        val repo = buildRepository(api, outbox)
+        val accepted = repo.recognizeTextAllowingOffline(requireNotNull(repo.captureDeferredLedgerBinding()), baseline, pastedText).getOrThrow()
+        assertEquals(baseline, accepted.expense)
+        assertNull(api.lastRecognizeTextRequest)
+        val original = dao.rows.values.single()
+        val published = mutableListOf<ExpenseDto>()
+        val dispatcher = RecognizeTextDispatcher(apiProvider = { api },
+            payloadAdapter = moshi().adapter(ExpenseRecognizeTextRequestDto::class.java),
+            publishExpense = { _, expense -> published += expense })
+        assertEquals(1, OutboxDrainEngine(outbox, listOf(dispatcher)).drainOnce().done)
+        assertEquals(listOf(parsed), published)
+        assertEquals(PendingMutationStatus.Done.wireValue, dao.rows.values.single().status)
+        assertEquals(original.idempotencyKey, api.lastRecognizeTextIdempotencyKey)
+        assertEquals(original.expectedRowVersion, api.lastRecognizeTextRequest?.expectedRowVersion)
     }
 }

@@ -32,6 +32,14 @@ def gross_original_minor(expense: Expense) -> int:
     raise AppError("amount_required", status_code=409)
 
 
+def _missing_rate(expense: Expense, requested_date: date) -> AppError:
+    return AppError("exchange_rate_pending", status_code=409, details={
+        "currency_code": expense.original_currency_code,
+        "home_currency_code": expense.home_currency_code,
+        "rate_date": requested_date.isoformat(),
+    })
+
+
 def resolve_offset_money(
     db: Session,
     *,
@@ -65,13 +73,16 @@ def resolve_offset_money(
         currency_code=expense.original_currency_code,
         rate_date=payload.accounting_date,
     )
+    if status != FX_STATUS_READY or rate is None:
+        db.rollback()
+        raise _missing_rate(expense, payload.accounting_date)
     amount_cents = calculate_cny_cents(
         home_currency_code=expense.home_currency_code,
         original_currency_code=expense.original_currency_code,
         original_amount_minor=original_amount_minor,
         exchange_rate_to_cny=rate,
     )
-    if status != FX_STATUS_READY or rate is None or amount_cents is None or amount_cents <= 0:
+    if amount_cents is None or amount_cents <= 0:
         db.rollback()
         raise AppError("exchange_rate_required", status_code=409)
     return OffsetMoney(
@@ -127,7 +138,7 @@ def resolve_corrected_offset_money(
             rate_date=payload.accounting_date,
         )
         if status != FX_STATUS_READY or rate is None:
-            raise AppError("exchange_rate_required", status_code=409)
+            raise _missing_rate(expense, payload.accounting_date)
 
     amount_cents = calculate_cny_cents(
         home_currency_code=expense.home_currency_code,

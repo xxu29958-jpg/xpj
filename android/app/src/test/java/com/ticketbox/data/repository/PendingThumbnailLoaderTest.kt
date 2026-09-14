@@ -92,35 +92,35 @@ private class ThumbnailFakeReviewActions(
             ?: Result.failure(IllegalStateException("unexpected thumbnail id $id"))
     }
 
-    override suspend fun updateExpense(id: Long, draft: ExpenseDraft, baseline: Expense?): Result<Expense> =
-        Result.failure(IllegalStateException("not exercised"))
+    override fun observeExpenseCommands() = flowOf(ExpenseCommandObservation(null, emptyList()))
 
     override suspend fun saveExpenseAllowingOffline(
-        id: Long,
-        draft: ExpenseDraft,
-        baseline: Expense,
-    ): Result<SaveOutcome> = Result.failure(IllegalStateException("not exercised"))
+        expectedBinding: LogicalSessionBinding, id: Long, draft: ExpenseDraft, baseline: Expense,
+    ): Result<ExpenseCommandAcceptance> = Result.failure(IllegalStateException("not exercised"))
 
-    override suspend fun confirmExpense(id: Long, expectedRowVersion: Long): Result<Expense> =
-        Result.failure(IllegalStateException("not exercised"))
+    override suspend fun saveAndConfirmExpense(
+        expectedBinding: LogicalSessionBinding, expense: Expense, draft: ExpenseDraft,
+    ): Result<ExpenseCommandAcceptance> = Result.failure(IllegalStateException("not exercised"))
 
-    override suspend fun rejectExpense(id: Long, expectedRowVersion: Long): Result<Expense> =
-        Result.failure(IllegalStateException("not exercised"))
+    override suspend fun confirmExpenses(
+        expectedBinding: LogicalSessionBinding, expenses: List<Expense>,
+    ): Result<List<ExpenseCommandAcceptance>> = Result.failure(IllegalStateException("not exercised"))
 
-    override suspend fun confirmExpenseAllowingOffline(expense: Expense): Result<ExpenseStateOutcome> =
-        Result.failure(IllegalStateException("not exercised"))
+    override suspend fun confirmExpenseAllowingOffline(
+        expectedBinding: LogicalSessionBinding, expense: Expense,
+    ): Result<ExpenseCommandAcceptance> = Result.failure(IllegalStateException("not exercised"))
 
-    override suspend fun rejectExpenseAllowingOffline(expense: Expense): Result<ExpenseStateOutcome> =
-        Result.failure(IllegalStateException("not exercised"))
+    override suspend fun rejectExpenseAllowingOffline(
+        expectedBinding: LogicalSessionBinding, expense: Expense,
+    ): Result<ExpenseCommandAcceptance> = Result.failure(IllegalStateException("not exercised"))
 
-    override suspend fun undoRejectExpense(id: Long, expectedRowVersion: Long): Result<Expense> =
-        Result.failure(IllegalStateException("not exercised"))
+    override suspend fun undoRejectExpense(
+        expectedBinding: LogicalSessionBinding, expense: Expense,
+    ): Result<ExpenseCommandAcceptance> = Result.failure(IllegalStateException("not exercised"))
 
-    override suspend fun markNotDuplicate(id: Long, expectedRowVersion: Long): Result<Expense> =
-        Result.failure(IllegalStateException("not exercised"))
-
-    override suspend fun markNotDuplicateAllowingOffline(expense: Expense): Result<ExpenseStateOutcome> =
-        Result.failure(IllegalStateException("not exercised"))
+    override suspend fun markNotDuplicateAllowingOffline(
+        expectedBinding: LogicalSessionBinding, expense: Expense,
+    ): Result<ExpenseCommandAcceptance> = Result.failure(IllegalStateException("not exercised"))
 
     override suspend fun categories(): Result<List<String>> = Result.success(emptyList())
 

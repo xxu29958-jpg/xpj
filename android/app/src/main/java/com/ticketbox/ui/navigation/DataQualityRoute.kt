@@ -68,6 +68,7 @@ internal fun openDataQualityRemediation(
         DataQualityRemediation.InboxAll -> NeedsReviewFilter.All
         DataQualityRemediation.InboxReady -> NeedsReviewFilter.ReadyToConfirm
         DataQualityRemediation.InboxMissingAmount -> NeedsReviewFilter.NeedsAmount
+        DataQualityRemediation.InboxMissingFx -> NeedsReviewFilter.NeedsFx
         DataQualityRemediation.InboxMissingMerchant -> NeedsReviewFilter.NeedsMerchant
         DataQualityRemediation.InboxMissingCategory -> NeedsReviewFilter.NeedsCategory
         DataQualityRemediation.InboxDuplicate -> NeedsReviewFilter.Duplicate

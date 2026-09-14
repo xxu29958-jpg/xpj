@@ -1,11 +1,15 @@
 package com.ticketbox.ui.screens.pending
 
+import android.content.Context
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.test.core.app.ApplicationProvider
+import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseSourceValues
 import com.ticketbox.ui.theme.TicketboxTheme
@@ -44,12 +48,32 @@ class PendingViewerRowCtaTest {
         composeRule.onNodeWithText("确认入账").assertIsEnabled()
     }
 
-    private fun row(readOnly: Boolean, busy: Boolean, canMutate: Boolean) {
+    @Test
+    fun foreignRowWithoutOriginalAmountShowsMissingAmountRatherThanWaitingForFx() {
+        row(
+            readOnly = false,
+            busy = false,
+            canMutate = true,
+            expense = confirmReadyExpense().copy(
+                amountCents = null,
+                originalAmountMinor = null,
+                originalCurrency = CurrencyCode.USD,
+                originalCurrencyCode = CurrencyCode.USD,
+                fxStatus = "pending",
+            ),
+        )
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        composeRule.onNodeWithText(context.getString(R.string.pending_row_amount_missing)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.pending_row_signal_amount)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.expense_fx_waiting)).assertDoesNotExist()
+    }
+
+    private fun row(readOnly: Boolean, busy: Boolean, canMutate: Boolean, expense: Expense = confirmReadyExpense()) {
         composeRule.setContent {
             TicketboxTheme(skin = AppSkin.Default) {
                 PendingExpenseReviewRow(
                     item = PendingExpenseReviewItem(
-                        expense = confirmReadyExpense(),
+                        expense = expense,
                         thumbnail = null,
                         compact = false,
                         showInlineActions = false,

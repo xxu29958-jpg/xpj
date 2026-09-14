@@ -155,6 +155,7 @@ private fun PlanBudgetProgress(budget: BudgetMonthly, currency: CurrencyDisplay)
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         style = MaterialTheme.typography.bodySmall.tabularNum(),
     )
+    com.ticketbox.ui.components.CurrencyReferenceDates(budget.referenceRates)
     if (budget.missingCurrencyCodes.isNotEmpty()) {
         Text(stringResource(R.string.budget_missing_conversion, budget.missingCurrencyCodes.joinToString("、")))
     }

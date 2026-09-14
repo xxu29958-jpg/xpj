@@ -1,5 +1,6 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.local.PendingMutationStatus
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -32,7 +33,6 @@ internal class PendingAdviceInvalidationTest : PendingViewModelReviewTestBase() 
     fun confirmFiresAdviceInvalidation() = review {
         val target = expense(id = 1, amountCents = 100L)
         val fake = FakeReviewActions(pending = listOf(target))
-        fake.confirmResponder = { Result.success(target.copy(status = "confirmed")) }
         var invalidations = 0
         val vm = pendingViewModel(fake).also { it.onAdviceInputsChanged = { invalidations += 1 } }
         advanceUntilIdle()
@@ -41,6 +41,13 @@ internal class PendingAdviceInvalidationTest : PendingViewModelReviewTestBase() 
         advanceUntilIdle()
 
         assertEquals(1, fake.confirmCalls)
+        assertEquals(0, invalidations, "local admission is not a financial fact")
+        fake.pending = emptyList()
+        fake.publishCommand(target.id, PendingMutationType.ConfirmExpense, PendingMutationStatus.Done)
+        advanceUntilIdle()
         assertEquals(1, invalidations)
+        fake.commands.value = fake.commands.value.map { it.copy(row = it.row.copy(retryCount = 1)) }
+        advanceUntilIdle()
+        assertEquals(1, invalidations, "the same original completion is consumed once")
     }
 }

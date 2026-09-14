@@ -26,7 +26,12 @@ from app.services.currency_binding_service import (
     require_runtime_home_currency_code,
     resolve_write_capability,
 )
-from app.services.money_projection_service import CategorySpend, project_category_spend, sum_projected_amounts
+from app.services.money_projection_service import (
+    CategorySpend,
+    ProjectionReference,
+    project_category_spend,
+    sum_projected_amounts,
+)
 from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.recurring_service import recurring_monthly_total
 from app.services.spending_contract_service import (
@@ -152,6 +157,7 @@ def _fixed_amount_cents_for_month(
     month: str,
     timezone_name: str | None,
     home_currency_code: str,
+    reference_rates: set[ProjectionReference] | None = None,
 ) -> int | None:
     items = db.scalars(
         monthly_recurring_items_query(
@@ -160,7 +166,8 @@ def _fixed_amount_cents_for_month(
             timezone_name=timezone_name,
         )
     )
-    return recurring_monthly_total(db, tenant_id=tenant_id, items=items, home_currency_code=home_currency_code, month=month)
+    return recurring_monthly_total(db, tenant_id=tenant_id, items=items, home_currency_code=home_currency_code,
+        month=month, reference_rates=reference_rates)
 
 
 def _month_spend_by_category(
@@ -241,8 +248,10 @@ def _budget_response(
         (spend.amount_cents for category, spend in spend_by_category.items() if category not in excluded_set),
         label="budget.spent_total",
     )
+    references: set[ProjectionReference] = set()
     fixed_amount_cents = _fixed_amount_cents_for_month(
-        db, tenant_id=tenant_id, month=month, timezone_name=timezone_name, home_currency_code=home
+        db, tenant_id=tenant_id, month=month, timezone_name=timezone_name, home_currency_code=home,
+        reference_rates=references,
     )
     if fixed_amount_cents is None:
         missing.add("UNKNOWN")
@@ -263,6 +272,7 @@ def _budget_response(
         ledger_id=tenant_id,
         home_currency_code=home,
         missing_currency_codes=sorted(missing),
+        reference_rates=sorted(references),
         month=month,
         configured=budget is not None,
         row_version=budget.row_version if budget else None,

@@ -9,23 +9,13 @@ import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.ProtectedImage
 
-/**
- * 架构债 #5：ExpenseEditViewModel 依赖反转用接口。
- *
- * 抽出编辑屏（主编辑面 + items 编辑器 + splits 编辑器）所用到的
- * Repository 方法，便于在单元测试里以 Fake 实现替换
- * [ExpenseRepository]（final 门面，无法直接 fake）——与
- * [PendingReviewActions] / TagActions 同一模式。
- *
- * 注意：仅声明编辑屏必需的方法；其它 Repository 能力仍直接挂在
- * [ExpenseRepository] 上，本接口不负责。与 [PendingReviewActions]
- * 重叠的签名（canModifyLedger / fetchThumbnail / updateExpense /
- * saveExpenseAllowingOffline / confirm·reject·markNotDuplicate
- * AllowingOffline / categories）由 [ExpenseRepository] 的同一个
- * override 同时满足两个接口。
- */
+/** Actions consumed by the pending editor and its existing item/split editors. */
 interface ExpenseEditActions {
     fun canModifyLedger(): Boolean = true
+    fun captureDeferredLedgerBinding(): LogicalSessionBinding?
+    suspend fun fetchExpenseFx(binding: LogicalSessionBinding, id: Long): Result<com.ticketbox.domain.model.BackgroundTask?>
+    suspend fun retryExpenseFx(binding: LogicalSessionBinding, expense: Expense): Result<com.ticketbox.domain.model.BackgroundTask>
+    suspend fun fetchExpenseForFxReview(binding: LogicalSessionBinding, id: Long): Result<Expense>
     suspend fun fetchExpense(id: Long): Result<Expense>
 
     /**
@@ -40,26 +30,28 @@ interface ExpenseEditActions {
     suspend fun fetchThumbnail(id: Long): Result<ProtectedImage>
     suspend fun fetchImage(id: Long): Result<ProtectedImage>
 
-    /** Direct PATCH only — see [PendingReviewActions.updateExpense] for the
-     *  chained-flow rationale. The edit screen only calls this on the
-     *  no-baseline fallback path (no OCC token to protect). */
-    suspend fun updateExpense(
-        id: Long,
-        draft: ExpenseDraft,
-        baseline: Expense?,
-    ): Result<Expense>
-
+    fun observeExpenseCommands(): kotlinx.coroutines.flow.Flow<ExpenseCommandObservation>
     suspend fun saveExpenseAllowingOffline(
-        id: Long,
-        draft: ExpenseDraft,
-        baseline: Expense,
-    ): Result<SaveOutcome>
-
-    suspend fun confirmExpenseAllowingOffline(expense: Expense): Result<ExpenseStateOutcome>
-    suspend fun rejectExpenseAllowingOffline(expense: Expense): Result<ExpenseStateOutcome>
-    suspend fun retryOcrAllowingOffline(expense: Expense): Result<ExpenseStateOutcome>
-    suspend fun recognizeTextAllowingOffline(expense: Expense, rawText: String): Result<ExpenseStateOutcome>
-    suspend fun markNotDuplicateAllowingOffline(expense: Expense): Result<ExpenseStateOutcome>
+        expectedBinding: LogicalSessionBinding, id: Long, draft: ExpenseDraft, baseline: Expense,
+    ): Result<ExpenseCommandAcceptance>
+    suspend fun saveAndConfirmExpense(
+        expectedBinding: LogicalSessionBinding, expense: Expense, draft: ExpenseDraft,
+    ): Result<ExpenseCommandAcceptance>
+    suspend fun confirmExpenseAllowingOffline(
+        expectedBinding: LogicalSessionBinding, expense: Expense,
+    ): Result<ExpenseCommandAcceptance>
+    suspend fun rejectExpenseAllowingOffline(
+        expectedBinding: LogicalSessionBinding, expense: Expense,
+    ): Result<ExpenseCommandAcceptance>
+    suspend fun retryOcrAllowingOffline(
+        expectedBinding: LogicalSessionBinding, expense: Expense,
+    ): Result<ExpenseCommandAcceptance>
+    suspend fun recognizeTextAllowingOffline(
+        expectedBinding: LogicalSessionBinding, expense: Expense, rawText: String,
+    ): Result<ExpenseCommandAcceptance>
+    suspend fun markNotDuplicateAllowingOffline(
+        expectedBinding: LogicalSessionBinding, expense: Expense,
+    ): Result<ExpenseCommandAcceptance>
     suspend fun fetchExpenseItems(id: Long): Result<ExpenseItems>
     suspend fun acknowledgeItemsMismatchAllowingOffline(
         expense: Expense,

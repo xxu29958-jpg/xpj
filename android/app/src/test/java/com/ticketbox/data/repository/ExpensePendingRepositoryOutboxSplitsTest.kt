@@ -54,7 +54,11 @@ internal class ExpensePendingRepositoryOutboxSplitsTest : ExpensePendingReposito
             billSplitCreateAdapter = com.ticketbox.OutboxAdapterGraph().billSplitCreateAdapter,
             legacyCorrectionAdapter = com.ticketbox.OutboxAdapterGraph().legacyCorrectionAdapter,
             manualCreateAdapter = com.ticketbox.OutboxAdapterGraph().manualCreateAdapter,
-        ),
+
+        patchExpenseAdapter = com.ticketbox.OutboxAdapterGraph().patchExpenseAdapter,
+        expenseStateTokenAdapter = com.ticketbox.OutboxAdapterGraph().expenseStateTokenAdapter,
+        recognizeTextAdapter = com.ticketbox.OutboxAdapterGraph().recognizeTextAdapter,
+),
     )
 
     @Test

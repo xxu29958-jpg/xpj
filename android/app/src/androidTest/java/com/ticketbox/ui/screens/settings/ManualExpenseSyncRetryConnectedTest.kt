@@ -80,7 +80,7 @@ class ManualExpenseSyncRetryConnectedTest {
                 SyncStatusScreenContent(
                     state = OutboxStatusUiState(bindingReady = true, status = OutboxStatus(0, emptyList(), listOf(row)),
                         manualCreations = mapOf(row.id to com.ticketbox.data.repository.ManualExpenseCreationProjection(row, null))),
-                    actions = SyncStatusActions(onRepairCorrectionRate = { _, _ -> }, onOpenRateSubmission = {}, onOpenIncomeSubmission = {},
+                    actions = SyncStatusActions(onRefreshExpense = {}, onRepairCorrectionRate = { _, _ -> }, onOpenRateSubmission = {}, onOpenIncomeSubmission = {},
                         onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {},
                         onOpenRecurring = {}, onOpenBudget = {}, onOpenExpense = open, onKeepMine = {},
                         onDropMine = {}, onRetry = { retry() }, onDropFailed = {}, onClearQuarantined = {}),

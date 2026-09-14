@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -10,20 +11,28 @@ from sqlalchemy.orm import Session
 from app.models import BackgroundTask
 
 TaskHandler = Callable[[Session, BackgroundTask, dict[str, Any]], None]
+TaskCompletion = Callable[[Session, BackgroundTask], "PreparedBackgroundTask | None"]
 
 
 class TaskHandlerRegistry:
-    def __init__(self, handlers: dict[str, TaskHandler] | None = None) -> None:
+    def __init__(self, handlers: dict[str, TaskHandler] | None = None, *,
+        completions: dict[str, TaskCompletion] | None = None) -> None:
         self._handlers_by_type: dict[str, TaskHandler] = dict(handlers or {})
+        self._completions_by_type = dict(completions or {})
 
     def register(self, task_type: str, handler: TaskHandler) -> None:
         self._handlers_by_type[task_type] = handler
+        self._completions_by_type.pop(task_type, None)
 
     def get(self, task_type: str) -> TaskHandler | None:
         return self._handlers_by_type.get(task_type)
 
     def contains(self, task_type: str) -> bool:
         return task_type in self._handlers_by_type
+
+    def prepare_completion(self, db: Session, task: BackgroundTask) -> PreparedBackgroundTask | None:
+        completion = self._completions_by_type.get(task.task_type)
+        return completion(db, task) if completion is not None else None
 
     def snapshot(self) -> dict[str, TaskHandler]:
         return dict(self._handlers_by_type)
@@ -32,7 +41,19 @@ class TaskHandlerRegistry:
         previous = self.snapshot()
         self._handlers_by_type.clear()
         self._handlers_by_type.update(dict(handlers or {}))
+        self._completions_by_type.clear()
         return previous
+
+
+@dataclass(frozen=True)
+class PreparedBackgroundTask:
+    """A staged task bound to the handler catalog selected at admission."""
+
+    task: BackgroundTask
+    task_id: int
+    task_public_id: str
+    payload: dict[str, Any]
+    registry: TaskHandlerRegistry
 
 
 def runtime_handler_registry() -> TaskHandlerRegistry:
@@ -45,11 +66,15 @@ def runtime_handler_registry() -> TaskHandlerRegistry:
     """
     from app.services.pending_enrichment_task_service import (
         PENDING_EXPENSE_ENRICHMENT_TASK_TYPE,
+        prepare_pending_enrichment_completion,
         run_pending_expense_enrichment_task,
     )
+    from app.services.pending_fx_task_service import PENDING_EXPENSE_FX_TASK_TYPE, run_pending_expense_fx_task
 
     return TaskHandlerRegistry(
         {
             PENDING_EXPENSE_ENRICHMENT_TASK_TYPE: run_pending_expense_enrichment_task,
-        }
+            PENDING_EXPENSE_FX_TASK_TYPE: run_pending_expense_fx_task,
+        },
+        completions={PENDING_EXPENSE_ENRICHMENT_TASK_TYPE: prepare_pending_enrichment_completion},
     )

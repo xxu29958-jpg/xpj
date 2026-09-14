@@ -1,0 +1,65 @@
+<html lang="zh-CN"><head><meta charset="utf-8"></head><body>
+<main class="content"><div class="exp-row" data-expense-id="1">
+  <input class="row-check" id="row-check" type="checkbox" value="1:11" data-id="1" data-row-version="11">
+  <a class="exp-row-detail" id="row" href="#detail" data-fragment-url="/fragment/1">账单</a>
+</div></main>
+<div class="drawer-host"><div id="drawer" tabindex="-1" aria-hidden="true"></div></div>
+<div id="drawer-scrim"></div>
+<script>
+let reads = 0;
+const posts = [];
+const escape = (value) => String(value).replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;");
+function fragment(version, merchant, key, completed) {
+  return `<form method="post" data-drawer-form action="/web/expenses/1/save">
+    <input type="hidden" name="expected_row_version" value="${escape(version)}">
+    <input type="hidden" name="idempotency_key" value="${escape(key)}">
+    <input name="merchant" value="${escape(merchant)}">
+    <button id="fx-status" type="submit" formaction="/web/expenses/1/fx-status" formnovalidate>刷新汇率状态</button>
+    <button id="fx-retry" type="submit" formaction="/web/expenses/1/fx" formnovalidate>重试获取汇率</button>
+    ${completed ? '<a href="#latest" data-drawer-reload>载入最新账单</a>' : ''}
+  </form>`;
+}
+window.fetch = async (url, options) => {
+  if (options && options.method === "POST") {
+    const body = Object.fromEntries(options.body);
+    posts.push({url, version: body.expected_row_version, key: body.idempotency_key, merchant: body.merchant});
+    return {ok: true, text: async () => fragment(body.expected_row_version, body.merchant, body.idempotency_key, true)};
+  }
+  reads += 1;
+  return {ok: true, text: async () => fragment(reads === 1 ? "11" : "12", "Saved merchant", reads === 1 ? "original-key" : "new-key", false)};
+};
+function nextContent(action) {
+  return new Promise(resolve => {
+    const observer = new MutationObserver(() => {
+      observer.disconnect();
+      resolve();
+    });
+    observer.observe(document.getElementById("drawer"), {childList: true});
+    action();
+  });
+}
+</script>
+<script src="__DRAWER_URI__"></script>
+<script>
+(async () => {
+  window.TicketboxWeb.initDrawer();
+  await nextContent(() => document.getElementById("row").click());
+  document.querySelector('[name="merchant"]').value = "Unsent merchant";
+  await nextContent(() => document.getElementById("fx-status").click());
+  await nextContent(() => document.getElementById("fx-retry").click());
+  const retained = {reads, version: document.querySelector('[name="expected_row_version"]').value,
+    key: document.querySelector('[name="idempotency_key"]').value,
+    merchant: document.querySelector('[name="merchant"]').value,
+    rowVersion: document.getElementById("row-check").getAttribute("data-row-version")};
+  const reload = document.querySelector("[data-drawer-reload]");
+  if (!reload) {
+    window.__webConsumerProbe = {posts, retained, loaded: null};
+    return;
+  }
+  await nextContent(() => reload.click());
+  window.__webConsumerProbe = {posts, retained, loaded: {reads,
+    version: document.querySelector('[name="expected_row_version"]').value,
+    merchant: document.querySelector('[name="merchant"]').value,
+    rowVersion: document.getElementById("row-check").getAttribute("data-row-version")}};
+})();
+</script></body></html>

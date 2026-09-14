@@ -22,6 +22,7 @@ __all__ = [
 class DataQualitySummaryResponse(BaseModel):
     pending_total: int
     missing_amount: int
+    missing_fx: int
     missing_merchant: int
     missing_category: int
     missing_category_pending: int

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.money_contract import projection_values_sum_to_int
 from app.services.category_service import normalize_category
-from app.services.exchange_rate_service import calculate_cny_cents, resolve_payload_rate
+from app.services.exchange_rate_service import calculate_cny_cents, resolve_payload_rate, resolve_valuation_rate
 
 
 @dataclass(frozen=True)
@@ -15,6 +15,13 @@ class ProjectionGap:
     source_currency_code: str | None
     home_currency_code: str
     rate_date: date | None
+
+
+@dataclass(frozen=True, order=True)
+class ProjectionReference:
+    source_currency_code: str
+    home_currency_code: str
+    rate_date: date
 
 
 def ordered_projection_gaps(gaps) -> tuple[ProjectionGap, ...]:
@@ -59,18 +66,39 @@ def project_category_spend(
 def project_recorded_amount(
     db: Session, *, tenant_id: str, amount_minor: int, source_currency: str | None,
     home_currency: str | None, rate_date: date | None, missing_rates: set[ProjectionGap] | None = None,
-    rate_cache: dict | None = None,
+    rate_cache: dict | None = None, reference_rates: set[ProjectionReference] | None = None,
 ) -> int | None:
-    amount = _convert_recorded_amount(db, tenant_id=tenant_id, amount_minor=amount_minor,
-        source_currency=source_currency, home_currency=home_currency, rate_date=rate_date, rate_cache=rate_cache)
+    return _project_amount(db, tenant_id=tenant_id, amount_minor=amount_minor, source_currency=source_currency,
+        home_currency=home_currency, rate_date=rate_date, missing_rates=missing_rates, rate_cache=rate_cache,
+        resolve_rate=resolve_payload_rate, reference_rates=reference_rates)
+
+
+def project_valuation_amount(
+    db: Session, *, tenant_id: str, amount_minor: int, source_currency: str | None,
+    home_currency: str | None, rate_date: date | None, missing_rates: set[ProjectionGap] | None = None,
+    rate_cache: dict | None = None, reference_rates: set[ProjectionReference] | None = None,
+) -> int | None:
+    """Value today's plan from the latest quote without granting historical coverage."""
+    return _project_amount(db, tenant_id=tenant_id, amount_minor=amount_minor, source_currency=source_currency,
+        home_currency=home_currency, rate_date=rate_date, missing_rates=missing_rates, rate_cache=rate_cache,
+        resolve_rate=resolve_valuation_rate, reference_rates=reference_rates)
+
+
+def _project_amount(db, *, tenant_id, amount_minor, source_currency, home_currency, rate_date,
+    missing_rates, rate_cache, resolve_rate, reference_rates,
+):
+    amount = _convert_amount(db, tenant_id=tenant_id, amount_minor=amount_minor,
+        source_currency=source_currency, home_currency=home_currency, rate_date=rate_date, rate_cache=rate_cache,
+        resolve_rate=resolve_rate, reference_rates=reference_rates)
     if amount is None and missing_rates is not None and home_currency is not None:
         missing_rates.add(ProjectionGap(source_currency, home_currency, rate_date))
     return amount
 
 
-def _convert_recorded_amount(
+def _convert_amount(
     db: Session, *, tenant_id: str, amount_minor: int, source_currency: str | None,
     home_currency: str | None, rate_date: date | None, rate_cache: dict | None,
+    resolve_rate, reference_rates: set[ProjectionReference] | None,
 ) -> int | None:
     if source_currency is None or home_currency is None:
         return None
@@ -78,15 +106,9 @@ def _convert_recorded_amount(
         return amount_minor
     if rate_date is None:
         return None
-    # Callers own this cache for one read only. Cache the rate, never rounded amounts.
-    key = (tenant_id, source_currency, home_currency, rate_date)
-    if rate_cache is not None and key in rate_cache:
-        rate = rate_cache[key]
-    else:
-        rate, _, _, _ = resolve_payload_rate(db, tenant_id=tenant_id, currency_code=source_currency,
-            home_currency_code=home_currency, rate_date=rate_date)
-        if rate_cache is not None:
-            rate_cache[key] = rate
+    rate = _projection_rate(db, tenant_id=tenant_id, source_currency=source_currency,
+        home_currency=home_currency, rate_date=rate_date, rate_cache=rate_cache,
+        resolve_rate=resolve_rate, reference_rates=reference_rates)
     converted = calculate_cny_cents(
         home_currency_code=home_currency, original_currency_code=source_currency,
         original_amount_minor=abs(amount_minor), exchange_rate_to_cny=rate,
@@ -94,3 +116,22 @@ def _convert_recorded_amount(
     if converted is None:
         return None
     return -converted if amount_minor < 0 else converted
+
+
+def _projection_rate(db, *, tenant_id, source_currency, home_currency, rate_date, rate_cache,
+    resolve_rate, reference_rates,
+):
+    # One read's cache keeps both value and publication, separately for each query.
+    # A current estimate must never satisfy the strict historical query's cache.
+    key = (resolve_rate, tenant_id, source_currency, home_currency, rate_date)
+    if rate_cache is not None and key in rate_cache:
+        resolved = rate_cache[key]
+    else:
+        resolved = resolve_rate(db, tenant_id=tenant_id, currency_code=source_currency,
+            home_currency_code=home_currency, rate_date=rate_date)
+        if rate_cache is not None:
+            rate_cache[key] = resolved
+    rate, _, _, published = resolved
+    if rate is not None and published is not None and reference_rates is not None:
+        reference_rates.add(ProjectionReference(source_currency, home_currency, published))
+    return rate

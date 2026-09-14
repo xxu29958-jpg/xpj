@@ -1,5 +1,7 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.local.PendingMutationStatus
+import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.UiText
@@ -45,8 +47,8 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
         val state = vm.uiState.value
         assertEquals("交通", state.items.single().category)
         assertEquals(PendingSheet.None, state.activeSheet)
-        assertEquals(UiText.res(R.string.pending_review_category_updated), state.message)
-        assertTrue(state.actionInProgressIds.isEmpty())
+        assertEquals(UiText.res(R.string.expense_command_accepted), state.message)
+        assertEquals(setOf(target.id), state.actionInProgressIds)
         assertEquals(1, fake.updateCalls)
     }
 
@@ -96,7 +98,7 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
         advanceUntilIdle()
 
         assertEquals("星巴克", vm.uiState.value.items.single().merchant)
-        assertEquals(UiText.res(R.string.pending_review_merchant_updated), vm.uiState.value.message)
+        assertEquals(UiText.res(R.string.expense_command_accepted), vm.uiState.value.message)
     }
 
     @Test
@@ -134,7 +136,7 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
 
         assertEquals(1234L, vm.uiState.value.items.single().amountCents)
         assertEquals(0, fake.confirmCalls)
-        assertEquals(UiText.res(R.string.pending_review_amount_saved), vm.uiState.value.message)
+        assertEquals(UiText.res(R.string.expense_command_accepted), vm.uiState.value.message)
     }
 
     @Test
@@ -164,26 +166,35 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
     }
 
     @Test
-    fun saveAmountAndConfirmRunsUpdateThenConfirm() = review {
+    fun saveAmountAndConfirmAdmitsBothCommandsBeforeObservingTheirCompletion() = review {
         val target = expense(id = 7L, amountCents = null)
         val fake = FakeReviewActions(pending = listOf(target))
-        fake.updateResponder = { _, draft ->
-            assertEquals(null, draft.amountCents)
+        fake.saveAndConfirmResponder = { binding, baseline, draft ->
+            assertEquals(fake.uploadIntents.currentBinding, binding)
+            assertEquals(target, baseline)
+            assertNull(draft.amountCents)
             assertEquals(4200L, draft.originalAmountMinor)
-            Result.success(target.copy(amountCents = 4200L, originalAmountMinor = 4200L))
+            Result.success(target.copy(originalAmountMinor = 4200L))
         }
-        fake.confirmResponder = { Result.success(target.copy(amountCents = 4200L, status = "confirmed")) }
         val vm = pendingViewModel(fake)
         advanceUntilIdle()
-
         vm.saveAmountAndConfirm(target.id, 4200L)
         advanceUntilIdle()
+        assertEquals(1, fake.saveAndConfirmCalls)
+        assertEquals(0, fake.updateCalls)
+        assertEquals(0, fake.confirmCalls)
+        assertEquals("pending", vm.uiState.value.items.single().status)
+        assertEquals(2, fake.admissions.single().second.rowIds.size)
+        assertEquals(UiText.res(R.string.expense_command_accepted), vm.uiState.value.message)
 
-        val state = vm.uiState.value
-        assertTrue(state.items.isEmpty(), "已确认条目应该从 pending 列表中移除")
-        assertEquals(UiText.res(R.string.pending_review_amount_saved_confirmed), state.message)
-        assertEquals(1, fake.updateCalls)
-        assertEquals(1, fake.confirmCalls)
+        fake.publishCommand(target.id, PendingMutationType.PatchExpense, PendingMutationStatus.Done)
+        advanceUntilIdle()
+        assertEquals(1, vm.uiState.value.items.size, "PATCH completion cannot confirm the bill")
+        fake.pending = emptyList()
+        fake.publishCommand(target.id, PendingMutationType.ConfirmExpense, PendingMutationStatus.Done)
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.items.isEmpty())
+        assertTrue(vm.uiState.value.actionInProgressIds.isEmpty())
     }
 
     @Test
@@ -210,7 +221,7 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
     fun saveAmountAndConfirmKeepsItemWhenUpdateFails() = review {
         val target = expense(id = 8L, amountCents = null)
         val fake = FakeReviewActions(pending = listOf(target))
-        fake.updateResponder = { _, _ -> Result.failure(RuntimeException("amount_required")) }
+        fake.saveAndConfirmResponder = { _, _, _ -> Result.failure(RuntimeException("amount_required")) }
         val vm = pendingViewModel(fake)
         advanceUntilIdle()
 

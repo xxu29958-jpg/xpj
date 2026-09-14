@@ -108,6 +108,20 @@ ROUTE_PAIRS: tuple[tuple[str, str, str, str, tuple[str, ...]], ...] = (
     ),
     (
         "POST",
+        "/api/expenses/{expense_id}/reject",
+        "POST",
+        "/web/expenses/{expense_id}/reject",
+        ("submit_expense_rejection",),
+    ),
+    (
+        "POST",
+        "/api/expenses/{expense_id}/undo",
+        "POST",
+        "/web/expenses/{expense_id}/undo",
+        ("submit_expense_rejection",),
+    ),
+    (
+        "POST",
         "/api/bill-splits/{public_id}/accept",
         "POST",
         "/web/bill-splits/{public_id}/accept",
@@ -149,6 +163,30 @@ _COMMAND_CONTRACTS: tuple[
         "/web/duplicates/{expense_id}/reject-original",
         frozenset({"reject_duplicate_original_keep_current"}),
         frozenset({"commit", "mark_expense_not_duplicate", "reject_expense"}),
+    ),
+    (
+        "POST",
+        "/api/expenses/{expense_id}/reject",
+        frozenset({"submit_expense_rejection"}),
+        frozenset({"commit", "reject_expense"}),
+    ),
+    (
+        "POST",
+        "/web/expenses/{expense_id}/reject",
+        frozenset({"submit_expense_rejection"}),
+        frozenset({"commit", "reject_expense"}),
+    ),
+    (
+        "POST",
+        "/api/expenses/{expense_id}/undo",
+        frozenset({"submit_expense_rejection"}),
+        frozenset({"commit", "undo_reject_expense"}),
+    ),
+    (
+        "POST",
+        "/web/expenses/{expense_id}/undo",
+        frozenset({"submit_expense_rejection"}),
+        frozenset({"commit", "undo_reject_expense"}),
     ),
 )
 

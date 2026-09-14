@@ -81,6 +81,8 @@ data class ReportsOverview(
     val missingRates: List<CurrencyProjectionGap> = emptyList(),
 )
 
+data class CurrencyReferenceRate(val sourceCurrencyCode: String, val homeCurrencyCode: String, val rateDate: String)
+
 data class CurrencyProjectionGap(val sourceCurrencyCode: String?, val homeCurrencyCode: String, val rateDate: String?)
 
 enum class GoalProgressState(val apiValue: String) {

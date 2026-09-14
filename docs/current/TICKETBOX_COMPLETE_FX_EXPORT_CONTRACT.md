@@ -28,7 +28,7 @@ Before production changes, the actual projection→CSV producer failed for all
 three offset kinds because its three FX cells were empty; the nullable legacy
 case passed (3 failed, 1 passed). The API/Web PostgreSQL journey also checks
 original amounts, zero-contribution reversal, ledger isolation and unchanged
-fact bundles after reads; it awaits cloud execution.
+fact bundles after reads; it passed the subsequent exact-source cloud execution.
 
 After construction, the same ORM→stream→CSV owner chain retains all three
 nullable fields; the offset-only blanking exit is retired. No extra query,
@@ -41,9 +41,10 @@ row formatter. CSV's native cell conversion and `safe_csv_cell` already cover th
 the branches are removed without a helper, suppression or changed blank-cell contract.
 The four direct export cases still pass. The final complexity gate remains cloud-owned.
 
-Bounded local verification: the four export cases pass; with the existing stream
-envelope and exact-money parser cases, 10 tests pass. Ruff, OpenAPI snapshot check
-and changed Android test's plain Detekt CLI pass. Plain Detekt does not prove
-Android compilation or execution. PostgreSQL journey and Android tests await
-exact-source cloud qualification. No device, lifecycle or full RC completion is
-claimed. The product atlas retains overall delivery status.
+Exact candidate `0cba8281` passed CI, CodeQL and Connected, including the real
+PostgreSQL export journey and Android consumers. Protected merge #407 produced
+`3441f125` with the same tree. Independent main passes PostgreSQL, Android,
+CodeQL and Connected but fails the unchanged Desktop Edge-session profile cleanup
+test. Export is merged; main qualification remains incomplete and the verified
+baseline is not advanced. Current run evidence is in the #407 PR and its external
+qualification record. No lifecycle or full RC completion is claimed.

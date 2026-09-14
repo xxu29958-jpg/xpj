@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.models import Expense
 from app.schemas import ExpenseManualCreateRequest, ExpenseResponse
+from app.services import pending_fx_task_service
 from app.services.expense_service import _create as owner
 from app.services.idempotency import IdempotencyOutcomeKind
 from app.services.manual_expense_receipt import read_manual_creation_receipt
@@ -34,6 +35,8 @@ def _expense(status="confirmed"):
 def probe(monkeypatch):
     db = Mock(spec=Session)
     state = SimpleNamespace(db=db, expense=_expense(), claims={}, inserts=0, commits=[])
+    state.prepare_fx = Mock(return_value=None)
+    monkeypatch.setattr(pending_fx_task_service, "prepare_pending_expense_fx", state.prepare_fx)
     auth = SimpleNamespace(account_id=1, device_id=7, tenant_id="owner", ledger_id="owner")
     def claim(_db, **fields):
         key = fields["tenant_id"], fields["idempotency_key"]
@@ -82,6 +85,8 @@ def test_replay_returns_original_response_after_later_correction_or_confirmation
     assert replay.model_dump(mode="json") == original
     assert state.inserts == 1
     assert state.db.commit.call_count == 1
+    state.prepare_fx.assert_called_once_with(state.db, expense=state.expense,
+        initiator_account_id=auth.account_id, initiator_device_id=auth.device_id)
 
 
 def test_legacy_matching_key_without_receipt_requires_review_not_latest_success(probe, monkeypatch):

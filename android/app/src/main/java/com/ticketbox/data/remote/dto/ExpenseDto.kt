@@ -74,6 +74,8 @@ data class ExpenseDto(
     val fxSource: String? = null,
     @param:Json(name = "fx_status")
     val fxStatus: String? = null,
+    @param:Json(name = "fx_task")
+    val fxTask: BackgroundTaskDto? = null,
     @param:Json(name = "original_currency_code")
     val originalCurrencyCode: String? = null,
     @param:Json(name = "original_amount_minor")

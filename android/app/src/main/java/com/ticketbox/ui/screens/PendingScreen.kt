@@ -108,7 +108,8 @@ fun PendingScreen(
     val listState = rememberLazyListState()
     val queueCounts = PendingQueueCounts(
         all = state.items.size,
-        needsAmount = state.items.count { it.amountCents == null },
+        needsAmount = state.items.count { com.ticketbox.domain.model.pendingNeedsAmount(it) },
+        needsFx = state.items.count { com.ticketbox.domain.model.pendingNeedsFx(it) },
         needsMerchant = state.items.count { pendingMerchantPresentation(it).needsReview },
         duplicate = state.items.count { it.duplicateStatus == DuplicateStatusValues.SUSPECTED },
         readyToConfirm = state.items.count {

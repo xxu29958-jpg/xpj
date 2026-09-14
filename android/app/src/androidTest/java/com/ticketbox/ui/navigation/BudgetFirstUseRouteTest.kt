@@ -74,7 +74,8 @@ class BudgetFirstUseRouteTest {
             .fetchSemanticsNodes().isNotEmpty() }
 
         val engine = OutboxDrainEngine(harness.fixture.outbox, listOf(SaveMonthlyBudgetDispatcher(
-            { transport.service }, adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter)))
+            { transport.service }, adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter)),
+            now = harness.fixture.clock::millis)
         assertEquals(1, runBlocking { engine.drainOnce().done })
         assertEquals(original.idempotencyKey, transport.writes.single().second)
         assertEquals(intent.request, transport.writes.single().first)

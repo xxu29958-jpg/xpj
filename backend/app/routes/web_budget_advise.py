@@ -179,7 +179,7 @@ def _projection_context(projection, *, form_error=None) -> dict:
         values.update(savings_yuan=None, reserved_yuan=None, discretionary_yuan=None)
     metadata = currency_input_metadata(home)
     return {**values, "home_currency_code": home, "home_currency_symbol": metadata["currency_symbol"], "currency_input": metadata,
-        "missing_rates": projection.missing_rates}
+        "missing_rates": projection.missing_rates, "reference_rates": projection.reference_rates}
 
 
 def _advisor_readiness_context(request: Request, *, selected: str, options: list) -> _AdvisorReadinessContext:

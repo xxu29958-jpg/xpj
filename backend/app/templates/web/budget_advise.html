@@ -33,7 +33,10 @@
   </div>
 </section>
 
-{% if not currency_choice_required %}{% include 'partials/budget_fx_gaps.html' %}{% endif %}
+{% if not currency_choice_required %}
+{% include 'partials/budget_fx_gaps.html' %}
+{% include 'partials/reference_rates.html' %}
+{% endif %}
 
 <div class="advice-workspace">
   <section class="product-panel product-panel--padded" aria-label="计算参数">

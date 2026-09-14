@@ -1,8 +1,11 @@
 package com.ticketbox.data.repository
 
+import com.ticketbox.data.remote.dto.ExpenseDto
+
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
+import com.ticketbox.data.remote.ApiService
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -16,6 +19,8 @@ import kotlin.test.assertTrue
  * Conflict, fails loud on a keyless row.
  */
 internal class RetryOcrDispatcherTest : ExpensePendingRepositoryOutboxTestBase() {
+    private val published = mutableListOf<Pair<String, ExpenseDto>>()
+
 
     private fun retryOcrRow(idempotencyKey: String?): OutboxRow = OutboxRow(
         id = 1L,
@@ -35,10 +40,44 @@ internal class RetryOcrDispatcherTest : ExpensePendingRepositoryOutboxTestBase()
         idempotencyKey = idempotencyKey,
     )
 
-    private fun dispatcherFor(stub: ApiServiceStub) = RetryOcrDispatcher(
+    private fun dispatcherFor(
+        stub: ApiService,
+        publishExpense: suspend (String, ExpenseDto) -> Unit = { ledgerId, expense -> published += ledgerId to expense },
+    ) = RetryOcrDispatcher(
         apiProvider = { stub },
         payloadAdapter = moshi().adapter(ExpenseStateTokenRequest::class.java),
+        publishExpense = publishExpense,
     )
+
+    @Test
+    fun `accepted OCR retry retains its receipt when cache publication fails`() = runTest {
+        val response = successExpenseDto()
+        val stub = ApiServiceStub(retryOcrResult = ApiResult.Success(response))
+        val row = retryOcrRow(idempotencyKey = "cache-failure-key")
+        val api = object : ApiService by stub {
+            override suspend fun retryOcr(
+                id: String,
+                request: ExpenseStateTokenRequest,
+                idempotencyKey: String?,
+            ): ExpenseDto {
+                assertEquals("42", id)
+                assertEquals(ExpenseStateTokenRequest(expectedRowVersion = row.expectedRowVersion), request)
+                return stub.retryOcr(id, request, idempotencyKey)
+            }
+        }
+        var publicationAttempts = 0
+        val result = dispatcherFor(api) { ledgerId, expense ->
+            assertEquals(row.ledgerId, ledgerId)
+            assertEquals(response, expense)
+            publicationAttempts++
+            throw IllegalStateException("cache unavailable")
+        }.dispatch(row)
+
+        assertEquals(row.idempotencyKey, stub.lastRetryOcrIdempotencyKey)
+        assertEquals(1, publicationAttempts)
+        assertEquals(DispatchResult.Success(newRowVersion = 2L, cacheRefreshVersion = 2L,
+            receiptJson = """{"expenseId":42}"""), result)
+    }
 
     @Test
     fun `dispatch replays the row's idempotency key and returns the new row_version`() = runTest {
@@ -48,6 +87,7 @@ internal class RetryOcrDispatcherTest : ExpensePendingRepositoryOutboxTestBase()
 
         assertEquals("key-abc", stub.lastRetryOcrIdempotencyKey, "dispatcher must send the row's key")
         assertEquals(DispatchResult.Success(newRowVersion = 2L), result)
+        assertEquals(listOf("owner" to successExpenseDto()), published)
     }
 
     @Test

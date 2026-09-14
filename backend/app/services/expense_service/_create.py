@@ -189,6 +189,7 @@ def _insert_manual_expense(
 
 def create_manual_expense(db: Session, payload: ExpenseManualCreateRequest, auth: AuthContext) -> ExpenseResponse:
     """Accept the original manual request and its typed response in one transaction."""
+    from app.services.pending_fx_task_service import prepare_pending_expense_fx, submit_pending_expense_fx
     lock_and_revalidate_mutation_actor(
         db, auth, actor_account_id=auth.account_id, ledger_id=auth.ledger_id,
     )
@@ -214,10 +215,14 @@ def create_manual_expense(db: Session, payload: ExpenseManualCreateRequest, auth
         validate_currency_payload_money_command(payload, amount_was_explicit=payload.amount_cents is not None)
         expense = _insert_manual_expense(db, payload, tenant_id, draft_idempotency_key=key,
             draft_request_fingerprint=fingerprint, actor_account_id=auth.account_id, actor_device_id=auth.device_id)
+        fx_task = prepare_pending_expense_fx(db, expense=expense,
+            initiator_account_id=auth.account_id, initiator_device_id=auth.device_id)
         receipt = expense_to_response(db, tenant_id=tenant_id, expense=expense)
         mark_idempotency_succeeded(db, claim.row, resource_type="expense", resource_id=str(receipt.id),
             response_body=receipt.model_dump(mode="json"))
         db.commit()
+        if fx_task is not None:
+            submit_pending_expense_fx(db, fx_task)
         return receipt
     except Exception:
         db.rollback()
@@ -245,8 +250,11 @@ def _guard_notification_capture_currency(payload: NotificationDraftCreateRequest
 def create_notification_draft(
     db: Session,
     payload: NotificationDraftCreateRequest,
-    tenant_id: str,
+    auth: AuthContext,
 ) -> Expense:
+    from app.services.pending_fx_task_service import prepare_pending_expense_fx, submit_pending_expense_fx
+
+    tenant_id = auth.tenant_id
     validate_currency_payload_money_command(
         payload,
         amount_was_explicit=payload.amount_cents is not None,
@@ -318,6 +326,10 @@ def create_notification_draft(
     if expense.amount_cents is not None or expense.merchant or expense.expense_time is not None:
         mark_duplicate_status(db, expense)
     expense.updated_at = now_utc()
+    fx_task = prepare_pending_expense_fx(db, expense=expense,
+        initiator_account_id=auth.account_id, initiator_device_id=auth.device_id)
     db.commit()
+    if fx_task is not None:
+        submit_pending_expense_fx(db, fx_task)
     db.refresh(expense)
     return expense

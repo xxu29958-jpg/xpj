@@ -133,13 +133,6 @@ internal class FakeExpenseDao(
         emit(ledgerId)
     }
 
-    override suspend fun deletePendingForLedger(ledgerId: String) {
-        expenses.values
-            .filter { it.ledgerId == ledgerId && it.status == "pending" }
-            .map { it.id }
-            .forEach { expenses.remove(it) }
-        emit(ledgerId)
-    }
 
     override suspend fun deleteConfirmedByServerIds(ledgerId: String, serverIds: List<Long>) {
         val remove = serverIds.toSet()

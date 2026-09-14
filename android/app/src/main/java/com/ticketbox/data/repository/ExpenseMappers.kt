@@ -71,6 +71,7 @@ fun ExpenseDto.toDomain(): Expense {
         fxRateDate = resolvedFxRateDate,
         fxSource = resolvedFxSource,
         fxStatus = fxStatus.orEmpty(),
+        fxTask = fxTask?.toDomain(),
         originalCurrencyCode = CurrencyCode.fromStorageKey(originalCurrency ?: originalCurrencyCode),
         // R13-4：original 原码透传（未知码严格解析/禁金额编辑用；与 homeCurrencyCode 的 R7-2 同构）。
         originalCurrencyCodeRaw = originalCurrency ?: originalCurrencyCode,
@@ -437,6 +438,7 @@ fun RecurringCandidateItemDto.toDomain(): RecurringCandidate = RecurringCandidat
 fun DataQualitySummaryDto.toDomain(): DataQualitySummary = DataQualitySummary(
     pendingTotal = pendingTotal,
     missingAmount = missingAmount,
+    missingFx = missingFx,
     missingMerchant = missingMerchant,
     missingCategory = missingCategory,
     missingCategoryPending = missingCategoryPending,

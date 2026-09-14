@@ -22,7 +22,7 @@ import retrofit2.HttpException
 class RejectExpenseDispatcher(
     private val apiProvider: (OutboxRow) -> ApiService,
     private val payloadAdapter: JsonAdapter<ExpenseStateTokenRequest>,
-    private val deleteConfirmedCache: suspend (ledgerId: String, serverIds: List<Long>) -> Unit,
+    private val publishExpense: suspend (ledgerId: String, expense: ExpenseDto) -> Unit,
 ) : OutboxMutationDispatcher {
     override val type: PendingMutationType = PendingMutationType.RejectExpense
 
@@ -53,11 +53,8 @@ class RejectExpenseDispatcher(
 
         return try {
             // ADR-0042: replay carries the row's original intent-time key, so a
-            // committed-but-unseen first attempt is deduped server-side (HIT →
-            // canonical row) instead of false-409ing on the stale row_version.
-            val rejected = apiProvider(row).rejectExpense(expenseRef, request, idempotencyKey)
-            deleteConfirmedCacheIfRejected(row, rejected)
-            DispatchResult.Success(newRowVersion = rejected.rowVersion)
+            // committed-but-unseen first attempt returns its original receipt.
+            publishRejected(row, apiProvider(row).rejectExpense(expenseRef, request, idempotencyKey))
         } catch (e: HttpException) {
             mapOutboxHttpException(e)
         } catch (e: IOException) {
@@ -69,9 +66,12 @@ class RejectExpenseDispatcher(
         }
     }
 
-    private suspend fun deleteConfirmedCacheIfRejected(row: OutboxRow, rejected: ExpenseDto) {
-        if (rejected.status == "rejected") {
-            deleteConfirmedCache(row.ledgerId, listOf(rejected.id))
+    private suspend fun publishRejected(row: OutboxRow, rejected: ExpenseDto): DispatchResult {
+        if (!validExpenseAcceptanceSnapshot(row, rejected)) {
+            return DispatchResult.Failure(EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW)
         }
+        val receipt = expenseAcceptanceReceiptJson(rejected)
+        return publishAcceptedExpense(rejected.id, rejected.rowVersion) { publishExpense(row.ledgerId, rejected) }
+            .copy(receiptJson = receipt)
     }
 }

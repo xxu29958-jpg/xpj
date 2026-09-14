@@ -69,14 +69,14 @@ def _assert_generated_lane_commands() -> None:
     real_db = build_pytest_command(
         lane="real-db",
         workers=1,
-        shard_index=2,
-        shard_count=3,
+        shard_index=3,
+        shard_count=4,
     )
     assert "-n" not in ordinary_serial
     assert real_db[real_db.index("-m", 3) + 1] == "real_db"
     assert real_db[real_db.index("--xpj-postgres-lane") + 1] == "real-db"
-    assert real_db[real_db.index("--xpj-postgres-shard-index") + 1] == "2"
-    assert real_db[real_db.index("--xpj-postgres-shard-count") + 1] == "3"
+    assert real_db[real_db.index("--xpj-postgres-shard-index") + 1] == "3"
+    assert real_db[real_db.index("--xpj-postgres-shard-count") + 1] == "4"
     assert "-n" not in real_db
 
 
@@ -181,7 +181,7 @@ def _assert_hook_forms_complementary_shards() -> None:
         f"tests/test_example.py::test_case[{index}]"
         for index in range(64)
     }
-    for lane, shard_count in (("ordinary", 2), ("real-db", 3)):
+    for lane, shard_count in (("ordinary", 2), ("real-db", 4)):
         combined: set[str] = set()
         for shard_index in range(shard_count):
             selected, deselected = _hook_partition(lane, shard_index, shard_count)

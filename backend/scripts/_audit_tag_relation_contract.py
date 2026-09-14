@@ -52,7 +52,6 @@ def main() -> int:
     sync_paths = (
         "app/services/expense_service/_create.py",
         "app/services/expense_service/_update.py",
-        "app/services/import_service.py",
         "app/services/csv_import_batch_service/_apply.py",
     )
     for path in sync_paths:
@@ -65,7 +64,7 @@ def main() -> int:
         (
             "test_manual_tags_normalize_filter_export_and_stats",
             "test_tag_filters_are_ledger_scoped",
-            "test_import_rows_syncs_tag_relation_rows",
+            "test_csv_batch_apply_syncs_tag_relation_rows",
         ),
     )
     if test_missing:

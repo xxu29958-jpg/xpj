@@ -96,7 +96,7 @@ class ExpenseRepositoryConfirmedSyncTest {
     fun fullConfirmedSyncDoesNotPruneRowConfirmedDuringFetch() = runTest {
         // Audit follow-up P2: the full-list response predates anything cached
         // while the (paginated) fetch is in flight. A row confirmed mid-fetch
-        // (cacheIfConfirmed) is missing from that response by timing alone —
+        // (cacheServerExpense) is missing from that response by timing alone —
         // it must NOT be pruned as "server-deleted". The pre-fetch snapshot
         // in syncConfirmedFromService scopes the prune to pre-existing rows.
         val dao = FakeExpenseDao()
@@ -320,7 +320,11 @@ class ExpenseRepositoryConfirmedSyncTest {
             billSplitCreateAdapter = com.ticketbox.OutboxAdapterGraph().billSplitCreateAdapter,
             legacyCorrectionAdapter = com.ticketbox.OutboxAdapterGraph().legacyCorrectionAdapter,
                 manualCreateAdapter = com.ticketbox.OutboxAdapterGraph().manualCreateAdapter,
-            ),
+
+        patchExpenseAdapter = com.ticketbox.OutboxAdapterGraph().patchExpenseAdapter,
+        expenseStateTokenAdapter = com.ticketbox.OutboxAdapterGraph().expenseStateTokenAdapter,
+        recognizeTextAdapter = com.ticketbox.OutboxAdapterGraph().recognizeTextAdapter,
+),
         )
 
         val sync = async { repository.syncConfirmed().getOrThrow() }

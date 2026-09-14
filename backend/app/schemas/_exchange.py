@@ -15,6 +15,7 @@ __all__ = [
     "ExchangeRateListResponse",
     "ExchangeRateRequest",
     "ExchangeRateResponse",
+    "ProjectionReferenceDto",
 ]
 
 
@@ -53,3 +54,12 @@ class ExchangeRateResponse(BaseModel):
 
 class ExchangeRateListResponse(BaseModel):
     items: list[ExchangeRateResponse]
+
+
+class ProjectionReferenceDto(BaseModel):
+    """The actual reference date used to value a plan in another currency."""
+    model_config = ConfigDict(from_attributes=True)
+
+    source_currency_code: str
+    home_currency_code: str
+    rate_date: date

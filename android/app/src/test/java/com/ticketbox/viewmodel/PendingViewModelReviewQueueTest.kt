@@ -47,8 +47,8 @@ internal class PendingViewModelReviewQueueTest : PendingViewModelReviewTestBase(
         assertTrue(sheet is PendingSheet.QuickMerchant, "存完应推进到下一条快补 sheet，而非关闭")
         assertEquals(2L, sheet.expense.id)
         assertEquals(2, vm.uiState.value.reviewRemaining)
-        // 推进时清掉成功提示，sheet 内状态行只在失败时留守。
-        assertEquals(null, vm.uiState.value.message)
+        // 前一笔原命令已受理，下一笔仍可继续填写。
+        assertEquals(UiText.res(R.string.expense_command_accepted), vm.uiState.value.message)
         assertEquals(1, fake.updateCalls)
     }
 
@@ -113,7 +113,7 @@ internal class PendingViewModelReviewQueueTest : PendingViewModelReviewTestBase(
 
         assertEquals(PendingSheet.None, vm.uiState.value.activeSheet)
         assertEquals(0, vm.uiState.value.reviewRemaining)
-        assertEquals(UiText.res(R.string.pending_review_merchant_updated), vm.uiState.value.message)
+        assertEquals(UiText.res(R.string.expense_command_accepted), vm.uiState.value.message)
     }
 
     @Test

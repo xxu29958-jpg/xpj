@@ -87,6 +87,8 @@ def post_csv_import_batch_apply(
     return apply_csv_import_batch(
         db,
         tenant_id=auth.tenant_id,
+        initiator_account_id=auth.account_id,
+        initiator_device_id=auth.device_id,
         public_id=public_id,
         batch_size=request.batch_size,
         desktop_session=desktop_session,

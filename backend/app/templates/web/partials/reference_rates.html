@@ -1,0 +1,3 @@
+{% for reference in reference_rates %}
+<p class="meta">参考汇率日期：{{ reference.source_currency_code }} → {{ reference.home_currency_code }} · {{ reference.rate_date }}。计划金额为估值，不代表实际收支。</p>
+{% endfor %}

@@ -64,6 +64,10 @@ from app.services.currency_binding_service import (
 from app.services.desktop_switch_service import revalidate_desktop_session_under_lock
 from app.services.exchange_rate_service import apply_currency_payload
 from app.services.import_service import DEFAULT_SOURCE
+from app.services.pending_fx_task_service import (
+    prepare_pending_expense_fx,
+    submit_pending_expense_fx,
+)
 from app.services.tag_service import normalize_tags, sync_expense_tags
 from app.services.time_service import now_utc
 from app.tenants import AuthContext
@@ -235,6 +239,8 @@ def _apply_one_claimed_csv_import_row(
     row_id: int,
     batch: CsvImportBatch,
     tenant_id: str,
+    initiator_account_id: int,
+    initiator_device_id: int | None,
     apply_token: str,
     now: datetime,
 ) -> int:
@@ -265,13 +271,18 @@ def _apply_one_claimed_csv_import_row(
         db.add(expense)
         db.flush()
         sync_expense_tags(db, expense)
+        fx_task = prepare_pending_expense_fx(
+            db,
+            expense=expense,
+            initiator_account_id=initiator_account_id,
+            initiator_device_id=initiator_device_id,
+        )
         row.status = "applied"
         row.apply_token = None
         row.expense_id = expense.id
         row.updated_at = now
         db.flush()
         db.commit()
-        return 1
     except IntegrityError:
         db.rollback()
         if _mark_csv_import_row_applied_if_existing(
@@ -305,6 +316,12 @@ def _apply_one_claimed_csv_import_row(
             now=now,
         )
         return 0
+
+    # The row and its task are already durable. Executor refusal belongs to
+    # the task receipt and must never become a CSV insertion failure.
+    if fx_task is not None:
+        submit_pending_expense_fx(db, fx_task)
+    return 1
 
 
 def _revalidate_desktop_apply_session(
@@ -342,6 +359,8 @@ def _attempt_csv_import_apply(
     *,
     batch: CsvImportBatch,
     tenant_id: str,
+    initiator_account_id: int,
+    initiator_device_id: int | None,
     public_id: str,
     apply_token: str,
     batch_size: int,
@@ -388,6 +407,8 @@ def _attempt_csv_import_apply(
             row_id=row_id,
             batch=batch,
             tenant_id=tenant_id,
+            initiator_account_id=initiator_account_id,
+            initiator_device_id=initiator_device_id,
             apply_token=apply_token,
             now=now,
         )
@@ -413,6 +434,8 @@ def apply_csv_import_batch(
     db: Session,
     *,
     tenant_id: str,
+    initiator_account_id: int,
+    initiator_device_id: int | None,
     public_id: str,
     batch_size: int,
     desktop_session: AuthContext | None = None,
@@ -434,6 +457,8 @@ def apply_csv_import_batch(
             db,
             batch=batch,
             tenant_id=tenant_id,
+            initiator_account_id=initiator_account_id,
+            initiator_device_id=initiator_device_id,
             public_id=public_id,
             apply_token=apply_token,
             batch_size=batch_size,

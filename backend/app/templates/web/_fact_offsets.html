@@ -150,6 +150,7 @@
           <div class="offset-form-actions">
             <button class="product-button product-button--primary" type="submit">登记</button>
           </div>
+          {% if _money_draft %}{% include '_fact_rate_recovery.html' %}{% endif %}
         </form>
       </details>
       {% endif %}

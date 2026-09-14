@@ -9,11 +9,9 @@ before its OCC claim, mirroring Slice B's PATCH. Two flavours of op:
   now-stale ``expected_row_version`` and false-409. The key is what makes the
   replay re-serialise canonical state instead (the meaningful fix, exercised on
   ``mark_not_duplicate`` below).
-* ``confirm`` / ``reject`` are ALSO terminal-idempotent at the service layer
-  (``if status == confirmed: return`` runs before the token check), so their
-  replay was already 200 without a key. They carry the key anyway for a uniform
-  "every outbox mutate op requires a key" contract — redundant but harmless
-  (the no-op PROCEED still records the key, verified below).
+* ``confirm`` retains its existing terminal no-op. Reject/Undo instead retain
+  the original successful response: another key must still honor the reviewed
+  row version so it cannot claim or undo a later rejection.
 
 The per-op claim plumbing is the SAME shared ``claim_idempotent_request``
 helper Slice B's unit tests already cover; these route tests pin the wiring +
@@ -67,6 +65,7 @@ def _seed_suspected_duplicate(client: TestClient, *, identity: TestIdentity) -> 
 _STATE_OPS = [
     "confirm",
     "reject",
+    "undo",
     "mark-not-duplicate",
     "ocr/retry",
     "items/acknowledge-mismatch",

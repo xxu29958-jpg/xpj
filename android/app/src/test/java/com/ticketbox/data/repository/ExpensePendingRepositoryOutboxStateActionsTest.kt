@@ -7,243 +7,100 @@ import kotlinx.coroutines.test.runTest
 import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/**
- * ADR-0038 PR-2g.7/.8/.9 offline-fallback contract for the
- * state-transition ``*AllowingOffline`` actions:
- * confirm / reject / markNotDuplicate / retryOcr /
- * acknowledgeItemsMismatch.
- *
- * Each enforces the same three-way boundary as the PATCH path
- * ([ExpensePendingRepositoryOutboxFallbackTest]): direct 2xx →
- * Synced (no enqueue), IOException → Queued optimistic projection +
- * token-only row, HttpException → failure (no enqueue). Shared
- * setup lives in [ExpensePendingRepositoryOutboxTestBase].
- */
+/** Pending commands preserve the reviewed fact until their original worker accepts them. */
 internal class ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRepositoryOutboxTestBase() {
-
-    // region — confirm / reject AllowingOffline (PR-2g.7)
-
     @Test
-    fun `confirm direct 2xx returns Synced with server expense, no enqueue`() = runTest {
-        val baseline = baselineExpense()
-        val dao = FakePendingMutationDao()
-        val outbox = testOutboxRepository(dao = dao)
-        val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
-        val api = ApiServiceStub(
-            confirmExpenseResult = ApiResult.Success(successExpenseDto(serverUpdatedAt = "2026-05-20T14:00:00.000Z")),
-        )
-        val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
-
-        val outcome = repo.confirmExpenseAllowingOffline(baseline)
-            .getOrThrow() as ExpenseStateOutcome.Synced
-
-        assertNotEquals(baseline.updatedAt, outcome.expense.updatedAt)
-        assertNotEquals(baseline.rowVersion, outcome.expense.rowVersion)
-        assertEquals(0, dao.rows.size, "no row should be enqueued on direct success")
+    fun `confirm admission retains the pending fact and original token`() = runTest {
+        assertStateAdmission(PendingMutationType.ConfirmExpense)
     }
 
     @Test
-    fun `confirm IOException returns Queued confirmed projection + enqueues token-only row`() = runTest {
-        val baseline = baselineExpense()
+    fun `reject admission retains the pending fact rather than inventing a rejection`() = runTest {
+        assertStateAdmission(PendingMutationType.RejectExpense)
+    }
+
+    @Test
+    fun `mark duplicate admission does not invent the server review result`() = runTest {
+        assertStateAdmission(PendingMutationType.MarkNotDuplicate)
+    }
+
+    @Test
+    fun `retry OCR admission preserves the current snapshot and schedules the original`() = runTest {
+        assertStateAdmission(PendingMutationType.RetryOcr)
+    }
+
+    private suspend fun assertStateAdmission(type: PendingMutationType) {
+        val baseline = baselineExpense().copy(duplicateStatus = "suspected", duplicateOfId = 81L)
         val dao = FakePendingMutationDao()
-        val outbox = testOutboxRepository(dao = dao)
-        val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
-        val api = ApiServiceStub(confirmExpenseResult = ApiResult.Throw(IOException("net out")))
-        val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
-
-        val outcome = repo.confirmExpenseAllowingOffline(baseline)
-            .getOrThrow() as ExpenseStateOutcome.Queued
-
-        // Optimistic projection: status flipped to confirmed; the
-        // token stays at baseline (NOT a server-confirmed one).
-        assertEquals("confirmed", outcome.expense.status)
-        assertEquals(baseline.updatedAt, outcome.expense.updatedAt)
-
-        assertEquals(1, dao.rows.size)
+        val outbox = testOutboxRepository(dao)
+        val success = ApiResult.Success(successExpenseDto())
+        val api = ApiServiceStub(confirmExpenseResult = success, rejectExpenseResult = success,
+            markNotDuplicateResult = success, retryOcrResult = success)
+        val repo = buildRepository(api, outbox)
+        val binding = requireNotNull(repo.captureDeferredLedgerBinding())
+        val accepted = when (type) {
+            PendingMutationType.ConfirmExpense -> repo.confirmExpenseAllowingOffline(binding, baseline)
+            PendingMutationType.RejectExpense -> repo.rejectExpenseAllowingOffline(binding, baseline)
+            PendingMutationType.MarkNotDuplicate -> repo.markNotDuplicateAllowingOffline(binding, baseline)
+            PendingMutationType.RetryOcr -> repo.retryOcrAllowingOffline(binding, baseline)
+            else -> error("Unexpected state command")
+        }.getOrThrow()
         val row = dao.rows.values.single()
-        assertEquals(PendingMutationType.ConfirmExpense.wireValue, row.type)
-        assertEquals("expense:${baseline.id}", row.targetId)
-        assertEquals(baseline.rowVersion, row.expectedRowVersion)
+        assertEquals(listOf(row.id), accepted.rowIds)
+        assertEquals(baseline, accepted.expense)
+        assertEquals(type.wireValue, row.type)
         assertEquals(PendingMutationStatus.Pending.wireValue, row.status)
-        // round-8 P3#5: token must NOT be embedded in payload — the
-        // row's expectedRowVersion is the single source of truth.
-        assertTrue(
-            baseline.updatedAt !in row.payload,
-            "payload must NOT embed the token (single source of truth): ${row.payload}",
-        )
-        // ADR-0042: the enqueued row carries the SAME intent-time key the direct
-        // attempt used — that's what lets a committed-but-unseen replay HIT the
-        // server's recorded success instead of false-409ing on the stale token.
-        assertNotNull(row.idempotencyKey, "ConfirmExpense row must carry an idempotency key")
-        assertEquals(api.lastConfirmIdempotencyKey, row.idempotencyKey)
-    }
-
-    @Test
-    fun `confirm HttpException 409 surfaces as failure, no enqueue`() = runTest {
-        val dao = FakePendingMutationDao()
-        val outbox = testOutboxRepository(dao = dao)
-        val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
-        val api = ApiServiceStub(
-            confirmExpenseResult = ApiResult.Throw(
-                httpException(409, """{"error":"state_conflict","message":"账单已修改"}"""),
-            ),
-        )
-        val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
-
-        val result = repo.confirmExpenseAllowingOffline(baselineExpense())
-
-        assertTrue(result.isFailure, "409 must surface to user, not silently queue")
-        assertEquals(0, dao.rows.size)
-    }
-
-    @Test
-    fun `confirm IOException without outbox wired stays as failure`() = runTest {
-        val api = ApiServiceStub(confirmExpenseResult = ApiResult.Throw(IOException("net out")))
-        val repo = buildRepository(api, outbox = null, stateTokenAdapter = null)
-
-        val result = repo.confirmExpenseAllowingOffline(baselineExpense())
-
-        assertTrue(result.isFailure)
-    }
-
-    @Test
-    fun `reject direct 2xx returns Synced, no enqueue`() = runTest {
-        val baseline = baselineExpense()
-        val dao = FakePendingMutationDao()
-        val outbox = testOutboxRepository(dao = dao)
-        val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
-        val api = ApiServiceStub(rejectExpenseResult = ApiResult.Success(successExpenseDto()))
-        val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
-
-        val outcome = repo.rejectExpenseAllowingOffline(baseline).getOrThrow()
-
-        assertTrue(outcome is ExpenseStateOutcome.Synced)
-        assertEquals(0, dao.rows.size)
-    }
-
-    @Test
-    fun `reject IOException returns Queued rejected projection + enqueues row`() = runTest {
-        val baseline = baselineExpense()
-        val dao = FakePendingMutationDao()
-        val outbox = testOutboxRepository(dao = dao)
-        val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
-        val api = ApiServiceStub(rejectExpenseResult = ApiResult.Throw(IOException("net out")))
-        val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
-
-        val outcome = repo.rejectExpenseAllowingOffline(baseline)
-            .getOrThrow() as ExpenseStateOutcome.Queued
-
-        assertEquals("rejected", outcome.expense.status)
-        assertEquals(1, dao.rows.size)
-        val row = dao.rows.values.single()
-        assertEquals(PendingMutationType.RejectExpense.wireValue, row.type)
         assertEquals("expense:${baseline.id}", row.targetId)
+        assertEquals(binding.ownerKey, row.ownerKey)
+        assertEquals(binding.ledgerId, row.ledgerId)
+        assertEquals(binding.serverUrl, row.serverUrl)
         assertEquals(baseline.rowVersion, row.expectedRowVersion)
-        assertTrue(
-            baseline.updatedAt !in row.payload,
-            "payload must NOT embed the token: ${row.payload}",
-        )
-        // ADR-0042: direct attempt + enqueued row share one intent-time key.
-        assertNotNull(row.idempotencyKey, "RejectExpense row must carry an idempotency key")
-        assertEquals(api.lastRejectIdempotencyKey, row.idempotencyKey)
-    }
-
-    // endregion
-
-    // region — markNotDuplicate / retryOcr AllowingOffline (PR-2g.8)
-
-    @Test
-    fun `markNotDuplicate IOException returns Queued none-projection + enqueues row`() = runTest {
-        val baseline = baselineExpense().copy(duplicateStatus = "suspected")
-        val dao = FakePendingMutationDao()
-        val outbox = testOutboxRepository(dao = dao)
-        val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
-        val api = ApiServiceStub(markNotDuplicateResult = ApiResult.Throw(IOException("net out")))
-        val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
-
-        val outcome = repo.markNotDuplicateAllowingOffline(baseline)
-            .getOrThrow() as ExpenseStateOutcome.Queued
-
-        // Optimistic projection clears the suspected-duplicate badge.
-        assertEquals("none", outcome.expense.duplicateStatus)
-        assertEquals(1, dao.rows.size)
-        val row = dao.rows.values.single()
-        assertEquals(PendingMutationType.MarkNotDuplicate.wireValue, row.type)
-        assertEquals("expense:${baseline.id}", row.targetId)
-        assertEquals(baseline.rowVersion, row.expectedRowVersion)
-        assertTrue(
-            baseline.updatedAt !in row.payload,
-            "payload must NOT embed the token: ${row.payload}",
-        )
-        // ADR-0042: direct attempt + enqueued row share one intent-time key.
-        assertNotNull(row.idempotencyKey, "MarkNotDuplicate row must carry an idempotency key")
-        assertEquals(api.lastMarkNotDuplicateIdempotencyKey, row.idempotencyKey)
+        assertEquals(0L, moshi().adapter(ExpenseStateTokenRequest::class.java).fromJson(row.payload)?.expectedRowVersion)
+        assertNotNull(row.idempotencyKey)
+        assertNull(api.lastConfirmIdempotencyKey)
+        assertNull(api.lastRejectIdempotencyKey)
+        assertNull(api.lastMarkNotDuplicateIdempotencyKey)
+        assertNull(api.lastRetryOcrIdempotencyKey)
     }
 
     @Test
-    fun `markNotDuplicate direct 2xx returns Synced, no enqueue`() = runTest {
-        val baseline = baselineExpense().copy(duplicateStatus = "suspected")
-        val dao = FakePendingMutationDao()
-        val outbox = testOutboxRepository(dao = dao)
-        val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
-        val api = ApiServiceStub(markNotDuplicateResult = ApiResult.Success(successExpenseDto()))
-        val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
-
-        val outcome = repo.markNotDuplicateAllowingOffline(baseline).getOrThrow()
-
-        assertTrue(outcome is ExpenseStateOutcome.Synced)
-        assertEquals(0, dao.rows.size)
-    }
-
-    @Test
-    fun `retryOcr IOException returns Queued unchanged + enqueues row`() = runTest {
+    fun `confirm waits behind a persisted save with both original tokens unchanged`() = runTest {
         val baseline = baselineExpense()
         val dao = FakePendingMutationDao()
-        val outbox = testOutboxRepository(dao = dao)
-        val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
-        val api = ApiServiceStub(retryOcrResult = ApiResult.Throw(IOException("net out")))
-        val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
-
-        val outcome = repo.retryOcrAllowingOffline(baseline)
-            .getOrThrow() as ExpenseStateOutcome.Queued
-
-        // No optimistic field change — OCR re-runs server-side, so the
-        // queued projection is the expense unchanged.
-        assertEquals(baseline.updatedAt, outcome.expense.updatedAt)
-        assertEquals(baseline.merchant, outcome.expense.merchant)
-        assertEquals(1, dao.rows.size)
-        val row = dao.rows.values.single()
-        assertEquals(PendingMutationType.RetryOcr.wireValue, row.type)
-        assertEquals("expense:${baseline.id}", row.targetId)
-        assertEquals(baseline.rowVersion, row.expectedRowVersion)
-        // ADR-0042: direct attempt + enqueued row share one intent-time key.
-        assertNotNull(row.idempotencyKey, "RetryOcr row must carry an idempotency key")
-        assertEquals(api.lastRetryOcrIdempotencyKey, row.idempotencyKey)
+        val outbox = testOutboxRepository(dao)
+        val api = ApiServiceStub(confirmExpenseResult = ApiResult.Success(successExpenseDto()))
+        val repo = buildRepository(api, outbox)
+        val binding = requireNotNull(repo.captureDeferredLedgerBinding())
+        val saved = repo.saveExpenseAllowingOffline(binding, baseline.id, draft, baseline).getOrThrow()
+        val confirmed = repo.confirmExpenseAllowingOffline(binding, baseline).getOrThrow()
+        val rows = dao.rows.values.toList()
+        assertEquals(listOf(PendingMutationType.PatchExpense.wireValue, PendingMutationType.ConfirmExpense.wireValue), rows.map { it.type })
+        assertEquals(rows.map { it.id }, saved.rowIds + confirmed.rowIds)
+        assertEquals(listOf(baseline.rowVersion, baseline.rowVersion), rows.map { it.expectedRowVersion })
+        assertEquals("pending", confirmed.expense.status)
+        assertNull(api.lastConfirmIdempotencyKey)
     }
 
     @Test
-    fun `retryOcr direct 2xx returns Synced, no enqueue`() = runTest {
-        val baseline = baselineExpense()
+    fun `bulk confirmation preserves each original without publishing confirmed facts`() = runTest {
+        val expenses = listOf(baselineExpense(), baselineExpense().copy(id = 43L, publicId = "second-expense", rowVersion = 6L))
         val dao = FakePendingMutationDao()
-        val outbox = testOutboxRepository(dao = dao)
-        val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
-        val api = ApiServiceStub(retryOcrResult = ApiResult.Success(successExpenseDto()))
-        val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
-
-        val outcome = repo.retryOcrAllowingOffline(baseline).getOrThrow()
-
-        assertTrue(outcome is ExpenseStateOutcome.Synced)
-        assertEquals(0, dao.rows.size)
+        val api = ApiServiceStub(confirmExpenseResult = ApiResult.Success(successExpenseDto()))
+        val repo = buildRepository(api, testOutboxRepository(dao))
+        val accepted = repo.confirmExpenses(requireNotNull(repo.captureDeferredLedgerBinding()), expenses).getOrThrow()
+        val rows = dao.rows.values.toList()
+        assertEquals(listOf("expense:42", "expense:43"), rows.map { it.targetId })
+        assertEquals(listOf(1L, 6L), rows.map { it.expectedRowVersion })
+        assertTrue(rows.all { it.type == PendingMutationType.ConfirmExpense.wireValue && it.status == PendingMutationStatus.Pending.wireValue })
+        assertEquals(2, rows.mapNotNull { it.idempotencyKey }.distinct().size)
+        assertEquals(rows.map { it.id }, accepted.flatMap { it.rowIds })
+        assertEquals(expenses, accepted.map { it.expense })
+        assertNull(api.lastConfirmIdempotencyKey)
     }
-
-    // endregion
-
-    // region — acknowledgeItemsMismatch AllowingOffline (PR-2g.9)
 
     @Test
     fun `acknowledge IOException returns Queued acknowledged-projection + enqueues row`() = runTest {
@@ -290,128 +147,6 @@ internal class ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRe
         assertTrue(outcome is ItemsAckOutcome.Synced)
         assertEquals(0, dao.rows.size)
     }
-
-    // region — per-target FIFO guard (codex review P1: queue-jump)
-
-    @Test
-    fun `confirm with unresolved queued mutation enqueues behind it instead of calling direct`() = runTest {
-        // The save→confirm chain's failure mode: a save QUEUED its PATCH (net
-        // blip), the network came back, and the chained confirm — direct-first
-        // before the guard — would commit the row server-side WITHOUT the
-        // user's edit, 409ing the queued PATCH on replay.
-        val baseline = baselineExpense()
-        val dao = FakePendingMutationDao()
-        val outbox = testOutboxRepository(dao = dao)
-        val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
-        // Direct confirm WOULD succeed if attempted — only the guard, not the
-        // network, may divert this call to the queue.
-        val api = ApiServiceStub(confirmExpenseResult = ApiResult.Success(successExpenseDto()))
-        val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
-        outbox.enqueue(
-            type = PendingMutationType.PatchExpense,
-            targetId = "expense:${baseline.id}",
-            payloadJson = "{}",
-            expectedRowVersion = baseline.rowVersion,
-            idempotencyKey = "queued-patch-key",
-        )
-
-        val outcome = repo.confirmExpenseAllowingOffline(baseline)
-            .getOrThrow() as ExpenseStateOutcome.Queued
-
-        assertEquals("confirmed", outcome.expense.status)
-        assertNull(
-            api.lastConfirmIdempotencyKey,
-            "direct confirm must NOT be attempted while a same-target row is queued",
-        )
-        assertEquals(2, dao.rows.size)
-        val rows = dao.rows.values.sortedBy { it.id }
-        assertEquals(PendingMutationType.PatchExpense.wireValue, rows[0].type)
-        assertEquals(PendingMutationType.ConfirmExpense.wireValue, rows[1].type)
-        assertEquals("expense:${baseline.id}", rows[1].targetId)
-        assertEquals(baseline.rowVersion, rows[1].expectedRowVersion)
-        assertNotNull(rows[1].idempotencyKey, "guarded enqueue still carries an intent-time key")
-    }
-
-    @Test
-    fun `reject with unresolved queued mutation enqueues behind it instead of calling direct`() = runTest {
-        val baseline = baselineExpense()
-        val dao = FakePendingMutationDao()
-        val outbox = testOutboxRepository(dao = dao)
-        val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
-        val api = ApiServiceStub(rejectExpenseResult = ApiResult.Success(successExpenseDto()))
-        val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
-        outbox.enqueue(
-            type = PendingMutationType.PatchExpense,
-            targetId = "expense:${baseline.id}",
-            payloadJson = "{}",
-            expectedRowVersion = baseline.rowVersion,
-            idempotencyKey = "queued-patch-key",
-        )
-
-        val outcome = repo.rejectExpenseAllowingOffline(baseline)
-            .getOrThrow() as ExpenseStateOutcome.Queued
-
-        assertEquals("rejected", outcome.expense.status)
-        assertNull(
-            api.lastRejectIdempotencyKey,
-            "direct reject must NOT be attempted while a same-target row is queued",
-        )
-        assertEquals(2, dao.rows.size)
-        val rows = dao.rows.values.sortedBy { it.id }
-        assertEquals(PendingMutationType.RejectExpense.wireValue, rows[1].type)
-        assertEquals(baseline.rowVersion, rows[1].expectedRowVersion)
-    }
-
-    @Test
-    fun `guard window pin - row enqueued DURING the direct call is not retro-diverted`() = runTest {
-        // codex residual-risk note: the activeForTarget check and the direct
-        // call are NOT atomic. A row enqueued after the check passes (empty)
-        // but before the direct call completes is not seen — the direct call
-        // proceeds (Synced) and the late row stays queued, replaying
-        // afterwards (worst case it 409s into the conflict banner). This PINS
-        // that accepted window: closing it would need a per-target mutex
-        // spanning check+dispatch — do that deliberately, not by accident,
-        // and update this test when you do.
-        val baseline = baselineExpense()
-        val dao = FakePendingMutationDao()
-        val outbox = testOutboxRepository(dao = dao)
-        val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
-        val dto = successExpenseDto()
-        val api = object : com.ticketbox.data.remote.ApiService by FakeApiService(
-            events = mutableListOf(),
-            confirmedFailuresRemaining = 0,
-        ) {
-            override suspend fun confirmExpense(
-                id: String,
-                request: ExpenseStateTokenRequest,
-                idempotencyKey: String?,
-            ): com.ticketbox.data.remote.dto.ExpenseDto {
-                // Mid-flight: a sibling coroutine enqueues for the same target
-                // AFTER the guard already saw an empty queue.
-                outbox.enqueue(
-                    type = PendingMutationType.PatchExpense,
-                    targetId = "expense:$id",
-                    payloadJson = "{}",
-                    expectedRowVersion = 1L,
-                    idempotencyKey = "late-key",
-                )
-                return dto
-            }
-        }
-        val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
-
-        val outcome = repo.confirmExpenseAllowingOffline(baseline).getOrThrow()
-
-        // Current (accepted) semantics: the direct call wins the race.
-        assertTrue(outcome is ExpenseStateOutcome.Synced)
-        assertEquals(1, dao.rows.size, "the late row stays queued for the normal drain")
-        assertEquals(
-            PendingMutationStatus.Pending.wireValue,
-            dao.rows.values.single().status,
-        )
-    }
-
-    // endregion
 
     @Test
     fun `acknowledge HttpException 409 surfaces as failure, no enqueue`() = runTest {

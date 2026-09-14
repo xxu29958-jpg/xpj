@@ -211,6 +211,9 @@ def parse_enqueues(files: dict[str, str], enum_types: set[str]) -> dict[str, set
     out: dict[str, set[str]] = {}
     pattern = re.compile(r"\btype\s*=\s*PendingMutationType\.(\w+)\b(?!\s*\()")
     positional = re.compile(r"\benqueue\s*\(\s*[^,]+,\s*PendingMutationType\.(\w+)\b(?!\s*\()")
+    typed_factory = re.compile(
+        r"\b(?:stateIntent|acceptState)\s*\((?:[^;]*?)PendingMutationType\.(\w+)\b(?!\s*\()"
+    )
     for name, source in files.items():
         source = _code_only(source)
         for line in source.splitlines():
@@ -220,6 +223,8 @@ def parse_enqueues(files: dict[str, str], enum_types: set[str]) -> dict[str, set
                 constant = match.group(1)
                 out.setdefault(constant, set()).add(name)
         for match in positional.finditer(source):
+            out.setdefault(match[1], set()).add(name)
+        for match in typed_factory.finditer(source):
             out.setdefault(match[1], set()).add(name)
         for constant in _typed_intent_types(source):
             out.setdefault(constant, set()).add(name)

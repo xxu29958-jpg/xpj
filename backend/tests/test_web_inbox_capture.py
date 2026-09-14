@@ -152,12 +152,11 @@ def test_web_pending_upload_keeps_saved_row_visible_when_task_submit_fails(
     web_client: TestClient,
     monkeypatch,
 ) -> None:
-    from app.services import background_task_service
 
     def fail_submit(*_args, **_kwargs):
         raise RuntimeError("executor unavailable")
 
-    monkeypatch.setattr(background_task_service, "_submit_task", fail_submit)
+    monkeypatch.setattr("app.services.background_task_executor.submit_task", fail_submit)
 
     response = web_client.post(
         "/web/pending/upload?ledger_id=owner",

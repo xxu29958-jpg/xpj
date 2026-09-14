@@ -14,6 +14,7 @@ import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.OutboxStatus
 import com.ticketbox.data.repository.PendingDebtCreation
 import com.ticketbox.data.repository.parseExpenseTargetRef
+import com.ticketbox.data.repository.expenseRefreshTargetId
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.OutboxBinding
 import com.ticketbox.data.repository.ExpenseCorrectionObservation
@@ -21,6 +22,7 @@ import com.ticketbox.data.repository.bindingOrNull
 import com.ticketbox.data.repository.canonicalServerOriginOrNull
 import com.ticketbox.data.repository.requiresManualCreateReview
 import com.ticketbox.data.repository.MANUAL_CREATE_RECEIPT_REVIEW
+import com.ticketbox.data.repository.EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -138,9 +140,7 @@ class OutboxStatusViewModel(
 
     /** "用我的覆盖" — re-apply my change on top of the server's latest. */
     fun keepMine(row: OutboxRow) {
-        if (row.type == PendingMutationType.CreateExpense) return
-        if (row.type in originalSubmissionTypes || row.type in DEBT_WRITE_TYPES ||
-            row.type == PendingMutationType.CreateBillSplitInvitation) return
+        if (row.refusesKeepMine()) return
         val binding = expenseRepository.captureDeferredLedgerBinding()
         if (!_uiState.value.accepts(row, binding)) return
         if (row.type in setOf(PendingMutationType.CorrectExpense, PendingMutationType.UploadScreenshot)) return
@@ -299,7 +299,24 @@ class OutboxStatusViewModel(
         }
     }
 
-    fun consumeMessage() = _uiState.update { it.copy(message = null, messageTone = MessageTone.Neutral) }
+    /** The command is already delivered; recovery only reads its authoritative result. */
+    fun refreshExpense(row: OutboxRow) {
+        if (_uiState.value.status.refreshRequired.none { it.id == row.id }) return
+        val binding = expenseRepository.captureDeferredLedgerBinding() ?: return
+        resolve(row) {
+            val id = expenseRefreshTargetId(row.targetId, row.receiptJson)
+            if (id == null) {
+                _uiState.update { it.copy(message = UiText.res(R.string.sync_status_refresh_failed), messageTone = MessageTone.Danger) }
+                return@resolve
+            }
+            expenseRepository.fetchExpense(id).onFailure { error ->
+                if (expenseRepository.captureDeferredLedgerBinding() == binding) {
+                    _uiState.update { it.copy(message = error.toUiText(R.string.sync_status_refresh_failed),
+                        messageTone = MessageTone.Danger) }
+                }
+            }
+        }
+    }
 
     private fun explainOffsetReview() = _uiState.update {
         it.copy(message = UiText.res(R.string.expense_offset_original_requires_review), messageTone = MessageTone.Danger)
@@ -355,7 +372,7 @@ data class OutboxStatusUiState(
     val messageTone: MessageTone = MessageTone.Neutral,
 ) {
     fun offersRetry(row: OutboxRow): Boolean {
-        if (row.type in writerSubmissionTypes && correctionObservation.access?.canModify != true) return false
+        if (row.refusesRetry(correctionObservation)) return false
         return when (row.type) {
             in categoryRuleSubmissionTypes -> categoryRules[row.id]?.canRetry == true
             PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem ->
@@ -373,6 +390,17 @@ data class OutboxStatusUiState(
         }
     }
 }
+
+private fun OutboxRow.refusesKeepMine(): Boolean =
+    type == PendingMutationType.CreateExpense || type == PendingMutationType.UndoExpense ||
+        lastError == EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW ||
+        type in originalSubmissionTypes || type in DEBT_WRITE_TYPES ||
+        type == PendingMutationType.CreateBillSplitInvitation
+
+private fun OutboxRow.refusesRetry(observation: ExpenseCorrectionObservation): Boolean =
+    lastError == EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW ||
+        (type == PendingMutationType.UndoExpense && lastError == "expense_not_found") ||
+        (type in writerSubmissionTypes && observation.access?.canModify != true)
 
 private fun OutboxBinding?.matches(binding: LogicalSessionBinding?): Boolean =
     this != null && binding != null && ownerStorageKey == binding.ownerKey && ledgerId == binding.ledgerId &&

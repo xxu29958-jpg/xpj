@@ -16,12 +16,10 @@ from app.services.currency_binding_service import (
     resolve_write_capability,
 )
 from app.services.duplicate_service import clear_duplicate_references_to
-from app.services.exchange_rate_service import refresh_currency_snapshot
 from app.services.expense_revision_service import record_confirmation_revision
 from app.services.expense_service._field_mutation import apply_expense_fields_to_claimed_row
 from app.services.expense_service._helpers import (
     _ensure_pending_expense_can_confirm,
-    _expense_has_pending_fx,
 )
 from app.services.expense_service._query import get_expense, resolve_expense
 from app.services.expense_split_service import validate_current_expense_split_allocation
@@ -143,8 +141,6 @@ def _claim_pending_confirmation(
         return expense, False
     if expense.status != "pending":
         raise AppError("expense_not_found", status_code=404)
-    if _expense_has_pending_fx(expense):
-        refresh_currency_snapshot(db, tenant_id=tenant_id, expense=expense)
     _ensure_pending_expense_can_confirm(expense)
     validate_current_expense_split_allocation(db, expense=expense)
     db.flush()
@@ -258,8 +254,8 @@ def reject_expense(
     commit: bool = True,
     cleanup_duplicate_references: bool = True,
 ) -> Expense:
-    """Reject with OCC; terminal rejected rows with nonzero tokens are idempotent.
-    Stale writable rows fail with 409. ``commit=False`` lets the caller own the
+    """Reject with OCC; an already rejected row requires its current reviewed token.
+    Stale requests fail with 409. ``commit=False`` lets the caller own the
     transaction, including any deferred duplicate-reference cleanup.
     """
     resolve_write_capability(db)
@@ -280,6 +276,8 @@ def reject_expense(
         db.expire_all()
         existing = get_expense(db, expense_id, tenant_id)
         if existing.status == "rejected":
+            if existing.row_version != expected_row_version:
+                raise AppError("state_conflict", status_code=409)
             return existing
         if existing.status == "confirmed":
             raise AppError("expense_reversal_required", status_code=409)
@@ -319,8 +317,10 @@ def undo_reject_expense(
 ) -> Expense:
     """ADR-0038 undo: restore a recently-rejected expense within retention window.
 
+    The submission or Web caller owns commit/rollback of the restored row and audit.
+
     Atomic ``UPDATE WHERE id, tenant_id, status='rejected',
-    rejected_at >= cutoff, updated_at = expected_row_version`` + ``rowcount=1``
+    rejected_at >= cutoff, row_version = expected_row_version`` + ``rowcount=1``
     判定避免 SELECT-then-write race(memory feedback_adr_implementation
     _atomicity)。rowcount=0 → 404 (already restored / never rejected /
     past 5min window / cross-tenant / **stale undo for a row that's been
@@ -377,7 +377,6 @@ def undo_reject_expense(
         # 内部状态 + 也无法给用户决策 (无论哪种原因, 都得让用户重新看一眼
         # 最新状态)。OCC stale_token 走同一 404 而不是 409 是因为在 retention
         # 窗口外/外 tenant 等场景下区分意义不大,统一 404 = "refetch 最新状态"。
-        db.rollback()
         raise AppError("expense_not_found", status_code=404)
     db.expire_all()
     expense = get_expense(db, expense_id, tenant_id)
@@ -389,6 +388,5 @@ def undo_reject_expense(
         resource_public_id=expense.public_id,
         actor_account_id=actor_account_id,
     )
-    db.commit()
-    db.refresh(expense)
+    db.flush()
     return expense

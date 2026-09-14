@@ -31,12 +31,15 @@ internal fun NavGraphBuilder.addManualExpenseSubmissionRoute(runtime: MainNaviga
         arguments = listOf(navArgument(MANUAL_CLIENT_REF_ARG) { type = NavType.StringType })) { entry ->
         val ref = entry.arguments?.getString(MANUAL_CLIENT_REF_ARG) ?: return@composable
         ManualExpenseSubmissionRoute(ref, runtime.screenFactory,
-            onBack = { runtime.navController.popBackStack() },
-            onCompleted = { adviceInputsChanged ->
-                runtime.shellState.markExpenseEditCompleted()
-                if (adviceInputsChanged) runtime.screenFactory.budgetRepository.invalidateBudgetAdvice()
-                runtime.navController.popBackStack()
-            },
+            exit = ExpenseEditExitActions(
+                onBack = { runtime.navController.popBackStack() },
+                onCompleted = { adviceInputsChanged ->
+                    runtime.shellState.markExpenseEditCompleted()
+                    if (adviceInputsChanged) runtime.screenFactory.budgetRepository.invalidateBudgetAdvice()
+                    runtime.navController.popBackStack()
+                },
+            ),
+            financialDataRevision = runtime.shellState.financialDataRevision,
             related = ExpenseFactNavigation(onOpenRepaymentDrafts = {
                 runtime.shellState.openRepaymentDrafts(it)
                 runtime.navController.popBackStack()
@@ -49,9 +52,9 @@ internal fun NavGraphBuilder.addManualExpenseSubmissionRoute(runtime: MainNaviga
 internal fun ManualExpenseSubmissionRoute(
     clientRef: String,
     screenFactory: MainScreenFactory,
-    onBack: () -> Unit,
-    onCompleted: (Boolean) -> Unit,
+    exit: ExpenseEditExitActions,
     related: ExpenseFactNavigation,
+    financialDataRevision: Int = 0,
 ) {
     val binding by remember(screenFactory) { screenFactory.repository.observeLedgerAccess().map { it?.binding } }
         .collectAsStateWithLifecycle(initialValue = screenFactory.repository.captureDeferredLedgerBinding())
@@ -60,14 +63,14 @@ internal fun ManualExpenseSubmissionRoute(
         var openedExpense by rememberSaveable { mutableStateOf<Long?>(null) }
         val id = openedExpense
         if (id != null) {
-            ExpenseEditRoute(id, screenFactory, onBack, onCompleted, related)
+            ExpenseEditRoute(id, screenFactory, exit, related, financialDataRevision)
         } else {
             val vm: OutboxStatusViewModel = viewModel(key = "manual-submission-$clientRef",
                 factory = outboxStatusViewModelFactory(screenFactory.outboxRepository, screenFactory.repository,
                     OutboxRecoveryRepositories(screenFactory.debtCreationRepository, screenFactory.recurringRepository.occurrences,
                         screenFactory.incomePlanRepository, screenFactory.debtWriteRepository, screenFactory.goalEditRepository,
                         screenFactory.budgetRepository, screenFactory.recurringRepository, screenFactory.ruleRepository)))
-            SyncStatusScreen(vm, onBack, manualClientRef = clientRef, navigation = SyncStatusNavigation(
+            SyncStatusScreen(vm, exit.onBack, manualClientRef = clientRef, navigation = SyncStatusNavigation(
                 onOpenExpense = { if (it > 0 && binding != null &&
                     binding == screenFactory.repository.captureDeferredLedgerBinding()) openedExpense = it },
                 onOpenInbox = {}, onOpenBudget = {}, onOpenRecurring = {}, onOpenGoalCreation = {}, onOpenGoalEdit = {},

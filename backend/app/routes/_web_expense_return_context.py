@@ -34,6 +34,7 @@ _PENDING_FILTERS = {
     "missing_amount",
     "missing_merchant",
     "missing_category",
+    "missing_fx",
     "duplicate",
     "ready",
 }
