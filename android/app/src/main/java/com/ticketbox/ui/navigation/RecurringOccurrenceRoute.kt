@@ -45,18 +45,32 @@ internal fun RecurringOccurrenceHost(
         onRecordPayment = model::recordPeriodPayment,
     ))
     val origin = state.periodPaymentOrigin
-    if (origin != null && origin.binding == state.access?.binding) {
+    val paymentCurrency = CurrencyCode.fromStorageKeyOrNull(origin?.obligationCurrencyCode)
+    val ledgerHomeCurrency = CurrencyCode.fromStorageKeyOrNull(origin?.ledgerHomeCurrencyCode)
+    if (origin != null && origin.binding == state.access?.binding && paymentCurrency != null && ledgerHomeCurrency != null) {
         ManualExpenseSheet(
             state = ManualExpenseSheetState(
                 categories = emptyList(),
                 saving = false,
-                initialCurrency = CurrencyCode.fromStorageKeyOrNull(origin.obligationCurrencyCode) ?: CurrencyCode.CNY,
+                initialCurrency = paymentCurrency,
+                ledgerHomeCurrency = ledgerHomeCurrency,
             ),
             actions = ManualExpenseSheetActions(
                 onCreate = { draft ->
                     if (state.access?.binding != origin.binding) return@ManualExpenseSheetActions
                     scope.launch {
-                        val result = ledger.createManualExpense(draft.copy(clientRef = origin.clientRef))
+                        model.capturePeriodPaymentDraft(
+                            category = draft.category.orEmpty(),
+                            note = draft.note.orEmpty(),
+                            currencyCode = draft.originalCurrencyCode?.storageKey ?: paymentCurrency.storageKey,
+                            amountCents = draft.originalAmountMinor ?: draft.amountCents ?: 0L,
+                        )
+                        val result = ledger.createManualExpense(
+                            draft.copy(
+                                clientRef = origin.clientRef,
+                                ledgerHomeCurrency = draft.ledgerHomeCurrency ?: ledgerHomeCurrency,
+                            ),
+                        )
                         if (result.isSuccess) {
                             model.dismissPeriodPayment()
                             onOpenManualSubmission(origin.clientRef)

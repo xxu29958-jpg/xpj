@@ -33,6 +33,10 @@ data class RecurringPeriodPaymentOrigin(
     val merchant: String,
     val obligationCurrencyCode: String?,
     val plannedAmountCents: Long?,
+    val ledgerHomeCurrencyCode: String? = null,
+    val category: String? = null,
+    val note: String? = null,
+    val capturedAmountCents: Long? = null,
 )
 
 data class RecurringOccurrenceUiState(
@@ -69,12 +73,14 @@ class RecurringOccurrenceViewModel(
     private val mutableState = MutableStateFlow(RecurringOccurrenceUiState(access = repository.currentAccess()))
     val uiState = mutableState.asStateFlow()
     private var epoch = 0L
+    private val periodPaymentSessions = mutableMapOf<Pair<String, String>, RecurringPeriodPaymentOrigin>()
 
     init {
         viewModelScope.launch {
             repository.observeAccess().collectLatest { access ->
                 if (mutableState.value.access?.binding != access?.binding) {
                     epoch++
+                    periodPaymentSessions.clear()
                     mutableState.value = RecurringOccurrenceUiState(access = access)
                 } else mutableState.update { it.copy(access = access) }
                 if (access != null) coroutineScope {
@@ -114,20 +120,35 @@ class RecurringOccurrenceViewModel(
         val item = state.item ?: return
         val occurrence = state.occurrence ?: return
         if (!state.canWrite || occurrence.state != "unfulfilled") return
-        if (state.periodPaymentOrigin != null) return
-        mutableState.update {
-            it.copy(
-                periodPaymentOrigin = RecurringPeriodPaymentOrigin(
-                    binding = binding,
-                    seriesPublicId = item.publicId,
-                    period = occurrence.period,
-                    clientRef = UUID.randomUUID().toString(),
-                    merchant = item.merchant,
-                    obligationCurrencyCode = occurrence.homeCurrencyCode,
-                    plannedAmountCents = occurrence.plannedAmountCents,
-                ),
-            )
+        val key = item.publicId to occurrence.period
+        val existing = periodPaymentSessions[key] ?: state.periodPaymentOrigin?.takeIf {
+            it.seriesPublicId == item.publicId && it.period == occurrence.period
         }
+        if (state.periodPaymentOrigin != null && existing != null) return
+        val origin = (existing ?: RecurringPeriodPaymentOrigin(
+            binding = binding,
+            seriesPublicId = item.publicId,
+            period = occurrence.period,
+            clientRef = UUID.randomUUID().toString(),
+            merchant = item.merchant,
+            obligationCurrencyCode = occurrence.homeCurrencyCode,
+            plannedAmountCents = occurrence.plannedAmountCents,
+            ledgerHomeCurrencyCode = capturedLedgerHomeCurrency(state),
+        )).copy(binding = binding)
+        periodPaymentSessions[key] = origin
+        mutableState.update { it.copy(periodPaymentOrigin = origin) }
+    }
+
+    fun capturePeriodPaymentDraft(category: String, note: String, currencyCode: String, amountCents: Long) {
+        val origin = mutableState.value.periodPaymentOrigin ?: return
+        val updated = origin.copy(
+            category = category,
+            note = note,
+            obligationCurrencyCode = currencyCode,
+            capturedAmountCents = amountCents,
+        )
+        periodPaymentSessions[origin.seriesPublicId to origin.period] = updated
+        mutableState.update { it.copy(periodPaymentOrigin = updated) }
     }
 
     fun dismissPeriodPayment() {
@@ -202,9 +223,25 @@ class RecurringOccurrenceViewModel(
                 loading = false, occurrence = result.getOrNull() ?: it.occurrence,
                 message = if (result.isFailure) UiText.res(R.string.occurrence_refresh_failed) else null,
             ) }
+            restorePeriodPaymentOrigin()
             if (result.isSuccess) ledger.syncConfirmed().onFailure {
                 if (requestEpoch == epoch) mutableState.update { it.copy(message = UiText.res(R.string.occurrence_payment_refresh_failed)) }
             }
+        }
+    }
+
+    private fun capturedLedgerHomeCurrency(state: RecurringOccurrenceUiState): String? {
+        val row = state.payments.firstOrNull() as? ConfirmedStreamItem.ExpenseRow ?: return null
+        return row.root.homeCurrencyCode ?: row.root.homeCurrency.storageKey
+    }
+
+    private fun restorePeriodPaymentOrigin() {
+        val state = mutableState.value
+        val item = state.item ?: return
+        val period = state.occurrence?.period ?: return
+        val session = periodPaymentSessions[item.publicId to period] ?: return
+        mutableState.update {
+            it.copy(periodPaymentOrigin = session.copy(binding = state.access?.binding ?: session.binding))
         }
     }
 
