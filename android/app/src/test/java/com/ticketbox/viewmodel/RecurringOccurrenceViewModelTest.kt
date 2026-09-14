@@ -302,7 +302,35 @@ class RecurringOccurrenceViewModelTest {
             assertNull(model.uiState.value.periodPaymentError)
             assertFalse(model.uiState.value.periodPaymentSaving)
             assertEquals(listOf(originA.clientRef), ledger.createdClientRefs)
-            assertEquals(listOf(originA.clientRef), admitted)
+            assertTrue(admitted.isEmpty())
+            assertTrue(actions.submissions.isEmpty())
+        } finally {
+            model.viewModelScope.coroutineContext.job.cancelAndJoin()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun periodPaymentCreateOpensSubmissionWhenOriginStillVisible() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val actions = OccurrenceChoiceActions()
+        seedUnpaidAugust(actions)
+        val ledger = OccurrenceChoiceLedger(
+            confirmedExpenseDtoFixture().toDomain(),
+            emitConfirmedStream = false,
+        )
+        val model = occurrenceModel(actions, ledger)
+        val admitted = mutableListOf<String>()
+        try {
+            model.open(recurringItem { rowVersion = 7L }.copy(homeCurrencyCode = "JPY", merchant = "日元订阅"))
+            advanceUntilIdle()
+            model.periodPayment.recordPeriodPayment()
+            val origin = assertNotNull(model.uiState.value.periodPaymentOrigin)
+            model.createPeriodPayment(periodPaymentDraft(origin), onAdmitted = { admitted += it })
+            advanceUntilIdle()
+            assertEquals(listOf(origin.clientRef), admitted)
+            assertEquals(listOf(origin.clientRef), ledger.createdClientRefs)
+            assertNull(model.uiState.value.periodPaymentOrigin)
             assertTrue(actions.submissions.isEmpty())
         } finally {
             model.viewModelScope.coroutineContext.job.cancelAndJoin()

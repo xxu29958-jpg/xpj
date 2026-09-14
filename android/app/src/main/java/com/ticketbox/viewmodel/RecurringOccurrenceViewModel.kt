@@ -142,8 +142,7 @@ class RecurringOccurrenceViewModel(
             val error = if (result.isSuccess) null
                 else result.exceptionOrNull()?.message?.let(UiText::raw)
                     ?: UiText.res(R.string.ledger_msg_manual_save_failed)
-            periodPayment.applyCreateOutcome(submitted, error)
-            if (result.isSuccess) onAdmitted(submitted.clientRef)
+            if (periodPayment.applyCreateOutcome(submitted, error)) onAdmitted(submitted.clientRef)
         }
     }
 

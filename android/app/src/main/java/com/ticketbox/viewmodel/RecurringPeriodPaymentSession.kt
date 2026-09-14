@@ -109,7 +109,7 @@ internal class RecurringPeriodPaymentSession(
         }
     }
 
-    fun applyCreateOutcome(submitted: RecurringPeriodPaymentOrigin, error: UiText?) {
+    fun applyCreateOutcome(submitted: RecurringPeriodPaymentOrigin, error: UiText?): Boolean {
         val visible = current().periodPaymentOrigin
         val sameVisible = visible?.clientRef == submitted.clientRef && visible.binding == submitted.binding
         if (error == null) {
@@ -120,7 +120,7 @@ internal class RecurringPeriodPaymentSession(
                 } else state
             }
             if (sameVisible) dismissPeriodPayment()
-            return
+            return sameVisible
         }
         mutate { state ->
             val cleared = if (state.periodPaymentInFlightClientRef == submitted.clientRef) {
@@ -128,6 +128,7 @@ internal class RecurringPeriodPaymentSession(
             } else state
             if (sameVisible) cleared.copy(periodPaymentError = error) else cleared
         }
+        return false
     }
 
     fun applyLedgerHome(code: String?) {
