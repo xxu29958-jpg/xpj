@@ -14,6 +14,7 @@ import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.RecurringOccurrenceDto
 import com.ticketbox.data.remote.dto.RecurringOccurrencePaymentRequestDto
 import com.ticketbox.domain.model.ConfirmedStreamItem
+import com.ticketbox.domain.model.DebtListLens
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseLineageStatus
 import com.ticketbox.domain.model.RecurringItem
@@ -28,6 +29,7 @@ import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 
 /** Production repository graph and disk Room. Only session and remote/cache observations are synthetic. */
@@ -39,10 +41,15 @@ internal class RecurringOccurrenceConnectedFixture(private val context: Context)
     private val adapters = OutboxAdapterGraph()
     private val session = occurrenceConnectedSession()
     lateinit var outbox: OutboxRepository
+    val confirmedStream = MutableStateFlow(listOf(occurrenceConnectedPayment()))
+    val debts: DebtActions = object : DebtActions by occurrenceProxy<DebtActions>({ method, _ -> error("Unexpected debt method: $method") }) {
+        override suspend fun listDebts(lens: DebtListLens) =
+            Result.success(DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "CNY"))
+    }
     val ledger: LedgerActions = object : LedgerActions by occurrenceProxy<LedgerActions>({ method, _ -> error("Unexpected ledger method: $method") }) {
-        override fun observeConfirmedStream() = flowOf(listOf(occurrenceConnectedPayment()))
+        override fun observeConfirmedStream() = confirmedStream
         override suspend fun syncConfirmed(month: String?, category: String?, tag: String?): Result<List<Expense>> =
-            Result.success(listOf(occurrenceConnectedPayment().root))
+            Result.success(confirmedStream.value.map { it.root })
     }
 
     fun reopen(): RepositoryGraph {

@@ -1,7 +1,10 @@
 package com.ticketbox.viewmodel
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.remote.dto.RecurringOccurrenceDto
+import com.ticketbox.data.repository.DebtActions
+import com.ticketbox.data.repository.DebtListPage
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LedgerActions
 import com.ticketbox.data.repository.LogicalSessionBinding
@@ -13,11 +16,17 @@ import com.ticketbox.data.repository.confirmedExpenseDtoFixture
 import com.ticketbox.data.repository.toDomain
 import com.ticketbox.domain.model.BatchApplyResult
 import com.ticketbox.domain.model.ConfirmedStreamItem
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CsvExport
+import com.ticketbox.domain.model.Debt
+import com.ticketbox.domain.model.DebtListLens
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.ExpenseLineageStatus
+import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.screens.recurringItem
+import java.lang.reflect.Proxy
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancelAndJoin
@@ -32,6 +41,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -44,7 +54,7 @@ class RecurringOccurrenceViewModelTest {
         val actions = OccurrenceChoiceActions()
         val payment = confirmedExpenseDtoFixture().toDomain().copy(rowVersion = 11L)
         val ledger = OccurrenceChoiceLedger(payment)
-        val model = RecurringOccurrenceViewModel(actions, ledger)
+        val model = occurrenceModel(actions, ledger)
         try {
             model.open(recurringItem { rowVersion = 7L })
             advanceUntilIdle()
@@ -84,7 +94,7 @@ class RecurringOccurrenceViewModelTest {
             plannedAmountCents = 1200,
             reservedAmountCents = 1200,
         )
-        val model = RecurringOccurrenceViewModel(actions, OccurrenceChoiceLedger(confirmedExpenseDtoFixture().toDomain()))
+        val model = occurrenceModel(actions, OccurrenceChoiceLedger(confirmedExpenseDtoFixture().toDomain()))
         try {
             model.open(recurringItem { rowVersion = 7L }.copy(homeCurrencyCode = "JPY", merchant = "日元订阅"))
             advanceUntilIdle()
@@ -107,29 +117,221 @@ class RecurringOccurrenceViewModelTest {
     }
 
     @Test
-    fun recreationKeepsPeriodPaymentCategoryNoteCurrencyAmountClientRefSeriesAndPeriod() = runTest {
+    fun savedStateRecreatedViewModelRestoresPeriodPaymentOrigin() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val actions = OccurrenceChoiceActions()
         seedUnpaidAugust(actions)
-        val model = RecurringOccurrenceViewModel(actions, OccurrenceChoiceLedger(confirmedExpenseDtoFixture().toDomain()))
+        val savedState = SavedStateHandle()
+        val ledger = OccurrenceChoiceLedger(confirmedExpenseDtoFixture().toDomain(), emitConfirmedStream = false)
+        val debts = OccurrenceChoiceDebts("CNY")
+        val first = occurrenceModel(actions, ledger, debts, savedState)
+        val firstClientRef: String
+        try {
+            first.open(recurringItem { rowVersion = 7L }.copy(homeCurrencyCode = "JPY", merchant = "日元订阅"))
+            advanceUntilIdle()
+            first.periodPayment.recordPeriodPayment()
+            assertNotNull(first.uiState.value.periodPaymentOrigin)
+            val recorded = assertNotNull(first.uiState.value.periodPaymentOrigin)
+            first.periodPayment.capturePeriodPaymentDraft(recorded.clientRef, "订阅", "八月义务", "JPY", 1300L)
+            firstClientRef = recorded.clientRef
+        } finally {
+            first.viewModelScope.coroutineContext.job.cancelAndJoin()
+        }
+        debts.fail = true
+        val restored = occurrenceModel(actions, ledger, debts, savedState)
+        try {
+            restored.open(recurringItem { rowVersion = 7L }.copy(homeCurrencyCode = "JPY", merchant = "日元订阅"))
+            advanceUntilIdle()
+            val origin = assertNotNull(restored.uiState.value.periodPaymentOrigin)
+            assertEquals(firstClientRef, origin.clientRef)
+            assertEquals("rec-1", origin.seriesPublicId)
+            assertEquals("2026-08", origin.period)
+            assertEquals("JPY", origin.obligationCurrencyCode)
+            assertEquals("订阅", origin.category)
+            assertEquals("八月义务", origin.note)
+            assertEquals(1300L, origin.capturedAmountCents)
+            assertEquals("CNY", origin.ledgerHomeCurrencyCode)
+        } finally {
+            restored.viewModelScope.coroutineContext.job.cancelAndJoin()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun unpaidPeriodWithoutConfirmedStreamUsesDebtListLedgerHome() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val actions = OccurrenceChoiceActions()
+        seedUnpaidAugust(actions)
+        val ledger = OccurrenceChoiceLedger(confirmedExpenseDtoFixture().toDomain(), emitConfirmedStream = false)
+        val debts = OccurrenceChoiceDebts("CNY")
+        val model = occurrenceModel(actions, ledger, debts)
+        try {
+            model.open(recurringItem { rowVersion = 7L }.copy(homeCurrencyCode = "JPY", merchant = "日元订阅"))
+            advanceUntilIdle()
+            assertEquals(emptyList<ConfirmedStreamItem>(), model.uiState.value.payments)
+            model.periodPayment.recordPeriodPayment()
+            val origin = assertNotNull(model.uiState.value.periodPaymentOrigin)
+            assertEquals("JPY", origin.obligationCurrencyCode)
+            assertEquals("CNY", origin.ledgerHomeCurrencyCode)
+            assertTrue(actions.submissions.isEmpty())
+            assertEquals("unfulfilled", model.uiState.value.occurrence?.state)
+        } finally {
+            model.viewModelScope.coroutineContext.job.cancelAndJoin()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun unpaidPeriodWithoutConfirmedStreamDoesNotGuessLedgerHomeWhenCapabilityMissing() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val actions = OccurrenceChoiceActions()
+        seedUnpaidAugust(actions)
+        val ledger = OccurrenceChoiceLedger(confirmedExpenseDtoFixture().toDomain(), emitConfirmedStream = false)
+        val model = occurrenceModel(actions, ledger, OccurrenceChoiceDebts(ledgerHomeCurrencyCode = null))
         try {
             model.open(recurringItem { rowVersion = 7L }.copy(homeCurrencyCode = "JPY", merchant = "日元订阅"))
             advanceUntilIdle()
             model.periodPayment.recordPeriodPayment()
-            val first = assertNotNull(model.uiState.value.periodPaymentOrigin)
-            val capture = RecurringPeriodPaymentSession::class.members.firstOrNull { it.name == "capturePeriodPaymentDraft" }
-            assertNotNull(capture, "User-entered category and note must stay on the captured origin across recreation")
-            capture.call(model.periodPayment, "订阅", "八月义务", "JPY", 1300L)
+            val origin = assertNotNull(model.uiState.value.periodPaymentOrigin)
+            assertEquals("JPY", origin.obligationCurrencyCode)
+            assertNull(origin.ledgerHomeCurrencyCode)
+            assertTrue(actions.submissions.isEmpty())
+        } finally {
+            model.viewModelScope.coroutineContext.job.cancelAndJoin()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun conflictingDebtRecordAndCapabilityFailClosedWithoutGuessingLedgerHome() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val actions = OccurrenceChoiceActions()
+        seedUnpaidAugust(actions)
+        val ledger = OccurrenceChoiceLedger(confirmedExpenseDtoFixture().toDomain(), emitConfirmedStream = false)
+        val debts = OccurrenceChoiceDebts(ledgerHomeCurrencyCode = "JPY", debts = listOf(periodDebt("CNY")))
+        val model = occurrenceModel(actions, ledger, debts)
+        try {
+            model.open(recurringItem { rowVersion = 7L }.copy(homeCurrencyCode = "USD", merchant = "海外订阅"))
+            advanceUntilIdle()
+            model.periodPayment.recordPeriodPayment()
+            val origin = assertNotNull(model.uiState.value.periodPaymentOrigin)
+            assertEquals("JPY", origin.obligationCurrencyCode)
+            assertNull(origin.ledgerHomeCurrencyCode)
+            assertNull(model.uiState.value.ledgerHomeCurrencyCode)
+            assertTrue(actions.submissions.isEmpty())
+        } finally {
+            model.viewModelScope.coroutineContext.job.cancelAndJoin()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun failedPeriodPaymentCreateKeepsOriginAndReportsSaveError() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val actions = OccurrenceChoiceActions()
+        seedUnpaidAugust(actions)
+        val ledger = OccurrenceChoiceLedger(
+            confirmedExpenseDtoFixture().toDomain(),
+            emitConfirmedStream = false,
+            failCreate = true,
+        )
+        val model = occurrenceModel(actions, ledger)
+        try {
             model.open(recurringItem { rowVersion = 7L }.copy(homeCurrencyCode = "JPY", merchant = "日元订阅"))
             advanceUntilIdle()
-            val restored = assertNotNull(model.uiState.value.periodPaymentOrigin)
-            assertEquals(first.clientRef, restored.clientRef)
-            assertEquals("rec-1", restored.seriesPublicId)
-            assertEquals("2026-08", restored.period)
-            assertEquals("JPY", restored.obligationCurrencyCode)
-            assertEquals("订阅", originField(restored, "category"))
-            assertEquals("八月义务", originField(restored, "note"))
-            assertEquals(1300L, originField(restored, "capturedAmountCents") ?: restored.plannedAmountCents)
+            model.periodPayment.recordPeriodPayment()
+            val origin = assertNotNull(model.uiState.value.periodPaymentOrigin)
+            model.createPeriodPayment(periodPaymentDraft(origin).copy(category = "订阅", note = "八月义务"))
+            advanceUntilIdle()
+            assertFalse(model.uiState.value.periodPaymentSaving)
+            assertEquals(UiText.raw("账本不可写"), model.uiState.value.periodPaymentError)
+            val kept = assertNotNull(model.uiState.value.periodPaymentOrigin)
+            assertEquals(origin.clientRef, kept.clientRef)
+            assertEquals("订阅", kept.category)
+            assertEquals("八月义务", kept.note)
+            assertTrue(ledger.createdClientRefs.isEmpty())
+            assertTrue(actions.submissions.isEmpty())
+        } finally {
+            model.viewModelScope.coroutineContext.job.cancelAndJoin()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun latePeriodPaymentCreateDoesNotApplyResultToALaterVisibleOrigin() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val actions = OccurrenceChoiceActions()
+        seedUnpaidAugust(actions)
+        val ledger = OccurrenceChoiceLedger(
+            confirmedExpenseDtoFixture().toDomain(),
+            emitConfirmedStream = false,
+        )
+        ledger.createGate = CompletableDeferred()
+        val model = occurrenceModel(actions, ledger)
+        val admitted = mutableListOf<String>()
+        try {
+            model.open(recurringItem { rowVersion = 7L }.copy(homeCurrencyCode = "JPY", merchant = "日元订阅"))
+            advanceUntilIdle()
+            model.periodPayment.recordPeriodPayment()
+            val originA = assertNotNull(model.uiState.value.periodPaymentOrigin)
+            model.createPeriodPayment(periodPaymentDraft(originA), onAdmitted = { admitted += it })
+            advanceUntilIdle()
+            assertTrue(model.uiState.value.periodPaymentSaving)
+            assertEquals(originA.clientRef, model.uiState.value.periodPaymentInFlightClientRef)
+
+            actions.occurrence = actions.occurrence.copy(
+                period = "2026-09",
+                homeCurrencyCode = "JPY",
+                plannedAmountCents = 1400,
+                reservedAmountCents = 1400,
+            )
+            model.changePeriod("2026-09")
+            advanceUntilIdle()
+            assertNull(model.uiState.value.periodPaymentOrigin)
+            assertFalse(model.uiState.value.periodPaymentSaving)
+            model.periodPayment.recordPeriodPayment()
+            val originB = assertNotNull(model.uiState.value.periodPaymentOrigin)
+            assertTrue(originB.clientRef != originA.clientRef)
+
+            ledger.createGate!!.complete(Result.success(ledger.payment))
+            advanceUntilIdle()
+
+            val visible = assertNotNull(model.uiState.value.periodPaymentOrigin)
+            assertEquals(originB.clientRef, visible.clientRef)
+            assertFalse(visible.admitted)
+            assertNull(model.uiState.value.periodPaymentError)
+            assertFalse(model.uiState.value.periodPaymentSaving)
+            assertEquals(listOf(originA.clientRef), ledger.createdClientRefs)
+            assertTrue(admitted.isEmpty())
+            assertTrue(actions.submissions.isEmpty())
+        } finally {
+            model.viewModelScope.coroutineContext.job.cancelAndJoin()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun periodPaymentCreateOpensSubmissionWhenOriginStillVisible() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val actions = OccurrenceChoiceActions()
+        seedUnpaidAugust(actions)
+        val ledger = OccurrenceChoiceLedger(
+            confirmedExpenseDtoFixture().toDomain(),
+            emitConfirmedStream = false,
+        )
+        val model = occurrenceModel(actions, ledger)
+        val admitted = mutableListOf<String>()
+        try {
+            model.open(recurringItem { rowVersion = 7L }.copy(homeCurrencyCode = "JPY", merchant = "日元订阅"))
+            advanceUntilIdle()
+            model.periodPayment.recordPeriodPayment()
+            val origin = assertNotNull(model.uiState.value.periodPaymentOrigin)
+            model.createPeriodPayment(periodPaymentDraft(origin), onAdmitted = { admitted += it })
+            advanceUntilIdle()
+            assertEquals(listOf(origin.clientRef), admitted)
+            assertEquals(listOf(origin.clientRef), ledger.createdClientRefs)
+            assertNull(model.uiState.value.periodPaymentOrigin)
+            assertTrue(actions.submissions.isEmpty())
         } finally {
             model.viewModelScope.coroutineContext.job.cancelAndJoin()
             Dispatchers.resetMain()
@@ -141,24 +343,28 @@ class RecurringOccurrenceViewModelTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val actions = OccurrenceChoiceActions()
         seedUnpaidAugust(actions)
-        val ledger = OccurrenceChoiceLedger(confirmedExpenseDtoFixture().toDomain().copy(homeCurrencyCode = "CNY"))
-        val model = RecurringOccurrenceViewModel(actions, ledger)
+        val ledger = OccurrenceChoiceLedger(confirmedExpenseDtoFixture().toDomain().copy(homeCurrencyCode = "JPY"))
+        val debts = OccurrenceChoiceDebts("CNY")
+        val model = occurrenceModel(actions, ledger, debts)
         try {
             model.open(recurringItem { rowVersion = 7L }.copy(homeCurrencyCode = "JPY", merchant = "日元订阅"))
             advanceUntilIdle()
             val fetchesAfterLoad = actions.fetchCount
             val syncsAfterLoad = ledger.syncCount
+            val debtReadsAfterLoad = debts.listCount
             actions.failReads = true
             ledger.failSync = true
+            debts.fail = true
             model.periodPayment.recordPeriodPayment()
             val origin = assertNotNull(model.uiState.value.periodPaymentOrigin)
             assertEquals(fetchesAfterLoad, actions.fetchCount)
             assertEquals(syncsAfterLoad, ledger.syncCount)
+            assertEquals(debtReadsAfterLoad, debts.listCount)
             assertEquals(actions.access.binding, origin.binding)
             assertEquals("JPY", origin.obligationCurrencyCode)
             assertEquals("2026-08", origin.period)
             assertTrue(origin.clientRef.isNotBlank())
-            assertEquals("CNY", originField(origin, "ledgerHomeCurrencyCode"))
+            assertEquals("CNY", origin.ledgerHomeCurrencyCode)
             assertTrue(actions.submissions.isEmpty())
             val admitted = ledger.createManualExpense(
                 ExpenseDraft(
@@ -180,6 +386,7 @@ class RecurringOccurrenceViewModelTest {
             assertEquals(listOf(origin.clientRef), ledger.createdClientRefs)
             assertEquals(fetchesAfterLoad, actions.fetchCount)
             assertEquals(syncsAfterLoad, ledger.syncCount)
+            assertEquals(debtReadsAfterLoad, debts.listCount)
         } finally {
             model.viewModelScope.coroutineContext.job.cancelAndJoin()
             Dispatchers.resetMain()
@@ -192,7 +399,7 @@ class RecurringOccurrenceViewModelTest {
         val actions = OccurrenceChoiceActions()
         seedUnpaidAugust(actions)
         actions.occurrence = actions.occurrence.copy(homeCurrencyCode = null)
-        val model = RecurringOccurrenceViewModel(actions, OccurrenceChoiceLedger(confirmedExpenseDtoFixture().toDomain()))
+        val model = occurrenceModel(actions, OccurrenceChoiceLedger(confirmedExpenseDtoFixture().toDomain()))
         try {
             model.open(recurringItem { rowVersion = 7L }.copy(homeCurrencyCode = null, merchant = "旧订阅"))
             advanceUntilIdle()
@@ -214,7 +421,7 @@ class RecurringOccurrenceViewModelTest {
         val actions = OccurrenceChoiceActions()
         seedUnpaidAugust(actions)
         val ledger = OccurrenceChoiceLedger(confirmedExpenseDtoFixture().toDomain())
-        val model = RecurringOccurrenceViewModel(actions, ledger)
+        val model = occurrenceModel(actions, ledger)
         try {
             model.open(recurringItem { rowVersion = 7L }.copy(homeCurrencyCode = "JPY", merchant = "日元订阅"))
             advanceUntilIdle()
@@ -257,7 +464,7 @@ class RecurringOccurrenceViewModelTest {
         )
         val ledger = OccurrenceChoiceLedger(payment)
         val item = recurringItem { rowVersion = 7L }.copy(homeCurrencyCode = "USD", merchant = "海外订阅")
-        val model = RecurringOccurrenceViewModel(actions, ledger)
+        val model = occurrenceModel(actions, ledger)
         try {
             model.open(item)
             advanceUntilIdle()
@@ -281,7 +488,7 @@ class RecurringOccurrenceViewModelTest {
                     clientRef = origin.clientRef,
                 ),
             ).getOrThrow()
-            model.periodPayment.acceptPeriodPaymentAdmission()
+            model.periodPayment.acceptPeriodPaymentAdmission(origin.clientRef)
             model.periodPayment.dismissPeriodPayment()
             assertTrue(actions.submissions.isEmpty())
             model.periodPayment.restoreAdmittedPeriodOccurrence(listOf(item))
@@ -304,6 +511,13 @@ class RecurringOccurrenceViewModelTest {
     }
 }
 
+private fun occurrenceModel(
+    actions: OccurrenceChoiceActions,
+    ledger: OccurrenceChoiceLedger,
+    debts: OccurrenceChoiceDebts = OccurrenceChoiceDebts(),
+    savedState: SavedStateHandle = SavedStateHandle(),
+) = RecurringOccurrenceViewModel(actions, ledger, debts, savedStateHandle = savedState)
+
 private fun seedUnpaidAugust(actions: OccurrenceChoiceActions) {
     actions.occurrence = actions.occurrence.copy(
         period = "2026-08",
@@ -313,8 +527,53 @@ private fun seedUnpaidAugust(actions: OccurrenceChoiceActions) {
     )
 }
 
-private fun originField(origin: RecurringPeriodPaymentOrigin, name: String): Any? =
-    RecurringPeriodPaymentOrigin::class.members.firstOrNull { it.name == name }?.call(origin)
+private fun periodDebt(homeCurrencyCode: String): Debt = Debt(
+    publicId = "debt-$homeCurrencyCode",
+    ledgerId = "owner",
+    direction = "i_owe",
+    counterpartyType = "external",
+    counterpartyAccountId = null,
+    counterpartyLabel = "对手方",
+    principalAmountCents = 100_000,
+    remainingAmountCents = 40_000,
+    paidAmountCents = 60_000,
+    status = "open",
+    sourceType = "manual",
+    sourceId = null,
+    homeCurrencyCode = homeCurrencyCode,
+    originalCurrencyCode = null,
+    originalAmountMinor = null,
+    createdAt = "2026-06-13T00:00:00Z",
+    updatedAt = "2026-06-15T00:00:00Z",
+    rowVersion = 1L,
+)
+
+private class OccurrenceChoiceDebts(
+    var ledgerHomeCurrencyCode: String? = "CNY",
+    var fail: Boolean = false,
+    var debts: List<Debt> = emptyList(),
+) : DebtActions by unsupportedOccurrenceDebtActions() {
+    var listCount = 0
+    override suspend fun listDebts(lens: DebtListLens): Result<DebtListPage> {
+        listCount++
+        if (fail) return Result.failure(IllegalStateException("debts are offline"))
+        return Result.success(DebtListPage(debts = debts, ledgerHomeCurrencyCode = ledgerHomeCurrencyCode))
+    }
+}
+
+private fun unsupportedOccurrenceDebtActions(): DebtActions = requireNotNull(
+    DebtActions::class.java.cast(
+        Proxy.newProxyInstance(
+            DebtActions::class.java.classLoader,
+            arrayOf(DebtActions::class.java),
+        ) { _, method, _ ->
+            when (method.name) {
+                "toString" -> "UnsupportedOccurrenceDebtActions"
+                else -> throw UnsupportedOperationException(method.name)
+            }
+        },
+    ),
+)
 
 private class OccurrenceChoiceActions : RecurringOccurrenceActions {
     val access = LedgerAccessContext(
@@ -348,14 +607,35 @@ private class OccurrenceChoiceActions : RecurringOccurrenceActions {
         error("Recovery is not part of an unsubmitted payment choice")
 }
 
-private class OccurrenceChoiceLedger(var payment: Expense) : LedgerActions {
-    private val rows = MutableStateFlow<List<ConfirmedStreamItem>>(listOf(payment.asPaymentRow()))
+private fun periodPaymentDraft(origin: RecurringPeriodPaymentOrigin) = ExpenseDraft(
+    amountCents = null,
+    originalCurrencyCode = CurrencyCode.JPY,
+    originalAmountMinor = origin.capturedAmountCents ?: origin.plannedAmountCents,
+    merchant = origin.merchant,
+    category = origin.category ?: "订阅",
+    note = origin.note ?: "八月义务",
+    expenseTime = "2026-09-03T10:00:00Z",
+    tags = null,
+    valueScore = null,
+    regretScore = null,
+    ledgerHomeCurrency = CurrencyCode.CNY,
+)
+
+private class OccurrenceChoiceLedger(
+    var payment: Expense,
+    private val emitConfirmedStream: Boolean = true,
+    var failCreate: Boolean = false,
+) : LedgerActions {
+    private val rows = MutableStateFlow(
+        if (emitConfirmedStream) listOf(payment.asPaymentRow()) else emptyList(),
+    )
     val createdClientRefs = mutableListOf<String>()
+    var createGate: CompletableDeferred<Result<Expense>>? = null
     var syncCount = 0
     var failSync = false
     override fun canModifyLedger(): Boolean = true
     override fun lastConfirmedSyncAt(): String? = null
-    override fun observeConfirmed(): Flow<List<Expense>> = flowOf(listOf(payment))
+    override fun observeConfirmed(): Flow<List<Expense>> = flowOf(if (emitConfirmedStream) listOf(payment) else emptyList())
     override fun observeConfirmedStream(): Flow<List<ConfirmedStreamItem>> = rows
     override suspend fun categories(): Result<List<String>> = error("Unexpected category read")
     override suspend fun tags(): Result<List<String>> = error("Unexpected tag read")
@@ -364,14 +644,21 @@ private class OccurrenceChoiceLedger(var payment: Expense) : LedgerActions {
     override suspend fun syncConfirmed(month: String?, category: String?, tag: String?): Result<List<Expense>> {
         syncCount++
         if (failSync) return Result.failure(IllegalStateException("confirmed stream is offline"))
-        rows.value = listOf(payment.asPaymentRow())
-        return Result.success(listOf(payment))
+        rows.value = if (emitConfirmedStream) listOf(payment.asPaymentRow()) else emptyList()
+        return Result.success(if (emitConfirmedStream) listOf(payment) else emptyList())
     }
 
     override suspend fun exportConfirmedCsv(month: String?, category: String?, tag: String?): Result<CsvExport> =
         error("Unexpected export")
     override suspend fun createManualExpense(draft: ExpenseDraft): Result<Expense> {
         val ref = draft.clientRef?.takeIf { it.isNotBlank() } ?: return Result.failure(IllegalStateException("period payment must reuse the captured clientRef"))
+        val gate = createGate
+        if (gate != null) {
+            val gated = gate.await()
+            createGate = null
+            if (gated.isFailure) return gated
+        }
+        if (failCreate) return Result.failure(IllegalStateException("账本不可写"))
         createdClientRefs += ref
         return Result.success(payment.copy(clientRef = ref, pendingSync = true))
     }

@@ -1,11 +1,13 @@
 package com.ticketbox.viewmodel
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.remote.dto.RecurringOccurrenceDto
 import com.ticketbox.data.remote.dto.RecurringOccurrencePaymentRequestDto
+import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LedgerActions
 import com.ticketbox.data.repository.OccurrencePaymentDraft
@@ -13,6 +15,8 @@ import com.ticketbox.data.repository.PendingOccurrencePayment
 import com.ticketbox.data.repository.RecurringOccurrenceActions
 import com.ticketbox.data.repository.occurrenceTarget
 import com.ticketbox.domain.model.ConfirmedStreamItem
+import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.domain.model.UiText
 import java.time.YearMonth
@@ -36,7 +40,13 @@ data class RecurringOccurrenceUiState(
     val requestedPeriod: String = "current",
     val message: UiText? = null,
     val periodPaymentOrigin: RecurringPeriodPaymentOrigin? = null,
+    val ledgerHomeCurrencyCode: String? = null,
+    val periodPaymentInFlightClientRef: String? = null,
+    val periodPaymentError: UiText? = null,
 ) {
+    val periodPaymentSaving: Boolean
+        get() = periodPaymentInFlightClientRef != null &&
+            periodPaymentOrigin?.clientRef == periodPaymentInFlightClientRef
     val seriesPending: List<PendingOccurrencePayment> get() = queue.filter {
         it.row.status != PendingMutationStatus.Done && it.row.targetId.startsWith("recurring_occurrence:" + item?.publicId + ":")
     }
@@ -52,7 +62,9 @@ data class RecurringOccurrenceUiState(
 class RecurringOccurrenceViewModel(
     private val repository: RecurringOccurrenceActions,
     private val ledger: LedgerActions,
+    private val debts: DebtActions,
     private val onChanged: () -> Unit = {},
+    savedStateHandle: SavedStateHandle = SavedStateHandle(),
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(RecurringOccurrenceUiState(access = repository.currentAccess()))
     val uiState = mutableState.asStateFlow()
@@ -61,6 +73,7 @@ class RecurringOccurrenceViewModel(
         current = { mutableState.value },
         mutate = { reducer -> mutableState.update(reducer) },
         load = ::load,
+        savedState = savedStateHandle,
     )
 
     init {
@@ -81,14 +94,14 @@ class RecurringOccurrenceViewModel(
 
     fun open(item: RecurringItem) {
         if (item.ledgerId != mutableState.value.access?.binding?.ledgerId) return
-        mutableState.update { it.copy(item = item, occurrence = null, choice = null, acceptedId = null, message = null, requestedPeriod = "current", periodPaymentOrigin = null) }
+        mutableState.update { it.copy(item = item, occurrence = null, choice = null, acceptedId = null, message = null, requestedPeriod = "current", periodPaymentOrigin = null, periodPaymentError = null) }
         load("current")
     }
 
     fun dismiss() {
         if (mutableState.value.saving) return
         epoch++
-        mutableState.update { it.copy(item = null, occurrence = null, choice = null, loading = false, periodPaymentOrigin = null) }
+        mutableState.update { it.copy(item = null, occurrence = null, choice = null, loading = false, periodPaymentOrigin = null, periodPaymentError = null) }
     }
 
     fun changePeriod(period: String) {
@@ -104,6 +117,33 @@ class RecurringOccurrenceViewModel(
 
     fun restoreAdmittedPeriodOccurrence(items: List<RecurringItem> = emptyList()) {
         periodPayment.restoreAdmittedPeriodOccurrence(items)
+    }
+
+    fun createPeriodPayment(draft: ExpenseDraft, onAdmitted: (String) -> Unit = {}) {
+        val submitted = mutableState.value.periodPaymentOrigin ?: return
+        if (mutableState.value.access?.binding != submitted.binding || mutableState.value.periodPaymentSaving) return
+        periodPayment.capturePeriodPaymentDraft(
+            submitted.clientRef,
+            draft.category.orEmpty(),
+            draft.note.orEmpty(),
+            draft.originalCurrencyCode?.storageKey ?: submitted.obligationCurrencyCode.orEmpty(),
+            draft.originalAmountMinor ?: draft.amountCents ?: 0L,
+        )
+        mutableState.update { it.copy(periodPaymentInFlightClientRef = submitted.clientRef, periodPaymentError = null) }
+        viewModelScope.launch {
+            val result = ledger.createManualExpense(
+                draft.copy(
+                    clientRef = submitted.clientRef,
+                    ledgerHomeCurrency = draft.ledgerHomeCurrency
+                        ?: CurrencyCode.fromStorageKeyOrNull(submitted.ledgerHomeCurrencyCode),
+                ),
+            )
+            if (mutableState.value.access?.binding != submitted.binding) return@launch
+            val error = if (result.isSuccess) null
+                else result.exceptionOrNull()?.message?.let(UiText::raw)
+                    ?: UiText.res(R.string.ledger_msg_manual_save_failed)
+            if (periodPayment.applyCreateOutcome(submitted, error)) onAdmitted(submitted.clientRef)
+        }
     }
 
     fun choose(payment: ConfirmedStreamItem.ExpenseRow?) {
@@ -174,7 +214,13 @@ class RecurringOccurrenceViewModel(
                 loading = false, occurrence = result.getOrNull() ?: it.occurrence,
                 message = if (result.isFailure) UiText.res(R.string.occurrence_refresh_failed) else null,
             ) }
+            val listed = debts.listDebts()
             periodPayment.restoreVisibleOrigin()
+            if (requestEpoch == epoch && mutableState.value.access?.binding == binding) {
+                listed.onSuccess { page ->
+                    periodPayment.applyLedgerHome(resolveLedgerCurrency(page)?.storageKey)
+                }
+            }
             if (result.isSuccess) ledger.syncConfirmed().onFailure {
                 if (requestEpoch == epoch) mutableState.update { it.copy(message = UiText.res(R.string.occurrence_payment_refresh_failed)) }
             }

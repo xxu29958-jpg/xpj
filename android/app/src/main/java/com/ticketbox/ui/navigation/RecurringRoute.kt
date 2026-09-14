@@ -69,9 +69,8 @@ internal fun RecurringRoute(
         ),
     )
     RecurringOccurrenceHost(
-        occurrenceModel,
-        screenFactory.repository,
-        expenseNavigation.onOpenExpense,
-        expenseNavigation.onOpenManualSubmission,
+        model = occurrenceModel,
+        onOpenExpense = expenseNavigation.onOpenExpense,
+        onOpenManualSubmission = expenseNavigation.onOpenManualSubmission,
     )
 }

@@ -48,4 +48,65 @@ class RecurringPeriodPaymentSurfaceTest {
             "A legacy unpaid period cannot open the existing manual sheet by guessing the ledger home currency",
         )
     }
+
+    @Test
+    fun periodPaymentSessionDoesNotDeriveLedgerHomeFromConfirmedPayments() {
+        val session = listOf(
+            File("src/main/java/com/ticketbox/viewmodel/RecurringPeriodPaymentSession.kt"),
+            File("app/src/main/java/com/ticketbox/viewmodel/RecurringPeriodPaymentSession.kt"),
+        ).first { it.exists() }.readText()
+        assertFalse(
+            "payments.firstOrNull()" in session,
+            "Ledger home must come from the ledger capability, not the first confirmed payment",
+        )
+        assertTrue(
+            "SavedStateHandle" in session,
+            "The return-to-period origin must survive process restoration on saved state",
+        )
+    }
+
+    @Test
+    fun occurrenceLoadUsesSharedLedgerCurrencyAuthority() {
+        val vm = listOf(
+            File("src/main/java/com/ticketbox/viewmodel/RecurringOccurrenceViewModel.kt"),
+            File("app/src/main/java/com/ticketbox/viewmodel/RecurringOccurrenceViewModel.kt"),
+        ).first { it.exists() }.readText()
+        assertTrue(
+            "resolveLedgerCurrency" in vm,
+            "Period payment must reuse the shared ledger-currency authority, not the envelope field alone",
+        )
+        assertFalse(
+            "page.ledgerHomeCurrencyCode" in vm,
+            "Envelope capability is an input to resolveLedgerCurrency, not the final home currency",
+        )
+    }
+
+    @Test
+    fun periodPaymentHostReportsBusyAndCreateFailureOnTheExistingManualSheet() {
+        val host = listOf(
+            File("src/main/java/com/ticketbox/ui/navigation/RecurringOccurrenceRoute.kt"),
+            File("app/src/main/java/com/ticketbox/ui/navigation/RecurringOccurrenceRoute.kt"),
+        ).first { it.exists() }.readText()
+        val vm = listOf(
+            File("src/main/java/com/ticketbox/viewmodel/RecurringOccurrenceViewModel.kt"),
+            File("app/src/main/java/com/ticketbox/viewmodel/RecurringOccurrenceViewModel.kt"),
+        ).first { it.exists() }.readText()
+        val session = listOf(
+            File("src/main/java/com/ticketbox/viewmodel/RecurringPeriodPaymentSession.kt"),
+            File("app/src/main/java/com/ticketbox/viewmodel/RecurringPeriodPaymentSession.kt"),
+        ).first { it.exists() }.readText()
+        assertTrue("saving = state.periodPaymentSaving" in host)
+        assertTrue("errorMessage = state.periodPaymentError" in host)
+        assertTrue("createPeriodPayment" in host)
+        assertTrue("ManualExpenseSheetInitials" in host)
+        assertTrue("origin.merchant" in host)
+        assertTrue("capturedAmountCents" in host)
+        assertFalse("ledger.createManualExpense" in host)
+        assertFalse("markPeriodPaymentCreate" in host)
+        assertTrue("createPeriodPayment" in vm)
+        assertTrue("ledger_msg_manual_save_failed" in vm)
+        assertFalse("markPeriodPaymentCreate" in vm)
+        assertTrue("fun acceptPeriodPaymentAdmission(clientRef: String)" in session)
+        assertTrue("fun capturePeriodPaymentDraft(" in session && "clientRef: String" in session)
+    }
 }
