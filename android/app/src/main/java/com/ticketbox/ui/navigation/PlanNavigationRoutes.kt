@@ -57,13 +57,9 @@ internal fun NavGraphBuilder.addPlanRoutes(
         }
         composable(ProductSecondaryPage.Recurring.route) {
             RecurringRoute(
-                screenFactory = screenFactory,
-                onBack = onBack,
+                screenFactory = screenFactory, onBack = onBack,
                 onDataChanged = onAdviceInputChanged,
-                expenseNavigation = RecurringExpenseNavigation(
-                    onOpenExpense = runtime.navController::openExpense,
-                    onOpenManualSubmission = { runtime.navController.navigate(manualExpenseSubmissionRoute(it)) },
-                ),
+                expenseNavigation = recurringExpenseNavigation(runtime),
                 financialDataRevision = shellState.financialDataRevision,
             )
         }
@@ -80,6 +76,11 @@ internal fun NavGraphBuilder.addPlanRoutes(
         }
     }
 }
+
+private fun recurringExpenseNavigation(runtime: MainNavigationRuntime) = RecurringExpenseNavigation(
+    onOpenExpense = runtime.navController::openExpense,
+    onOpenManualSubmission = { runtime.navController.navigate(manualExpenseSubmissionRoute(it)) },
+)
 
 /** Plan-write refresh composition: every plan save invalidates financial reads;
  *  only saves that feed the budget-advisor inputs (income plans, recurring —
