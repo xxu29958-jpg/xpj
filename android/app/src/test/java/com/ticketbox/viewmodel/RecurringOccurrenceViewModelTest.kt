@@ -17,10 +17,12 @@ import com.ticketbox.data.repository.toDomain
 import com.ticketbox.domain.model.BatchApplyResult
 import com.ticketbox.domain.model.ConfirmedStreamItem
 import com.ticketbox.domain.model.CsvExport
+import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtListLens
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.ExpenseLineageStatus
+import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.screens.recurringItem
 import java.lang.reflect.Proxy
 import kotlinx.coroutines.Dispatchers
@@ -37,6 +39,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -189,6 +192,53 @@ class RecurringOccurrenceViewModelTest {
             val origin = assertNotNull(model.uiState.value.periodPaymentOrigin)
             assertEquals("JPY", origin.obligationCurrencyCode)
             assertNull(origin.ledgerHomeCurrencyCode)
+            assertTrue(actions.submissions.isEmpty())
+        } finally {
+            model.viewModelScope.coroutineContext.job.cancelAndJoin()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun conflictingDebtRecordAndCapabilityFailClosedWithoutGuessingLedgerHome() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val actions = OccurrenceChoiceActions()
+        seedUnpaidAugust(actions)
+        val ledger = OccurrenceChoiceLedger(confirmedExpenseDtoFixture().toDomain(), emitConfirmedStream = false)
+        val debts = OccurrenceChoiceDebts(ledgerHomeCurrencyCode = "JPY", debts = listOf(periodDebt("CNY")))
+        val model = occurrenceModel(actions, ledger, debts)
+        try {
+            model.open(recurringItem { rowVersion = 7L }.copy(homeCurrencyCode = "USD", merchant = "海外订阅"))
+            advanceUntilIdle()
+            model.periodPayment.recordPeriodPayment()
+            val origin = assertNotNull(model.uiState.value.periodPaymentOrigin)
+            assertEquals("JPY", origin.obligationCurrencyCode)
+            assertNull(origin.ledgerHomeCurrencyCode)
+            assertNull(model.uiState.value.ledgerHomeCurrencyCode)
+            assertTrue(actions.submissions.isEmpty())
+        } finally {
+            model.viewModelScope.coroutineContext.job.cancelAndJoin()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun failedPeriodPaymentCreateKeepsOriginAndReportsSaveError() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val actions = OccurrenceChoiceActions()
+        seedUnpaidAugust(actions)
+        val model = occurrenceModel(actions, OccurrenceChoiceLedger(confirmedExpenseDtoFixture().toDomain(), emitConfirmedStream = false))
+        try {
+            model.open(recurringItem { rowVersion = 7L }.copy(homeCurrencyCode = "JPY", merchant = "日元订阅"))
+            advanceUntilIdle()
+            model.periodPayment.recordPeriodPayment()
+            assertNotNull(model.uiState.value.periodPaymentOrigin)
+            model.markPeriodPaymentCreate(saving = true)
+            assertTrue(model.uiState.value.periodPaymentSaving)
+            model.markPeriodPaymentCreate(saving = false, error = UiText.raw("账本不可写"))
+            assertFalse(model.uiState.value.periodPaymentSaving)
+            assertEquals(UiText.raw("账本不可写"), model.uiState.value.periodPaymentError)
+            assertNotNull(model.uiState.value.periodPaymentOrigin)
             assertTrue(actions.submissions.isEmpty())
         } finally {
             model.viewModelScope.coroutineContext.job.cancelAndJoin()
@@ -385,15 +435,37 @@ private fun seedUnpaidAugust(actions: OccurrenceChoiceActions) {
     )
 }
 
+private fun periodDebt(homeCurrencyCode: String): Debt = Debt(
+    publicId = "debt-$homeCurrencyCode",
+    ledgerId = "owner",
+    direction = "i_owe",
+    counterpartyType = "external",
+    counterpartyAccountId = null,
+    counterpartyLabel = "对手方",
+    principalAmountCents = 100_000,
+    remainingAmountCents = 40_000,
+    paidAmountCents = 60_000,
+    status = "open",
+    sourceType = "manual",
+    sourceId = null,
+    homeCurrencyCode = homeCurrencyCode,
+    originalCurrencyCode = null,
+    originalAmountMinor = null,
+    createdAt = "2026-06-13T00:00:00Z",
+    updatedAt = "2026-06-15T00:00:00Z",
+    rowVersion = 1L,
+)
+
 private class OccurrenceChoiceDebts(
     var ledgerHomeCurrencyCode: String? = "CNY",
     var fail: Boolean = false,
+    var debts: List<Debt> = emptyList(),
 ) : DebtActions by unsupportedOccurrenceDebtActions() {
     var listCount = 0
     override suspend fun listDebts(lens: DebtListLens): Result<DebtListPage> {
         listCount++
         if (fail) return Result.failure(IllegalStateException("debts are offline"))
-        return Result.success(DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = ledgerHomeCurrencyCode))
+        return Result.success(DebtListPage(debts = debts, ledgerHomeCurrencyCode = ledgerHomeCurrencyCode))
     }
 }
 

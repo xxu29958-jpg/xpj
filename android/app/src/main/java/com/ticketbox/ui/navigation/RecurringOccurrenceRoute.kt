@@ -8,8 +8,11 @@ import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.ticketbox.R
 import com.ticketbox.data.repository.LedgerActions
 import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.UiText
+import com.ticketbox.ui.asString
 import com.ticketbox.ui.screens.ManualExpenseSheet
 import com.ticketbox.ui.screens.ManualExpenseSheetActions
 import com.ticketbox.ui.screens.ManualExpenseSheetState
@@ -58,14 +61,16 @@ internal fun RecurringOccurrenceHost(
         ManualExpenseSheet(
             state = ManualExpenseSheetState(
                 categories = emptyList(),
-                saving = false,
+                saving = state.periodPaymentSaving,
                 initialCurrency = paymentCurrency,
                 ledgerHomeCurrency = ledgerHomeCurrency,
+                errorMessage = state.periodPaymentError?.asString(),
             ),
             actions = ManualExpenseSheetActions(
                 onCreate = { draft ->
-                    if (state.access?.binding != origin.binding) return@ManualExpenseSheetActions
+                    if (state.access?.binding != origin.binding || state.periodPaymentSaving) return@ManualExpenseSheetActions
                     scope.launch {
+                        model.markPeriodPaymentCreate(saving = true)
                         model.periodPayment.capturePeriodPaymentDraft(
                             category = draft.category.orEmpty(),
                             note = draft.note.orEmpty(),
@@ -82,6 +87,12 @@ internal fun RecurringOccurrenceHost(
                             model.periodPayment.acceptPeriodPaymentAdmission()
                             model.periodPayment.dismissPeriodPayment()
                             onOpenManualSubmission(origin.clientRef)
+                        } else {
+                            model.markPeriodPaymentCreate(
+                                saving = false,
+                                error = result.exceptionOrNull()?.message?.let(UiText::raw)
+                                    ?: UiText.res(R.string.ledger_msg_manual_save_failed),
+                            )
                         }
                     }
                 },

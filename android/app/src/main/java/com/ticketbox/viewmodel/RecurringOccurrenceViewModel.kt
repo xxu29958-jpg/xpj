@@ -39,6 +39,8 @@ data class RecurringOccurrenceUiState(
     val message: UiText? = null,
     val periodPaymentOrigin: RecurringPeriodPaymentOrigin? = null,
     val ledgerHomeCurrencyCode: String? = null,
+    val periodPaymentSaving: Boolean = false,
+    val periodPaymentError: UiText? = null,
 ) {
     val seriesPending: List<PendingOccurrencePayment> get() = queue.filter {
         it.row.status != PendingMutationStatus.Done && it.row.targetId.startsWith("recurring_occurrence:" + item?.publicId + ":")
@@ -87,14 +89,14 @@ class RecurringOccurrenceViewModel(
 
     fun open(item: RecurringItem) {
         if (item.ledgerId != mutableState.value.access?.binding?.ledgerId) return
-        mutableState.update { it.copy(item = item, occurrence = null, choice = null, acceptedId = null, message = null, requestedPeriod = "current", periodPaymentOrigin = null) }
+        mutableState.update { it.copy(item = item, occurrence = null, choice = null, acceptedId = null, message = null, requestedPeriod = "current", periodPaymentOrigin = null, periodPaymentSaving = false, periodPaymentError = null) }
         load("current")
     }
 
     fun dismiss() {
         if (mutableState.value.saving) return
         epoch++
-        mutableState.update { it.copy(item = null, occurrence = null, choice = null, loading = false, periodPaymentOrigin = null) }
+        mutableState.update { it.copy(item = null, occurrence = null, choice = null, loading = false, periodPaymentOrigin = null, periodPaymentSaving = false, periodPaymentError = null) }
     }
 
     fun changePeriod(period: String) {
@@ -110,6 +112,10 @@ class RecurringOccurrenceViewModel(
 
     fun restoreAdmittedPeriodOccurrence(items: List<RecurringItem> = emptyList()) {
         periodPayment.restoreAdmittedPeriodOccurrence(items)
+    }
+
+    fun markPeriodPaymentCreate(saving: Boolean, error: UiText? = null) {
+        mutableState.update { it.copy(periodPaymentSaving = saving, periodPaymentError = error) }
     }
 
     fun choose(payment: ConfirmedStreamItem.ExpenseRow?) {
@@ -180,13 +186,12 @@ class RecurringOccurrenceViewModel(
                 loading = false, occurrence = result.getOrNull() ?: it.occurrence,
                 message = if (result.isFailure) UiText.res(R.string.occurrence_refresh_failed) else null,
             ) }
-            val home = debts.listDebts().fold(
-                onSuccess = { page -> page.ledgerHomeCurrencyCode },
-                onFailure = { mutableState.value.ledgerHomeCurrencyCode },
-            )
+            val listed = debts.listDebts()
             periodPayment.restoreVisibleOrigin()
-            if (requestEpoch == epoch && mutableState.value.access?.binding == binding && !home.isNullOrBlank()) {
-                periodPayment.applyLedgerHome(home)
+            if (requestEpoch == epoch && mutableState.value.access?.binding == binding) {
+                listed.onSuccess { page ->
+                    periodPayment.applyLedgerHome(resolveLedgerCurrency(page)?.storageKey)
+                }
             }
             if (result.isSuccess) ledger.syncConfirmed().onFailure {
                 if (requestEpoch == epoch) mutableState.update { it.copy(message = UiText.res(R.string.occurrence_payment_refresh_failed)) }

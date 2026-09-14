@@ -89,7 +89,7 @@ internal class RecurringPeriodPaymentSession(
         mutate { it.copy(periodPaymentOrigin = updated) }
     }
 
-    fun applyLedgerHome(code: String) {
+    fun applyLedgerHome(code: String?) {
         mutate { state ->
             val origin = state.periodPaymentOrigin?.takeIf { it.ledgerHomeCurrencyCode != code }
                 ?.copy(ledgerHomeCurrencyCode = code)?.also { remember(it) }
@@ -120,7 +120,7 @@ internal class RecurringPeriodPaymentSession(
     }
 
     fun dismissPeriodPayment() {
-        mutate { it.copy(periodPaymentOrigin = null) }
+        mutate { it.copy(periodPaymentOrigin = null, periodPaymentSaving = false, periodPaymentError = null) }
     }
 
     fun restoreVisibleOrigin() {
