@@ -137,3 +137,26 @@ def test_expense_return_adapter_keeps_the_original_series_and_period() -> None:
         **{**origin, "return_recurring_public_id": "//outside.invalid/escape"},
     )
     assert urlsplit(escaped).path == "/web/pending" and not urlsplit(escaped).netloc
+
+
+def test_human_confirm_return_reopens_the_original_unpaid_period() -> None:
+    from app.routes._web_expense_return_context import ExpenseReturnContext, confirm_return_redirect
+
+    series_id = "6dce3575-fb65-4df5-bb93-7bb270e8df9b"
+    path, params = confirm_return_redirect(
+        ExpenseReturnContext(
+            return_to="recurring_occurrence",
+            return_recurring_public_id=series_id,
+            return_month="2026-08",
+        ),
+    )
+    assert path == f"/web/recurring/{series_id}/occurrence"
+    assert params == {"month": "2026-08"}
+    unsafe_path, _ = confirm_return_redirect(
+        ExpenseReturnContext(
+            return_to="recurring_occurrence",
+            return_recurring_public_id="//outside.invalid/escape",
+            return_month="2026-08",
+        ),
+    )
+    assert unsafe_path == "/web/pending"

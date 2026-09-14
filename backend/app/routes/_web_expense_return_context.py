@@ -267,6 +267,20 @@ def return_href(return_to: str, *, ledger_id: str, default_path: str, **origin: 
     return f"{path}?{urlencode(params)}"
 
 
+def confirm_return_redirect(
+    context: ExpenseReturnContext,
+    *,
+    default_path: str = "/web/pending",
+) -> tuple[str, dict[str, str]]:
+    """Human confirm must reopen the same origin the create/edit journey carried."""
+    kwargs = context.as_kwargs()
+    token = context.return_to or "pending"
+    return (
+        resolve_return_to(token, default_path, **kwargs),
+        return_context_params(**{**kwargs, "return_to": token}),
+    )
+
+
 def edit_navigation_view(context: ExpenseReturnContext, *, expense_id: int, ledger_id: str) -> dict:
     """Project one validated origin into the form fields and both navigation links."""
     params = context.as_kwargs()

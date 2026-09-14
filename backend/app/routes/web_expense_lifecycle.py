@@ -18,8 +18,8 @@ from app.routes._web_expense_form import web_form_error_status
 from app.routes._web_expense_helpers import confirm_reject_error, drawer_fragment_ok
 from app.routes._web_expense_return_context import (
     ExpenseReturnContext,
+    confirm_return_redirect,
     expense_return_form_context,
-    resolve_return_to,
     return_context_params,
 )
 from app.routes._web_session_common import resolve_web_actor
@@ -75,12 +75,8 @@ def web_confirm(
         )
     if form.fragment:
         return drawer_fragment_ok("confirm")
-    return_context = form.return_context
-    return _web_redirect(
-        resolve_return_to(return_context.return_to, "/web/pending"),
-        selected_id,
-        **return_context_params(**{**return_context.as_kwargs(), "return_to": return_context.return_to or "pending"}),
-    )
+    path, params = confirm_return_redirect(form.return_context)
+    return _web_redirect(path, selected_id, **params)
 
 
 def _reject_error(
