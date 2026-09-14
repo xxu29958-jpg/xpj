@@ -35,6 +35,7 @@ data class RecurringOccurrenceUiState(
     val acceptedId: Long? = null,
     val requestedPeriod: String = "current",
     val message: UiText? = null,
+    val periodPaymentOrigin: RecurringPeriodPaymentOrigin? = null,
 ) {
     val seriesPending: List<PendingOccurrencePayment> get() = queue.filter {
         it.row.status != PendingMutationStatus.Done && it.row.targetId.startsWith("recurring_occurrence:" + item?.publicId + ":")
@@ -56,12 +57,18 @@ class RecurringOccurrenceViewModel(
     private val mutableState = MutableStateFlow(RecurringOccurrenceUiState(access = repository.currentAccess()))
     val uiState = mutableState.asStateFlow()
     private var epoch = 0L
+    internal val periodPayment = RecurringPeriodPaymentSession(
+        current = { mutableState.value },
+        mutate = { reducer -> mutableState.update(reducer) },
+        load = ::load,
+    )
 
     init {
         viewModelScope.launch {
             repository.observeAccess().collectLatest { access ->
                 if (mutableState.value.access?.binding != access?.binding) {
                     epoch++
+                    periodPayment.clear()
                     mutableState.value = RecurringOccurrenceUiState(access = access)
                 } else mutableState.update { it.copy(access = access) }
                 if (access != null) coroutineScope {
@@ -74,25 +81,29 @@ class RecurringOccurrenceViewModel(
 
     fun open(item: RecurringItem) {
         if (item.ledgerId != mutableState.value.access?.binding?.ledgerId) return
-        mutableState.update { it.copy(item = item, occurrence = null, choice = null, acceptedId = null, message = null, requestedPeriod = "current") }
+        mutableState.update { it.copy(item = item, occurrence = null, choice = null, acceptedId = null, message = null, requestedPeriod = "current", periodPaymentOrigin = null) }
         load("current")
     }
 
     fun dismiss() {
         if (mutableState.value.saving) return
         epoch++
-        mutableState.update { it.copy(item = null, occurrence = null, choice = null, loading = false) }
+        mutableState.update { it.copy(item = null, occurrence = null, choice = null, loading = false, periodPaymentOrigin = null) }
     }
 
     fun changePeriod(period: String) {
         if (runCatching { YearMonth.parse(period).toString() == period }.getOrDefault(false)) {
-            mutableState.update { it.copy(occurrence = null, choice = null, acceptedId = null, requestedPeriod = period) }
+            mutableState.update { it.copy(occurrence = null, choice = null, acceptedId = null, requestedPeriod = period, periodPaymentOrigin = null) }
             load(period)
         } else mutableState.update { it.copy(message = UiText.res(R.string.occurrence_invalid_month)) }
     }
 
     fun refresh() {
         load(mutableState.value.occurrence?.period ?: mutableState.value.requestedPeriod)
+    }
+
+    fun restoreAdmittedPeriodOccurrence(items: List<RecurringItem> = emptyList()) {
+        periodPayment.restoreAdmittedPeriodOccurrence(items)
     }
 
     fun choose(payment: ConfirmedStreamItem.ExpenseRow?) {
@@ -163,6 +174,7 @@ class RecurringOccurrenceViewModel(
                 loading = false, occurrence = result.getOrNull() ?: it.occurrence,
                 message = if (result.isFailure) UiText.res(R.string.occurrence_refresh_failed) else null,
             ) }
+            periodPayment.restoreVisibleOrigin()
             if (result.isSuccess) ledger.syncConfirmed().onFailure {
                 if (requestEpoch == epoch) mutableState.update { it.copy(message = UiText.res(R.string.occurrence_payment_refresh_failed)) }
             }

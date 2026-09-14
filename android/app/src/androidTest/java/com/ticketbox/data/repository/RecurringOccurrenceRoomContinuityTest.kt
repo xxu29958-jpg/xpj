@@ -21,6 +21,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -101,6 +102,37 @@ class RecurringOccurrenceRoomContinuityTest {
             model.value = RecurringOccurrenceViewModel(graph.recurringRepository.occurrences, fixture.ledger)
                 .also { it.open(occurrenceConnectedItem()) }
         }
+    }
+
+    @Test
+    fun unpaidPeriodOffersRecordPaymentBesideExistingConfirmedPickerWithoutQueuingFulfillment() {
+        fixture.network.current = fixture.network.current.copy(
+            period = "2026-08",
+            homeCurrencyCode = "JPY",
+            plannedAmountCents = 1200,
+            reservedAmountCents = 1200,
+        )
+        installModel()
+        compose.setContent {
+            val current = model.value ?: return@setContent
+            val state by current.uiState.collectAsState()
+            TicketboxTheme(skin = AppSkin.Paper) {
+                RecurringOccurrenceSheet(state, OccurrenceSheetActions(
+                    current::dismiss, current::refresh, current::changePeriod,
+                    current::choose, current::submit, current::recover,
+                ))
+            }
+        }
+        compose.waitUntil(10_000) { model.value?.uiState?.value?.canWrite == true }
+        compose.onNodeWithTag("occurrence-state").assertTextEquals("本期尚未履约")
+        compose.onNodeWithText("记录本期付款").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("没有匹配的已确认付款。可调整付款月份、搜索词，或刷新流水。")
+            .performScrollTo().assertIsDisplayed()
+        assertEquals(emptyList<Any>(), fixture.stored())
+        assertEquals("unfulfilled", model.value?.uiState?.value?.occurrence?.state)
+        assertEquals(1200L, model.value?.uiState?.value?.occurrence?.reservedAmountCents)
+        assertEquals("JPY", model.value?.uiState?.value?.occurrence?.homeCurrencyCode)
+        assertTrue(fixture.network.calls.isEmpty())
     }
 
     @Test

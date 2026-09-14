@@ -75,6 +75,13 @@
   </div>
   <button class="product-button" type="submit">查看</button>
 </form>
+{% if record_payment_href %}
+<section class="product-panel product-panel--padded" aria-label="记录本期付款">
+  <h2>记录本期付款</h2>
+  <p>先记下原始付款账单，不自动把本期标成已履约。付款日期可以和义务月份不同。</p>
+  <a class="product-button" href="{{ record_payment_href }}">记录本期付款</a>
+</section>
+{% endif %}
 {% if can_associate and occurrence.state != 'fulfilled' %}
 <section class="product-panel product-panel--padded" aria-label="选择本期付款">
   <h2>关联已有付款</h2>

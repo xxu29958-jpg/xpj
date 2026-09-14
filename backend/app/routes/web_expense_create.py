@@ -20,6 +20,14 @@ from app.routes._web_expense_form import (
     parse_expense_time_local,
     web_form_error_status,
 )
+from app.routes._web_expense_return_context import (
+    ExpenseReturnContext,
+    edit_context_params,
+    expense_return_form_context,
+    expense_return_query_context,
+    return_href,
+    return_label,
+)
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
@@ -58,6 +66,7 @@ def _manual_expense_context(
     error: str | None = None,
     draft_result: str = "",
     review_expense_id: int | None = None,
+    return_context: ExpenseReturnContext | None = None,
 ) -> dict:
     context = _base_ctx(
         request,
@@ -69,6 +78,8 @@ def _manual_expense_context(
     )
     home = context["home_currency_code"]
     current_values = values or {}
+    origin = (return_context or ExpenseReturnContext()).as_kwargs()
+    return_fields = edit_context_params(**origin)
     context.update(
         {
             "category_options": list_ledger_category_options(
@@ -95,6 +106,12 @@ def _manual_expense_context(
             .astimezone(accounting_zone())
             .strftime("%Y-%m-%dT%H:%M"),
             "values": current_values,
+            "edit_return_fields": return_fields,
+            "edit_return_href": (
+                return_href(ledger_id=selected_id, default_path="/web/confirmed", **origin)
+                if return_fields else f"/web/confirmed?ledger_id={selected_id}"
+            ),
+            "edit_return_label": return_label(origin.get("return_to", ""), default="返回流水"),
         }
     )
     return context
@@ -194,6 +211,7 @@ def _manual_expense_payload(
 def web_manual_expense_new(
     request: Request,
     ledger_id: str | None = None,
+    return_context: ExpenseReturnContext = Depends(expense_return_query_context),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -216,6 +234,7 @@ def web_manual_expense_new(
             selected_id=selected_id,
             form_ledger_id=selected_id,
             form_device_public_id=auth.device_public_id,
+            return_context=return_context,
         ),
     )
 
@@ -243,6 +262,7 @@ def web_manual_expense_create(
     spent_at: str = Form(default=""),
     note: str = Form(default=""),
     csrf_token: str = Form(default=""),
+    return_context: ExpenseReturnContext = Depends(expense_return_form_context),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> Response:
@@ -303,8 +323,16 @@ def web_manual_expense_create(
                 form_device_public_id=expected_device_public_id,
                 draft_result=draft_result,
                 review_expense_id=review_id,
+                return_context=return_context,
             ),
             status_code=status_code,
+        )
+    return_fields = edit_context_params(**return_context.as_kwargs())
+    if return_fields.get("return_to") == "recurring_occurrence":
+        return _web_redirect(
+            f"/web/expenses/{created.id}/edit",
+            selected_id,
+            **return_fields,
         )
     return_to = "pending" if created.status == "pending" else "confirmed"
     return _web_redirect(

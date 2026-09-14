@@ -139,6 +139,8 @@ data class ExpenseDraft(
     val regretScore: Int?,
     /** Captured when the manual form opens; shared by its wire request and optimistic projection. */
     val ledgerHomeCurrency: CurrencyCode? = null,
+    /** Existing CreateExpense owner reuses this captured key; it does not mint a second command. */
+    val clientRef: String? = null,
 )
 
 data class ExpenseItem(

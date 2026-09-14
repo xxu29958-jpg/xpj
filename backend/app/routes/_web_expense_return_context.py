@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import asdict, dataclass
 from urllib.parse import urlencode
+from uuid import UUID
 
 from fastapi import Form
 
@@ -20,6 +21,7 @@ RETURN_TO_PATHS: dict[str, str] = {
     "bill_splits_inbox": "/web/bill-splits/inbox",
     "bill_splits_sent": "/web/bill-splits/sent",
 }
+_DYNAMIC_RETURN_TO = frozenset({"recurring_occurrence"})
 RETURN_TO_LABELS: dict[str, str] = {
     "pending": "返回待确认",
     "confirmed": "返回已确认流水",
@@ -28,6 +30,7 @@ RETURN_TO_LABELS: dict[str, str] = {
     "search": "返回搜索结果",
     "bill_splits_inbox": "返回拆账收件箱",
     "bill_splits_sent": "返回已发拆账",
+    "recurring_occurrence": "返回本期固定支出",
 }
 _PENDING_FILTERS = {
     "all",
@@ -66,6 +69,7 @@ class ExpenseReturnContext:
     return_granularity: str = ""
     return_ranking_metric: str = ""
     return_merchant_category: str = ""
+    return_recurring_public_id: str = ""
 
     def as_kwargs(self) -> dict[str, str]:
         return asdict(self)
@@ -82,6 +86,7 @@ def expense_return_query_context(
     return_granularity: str = "",
     return_ranking_metric: str = "",
     return_merchant_category: str = "",
+    return_recurring_public_id: str = "",
 ) -> ExpenseReturnContext:
     return ExpenseReturnContext(
         return_to=return_to,
@@ -94,6 +99,7 @@ def expense_return_query_context(
         return_granularity=return_granularity,
         return_ranking_metric=return_ranking_metric,
         return_merchant_category=return_merchant_category,
+        return_recurring_public_id=return_recurring_public_id,
     )
 
 
@@ -108,6 +114,7 @@ def expense_return_form_context(
     return_granularity: str = Form(default=""),
     return_ranking_metric: str = Form(default=""),
     return_merchant_category: str = Form(default=""),
+    return_recurring_public_id: str = Form(default=""),
 ) -> ExpenseReturnContext:
     return ExpenseReturnContext(
         return_to=return_to,
@@ -120,16 +127,44 @@ def expense_return_form_context(
         return_granularity=return_granularity,
         return_ranking_metric=return_ranking_metric,
         return_merchant_category=return_merchant_category,
+        return_recurring_public_id=return_recurring_public_id,
     )
+
+
+def _recurring_series_id(raw: str) -> str:
+    try:
+        return str(UUID(str(raw)))
+    except (TypeError, ValueError):
+        return ""
+
+
+def _recurring_period(raw: str) -> str:
+    month = (raw or "").strip()
+    return month if _MONTH_RE.fullmatch(month) else ""
+
+
+def recurring_occurrence_origin(*, return_recurring_public_id: str, return_month: str) -> dict[str, str] | None:
+    series_id = _recurring_series_id(return_recurring_public_id)
+    period = _recurring_period(return_month)
+    if not series_id or not period:
+        return None
+    return {
+        "return_to": "recurring_occurrence",
+        "return_recurring_public_id": series_id,
+        "return_month": period,
+    }
 
 
 def clean_return_to(raw: str) -> str:
     token = (raw or "").strip()
-    return token if token in RETURN_TO_PATHS else ""
+    return token if token in RETURN_TO_PATHS or token in _DYNAMIC_RETURN_TO else ""
 
 
-def resolve_return_to(raw: str, default_path: str) -> str:
+def resolve_return_to(raw: str, default_path: str, **origin: str) -> str:
     token = clean_return_to(raw)
+    if token == "recurring_occurrence":
+        series_id = _recurring_series_id(origin.get("return_recurring_public_id", ""))
+        return f"/web/recurring/{series_id}/occurrence" if series_id else default_path
     return RETURN_TO_PATHS.get(token, default_path)
 
 
@@ -152,6 +187,12 @@ def return_context_params(return_to: str, **origin: str) -> dict[str, str]:
         query = (origin.get("return_query") or "").strip()
         if query and len(query) <= MAX_QUERY_LENGTH:
             return {"q": query}
+    if token == "recurring_occurrence":
+        kept = recurring_occurrence_origin(
+            return_recurring_public_id=origin.get("return_recurring_public_id", ""),
+            return_month=origin.get("return_month", ""),
+        )
+        return {"month": kept["return_month"]} if kept else {}
     return {}
 
 
@@ -199,6 +240,11 @@ def _confirmed_report_return_params(
 def edit_context_params(return_to: str, **origin: str) -> dict[str, str]:
     """Keep a validated origin attached while the user remains in edit."""
     token = clean_return_to(return_to)
+    if token == "recurring_occurrence":
+        return recurring_occurrence_origin(
+            return_recurring_public_id=origin.get("return_recurring_public_id", ""),
+            return_month=origin.get("return_month", ""),
+        ) or {}
     if not token:
         return {}
     list_params = return_context_params(token, **origin)
@@ -216,9 +262,23 @@ def return_label(return_to: str, *, default: str = "返回流水") -> str:
 
 
 def return_href(return_to: str, *, ledger_id: str, default_path: str, **origin: str) -> str:
-    path = resolve_return_to(return_to, default_path)
+    path = resolve_return_to(return_to, default_path, **origin)
     params = {"ledger_id": ledger_id, **return_context_params(return_to, **origin)}
     return f"{path}?{urlencode(params)}"
+
+
+def confirm_return_redirect(
+    context: ExpenseReturnContext,
+    *,
+    default_path: str = "/web/pending",
+) -> tuple[str, dict[str, str]]:
+    """Human confirm must reopen the same origin the create/edit journey carried."""
+    kwargs = context.as_kwargs()
+    token = context.return_to or "pending"
+    return (
+        resolve_return_to(token, default_path, **kwargs),
+        return_context_params(**{**kwargs, "return_to": token}),
+    )
 
 
 def edit_navigation_view(context: ExpenseReturnContext, *, expense_id: int, ledger_id: str) -> dict:

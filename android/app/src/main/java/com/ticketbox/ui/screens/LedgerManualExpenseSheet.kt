@@ -63,6 +63,7 @@ data class ManualExpenseSheetState(
     val saving: Boolean,
     val recentMerchants: List<RecentMerchant> = emptyList(),
     val initialCurrency: CurrencyCode,
+    val ledgerHomeCurrency: CurrencyCode = initialCurrency,
     val errorMessage: String? = null,
 )
 
@@ -78,7 +79,7 @@ fun ManualExpenseSheet(
     actions: ManualExpenseSheetActions,
 ) {
     var amountText by rememberSaveable { mutableStateOf("") }
-    val homeCurrency by rememberSaveable { mutableStateOf(state.initialCurrency) }
+    val homeCurrency by rememberSaveable { mutableStateOf(state.ledgerHomeCurrency) }
     var currency by rememberSaveable { mutableStateOf(state.initialCurrency) }
     var merchant by rememberSaveable { mutableStateOf("") }
     var category by rememberSaveable { mutableStateOf(DEFAULT_EXPENSE_CATEGORIES.first()) }
