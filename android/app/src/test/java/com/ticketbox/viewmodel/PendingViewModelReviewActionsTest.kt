@@ -263,4 +263,40 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
         assertEquals(setOf(target.id), vm.uiState.value.actionInProgressIds)
         assertEquals(1, vm.commandRowsByExpense[target.id]?.size)
     }
+
+    @Test
+    fun droppingFailedConfirmAfterPatchDoneReleasesOccupancyWithoutClaimingAllSucceeded() = review {
+        val target = expense(id = 43L, amountCents = null)
+        val fake = FakeReviewActions(pending = listOf(target))
+        fake.saveAndConfirmResponder = { _, _, draft ->
+            Result.success(target.copy(originalAmountMinor = draft.originalAmountMinor))
+        }
+        val vm = pendingViewModel(fake)
+        advanceUntilIdle()
+        vm.saveAmountAndConfirm(target.id, 4200L)
+        runCurrent()
+        assertEquals(2, fake.admissions.single().second.rowIds.size)
+        fake.publishCommand(target.id, PendingMutationType.PatchExpense, PendingMutationStatus.Done)
+        runCurrent()
+        fake.publishCommand(target.id, PendingMutationType.ConfirmExpense, PendingMutationStatus.Failed)
+        runCurrent()
+        assertEquals(setOf(target.id), vm.uiState.value.actionInProgressIds)
+        assertEquals(2, vm.commandRowsByExpense[target.id]?.size)
+        vm.saveAmountAndConfirm(target.id, 4300L)
+        runCurrent()
+        assertEquals(1, fake.saveAndConfirmCalls, "Mixed occupancy must block a new save")
+        fake.dropCommands(target.id, PendingMutationType.ConfirmExpense)
+        runCurrent()
+        assertFalse(target.id in vm.uiState.value.actionInProgressIds)
+        assertNull(vm.commandRowsByExpense[target.id])
+        assertTrue(
+            vm.uiState.value.message != UiText.res(R.string.expense_command_completed),
+            "Dropping Confirm cannot report the original SaveAndConfirm as finished",
+        )
+        vm.saveAmountAndConfirm(target.id, 4300L)
+        runCurrent()
+        assertEquals(2, fake.saveAndConfirmCalls)
+        assertEquals(setOf(target.id), vm.uiState.value.actionInProgressIds)
+        assertEquals(2, vm.commandRowsByExpense[target.id]?.size)
+    }
 }

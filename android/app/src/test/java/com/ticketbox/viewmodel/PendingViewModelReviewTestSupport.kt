@@ -249,8 +249,10 @@ internal class FakeReviewActions(
         }
     }
 
-    fun dropCommands(expenseId: Long) {
-        commands.value = commands.value.filterNot { it.row.targetId == "expense:$expenseId" }
+    fun dropCommands(expenseId: Long, type: PendingMutationType? = null) {
+        commands.value = commands.value.filterNot {
+            it.row.targetId == "expense:$expenseId" && (type == null || it.row.type == type)
+        }
     }
 
     override suspend fun saveExpenseAllowingOffline(
