@@ -53,7 +53,11 @@ private fun PendingViewModel.finishCompletedExpenseCommands(byId: Map<Long, Pend
     }.keys.toList()
     val abandoned = commandRowsByExpense.filter { (expenseId, ids) ->
         expenseId !in finished && ids.isNotEmpty() &&
-            ids.all { it in observedCommandRowIds } && ids.none { it in byId }
+            ids.all { it in observedCommandRowIds } &&
+            ids.none { id ->
+                val remaining = byId[id]?.row?.status
+                remaining != null && remaining != PendingMutationStatus.Done
+            }
     }.keys.toList()
     observedCommandRowIds += byId.keys
     (finished + abandoned).forEach { commandRowsByExpense.remove(it) }
