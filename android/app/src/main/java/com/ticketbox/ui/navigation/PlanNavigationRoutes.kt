@@ -59,9 +59,11 @@ internal fun NavGraphBuilder.addPlanRoutes(
             RecurringRoute(
                 screenFactory = screenFactory,
                 onBack = onBack,
-                onOpenExpense = runtime.navController::openExpense,
-                onOpenManualSubmission = { runtime.navController.navigate(manualExpenseSubmissionRoute(it)) },
                 onDataChanged = onAdviceInputChanged,
+                expenseNavigation = RecurringExpenseNavigation(
+                    onOpenExpense = runtime.navController::openExpense,
+                    onOpenManualSubmission = { runtime.navController.navigate(manualExpenseSubmissionRoute(it)) },
+                ),
                 financialDataRevision = shellState.financialDataRevision,
             )
         }

@@ -13,14 +13,18 @@ import com.ticketbox.viewmodel.RecurringManualSaveCommand
 import com.ticketbox.viewmodel.RecurringViewModel
 import com.ticketbox.viewmodel.recurringViewModelFactory
 
+internal data class RecurringExpenseNavigation(
+    val onOpenExpense: (Long) -> Unit,
+    val onOpenManualSubmission: (String) -> Unit = {},
+)
+
 /** Plan-owned fixed-expense destination and its production ViewModel wiring. */
 @Composable
 internal fun RecurringRoute(
     screenFactory: MainScreenFactory,
     onBack: () -> Unit,
     onDataChanged: () -> Unit = {},
-    onOpenExpense: (Long) -> Unit = {},
-    onOpenManualSubmission: (String) -> Unit = {},
+    expenseNavigation: RecurringExpenseNavigation = RecurringExpenseNavigation({}),
     financialDataRevision: Int = 0,
 ) {
     val recurringViewModel: RecurringViewModel = viewModel(
@@ -67,7 +71,7 @@ internal fun RecurringRoute(
     RecurringOccurrenceHost(
         occurrenceModel,
         screenFactory.repository,
-        onOpenExpense,
-        onOpenManualSubmission,
+        expenseNavigation.onOpenExpense,
+        expenseNavigation.onOpenManualSubmission,
     )
 }

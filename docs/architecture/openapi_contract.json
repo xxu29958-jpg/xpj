@@ -1803,6 +1803,11 @@
             "title": "Return Ranking Metric",
             "type": "string"
           },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
+            "type": "string"
+          },
           "return_tag": {
             "default": "",
             "title": "Return Tag",
@@ -2154,6 +2159,11 @@
             "title": "Return Ranking Metric",
             "type": "string"
           },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
+            "type": "string"
+          },
           "return_tag": {
             "default": "",
             "title": "Return Tag",
@@ -2442,6 +2452,11 @@
             "title": "Return Ranking Metric",
             "type": "string"
           },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
+            "type": "string"
+          },
           "return_tag": {
             "default": "",
             "title": "Return Tag",
@@ -2650,6 +2665,11 @@
           "return_ranking_metric": {
             "default": "",
             "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
             "type": "string"
           },
           "return_tag": {
@@ -3449,6 +3469,11 @@
             "title": "Return Ranking Metric",
             "type": "string"
           },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
+            "type": "string"
+          },
           "return_tag": {
             "default": "",
             "title": "Return Tag",
@@ -3561,6 +3586,11 @@
           "return_ranking_metric": {
             "default": "",
             "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
             "type": "string"
           },
           "return_tag": {
@@ -3781,6 +3811,11 @@
           "return_ranking_metric": {
             "default": "",
             "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
             "type": "string"
           },
           "return_tag": {
@@ -4263,6 +4298,11 @@
             "title": "Return Ranking Metric",
             "type": "string"
           },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
+            "type": "string"
+          },
           "return_tag": {
             "default": "",
             "title": "Return Tag",
@@ -4368,6 +4408,11 @@
           "return_ranking_metric": {
             "default": "",
             "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
             "type": "string"
           },
           "return_tag": {
@@ -4497,6 +4542,11 @@
           "return_ranking_metric": {
             "default": "",
             "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
             "type": "string"
           },
           "return_tag": {
@@ -4935,6 +4985,11 @@
             "title": "Return Ranking Metric",
             "type": "string"
           },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
+            "type": "string"
+          },
           "return_tag": {
             "default": "",
             "title": "Return Tag",
@@ -5106,6 +5161,11 @@
             "title": "Return Ranking Metric",
             "type": "string"
           },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
+            "type": "string"
+          },
           "return_tag": {
             "default": "",
             "title": "Return Tag",
@@ -5183,6 +5243,11 @@
           "return_ranking_metric": {
             "default": "",
             "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
             "type": "string"
           },
           "return_tag": {
@@ -5264,6 +5329,11 @@
           "return_ranking_metric": {
             "default": "",
             "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
             "type": "string"
           },
           "return_tag": {
@@ -5488,6 +5558,11 @@
           "return_ranking_metric": {
             "default": "",
             "title": "Return Ranking Metric",
+            "type": "string"
+          },
+          "return_recurring_public_id": {
+            "default": "",
+            "title": "Return Recurring Public Id",
             "type": "string"
           },
           "return_tag": {
@@ -41737,6 +41812,16 @@
               "title": "Return Merchant Category",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "return_recurring_public_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Recurring Public Id",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -42041,6 +42126,16 @@
             "schema": {
               "default": "",
               "title": "Return Merchant Category",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_recurring_public_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Recurring Public Id",
               "type": "string"
             }
           }
