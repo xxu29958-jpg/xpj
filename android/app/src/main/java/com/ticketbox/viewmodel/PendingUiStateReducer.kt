@@ -61,7 +61,7 @@ internal object PendingUiStateReducer {
     ): PendingUiState = afterRemoved(
         current = current,
         expenseId = rejected.id,
-        closeSheet = true,
+        closeSheet = false,
         message = message,
     )
 
