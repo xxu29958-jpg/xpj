@@ -533,16 +533,19 @@ private class OccurrenceChoiceDebts(
     }
 }
 
-@Suppress("UNCHECKED_CAST")
-private fun unsupportedOccurrenceDebtActions(): DebtActions = Proxy.newProxyInstance(
-    DebtActions::class.java.classLoader,
-    arrayOf(DebtActions::class.java),
-) { _, method, _ ->
-    when (method.name) {
-        "toString" -> "UnsupportedOccurrenceDebtActions"
-        else -> throw UnsupportedOperationException(method.name)
-    }
-} as DebtActions
+private fun unsupportedOccurrenceDebtActions(): DebtActions = requireNotNull(
+    DebtActions::class.java.cast(
+        Proxy.newProxyInstance(
+            DebtActions::class.java.classLoader,
+            arrayOf(DebtActions::class.java),
+        ) { _, method, _ ->
+            when (method.name) {
+                "toString" -> "UnsupportedOccurrenceDebtActions"
+                else -> throw UnsupportedOperationException(method.name)
+            }
+        },
+    ),
+)
 
 private class OccurrenceChoiceActions : RecurringOccurrenceActions {
     val access = LedgerAccessContext(
