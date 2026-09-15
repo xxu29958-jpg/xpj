@@ -86,13 +86,17 @@ internal class RecurringPaymentDraftStore(private val state: SavedStateHandle) {
         )
     }
 
-    fun remove(clientRef: String) {
-        state[RECURRING_PAYMENT_TASKS_KEY] = recurringPaymentTaskListAdapter.toJson(
-            tasks.filterNot { it.clientRef == clientRef },
-        )
+    fun removeDraft(clientRef: String) {
         state[RECURRING_PAYMENT_DRAFTS_KEY] = recurringPaymentDraftListAdapter.toJson(
             drafts.filterNot { it.clientRef == clientRef },
         )
+    }
+
+    fun retireTask(clientRef: String) {
+        state[RECURRING_PAYMENT_TASKS_KEY] = recurringPaymentTaskListAdapter.toJson(
+            tasks.filterNot { it.clientRef == clientRef },
+        )
+        removeDraft(clientRef)
     }
 }
 

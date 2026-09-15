@@ -59,6 +59,8 @@ class RecurringPaymentRouteRoomTest {
     } }
     private val mounted = mutableStateOf(true)
     private val drafts = RecurringPaymentDraftStore(SavedStateHandle())
+    private val routeTask = mutableStateOf<RecurringPaymentTask?>(null)
+    private var routeContent = false
 
     @After fun close() {
         compose.runOnIdle { mounted.value = false; harness.models.viewModelStore.clear() }
@@ -107,6 +109,7 @@ class RecurringPaymentRouteRoomTest {
 
     @Test fun routeCreateAdmitsTheOriginalOnceThenReopenShowsTheSameCommand() {
         val task = periodTask("JPY", 1200)
+        drafts.remember(task)
         showRoute(task)
         waitForSheet()
         compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performScrollTo().performClick()
@@ -131,6 +134,46 @@ class RecurringPaymentRouteRoomTest {
         compose.onNodeWithText(context.getString(R.string.ledger_manual_sheet_title)).assertDoesNotExist()
         assertEquals(1, harness.fixture.stored().size)
         assertNull(drafts.read(task.clientRef))
+        assertEquals(task.clientRef, drafts.remembered(task.binding, task.seriesPublicId, task.period)?.clientRef)
+    }
+
+    @Test fun admittedAugustThenSeptemberThenAugustReusesOriginalClientRefWithoutAnotherOutbox() {
+        val august = periodTask("JPY", 1200).copy(clientRef = "august-ref")
+        drafts.remember(august)
+        showRoute(august)
+        waitForSheet()
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performScrollTo().performClick()
+        compose.waitUntil(10_000) { harness.fixture.stored().size == 1 }
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(hasText(context.getString(R.string.manual_submission_waiting))).fetchSemanticsNodes().isNotEmpty() ||
+                compose.onAllNodes(hasText(context.getString(R.string.manual_submission_title))).fetchSemanticsNodes().isNotEmpty()
+        }
+        assertNull(drafts.read("august-ref"))
+        assertEquals("august-ref", drafts.remembered(august.binding, august.seriesPublicId, "2026-08")?.clientRef)
+        compose.runOnIdle { mounted.value = false }
+        compose.waitForIdle()
+        val september = august.copy(clientRef = "september-ref", period = "2026-09")
+        drafts.remember(september)
+        val again = requireNotNull(
+            recurringPaymentTask(
+                augustUiState(august),
+                existing = september,
+                remembered = drafts.remembered(august.binding, august.seriesPublicId, "2026-08"),
+            ),
+        )
+        assertEquals("august-ref", again.clientRef)
+        assertEquals("2026-08", again.period)
+        assertEquals(1, harness.fixture.stored().size)
+        assertEquals(0, sends)
+        showRoute(again)
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(hasText(context.getString(R.string.manual_submission_waiting))).fetchSemanticsNodes().isNotEmpty() ||
+                compose.onAllNodes(hasText(context.getString(R.string.manual_submission_title))).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_sheet_title)).assertDoesNotExist()
+        assertEquals(1, harness.fixture.stored().size)
+        assertEquals("august-ref", drafts.remembered(august.binding, august.seriesPublicId, "2026-08")?.clientRef)
+        assertEquals("september-ref", drafts.remembered(september.binding, september.seriesPublicId, "2026-09")?.clientRef)
     }
 
     @Test fun doneReceiptWithPendingFxOpensSubmissionIdentityInsteadOfTheCreateForm() {
@@ -287,22 +330,29 @@ class RecurringPaymentRouteRoomTest {
     }
 
     private fun showRoute(task: RecurringPaymentTask) {
-        compose.setContent {
-            CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models) {
-                TicketboxTheme(skin = AppSkin.Default) {
-                    if (mounted.value) {
-                        RecurringPaymentRoute(
-                            task = task,
-                            factory = harness.screenFactory,
-                            exit = ExpenseEditExitActions({}, {}),
-                            financialDataRevision = 0,
-                            related = ExpenseFactNavigation({}, { _, _ -> }),
-                            drafts = drafts,
-                        )
+        routeTask.value = task
+        mounted.value = true
+        if (!routeContent) {
+            routeContent = true
+            compose.setContent {
+                CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models) {
+                    TicketboxTheme(skin = AppSkin.Default) {
+                        val current = routeTask.value
+                        if (mounted.value && current != null) {
+                            RecurringPaymentRoute(
+                                task = current,
+                                factory = harness.screenFactory,
+                                exit = ExpenseEditExitActions({}, {}),
+                                financialDataRevision = 0,
+                                related = ExpenseFactNavigation({}, { _, _ -> }),
+                                drafts = drafts,
+                            )
+                        }
                     }
                 }
             }
         }
+        compose.waitForIdle()
     }
 
     private fun waitForSheet() {

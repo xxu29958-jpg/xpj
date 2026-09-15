@@ -60,10 +60,14 @@ internal fun RecurringOccurrenceHost(
         taskJson,
     ) {
         val current = readRecurringPaymentTask(taskJson)
+        if (userClosed) {
+            if (current != null) taskJson = null
+            return@LaunchedEffect
+        }
         val accessResolved = state.access != null
         if (current != null && !retainRecurringPaymentTask(
                 current,
-                userClosed = userClosed,
+                userClosed = false,
                 accessResolved = accessResolved,
                 accessBinding = state.access?.binding,
                 seriesPublicId = state.item?.publicId,
@@ -71,13 +75,17 @@ internal fun RecurringOccurrenceHost(
                 occurrenceState = state.occurrence?.state,
             )
         ) {
-            val keepDraft = accessResolved && state.access?.binding != current.binding
             taskJson = null
-            if (!keepDraft) drafts?.remove(current.clientRef)
+            val retireLast = accessResolved &&
+                state.access?.binding == current.binding &&
+                state.item?.publicId == current.seriesPublicId &&
+                state.occurrence?.period == current.period &&
+                state.occurrence?.state == "fulfilled"
+            if (retireLast) drafts?.retireTask(current.clientRef)
         }
         if (state.occurrence?.state == "fulfilled") {
             drafts?.remembered(state.access?.binding, state.item?.publicId, state.occurrence?.period)
-                ?.let { drafts.remove(it.clientRef) }
+                ?.let { drafts.retireTask(it.clientRef) }
         }
     }
     LaunchedEffect(taskJson, items, state.item, state.access?.binding, userClosed) {
@@ -97,19 +105,8 @@ internal fun RecurringOccurrenceHost(
         state,
         OccurrenceSheetActions(
             onDismiss = {
-                val visible = focused
-                if (visible != null) {
-                    drafts?.remove(visible.clientRef)
-                    if (task?.clientRef == visible.clientRef) {
-                        userClosed = true
-                        taskJson = null
-                    }
-                } else {
-                    userClosed = true
-                    val closing = readRecurringPaymentTask(taskJson)
-                    taskJson = null
-                    closing?.let { drafts?.remove(it.clientRef) }
-                }
+                userClosed = true
+                taskJson = null
                 model.dismiss()
             },
             onRefresh = model::refresh,

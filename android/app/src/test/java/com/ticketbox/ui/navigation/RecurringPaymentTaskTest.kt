@@ -150,8 +150,25 @@ class RecurringPaymentTaskTest {
         assertEquals("住房", restored?.category)
         assertEquals("自填备注", restored?.note)
         assertEquals("2026-08-20T10:00:00Z", restored?.expenseTime)
-        drafts.remove(task.clientRef)
+        drafts.removeDraft(task.clientRef)
         assertNull(drafts.read(task.clientRef))
+        drafts.remember(task)
+        drafts.write(
+            RecurringPaymentDraft(
+                clientRef = task.clientRef,
+                amountText = "",
+                currencyCode = "USD",
+                merchant = "",
+                category = "住房",
+                note = "自填备注",
+                expenseTime = "2026-08-20T10:00:00Z",
+            ),
+        )
+        drafts.removeDraft(task.clientRef)
+        assertNull(drafts.read(task.clientRef))
+        assertEquals(task.clientRef, drafts.remembered(task.binding, task.seriesPublicId, task.period)?.clientRef)
+        drafts.retireTask(task.clientRef)
+        assertNull(drafts.remembered(task.binding, task.seriesPublicId, task.period))
     }
 
     @Test
@@ -199,7 +216,10 @@ class RecurringPaymentTaskTest {
             ),
         )
         assertEquals(august.clientRef, again.clientRef)
-        drafts.remove(august.clientRef)
+        drafts.removeDraft(august.clientRef)
+        assertNull(drafts.read(august.clientRef))
+        assertEquals(august.clientRef, drafts.remembered(august.binding, august.seriesPublicId, "2026-08")?.clientRef)
+        drafts.retireTask(august.clientRef)
         assertNull(drafts.remembered(august.binding, august.seriesPublicId, "2026-08"))
         assertEquals(september.clientRef, drafts.remembered(september.binding, september.seriesPublicId, "2026-09")?.clientRef)
     }

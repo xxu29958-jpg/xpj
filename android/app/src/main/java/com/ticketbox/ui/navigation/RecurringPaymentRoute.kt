@@ -170,7 +170,7 @@ internal fun RecurringPaymentRoute(
                         scope.launch {
                             factory.repository.manualCreation.create(draft, task.binding, task.clientRef).fold(
                                 onSuccess = {
-                                    drafts.remove(task.clientRef)
+                                    drafts.removeDraft(task.clientRef)
                                     draftState.removeState(task.clientRef)
                                 },
                                 onFailure = { error = it.message },
