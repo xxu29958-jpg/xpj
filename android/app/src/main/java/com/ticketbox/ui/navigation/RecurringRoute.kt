@@ -65,9 +65,10 @@ internal fun RecurringRoute(
     RecurringOccurrenceHost(
         model = occurrenceModel,
         creation = screenFactory.repository.manualCreation,
-        onOpenExpense = expenseNavigation.onOpenExpense,
-        onRecordPayment = expenseNavigation.onRecordPayment,
-        items = state.items,
-        drafts = rememberRecurringPaymentDraftStore(),
+        expenses = expenseNavigation,
+        restore = RecurringPaymentRestore(
+            items = state.items,
+            drafts = rememberRecurringPaymentDraftStore(),
+        ),
     )
 }

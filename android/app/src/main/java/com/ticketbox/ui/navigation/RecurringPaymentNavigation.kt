@@ -108,30 +108,42 @@ internal fun readRecurringPaymentTask(json: String?): RecurringPaymentTask? =
 internal fun recurringPaymentRoute(task: RecurringPaymentTask): String =
     "recurring-payment?task=${Uri.encode(recurringPaymentTaskJson(task))}"
 
+/** Visible occurrence identity. Not a Writer or Session. */
+internal data class RecurringPaymentIdentity(
+    val binding: LogicalSessionBinding?,
+    val seriesPublicId: String?,
+    val period: String?,
+)
+
+internal data class RecurringPaymentVisible(
+    val accessResolved: Boolean,
+    val identity: RecurringPaymentIdentity,
+    val occurrenceState: String?,
+)
+
+internal fun RecurringPaymentTask.matches(identity: RecurringPaymentIdentity): Boolean =
+    binding == identity.binding && seriesPublicId == identity.seriesPublicId && period == identity.period
+
 internal fun retainRecurringPaymentTask(
     task: RecurringPaymentTask,
     userClosed: Boolean,
-    accessResolved: Boolean,
-    accessBinding: LogicalSessionBinding?,
-    seriesPublicId: String?,
-    period: String?,
-    occurrenceState: String?,
+    visible: RecurringPaymentVisible,
 ): Boolean {
     if (userClosed) return false
-    if (!accessResolved) return true
-    if (accessBinding != task.binding) return false
-    return seriesPublicId != task.seriesPublicId || period != task.period || occurrenceState != "fulfilled"
+    if (!visible.accessResolved) return true
+    if (visible.identity.binding != task.binding) return false
+    return visible.identity.seriesPublicId != task.seriesPublicId ||
+        visible.identity.period != task.period ||
+        visible.occurrenceState != "fulfilled"
 }
 
 internal fun preferredPaymentExpenseId(
     task: RecurringPaymentTask?,
     admittedExpenseId: Long?,
-    binding: LogicalSessionBinding?,
-    seriesPublicId: String?,
-    period: String?,
+    visible: RecurringPaymentIdentity,
 ): Long? {
     if (task == null || admittedExpenseId == null) return null
-    if (binding != task.binding || seriesPublicId != task.seriesPublicId || period != task.period) return null
+    if (!task.matches(visible)) return null
     return admittedExpenseId
 }
 

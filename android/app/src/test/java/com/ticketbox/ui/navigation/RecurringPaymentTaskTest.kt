@@ -58,46 +58,35 @@ class RecurringPaymentTaskTest {
     @Test
     fun unloadAndOtherSeriesFulfilmentKeepTheOriginalTaskUntilTheUserClosesIt() {
         val task = assertNotNull(recurringPaymentTask(loaded("JPY", 1200)))
+        assertTrue(retainRecurringPaymentTask(task, userClosed = false, visible(resolved = false)))
         assertTrue(
             retainRecurringPaymentTask(
-                task, userClosed = false, accessResolved = false, accessBinding = null,
-                seriesPublicId = null, period = null, occurrenceState = null,
+                task, userClosed = false,
+                visible(binding = task.binding, series = null, period = null, state = null),
             ),
         )
         assertTrue(
             retainRecurringPaymentTask(
-                task, userClosed = false, accessResolved = true, accessBinding = task.binding,
-                seriesPublicId = null, period = null, occurrenceState = null,
+                task, userClosed = false, visible(period = "2026-09"),
             ),
         )
         assertTrue(
             retainRecurringPaymentTask(
-                task, userClosed = false, accessResolved = true, accessBinding = task.binding,
-                seriesPublicId = task.seriesPublicId, period = "2026-09", occurrenceState = "unfulfilled",
-            ),
-        )
-        assertTrue(
-            retainRecurringPaymentTask(
-                task, userClosed = false, accessResolved = true, accessBinding = task.binding,
-                seriesPublicId = "rec-2", period = "2026-08", occurrenceState = "fulfilled",
+                task, userClosed = false, visible(series = "rec-2", state = "fulfilled"),
             ),
         )
         assertTrue(
             !retainRecurringPaymentTask(
-                task, userClosed = false, accessResolved = true, accessBinding = task.binding,
-                seriesPublicId = task.seriesPublicId, period = task.period, occurrenceState = "fulfilled",
+                task, userClosed = false, visible(state = "fulfilled"),
             ),
         )
         assertTrue(
-            !retainRecurringPaymentTask(
-                task, userClosed = true, accessResolved = false, accessBinding = null,
-                seriesPublicId = null, period = null, occurrenceState = null,
-            ),
+            !retainRecurringPaymentTask(task, userClosed = true, visible(resolved = false)),
         )
         assertTrue(
             !retainRecurringPaymentTask(
-                task, userClosed = false, accessResolved = true, accessBinding = task.binding.copy(ledgerId = "other"),
-                seriesPublicId = task.seriesPublicId, period = task.period, occurrenceState = "unfulfilled",
+                task, userClosed = false,
+                visible(binding = task.binding.copy(ledgerId = "other")),
             ),
         )
     }
@@ -107,12 +96,16 @@ class RecurringPaymentTaskTest {
         val task = assertNotNull(recurringPaymentTask(loaded("JPY", 1200)))
         assertEquals(
             71L,
-            preferredPaymentExpenseId(task, 71L, task.binding, task.seriesPublicId, task.period),
+            preferredPaymentExpenseId(task, 71L, RecurringPaymentIdentity(task.binding, task.seriesPublicId, task.period)),
         )
-        assertNull(preferredPaymentExpenseId(task, 71L, task.binding, task.seriesPublicId, "2026-09"))
-        assertNull(preferredPaymentExpenseId(task, 71L, task.binding, "rec-2", task.period))
-        assertNull(preferredPaymentExpenseId(task, 71L, task.binding.copy(ledgerId = "other"), task.seriesPublicId, task.period))
-        assertNull(preferredPaymentExpenseId(null, 71L, task.binding, task.seriesPublicId, task.period))
+        assertNull(preferredPaymentExpenseId(task, 71L, RecurringPaymentIdentity(task.binding, task.seriesPublicId, "2026-09")))
+        assertNull(preferredPaymentExpenseId(task, 71L, RecurringPaymentIdentity(task.binding, "rec-2", task.period)))
+        assertNull(
+            preferredPaymentExpenseId(
+                task, 71L, RecurringPaymentIdentity(task.binding.copy(ledgerId = "other"), task.seriesPublicId, task.period),
+            ),
+        )
+        assertNull(preferredPaymentExpenseId(null, 71L, RecurringPaymentIdentity(task.binding, task.seriesPublicId, task.period)))
     }
 
     @Test
@@ -223,6 +216,14 @@ class RecurringPaymentTaskTest {
         assertNull(drafts.remembered(august.binding, august.seriesPublicId, "2026-08"))
         assertEquals(september.clientRef, drafts.remembered(september.binding, september.seriesPublicId, "2026-09")?.clientRef)
     }
+
+    private fun visible(
+        resolved: Boolean = true,
+        binding: LogicalSessionBinding? = access.binding,
+        series: String? = "rec-1",
+        period: String? = "2026-08",
+        state: String? = "unfulfilled",
+    ) = RecurringPaymentVisible(resolved, RecurringPaymentIdentity(binding, series, period), state)
 
     private fun loaded(currency: String?, planned: Long) = RecurringOccurrenceUiState(
         access = access,

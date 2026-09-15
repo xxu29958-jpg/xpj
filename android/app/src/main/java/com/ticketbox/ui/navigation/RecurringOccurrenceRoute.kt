@@ -12,11 +12,24 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.ticketbox.data.repository.ExpenseManualCreation
+import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.ui.screens.recurring.OccurrenceSheetActions
 import com.ticketbox.ui.screens.recurring.RecurringOccurrenceSheet
+import com.ticketbox.viewmodel.RecurringOccurrenceUiState
 import com.ticketbox.viewmodel.RecurringOccurrenceViewModel
 import kotlinx.coroutines.flow.flowOf
+
+internal data class RecurringPaymentRestore(
+    val items: List<RecurringItem> = emptyList(),
+    val drafts: RecurringPaymentDraftStore? = null,
+    val initialTaskJson: String? = null,
+)
+
+private data class RecurringPaymentHostDecision(
+    val clearTask: Boolean,
+    val retireClientRefs: List<String>,
+)
 
 @Composable
 internal fun recurringOccurrenceModel(factory: MainScreenFactory, onChanged: () -> Unit): RecurringOccurrenceViewModel =
@@ -35,64 +48,30 @@ internal fun recurringOccurrenceModel(factory: MainScreenFactory, onChanged: () 
 internal fun RecurringOccurrenceHost(
     model: RecurringOccurrenceViewModel,
     creation: ExpenseManualCreation,
-    onOpenExpense: (Long) -> Unit,
-    onRecordPayment: (RecurringPaymentTask) -> Unit,
-    items: List<RecurringItem> = emptyList(),
-    drafts: RecurringPaymentDraftStore? = null,
-    initialTaskJson: String? = null,
+    expenses: RecurringExpenseNavigation,
+    restore: RecurringPaymentRestore = RecurringPaymentRestore(),
 ) {
     val state by model.uiState.collectAsStateWithLifecycle()
-    var taskJson by rememberSaveable { mutableStateOf(initialTaskJson) }
+    var taskJson by rememberSaveable { mutableStateOf(restore.initialTaskJson) }
     var userClosed by rememberSaveable { mutableStateOf(false) }
     val task = remember(taskJson) { readRecurringPaymentTask(taskJson) }
-    val focused = drafts?.remembered(state.access?.binding, state.item?.publicId, state.occurrence?.period)
-        ?: task?.takeIf {
-            it.binding == state.access?.binding &&
-                it.seriesPublicId == state.item?.publicId &&
-                it.period == state.occurrence?.period
-        }
-    LaunchedEffect(
-        userClosed,
-        state.access,
-        state.item?.publicId,
-        state.occurrence?.state,
-        state.occurrence?.period,
-        taskJson,
-    ) {
+    val visible = state.paymentVisible()
+    val remembered = restore.drafts?.remembered(
+        visible.identity.binding, visible.identity.seriesPublicId, visible.identity.period,
+    )
+    val focused = remembered ?: task?.takeIf { it.matches(visible.identity) }
+    LaunchedEffect(userClosed, visible, taskJson) {
         val current = readRecurringPaymentTask(taskJson)
-        if (userClosed) {
-            if (current != null) taskJson = null
-        } else if (current != null && !retainRecurringPaymentTask(
-                current,
-                userClosed = false,
-                accessResolved = state.access != null,
-                accessBinding = state.access?.binding,
-                seriesPublicId = state.item?.publicId,
-                period = state.occurrence?.period,
-                occurrenceState = state.occurrence?.state,
-            )
-        ) {
-            taskJson = null
-            val retireLast = state.access != null &&
-                state.access?.binding == current.binding &&
-                state.item?.publicId == current.seriesPublicId &&
-                state.occurrence?.period == current.period &&
-                state.occurrence?.state == "fulfilled"
-            if (retireLast) drafts?.retireTask(current.clientRef)
-        }
-        if (state.occurrence?.state == "fulfilled") {
-            drafts?.remembered(state.access?.binding, state.item?.publicId, state.occurrence?.period)
-                ?.let { drafts.retireTask(it.clientRef) }
-        }
+        val decision = recurringPaymentHostDecision(current, userClosed, visible, remembered)
+        if (decision.clearTask) taskJson = null
+        decision.retireClientRefs.forEach { restore.drafts?.retireTask(it) }
     }
-    LaunchedEffect(taskJson, items, state.item, state.access?.binding, userClosed) {
-        if (userClosed || state.item != null) return@LaunchedEffect
-        val current = readRecurringPaymentTask(taskJson) ?: return@LaunchedEffect
-        if (state.access?.binding != current.binding) return@LaunchedEffect
-        val source = items.firstOrNull {
-            it.publicId == current.seriesPublicId && it.ledgerId == current.binding.ledgerId
-        } ?: return@LaunchedEffect
-        model.open(source, current.period)
+    LaunchedEffect(taskJson, restore.items, state.item, state.access?.binding, userClosed) {
+        val current = readRecurringPaymentTask(taskJson)
+        val source = recurringPaymentRestoreItem(
+            userClosed, state.item != null, current, state.access?.binding, restore.items,
+        ) ?: return@LaunchedEffect
+        model.open(source, requireNotNull(current).period)
     }
     val admitted by remember(creation, focused?.clientRef, focused?.binding) {
         val current = focused
@@ -111,29 +90,52 @@ internal fun RecurringOccurrenceHost(
             onChoose = model::choose,
             onSubmit = model::submit,
             onRecover = model::recover,
-            onOpenExpense = onOpenExpense,
+            onOpenExpense = expenses.onOpenExpense,
             onRecordPayment = {
-                val next = recurringPaymentTask(
-                    state,
-                    existing = task,
-                    remembered = drafts?.remembered(
-                        state.access?.binding,
-                        state.item?.publicId,
-                        state.occurrence?.period,
-                    ),
-                ) ?: return@OccurrenceSheetActions
+                val next = recurringPaymentTask(state, existing = task, remembered = remembered)
+                    ?: return@OccurrenceSheetActions
                 userClosed = false
-                drafts?.remember(next)
+                restore.drafts?.remember(next)
                 taskJson = recurringPaymentTaskJson(next)
-                onRecordPayment(next)
+                expenses.onRecordPayment(next)
             },
         ),
-        preferredExpenseId = preferredPaymentExpenseId(
-            task = focused,
-            admittedExpenseId = admitted?.acceptedExpenseId,
-            binding = state.access?.binding,
-            seriesPublicId = state.item?.publicId,
-            period = state.occurrence?.period,
-        ),
+        preferredExpenseId = preferredPaymentExpenseId(focused, admitted?.acceptedExpenseId, visible.identity),
     )
+}
+
+private fun RecurringOccurrenceUiState.paymentVisible() = RecurringPaymentVisible(
+    accessResolved = access != null,
+    identity = RecurringPaymentIdentity(access?.binding, item?.publicId, occurrence?.period),
+    occurrenceState = occurrence?.state,
+)
+
+private fun recurringPaymentHostDecision(
+    current: RecurringPaymentTask?,
+    userClosed: Boolean,
+    visible: RecurringPaymentVisible,
+    remembered: RecurringPaymentTask?,
+): RecurringPaymentHostDecision {
+    val keep = current != null && retainRecurringPaymentTask(current, userClosed, visible)
+    val retire = linkedSetOf<String>()
+    if (!userClosed && current != null && !retainRecurringPaymentTask(current, userClosed = false, visible)) {
+        if (visible.accessResolved && current.matches(visible.identity) && visible.occurrenceState == "fulfilled") {
+            retire += current.clientRef
+        }
+    }
+    if (visible.occurrenceState == "fulfilled") {
+        remembered?.clientRef?.let { retire += it }
+    }
+    return RecurringPaymentHostDecision(clearTask = current != null && !keep, retireClientRefs = retire.toList())
+}
+
+private fun recurringPaymentRestoreItem(
+    userClosed: Boolean,
+    itemOpen: Boolean,
+    task: RecurringPaymentTask?,
+    accessBinding: LogicalSessionBinding?,
+    items: List<RecurringItem>,
+): RecurringItem? {
+    if (userClosed || itemOpen || task == null || accessBinding != task.binding) return null
+    return items.firstOrNull { it.publicId == task.seriesPublicId && it.ledgerId == task.binding.ledgerId }
 }

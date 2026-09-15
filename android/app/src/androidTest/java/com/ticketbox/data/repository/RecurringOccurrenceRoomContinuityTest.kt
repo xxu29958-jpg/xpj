@@ -19,8 +19,10 @@ import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.RecurringItem
+import com.ticketbox.ui.navigation.RecurringExpenseNavigation
 import com.ticketbox.ui.navigation.RecurringOccurrenceHost
 import com.ticketbox.ui.navigation.RecurringPaymentDraftStore
+import com.ticketbox.ui.navigation.RecurringPaymentRestore
 import com.ticketbox.ui.navigation.RecurringPaymentTask
 import com.ticketbox.ui.navigation.recurringPaymentTaskJson
 import com.ticketbox.ui.screens.recurring.OccurrenceSheetActions
@@ -149,10 +151,11 @@ class RecurringOccurrenceRoomContinuityTest {
                 RecurringOccurrenceHost(
                     current,
                     requireNotNull(graph).expenseRepository.manualCreation,
-                    onOpenExpense = {},
-                    onRecordPayment = {},
-                    items = listed.value,
-                    initialTaskJson = recurringPaymentTaskJson(restored),
+                    RecurringExpenseNavigation({}),
+                    RecurringPaymentRestore(
+                        items = listed.value,
+                        initialTaskJson = recurringPaymentTaskJson(restored),
+                    ),
                 )
             }
         }
@@ -191,10 +194,11 @@ class RecurringOccurrenceRoomContinuityTest {
                 RecurringOccurrenceHost(
                     current,
                     requireNotNull(graph).expenseRepository.manualCreation,
-                    onOpenExpense = {},
-                    onRecordPayment = { paymentTask.value = it },
-                    items = listOf(occurrenceConnectedItem(), occurrenceConnectedItem().copy(publicId = "recurring-2", merchant = "电费")),
-                    initialTaskJson = recurringPaymentTaskJson(restored),
+                    RecurringExpenseNavigation({}, { paymentTask.value = it }),
+                    RecurringPaymentRestore(
+                        items = listOf(occurrenceConnectedItem(), occurrenceConnectedItem().copy(publicId = "recurring-2", merchant = "电费")),
+                        initialTaskJson = recurringPaymentTaskJson(restored),
+                    ),
                 )
             }
         }
@@ -261,14 +265,15 @@ class RecurringOccurrenceRoomContinuityTest {
                 RecurringOccurrenceHost(
                     current,
                     requireNotNull(graph).expenseRepository.manualCreation,
-                    onOpenExpense = {},
-                    onRecordPayment = { paymentTask.value = it },
-                    items = listOf(
-                        occurrenceConnectedItem(),
-                        occurrenceConnectedItem().copy(publicId = "recurring-2", merchant = "电费"),
+                    RecurringExpenseNavigation({}, { paymentTask.value = it }),
+                    RecurringPaymentRestore(
+                        items = listOf(
+                            occurrenceConnectedItem(),
+                            occurrenceConnectedItem().copy(publicId = "recurring-2", merchant = "电费"),
+                        ),
+                        drafts = drafts,
+                        initialTaskJson = recurringPaymentTaskJson(september),
                     ),
-                    drafts = drafts,
-                    initialTaskJson = recurringPaymentTaskJson(september),
                 )
             }
         }
@@ -322,10 +327,11 @@ class RecurringOccurrenceRoomContinuityTest {
                 RecurringOccurrenceHost(
                     current,
                     requireNotNull(graph).expenseRepository.manualCreation,
-                    onOpenExpense = {},
-                    onRecordPayment = { paymentTask.value = it },
-                    items = listOf(occurrenceConnectedItem()),
-                    drafts = drafts,
+                    RecurringExpenseNavigation({}, { paymentTask.value = it }),
+                    RecurringPaymentRestore(
+                        items = listOf(occurrenceConnectedItem()),
+                        drafts = drafts,
+                    ),
                 )
             }
         }
@@ -399,10 +405,11 @@ class RecurringOccurrenceRoomContinuityTest {
                 RecurringOccurrenceHost(
                     current,
                     requireNotNull(graph).expenseRepository.manualCreation,
-                    onOpenExpense = {},
-                    onRecordPayment = { paymentTask.value = it },
-                    items = listOf(occurrenceConnectedItem()),
-                    drafts = drafts,
+                    RecurringExpenseNavigation({}, { paymentTask.value = it }),
+                    RecurringPaymentRestore(
+                        items = listOf(occurrenceConnectedItem()),
+                        drafts = drafts,
+                    ),
                 )
             }
         }
@@ -469,9 +476,8 @@ class RecurringOccurrenceRoomContinuityTest {
                 RecurringOccurrenceHost(
                     current,
                     requireNotNull(graph).expenseRepository.manualCreation,
-                    onOpenExpense = {},
-                    onRecordPayment = { paymentTask.value = it },
-                    items = listOf(occurrenceConnectedItem()),
+                    RecurringExpenseNavigation({}, { paymentTask.value = it }),
+                    RecurringPaymentRestore(items = listOf(occurrenceConnectedItem())),
                 )
             }
         }

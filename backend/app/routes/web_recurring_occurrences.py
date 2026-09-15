@@ -31,6 +31,7 @@ from app.routes.web_common import (
 )
 from app.schemas._recurring_occurrence import RecurringOccurrenceWriteRequest
 from app.services.expense_query import resolve_expense
+from app.services.expense_service import fetch_expense_row_version_in_status
 from app.services.recurring_occurrence_command import set_occurrence_payment
 from app.services.recurring_occurrence_query import (
     eligible_payment_query,
@@ -38,7 +39,6 @@ from app.services.recurring_occurrence_query import (
     occurrence_period,
     occurrence_response,
 )
-from app.services.expense_service import fetch_expense_row_version_in_status
 from app.services.recurring_service import get_recurring_item
 from app.services.spending_contract_service import (
     accounting_datetime_label,

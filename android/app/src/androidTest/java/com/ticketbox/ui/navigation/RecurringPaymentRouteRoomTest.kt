@@ -343,9 +343,8 @@ class RecurringPaymentRouteRoomTest {
                                 task = current,
                                 factory = harness.screenFactory,
                                 exit = ExpenseEditExitActions({}, {}),
-                                financialDataRevision = 0,
-                                related = ExpenseFactNavigation({}, { _, _ -> }),
                                 drafts = drafts,
+                                admitted = {},
                             )
                         }
                     }

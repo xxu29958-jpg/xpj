@@ -274,7 +274,7 @@ def test_focused_payment_review_keeps_the_original_period_return(client: TestCli
         assert query.get("return_payment_expense_id") == [str(payment["id"])]
         review_page = client.get(review)
         assert review_page.status_code == 200, review_page.text
-        assert f'name="return_to" value="recurring_occurrence"' in review_page.text
+        assert 'name="return_to" value="recurring_occurrence"' in review_page.text
         assert series["public_id"] in review_page.text
         back = re.search(r'href="(/web/recurring/[^"]+occurrence[^"]*)"', review_page.text)
         assert back is not None
