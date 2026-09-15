@@ -72,6 +72,31 @@
     }
   }
 
+  function draftHref(record) {
+    const saved = record.values;
+    const parts = [];
+    function add(name, value) {
+      parts.push(encodeURIComponent(name) + "=" + encodeURIComponent(value));
+    }
+    const ledger = form.elements.namedItem("ledger_id");
+    if (ledger && ledger.value) add("ledger_id", ledger.value);
+    const series = saved.return_recurring_public_id || "";
+    const month = saved.return_month || "";
+    const recurring = saved.return_to === "recurring_occurrence" &&
+      /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(series) &&
+      /^\d{4}-(0[1-9]|1[0-2])$/.test(month);
+    if (recurring) {
+      add("return_to", "recurring_occurrence");
+      add("return_recurring_public_id", series);
+      add("return_month", month);
+      const payment = saved.return_payment_expense_id || "";
+      if (/^[1-9]\d{0,9}$/.test(payment) && Number(payment) <= 2147483647) {
+        add("return_payment_expense_id", payment);
+      }
+    }
+    return "/web/expenses/new" + (parts.length ? "?" + parts.join("&") : "") + "#manual-" + record.clientRef;
+  }
+
   function renderShelf() {
     const records = drafts.list(scope);
     const list = shelf.querySelector("[data-manual-draft-list]");
@@ -79,7 +104,7 @@
     records.forEach(record => {
       const item = document.createElement("li");
       const link = document.createElement("a");
-      link.href = "/web/expenses/new#manual-" + record.clientRef;
+      link.href = draftHref(record);
       link.textContent = [record.values.currency_code, record.values.amount_major || "未填金额",
         record.values.merchant].filter(Boolean).join(" · ");
       const detail = document.createElement("span");

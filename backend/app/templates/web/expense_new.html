@@ -41,9 +41,12 @@
       </div>
       <div class="product-field">
         <label for="manual-expense-currency">币种</label>
-        <select id="manual-expense-currency" class="product-input" name="currency_code">
+        <select id="manual-expense-currency" class="product-input" name="currency_code"{% if values.currency_unspecified %} required{% endif %}>
+          {% if values.currency_unspecified %}
+          <option value="" selected>原币种待核对</option>
+          {% endif %}
           {% for code in currency_options %}
-          <option value="{{ code }}"{% if values.currency_code == code %} selected{% endif %}>{{ code }}</option>
+          <option value="{{ code }}"{% if not values.currency_unspecified and values.currency_code == code %} selected{% endif %}>{{ code }}</option>
           {% endfor %}
         </select>
       </div>

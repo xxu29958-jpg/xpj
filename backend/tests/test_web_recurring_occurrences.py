@@ -3,6 +3,7 @@
 import re
 from html import unescape
 from urllib.parse import parse_qs, urlsplit
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
@@ -19,6 +20,16 @@ def _form(body, action):
                 for name, value in re.findall(r'<input\b[^>]*name="([^"]+)"[^>]*value="([^"]*)"', form)
             }
     raise AssertionError(f"real {action} form is missing")
+
+
+def _retry_form(body):
+    for form in re.findall(r"<form\b[^>]*>.*?</form>", body, flags=re.S):
+        if "重试原提交" in form:
+            return {
+                name: unescape(value)
+                for name, value in re.findall(r'<input\b[^>]*name="([^"]+)"[^>]*value="([^"]*)"', form)
+            }
+    raise AssertionError("the original proposal retry form is missing")
 
 
 def test_web_association_and_undo_share_the_api_result(client: TestClient, *, identity) -> None:
@@ -131,6 +142,20 @@ def test_expense_return_adapter_keeps_the_original_series_and_period() -> None:
     assert not target.netloc
     assert target.path == f"/web/recurring/{series_id}/occurrence"
     assert parse_qs(target.query) == {"ledger_id": ["owner"], "month": ["2026-08"]}
+    focused = return_href(
+        ledger_id="owner",
+        default_path="/web/pending",
+        **{**origin, "return_payment_expense_id": "41"},
+    )
+    assert parse_qs(urlsplit(focused).query) == {
+        "ledger_id": ["owner"], "month": ["2026-08"], "payment_id": ["41"],
+    }
+    assert edit_context_params(**{**origin, "return_payment_expense_id": "41"}) == {
+        **origin, "return_payment_expense_id": "41",
+    }
+    assert "return_payment_expense_id" not in edit_context_params(
+        **{**origin, "return_payment_expense_id": "not-an-id"}
+    )
     escaped = return_href(
         ledger_id="owner",
         default_path="/web/pending",
@@ -152,6 +177,16 @@ def test_human_confirm_return_reopens_the_original_unpaid_period() -> None:
     )
     assert path == f"/web/recurring/{series_id}/occurrence"
     assert params == {"month": "2026-08"}
+    focused_path, focused_params = confirm_return_redirect(
+        ExpenseReturnContext(
+            return_to="recurring_occurrence",
+            return_recurring_public_id=series_id,
+            return_month="2026-08",
+            return_payment_expense_id="41",
+        ),
+    )
+    assert focused_path == path
+    assert focused_params == {"month": "2026-08", "payment_id": "41"}
     unsafe_path, _ = confirm_return_redirect(
         ExpenseReturnContext(
             return_to="recurring_occurrence",
@@ -160,3 +195,94 @@ def test_human_confirm_return_reopens_the_original_unpaid_period() -> None:
         ),
     )
     assert unsafe_path == "/web/pending"
+
+
+def test_web_association_invalid_action_keeps_the_original_key(client: TestClient, *, identity) -> None:
+    app.dependency_overrides[_require_local] = lambda: None
+    try:
+        series = _create_series(client, identity)
+        payment = _payment(client, identity)
+        path = f"/web/recurring/{series['public_id']}/occurrence"
+        page = client.get(path, params={"ledger_id": "owner", "month": "2026-09", "payment_id": payment["id"]})
+        original = _form(page.text, "link")
+        assert original["expense_public_id"] == payment["public_id"]
+        assert original["payment_id"] == str(payment["id"])
+        refused = client.post(path, data={**original, "action": "explode"}, follow_redirects=False)
+        assert refused.status_code == 422, refused.text
+        assert "NameError" not in refused.text
+        retry = _retry_form(refused.text)
+        assert retry["idempotency_key"] == original["idempotency_key"]
+        assert retry["expense_public_id"] == payment["public_id"]
+        assert retry["expected_row_version"] == original["expected_row_version"]
+        assert retry["payment_id"] == str(payment["id"])
+        refused_again = client.post(path, data={**retry, "action": "explode"}, follow_redirects=False)
+        assert refused_again.status_code == 422, refused_again.text
+        retry_again = _retry_form(refused_again.text)
+        assert retry_again["payment_id"] == str(payment["id"])
+    finally:
+        app.dependency_overrides.pop(_require_local, None)
+
+
+def test_web_association_state_conflict_keeps_the_original_proposal(client: TestClient, *, identity) -> None:
+    app.dependency_overrides[_require_local] = lambda: None
+    try:
+        series = _create_series(client, identity)
+        payment = _payment(client, identity)
+        path = f"/web/recurring/{series['public_id']}/occurrence"
+        page = client.get(path, params={"ledger_id": "owner", "month": "2026-09"})
+        original = _form(page.text, "link")
+        linked = client.post(path, data=original, follow_redirects=False)
+        assert linked.status_code == 303, linked.text
+        conflict = client.post(
+            path,
+            data={**original, "idempotency_key": uuid4().hex},
+            follow_redirects=False,
+        )
+        assert conflict.status_code == 409, conflict.text
+        assert "NameError" not in conflict.text
+        retry = _retry_form(conflict.text)
+        assert retry["expense_public_id"] == payment["public_id"]
+        assert retry["expected_row_version"] == original["expected_row_version"]
+        assert retry["idempotency_key"] != original["idempotency_key"]
+    finally:
+        app.dependency_overrides.pop(_require_local, None)
+
+
+def test_focused_payment_review_keeps_the_original_period_return(client: TestClient, *, identity) -> None:
+    app.dependency_overrides[_require_local] = lambda: None
+    try:
+        series = _create_series(client, identity)
+        payment = _payment(client, identity)
+        path = f"/web/recurring/{series['public_id']}/occurrence"
+        page = client.get(
+            path,
+            params={"ledger_id": "owner", "month": "2026-09", "payment_id": payment["id"]},
+        )
+        assert page.status_code == 200, page.text
+        section = re.search(
+            r'<section\b[^>]*aria-label="刚记录的付款"[^>]*>(.*?)</section>',
+            page.text,
+            flags=re.S,
+        )
+        assert section is not None
+        hrefs = [unescape(href) for href in re.findall(r'href="([^"]+)"', section.group(1))]
+        review = next(href for href in hrefs if href.startswith(f"/web/expenses/{payment['id']}/edit"))
+        query = parse_qs(urlsplit(review).query)
+        assert query.get("return_to") == ["recurring_occurrence"]
+        assert query.get("return_recurring_public_id") == [series["public_id"]]
+        assert query.get("return_month") == ["2026-09"]
+        assert query.get("return_payment_expense_id") == [str(payment["id"])]
+        review_page = client.get(review)
+        assert review_page.status_code == 200, review_page.text
+        assert f'name="return_to" value="recurring_occurrence"' in review_page.text
+        assert series["public_id"] in review_page.text
+        back = re.search(r'href="(/web/recurring/[^"]+occurrence[^"]*)"', review_page.text)
+        assert back is not None
+        returned = client.get(unescape(back.group(1)))
+        assert returned.status_code == 200, returned.text
+        assert 'aria-label="刚记录的付款"' in returned.text
+        assert str(payment["id"]) in returned.text
+    finally:
+        app.dependency_overrides.pop(_require_local, None)
+
+

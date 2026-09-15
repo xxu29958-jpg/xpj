@@ -32,7 +32,7 @@ vm.runInNewContext(fs.readFileSync(SCRIPT, 'utf8'), {window});
 const drafts = window.TicketboxManualDrafts;
 const scope = {datasetId:'dataset', clientGeneration:'generation', accountId:'account', ledgerId:'ledger', deviceId:'device'};
 const ref = 'a'.repeat(32);
-const fields = {amount_major:'28.50', currency_code:'CNY', home_currency_code:'CNY', merchant:'合成咖啡店', category:'其他', spent_at:'2026-09-06T12:30', note:'合成草稿', csrf_token:'never-store', token:'never-store'};
+const fields = {amount_major:'28.50', currency_code:'CNY', home_currency_code:'CNY', merchant:'合成咖啡店', category:'其他', spent_at:'2026-09-06T12:30', note:'合成草稿', return_to:'', return_recurring_public_id:'', return_month:'', return_payment_expense_id:'', csrf_token:'never-store', token:'never-store'};
 const record = drafts.save(scope, ref, 'editing', fields);
 assert.equal(record.clientRef, ref);
 assert.equal(drafts.read(ref).values.amount_major, '28.50');
