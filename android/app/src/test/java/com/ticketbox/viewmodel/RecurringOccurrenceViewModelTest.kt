@@ -136,6 +136,23 @@ class RecurringOccurrenceViewModelTest {
             Dispatchers.resetMain()
         }
     }
+
+    @Test
+    fun openCanRestoreTheExactSavedPeriodInsteadOfCurrent() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val actions = OccurrenceChoiceActions()
+        seedUnpaidAugust(actions)
+        val model = occurrenceModel(actions, OccurrenceChoiceLedger(confirmedExpenseDtoFixture().toDomain(), emitConfirmedStream = false))
+        try {
+            model.open(recurringItem { rowVersion = 7L }.copy(homeCurrencyCode = "JPY", merchant = "日元订阅"), "2026-08")
+            advanceUntilIdle()
+            assertEquals("2026-08", model.uiState.value.requestedPeriod)
+            assertEquals("2026-08", model.uiState.value.occurrence?.period)
+        } finally {
+            model.viewModelScope.coroutineContext.job.cancelAndJoin()
+            Dispatchers.resetMain()
+        }
+    }
 }
 
 private fun occurrenceModel(
@@ -215,7 +232,7 @@ private class OccurrenceChoiceActions : RecurringOccurrenceActions {
     override fun describe(row: OutboxRow): PendingOccurrencePayment? = null
     override fun observeQueue(binding: LogicalSessionBinding): Flow<List<PendingOccurrencePayment>> = flowOf(emptyList())
     override suspend fun fetch(binding: LogicalSessionBinding, seriesId: String, period: String): Result<RecurringOccurrenceDto> =
-        Result.success(occurrence)
+        Result.success(if (period == "current") occurrence else occurrence.copy(period = period))
 
     override suspend fun enqueue(binding: LogicalSessionBinding, draft: OccurrencePaymentDraft): Result<Long> {
         submissions += binding to draft

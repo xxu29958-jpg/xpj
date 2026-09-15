@@ -75,12 +75,17 @@ class RecurringOccurrenceViewModel(
         }
     }
 
-    fun open(item: RecurringItem) {
+    fun open(item: RecurringItem, period: String = "current") {
         if (item.ledgerId != mutableState.value.access?.binding?.ledgerId) return
-        mutableState.update {
-            it.copy(item = item, occurrence = null, choice = null, acceptedId = null, message = null, requestedPeriod = "current")
+        val requested = if (period == "current" || runCatching { YearMonth.parse(period).toString() == period }.getOrDefault(false)) {
+            period
+        } else {
+            "current"
         }
-        load("current")
+        mutableState.update {
+            it.copy(item = item, occurrence = null, choice = null, acceptedId = null, message = null, requestedPeriod = requested)
+        }
+        load(requested)
     }
 
     fun dismiss() {

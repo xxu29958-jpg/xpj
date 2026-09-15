@@ -55,6 +55,105 @@ class RecurringPaymentTaskTest {
         assertNull(recurringPaymentTask(loaded("JPY", 1200).copy(ledgerHomeCurrencyCode = null)))
     }
 
+    @Test
+    fun unloadAndOtherSeriesFulfilmentKeepTheOriginalTaskUntilTheUserClosesIt() {
+        val task = assertNotNull(recurringPaymentTask(loaded("JPY", 1200)))
+        assertTrue(
+            retainRecurringPaymentTask(
+                task, userClosed = false, accessResolved = false, accessBinding = null,
+                seriesPublicId = null, period = null, occurrenceState = null,
+            ),
+        )
+        assertTrue(
+            retainRecurringPaymentTask(
+                task, userClosed = false, accessResolved = true, accessBinding = task.binding,
+                seriesPublicId = null, period = null, occurrenceState = null,
+            ),
+        )
+        assertTrue(
+            retainRecurringPaymentTask(
+                task, userClosed = false, accessResolved = true, accessBinding = task.binding,
+                seriesPublicId = task.seriesPublicId, period = "2026-09", occurrenceState = "unfulfilled",
+            ),
+        )
+        assertTrue(
+            retainRecurringPaymentTask(
+                task, userClosed = false, accessResolved = true, accessBinding = task.binding,
+                seriesPublicId = "rec-2", period = "2026-08", occurrenceState = "fulfilled",
+            ),
+        )
+        assertTrue(
+            !retainRecurringPaymentTask(
+                task, userClosed = false, accessResolved = true, accessBinding = task.binding,
+                seriesPublicId = task.seriesPublicId, period = task.period, occurrenceState = "fulfilled",
+            ),
+        )
+        assertTrue(
+            !retainRecurringPaymentTask(
+                task, userClosed = true, accessResolved = false, accessBinding = null,
+                seriesPublicId = null, period = null, occurrenceState = null,
+            ),
+        )
+        assertTrue(
+            !retainRecurringPaymentTask(
+                task, userClosed = false, accessResolved = true, accessBinding = task.binding.copy(ledgerId = "other"),
+                seriesPublicId = task.seriesPublicId, period = task.period, occurrenceState = "unfulfilled",
+            ),
+        )
+    }
+
+    @Test
+    fun preferredPaymentOnlyPinsWhenTheVisibleOccurrenceIsTheOriginalTask() {
+        val task = assertNotNull(recurringPaymentTask(loaded("JPY", 1200)))
+        assertEquals(
+            71L,
+            preferredPaymentExpenseId(task, 71L, task.binding, task.seriesPublicId, task.period),
+        )
+        assertNull(preferredPaymentExpenseId(task, 71L, task.binding, task.seriesPublicId, "2026-09"))
+        assertNull(preferredPaymentExpenseId(task, 71L, task.binding, "rec-2", task.period))
+        assertNull(preferredPaymentExpenseId(task, 71L, task.binding.copy(ledgerId = "other"), task.seriesPublicId, task.period))
+        assertNull(preferredPaymentExpenseId(null, 71L, task.binding, task.seriesPublicId, task.period))
+    }
+
+    @Test
+    fun unresolvedObservationsDoNotLookLikeAMissingCommandOrBindingChange() {
+        assertTrue(!recurringPaymentObservationsReady(accessResolved = false, admittedResolved = false))
+        assertTrue(!recurringPaymentObservationsReady(accessResolved = true, admittedResolved = false))
+        assertTrue(recurringPaymentObservationsReady(accessResolved = true, admittedResolved = true))
+        assertTrue(!recurringPaymentShowsBindingChanged(accessResolved = false, sameBinding = false))
+        assertTrue(recurringPaymentShowsBindingChanged(accessResolved = true, sameBinding = false))
+        assertTrue(!recurringPaymentShowsBindingChanged(accessResolved = true, sameBinding = true))
+    }
+
+    @Test
+    fun draftStoreKeepsClearedAmountAndMerchantForTheSameClientRef() {
+        val state = androidx.lifecycle.SavedStateHandle()
+        val drafts = RecurringPaymentDraftStore(state)
+        val task = assertNotNull(recurringPaymentTask(loaded("JPY", 1200)))
+        drafts.write(
+            RecurringPaymentDraft(
+                clientRef = task.clientRef,
+                amountText = "",
+                currencyCode = "USD",
+                merchant = "",
+                category = "住房",
+                note = "自填备注",
+                expenseTime = "2026-08-20T10:00:00Z",
+            ),
+        )
+        val restored = RecurringPaymentDraftStore(
+            androidx.lifecycle.SavedStateHandle(state.keys().associateWith { state.get<Any?>(it) }),
+        ).read(task.clientRef)
+        assertEquals("", restored?.amountText)
+        assertEquals("", restored?.merchant)
+        assertEquals("USD", restored?.currencyCode)
+        assertEquals("住房", restored?.category)
+        assertEquals("自填备注", restored?.note)
+        assertEquals("2026-08-20T10:00:00Z", restored?.expenseTime)
+        drafts.remove(task.clientRef)
+        assertNull(drafts.read(task.clientRef))
+    }
+
     private fun loaded(currency: String?, planned: Long) = RecurringOccurrenceUiState(
         access = access,
         item = recurringItem { rowVersion = 7L }.copy(homeCurrencyCode = currency, merchant = "日元订阅"),

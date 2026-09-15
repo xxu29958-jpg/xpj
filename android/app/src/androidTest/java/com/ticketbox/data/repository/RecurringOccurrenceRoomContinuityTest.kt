@@ -5,8 +5,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.hasSetTextAction
-import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -16,13 +14,10 @@ import androidx.lifecycle.viewModelScope
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.RepositoryGraph
 import com.ticketbox.domain.model.AppSkin
-import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.ui.navigation.RecurringOccurrenceHost
 import com.ticketbox.ui.navigation.RecurringPaymentTask
-import com.ticketbox.ui.screens.ManualExpenseSheet
-import com.ticketbox.ui.screens.ManualExpenseSheetActions
-import com.ticketbox.ui.screens.ManualExpenseSheetInitials
-import com.ticketbox.ui.screens.ManualExpenseSheetState
+import com.ticketbox.ui.navigation.recurringPaymentTaskJson
 import com.ticketbox.ui.screens.recurring.OccurrenceSheetActions
 import com.ticketbox.ui.screens.recurring.RecurringOccurrenceSheet
 import com.ticketbox.ui.theme.TicketboxTheme
@@ -108,7 +103,7 @@ class RecurringOccurrenceRoomContinuityTest {
         assertEquals("clear", fixture.network.calls.last().first.action)
     }
 
-    private fun installModel() {
+    private fun installModel(open: Boolean = true) {
         val graph = fixture.reopen()
         this.graph = graph
         compose.runOnIdle {
@@ -116,8 +111,118 @@ class RecurringOccurrenceRoomContinuityTest {
                 graph.recurringRepository.occurrences,
                 fixture.ledger,
                 fixture.debts,
-            ).also { it.open(occurrenceConnectedItem()) }
+            ).also { if (open) it.open(occurrenceConnectedItem()) }
         }
+    }
+
+    @Test
+    fun restoredTaskSurvivesUnloadAndLateItemsThenReopensTheOriginalPeriod() {
+        fixture.network.current = fixture.network.current.copy(
+            period = "2026-08",
+            homeCurrencyCode = "JPY",
+            plannedAmountCents = 1200,
+            reservedAmountCents = 1200,
+        )
+        installModel(open = false)
+        val binding = requireNotNull(model.value?.uiState?.value?.access).binding
+        val restored = RecurringPaymentTask(
+            binding = binding,
+            seriesPublicId = "recurring-1",
+            period = "2026-08",
+            clientRef = "restore-august",
+            merchant = "房租",
+            recordedCurrencyCode = "JPY",
+            suggestedAmountMinor = 1200,
+            ledgerHomeCurrencyCode = "CNY",
+        )
+        val listed = androidx.compose.runtime.mutableStateOf(emptyList<RecurringItem>())
+        compose.setContent {
+            val current = model.value ?: return@setContent
+            TicketboxTheme(skin = AppSkin.Paper) {
+                RecurringOccurrenceHost(
+                    current,
+                    requireNotNull(graph).expenseRepository.manualCreation,
+                    onOpenExpense = {},
+                    onRecordPayment = {},
+                    items = listed.value,
+                    initialTaskJson = recurringPaymentTaskJson(restored),
+                )
+            }
+        }
+        compose.waitForIdle()
+        assertEquals(null, model.value?.uiState?.value?.item)
+        compose.runOnIdle { listed.value = listOf(occurrenceConnectedItem()) }
+        compose.waitUntil(10_000) {
+            model.value?.uiState?.value?.item?.publicId == "recurring-1" &&
+                model.value?.uiState?.value?.occurrence?.period == "2026-08"
+        }
+    }
+
+    @Test
+    fun otherSeriesFulfilmentDoesNotRetireTheOriginalTaskClientRef() {
+        fixture.network.current = fixture.network.current.copy(
+            period = "2026-08",
+            homeCurrencyCode = "JPY",
+            plannedAmountCents = 1200,
+            reservedAmountCents = 1200,
+        )
+        installModel(open = false)
+        val binding = requireNotNull(model.value?.uiState?.value?.access).binding
+        val restored = RecurringPaymentTask(
+            binding = binding,
+            seriesPublicId = "recurring-1",
+            period = "2026-08",
+            clientRef = "restore-august",
+            merchant = "房租",
+            recordedCurrencyCode = "JPY",
+            suggestedAmountMinor = 1200,
+            ledgerHomeCurrencyCode = "CNY",
+        )
+        compose.setContent {
+            val current = model.value ?: return@setContent
+            TicketboxTheme(skin = AppSkin.Paper) {
+                RecurringOccurrenceHost(
+                    current,
+                    requireNotNull(graph).expenseRepository.manualCreation,
+                    onOpenExpense = {},
+                    onRecordPayment = { paymentTask.value = it },
+                    items = listOf(occurrenceConnectedItem(), occurrenceConnectedItem().copy(publicId = "recurring-2", merchant = "电费")),
+                    initialTaskJson = recurringPaymentTaskJson(restored),
+                )
+            }
+        }
+        compose.waitUntil(10_000) { model.value?.uiState?.value?.occurrence?.period == "2026-08" }
+        fixture.network.current = fixture.network.current.copy(
+            seriesPublicId = "recurring-2",
+            period = "2026-08",
+            state = "fulfilled",
+            reservedAmountCents = 0,
+        )
+        compose.runOnIdle {
+            model.value?.open(occurrenceConnectedItem().copy(publicId = "recurring-2", merchant = "电费"), "2026-08")
+        }
+        compose.waitUntil(10_000) {
+            model.value?.uiState?.value?.item?.publicId == "recurring-2" &&
+                model.value?.uiState?.value?.occurrence?.state == "fulfilled"
+        }
+        fixture.network.current = fixture.network.current.copy(
+            seriesPublicId = "recurring-1",
+            period = "2026-08",
+            state = "unfulfilled",
+            reservedAmountCents = 1200,
+            homeCurrencyCode = "JPY",
+            plannedAmountCents = 1200,
+        )
+        compose.runOnIdle { model.value?.open(occurrenceConnectedItem(), "2026-08") }
+        compose.waitUntil(10_000) {
+            model.value?.uiState?.value?.item?.publicId == "recurring-1" &&
+                model.value?.uiState?.value?.canWrite == true &&
+                model.value?.uiState?.value?.ledgerHomeCurrencyCode != null
+        }
+        compose.onNodeWithTag("occurrence-record-payment").performScrollTo().performClick()
+        compose.waitUntil(10_000) { paymentTask.value?.clientRef == "restore-august" }
+        assertEquals("restore-august", paymentTask.value?.clientRef)
+        assertEquals("2026-08", paymentTask.value?.period)
     }
 
     @Test
@@ -132,33 +237,14 @@ class RecurringOccurrenceRoomContinuityTest {
         installModel()
         compose.setContent {
             val current = model.value ?: return@setContent
-            val task = paymentTask.value
             TicketboxTheme(skin = AppSkin.Paper) {
                 RecurringOccurrenceHost(
                     current,
                     requireNotNull(graph).expenseRepository.manualCreation,
                     onOpenExpense = {},
                     onRecordPayment = { paymentTask.value = it },
+                    items = listOf(occurrenceConnectedItem()),
                 )
-                if (task != null) {
-                    val currency = CurrencyCode.fromStorageKeyOrNull(task.recordedCurrencyCode)
-                    val home = CurrencyCode.fromStorageKeyOrNull(task.ledgerHomeCurrencyCode)
-                    if (currency != null && home != null) {
-                        ManualExpenseSheet(
-                            ManualExpenseSheetState(
-                                categories = emptyList(),
-                                saving = false,
-                                initialCurrency = currency,
-                                ledgerHomeCurrency = home,
-                            ),
-                            ManualExpenseSheetActions(onCreate = {}, onDismiss = {}),
-                            ManualExpenseSheetInitials(
-                                merchant = task.merchant,
-                                amountMinor = task.suggestedAmountMinor,
-                            ),
-                        )
-                    }
-                }
             }
         }
         compose.waitUntil(10_000) {
@@ -174,10 +260,7 @@ class RecurringOccurrenceRoomContinuityTest {
         assertEquals(1200L, task.suggestedAmountMinor)
         assertEquals("房租", task.merchant)
         assertEquals("CNY", task.ledgerHomeCurrencyCode)
-        compose.onNodeWithText("手动记一笔").assertIsDisplayed()
-        compose.onNodeWithText("商家").assertIsDisplayed()
-        compose.onNode(hasSetTextAction() and hasText("1200")).assertIsDisplayed()
-        compose.onNode(hasSetTextAction() and hasText("房租")).assertIsDisplayed()
+        assertEquals("2026-08", task.period)
         assertEquals(emptyList<Any>(), fixture.stored())
         assertEquals("unfulfilled", model.value?.uiState?.value?.occurrence?.state)
         assertEquals(1200L, model.value?.uiState?.value?.occurrence?.reservedAmountCents)

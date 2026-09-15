@@ -19,6 +19,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimeInput
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -78,6 +79,17 @@ data class ManualExpenseSheetInitials(
     val category: String = DEFAULT_EXPENSE_CATEGORIES.first(),
     val note: String = "",
     val amountMinor: Long? = null,
+    val amountText: String? = null,
+    val expenseTime: String? = null,
+)
+
+data class ManualExpenseSheetDraft(
+    val amountText: String,
+    val currency: CurrencyCode,
+    val merchant: String,
+    val category: String,
+    val note: String,
+    val expenseTime: String,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -86,9 +98,10 @@ fun ManualExpenseSheet(
     state: ManualExpenseSheetState,
     actions: ManualExpenseSheetActions,
     initials: ManualExpenseSheetInitials = ManualExpenseSheetInitials(),
+    onDraftChange: ((ManualExpenseSheetDraft) -> Unit)? = null,
 ) {
     var amountText by rememberSaveable {
-        mutableStateOf(formatMinorAmountInput(initials.amountMinor, state.initialCurrency))
+        mutableStateOf(initials.amountText ?: formatMinorAmountInput(initials.amountMinor, state.initialCurrency))
     }
     val homeCurrency by rememberSaveable { mutableStateOf(state.ledgerHomeCurrency) }
     var currency by rememberSaveable { mutableStateOf(state.initialCurrency) }
@@ -97,13 +110,25 @@ fun ManualExpenseSheet(
         mutableStateOf(initials.category.ifBlank { DEFAULT_EXPENSE_CATEGORIES.first() })
     }
     var note by rememberSaveable { mutableStateOf(initials.note) }
-    var expenseTime by rememberSaveable { mutableStateOf(nowUtcIso()) }
+    var expenseTime by rememberSaveable { mutableStateOf(initials.expenseTime ?: nowUtcIso()) }
     var message by rememberSaveable { mutableStateOf<String?>(null) }
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
     var showTimePicker by rememberSaveable { mutableStateOf(false) }
     val invalidAmountMessage = stringResource(R.string.ledger_manual_amount_invalid)
     val density = LocalDensity.current
     val keyboardVisible = LocalAppImeVisible.current || WindowInsets.ime.getBottom(density) > 0
+    LaunchedEffect(amountText, currency, merchant, category, note, expenseTime) {
+        onDraftChange?.invoke(
+            ManualExpenseSheetDraft(
+                amountText = amountText,
+                currency = currency,
+                merchant = merchant,
+                category = category,
+                note = note,
+                expenseTime = expenseTime,
+            ),
+        )
+    }
 
     if (showDatePicker) {
         val datePickerState = androidx.compose.material3.rememberDatePickerState(

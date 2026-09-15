@@ -44,7 +44,7 @@ internal fun RecurringRoute(
         actions = RecurringScreenActions(
             onRefresh = recurringViewModel::refresh,
             items = RecurringItemActions(
-                onOpenOccurrence = occurrenceModel::open,
+                onOpenOccurrence = { occurrenceModel.open(it) },
                 onPause = recurringViewModel::pause,
                 onResume = recurringViewModel::resume,
                 onArchive = recurringViewModel::archive,
@@ -67,5 +67,7 @@ internal fun RecurringRoute(
         creation = screenFactory.repository.manualCreation,
         onOpenExpense = expenseNavigation.onOpenExpense,
         onRecordPayment = expenseNavigation.onRecordPayment,
+        items = state.items,
+        drafts = rememberRecurringPaymentDraftStore(),
     )
 }

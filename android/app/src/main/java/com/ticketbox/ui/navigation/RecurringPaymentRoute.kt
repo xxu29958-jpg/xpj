@@ -20,7 +20,10 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavType
 import androidx.navigation.compose.composable
@@ -28,17 +31,25 @@ import androidx.navigation.navArgument
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
+import com.ticketbox.ui.components.formatMinorAmountInput
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.ManualExpenseSheet
 import com.ticketbox.ui.screens.ManualExpenseSheetActions
+import com.ticketbox.ui.screens.ManualExpenseSheetDraft
 import com.ticketbox.ui.screens.ManualExpenseSheetInitials
 import com.ticketbox.ui.screens.ManualExpenseSheetState
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 
 internal fun NavGraphBuilder.addRecurringPaymentRoute(runtime: MainNavigationRuntime) {
     composable(RECURRING_PAYMENT_ROUTE, arguments = listOf(navArgument("task") { type = NavType.StringType })) { entry ->
         val task = readRecurringPaymentTask(entry.arguments?.getString("task")) ?: return@composable
         val back = { runtime.navController.popBackStack(); Unit }
+        val drafts = RecurringPaymentDraftStore(
+            runCatching { runtime.navController.getBackStackEntry(ProductSecondaryPage.Recurring.route) }
+                .getOrNull()?.savedStateHandle
+                ?: entry.savedStateHandle,
+        )
         RecurringPaymentRoute(
             task = task,
             factory = runtime.screenFactory,
@@ -60,8 +71,16 @@ internal fun NavGraphBuilder.addRecurringPaymentRoute(runtime: MainNavigationRun
                     runtime.navController.navigate(correctionRateRoute(binding, gap))
                 },
             ),
+            drafts = drafts,
         )
     }
+}
+
+@Composable
+internal fun rememberRecurringPaymentDraftStore(): RecurringPaymentDraftStore {
+    val owner = LocalViewModelStoreOwner.current
+    val handle = (owner as? NavBackStackEntry)?.savedStateHandle ?: remember { SavedStateHandle() }
+    return remember(handle) { RecurringPaymentDraftStore(handle) }
 }
 
 @Composable
@@ -71,27 +90,38 @@ internal fun RecurringPaymentRoute(
     exit: ExpenseEditExitActions,
     financialDataRevision: Int,
     related: ExpenseFactNavigation,
+    drafts: RecurringPaymentDraftStore,
 ) {
-    val access by remember(factory.repository) { factory.repository.observeLedgerAccess() }
-        .collectAsStateWithLifecycle(initialValue = null)
-    val admitted by remember(task.clientRef, task.binding) {
-        factory.repository.manualCreation.observe(task.binding, task.clientRef)
+    var accessResolved by remember { mutableStateOf(false) }
+    val access by remember(factory.repository) {
+        factory.repository.observeLedgerAccess().onEach { accessResolved = true }
     }.collectAsStateWithLifecycle(initialValue = null)
+    var admittedResolved by remember(task.clientRef, task.binding) { mutableStateOf(false) }
+    val admitted by remember(task.clientRef, task.binding) {
+        factory.repository.manualCreation.observe(task.binding, task.clientRef).onEach { admittedResolved = true }
+    }.collectAsStateWithLifecycle(initialValue = null)
+    val stored = drafts.read(task.clientRef)
     val draftState = rememberSaveableStateHolder()
-    var chosenCurrency by rememberSaveable(task.clientRef) { mutableStateOf(task.recordedCurrencyCode) }
+    var chosenCurrency by rememberSaveable(task.clientRef) {
+        mutableStateOf(stored?.currencyCode ?: task.recordedCurrencyCode)
+    }
     var saving by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val home = CurrencyCode.fromStorageKeyOrNull(task.ledgerHomeCurrencyCode)
     val paymentCurrency = CurrencyCode.fromStorageKeyOrNull(chosenCurrency)
     val sameBinding = access?.binding == task.binding
+    if (!recurringPaymentObservationsReady(accessResolved, admittedResolved)) {
+        Text(stringResource(R.string.recurring_payment_loading))
+        return
+    }
     if (admitted != null && sameBinding) {
         ManualExpenseSubmissionRoute(task.clientRef, factory, exit, related, financialDataRevision)
         return
     }
     Column(Modifier.fillMaxSize().padding(AppSpacing.cardPadding)) {
         Text(stringResource(R.string.recurring_payment_return, task.period))
-        if (!sameBinding) {
+        if (recurringPaymentShowsBindingChanged(accessResolved, sameBinding)) {
             Text(stringResource(R.string.recurring_payment_binding_changed))
             TextButton(onClick = exit.onBack) { Text(stringResource(R.string.common_cancel)) }
             return
@@ -102,7 +132,24 @@ internal fun RecurringPaymentRoute(
         }
         if (paymentCurrency == null) {
             PeriodPaymentCurrencyChoice(
-                onChoose = { chosenCurrency = it },
+                onChoose = { code ->
+                    chosenCurrency = code
+                    val previous = drafts.read(task.clientRef)
+                    drafts.write(
+                        RecurringPaymentDraft(
+                            clientRef = task.clientRef,
+                            amountText = previous?.amountText ?: formatMinorAmountInput(
+                                task.suggestedAmountMinor,
+                                CurrencyCode.fromStorageKeyOrNull(code) ?: CurrencyCode.CNY,
+                            ),
+                            currencyCode = code,
+                            merchant = previous?.merchant ?: task.merchant,
+                            category = previous?.category ?: DEFAULT_EXPENSE_CATEGORIES.first(),
+                            note = previous?.note.orEmpty(),
+                            expenseTime = previous?.expenseTime.orEmpty(),
+                        ),
+                    )
+                },
                 onDismiss = exit.onBack,
             )
             return
@@ -122,7 +169,10 @@ internal fun RecurringPaymentRoute(
                         error = null
                         scope.launch {
                             factory.repository.manualCreation.create(draft, task.binding, task.clientRef).fold(
-                                onSuccess = { draftState.removeState(task.clientRef) },
+                                onSuccess = {
+                                    drafts.remove(task.clientRef)
+                                    draftState.removeState(task.clientRef)
+                                },
                                 onFailure = { error = it.message },
                             )
                             saving = false
@@ -132,12 +182,28 @@ internal fun RecurringPaymentRoute(
                 onDismiss = { if (!saving) exit.onBack() },
             ),
             initials = ManualExpenseSheetInitials(
-                merchant = task.merchant,
-                category = DEFAULT_EXPENSE_CATEGORIES.first(),
+                merchant = stored?.merchant ?: task.merchant,
+                category = stored?.category ?: DEFAULT_EXPENSE_CATEGORIES.first(),
+                note = stored?.note.orEmpty(),
                 amountMinor = if (task.recordedCurrencyCode == null) null else task.suggestedAmountMinor,
+                amountText = stored?.amountText,
+                expenseTime = stored?.expenseTime?.takeIf { it.isNotBlank() },
             ),
             draftState = draftState,
             clientRef = task.clientRef,
+            onDraftChange = { form ->
+                drafts.write(
+                    RecurringPaymentDraft(
+                        clientRef = task.clientRef,
+                        amountText = form.amountText,
+                        currencyCode = form.currency.storageKey,
+                        merchant = form.merchant,
+                        category = form.category,
+                        note = form.note,
+                        expenseTime = form.expenseTime,
+                    ),
+                )
+            },
         )
     }
 }
@@ -150,13 +216,14 @@ private fun RecurringPaymentSheet(
     initials: ManualExpenseSheetInitials,
     draftState: SaveableStateHolder,
     clientRef: String,
+    onDraftChange: (ManualExpenseSheetDraft) -> Unit,
 ) {
     ModalBottomSheet(
         onDismissRequest = actions.onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
     ) {
         draftState.SaveableStateProvider(clientRef) {
-            ManualExpenseSheet(state, actions, initials)
+            ManualExpenseSheet(state, actions, initials, onDraftChange = onDraftChange)
         }
     }
 }
