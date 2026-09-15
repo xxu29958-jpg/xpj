@@ -194,6 +194,20 @@ def resolve_return_to(raw: str, default_path: str, **origin: str) -> str:
     return RETURN_TO_PATHS.get(token, default_path)
 
 
+def _recurring_list_return_params(origin: dict[str, str]) -> dict[str, str]:
+    kept = recurring_occurrence_origin(
+        return_recurring_public_id=origin.get("return_recurring_public_id", ""),
+        return_month=origin.get("return_month", ""),
+        return_payment_expense_id=origin.get("return_payment_expense_id", ""),
+    )
+    if not kept:
+        return {}
+    params = {"month": kept["return_month"]}
+    if kept.get("return_payment_expense_id"):
+        params["payment_id"] = kept["return_payment_expense_id"]
+    return params
+
+
 def return_context_params(return_to: str, **origin: str) -> dict[str, str]:
     """Return only query fields valid for the allowlisted origin page."""
     token = clean_return_to(return_to)
@@ -214,17 +228,7 @@ def return_context_params(return_to: str, **origin: str) -> dict[str, str]:
         if query and len(query) <= MAX_QUERY_LENGTH:
             return {"q": query}
     if token == "recurring_occurrence":
-        kept = recurring_occurrence_origin(
-            return_recurring_public_id=origin.get("return_recurring_public_id", ""),
-            return_month=origin.get("return_month", ""),
-            return_payment_expense_id=origin.get("return_payment_expense_id", ""),
-        )
-        if not kept:
-            return {}
-        params = {"month": kept["return_month"]}
-        if kept.get("return_payment_expense_id"):
-            params["payment_id"] = kept["return_payment_expense_id"]
-        return params
+        return _recurring_list_return_params(origin)
     return {}
 
 

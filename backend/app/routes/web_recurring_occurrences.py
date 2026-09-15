@@ -11,7 +11,6 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
-from app.models import Expense
 from app.routes._web_expense_return_context import (
     _payment_expense_id,
     edit_context_params,
@@ -34,7 +33,7 @@ from app.services.expense_query import resolve_expense
 from app.services.expense_service import fetch_expense_row_version_in_status
 from app.services.recurring_occurrence_command import set_occurrence_payment
 from app.services.recurring_occurrence_query import (
-    eligible_payment_query,
+    eligible_payment,
     find_recurring_payments,
     occurrence_period,
     occurrence_response,
@@ -106,12 +105,37 @@ def _focused_payment(db, *, ledger_id, payment_id, item, occurrence) -> dict[str
     expense = resolve_expense(db, ledger_id, int(payment_id))
     if expense is None or expense.status not in {"pending", "confirmed", "rejected"}:
         return None
-    eligible = db.scalar(
-        eligible_payment_query(tenant_id=ledger_id).where(Expense.id == expense.id).limit(1)
-    )
+    eligible = eligible_payment(db, tenant_id=ledger_id, expense_id=expense.id)
     return {
         **_payment_view(expense, ledger_id=ledger_id, item=item, occurrence=occurrence),
         "eligible": eligible is not None,
+    }
+
+
+def _occurrence_page_projection(*, item, occurrence, payments, focused, selected, can_write) -> dict:
+    can_associate = can_write and item.status != "archived"
+    return {
+        "payments": [payment for payment in payments if not focused or payment["id"] != focused["id"]],
+        "focused_payment": focused,
+        "planned_amount": (
+            _amount_yuan(occurrence.planned_amount_cents, occurrence.home_currency_code)
+            if occurrence.home_currency_code else "币种待确认"
+        ),
+        "paid_amount": (
+            _amount_yuan(occurrence.paid_amount_cents, occurrence.paid_home_currency_code)
+            if occurrence.paid_home_currency_code else "币种待确认"
+        ),
+        "can_associate": can_associate,
+        "record_payment_href": (
+            flow_href("/web/expenses/new", ledger_id=selected, **_occurrence_origin(item, occurrence))
+            if can_associate and occurrence.state == "unfulfilled" else None
+        ),
+        "linked_payment_href": (
+            _payment_edit_href(
+                ledger_id=selected, expense_id=occurrence.expense_id, item=item, occurrence=occurrence,
+            )
+            if occurrence.expense_id else None
+        ),
     }
 
 
@@ -135,33 +159,17 @@ def _page(
     focused = _focused_payment(
         db, ledger_id=selected, payment_id=payment_id, item=item, occurrence=occurrence,
     )
-    can_associate = context["can_write"] and item.status != "archived"
     context.update(
-        item=item, occurrence=occurrence,
-        payments=[payment for payment in payments if not focused or payment["id"] != focused["id"]],
-        focused_payment=focused, limited=limited,
+        item=item, occurrence=occurrence, limited=limited,
         payment_month=selected_payment_month, query=query,
-        planned_amount=_amount_yuan(occurrence.planned_amount_cents, occurrence.home_currency_code) if occurrence.home_currency_code else "币种待确认",
-        paid_amount=_amount_yuan(occurrence.paid_amount_cents, occurrence.paid_home_currency_code) if occurrence.paid_home_currency_code else "币种待确认",
-        can_associate=can_associate,
-        record_payment_href=(
-            flow_href(
-                "/web/expenses/new",
-                ledger_id=selected,
-                **_occurrence_origin(item, occurrence),
-            )
-            if can_associate and occurrence.state == "unfulfilled" else None
-        ),
-        linked_payment_href=(
-            _payment_edit_href(
-                ledger_id=selected, expense_id=occurrence.expense_id, item=item, occurrence=occurrence,
-            )
-            if occurrence.expense_id else None
-        ),
         command_key=uuid4().hex, error=error, retry=retry,
         flash_message=message or "",
         flash_type=flash_type if flash_type in {"success", "error"} else ("success" if message else ""),
         undo_expense_id=None, undo_expected_row_version=None, undo_idempotency_key="",
+        **_occurrence_page_projection(
+            item=item, occurrence=occurrence, payments=payments, focused=focused,
+            selected=selected, can_write=context["can_write"],
+        ),
     )
     undo_expense_id, undo_expected_row_version = _occurrence_reject_undo(
         db, selected_id=selected, undo=undo,
