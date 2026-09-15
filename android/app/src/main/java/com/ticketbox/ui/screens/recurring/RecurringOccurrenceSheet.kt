@@ -51,6 +51,7 @@ data class OccurrenceSheetActions(
 fun RecurringOccurrenceSheet(
     state: RecurringOccurrenceUiState,
     actions: OccurrenceSheetActions,
+    preferredExpenseId: Long? = null,
 ) {
     val item = state.item ?: return
     ModalBottomSheet(onDismissRequest = actions.onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
@@ -82,7 +83,7 @@ fun RecurringOccurrenceSheet(
                     )
                 }
                 OccurrenceChoice(state, actions.onSubmit)
-                if (state.canWrite) OccurrencePaymentPicker(state, actions.onChoose)
+                if (state.canWrite) OccurrencePaymentPicker(state, actions.onChoose, preferredExpenseId)
             }
         }
     }
@@ -136,10 +137,14 @@ private fun OccurrencePending(pending: PendingOccurrencePayment, canModify: Bool
 }
 
 @Composable
-private fun OccurrencePaymentPicker(state: RecurringOccurrenceUiState, choose: (ConfirmedStreamItem.ExpenseRow) -> Unit) {
+private fun OccurrencePaymentPicker(
+    state: RecurringOccurrenceUiState,
+    choose: (ConfirmedStreamItem.ExpenseRow) -> Unit,
+    preferredExpenseId: Long?,
+) {
     var month by rememberSaveable(state.occurrence?.period) { mutableStateOf(state.occurrence?.period.orEmpty()) }
     var query by rememberSaveable(state.item?.publicId) { mutableStateOf("") }
-    val payments = occurrencePaymentChoices(state.payments, month, query)
+    val payments = occurrencePaymentChoices(state.payments, month, query, preferredExpenseId)
     HorizontalDivider()
     Text(stringResource(R.string.occurrence_pick_explanation))
     OutlinedTextField(value = month, onValueChange = { month = it }, singleLine = true,
@@ -157,12 +162,26 @@ private fun OccurrencePaymentPicker(state: RecurringOccurrenceUiState, choose: (
     }
 }
 
-internal fun occurrencePaymentChoices(rows: List<ConfirmedStreamItem>, month: String, query: String): List<ConfirmedStreamItem.ExpenseRow> =
-    filterConfirmedStreamItems(rows, ExpenseFilterCriteria(month = month, query = query))
+internal fun occurrencePaymentChoices(
+    rows: List<ConfirmedStreamItem>,
+    month: String,
+    query: String,
+    preferredExpenseId: Long? = null,
+): List<ConfirmedStreamItem.ExpenseRow> {
+    val eligible = filterConfirmedStreamItems(rows, ExpenseFilterCriteria(month = "", query = ""))
         .filterIsInstance<ConfirmedStreamItem.ExpenseRow>().filter {
             it.root.id > 0 && !it.root.pendingSync && it.root.status == "confirmed" &&
                 it.root.amountCents != null && it.lineageStatus != ExpenseLineageStatus.Reversed
+        }
+    val preferred = eligible.filter { it.root.id == preferredExpenseId }
+    val ordinary = filterConfirmedStreamItems(rows, ExpenseFilterCriteria(month = month, query = query))
+        .filterIsInstance<ConfirmedStreamItem.ExpenseRow>().filter {
+            it.root.id > 0 && !it.root.pendingSync && it.root.status == "confirmed" &&
+                it.root.amountCents != null && it.lineageStatus != ExpenseLineageStatus.Reversed &&
+                it.root.id != preferredExpenseId
         }.sortedByDescending { it.streamDate }
+    return preferred + ordinary
+}
 
 private fun occurrenceStateLabel(state: String): Int = when (state) {
     "fulfilled" -> R.string.occurrence_fulfilled

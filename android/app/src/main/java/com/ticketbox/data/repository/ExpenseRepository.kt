@@ -61,6 +61,7 @@ class ExpenseRepository(
         sessionCoordinator = sessionCoordinator,
         offlineMutations = offlineMutations,
     )
+    internal val manualCreation = ExpenseManualCreation(core)
     internal val pendingEnrichmentTasks: PendingEnrichmentTaskReader =
         ExpensePendingEnrichmentRepository(core)
     /**
