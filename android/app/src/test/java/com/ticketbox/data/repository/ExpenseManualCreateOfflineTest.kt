@@ -7,6 +7,7 @@ import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.domain.model.ExpenseSourceValues
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import java.io.IOException
 import kotlin.test.Test
@@ -86,6 +87,28 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
             legacyCorrectionAdapter = com.ticketbox.OutboxAdapterGraph().legacyCorrectionAdapter,
         ),
         )
+
+    @Test
+    fun `exact-binding create reuses the original outbox row for the same clientRef`() = runTest {
+        val dao = FakeExpenseDao()
+        val pendingDao = FakePendingMutationDao()
+        val outbox = outbox(pendingDao)
+        val repo = createRepo(ManualCreateApi(failure = IOException("airplane mode")), dao, outbox)
+        val binding = requireNotNull(repo.captureDeferredLedgerBinding())
+        val ref = "period-payment-ref"
+
+        repo.manualCreation.create(draft, binding, ref).getOrThrow()
+        repo.manualCreation.create(draft.copy(merchant = "第二次不应入队"), binding, ref).getOrThrow()
+
+        assertEquals(1, pendingDao.rows.size)
+        val original = pendingDao.rows.values.single()
+        assertEquals("expense:local:$ref", original.targetId)
+        assertEquals(PendingMutationType.CreateExpense.wireValue, original.type)
+        val seen = repo.manualCreation.observe(binding, ref).first()
+        assertNotNull(seen)
+        assertEquals(ref, seen.request?.clientRef)
+        assertNull(seen.acceptedExpenseId)
+    }
 
     @Test
     fun `offline create writes a pending local row and queues CreateExpense`() = runTest {
