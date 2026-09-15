@@ -45,6 +45,12 @@ internal fun RecurringOccurrenceHost(
     var taskJson by rememberSaveable { mutableStateOf(initialTaskJson) }
     var userClosed by rememberSaveable { mutableStateOf(false) }
     val task = remember(taskJson) { readRecurringPaymentTask(taskJson) }
+    val focused = drafts?.remembered(state.access?.binding, state.item?.publicId, state.occurrence?.period)
+        ?: task?.takeIf {
+            it.binding == state.access?.binding &&
+                it.seriesPublicId == state.item?.publicId &&
+                it.period == state.occurrence?.period
+        }
     LaunchedEffect(
         userClosed,
         state.access,
@@ -53,9 +59,9 @@ internal fun RecurringOccurrenceHost(
         state.occurrence?.period,
         taskJson,
     ) {
-        val current = readRecurringPaymentTask(taskJson) ?: return@LaunchedEffect
+        val current = readRecurringPaymentTask(taskJson)
         val accessResolved = state.access != null
-        if (!retainRecurringPaymentTask(
+        if (current != null && !retainRecurringPaymentTask(
                 current,
                 userClosed = userClosed,
                 accessResolved = accessResolved,
@@ -69,6 +75,10 @@ internal fun RecurringOccurrenceHost(
             taskJson = null
             if (!keepDraft) drafts?.remove(current.clientRef)
         }
+        if (state.occurrence?.state == "fulfilled") {
+            drafts?.remembered(state.access?.binding, state.item?.publicId, state.occurrence?.period)
+                ?.let { drafts.remove(it.clientRef) }
+        }
     }
     LaunchedEffect(taskJson, items, state.item, state.access?.binding, userClosed) {
         if (userClosed || state.item != null) return@LaunchedEffect
@@ -79,18 +89,27 @@ internal fun RecurringOccurrenceHost(
         } ?: return@LaunchedEffect
         model.open(source, current.period)
     }
-    val admitted by remember(creation, task?.clientRef, task?.binding) {
-        val current = task
+    val admitted by remember(creation, focused?.clientRef, focused?.binding) {
+        val current = focused
         if (current == null) flowOf(null) else creation.observe(current.binding, current.clientRef)
     }.collectAsStateWithLifecycle(initialValue = null)
     RecurringOccurrenceSheet(
         state,
         OccurrenceSheetActions(
             onDismiss = {
-                userClosed = true
-                val closing = readRecurringPaymentTask(taskJson)
-                taskJson = null
-                closing?.let { drafts?.remove(it.clientRef) }
+                val visible = focused
+                if (visible != null) {
+                    drafts?.remove(visible.clientRef)
+                    if (task?.clientRef == visible.clientRef) {
+                        userClosed = true
+                        taskJson = null
+                    }
+                } else {
+                    userClosed = true
+                    val closing = readRecurringPaymentTask(taskJson)
+                    taskJson = null
+                    closing?.let { drafts?.remove(it.clientRef) }
+                }
                 model.dismiss()
             },
             onRefresh = model::refresh,
@@ -100,14 +119,23 @@ internal fun RecurringOccurrenceHost(
             onRecover = model::recover,
             onOpenExpense = onOpenExpense,
             onRecordPayment = {
-                val next = recurringPaymentTask(state, task) ?: return@OccurrenceSheetActions
+                val next = recurringPaymentTask(
+                    state,
+                    existing = task,
+                    remembered = drafts?.remembered(
+                        state.access?.binding,
+                        state.item?.publicId,
+                        state.occurrence?.period,
+                    ),
+                ) ?: return@OccurrenceSheetActions
                 userClosed = false
+                drafts?.remember(next)
                 taskJson = recurringPaymentTaskJson(next)
                 onRecordPayment(next)
             },
         ),
         preferredExpenseId = preferredPaymentExpenseId(
-            task = task,
+            task = focused,
             admittedExpenseId = admitted?.acceptedExpenseId,
             binding = state.access?.binding,
             seriesPublicId = state.item?.publicId,

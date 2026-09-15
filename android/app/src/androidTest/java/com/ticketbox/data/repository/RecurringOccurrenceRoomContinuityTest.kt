@@ -16,6 +16,7 @@ import com.ticketbox.RepositoryGraph
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.ui.navigation.RecurringOccurrenceHost
+import com.ticketbox.ui.navigation.RecurringPaymentDraftStore
 import com.ticketbox.ui.navigation.RecurringPaymentTask
 import com.ticketbox.ui.navigation.recurringPaymentTaskJson
 import com.ticketbox.ui.screens.recurring.OccurrenceSheetActions
@@ -26,6 +27,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -223,6 +225,77 @@ class RecurringOccurrenceRoomContinuityTest {
         compose.waitUntil(10_000) { paymentTask.value?.clientRef == "restore-august" }
         assertEquals("restore-august", paymentTask.value?.clientRef)
         assertEquals("2026-08", paymentTask.value?.period)
+    }
+
+    @Test
+    fun recordingSeptemberThenAugustReusesTheOriginalAugustClientRef() {
+        val drafts = RecurringPaymentDraftStore(androidx.lifecycle.SavedStateHandle())
+        fixture.confirmedStream.value = emptyList()
+        fixture.network.current = fixture.network.current.copy(
+            period = "2026-08",
+            homeCurrencyCode = "JPY",
+            plannedAmountCents = 1200,
+            reservedAmountCents = 1200,
+        )
+        installModel()
+        compose.setContent {
+            val current = model.value ?: return@setContent
+            TicketboxTheme(skin = AppSkin.Paper) {
+                RecurringOccurrenceHost(
+                    current,
+                    requireNotNull(graph).expenseRepository.manualCreation,
+                    onOpenExpense = {},
+                    onRecordPayment = { paymentTask.value = it },
+                    items = listOf(occurrenceConnectedItem()),
+                    drafts = drafts,
+                )
+            }
+        }
+        compose.waitUntil(10_000) {
+            model.value?.uiState?.value?.canWrite == true &&
+                model.value?.uiState?.value?.ledgerHomeCurrencyCode != null &&
+                model.value?.uiState?.value?.occurrence?.period == "2026-08"
+        }
+        compose.onNodeWithTag("occurrence-record-payment").performScrollTo().performClick()
+        compose.waitUntil(10_000) { paymentTask.value?.period == "2026-08" }
+        val augustRef = requireNotNull(paymentTask.value?.clientRef)
+        fixture.network.current = fixture.network.current.copy(
+            period = "2026-09",
+            homeCurrencyCode = "JPY",
+            plannedAmountCents = 1200,
+            reservedAmountCents = 1200,
+            state = "unfulfilled",
+        )
+        compose.runOnIdle { model.value?.changePeriod("2026-09") }
+        compose.waitUntil(10_000) {
+            model.value?.uiState?.value?.occurrence?.period == "2026-09" &&
+                model.value?.uiState?.value?.canWrite == true
+        }
+        compose.onNodeWithTag("occurrence-record-payment").performScrollTo().performClick()
+        compose.waitUntil(10_000) { paymentTask.value?.period == "2026-09" }
+        assertNotEquals(augustRef, paymentTask.value?.clientRef)
+        fixture.network.current = fixture.network.current.copy(
+            period = "2026-08",
+            homeCurrencyCode = "JPY",
+            plannedAmountCents = 1200,
+            reservedAmountCents = 1200,
+            state = "unfulfilled",
+        )
+        compose.runOnIdle { model.value?.changePeriod("2026-08") }
+        compose.waitUntil(10_000) {
+            model.value?.uiState?.value?.occurrence?.period == "2026-08" &&
+                model.value?.uiState?.value?.canWrite == true
+        }
+        compose.onNodeWithTag("occurrence-record-payment").performScrollTo().performClick()
+        compose.waitUntil(10_000) { paymentTask.value?.clientRef == augustRef }
+        assertEquals(augustRef, paymentTask.value?.clientRef)
+        assertEquals("2026-08", paymentTask.value?.period)
+        assertEquals(augustRef, drafts.remembered(
+            paymentTask.value?.binding,
+            "recurring-1",
+            "2026-08",
+        )?.clientRef)
+        assertTrue(fixture.stored().isEmpty())
     }
 
     @Test

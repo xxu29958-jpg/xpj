@@ -13,6 +13,10 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso.closeSoftKeyboard
 import com.ticketbox.OutboxAdapterGraph
@@ -22,12 +26,16 @@ import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.DebtListResponseDto
 import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
+import com.ticketbox.data.remote.dto.RecurringOccurrenceDto
+import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.expenseAcceptanceReceiptJson
 import com.ticketbox.data.repository.toEntity
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.ui.theme.TicketboxTheme
+import com.ticketbox.viewmodel.RecurringOccurrenceUiState
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -156,6 +164,128 @@ class RecurringPaymentRouteRoomTest {
         assertEquals(0, sends)
     }
 
+    @Test fun knownSuggestedAmountClearedSurvivesReopenWithoutRefillingPrefill() {
+        val task = periodTask("JPY", 1200)
+        showRoute(task)
+        waitForSheet()
+        compose.onNode(hasSetTextAction() and hasText("1200")).assertIsDisplayed()
+        compose.onNode(hasSetTextAction() and hasText("1200")).performTextReplacement("")
+        compose.onNode(hasSetTextAction() and hasText("房租")).performTextReplacement("")
+        closeSoftKeyboard()
+        compose.waitForIdle()
+        assertEquals("", drafts.read(task.clientRef)?.amountText)
+        assertEquals("", drafts.read(task.clientRef)?.merchant)
+        compose.runOnIdle { mounted.value = false }
+        compose.waitForIdle()
+        compose.runOnIdle { mounted.value = true }
+        waitForSheet()
+        compose.onNode(hasSetTextAction() and hasText("1200")).assertDoesNotExist()
+        compose.onNode(hasSetTextAction() and hasText("房租")).assertDoesNotExist()
+        assertEquals("", requireNotNull(drafts.read(task.clientRef)).amountText)
+        assertEquals("", requireNotNull(drafts.read(task.clientRef)).merchant)
+        assertEquals(0, sends)
+        assertTrue(harness.fixture.stored().isEmpty())
+    }
+
+    @Test fun navBackStackAugustThenSeptemberThenAugustRestoresClearedAugustPrefill() {
+        val august = periodTask("JPY", 1200).copy(clientRef = "august-ref")
+        val september = periodTask("JPY", 1200).copy(clientRef = "september-ref", period = "2026-09")
+        val navHolder = mutableStateOf<NavHostController?>(null)
+        val restored = mutableStateOf<RecurringPaymentTask?>(null)
+        compose.setContent {
+            CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models) {
+                TicketboxTheme(skin = AppSkin.Default) {
+                    val nav = rememberNavController()
+                    navHolder.value = nav
+                    NavHost(nav, startDestination = ProductSecondaryPage.Recurring.route) {
+                        composable(ProductSecondaryPage.Recurring.route) { }
+                        addRecurringPaymentRoute(MainNavigationRuntime(nav, harness.shell, harness.screenFactory))
+                    }
+                }
+            }
+        }
+        compose.waitUntil(10_000) { navHolder.value != null }
+        compose.runOnIdle {
+            val nav = requireNotNull(navHolder.value)
+            RecurringPaymentDraftStore(nav.getBackStackEntry(ProductSecondaryPage.Recurring.route).savedStateHandle)
+                .remember(august)
+            nav.navigate(recurringPaymentRoute(august))
+        }
+        waitForSheet()
+        compose.onNode(hasSetTextAction() and hasText("1200")).performTextReplacement("")
+        compose.onNode(hasSetTextAction() and hasText("房租")).performTextReplacement("")
+        compose.onNode(hasSetTextAction() and hasText("餐饮")).performTextReplacement("住房")
+        compose.onAllNodes(hasSetTextAction())[3].performTextReplacement("自填备注")
+        closeSoftKeyboard()
+        compose.waitForIdle()
+        lateinit var augustTime: String
+        compose.runOnIdle {
+            val stored = requireNotNull(
+                RecurringPaymentDraftStore(
+                    requireNotNull(navHolder.value).getBackStackEntry(ProductSecondaryPage.Recurring.route).savedStateHandle,
+                ).read("august-ref"),
+            )
+            assertEquals("", stored.amountText)
+            assertEquals("", stored.merchant)
+            assertEquals("JPY", stored.currencyCode)
+            assertEquals("住房", stored.category)
+            assertEquals("自填备注", stored.note)
+            assertTrue(stored.expenseTime.isNotBlank())
+            augustTime = stored.expenseTime
+        }
+        compose.runOnIdle { requireNotNull(navHolder.value).popBackStack() }
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(hasText(context.getString(R.string.ledger_manual_sheet_title))).fetchSemanticsNodes().isEmpty()
+        }
+        compose.runOnIdle {
+            val nav = requireNotNull(navHolder.value)
+            RecurringPaymentDraftStore(nav.getBackStackEntry(ProductSecondaryPage.Recurring.route).savedStateHandle)
+                .remember(september)
+            nav.navigate(recurringPaymentRoute(september))
+        }
+        waitForSheet()
+        compose.onNode(hasSetTextAction() and hasText("1200")).assertIsDisplayed()
+        compose.runOnIdle { requireNotNull(navHolder.value).popBackStack() }
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(hasText(context.getString(R.string.ledger_manual_sheet_title))).fetchSemanticsNodes().isEmpty()
+        }
+        compose.runOnIdle {
+            val nav = requireNotNull(navHolder.value)
+            val store = RecurringPaymentDraftStore(
+                nav.getBackStackEntry(ProductSecondaryPage.Recurring.route).savedStateHandle,
+            )
+            val again = requireNotNull(
+                recurringPaymentTask(
+                    augustUiState(august),
+                    existing = september,
+                    remembered = store.remembered(august.binding, august.seriesPublicId, august.period),
+                ),
+            )
+            restored.value = again
+            nav.navigate(recurringPaymentRoute(again))
+        }
+        waitForSheet()
+        compose.onNode(hasSetTextAction() and hasText("1200")).assertDoesNotExist()
+        compose.onNode(hasSetTextAction() and hasText("房租")).assertDoesNotExist()
+        compose.onNode(hasSetTextAction() and hasText("住房")).assertIsDisplayed()
+        compose.onNode(hasSetTextAction() and hasText("自填备注")).assertIsDisplayed()
+        assertEquals("august-ref", restored.value?.clientRef)
+        compose.runOnIdle {
+            val store = RecurringPaymentDraftStore(
+                requireNotNull(navHolder.value).getBackStackEntry(ProductSecondaryPage.Recurring.route).savedStateHandle,
+            )
+            val draft = requireNotNull(store.read("august-ref"))
+            assertEquals("", draft.amountText)
+            assertEquals("", draft.merchant)
+            assertEquals("JPY", draft.currencyCode)
+            assertEquals("住房", draft.category)
+            assertEquals("自填备注", draft.note)
+            assertEquals(augustTime, draft.expenseTime)
+        }
+        assertEquals(0, sends)
+        assertTrue(harness.fixture.stored().isEmpty())
+    }
+
     private fun showRoute(task: RecurringPaymentTask) {
         compose.setContent {
             CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models) {
@@ -194,4 +324,48 @@ class RecurringPaymentRouteRoomTest {
             ledgerHomeCurrencyCode = "CNY",
         )
     }
+
+    private fun augustUiState(task: RecurringPaymentTask) = RecurringOccurrenceUiState(
+        access = LedgerAccessContext(task.binding, true),
+        item = RecurringItem(
+            publicId = task.seriesPublicId,
+            ledgerId = task.binding.ledgerId,
+            merchant = task.merchant,
+            merchantKey = task.merchant,
+            frequency = "monthly",
+            baselineAmountCents = 1200,
+            lastAmountCents = 1200,
+            occurrenceCount = 0,
+            lastSeenAt = null,
+            nextExpectedDate = "2026-08-15",
+            status = "active",
+            confidence = null,
+            source = "manual",
+            anomalyStatus = "none",
+            currentMonthAmountCents = null,
+            historicalAverageAmountCents = null,
+            amountDeltaPercent = null,
+            createdAt = "2026-08-01T00:00:00Z",
+            updatedAt = "2026-08-01T00:00:00Z",
+            rowVersion = 7,
+            pausedAt = null,
+            archivedAt = null,
+            nextDueDate = "2026-08-15",
+            homeCurrencyCode = "JPY",
+        ),
+        occurrence = RecurringOccurrenceDto(
+            seriesPublicId = task.seriesPublicId,
+            period = task.period,
+            seriesRowVersion = 7L,
+            rowVersion = 3L,
+            state = "unfulfilled",
+            plannedAmountCents = 1200,
+            reservedAmountCents = 1200,
+            expensePublicId = null,
+            paidAmountCents = null,
+            nextDueDate = "2026-08-15",
+            homeCurrencyCode = "JPY",
+        ),
+        ledgerHomeCurrencyCode = "CNY",
+    )
 }

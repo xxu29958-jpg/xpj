@@ -40,10 +40,14 @@ internal data class RecurringPaymentDraft(
 )
 
 private val recurringPaymentTaskAdapter = Moshi.Builder().build().adapter(RecurringPaymentTask::class.java)
+private val recurringPaymentTaskListAdapter = Moshi.Builder().build().adapter<List<RecurringPaymentTask>>(
+    Types.newParameterizedType(List::class.java, RecurringPaymentTask::class.java),
+)
 private val recurringPaymentDraftListAdapter = Moshi.Builder().build().adapter<List<RecurringPaymentDraft>>(
     Types.newParameterizedType(List::class.java, RecurringPaymentDraft::class.java),
 )
 internal const val RECURRING_PAYMENT_ROUTE = "recurring-payment?task={task}"
+private const val RECURRING_PAYMENT_TASKS_KEY = "recurring.payment.tasks"
 private const val RECURRING_PAYMENT_DRAFTS_KEY = "recurring.payment.drafts"
 
 internal data class RecurringExpenseNavigation(
@@ -52,8 +56,27 @@ internal data class RecurringExpenseNavigation(
 )
 
 internal class RecurringPaymentDraftStore(private val state: SavedStateHandle) {
+    private val tasks: List<RecurringPaymentTask>
+        get() = state.get<String>(RECURRING_PAYMENT_TASKS_KEY)?.let { recurringPaymentTaskListAdapter.fromJson(it) }.orEmpty()
     private val drafts: List<RecurringPaymentDraft>
         get() = state.get<String>(RECURRING_PAYMENT_DRAFTS_KEY)?.let { recurringPaymentDraftListAdapter.fromJson(it) }.orEmpty()
+
+    fun remember(task: RecurringPaymentTask) {
+        state[RECURRING_PAYMENT_TASKS_KEY] = recurringPaymentTaskListAdapter.toJson(
+            tasks.filterNot { it.binding == task.binding && it.seriesPublicId == task.seriesPublicId && it.period == task.period } + task,
+        )
+    }
+
+    fun remembered(
+        binding: LogicalSessionBinding?,
+        seriesPublicId: String?,
+        period: String?,
+    ): RecurringPaymentTask? {
+        if (binding == null || seriesPublicId == null || period == null) return null
+        return tasks.firstOrNull {
+            it.binding == binding && it.seriesPublicId == seriesPublicId && it.period == period
+        }
+    }
 
     fun read(clientRef: String): RecurringPaymentDraft? = drafts.firstOrNull { it.clientRef == clientRef }
 
@@ -64,6 +87,9 @@ internal class RecurringPaymentDraftStore(private val state: SavedStateHandle) {
     }
 
     fun remove(clientRef: String) {
+        state[RECURRING_PAYMENT_TASKS_KEY] = recurringPaymentTaskListAdapter.toJson(
+            tasks.filterNot { it.clientRef == clientRef },
+        )
         state[RECURRING_PAYMENT_DRAFTS_KEY] = recurringPaymentDraftListAdapter.toJson(
             drafts.filterNot { it.clientRef == clientRef },
         )
@@ -114,6 +140,7 @@ internal fun recurringPaymentShowsBindingChanged(accessResolved: Boolean, sameBi
 internal fun recurringPaymentTask(
     state: RecurringOccurrenceUiState,
     existing: RecurringPaymentTask? = null,
+    remembered: RecurringPaymentTask? = null,
 ): RecurringPaymentTask? {
     val binding = state.access?.binding ?: return null
     val item = state.item ?: return null
@@ -121,8 +148,9 @@ internal fun recurringPaymentTask(
     val home = CurrencyCode.fromStorageKeyOrNull(state.ledgerHomeCurrencyCode)?.storageKey ?: return null
     if (!state.canWrite || occurrence.state != "unfulfilled") return null
     val recorded = CurrencyCode.fromStorageKeyOrNull(occurrence.homeCurrencyCode)?.storageKey
-    if (existing?.binding == binding && existing.seriesPublicId == item.publicId && existing.period == occurrence.period) {
-        return existing
+    val prior = remembered ?: existing
+    if (prior?.binding == binding && prior.seriesPublicId == item.publicId && prior.period == occurrence.period) {
+        return prior
     }
     return RecurringPaymentTask(
         binding = binding,

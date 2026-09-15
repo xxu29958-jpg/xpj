@@ -154,6 +154,56 @@ class RecurringPaymentTaskTest {
         assertNull(drafts.read(task.clientRef))
     }
 
+    @Test
+    fun rememberedAugustIdentitySurvivesALaterSeptemberTask() {
+        val august = assertNotNull(recurringPaymentTask(loaded("JPY", 1200)))
+        val septemberState = loaded("JPY", 1200).copy(
+            occurrence = loaded("JPY", 1200).occurrence?.copy(period = "2026-09"),
+        )
+        val september = assertNotNull(recurringPaymentTask(septemberState, august))
+        assertNotEquals(august.clientRef, september.clientRef)
+        val again = assertNotNull(recurringPaymentTask(loaded("JPY", 1200), september, remembered = august))
+        assertEquals(august.clientRef, again.clientRef)
+        assertEquals("2026-08", again.period)
+    }
+
+    @Test
+    fun draftStoreFindsTheOriginalTaskByBindingSeriesAndPeriod() {
+        val state = androidx.lifecycle.SavedStateHandle()
+        val drafts = RecurringPaymentDraftStore(state)
+        val august = assertNotNull(recurringPaymentTask(loaded("JPY", 1200)))
+        val september = assertNotNull(recurringPaymentTask(loaded("JPY", 1200).copy(
+            occurrence = loaded("JPY", 1200).occurrence?.copy(period = "2026-09"),
+        ), august))
+        drafts.remember(august)
+        drafts.remember(september)
+        drafts.write(
+            RecurringPaymentDraft(
+                clientRef = august.clientRef,
+                amountText = "",
+                currencyCode = "JPY",
+                merchant = "",
+                category = "住房",
+                note = "自填备注",
+                expenseTime = "2026-08-20T10:00:00Z",
+            ),
+        )
+        assertEquals(august.clientRef, drafts.remembered(august.binding, august.seriesPublicId, "2026-08")?.clientRef)
+        assertEquals(september.clientRef, drafts.remembered(september.binding, september.seriesPublicId, "2026-09")?.clientRef)
+        assertEquals("", drafts.read(august.clientRef)?.amountText)
+        val again = assertNotNull(
+            recurringPaymentTask(
+                loaded("JPY", 1200),
+                september,
+                remembered = drafts.remembered(august.binding, august.seriesPublicId, "2026-08"),
+            ),
+        )
+        assertEquals(august.clientRef, again.clientRef)
+        drafts.remove(august.clientRef)
+        assertNull(drafts.remembered(august.binding, august.seriesPublicId, "2026-08"))
+        assertEquals(september.clientRef, drafts.remembered(september.binding, september.seriesPublicId, "2026-09")?.clientRef)
+    }
+
     private fun loaded(currency: String?, planned: Long) = RecurringOccurrenceUiState(
         access = access,
         item = recurringItem { rowVersion = 7L }.copy(homeCurrencyCode = currency, merchant = "日元订阅"),
