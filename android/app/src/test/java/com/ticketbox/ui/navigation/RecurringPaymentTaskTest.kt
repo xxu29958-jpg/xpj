@@ -1,5 +1,6 @@
 package com.ticketbox.ui.navigation
 
+import androidx.lifecycle.SavedStateHandle
 import com.ticketbox.data.remote.dto.RecurringOccurrenceDto
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LogicalSessionBinding
@@ -229,6 +230,16 @@ class RecurringPaymentTaskTest {
         drafts.retireTask(august.clientRef)
         assertNull(drafts.remembered(august.binding, august.seriesPublicId, "2026-08"))
         assertEquals(september.clientRef, drafts.remembered(september.binding, september.seriesPublicId, "2026-09")?.clientRef)
+    }
+
+    @Test
+    fun leftoverPeriodPaymentSessionRestoresTheOriginalClientRefAfterUpgrade() {
+        val leftover = SavedStateHandle()
+        leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] =
+            """[{"binding":{"serverUrl":"https://occurrence.example","ledgerId":"ledger-1","ownerKey":"owner","sessionGeneration":"session","bindingRevision":"binding"},"seriesPublicId":"rec-1","period":"2026-08","clientRef":"legacy-ref","merchant":"日元订阅","obligationCurrencyCode":"JPY","plannedAmountCents":1200,"ledgerHomeCurrencyCode":"CNY","admitted":false}]"""
+        val store = RecurringPaymentDraftStore(SavedStateHandle())
+        store.adoptLegacyPeriodPaymentSessions(leftover)
+        assertEquals("legacy-ref", store.remembered(access.binding, "rec-1", "2026-08")?.clientRef)
     }
 
     private fun visible(

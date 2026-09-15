@@ -14,6 +14,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.ticketbox.data.repository.ExpenseManualCreation
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.RecurringPaymentOrigin
+import com.ticketbox.data.repository.RecurringPaymentOriginLookup
 import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.ui.screens.recurring.OccurrenceSheetActions
 import com.ticketbox.ui.screens.recurring.RecurringOccurrenceSheet
@@ -49,6 +50,7 @@ internal fun recurringOccurrenceModel(factory: MainScreenFactory, onChanged: () 
 private data class RecurringPaymentOriginObservation(
     val resolved: Boolean,
     val clientRef: String?,
+    val conflict: Boolean = false,
 )
 
 @Composable
@@ -102,7 +104,7 @@ internal fun RecurringOccurrenceHost(
             onRecover = model::recover,
             onOpenExpense = expenses.onOpenExpense,
             onRecordPayment = {
-                if (!origin.resolved) return@OccurrenceSheetActions
+                if (!origin.resolved || origin.conflict) return@OccurrenceSheetActions
                 val next = recurringPaymentTask(
                     state, existing = task, remembered = remembered, admittedClientRef = origin.clientRef,
                 ) ?: return@OccurrenceSheetActions
@@ -122,17 +124,18 @@ private fun rememberRecurringPaymentOrigin(
     identity: RecurringPaymentIdentity,
 ): RecurringPaymentOriginObservation {
     var resolved by remember(identity.binding, identity.seriesPublicId, identity.period) { mutableStateOf(false) }
-    val projection by remember(creation, identity.binding, identity.seriesPublicId, identity.period) {
+    val lookup by remember(creation, identity.binding, identity.seriesPublicId, identity.period) {
         val binding = identity.binding
         val series = identity.seriesPublicId
         val period = identity.period
         if (binding == null || series.isNullOrBlank() || period.isNullOrBlank()) {
-            flowOf(null).onEach { resolved = true }
+            flowOf(RecurringPaymentOriginLookup.Absent).onEach { resolved = true }
         } else {
             creation.observeOrigin(binding, RecurringPaymentOrigin(series, period)).onEach { resolved = true }
         }
-    }.collectAsStateWithLifecycle(initialValue = null)
-    return RecurringPaymentOriginObservation(resolved, projection?.request?.clientRef?.takeIf { it.isNotBlank() })
+    }.collectAsStateWithLifecycle(initialValue = RecurringPaymentOriginLookup.Absent)
+    val clientRef = (lookup as? RecurringPaymentOriginLookup.Found)?.projection?.request?.clientRef?.takeIf { it.isNotBlank() }
+    return RecurringPaymentOriginObservation(resolved, clientRef, lookup is RecurringPaymentOriginLookup.Conflict)
 }
 
 private fun RecurringOccurrenceUiState.paymentVisible() = RecurringPaymentVisible(

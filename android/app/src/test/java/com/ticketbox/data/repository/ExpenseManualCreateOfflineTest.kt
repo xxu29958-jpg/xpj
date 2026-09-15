@@ -310,13 +310,67 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
         repo.manualCreation.create(draft, binding, "august-ref", origin).getOrThrow()
         repo.manualCreation.create(draft.copy(merchant = "另一家"), binding, "other-ref").getOrThrow()
         val found = repo.manualCreation.observeOrigin(binding, origin).first()
-        assertEquals("august-ref", found?.request?.clientRef)
-        assertNull(repo.manualCreation.observeOrigin(binding, origin.copy(period = "2026-09")).first())
+        assertTrue(found is RecurringPaymentOriginLookup.Found)
+        assertEquals("august-ref", (found as RecurringPaymentOriginLookup.Found).projection.request?.clientRef)
+        assertTrue(repo.manualCreation.observeOrigin(binding, origin.copy(period = "2026-09")).first() is RecurringPaymentOriginLookup.Absent)
         assertEquals(2, pendingDao.rows.size)
         val wrapped = pendingDao.rows.values.single { it.targetId == "expense:local:august-ref" }
         val stored = requireNotNull(com.ticketbox.OutboxAdapterGraph().recurringPaymentCreateAdapter.fromJson(wrapped.payload))
         assertEquals("rec-1", stored.seriesPublicId)
         assertEquals("2026-08", stored.period)
         assertEquals("august-ref", stored.request.clientRef)
+    }
+
+    @Test
+    fun samePeriodOriginReusesTheOriginalCommandWhenASecondClientRefArrives() = runTest {
+        val dao = FakeExpenseDao()
+        val pendingDao = FakePendingMutationDao()
+        val outbox = outbox(pendingDao)
+        val repo = createRepo(ManualCreateApi(failure = IOException("airplane mode")), dao, outbox)
+        val binding = requireNotNull(repo.captureDeferredLedgerBinding())
+        val origin = RecurringPaymentOrigin("rec-1", "2026-08")
+        repo.manualCreation.create(draft, binding, "first-ref", origin).getOrThrow()
+        repo.manualCreation.create(draft.copy(merchant = "另一家"), binding, "second-ref", origin).getOrThrow()
+        assertEquals(1, pendingDao.rows.size)
+        val found = repo.manualCreation.observeOrigin(binding, origin).first()
+        assertTrue(found is RecurringPaymentOriginLookup.Found)
+        assertEquals("first-ref", (found as RecurringPaymentOriginLookup.Found).projection.request?.clientRef)
+    }
+
+    @Test
+    fun unwrappedN1PayloadIsBoundToOriginThenANewClientRefDoesNotEnqueue() = runTest {
+        val dao = FakeExpenseDao()
+        val pendingDao = FakePendingMutationDao()
+        val outbox = outbox(pendingDao)
+        val repo = createRepo(ManualCreateApi(failure = IOException("airplane mode")), dao, outbox)
+        val binding = requireNotNull(repo.captureDeferredLedgerBinding())
+        val origin = RecurringPaymentOrigin("rec-1", "2026-08")
+        repo.manualCreation.create(draft, binding, "legacy-ref").getOrThrow()
+        val raw = pendingDao.rows.values.single().payload
+        assertNull(decodeRecurringPaymentOrigin(com.ticketbox.OutboxAdapterGraph().recurringPaymentCreateAdapter, raw))
+        repo.manualCreation.create(draft, binding, "legacy-ref", origin).getOrThrow()
+        repo.manualCreation.create(draft, binding, "upgraded-ref", origin).getOrThrow()
+        assertEquals(1, pendingDao.rows.size)
+        val wrapped = requireNotNull(com.ticketbox.OutboxAdapterGraph().recurringPaymentCreateAdapter.fromJson(pendingDao.rows.values.single().payload))
+        assertEquals("rec-1", wrapped.seriesPublicId)
+        assertEquals("2026-08", wrapped.period)
+        assertEquals("legacy-ref", wrapped.request.clientRef)
+    }
+
+    @Test
+    fun duplicateOriginRowsFailClosedInsteadOfLookingAbsent() = runTest {
+        val dao = FakeExpenseDao()
+        val pendingDao = FakePendingMutationDao()
+        val outbox = outbox(pendingDao)
+        val repo = createRepo(ManualCreateApi(failure = IOException("airplane mode")), dao, outbox)
+        val binding = requireNotNull(repo.captureDeferredLedgerBinding())
+        val origin = RecurringPaymentOrigin("rec-1", "2026-08")
+        repo.manualCreation.create(draft, binding, "first-ref", origin).getOrThrow()
+        val first = pendingDao.rows.values.single()
+        pendingDao.insert(first.copy(id = 0L, targetId = "expense:local:dup-ref"))
+        val lookup = repo.manualCreation.observeOrigin(binding, origin).first()
+        assertTrue(lookup is RecurringPaymentOriginLookup.Conflict)
+        assertTrue(repo.manualCreation.create(draft, binding, "third-ref", origin).isFailure)
+        assertEquals(2, pendingDao.rows.size)
     }
 }

@@ -618,6 +618,9 @@ class OutboxRepository private constructor(
     private fun overAgeCutoffIso(): String =
         ISO.format(Instant.now(clock).minusMillis(OUTBOX_PENDING_AGE_CAP_MILLIS))
 
+    internal suspend fun replaceCreateExpensePayload(id: Long, payloadJson: String): Boolean =
+        dao.replacePayload(id, PendingMutationType.CreateExpense.wireValue, payloadJson) == 1
+
     fun observeActiveByTypes(types: Set<PendingMutationType>, includeCompleted: Boolean = false): Flow<List<OutboxRow>> {
         val wireTypes = types.filterNot { it == PendingMutationType.Unknown }.map(PendingMutationType::wireValue)
         val statuses = if (includeCompleted) ACTIVE_STATUS_VALUES + PendingMutationStatus.Done.wireValue else ACTIVE_STATUS_VALUES

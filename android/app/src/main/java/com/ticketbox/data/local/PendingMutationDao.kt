@@ -721,6 +721,10 @@ interface PendingMutationDao {
         failedStatus: String,
     ): Flow<List<PendingMutationEntity>>
 
+    /** Attach explicit period-payment origin onto an existing CreateExpense payload. */
+    @Query("UPDATE pending_mutations SET payload = :payload WHERE id = :id AND type = :type")
+    suspend fun replacePayload(id: Long, type: String, payload: String): Int
+
     /**
      * Delete by id. Used when the user picks "drop mine" on a
      * conflict, or when cleanup runs.

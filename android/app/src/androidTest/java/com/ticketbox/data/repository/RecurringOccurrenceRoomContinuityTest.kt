@@ -16,11 +16,11 @@ import androidx.lifecycle.viewModelScope
 import androidx.test.espresso.Espresso.pressBack
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.RepositoryGraph
-import com.ticketbox.data.repository.RecurringPaymentOrigin
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.RecurringItem
+import com.ticketbox.ui.navigation.LEGACY_PERIOD_PAYMENT_SESSIONS_KEY
 import com.ticketbox.ui.navigation.RecurringExpenseNavigation
 import com.ticketbox.ui.navigation.RecurringOccurrenceHost
 import com.ticketbox.ui.navigation.RecurringPaymentDraftStore
@@ -619,5 +619,76 @@ class RecurringOccurrenceRoomContinuityTest {
         assertEquals(originalRef, paymentTask.value?.clientRef)
         assertEquals(1, fixture.stored().count { it["type"] == "create_expense" })
         assertTrue(rebuilt.remembered(binding, "recurring-1", "2026-09")?.clientRef == originalRef)
+    }
+
+    @Test
+    fun leftoverN1SessionRestoresUnwrappedOutboxClientRefWithoutAnotherCreate() {
+        fixture.confirmedStream.value = emptyList()
+        installModel()
+        compose.waitUntil(10_000) {
+            model.value?.uiState?.value?.canWrite == true &&
+                model.value?.uiState?.value?.occurrence?.period == "2026-09"
+        }
+        val binding = requireNotNull(graph).expenseRepository.captureDeferredLedgerBinding()
+            ?: error("binding")
+        runBlocking {
+            requireNotNull(graph).expenseRepository.manualCreation.create(
+                ExpenseDraft(
+                    amountCents = 10_000,
+                    originalCurrencyCode = CurrencyCode.CNY,
+                    originalAmountMinor = 10_000,
+                    ledgerHomeCurrency = CurrencyCode.CNY,
+                    merchant = "房租",
+                    category = "餐饮",
+                    note = null,
+                    expenseTime = "2026-09-05T08:00:00Z",
+                    tags = null,
+                    valueScore = null,
+                    regretScore = null,
+                ),
+                binding,
+                "legacy-ref",
+            ).getOrThrow()
+        }
+        assertEquals(1, fixture.stored().count { it["type"] == "create_expense" })
+        val leftover = SavedStateHandle()
+        leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] =
+            """[{"binding":{"serverUrl":"${binding.serverUrl}","ledgerId":"${binding.ledgerId}","ownerKey":"${binding.ownerKey}","sessionGeneration":"${binding.sessionGeneration}","bindingRevision":"${binding.bindingRevision}"},"seriesPublicId":"recurring-1","period":"2026-09","clientRef":"legacy-ref","merchant":"房租","obligationCurrencyCode":"CNY","plannedAmountCents":10000,"ledgerHomeCurrencyCode":"CNY","admitted":false}]"""
+        val drafts = RecurringPaymentDraftStore(SavedStateHandle())
+        drafts.adoptLegacyPeriodPaymentSessions(leftover)
+        compose.setContent {
+            val current = model.value ?: return@setContent
+            TicketboxTheme(skin = AppSkin.Paper) {
+                RecurringOccurrenceHost(
+                    current,
+                    requireNotNull(graph).expenseRepository.manualCreation,
+                    RecurringExpenseNavigation({}, { paymentTask.value = it }),
+                    RecurringPaymentRestore(items = listOf(occurrenceConnectedItem()), drafts = drafts),
+                )
+            }
+        }
+        compose.waitForIdle()
+        compose.onNodeWithTag("occurrence-record-payment").performScrollTo().performClick()
+        compose.waitUntil(10_000) { paymentTask.value?.clientRef == "legacy-ref" }
+        runBlocking {
+            val creation = requireNotNull(graph).expenseRepository.manualCreation
+            val payment = ExpenseDraft(
+                amountCents = 10_000,
+                originalCurrencyCode = CurrencyCode.CNY,
+                originalAmountMinor = 10_000,
+                ledgerHomeCurrency = CurrencyCode.CNY,
+                merchant = "房租",
+                category = "餐饮",
+                note = null,
+                expenseTime = "2026-09-05T08:00:00Z",
+                tags = null,
+                valueScore = null,
+                regretScore = null,
+            )
+            creation.create(payment, binding, "legacy-ref", RecurringPaymentOrigin("recurring-1", "2026-09")).getOrThrow()
+            creation.create(payment, binding, "upgraded-ref", RecurringPaymentOrigin("recurring-1", "2026-09")).getOrThrow()
+        }
+        assertEquals("legacy-ref", paymentTask.value?.clientRef)
+        assertEquals(1, fixture.stored().count { it["type"] == "create_expense" })
     }
 }

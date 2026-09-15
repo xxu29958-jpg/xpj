@@ -30,18 +30,13 @@ internal class ExpenseManualCreation(private val core: ExpenseRepositoryCore) {
     fun observeOrigin(
         binding: LogicalSessionBinding,
         origin: RecurringPaymentOrigin,
-    ): Flow<ManualExpenseCreationProjection?> {
-        if (origin.seriesPublicId.isBlank() || origin.period.isBlank()) return flowOf(null)
-        val originAdapter = core.offlineMutations.recurringPaymentCreateAdapter
+    ): Flow<RecurringPaymentOriginLookup> {
+        if (origin.seriesPublicId.isBlank() || origin.period.isBlank()) {
+            return flowOf(RecurringPaymentOriginLookup.Absent)
+        }
         return core.offlineMutations.outbox
             .observeActiveByTypes(setOf(PendingMutationType.CreateExpense), includeCompleted = true)
-            .mapLatest { rows ->
-                rows.mapNotNull { row ->
-                    if (!row.belongsTo(binding)) return@mapNotNull null
-                    if (decodeRecurringPaymentOrigin(originAdapter, row.payloadJson) != origin) return@mapNotNull null
-                    core.describeManualCreation(row)
-                }.singleOrNull()
-            }
+            .mapLatest { rows -> classifyOrigin(rows, binding, origin) }
     }
 
     suspend fun create(
@@ -53,7 +48,20 @@ internal class ExpenseManualCreation(private val core: ExpenseRepositoryCore) {
         admission.withLock {
             require(clientRef.isNotBlank())
             val bound = core.ledgerRequestGuard.bindExact(binding)
-            if (observe(binding, clientRef).first() == null) {
+            if (origin != null) {
+                when (val found = classifyOrigin(activeCreateRows(), binding, origin)) {
+                    RecurringPaymentOriginLookup.Conflict ->
+                        error("本期付款命令冲突，请先处理重复提交。")
+                    is RecurringPaymentOriginLookup.Found -> {
+                        bindOrigin(found.projection.row, origin)
+                        bound.requireStillActive()
+                        return@withLock
+                    }
+                    RecurringPaymentOriginLookup.Absent -> Unit
+                }
+            }
+            val existing = observe(binding, clientRef).first()
+            if (existing == null) {
                 check(core.canModifyLedger()) { "当前账本没有编辑权限。" }
                 require(draft.amountCents != null || draft.originalAmountMinor != null) { "请先填写金额。" }
                 val request = draft.toManualCreateRequest(clientRef = clientRef)
@@ -68,9 +76,58 @@ internal class ExpenseManualCreation(private val core: ExpenseRepositoryCore) {
                         origin,
                     ),
                 )
+            } else {
+                bindOrigin(existing.row, origin)
             }
             bound.requireStillActive()
         }
+    }
+
+    private suspend fun classifyOrigin(
+        rows: List<OutboxRow>,
+        binding: LogicalSessionBinding,
+        origin: RecurringPaymentOrigin,
+    ): RecurringPaymentOriginLookup {
+        val originAdapter = core.offlineMutations.recurringPaymentCreateAdapter
+        val matches = rows.mapNotNull { row ->
+            if (!row.belongsTo(binding)) return@mapNotNull null
+            if (decodeRecurringPaymentOrigin(originAdapter, row.payloadJson) != origin) return@mapNotNull null
+            core.describeManualCreation(row)
+        }
+        return when (matches.size) {
+            0 -> RecurringPaymentOriginLookup.Absent
+            1 -> RecurringPaymentOriginLookup.Found(matches.single())
+            else -> RecurringPaymentOriginLookup.Conflict
+        }
+    }
+
+    private suspend fun activeCreateRows(): List<OutboxRow> =
+        core.offlineMutations.outbox
+            .observeActiveByTypes(setOf(PendingMutationType.CreateExpense), includeCompleted = true)
+            .first()
+
+    private suspend fun bindOrigin(row: OutboxRow, origin: RecurringPaymentOrigin?) {
+        if (origin == null) return
+        val originAdapter = core.offlineMutations.recurringPaymentCreateAdapter
+        val current = decodeRecurringPaymentOrigin(originAdapter, row.payloadJson)
+        if (current == origin) return
+        check(current == null) { "本期付款命令冲突，请先处理重复提交。" }
+        val request = decodeManualCreateRequest(
+            core.offlineMutations.manualCreateAdapter,
+            originAdapter,
+            row.payloadJson,
+        ) ?: return
+        check(
+            core.offlineMutations.outbox.replaceCreateExpensePayload(
+                row.id,
+                encodeManualCreatePayload(
+                    core.offlineMutations.manualCreateAdapter,
+                    originAdapter,
+                    request,
+                    origin,
+                ),
+            ),
+        ) { "原付款命令无法补上来源。" }
     }
 }
 

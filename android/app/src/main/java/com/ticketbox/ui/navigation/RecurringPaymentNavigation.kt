@@ -5,6 +5,7 @@ import androidx.lifecycle.SavedStateHandle
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
+import com.ticketbox.data.repository.LegacyPeriodPaymentSession
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.viewmodel.RecurringOccurrenceUiState
@@ -46,7 +47,11 @@ private val recurringPaymentTaskListAdapter = Moshi.Builder().build().adapter<Li
 private val recurringPaymentDraftListAdapter = Moshi.Builder().build().adapter<List<RecurringPaymentDraft>>(
     Types.newParameterizedType(List::class.java, RecurringPaymentDraft::class.java),
 )
+private val legacyPeriodPaymentSessionListAdapter = Moshi.Builder().build().adapter<List<LegacyPeriodPaymentSession>>(
+    Types.newParameterizedType(List::class.java, LegacyPeriodPaymentSession::class.java),
+)
 internal const val RECURRING_PAYMENT_ROUTE = "recurring-payment?task={task}"
+internal const val LEGACY_PERIOD_PAYMENT_SESSIONS_KEY = "recurring.periodPayment.sessions"
 private const val RECURRING_PAYMENT_TASKS_KEY = "recurring.payment.tasks"
 private const val RECURRING_PAYMENT_DRAFTS_KEY = "recurring.payment.drafts"
 
@@ -97,6 +102,26 @@ internal class RecurringPaymentDraftStore(private val state: SavedStateHandle) {
             tasks.filterNot { it.clientRef == clientRef },
         )
         removeDraft(clientRef)
+    }
+
+    fun adoptLegacyPeriodPaymentSessions(source: SavedStateHandle) {
+        val json = source.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY) ?: return
+        legacyPeriodPaymentSessionListAdapter.fromJson(json).orEmpty().forEach { session ->
+            val home = session.ledgerHomeCurrencyCode ?: return@forEach
+            if (session.clientRef.isBlank() || session.seriesPublicId.isBlank() || session.period.isBlank()) return@forEach
+            remember(
+                RecurringPaymentTask(
+                    binding = session.binding,
+                    seriesPublicId = session.seriesPublicId,
+                    period = session.period,
+                    clientRef = session.clientRef,
+                    merchant = session.merchant,
+                    recordedCurrencyCode = session.obligationCurrencyCode,
+                    suggestedAmountMinor = if (session.obligationCurrencyCode == null) null else session.plannedAmountCents,
+                    ledgerHomeCurrencyCode = home,
+                ),
+            )
+        }
     }
 }
 

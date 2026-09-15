@@ -8,6 +8,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -24,6 +25,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraphBuilder
+import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
@@ -47,9 +49,7 @@ internal fun NavGraphBuilder.addRecurringPaymentRoute(runtime: MainNavigationRun
     composable(RECURRING_PAYMENT_ROUTE, arguments = listOf(navArgument("task") { type = NavType.StringType })) { entry ->
         val task = readRecurringPaymentTask(entry.arguments?.getString("task")) ?: return@composable
         val back = { runtime.navController.popBackStack(); Unit }
-        val drafts = RecurringPaymentDraftStore(
-            runtime.navController.getBackStackEntry(MAIN_ROUTE).savedStateHandle,
-        )
+        val drafts = rememberRecurringPaymentDraftStore(runtime.navController, entry)
         val factory = runtime.screenFactory
         val exit = ExpenseEditExitActions(
             onBack = back,
@@ -88,11 +88,27 @@ internal fun NavGraphBuilder.addRecurringPaymentRoute(runtime: MainNavigationRun
 internal val LocalRecurringPaymentDraftHandle = staticCompositionLocalOf<SavedStateHandle?> { null }
 
 @Composable
-internal fun rememberRecurringPaymentDraftStore(): RecurringPaymentDraftStore {
-    val local = LocalRecurringPaymentDraftHandle.current
-    val owner = LocalViewModelStoreOwner.current
-    val handle = local ?: (owner as? NavBackStackEntry)?.savedStateHandle ?: remember { SavedStateHandle() }
-    return remember(handle) { RecurringPaymentDraftStore(handle) }
+internal fun rememberRecurringPaymentDraftStore(
+    nav: NavHostController? = null,
+    paymentEntry: NavBackStackEntry? = null,
+): RecurringPaymentDraftStore {
+    val provided = LocalRecurringPaymentDraftHandle.current
+    val ownerEntry = LocalViewModelStoreOwner.current as? NavBackStackEntry
+    val mainEntry = remember(nav, paymentEntry) {
+        nav?.let { runCatching { it.getBackStackEntry(MAIN_ROUTE) }.getOrNull() }
+    }
+    val fallback = remember { SavedStateHandle() }
+    val handle = provided
+        ?: mainEntry?.savedStateHandle
+        ?: ownerEntry?.savedStateHandle
+        ?: paymentEntry?.savedStateHandle
+        ?: fallback
+    val store = remember(handle) { RecurringPaymentDraftStore(handle) }
+    val leftover = ownerEntry?.savedStateHandle
+    LaunchedEffect(store, leftover) {
+        leftover?.let(store::adoptLegacyPeriodPaymentSessions)
+    }
+    return store
 }
 
 private data class RecurringPaymentAccess(

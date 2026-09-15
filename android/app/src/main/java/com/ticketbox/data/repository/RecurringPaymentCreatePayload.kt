@@ -10,6 +10,29 @@ data class RecurringPaymentOrigin(
     val period: String,
 )
 
+internal sealed class RecurringPaymentOriginLookup {
+    data object Absent : RecurringPaymentOriginLookup()
+    data class Found(val projection: ManualExpenseCreationProjection) : RecurringPaymentOriginLookup()
+    data object Conflict : RecurringPaymentOriginLookup()
+}
+
+/** N-1 SavedState left by RecurringPeriodPaymentSession. Not a second Writer. */
+@JsonClass(generateAdapter = true)
+internal data class LegacyPeriodPaymentSession(
+    val binding: LogicalSessionBinding,
+    val seriesPublicId: String,
+    val period: String,
+    val clientRef: String,
+    val merchant: String,
+    val obligationCurrencyCode: String? = null,
+    val plannedAmountCents: Long? = null,
+    val ledgerHomeCurrencyCode: String? = null,
+    val category: String? = null,
+    val note: String? = null,
+    val capturedAmountCents: Long? = null,
+    val admitted: Boolean = false,
+)
+
 @JsonClass(generateAdapter = true)
 data class RecurringPaymentCreatePayload(
     val request: ExpenseManualCreateRequestDto,
