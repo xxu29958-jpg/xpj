@@ -195,6 +195,7 @@ def web_expense_undo(
     ledger_id: str = Form(default=""),
     expected_row_version: str = Form(default=""),
     idempotency_key: str = Form(default=""),
+    return_context: ExpenseReturnContext = Depends(expense_return_form_context),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
@@ -229,4 +230,9 @@ def web_expense_undo(
     except SQLAlchemyError:
         db.rollback()
         message, flash_type = "当前无法确认撤销结果，请重新查看这笔账单。", "error"
+    origin = return_context.as_kwargs()
+    if origin.get("return_to") == "recurring_occurrence":
+        path = resolve_return_to("recurring_occurrence", "/web/pending", **origin)
+        params = return_context_params(**origin)
+        return _web_redirect(path, selected_id, msg=message, flash_type=flash_type, **params)
     return _web_redirect("/web/pending", selected_id, msg=message, flash_type=flash_type)

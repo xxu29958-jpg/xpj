@@ -42,11 +42,13 @@ from app.routes.web_common import (
 from app.schemas import ExpenseManualCreateRequest
 from app.services.category_service import list_ledger_category_options
 from app.services.currency_common import (
+    minor_amount_value,
     normalize_currency_code,
     supported_currency_codes,
 )
 from app.services.expense_service import create_manual_expense
 from app.services.manual_expense_draft_presenter import manual_draft_scope
+from app.services.recurring_service import get_recurring_item
 from app.services.spending_contract_service import accounting_zone
 from app.services.time_service import now_utc
 from app.tenants import AuthContext
@@ -246,9 +248,33 @@ def web_manual_expense_new(
             selected_id=selected_id,
             form_ledger_id=selected_id,
             form_device_public_id=auth.device_public_id,
+            values=_recurring_commitment_values(db, selected_id, return_context),
             return_context=return_context,
         ),
     )
+
+
+def _recurring_commitment_values(
+    db: Session,
+    selected_id: str,
+    return_context: ExpenseReturnContext,
+) -> dict[str, str]:
+    series_id = (return_context.return_recurring_public_id or "").strip()
+    if not series_id:
+        return {}
+    try:
+        item = get_recurring_item(db, tenant_id=selected_id, public_id=series_id)
+    except AppError:
+        return {}
+    values: dict[str, str] = {}
+    if item.merchant_name:
+        values["merchant"] = item.merchant_name
+    currency = normalize_currency_code(item.home_currency_code) if item.home_currency_code else None
+    if currency:
+        values["currency_code"] = currency
+        if item.baseline_amount_cents is not None:
+            values["amount_major"] = minor_amount_value(item.baseline_amount_cents, currency)
+    return values
 
 
 def _manual_expense_failure(exc: AppError | ValidationError | InvalidOperation) -> tuple[str, int, str]:

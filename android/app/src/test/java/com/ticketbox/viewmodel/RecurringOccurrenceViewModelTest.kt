@@ -512,6 +512,69 @@ class RecurringOccurrenceViewModelTest {
             Dispatchers.resetMain()
         }
     }
+
+    @Test
+    fun admittedPeriodPaymentReentryPinsPreferredAndDoesNotReopenCreate() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val actions = OccurrenceChoiceActions()
+        seedUnpaidAugust(actions)
+        val payment = confirmedExpenseDtoFixture().toDomain().copy(id = 71, clientRef = null)
+        val ledger = OccurrenceChoiceLedger(payment)
+        val model = occurrenceModel(actions, ledger)
+        try {
+            model.open(recurringItem { rowVersion = 7L }.copy(homeCurrencyCode = "JPY", merchant = "日元订阅"))
+            advanceUntilIdle()
+            model.periodPayment.recordPeriodPayment()
+            val origin = assertNotNull(model.uiState.value.periodPaymentOrigin)
+            model.createPeriodPayment(periodPaymentDraft(origin).copy(expenseTime = "2026-08-03T10:00:00Z"))
+            advanceUntilIdle()
+            assertNull(model.uiState.value.periodPaymentOrigin)
+            assertEquals(origin.clientRef, model.uiState.value.preferredPaymentClientRef)
+            model.periodPayment.recordPeriodPayment()
+            assertNull(model.uiState.value.periodPaymentOrigin)
+            assertEquals(origin.clientRef, model.uiState.value.preferredPaymentClientRef)
+            assertEquals(listOf(origin.clientRef), ledger.createdClientRefs)
+        } finally {
+            model.viewModelScope.coroutineContext.job.cancelAndJoin()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun restoreAdmittedPeriodUsesTheRequestedClientRefNotTheLastSession() {
+        val actions = OccurrenceChoiceActions()
+        val item = recurringItem { rowVersion = 7L }.copy(homeCurrencyCode = "JPY", merchant = "日元订阅")
+        val august = actions.occurrence.copy(period = "2026-08")
+        val september = actions.occurrence.copy(period = "2026-09")
+        var state = RecurringOccurrenceUiState(
+            access = actions.access,
+            item = item,
+            occurrence = august,
+            requestedPeriod = "2026-08",
+        )
+        val loaded = mutableListOf<String>()
+        val session = RecurringPeriodPaymentSession(
+            current = { state },
+            mutate = { reducer -> state = reducer(state) },
+            load = { loaded += it },
+            savedState = SavedStateHandle(),
+        )
+        session.recordPeriodPayment()
+        val first = assertNotNull(state.periodPaymentOrigin)
+        session.acceptPeriodPaymentAdmission(first.clientRef, 71)
+        session.dismissPeriodPayment()
+        state = state.copy(occurrence = september, requestedPeriod = "2026-09", periodPaymentOrigin = null)
+        session.recordPeriodPayment()
+        val second = assertNotNull(state.periodPaymentOrigin)
+        assertTrue(second.clientRef != first.clientRef)
+        session.acceptPeriodPaymentAdmission(second.clientRef, 80)
+        session.dismissPeriodPayment()
+        session.restoreAdmittedPeriodOccurrence(listOf(item), first.clientRef)
+        assertEquals(listOf("2026-08"), loaded)
+        assertEquals("2026-08", state.requestedPeriod)
+        assertEquals(first.clientRef, state.preferredPaymentClientRef)
+        assertEquals(71L, state.preferredPaymentAcceptedExpenseId)
+    }
 }
 
 private fun occurrenceModel(

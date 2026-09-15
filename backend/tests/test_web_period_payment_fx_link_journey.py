@@ -95,6 +95,9 @@ def test_period_payment_fx_confirm_return_then_explicit_link_zeros_reserve_once(
 
     new_page = browser.get(href, headers={"Cookie": f"{SESSION_COOKIE_NAME}={session_token}"})
     assert new_page.status_code == 200, new_page.text
+    assert 'value="海外订阅"' in new_page.text
+    assert re.search(r'name="amount_major"[^>]*value="20.00"', new_page.text)
+    assert re.search(r'<option value="USD" selected>', new_page.text)
     create_form = {
         **_hidden_fields(new_page.text),
         "amount_major": "20.00",

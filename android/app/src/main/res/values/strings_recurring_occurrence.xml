@@ -41,5 +41,7 @@
     <string name="occurrence_no_payments">没有匹配的已确认付款。可调整付款月份、搜索词，或刷新流水。</string>
     <string name="occurrence_narrow_search">显示前 20 笔，请缩小月份或搜索范围。</string>
     <string name="occurrence_has_refund">（有退款，显示原付款金额）</string>
+    <string name="occurrence_payment_currency">选择本期付款币种</string>
+    <string name="occurrence_choose_payment_currency">本期义务币种未确认。请选择实际付款币种，不要默认成账本本币。</string>
     <string name="sync_status_mutation_recurring_occurrence">固定支出本期履约（在计划中查看本期）</string>
 </resources>

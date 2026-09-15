@@ -5,6 +5,7 @@ import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.domain.model.UiText
 import java.util.UUID
@@ -22,6 +23,9 @@ data class RecurringPeriodPaymentOrigin(
     val category: String? = null,
     val note: String? = null,
     val capturedAmountCents: Long? = null,
+    val capturedAmountText: String? = null,
+    val expenseTime: String? = null,
+    val acceptedExpenseId: Long? = null,
     val admitted: Boolean = false,
 )
 
@@ -59,6 +63,17 @@ internal class RecurringPeriodPaymentSession(
         val existing = sessions[key] ?: state.periodPaymentOrigin?.takeIf {
             it.seriesPublicId == item.publicId && it.period == occurrence.period
         }
+        if (existing?.admitted == true) {
+            remember(existing.copy(binding = binding))
+            mutate {
+                it.copy(
+                    periodPaymentOrigin = null,
+                    preferredPaymentClientRef = existing.clientRef,
+                    preferredPaymentAcceptedExpenseId = existing.acceptedExpenseId?.takeIf { id -> id > 0 },
+                )
+            }
+            return
+        }
         if (state.periodPaymentOrigin != null && existing != null) return
         val origin = (existing ?: RecurringPeriodPaymentOrigin(
             binding = binding,
@@ -80,15 +95,21 @@ internal class RecurringPeriodPaymentSession(
         note: String,
         currencyCode: String,
         amountCents: Long,
+        merchant: String? = null,
+        amountText: String? = null,
+        expenseTime: String? = null,
     ) {
         val origin = sessions.values.firstOrNull { it.clientRef == clientRef }
             ?: current().periodPaymentOrigin?.takeIf { it.clientRef == clientRef }
             ?: return
         val updated = origin.copy(
+            merchant = merchant?.takeIf(String::isNotBlank) ?: origin.merchant,
             category = category,
             note = note,
             obligationCurrencyCode = currencyCode,
             capturedAmountCents = amountCents,
+            capturedAmountText = amountText?.takeIf(String::isNotBlank) ?: origin.capturedAmountText,
+            expenseTime = expenseTime?.takeIf(String::isNotBlank) ?: origin.expenseTime,
         )
         remember(updated)
         mutate { state ->
@@ -97,11 +118,14 @@ internal class RecurringPeriodPaymentSession(
         }
     }
 
-    fun acceptPeriodPaymentAdmission(clientRef: String) {
+    fun acceptPeriodPaymentAdmission(clientRef: String, acceptedExpenseId: Long? = null) {
         val origin = sessions.values.firstOrNull { it.clientRef == clientRef }
             ?: current().periodPaymentOrigin?.takeIf { it.clientRef == clientRef }
             ?: return
-        val updated = origin.copy(admitted = true)
+        val updated = origin.copy(
+            admitted = true,
+            acceptedExpenseId = acceptedExpenseId?.takeIf { it > 0 } ?: origin.acceptedExpenseId,
+        )
         remember(updated)
         mutate { state ->
             if (state.periodPaymentOrigin?.clientRef == clientRef) state.copy(periodPaymentOrigin = updated)
@@ -109,18 +133,26 @@ internal class RecurringPeriodPaymentSession(
         }
     }
 
-    fun applyCreateOutcome(submitted: RecurringPeriodPaymentOrigin, error: UiText?): Boolean {
+    fun applyCreateOutcome(
+        submitted: RecurringPeriodPaymentOrigin,
+        error: UiText?,
+        acceptedExpenseId: Long? = null,
+    ): Boolean {
         val visible = current().periodPaymentOrigin
         val sameVisible = visible?.clientRef == submitted.clientRef && visible.binding == submitted.binding
         if (error == null) {
-            acceptPeriodPaymentAdmission(submitted.clientRef)
+            acceptPeriodPaymentAdmission(submitted.clientRef, acceptedExpenseId)
             mutate { state ->
                 val currentPeriod = state.occurrence?.period ?: state.requestedPeriod
                 val samePeriod = state.item?.publicId == submitted.seriesPublicId && currentPeriod == submitted.period
                 val cleared = if (state.periodPaymentInFlightClientRef == submitted.clientRef) {
                     state.copy(periodPaymentInFlightClientRef = null)
                 } else state
-                if (samePeriod) cleared.copy(preferredPaymentClientRef = submitted.clientRef) else cleared
+                if (samePeriod) cleared.copy(
+                    preferredPaymentClientRef = submitted.clientRef,
+                    preferredPaymentAcceptedExpenseId = acceptedExpenseId?.takeIf { it > 0 }
+                        ?: sessions[submitted.seriesPublicId to submitted.period]?.acceptedExpenseId,
+                ) else cleared
             }
             if (sameVisible) dismissPeriodPayment()
             return sameVisible
@@ -143,8 +175,13 @@ internal class RecurringPeriodPaymentSession(
         }
     }
 
-    fun restoreAdmittedPeriodOccurrence(items: List<RecurringItem> = emptyList()) {
-        val session = sessions.values.lastOrNull { it.admitted } ?: return
+    fun restoreAdmittedPeriodOccurrence(items: List<RecurringItem> = emptyList(), clientRef: String? = null) {
+        val wanted = clientRef?.takeIf(String::isNotBlank) ?: current().preferredPaymentClientRef
+        val session = if (wanted.isNullOrBlank()) {
+            sessions.values.lastOrNull { it.admitted }
+        } else {
+            sessions.values.lastOrNull { it.admitted && it.clientRef == wanted }
+        } ?: return
         val item = current().item?.takeIf { it.publicId == session.seriesPublicId }
             ?: items.firstOrNull { it.publicId == session.seriesPublicId }
             ?: return
@@ -159,10 +196,35 @@ internal class RecurringPeriodPaymentSession(
                 message = null,
                 requestedPeriod = session.period,
                 periodPaymentOrigin = null,
-                preferredPaymentClientRef = null,
+                preferredPaymentClientRef = session.clientRef,
+                preferredPaymentAcceptedExpenseId = session.acceptedExpenseId?.takeIf { id -> id > 0 },
             )
         }
         load(session.period)
+    }
+
+    fun sessionForSeries(seriesPublicId: String): RecurringPeriodPaymentOrigin? =
+        sessions.values.lastOrNull { it.seriesPublicId == seriesPublicId && !it.admitted }
+            ?: sessions.values.lastOrNull { it.seriesPublicId == seriesPublicId }
+
+    fun rememberAcceptedExpenseId(clientRef: String?, acceptedExpenseId: Long) {
+        val ref = clientRef?.takeIf(String::isNotBlank) ?: return
+        if (acceptedExpenseId <= 0) return
+        val origin = sessions.values.firstOrNull { it.clientRef == ref } ?: return
+        if (origin.acceptedExpenseId == acceptedExpenseId) return
+        remember(origin.copy(acceptedExpenseId = acceptedExpenseId))
+    }
+
+    fun choosePeriodPaymentCurrency(code: String) {
+        val origin = current().periodPaymentOrigin ?: return
+        if (CurrencyCode.fromStorageKeyOrNull(origin.obligationCurrencyCode) != null) return
+        val chosen = CurrencyCode.fromStorageKeyOrNull(code) ?: return
+        val updated = origin.copy(obligationCurrencyCode = chosen.storageKey)
+        remember(updated)
+        mutate {
+            if (it.periodPaymentOrigin?.clientRef == origin.clientRef) it.copy(periodPaymentOrigin = updated)
+            else it
+        }
     }
 
     fun dismissPeriodPayment() {
@@ -185,7 +247,12 @@ internal class RecurringPeriodPaymentSession(
         val period = state.occurrence?.period ?: return
         val session = sessions[item.publicId to period] ?: return
         if (session.admitted) {
-            mutate { it.copy(preferredPaymentClientRef = session.clientRef) }
+            mutate {
+                it.copy(
+                    preferredPaymentClientRef = session.clientRef,
+                    preferredPaymentAcceptedExpenseId = session.acceptedExpenseId?.takeIf { id -> id > 0 },
+                )
+            }
             return
         }
         mutate {

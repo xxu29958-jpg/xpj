@@ -1,0 +1,60 @@
+{
+  "task": "TBX-404-405-RECONCILE",
+  "audit_base": "c34efb40b89c4fecd85478888ed68ce84a90f10f",
+  "review_subject": "3d41f8f4afcdba89bd68b1f7dbb885e9b5ba063b",
+  "code_head": "PENDING_THIS_COMMIT",
+  "status": "INCOMPLETE",
+  "handoff": "docs/current/tbx-404-405-reconcile/HANDOFF.md",
+  "reconciliation": "docs/current/tbx-404-405-reconcile/RECONCILIATION.md",
+  "external_scan_root": "E:/projects/ticketbox-qualification-tools/tbx-404-405-reconcile-20260915",
+  "anchors": [
+    {"id": "AUDIT_BASE", "sha": "c34efb40b89c4fecd85478888ed68ce84a90f10f", "ref": "origin/main-at-review"},
+    {"id": "REVIEW_SUBJECT", "sha": "3d41f8f4afcdba89bd68b1f7dbb885e9b5ba063b"},
+    {"id": "PR404_MERGE", "sha": "a6ebf182a753b5c0ea881a3913a39459a3e10041"},
+    {"id": "PR405_HEAD", "sha": "c0279d865dca15bb1ac1786d66c1119ed0448db6"},
+    {"id": "PR414_MERGE", "sha": "c34efb40b89c4fecd85478888ed68ce84a90f10f"},
+    {"id": "PR415_HEAD", "sha": "14c9eca8cf6a301a6f0d9c7a7c8dfb0227c424b9"}
+  ],
+  "review_items": [
+    {"id": "R01", "capability": "FIXED", "fix": "CHANGED", "evidence": ["test_web_association_invalid_action_keeps_the_original_key", "test_web_association_state_conflict_keeps_the_original_proposal"]},
+    {"id": "R02", "capability": "FIXED", "fix": "CHANGED", "evidence": ["RecurringOccurrencePaymentPickerTest"]},
+    {"id": "R03", "capability": "FIXED", "fix": "CHANGED", "evidence": ["test_web_reject_from_recurring_occurrence_returns_to_the_original_period"]},
+    {"id": "U01", "capability": "IMPROVED", "fix": "CHANGED", "evidence": ["test_focused_payment_review_keeps_the_original_period_return"]},
+    {"id": "U02", "capability": "IMPROVED", "fix": "CHANGED", "evidence": ["RecurringOccurrencePaymentPickerTest.explicitAcceptedExpenseIdPinsPreferredAheadOfMonthAndSearch"]},
+    {"id": "U03", "capability": "IMPROVED", "fix": "CHANGED", "evidence": ["test_period_payment_fx_confirm_return_then_explicit_link_zeros_reserve_once:GET /new prefill"]},
+    {"id": "U04", "capability": "IMPROVED", "fix": "CHANGED", "evidence": ["RecurringPeriodPaymentSurfaceTest.unknownObligationCurrencyDoesNotGuessLedgerHomeOnTheExistingManualSheet"]},
+    {"id": "U05", "capability": "IMPROVED", "fix": "CHANGED", "evidence": ["admittedPeriodPaymentReentryPinsPreferredAndDoesNotReopenCreate", "exact-binding create reuses the admitted original"]},
+    {"id": "U06", "capability": "IMPROVED", "fix": "CHANGED", "evidence": ["restoreAdmittedPeriodUsesTheRequestedClientRefNotTheLastSession"]},
+    {"id": "U07", "capability": "DELIVERED", "fix": "CHANGED", "evidence": ["docs/current/tbx-404-405-reconcile"]}
+  ],
+  "preserved_without_rescan": ["A01", "A02", "A03", "A04", "A05", "A06", "A07", "A08", "A10", "A11", "A12", "B01", "B03", "B05", "B07", "B09", "B11"],
+  "still_open": [
+    {"id": "A09-WEB-ADMISSION", "status": "MISSING", "note": "online-first; no second Outbox"},
+    {"id": "C01", "status": "UNVERIFIED", "note": "no two-client live JPY/USD journey this round"},
+    {"id": "C03", "status": "BLOCKED", "note": "daily-use forbidden"},
+    {"id": "C04", "status": "BLOCKED", "note": "Gmail contracts unavailable"}
+  ],
+  "executed": [
+    {
+      "id": "E-R01-R03-U01-U03",
+      "kind": "unit",
+      "command": "pytest tests/test_web_recurring_occurrences.py tests/test_web_expense_undo.py::test_web_reject_from_recurring_occurrence_returns_to_the_original_period tests/test_web_period_payment_fx_link_journey.py::test_period_payment_fx_confirm_return_then_explicit_link_zeros_reserve_once",
+      "result": "9 passed",
+      "executed": true
+    },
+    {
+      "id": "E-R02-U02-U04-U05-U06",
+      "kind": "unit",
+      "command": "gradlew :app:testGrayDebugUnitTest --tests RecurringOccurrencePaymentPickerTest --tests RecurringPeriodPaymentSurfaceTest --tests RecurringOccurrenceViewModelTest --tests ExpenseManualCreateOfflineTest",
+      "result": "BUILD SUCCESSFUL",
+      "executed": true
+    }
+  ],
+  "not_executed": [
+    "full Android app",
+    "full PostgreSQL/HTTP suite",
+    "daily-use install",
+    "merge",
+    "Codex"
+  ]
+}

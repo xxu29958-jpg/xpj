@@ -78,6 +78,7 @@ data class ManualExpenseSheetInitials(
     val category: String = DEFAULT_EXPENSE_CATEGORIES.first(),
     val note: String = "",
     val amountMinor: Long? = null,
+    val expenseTime: String? = null,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -97,7 +98,9 @@ fun ManualExpenseSheet(
         mutableStateOf(initials.category.ifBlank { DEFAULT_EXPENSE_CATEGORIES.first() })
     }
     var note by rememberSaveable { mutableStateOf(initials.note) }
-    var expenseTime by rememberSaveable { mutableStateOf(nowUtcIso()) }
+    var expenseTime by rememberSaveable {
+        mutableStateOf(initials.expenseTime?.takeIf { it.isNotBlank() } ?: nowUtcIso())
+    }
     var message by rememberSaveable { mutableStateOf<String?>(null) }
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
     var showTimePicker by rememberSaveable { mutableStateOf(false) }

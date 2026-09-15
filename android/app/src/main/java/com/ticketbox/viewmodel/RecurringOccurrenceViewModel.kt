@@ -44,6 +44,7 @@ data class RecurringOccurrenceUiState(
     val periodPaymentInFlightClientRef: String? = null,
     val periodPaymentError: UiText? = null,
     val preferredPaymentClientRef: String? = null,
+    val preferredPaymentAcceptedExpenseId: Long? = null,
 ) {
     val periodPaymentSaving: Boolean
         get() = periodPaymentInFlightClientRef != null &&
@@ -86,7 +87,18 @@ class RecurringOccurrenceViewModel(
                     mutableState.value = RecurringOccurrenceUiState(access = access)
                 } else mutableState.update { it.copy(access = access) }
                 if (access != null) coroutineScope {
-                    launch { ledger.observeConfirmedStream().collect { rows -> mutableState.update { it.copy(payments = rows) } } }
+                    launch {
+                        ledger.observeConfirmedStream().collect { rows ->
+                            mutableState.update { state ->
+                                val accepted = state.preferredPaymentAcceptedExpenseId
+                                    ?: acceptedExpenseIdForClientRef(rows, state.preferredPaymentClientRef)
+                                if (accepted != null) {
+                                    periodPayment.rememberAcceptedExpenseId(state.preferredPaymentClientRef, accepted)
+                                }
+                                state.copy(payments = rows, preferredPaymentAcceptedExpenseId = accepted)
+                            }
+                        }
+                    }
                     repository.observeQueue(access.binding).collect(::acceptQueue)
                 }
             }
@@ -95,8 +107,22 @@ class RecurringOccurrenceViewModel(
 
     fun open(item: RecurringItem) {
         if (item.ledgerId != mutableState.value.access?.binding?.ledgerId) return
-        mutableState.update { it.copy(item = item, occurrence = null, choice = null, acceptedId = null, message = null, requestedPeriod = "current", periodPaymentOrigin = null, periodPaymentError = null, preferredPaymentClientRef = null) }
-        load("current")
+        val session = periodPayment.sessionForSeries(item.publicId)
+        mutableState.update {
+            it.copy(
+                item = item,
+                occurrence = null,
+                choice = null,
+                acceptedId = null,
+                message = null,
+                requestedPeriod = session?.period ?: "current",
+                periodPaymentOrigin = null,
+                periodPaymentError = null,
+                preferredPaymentClientRef = session?.takeIf { origin -> origin.admitted }?.clientRef,
+                preferredPaymentAcceptedExpenseId = session?.takeIf { origin -> origin.admitted }?.acceptedExpenseId,
+            )
+        }
+        load(session?.period ?: "current")
     }
 
     fun dismiss() {
@@ -107,7 +133,7 @@ class RecurringOccurrenceViewModel(
 
     fun changePeriod(period: String) {
         if (runCatching { YearMonth.parse(period).toString() == period }.getOrDefault(false)) {
-            mutableState.update { it.copy(occurrence = null, choice = null, acceptedId = null, requestedPeriod = period, periodPaymentOrigin = null, preferredPaymentClientRef = null) }
+            mutableState.update { it.copy(occurrence = null, choice = null, acceptedId = null, requestedPeriod = period, periodPaymentOrigin = null, preferredPaymentClientRef = null, preferredPaymentAcceptedExpenseId = null) }
             load(period)
         } else mutableState.update { it.copy(message = UiText.res(R.string.occurrence_invalid_month)) }
     }
@@ -116,8 +142,8 @@ class RecurringOccurrenceViewModel(
         load(mutableState.value.occurrence?.period ?: mutableState.value.requestedPeriod)
     }
 
-    fun restoreAdmittedPeriodOccurrence(items: List<RecurringItem> = emptyList()) {
-        periodPayment.restoreAdmittedPeriodOccurrence(items)
+    fun restoreAdmittedPeriodOccurrence(items: List<RecurringItem> = emptyList(), clientRef: String? = null) {
+        periodPayment.restoreAdmittedPeriodOccurrence(items, clientRef)
     }
 
     fun createPeriodPayment(draft: ExpenseDraft, onAdmitted: (String) -> Unit = {}) {
@@ -129,6 +155,8 @@ class RecurringOccurrenceViewModel(
             draft.note.orEmpty(),
             draft.originalCurrencyCode?.storageKey ?: submitted.obligationCurrencyCode.orEmpty(),
             draft.originalAmountMinor ?: draft.amountCents ?: 0L,
+            merchant = draft.merchant,
+            expenseTime = draft.expenseTime,
         )
         mutableState.update { it.copy(periodPaymentInFlightClientRef = submitted.clientRef, periodPaymentError = null) }
         viewModelScope.launch {
@@ -144,7 +172,8 @@ class RecurringOccurrenceViewModel(
             val error = if (result.isSuccess) null
                 else result.exceptionOrNull()?.message?.let(UiText::raw)
                     ?: UiText.res(R.string.ledger_msg_manual_save_failed)
-            if (periodPayment.applyCreateOutcome(submitted, error)) onAdmitted(submitted.clientRef)
+            val acceptedExpenseId = result.getOrNull()?.id
+            if (periodPayment.applyCreateOutcome(submitted, error, acceptedExpenseId)) onAdmitted(submitted.clientRef)
         }
     }
 
@@ -227,6 +256,15 @@ class RecurringOccurrenceViewModel(
                 if (requestEpoch == epoch) mutableState.update { it.copy(message = UiText.res(R.string.occurrence_payment_refresh_failed)) }
             }
         }
+    }
+
+    private fun acceptedExpenseIdForClientRef(
+        rows: List<ConfirmedStreamItem>,
+        clientRef: String?,
+    ): Long? {
+        val ref = clientRef?.takeIf(String::isNotBlank) ?: return null
+        return rows.filterIsInstance<ConfirmedStreamItem.ExpenseRow>()
+            .firstOrNull { it.root.clientRef == ref }?.root?.id?.takeIf { it > 0 }
     }
 
     private fun acceptQueue(rows: List<PendingOccurrencePayment>) {

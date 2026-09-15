@@ -65,13 +65,18 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
             bindingProvider = { testOutboxBinding(ledgerId = activeLedger) },
         )
 
-    private fun createRepo(api: ApiService, dao: FakeExpenseDao, outbox: OutboxRepository): ExpenseRepository =
+    private fun createRepo(
+        api: ApiService,
+        dao: FakeExpenseDao,
+        outbox: OutboxRepository,
+        tokenStore: LedgerFakeTokenStore = ledgerSessionFixture(activeLedger, "家庭账本"),
+    ): ExpenseRepository =
         ExpenseRepository(
             expenseDao = dao,
             binding = testServerSessionBinding(
                 apiClient = TestApiServiceFactory(api),
                 settingsStore = seededSettingsStore(),
-                tokenStore = ledgerSessionFixture(activeLedger, "家庭账本"),
+                tokenStore = tokenStore,
             ),
             deviceNameProvider = { "Android Test" },
             offlineMutations = ExpenseOfflineMutationWiring(
@@ -273,5 +278,23 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
         assertEquals("server-pub-77", synced.publicId)
         assertEquals(77L, synced.toDomain().id, "domain id flips from negative local to positive server id")
         assertFalse(synced.toDomain().pendingSync, "the row is no longer pending after sync")
+    }
+
+    @Test
+    fun `exact-binding create reuses the admitted original instead of enqueueing again`() = runTest {
+        val dao = FakeExpenseDao()
+        val pendingDao = FakePendingMutationDao()
+        val tokenStore = ledgerSessionFixture(activeLedger, "家庭账本")
+        val repo = createRepo(ManualCreateApi(failure = IOException("airplane mode")), dao, outbox(pendingDao), tokenStore)
+        val binding = requireNotNull(
+            tokenStore.sessionStore.currentSession()?.toBoundSessionSnapshotOrNull()?.logicalBinding,
+        )
+        val original = draft.copy(clientRef = "period-ref")
+        val first = repo.createManualExpense(original, binding).getOrThrow()
+        val second = repo.createManualExpense(original.copy(merchant = "另一商家"), binding).getOrThrow()
+        assertEquals(first.id, second.id)
+        assertEquals(first.clientRef, second.clientRef)
+        assertEquals(1, pendingDao.rows.size)
+        assertEquals("expense:local:period-ref", pendingDao.rows.values.single().targetId)
     }
 }

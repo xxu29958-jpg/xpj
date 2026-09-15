@@ -139,8 +139,11 @@ private fun OccurrencePending(pending: PendingOccurrencePayment, canModify: Bool
 private fun OccurrencePaymentPicker(state: RecurringOccurrenceUiState, choose: (ConfirmedStreamItem.ExpenseRow) -> Unit) {
     var month by rememberSaveable(state.occurrence?.period) { mutableStateOf(state.occurrence?.period.orEmpty()) }
     var query by rememberSaveable(state.item?.publicId) { mutableStateOf("") }
-    val preferredExpenseId = state.payments.filterIsInstance<ConfirmedStreamItem.ExpenseRow>()
-        .firstOrNull { it.root.clientRef == state.preferredPaymentClientRef }?.root?.id
+    val preferredExpenseId = preferredOccurrencePaymentId(
+        state.payments,
+        state.preferredPaymentClientRef,
+        state.preferredPaymentAcceptedExpenseId,
+    )
     val payments = occurrencePaymentChoices(state.payments, month, query, preferredExpenseId)
     HorizontalDivider()
     Text(stringResource(R.string.occurrence_pick_explanation))
@@ -157,6 +160,21 @@ private fun OccurrencePaymentPicker(state: RecurringOccurrenceUiState, choose: (
                 if (payment.lineageStatus != ExpenseLineageStatus.Confirmed) stringResource(R.string.occurrence_has_refund) else "")
         }
     }
+}
+
+internal fun preferredOccurrencePaymentId(
+    rows: List<ConfirmedStreamItem>,
+    preferredClientRef: String?,
+    preferredAcceptedExpenseId: Long? = null,
+): Long? {
+    val accepted = preferredAcceptedExpenseId?.takeIf { it > 0 }
+    if (accepted != null) {
+        return rows.filterIsInstance<ConfirmedStreamItem.ExpenseRow>()
+            .firstOrNull { it.root.id == accepted }?.root?.id
+    }
+    val ref = preferredClientRef?.takeIf(String::isNotBlank) ?: return null
+    return rows.filterIsInstance<ConfirmedStreamItem.ExpenseRow>()
+        .firstOrNull { it.root.clientRef == ref }?.root?.id?.takeIf { it > 0 }
 }
 
 internal fun occurrencePaymentChoices(

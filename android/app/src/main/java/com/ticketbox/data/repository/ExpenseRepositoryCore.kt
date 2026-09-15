@@ -6,6 +6,7 @@ import com.ticketbox.BuildConfig
 import com.ticketbox.data.local.ConfirmedStreamPruneScope
 import com.ticketbox.data.local.ExpenseDao
 import com.ticketbox.data.local.ExpenseOffsetStreamEntity
+import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ConfirmedExpensesApiQuery
@@ -535,6 +536,30 @@ internal class ExpenseRepositoryCore(
                 idempotencyKey = idempotencyKey,
             ),
         )
+    }
+
+    suspend fun reuseAdmittedLocalCreate(bound: BoundLedgerRequest, clientRef: String): Expense? {
+        val target = expenseLocalTargetId(clientRef)
+        val queued = outbox?.activeForTarget(bound, target).orEmpty()
+            .filter { it.type == PendingMutationType.CreateExpense }
+        val originals = queued.ifEmpty {
+            outbox?.observeActiveByTypes(setOf(PendingMutationType.CreateExpense), includeCompleted = true)
+                ?.first()
+                .orEmpty()
+                .filter { it.targetId == target && it.type == PendingMutationType.CreateExpense }
+        }
+        if (originals.isEmpty()) return null
+        val row = originals.maxBy { it.id }
+        val acceptedId = expenseAcceptanceReceiptId(
+            row.receiptJson.takeIf { row.status == PendingMutationStatus.Done },
+        )
+        val locals = expenseDao.getConfirmed(bound.ledgerId)
+        val entity = when {
+            acceptedId != null -> locals.firstOrNull { it.serverId == acceptedId }
+                ?: locals.firstOrNull { it.clientRef == clientRef }
+            else -> locals.firstOrNull { it.clientRef == clientRef }
+        } ?: return null
+        return entity.toDomain()
     }
 
     /** One bound transaction saves the original command and its optimistic negative-ID projection. */

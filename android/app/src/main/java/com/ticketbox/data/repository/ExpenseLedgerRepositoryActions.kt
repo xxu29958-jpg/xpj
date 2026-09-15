@@ -97,7 +97,8 @@ internal class ExpenseLedgerRepositoryActions(
     ): Result<Expense> = core.errorHandler.safeCall {
         require(draft.amountCents != null || draft.originalAmountMinor != null) { "请先填写金额。" }
         val bound = core.ledgerRequestGuard.bindExact(expectedBinding)
-        core.enqueueLocalCreate(bound, draft, draft.clientRef?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString())
+        val clientRef = draft.clientRef?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString()
+        core.reuseAdmittedLocalCreate(bound, clientRef) ?: core.enqueueLocalCreate(bound, draft, clientRef)
     }
 
     override suspend fun applyConfirmedBatch(

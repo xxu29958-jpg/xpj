@@ -107,9 +107,12 @@ class RecurringPeriodPaymentSurfaceTest {
         assertTrue("submitted.binding" in vm)
         assertTrue("ledger_msg_manual_save_failed" in vm)
         assertFalse("markPeriodPaymentCreate" in vm)
-        assertTrue("fun acceptPeriodPaymentAdmission(clientRef: String)" in session)
+        assertTrue("fun acceptPeriodPaymentAdmission(clientRef: String" in session)
         assertTrue("fun capturePeriodPaymentDraft(" in session && "clientRef: String" in session)
         assertTrue("preferredPaymentClientRef" in RecurringOccurrenceUiState::class.members.map { it.name }.toSet())
+        assertTrue("preferredPaymentAcceptedExpenseId" in RecurringOccurrenceUiState::class.members.map { it.name }.toSet())
+        assertTrue("acceptedExpenseId" in RecurringPeriodPaymentOrigin::class.members.map { it.name }.toSet())
+        assertTrue("choosePeriodPaymentCurrency" in host)
         assertTrue("preferredExpenseId" in File("src/main/java/com/ticketbox/ui/screens/recurring/RecurringOccurrenceSheet.kt").let { if (it.exists()) it else File("app/src/main/java/com/ticketbox/ui/screens/recurring/RecurringOccurrenceSheet.kt") }.readText())
     }
 }

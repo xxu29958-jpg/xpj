@@ -13,6 +13,7 @@
   <input type="hidden" name="expense_public_id" value="{{ expense }}">
   <input type="hidden" name="expected_expense_row_version" value="{{ revision }}">
   {% endif %}
+  {% if focused_payment %}<input type="hidden" name="payment_id" value="{{ focused_payment.id }}">{% endif %}
 {% endmacro %}
 {% block content %}
 <header class="product-page-header">
@@ -23,7 +24,25 @@
   </div>
 </header>
 <div class="plan-flow">
-{% if message %}<p class="product-feedback product-feedback--success" role="status">{{ message }}</p>{% endif %}
+{% if flash_message or undo_expense_id %}
+<div class="product-feedback{% if flash_type == 'success' %} product-feedback--success{% elif flash_type == 'error' %} product-feedback--error{% endif %}{% if undo_expense_id %} undo-banner{% endif %}"
+     role="{% if flash_type == 'error' %}alert{% else %}status{% endif %}">
+  <span>{{ flash_message }}</span>
+  {% if undo_expense_id %}
+  <form method="post" action="/web/expenses/{{ undo_expense_id }}/undo" class="undo-banner-action">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <input type="hidden" name="expected_row_version" value="{{ undo_expected_row_version }}">
+    <input type="hidden" name="idempotency_key" value="{{ undo_idempotency_key }}">
+    <input type="hidden" name="return_to" value="recurring_occurrence">
+    <input type="hidden" name="return_recurring_public_id" value="{{ item.public_id }}">
+    <input type="hidden" name="return_month" value="{{ occurrence.period }}">
+    {% if focused_payment %}<input type="hidden" name="return_payment_expense_id" value="{{ focused_payment.id }}">{% endif %}
+    <button type="submit" class="product-button">撤销</button>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
 {% if error %}
 <div class="product-feedback product-feedback--danger" role="alert">
   <p>{{ error.message }}</p>
@@ -55,7 +74,7 @@
   <p>选一张已确认账单，明确它已经付清本期义务。名称相同不会自动算作已付。</p>
   {% endif %}
   {% if occurrence.expense_id %}
-  <a class="product-button" href="/web/expenses/{{ occurrence.expense_id }}/edit?ledger_id={{ selected_ledger_id }}">查看原账单</a>
+  <a class="product-button" href="{{ linked_payment_href }}">查看原账单</a>
   {% if can_associate %}
   <form class="product-inline-form" method="post" action="/web/recurring/{{ item.public_id }}/occurrence">
     {{ command_fields('clear', command_key) }}
@@ -89,7 +108,7 @@
   <p>这笔账单对应当前任务，付款月份可以与义务月份不同。</p>
   <div class="product-panel product-panel--padded">
     <p><strong>{{ focused_payment.merchant }}</strong> · {{ focused_payment.date }} · {{ focused_payment.home_currency_code or '' }} {{ focused_payment.amount }}</p>
-    <a href="/web/expenses/{{ focused_payment.id }}/edit?ledger_id={{ selected_ledger_id }}">核对账单</a>
+    <a href="{{ focused_payment.href }}">核对账单</a>
     {% if focused_payment.eligible and can_associate and occurrence.state != 'fulfilled' %}
     <form method="post" action="/web/recurring/{{ item.public_id }}/occurrence">
       {{ command_fields('link', focused_payment.key, focused_payment.public_id, focused_payment.row_version) }}
@@ -106,7 +125,7 @@
   {% for payment in payments %}
   <div class="product-panel product-panel--padded">
     <p><strong>{{ payment.merchant }}</strong> · {{ payment.date }} · {{ payment.home_currency_code or '' }} {{ payment.amount }}</p>
-    <a href="/web/expenses/{{ payment.id }}/edit?ledger_id={{ selected_ledger_id }}">核对账单</a>
+    <a href="{{ payment.href }}">核对账单</a>
     <form method="post" action="/web/recurring/{{ item.public_id }}/occurrence">
       {{ command_fields('link', payment.key, payment.public_id, payment.row_version) }}
       <button class="product-button" type="submit">用这笔付款确认本期已付</button>
