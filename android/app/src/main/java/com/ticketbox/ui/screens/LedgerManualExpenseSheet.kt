@@ -67,6 +67,7 @@ data class ManualExpenseSheetState(
     val initialCurrency: CurrencyCode,
     val ledgerHomeCurrency: CurrencyCode = initialCurrency,
     val errorMessage: String? = null,
+    val editable: Boolean = true,
 )
 
 data class ManualExpenseSheetActions(
@@ -224,12 +225,13 @@ fun ManualExpenseSheet(
     }
 
     fun submitDraft() {
-        val draft = draftOrMessage() ?: return
-        // The sheet closes only after the repository reports success.
-        message = null
-        actions.onCreate(draft)
+        submitManualExpenseDraft(state.editable, state.saving, ::draftOrMessage) { draft ->
+            message = null
+            actions.onCreate(draft)
+        }
     }
 
+    val fieldsEnabled = state.editable && !state.saving
     Column(
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -246,7 +248,7 @@ fun ManualExpenseSheet(
                 amountText = amountText,
                 onAmountChange = { amountText = it },
                 options = ExpenseCurrencyFieldOptions(
-                    enabled = !state.saving,
+                    enabled = fieldsEnabled,
                     autoFocusAmount = false,
                     showFxHint = false,
                     showSectionTitle = false,
@@ -259,7 +261,7 @@ fun ManualExpenseSheet(
                     label = stringResource(R.string.ledger_manual_merchant_label),
                     value = merchant,
                     placeholder = stringResource(R.string.ledger_manual_merchant_placeholder),
-                    enabled = !state.saving,
+                    enabled = fieldsEnabled,
                 ),
                 onValueChange = { merchant = it },
                 modifier = Modifier.fillMaxWidth(),
@@ -267,6 +269,7 @@ fun ManualExpenseSheet(
             ManualRecentMerchantsSection(
                 recentMerchants = state.recentMerchants,
                 selectedMerchant = merchant,
+                enabled = fieldsEnabled,
                 onPick = { picked ->
                     merchant = picked.merchant
                     category = picked.category
@@ -276,7 +279,7 @@ fun ManualExpenseSheet(
                 state = ExpenseEditTextFieldState(
                     label = stringResource(R.string.ledger_manual_category_label),
                     value = category,
-                    enabled = !state.saving,
+                    enabled = fieldsEnabled,
                 ),
                 onValueChange = { category = it },
                 modifier = Modifier.fillMaxWidth(),
@@ -284,13 +287,14 @@ fun ManualExpenseSheet(
             ManualCategoryChoices(
                 categories = state.categories,
                 selectedCategory = category,
+                enabled = fieldsEnabled,
                 onCategoryChange = { category = it },
             )
             ExpenseEditTextField(
                 state = ExpenseEditTextFieldState(
                     label = stringResource(R.string.ledger_manual_note_label),
                     value = note,
-                    enabled = !state.saving,
+                    enabled = fieldsEnabled,
                     singleLine = false,
                     minLines = 1,
                 ),
@@ -299,6 +303,7 @@ fun ManualExpenseSheet(
             )
             ManualExpenseTimeSection(
                 expenseTime = expenseTime,
+                enabled = fieldsEnabled,
                 onPickDate = { showDatePicker = true },
                 onPickTime = { showTimePicker = true },
                 onUseNow = { expenseTime = nowUtcIso() },
@@ -306,6 +311,7 @@ fun ManualExpenseSheet(
             ManualExpenseActionSlot(
                 feedbackMessage = feedbackMessage,
                 saving = state.saving,
+                editable = state.editable,
                 onDismiss = actions.onDismiss,
                 onSubmit = ::submitDraft,
             )
@@ -313,9 +319,21 @@ fun ManualExpenseSheet(
     }
 }
 
+private fun submitManualExpenseDraft(
+    editable: Boolean,
+    saving: Boolean,
+    draft: () -> ExpenseDraft?,
+    onCreate: (ExpenseDraft) -> Unit,
+) {
+    if (!editable || saving) return
+    val created = draft() ?: return
+    onCreate(created)
+}
+
 @Composable
 private fun ManualExpenseTimeSection(
     expenseTime: String,
+    enabled: Boolean = true,
     onPickDate: () -> Unit,
     onPickTime: () -> Unit,
     onUseNow: () -> Unit,
@@ -324,6 +342,7 @@ private fun ManualExpenseTimeSection(
         state = ExpenseDateControlState(
             title = stringResource(R.string.ledger_manual_time_section_title),
             expenseTime = expenseTime,
+            enabled = enabled,
         ),
         labels = ExpenseDateControlLabels(
             pickDate = stringResource(R.string.ledger_manual_pick_date_button),
@@ -342,6 +361,7 @@ private fun ManualExpenseTimeSection(
 private fun ManualExpenseActionSlot(
     feedbackMessage: String?,
     saving: Boolean,
+    editable: Boolean,
     onDismiss: () -> Unit,
     onSubmit: () -> Unit,
 ) {
@@ -357,7 +377,7 @@ private fun ManualExpenseActionSlot(
                 stringResource(R.string.ledger_manual_save_button)
             },
             icon = Icons.Filled.Check,
-            enabled = !saving,
+            enabled = editable && !saving,
             onClick = onSubmit,
         ),
         secondary = AppSheetAction(
@@ -372,12 +392,14 @@ private fun ManualExpenseActionSlot(
 private fun ManualRecentMerchantsSection(
     recentMerchants: List<RecentMerchant>,
     selectedMerchant: String,
+    enabled: Boolean = true,
     onPick: (RecentMerchant) -> Unit,
 ) {
     if (recentMerchants.isEmpty()) return
     ManualRecentMerchants(
         recentMerchants = recentMerchants,
         selectedMerchant = selectedMerchant,
+        enabled = enabled,
         onPick = onPick,
     )
 }
@@ -386,6 +408,7 @@ private fun ManualRecentMerchantsSection(
 private fun ManualCategoryChoices(
     categories: List<String>,
     selectedCategory: String,
+    enabled: Boolean = true,
     onCategoryChange: (String) -> Unit,
 ) {
     if (categories.isEmpty()) return
@@ -399,6 +422,7 @@ private fun ManualCategoryChoices(
                 SelectableFilterChip(
                     selected = selectedCategory == item,
                     label = item,
+                    enabled = enabled,
                     onClick = { onCategoryChange(item) },
                 )
             }
@@ -416,6 +440,7 @@ private fun ManualCategoryChoices(
 private fun ManualRecentMerchants(
     recentMerchants: List<RecentMerchant>,
     selectedMerchant: String,
+    enabled: Boolean = true,
     onPick: (RecentMerchant) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
@@ -434,6 +459,7 @@ private fun ManualRecentMerchants(
                     SelectableFilterChip(
                         selected = selectedMerchant == recent.merchant,
                         label = recent.merchant,
+                        enabled = enabled,
                         onClick = { onPick(recent) },
                     )
                 }
@@ -482,12 +508,14 @@ fun SelectableFilterChip(
     selected: Boolean,
     label: String,
     onClick: () -> Unit,
+    enabled: Boolean = true,
 ) {
     AppFilterChip(
         selected = selected,
         onClick = onClick,
         label = label,
         options = AppFilterChipOptions(
+            enabled = enabled,
             selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
         ),
     )

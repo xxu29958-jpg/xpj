@@ -52,12 +52,15 @@ fun RecurringOccurrenceSheet(
     state: RecurringOccurrenceUiState,
     actions: OccurrenceSheetActions,
     preferredExpenseId: Long? = null,
+    originResolved: Boolean = true,
+    originConflict: Boolean = false,
 ) {
     val item = state.item ?: return
     ModalBottomSheet(onDismissRequest = actions.onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         AppSheetScaffold(title = item.merchant, subtitle = stringResource(R.string.occurrence_subtitle)) {
             OccurrencePeriodControls(state, actions)
             state.message?.let { Text(it.asString(), modifier = Modifier.testTag("occurrence-message")) }
+            OccurrencePaymentConflict(originConflict)
             state.seriesPending.forEach { OccurrencePending(it, state.access?.canModify == true, actions.onRecover) }
             state.occurrence?.let { occurrence ->
                 Text(stringResource(occurrenceStateLabel(occurrence.state)), modifier = Modifier.testTag("occurrence-state"))
@@ -73,20 +76,45 @@ fun RecurringOccurrenceSheet(
                     TextButton(onClick = { actions.onChoose(null) }, enabled = state.canWrite) { Text(stringResource(R.string.occurrence_clear)) }
                 }
                 if (state.access?.canModify == false) Text(stringResource(R.string.occurrence_readonly))
-                if (state.canWrite && occurrence.state == "unfulfilled") {
-                    AppPrimaryButton(
-                        text = stringResource(R.string.occurrence_record_payment),
-                        icon = Icons.Filled.Add,
-                        onClick = actions.onRecordPayment,
-                        enabled = state.canWrite,
-                        modifier = Modifier.fillMaxWidth().testTag("occurrence-record-payment"),
-                    )
-                }
+                OccurrenceRecordPayment(
+                    canWrite = state.canWrite,
+                    unfulfilled = occurrence.state == "unfulfilled",
+                    originResolved = originResolved,
+                    originConflict = originConflict,
+                    onRecord = actions.onRecordPayment,
+                )
                 OccurrenceChoice(state, actions.onSubmit)
                 if (state.canWrite) OccurrencePaymentPicker(state, actions.onChoose, preferredExpenseId)
             }
         }
     }
+}
+
+@Composable
+private fun OccurrencePaymentConflict(originConflict: Boolean) {
+    if (!originConflict) return
+    Text(
+        stringResource(R.string.recurring_payment_origin_conflict),
+        modifier = Modifier.testTag("occurrence-payment-conflict"),
+    )
+}
+
+@Composable
+private fun OccurrenceRecordPayment(
+    canWrite: Boolean,
+    unfulfilled: Boolean,
+    originResolved: Boolean,
+    originConflict: Boolean,
+    onRecord: () -> Unit,
+) {
+    if (!canWrite || !unfulfilled) return
+    AppPrimaryButton(
+        text = stringResource(R.string.occurrence_record_payment),
+        icon = Icons.Filled.Add,
+        onClick = onRecord,
+        enabled = originResolved && !originConflict,
+        modifier = Modifier.fillMaxWidth().testTag("occurrence-record-payment"),
+    )
 }
 
 @Composable

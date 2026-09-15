@@ -249,6 +249,31 @@ class RecurringPaymentTaskTest {
         assertEquals("legacy-ref", store.remembered(access.binding, "rec-1", "2026-08")?.clientRef)
     }
 
+    @Test
+    fun leftoverIncompleteSessionKeepsTheLegacyKeyAndDoesNotRemember() {
+        val json =
+            """[{"binding":{"serverUrl":"https://occurrence.example","ledgerId":"ledger-1","ownerKey":"owner","sessionGeneration":"session","bindingRevision":"binding"},"seriesPublicId":"rec-1","period":"2026-08","clientRef":"legacy-ref","merchant":"日元订阅","obligationCurrencyCode":"JPY","plannedAmountCents":1200,"admitted":false}]"""
+        val leftover = SavedStateHandle()
+        leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = json
+        val store = RecurringPaymentDraftStore(SavedStateHandle())
+        store.adoptLegacyPeriodPaymentSessions(leftover)
+        assertEquals(json, leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY])
+        assertNull(store.remembered(access.binding, "rec-1", "2026-08"))
+    }
+
+    @Test
+    fun leftoverMixedSessionsKeepTheLegacyKeyWithoutPartialRemember() {
+        val json =
+            """[{"binding":{"serverUrl":"https://occurrence.example","ledgerId":"ledger-1","ownerKey":"owner","sessionGeneration":"session","bindingRevision":"binding"},"seriesPublicId":"rec-1","period":"2026-08","clientRef":"complete-ref","merchant":"日元订阅","obligationCurrencyCode":"JPY","plannedAmountCents":1200,"ledgerHomeCurrencyCode":"CNY","admitted":false},{"binding":{"serverUrl":"https://occurrence.example","ledgerId":"ledger-1","ownerKey":"owner","sessionGeneration":"session","bindingRevision":"binding"},"seriesPublicId":"rec-1","period":"2026-09","clientRef":"incomplete-ref","merchant":"日元订阅","obligationCurrencyCode":"JPY","plannedAmountCents":1200,"admitted":false}]"""
+        val leftover = SavedStateHandle()
+        leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = json
+        val store = RecurringPaymentDraftStore(SavedStateHandle())
+        store.adoptLegacyPeriodPaymentSessions(leftover)
+        assertEquals(json, leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY])
+        assertNull(store.remembered(access.binding, "rec-1", "2026-08"))
+        assertNull(store.remembered(access.binding, "rec-1", "2026-09"))
+    }
+
     private fun visible(
         resolved: Boolean = true,
         binding: LogicalSessionBinding? = access.binding,

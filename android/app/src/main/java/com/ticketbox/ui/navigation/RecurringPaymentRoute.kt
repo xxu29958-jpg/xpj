@@ -8,7 +8,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -107,10 +106,6 @@ internal fun rememberRecurringPaymentDraftStore(
         ?: paymentEntry?.savedStateHandle
         ?: fallback
     val store = remember(handle) { RecurringPaymentDraftStore(handle) }
-    val leftover = ownerEntry?.savedStateHandle
-    LaunchedEffect(store, leftover) {
-        leftover?.let(store::adoptLegacyPeriodPaymentSessions)
-    }
     return store
 }
 
@@ -230,6 +225,7 @@ private fun RecurringPaymentKnownCurrencySheet(
                 initialCurrency = paymentCurrency,
                 ledgerHomeCurrency = home,
                 errorMessage = error,
+                editable = ctx.access.context?.canModify == true,
             ),
             actions = ManualExpenseSheetActions(
                 onCreate = { draft ->

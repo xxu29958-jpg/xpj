@@ -1,5 +1,6 @@
 package com.ticketbox.viewmodel
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
@@ -55,7 +56,10 @@ class RecurringOccurrenceViewModel(
     private val ledger: LedgerActions,
     private val debts: DebtActions,
     private val onChanged: () -> Unit = {},
+    savedStateHandle: SavedStateHandle = SavedStateHandle(),
 ) : ViewModel() {
+    /** Same SavedStateHandle the N-1 RecurringPeriodPaymentSession wrote. Not a second Writer. */
+    internal val savedState: SavedStateHandle = savedStateHandle
     private val mutableState = MutableStateFlow(RecurringOccurrenceUiState(access = repository.currentAccess()))
     val uiState = mutableState.asStateFlow()
     private var epoch = 0L

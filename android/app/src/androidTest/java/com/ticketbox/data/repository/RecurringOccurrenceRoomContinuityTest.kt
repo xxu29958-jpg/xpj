@@ -6,6 +6,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -114,7 +115,7 @@ class RecurringOccurrenceRoomContinuityTest {
         assertEquals("clear", fixture.network.calls.last().first.action)
     }
 
-    private fun installModel(open: Boolean = true) {
+    private fun installModel(open: Boolean = true, savedState: SavedStateHandle = SavedStateHandle()) {
         val graph = fixture.reopen()
         this.graph = graph
         compose.runOnIdle {
@@ -122,6 +123,7 @@ class RecurringOccurrenceRoomContinuityTest {
                 graph.recurringRepository.occurrences,
                 fixture.ledger,
                 fixture.debts,
+                savedStateHandle = savedState,
             ).also { if (open) it.open(occurrenceConnectedItem()) }
         }
     }
@@ -651,12 +653,13 @@ class RecurringOccurrenceRoomContinuityTest {
             ).getOrThrow()
         }
         assertEquals(1, fixture.stored().count { it["type"] == "create_expense" })
+        compose.runOnIdle { model.value?.viewModelScope?.cancel() }
         val leftover = SavedStateHandle()
         leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] =
             """[{"binding":{"serverUrl":"${binding.serverUrl}","ledgerId":"${binding.ledgerId}","ownerKey":"${binding.ownerKey}","sessionGeneration":"${binding.sessionGeneration}","bindingRevision":"${binding.bindingRevision}"},"seriesPublicId":"recurring-1","period":"2026-09","clientRef":"legacy-ref","merchant":"房租","obligationCurrencyCode":"CNY","plannedAmountCents":10000,"ledgerHomeCurrencyCode":"CNY","admitted":false}]"""
+        installModel(savedState = leftover)
+        assertTrue(model.value?.savedState === leftover)
         val drafts = RecurringPaymentDraftStore(SavedStateHandle())
-        drafts.adoptLegacyPeriodPaymentSessions(leftover)
-        assertNull(leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY])
         compose.setContent {
             val current = model.value ?: return@setContent
             TicketboxTheme(skin = AppSkin.Paper) {
@@ -668,9 +671,18 @@ class RecurringOccurrenceRoomContinuityTest {
                 )
             }
         }
-        compose.waitForIdle()
-        compose.onNodeWithTag("occurrence-record-payment").performScrollTo().performClick()
-        compose.waitUntil(10_000) { paymentTask.value?.clientRef == "legacy-ref" }
+        compose.waitUntil(10_000) {
+            model.value?.uiState?.value?.canWrite == true &&
+                model.value?.uiState?.value?.occurrence?.period == "2026-09"
+        }
+        compose.waitUntil(10_000) {
+            leftover.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY) == null &&
+                drafts.remembered(binding, "recurring-1", "2026-09")?.clientRef == "legacy-ref"
+        }
+        compose.waitUntil(10_000) {
+            runCatching { compose.onNodeWithTag("occurrence-record-payment").performScrollTo().performClick() }
+            paymentTask.value?.clientRef == "legacy-ref"
+        }
         runBlocking {
             val creation = requireNotNull(graph).expenseRepository.manualCreation
             val payment = ExpenseDraft(
@@ -691,5 +703,29 @@ class RecurringOccurrenceRoomContinuityTest {
         }
         assertEquals("legacy-ref", paymentTask.value?.clientRef)
         assertEquals(1, fixture.stored().count { it["type"] == "create_expense" })
+        assertNull(leftover.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY))
+    }
+
+    @Test
+    fun originConflictShowsCopyAndDisablesRecordPayment() {
+        installModel()
+        compose.setContent {
+            val current = model.value ?: return@setContent
+            val state by current.uiState.collectAsState()
+            TicketboxTheme(skin = AppSkin.Paper) {
+                RecurringOccurrenceSheet(
+                    state,
+                    OccurrenceSheetActions(
+                        current::dismiss, current::refresh, current::changePeriod,
+                        current::choose, current::submit, current::recover,
+                    ),
+                    originResolved = true,
+                    originConflict = true,
+                )
+            }
+        }
+        compose.waitUntil(10_000) { model.value?.uiState?.value?.canWrite == true }
+        compose.onNodeWithTag("occurrence-payment-conflict").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("occurrence-record-payment").performScrollTo().assertIsNotEnabled()
     }
 }

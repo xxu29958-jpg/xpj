@@ -107,24 +107,26 @@ internal class RecurringPaymentDraftStore(private val state: SavedStateHandle) {
     fun adoptLegacyPeriodPaymentSessions(source: SavedStateHandle) {
         val json = source.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY) ?: return
         val sessions = runCatching { legacyPeriodPaymentSessionListAdapter.fromJson(json) }.getOrNull() ?: return
-        sessions.forEach { session ->
-            val home = session.ledgerHomeCurrencyCode ?: return@forEach
-            if (session.clientRef.isBlank() || session.seriesPublicId.isBlank() || session.period.isBlank()) return@forEach
-            remember(
-                RecurringPaymentTask(
-                    binding = session.binding,
-                    seriesPublicId = session.seriesPublicId,
-                    period = session.period,
-                    clientRef = session.clientRef,
-                    merchant = session.merchant,
-                    recordedCurrencyCode = session.obligationCurrencyCode,
-                    suggestedAmountMinor = if (session.obligationCurrencyCode == null) null else session.plannedAmountCents,
-                    ledgerHomeCurrencyCode = home,
-                ),
-            )
-        }
+        val tasks = sessions.map { it.toRecurringPaymentTaskOrNull() }
+        if (tasks.any { it == null }) return
+        tasks.filterNotNull().forEach(::remember)
         source.remove<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY)
     }
+}
+
+private fun LegacyPeriodPaymentSession.toRecurringPaymentTaskOrNull(): RecurringPaymentTask? {
+    val home = ledgerHomeCurrencyCode?.takeIf { it.isNotBlank() } ?: return null
+    if (clientRef.isBlank() || seriesPublicId.isBlank() || period.isBlank()) return null
+    return RecurringPaymentTask(
+        binding = binding,
+        seriesPublicId = seriesPublicId,
+        period = period,
+        clientRef = clientRef,
+        merchant = merchant,
+        recordedCurrencyCode = obligationCurrencyCode,
+        suggestedAmountMinor = if (obligationCurrencyCode == null) null else plannedAmountCents,
+        ledgerHomeCurrencyCode = home,
+    )
 }
 
 internal fun recurringPaymentTaskJson(task: RecurringPaymentTask): String = recurringPaymentTaskAdapter.toJson(task)

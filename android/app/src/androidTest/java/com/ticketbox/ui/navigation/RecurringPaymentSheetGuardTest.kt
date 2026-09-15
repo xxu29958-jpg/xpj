@@ -3,8 +3,10 @@ package com.ticketbox.ui.navigation
 import android.content.Context
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
 import androidx.test.core.app.ApplicationProvider
@@ -67,6 +69,7 @@ class RecurringPaymentSheetGuardTest {
                         state = ManualExpenseSheetState(
                             categories = emptyList(),
                             saving = false,
+                            editable = false,
                             initialCurrency = CurrencyCode.CNY,
                         ),
                         actions = ManualExpenseSheetActions(
@@ -84,6 +87,10 @@ class RecurringPaymentSheetGuardTest {
         compose.waitForIdle()
         val title = context.getString(R.string.ledger_manual_sheet_title)
         compose.onNodeWithText(title).assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button))
+            .performScrollTo()
+            .assertIsNotEnabled()
+        compose.onNodeWithText("房租").assertIsNotEnabled()
         compose.onNodeWithText(title).performTouchInput { swipeDown() }
         compose.waitForIdle()
         assertTrue(dismissed)

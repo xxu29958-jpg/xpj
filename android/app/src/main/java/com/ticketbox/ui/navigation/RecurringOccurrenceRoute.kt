@@ -7,7 +7,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
@@ -43,6 +45,7 @@ internal fun recurringOccurrenceModel(factory: MainScreenFactory, onChanged: () 
                 factory.repository,
                 factory.debtRepository,
                 onChanged,
+                createSavedStateHandle(),
             )
         }
     })
@@ -65,9 +68,7 @@ internal fun RecurringOccurrenceHost(
     var userClosed by rememberSaveable { mutableStateOf(false) }
     val task = remember(taskJson) { readRecurringPaymentTask(taskJson) }
     val visible = state.paymentVisible()
-    val remembered = restore.drafts?.remembered(
-        visible.identity.binding, visible.identity.seriesPublicId, visible.identity.period,
-    )
+    val remembered = restore.drafts.adoptedTask(model.savedState, visible.identity)
     val origin = rememberRecurringPaymentOrigin(creation, visible.identity)
     val focused = remembered
         ?: task?.takeIf { it.matches(visible.identity) }
@@ -115,7 +116,18 @@ internal fun RecurringOccurrenceHost(
             },
         ),
         preferredExpenseId = preferredPaymentExpenseId(focused, admitted?.acceptedExpenseId, visible.identity),
+        originResolved = origin.resolved,
+        originConflict = origin.conflict,
     )
+}
+
+private fun RecurringPaymentDraftStore?.adoptedTask(
+    source: SavedStateHandle,
+    identity: RecurringPaymentIdentity,
+): RecurringPaymentTask? {
+    this ?: return null
+    adoptLegacyPeriodPaymentSessions(source)
+    return remembered(identity.binding, identity.seriesPublicId, identity.period)
 }
 
 @Composable

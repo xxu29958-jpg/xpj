@@ -3,6 +3,7 @@
     <string name="recurring_payment_return">记录实际付款后，返回 %1$s 选择确认后的账单。记录付款不会自动关联本期。</string>
     <string name="recurring_payment_loading">正在核对原付款命令，请稍候。</string>
     <string name="recurring_payment_binding_changed">原账本或登录身份已变化，请返回原账本继续。原草稿仍保留。</string>
+    <string name="recurring_payment_origin_conflict">本期已有多笔付款命令，请先处理重复提交。</string>
     <string name="occurrence_payment_currency">选择本期付款币种</string>
     <string name="occurrence_choose_payment_currency">本期义务币种未确认。请选择实际付款币种，不要默认成账本本币。</string>
 </resources>
