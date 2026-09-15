@@ -1,0 +1,440 @@
+package com.ticketbox.ui.navigation
+
+import android.content.Context
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextReplacement
+import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.espresso.Espresso.closeSoftKeyboard
+import com.ticketbox.OutboxAdapterGraph
+import com.ticketbox.R
+import com.ticketbox.data.local.PendingMutationType
+import com.ticketbox.data.remote.ApiService
+import com.ticketbox.data.remote.dto.DebtListResponseDto
+import com.ticketbox.data.remote.dto.ExpenseDto
+import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
+import com.ticketbox.data.remote.dto.RecurringOccurrenceDto
+import com.ticketbox.data.repository.LedgerAccessContext
+import com.ticketbox.data.repository.decodeManualCreateRequest
+import com.ticketbox.data.repository.expenseAcceptanceReceiptJson
+import com.ticketbox.data.repository.toEntity
+import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.RecurringItem
+import com.ticketbox.ui.theme.TicketboxTheme
+import com.ticketbox.viewmodel.RecurringOccurrenceUiState
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Rule
+import org.junit.Test
+
+/** Actual RecurringPaymentRoute, Room admission, Back/reopen draft, and Done receipt. */
+class RecurringPaymentRouteRoomTest {
+    @get:Rule val compose = createComposeRule()
+    private val context = ApplicationProvider.getApplicationContext<Context>()
+    private var sends = 0
+    private val harness = FactEntryNavigationHarness(context) { api -> object : ApiService by api {
+        override suspend fun debts(lens: String?) = DebtListResponseDto(emptyList(), "CNY")
+        override suspend fun createManualExpense(request: ExpenseManualCreateRequestDto): ExpenseDto {
+            sends++
+            error("Only the worker may send the persisted original")
+        }
+    } }
+    private val mounted = mutableStateOf(true)
+    private val drafts = RecurringPaymentDraftStore(SavedStateHandle())
+    private val routeTask = mutableStateOf<RecurringPaymentTask?>(null)
+    private var routeContent = false
+
+    @After fun close() {
+        compose.runOnIdle { mounted.value = false; harness.models.viewModelStore.clear() }
+        compose.waitForIdle()
+        harness.close()
+    }
+
+    @Test fun ordinaryBackReopensClearedAmountMerchantAndChosenCurrencyWithoutRefillingSuggestions() {
+        val task = periodTask(recorded = null, amount = null)
+        showRoute(task)
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(hasText(context.getString(R.string.occurrence_payment_currency))).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText("JPY · 日元").performClick()
+        waitForSheet()
+        compose.onNode(hasSetTextAction() and hasText("房租")).performTextReplacement("")
+        compose.onAllNodes(hasSetTextAction())[0].performTextReplacement("")
+        compose.onNode(hasSetTextAction() and hasText("餐饮")).performTextReplacement("住房")
+        compose.onNode(hasSetTextAction() and hasText("餐饮")).assertDoesNotExist()
+        compose.onAllNodes(hasSetTextAction())[3].performTextReplacement("自填备注")
+        closeSoftKeyboard()
+        compose.waitForIdle()
+        val stored = requireNotNull(drafts.read(task.clientRef))
+        assertEquals("", stored.amountText)
+        assertEquals("", stored.merchant)
+        assertEquals("JPY", stored.currencyCode)
+        assertEquals("住房", stored.category)
+        assertEquals("自填备注", stored.note)
+        compose.runOnIdle { mounted.value = false }
+        compose.waitForIdle()
+        compose.runOnIdle { mounted.value = true }
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(hasText(context.getString(R.string.ledger_manual_sheet_title))).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText(context.getString(R.string.occurrence_payment_currency)).assertDoesNotExist()
+        compose.onNode(hasSetTextAction() and hasText("房租")).assertDoesNotExist()
+        val restored = requireNotNull(drafts.read(task.clientRef))
+        assertEquals("", restored.amountText)
+        assertEquals("", restored.merchant)
+        assertEquals("JPY", restored.currencyCode)
+        assertEquals("住房", restored.category)
+        assertEquals("自填备注", restored.note)
+        assertEquals(0, sends)
+        assertTrue(harness.fixture.stored().isEmpty())
+    }
+
+    @Test fun routeCreateAdmitsTheOriginalOnceThenReopenShowsTheSameCommand() {
+        val task = periodTask("JPY", 1200)
+        drafts.remember(task)
+        showRoute(task)
+        waitForSheet()
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performScrollTo().performClick()
+        compose.waitUntil(10_000) { harness.fixture.stored().size == 1 }
+        val original = harness.fixture.stored().single()
+        val request = requireNotNull(readCreateRequest(requireNotNull(original["payload"])))
+        assertEquals(task.clientRef, request.clientRef)
+        assertEquals("JPY", request.originalCurrency)
+        assertEquals("1200", request.originalAmount)
+        assertEquals(0, sends)
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(hasText(context.getString(R.string.manual_submission_waiting))).fetchSemanticsNodes().isNotEmpty() ||
+                compose.onAllNodes(hasText(context.getString(R.string.manual_submission_title))).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.runOnIdle { mounted.value = false }
+        compose.waitForIdle()
+        compose.runOnIdle { mounted.value = true }
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(hasText(context.getString(R.string.manual_submission_waiting))).fetchSemanticsNodes().isNotEmpty() ||
+                compose.onAllNodes(hasText(context.getString(R.string.manual_submission_title))).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_sheet_title)).assertDoesNotExist()
+        assertEquals(1, harness.fixture.stored().size)
+        assertNull(drafts.read(task.clientRef))
+        assertEquals(task.clientRef, drafts.remembered(task.binding, task.seriesPublicId, task.period)?.clientRef)
+    }
+
+    @Test fun admittedAugustThenSeptemberThenAugustReusesOriginalClientRefWithoutAnotherOutbox() {
+        val august = periodTask("JPY", 1200).copy(clientRef = "august-ref")
+        drafts.remember(august)
+        showRoute(august)
+        waitForSheet()
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performScrollTo().performClick()
+        compose.waitUntil(10_000) { harness.fixture.stored().size == 1 }
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(hasText(context.getString(R.string.manual_submission_waiting))).fetchSemanticsNodes().isNotEmpty() ||
+                compose.onAllNodes(hasText(context.getString(R.string.manual_submission_title))).fetchSemanticsNodes().isNotEmpty()
+        }
+        assertNull(drafts.read("august-ref"))
+        assertEquals("august-ref", drafts.remembered(august.binding, august.seriesPublicId, "2026-08")?.clientRef)
+        compose.runOnIdle { mounted.value = false }
+        compose.waitForIdle()
+        val september = august.copy(clientRef = "september-ref", period = "2026-09")
+        drafts.remember(september)
+        val again = requireNotNull(
+            recurringPaymentTask(
+                augustUiState(august),
+                existing = september,
+                remembered = drafts.remembered(august.binding, august.seriesPublicId, "2026-08"),
+            ),
+        )
+        assertEquals("august-ref", again.clientRef)
+        assertEquals("2026-08", again.period)
+        assertEquals(1, harness.fixture.stored().size)
+        assertEquals(0, sends)
+        showRoute(again)
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(hasText(context.getString(R.string.manual_submission_waiting))).fetchSemanticsNodes().isNotEmpty() ||
+                compose.onAllNodes(hasText(context.getString(R.string.manual_submission_title))).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_sheet_title)).assertDoesNotExist()
+        assertEquals(1, harness.fixture.stored().size)
+        assertEquals("august-ref", drafts.remembered(august.binding, august.seriesPublicId, "2026-08")?.clientRef)
+        assertEquals("september-ref", drafts.remembered(september.binding, september.seriesPublicId, "2026-09")?.clientRef)
+    }
+
+    @Test fun doneReceiptWithPendingFxOpensSubmissionIdentityInsteadOfTheCreateForm() {
+        val task = periodTask("JPY", 1200)
+        val draft = ExpenseDraft(
+            amountCents = 1200, originalCurrencyCode = CurrencyCode.JPY, originalAmountMinor = 1200,
+            ledgerHomeCurrency = CurrencyCode.CNY, merchant = "房租", category = "餐饮", note = null,
+            expenseTime = "2026-08-15T00:00:00Z", tags = null, valueScore = null, regretScore = null,
+        )
+        runBlocking {
+            harness.screenFactory.repository.manualCreation.create(draft, task.binding, task.clientRef).getOrThrow()
+            val row = harness.fixture.outbox.observeActiveByTypes(setOf(PendingMutationType.CreateExpense), includeCompleted = true).first().single()
+            harness.fixture.outbox.markDone(row.id, receiptJson = expenseAcceptanceReceiptJson(71))
+            val pending = harness.fixture.network.current.copy(
+                id = 71, publicId = "pending-fx-71", status = "pending",
+                amountCents = null, homeAmountCents = null, fxStatus = "pending",
+            ).toEntity("correction-ledger")
+            harness.fixture.expenseDao.upsertByServerIdForLedger("correction-ledger", pending)
+            harness.fixture.expenseDao.applyLocalCreateServerIdentity("correction-ledger", pending.copy(clientRef = task.clientRef))
+        }
+        showRoute(task)
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(hasText(context.getString(R.string.manual_submission_done))).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText(context.getString(R.string.manual_submission_done)).assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_sheet_title)).assertDoesNotExist()
+        val projection = runBlocking {
+            harness.screenFactory.repository.manualCreation.observe(task.binding, task.clientRef).first()
+        }
+        assertEquals(71L, projection?.acceptedExpenseId)
+        assertEquals(0, sends)
+    }
+
+    @Test fun knownSuggestedAmountClearedSurvivesReopenWithoutRefillingPrefill() {
+        val task = periodTask("JPY", 1200)
+        showRoute(task)
+        waitForSheet()
+        compose.onNode(hasSetTextAction() and hasText("1200")).assertIsDisplayed()
+        compose.onNode(hasSetTextAction() and hasText("1200")).performTextReplacement("")
+        compose.onNode(hasSetTextAction() and hasText("房租")).performTextReplacement("")
+        closeSoftKeyboard()
+        compose.waitForIdle()
+        assertEquals("", drafts.read(task.clientRef)?.amountText)
+        assertEquals("", drafts.read(task.clientRef)?.merchant)
+        compose.runOnIdle { mounted.value = false }
+        compose.waitForIdle()
+        compose.runOnIdle { mounted.value = true }
+        waitForSheet()
+        compose.onNode(hasSetTextAction() and hasText("1200")).assertDoesNotExist()
+        compose.onNode(hasSetTextAction() and hasText("房租")).assertDoesNotExist()
+        assertEquals("", requireNotNull(drafts.read(task.clientRef)).amountText)
+        assertEquals("", requireNotNull(drafts.read(task.clientRef)).merchant)
+        assertEquals(0, sends)
+        assertTrue(harness.fixture.stored().isEmpty())
+    }
+
+    @Test fun navBackStackAugustThenSeptemberThenAugustRestoresClearedAugustPrefill() {
+        val august = periodTask("JPY", 1200).copy(clientRef = "august-ref")
+        val september = periodTask("JPY", 1200).copy(clientRef = "september-ref", period = "2026-09")
+        val navHolder = mutableStateOf<NavHostController?>(null)
+        val restored = mutableStateOf<RecurringPaymentTask?>(null)
+        compose.setContent {
+            CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models) {
+                TicketboxTheme(skin = AppSkin.Default) {
+                    val nav = rememberNavController()
+                    navHolder.value = nav
+                    NavHost(nav, startDestination = MAIN_ROUTE) {
+                        composable(MAIN_ROUTE) { entry ->
+                            androidx.compose.runtime.CompositionLocalProvider(
+                                LocalRecurringPaymentDraftHandle provides entry.savedStateHandle,
+                            ) { }
+                        }
+                        addRecurringPaymentRoute(MainNavigationRuntime(nav, harness.shell, harness.screenFactory))
+                    }
+                }
+            }
+        }
+        compose.waitUntil(10_000) { navHolder.value != null }
+        compose.runOnIdle {
+            val nav = requireNotNull(navHolder.value)
+            RecurringPaymentDraftStore(nav.getBackStackEntry(MAIN_ROUTE).savedStateHandle)
+                .remember(august)
+            nav.navigate(recurringPaymentRoute(august))
+        }
+        waitForSheet()
+        compose.onNode(hasSetTextAction() and hasText("1200")).performTextReplacement("")
+        compose.onNode(hasSetTextAction() and hasText("房租")).performTextReplacement("")
+        compose.onNode(hasSetTextAction() and hasText("餐饮")).performTextReplacement("住房")
+        compose.onAllNodes(hasSetTextAction())[3].performTextReplacement("自填备注")
+        closeSoftKeyboard()
+        compose.waitForIdle()
+        lateinit var augustTime: String
+        compose.runOnIdle {
+            val stored = requireNotNull(
+                RecurringPaymentDraftStore(
+                    requireNotNull(navHolder.value).getBackStackEntry(MAIN_ROUTE).savedStateHandle,
+                ).read("august-ref"),
+            )
+            assertEquals("", stored.amountText)
+            assertEquals("", stored.merchant)
+            assertEquals("JPY", stored.currencyCode)
+            assertEquals("住房", stored.category)
+            assertEquals("自填备注", stored.note)
+            assertTrue(stored.expenseTime.isNotBlank())
+            augustTime = stored.expenseTime
+        }
+        compose.runOnIdle { requireNotNull(navHolder.value).popBackStack() }
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(hasText(context.getString(R.string.ledger_manual_sheet_title))).fetchSemanticsNodes().isEmpty()
+        }
+        compose.runOnIdle {
+            val nav = requireNotNull(navHolder.value)
+            RecurringPaymentDraftStore(nav.getBackStackEntry(MAIN_ROUTE).savedStateHandle)
+                .remember(september)
+            nav.navigate(recurringPaymentRoute(september))
+        }
+        waitForSheet()
+        compose.onNode(hasSetTextAction() and hasText("1200")).assertIsDisplayed()
+        compose.runOnIdle { requireNotNull(navHolder.value).popBackStack() }
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(hasText(context.getString(R.string.ledger_manual_sheet_title))).fetchSemanticsNodes().isEmpty()
+        }
+        compose.runOnIdle {
+            val nav = requireNotNull(navHolder.value)
+            val store = RecurringPaymentDraftStore(
+                nav.getBackStackEntry(MAIN_ROUTE).savedStateHandle,
+            )
+            val again = requireNotNull(
+                recurringPaymentTask(
+                    augustUiState(august),
+                    existing = september,
+                    remembered = store.remembered(august.binding, august.seriesPublicId, august.period),
+                ),
+            )
+            restored.value = again
+            nav.navigate(recurringPaymentRoute(again))
+        }
+        waitForSheet()
+        compose.onNode(hasSetTextAction() and hasText("1200")).assertDoesNotExist()
+        compose.onNode(hasSetTextAction() and hasText("房租")).assertDoesNotExist()
+        compose.onNode(hasSetTextAction() and hasText("住房")).assertIsDisplayed()
+        compose.onNode(hasSetTextAction() and hasText("自填备注")).assertIsDisplayed()
+        assertEquals("august-ref", restored.value?.clientRef)
+        compose.runOnIdle {
+            val store = RecurringPaymentDraftStore(
+                requireNotNull(navHolder.value).getBackStackEntry(MAIN_ROUTE).savedStateHandle,
+            )
+            val draft = requireNotNull(store.read("august-ref"))
+            assertEquals("", draft.amountText)
+            assertEquals("", draft.merchant)
+            assertEquals("JPY", draft.currencyCode)
+            assertEquals("住房", draft.category)
+            assertEquals("自填备注", draft.note)
+            assertEquals(augustTime, draft.expenseTime)
+        }
+        assertEquals(0, sends)
+        assertTrue(harness.fixture.stored().isEmpty())
+    }
+
+    private fun showRoute(task: RecurringPaymentTask) {
+        routeTask.value = task
+        mounted.value = true
+        if (!routeContent) {
+            routeContent = true
+            compose.setContent {
+                CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models) {
+                    TicketboxTheme(skin = AppSkin.Default) {
+                        val current = routeTask.value
+                        if (mounted.value && current != null) {
+                            RecurringPaymentRoute(
+                                task = current,
+                                factory = harness.screenFactory,
+                                exit = ExpenseEditExitActions({}, {}),
+                                drafts = drafts,
+                                admitted = { clientRef ->
+                                    ManualExpenseSubmissionRoute(
+                                        clientRef,
+                                        harness.screenFactory,
+                                        ExpenseEditExitActions({}, {}),
+                                        related = ExpenseFactNavigation({}, { _, _ -> }),
+                                    )
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        compose.waitForIdle()
+    }
+
+    private fun waitForSheet() {
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(hasText(context.getString(R.string.ledger_manual_sheet_title))).fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    private fun periodTask(recorded: String?, amount: Long?): RecurringPaymentTask {
+        val binding = requireNotNull(harness.screenFactory.repository.captureDeferredLedgerBinding())
+        return RecurringPaymentTask(
+            binding = binding,
+            seriesPublicId = "rec-1",
+            period = "2026-08",
+            clientRef = "period-ref",
+            merchant = "房租",
+            recordedCurrencyCode = recorded,
+            suggestedAmountMinor = amount,
+            ledgerHomeCurrencyCode = "CNY",
+        )
+    }
+
+    private fun readCreateRequest(payload: String) = requireNotNull(
+        decodeManualCreateRequest(
+            OutboxAdapterGraph().manualCreateAdapter,
+            OutboxAdapterGraph().recurringPaymentCreateAdapter,
+            payload,
+        ),
+    )
+
+    private fun augustUiState(task: RecurringPaymentTask) = RecurringOccurrenceUiState(
+        access = LedgerAccessContext(task.binding, true),
+        item = RecurringItem(
+            publicId = task.seriesPublicId,
+            ledgerId = task.binding.ledgerId,
+            merchant = task.merchant,
+            merchantKey = task.merchant,
+            frequency = "monthly",
+            baselineAmountCents = 1200,
+            lastAmountCents = 1200,
+            occurrenceCount = 0,
+            lastSeenAt = null,
+            nextExpectedDate = "2026-08-15",
+            status = "active",
+            confidence = null,
+            source = "manual",
+            anomalyStatus = "none",
+            currentMonthAmountCents = null,
+            historicalAverageAmountCents = null,
+            amountDeltaPercent = null,
+            createdAt = "2026-08-01T00:00:00Z",
+            updatedAt = "2026-08-01T00:00:00Z",
+            rowVersion = 7,
+            pausedAt = null,
+            archivedAt = null,
+            nextDueDate = "2026-08-15",
+            homeCurrencyCode = "JPY",
+        ),
+        occurrence = RecurringOccurrenceDto(
+            seriesPublicId = task.seriesPublicId,
+            period = task.period,
+            seriesRowVersion = 7L,
+            rowVersion = 3L,
+            state = "unfulfilled",
+            plannedAmountCents = 1200,
+            reservedAmountCents = 1200,
+            expensePublicId = null,
+            paidAmountCents = null,
+            nextDueDate = "2026-08-15",
+            homeCurrencyCode = "JPY",
+        ),
+        ledgerHomeCurrencyCode = "CNY",
+    )
+}

@@ -51,12 +51,16 @@ data class OccurrenceSheetActions(
 fun RecurringOccurrenceSheet(
     state: RecurringOccurrenceUiState,
     actions: OccurrenceSheetActions,
+    preferredExpenseId: Long? = null,
+    originResolved: Boolean = true,
+    originConflict: Boolean = false,
 ) {
     val item = state.item ?: return
     ModalBottomSheet(onDismissRequest = actions.onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         AppSheetScaffold(title = item.merchant, subtitle = stringResource(R.string.occurrence_subtitle)) {
             OccurrencePeriodControls(state, actions)
             state.message?.let { Text(it.asString(), modifier = Modifier.testTag("occurrence-message")) }
+            OccurrencePaymentConflict(originConflict)
             state.seriesPending.forEach { OccurrencePending(it, state.access?.canModify == true, actions.onRecover) }
             state.occurrence?.let { occurrence ->
                 Text(stringResource(occurrenceStateLabel(occurrence.state)), modifier = Modifier.testTag("occurrence-state"))
@@ -72,20 +76,45 @@ fun RecurringOccurrenceSheet(
                     TextButton(onClick = { actions.onChoose(null) }, enabled = state.canWrite) { Text(stringResource(R.string.occurrence_clear)) }
                 }
                 if (state.access?.canModify == false) Text(stringResource(R.string.occurrence_readonly))
-                if (state.canWrite && occurrence.state == "unfulfilled") {
-                    AppPrimaryButton(
-                        text = stringResource(R.string.occurrence_record_payment),
-                        icon = Icons.Filled.Add,
-                        onClick = actions.onRecordPayment,
-                        enabled = state.canWrite,
-                        modifier = Modifier.fillMaxWidth().testTag("occurrence-record-payment"),
-                    )
-                }
+                OccurrenceRecordPayment(
+                    canWrite = state.canWrite,
+                    unfulfilled = occurrence.state == "unfulfilled",
+                    originResolved = originResolved,
+                    originConflict = originConflict,
+                    onRecord = actions.onRecordPayment,
+                )
                 OccurrenceChoice(state, actions.onSubmit)
-                if (state.canWrite) OccurrencePaymentPicker(state, actions.onChoose)
+                if (state.canWrite) OccurrencePaymentPicker(state, actions.onChoose, preferredExpenseId)
             }
         }
     }
+}
+
+@Composable
+private fun OccurrencePaymentConflict(originConflict: Boolean) {
+    if (!originConflict) return
+    Text(
+        stringResource(R.string.recurring_payment_origin_conflict),
+        modifier = Modifier.testTag("occurrence-payment-conflict"),
+    )
+}
+
+@Composable
+private fun OccurrenceRecordPayment(
+    canWrite: Boolean,
+    unfulfilled: Boolean,
+    originResolved: Boolean,
+    originConflict: Boolean,
+    onRecord: () -> Unit,
+) {
+    if (!canWrite || !unfulfilled) return
+    AppPrimaryButton(
+        text = stringResource(R.string.occurrence_record_payment),
+        icon = Icons.Filled.Add,
+        onClick = onRecord,
+        enabled = originResolved && !originConflict,
+        modifier = Modifier.fillMaxWidth().testTag("occurrence-record-payment"),
+    )
 }
 
 @Composable
@@ -136,10 +165,14 @@ private fun OccurrencePending(pending: PendingOccurrencePayment, canModify: Bool
 }
 
 @Composable
-private fun OccurrencePaymentPicker(state: RecurringOccurrenceUiState, choose: (ConfirmedStreamItem.ExpenseRow) -> Unit) {
+private fun OccurrencePaymentPicker(
+    state: RecurringOccurrenceUiState,
+    choose: (ConfirmedStreamItem.ExpenseRow) -> Unit,
+    preferredExpenseId: Long?,
+) {
     var month by rememberSaveable(state.occurrence?.period) { mutableStateOf(state.occurrence?.period.orEmpty()) }
     var query by rememberSaveable(state.item?.publicId) { mutableStateOf("") }
-    val payments = occurrencePaymentChoices(state.payments, month, query)
+    val payments = occurrencePaymentChoices(state.payments, month, query, preferredExpenseId)
     HorizontalDivider()
     Text(stringResource(R.string.occurrence_pick_explanation))
     OutlinedTextField(value = month, onValueChange = { month = it }, singleLine = true,
@@ -157,12 +190,26 @@ private fun OccurrencePaymentPicker(state: RecurringOccurrenceUiState, choose: (
     }
 }
 
-internal fun occurrencePaymentChoices(rows: List<ConfirmedStreamItem>, month: String, query: String): List<ConfirmedStreamItem.ExpenseRow> =
-    filterConfirmedStreamItems(rows, ExpenseFilterCriteria(month = month, query = query))
+internal fun occurrencePaymentChoices(
+    rows: List<ConfirmedStreamItem>,
+    month: String,
+    query: String,
+    preferredExpenseId: Long? = null,
+): List<ConfirmedStreamItem.ExpenseRow> {
+    val eligible = filterConfirmedStreamItems(rows, ExpenseFilterCriteria(month = "", query = ""))
         .filterIsInstance<ConfirmedStreamItem.ExpenseRow>().filter {
             it.root.id > 0 && !it.root.pendingSync && it.root.status == "confirmed" &&
                 it.root.amountCents != null && it.lineageStatus != ExpenseLineageStatus.Reversed
+        }
+    val preferred = eligible.filter { it.root.id == preferredExpenseId }
+    val ordinary = filterConfirmedStreamItems(rows, ExpenseFilterCriteria(month = month, query = query))
+        .filterIsInstance<ConfirmedStreamItem.ExpenseRow>().filter {
+            it.root.id > 0 && !it.root.pendingSync && it.root.status == "confirmed" &&
+                it.root.amountCents != null && it.lineageStatus != ExpenseLineageStatus.Reversed &&
+                it.root.id != preferredExpenseId
         }.sortedByDescending { it.streamDate }
+    return preferred + ordinary
+}
 
 private fun occurrenceStateLabel(state: String): Int = when (state) {
     "fulfilled" -> R.string.occurrence_fulfilled

@@ -264,6 +264,7 @@ private fun recurringEditorCallbacks(
             }
         },
         onCancel = environment.onDismiss,
+        onCurrency = if (session.editing == null) session::selectCurrency else null,
     )
 }
 

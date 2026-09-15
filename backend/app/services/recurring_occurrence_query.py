@@ -39,6 +39,10 @@ def eligible_payment_query(*, tenant_id: str):
     return _eligible_payments_for_ledgers([tenant_id])
 
 
+def eligible_payment(db: Session, *, tenant_id: str, expense_id: int) -> Expense | None:
+    return db.scalar(eligible_payment_query(tenant_id=tenant_id).where(Expense.id == expense_id).limit(1))
+
+
 def _eligible_payments_for_ledgers(tenant_ids: list[str]):
     reversal = exists(select(ExpenseOffsetFact.id).where(
         ExpenseOffsetFact.tenant_id == Expense.tenant_id,

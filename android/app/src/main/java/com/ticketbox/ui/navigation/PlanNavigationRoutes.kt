@@ -79,7 +79,7 @@ internal fun NavGraphBuilder.addPlanRoutes(
 
 private fun recurringExpenseNavigation(runtime: MainNavigationRuntime) = RecurringExpenseNavigation(
     onOpenExpense = runtime.navController::openExpense,
-    onOpenManualSubmission = { runtime.navController.navigate(manualExpenseSubmissionRoute(it)) },
+    onRecordPayment = { runtime.navController.navigate(recurringPaymentRoute(it)) },
 )
 
 /** Plan-write refresh composition: every plan save invalidates financial reads;

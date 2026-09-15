@@ -34,6 +34,7 @@ import retrofit2.HttpException
 class CreateExpenseDispatcher(
     private val apiProvider: (OutboxRow) -> ApiService,
     private val payloadAdapter: JsonAdapter<ExpenseManualCreateRequestDto>,
+    private val originAdapter: JsonAdapter<RecurringPaymentCreatePayload>? = null,
     private val applyServerIdentity: suspend (ledgerId: String, clientRef: String, created: ExpenseDto) -> Unit,
 ) : OutboxMutationDispatcher {
     override val type: PendingMutationType = PendingMutationType.CreateExpense
@@ -41,7 +42,7 @@ class CreateExpenseDispatcher(
 
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
         val request = try {
-            payloadAdapter.fromJson(row.payloadJson)
+            decodeManualCreateRequest(payloadAdapter, originAdapter, row.payloadJson)
                 ?: return DispatchResult.Failure("payload deserialised to null")
         } catch (e: JsonDataException) {
             return DispatchResult.Failure("payload JSON shape changed: ${e.message ?: "JsonDataException"}")

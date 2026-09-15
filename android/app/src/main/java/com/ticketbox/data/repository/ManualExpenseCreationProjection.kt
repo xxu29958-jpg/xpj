@@ -11,9 +11,20 @@ data class ManualExpenseCreationProjection(
     val acceptedExpenseId: Long? = null,
 )
 
+internal fun ManualExpenseCreationProjection.admittedClientRef(): String? {
+    request?.clientRef?.takeIf { it.isNotBlank() }?.let { return it }
+    return parseExpenseTargetRef(row.targetId)
+        ?.removePrefix("local:")
+        ?.takeIf { it.isNotBlank() }
+}
+
 internal suspend fun ExpenseRepositoryCore.describeManualCreation(row: OutboxRow): ManualExpenseCreationProjection? {
     if (row.type != PendingMutationType.CreateExpense) return null
-    val request = runCatching { offlineMutations.manualCreateAdapter.fromJson(row.payloadJson) }.getOrNull()
+    val request = decodeManualCreateRequest(
+        offlineMutations.manualCreateAdapter,
+        offlineMutations.recurringPaymentCreateAdapter,
+        row.payloadJson,
+    )
     val id = expenseAcceptanceReceiptId(row.receiptJson.takeIf { row.status == PendingMutationStatus.Done })
     return ManualExpenseCreationProjection(row, request, id)
 }

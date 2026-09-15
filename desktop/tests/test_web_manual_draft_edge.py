@@ -24,7 +24,7 @@ from tests._edge_cdp import evaluate_page
 _ROOT = Path(__file__).resolve().parents[2]
 _WEB = _ROOT / "backend/app/static/web"
 _SCOPE = {"datasetId": "dataset", "clientGeneration": "generation", "accountId": "account", "ledgerId": "ledger", "deviceId": "device"}
-_VALUES = {"amount_major": "", "currency_code": "CNY", "home_currency_code": "CNY", "merchant": "", "category": "其他", "spent_at": "2026-09-06T12:30", "note": ""}
+_VALUES = {"amount_major": "", "currency_code": "CNY", "home_currency_code": "CNY", "merchant": "", "category": "其他", "spent_at": "2026-09-06T12:30", "note": "", "return_to": "", "return_recurring_public_id": "", "return_month": "", "return_payment_expense_id": ""}
 
 pytestmark = pytest.mark.skipif(os.name != "nt", reason="cloud Windows Edge consumer")
 
