@@ -311,7 +311,7 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
         repo.manualCreation.create(draft.copy(merchant = "另一家"), binding, "other-ref").getOrThrow()
         val found = repo.manualCreation.observeOrigin(binding, origin).first()
         assertTrue(found is RecurringPaymentOriginLookup.Found)
-        assertEquals("august-ref", (found as RecurringPaymentOriginLookup.Found).projection.request?.clientRef)
+        assertEquals("august-ref", found.projection.request?.clientRef)
         assertTrue(repo.manualCreation.observeOrigin(binding, origin.copy(period = "2026-09")).first() is RecurringPaymentOriginLookup.Absent)
         assertEquals(2, pendingDao.rows.size)
         val wrapped = pendingDao.rows.values.single { it.targetId == "expense:local:august-ref" }
@@ -329,12 +329,14 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
         val repo = createRepo(ManualCreateApi(failure = IOException("airplane mode")), dao, outbox)
         val binding = requireNotNull(repo.captureDeferredLedgerBinding())
         val origin = RecurringPaymentOrigin("rec-1", "2026-08")
-        repo.manualCreation.create(draft, binding, "first-ref", origin).getOrThrow()
-        repo.manualCreation.create(draft.copy(merchant = "另一家"), binding, "second-ref", origin).getOrThrow()
+        val first = repo.manualCreation.create(draft, binding, "first-ref", origin).getOrThrow()
+        val reused = repo.manualCreation.create(draft.copy(merchant = "另一家"), binding, "second-ref", origin).getOrThrow()
+        assertEquals("first-ref", (first as ManualExpenseCreateAdmission.Accepted).clientRef)
+        assertEquals("first-ref", (reused as ManualExpenseCreateAdmission.Accepted).clientRef)
         assertEquals(1, pendingDao.rows.size)
         val found = repo.manualCreation.observeOrigin(binding, origin).first()
         assertTrue(found is RecurringPaymentOriginLookup.Found)
-        assertEquals("first-ref", (found as RecurringPaymentOriginLookup.Found).projection.request?.clientRef)
+        assertEquals("first-ref", found.projection.request?.clientRef)
     }
 
     @Test
@@ -349,7 +351,8 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
         val raw = pendingDao.rows.values.single().payload
         assertNull(decodeRecurringPaymentOrigin(com.ticketbox.OutboxAdapterGraph().recurringPaymentCreateAdapter, raw))
         repo.manualCreation.create(draft, binding, "legacy-ref", origin).getOrThrow()
-        repo.manualCreation.create(draft, binding, "upgraded-ref", origin).getOrThrow()
+        val upgraded = repo.manualCreation.create(draft, binding, "upgraded-ref", origin).getOrThrow()
+        assertEquals("legacy-ref", (upgraded as ManualExpenseCreateAdmission.Accepted).clientRef)
         assertEquals(1, pendingDao.rows.size)
         val wrapped = requireNotNull(com.ticketbox.OutboxAdapterGraph().recurringPaymentCreateAdapter.fromJson(pendingDao.rows.values.single().payload))
         assertEquals("rec-1", wrapped.seriesPublicId)

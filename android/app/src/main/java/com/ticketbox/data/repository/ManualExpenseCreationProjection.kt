@@ -11,6 +11,13 @@ data class ManualExpenseCreationProjection(
     val acceptedExpenseId: Long? = null,
 )
 
+internal fun ManualExpenseCreationProjection.admittedClientRef(): String? {
+    request?.clientRef?.takeIf { it.isNotBlank() }?.let { return it }
+    return parseExpenseTargetRef(row.targetId)
+        ?.removePrefix("local:")
+        ?.takeIf { it.isNotBlank() }
+}
+
 internal suspend fun ExpenseRepositoryCore.describeManualCreation(row: OutboxRow): ManualExpenseCreationProjection? {
     if (row.type != PendingMutationType.CreateExpense) return null
     val request = decodeManualCreateRequest(

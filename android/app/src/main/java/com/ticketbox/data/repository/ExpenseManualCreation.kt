@@ -44,7 +44,7 @@ internal class ExpenseManualCreation(private val core: ExpenseRepositoryCore) {
         binding: LogicalSessionBinding,
         clientRef: String,
         origin: RecurringPaymentOrigin? = null,
-    ): Result<Unit> = core.errorHandler.safeCall {
+    ): Result<ManualExpenseCreateAdmission> = core.errorHandler.safeCall {
         admission.withLock {
             require(clientRef.isNotBlank())
             val bound = core.ledgerRequestGuard.bindExact(binding)
@@ -55,7 +55,10 @@ internal class ExpenseManualCreation(private val core: ExpenseRepositoryCore) {
                     is RecurringPaymentOriginLookup.Found -> {
                         bindOrigin(found.projection.row, origin)
                         bound.requireStillActive()
-                        return@withLock
+                        return@withLock ManualExpenseCreateAdmission.Accepted(
+                            found.projection.admittedClientRef()
+                                ?: error("本期付款命令冲突，请先处理重复提交。"),
+                        )
                     }
                     RecurringPaymentOriginLookup.Absent -> Unit
                 }
@@ -80,6 +83,7 @@ internal class ExpenseManualCreation(private val core: ExpenseRepositoryCore) {
                 bindOrigin(existing.row, origin)
             }
             bound.requireStillActive()
+            ManualExpenseCreateAdmission.Accepted(clientRef)
         }
     }
 

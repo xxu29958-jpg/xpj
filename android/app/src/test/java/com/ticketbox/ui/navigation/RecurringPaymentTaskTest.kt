@@ -234,11 +234,18 @@ class RecurringPaymentTaskTest {
 
     @Test
     fun leftoverPeriodPaymentSessionRestoresTheOriginalClientRefAfterUpgrade() {
-        val leftover = SavedStateHandle()
-        leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] =
+        val json =
             """[{"binding":{"serverUrl":"https://occurrence.example","ledgerId":"ledger-1","ownerKey":"owner","sessionGeneration":"session","bindingRevision":"binding"},"seriesPublicId":"rec-1","period":"2026-08","clientRef":"legacy-ref","merchant":"日元订阅","obligationCurrencyCode":"JPY","plannedAmountCents":1200,"ledgerHomeCurrencyCode":"CNY","admitted":false}]"""
+        val recurringOwner = SavedStateHandle()
+        recurringOwner[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = json
+        val restoredOwner = SavedStateHandle(
+            recurringOwner.keys().associateWith { recurringOwner.get<Any?>(it) },
+        )
         val store = RecurringPaymentDraftStore(SavedStateHandle())
-        store.adoptLegacyPeriodPaymentSessions(leftover)
+        store.adoptLegacyPeriodPaymentSessions(restoredOwner)
+        assertEquals("legacy-ref", store.remembered(access.binding, "rec-1", "2026-08")?.clientRef)
+        assertNull(restoredOwner[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY])
+        store.adoptLegacyPeriodPaymentSessions(restoredOwner)
         assertEquals("legacy-ref", store.remembered(access.binding, "rec-1", "2026-08")?.clientRef)
     }
 

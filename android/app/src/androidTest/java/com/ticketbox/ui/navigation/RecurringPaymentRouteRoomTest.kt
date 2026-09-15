@@ -349,9 +349,9 @@ class RecurringPaymentRouteRoomTest {
                                 factory = harness.screenFactory,
                                 exit = ExpenseEditExitActions({}, {}),
                                 drafts = drafts,
-                                admitted = {
+                                admitted = { clientRef ->
                                     ManualExpenseSubmissionRoute(
-                                        current.clientRef,
+                                        clientRef,
                                         harness.screenFactory,
                                         ExpenseEditExitActions({}, {}),
                                         related = ExpenseFactNavigation({}, { _, _ -> }),

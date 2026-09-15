@@ -106,7 +106,8 @@ internal class RecurringPaymentDraftStore(private val state: SavedStateHandle) {
 
     fun adoptLegacyPeriodPaymentSessions(source: SavedStateHandle) {
         val json = source.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY) ?: return
-        legacyPeriodPaymentSessionListAdapter.fromJson(json).orEmpty().forEach { session ->
+        val sessions = runCatching { legacyPeriodPaymentSessionListAdapter.fromJson(json) }.getOrNull() ?: return
+        sessions.forEach { session ->
             val home = session.ledgerHomeCurrencyCode ?: return@forEach
             if (session.clientRef.isBlank() || session.seriesPublicId.isBlank() || session.period.isBlank()) return@forEach
             remember(
@@ -122,6 +123,7 @@ internal class RecurringPaymentDraftStore(private val state: SavedStateHandle) {
                 ),
             )
         }
+        source.remove<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY)
     }
 }
 

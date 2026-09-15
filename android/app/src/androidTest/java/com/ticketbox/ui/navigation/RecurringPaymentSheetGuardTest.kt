@@ -57,4 +57,35 @@ class RecurringPaymentSheetGuardTest {
         compose.onNodeWithText(title).assertIsDisplayed()
         assertTrue(!dismissed)
     }
+
+    @Test fun readOnlySheetSwipeIsNotTreatedAsSubmitting() {
+        var dismissed = false
+        compose.setContent {
+            TicketboxTheme(skin = AppSkin.Default) {
+                RecurringPaymentSheet(
+                    RecurringPaymentSheetBody(
+                        state = ManualExpenseSheetState(
+                            categories = emptyList(),
+                            saving = false,
+                            initialCurrency = CurrencyCode.CNY,
+                        ),
+                        actions = ManualExpenseSheetActions(
+                            onCreate = {},
+                            onDismiss = { dismissed = true },
+                        ),
+                        initials = ManualExpenseSheetInitials(merchant = "房租"),
+                    ),
+                    rememberSaveableStateHolder(),
+                    "period-ref",
+                    onDraftChange = {},
+                )
+            }
+        }
+        compose.waitForIdle()
+        val title = context.getString(R.string.ledger_manual_sheet_title)
+        compose.onNodeWithText(title).assertIsDisplayed()
+        compose.onNodeWithText(title).performTouchInput { swipeDown() }
+        compose.waitForIdle()
+        assertTrue(dismissed)
+    }
 }

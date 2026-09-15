@@ -656,6 +656,7 @@ class RecurringOccurrenceRoomContinuityTest {
             """[{"binding":{"serverUrl":"${binding.serverUrl}","ledgerId":"${binding.ledgerId}","ownerKey":"${binding.ownerKey}","sessionGeneration":"${binding.sessionGeneration}","bindingRevision":"${binding.bindingRevision}"},"seriesPublicId":"recurring-1","period":"2026-09","clientRef":"legacy-ref","merchant":"房租","obligationCurrencyCode":"CNY","plannedAmountCents":10000,"ledgerHomeCurrencyCode":"CNY","admitted":false}]"""
         val drafts = RecurringPaymentDraftStore(SavedStateHandle())
         drafts.adoptLegacyPeriodPaymentSessions(leftover)
+        assertNull(leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY])
         compose.setContent {
             val current = model.value ?: return@setContent
             TicketboxTheme(skin = AppSkin.Paper) {

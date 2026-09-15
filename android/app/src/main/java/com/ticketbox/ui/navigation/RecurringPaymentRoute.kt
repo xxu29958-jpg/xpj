@@ -31,7 +31,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.ticketbox.R
 import com.ticketbox.data.repository.LedgerAccessContext
+import com.ticketbox.data.repository.ManualExpenseCreateAdmission
 import com.ticketbox.data.repository.RecurringPaymentOrigin
+import com.ticketbox.data.repository.RecurringPaymentOriginLookup
+import com.ticketbox.data.repository.admittedClientRef
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.ui.components.AppBusyGuardedSheet
@@ -64,9 +67,9 @@ internal fun NavGraphBuilder.addRecurringPaymentRoute(runtime: MainNavigationRun
             factory = factory,
             exit = exit,
             drafts = drafts,
-            admitted = {
+            admitted = { clientRef ->
                 ManualExpenseSubmissionRoute(
-                    task.clientRef,
+                    clientRef,
                     factory,
                     exit,
                     related = ExpenseFactNavigation(
@@ -136,7 +139,7 @@ internal fun RecurringPaymentRoute(
     factory: MainScreenFactory,
     exit: ExpenseEditExitActions,
     drafts: RecurringPaymentDraftStore,
-    admitted: @Composable () -> Unit,
+    admitted: @Composable (String) -> Unit,
 ) {
     var accessResolved by remember { mutableStateOf(false) }
     val access by remember(factory.repository) {
@@ -146,12 +149,23 @@ internal fun RecurringPaymentRoute(
     val admittedRow by remember(task.clientRef, task.binding) {
         factory.repository.manualCreation.observe(task.binding, task.clientRef).onEach { admittedResolved = true }
     }.collectAsStateWithLifecycle(initialValue = null)
-    if (!recurringPaymentObservationsReady(accessResolved, admittedResolved)) {
+    var originResolved by remember(task.binding, task.seriesPublicId, task.period) { mutableStateOf(false) }
+    val originLookup by remember(factory.repository, task.binding, task.seriesPublicId, task.period) {
+        factory.repository.manualCreation
+            .observeOrigin(task.binding, RecurringPaymentOrigin(task.seriesPublicId, task.period))
+            .onEach { originResolved = true }
+    }.collectAsStateWithLifecycle(initialValue = RecurringPaymentOriginLookup.Absent)
+    if (!recurringPaymentObservationsReady(accessResolved, admittedResolved && originResolved)) {
         Text(stringResource(R.string.recurring_payment_loading))
         return
     }
-    if (admittedRow != null && access?.binding == task.binding) {
-        admitted()
+    val admittedClientRef = when (val found = originLookup) {
+        is RecurringPaymentOriginLookup.Found -> found.projection.admittedClientRef()
+        RecurringPaymentOriginLookup.Conflict -> null
+        RecurringPaymentOriginLookup.Absent -> admittedRow?.admittedClientRef()
+    }
+    if (admittedClientRef != null && access?.binding == task.binding) {
+        admitted(admittedClientRef)
         return
     }
     RecurringPaymentEntry(
@@ -212,7 +226,7 @@ private fun RecurringPaymentKnownCurrencySheet(
         RecurringPaymentSheetBody(
             state = ManualExpenseSheetState(
                 categories = emptyList(),
-                saving = saving || ctx.access.context?.canModify != true,
+                saving = saving,
                 initialCurrency = paymentCurrency,
                 ledgerHomeCurrency = home,
                 errorMessage = error,
@@ -229,7 +243,11 @@ private fun RecurringPaymentKnownCurrencySheet(
                                 task.clientRef,
                                 RecurringPaymentOrigin(task.seriesPublicId, task.period),
                             ).fold(
-                                onSuccess = {
+                                onSuccess = { admission ->
+                                    val admittedRef = (admission as ManualExpenseCreateAdmission.Accepted).clientRef
+                                    if (admittedRef != task.clientRef) {
+                                        ctx.drafts.remember(task.copy(clientRef = admittedRef))
+                                    }
                                     ctx.drafts.removeDraft(task.clientRef)
                                     draftState.removeState(task.clientRef)
                                 },
