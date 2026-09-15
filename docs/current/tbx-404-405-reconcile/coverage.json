@@ -2,7 +2,7 @@
   "task": "TBX-404-405-RECONCILE",
   "audit_base": "c34efb40b89c4fecd85478888ed68ce84a90f10f",
   "review_subject": "3d41f8f4afcdba89bd68b1f7dbb885e9b5ba063b",
-  "code_head": "PENDING_THIS_COMMIT",
+  "code_head": "2e11d1c2c93641abdfa90593817c946f0b2d7895",
   "status": "INCOMPLETE",
   "handoff": "docs/current/tbx-404-405-reconcile/HANDOFF.md",
   "reconciliation": "docs/current/tbx-404-405-reconcile/RECONCILIATION.md",

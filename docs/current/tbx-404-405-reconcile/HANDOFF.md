@@ -12,7 +12,7 @@
 - #405 对照（非金标准）：`c0279d865dca15bb1ac1786d66c1119ed0448db6`
 - #415（仅 B01 币种入口）：`14c9eca8cf6a301a6f0d9c7a7c8dfb0227c424b9`
 - #404 merge：`a6ebf182a753b5c0ea881a3913a39459a3e10041`
-- 本交接对应 CODE_HEAD：见同目录 `coverage.json` 的 `code_head`（提交后回填）
+- 本交接对应 CODE_HEAD：`2e11d1c2c93641abdfa90593817c946f0b2d7895`
 
 施工面：`E:\projects\xiaopiaojia-404-405-reconcile`
 详细扫描卡（不在本 git 树）：`E:\projects\ticketbox-qualification-tools\tbx-404-405-reconcile-20260915\evidence\`

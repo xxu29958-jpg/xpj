@@ -2,7 +2,7 @@
 
 AUDIT_BASE = `c34efb40b89c4fecd85478888ed68ce84a90f10f`
 审查对象 = `3d41f8f4afcdba89bd68b1f7dbb885e9b5ba063b`
-CODE_HEAD = 见 `coverage.json`
+CODE_HEAD = `2e11d1c2c93641abdfa90593817c946f0b2d7895`
 状态：`INCOMPLETE`（审查回归 R01–R03 已关；U01–U06 已在现 Owner 内补；U07 本目录即交接入口）
 
 完整扫描卡仍在 qualification-tools 证据根；本文件只记录**已固定结论**和**本轮返修**，避免重读已证实链。
