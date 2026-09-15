@@ -103,12 +103,12 @@ internal class RecurringPeriodPaymentSession(
             ?: current().periodPaymentOrigin?.takeIf { it.clientRef == clientRef }
             ?: return
         val updated = origin.copy(
-            merchant = merchant?.takeIf(String::isNotBlank) ?: origin.merchant,
+            merchant = merchant ?: origin.merchant,
             category = category,
             note = note,
             obligationCurrencyCode = currencyCode,
             capturedAmountCents = amountCents,
-            capturedAmountText = amountText?.takeIf(String::isNotBlank) ?: origin.capturedAmountText,
+            capturedAmountText = amountText ?: origin.capturedAmountText,
             expenseTime = expenseTime?.takeIf(String::isNotBlank) ?: origin.expenseTime,
         )
         remember(updated)
@@ -175,6 +175,43 @@ internal class RecurringPeriodPaymentSession(
         }
     }
 
+    fun snapshotPeriodPaymentInputs(
+        clientRef: String,
+        merchant: String,
+        amountText: String,
+        expenseTime: String,
+    ) {
+        val origin = sessions.values.firstOrNull { it.clientRef == clientRef }
+            ?: current().periodPaymentOrigin?.takeIf { it.clientRef == clientRef }
+            ?: return
+        val updated = origin.copy(
+            merchant = merchant,
+            capturedAmountText = amountText,
+            capturedAmountCents = if (amountText.isBlank()) null else origin.capturedAmountCents,
+            expenseTime = expenseTime.takeIf { it.isNotBlank() } ?: origin.expenseTime,
+        )
+        remember(updated)
+        mutate { state ->
+            if (state.periodPaymentOrigin?.clientRef == clientRef) state.copy(periodPaymentOrigin = updated)
+            else state
+        }
+    }
+
+    fun rememberReturnClientRef(clientRef: String) {
+        savedState[RETURN_REF_KEY] = clientRef
+    }
+
+    fun consumeReturnClientRef(): String? {
+        val ref = savedState.get<String>(RETURN_REF_KEY)?.takeIf(String::isNotBlank)
+        savedState[RETURN_REF_KEY] = null
+        return ref
+    }
+
+    fun retireCompleted(seriesPublicId: String, period: String) {
+        if (sessions.remove(seriesPublicId to period) == null) return
+        persist()
+    }
+
     fun restoreAdmittedPeriodOccurrence(items: List<RecurringItem> = emptyList(), clientRef: String? = null) {
         val wanted = clientRef?.takeIf(String::isNotBlank) ?: current().preferredPaymentClientRef
         val session = if (wanted.isNullOrBlank()) {
@@ -205,7 +242,6 @@ internal class RecurringPeriodPaymentSession(
 
     fun sessionForSeries(seriesPublicId: String): RecurringPeriodPaymentOrigin? =
         sessions.values.lastOrNull { it.seriesPublicId == seriesPublicId && !it.admitted }
-            ?: sessions.values.lastOrNull { it.seriesPublicId == seriesPublicId }
 
     fun rememberAcceptedExpenseId(clientRef: String?, acceptedExpenseId: Long) {
         val ref = clientRef?.takeIf(String::isNotBlank) ?: return
@@ -219,7 +255,12 @@ internal class RecurringPeriodPaymentSession(
         val origin = current().periodPaymentOrigin ?: return
         if (CurrencyCode.fromStorageKeyOrNull(origin.obligationCurrencyCode) != null) return
         val chosen = CurrencyCode.fromStorageKeyOrNull(code) ?: return
-        val updated = origin.copy(obligationCurrencyCode = chosen.storageKey)
+        val updated = origin.copy(
+            obligationCurrencyCode = chosen.storageKey,
+            plannedAmountCents = null,
+            capturedAmountCents = null,
+            capturedAmountText = null,
+        )
         remember(updated)
         mutate {
             if (it.periodPaymentOrigin?.clientRef == origin.clientRef) it.copy(periodPaymentOrigin = updated)
@@ -271,5 +312,6 @@ internal class RecurringPeriodPaymentSession(
 
     private companion object {
         const val SESSIONS_KEY = "recurring.periodPayment.sessions"
+        const val RETURN_REF_KEY = "recurring.periodPayment.returnClientRef"
     }
 }

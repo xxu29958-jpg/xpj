@@ -79,12 +79,21 @@ internal fun RecurringOccurrenceHost(
                         model.createPeriodPayment(draft, onAdmitted = onOpenManualSubmission)
                     },
                     onDismiss = model.periodPayment::dismissPeriodPayment,
+                    onSnapshot = { merchant, amountText, expenseTime ->
+                        model.periodPayment.snapshotPeriodPaymentInputs(
+                            origin.clientRef,
+                            merchant,
+                            amountText,
+                            expenseTime,
+                        )
+                    },
                 ),
                 initials = ManualExpenseSheetInitials(
                     merchant = origin.merchant,
                     category = origin.category?.takeIf { it.isNotBlank() } ?: DEFAULT_EXPENSE_CATEGORIES.first(),
                     note = origin.note.orEmpty(),
                     amountMinor = origin.capturedAmountCents ?: origin.plannedAmountCents,
+                    amountText = origin.capturedAmountText,
                     expenseTime = origin.expenseTime,
                 ),
             )

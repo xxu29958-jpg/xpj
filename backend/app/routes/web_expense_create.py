@@ -269,11 +269,18 @@ def _recurring_commitment_values(
     values: dict[str, str] = {}
     if item.merchant_name:
         values["merchant"] = item.merchant_name
-    currency = normalize_currency_code(item.home_currency_code) if item.home_currency_code else None
-    if currency:
-        values["currency_code"] = currency
-        if item.baseline_amount_cents is not None:
-            values["amount_major"] = minor_amount_value(item.baseline_amount_cents, currency)
+    raw_currency = (item.home_currency_code or "").strip()
+    if not raw_currency:
+        values["currency_unspecified"] = "1"
+        return values
+    try:
+        currency = normalize_currency_code(raw_currency)
+    except AppError:
+        values["currency_unspecified"] = "1"
+        return values
+    values["currency_code"] = currency
+    if item.baseline_amount_cents is not None:
+        values["amount_major"] = minor_amount_value(item.baseline_amount_cents, currency)
     return values
 
 
@@ -321,6 +328,8 @@ def web_manual_expense_create(
         "spent_at": spent_at,
         "note": note,
     }
+    if not currency_code.strip():
+        values["currency_unspecified"] = "1"
     try:
         _require_manual_form_binding(
             auth,

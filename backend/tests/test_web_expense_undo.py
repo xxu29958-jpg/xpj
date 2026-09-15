@@ -139,6 +139,36 @@ def test_web_reject_from_recurring_occurrence_returns_to_the_original_period(
         assert row.status == "pending"
 
 
+def test_web_undo_invalid_token_from_recurring_returns_to_the_original_period(
+    web_client: TestClient, *, identity
+) -> None:
+    from urllib.parse import parse_qs, urlsplit
+
+    from tests.test_recurring_occurrences import _create_series
+
+    series = _create_series(web_client, identity)
+    series_id = series["public_id"]
+    expense_id = _create_pending(web_client, identity=identity)
+    undone = web_client.post(
+        f"/web/expenses/{expense_id}/undo",
+        data={
+            "ledger_id": "owner",
+            "expected_row_version": "not-a-token",
+            "return_to": "recurring_occurrence",
+            "return_recurring_public_id": series_id,
+            "return_month": "2026-09",
+        },
+        follow_redirects=False,
+    )
+    assert undone.status_code == 303, undone.text
+    target = urlsplit(undone.headers.get("location", ""))
+    assert target.path == f"/web/recurring/{series_id}/occurrence"
+    query = parse_qs(target.query)
+    assert query.get("month") == ["2026-09"]
+    assert query.get("flash_type") == ["error"]
+    assert "页面已过期" in (query.get("msg") or [""])[0]
+
+
 def test_web_pending_renders_undo_banner_in_green_when_success_flash(
     web_client: TestClient, *, identity
 ) -> None:

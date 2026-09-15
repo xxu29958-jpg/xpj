@@ -3,15 +3,19 @@ package com.ticketbox.data.repository
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodes
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextReplacement
 import androidx.lifecycle.viewModelScope
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.domain.model.AppSkin
@@ -107,6 +111,49 @@ class RecurringOccurrenceRoomContinuityTest {
                 fixture.ledger,
                 fixture.debts,
             ).also { it.open(occurrenceConnectedItem()) }
+        }
+    }
+
+    @Test
+    fun unknownObligationCurrencyChoiceLeavesAmountBlankUntilUserEntersIt() {
+        fixture.confirmedStream.value = emptyList()
+        fixture.network.current = fixture.network.current.copy(
+            period = "2026-08",
+            homeCurrencyCode = null,
+            plannedAmountCents = 1200,
+            reservedAmountCents = 1200,
+        )
+        installModel()
+        compose.setContent {
+            val current = model.value ?: return@setContent
+            TicketboxTheme(skin = AppSkin.Paper) {
+                RecurringOccurrenceHost(current, onOpenExpense = {})
+            }
+        }
+        compose.waitUntil(10_000) {
+            model.value?.uiState?.value?.canWrite == true &&
+                model.value?.uiState?.value?.ledgerHomeCurrencyCode != null
+        }
+        compose.onNodeWithTag("occurrence-record-payment").performScrollTo().performClick()
+        compose.waitUntil(10_000) {
+            val origin = model.value?.uiState?.value?.periodPaymentOrigin
+            origin != null && origin.obligationCurrencyCode == null && origin.ledgerHomeCurrencyCode != null
+        }
+        compose.onNodeWithText("选择本期付款币种").assertIsDisplayed()
+        compose.onNodeWithText("JPY · 日元").performClick()
+        compose.waitUntil(10_000) {
+            val origin = model.value?.uiState?.value?.periodPaymentOrigin
+            origin?.obligationCurrencyCode == "JPY" && origin.plannedAmountCents == null
+        }
+        compose.onNodeWithText("手动记一笔").assertIsDisplayed()
+        compose.onNode(hasSetTextAction() and hasText("1200")).assertDoesNotExist()
+        compose.onNodeWithText("记入账本").performClick()
+        compose.onNodeWithText("手动记一笔").assertIsDisplayed()
+        compose.onAllNodes(hasSetTextAction()).onFirst().performTextReplacement("1200")
+        compose.onNodeWithText("记入账本").performClick()
+        compose.waitUntil(10_000) {
+            val state = model.value?.uiState?.value
+            state?.periodPaymentOrigin == null && !state?.preferredPaymentClientRef.isNullOrBlank()
         }
     }
 

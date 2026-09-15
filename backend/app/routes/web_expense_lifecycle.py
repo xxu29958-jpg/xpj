@@ -204,6 +204,17 @@ def web_expense_undo(
     _require_selected_ledger_write(options, selected_id)
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
+        origin = return_context.as_kwargs()
+        if origin.get("return_to") == "recurring_occurrence":
+            path = resolve_return_to("recurring_occurrence", "/web/pending", **origin)
+            params = return_context_params(**origin)
+            return _web_redirect(
+                path,
+                selected_id,
+                msg="页面已过期，请刷新后重新操作。",
+                flash_type="error",
+                **params,
+            )
         return _web_redirect(
             "/web/pending",
             selected_id,

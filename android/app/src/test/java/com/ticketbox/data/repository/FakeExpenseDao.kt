@@ -78,6 +78,9 @@ internal class FakeExpenseDao(
     override suspend fun localRowIdForClientRef(ledgerId: String, clientRef: String): Long? =
         expenses.values.firstOrNull { it.ledgerId == ledgerId && it.clientRef == clientRef }?.id
 
+    override suspend fun findByClientRef(ledgerId: String, clientRef: String): ExpenseEntity? =
+        expenses.values.firstOrNull { it.ledgerId == ledgerId && it.clientRef == clientRef }
+
     override suspend fun deleteByLocalId(id: Long) {
         val removed = expenses.remove(id)
         if (removed != null) emit(removed.ledgerId)

@@ -2,10 +2,11 @@
 
 AUDIT_BASE = `c34efb40b89c4fecd85478888ed68ce84a90f10f`
 审查对象 = `3d41f8f4afcdba89bd68b1f7dbb885e9b5ba063b`
-CODE_HEAD = `2e11d1c2c93641abdfa90593817c946f0b2d7895`
-状态：`INCOMPLETE`（审查回归 R01–R03 已关；U01–U06 已在现 Owner 内补；U07 本目录即交接入口）
+REVIEW_TIP = `f1068d12a435b0545fe66702bd57e36de49170e4`（交接文档提交）
+PRODUCTION_CODE_HEAD = `2e11d1c2c93641abdfa90593817c946f0b2d7895`（已推送生产代码；本轮 P1/P2 返修仍在工作树）
+状态：`INCOMPLETE`
 
-完整扫描卡仍在 qualification-tools 证据根；本文件只记录**已固定结论**和**本轮返修**，避免重读已证实链。
+扫描卡与文件归属已收入本目录 `evidence/`、`inventory/`；本文件只记录**已固定结论**和**本轮返修**。
 
 ## 已证实且本轮未重扫的链
 
@@ -35,13 +36,13 @@ CODE_HEAD = `2e11d1c2c93641abdfa90593817c946f0b2d7895`
 
 | ID | 现入口 | 能力 | 限制 |
 |---|---|---|---|
-| U01 | `_payment_edit_href` / POST `payment_id` | IMPROVED | 无浏览器端到端 |
+| U01 | `_payment_edit_href` / POST `payment_id`；invalid undo 回期次；retry 保 `payment_id` | IMPROVED | 无浏览器端到端 |
 | U02 | `preferredPaymentAcceptedExpenseId` + outbox receipt | IMPROVED | 无 Room connected 刷新反例 |
 | U03 | `_recurring_commitment_values` → `/new` | IMPROVED | 只预填商家/币种/金额，不改 hidden 本币 |
-| U04 | `choosePeriodPaymentCurrency` | IMPROVED | 无 Compose 点击 |
-| U05 | admitted 不重开；`reuseAdmittedLocalCreate` | IMPROVED | 假账本 VM + Fake DAO/Outbox |
-| U06 | origin 草稿字段；restore 指定 clientRef | IMPROVED | `open()` 无 session 仍 current |
-| U07 | 本目录 HANDOFF / RECONCILIATION / coverage.json | DELIVERED | 扫描卡正文仍在 qualification-tools |
+| U04 | 未知币种只预填商家；choose 清空 planned；Web 空选项 GET→POST | IMPROVED | Compose connected 已写未跑 |
+| U05 | `findByServerId` / `findByClientRef` 认回 pending FX | IMPROVED | Fake DAO/Outbox；未宣称服务端去重 |
+| U06 | `snapshotPeriodPaymentInputs`；空商家保留 | IMPROVED | 未跑 instrumentation |
+| U07 | 本目录 HANDOFF / RECONCILIATION / coverage.json / evidence / inventory | PARTIAL | 可复核索引已进仓；不是全仓重扫 |
 
 ## 剩余边（不要静默写成完成）
 

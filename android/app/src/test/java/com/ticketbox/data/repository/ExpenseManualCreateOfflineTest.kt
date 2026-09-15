@@ -281,6 +281,35 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
     }
 
     @Test
+    fun `exact-binding create reuses a done pending-fx original instead of enqueueing again`() = runTest {
+        val dao = FakeExpenseDao()
+        val pendingDao = FakePendingMutationDao()
+        val tokenStore = ledgerSessionFixture(activeLedger, "家庭账本")
+        val outboxRepo = outbox(pendingDao)
+        val repo = createRepo(ManualCreateApi(failure = IOException("airplane mode")), dao, outboxRepo, tokenStore)
+        val binding = requireNotNull(
+            tokenStore.sessionStore.currentSession()?.toBoundSessionSnapshotOrNull()?.logicalBinding,
+        )
+        val original = draft.copy(clientRef = "period-ref")
+        repo.createManualExpense(original, binding).getOrThrow()
+        dao.update(
+            dao.getConfirmed(activeLedger).single().copy(
+                status = "pending",
+                serverId = 71L,
+                publicId = "server-pub-71",
+                fxStatus = com.ticketbox.domain.model.FxContract.StatusPending,
+                amountCents = null,
+            ),
+        )
+        outboxRepo.markDone(pendingDao.rows.values.single().id, receiptJson = expenseAcceptanceReceiptJson(71L))
+        val second = repo.createManualExpense(original.copy(merchant = "另一商家"), binding).getOrThrow()
+        assertEquals(71L, second.id)
+        assertEquals("period-ref", second.clientRef)
+        assertEquals(1, pendingDao.rows.size)
+        assertEquals(PendingMutationStatus.Done.wireValue, pendingDao.rows.values.single().status)
+    }
+
+    @Test
     fun `exact-binding create reuses the admitted original instead of enqueueing again`() = runTest {
         val dao = FakeExpenseDao()
         val pendingDao = FakePendingMutationDao()

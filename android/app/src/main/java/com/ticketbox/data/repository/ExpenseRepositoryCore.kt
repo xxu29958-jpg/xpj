@@ -553,13 +553,13 @@ internal class ExpenseRepositoryCore(
         val acceptedId = expenseAcceptanceReceiptId(
             row.receiptJson.takeIf { row.status == PendingMutationStatus.Done },
         )
-        val locals = expenseDao.getConfirmed(bound.ledgerId)
-        val entity = when {
-            acceptedId != null -> locals.firstOrNull { it.serverId == acceptedId }
-                ?: locals.firstOrNull { it.clientRef == clientRef }
-            else -> locals.firstOrNull { it.clientRef == clientRef }
-        } ?: return null
-        return entity.toDomain()
+        val entity = if (acceptedId != null) {
+            expenseDao.findByServerId(bound.ledgerId, acceptedId)
+        } else {
+            expenseDao.findByClientRef(bound.ledgerId, clientRef)
+        }
+        if (entity != null) return entity.toDomain()
+        throw RepositoryException("原付款已提交，请刷新后继续核对。")
     }
 
     /** One bound transaction saves the original command and its optimistic negative-ID projection. */

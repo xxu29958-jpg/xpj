@@ -411,6 +411,11 @@ class RecurringOccurrenceViewModelTest {
             assertNull(origin.obligationCurrencyCode)
             assertEquals(1200L, origin.plannedAmountCents)
             assertNull(com.ticketbox.domain.model.CurrencyCode.fromStorageKeyOrNull(origin.obligationCurrencyCode))
+            model.periodPayment.choosePeriodPaymentCurrency("JPY")
+            val chosen = assertNotNull(model.uiState.value.periodPaymentOrigin)
+            assertEquals("JPY", chosen.obligationCurrencyCode)
+            assertNull(chosen.plannedAmountCents)
+            assertNull(chosen.capturedAmountCents)
             assertTrue(actions.submissions.isEmpty())
         } finally {
             model.viewModelScope.coroutineContext.job.cancelAndJoin()
@@ -541,6 +546,78 @@ class RecurringOccurrenceViewModelTest {
     }
 
     @Test
+    fun completedLinkRetiresSessionAndRestoreUsesTheReturnedClientRef() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val actions = OccurrenceChoiceActions()
+        seedUnpaidAugust(actions)
+        val payment = confirmedExpenseDtoFixture().toDomain().copy(id = 71)
+        val ledger = OccurrenceChoiceLedger(payment)
+        val item = recurringItem { rowVersion = 7L }.copy(homeCurrencyCode = "JPY", merchant = "日元订阅")
+        val savedState = SavedStateHandle()
+        val model = occurrenceModel(actions, ledger, savedState = savedState)
+        val augustRef: String
+        try {
+            model.open(item)
+            advanceUntilIdle()
+            model.periodPayment.recordPeriodPayment()
+            model.createPeriodPayment(periodPaymentDraft(assertNotNull(model.uiState.value.periodPaymentOrigin)))
+            advanceUntilIdle()
+            augustRef = ledger.createdClientRefs.single()
+            model.changePeriod("2026-09")
+            advanceUntilIdle()
+            model.periodPayment.recordPeriodPayment()
+            model.createPeriodPayment(periodPaymentDraft(assertNotNull(model.uiState.value.periodPaymentOrigin)))
+            advanceUntilIdle()
+            assertEquals(2, ledger.createdClientRefs.size)
+            model.periodPayment.rememberReturnClientRef(augustRef)
+        } finally {
+            model.viewModelScope.coroutineContext.job.cancelAndJoin()
+        }
+        val restored = occurrenceModel(actions, ledger, savedState = savedState)
+        try {
+            restored.restoreAdmittedPeriodOccurrence(listOf(item))
+            advanceUntilIdle()
+            assertEquals("2026-08", restored.uiState.value.requestedPeriod)
+            assertEquals(augustRef, restored.uiState.value.preferredPaymentClientRef)
+
+            restored.choose(restored.uiState.value.payments.single() as ConfirmedStreamItem.ExpenseRow)
+            restored.submit()
+            advanceUntilIdle()
+            restored.dismiss()
+            restored.open(item)
+            advanceUntilIdle()
+            assertEquals("current", restored.uiState.value.requestedPeriod)
+            assertNull(restored.uiState.value.preferredPaymentClientRef)
+        } finally {
+            restored.viewModelScope.coroutineContext.job.cancelAndJoin()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun snapshotKeepsClearedMerchantAndRawAmountText() {
+        val actions = OccurrenceChoiceActions()
+        seedUnpaidAugust(actions)
+        var state = RecurringOccurrenceUiState(
+            access = actions.access,
+            item = recurringItem { rowVersion = 7L }.copy(homeCurrencyCode = "JPY", merchant = "日元订阅"),
+            occurrence = actions.occurrence,
+            requestedPeriod = "2026-08",
+        )
+        val session = RecurringPeriodPaymentSession(
+            current = { state },
+            mutate = { reducer -> state = reducer(state) },
+            load = {},
+            savedState = SavedStateHandle(),
+        )
+        session.recordPeriodPayment()
+        val origin = assertNotNull(state.periodPaymentOrigin)
+        session.snapshotPeriodPaymentInputs(origin.clientRef, "", "12.00", "2026-08-03T10:00:00Z")
+        assertEquals("", state.periodPaymentOrigin?.merchant)
+        assertEquals("12.00", state.periodPaymentOrigin?.capturedAmountText)
+    }
+
+    @Test
     fun restoreAdmittedPeriodUsesTheRequestedClientRefNotTheLastSession() {
         val actions = OccurrenceChoiceActions()
         val item = recurringItem { rowVersion = 7L }.copy(homeCurrencyCode = "JPY", merchant = "日元订阅")
@@ -661,7 +738,8 @@ private class OccurrenceChoiceActions : RecurringOccurrenceActions {
     override suspend fun fetch(binding: LogicalSessionBinding, seriesId: String, period: String): Result<RecurringOccurrenceDto> {
         fetchCount++
         if (failReads) return Result.failure(IllegalStateException("series read is offline"))
-        return Result.success(occurrence)
+        val resolvedPeriod = if (period == "current") occurrence.period else period
+        return Result.success(occurrence.copy(period = resolvedPeriod))
     }
 
     override suspend fun enqueue(binding: LogicalSessionBinding, draft: OccurrencePaymentDraft): Result<Long> {

@@ -143,7 +143,10 @@ class RecurringOccurrenceViewModel(
     }
 
     fun restoreAdmittedPeriodOccurrence(items: List<RecurringItem> = emptyList(), clientRef: String? = null) {
-        periodPayment.restoreAdmittedPeriodOccurrence(items, clientRef)
+        periodPayment.restoreAdmittedPeriodOccurrence(
+            items,
+            clientRef ?: periodPayment.consumeReturnClientRef(),
+        )
     }
 
     fun createPeriodPayment(draft: ExpenseDraft, onAdmitted: (String) -> Unit = {}) {
@@ -155,7 +158,8 @@ class RecurringOccurrenceViewModel(
             draft.note.orEmpty(),
             draft.originalCurrencyCode?.storageKey ?: submitted.obligationCurrencyCode.orEmpty(),
             draft.originalAmountMinor ?: draft.amountCents ?: 0L,
-            merchant = draft.merchant,
+            merchant = draft.merchant.orEmpty(),
+            amountText = submitted.capturedAmountText,
             expenseTime = draft.expenseTime,
         )
         mutableState.update { it.copy(periodPaymentInFlightClientRef = submitted.clientRef, periodPaymentError = null) }
@@ -173,7 +177,10 @@ class RecurringOccurrenceViewModel(
                 else result.exceptionOrNull()?.message?.let(UiText::raw)
                     ?: UiText.res(R.string.ledger_msg_manual_save_failed)
             val acceptedExpenseId = result.getOrNull()?.id
-            if (periodPayment.applyCreateOutcome(submitted, error, acceptedExpenseId)) onAdmitted(submitted.clientRef)
+            if (periodPayment.applyCreateOutcome(submitted, error, acceptedExpenseId)) {
+                periodPayment.rememberReturnClientRef(submitted.clientRef)
+                onAdmitted(submitted.clientRef)
+            }
         }
     }
 
@@ -207,6 +214,11 @@ class RecurringOccurrenceViewModel(
         viewModelScope.launch {
             val result = repository.enqueue(binding, choice)
             if (mutableState.value.access?.binding != binding) return@launch
+            if (result.isSuccess && choice.request.action == "link") {
+                mutableState.value.item?.publicId?.let { seriesId ->
+                    periodPayment.retireCompleted(seriesId, choice.occurrence.period)
+                }
+            }
             mutableState.update { it.copy(
                 saving = false,
                 acceptedId = result.getOrNull(),
@@ -245,6 +257,9 @@ class RecurringOccurrenceViewModel(
                 loading = false, occurrence = result.getOrNull() ?: it.occurrence,
                 message = if (result.isFailure) UiText.res(R.string.occurrence_refresh_failed) else null,
             ) }
+            result.getOrNull()?.takeIf { it.state == "fulfilled" }?.let { occurrence ->
+                periodPayment.retireCompleted(item.publicId, occurrence.period)
+            }
             val listed = debts.listDebts()
             periodPayment.restoreVisibleOrigin()
             if (requestEpoch == epoch && mutableState.value.access?.binding == binding) {

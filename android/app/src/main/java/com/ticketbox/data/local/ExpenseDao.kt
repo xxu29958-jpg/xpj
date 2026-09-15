@@ -163,6 +163,9 @@ interface ExpenseDao {
     @Query("SELECT id FROM expenses WHERE ledgerId = :ledgerId AND clientRef = :clientRef LIMIT 1")
     suspend fun localRowIdForClientRef(ledgerId: String, clientRef: String): Long?
 
+    @Query("SELECT * FROM expenses WHERE ledgerId = :ledgerId AND clientRef = :clientRef LIMIT 1")
+    suspend fun findByClientRef(ledgerId: String, clientRef: String): ExpenseEntity?
+
     @Insert
     suspend fun insert(expense: ExpenseEntity): Long
 

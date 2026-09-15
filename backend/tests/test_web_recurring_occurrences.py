@@ -203,9 +203,10 @@ def test_web_association_invalid_action_keeps_the_original_key(client: TestClien
         series = _create_series(client, identity)
         payment = _payment(client, identity)
         path = f"/web/recurring/{series['public_id']}/occurrence"
-        page = client.get(path, params={"ledger_id": "owner", "month": "2026-09"})
+        page = client.get(path, params={"ledger_id": "owner", "month": "2026-09", "payment_id": payment["id"]})
         original = _form(page.text, "link")
         assert original["expense_public_id"] == payment["public_id"]
+        assert original["payment_id"] == str(payment["id"])
         refused = client.post(path, data={**original, "action": "explode"}, follow_redirects=False)
         assert refused.status_code == 422, refused.text
         assert "NameError" not in refused.text
@@ -213,6 +214,11 @@ def test_web_association_invalid_action_keeps_the_original_key(client: TestClien
         assert retry["idempotency_key"] == original["idempotency_key"]
         assert retry["expense_public_id"] == payment["public_id"]
         assert retry["expected_row_version"] == original["expected_row_version"]
+        assert retry["payment_id"] == str(payment["id"])
+        refused_again = client.post(path, data={**retry, "action": "explode"}, follow_redirects=False)
+        assert refused_again.status_code == 422, refused_again.text
+        retry_again = _retry_form(refused_again.text)
+        assert retry_again["payment_id"] == str(payment["id"])
     finally:
         app.dependency_overrides.pop(_require_local, None)
 

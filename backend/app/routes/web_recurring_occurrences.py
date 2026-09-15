@@ -209,6 +209,7 @@ def web_set_recurring_occurrence(
         "expected_row_version": expected_row_version,
         "expected_series_row_version": expected_series_row_version,
         "idempotency_key": idempotency_key,
+        "payment_id": payment_id,
     }
     retained = preserve_original_ledger_form(request, db, options=options, selected=selected,
         fields={**attempt, "ledger_id": ledger_id, "month": month}, task="关联固定支出付款")

@@ -19,8 +19,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimeInput
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -71,6 +73,7 @@ data class ManualExpenseSheetState(
 data class ManualExpenseSheetActions(
     val onCreate: (ExpenseDraft) -> Unit,
     val onDismiss: () -> Unit,
+    val onSnapshot: (merchant: String, amountText: String, expenseTime: String) -> Unit = { _, _, _ -> },
 )
 
 data class ManualExpenseSheetInitials(
@@ -78,6 +81,7 @@ data class ManualExpenseSheetInitials(
     val category: String = DEFAULT_EXPENSE_CATEGORIES.first(),
     val note: String = "",
     val amountMinor: Long? = null,
+    val amountText: String? = null,
     val expenseTime: String? = null,
 )
 
@@ -89,7 +93,10 @@ fun ManualExpenseSheet(
     initials: ManualExpenseSheetInitials = ManualExpenseSheetInitials(),
 ) {
     var amountText by rememberSaveable {
-        mutableStateOf(formatMinorAmountInput(initials.amountMinor, state.initialCurrency))
+        mutableStateOf(
+            initials.amountText?.takeIf { it.isNotBlank() }
+                ?: formatMinorAmountInput(initials.amountMinor, state.initialCurrency),
+        )
     }
     val homeCurrency by rememberSaveable { mutableStateOf(state.ledgerHomeCurrency) }
     var currency by rememberSaveable { mutableStateOf(state.initialCurrency) }
@@ -107,6 +114,13 @@ fun ManualExpenseSheet(
     val invalidAmountMessage = stringResource(R.string.ledger_manual_amount_invalid)
     val density = LocalDensity.current
     val keyboardVisible = LocalAppImeVisible.current || WindowInsets.ime.getBottom(density) > 0
+    val snapshot = rememberUpdatedState(Triple(merchant, amountText, expenseTime))
+    DisposableEffect(Unit) {
+        onDispose {
+            val (nextMerchant, nextAmount, nextTime) = snapshot.value
+            actions.onSnapshot(nextMerchant, nextAmount, nextTime)
+        }
+    }
 
     if (showDatePicker) {
         val datePickerState = androidx.compose.material3.rememberDatePickerState(
@@ -203,8 +217,8 @@ fun ManualExpenseSheet(
 
     fun submitDraft() {
         val draft = draftOrMessage() ?: return
-        // The sheet closes only after the repository reports success.
         message = null
+        actions.onSnapshot(merchant, amountText, expenseTime)
         actions.onCreate(draft)
     }
 
@@ -284,7 +298,10 @@ fun ManualExpenseSheet(
             ManualExpenseActionSlot(
                 feedbackMessage = feedbackMessage,
                 saving = state.saving,
-                onDismiss = actions.onDismiss,
+                onDismiss = {
+                    actions.onSnapshot(merchant, amountText, expenseTime)
+                    actions.onDismiss()
+                },
                 onSubmit = ::submitDraft,
             )
         }

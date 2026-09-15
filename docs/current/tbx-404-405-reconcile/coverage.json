@@ -1,60 +1,604 @@
 {
   "task": "TBX-404-405-RECONCILE",
   "audit_base": "c34efb40b89c4fecd85478888ed68ce84a90f10f",
-  "review_subject": "3d41f8f4afcdba89bd68b1f7dbb885e9b5ba063b",
-  "code_head": "2e11d1c2c93641abdfa90593817c946f0b2d7895",
+  "code_head": "f1068d12a435b0545fe66702bd57e36de49170e4",
   "status": "INCOMPLETE",
-  "handoff": "docs/current/tbx-404-405-reconcile/HANDOFF.md",
-  "reconciliation": "docs/current/tbx-404-405-reconcile/RECONCILIATION.md",
-  "external_scan_root": "E:/projects/ticketbox-qualification-tools/tbx-404-405-reconcile-20260915",
   "anchors": [
-    {"id": "AUDIT_BASE", "sha": "c34efb40b89c4fecd85478888ed68ce84a90f10f", "ref": "origin/main-at-review"},
-    {"id": "REVIEW_SUBJECT", "sha": "3d41f8f4afcdba89bd68b1f7dbb885e9b5ba063b"},
-    {"id": "PR404_MERGE", "sha": "a6ebf182a753b5c0ea881a3913a39459a3e10041"},
-    {"id": "PR405_HEAD", "sha": "c0279d865dca15bb1ac1786d66c1119ed0448db6"},
-    {"id": "PR414_MERGE", "sha": "c34efb40b89c4fecd85478888ed68ce84a90f10f"},
-    {"id": "PR415_HEAD", "sha": "14c9eca8cf6a301a6f0d9c7a7c8dfb0227c424b9"}
-  ],
-  "review_items": [
-    {"id": "R01", "capability": "FIXED", "fix": "CHANGED", "evidence": ["test_web_association_invalid_action_keeps_the_original_key", "test_web_association_state_conflict_keeps_the_original_proposal"]},
-    {"id": "R02", "capability": "FIXED", "fix": "CHANGED", "evidence": ["RecurringOccurrencePaymentPickerTest"]},
-    {"id": "R03", "capability": "FIXED", "fix": "CHANGED", "evidence": ["test_web_reject_from_recurring_occurrence_returns_to_the_original_period"]},
-    {"id": "U01", "capability": "IMPROVED", "fix": "CHANGED", "evidence": ["test_focused_payment_review_keeps_the_original_period_return"]},
-    {"id": "U02", "capability": "IMPROVED", "fix": "CHANGED", "evidence": ["RecurringOccurrencePaymentPickerTest.explicitAcceptedExpenseIdPinsPreferredAheadOfMonthAndSearch"]},
-    {"id": "U03", "capability": "IMPROVED", "fix": "CHANGED", "evidence": ["test_period_payment_fx_confirm_return_then_explicit_link_zeros_reserve_once:GET /new prefill"]},
-    {"id": "U04", "capability": "IMPROVED", "fix": "CHANGED", "evidence": ["RecurringPeriodPaymentSurfaceTest.unknownObligationCurrencyDoesNotGuessLedgerHomeOnTheExistingManualSheet"]},
-    {"id": "U05", "capability": "IMPROVED", "fix": "CHANGED", "evidence": ["admittedPeriodPaymentReentryPinsPreferredAndDoesNotReopenCreate", "exact-binding create reuses the admitted original"]},
-    {"id": "U06", "capability": "IMPROVED", "fix": "CHANGED", "evidence": ["restoreAdmittedPeriodUsesTheRequestedClientRefNotTheLastSession"]},
-    {"id": "U07", "capability": "DELIVERED", "fix": "CHANGED", "evidence": ["docs/current/tbx-404-405-reconcile"]}
-  ],
-  "preserved_without_rescan": ["A01", "A02", "A03", "A04", "A05", "A06", "A07", "A08", "A10", "A11", "A12", "B01", "B03", "B05", "B07", "B09", "B11"],
-  "still_open": [
-    {"id": "A09-WEB-ADMISSION", "status": "MISSING", "note": "online-first; no second Outbox"},
-    {"id": "C01", "status": "UNVERIFIED", "note": "no two-client live JPY/USD journey this round"},
-    {"id": "C03", "status": "BLOCKED", "note": "daily-use forbidden"},
-    {"id": "C04", "status": "BLOCKED", "note": "Gmail contracts unavailable"}
-  ],
-  "executed": [
     {
-      "id": "E-R01-R03-U01-U03",
-      "kind": "unit",
-      "command": "pytest tests/test_web_recurring_occurrences.py tests/test_web_expense_undo.py::test_web_reject_from_recurring_occurrence_returns_to_the_original_period tests/test_web_period_payment_fx_link_journey.py::test_period_payment_fx_confirm_return_then_explicit_link_zeros_reserve_once",
-      "result": "9 passed",
+      "id": "AUDIT_BASE",
+      "sha": "c34efb40b89c4fecd85478888ed68ce84a90f10f",
+      "ref": "origin/main"
+    },
+    {
+      "id": "PR404_SOURCE",
+      "sha": "bdcb4f204599a772c04fe927f020170e41e9ec5f"
+    },
+    {
+      "id": "PR404_MERGE",
+      "sha": "a6ebf182a753b5c0ea881a3913a39459a3e10041"
+    },
+    {
+      "id": "PR405_HEAD",
+      "sha": "c0279d865dca15bb1ac1786d66c1119ed0448db6"
+    },
+    {
+      "id": "PR405_MERGE_BASE",
+      "sha": "45044f8b9cb8fc6fe7fe073024c7d9cd659d7811"
+    },
+    {
+      "id": "PR412_SOURCE",
+      "sha": "7019feea554d519c56ad066c40f8cfe301e6ab3b"
+    },
+    {
+      "id": "PR412_MERGE",
+      "sha": "9a3b50632f7acedc59eb4dfae94b447a762776b5"
+    },
+    {
+      "id": "PR414_SOURCE",
+      "sha": "53968f95721df918bc6c1252430e00c6058f4751"
+    },
+    {
+      "id": "PR414_MERGE",
+      "sha": "c34efb40b89c4fecd85478888ed68ce84a90f10f"
+    },
+    {
+      "id": "PR415_HEAD",
+      "sha": "14c9eca8cf6a301a6f0d9c7a7c8dfb0227c424b9"
+    }
+  ],
+  "requirements": [
+    {
+      "id": "A01",
+      "source": "TBX-404-405-RECONCILE §2.3 A",
+      "scan": "TRACED",
+      "capability": "PRESERVED",
+      "fix": "NOT_NEEDED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "scan-A01-A08"
+      ]
+    },
+    {
+      "id": "A02",
+      "source": "TBX-404-405-RECONCILE §2.3 A",
+      "scan": "TRACED",
+      "capability": "PRESERVED",
+      "fix": "NOT_NEEDED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "scan-A01-A08"
+      ]
+    },
+    {
+      "id": "A03",
+      "source": "TBX-404-405-RECONCILE §2.3 A",
+      "scan": "TRACED",
+      "capability": "PRESERVED",
+      "fix": "NOT_NEEDED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "scan-A01-A08"
+      ]
+    },
+    {
+      "id": "A04",
+      "source": "TBX-404-405-RECONCILE §2.3 A",
+      "scan": "TRACED",
+      "capability": "PRESERVED",
+      "fix": "NOT_NEEDED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "scan-A01-A08"
+      ]
+    },
+    {
+      "id": "A05",
+      "source": "TBX-404-405-RECONCILE §2.3 A",
+      "scan": "TRACED",
+      "capability": "PRESERVED",
+      "fix": "NOT_NEEDED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "scan-A01-A08"
+      ]
+    },
+    {
+      "id": "A06",
+      "source": "TBX-404-405-RECONCILE §2.3 A",
+      "scan": "TRACED",
+      "capability": "PRESERVED",
+      "fix": "NOT_NEEDED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "scan-A01-A08"
+      ]
+    },
+    {
+      "id": "A07",
+      "source": "TBX-404-405-RECONCILE §2.3 A",
+      "scan": "TRACED",
+      "capability": "PRESERVED",
+      "fix": "NOT_NEEDED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "scan-A01-A08"
+      ]
+    },
+    {
+      "id": "A08",
+      "source": "TBX-404-405-RECONCILE §2.3 A",
+      "scan": "TRACED",
+      "capability": "PRESERVED",
+      "fix": "NOT_NEEDED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "scan-A01-A08"
+      ]
+    },
+    {
+      "id": "A09",
+      "source": "TBX-404-405-RECONCILE §2.3 A",
+      "scan": "TRACED",
+      "capability": "IMPROVED",
+      "fix": "PROPOSED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "scan-A09-A12"
+      ]
+    },
+    {
+      "id": "A10",
+      "source": "TBX-404-405-RECONCILE §2.3 A",
+      "scan": "TRACED",
+      "capability": "IMPROVED",
+      "fix": "NOT_NEEDED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "scan-A09-A12"
+      ]
+    },
+    {
+      "id": "A11",
+      "source": "TBX-404-405-RECONCILE §2.3 A",
+      "scan": "TRACED",
+      "capability": "IMPROVED",
+      "fix": "NOT_NEEDED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "scan-A09-A12"
+      ]
+    },
+    {
+      "id": "A12",
+      "source": "TBX-404-405-RECONCILE §2.3 A",
+      "scan": "TRACED",
+      "capability": "PRESERVED",
+      "fix": "NOT_NEEDED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "scan-A09-A12"
+      ]
+    },
+    {
+      "id": "B01",
+      "source": "TBX-404-405-RECONCILE §2.3 B",
+      "scan": "TRACED",
+      "capability": "IMPROVED",
+      "fix": "CHANGED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "scan-B01",
+        "run-B01-B07",
+        "run-P4-emulator"
+      ]
+    },
+    {
+      "id": "B02",
+      "source": "TBX-404-405-RECONCILE §2.3 B",
+      "scan": "TRACED",
+      "capability": "MISSING",
+      "fix": "PROPOSED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "scan-B02"
+      ]
+    },
+    {
+      "id": "B03",
+      "source": "TBX-404-405-RECONCILE §2.3 B",
+      "scan": "TRACED",
+      "capability": "PRESERVED",
+      "fix": "NOT_NEEDED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "scan-B03"
+      ]
+    },
+    {
+      "id": "B04",
+      "source": "TBX-404-405-RECONCILE §2.3 B",
+      "scan": "TRACED",
+      "capability": "PRESERVED",
+      "fix": "PROPOSED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "scan-B04"
+      ]
+    },
+    {
+      "id": "B05",
+      "source": "TBX-404-405-RECONCILE §2.3 B",
+      "scan": "TRACED",
+      "capability": "REGRESSED",
+      "fix": "PROPOSED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "scan-B05"
+      ]
+    },
+    {
+      "id": "B06",
+      "source": "TBX-404-405-RECONCILE §2.3 B",
+      "scan": "TRACED",
+      "capability": "PRESERVED",
+      "fix": "PROPOSED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "scan-B06"
+      ]
+    },
+    {
+      "id": "B07",
+      "source": "TBX-404-405-RECONCILE §2.3 B",
+      "scan": "TRACED",
+      "capability": "IMPROVED",
+      "fix": "CHANGED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "scan-B07",
+        "run-B01-B07",
+        "run-P4-emulator"
+      ]
+    },
+    {
+      "id": "B08",
+      "source": "TBX-404-405-RECONCILE §2.3 B",
+      "scan": "TRACED",
+      "capability": "PRESERVED",
+      "fix": "NOT_NEEDED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "scan-B08"
+      ]
+    },
+    {
+      "id": "B09",
+      "source": "TBX-404-405-RECONCILE §2.3 B",
+      "scan": "TRACED",
+      "capability": "PRESERVED",
+      "fix": "NOT_NEEDED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "scan-B09"
+      ]
+    },
+    {
+      "id": "B10",
+      "source": "TBX-404-405-RECONCILE §2.3 B",
+      "scan": "TRACED",
+      "capability": "REGRESSED",
+      "fix": "PROPOSED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "scan-B10"
+      ]
+    },
+    {
+      "id": "B11",
+      "source": "TBX-404-405-RECONCILE §2.3 B",
+      "scan": "TRACED",
+      "capability": "PRESERVED",
+      "fix": "NOT_NEEDED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "scan-B11"
+      ]
+    },
+    {
+      "id": "B12",
+      "source": "TBX-404-405-RECONCILE §2.3 B",
+      "scan": "TRACED",
+      "capability": "IMPROVED",
+      "fix": "CHANGED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "scan-B12",
+        "run-B12-reject"
+      ]
+    },
+    {
+      "id": "B13",
+      "source": "TBX-404-405-RECONCILE §2.3 B",
+      "scan": "TRACED",
+      "capability": "UNVERIFIED",
+      "fix": "PROPOSED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "scan-B13"
+      ]
+    },
+    {
+      "id": "C01",
+      "source": "TBX-404-405-RECONCILE §2.3 C",
+      "scan": "TRACED",
+      "capability": "UNVERIFIED",
+      "fix": "BLOCKED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "scan-C"
+      ]
+    },
+    {
+      "id": "C02",
+      "source": "TBX-404-405-RECONCILE §2.3 C",
+      "scan": "TRACED",
+      "capability": "OUT_OF_SCOPE",
+      "fix": "NOT_NEEDED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "scan-C"
+      ]
+    },
+    {
+      "id": "C03",
+      "source": "TBX-404-405-RECONCILE §2.3 C",
+      "scan": "BLOCKED",
+      "capability": "OUT_OF_SCOPE",
+      "fix": "BLOCKED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "scan-C"
+      ]
+    },
+    {
+      "id": "C04",
+      "source": "TBX-404-405-RECONCILE §2.3 C",
+      "scan": "BLOCKED",
+      "capability": "UNVERIFIED",
+      "fix": "BLOCKED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "scan-C"
+      ]
+    },
+    {
+      "id": "R01",
+      "source": "review 3d41f8f4",
+      "scan": "TRACED",
+      "capability": "PRESERVED",
+      "fix": "CHANGED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "test_web_association_invalid_action_keeps_the_original_key"
+      ]
+    },
+    {
+      "id": "R02",
+      "source": "review 3d41f8f4",
+      "scan": "TRACED",
+      "capability": "PRESERVED",
+      "fix": "CHANGED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "RecurringOccurrencePaymentPickerTest"
+      ]
+    },
+    {
+      "id": "R03",
+      "source": "review 3d41f8f4",
+      "scan": "TRACED",
+      "capability": "PRESERVED",
+      "fix": "CHANGED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "test_web_reject_from_recurring_occurrence_returns_to_the_original_period"
+      ]
+    },
+    {
+      "id": "U01",
+      "source": "review 3d41f8f4",
+      "scan": "TRACED",
+      "capability": "IMPROVED",
+      "fix": "CHANGED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "test_focused_payment_review_keeps_the_original_period_return"
+      ]
+    },
+    {
+      "id": "U02",
+      "source": "review 3d41f8f4",
+      "scan": "TRACED",
+      "capability": "IMPROVED",
+      "fix": "CHANGED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "RecurringOccurrencePaymentPickerTest"
+      ]
+    },
+    {
+      "id": "U03",
+      "source": "review 3d41f8f4",
+      "scan": "TRACED",
+      "capability": "IMPROVED",
+      "fix": "CHANGED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "test_period_payment_fx_confirm_return_then_explicit_link_zeros_reserve_once"
+      ]
+    },
+    {
+      "id": "U04",
+      "source": "review 3d41f8f4",
+      "scan": "TRACED",
+      "capability": "IMPROVED",
+      "fix": "CHANGED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "test_unknown_recurring_currency_requires_explicit_choice_then_posts_pending"
+      ]
+    },
+    {
+      "id": "U05",
+      "source": "review 3d41f8f4",
+      "scan": "TRACED",
+      "capability": "IMPROVED",
+      "fix": "CHANGED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "ExpenseManualCreateOfflineTest"
+      ]
+    },
+    {
+      "id": "U06",
+      "source": "review 3d41f8f4",
+      "scan": "TRACED",
+      "capability": "IMPROVED",
+      "fix": "CHANGED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "snapshotKeepsClearedMerchantAndRawAmountText"
+      ]
+    },
+    {
+      "id": "U07",
+      "source": "review 3d41f8f4",
+      "scan": "TRACED",
+      "capability": "PARTIAL",
+      "fix": "CHANGED",
+      "chain": null,
+      "consumers": [],
+      "evidence": [
+        "HANDOFF.md",
+        "inventory/file-attribution.tsv"
+      ]
+    }
+  ],
+  "files": [
+    {
+      "note": "per-file capability map",
+      "path": "docs/current/tbx-404-405-reconcile/inventory/file-attribution.tsv",
+      "unmapped": 0,
+      "rows": 626
+    }
+  ],
+  "edges": [
+    {
+      "id": "A09-WEB-ADMISSION",
+      "status": "TRACED",
+      "note": "Web pending editor online-first; contract FIX/NEXT; Owner decision before building a second admission system"
+    },
+    {
+      "id": "B13-LAST-ADMITTED",
+      "status": "TRACED",
+      "note": "lastOrNull admitted session; runtime UNVERIFIED"
+    },
+    {
+      "id": "C03-DAILY",
+      "status": "BLOCKED"
+    },
+    {
+      "id": "C04-GMAIL",
+      "status": "BLOCKED"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "E-P0-PRECHECK",
+      "kind": "source",
+      "sha": "c34efb40b89c4fecd85478888ed68ce84a90f10f",
+      "command": "git fetch origin main; gh api pulls/{404,405,409,412,413,414,415}/files --paginate",
+      "result": "AUDIT_BASE unchanged; paginated file lists landed",
       "executed": true
     },
     {
-      "id": "E-R02-U02-U04-U05-U06",
+      "id": "E-B01-B07-UNIT",
       "kind": "unit",
-      "command": "gradlew :app:testGrayDebugUnitTest --tests RecurringOccurrencePaymentPickerTest --tests RecurringPeriodPaymentSurfaceTest --tests RecurringOccurrenceViewModelTest --tests ExpenseManualCreateOfflineTest",
-      "result": "BUILD SUCCESSFUL",
+      "sha": "uncommitted-on-c34efb40",
+      "command": "pytest test_web_recurring_form_continuity.py; gradle testGrayDebugUnitTest (3 classes)",
+      "result": "web 8 passed; android BUILD SUCCESSFUL",
+      "executed": true
+    },
+    {
+      "id": "E-B12-REJECT-RETURN",
+      "kind": "unit",
+      "sha": "uncommitted-on-c34efb40",
+      "command": "pytest tests/test_web_expense_undo.py tests/test_web_review_flow.py",
+      "result": "23 passed",
+      "executed": true
+    },
+    {
+      "id": "E-UNKNOWN-CURRENCY-422",
+      "kind": "unit",
+      "sha": "uncommitted-on-f1068d12",
+      "command": "pytest tests/test_web_period_payment_fx_link_journey.py::test_unknown_recurring_currency_requires_explicit_choice_then_posts_pending",
+      "result": "1 passed",
       "executed": true
     }
   ],
-  "not_executed": [
-    "full Android app",
-    "full PostgreSQL/HTTP suite",
-    "daily-use install",
-    "merge",
-    "Codex"
-  ]
+  "blocked": [
+    {
+      "id": "BLK-GMAIL",
+      "missing": "Gmail three final product contracts have no session entry",
+      "tried": "local docs/current contracts and atlas",
+      "resume": "continue source scan; do not invent Gmail text",
+      "capability": "C04"
+    },
+    {
+      "id": "BLK-RECURRING-PAYMENT-CONTRACT-FILENAME",
+      "missing": "docs/current/TICKETBOX_RECURRING_PAYMENT_JOURNEY_CONTRACT.md",
+      "tried": "glob docs/current TICKETBOX_RECURRING*",
+      "resume": "use TICKETBOX_RECURRING_OCCURRENCE_CONTRACT.md + #405/#412/#414 diffs",
+      "capability": "B"
+    }
+  ],
+  "production_code_head": "2e11d1c2c93641abdfa90593817c946f0b2d7895"
 }
