@@ -51,6 +51,20 @@ class RecurringPaymentTaskTest {
     }
 
     @Test
+    fun admittedOutboxClientRefIsReusedWhenTheStoreMappingIsGone() {
+        val restored = assertNotNull(recurringPaymentTask(loaded("JPY", 1200), admittedClientRef = "outbox-august"))
+        assertEquals("outbox-august", restored.clientRef)
+        val rememberedWins = assertNotNull(
+            recurringPaymentTask(
+                loaded("JPY", 1200),
+                remembered = restored.copy(clientRef = "store-ref"),
+                admittedClientRef = "outbox-august",
+            ),
+        )
+        assertEquals("store-ref", rememberedWins.clientRef)
+    }
+
+    @Test
     fun missingLedgerHomeDoesNotInventATask() {
         assertNull(recurringPaymentTask(loaded("JPY", 1200).copy(ledgerHomeCurrencyCode = null)))
     }

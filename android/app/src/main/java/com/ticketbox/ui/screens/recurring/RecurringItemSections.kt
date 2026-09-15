@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -203,6 +204,7 @@ private fun RecurringItemRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .testTag("recurring-item-" + item.publicId)
             .then(
                 if (editable) {
                     Modifier.clickable(role = Role.Button) { interaction.onEdit(item) }

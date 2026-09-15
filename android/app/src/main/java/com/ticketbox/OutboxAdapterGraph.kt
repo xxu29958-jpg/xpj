@@ -134,6 +134,9 @@ internal class OutboxAdapterGraph {
     val manualCreateAdapter: JsonAdapter<ExpenseManualCreateRequestDto> = lazyJsonAdapter {
         moshi.adapter(ExpenseManualCreateRequestDto::class.java)
     }
+    val recurringPaymentCreateAdapter: JsonAdapter<com.ticketbox.data.repository.RecurringPaymentCreatePayload> = lazyJsonAdapter {
+        moshi.adapter(com.ticketbox.data.repository.RecurringPaymentCreatePayload::class.java)
+    }
 
     val offsetCreateAdapter: JsonAdapter<ExpenseOffsetCreateRequestDto> = lazyJsonAdapter {
         moshi.adapter(ExpenseOffsetCreateRequestDto::class.java)

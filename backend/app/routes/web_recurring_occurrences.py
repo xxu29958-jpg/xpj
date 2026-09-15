@@ -88,9 +88,10 @@ def _payments(db, *, ledger_id, month, query, item, occurrence):
 
 
 def _occurrence_reject_undo(db, *, selected_id: str, undo: str | None) -> tuple[int | None, int | None]:
-    if not undo or not undo.isdigit():
+    parsed = _payment_expense_id(undo or "")
+    if not parsed:
         return None, None
-    candidate = int(undo)
+    candidate = int(parsed)
     row_version = fetch_expense_row_version_in_status(
         db, expense_id=candidate, tenant_id=selected_id, status="rejected",
     )

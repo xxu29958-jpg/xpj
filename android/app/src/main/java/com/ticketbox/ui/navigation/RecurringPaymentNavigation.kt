@@ -157,6 +157,7 @@ internal fun recurringPaymentTask(
     state: RecurringOccurrenceUiState,
     existing: RecurringPaymentTask? = null,
     remembered: RecurringPaymentTask? = null,
+    admittedClientRef: String? = null,
 ): RecurringPaymentTask? {
     val binding = state.access?.binding ?: return null
     val item = state.item ?: return null
@@ -172,7 +173,7 @@ internal fun recurringPaymentTask(
         binding = binding,
         seriesPublicId = item.publicId,
         period = occurrence.period,
-        clientRef = UUID.randomUUID().toString(),
+        clientRef = admittedClientRef?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString(),
         merchant = item.merchant,
         recordedCurrencyCode = recorded,
         suggestedAmountMinor = if (recorded == null) null else occurrence.plannedAmountCents,

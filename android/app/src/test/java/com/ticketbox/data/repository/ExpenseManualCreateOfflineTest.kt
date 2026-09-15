@@ -81,6 +81,7 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
                 recognizeTextAdapter = com.ticketbox.OutboxAdapterGraph().recognizeTextAdapter,
                 patchExpenseAdapter = moshi().adapter(ExpenseUpdateRequest::class.java),
                 manualCreateAdapter = moshi().adapter(ExpenseManualCreateRequestDto::class.java),
+            recurringPaymentCreateAdapter = com.ticketbox.OutboxAdapterGraph().recurringPaymentCreateAdapter,
             correctionAdapter = com.ticketbox.OutboxAdapterGraph().correctionAdapter,
             billSplitReceiptAdapter = com.ticketbox.OutboxAdapterGraph().billSplitReceiptAdapter,
             billSplitCreateAdapter = com.ticketbox.OutboxAdapterGraph().billSplitCreateAdapter,
@@ -296,5 +297,26 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
         assertEquals("server-pub-77", synced.publicId)
         assertEquals(77L, synced.toDomain().id, "domain id flips from negative local to positive server id")
         assertFalse(synced.toDomain().pendingSync, "the row is no longer pending after sync")
+    }
+
+    @Test
+    fun periodPaymentOriginReusesTheOriginalClientRefWithoutGuessingMerchantOrAmount() = runTest {
+        val dao = FakeExpenseDao()
+        val pendingDao = FakePendingMutationDao()
+        val outbox = outbox(pendingDao)
+        val repo = createRepo(ManualCreateApi(failure = IOException("airplane mode")), dao, outbox)
+        val binding = requireNotNull(repo.captureDeferredLedgerBinding())
+        val origin = RecurringPaymentOrigin("rec-1", "2026-08")
+        repo.manualCreation.create(draft, binding, "august-ref", origin).getOrThrow()
+        repo.manualCreation.create(draft.copy(merchant = "另一家"), binding, "other-ref").getOrThrow()
+        val found = repo.manualCreation.observeOrigin(binding, origin).first()
+        assertEquals("august-ref", found?.request?.clientRef)
+        assertNull(repo.manualCreation.observeOrigin(binding, origin.copy(period = "2026-09")).first())
+        assertEquals(2, pendingDao.rows.size)
+        val wrapped = pendingDao.rows.values.single { it.targetId == "expense:local:august-ref" }
+        val stored = requireNotNull(com.ticketbox.OutboxAdapterGraph().recurringPaymentCreateAdapter.fromJson(wrapped.payload))
+        assertEquals("rec-1", stored.seriesPublicId)
+        assertEquals("2026-08", stored.period)
+        assertEquals("august-ref", stored.request.clientRef)
     }
 }

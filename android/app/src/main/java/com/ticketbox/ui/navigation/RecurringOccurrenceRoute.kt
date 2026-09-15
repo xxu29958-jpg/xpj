@@ -13,12 +13,14 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.ticketbox.data.repository.ExpenseManualCreation
 import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.RecurringPaymentOrigin
 import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.ui.screens.recurring.OccurrenceSheetActions
 import com.ticketbox.ui.screens.recurring.RecurringOccurrenceSheet
 import com.ticketbox.viewmodel.RecurringOccurrenceUiState
 import com.ticketbox.viewmodel.RecurringOccurrenceViewModel
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.onEach
 
 internal data class RecurringPaymentRestore(
     val items: List<RecurringItem> = emptyList(),
@@ -44,6 +46,11 @@ internal fun recurringOccurrenceModel(factory: MainScreenFactory, onChanged: () 
         }
     })
 
+private data class RecurringPaymentOriginObservation(
+    val resolved: Boolean,
+    val clientRef: String?,
+)
+
 @Composable
 internal fun RecurringOccurrenceHost(
     model: RecurringOccurrenceViewModel,
@@ -59,7 +66,10 @@ internal fun RecurringOccurrenceHost(
     val remembered = restore.drafts?.remembered(
         visible.identity.binding, visible.identity.seriesPublicId, visible.identity.period,
     )
-    val focused = remembered ?: task?.takeIf { it.matches(visible.identity) }
+    val origin = rememberRecurringPaymentOrigin(creation, visible.identity)
+    val focused = remembered
+        ?: task?.takeIf { it.matches(visible.identity) }
+        ?: origin.clientRef?.let { recurringPaymentTask(state, admittedClientRef = it) }
     LaunchedEffect(userClosed, visible, taskJson) {
         val current = readRecurringPaymentTask(taskJson)
         val decision = recurringPaymentHostDecision(current, userClosed, visible, remembered)
@@ -92,8 +102,10 @@ internal fun RecurringOccurrenceHost(
             onRecover = model::recover,
             onOpenExpense = expenses.onOpenExpense,
             onRecordPayment = {
-                val next = recurringPaymentTask(state, existing = task, remembered = remembered)
-                    ?: return@OccurrenceSheetActions
+                if (!origin.resolved) return@OccurrenceSheetActions
+                val next = recurringPaymentTask(
+                    state, existing = task, remembered = remembered, admittedClientRef = origin.clientRef,
+                ) ?: return@OccurrenceSheetActions
                 userClosed = false
                 restore.drafts?.remember(next)
                 taskJson = recurringPaymentTaskJson(next)
@@ -102,6 +114,25 @@ internal fun RecurringOccurrenceHost(
         ),
         preferredExpenseId = preferredPaymentExpenseId(focused, admitted?.acceptedExpenseId, visible.identity),
     )
+}
+
+@Composable
+private fun rememberRecurringPaymentOrigin(
+    creation: ExpenseManualCreation,
+    identity: RecurringPaymentIdentity,
+): RecurringPaymentOriginObservation {
+    var resolved by remember(identity.binding, identity.seriesPublicId, identity.period) { mutableStateOf(false) }
+    val projection by remember(creation, identity.binding, identity.seriesPublicId, identity.period) {
+        val binding = identity.binding
+        val series = identity.seriesPublicId
+        val period = identity.period
+        if (binding == null || series.isNullOrBlank() || period.isNullOrBlank()) {
+            flowOf(null).onEach { resolved = true }
+        } else {
+            creation.observeOrigin(binding, RecurringPaymentOrigin(series, period)).onEach { resolved = true }
+        }
+    }.collectAsStateWithLifecycle(initialValue = null)
+    return RecurringPaymentOriginObservation(resolved, projection?.request?.clientRef?.takeIf { it.isNotBlank() })
 }
 
 private fun RecurringOccurrenceUiState.paymentVisible() = RecurringPaymentVisible(

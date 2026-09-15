@@ -218,6 +218,7 @@ class AppContainer(context: Context) {
             CreateExpenseDispatcher(
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.manualCreateAdapter,
+                originAdapter = outboxAdapters.recurringPaymentCreateAdapter,
                 applyServerIdentity = { ledgerId, clientRef, created ->
                     database.expenseDao().applyLocalCreateServerIdentity(
                         ledgerId,

@@ -286,3 +286,23 @@ def test_focused_payment_review_keeps_the_original_period_return(client: TestCli
         app.dependency_overrides.pop(_require_local, None)
 
 
+def test_occurrence_reject_undo_uses_payment_expense_id_parser(monkeypatch) -> None:
+    from app.routes.web_recurring_occurrences import _occurrence_reject_undo
+
+    sentinel = object()
+    for raw in ("²", "0", "-1", "1" * 5000, "2147483648", "12.3", "", None):
+        assert _occurrence_reject_undo(sentinel, selected_id="owner", undo=raw) == (None, None)
+
+    seen: dict[str, object] = {}
+
+    def fetch_expense_row_version_in_status(db, *, expense_id, tenant_id, status):
+        seen.update(db=db, expense_id=expense_id, tenant_id=tenant_id, status=status)
+        return 7
+
+    monkeypatch.setattr(
+        "app.routes.web_recurring_occurrences.fetch_expense_row_version_in_status",
+        fetch_expense_row_version_in_status,
+    )
+    assert _occurrence_reject_undo(sentinel, selected_id="owner", undo="41") == (41, 7)
+    assert seen == {"db": sentinel, "expense_id": 41, "tenant_id": "owner", "status": "rejected"}
+

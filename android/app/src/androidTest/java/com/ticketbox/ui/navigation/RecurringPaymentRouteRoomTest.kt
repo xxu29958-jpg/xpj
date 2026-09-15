@@ -28,6 +28,7 @@ import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
 import com.ticketbox.data.remote.dto.RecurringOccurrenceDto
 import com.ticketbox.data.repository.LedgerAccessContext
+import com.ticketbox.data.repository.decodeManualCreateRequest
 import com.ticketbox.data.repository.expenseAcceptanceReceiptJson
 import com.ticketbox.data.repository.toEntity
 import com.ticketbox.domain.model.AppSkin
@@ -115,7 +116,7 @@ class RecurringPaymentRouteRoomTest {
         compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performScrollTo().performClick()
         compose.waitUntil(10_000) { harness.fixture.stored().size == 1 }
         val original = harness.fixture.stored().single()
-        val request = requireNotNull(OutboxAdapterGraph().manualCreateAdapter.fromJson(requireNotNull(original["payload"])))
+        val request = requireNotNull(readCreateRequest(requireNotNull(original["payload"])))
         assertEquals(task.clientRef, request.clientRef)
         assertEquals("JPY", request.originalCurrency)
         assertEquals("1200", request.originalAmount)
@@ -240,8 +241,12 @@ class RecurringPaymentRouteRoomTest {
                 TicketboxTheme(skin = AppSkin.Default) {
                     val nav = rememberNavController()
                     navHolder.value = nav
-                    NavHost(nav, startDestination = ProductSecondaryPage.Recurring.route) {
-                        composable(ProductSecondaryPage.Recurring.route) { }
+                    NavHost(nav, startDestination = MAIN_ROUTE) {
+                        composable(MAIN_ROUTE) { entry ->
+                            androidx.compose.runtime.CompositionLocalProvider(
+                                LocalRecurringPaymentDraftHandle provides entry.savedStateHandle,
+                            ) { }
+                        }
                         addRecurringPaymentRoute(MainNavigationRuntime(nav, harness.shell, harness.screenFactory))
                     }
                 }
@@ -250,7 +255,7 @@ class RecurringPaymentRouteRoomTest {
         compose.waitUntil(10_000) { navHolder.value != null }
         compose.runOnIdle {
             val nav = requireNotNull(navHolder.value)
-            RecurringPaymentDraftStore(nav.getBackStackEntry(ProductSecondaryPage.Recurring.route).savedStateHandle)
+            RecurringPaymentDraftStore(nav.getBackStackEntry(MAIN_ROUTE).savedStateHandle)
                 .remember(august)
             nav.navigate(recurringPaymentRoute(august))
         }
@@ -265,7 +270,7 @@ class RecurringPaymentRouteRoomTest {
         compose.runOnIdle {
             val stored = requireNotNull(
                 RecurringPaymentDraftStore(
-                    requireNotNull(navHolder.value).getBackStackEntry(ProductSecondaryPage.Recurring.route).savedStateHandle,
+                    requireNotNull(navHolder.value).getBackStackEntry(MAIN_ROUTE).savedStateHandle,
                 ).read("august-ref"),
             )
             assertEquals("", stored.amountText)
@@ -282,7 +287,7 @@ class RecurringPaymentRouteRoomTest {
         }
         compose.runOnIdle {
             val nav = requireNotNull(navHolder.value)
-            RecurringPaymentDraftStore(nav.getBackStackEntry(ProductSecondaryPage.Recurring.route).savedStateHandle)
+            RecurringPaymentDraftStore(nav.getBackStackEntry(MAIN_ROUTE).savedStateHandle)
                 .remember(september)
             nav.navigate(recurringPaymentRoute(september))
         }
@@ -295,7 +300,7 @@ class RecurringPaymentRouteRoomTest {
         compose.runOnIdle {
             val nav = requireNotNull(navHolder.value)
             val store = RecurringPaymentDraftStore(
-                nav.getBackStackEntry(ProductSecondaryPage.Recurring.route).savedStateHandle,
+                nav.getBackStackEntry(MAIN_ROUTE).savedStateHandle,
             )
             val again = requireNotNull(
                 recurringPaymentTask(
@@ -315,7 +320,7 @@ class RecurringPaymentRouteRoomTest {
         assertEquals("august-ref", restored.value?.clientRef)
         compose.runOnIdle {
             val store = RecurringPaymentDraftStore(
-                requireNotNull(navHolder.value).getBackStackEntry(ProductSecondaryPage.Recurring.route).savedStateHandle,
+                requireNotNull(navHolder.value).getBackStackEntry(MAIN_ROUTE).savedStateHandle,
             )
             val draft = requireNotNull(store.read("august-ref"))
             assertEquals("", draft.amountText)
@@ -344,7 +349,14 @@ class RecurringPaymentRouteRoomTest {
                                 factory = harness.screenFactory,
                                 exit = ExpenseEditExitActions({}, {}),
                                 drafts = drafts,
-                                admitted = {},
+                                admitted = {
+                                    ManualExpenseSubmissionRoute(
+                                        current.clientRef,
+                                        harness.screenFactory,
+                                        ExpenseEditExitActions({}, {}),
+                                        related = ExpenseFactNavigation({}, { _, _ -> }),
+                                    )
+                                },
                             )
                         }
                     }
@@ -373,6 +385,14 @@ class RecurringPaymentRouteRoomTest {
             ledgerHomeCurrencyCode = "CNY",
         )
     }
+
+    private fun readCreateRequest(payload: String) = requireNotNull(
+        decodeManualCreateRequest(
+            OutboxAdapterGraph().manualCreateAdapter,
+            OutboxAdapterGraph().recurringPaymentCreateAdapter,
+            payload,
+        ),
+    )
 
     private fun augustUiState(task: RecurringPaymentTask) = RecurringOccurrenceUiState(
         access = LedgerAccessContext(task.binding, true),

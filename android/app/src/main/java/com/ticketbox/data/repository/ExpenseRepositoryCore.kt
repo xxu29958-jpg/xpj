@@ -542,6 +542,7 @@ internal class ExpenseRepositoryCore(
         bound: BoundLedgerRequest,
         draft: ExpenseDraft,
         clientRef: String,
+        payloadJson: String? = null,
     ): Expense {
         val entity = draft.toLocalCreateEntity(bound.ledgerId, clientRef)
         var rowId = 0L
@@ -550,7 +551,8 @@ internal class ExpenseRepositoryCore(
             intent = PendingMutationIntent(
                 type = PendingMutationType.CreateExpense,
                 targetId = expenseLocalTargetId(clientRef),
-                payloadJson = offlineMutations.manualCreateAdapter.toJson(draft.toManualCreateRequest(clientRef = clientRef)),
+                payloadJson = payloadJson
+                    ?: offlineMutations.manualCreateAdapter.toJson(draft.toManualCreateRequest(clientRef = clientRef)),
                 expectedRowVersion = FIRST_WRITE_ROW_VERSION,
             ),
             afterPersisted = {

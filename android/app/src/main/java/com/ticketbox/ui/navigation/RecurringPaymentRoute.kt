@@ -5,10 +5,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -18,6 +16,7 @@ import androidx.compose.runtime.saveable.SaveableStateHolder
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.SavedStateHandle
@@ -30,8 +29,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.ticketbox.R
 import com.ticketbox.data.repository.LedgerAccessContext
+import com.ticketbox.data.repository.RecurringPaymentOrigin
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
+import com.ticketbox.ui.components.AppBusyGuardedSheet
 import com.ticketbox.ui.components.formatMinorAmountInput
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.ManualExpenseSheet
@@ -47,9 +48,7 @@ internal fun NavGraphBuilder.addRecurringPaymentRoute(runtime: MainNavigationRun
         val task = readRecurringPaymentTask(entry.arguments?.getString("task")) ?: return@composable
         val back = { runtime.navController.popBackStack(); Unit }
         val drafts = RecurringPaymentDraftStore(
-            runCatching { runtime.navController.getBackStackEntry(ProductSecondaryPage.Recurring.route) }
-                .getOrNull()?.savedStateHandle
-                ?: entry.savedStateHandle,
+            runtime.navController.getBackStackEntry(MAIN_ROUTE).savedStateHandle,
         )
         val factory = runtime.screenFactory
         val exit = ExpenseEditExitActions(
@@ -86,10 +85,13 @@ internal fun NavGraphBuilder.addRecurringPaymentRoute(runtime: MainNavigationRun
     }
 }
 
+internal val LocalRecurringPaymentDraftHandle = staticCompositionLocalOf<SavedStateHandle?> { null }
+
 @Composable
 internal fun rememberRecurringPaymentDraftStore(): RecurringPaymentDraftStore {
+    val local = LocalRecurringPaymentDraftHandle.current
     val owner = LocalViewModelStoreOwner.current
-    val handle = (owner as? NavBackStackEntry)?.savedStateHandle ?: remember { SavedStateHandle() }
+    val handle = local ?: (owner as? NavBackStackEntry)?.savedStateHandle ?: remember { SavedStateHandle() }
     return remember(handle) { RecurringPaymentDraftStore(handle) }
 }
 
@@ -106,7 +108,7 @@ private data class RecurringPaymentEntryContext(
     val access: RecurringPaymentAccess,
 )
 
-private data class RecurringPaymentSheetBody(
+internal data class RecurringPaymentSheetBody(
     val state: ManualExpenseSheetState,
     val actions: ManualExpenseSheetActions,
     val initials: ManualExpenseSheetInitials,
@@ -205,7 +207,12 @@ private fun RecurringPaymentKnownCurrencySheet(
                         saving = true
                         error = null
                         scope.launch {
-                            ctx.factory.repository.manualCreation.create(draft, task.binding, task.clientRef).fold(
+                            ctx.factory.repository.manualCreation.create(
+                                draft,
+                                task.binding,
+                                task.clientRef,
+                                RecurringPaymentOrigin(task.seriesPublicId, task.period),
+                            ).fold(
                                 onSuccess = {
                                     ctx.drafts.removeDraft(task.clientRef)
                                     draftState.removeState(task.clientRef)
@@ -262,15 +269,16 @@ private fun formDraft(clientRef: String, form: ManualExpenseSheetDraft) = Recurr
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun RecurringPaymentSheet(
+internal fun RecurringPaymentSheet(
     body: RecurringPaymentSheetBody,
     draftState: SaveableStateHolder,
     clientRef: String,
     onDraftChange: (ManualExpenseSheetDraft) -> Unit,
 ) {
-    ModalBottomSheet(
-        onDismissRequest = body.actions.onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    AppBusyGuardedSheet(
+        isSubmitting = body.state.saving,
+        onDismiss = body.actions.onDismiss,
+        skipPartiallyExpanded = true,
     ) {
         draftState.SaveableStateProvider(clientRef) {
             ManualExpenseSheet(body.state, body.actions, body.initials, onDraftChange = onDraftChange)

@@ -13,7 +13,11 @@ data class ManualExpenseCreationProjection(
 
 internal suspend fun ExpenseRepositoryCore.describeManualCreation(row: OutboxRow): ManualExpenseCreationProjection? {
     if (row.type != PendingMutationType.CreateExpense) return null
-    val request = runCatching { offlineMutations.manualCreateAdapter.fromJson(row.payloadJson) }.getOrNull()
+    val request = decodeManualCreateRequest(
+        offlineMutations.manualCreateAdapter,
+        offlineMutations.recurringPaymentCreateAdapter,
+        row.payloadJson,
+    )
     val id = expenseAcceptanceReceiptId(row.receiptJson.takeIf { row.status == PendingMutationStatus.Done })
     return ManualExpenseCreationProjection(row, request, id)
 }

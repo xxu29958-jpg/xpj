@@ -2,6 +2,7 @@ package com.ticketbox.data.repository
 
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assertIsDisplayed
@@ -15,6 +16,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.test.espresso.Espresso.pressBack
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.RepositoryGraph
+import com.ticketbox.data.repository.RecurringPaymentOrigin
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ExpenseDraft
@@ -544,5 +546,78 @@ class RecurringOccurrenceRoomContinuityTest {
         assertEquals(fixture.network.calls.first(), fixture.network.calls.last())
         assertEquals(originalKey, fixture.network.calls.last().second)
         assertEquals(1, fixture.network.results.size)
+    }
+
+    @Test
+    fun emptyDraftStoreReusesOutboxClientRefForTheSamePeriodWithoutAnotherCreate() {
+        fixture.confirmedStream.value = emptyList()
+        installModel()
+        val drafts = mutableStateOf(RecurringPaymentDraftStore(SavedStateHandle()))
+        val hostMounted = mutableStateOf(true)
+        compose.setContent {
+            val current = model.value ?: return@setContent
+            if (!hostMounted.value) return@setContent
+            TicketboxTheme(skin = AppSkin.Paper) {
+                key(drafts.value) {
+                    RecurringOccurrenceHost(
+                        current,
+                        requireNotNull(graph).expenseRepository.manualCreation,
+                        RecurringExpenseNavigation({}, { paymentTask.value = it }),
+                        RecurringPaymentRestore(items = listOf(occurrenceConnectedItem()), drafts = drafts.value),
+                    )
+                }
+            }
+        }
+        compose.waitUntil(10_000) {
+            model.value?.uiState?.value?.canWrite == true &&
+                model.value?.uiState?.value?.occurrence?.period == "2026-09" &&
+                model.value?.uiState?.value?.ledgerHomeCurrencyCode != null
+        }
+        compose.waitForIdle()
+        compose.onNodeWithTag("occurrence-record-payment").performScrollTo().performClick()
+        compose.waitUntil(10_000) { paymentTask.value?.period == "2026-09" }
+        val originalRef = requireNotNull(paymentTask.value?.clientRef)
+        val binding = requireNotNull(paymentTask.value?.binding)
+        runBlocking {
+            requireNotNull(graph).expenseRepository.manualCreation.create(
+                ExpenseDraft(
+                    amountCents = 10_000,
+                    originalCurrencyCode = CurrencyCode.CNY,
+                    originalAmountMinor = 10_000,
+                    ledgerHomeCurrency = CurrencyCode.CNY,
+                    merchant = "房租",
+                    category = "餐饮",
+                    note = null,
+                    expenseTime = "2026-09-05T08:00:00Z",
+                    tags = null,
+                    valueScore = null,
+                    regretScore = null,
+                ),
+                binding,
+                originalRef,
+                RecurringPaymentOrigin("recurring-1", "2026-09"),
+            ).getOrThrow()
+        }
+        assertEquals(1, fixture.stored().count { it["type"] == "create_expense" })
+        paymentTask.value = null
+        val rebuilt = RecurringPaymentDraftStore(SavedStateHandle())
+        compose.runOnIdle {
+            drafts.value = rebuilt
+            hostMounted.value = false
+        }
+        compose.waitForIdle()
+        compose.runOnIdle { hostMounted.value = true }
+        compose.waitUntil(10_000) {
+            model.value?.uiState?.value?.canWrite == true &&
+                model.value?.uiState?.value?.occurrence?.period == "2026-09"
+        }
+        compose.waitForIdle()
+        compose.waitUntil(10_000) {
+            runCatching { compose.onNodeWithTag("occurrence-record-payment").performScrollTo().performClick() }
+            paymentTask.value?.clientRef == originalRef
+        }
+        assertEquals(originalRef, paymentTask.value?.clientRef)
+        assertEquals(1, fixture.stored().count { it["type"] == "create_expense" })
+        assertTrue(rebuilt.remembered(binding, "recurring-1", "2026-09")?.clientRef == originalRef)
     }
 }

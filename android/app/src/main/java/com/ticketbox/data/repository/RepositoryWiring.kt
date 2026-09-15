@@ -47,6 +47,7 @@ data class ExpenseOfflineMutationWiring(
     val manualCreateAdapter: JsonAdapter<ExpenseManualCreateRequestDto>,
     val offsetCreateAdapter: JsonAdapter<ExpenseOffsetCreateRequestDto>? = null,
     val offsetVoidAdapter: JsonAdapter<ExpenseOffsetVoidOutboxPayload>? = null,
+    val recurringPaymentCreateAdapter: JsonAdapter<RecurringPaymentCreatePayload>? = null,
 )
 
 /**

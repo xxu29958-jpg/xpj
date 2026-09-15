@@ -101,13 +101,15 @@ internal fun MainNavGraph(
         startDestination = MAIN_ROUTE,
         modifier = Modifier.fillMaxSize(),
     ) {
-        composable(MAIN_ROUTE) {
-            MainRoute(
-                runtime = runtime,
-                snackbarHostState = snackbarHostState,
-                preferenceControls = preferenceControls,
-                onBindingCleared = onBindingCleared,
-            )
+        composable(MAIN_ROUTE) { entry ->
+            CompositionLocalProvider(LocalRecurringPaymentDraftHandle provides entry.savedStateHandle) {
+                MainRoute(
+                    runtime = runtime,
+                    snackbarHostState = snackbarHostState,
+                    preferenceControls = preferenceControls,
+                    onBindingCleared = onBindingCleared,
+                )
+            }
         }
         addManualExpenseSubmissionRoute(runtime)
         addRecurringPaymentRoute(runtime)
