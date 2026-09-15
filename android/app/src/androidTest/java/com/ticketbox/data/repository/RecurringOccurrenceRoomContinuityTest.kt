@@ -16,6 +16,8 @@ import androidx.test.espresso.Espresso.pressBack
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.RepositoryGraph
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.ui.navigation.RecurringOccurrenceHost
 import com.ticketbox.ui.navigation.RecurringPaymentDraftStore
@@ -295,6 +297,89 @@ class RecurringOccurrenceRoomContinuityTest {
         assertNull(model.value?.uiState?.value?.item)
         assertEquals("september-ref", drafts.remembered(binding, "recurring-1", "2026-09")?.clientRef)
         assertTrue(fixture.stored().isEmpty())
+    }
+
+    @Test
+    fun closingThenReopeningAndLinkingRetiresOnlyTheFulfilledTask() {
+        val drafts = RecurringPaymentDraftStore(SavedStateHandle())
+        installModel()
+        val binding = requireNotNull(model.value?.uiState?.value?.access).binding
+        drafts.remember(
+            RecurringPaymentTask(
+                binding = binding,
+                seriesPublicId = "recurring-1",
+                period = "2026-08",
+                clientRef = "august-ref",
+                merchant = "房租",
+                recordedCurrencyCode = "JPY",
+                suggestedAmountMinor = 1200,
+                ledgerHomeCurrencyCode = "CNY",
+            ),
+        )
+        compose.setContent {
+            val current = model.value ?: return@setContent
+            TicketboxTheme(skin = AppSkin.Paper) {
+                RecurringOccurrenceHost(
+                    current,
+                    requireNotNull(graph).expenseRepository.manualCreation,
+                    onOpenExpense = {},
+                    onRecordPayment = { paymentTask.value = it },
+                    items = listOf(occurrenceConnectedItem()),
+                    drafts = drafts,
+                )
+            }
+        }
+        compose.waitUntil(10_000) {
+            model.value?.uiState?.value?.canWrite == true &&
+                model.value?.uiState?.value?.occurrence?.period == "2026-09"
+        }
+        compose.onNodeWithTag("occurrence-record-payment").performScrollTo().performClick()
+        compose.waitUntil(10_000) { paymentTask.value?.period == "2026-09" }
+        val septemberRef = requireNotNull(paymentTask.value?.clientRef)
+        runBlocking {
+            requireNotNull(graph).expenseRepository.manualCreation.create(
+                ExpenseDraft(
+                    amountCents = 10_000,
+                    originalCurrencyCode = CurrencyCode.CNY,
+                    originalAmountMinor = 10_000,
+                    ledgerHomeCurrency = CurrencyCode.CNY,
+                    merchant = "房租",
+                    category = "餐饮",
+                    note = null,
+                    expenseTime = "2026-09-05T08:00:00Z",
+                    tags = null,
+                    valueScore = null,
+                    regretScore = null,
+                ),
+                binding,
+                septemberRef,
+            ).getOrThrow()
+        }
+        drafts.removeDraft(septemberRef)
+        assertEquals(septemberRef, drafts.remembered(binding, "recurring-1", "2026-09")?.clientRef)
+        pressBack()
+        compose.waitUntil(10_000) { model.value?.uiState?.value?.item == null }
+        compose.runOnIdle { model.value?.open(occurrenceConnectedItem()) }
+        compose.waitUntil(10_000) {
+            model.value?.uiState?.value?.canWrite == true &&
+                model.value?.uiState?.value?.occurrence?.period == "2026-09"
+        }
+        compose.onNodeWithTag("occurrence-record-payment").assertIsDisplayed()
+        fixture.network.loseResponse = false
+        compose.onNodeWithTag("occurrence-payment-1").performScrollTo().performClick()
+        val review = InstrumentationRegistry.getInstrumentation().targetContext.getString(
+            com.ticketbox.R.string.occurrence_link_review, "房租付款", "JPY ¥12,345")
+        compose.onNodeWithText(review).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("occurrence-submit").performScrollTo().performClick()
+        compose.waitUntil(10_000) { fixture.stored().any { it["type"] == "set_recurring_occurrence_payment" } }
+        assertEquals(1, runBlocking { fixture.drain() }.done)
+        compose.waitUntil(10_000) {
+            model.value?.uiState?.value?.occurrence?.state == "fulfilled" &&
+                drafts.remembered(binding, "recurring-1", "2026-09") == null
+        }
+        assertEquals("august-ref", drafts.remembered(binding, "recurring-1", "2026-08")?.clientRef)
+        assertEquals("2026-09", model.value?.uiState?.value?.occurrence?.period)
+        assertEquals("recurring-1", model.value?.uiState?.value?.item?.publicId)
     }
 
     @Test

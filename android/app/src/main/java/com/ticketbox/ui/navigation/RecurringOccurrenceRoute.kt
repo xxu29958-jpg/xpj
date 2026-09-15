@@ -62,13 +62,10 @@ internal fun RecurringOccurrenceHost(
         val current = readRecurringPaymentTask(taskJson)
         if (userClosed) {
             if (current != null) taskJson = null
-            return@LaunchedEffect
-        }
-        val accessResolved = state.access != null
-        if (current != null && !retainRecurringPaymentTask(
+        } else if (current != null && !retainRecurringPaymentTask(
                 current,
                 userClosed = false,
-                accessResolved = accessResolved,
+                accessResolved = state.access != null,
                 accessBinding = state.access?.binding,
                 seriesPublicId = state.item?.publicId,
                 period = state.occurrence?.period,
@@ -76,7 +73,7 @@ internal fun RecurringOccurrenceHost(
             )
         ) {
             taskJson = null
-            val retireLast = accessResolved &&
+            val retireLast = state.access != null &&
                 state.access?.binding == current.binding &&
                 state.item?.publicId == current.seriesPublicId &&
                 state.occurrence?.period == current.period &&
