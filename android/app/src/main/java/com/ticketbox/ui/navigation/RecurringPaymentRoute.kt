@@ -144,10 +144,13 @@ internal fun RecurringPaymentRoute(
     val admittedRow by remember(task.clientRef, task.binding) {
         factory.repository.manualCreation.observe(task.binding, task.clientRef).onEach { admittedResolved = true }
     }.collectAsStateWithLifecycle(initialValue = null)
-    var originResolved by remember(task.binding, task.seriesPublicId, task.period) { mutableStateOf(false) }
-    val originLookup by remember(factory.repository, task.binding, task.seriesPublicId, task.period) {
+    var originResolved by remember(task.binding, task.seriesPublicId, task.period, task.occurrenceRowVersion) { mutableStateOf(false) }
+    val originLookup by remember(factory.repository, task.binding, task.seriesPublicId, task.period, task.occurrenceRowVersion) {
         factory.repository.manualCreation
-            .observeOrigin(task.binding, RecurringPaymentOrigin(task.seriesPublicId, task.period))
+            .observeOrigin(
+                task.binding,
+                RecurringPaymentOrigin(task.seriesPublicId, task.period, task.occurrenceRowVersion),
+            )
             .onEach { originResolved = true }
     }.collectAsStateWithLifecycle(initialValue = RecurringPaymentOriginLookup.Absent)
     if (!recurringPaymentObservationsReady(accessResolved, admittedResolved && originResolved)) {
@@ -237,7 +240,7 @@ private fun RecurringPaymentKnownCurrencySheet(
                                 draft,
                                 task.binding,
                                 task.clientRef,
-                                RecurringPaymentOrigin(task.seriesPublicId, task.period),
+                                RecurringPaymentOrigin(task.seriesPublicId, task.period, task.occurrenceRowVersion),
                             ).fold(
                                 onSuccess = { admission ->
                                     val admittedRef = (admission as ManualExpenseCreateAdmission.Accepted).clientRef

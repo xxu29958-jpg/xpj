@@ -601,7 +601,7 @@ class RecurringOccurrenceRoomContinuityTest {
                 ),
                 binding,
                 originalRef,
-                RecurringPaymentOrigin("recurring-1", "2026-09"),
+                RecurringPaymentOrigin("recurring-1", "2026-09", requireNotNull(paymentTask.value?.occurrenceRowVersion)),
             ).getOrThrow()
         }
         assertEquals(1, fixture.stored().count { it["type"] == "create_expense" })
@@ -689,7 +689,10 @@ class RecurringOccurrenceRoomContinuityTest {
         }
         runBlocking {
             val lookup = requireNotNull(graph).expenseRepository.manualCreation
-                .observeOrigin(binding, RecurringPaymentOrigin("recurring-1", "2026-09"))
+                .observeOrigin(
+                    binding,
+                    RecurringPaymentOrigin("recurring-1", "2026-09", fixture.network.current.rowVersion),
+                )
                 .first()
             val found = lookup as RecurringPaymentOriginLookup.Found
             assertEquals("legacy-ref", found.projection.request?.clientRef)
@@ -725,11 +728,112 @@ class RecurringOccurrenceRoomContinuityTest {
         assertTrue(drafts.value.remembered(binding, "recurring-1", "2026-09")?.clientRef == "legacy-ref")
         runBlocking {
             val lookup = requireNotNull(graph).expenseRepository.manualCreation
-                .observeOrigin(binding, RecurringPaymentOrigin("recurring-1", "2026-09"))
+                .observeOrigin(
+                    binding,
+                    RecurringPaymentOrigin("recurring-1", "2026-09", fixture.network.current.rowVersion),
+                )
                 .first()
             val found = lookup as RecurringPaymentOriginLookup.Found
             assertEquals("legacy-ref", found.projection.request?.clientRef)
         }
+    }
+
+    @Test
+    fun leftoverGoneRawCreateIsBoundInsteadOfEnqueueingASecondCommand() {
+        fixture.confirmedStream.value = emptyList()
+        installModel()
+        compose.waitUntil(10_000) {
+            model.value?.uiState?.value?.canWrite == true &&
+                model.value?.uiState?.value?.occurrence?.period == "2026-09"
+        }
+        val binding = requireNotNull(graph).expenseRepository.captureDeferredLedgerBinding()
+            ?: error("binding")
+        val generation = requireNotNull(model.value?.uiState?.value?.occurrence?.rowVersion)
+        runBlocking {
+            requireNotNull(graph).expenseRepository.manualCreation.create(
+                ExpenseDraft(
+                    amountCents = 10_000,
+                    originalCurrencyCode = CurrencyCode.CNY,
+                    originalAmountMinor = 10_000,
+                    ledgerHomeCurrency = CurrencyCode.CNY,
+                    merchant = "房租",
+                    category = "餐饮",
+                    note = null,
+                    expenseTime = "2026-09-05T08:00:00Z",
+                    tags = null,
+                    valueScore = null,
+                    regretScore = null,
+                ),
+                binding,
+                "legacy-ref",
+            ).getOrThrow()
+        }
+        assertEquals(1, fixture.stored().count { it["type"] == "create_expense" })
+        assertNull(
+            decodeRecurringPaymentOrigin(
+                OutboxAdapterGraph().recurringPaymentCreateAdapter,
+                requireNotNull(fixture.stored().single { it["type"] == "create_expense" }["payload"]),
+            ),
+        )
+        val drafts = RecurringPaymentDraftStore(SavedStateHandle())
+        compose.setContent {
+            val current = model.value ?: return@setContent
+            TicketboxTheme(skin = AppSkin.Paper) {
+                RecurringOccurrenceHost(
+                    current,
+                    requireNotNull(graph).expenseRepository.manualCreation,
+                    RecurringExpenseNavigation({}, { paymentTask.value = it }),
+                    RecurringPaymentRestore(items = listOf(occurrenceConnectedItem()), drafts = drafts),
+                )
+            }
+        }
+        compose.waitUntil(10_000) {
+            model.value?.uiState?.value?.canWrite == true &&
+                model.value?.uiState?.value?.occurrence?.period == "2026-09"
+        }
+        compose.waitForIdle()
+        compose.onNodeWithTag("occurrence-record-payment").performScrollTo().performClick()
+        compose.waitUntil(10_000) {
+            paymentTask.value?.period == "2026-09" && paymentTask.value?.clientRef != "legacy-ref"
+        }
+        val freshRef = requireNotNull(paymentTask.value?.clientRef)
+        runBlocking {
+            val admitted = requireNotNull(graph).expenseRepository.manualCreation.create(
+                ExpenseDraft(
+                    amountCents = 10_000,
+                    originalCurrencyCode = CurrencyCode.CNY,
+                    originalAmountMinor = 10_000,
+                    ledgerHomeCurrency = CurrencyCode.CNY,
+                    merchant = "房租",
+                    category = "餐饮",
+                    note = null,
+                    expenseTime = "2026-09-05T08:00:00Z",
+                    tags = null,
+                    valueScore = null,
+                    regretScore = null,
+                ),
+                binding,
+                freshRef,
+                RecurringPaymentOrigin("recurring-1", "2026-09", generation),
+            ).getOrThrow()
+            assertEquals("legacy-ref", (admitted as ManualExpenseCreateAdmission.Accepted).clientRef)
+        }
+        assertEquals(1, fixture.stored().count { it["type"] == "create_expense" })
+        val stored = requireNotNull(
+            decodeRecurringPaymentPayload(
+                OutboxAdapterGraph().recurringPaymentCreateAdapter,
+                requireNotNull(fixture.stored().single { it["type"] == "create_expense" }["payload"]),
+            ),
+        )
+        assertEquals(generation, stored.occurrenceRowVersion)
+        assertEquals("legacy-ref", stored.request.clientRef)
+        paymentTask.value = null
+        compose.waitUntil(10_000) {
+            runCatching { compose.onNodeWithTag("occurrence-record-payment").performScrollTo().performClick() }
+            paymentTask.value?.clientRef == "legacy-ref"
+        }
+        assertEquals("legacy-ref", paymentTask.value?.clientRef)
+        assertEquals(1, fixture.stored().count { it["type"] == "create_expense" })
     }
 
     @Test
@@ -928,7 +1032,7 @@ class RecurringOccurrenceRoomContinuityTest {
                 ),
                 binding,
                 "origin-a",
-                RecurringPaymentOrigin("recurring-1", "2026-09"),
+                RecurringPaymentOrigin("recurring-1", "2026-09", fixture.network.current.rowVersion),
             ).getOrThrow()
         }
         assertEquals(1, fixture.stored().count { it["type"] == "create_expense" })
@@ -998,7 +1102,7 @@ class RecurringOccurrenceRoomContinuityTest {
                 ),
                 binding,
                 "origin-a",
-                RecurringPaymentOrigin("recurring-1", "2026-09"),
+                RecurringPaymentOrigin("recurring-1", "2026-09", fixture.network.current.rowVersion),
             ).getOrThrow()
         }
         val drafts = RecurringPaymentDraftStore(SavedStateHandle())
@@ -1055,11 +1159,105 @@ class RecurringOccurrenceRoomContinuityTest {
         runBlocking {
             assertTrue(
                 requireNotNull(graph).expenseRepository.manualCreation
-                    .observeOrigin(binding, RecurringPaymentOrigin("recurring-1", "2026-09"))
+                    .observeOrigin(
+                        binding,
+                        RecurringPaymentOrigin("recurring-1", "2026-09", fixture.network.current.rowVersion),
+                    )
                     .first() is RecurringPaymentOriginLookup.Absent,
             )
         }
         assertEquals(1, fixture.stored().count { it["type"] == "create_expense" })
+    }
+
+    @Test
+    fun hostAbsentOccurrenceGenerationDoesNotOccupyTheCurrentOrigin() {
+        fixture.confirmedStream.value = emptyList()
+        installModel()
+        compose.waitUntil(10_000) {
+            model.value?.uiState?.value?.canWrite == true &&
+                model.value?.uiState?.value?.occurrence?.period == "2026-09" &&
+                model.value?.uiState?.value?.ledgerHomeCurrencyCode != null
+        }
+        val binding = requireNotNull(graph).expenseRepository.captureDeferredLedgerBinding()
+            ?: error("binding")
+        val previous = fixture.network.current.rowVersion
+        runBlocking {
+            requireNotNull(graph).expenseRepository.manualCreation.create(
+                ExpenseDraft(
+                    amountCents = 10_000,
+                    originalCurrencyCode = CurrencyCode.CNY,
+                    originalAmountMinor = 10_000,
+                    ledgerHomeCurrency = CurrencyCode.CNY,
+                    merchant = "房租",
+                    category = "餐饮",
+                    note = null,
+                    expenseTime = "2026-09-05T08:00:00Z",
+                    tags = null,
+                    valueScore = null,
+                    regretScore = null,
+                ),
+                binding,
+                "origin-a",
+                RecurringPaymentOrigin("recurring-1", "2026-09", previous),
+            ).getOrThrow()
+        }
+        fixture.network.current = fixture.network.current.copy(rowVersion = previous + 2)
+        compose.runOnIdle { model.value?.refresh() }
+        compose.waitUntil(10_000) {
+            model.value?.uiState?.value?.canWrite == true &&
+                model.value?.uiState?.value?.occurrence?.rowVersion == previous + 2 &&
+                model.value?.uiState?.value?.occurrence?.state == "unfulfilled"
+        }
+        val drafts = RecurringPaymentDraftStore(SavedStateHandle())
+        compose.setContent {
+            val current = model.value ?: return@setContent
+            TicketboxTheme(skin = AppSkin.Paper) {
+                RecurringOccurrenceHost(
+                    current,
+                    requireNotNull(graph).expenseRepository.manualCreation,
+                    RecurringExpenseNavigation({}, { paymentTask.value = it }),
+                    RecurringPaymentRestore(items = listOf(occurrenceConnectedItem()), drafts = drafts),
+                )
+            }
+        }
+        compose.waitUntil(10_000) {
+            runCatching { compose.onNodeWithTag("occurrence-record-payment").performScrollTo().performClick() }
+            paymentTask.value?.period == "2026-09" && paymentTask.value?.clientRef != "origin-a"
+        }
+        assertNotEquals("origin-a", paymentTask.value?.clientRef)
+        assertEquals(previous + 2, paymentTask.value?.occurrenceRowVersion)
+        runBlocking {
+            val later = RecurringPaymentOrigin("recurring-1", "2026-09", previous + 2)
+            assertTrue(
+                requireNotNull(graph).expenseRepository.manualCreation
+                    .observeOrigin(binding, later)
+                    .first() is RecurringPaymentOriginLookup.Absent,
+            )
+            val original = requireNotNull(graph).expenseRepository.manualCreation
+                .observeOrigin(binding, RecurringPaymentOrigin("recurring-1", "2026-09", previous))
+                .first() as RecurringPaymentOriginLookup.Found
+            assertEquals("origin-a", original.projection.request?.clientRef)
+            val admitted = requireNotNull(graph).expenseRepository.manualCreation.create(
+                ExpenseDraft(
+                    amountCents = 10_000,
+                    originalCurrencyCode = CurrencyCode.CNY,
+                    originalAmountMinor = 10_000,
+                    ledgerHomeCurrency = CurrencyCode.CNY,
+                    merchant = "房租",
+                    category = "餐饮",
+                    note = null,
+                    expenseTime = "2026-09-05T08:00:00Z",
+                    tags = null,
+                    valueScore = null,
+                    regretScore = null,
+                ),
+                binding,
+                requireNotNull(paymentTask.value?.clientRef),
+                later,
+            ).getOrThrow()
+            assertEquals(paymentTask.value?.clientRef, (admitted as ManualExpenseCreateAdmission.Accepted).clientRef)
+        }
+        assertEquals(2, fixture.stored().count { it["type"] == "create_expense" })
     }
 
     @Test

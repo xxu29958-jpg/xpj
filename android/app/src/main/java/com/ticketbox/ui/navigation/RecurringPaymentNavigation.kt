@@ -25,10 +25,15 @@ internal data class RecurringPaymentTask(
     val recordedCurrencyCode: String?,
     val suggestedAmountMinor: Long?,
     val ledgerHomeCurrencyCode: String,
+    val occurrenceRowVersion: Long? = null,
 ) {
     init {
         if (recordedCurrencyCode == null) require(suggestedAmountMinor == null)
     }
+
+    fun clientRefFor(occurrenceRowVersion: Long, originRef: String?): String =
+        originRef ?: clientRef.takeIf { this.occurrenceRowVersion == null || this.occurrenceRowVersion == occurrenceRowVersion }
+            ?: UUID.randomUUID().toString()
 }
 
 /** Unsubmitted form input for one payment task. Survives ordinary Back; not a financial Writer. */
@@ -127,6 +132,7 @@ internal class RecurringPaymentDraftStore(private val state: SavedStateHandle) {
     suspend fun adoptLegacyPeriodPaymentSessions(
         source: SavedStateHandle,
         creation: ExpenseManualCreation,
+        identity: RecurringPaymentIdentity? = null,
     ) {
         val json = source.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY) ?: return
         val sessions = runCatching { legacyPeriodPaymentSessionListAdapter.fromJson(json) }.getOrNull() ?: return
@@ -136,7 +142,8 @@ internal class RecurringPaymentDraftStore(private val state: SavedStateHandle) {
                 remaining += session
                 continue
             }
-            when (creation.adoptOrigin(session.binding, session.clientRef, session.seriesPublicId, session.period)) {
+            val generation = identity?.occurrenceRowVersionFor(session.seriesPublicId, session.period)
+            when (creation.adoptOrigin(session.binding, session.clientRef, session.seriesPublicId, session.period, generation)) {
                 RecurringPaymentOriginAdopt.Bound -> captureLegacy(session)
                 RecurringPaymentOriginAdopt.Conflict -> remaining += session
                 RecurringPaymentOriginAdopt.Missing ->
@@ -219,7 +226,11 @@ internal data class RecurringPaymentIdentity(
     val binding: LogicalSessionBinding?,
     val seriesPublicId: String?,
     val period: String?,
-)
+    val occurrenceRowVersion: Long? = null,
+) {
+    fun occurrenceRowVersionFor(seriesPublicId: String, period: String): Long? =
+        occurrenceRowVersion.takeIf { this.seriesPublicId == seriesPublicId && this.period == period }
+}
 
 internal data class RecurringPaymentVisible(
     val accessResolved: Boolean,
@@ -271,10 +282,13 @@ internal fun recurringPaymentTask(
     val home = CurrencyCode.fromStorageKeyOrNull(state.ledgerHomeCurrencyCode)?.storageKey ?: return null
     if (!state.canWrite || occurrence.state != "unfulfilled") return null
     val recorded = CurrencyCode.fromStorageKeyOrNull(occurrence.homeCurrencyCode)?.storageKey
-    val originRef = admittedClientRef?.takeIf { it.isNotBlank() }
+    val originRef = admittedClientRef?.takeIf(String::isNotBlank)
     val prior = remembered ?: existing
-    if (prior?.binding == binding && prior.seriesPublicId == item.publicId && prior.period == occurrence.period) {
-        return prior.copy(clientRef = originRef ?: prior.clientRef)
+    if (prior != null && prior.matches(RecurringPaymentIdentity(binding, item.publicId, occurrence.period))) {
+        return prior.copy(
+            clientRef = prior.clientRefFor(occurrence.rowVersion, originRef),
+            occurrenceRowVersion = occurrence.rowVersion,
+        )
     }
     return RecurringPaymentTask(
         binding = binding,
@@ -285,5 +299,6 @@ internal fun recurringPaymentTask(
         recordedCurrencyCode = recorded,
         suggestedAmountMinor = if (recorded == null) null else occurrence.plannedAmountCents,
         ledgerHomeCurrencyCode = home,
+        occurrenceRowVersion = occurrence.rowVersion,
     )
 }

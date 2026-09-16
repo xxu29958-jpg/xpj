@@ -8,6 +8,7 @@ import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
 data class RecurringPaymentOrigin(
     val seriesPublicId: String,
     val period: String,
+    val occurrenceRowVersion: Long? = null,
 )
 
 internal sealed class RecurringPaymentOriginLookup {
@@ -51,6 +52,7 @@ data class RecurringPaymentCreatePayload(
     val seriesPublicId: String,
     val period: String,
     val retired: Boolean = false,
+    val occurrenceRowVersion: Long? = null,
 )
 
 internal fun encodeManualCreatePayload(
@@ -62,7 +64,13 @@ internal fun encodeManualCreatePayload(
 ): String {
     if (origin == null || originAdapter == null) return requestAdapter.toJson(request)
     return originAdapter.toJson(
-        RecurringPaymentCreatePayload(request, origin.seriesPublicId, origin.period, retired),
+        RecurringPaymentCreatePayload(
+            request,
+            origin.seriesPublicId,
+            origin.period,
+            retired,
+            origin.occurrenceRowVersion,
+        ),
     )
 }
 
@@ -92,8 +100,11 @@ internal fun decodeRecurringPaymentOrigin(
 ): RecurringPaymentOrigin? {
     val stored = decodeRecurringPaymentPayload(originAdapter, json) ?: return null
     if (stored.retired) return null
-    return RecurringPaymentOrigin(stored.seriesPublicId, stored.period)
+    return RecurringPaymentOrigin(stored.seriesPublicId, stored.period, stored.occurrenceRowVersion)
 }
 
 internal fun RecurringPaymentCreatePayload.matchesOrigin(origin: RecurringPaymentOrigin): Boolean =
     seriesPublicId == origin.seriesPublicId && period == origin.period
+
+internal fun RecurringPaymentCreatePayload.matchesActiveOrigin(origin: RecurringPaymentOrigin): Boolean =
+    !retired && matchesOrigin(origin) && occurrenceRowVersion == origin.occurrenceRowVersion

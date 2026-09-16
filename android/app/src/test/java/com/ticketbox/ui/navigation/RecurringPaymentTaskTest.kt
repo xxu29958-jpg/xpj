@@ -339,6 +339,24 @@ class RecurringPaymentTaskTest {
         assertNull(store.read("origin-a"))
     }
 
+    @Test
+    fun aLaterOccurrenceGenerationDoesNotKeepThePreviousClientRef() {
+        val first = assertNotNull(recurringPaymentTask(loaded("JPY", 1200)))
+        assertEquals(3L, first.occurrenceRowVersion)
+        val later = loaded("JPY", 1200).copy(
+            occurrence = loaded("JPY", 1200).occurrence?.copy(rowVersion = 5L),
+        )
+        val again = assertNotNull(recurringPaymentTask(later, remembered = first))
+        assertNotEquals(first.clientRef, again.clientRef)
+        assertEquals(5L, again.occurrenceRowVersion)
+        val sameGeneration = assertNotNull(recurringPaymentTask(loaded("JPY", 1200), remembered = first))
+        assertEquals(first.clientRef, sameGeneration.clientRef)
+        val leftover = first.copy(occurrenceRowVersion = null)
+        val upgraded = assertNotNull(recurringPaymentTask(loaded("JPY", 1200), remembered = leftover))
+        assertEquals(leftover.clientRef, upgraded.clientRef)
+        assertEquals(3L, upgraded.occurrenceRowVersion)
+    }
+
     private fun visible(
         resolved: Boolean = true,
         binding: LogicalSessionBinding? = access.binding,
