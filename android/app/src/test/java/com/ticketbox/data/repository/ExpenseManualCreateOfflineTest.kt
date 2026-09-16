@@ -11,6 +11,7 @@ import com.ticketbox.domain.model.ExpenseSourceValues
 import com.ticketbox.ui.navigation.LEGACY_PERIOD_PAYMENT_SESSIONS_KEY
 import com.ticketbox.ui.navigation.LegacyPeriodPaymentAdopt
 import com.ticketbox.ui.navigation.RecurringPaymentDraftStore
+import com.ticketbox.ui.navigation.RecurringPaymentIdentity
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import java.io.IOException
@@ -445,7 +446,34 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
     }
 
     @Test
-    fun leftoverAdoptMissingKeepsTheKeyWithoutRemembering() = runTest {
+    fun leftoverAdoptUnsubmittedRemembersWithoutCreatingOutbox() = runTest {
+        val dao = FakeExpenseDao()
+        val pendingDao = FakePendingMutationDao()
+        val outbox = outbox(pendingDao)
+        val repo = createRepo(ManualCreateApi(failure = IOException("airplane mode")), dao, outbox)
+        val binding = requireNotNull(repo.captureDeferredLedgerBinding())
+        val leftover = SavedStateHandle()
+        leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] =
+            """[{"binding":{"serverUrl":"${binding.serverUrl}","ledgerId":"${binding.ledgerId}","ownerKey":"${binding.ownerKey}","sessionGeneration":"${binding.sessionGeneration}","bindingRevision":"${binding.bindingRevision}"},"seriesPublicId":"rec-1","period":"2026-08","clientRef":"legacy-ref","merchant":"新商家","obligationCurrencyCode":"CNY","plannedAmountCents":12345,"ledgerHomeCurrencyCode":"CNY","admitted":false}]"""
+        val store = RecurringPaymentDraftStore(SavedStateHandle())
+        assertEquals(
+            LegacyPeriodPaymentAdopt.Succeeded,
+            store.adoptLegacyPeriodPaymentSessions(leftover, repo.manualCreation),
+        )
+        assertNull(leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY])
+        assertEquals("legacy-ref", store.remembered(binding, "rec-1", "2026-08")?.clientRef)
+        assertEquals(0, pendingDao.rows.size)
+        assertTrue(
+            !store.leftoverBlocks(
+                leftover,
+                RecurringPaymentIdentity(binding, "rec-1", "2026-08"),
+                store.remembered(binding, "rec-1", "2026-08"),
+            ),
+        )
+    }
+
+    @Test
+    fun leftoverAdoptAdmittedMissingKeepsTheKeyForThatPeriodOnly() = runTest {
         val dao = FakeExpenseDao()
         val pendingDao = FakePendingMutationDao()
         val outbox = outbox(pendingDao)
@@ -453,7 +481,7 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
         val binding = requireNotNull(repo.captureDeferredLedgerBinding())
         val leftover = SavedStateHandle()
         val json =
-            """[{"binding":{"serverUrl":"${binding.serverUrl}","ledgerId":"${binding.ledgerId}","ownerKey":"${binding.ownerKey}","sessionGeneration":"${binding.sessionGeneration}","bindingRevision":"${binding.bindingRevision}"},"seriesPublicId":"rec-1","period":"2026-08","clientRef":"legacy-ref","merchant":"新商家","obligationCurrencyCode":"CNY","plannedAmountCents":12345,"ledgerHomeCurrencyCode":"CNY","admitted":false}]"""
+            """[{"binding":{"serverUrl":"${binding.serverUrl}","ledgerId":"${binding.ledgerId}","ownerKey":"${binding.ownerKey}","sessionGeneration":"${binding.sessionGeneration}","bindingRevision":"${binding.bindingRevision}"},"seriesPublicId":"rec-1","period":"2026-08","clientRef":"august-ref","merchant":"新商家","obligationCurrencyCode":"CNY","plannedAmountCents":12345,"ledgerHomeCurrencyCode":"CNY","admitted":true},{"binding":{"serverUrl":"${binding.serverUrl}","ledgerId":"${binding.ledgerId}","ownerKey":"${binding.ownerKey}","sessionGeneration":"${binding.sessionGeneration}","bindingRevision":"${binding.bindingRevision}"},"seriesPublicId":"rec-1","period":"2026-09","clientRef":"september-ref","merchant":"新商家","obligationCurrencyCode":"CNY","plannedAmountCents":12345,"ledgerHomeCurrencyCode":"CNY","admitted":false}]"""
         leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = json
         val store = RecurringPaymentDraftStore(SavedStateHandle())
         assertEquals(
@@ -462,6 +490,21 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
         )
         assertEquals(json, leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY])
         assertNull(store.remembered(binding, "rec-1", "2026-08"))
+        assertEquals("september-ref", store.remembered(binding, "rec-1", "2026-09")?.clientRef)
+        assertTrue(
+            store.leftoverBlocks(
+                leftover,
+                RecurringPaymentIdentity(binding, "rec-1", "2026-08"),
+                store.remembered(binding, "rec-1", "2026-08"),
+            ),
+        )
+        assertTrue(
+            !store.leftoverBlocks(
+                leftover,
+                RecurringPaymentIdentity(binding, "rec-1", "2026-09"),
+                store.remembered(binding, "rec-1", "2026-09"),
+            ),
+        )
         assertEquals(0, pendingDao.rows.size)
     }
 }

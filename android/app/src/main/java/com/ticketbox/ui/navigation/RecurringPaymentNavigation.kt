@@ -128,19 +128,44 @@ internal class RecurringPaymentDraftStore(private val state: SavedStateHandle) {
         source: SavedStateHandle,
         creation: ExpenseManualCreation,
     ): LegacyPeriodPaymentAdopt {
-        source.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY) ?: return LegacyPeriodPaymentAdopt.Absent
-        val sessions = legacyPeriodPaymentSessions(source) ?: return LegacyPeriodPaymentAdopt.Blocked
-        val outcomes = sessions.map { (task, _) ->
-            creation.adoptOrigin(task.binding, task.clientRef, task.seriesPublicId, task.period)
+        val json = source.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY) ?: return LegacyPeriodPaymentAdopt.Absent
+        val sessions = runCatching { legacyPeriodPaymentSessionListAdapter.fromJson(json) }.getOrNull()
+            ?: return LegacyPeriodPaymentAdopt.Blocked
+        if (sessions.any { it.toRecurringPaymentTaskOrNull() == null }) return LegacyPeriodPaymentAdopt.Blocked
+        var failClosed = false
+        var conflict = false
+        sessions.forEach { session ->
+            when (creation.adoptOrigin(session.binding, session.clientRef, session.seriesPublicId, session.period)) {
+                RecurringPaymentOriginAdopt.Bound -> captureLegacy(session)
+                RecurringPaymentOriginAdopt.Missing ->
+                    if (session.admitted) failClosed = true else captureLegacy(session)
+                RecurringPaymentOriginAdopt.Conflict -> conflict = true
+            }
         }
-        if (outcomes.any { it == RecurringPaymentOriginAdopt.Conflict }) return LegacyPeriodPaymentAdopt.Conflict
-        if (outcomes.any { it != RecurringPaymentOriginAdopt.Bound }) return LegacyPeriodPaymentAdopt.Blocked
-        sessions.forEach { (task, draft) ->
-            remember(task)
-            if (draft != null && read(task.clientRef) == null) write(draft)
+        if (!failClosed && !conflict) source.remove<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY)
+        return when {
+            conflict -> LegacyPeriodPaymentAdopt.Conflict
+            failClosed -> LegacyPeriodPaymentAdopt.Blocked
+            else -> LegacyPeriodPaymentAdopt.Succeeded
         }
-        source.remove<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY)
-        return LegacyPeriodPaymentAdopt.Succeeded
+    }
+
+    fun leftoverBlocks(
+        source: SavedStateHandle,
+        identity: RecurringPaymentIdentity,
+        remembered: RecurringPaymentTask?,
+    ): Boolean {
+        source.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY) ?: return false
+        val sessions = legacyPeriodPaymentSessions(source) ?: return true
+        if (remembered != null) return false
+        return sessions.any { it.first.matches(identity) }
+    }
+
+    private fun captureLegacy(session: LegacyPeriodPaymentSession) {
+        val task = session.toRecurringPaymentTaskOrNull() ?: return
+        remember(task)
+        val draft = session.toRecurringPaymentDraftOrNull()
+        if (draft != null && read(task.clientRef) == null) write(draft)
     }
 }
 

@@ -128,7 +128,6 @@ private data class LeftoverPaymentAdopt(
     val ready: Boolean,
     val remembered: RecurringPaymentTask? = null,
     val blocked: Boolean = false,
-    val conflict: Boolean = false,
 )
 
 @Composable
@@ -139,27 +138,21 @@ private fun rememberAdoptedPaymentTask(
     identity: RecurringPaymentIdentity,
 ): LeftoverPaymentAdopt {
     var ready by remember(model, creation) { mutableStateOf(false) }
-    var blocked by remember(model, creation) { mutableStateOf(false) }
-    var conflict by remember(model, creation) { mutableStateOf(false) }
     LaunchedEffect(drafts, model, creation) {
-        blocked = false
-        conflict = false
         val store = drafts ?: RecurringPaymentDraftStore(SavedStateHandle())
-        when (
-            runCatching { store.adoptLegacyPeriodPaymentSessions(model.savedState, creation) }
-                .getOrDefault(LegacyPeriodPaymentAdopt.Blocked)
-        ) {
-            LegacyPeriodPaymentAdopt.Conflict -> conflict = true
-            LegacyPeriodPaymentAdopt.Blocked -> blocked = true
-            LegacyPeriodPaymentAdopt.Absent, LegacyPeriodPaymentAdopt.Succeeded -> Unit
-        }
+        runCatching { store.adoptLegacyPeriodPaymentSessions(model.savedState, creation) }
         ready = true
     }
+    val remembered = if (ready) {
+        drafts?.remembered(identity.binding, identity.seriesPublicId, identity.period)
+    } else {
+        null
+    }
+    val store = drafts ?: RecurringPaymentDraftStore(SavedStateHandle())
     return LeftoverPaymentAdopt(
         ready = ready,
-        remembered = if (ready) drafts?.remembered(identity.binding, identity.seriesPublicId, identity.period) else null,
-        blocked = blocked,
-        conflict = conflict,
+        remembered = remembered,
+        blocked = ready && store.leftoverBlocks(model.savedState, identity, remembered),
     )
 }
 
@@ -167,9 +160,9 @@ private fun occurrencePaymentGuard(
     origin: RecurringPaymentOriginObservation,
     leftover: LeftoverPaymentAdopt,
 ) = OccurrencePaymentGuard(
-    resolved = origin.resolved && leftover.ready && !leftover.blocked && !leftover.conflict,
-    conflict = origin.conflict || leftover.conflict,
-    leftoverBlocked = leftover.blocked && !leftover.conflict,
+    resolved = origin.resolved && leftover.ready && !leftover.blocked && !origin.conflict,
+    conflict = origin.conflict,
+    leftoverBlocked = leftover.blocked && !origin.conflict,
 )
 
 private data class RecurringPaymentCanonicalize(
