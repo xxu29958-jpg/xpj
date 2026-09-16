@@ -284,22 +284,36 @@ class RecurringPaymentTaskTest {
         val leftover = SavedStateHandle()
         leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = json
         val store = RecurringPaymentDraftStore(SavedStateHandle())
-        assertNull(store.legacyPeriodPaymentSessions(leftover))
+        assertEquals(emptyList<Pair<RecurringPaymentTask, RecurringPaymentDraft?>>(), store.legacyPeriodPaymentSessions(leftover))
         assertEquals(json, leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY])
         assertNull(store.remembered(access.binding, "rec-1", "2026-08"))
+        assertTrue(store.leftoverUnresolved(leftover, RecurringPaymentIdentity(access.binding, "rec-1", "2026-08")))
+        assertTrue(!store.leftoverUnresolved(leftover, RecurringPaymentIdentity(access.binding, "rec-1", "2026-09")))
     }
 
     @Test
-    fun leftoverMixedSessionsKeepTheLegacyKeyWithoutPartialRemember() {
+    fun leftoverMixedSessionsKeepOnlyTheIncompleteIdentity() {
         val json =
             """[{"binding":{"serverUrl":"https://occurrence.example","ledgerId":"ledger-1","ownerKey":"owner","sessionGeneration":"session","bindingRevision":"binding"},"seriesPublicId":"rec-1","period":"2026-08","clientRef":"complete-ref","merchant":"日元订阅","obligationCurrencyCode":"JPY","plannedAmountCents":1200,"ledgerHomeCurrencyCode":"CNY","admitted":false},{"binding":{"serverUrl":"https://occurrence.example","ledgerId":"ledger-1","ownerKey":"owner","sessionGeneration":"session","bindingRevision":"binding"},"seriesPublicId":"rec-1","period":"2026-09","clientRef":"incomplete-ref","merchant":"日元订阅","obligationCurrencyCode":"JPY","plannedAmountCents":1200,"admitted":false}]"""
         val leftover = SavedStateHandle()
         leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = json
         val store = RecurringPaymentDraftStore(SavedStateHandle())
-        assertNull(store.legacyPeriodPaymentSessions(leftover))
+        val parsed = assertNotNull(store.legacyPeriodPaymentSessions(leftover))
+        assertEquals("complete-ref", parsed.single().first.clientRef)
         assertEquals(json, leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY])
-        assertNull(store.remembered(access.binding, "rec-1", "2026-08"))
-        assertNull(store.remembered(access.binding, "rec-1", "2026-09"))
+        assertTrue(store.leftoverUnresolved(leftover, RecurringPaymentIdentity(access.binding, "rec-1", "2026-08")))
+        assertTrue(store.leftoverUnresolved(leftover, RecurringPaymentIdentity(access.binding, "rec-1", "2026-09")))
+        assertTrue(!store.leftoverUnresolved(leftover, RecurringPaymentIdentity(access.binding, "rec-2", "2026-08")))
+    }
+
+    @Test
+    fun leftoverUnparseableBlobBlocksEveryIdentity() {
+        val leftover = SavedStateHandle()
+        leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = "not-json"
+        val store = RecurringPaymentDraftStore(SavedStateHandle())
+        assertNull(store.legacyPeriodPaymentSessions(leftover))
+        assertTrue(store.leftoverUnresolved(leftover, RecurringPaymentIdentity(access.binding, "rec-1", "2026-08")))
+        assertTrue(store.leftoverUnresolved(leftover, RecurringPaymentIdentity(access.binding, "rec-1", "2026-09")))
     }
 
     @Test

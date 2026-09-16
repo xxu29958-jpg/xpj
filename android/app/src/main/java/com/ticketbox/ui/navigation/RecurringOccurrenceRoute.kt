@@ -81,7 +81,7 @@ internal fun RecurringOccurrenceHost(
         val current = readRecurringPaymentTask(taskJson)
         val decision = recurringPaymentHostDecision(current, userClosed, visible, remembered)
         if (decision.clearTask) taskJson = null
-        decision.retireClientRefs.forEach { restore.drafts?.retireTask(it) }
+        retireFulfilledPayment(visible, restore.drafts, creation, decision.retireClientRefs)
     }
     LaunchedEffect(taskJson, restore.items, state.item, state.access?.binding, userClosed) {
         val current = readRecurringPaymentTask(taskJson)
@@ -152,7 +152,7 @@ private fun rememberAdoptedPaymentTask(
     return LeftoverPaymentAdopt(
         ready = ready,
         remembered = remembered,
-        blocked = ready && store.leftoverBlocks(model.savedState, identity, remembered),
+        blocked = ready && store.leftoverUnresolved(model.savedState, identity),
     )
 }
 
@@ -234,6 +234,20 @@ private fun RecurringOccurrenceUiState.paymentVisible() = RecurringPaymentVisibl
     identity = RecurringPaymentIdentity(access?.binding, item?.publicId, occurrence?.period),
     occurrenceState = occurrence?.state,
 )
+
+private suspend fun retireFulfilledPayment(
+    visible: RecurringPaymentVisible,
+    drafts: RecurringPaymentDraftStore?,
+    creation: ExpenseManualCreation,
+    clientRefs: List<String>,
+) {
+    clientRefs.forEach { drafts?.retireTask(it) }
+    if (visible.occurrenceState != "fulfilled") return
+    val binding = visible.identity.binding ?: return
+    val series = visible.identity.seriesPublicId?.takeIf { it.isNotBlank() } ?: return
+    val period = visible.identity.period?.takeIf { it.isNotBlank() } ?: return
+    creation.retireOrigin(binding, RecurringPaymentOrigin(series, period))
+}
 
 private fun recurringPaymentHostDecision(
     current: RecurringPaymentTask?,
