@@ -85,10 +85,11 @@ internal class ExpenseManualCreation(private val core: ExpenseRepositoryCore) {
                 return@withLock ManualExpenseCreateAdmission.Accepted(clientRef)
             }
             if (origin != null) {
-                val unattributed = unattributedCreateClientRefs(binding)
-                if (unattributed.isNotEmpty() && unattributed.toSet() != acknowledgedUnattributed.toSet()) {
+                val unattributed = unattributedCreations(binding)
+                val review = ManualExpenseCreateAdmission.ReviewRequired(unattributed)
+                if (unattributed.isNotEmpty() && review.candidateClientRefs.toSet() != acknowledgedUnattributed.toSet()) {
                     bound.requireStillActive()
-                    return@withLock ManualExpenseCreateAdmission.ReviewRequired(unattributed)
+                    return@withLock review
                 }
             }
             check(core.canModifyLedger()) { "当前账本没有编辑权限。" }
@@ -213,12 +214,21 @@ internal class ExpenseManualCreation(private val core: ExpenseRepositoryCore) {
         }
     }
 
+    suspend fun readReviewCandidates(
+        binding: LogicalSessionBinding,
+    ): Result<List<ManualExpenseCreationProjection>> = core.errorHandler.safeCall {
+        admission.withLock {
+            val bound = core.ledgerRequestGuard.bindExact(binding)
+            unattributedCreations(binding).also { bound.requireStillActive() }
+        }
+    }
+
     private suspend fun activeCreateRows(): List<OutboxRow> =
         core.offlineMutations.outbox
             .observeActiveByTypes(setOf(PendingMutationType.CreateExpense), includeCompleted = true)
             .first()
 
-    private suspend fun unattributedCreateClientRefs(binding: LogicalSessionBinding): List<String> {
+    private suspend fun unattributedCreations(binding: LogicalSessionBinding): List<ManualExpenseCreationProjection> {
         val originAdapter = core.offlineMutations.recurringPaymentCreateAdapter
         return activeCreateRows().mapNotNull { row ->
             val boundRow = row.bindingOrNull() ?: return@mapNotNull null
@@ -229,12 +239,8 @@ internal class ExpenseManualCreation(private val core: ExpenseRepositoryCore) {
                 return@mapNotNull null
             }
             if (decodeRecurringPaymentPayload(originAdapter, row.payloadJson) != null) return@mapNotNull null
-            decodeManualCreateRequest(
-                core.offlineMutations.manualCreateAdapter,
-                originAdapter,
-                row.payloadJson,
-            )?.clientRef?.takeIf(String::isNotBlank)
-        }.distinct().sorted()
+            core.describeManualCreation(row)
+        }.sortedBy { it.admittedClientRef().orEmpty() }
     }
 
     private suspend fun tryBindOrigin(row: OutboxRow, origin: RecurringPaymentOrigin): RecurringPaymentOriginAdopt {

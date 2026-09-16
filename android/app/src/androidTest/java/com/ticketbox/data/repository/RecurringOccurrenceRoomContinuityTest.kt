@@ -6,6 +6,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -1099,6 +1100,54 @@ class RecurringOccurrenceRoomContinuityTest {
             assertEquals("august-ref", (admitted as ManualExpenseCreateAdmission.Accepted).clientRef)
         }
         assertEquals(2, fixture.stored().count { it["type"] == "create_expense" })
+    }
+
+    @Test
+    fun leftoverAugustUnsubmittedMigratesOnTheSameHostAfterSeptember() {
+        fixture.confirmedStream.value = emptyList()
+        installModel()
+        compose.waitUntil(10_000) {
+            model.value?.uiState?.value?.canWrite == true &&
+                model.value?.uiState?.value?.occurrence?.period == "2026-09"
+        }
+        val binding = requireNotNull(graph).expenseRepository.captureDeferredLedgerBinding()
+            ?: error("binding")
+        compose.runOnIdle { model.value?.viewModelScope?.cancel() }
+        val leftover = SavedStateHandle()
+        leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] =
+            """[{"binding":{"serverUrl":"${binding.serverUrl}","ledgerId":"${binding.ledgerId}","ownerKey":"${binding.ownerKey}","sessionGeneration":"${binding.sessionGeneration}","bindingRevision":"${binding.bindingRevision}"},"seriesPublicId":"recurring-1","period":"2026-08","clientRef":"august-ref","merchant":"房租","obligationCurrencyCode":"CNY","plannedAmountCents":10000,"ledgerHomeCurrencyCode":"CNY","admitted":false},{"binding":{"serverUrl":"${binding.serverUrl}","ledgerId":"${binding.ledgerId}","ownerKey":"${binding.ownerKey}","sessionGeneration":"${binding.sessionGeneration}","bindingRevision":"${binding.bindingRevision}"},"seriesPublicId":"recurring-1","period":"2026-09","clientRef":"september-ref","merchant":"房租","obligationCurrencyCode":"CNY","plannedAmountCents":10000,"ledgerHomeCurrencyCode":"CNY","admitted":false}]"""
+        installModel(savedState = leftover)
+        val drafts = RecurringPaymentDraftStore(SavedStateHandle())
+        compose.setContent {
+            val current = model.value ?: return@setContent
+            TicketboxTheme(skin = AppSkin.Paper) {
+                RecurringOccurrenceHost(
+                    current,
+                    requireNotNull(graph).expenseRepository.manualCreation,
+                    RecurringExpenseNavigation({}, { paymentTask.value = it }),
+                    RecurringPaymentRestore(items = listOf(occurrenceConnectedItem()), drafts = drafts),
+                )
+            }
+        }
+        compose.waitUntil(10_000) {
+            leftover.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY)?.contains("august-ref") == true &&
+                leftover.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY)?.contains("september-ref") != true &&
+                drafts.remembered(binding, "recurring-1", "2026-09")?.clientRef == "september-ref"
+        }
+        compose.onNodeWithTag("occurrence-record-payment").performScrollTo().assertIsEnabled()
+        fixture.network.current = fixture.network.current.copy(period = "2026-08")
+        compose.runOnIdle { model.value?.changePeriod("2026-08") }
+        compose.waitUntil(10_000) {
+            model.value?.uiState?.value?.occurrence?.period == "2026-08" &&
+                runCatching {
+                    compose.onNodeWithTag("occurrence-record-payment").assertIsEnabled()
+                    true
+                }.getOrDefault(false)
+        }
+        paymentTask.value = null
+        compose.onNodeWithTag("occurrence-record-payment").performScrollTo().performClick()
+        assertEquals("august-ref", paymentTask.value?.clientRef)
+        assertEquals(0, fixture.stored().count { it["type"] == "create_expense" })
     }
 
     @Test

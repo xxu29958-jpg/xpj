@@ -7,6 +7,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -28,7 +29,10 @@ import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
 import com.ticketbox.data.remote.dto.RecurringOccurrenceDto
 import com.ticketbox.data.repository.LedgerAccessContext
+import com.ticketbox.data.repository.RecurringPaymentOrigin
+import com.ticketbox.data.repository.RecurringPaymentOriginAdopt
 import com.ticketbox.data.repository.decodeManualCreateRequest
+import com.ticketbox.data.repository.decodeRecurringPaymentOrigin
 import com.ticketbox.data.repository.expenseAcceptanceReceiptJson
 import com.ticketbox.data.repository.toEntity
 import com.ticketbox.domain.model.AppSkin
@@ -332,6 +336,206 @@ class RecurringPaymentRouteRoomTest {
         }
         assertEquals(0, sends)
         assertTrue(harness.fixture.stored().isEmpty())
+    }
+
+    @Test fun reviewShowsUnattributedFactsAndAdoptBindsWithoutCreating() {
+        val task = periodTask("CNY", 10_000).copy(occurrenceRowVersion = 3L)
+        enqueueRaw(task, "legacy-ref", "便利店", CurrencyCode.CNY, 8800, "2026-08-01T00:00:00Z")
+        drafts.remember(task)
+        showRoute(task)
+        waitForSheet()
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performScrollTo().performClick()
+        waitForReview()
+        compose.onNodeWithText(context.getString(R.string.recurring_payment_review_original)).assertIsDisplayed()
+        compose.onNodeWithText("便利店").assertIsDisplayed()
+        compose.onNodeWithText("CNY 88.00").assertIsDisplayed()
+        compose.onNodeWithText("2026-08-01T00:00:00Z").assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.manual_submission_waiting)).assertIsDisplayed()
+        compose.onNodeWithTag("recurring-payment-review-adopt:legacy-ref").performClick()
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(hasText(context.getString(R.string.ledger_manual_sheet_title))).fetchSemanticsNodes().isEmpty()
+        }
+        assertEquals(1, harness.fixture.stored().size)
+        assertEquals("legacy-ref", drafts.remembered(task.binding, task.seriesPublicId, task.period)?.clientRef)
+        assertNull(drafts.read(task.clientRef))
+        val stored = requireNotNull(
+            decodeRecurringPaymentOrigin(
+                OutboxAdapterGraph().recurringPaymentCreateAdapter,
+                requireNotNull(harness.fixture.stored().single()["payload"]),
+            ),
+        )
+        assertEquals(RecurringPaymentOrigin(task.seriesPublicId, task.period, 3L), stored)
+        assertEquals("legacy-ref", readCreateRequest(requireNotNull(harness.fixture.stored().single()["payload"])).clientRef)
+        assertEquals(0, sends)
+    }
+
+    @Test fun adoptMissingKeepsTheDraftAndDoesNotCreateWithTheStaleRef() {
+        val task = periodTask("CNY", 10_000).copy(occurrenceRowVersion = 3L)
+        enqueueRaw(task, "legacy-ref", "便利店", CurrencyCode.CNY, 8800, "2026-08-01T00:00:00Z")
+        drafts.remember(task)
+        showRoute(task)
+        waitForSheet()
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performScrollTo().performClick()
+        waitForReview()
+        stopDisplayedRaw()
+        compose.onNodeWithTag("recurring-payment-review-adopt:legacy-ref").performClick()
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(hasText(context.getString(R.string.recurring_payment_review_missing))).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("recurring-payment-review-error").assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_sheet_title)).assertExists()
+        compose.onNodeWithText("房租").assertExists()
+        assertTrue(harness.fixture.stored().isEmpty())
+        assertEquals(task.clientRef, drafts.remembered(task.binding, task.seriesPublicId, task.period)?.clientRef)
+        assertEquals(0, sends)
+    }
+
+    @Test fun adoptConflictKeepsTheDraftAndDoesNotRebind() {
+        val task = periodTask("CNY", 10_000).copy(occurrenceRowVersion = 3L)
+        enqueueRaw(task, "legacy-ref", "便利店", CurrencyCode.CNY, 8800, "2026-08-01T00:00:00Z")
+        drafts.remember(task)
+        showRoute(task)
+        waitForSheet()
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performScrollTo().performClick()
+        waitForReview()
+        runBlocking {
+            assertEquals(
+                RecurringPaymentOriginAdopt.Bound,
+                harness.screenFactory.repository.manualCreation.adoptOrigin(
+                    task.binding, "legacy-ref", "rec-other", "2026-07", 1L,
+                ),
+            )
+        }
+        compose.onNodeWithTag("recurring-payment-review-adopt:legacy-ref").performClick()
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(hasText(context.getString(R.string.recurring_payment_review_conflict))).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_sheet_title)).assertExists()
+        compose.onNodeWithText("房租").assertExists()
+        assertEquals(1, harness.fixture.stored().size)
+        assertEquals(
+            RecurringPaymentOrigin("rec-other", "2026-07", 1L),
+            decodeRecurringPaymentOrigin(
+                OutboxAdapterGraph().recurringPaymentCreateAdapter,
+                requireNotNull(harness.fixture.stored().single()["payload"]),
+            ),
+        )
+        assertEquals(task.clientRef, drafts.remembered(task.binding, task.seriesPublicId, task.period)?.clientRef)
+        assertEquals(0, sends)
+    }
+
+    @Test fun reviewShowsTwoCandidatesAndAdoptOnlyBindsTheChosen() {
+        val task = periodTask("CNY", 10_000).copy(occurrenceRowVersion = 3L)
+        enqueueRaw(task, "legacy-c", "便利店", CurrencyCode.CNY, 8800, "2026-08-01T00:00:00Z")
+        enqueueRaw(task, "legacy-d", "超市", CurrencyCode.JPY, 1500, "2026-08-15T12:00:00Z")
+        drafts.remember(task)
+        showRoute(task)
+        waitForSheet()
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performScrollTo().performClick()
+        waitForReview()
+        compose.onNodeWithText("便利店").assertIsDisplayed()
+        compose.onNodeWithText("CNY 88.00").assertIsDisplayed()
+        compose.onNodeWithText("2026-08-01T00:00:00Z").assertIsDisplayed()
+        compose.onNodeWithText("超市").assertIsDisplayed()
+        compose.onNodeWithText("JPY 1500").assertIsDisplayed()
+        compose.onNodeWithText("2026-08-15T12:00:00Z").assertIsDisplayed()
+        compose.onNodeWithTag("recurring-payment-review-adopt:legacy-c").assertIsDisplayed()
+        compose.onNodeWithTag("recurring-payment-review-adopt:legacy-d").assertIsDisplayed()
+        val beforeD = requireNotNull(harness.fixture.stored().single { it["targetId"] == "expense:local:legacy-d" }["payload"])
+        compose.onNodeWithTag("recurring-payment-review-adopt:legacy-c").performClick()
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(hasText(context.getString(R.string.ledger_manual_sheet_title))).fetchSemanticsNodes().isEmpty()
+        }
+        assertEquals(2, harness.fixture.stored().size)
+        assertEquals("legacy-c", drafts.remembered(task.binding, task.seriesPublicId, task.period)?.clientRef)
+        assertEquals(
+            RecurringPaymentOrigin(task.seriesPublicId, task.period, 3L),
+            decodeRecurringPaymentOrigin(
+                OutboxAdapterGraph().recurringPaymentCreateAdapter,
+                requireNotNull(harness.fixture.stored().single { it["targetId"] == "expense:local:legacy-c" }["payload"]),
+            ),
+        )
+        assertEquals(beforeD, harness.fixture.stored().single { it["targetId"] == "expense:local:legacy-d" }["payload"])
+        assertNull(
+            decodeRecurringPaymentOrigin(
+                OutboxAdapterGraph().recurringPaymentCreateAdapter,
+                beforeD,
+            ),
+        )
+        assertEquals(0, sends)
+    }
+
+    @Test fun confirmUnrelatedAfterNewCandidateAppearsRequiresReviewAgain() {
+        val task = periodTask("CNY", 10_000).copy(occurrenceRowVersion = 3L)
+        enqueueRaw(task, "legacy-c", "便利店", CurrencyCode.CNY, 8800, "2026-08-01T00:00:00Z")
+        drafts.remember(task)
+        showRoute(task)
+        waitForSheet()
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performScrollTo().performClick()
+        waitForReview()
+        compose.onNodeWithTag("recurring-payment-review-adopt:legacy-c").assertIsDisplayed()
+        enqueueRaw(task, "legacy-d", "超市", CurrencyCode.JPY, 1500, "2026-08-15T12:00:00Z")
+        compose.onNodeWithTag("recurring-payment-review-not-this-period").performClick()
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(hasText("超市")).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_sheet_title)).assertExists()
+        compose.onNodeWithTag("recurring-payment-review-adopt:legacy-c").assertIsDisplayed()
+        compose.onNodeWithTag("recurring-payment-review-adopt:legacy-d").assertIsDisplayed()
+        assertEquals(2, harness.fixture.stored().size)
+        assertTrue(harness.fixture.stored().none { it["targetId"] == "expense:local:period-ref" })
+        assertEquals(task.clientRef, drafts.remembered(task.binding, task.seriesPublicId, task.period)?.clientRef)
+        assertEquals(0, sends)
+    }
+
+    private fun waitForReview() {
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(hasText(context.getString(R.string.recurring_payment_review_required))).fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    private fun enqueueRaw(
+        task: RecurringPaymentTask,
+        ref: String,
+        merchant: String,
+        currency: CurrencyCode,
+        originalAmountMinor: Long,
+        expenseTime: String,
+    ) {
+        runBlocking {
+            harness.screenFactory.repository.manualCreation.create(
+                ExpenseDraft(
+                    amountCents = originalAmountMinor,
+                    originalCurrencyCode = currency,
+                    originalAmountMinor = originalAmountMinor,
+                    ledgerHomeCurrency = CurrencyCode.CNY,
+                    merchant = merchant,
+                    category = "餐饮",
+                    note = null,
+                    expenseTime = expenseTime,
+                    tags = null,
+                    valueScore = null,
+                    regretScore = null,
+                ),
+                task.binding,
+                ref,
+            ).getOrThrow()
+        }
+    }
+
+    private fun stopDisplayedRaw() {
+        runBlocking {
+            val row = harness.fixture.outbox
+                .observeActiveByTypes(setOf(PendingMutationType.CreateExpense), includeCompleted = true)
+                .first()
+                .single()
+            harness.fixture.outbox.markFailed(row.id, "gone")
+            val failed = harness.fixture.outbox
+                .observeActiveByTypes(setOf(PendingMutationType.CreateExpense), includeCompleted = true)
+                .first()
+                .single()
+            harness.screenFactory.repository.stopManualCreation(failed).getOrThrow()
+        }
     }
 
     private fun showRoute(task: RecurringPaymentTask) {

@@ -25,6 +25,7 @@ import com.ticketbox.viewmodel.RecurringOccurrenceUiState
 import com.ticketbox.viewmodel.RecurringOccurrenceViewModel
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.onEach
+import kotlin.coroutines.cancellation.CancellationException
 
 internal data class RecurringPaymentRestore(
     val items: List<RecurringItem> = emptyList(),
@@ -137,23 +138,33 @@ private fun rememberAdoptedPaymentTask(
     creation: ExpenseManualCreation,
     identity: RecurringPaymentIdentity,
 ): LeftoverPaymentAdopt {
-    var ready by remember(model, creation) { mutableStateOf(false) }
-    LaunchedEffect(drafts, model, creation, identity) {
+    val store = remember(drafts, model) {
+        drafts ?: RecurringPaymentDraftStore(SavedStateHandle())
+    }
+    var handoff by remember(store, model, creation, identity) {
+        mutableStateOf<Result<Unit>?>(null)
+    }
+    LaunchedEffect(store, model, creation, identity) {
         if (identity.occurrenceRowVersion == null) return@LaunchedEffect
-        val store = drafts ?: RecurringPaymentDraftStore(SavedStateHandle())
-        runCatching { store.adoptLegacyPeriodPaymentSessions(model.savedState, creation, identity) }
-        ready = true
+        handoff = try {
+            store.adoptLegacyPeriodPaymentSessions(model.savedState, creation, identity)
+            Result.success(Unit)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            Result.failure(failure)
+        }
     }
-    val remembered = if (ready) {
-        drafts?.remembered(identity.binding, identity.seriesPublicId, identity.period)
-    } else {
-        null
-    }
-    val store = drafts ?: RecurringPaymentDraftStore(SavedStateHandle())
+    val ready = handoff != null
     return LeftoverPaymentAdopt(
         ready = ready,
-        remembered = remembered,
-        blocked = ready && store.leftoverUnresolved(model.savedState, identity),
+        remembered = if (handoff?.isSuccess == true) {
+            store.remembered(identity.binding, identity.seriesPublicId, identity.period)
+        } else {
+            null
+        },
+        blocked = handoff?.isFailure == true ||
+            (ready && store.leftoverUnresolved(model.savedState, identity)),
     )
 }
 

@@ -63,6 +63,8 @@ internal class ExpenseManualCreatePeriodOriginTest : ExpensePendingRepositoryOut
         val review = repo.manualCreation.create(draft, binding, "fresh-ref", origin).getOrThrow()
             as ManualExpenseCreateAdmission.ReviewRequired
         assertEquals(listOf("legacy-ref"), review.candidateClientRefs)
+        assertEquals("新商家", review.candidates.single().request?.merchant)
+        assertEquals("legacy-ref", review.candidates.single().request?.clientRef)
         assertEquals(1, pendingDao.rows.size)
         assertEquals(before, pendingDao.rows.values.single().payload)
         assertNull(
@@ -121,6 +123,44 @@ internal class ExpenseManualCreatePeriodOriginTest : ExpensePendingRepositoryOut
         )
         assertEquals(7L, created.occurrenceRowVersion)
         assertEquals("fresh-ref", created.request.clientRef)
+    }
+
+    @Test
+    fun readReviewCandidatesMatchesCreateReviewAndDoesNotCreate() = runTest {
+        val pendingDao = FakePendingMutationDao()
+        val repo = createRepo(FakeExpenseDao(), outbox(pendingDao))
+        val binding = requireNotNull(repo.captureDeferredLedgerBinding())
+        repo.manualCreation.create(draft, binding, "legacy-ref").getOrThrow()
+        val origin = RecurringPaymentOrigin("rec-1", "2026-08", occurrenceRowVersion = 7)
+        val review = repo.manualCreation.create(draft, binding, "fresh-ref", origin).getOrThrow()
+            as ManualExpenseCreateAdmission.ReviewRequired
+        val read = repo.manualCreation.readReviewCandidates(binding).getOrThrow()
+        assertEquals(review.candidateClientRefs, read.mapNotNull { it.admittedClientRef() }.distinct().sorted())
+        assertEquals("新商家", read.single().request?.merchant)
+        assertEquals(1, pendingDao.rows.size)
+    }
+
+    @Test
+    fun confirmingUnattributedRereviewsWhenTheSeenSetChanges() = runTest {
+        val pendingDao = FakePendingMutationDao()
+        val repo = createRepo(FakeExpenseDao(), outbox(pendingDao))
+        val binding = requireNotNull(repo.captureDeferredLedgerBinding())
+        repo.manualCreation.create(draft, binding, "legacy-c").getOrThrow()
+        val origin = RecurringPaymentOrigin("rec-1", "2026-08", occurrenceRowVersion = 7)
+        val first = repo.manualCreation.create(draft, binding, "fresh-ref", origin).getOrThrow()
+            as ManualExpenseCreateAdmission.ReviewRequired
+        assertEquals(listOf("legacy-c"), first.candidateClientRefs)
+        repo.manualCreation.create(draft, binding, "legacy-d").getOrThrow()
+        val again = repo.manualCreation.create(
+            draft,
+            binding,
+            "fresh-ref",
+            origin,
+            acknowledgedUnattributed = first.candidateClientRefs,
+        ).getOrThrow() as ManualExpenseCreateAdmission.ReviewRequired
+        assertEquals(listOf("legacy-c", "legacy-d"), again.candidateClientRefs)
+        assertEquals(2, pendingDao.rows.size)
+        assertTrue(pendingDao.rows.values.none { it.targetId == "expense:local:fresh-ref" })
     }
 
     @Test

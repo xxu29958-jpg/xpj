@@ -789,66 +789,74 @@ val prepareGrayConnectedTestEvidence by tasks.registering {
     }
 }
 
+val qualifyGrayConnectedTestEvidence by tasks.registering {
+    group = "verification"
+    description = "Capture connected after/crash evidence and run existing qualification after the test task."
+    outputs.upToDateWhen { false }
+    timeout.set(Duration.ofMinutes(5))
+    doLast {
+        val adb = ticketboxAdbExecutable()
+            ?: throw GradleException(
+                "Android adb is unavailable; cannot qualify connected tests."
+            )
+        val apkanalyzer = ticketboxApkAnalyzerExecutable()
+            ?: throw GradleException(
+                "Android apkanalyzer is unavailable; cannot qualify connected tests."
+            )
+        val captureSerials = ticketboxConnectedCaptureSerials()
+        val beforeExitInfo = ticketboxConnectedEvidenceFile(
+            "ticketbox-connected-exit-info-before.txt"
+        )
+        val afterExitInfo = ticketboxConnectedEvidenceFile(
+            "ticketbox-connected-exit-info-after.txt"
+        )
+        val crashLog = ticketboxConnectedEvidenceFile(
+            "ticketbox-connected-crash.log"
+        )
+        captureTicketboxConnectedAdbEvidence(
+            adb,
+            captureSerials,
+            afterExitInfo,
+            "the post-test process-exit snapshot",
+            listOf("shell", "dumpsys", "activity", "exit-info"),
+        )
+        captureTicketboxConnectedAdbEvidence(
+            adb,
+            captureSerials,
+            crashLog,
+            "the connected-test crash buffer",
+            listOf("logcat", "-b", "crash", "-d"),
+        )
+        runTicketboxAndroidQualification(
+            "GrayDebug connected-test qualification",
+            listOf(
+                "connected",
+                "--baseline",
+                androidTestBaselineFile.absolutePath,
+                "--results-dir",
+                grayConnectedTestResultsDirectory.get().asFile.absolutePath,
+                "--before",
+                beforeExitInfo.absolutePath,
+                "--after",
+                afterExitInfo.absolutePath,
+                "--apkanalyzer",
+                apkanalyzer.absolutePath,
+                "--target-apk-output-dir",
+                grayDebugApkOutputDirectory.get().asFile.absolutePath,
+                "--instrumentation-apk-output-dir",
+                grayDebugAndroidTestApkOutputDirectory.get().asFile.absolutePath,
+            ),
+        )
+    }
+}
+
 tasks.matching { it.name.matches(Regex("connected.*AndroidTest")) }.configureEach {
     dependsOn(guardConnectedAndroidTestEmulatorOnly)
     if (name == "connectedGrayDebugAndroidTest") {
         dependsOn(prepareGrayConnectedTestEvidence)
-        // The real 255-case suite reached 248 cases without failures at 10m.
-        // Keep a task bound for every caller; CI also bounds the whole invocation.
-        timeout.set(Duration.ofMinutes(15))
-        doLast {
-            val adb = ticketboxAdbExecutable()
-                ?: throw GradleException(
-                    "Android adb is unavailable; cannot qualify connected tests."
-                )
-            val apkanalyzer = ticketboxApkAnalyzerExecutable()
-                ?: throw GradleException(
-                    "Android apkanalyzer is unavailable; cannot qualify connected tests."
-                )
-            val captureSerials = ticketboxConnectedCaptureSerials()
-            val beforeExitInfo = ticketboxConnectedEvidenceFile(
-                "ticketbox-connected-exit-info-before.txt"
-            )
-            val afterExitInfo = ticketboxConnectedEvidenceFile(
-                "ticketbox-connected-exit-info-after.txt"
-            )
-            val crashLog = ticketboxConnectedEvidenceFile(
-                "ticketbox-connected-crash.log"
-            )
-            captureTicketboxConnectedAdbEvidence(
-                adb,
-                captureSerials,
-                afterExitInfo,
-                "the post-test process-exit snapshot",
-                listOf("shell", "dumpsys", "activity", "exit-info"),
-            )
-            captureTicketboxConnectedAdbEvidence(
-                adb,
-                captureSerials,
-                crashLog,
-                "the connected-test crash buffer",
-                listOf("logcat", "-b", "crash", "-d"),
-            )
-            runTicketboxAndroidQualification(
-                "GrayDebug connected-test qualification",
-                listOf(
-                    "connected",
-                    "--baseline",
-                    androidTestBaselineFile.absolutePath,
-                    "--results-dir",
-                    grayConnectedTestResultsDirectory.get().asFile.absolutePath,
-                    "--before",
-                    beforeExitInfo.absolutePath,
-                    "--after",
-                    afterExitInfo.absolutePath,
-                    "--apkanalyzer",
-                    apkanalyzer.absolutePath,
-                    "--target-apk-output-dir",
-                    grayDebugApkOutputDirectory.get().asFile.absolutePath,
-                    "--instrumentation-apk-output-dir",
-                    grayDebugAndroidTestApkOutputDirectory.get().asFile.absolutePath,
-                ),
-            )
-        }
+        // First-round measured budget: suite plus room for the bounded
+        // after/crash finalizer. Not a proven-sufficient ceiling.
+        timeout.set(Duration.ofMinutes(24))
+        finalizedBy(qualifyGrayConnectedTestEvidence)
     }
 }
