@@ -8,6 +8,7 @@ import com.squareup.moshi.Types
 import com.ticketbox.data.repository.LegacyPeriodPaymentSession
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.ui.components.formatMinorAmountInput
 import com.ticketbox.viewmodel.RecurringOccurrenceUiState
 import java.util.UUID
 
@@ -32,7 +33,7 @@ internal data class RecurringPaymentTask(
 @JsonClass(generateAdapter = true)
 internal data class RecurringPaymentDraft(
     val clientRef: String,
-    val amountText: String,
+    val amountText: String? = null,
     val currencyCode: String?,
     val merchant: String,
     val category: String,
@@ -107,9 +108,15 @@ internal class RecurringPaymentDraftStore(private val state: SavedStateHandle) {
     fun adoptLegacyPeriodPaymentSessions(source: SavedStateHandle) {
         val json = source.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY) ?: return
         val sessions = runCatching { legacyPeriodPaymentSessionListAdapter.fromJson(json) }.getOrNull() ?: return
-        val tasks = sessions.map { it.toRecurringPaymentTaskOrNull() }
-        if (tasks.any { it == null }) return
-        tasks.filterNotNull().forEach(::remember)
+        val adopted = sessions.map { session ->
+            val task = session.toRecurringPaymentTaskOrNull() ?: return@map null
+            task to session.toRecurringPaymentDraftOrNull()
+        }
+        if (adopted.any { it == null }) return
+        adopted.filterNotNull().forEach { (task, draft) ->
+            remember(task)
+            if (draft != null && read(task.clientRef) == null) write(draft)
+        }
         source.remove<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY)
     }
 }
@@ -126,6 +133,25 @@ private fun LegacyPeriodPaymentSession.toRecurringPaymentTaskOrNull(): Recurring
         recordedCurrencyCode = obligationCurrencyCode,
         suggestedAmountMinor = if (obligationCurrencyCode == null) null else plannedAmountCents,
         ledgerHomeCurrencyCode = home,
+    )
+}
+
+private fun LegacyPeriodPaymentSession.toRecurringPaymentDraftOrNull(): RecurringPaymentDraft? {
+    val currency = obligationCurrencyCode?.takeIf { it.isNotBlank() }
+    val amountText = capturedAmountCents?.let { captured ->
+        currency?.let { CurrencyCode.fromStorageKeyOrNull(it) }?.let { formatMinorAmountInput(captured, it) }
+    }
+    val category = category?.takeIf { it.isNotBlank() }
+    val note = note?.takeIf { it.isNotBlank() }
+    if (amountText == null && category == null && note == null) return null
+    return RecurringPaymentDraft(
+        clientRef = clientRef,
+        amountText = amountText,
+        currencyCode = currency,
+        merchant = merchant,
+        category = category.orEmpty(),
+        note = note.orEmpty(),
+        expenseTime = "",
     )
 }
 
@@ -194,15 +220,16 @@ internal fun recurringPaymentTask(
     val home = CurrencyCode.fromStorageKeyOrNull(state.ledgerHomeCurrencyCode)?.storageKey ?: return null
     if (!state.canWrite || occurrence.state != "unfulfilled") return null
     val recorded = CurrencyCode.fromStorageKeyOrNull(occurrence.homeCurrencyCode)?.storageKey
+    val originRef = admittedClientRef?.takeIf { it.isNotBlank() }
     val prior = remembered ?: existing
     if (prior?.binding == binding && prior.seriesPublicId == item.publicId && prior.period == occurrence.period) {
-        return prior
+        return prior.copy(clientRef = originRef ?: prior.clientRef)
     }
     return RecurringPaymentTask(
         binding = binding,
         seriesPublicId = item.publicId,
         period = occurrence.period,
-        clientRef = admittedClientRef?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString(),
+        clientRef = originRef ?: UUID.randomUUID().toString(),
         merchant = item.merchant,
         recordedCurrencyCode = recorded,
         suggestedAmountMinor = if (recorded == null) null else occurrence.plannedAmountCents,

@@ -7,7 +7,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -68,11 +67,12 @@ internal fun RecurringOccurrenceHost(
     var userClosed by rememberSaveable { mutableStateOf(false) }
     val task = remember(taskJson) { readRecurringPaymentTask(taskJson) }
     val visible = state.paymentVisible()
-    val remembered = restore.drafts.adoptedTask(model.savedState, visible.identity)
+    val remembered = rememberAdoptedPaymentTask(restore.drafts, model, visible.identity)
     val origin = rememberRecurringPaymentOrigin(creation, visible.identity)
-    val focused = remembered
-        ?: task?.takeIf { it.matches(visible.identity) }
-        ?: origin.clientRef?.let { recurringPaymentTask(state, admittedClientRef = it) }
+    val focused = recurringPaymentFocused(remembered, task?.takeIf { it.matches(visible.identity) }, origin.clientRef, state)
+    CanonicalizeRecurringPaymentIdentity(RecurringPaymentCanonicalize(restore.drafts, origin, focused, task, visible.identity)) {
+        taskJson = it
+    }
     LaunchedEffect(userClosed, visible, taskJson) {
         val current = readRecurringPaymentTask(taskJson)
         val decision = recurringPaymentHostDecision(current, userClosed, visible, remembered)
@@ -121,13 +121,63 @@ internal fun RecurringOccurrenceHost(
     )
 }
 
-private fun RecurringPaymentDraftStore?.adoptedTask(
-    source: SavedStateHandle,
+@Composable
+private fun rememberAdoptedPaymentTask(
+    drafts: RecurringPaymentDraftStore?,
+    model: RecurringOccurrenceViewModel,
     identity: RecurringPaymentIdentity,
 ): RecurringPaymentTask? {
-    this ?: return null
-    adoptLegacyPeriodPaymentSessions(source)
-    return remembered(identity.binding, identity.seriesPublicId, identity.period)
+    var ready by remember(drafts, model) { mutableStateOf(drafts == null) }
+    LaunchedEffect(drafts, model) {
+        drafts?.adoptLegacyPeriodPaymentSessions(model.savedState)
+        ready = true
+    }
+    if (!ready) return null
+    return drafts?.remembered(identity.binding, identity.seriesPublicId, identity.period)
+}
+
+private data class RecurringPaymentCanonicalize(
+    val drafts: RecurringPaymentDraftStore?,
+    val origin: RecurringPaymentOriginObservation,
+    val focused: RecurringPaymentTask?,
+    val task: RecurringPaymentTask?,
+    val identity: RecurringPaymentIdentity,
+)
+
+internal fun recurringPaymentFocused(
+    remembered: RecurringPaymentTask?,
+    task: RecurringPaymentTask?,
+    originClientRef: String?,
+    state: RecurringOccurrenceUiState,
+): RecurringPaymentTask? {
+    val originRef = originClientRef?.takeIf { it.isNotBlank() }
+    val prior = remembered ?: task
+    if (originRef != null) {
+        return prior?.copy(clientRef = originRef)
+            ?: recurringPaymentTask(state, admittedClientRef = originRef)
+    }
+    return prior
+}
+
+@Composable
+private fun CanonicalizeRecurringPaymentIdentity(
+    input: RecurringPaymentCanonicalize,
+    onTaskJson: (String) -> Unit,
+) {
+    val origin = input.origin
+    val focused = input.focused
+    val identity = input.identity
+    LaunchedEffect(origin.resolved, origin.conflict, origin.clientRef, focused?.clientRef, identity) {
+        if (!origin.resolved || origin.conflict) return@LaunchedEffect
+        val next = focused ?: return@LaunchedEffect
+        if (origin.clientRef != next.clientRef) return@LaunchedEffect
+        if (input.drafts?.remembered(identity.binding, identity.seriesPublicId, identity.period)?.clientRef != next.clientRef) {
+            input.drafts?.remember(next)
+        }
+        if (input.task != null && input.task.matches(identity) && input.task.clientRef != next.clientRef) {
+            onTaskJson(recurringPaymentTaskJson(next))
+        }
+    }
 }
 
 @Composable

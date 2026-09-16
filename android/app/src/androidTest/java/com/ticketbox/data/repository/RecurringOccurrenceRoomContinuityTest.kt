@@ -707,6 +707,77 @@ class RecurringOccurrenceRoomContinuityTest {
     }
 
     @Test
+    fun rememberedStoreRefYieldsToDurableOriginOnReturnAndRecord() {
+        fixture.confirmedStream.value = emptyList()
+        installModel()
+        compose.waitUntil(10_000) {
+            model.value?.uiState?.value?.canWrite == true &&
+                model.value?.uiState?.value?.occurrence?.period == "2026-09" &&
+                model.value?.uiState?.value?.ledgerHomeCurrencyCode != null
+        }
+        val binding = requireNotNull(graph).expenseRepository.captureDeferredLedgerBinding()
+            ?: error("binding")
+        runBlocking {
+            requireNotNull(graph).expenseRepository.manualCreation.create(
+                ExpenseDraft(
+                    amountCents = 10_000,
+                    originalCurrencyCode = CurrencyCode.CNY,
+                    originalAmountMinor = 10_000,
+                    ledgerHomeCurrency = CurrencyCode.CNY,
+                    merchant = "房租",
+                    category = "餐饮",
+                    note = null,
+                    expenseTime = "2026-09-05T08:00:00Z",
+                    tags = null,
+                    valueScore = null,
+                    regretScore = null,
+                ),
+                binding,
+                "origin-a",
+                RecurringPaymentOrigin("recurring-1", "2026-09"),
+            ).getOrThrow()
+        }
+        assertEquals(1, fixture.stored().count { it["type"] == "create_expense" })
+        val stale = RecurringPaymentTask(
+            binding = binding,
+            seriesPublicId = "recurring-1",
+            period = "2026-09",
+            clientRef = "store-b",
+            merchant = "房租",
+            recordedCurrencyCode = "CNY",
+            suggestedAmountMinor = 10_000,
+            ledgerHomeCurrencyCode = "CNY",
+        )
+        val drafts = RecurringPaymentDraftStore(SavedStateHandle())
+        drafts.remember(stale)
+        compose.setContent {
+            val current = model.value ?: return@setContent
+            TicketboxTheme(skin = AppSkin.Paper) {
+                RecurringOccurrenceHost(
+                    current,
+                    requireNotNull(graph).expenseRepository.manualCreation,
+                    RecurringExpenseNavigation({}, { paymentTask.value = it }),
+                    RecurringPaymentRestore(
+                        items = listOf(occurrenceConnectedItem()),
+                        drafts = drafts,
+                        initialTaskJson = recurringPaymentTaskJson(stale),
+                    ),
+                )
+            }
+        }
+        compose.waitUntil(10_000) {
+            drafts.remembered(binding, "recurring-1", "2026-09")?.clientRef == "origin-a"
+        }
+        compose.waitUntil(10_000) {
+            runCatching { compose.onNodeWithTag("occurrence-record-payment").performScrollTo().performClick() }
+            paymentTask.value?.clientRef == "origin-a"
+        }
+        assertEquals("origin-a", paymentTask.value?.clientRef)
+        assertEquals("origin-a", drafts.remembered(binding, "recurring-1", "2026-09")?.clientRef)
+        assertEquals(1, fixture.stored().count { it["type"] == "create_expense" })
+    }
+
+    @Test
     fun originConflictShowsCopyAndDisablesRecordPayment() {
         installModel()
         compose.setContent {

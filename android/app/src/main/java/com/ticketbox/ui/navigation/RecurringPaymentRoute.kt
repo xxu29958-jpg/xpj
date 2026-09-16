@@ -257,7 +257,7 @@ private fun RecurringPaymentKnownCurrencySheet(
             ),
             initials = ManualExpenseSheetInitials(
                 merchant = stored?.merchant ?: task.merchant,
-                category = stored?.category ?: DEFAULT_EXPENSE_CATEGORIES.first(),
+                category = stored?.category?.takeIf { it.isNotBlank() } ?: DEFAULT_EXPENSE_CATEGORIES.first(),
                 note = stored?.note.orEmpty(),
                 amountMinor = if (task.recordedCurrencyCode == null) null else task.suggestedAmountMinor,
                 amountText = stored?.amountText,

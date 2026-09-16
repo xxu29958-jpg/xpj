@@ -55,14 +55,29 @@ class RecurringPaymentTaskTest {
     fun admittedOutboxClientRefIsReusedWhenTheStoreMappingIsGone() {
         val restored = assertNotNull(recurringPaymentTask(loaded("JPY", 1200), admittedClientRef = "outbox-august"))
         assertEquals("outbox-august", restored.clientRef)
-        val rememberedWins = assertNotNull(
+        val originWins = assertNotNull(
             recurringPaymentTask(
                 loaded("JPY", 1200),
                 remembered = restored.copy(clientRef = "store-ref"),
                 admittedClientRef = "outbox-august",
             ),
         )
-        assertEquals("store-ref", rememberedWins.clientRef)
+        assertEquals("outbox-august", originWins.clientRef)
+        val focused = assertNotNull(
+            recurringPaymentFocused(
+                remembered = restored.copy(clientRef = "store-ref"),
+                task = restored.copy(clientRef = "route-ref"),
+                originClientRef = "outbox-august",
+                state = loaded("JPY", 1200),
+            ),
+        )
+        assertEquals("outbox-august", focused.clientRef)
+        assertEquals(
+            71L,
+            preferredPaymentExpenseId(
+                focused, 71L, RecurringPaymentIdentity(focused.binding, focused.seriesPublicId, focused.period),
+            ),
+        )
     }
 
     @Test
@@ -247,6 +262,25 @@ class RecurringPaymentTaskTest {
         assertNull(restoredOwner[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY])
         store.adoptLegacyPeriodPaymentSessions(restoredOwner)
         assertEquals("legacy-ref", store.remembered(access.binding, "rec-1", "2026-08")?.clientRef)
+        assertNull(store.read("legacy-ref"))
+    }
+
+    @Test
+    fun leftoverCapturedDraftFieldsRestoreWithoutInventingExpenseTime() {
+        val json =
+            """[{"binding":{"serverUrl":"https://occurrence.example","ledgerId":"ledger-1","ownerKey":"owner","sessionGeneration":"session","bindingRevision":"binding"},"seriesPublicId":"rec-1","period":"2026-08","clientRef":"legacy-ref","merchant":"日元订阅","obligationCurrencyCode":"JPY","plannedAmountCents":1200,"ledgerHomeCurrencyCode":"CNY","category":"住房","note":"自填备注","capturedAmountCents":9800,"admitted":false}]"""
+        val leftover = SavedStateHandle()
+        leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = json
+        val store = RecurringPaymentDraftStore(SavedStateHandle())
+        store.adoptLegacyPeriodPaymentSessions(leftover)
+        assertEquals("legacy-ref", store.remembered(access.binding, "rec-1", "2026-08")?.clientRef)
+        val draft = assertNotNull(store.read("legacy-ref"))
+        assertEquals("9800", draft.amountText)
+        assertEquals("JPY", draft.currencyCode)
+        assertEquals("住房", draft.category)
+        assertEquals("自填备注", draft.note)
+        assertEquals("", draft.expenseTime)
+        assertNull(leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY])
     }
 
     @Test
