@@ -248,21 +248,16 @@ class RecurringPaymentTaskTest {
     }
 
     @Test
-    fun leftoverPeriodPaymentSessionRestoresTheOriginalClientRefAfterUpgrade() {
+    fun leftoverCompleteSessionStaysUntilOriginIsBound() {
         val json =
             """[{"binding":{"serverUrl":"https://occurrence.example","ledgerId":"ledger-1","ownerKey":"owner","sessionGeneration":"session","bindingRevision":"binding"},"seriesPublicId":"rec-1","period":"2026-08","clientRef":"legacy-ref","merchant":"日元订阅","obligationCurrencyCode":"JPY","plannedAmountCents":1200,"ledgerHomeCurrencyCode":"CNY","admitted":false}]"""
-        val recurringOwner = SavedStateHandle()
-        recurringOwner[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = json
-        val restoredOwner = SavedStateHandle(
-            recurringOwner.keys().associateWith { recurringOwner.get<Any?>(it) },
-        )
+        val leftover = SavedStateHandle()
+        leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = json
         val store = RecurringPaymentDraftStore(SavedStateHandle())
-        store.adoptLegacyPeriodPaymentSessions(restoredOwner)
-        assertEquals("legacy-ref", store.remembered(access.binding, "rec-1", "2026-08")?.clientRef)
-        assertNull(restoredOwner[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY])
-        store.adoptLegacyPeriodPaymentSessions(restoredOwner)
-        assertEquals("legacy-ref", store.remembered(access.binding, "rec-1", "2026-08")?.clientRef)
-        assertNull(store.read("legacy-ref"))
+        val parsed = assertNotNull(store.legacyPeriodPaymentSessions(leftover))
+        assertEquals("legacy-ref", parsed.single().first.clientRef)
+        assertEquals(json, leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY])
+        assertNull(store.remembered(access.binding, "rec-1", "2026-08"))
     }
 
     @Test
@@ -272,15 +267,14 @@ class RecurringPaymentTaskTest {
         val leftover = SavedStateHandle()
         leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = json
         val store = RecurringPaymentDraftStore(SavedStateHandle())
-        store.adoptLegacyPeriodPaymentSessions(leftover)
-        assertEquals("legacy-ref", store.remembered(access.binding, "rec-1", "2026-08")?.clientRef)
-        val draft = assertNotNull(store.read("legacy-ref"))
+        val draft = assertNotNull(store.legacyPeriodPaymentSessions(leftover)?.single()?.second)
         assertEquals("9800", draft.amountText)
         assertEquals("JPY", draft.currencyCode)
         assertEquals("住房", draft.category)
         assertEquals("自填备注", draft.note)
         assertEquals("", draft.expenseTime)
-        assertNull(leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY])
+        assertEquals(json, leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY])
+        assertNull(store.read("legacy-ref"))
     }
 
     @Test
@@ -290,7 +284,7 @@ class RecurringPaymentTaskTest {
         val leftover = SavedStateHandle()
         leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = json
         val store = RecurringPaymentDraftStore(SavedStateHandle())
-        store.adoptLegacyPeriodPaymentSessions(leftover)
+        assertNull(store.legacyPeriodPaymentSessions(leftover))
         assertEquals(json, leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY])
         assertNull(store.remembered(access.binding, "rec-1", "2026-08"))
     }
@@ -302,10 +296,33 @@ class RecurringPaymentTaskTest {
         val leftover = SavedStateHandle()
         leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = json
         val store = RecurringPaymentDraftStore(SavedStateHandle())
-        store.adoptLegacyPeriodPaymentSessions(leftover)
+        assertNull(store.legacyPeriodPaymentSessions(leftover))
         assertEquals(json, leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY])
         assertNull(store.remembered(access.binding, "rec-1", "2026-08"))
         assertNull(store.remembered(access.binding, "rec-1", "2026-09"))
+    }
+
+    @Test
+    fun rememberCanonicalClientRefDropsThePreviousDraft() {
+        val store = RecurringPaymentDraftStore(SavedStateHandle())
+        val stale = assertNotNull(recurringPaymentTask(loaded("JPY", 1200)))
+        val origin = stale.copy(clientRef = "origin-a")
+        store.remember(stale.copy(clientRef = "store-b"))
+        store.write(
+            RecurringPaymentDraft(
+                clientRef = "store-b",
+                amountText = "12",
+                currencyCode = "JPY",
+                merchant = "日元订阅",
+                category = "住房",
+                note = "旧草稿",
+                expenseTime = "",
+            ),
+        )
+        store.remember(origin)
+        assertEquals("origin-a", store.remembered(origin.binding, origin.seriesPublicId, origin.period)?.clientRef)
+        assertNull(store.read("store-b"))
+        assertNull(store.read("origin-a"))
     }
 
     private fun visible(

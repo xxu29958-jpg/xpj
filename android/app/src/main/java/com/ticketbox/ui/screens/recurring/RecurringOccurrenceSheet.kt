@@ -35,6 +35,12 @@ import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.RecurringOccurrenceUiState
 
+data class OccurrencePaymentGuard(
+    val resolved: Boolean = true,
+    val conflict: Boolean = false,
+    val leftoverBlocked: Boolean = false,
+)
+
 data class OccurrenceSheetActions(
     val onDismiss: () -> Unit,
     val onRefresh: () -> Unit,
@@ -52,15 +58,14 @@ fun RecurringOccurrenceSheet(
     state: RecurringOccurrenceUiState,
     actions: OccurrenceSheetActions,
     preferredExpenseId: Long? = null,
-    originResolved: Boolean = true,
-    originConflict: Boolean = false,
+    origin: OccurrencePaymentGuard = OccurrencePaymentGuard(),
 ) {
     val item = state.item ?: return
     ModalBottomSheet(onDismissRequest = actions.onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         AppSheetScaffold(title = item.merchant, subtitle = stringResource(R.string.occurrence_subtitle)) {
             OccurrencePeriodControls(state, actions)
             state.message?.let { Text(it.asString(), modifier = Modifier.testTag("occurrence-message")) }
-            OccurrencePaymentConflict(originConflict)
+            OccurrencePaymentConflict(origin)
             state.seriesPending.forEach { OccurrencePending(it, state.access?.canModify == true, actions.onRecover) }
             state.occurrence?.let { occurrence ->
                 Text(stringResource(occurrenceStateLabel(occurrence.state)), modifier = Modifier.testTag("occurrence-state"))
@@ -79,8 +84,7 @@ fun RecurringOccurrenceSheet(
                 OccurrenceRecordPayment(
                     canWrite = state.canWrite,
                     unfulfilled = occurrence.state == "unfulfilled",
-                    originResolved = originResolved,
-                    originConflict = originConflict,
+                    origin = origin,
                     onRecord = actions.onRecordPayment,
                 )
                 OccurrenceChoice(state, actions.onSubmit)
@@ -91,11 +95,18 @@ fun RecurringOccurrenceSheet(
 }
 
 @Composable
-private fun OccurrencePaymentConflict(originConflict: Boolean) {
-    if (!originConflict) return
+private fun OccurrencePaymentConflict(origin: OccurrencePaymentGuard) {
+    if (origin.conflict) {
+        Text(
+            stringResource(R.string.recurring_payment_origin_conflict),
+            modifier = Modifier.testTag("occurrence-payment-conflict"),
+        )
+        return
+    }
+    if (!origin.leftoverBlocked) return
     Text(
-        stringResource(R.string.recurring_payment_origin_conflict),
-        modifier = Modifier.testTag("occurrence-payment-conflict"),
+        stringResource(R.string.recurring_payment_leftover_unresolved),
+        modifier = Modifier.testTag("occurrence-payment-leftover"),
     )
 }
 
@@ -103,8 +114,7 @@ private fun OccurrencePaymentConflict(originConflict: Boolean) {
 private fun OccurrenceRecordPayment(
     canWrite: Boolean,
     unfulfilled: Boolean,
-    originResolved: Boolean,
-    originConflict: Boolean,
+    origin: OccurrencePaymentGuard,
     onRecord: () -> Unit,
 ) {
     if (!canWrite || !unfulfilled) return
@@ -112,7 +122,7 @@ private fun OccurrenceRecordPayment(
         text = stringResource(R.string.occurrence_record_payment),
         icon = Icons.Filled.Add,
         onClick = onRecord,
-        enabled = originResolved && !originConflict,
+        enabled = origin.resolved && !origin.conflict && !origin.leftoverBlocked,
         modifier = Modifier.fillMaxWidth().testTag("occurrence-record-payment"),
     )
 }

@@ -16,6 +16,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import androidx.test.espresso.Espresso.pressBack
 import androidx.test.platform.app.InstrumentationRegistry
+import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.RepositoryGraph
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CurrencyCode
@@ -28,15 +29,18 @@ import com.ticketbox.ui.navigation.RecurringPaymentDraftStore
 import com.ticketbox.ui.navigation.RecurringPaymentRestore
 import com.ticketbox.ui.navigation.RecurringPaymentTask
 import com.ticketbox.ui.navigation.recurringPaymentTaskJson
+import com.ticketbox.ui.screens.recurring.OccurrencePaymentGuard
 import com.ticketbox.ui.screens.recurring.OccurrenceSheetActions
 import com.ticketbox.ui.screens.recurring.RecurringOccurrenceSheet
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.RecurringOccurrenceViewModel
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -659,16 +663,20 @@ class RecurringOccurrenceRoomContinuityTest {
             """[{"binding":{"serverUrl":"${binding.serverUrl}","ledgerId":"${binding.ledgerId}","ownerKey":"${binding.ownerKey}","sessionGeneration":"${binding.sessionGeneration}","bindingRevision":"${binding.bindingRevision}"},"seriesPublicId":"recurring-1","period":"2026-09","clientRef":"legacy-ref","merchant":"房租","obligationCurrencyCode":"CNY","plannedAmountCents":10000,"ledgerHomeCurrencyCode":"CNY","admitted":false}]"""
         installModel(savedState = leftover)
         assertTrue(model.value?.savedState === leftover)
-        val drafts = RecurringPaymentDraftStore(SavedStateHandle())
+        val drafts = mutableStateOf(RecurringPaymentDraftStore(SavedStateHandle()))
+        val hostMounted = mutableStateOf(true)
         compose.setContent {
             val current = model.value ?: return@setContent
+            if (!hostMounted.value) return@setContent
             TicketboxTheme(skin = AppSkin.Paper) {
-                RecurringOccurrenceHost(
-                    current,
-                    requireNotNull(graph).expenseRepository.manualCreation,
-                    RecurringExpenseNavigation({}, { paymentTask.value = it }),
-                    RecurringPaymentRestore(items = listOf(occurrenceConnectedItem()), drafts = drafts),
-                )
+                key(drafts.value) {
+                    RecurringOccurrenceHost(
+                        current,
+                        requireNotNull(graph).expenseRepository.manualCreation,
+                        RecurringExpenseNavigation({}, { paymentTask.value = it }),
+                        RecurringPaymentRestore(items = listOf(occurrenceConnectedItem()), drafts = drafts.value),
+                    )
+                }
             }
         }
         compose.waitUntil(10_000) {
@@ -677,33 +685,95 @@ class RecurringOccurrenceRoomContinuityTest {
         }
         compose.waitUntil(10_000) {
             leftover.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY) == null &&
-                drafts.remembered(binding, "recurring-1", "2026-09")?.clientRef == "legacy-ref"
+                drafts.value.remembered(binding, "recurring-1", "2026-09")?.clientRef == "legacy-ref"
         }
+        runBlocking {
+            val lookup = requireNotNull(graph).expenseRepository.manualCreation
+                .observeOrigin(binding, RecurringPaymentOrigin("recurring-1", "2026-09"))
+                .first()
+            val found = lookup as RecurringPaymentOriginLookup.Found
+            assertEquals("legacy-ref", found.projection.request?.clientRef)
+        }
+        val payload = fixture.stored().single { it["type"] == "create_expense" }["payload"]
+        assertNotNull(
+            decodeRecurringPaymentOrigin(
+                OutboxAdapterGraph().recurringPaymentCreateAdapter,
+                requireNotNull(payload),
+            ),
+        )
+        assertEquals(1, fixture.stored().count { it["type"] == "create_expense" })
+        paymentTask.value = null
+        compose.runOnIdle { model.value?.viewModelScope?.cancel() }
+        installModel(savedState = SavedStateHandle())
+        compose.runOnIdle {
+            drafts.value = RecurringPaymentDraftStore(SavedStateHandle())
+            hostMounted.value = false
+        }
+        compose.waitForIdle()
+        compose.runOnIdle { hostMounted.value = true }
+        compose.waitUntil(10_000) {
+            model.value?.uiState?.value?.canWrite == true &&
+                model.value?.uiState?.value?.occurrence?.period == "2026-09"
+        }
+        compose.waitForIdle()
         compose.waitUntil(10_000) {
             runCatching { compose.onNodeWithTag("occurrence-record-payment").performScrollTo().performClick() }
             paymentTask.value?.clientRef == "legacy-ref"
         }
-        runBlocking {
-            val creation = requireNotNull(graph).expenseRepository.manualCreation
-            val payment = ExpenseDraft(
-                amountCents = 10_000,
-                originalCurrencyCode = CurrencyCode.CNY,
-                originalAmountMinor = 10_000,
-                ledgerHomeCurrency = CurrencyCode.CNY,
-                merchant = "房租",
-                category = "餐饮",
-                note = null,
-                expenseTime = "2026-09-05T08:00:00Z",
-                tags = null,
-                valueScore = null,
-                regretScore = null,
-            )
-            creation.create(payment, binding, "legacy-ref", RecurringPaymentOrigin("recurring-1", "2026-09")).getOrThrow()
-            creation.create(payment, binding, "upgraded-ref", RecurringPaymentOrigin("recurring-1", "2026-09")).getOrThrow()
-        }
         assertEquals("legacy-ref", paymentTask.value?.clientRef)
         assertEquals(1, fixture.stored().count { it["type"] == "create_expense" })
-        assertNull(leftover.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY))
+        assertTrue(drafts.value.remembered(binding, "recurring-1", "2026-09")?.clientRef == "legacy-ref")
+        runBlocking {
+            val lookup = requireNotNull(graph).expenseRepository.manualCreation
+                .observeOrigin(binding, RecurringPaymentOrigin("recurring-1", "2026-09"))
+                .first()
+            val found = lookup as RecurringPaymentOriginLookup.Found
+            assertEquals("legacy-ref", found.projection.request?.clientRef)
+        }
+    }
+
+    @Test
+    fun leftoverMissingOutboxKeepsTheKeyAndDisablesRecord() {
+        fixture.confirmedStream.value = emptyList()
+        installModel()
+        compose.waitUntil(10_000) {
+            model.value?.uiState?.value?.canWrite == true &&
+                model.value?.uiState?.value?.occurrence?.period == "2026-09"
+        }
+        val binding = requireNotNull(graph).expenseRepository.captureDeferredLedgerBinding()
+            ?: error("binding")
+        compose.runOnIdle { model.value?.viewModelScope?.cancel() }
+        val leftover = SavedStateHandle()
+        val json =
+            """[{"binding":{"serverUrl":"${binding.serverUrl}","ledgerId":"${binding.ledgerId}","ownerKey":"${binding.ownerKey}","sessionGeneration":"${binding.sessionGeneration}","bindingRevision":"${binding.bindingRevision}"},"seriesPublicId":"recurring-1","period":"2026-09","clientRef":"legacy-ref","merchant":"房租","obligationCurrencyCode":"CNY","plannedAmountCents":10000,"ledgerHomeCurrencyCode":"CNY","admitted":false}]"""
+        leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = json
+        installModel(savedState = leftover)
+        compose.setContent {
+            val current = model.value ?: return@setContent
+            TicketboxTheme(skin = AppSkin.Paper) {
+                RecurringOccurrenceHost(
+                    current,
+                    requireNotNull(graph).expenseRepository.manualCreation,
+                    RecurringExpenseNavigation({}, { paymentTask.value = it }),
+                    RecurringPaymentRestore(
+                        items = listOf(occurrenceConnectedItem()),
+                        drafts = RecurringPaymentDraftStore(SavedStateHandle()),
+                    ),
+                )
+            }
+        }
+        compose.waitUntil(10_000) {
+            model.value?.uiState?.value?.canWrite == true &&
+                model.value?.uiState?.value?.occurrence?.period == "2026-09"
+        }
+        compose.waitUntil(10_000) {
+            runCatching {
+                compose.onNodeWithTag("occurrence-payment-leftover").performScrollTo().assertIsDisplayed()
+            }.isSuccess
+        }
+        compose.onNodeWithTag("occurrence-record-payment").performScrollTo().assertIsNotEnabled()
+        assertEquals(json, leftover.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY))
+        assertEquals(0, fixture.stored().count { it["type"] == "create_expense" })
     }
 
     @Test
@@ -790,8 +860,7 @@ class RecurringOccurrenceRoomContinuityTest {
                         current::dismiss, current::refresh, current::changePeriod,
                         current::choose, current::submit, current::recover,
                     ),
-                    originResolved = true,
-                    originConflict = true,
+                    origin = OccurrencePaymentGuard(resolved = true, conflict = true),
                 )
             }
         }

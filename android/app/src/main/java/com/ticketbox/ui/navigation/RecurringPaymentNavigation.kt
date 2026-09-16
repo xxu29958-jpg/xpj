@@ -5,8 +5,10 @@ import androidx.lifecycle.SavedStateHandle
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
+import com.ticketbox.data.repository.ExpenseManualCreation
 import com.ticketbox.data.repository.LegacyPeriodPaymentSession
 import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.RecurringPaymentOriginAdopt
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.ui.components.formatMinorAmountInput
 import com.ticketbox.viewmodel.RecurringOccurrenceUiState
@@ -68,9 +70,15 @@ internal class RecurringPaymentDraftStore(private val state: SavedStateHandle) {
         get() = state.get<String>(RECURRING_PAYMENT_DRAFTS_KEY)?.let { recurringPaymentDraftListAdapter.fromJson(it) }.orEmpty()
 
     fun remember(task: RecurringPaymentTask) {
+        val previous = tasks.firstOrNull {
+            it.binding == task.binding && it.seriesPublicId == task.seriesPublicId && it.period == task.period
+        }
         state[RECURRING_PAYMENT_TASKS_KEY] = recurringPaymentTaskListAdapter.toJson(
             tasks.filterNot { it.binding == task.binding && it.seriesPublicId == task.seriesPublicId && it.period == task.period } + task,
         )
+        if (previous != null && previous.clientRef != task.clientRef) {
+            removeDraft(previous.clientRef)
+        }
     }
 
     fun remembered(
@@ -105,20 +113,42 @@ internal class RecurringPaymentDraftStore(private val state: SavedStateHandle) {
         removeDraft(clientRef)
     }
 
-    fun adoptLegacyPeriodPaymentSessions(source: SavedStateHandle) {
-        val json = source.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY) ?: return
-        val sessions = runCatching { legacyPeriodPaymentSessionListAdapter.fromJson(json) }.getOrNull() ?: return
-        val adopted = sessions.map { session ->
-            val task = session.toRecurringPaymentTaskOrNull() ?: return@map null
+    fun legacyPeriodPaymentSessions(
+        source: SavedStateHandle,
+    ): List<Pair<RecurringPaymentTask, RecurringPaymentDraft?>>? {
+        val json = source.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY) ?: return emptyList()
+        val sessions = runCatching { legacyPeriodPaymentSessionListAdapter.fromJson(json) }.getOrNull() ?: return null
+        return sessions.map { session ->
+            val task = session.toRecurringPaymentTaskOrNull() ?: return null
             task to session.toRecurringPaymentDraftOrNull()
         }
-        if (adopted.any { it == null }) return
-        adopted.filterNotNull().forEach { (task, draft) ->
+    }
+
+    suspend fun adoptLegacyPeriodPaymentSessions(
+        source: SavedStateHandle,
+        creation: ExpenseManualCreation,
+    ): LegacyPeriodPaymentAdopt {
+        source.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY) ?: return LegacyPeriodPaymentAdopt.Absent
+        val sessions = legacyPeriodPaymentSessions(source) ?: return LegacyPeriodPaymentAdopt.Blocked
+        val outcomes = sessions.map { (task, _) ->
+            creation.adoptOrigin(task.binding, task.clientRef, task.seriesPublicId, task.period)
+        }
+        if (outcomes.any { it == RecurringPaymentOriginAdopt.Conflict }) return LegacyPeriodPaymentAdopt.Conflict
+        if (outcomes.any { it != RecurringPaymentOriginAdopt.Bound }) return LegacyPeriodPaymentAdopt.Blocked
+        sessions.forEach { (task, draft) ->
             remember(task)
             if (draft != null && read(task.clientRef) == null) write(draft)
         }
         source.remove<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY)
+        return LegacyPeriodPaymentAdopt.Succeeded
     }
+}
+
+internal sealed class LegacyPeriodPaymentAdopt {
+    data object Absent : LegacyPeriodPaymentAdopt()
+    data object Succeeded : LegacyPeriodPaymentAdopt()
+    data object Blocked : LegacyPeriodPaymentAdopt()
+    data object Conflict : LegacyPeriodPaymentAdopt()
 }
 
 private fun LegacyPeriodPaymentSession.toRecurringPaymentTaskOrNull(): RecurringPaymentTask? {

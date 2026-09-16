@@ -16,6 +16,13 @@ internal sealed class RecurringPaymentOriginLookup {
     data object Conflict : RecurringPaymentOriginLookup()
 }
 
+/** Bind leftover clientRef onto the existing CreateExpense row. Never enqueues. */
+internal sealed class RecurringPaymentOriginAdopt {
+    data object Bound : RecurringPaymentOriginAdopt()
+    data object Missing : RecurringPaymentOriginAdopt()
+    data object Conflict : RecurringPaymentOriginAdopt()
+}
+
 /** Admission result for the existing CreateExpense writer. Not a second command. */
 internal sealed class ManualExpenseCreateAdmission {
     data class Accepted(val clientRef: String) : ManualExpenseCreateAdmission()
