@@ -27,6 +27,7 @@ internal sealed class RecurringPaymentOriginAdopt {
 /** Admission result for the existing CreateExpense writer. Not a second command. */
 internal sealed class ManualExpenseCreateAdmission {
     data class Accepted(val clientRef: String) : ManualExpenseCreateAdmission()
+    data class ReviewRequired(val candidateClientRefs: List<String>) : ManualExpenseCreateAdmission()
 }
 
 /** N-1 SavedState left by RecurringPeriodPaymentSession. Not a second Writer. */

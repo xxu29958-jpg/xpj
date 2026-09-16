@@ -49,6 +49,7 @@ internal class ExpenseManualCreation(private val core: ExpenseRepositoryCore) {
         binding: LogicalSessionBinding,
         clientRef: String,
         origin: RecurringPaymentOrigin? = null,
+        acknowledgedUnattributed: Collection<String> = emptyList(),
     ): Result<ManualExpenseCreateAdmission> = core.errorHandler.safeCall {
         admission.withLock {
             require(clientRef.isNotBlank())
@@ -69,32 +70,41 @@ internal class ExpenseManualCreation(private val core: ExpenseRepositoryCore) {
                                 ?: error("本期付款命令冲突，请先处理重复提交。"),
                         )
                     }
-                    RecurringPaymentOriginLookup.Absent ->
-                        bindRawPeriodOrigin(binding, origin, draft, bound)?.let { return@withLock it }
+                    RecurringPaymentOriginLookup.Absent -> Unit
                 }
             }
             val existing = observe(binding, clientRef).first()
-            if (existing == null) {
-                check(core.canModifyLedger()) { "当前账本没有编辑权限。" }
-                require(draft.amountCents != null || draft.originalAmountMinor != null) { "请先填写金额。" }
-                val request = draft.toManualCreateRequest(clientRef = clientRef)
-                core.enqueueLocalCreate(
-                    bound,
-                    draft.copy(clientRef = clientRef),
-                    clientRef,
-                    encodeManualCreatePayload(
-                        core.offlineMutations.manualCreateAdapter,
-                        originAdapter,
-                        request,
+            if (existing != null) {
+                if (origin != null) {
+                    tryBindOrigin(existing.row, origin).requireBoundOrRetired(
+                        decodeRecurringPaymentPayload(originAdapter, existing.row.payloadJson),
                         origin,
-                    ),
-                )
-            } else if (origin != null) {
-                tryBindOrigin(existing.row, origin).requireBoundOrRetired(
-                    decodeRecurringPaymentPayload(originAdapter, existing.row.payloadJson),
-                    origin,
-                )
+                    )
+                }
+                bound.requireStillActive()
+                return@withLock ManualExpenseCreateAdmission.Accepted(clientRef)
             }
+            if (origin != null) {
+                val unattributed = unattributedCreateClientRefs(binding)
+                if (unattributed.isNotEmpty() && unattributed.toSet() != acknowledgedUnattributed.toSet()) {
+                    bound.requireStillActive()
+                    return@withLock ManualExpenseCreateAdmission.ReviewRequired(unattributed)
+                }
+            }
+            check(core.canModifyLedger()) { "当前账本没有编辑权限。" }
+            require(draft.amountCents != null || draft.originalAmountMinor != null) { "请先填写金额。" }
+            val request = draft.toManualCreateRequest(clientRef = clientRef)
+            core.enqueueLocalCreate(
+                bound,
+                draft.copy(clientRef = clientRef),
+                clientRef,
+                encodeManualCreatePayload(
+                    core.offlineMutations.manualCreateAdapter,
+                    originAdapter,
+                    request,
+                    origin,
+                ),
+            )
             bound.requireStillActive()
             ManualExpenseCreateAdmission.Accepted(clientRef)
         }
@@ -208,14 +218,9 @@ internal class ExpenseManualCreation(private val core: ExpenseRepositoryCore) {
             .observeActiveByTypes(setOf(PendingMutationType.CreateExpense), includeCompleted = true)
             .first()
 
-    private suspend fun bindRawPeriodOrigin(
-        binding: LogicalSessionBinding,
-        origin: RecurringPaymentOrigin,
-        draft: ExpenseDraft,
-        bound: BoundLedgerRequest,
-    ): ManualExpenseCreateAdmission? {
+    private suspend fun unattributedCreateClientRefs(binding: LogicalSessionBinding): List<String> {
         val originAdapter = core.offlineMutations.recurringPaymentCreateAdapter
-        val matched = activeCreateRows().mapNotNull { row ->
+        return activeCreateRows().mapNotNull { row ->
             val boundRow = row.bindingOrNull() ?: return@mapNotNull null
             if (boundRow.serverUrl != binding.serverUrl ||
                 boundRow.ledgerId != binding.ledgerId ||
@@ -224,30 +229,12 @@ internal class ExpenseManualCreation(private val core: ExpenseRepositoryCore) {
                 return@mapNotNull null
             }
             if (decodeRecurringPaymentPayload(originAdapter, row.payloadJson) != null) return@mapNotNull null
-            val request = decodeManualCreateRequest(
+            decodeManualCreateRequest(
                 core.offlineMutations.manualCreateAdapter,
                 originAdapter,
                 row.payloadJson,
-            ) ?: return@mapNotNull null
-            if (request.merchant != draft.merchant) return@mapNotNull null
-            row to request
-        }
-        return when (matched.size) {
-            0 -> null
-            1 -> {
-                val row = matched.single().first
-                tryBindOrigin(row, origin).requireBoundOrRetired(
-                    decodeRecurringPaymentPayload(originAdapter, row.payloadJson),
-                    origin,
-                )
-                bound.requireStillActive()
-                ManualExpenseCreateAdmission.Accepted(
-                    core.describeManualCreation(row)?.admittedClientRef()
-                        ?: error("本期付款命令冲突，请先处理重复提交。"),
-                )
-            }
-            else -> error("本期付款命令冲突，请先处理重复提交。")
-        }
+            )?.clientRef?.takeIf(String::isNotBlank)
+        }.distinct().sorted()
     }
 
     private suspend fun tryBindOrigin(row: OutboxRow, origin: RecurringPaymentOrigin): RecurringPaymentOriginAdopt {

@@ -134,23 +134,24 @@ internal class RecurringPaymentDraftStore(private val state: SavedStateHandle) {
         creation: ExpenseManualCreation,
         identity: RecurringPaymentIdentity? = null,
     ) {
+        val current = identity ?: return
+        val generation = current.occurrenceRowVersion ?: return
         val json = source.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY) ?: return
         val sessions = runCatching { legacyPeriodPaymentSessionListAdapter.fromJson(json) }.getOrNull() ?: return
         val remaining = mutableListOf<LegacyPeriodPaymentSession>()
         for (session in sessions) {
-            if (session.clientRef.isBlank() || session.seriesPublicId.isBlank() || session.period.isBlank()) {
+            if (!current.matchesLoadedSession(session)) {
                 remaining += session
                 continue
             }
-            val generation = identity?.occurrenceRowVersionFor(session.seriesPublicId, session.period)
             when (creation.adoptOrigin(session.binding, session.clientRef, session.seriesPublicId, session.period, generation)) {
-                RecurringPaymentOriginAdopt.Bound -> captureLegacy(session)
+                RecurringPaymentOriginAdopt.Bound -> captureLegacy(session, generation)
                 RecurringPaymentOriginAdopt.Conflict -> remaining += session
                 RecurringPaymentOriginAdopt.Missing ->
                     if (session.admitted || session.toRecurringPaymentTaskOrNull() == null) {
                         remaining += session
                     } else {
-                        captureLegacy(session)
+                        captureLegacy(session, generation)
                     }
             }
         }
@@ -171,8 +172,8 @@ internal class RecurringPaymentDraftStore(private val state: SavedStateHandle) {
         }
     }
 
-    private fun captureLegacy(session: LegacyPeriodPaymentSession) {
-        val task = session.toRecurringPaymentTaskOrNull() ?: return
+    private fun captureLegacy(session: LegacyPeriodPaymentSession, occurrenceRowVersion: Long) {
+        val task = session.toRecurringPaymentTaskOrNull()?.copy(occurrenceRowVersion = occurrenceRowVersion) ?: return
         remember(task)
         val draft = session.toRecurringPaymentDraftOrNull()
         if (draft != null && read(task.clientRef) == null) write(draft)
@@ -228,8 +229,12 @@ internal data class RecurringPaymentIdentity(
     val period: String?,
     val occurrenceRowVersion: Long? = null,
 ) {
-    fun occurrenceRowVersionFor(seriesPublicId: String, period: String): Long? =
-        occurrenceRowVersion.takeIf { this.seriesPublicId == seriesPublicId && this.period == period }
+    fun matchesLoadedSession(session: LegacyPeriodPaymentSession): Boolean =
+        occurrenceRowVersion != null &&
+            binding == session.binding &&
+            seriesPublicId == session.seriesPublicId &&
+            period == session.period &&
+            session.clientRef.isNotBlank()
 }
 
 internal data class RecurringPaymentVisible(
