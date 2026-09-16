@@ -510,26 +510,71 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
     }
 
     @Test
-    fun retireOriginUnwrapsThePayloadSoALaterPeriodStartsFresh() = runTest {
+    fun retireOriginKeepsTheCommandButStopsAdoptAndCreateFromReoccupyingIt() = runTest {
         val dao = FakeExpenseDao()
         val pendingDao = FakePendingMutationDao()
         val outbox = outbox(pendingDao)
         val repo = createRepo(ManualCreateApi(failure = IOException("airplane mode")), dao, outbox)
         val binding = requireNotNull(repo.captureDeferredLedgerBinding())
         val origin = RecurringPaymentOrigin("rec-1", "2026-08")
+        val originAdapter = com.ticketbox.OutboxAdapterGraph().recurringPaymentCreateAdapter
         repo.manualCreation.create(draft, binding, "first-ref", origin).getOrThrow()
-        repo.manualCreation.retireOrigin(binding, origin)
+        val firstId = pendingDao.rows.values.single { it.targetId == "expense:local:first-ref" }.id
+        pendingDao.markDone(firstId, "done", "2026-09-16T00:00:00Z", null, null)
+        repo.manualCreation.retireOrigin(binding, origin, "first-ref")
         assertTrue(repo.manualCreation.observeOrigin(binding, origin).first() is RecurringPaymentOriginLookup.Absent)
-        assertNull(
-            decodeRecurringPaymentOrigin(
-                com.ticketbox.OutboxAdapterGraph().recurringPaymentCreateAdapter,
+        val retired = assertNotNull(
+            decodeRecurringPaymentPayload(
+                originAdapter,
                 pendingDao.rows.values.single { it.targetId == "expense:local:first-ref" }.payload,
             ),
         )
-        repo.manualCreation.create(draft, binding, "second-ref", origin).getOrThrow()
+        assertTrue(retired.retired)
+        assertEquals("rec-1", retired.seriesPublicId)
+        assertEquals("2026-08", retired.period)
+        assertEquals("first-ref", retired.request.clientRef)
+        assertEquals("新商家", retired.request.merchant)
+        assertNull(decodeRecurringPaymentOrigin(originAdapter, pendingDao.rows[firstId]!!.payload))
+        assertEquals(
+            RecurringPaymentOriginAdopt.Missing,
+            repo.manualCreation.adoptOrigin(binding, "first-ref", origin.seriesPublicId, origin.period),
+        )
+        assertTrue(repo.manualCreation.observeOrigin(binding, origin).first() is RecurringPaymentOriginLookup.Absent)
+        val replayed = repo.manualCreation.create(draft, binding, "first-ref", origin).getOrThrow()
+        assertEquals("first-ref", (replayed as ManualExpenseCreateAdmission.Accepted).clientRef)
+        assertTrue(repo.manualCreation.observeOrigin(binding, origin).first() is RecurringPaymentOriginLookup.Absent)
+        assertEquals(1, pendingDao.rows.size)
+        val second = repo.manualCreation.create(draft, binding, "second-ref", origin).getOrThrow()
+        assertEquals("second-ref", (second as ManualExpenseCreateAdmission.Accepted).clientRef)
         assertEquals(2, pendingDao.rows.size)
         val found = repo.manualCreation.observeOrigin(binding, origin).first()
         assertTrue(found is RecurringPaymentOriginLookup.Found)
         assertEquals("second-ref", found.projection.request?.clientRef)
+    }
+
+    @Test
+    fun retireOriginOfADoesNotStripALaterActiveB() = runTest {
+        val dao = FakeExpenseDao()
+        val pendingDao = FakePendingMutationDao()
+        val outbox = outbox(pendingDao)
+        val repo = createRepo(ManualCreateApi(failure = IOException("airplane mode")), dao, outbox)
+        val binding = requireNotNull(repo.captureDeferredLedgerBinding())
+        val origin = RecurringPaymentOrigin("rec-1", "2026-08")
+        val originAdapter = com.ticketbox.OutboxAdapterGraph().recurringPaymentCreateAdapter
+        repo.manualCreation.create(draft, binding, "first-ref", origin).getOrThrow()
+        repo.manualCreation.retireOrigin(binding, origin, "first-ref")
+        repo.manualCreation.create(draft, binding, "second-ref", origin).getOrThrow()
+        val before = pendingDao.rows.values.single { it.targetId == "expense:local:second-ref" }.payload
+        val boundB = assertNotNull(decodeRecurringPaymentPayload(originAdapter, before))
+        assertTrue(!boundB.retired)
+        assertEquals("second-ref", boundB.request.clientRef)
+        repo.manualCreation.retireOrigin(binding, origin, "first-ref")
+        assertEquals(before, pendingDao.rows.values.single { it.targetId == "expense:local:second-ref" }.payload)
+        val found = repo.manualCreation.observeOrigin(binding, origin).first()
+        assertTrue(found is RecurringPaymentOriginLookup.Found)
+        assertEquals("second-ref", found.projection.request?.clientRef)
+        val third = repo.manualCreation.create(draft, binding, "third-ref", origin).getOrThrow()
+        assertEquals("second-ref", (third as ManualExpenseCreateAdmission.Accepted).clientRef)
+        assertEquals(2, pendingDao.rows.size)
     }
 }

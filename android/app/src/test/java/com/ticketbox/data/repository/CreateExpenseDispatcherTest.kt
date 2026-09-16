@@ -163,6 +163,29 @@ internal class CreateExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestB
     }
 
     @Test
+    fun retiredPeriodPaymentPayloadStillPostsTheOriginalRequest() = runTest {
+        val originAdapter = com.ticketbox.OutboxAdapterGraph().recurringPaymentCreateAdapter
+        val request = ExpenseManualCreateRequestDto(
+            originalCurrency = "CNY", originalAmount = "12.34", spentAt = null, merchant = "房租",
+            category = "餐饮", note = null, expenseTime = "2026-05-20T12:00:00Z", tags = null,
+            valueScore = null, regretScore = null, clientRef = "august-ref",
+        )
+        val row = createRow("august-ref").copy(
+            payloadJson = originAdapter.toJson(RecurringPaymentCreatePayload(request, "rec-1", "2026-08", retired = true)),
+        )
+        val stub = ManualCreateApiStub(dto = manualReceipt())
+        val result = dispatcherFor(
+            stub,
+            CapturedWriteback(),
+            originAdapter = originAdapter,
+        ).dispatch(row)
+        assertEquals("august-ref", stub.lastRequest?.clientRef)
+        assertEquals("房租", stub.lastRequest?.merchant)
+        assertEquals("12.34", stub.lastRequest?.originalAmount)
+        assertTrue(result is DispatchResult.Success)
+    }
+
+    @Test
     fun `a row missing client_ref fails loudly instead of double-creating`() = runTest {
         val stub = ManualCreateApiStub(dto = manualReceipt())
         val writeback = CapturedWriteback()

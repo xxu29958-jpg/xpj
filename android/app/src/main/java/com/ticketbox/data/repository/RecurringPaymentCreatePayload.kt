@@ -50,6 +50,7 @@ data class RecurringPaymentCreatePayload(
     val request: ExpenseManualCreateRequestDto,
     val seriesPublicId: String,
     val period: String,
+    val retired: Boolean = false,
 )
 
 internal fun encodeManualCreatePayload(
@@ -57,9 +58,12 @@ internal fun encodeManualCreatePayload(
     originAdapter: JsonAdapter<RecurringPaymentCreatePayload>?,
     request: ExpenseManualCreateRequestDto,
     origin: RecurringPaymentOrigin?,
+    retired: Boolean = false,
 ): String {
     if (origin == null || originAdapter == null) return requestAdapter.toJson(request)
-    return originAdapter.toJson(RecurringPaymentCreatePayload(request, origin.seriesPublicId, origin.period))
+    return originAdapter.toJson(
+        RecurringPaymentCreatePayload(request, origin.seriesPublicId, origin.period, retired),
+    )
 }
 
 internal fun decodeManualCreateRequest(
@@ -73,11 +77,23 @@ internal fun decodeManualCreateRequest(
     return runCatching { requestAdapter.fromJson(json) }.getOrNull()
 }
 
+internal fun decodeRecurringPaymentPayload(
+    originAdapter: JsonAdapter<RecurringPaymentCreatePayload>?,
+    json: String,
+): RecurringPaymentCreatePayload? {
+    val stored = originAdapter?.let { runCatching { it.fromJson(json) }.getOrNull() } ?: return null
+    if (stored.seriesPublicId.isBlank() || stored.period.isBlank()) return null
+    return stored
+}
+
 internal fun decodeRecurringPaymentOrigin(
     originAdapter: JsonAdapter<RecurringPaymentCreatePayload>?,
     json: String,
 ): RecurringPaymentOrigin? {
-    val stored = originAdapter?.let { runCatching { it.fromJson(json) }.getOrNull() } ?: return null
-    if (stored.seriesPublicId.isBlank() || stored.period.isBlank()) return null
+    val stored = decodeRecurringPaymentPayload(originAdapter, json) ?: return null
+    if (stored.retired) return null
     return RecurringPaymentOrigin(stored.seriesPublicId, stored.period)
 }
+
+internal fun RecurringPaymentCreatePayload.matchesOrigin(origin: RecurringPaymentOrigin): Boolean =
+    seriesPublicId == origin.seriesPublicId && period == origin.period

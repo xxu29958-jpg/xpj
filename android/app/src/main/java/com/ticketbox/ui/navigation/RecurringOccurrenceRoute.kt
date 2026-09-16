@@ -77,11 +77,11 @@ internal fun RecurringOccurrenceHost(
     CanonicalizeRecurringPaymentIdentity(RecurringPaymentCanonicalize(restore.drafts, origin, focused, task, visible.identity)) {
         taskJson = it
     }
-    LaunchedEffect(userClosed, visible, taskJson) {
+    LaunchedEffect(userClosed, visible, taskJson, origin.clientRef) {
         val current = readRecurringPaymentTask(taskJson)
         val decision = recurringPaymentHostDecision(current, userClosed, visible, remembered)
         if (decision.clearTask) taskJson = null
-        retireFulfilledPayment(visible, restore.drafts, creation, decision.retireClientRefs)
+        retireFulfilledPayment(visible, restore.drafts, creation, decision.retireClientRefs, origin.clientRef)
     }
     LaunchedEffect(taskJson, restore.items, state.item, state.access?.binding, userClosed) {
         val current = readRecurringPaymentTask(taskJson)
@@ -240,13 +240,19 @@ private suspend fun retireFulfilledPayment(
     drafts: RecurringPaymentDraftStore?,
     creation: ExpenseManualCreation,
     clientRefs: List<String>,
+    originClientRef: String?,
 ) {
-    clientRefs.forEach { drafts?.retireTask(it) }
+    val refs = linkedSetOf<String>().apply {
+        addAll(clientRefs)
+        if (visible.occurrenceState == "fulfilled") originClientRef?.let { add(it) }
+    }
+    refs.forEach { drafts?.retireTask(it) }
     if (visible.occurrenceState != "fulfilled") return
     val binding = visible.identity.binding ?: return
     val series = visible.identity.seriesPublicId?.takeIf { it.isNotBlank() } ?: return
     val period = visible.identity.period?.takeIf { it.isNotBlank() } ?: return
-    creation.retireOrigin(binding, RecurringPaymentOrigin(series, period))
+    val origin = RecurringPaymentOrigin(series, period)
+    refs.forEach { creation.retireOrigin(binding, origin, it) }
 }
 
 private fun recurringPaymentHostDecision(
