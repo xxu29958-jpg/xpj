@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from decimal import Decimal, InvalidOperation
-from urllib.parse import urlencode
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -25,6 +25,7 @@ from app.routes._web_expense_return_context import (
     edit_context_params,
     expense_return_form_context,
     expense_return_query_context,
+    flow_href,
     return_href,
     return_label,
 )
@@ -41,11 +42,13 @@ from app.routes.web_common import (
 from app.schemas import ExpenseManualCreateRequest
 from app.services.category_service import list_ledger_category_options
 from app.services.currency_common import (
+    minor_amount_value,
     normalize_currency_code,
     supported_currency_codes,
 )
 from app.services.expense_service import create_manual_expense
 from app.services.manual_expense_draft_presenter import manual_draft_scope
+from app.services.recurring_service import get_recurring_item
 from app.services.spending_contract_service import accounting_zone
 from app.services.time_service import now_utc
 from app.tenants import AuthContext
@@ -80,6 +83,13 @@ def _manual_expense_context(
     current_values = values or {}
     origin = (return_context or ExpenseReturnContext()).as_kwargs()
     return_fields = edit_context_params(**origin)
+    for name in (
+        "return_to",
+        "return_month",
+        "return_recurring_public_id",
+        "return_payment_expense_id",
+    ):
+        return_fields.setdefault(name, origin.get(name, ""))
     context.update(
         {
             "category_options": list_ledger_category_options(
@@ -98,7 +108,11 @@ def _manual_expense_context(
             "manual_draft_scope": manual_draft_scope(db, _session_writer_auth(request, selected_id)),
             "manual_draft_result": draft_result,
             "manual_review_href": (
-                f"/web/expenses/{review_expense_id}/edit?{urlencode({'ledger_id': selected_id})}"
+                flow_href(
+                    f"/web/expenses/{review_expense_id}/edit",
+                    ledger_id=selected_id,
+                    **replace(return_context or ExpenseReturnContext(), return_payment_expense_id=str(review_expense_id)).as_kwargs(),
+                )
                 if type(review_expense_id) is int and review_expense_id > 0 else None
             ),
             "spent_at": current_values.get("spent_at")
@@ -234,9 +248,40 @@ def web_manual_expense_new(
             selected_id=selected_id,
             form_ledger_id=selected_id,
             form_device_public_id=auth.device_public_id,
+            values=_recurring_commitment_values(db, selected_id, return_context),
             return_context=return_context,
         ),
     )
+
+
+def _recurring_commitment_values(
+    db: Session,
+    selected_id: str,
+    return_context: ExpenseReturnContext,
+) -> dict[str, str]:
+    series_id = (return_context.return_recurring_public_id or "").strip()
+    if not series_id:
+        return {}
+    try:
+        item = get_recurring_item(db, tenant_id=selected_id, public_id=series_id)
+    except AppError:
+        return {}
+    values: dict[str, str] = {}
+    if item.merchant_name:
+        values["merchant"] = item.merchant_name
+    raw_currency = (item.home_currency_code or "").strip()
+    if not raw_currency:
+        values["currency_unspecified"] = "1"
+        return values
+    try:
+        currency = normalize_currency_code(raw_currency)
+    except AppError:
+        values["currency_unspecified"] = "1"
+        return values
+    values["currency_code"] = currency
+    if item.baseline_amount_cents is not None:
+        values["amount_major"] = minor_amount_value(item.baseline_amount_cents, currency)
+    return values
 
 
 def _manual_expense_failure(exc: AppError | ValidationError | InvalidOperation) -> tuple[str, int, str]:
@@ -283,6 +328,8 @@ def web_manual_expense_create(
         "spent_at": spent_at,
         "note": note,
     }
+    if not currency_code.strip():
+        values["currency_unspecified"] = "1"
     try:
         _require_manual_form_binding(
             auth,
@@ -329,6 +376,9 @@ def web_manual_expense_create(
         )
     return_fields = edit_context_params(**return_context.as_kwargs())
     if return_fields.get("return_to") == "recurring_occurrence":
+        return_fields = edit_context_params(
+            **replace(return_context, return_payment_expense_id=str(created.id)).as_kwargs()
+        )
         return _web_redirect(
             f"/web/expenses/{created.id}/edit",
             selected_id,

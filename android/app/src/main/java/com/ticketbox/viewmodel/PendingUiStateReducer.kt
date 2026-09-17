@@ -50,7 +50,6 @@ internal object PendingUiStateReducer {
     ): PendingUiState = afterRemoved(
         current = current,
         expenseId = confirmed.id,
-        closeSheet = false,
         message = message,
     )
 
@@ -61,7 +60,6 @@ internal object PendingUiStateReducer {
     ): PendingUiState = afterRemoved(
         current = current,
         expenseId = rejected.id,
-        closeSheet = false,
         message = message,
     )
 
@@ -88,7 +86,6 @@ internal object PendingUiStateReducer {
     private fun afterRemoved(
         current: PendingUiState,
         expenseId: Long,
-        closeSheet: Boolean,
         message: UiText?,
     ): PendingUiState {
         val remainingItems = current.items.filterNot { expense -> expense.id == expenseId }
@@ -96,7 +93,7 @@ internal object PendingUiStateReducer {
             items = remainingItems,
             thumbnails = current.thumbnails - expenseId,
             actionInProgressIds = current.actionInProgressIds - expenseId,
-            activeSheet = if (closeSheet) PendingSheet.None else reconcileActiveSheet(current.activeSheet, remainingItems),
+            activeSheet = reconcileActiveSheet(current.activeSheet, remainingItems),
             message = message ?: current.message,
         )
     }

@@ -105,7 +105,8 @@
   window.TicketboxDraftStore = {createStore};
   window.TicketboxManualDrafts = createStore({
     prefix: "ticketbox:manual-draft:v1:", validRef: /^[a-f0-9]{32}$/,
-    fields: ["amount_major", "currency_code", "merchant", "category", "spent_at", "note", "home_currency_code"],
-    legacyMissing: ["home_currency_code"],
+    fields: ["amount_major", "currency_code", "merchant", "category", "spent_at", "note", "home_currency_code",
+      "return_to", "return_recurring_public_id", "return_month", "return_payment_expense_id"],
+    legacyMissing: ["home_currency_code", "return_to", "return_recurring_public_id", "return_month", "return_payment_expense_id"],
   });
 })(window);

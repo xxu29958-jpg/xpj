@@ -35,6 +35,16 @@ import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.RecurringOccurrenceUiState
 
+data class OccurrencePaymentGuard(
+    val resolved: Boolean = true,
+    val conflict: Boolean = false,
+    val leftoverBlocked: Boolean = false,
+    val leftoverUnreadable: Boolean = false,
+    val leftoverContinueDraft: Boolean = false,
+    val leftoverExistingOrigin: Boolean = false,
+    val leftoverActionFailed: Boolean = false,
+)
+
 data class OccurrenceSheetActions(
     val onDismiss: () -> Unit,
     val onRefresh: () -> Unit,
@@ -44,6 +54,8 @@ data class OccurrenceSheetActions(
     val onRecover: (PendingOccurrencePayment, Boolean) -> Unit,
     val onOpenExpense: (Long) -> Unit = {},
     val onRecordPayment: () -> Unit = {},
+    val onAbandonLeftover: () -> Unit = {},
+    val onContinueLeftover: () -> Unit = {},
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -51,12 +63,15 @@ data class OccurrenceSheetActions(
 fun RecurringOccurrenceSheet(
     state: RecurringOccurrenceUiState,
     actions: OccurrenceSheetActions,
+    preferredExpenseId: Long? = null,
+    origin: OccurrencePaymentGuard = OccurrencePaymentGuard(),
 ) {
     val item = state.item ?: return
     ModalBottomSheet(onDismissRequest = actions.onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         AppSheetScaffold(title = item.merchant, subtitle = stringResource(R.string.occurrence_subtitle)) {
             OccurrencePeriodControls(state, actions)
             state.message?.let { Text(it.asString(), modifier = Modifier.testTag("occurrence-message")) }
+            OccurrencePaymentConflict(origin, actions.onAbandonLeftover, actions.onContinueLeftover)
             state.seriesPending.forEach { OccurrencePending(it, state.access?.canModify == true, actions.onRecover) }
             state.occurrence?.let { occurrence ->
                 Text(stringResource(occurrenceStateLabel(occurrence.state)), modifier = Modifier.testTag("occurrence-state"))
@@ -72,20 +87,107 @@ fun RecurringOccurrenceSheet(
                     TextButton(onClick = { actions.onChoose(null) }, enabled = state.canWrite) { Text(stringResource(R.string.occurrence_clear)) }
                 }
                 if (state.access?.canModify == false) Text(stringResource(R.string.occurrence_readonly))
-                if (state.canWrite && occurrence.state == "unfulfilled") {
-                    AppPrimaryButton(
-                        text = stringResource(R.string.occurrence_record_payment),
-                        icon = Icons.Filled.Add,
-                        onClick = actions.onRecordPayment,
-                        enabled = state.canWrite,
-                        modifier = Modifier.fillMaxWidth().testTag("occurrence-record-payment"),
-                    )
-                }
+                OccurrenceRecordPayment(
+                    canWrite = state.canWrite,
+                    unfulfilled = occurrence.state == "unfulfilled",
+                    origin = origin,
+                    onRecord = actions.onRecordPayment,
+                )
                 OccurrenceChoice(state, actions.onSubmit)
-                if (state.canWrite) OccurrencePaymentPicker(state, actions.onChoose)
+                if (state.canWrite) OccurrencePaymentPicker(state, actions.onChoose, preferredExpenseId)
             }
         }
     }
+}
+
+@Composable
+private fun OccurrencePaymentConflict(
+    origin: OccurrencePaymentGuard,
+    onAbandonLeftover: () -> Unit,
+    onContinueLeftover: () -> Unit,
+) {
+    if (origin.conflict) {
+        Text(
+            stringResource(R.string.recurring_payment_origin_conflict),
+            modifier = Modifier.testTag("occurrence-payment-conflict"),
+        )
+        return
+    }
+    if (!origin.leftoverBlocked) return
+    var confirmUnreadable by rememberSaveable { mutableStateOf(false) }
+    Text(
+        stringResource(R.string.recurring_payment_leftover_unresolved),
+        modifier = Modifier.testTag("occurrence-payment-leftover"),
+    )
+    LeftoverPaymentNotices(origin)
+    if (origin.leftoverContinueDraft) {
+        TextButton(
+            onClick = onContinueLeftover,
+            modifier = Modifier.testTag("occurrence-payment-leftover-continue"),
+        ) {
+            Text(stringResource(R.string.recurring_payment_leftover_continue))
+        }
+    }
+    TextButton(
+        onClick = { if (origin.leftoverUnreadable) confirmUnreadable = true else onAbandonLeftover() },
+        modifier = Modifier.testTag("occurrence-payment-leftover-abandon"),
+    ) {
+        Text(stringResource(R.string.recurring_payment_leftover_abandon))
+    }
+    if (!confirmUnreadable) return
+    AlertDialog(
+        onDismissRequest = { confirmUnreadable = false },
+        text = {
+            Text(
+                stringResource(R.string.recurring_payment_leftover_abandon_unreadable),
+                modifier = Modifier.testTag("occurrence-payment-leftover-abandon-unreadable"),
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { confirmUnreadable = false; onAbandonLeftover() },
+                modifier = Modifier.testTag("occurrence-payment-leftover-abandon-confirm"),
+            ) { Text(stringResource(R.string.recurring_payment_leftover_abandon_confirm)) }
+        },
+        dismissButton = {
+            TextButton(onClick = { confirmUnreadable = false }) {
+                Text(stringResource(R.string.occurrence_keep))
+            }
+        },
+    )
+}
+
+@Composable
+private fun LeftoverPaymentNotices(origin: OccurrencePaymentGuard) {
+    if (origin.leftoverExistingOrigin) {
+        Text(
+            stringResource(R.string.recurring_payment_leftover_existing_origin),
+            modifier = Modifier.testTag("occurrence-payment-leftover-existing-origin"),
+        )
+    }
+    if (origin.leftoverActionFailed) {
+        Text(
+            stringResource(R.string.recurring_payment_leftover_action_failed),
+            modifier = Modifier.testTag("occurrence-payment-leftover-action-failed"),
+        )
+    }
+}
+
+@Composable
+private fun OccurrenceRecordPayment(
+    canWrite: Boolean,
+    unfulfilled: Boolean,
+    origin: OccurrencePaymentGuard,
+    onRecord: () -> Unit,
+) {
+    if (!canWrite || !unfulfilled) return
+    AppPrimaryButton(
+        text = stringResource(R.string.occurrence_record_payment),
+        icon = Icons.Filled.Add,
+        onClick = onRecord,
+        enabled = origin.resolved && !origin.conflict && (!origin.leftoverBlocked || origin.leftoverExistingOrigin),
+        modifier = Modifier.fillMaxWidth().testTag("occurrence-record-payment"),
+    )
 }
 
 @Composable
@@ -136,10 +238,14 @@ private fun OccurrencePending(pending: PendingOccurrencePayment, canModify: Bool
 }
 
 @Composable
-private fun OccurrencePaymentPicker(state: RecurringOccurrenceUiState, choose: (ConfirmedStreamItem.ExpenseRow) -> Unit) {
+private fun OccurrencePaymentPicker(
+    state: RecurringOccurrenceUiState,
+    choose: (ConfirmedStreamItem.ExpenseRow) -> Unit,
+    preferredExpenseId: Long?,
+) {
     var month by rememberSaveable(state.occurrence?.period) { mutableStateOf(state.occurrence?.period.orEmpty()) }
     var query by rememberSaveable(state.item?.publicId) { mutableStateOf("") }
-    val payments = occurrencePaymentChoices(state.payments, month, query)
+    val payments = occurrencePaymentChoices(state.payments, month, query, preferredExpenseId)
     HorizontalDivider()
     Text(stringResource(R.string.occurrence_pick_explanation))
     OutlinedTextField(value = month, onValueChange = { month = it }, singleLine = true,
@@ -157,12 +263,26 @@ private fun OccurrencePaymentPicker(state: RecurringOccurrenceUiState, choose: (
     }
 }
 
-internal fun occurrencePaymentChoices(rows: List<ConfirmedStreamItem>, month: String, query: String): List<ConfirmedStreamItem.ExpenseRow> =
-    filterConfirmedStreamItems(rows, ExpenseFilterCriteria(month = month, query = query))
+internal fun occurrencePaymentChoices(
+    rows: List<ConfirmedStreamItem>,
+    month: String,
+    query: String,
+    preferredExpenseId: Long? = null,
+): List<ConfirmedStreamItem.ExpenseRow> {
+    val eligible = filterConfirmedStreamItems(rows, ExpenseFilterCriteria(month = "", query = ""))
         .filterIsInstance<ConfirmedStreamItem.ExpenseRow>().filter {
             it.root.id > 0 && !it.root.pendingSync && it.root.status == "confirmed" &&
                 it.root.amountCents != null && it.lineageStatus != ExpenseLineageStatus.Reversed
+        }
+    val preferred = eligible.filter { it.root.id == preferredExpenseId }
+    val ordinary = filterConfirmedStreamItems(rows, ExpenseFilterCriteria(month = month, query = query))
+        .filterIsInstance<ConfirmedStreamItem.ExpenseRow>().filter {
+            it.root.id > 0 && !it.root.pendingSync && it.root.status == "confirmed" &&
+                it.root.amountCents != null && it.lineageStatus != ExpenseLineageStatus.Reversed &&
+                it.root.id != preferredExpenseId
         }.sortedByDescending { it.streamDate }
+    return preferred + ordinary
+}
 
 private fun occurrenceStateLabel(state: String): Int = when (state) {
     "fulfilled" -> R.string.occurrence_fulfilled

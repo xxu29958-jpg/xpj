@@ -87,6 +87,7 @@ internal class RepositoryGraph(
             recognizeTextAdapter = outboxAdapters.recognizeTextAdapter,
             // issue #65 slice 4: offline-aware manual create.
             manualCreateAdapter = outboxAdapters.manualCreateAdapter,
+            recurringPaymentCreateAdapter = outboxAdapters.recurringPaymentCreateAdapter,
             offsetCreateAdapter = outboxAdapters.offsetCreateAdapter,
             offsetVoidAdapter = outboxAdapters.offsetVoidAdapter,
         ),

@@ -70,6 +70,105 @@ def test_web_reject_redirects_with_undo_query_and_success_flash(
     assert "flash_type=success" in location  # review P2 #1: green banner
 
 
+def test_web_reject_from_recurring_occurrence_returns_to_the_original_period(
+    web_client: TestClient, *, identity
+) -> None:
+    from html import unescape
+    from urllib.parse import parse_qs, urlsplit
+
+    from tests.test_recurring_occurrences import _create_series
+
+    series = _create_series(web_client, identity)
+    series_id = series["public_id"]
+    expense_id = _create_pending(web_client, identity=identity)
+    snapshot = web_client.get(
+        f"/api/expenses/{expense_id}", headers=identity.app_headers
+    )
+    assert snapshot.status_code == 200, snapshot.text
+    response = web_client.post(
+        f"/web/expenses/{expense_id}/reject",
+        data={
+            "ledger_id": "owner",
+            "expected_row_version": snapshot.json()["row_version"],
+            "return_to": "recurring_occurrence",
+            "return_recurring_public_id": series_id,
+            "return_month": "2026-09",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303, response.text
+    target = urlsplit(response.headers.get("location", ""))
+    assert target.path == f"/web/recurring/{series_id}/occurrence"
+    query = parse_qs(target.query)
+    assert query.get("month") == ["2026-09"]
+    assert query.get("undo") == [str(expense_id)]
+    assert query.get("flash_type") == ["success"]
+
+    landed = web_client.get(response.headers["location"])
+    assert landed.status_code == 200, landed.text
+    assert "product-feedback--success" in landed.text
+    assert "撤销" in landed.text
+    banner = re.search(
+        rf'<form[^>]*action="/web/expenses/{expense_id}/undo"[^>]*>(.+?)</form>',
+        landed.text,
+        flags=re.DOTALL,
+    )
+    assert banner, "the original period must render a usable undo form"
+    fields = {
+        name: unescape(value)
+        for name, value in re.findall(r'<input\b[^>]*name="([^"]+)"[^>]*value="([^"]*)"', banner.group(1))
+    }
+    assert fields.get("return_to") == "recurring_occurrence"
+    assert fields.get("return_recurring_public_id") == series_id
+    assert fields.get("return_month") == "2026-09"
+    undone = web_client.post(
+        f"/web/expenses/{expense_id}/undo",
+        data=fields,
+        follow_redirects=False,
+    )
+    assert undone.status_code == 303, undone.text
+    back = urlsplit(undone.headers.get("location", ""))
+    assert back.path == f"/web/recurring/{series_id}/occurrence"
+    restored = web_client.get(undone.headers["location"])
+    assert restored.status_code == 200, restored.text
+    assert "已撤销" in restored.text
+    assert f"/web/expenses/{expense_id}/undo" not in restored.text
+    with SessionLocal() as db:
+        row = db.scalar(select(Expense).where(Expense.id == expense_id))
+        assert row is not None
+        assert row.status == "pending"
+
+
+def test_web_undo_invalid_token_from_recurring_returns_to_the_original_period(
+    web_client: TestClient, *, identity
+) -> None:
+    from urllib.parse import parse_qs, urlsplit
+
+    from tests.test_recurring_occurrences import _create_series
+
+    series = _create_series(web_client, identity)
+    series_id = series["public_id"]
+    expense_id = _create_pending(web_client, identity=identity)
+    undone = web_client.post(
+        f"/web/expenses/{expense_id}/undo",
+        data={
+            "ledger_id": "owner",
+            "expected_row_version": "not-a-token",
+            "return_to": "recurring_occurrence",
+            "return_recurring_public_id": series_id,
+            "return_month": "2026-09",
+        },
+        follow_redirects=False,
+    )
+    assert undone.status_code == 303, undone.text
+    target = urlsplit(undone.headers.get("location", ""))
+    assert target.path == f"/web/recurring/{series_id}/occurrence"
+    query = parse_qs(target.query)
+    assert query.get("month") == ["2026-09"]
+    assert query.get("flash_type") == ["error"]
+    assert "页面已过期" in (query.get("msg") or [""])[0]
+
+
 def test_web_pending_renders_undo_banner_in_green_when_success_flash(
     web_client: TestClient, *, identity
 ) -> None:

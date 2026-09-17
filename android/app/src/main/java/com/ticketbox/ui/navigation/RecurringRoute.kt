@@ -13,11 +13,6 @@ import com.ticketbox.viewmodel.RecurringManualSaveCommand
 import com.ticketbox.viewmodel.RecurringViewModel
 import com.ticketbox.viewmodel.recurringViewModelFactory
 
-internal data class RecurringExpenseNavigation(
-    val onOpenExpense: (Long) -> Unit,
-    val onOpenManualSubmission: (String) -> Unit = {},
-)
-
 /** Plan-owned fixed-expense destination and its production ViewModel wiring. */
 @Composable
 internal fun RecurringRoute(
@@ -41,7 +36,6 @@ internal fun RecurringRoute(
     LaunchedEffect(financialDataRevision) {
         if (financialDataRevision > 0) {
             recurringViewModel.refresh()
-            occurrenceModel.restoreAdmittedPeriodOccurrence(state.items)
             occurrenceModel.refresh()
         }
     }
@@ -50,7 +44,7 @@ internal fun RecurringRoute(
         actions = RecurringScreenActions(
             onRefresh = recurringViewModel::refresh,
             items = RecurringItemActions(
-                onOpenOccurrence = occurrenceModel::open,
+                onOpenOccurrence = { occurrenceModel.open(it) },
                 onPause = recurringViewModel::pause,
                 onResume = recurringViewModel::resume,
                 onArchive = recurringViewModel::archive,
@@ -70,7 +64,11 @@ internal fun RecurringRoute(
     )
     RecurringOccurrenceHost(
         model = occurrenceModel,
-        onOpenExpense = expenseNavigation.onOpenExpense,
-        onOpenManualSubmission = expenseNavigation.onOpenManualSubmission,
+        creation = screenFactory.repository.manualCreation,
+        expenses = expenseNavigation,
+        restore = RecurringPaymentRestore(
+            items = state.items,
+            drafts = rememberRecurringPaymentDraftStore(),
+        ),
     )
 }

@@ -71,6 +71,7 @@ internal fun testExpenseOfflineMutationWiring(
         patchExpenseAdapter = com.ticketbox.OutboxAdapterGraph().patchExpenseAdapter,
         expenseStateTokenAdapter = com.ticketbox.OutboxAdapterGraph().expenseStateTokenAdapter,
         recognizeTextAdapter = com.ticketbox.OutboxAdapterGraph().recognizeTextAdapter,
+        recurringPaymentCreateAdapter = adapters.recurringPaymentCreateAdapter,
 )
 }
 

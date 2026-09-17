@@ -506,6 +506,14 @@ class FakePendingMutationDao : PendingMutationDao {
         return ids.size
     }
 
+    override suspend fun replacePayload(id: Long, type: String, payload: String): Int {
+        val current = rows[id] ?: return 0
+        if (current.type != type) return 0
+        rows[id] = current.copy(payload = payload)
+        refreshObservables()
+        return 1
+    }
+
     private fun refreshObservables() {
         queueDepth.value++
     }
