@@ -5,6 +5,7 @@
     <string name="recurring_payment_binding_changed">原账本或登录身份已变化，请返回原账本继续。原草稿仍保留。</string>
     <string name="recurring_payment_origin_conflict">本期已有多笔付款命令，请先处理重复提交。</string>
     <string name="recurring_payment_leftover_unresolved">本期原付款命令无法核对，旧草稿已保留。请先处理后再记录付款。</string>
+    <string name="recurring_payment_leftover_abandon">放弃这条旧版恢复映射并开始新的付款。</string>
     <string name="recurring_payment_review_required">账本里还有未归属的记账，请确认是否为本期付款。当前草稿已保留。</string>
     <string name="recurring_payment_review_original">原提交</string>
     <string name="recurring_payment_review_adopt">将已有记账认作本期付款</string>

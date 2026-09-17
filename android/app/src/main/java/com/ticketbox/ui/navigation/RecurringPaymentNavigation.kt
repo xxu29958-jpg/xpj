@@ -251,6 +251,18 @@ internal data class RecurringPaymentIdentity(
             seriesPublicId == session.seriesPublicId &&
             period == session.period &&
             session.clientRef.isNotBlank()
+
+    fun leftoverSeenKey(): String? {
+        val bound = binding ?: return null
+        val series = seriesPublicId?.takeIf { it.isNotBlank() } ?: return null
+        val month = period?.takeIf { it.isNotBlank() } ?: return null
+        return "recurring.periodPayment.seen:${bound.serverUrl}:${bound.ledgerId}:${bound.ownerKey}:${bound.sessionGeneration}:$series:$month"
+    }
+
+    fun generationMovedPast(seen: Long?): Boolean {
+        val current = occurrenceRowVersion ?: return false
+        return seen != null && current > seen
+    }
 }
 
 internal data class RecurringPaymentVisible(

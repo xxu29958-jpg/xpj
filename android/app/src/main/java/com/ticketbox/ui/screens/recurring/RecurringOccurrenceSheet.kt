@@ -50,6 +50,7 @@ data class OccurrenceSheetActions(
     val onRecover: (PendingOccurrencePayment, Boolean) -> Unit,
     val onOpenExpense: (Long) -> Unit = {},
     val onRecordPayment: () -> Unit = {},
+    val onAbandonLeftover: () -> Unit = {},
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -65,7 +66,7 @@ fun RecurringOccurrenceSheet(
         AppSheetScaffold(title = item.merchant, subtitle = stringResource(R.string.occurrence_subtitle)) {
             OccurrencePeriodControls(state, actions)
             state.message?.let { Text(it.asString(), modifier = Modifier.testTag("occurrence-message")) }
-            OccurrencePaymentConflict(origin)
+            OccurrencePaymentConflict(origin, actions.onAbandonLeftover)
             state.seriesPending.forEach { OccurrencePending(it, state.access?.canModify == true, actions.onRecover) }
             state.occurrence?.let { occurrence ->
                 Text(stringResource(occurrenceStateLabel(occurrence.state)), modifier = Modifier.testTag("occurrence-state"))
@@ -95,7 +96,7 @@ fun RecurringOccurrenceSheet(
 }
 
 @Composable
-private fun OccurrencePaymentConflict(origin: OccurrencePaymentGuard) {
+private fun OccurrencePaymentConflict(origin: OccurrencePaymentGuard, onAbandonLeftover: () -> Unit) {
     if (origin.conflict) {
         Text(
             stringResource(R.string.recurring_payment_origin_conflict),
@@ -108,6 +109,12 @@ private fun OccurrencePaymentConflict(origin: OccurrencePaymentGuard) {
         stringResource(R.string.recurring_payment_leftover_unresolved),
         modifier = Modifier.testTag("occurrence-payment-leftover"),
     )
+    TextButton(
+        onClick = onAbandonLeftover,
+        modifier = Modifier.testTag("occurrence-payment-leftover-abandon"),
+    ) {
+        Text(stringResource(R.string.recurring_payment_leftover_abandon))
+    }
 }
 
 @Composable

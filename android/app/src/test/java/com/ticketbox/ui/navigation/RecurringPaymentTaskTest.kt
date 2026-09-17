@@ -331,6 +331,15 @@ class RecurringPaymentTaskTest {
     }
 
     @Test
+    fun leftoverSeenGenerationOnlyMovesWhenTheCurrentVersionAdvances() {
+        val identity = RecurringPaymentIdentity(access.binding, "rec-1", "2026-09", 2)
+        assertEquals(false, identity.generationMovedPast(null))
+        assertEquals(false, identity.generationMovedPast(2))
+        assertEquals(true, identity.generationMovedPast(0))
+        assertNotNull(identity.leftoverSeenKey())
+    }
+
+    @Test
     fun rememberCanonicalClientRefDropsThePreviousDraft() {
         val store = RecurringPaymentDraftStore(SavedStateHandle())
         val stale = assertNotNull(recurringPaymentTask(loaded("JPY", 1200)))

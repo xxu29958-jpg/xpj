@@ -116,6 +116,7 @@ internal fun RecurringOccurrenceHost(
             onSubmit = model::submit,
             onRecover = model::recover,
             onOpenExpense = expenses.onOpenExpense,
+            onAbandonLeftover = leftover.abandon,
             onRecordPayment = {
                 if (!guard.resolved || guard.conflict) return@OccurrenceSheetActions
                 val next = recurringPaymentTask(state, existing = task, remembered = leftover.remembered, admittedClientRef = origin.clientRef)
@@ -135,6 +136,7 @@ private data class LeftoverPaymentAdopt(
     val ready: Boolean,
     val remembered: RecurringPaymentTask? = null,
     val blocked: Boolean = false,
+    val abandon: () -> Unit = {},
 )
 
 @Composable
@@ -150,10 +152,18 @@ private fun rememberAdoptedPaymentTask(
     var handoff by remember(store, model, creation, identity) {
         mutableStateOf<Result<Unit>?>(null)
     }
+    var leftoverTick by remember(store, model, identity) { mutableStateOf(0) }
     LaunchedEffect(store, model, creation, identity) {
         if (identity.occurrenceRowVersion == null) return@LaunchedEffect
         handoff = try {
             store.adoptLegacyPeriodPaymentSessions(model.savedState, creation, identity)
+            val seenKey = identity.leftoverSeenKey()
+            val seen = seenKey?.let { model.savedState.get<Long>(it) }
+            if (identity.generationMovedPast(seen) && store.leftoverUnresolved(model.savedState, identity)) {
+                store.retireFulfilledLegacySessions(model.savedState, identity)
+                leftoverTick++
+            }
+            seenKey?.let { model.savedState[it] = identity.occurrenceRowVersion }
             Result.success(Unit)
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -169,8 +179,14 @@ private fun rememberAdoptedPaymentTask(
         } else {
             null
         },
-        blocked = handoff?.isFailure == true ||
-            (ready && store.leftoverUnresolved(model.savedState, identity)),
+        blocked = leftoverTick.let {
+            handoff?.isFailure == true ||
+                (ready && store.leftoverUnresolved(model.savedState, identity))
+        },
+        abandon = {
+            store.retireFulfilledLegacySessions(model.savedState, identity)
+            leftoverTick++
+        },
     )
 }
 

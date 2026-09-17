@@ -294,8 +294,6 @@ private fun RecurringPaymentKnownCurrencySheet(
     draftState: SaveableStateHolder,
 ) {
     val write = rememberRecurringPaymentSheetWrite(ctx)
-    var holdSheet by remember { mutableStateOf(false) }
-    LaunchedEffect(write.review.open) { if (write.review.open) holdSheet = true }
     val body = ctx.knownCurrencyBody(
         ctx.drafts.read(ctx.task.clientRef),
         ManualExpenseSheetState(
@@ -313,7 +311,6 @@ private fun RecurringPaymentKnownCurrencySheet(
             actions = body.actions.copy(
                 onDismiss = {
                     if (write.review.open) write.events.onDismiss()
-                    else if (holdSheet) holdSheet = false
                     else body.actions.onDismiss()
                 },
             ),
@@ -361,7 +358,7 @@ private fun rememberRecurringPaymentSheetWrite(ctx: RecurringPaymentEntryContext
             },
             onConfirmUnrelated = {
                 val draft = pendingDraft ?: return@RecurringPaymentReviewEvents
-                launch({ sheetError = it }) {
+                launch({ reviewError = it }) {
                     applyPeriodPaymentAdmission(ctx, draft, reviewCandidates.mapNotNull { it.admittedClientRef() }) { next, pending ->
                         reviewCandidates = next
                         pendingDraft = pending

@@ -20,6 +20,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso.closeSoftKeyboard
+import androidx.test.espresso.Espresso.pressBack
 import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationType
@@ -65,12 +66,13 @@ class RecurringPaymentRouteRoomTest {
     } }
     private val mounted = mutableStateOf(true)
     private val openedExpense = mutableStateOf<Long?>(null)
+    private val exited = mutableStateOf(false)
     private val drafts = RecurringPaymentDraftStore(SavedStateHandle())
     private val routeTask = mutableStateOf<RecurringPaymentTask?>(null)
     private var routeContent = false
 
     @After fun close() {
-        compose.runOnIdle { mounted.value = false; openedExpense.value = null; harness.models.viewModelStore.clear() }
+        compose.runOnIdle { mounted.value = false; openedExpense.value = null; exited.value = false; harness.models.viewModelStore.clear() }
         compose.waitForIdle()
         harness.close()
     }
@@ -447,6 +449,32 @@ class RecurringPaymentRouteRoomTest {
         compose.onNodeWithText("房租").assertExists()
         assertEquals(task.clientRef, drafts.remembered(task.binding, task.seriesPublicId, task.period)?.clientRef)
         assertEquals(0, sends)
+        compose.onNodeWithText(context.getString(R.string.common_cancel)).performClick()
+        compose.waitUntil(10_000) { exited.value }
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(hasText(context.getString(R.string.ledger_manual_sheet_title))).fetchSemanticsNodes().isEmpty()
+        }
+    }
+
+    @Test fun reviewBackThenSheetBackExits() {
+        val task = periodTask("CNY", 10_000).copy(occurrenceRowVersion = 3L)
+        enqueueRaw(task, "legacy-ref", "便利店", CurrencyCode.CNY, 8800, "2026-08-01T00:00:00Z")
+        drafts.remember(task)
+        showRoute(task)
+        waitForSheet()
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performScrollTo().performClick()
+        waitForReview()
+        pressBack()
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(hasText(context.getString(R.string.recurring_payment_review_required))).fetchSemanticsNodes().isEmpty()
+        }
+        waitForSheet()
+        assertEquals(false, exited.value)
+        pressBack()
+        compose.waitUntil(10_000) { exited.value }
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(hasText(context.getString(R.string.ledger_manual_sheet_title))).fetchSemanticsNodes().isEmpty()
+        }
     }
 
     @Test fun ordinaryCreateFailureDoesNotOpenReview() {
@@ -652,7 +680,7 @@ class RecurringPaymentRouteRoomTest {
                             RecurringPaymentRoute(
                                 task = current,
                                 factory = harness.screenFactory,
-                                exit = ExpenseEditExitActions({}, {}),
+                                exit = ExpenseEditExitActions({ exited.value = true; mounted.value = false }, {}),
                                 drafts = drafts,
                                 admitted = { clientRef ->
                                     ManualExpenseSubmissionRoute(
