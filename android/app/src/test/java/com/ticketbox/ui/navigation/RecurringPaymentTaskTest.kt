@@ -329,7 +329,11 @@ class RecurringPaymentTaskTest {
         leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] =
             """[{"binding":{"serverUrl":"https://occurrence.example","ledgerId":"ledger-1","ownerKey":"owner","sessionGeneration":"session","bindingRevision":"binding"},"seriesPublicId":"rec-1","period":"2026-08","clientRef":"august-ref","merchant":"日元订阅","obligationCurrencyCode":"JPY","plannedAmountCents":1200,"ledgerHomeCurrencyCode":"CNY","admitted":true},{"binding":{"serverUrl":"https://occurrence.example","ledgerId":"ledger-1","ownerKey":"owner","sessionGeneration":"session","bindingRevision":"binding"},"seriesPublicId":"rec-1","period":"2026-09","clientRef":"september-ref","merchant":"日元订阅","obligationCurrencyCode":"JPY","plannedAmountCents":1200,"ledgerHomeCurrencyCode":"CNY","admitted":true}]"""
         val store = RecurringPaymentDraftStore(SavedStateHandle())
-        store.retireFulfilledLegacySessions(leftover, RecurringPaymentIdentity(access.binding, "rec-1", "2026-08", 7))
+        store.removeLeftoverRecoveryMapping(
+            leftover,
+            RecurringPaymentIdentity(access.binding, "rec-1", "2026-08", 7),
+            LeftoverMappingRemoval.FulfilledRetirement,
+        )
         val remaining = leftover.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY).orEmpty()
         assertTrue(!remaining.contains("august-ref"))
         assertTrue(remaining.contains("september-ref"))
@@ -345,12 +349,16 @@ class RecurringPaymentTaskTest {
         assertNull(store.legacyPeriodPaymentSessions(leftover))
         assertTrue(store.leftoverUnresolved(leftover, RecurringPaymentIdentity(access.binding, "rec-1", "2026-08")))
         assertTrue(store.leftoverUnresolved(leftover, RecurringPaymentIdentity(access.binding, "rec-1", "2026-09")))
-        store.retireFulfilledLegacySessions(leftover, RecurringPaymentIdentity(access.binding, "rec-1", "2026-08"))
-        assertEquals("not-json", leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY])
-        store.retireFulfilledLegacySessions(
+        store.removeLeftoverRecoveryMapping(
             leftover,
             RecurringPaymentIdentity(access.binding, "rec-1", "2026-08"),
-            dropUnreadable = true,
+            LeftoverMappingRemoval.FulfilledRetirement,
+        )
+        assertEquals("not-json", leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY])
+        store.removeLeftoverRecoveryMapping(
+            leftover,
+            RecurringPaymentIdentity(access.binding, "rec-1", "2026-08"),
+            LeftoverMappingRemoval.UserAbandon,
         )
         assertNull(leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY])
         assertTrue(!store.leftoverUnresolved(leftover, RecurringPaymentIdentity(access.binding, "rec-1", "2026-08")))
@@ -374,12 +382,17 @@ class RecurringPaymentTaskTest {
         val heldSessions = listOf(LeftoverSessionView(september, null, admitted = false))
         assertEquals("legacy-ref", identity.leftoverDraftContinuation(heldSessions)?.task?.clientRef)
         assertNull(identity.leftoverDraftContinuation(listOf(LeftoverSessionView(september, null, admitted = true))))
-        val held = identity.leftoverState(heldSessions, unresolved = true, remembered = null, error = "handoff")
+        val held = identity.leftoverState(
+            heldSessions,
+            unresolved = true,
+            remembered = null,
+            notice = LegacyCompatibilityNotice.Failed("handoff"),
+        )
         val blocked = held as LegacyCompatibilityState.Held
-        assertEquals("handoff", blocked.error)
+        assertEquals(LegacyCompatibilityNotice.Failed("handoff"), blocked.notice)
         assertEquals("legacy-ref", blocked.continuation?.task?.clientRef)
         val recovered = identity.leftoverState(heldSessions, unresolved = true, remembered = null)
-        assertNull((recovered as LegacyCompatibilityState.Held).error)
+        assertNull((recovered as LegacyCompatibilityState.Held).notice)
         val ready = identity.leftoverState(heldSessions, unresolved = false, remembered = september)
         assertEquals("legacy-ref", (ready as LegacyCompatibilityState.Ready).remembered?.clientRef)
         val firstOpen = RecurringPaymentIdentity(access.binding, "rec-1", "2026-09", 0)
@@ -421,6 +434,22 @@ class RecurringPaymentTaskTest {
         assertEquals("origin-a", store.remembered(origin.binding, origin.seriesPublicId, origin.period)?.clientRef)
         assertEquals("旧草稿", store.read("store-b")?.note)
         assertNull(store.read("origin-a"))
+    }
+
+    @Test
+    fun leftoverContinueNoticeIsTypedInsteadOfMagicStrings() {
+        val store = RecurringPaymentDraftStore(SavedStateHandle())
+        val opened = mutableListOf<String>()
+        assertEquals(
+            LegacyCompatibilityNotice.ExistingOrigin,
+            LegacyContinueResult.ExistingOrigin.openDraft(store, 3L) { opened += it.clientRef },
+        )
+        assertEquals(
+            LegacyCompatibilityNotice.Conflict,
+            LegacyContinueResult.Conflict.openDraft(store, 3L) { opened += it.clientRef },
+        )
+        assertNull(LegacyContinueResult.Missing.openDraft(store, 3L) { opened += it.clientRef })
+        assertEquals(emptyList<String>(), opened)
     }
 
     @Test

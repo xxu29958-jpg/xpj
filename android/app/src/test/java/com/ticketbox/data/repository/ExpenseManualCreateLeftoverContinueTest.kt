@@ -5,11 +5,14 @@ import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
 import com.ticketbox.ui.navigation.LEGACY_PERIOD_PAYMENT_SESSIONS_KEY
+import com.ticketbox.ui.navigation.LegacyCompatibilityNotice
 import com.ticketbox.ui.navigation.LegacyCompatibilityState
 import com.ticketbox.ui.navigation.LegacyContinueResult
+import com.ticketbox.ui.navigation.LeftoverMappingRemoval
 import com.ticketbox.ui.navigation.RecurringPaymentDraft
 import com.ticketbox.ui.navigation.RecurringPaymentDraftStore
 import com.ticketbox.ui.navigation.RecurringPaymentIdentity
+import com.ticketbox.ui.navigation.RecurringPaymentTask
 import com.ticketbox.ui.navigation.leftoverPeriodPaymentSessionsJson
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.first
@@ -216,16 +219,21 @@ internal class ExpenseManualCreateLeftoverContinueTest : ExpensePendingRepositor
         val identity = RecurringPaymentIdentity(binding, "rec-1", "2026-08", 5)
         val store = RecurringPaymentDraftStore(SavedStateHandle())
         val sessions = store.legacyPeriodPaymentSessions(leftover)
-        val failed = identity.leftoverState(sessions, unresolved = true, remembered = null, error = "adoptOrigin failed")
+        val failed = identity.leftoverState(
+            sessions,
+            unresolved = true,
+            remembered = null,
+            notice = LegacyCompatibilityNotice.Failed("adoptOrigin failed"),
+        )
         val held = failed as LegacyCompatibilityState.Held
-        assertEquals("adoptOrigin failed", held.error)
+        assertEquals(LegacyCompatibilityNotice.Failed("adoptOrigin failed"), held.notice)
         assertEquals("legacy-ref", held.continuation?.task?.clientRef)
         val opened = identity.leftoverInspectContinue(sessions) {
             repo.manualCreation.inspectOrigin(binding, RecurringPaymentOrigin("rec-1", "2026-08", 5))
         } as LegacyContinueResult.Opened
         opened.continuation.draft?.let(store::write)
         val recovered = identity.leftoverState(store.legacyPeriodPaymentSessions(leftover), unresolved = true, remembered = null) as LegacyCompatibilityState.Held
-        assertNull(recovered.error)
+        assertNull(recovered.notice)
         assertTrue(leftover.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY).orEmpty().contains("legacy-ref"))
         assertNull(store.remembered(binding, "rec-1", "2026-08"))
         assertEquals("住房", store.read("legacy-ref")?.category)
@@ -242,14 +250,16 @@ internal class ExpenseManualCreateLeftoverContinueTest : ExpensePendingRepositor
         )
         val identity = RecurringPaymentIdentity(binding, "rec-1", "2026-08", 5)
         val store = RecurringPaymentDraftStore(SavedStateHandle())
+        store.write(RecurringPaymentDraft("legacy-ref", "98.00", "CNY", "新商家", "住房", "旧草稿", ""))
         val failed = identity.leftoverState(
             store.legacyPeriodPaymentSessions(leftover),
             unresolved = true,
             remembered = null,
-            error = "handoff failed",
+            notice = LegacyCompatibilityNotice.Failed("handoff failed"),
         )
         assertTrue(failed is LegacyCompatibilityState.Held)
-        store.retireFulfilledLegacySessions(leftover, identity, dropUnreadable = true)
+        store.removeLeftoverRecoveryMapping(leftover, identity, LeftoverMappingRemoval.UserAbandon)
+        failed.continuation?.task?.clientRef?.let(store::removeDraft)
         val ready = identity.leftoverState(
             store.legacyPeriodPaymentSessions(leftover),
             unresolved = store.leftoverUnresolved(leftover, identity),
@@ -258,6 +268,36 @@ internal class ExpenseManualCreateLeftoverContinueTest : ExpensePendingRepositor
         assertTrue(ready is LegacyCompatibilityState.Ready)
         assertNull(leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY])
         assertNull(store.remembered(binding, "rec-1", "2026-08"))
+        assertNull(store.read("legacy-ref"))
+        assertEquals(0, pendingDao.rows.size)
+    }
+
+    @Test
+    fun leftoverAbandonDeletesUnsubmittedDraftWithoutTouchingOutbox() = runTest {
+        val pendingDao = FakePendingMutationDao()
+        val repo = createRepo(FakeExpenseDao(), outbox(pendingDao))
+        val binding = requireNotNull(repo.captureDeferredLedgerBinding())
+        repo.manualCreation.create(draft, binding, "origin-a", RecurringPaymentOrigin("rec-1", "2026-08", 5)).getOrThrow()
+        val before = pendingDao.rows.values.single().payload
+        val leftover = SavedStateHandle()
+        leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = leftoverPeriodPaymentSessionsJson(
+            leftoverRow(binding, "2026-08", "legacy-b", admitted = false, category = "住房", note = "旧草稿", capturedAmountCents = 9800),
+        )
+        val identity = RecurringPaymentIdentity(binding, "rec-1", "2026-08", 5)
+        val store = RecurringPaymentDraftStore(SavedStateHandle())
+        store.adoptLegacyPeriodPaymentSessions(leftover, repo.manualCreation, identity)
+        store.write(RecurringPaymentDraft("legacy-b", "98.00", "CNY", "新商家", "住房", "旧草稿", ""))
+        val held = identity.leftoverState(
+            store.legacyPeriodPaymentSessions(leftover),
+            unresolved = true,
+            remembered = store.remembered(binding, "rec-1", "2026-08"),
+        ) as LegacyCompatibilityState.Held
+        store.removeLeftoverRecoveryMapping(leftover, identity, LeftoverMappingRemoval.UserAbandon)
+        held.continuation?.task?.clientRef?.let(store::removeDraft)
+        assertNull(leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY])
+        assertNull(store.read("legacy-b"))
+        assertEquals(before, pendingDao.rows.values.single().payload)
+        assertEquals(1, pendingDao.rows.size)
     }
 
     @Test
@@ -283,7 +323,7 @@ internal class ExpenseManualCreateLeftoverContinueTest : ExpensePendingRepositor
         val found = repo.manualCreation.observeOrigin(binding, RecurringPaymentOrigin("rec-1", "2026-08", 5)).first()
         assertTrue(found is RecurringPaymentOriginLookup.Found)
         assertEquals("legacy-b", found.projection.request?.clientRef)
-        store.retireFulfilledLegacySessions(leftover, identity)
+        store.removeLeftoverRecoveryMapping(leftover, identity, LeftoverMappingRemoval.CanonicalOriginTakeover)
         store.removeDraft("legacy-b")
         assertNull(leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY])
         assertNull(store.read("legacy-b"))
@@ -317,6 +357,96 @@ internal class ExpenseManualCreateLeftoverContinueTest : ExpensePendingRepositor
         assertTrue(found is RecurringPaymentOriginLookup.Found)
         assertEquals("origin-a", found.projection.request?.clientRef)
         assertEquals(1, pendingDao.rows.size)
+    }
+
+    @Test
+    fun currentVersionEditedDraftBSurvivesWhenOriginABecomesCanonical() = runTest {
+        val pendingDao = FakePendingMutationDao()
+        val repo = createRepo(FakeExpenseDao(), outbox(pendingDao))
+        val binding = requireNotNull(repo.captureDeferredLedgerBinding())
+        val leftover = SavedStateHandle()
+        val store = RecurringPaymentDraftStore(SavedStateHandle())
+        val currentB = RecurringPaymentTask(
+            binding, "rec-1", "2026-08", "current-b", "新商家", "CNY", 12_345, "CNY", 5,
+        )
+        store.remember(currentB)
+        store.write(
+            RecurringPaymentDraft(
+                clientRef = "current-b",
+                amountText = "99.00",
+                currencyCode = "CNY",
+                merchant = "改过的商户",
+                category = "住房",
+                note = "当前草稿",
+                expenseTime = "2026-08-01T00:00:00Z",
+            ),
+        )
+        repo.manualCreation.create(draft, binding, "origin-a", RecurringPaymentOrigin("rec-1", "2026-08", 5)).getOrThrow()
+        store.remember(currentB.copy(clientRef = "origin-a"))
+        assertEquals("origin-a", store.remembered(binding, "rec-1", "2026-08")?.clientRef)
+        val kept = requireNotNull(store.read("current-b"))
+        assertEquals("99.00", kept.amountText)
+        assertEquals("改过的商户", kept.merchant)
+        assertEquals("住房", kept.category)
+        assertEquals("当前草稿", kept.note)
+        assertEquals("2026-08-01T00:00:00Z", kept.expenseTime)
+        assertNull(leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY])
+        assertEquals(1, pendingDao.rows.size)
+        val found = repo.manualCreation.observeOrigin(binding, RecurringPaymentOrigin("rec-1", "2026-08", 5)).first()
+        assertTrue(found is RecurringPaymentOriginLookup.Found)
+        assertEquals("origin-a", found.projection.request?.clientRef)
+    }
+
+    @Test
+    fun leftoverContinueSecondDispatchDoesNotStartAnotherJob() = runTest {
+        val pendingDao = FakePendingMutationDao()
+        val repo = createRepo(FakeExpenseDao(), outbox(pendingDao))
+        val binding = requireNotNull(repo.captureDeferredLedgerBinding())
+        val leftover = SavedStateHandle()
+        leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = leftoverPeriodPaymentSessionsJson(
+            leftoverRow(binding, "2026-08", "legacy-b", admitted = false, category = "住房", note = "旧草稿", capturedAmountCents = 9800),
+        )
+        val identity = RecurringPaymentIdentity(binding, "rec-1", "2026-08", 5)
+        val store = RecurringPaymentDraftStore(SavedStateHandle())
+        store.adoptLegacyPeriodPaymentSessions(leftover, repo.manualCreation, identity)
+        store.write(RecurringPaymentDraft("legacy-b", "99.00", "CNY", "新商家", "住房", "已改", ""))
+        val mapping = leftover.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY)
+        var leftoverState: LegacyCompatibilityState = identity.leftoverState(
+            store.legacyPeriodPaymentSessions(leftover),
+            unresolved = true,
+            remembered = store.remembered(binding, "rec-1", "2026-08"),
+        )
+        var startedJobs = 0
+        val started = CompletableDeferred<Unit>()
+        val hold = CompletableDeferred<Unit>()
+        val done = CompletableDeferred<Unit>()
+        val opened = mutableListOf<String>()
+        fun dispatchContinue() {
+            val current = leftoverState as? LegacyCompatibilityState.Held ?: return
+            if (current.busy) return
+            leftoverState = current.copy(busy = true)
+            startedJobs += 1
+            backgroundScope.launch {
+                leftoverState = identity.leftoverContinueSnapshot(store, leftover, {
+                    started.complete(Unit)
+                    hold.await()
+                    repo.manualCreation.inspectOrigin(binding, RecurringPaymentOrigin("rec-1", "2026-08", 5))
+                }) { opened += it.clientRef }
+                done.complete(Unit)
+            }
+        }
+        dispatchContinue()
+        assertEquals(true, (leftoverState as LegacyCompatibilityState.Held).busy)
+        assertEquals(1, startedJobs)
+        started.await()
+        dispatchContinue()
+        assertEquals(1, startedJobs)
+        hold.complete(Unit)
+        done.await()
+        assertEquals(listOf("legacy-b"), opened)
+        assertEquals("已改", store.read("legacy-b")?.note)
+        assertEquals(mapping, leftover.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY))
+        assertEquals(0, pendingDao.rows.size)
     }
 
     @Test

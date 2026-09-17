@@ -63,6 +63,21 @@ private val legacyPeriodPaymentSessionListAdapter = Moshi.Builder().build().adap
 )
 private val logicalSessionBindingAdapter = Moshi.Builder().build().adapter(LogicalSessionBinding::class.java)
 internal const val RECURRING_PAYMENT_ROUTE = "recurring-payment?task={task}"
+/**
+ * N-1 leftover SavedState written by RecurringPeriodPaymentSession.
+ *
+ * Supported upgrade: Android 1.2.0 (`versionCode` 10200000) process SavedState under this key,
+ * including first open without a seen marker and generation Hold until Continue.
+ * This Host bridge is not a second Writer and must not become a permanent owner.
+ *
+ * Retirement: delete the leftover session / seen marker / generation Hold / Continue-Abandon
+ * bridge no earlier than Android 1.4.0 (two official releases after 1.2.0).
+ *
+ * When deleting, keep these upgrade counterexamples until the SavedState schema itself is gone:
+ * Continue does not retire leftover; active origin A hides Continue and keeps B; origin after an
+ * Absent inspect keeps B; bindingRevision seen-key isolation; generation Hold until Continue;
+ * Accepted(A) keeps B while Accepted(B) retires B; unreadable blob abandon.
+ */
 internal const val LEGACY_PERIOD_PAYMENT_SESSIONS_KEY = "recurring.periodPayment.sessions"
 private const val RECURRING_PAYMENT_TASKS_KEY = "recurring.payment.tasks"
 private const val RECURRING_PAYMENT_DRAFTS_KEY = "recurring.payment.drafts"
@@ -78,6 +93,11 @@ internal class RecurringPaymentDraftStore(private val state: SavedStateHandle) {
     private val drafts: List<RecurringPaymentDraft>
         get() = state.get<String>(RECURRING_PAYMENT_DRAFTS_KEY)?.let { recurringPaymentDraftListAdapter.fromJson(it) }.orEmpty()
 
+    /**
+     * Canonical period task only. Does not delete another clientRef draft.
+     * After origin A wins, a current-version B draft may be unreachable until a later
+     * reopen/abandon surface; keep the bytes and do not auto-delete.
+     */
     fun remember(task: RecurringPaymentTask) {
         state[RECURRING_PAYMENT_TASKS_KEY] = recurringPaymentTaskListAdapter.toJson(
             tasks.filterNot { it.binding == task.binding && it.seriesPublicId == task.seriesPublicId && it.period == task.period } + task,
@@ -165,10 +185,17 @@ internal class RecurringPaymentDraftStore(private val state: SavedStateHandle) {
         }
     }
 
-    fun retireFulfilledLegacySessions(
+    /**
+     * Deletes the exact leftover recovery mapping for [identity].
+     * [LeftoverMappingRemoval.FulfilledRetirement]: occurrence fulfilled.
+     * [LeftoverMappingRemoval.UserAbandon]: user discarded leftover B; unreadable blobs are dropped.
+     * [LeftoverMappingRemoval.CanonicalOriginTakeover]: Found(B) matches leftover B.
+     * Does not enqueue, admit, or retire Outbox / server facts.
+     */
+    fun removeLeftoverRecoveryMapping(
         source: SavedStateHandle,
         identity: RecurringPaymentIdentity,
-        dropUnreadable: Boolean = false,
+        reason: LeftoverMappingRemoval,
     ) {
         val json = source.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY)
         if (json == null) {
@@ -177,7 +204,7 @@ internal class RecurringPaymentDraftStore(private val state: SavedStateHandle) {
         }
         val sessions = runCatching { legacyPeriodPaymentSessionListAdapter.fromJson(json) }.getOrNull()
         if (sessions == null) {
-            if (dropUnreadable) {
+            if (reason == LeftoverMappingRemoval.UserAbandon) {
                 source.remove<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY)
                 identity.rememberLeftoverSeen(source, false)
             }
@@ -247,6 +274,8 @@ internal fun recurringPaymentRoute(task: RecurringPaymentTask): String =
 
 internal enum class LeftoverTransition { Adopt, Retire, Hold }
 
+internal enum class LeftoverMappingRemoval { FulfilledRetirement, UserAbandon, CanonicalOriginTakeover }
+
 internal data class LegacyDraftContinuation(
     val task: RecurringPaymentTask,
     val draft: RecurringPaymentDraft?,
@@ -259,13 +288,19 @@ internal sealed interface OriginObservation {
     data object Conflict : OriginObservation
 }
 
+internal sealed interface LegacyCompatibilityNotice {
+    data object ExistingOrigin : LegacyCompatibilityNotice
+    data object Conflict : LegacyCompatibilityNotice
+    data class Failed(val message: String?) : LegacyCompatibilityNotice
+}
+
 internal sealed interface LegacyCompatibilityState {
     data object Loading : LegacyCompatibilityState
     data class Ready(val remembered: RecurringPaymentTask?) : LegacyCompatibilityState
     data class Held(
         val continuation: LegacyDraftContinuation? = null,
         val unreadable: Boolean = false,
-        val error: String? = null,
+        val notice: LegacyCompatibilityNotice? = null,
         val busy: Boolean = false,
     ) : LegacyCompatibilityState
 }
@@ -280,15 +315,15 @@ internal sealed interface LegacyContinueResult {
         store: RecurringPaymentDraftStore,
         generation: Long?,
         onOpen: (RecurringPaymentTask) -> Unit,
-    ): String? = when (this) {
+    ): LegacyCompatibilityNotice? = when (this) {
         is Opened -> {
             val opened = continuation.task.copy(occurrenceRowVersion = generation ?: continuation.task.occurrenceRowVersion)
             if (store.read(opened.clientRef) == null) continuation.draft?.let(store::write)
             onOpen(opened)
             null
         }
-        ExistingOrigin -> "existing"
-        Conflict -> "conflict"
+        ExistingOrigin -> LegacyCompatibilityNotice.ExistingOrigin
+        Conflict -> LegacyCompatibilityNotice.Conflict
         Missing -> null
     }
 }
@@ -332,14 +367,14 @@ internal data class RecurringPaymentIdentity(
         sessions: List<LeftoverSessionView>?,
         unresolved: Boolean,
         remembered: RecurringPaymentTask?,
-        error: String? = null,
+        notice: LegacyCompatibilityNotice? = null,
         busy: Boolean = false,
     ): LegacyCompatibilityState {
         if (sessions == null) {
-            return LegacyCompatibilityState.Held(unreadable = true, error = error, busy = busy)
+            return LegacyCompatibilityState.Held(unreadable = true, notice = notice, busy = busy)
         }
         return if (unresolved) {
-            LegacyCompatibilityState.Held(leftoverDraftContinuation(sessions), unreadable = false, error = error, busy = busy)
+            LegacyCompatibilityState.Held(leftoverDraftContinuation(sessions), unreadable = false, notice = notice, busy = busy)
         } else {
             LegacyCompatibilityState.Ready(remembered)
         }
@@ -373,13 +408,13 @@ internal data class RecurringPaymentIdentity(
         inspect: suspend () -> RecurringPaymentOriginLookup,
         onOpen: (RecurringPaymentTask) -> Unit,
     ): LegacyCompatibilityState {
-        val error = leftoverInspectContinue(store.legacyPeriodPaymentSessions(leftover), inspect)
+        val notice = leftoverInspectContinue(store.legacyPeriodPaymentSessions(leftover), inspect)
             .openDraft(store, occurrenceRowVersion, onOpen)
         return leftoverState(
             store.legacyPeriodPaymentSessions(leftover),
             store.leftoverUnresolved(leftover, this),
             store.remembered(binding, seriesPublicId, period),
-            error,
+            notice,
         )
     }
 
