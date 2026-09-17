@@ -37,6 +37,12 @@ internal data class RecurringPaymentTask(
     fun clientRefFor(occurrenceRowVersion: Long, originRef: String?): String =
         originRef ?: clientRef.takeIf { this.occurrenceRowVersion == null || this.occurrenceRowVersion == occurrenceRowVersion }
             ?: UUID.randomUUID().toString()
+
+    fun matchesCurrentGeneration(seriesPublicId: String, period: String, rowVersion: Long): Boolean =
+        occurrenceRowVersion != null &&
+            occurrenceRowVersion == rowVersion &&
+            this.seriesPublicId == seriesPublicId &&
+            this.period == period
 }
 
 /** Unsubmitted form input for one payment task. Survives ordinary Back; not a financial Writer. */

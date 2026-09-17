@@ -22,6 +22,7 @@
     <string name="recurring_payment_review_missing">原提交已不存在</string>
     <string name="recurring_payment_review_conflict">原提交归属已变化</string>
     <string name="recurring_payment_review_abandoned">本机已停止发送这笔原提交，服务器是否接收尚未确认。</string>
+    <string name="recurring_payment_generation_changed">期次状态已变化，请返回核对</string>
     <string name="occurrence_payment_currency">选择本期付款币种</string>
     <string name="occurrence_choose_payment_currency">本期义务币种未确认。请选择实际付款币种，不要默认成账本本币。</string>
 </resources>
