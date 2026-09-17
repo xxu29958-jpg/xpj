@@ -33,6 +33,7 @@ import com.ticketbox.data.repository.RecurringPaymentOrigin
 import com.ticketbox.data.repository.RecurringPaymentOriginAdopt
 import com.ticketbox.data.repository.decodeManualCreateRequest
 import com.ticketbox.data.repository.decodeRecurringPaymentOrigin
+import com.ticketbox.data.repository.encodeManualCreatePayload
 import com.ticketbox.data.repository.expenseAcceptanceReceiptJson
 import com.ticketbox.data.repository.toEntity
 import com.ticketbox.domain.model.AppSkin
@@ -436,6 +437,53 @@ class RecurringPaymentRouteRoomTest {
         assertTrue(harness.fixture.stored().isEmpty())
         assertEquals(task.clientRef, drafts.remembered(task.binding, task.seriesPublicId, task.period)?.clientRef)
         assertEquals(0, sends)
+        compose.onNodeWithTag("recurring-payment-review-dismiss").performClick()
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(hasText(context.getString(R.string.recurring_payment_review_required))).fetchSemanticsNodes().isEmpty()
+        }
+        compose.waitForIdle()
+        compose.onNodeWithTag("recurring-payment-review-error").assertDoesNotExist()
+        waitForSheet()
+        compose.onNodeWithText("房租").assertExists()
+        assertEquals(task.clientRef, drafts.remembered(task.binding, task.seriesPublicId, task.period)?.clientRef)
+        assertEquals(0, sends)
+    }
+
+    @Test fun ordinaryCreateFailureDoesNotOpenReview() {
+        val task = periodTask("CNY", 10_000).copy(occurrenceRowVersion = 3L)
+        val origin = RecurringPaymentOrigin(task.seriesPublicId, task.period, 3L)
+        enqueueRaw(task, "dup-a", "便利店", CurrencyCode.CNY, 8800, "2026-08-01T00:00:00Z", origin)
+        enqueueRaw(task, "dup-b", "超市", CurrencyCode.JPY, 1500, "2026-08-15T12:00:00Z")
+        runBlocking {
+            val row = harness.fixture.outbox
+                .observeActiveByTypes(setOf(PendingMutationType.CreateExpense), includeCompleted = true)
+                .first()
+                .single { it.targetId == "expense:local:dup-b" }
+            val request = readCreateRequest(requireNotNull(row.payloadJson))
+            check(
+                harness.fixture.outbox.replaceCreateExpensePayload(
+                    row.id,
+                    encodeManualCreatePayload(
+                        OutboxAdapterGraph().manualCreateAdapter,
+                        OutboxAdapterGraph().recurringPaymentCreateAdapter,
+                        request,
+                        origin,
+                    ),
+                ),
+            )
+        }
+        drafts.remember(task)
+        showRoute(task)
+        waitForSheet()
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performScrollTo().performClick()
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(hasText("本期付款命令冲突，请先处理重复提交。")).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText(context.getString(R.string.recurring_payment_review_required)).assertDoesNotExist()
+        waitForSheet()
+        assertEquals(task.clientRef, drafts.remembered(task.binding, task.seriesPublicId, task.period)?.clientRef)
+        assertEquals(2, harness.fixture.stored().size)
+        assertEquals(0, sends)
     }
 
     @Test fun adoptConflictKeepsTheDraftAndDoesNotRebind() {
@@ -549,6 +597,7 @@ class RecurringPaymentRouteRoomTest {
         currency: CurrencyCode,
         originalAmountMinor: Long,
         expenseTime: String,
+        origin: RecurringPaymentOrigin? = null,
     ) {
         runBlocking {
             harness.screenFactory.repository.manualCreation.create(
@@ -567,6 +616,7 @@ class RecurringPaymentRouteRoomTest {
                 ),
                 task.binding,
                 ref,
+                origin,
             ).getOrThrow()
         }
     }

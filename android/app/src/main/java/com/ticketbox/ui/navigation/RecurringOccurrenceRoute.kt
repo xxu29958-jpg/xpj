@@ -38,6 +38,19 @@ private data class RecurringPaymentHostDecision(
     val retireClientRefs: List<String>,
 )
 
+private data class RecurringPaymentRetirement(
+    val visible: RecurringPaymentVisible,
+    val drafts: RecurringPaymentDraftStore?,
+    val leftover: SavedStateHandle,
+    val creation: ExpenseManualCreation,
+    val refs: RecurringPaymentRetirementRefs,
+)
+
+private data class RecurringPaymentRetirementRefs(
+    val clientRefs: List<String>,
+    val originClientRef: String?,
+)
+
 @Composable
 internal fun recurringOccurrenceModel(factory: MainScreenFactory, onChanged: () -> Unit): RecurringOccurrenceViewModel =
     viewModel(factory = viewModelFactory {
@@ -82,13 +95,11 @@ internal fun RecurringOccurrenceHost(
         val current = readRecurringPaymentTask(taskJson)
         val decision = recurringPaymentHostDecision(current, userClosed, visible, leftover.remembered)
         if (decision.clearTask) taskJson = null
-        retireFulfilledPayment(visible, restore.drafts, creation, decision.retireClientRefs, origin.clientRef)
+        retireFulfilledPayment(RecurringPaymentRetirement(visible, restore.drafts, model.savedState, creation, RecurringPaymentRetirementRefs(decision.retireClientRefs, origin.clientRef)))
     }
     LaunchedEffect(taskJson, restore.items, state.item, state.access?.binding, userClosed) {
         val current = readRecurringPaymentTask(taskJson)
-        val source = recurringPaymentRestoreItem(
-            userClosed, state.item != null, current, state.access?.binding, restore.items,
-        ) ?: return@LaunchedEffect
+        val source = recurringPaymentRestoreItem(userClosed, state.item != null, current, state.access?.binding, restore.items) ?: return@LaunchedEffect
         model.open(source, requireNotNull(current).period)
     }
     val admitted by remember(creation, focused?.clientRef, focused?.binding) {
@@ -98,11 +109,7 @@ internal fun RecurringOccurrenceHost(
     RecurringOccurrenceSheet(
         state,
         OccurrenceSheetActions(
-            onDismiss = {
-                userClosed = true
-                taskJson = null
-                model.dismiss()
-            },
+            onDismiss = { userClosed = true; taskJson = null; model.dismiss() },
             onRefresh = model::refresh,
             onPeriod = model::changePeriod,
             onChoose = model::choose,
@@ -111,9 +118,8 @@ internal fun RecurringOccurrenceHost(
             onOpenExpense = expenses.onOpenExpense,
             onRecordPayment = {
                 if (!guard.resolved || guard.conflict) return@OccurrenceSheetActions
-                val next = recurringPaymentTask(
-                    state, existing = task, remembered = leftover.remembered, admittedClientRef = origin.clientRef,
-                ) ?: return@OccurrenceSheetActions
+                val next = recurringPaymentTask(state, existing = task, remembered = leftover.remembered, admittedClientRef = origin.clientRef)
+                    ?: return@OccurrenceSheetActions
                 userClosed = false
                 restore.drafts?.remember(next)
                 taskJson = recurringPaymentTaskJson(next)
@@ -250,24 +256,21 @@ private fun RecurringOccurrenceUiState.paymentVisible() = RecurringPaymentVisibl
     occurrenceState = occurrence?.state,
 )
 
-private suspend fun retireFulfilledPayment(
-    visible: RecurringPaymentVisible,
-    drafts: RecurringPaymentDraftStore?,
-    creation: ExpenseManualCreation,
-    clientRefs: List<String>,
-    originClientRef: String?,
-) {
+private suspend fun retireFulfilledPayment(input: RecurringPaymentRetirement) {
+    val visible = input.visible
     val refs = linkedSetOf<String>().apply {
-        addAll(clientRefs)
-        if (visible.occurrenceState == "fulfilled") originClientRef?.let { add(it) }
+        addAll(input.refs.clientRefs)
+        if (visible.occurrenceState == "fulfilled") input.refs.originClientRef?.let { add(it) }
     }
-    refs.forEach { drafts?.retireTask(it) }
+    refs.forEach { input.drafts?.retireTask(it) }
     if (visible.occurrenceState != "fulfilled") return
+    (input.drafts ?: RecurringPaymentDraftStore(SavedStateHandle()))
+        .retireFulfilledLegacySessions(input.leftover, visible.identity)
     val binding = visible.identity.binding ?: return
     val series = visible.identity.seriesPublicId?.takeIf { it.isNotBlank() } ?: return
     val period = visible.identity.period?.takeIf { it.isNotBlank() } ?: return
     val origin = RecurringPaymentOrigin(series, period, visible.identity.occurrenceRowVersion)
-    refs.forEach { creation.retireOrigin(binding, origin, it) }
+    refs.forEach { input.creation.retireOrigin(binding, origin, it) }
 }
 
 private fun recurringPaymentHostDecision(

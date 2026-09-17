@@ -26,7 +26,9 @@ internal data class RecurringPaymentReviewModel(
     val candidates: List<ManualExpenseCreationProjection>,
     val saving: Boolean,
     val error: String?,
-)
+) {
+    val open: Boolean get() = candidates.isNotEmpty() || error != null
+}
 
 internal data class RecurringPaymentReviewEvents(
     val onAdopt: (String) -> Unit,
@@ -40,7 +42,7 @@ internal fun RecurringPaymentReviewDialog(
     model: RecurringPaymentReviewModel,
     events: RecurringPaymentReviewEvents,
 ) {
-    if (model.candidates.isEmpty() && model.error == null) return
+    if (!model.open) return
     AlertDialog(
         onDismissRequest = { if (!model.saving) events.onDismiss() },
         title = {
@@ -75,6 +77,7 @@ internal fun RecurringPaymentReviewDialog(
             TextButton(
                 onClick = { if (!model.saving) events.onDismiss() },
                 enabled = !model.saving,
+                modifier = Modifier.testTag("recurring-payment-review-dismiss"),
             ) {
                 Text(stringResource(R.string.common_cancel))
             }

@@ -307,6 +307,20 @@ class RecurringPaymentTaskTest {
     }
 
     @Test
+    fun leftoverAdmittedMissingRetiresOnlyTheFulfilledPeriod() {
+        val leftover = SavedStateHandle()
+        leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] =
+            """[{"binding":{"serverUrl":"https://occurrence.example","ledgerId":"ledger-1","ownerKey":"owner","sessionGeneration":"session","bindingRevision":"binding"},"seriesPublicId":"rec-1","period":"2026-08","clientRef":"august-ref","merchant":"日元订阅","obligationCurrencyCode":"JPY","plannedAmountCents":1200,"ledgerHomeCurrencyCode":"CNY","admitted":true},{"binding":{"serverUrl":"https://occurrence.example","ledgerId":"ledger-1","ownerKey":"owner","sessionGeneration":"session","bindingRevision":"binding"},"seriesPublicId":"rec-1","period":"2026-09","clientRef":"september-ref","merchant":"日元订阅","obligationCurrencyCode":"JPY","plannedAmountCents":1200,"ledgerHomeCurrencyCode":"CNY","admitted":true}]"""
+        val store = RecurringPaymentDraftStore(SavedStateHandle())
+        store.retireFulfilledLegacySessions(leftover, RecurringPaymentIdentity(access.binding, "rec-1", "2026-08", 7))
+        val remaining = leftover.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY).orEmpty()
+        assertTrue(!remaining.contains("august-ref"))
+        assertTrue(remaining.contains("september-ref"))
+        assertTrue(!store.leftoverUnresolved(leftover, RecurringPaymentIdentity(access.binding, "rec-1", "2026-08", 7)))
+        assertTrue(store.leftoverUnresolved(leftover, RecurringPaymentIdentity(access.binding, "rec-1", "2026-09", 3)))
+    }
+
+    @Test
     fun leftoverUnparseableBlobBlocksEveryIdentity() {
         val leftover = SavedStateHandle()
         leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = "not-json"

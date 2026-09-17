@@ -294,18 +294,29 @@ private fun RecurringPaymentKnownCurrencySheet(
     draftState: SaveableStateHolder,
 ) {
     val write = rememberRecurringPaymentSheetWrite(ctx)
+    var holdSheet by remember { mutableStateOf(false) }
+    LaunchedEffect(write.review.open) { if (write.review.open) holdSheet = true }
+    val body = ctx.knownCurrencyBody(
+        ctx.drafts.read(ctx.task.clientRef),
+        ManualExpenseSheetState(
+            categories = emptyList(),
+            saving = write.saving,
+            initialCurrency = paymentCurrency,
+            ledgerHomeCurrency = home,
+            errorMessage = write.error,
+            editable = write.canMutate,
+        ),
+        write.save,
+    )
     RecurringPaymentSheet(
-        ctx.knownCurrencyBody(
-            ctx.drafts.read(ctx.task.clientRef),
-            ManualExpenseSheetState(
-                categories = emptyList(),
-                saving = write.saving,
-                initialCurrency = paymentCurrency,
-                ledgerHomeCurrency = home,
-                errorMessage = write.error,
-                editable = write.canMutate,
+        body.copy(
+            actions = body.actions.copy(
+                onDismiss = {
+                    if (write.review.open) write.events.onDismiss()
+                    else if (holdSheet) holdSheet = false
+                    else body.actions.onDismiss()
+                },
             ),
-            write.save,
         ),
         draftState,
         ctx.task.clientRef,
@@ -324,43 +335,36 @@ private fun RecurringPaymentKnownCurrencySheet(
 @Composable
 private fun rememberRecurringPaymentSheetWrite(ctx: RecurringPaymentEntryContext): RecurringPaymentSheetWrite {
     var saving by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
+    var sheetError by remember { mutableStateOf<String?>(null) }
+    var reviewError by remember { mutableStateOf<String?>(null) }
     var pendingDraft by remember { mutableStateOf<ExpenseDraft?>(null) }
     var reviewCandidates by remember { mutableStateOf<List<ManualExpenseCreationProjection>>(emptyList()) }
     val scope = rememberCoroutineScope()
     val canMutate = ctx.access.context?.let { it.canModify && it.binding == ctx.task.binding } == true
     val missingMessage = stringResource(R.string.recurring_payment_review_missing)
     val conflictMessage = stringResource(R.string.recurring_payment_review_conflict)
-    val launchWrite = { block: suspend () -> Unit ->
-        if (canMutate && !saving) {
-            saving = true
-            error = null
-            scope.launchPeriodPaymentWrite({ error = it }, { saving = it }, block)
-        }
-    }
+    val launch = rememberPeriodPaymentLaunch(scope, canMutate, saving) { saving = it }
     return RecurringPaymentSheetWrite(
         saving = saving,
-        error = error,
+        error = sheetError,
         canMutate = canMutate,
-        review = RecurringPaymentReviewModel(reviewCandidates, saving, error),
+        review = RecurringPaymentReviewModel(reviewCandidates, saving, reviewError),
         events = RecurringPaymentReviewEvents(
             onAdopt = { candidate ->
-                launchWrite {
+                launch({ reviewError = it }) {
                     applyAdoptedOrigin(ctx, candidate, missingMessage, conflictMessage) { next, message, clear ->
-                        error = message
+                        reviewError = message
                         reviewCandidates = next
                         if (clear) pendingDraft = null
                     }
                 }
             },
             onConfirmUnrelated = {
-                val draft = pendingDraft
-                if (draft != null) {
-                    launchWrite {
-                        applyPeriodPaymentAdmission(ctx, draft, reviewCandidates.mapNotNull { it.admittedClientRef() }) { next, pending ->
-                            reviewCandidates = next
-                            pendingDraft = pending
-                        }
+                val draft = pendingDraft ?: return@RecurringPaymentReviewEvents
+                launch({ sheetError = it }) {
+                    applyPeriodPaymentAdmission(ctx, draft, reviewCandidates.mapNotNull { it.admittedClientRef() }) { next, pending ->
+                        reviewCandidates = next
+                        pendingDraft = pending
                     }
                 }
             },
@@ -368,12 +372,13 @@ private fun rememberRecurringPaymentSheetWrite(ctx: RecurringPaymentEntryContext
                 if (!saving) {
                     reviewCandidates = emptyList()
                     pendingDraft = null
+                    reviewError = null
                 }
             },
             onOpenExpense = LocalRecurringPaymentOpenExpense.current,
         ),
         save = { draft ->
-            launchWrite {
+            launch({ sheetError = it }) {
                 applyPeriodPaymentAdmission(ctx, draft, emptyList()) { next, pending ->
                     reviewCandidates = next
                     pendingDraft = pending
@@ -381,6 +386,19 @@ private fun rememberRecurringPaymentSheetWrite(ctx: RecurringPaymentEntryContext
             }
         },
     )
+}
+
+private fun rememberPeriodPaymentLaunch(
+    scope: CoroutineScope,
+    canMutate: Boolean,
+    saving: Boolean,
+    setSaving: (Boolean) -> Unit,
+): ((String?) -> Unit, suspend () -> Unit) -> Unit = { onError, block ->
+    if (canMutate && !saving) {
+        setSaving(true)
+        onError(null)
+        scope.launchPeriodPaymentWrite(onError, setSaving, block)
+    }
 }
 
 private fun CoroutineScope.launchPeriodPaymentWrite(

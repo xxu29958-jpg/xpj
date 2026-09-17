@@ -16,4 +16,10 @@ class RecurringPaymentReviewStatusTest {
         assertEquals(R.string.recurring_payment_review_abandoned, recurringPaymentReviewStatusRes(PendingMutationStatus.Abandoned))
         assertEquals(R.string.manual_submission_unknown, recurringPaymentReviewStatusRes(PendingMutationStatus.Unknown))
     }
+
+    @Test
+    fun reviewOpensOnlyForCandidatesOrReviewError() {
+        assertEquals(true, RecurringPaymentReviewModel(emptyList(), false, "missing").open)
+        assertEquals(false, RecurringPaymentReviewModel(emptyList(), false, null).open)
+    }
 }

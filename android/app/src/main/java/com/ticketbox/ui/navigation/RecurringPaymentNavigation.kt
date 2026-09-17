@@ -172,6 +172,22 @@ internal class RecurringPaymentDraftStore(private val state: SavedStateHandle) {
         }
     }
 
+    fun retireFulfilledLegacySessions(
+        source: SavedStateHandle,
+        identity: RecurringPaymentIdentity,
+    ) {
+        val json = source.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY) ?: return
+        val sessions = runCatching { legacyPeriodPaymentSessionListAdapter.fromJson(json) }.getOrNull() ?: return
+        val remaining = sessions.filterNot {
+            it.binding == identity.binding &&
+                it.seriesPublicId == identity.seriesPublicId &&
+                it.period == identity.period
+        }
+        if (remaining.size == sessions.size) return
+        if (remaining.isEmpty()) source.remove<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY)
+        else source[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = legacyPeriodPaymentSessionListAdapter.toJson(remaining)
+    }
+
     private fun captureLegacy(session: LegacyPeriodPaymentSession, occurrenceRowVersion: Long) {
         val task = session.toRecurringPaymentTaskOrNull()?.copy(occurrenceRowVersion = occurrenceRowVersion) ?: return
         remember(task)
