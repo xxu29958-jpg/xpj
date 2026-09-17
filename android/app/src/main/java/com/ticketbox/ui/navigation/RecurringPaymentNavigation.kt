@@ -8,7 +8,6 @@ import com.squareup.moshi.Types
 import com.ticketbox.data.repository.ExpenseManualCreation
 import com.ticketbox.data.repository.LegacyPeriodPaymentSession
 import com.ticketbox.data.repository.LogicalSessionBinding
-import com.ticketbox.data.repository.RecurringPaymentOrigin
 import com.ticketbox.data.repository.RecurringPaymentOriginAdopt
 import com.ticketbox.data.repository.RecurringPaymentOriginLookup
 import com.ticketbox.domain.model.CurrencyCode
@@ -17,7 +16,6 @@ import com.ticketbox.viewmodel.RecurringOccurrenceUiState
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.util.UUID
-import kotlinx.coroutines.flow.first
 
 /** Navigation identity only. CreateExpense / Confirm / link stay on their current owners. */
 @JsonClass(generateAdapter = true)
@@ -81,15 +79,9 @@ internal class RecurringPaymentDraftStore(private val state: SavedStateHandle) {
         get() = state.get<String>(RECURRING_PAYMENT_DRAFTS_KEY)?.let { recurringPaymentDraftListAdapter.fromJson(it) }.orEmpty()
 
     fun remember(task: RecurringPaymentTask) {
-        val previous = tasks.firstOrNull {
-            it.binding == task.binding && it.seriesPublicId == task.seriesPublicId && it.period == task.period
-        }
         state[RECURRING_PAYMENT_TASKS_KEY] = recurringPaymentTaskListAdapter.toJson(
             tasks.filterNot { it.binding == task.binding && it.seriesPublicId == task.seriesPublicId && it.period == task.period } + task,
         )
-        if (previous != null && previous.clientRef != task.clientRef) {
-            removeDraft(previous.clientRef)
-        }
     }
 
     fun remembered(
@@ -139,33 +131,25 @@ internal class RecurringPaymentDraftStore(private val state: SavedStateHandle) {
         source: SavedStateHandle,
         creation: ExpenseManualCreation,
         identity: RecurringPaymentIdentity? = null,
-        continueUnproven: Boolean = false,
-    ): LeftoverAdoptNotice {
-        val current = identity ?: return LeftoverAdoptNotice.Done
-        val generation = current.occurrenceRowVersion ?: return LeftoverAdoptNotice.Done
+    ) {
+        val current = identity ?: return
+        val generation = current.occurrenceRowVersion ?: return
         val json = source.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY)
         if (json == null) {
             current.rememberLeftoverSeen(source, false)
-            return LeftoverAdoptNotice.Done
+            return
         }
-        val sessions = runCatching { legacyPeriodPaymentSessionListAdapter.fromJson(json) }.getOrNull()
-            ?: return LeftoverAdoptNotice.Done
+        val sessions = runCatching { legacyPeriodPaymentSessionListAdapter.fromJson(json) }.getOrNull() ?: return
         val seen = current.leftoverSeen(source)
         val decision = current.leftoverTransition(seen)
-        if (continueUnproven) {
-            when (current.leftoverContinueDecision(creation)) {
-                LeftoverContinueDecision.KeepExistingOrigin -> return LeftoverAdoptNotice.ExistingOrigin
-                LeftoverContinueDecision.KeepConflict -> return LeftoverAdoptNotice.Conflict
-                LeftoverContinueDecision.Capture -> Unit
-            }
-        }
-        val remaining = current.leftoverApplySessions(sessions, creation, continueUnproven, seen) {
-            captureLegacy(it, generation)
+        val remaining = when (decision) {
+            LeftoverTransition.Retire -> sessions.filterNot(current::matchesLoadedSession)
+            LeftoverTransition.Adopt -> current.adoptLoadedSessions(sessions, creation) { captureLegacy(it, generation) }
+            LeftoverTransition.Hold -> sessions
         }
         if (remaining.isEmpty()) source.remove<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY)
         else source[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = legacyPeriodPaymentSessionListAdapter.toJson(remaining)
-        current.rememberLeftoverSeen(source, leftoverUnresolved(source, current) && decision == LeftoverTransition.Adopt && !continueUnproven)
-        return LeftoverAdoptNotice.Done
+        current.rememberLeftoverSeen(source, leftoverUnresolved(source, current) && decision == LeftoverTransition.Adopt)
     }
 
     fun leftoverUnresolved(
@@ -263,41 +247,49 @@ internal fun recurringPaymentRoute(task: RecurringPaymentTask): String =
 
 internal enum class LeftoverTransition { Adopt, Retire, Hold }
 
-internal enum class LeftoverContinueDecision { Capture, KeepExistingOrigin, KeepConflict }
+internal data class LegacyDraftContinuation(
+    val task: RecurringPaymentTask,
+    val draft: RecurringPaymentDraft?,
+)
 
-internal enum class LeftoverAdoptNotice {
-    Done,
-    ExistingOrigin,
-    Conflict,
-    Failed,
-    ;
+internal sealed interface OriginObservation {
+    data object Loading : OriginObservation
+    data object Absent : OriginObservation
+    data class Found(val clientRef: String) : OriginObservation
+    data object Conflict : OriginObservation
+}
 
-    fun nextHandoff(previous: Result<Unit>?): Result<Unit>? = when (this) {
-        Done -> Result.success(Unit)
-        else -> previous
-    }
+internal sealed interface LegacyCompatibilityState {
+    data object Loading : LegacyCompatibilityState
+    data class Ready(val remembered: RecurringPaymentTask?) : LegacyCompatibilityState
+    data class Held(
+        val continuation: LegacyDraftContinuation? = null,
+        val unreadable: Boolean = false,
+        val error: String? = null,
+        val busy: Boolean = false,
+    ) : LegacyCompatibilityState
+}
 
-    companion object {
-        fun blocked(handoff: Result<Unit>?, unresolved: Boolean): Boolean =
-            handoff?.isFailure == true || (handoff != null && unresolved)
+internal sealed interface LegacyContinueResult {
+    data class Opened(val continuation: LegacyDraftContinuation) : LegacyContinueResult
+    data object ExistingOrigin : LegacyContinueResult
+    data object Conflict : LegacyContinueResult
+    data object Missing : LegacyContinueResult
 
-        fun remembered(handoff: Result<Unit>?, load: () -> RecurringPaymentTask?): RecurringPaymentTask? =
-            if (handoff?.isSuccess == true) load() else null
-
-        fun run(block: () -> Unit): LeftoverAdoptNotice = try {
-            block()
-            Done
-        } catch (_: Exception) {
-            Failed
+    fun openDraft(
+        store: RecurringPaymentDraftStore,
+        generation: Long?,
+        onOpen: (RecurringPaymentTask) -> Unit,
+    ): String? = when (this) {
+        is Opened -> {
+            val opened = continuation.task.copy(occurrenceRowVersion = generation ?: continuation.task.occurrenceRowVersion)
+            if (store.read(opened.clientRef) == null) continuation.draft?.let(store::write)
+            onOpen(opened)
+            null
         }
-
-        suspend fun runSuspend(block: suspend () -> LeftoverAdoptNotice): LeftoverAdoptNotice = try {
-            block()
-        } catch (cancelled: kotlin.coroutines.cancellation.CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            Failed
-        }
+        ExistingOrigin -> "existing"
+        Conflict -> "conflict"
+        Missing -> null
     }
 }
 
@@ -336,49 +328,59 @@ internal data class RecurringPaymentIdentity(
         else source.remove<Long>(key)
     }
 
-    fun leftoverContinueAvailable(sessions: List<LeftoverSessionView>?): Boolean =
-        sessions.orEmpty().any {
+    fun leftoverState(
+        sessions: List<LeftoverSessionView>?,
+        unresolved: Boolean,
+        remembered: RecurringPaymentTask?,
+        error: String? = null,
+        busy: Boolean = false,
+    ): LegacyCompatibilityState {
+        if (sessions == null) {
+            return LegacyCompatibilityState.Held(unreadable = true, error = error, busy = busy)
+        }
+        return if (unresolved) {
+            LegacyCompatibilityState.Held(leftoverDraftContinuation(sessions), unreadable = false, error = error, busy = busy)
+        } else {
+            LegacyCompatibilityState.Ready(remembered)
+        }
+    }
+
+    fun leftoverDraftContinuation(sessions: List<LeftoverSessionView>?): LegacyDraftContinuation? =
+        sessions.orEmpty().firstOrNull {
             !it.admitted &&
                 it.task.binding == binding &&
                 it.task.seriesPublicId == seriesPublicId &&
                 it.task.period == period
-        }
+        }?.let { LegacyDraftContinuation(it.task, it.draft) }
 
-    fun leftoverContinueVisible(
+    suspend fun leftoverInspectContinue(
         sessions: List<LeftoverSessionView>?,
-        seen: Long?,
-        handoffFailed: Boolean,
-        ready: Boolean,
-    ): Boolean {
-        if (!ready || sessions == null || !leftoverContinueAvailable(sessions)) return false
-        return leftoverTransition(seen) == LeftoverTransition.Hold || handoffFailed
-    }
-
-    suspend fun leftoverContinueDecision(creation: ExpenseManualCreation): LeftoverContinueDecision {
-        val bound = binding ?: return LeftoverContinueDecision.KeepConflict
-        val series = seriesPublicId?.takeIf { it.isNotBlank() } ?: return LeftoverContinueDecision.KeepConflict
-        val month = period?.takeIf { it.isNotBlank() } ?: return LeftoverContinueDecision.KeepConflict
-        return when (creation.observeOrigin(bound, RecurringPaymentOrigin(series, month, occurrenceRowVersion)).first()) {
-            is RecurringPaymentOriginLookup.Found -> LeftoverContinueDecision.KeepExistingOrigin
-            RecurringPaymentOriginLookup.Conflict -> LeftoverContinueDecision.KeepConflict
-            RecurringPaymentOriginLookup.Absent -> LeftoverContinueDecision.Capture
+        inspect: suspend () -> RecurringPaymentOriginLookup,
+    ): LegacyContinueResult {
+        val continuation = leftoverDraftContinuation(sessions) ?: return LegacyContinueResult.Missing
+        return when (val lookup = inspect()) {
+            is RecurringPaymentOriginLookup.Found ->
+                if (lookup.projection.request?.clientRef.isNullOrBlank()) LegacyContinueResult.Conflict
+                else LegacyContinueResult.ExistingOrigin
+            RecurringPaymentOriginLookup.Conflict -> LegacyContinueResult.Conflict
+            RecurringPaymentOriginLookup.Absent -> LegacyContinueResult.Opened(continuation)
         }
     }
 
-    suspend fun leftoverApplySessions(
-        sessions: List<LegacyPeriodPaymentSession>,
-        creation: ExpenseManualCreation,
-        continueUnproven: Boolean,
-        seen: Long?,
-        capture: (LegacyPeriodPaymentSession) -> Unit,
-    ): List<LegacyPeriodPaymentSession> {
-        val decision = leftoverTransition(seen)
-        return when {
-            continueUnproven -> adoptLoadedSessions(sessions, creation, bind = false, capture)
-            decision == LeftoverTransition.Retire -> sessions.filterNot(::matchesLoadedSession)
-            decision == LeftoverTransition.Adopt -> adoptLoadedSessions(sessions, creation, bind = true, capture)
-            else -> sessions
-        }
+    suspend fun leftoverContinueSnapshot(
+        store: RecurringPaymentDraftStore,
+        leftover: SavedStateHandle,
+        inspect: suspend () -> RecurringPaymentOriginLookup,
+        onOpen: (RecurringPaymentTask) -> Unit,
+    ): LegacyCompatibilityState {
+        val error = leftoverInspectContinue(store.legacyPeriodPaymentSessions(leftover), inspect)
+            .openDraft(store, occurrenceRowVersion, onOpen)
+        return leftoverState(
+            store.legacyPeriodPaymentSessions(leftover),
+            store.leftoverUnresolved(leftover, this),
+            store.remembered(binding, seriesPublicId, period),
+            error,
+        )
     }
 
     fun leftoverTransition(seen: Long?): LeftoverTransition {
@@ -394,7 +396,6 @@ internal data class RecurringPaymentIdentity(
     suspend fun adoptLoadedSessions(
         sessions: List<LegacyPeriodPaymentSession>,
         creation: ExpenseManualCreation,
-        bind: Boolean,
         capture: (LegacyPeriodPaymentSession) -> Unit,
     ): List<LegacyPeriodPaymentSession> {
         val bound = binding ?: return sessions
@@ -403,10 +404,6 @@ internal data class RecurringPaymentIdentity(
         for (session in sessions) {
             if (!matchesLoadedSession(session)) {
                 remaining += session
-                continue
-            }
-            if (!bind) {
-                capture(session)
                 continue
             }
             when (creation.adoptOrigin(bound, session.clientRef, session.seriesPublicId, session.period, generation)) {

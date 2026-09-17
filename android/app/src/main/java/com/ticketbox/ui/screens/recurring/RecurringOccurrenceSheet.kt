@@ -185,7 +185,7 @@ private fun OccurrenceRecordPayment(
         text = stringResource(R.string.occurrence_record_payment),
         icon = Icons.Filled.Add,
         onClick = onRecord,
-        enabled = origin.resolved && !origin.conflict && !origin.leftoverBlocked,
+        enabled = origin.resolved && !origin.conflict && (!origin.leftoverBlocked || origin.leftoverExistingOrigin),
         modifier = Modifier.fillMaxWidth().testTag("occurrence-record-payment"),
     )
 }

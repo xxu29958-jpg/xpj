@@ -41,7 +41,7 @@ internal class ExpenseManualCreation(private val core: ExpenseRepositoryCore) {
         }
         return core.offlineMutations.outbox
             .observeActiveByTypes(setOf(PendingMutationType.CreateExpense), includeCompleted = true)
-            .mapLatest { rows -> classifyOrigin(rows, binding, origin) }
+            .mapLatest { rows -> admission.withLock { classifyOrigin(rows, binding, origin) } }
     }
 
     suspend fun create(
@@ -274,6 +274,11 @@ internal class ExpenseManualCreation(private val core: ExpenseRepositoryCore) {
         return RecurringPaymentOriginAdopt.Bound
     }
 }
+
+internal suspend fun ExpenseManualCreation.inspectOrigin(
+    binding: LogicalSessionBinding,
+    origin: RecurringPaymentOrigin,
+): RecurringPaymentOriginLookup = observeOrigin(binding, origin).first()
 
 private fun RecurringPaymentOriginAdopt.requireBoundOrRetired(
     stored: RecurringPaymentCreatePayload?,

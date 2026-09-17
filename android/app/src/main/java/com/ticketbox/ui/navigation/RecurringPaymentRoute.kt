@@ -223,8 +223,10 @@ private fun RecurringPaymentAdmittedCleanup(target: RecurringPaymentAdmittedTarg
         val ref = target.canonicalRef?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         if (!target.sameBinding || target.originConflict) return@LaunchedEffect
         target.drafts.remember(task.copy(clientRef = ref))
-        target.drafts.removeDraft(task.clientRef)
-        target.draftState.removeState(task.clientRef)
+        if (ref == task.clientRef) {
+            target.drafts.removeDraft(task.clientRef)
+            target.draftState.removeState(task.clientRef)
+        }
     }
 }
 

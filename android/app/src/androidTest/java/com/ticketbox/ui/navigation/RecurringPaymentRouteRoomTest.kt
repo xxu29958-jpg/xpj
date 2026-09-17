@@ -47,6 +47,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -345,6 +346,17 @@ class RecurringPaymentRouteRoomTest {
     @Test fun reviewShowsUnattributedFactsAndAdoptBindsWithoutCreating() {
         val task = periodTask("CNY", 10_000).copy(occurrenceRowVersion = 3L)
         enqueueRaw(task, "legacy-ref", "便利店", CurrencyCode.CNY, 8800, "2026-08-01T00:00:00Z")
+        drafts.write(
+            RecurringPaymentDraft(
+                clientRef = task.clientRef,
+                amountText = "10.00",
+                currencyCode = "CNY",
+                merchant = task.merchant,
+                category = "住房",
+                note = "旧草稿",
+                expenseTime = "",
+            ),
+        )
         drafts.remember(task)
         showRoute(task)
         waitForSheet()
@@ -362,7 +374,7 @@ class RecurringPaymentRouteRoomTest {
         }
         assertEquals(1, harness.fixture.stored().size)
         assertEquals("legacy-ref", drafts.remembered(task.binding, task.seriesPublicId, task.period)?.clientRef)
-        assertNull(drafts.read(task.clientRef))
+        assertNotNull(drafts.read(task.clientRef))
         val stored = requireNotNull(
             decodeRecurringPaymentOrigin(
                 OutboxAdapterGraph().recurringPaymentCreateAdapter,

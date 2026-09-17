@@ -192,6 +192,23 @@ class RecurringPaymentTaskTest {
         assertEquals(task.clientRef, drafts.remembered(task.binding, task.seriesPublicId, task.period)?.clientRef)
         drafts.retireTask(task.clientRef)
         assertNull(drafts.remembered(task.binding, task.seriesPublicId, task.period))
+        val other = task.copy(clientRef = "other-ref")
+        drafts.write(
+            RecurringPaymentDraft(
+                clientRef = other.clientRef,
+                amountText = "12.00",
+                currencyCode = "USD",
+                merchant = "旧草稿",
+                category = "住房",
+                note = "保留",
+                expenseTime = "",
+            ),
+        )
+        drafts.remember(task)
+        assertEquals("保留", drafts.read(other.clientRef)?.note)
+        drafts.remember(other)
+        assertEquals("保留", drafts.read(other.clientRef)?.note)
+        assertEquals(other.clientRef, drafts.remembered(task.binding, task.seriesPublicId, task.period)?.clientRef)
     }
 
     @Test
@@ -354,15 +371,20 @@ class RecurringPaymentTaskTest {
         val september = RecurringPaymentTask(
             access.binding, "rec-1", "2026-09", "legacy-ref", "日元订阅", "JPY", 1200, "CNY", 2,
         )
-        assertEquals(true, identity.leftoverContinueAvailable(listOf(LeftoverSessionView(september, null, admitted = false))))
-        assertEquals(false, identity.leftoverContinueAvailable(listOf(LeftoverSessionView(september, null, admitted = true))))
-        val held = listOf(LeftoverSessionView(september, null, admitted = false))
-        assertEquals(true, identity.leftoverContinueVisible(held, seen = null, handoffFailed = false, ready = true))
-        assertEquals(false, RecurringPaymentIdentity(access.binding, "rec-1", "2026-09", 0).leftoverContinueVisible(held, seen = null, handoffFailed = false, ready = true))
-        assertEquals(true, RecurringPaymentIdentity(access.binding, "rec-1", "2026-09", 0).leftoverContinueVisible(held, seen = null, handoffFailed = true, ready = true))
-        assertTrue(LeftoverAdoptNotice.blocked(Result.failure(IllegalStateException("handoff")), unresolved = false))
-        assertTrue(LeftoverAdoptNotice.Done.nextHandoff(Result.failure(IllegalStateException("handoff")))?.isSuccess == true)
-        assertTrue(LeftoverAdoptNotice.Failed.nextHandoff(Result.failure(IllegalStateException("handoff")))?.isFailure == true)
+        val heldSessions = listOf(LeftoverSessionView(september, null, admitted = false))
+        assertEquals("legacy-ref", identity.leftoverDraftContinuation(heldSessions)?.task?.clientRef)
+        assertNull(identity.leftoverDraftContinuation(listOf(LeftoverSessionView(september, null, admitted = true))))
+        val held = identity.leftoverState(heldSessions, unresolved = true, remembered = null, error = "handoff")
+        val blocked = held as LegacyCompatibilityState.Held
+        assertEquals("handoff", blocked.error)
+        assertEquals("legacy-ref", blocked.continuation?.task?.clientRef)
+        val recovered = identity.leftoverState(heldSessions, unresolved = true, remembered = null)
+        assertNull((recovered as LegacyCompatibilityState.Held).error)
+        val ready = identity.leftoverState(heldSessions, unresolved = false, remembered = september)
+        assertEquals("legacy-ref", (ready as LegacyCompatibilityState.Ready).remembered?.clientRef)
+        val firstOpen = RecurringPaymentIdentity(access.binding, "rec-1", "2026-09", 0)
+        assertEquals(LeftoverTransition.Adopt, firstOpen.leftoverTransition(null))
+        assertEquals("legacy-ref", firstOpen.leftoverDraftContinuation(heldSessions)?.task?.clientRef)
     }
 
     @Test
@@ -379,7 +401,7 @@ class RecurringPaymentTaskTest {
     }
 
     @Test
-    fun rememberCanonicalClientRefDropsThePreviousDraft() {
+    fun rememberCanonicalClientRefKeepsThePreviousDraft() {
         val store = RecurringPaymentDraftStore(SavedStateHandle())
         val stale = assertNotNull(recurringPaymentTask(loaded("JPY", 1200)))
         val origin = stale.copy(clientRef = "origin-a")
@@ -397,7 +419,7 @@ class RecurringPaymentTaskTest {
         )
         store.remember(origin)
         assertEquals("origin-a", store.remembered(origin.binding, origin.seriesPublicId, origin.period)?.clientRef)
-        assertNull(store.read("store-b"))
+        assertEquals("旧草稿", store.read("store-b")?.note)
         assertNull(store.read("origin-a"))
     }
 
