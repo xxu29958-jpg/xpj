@@ -302,12 +302,18 @@ private data class RecurringPaymentCanonicalize(
         val period = identity.period?.takeIf { it.isNotBlank() } ?: return@retire
         report(true, false)
         scope.launch {
-            val retired = creation.retireOrigin(
-                binding,
-                RecurringPaymentOrigin(series, period, occupied.occurrenceRowVersion),
-                occupied.clientRef,
-            ) is RecurringPaymentOriginRetire.Retired
-            report(false, !retired)
+            try {
+                val result = creation.retireOrigin(
+                    binding,
+                    RecurringPaymentOrigin(series, period, occupied.occurrenceRowVersion),
+                    occupied.clientRef,
+                )
+                report(false, result !is RecurringPaymentOriginRetire.Retired)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                report(false, true)
+            }
         }
     }
 
@@ -446,7 +452,14 @@ private suspend fun retireFulfilledPayment(input: RecurringPaymentRetirement) {
     val series = visible.identity.seriesPublicId?.takeIf { it.isNotBlank() } ?: return
     val period = visible.identity.period?.takeIf { it.isNotBlank() } ?: return
     val origin = RecurringPaymentOrigin(series, period, input.refs.originGeneration)
-    refs.forEach { input.creation.retireOrigin(binding, origin, it) }
+    refs.forEach { ref ->
+        try {
+            input.creation.retireOrigin(binding, origin, ref)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+        }
+    }
 }
 
 private fun recurringPaymentHostDecision(

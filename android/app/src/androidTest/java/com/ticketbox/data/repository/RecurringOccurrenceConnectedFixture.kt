@@ -9,6 +9,7 @@ import com.ticketbox.RepositoryGraph
 import com.ticketbox.RepositoryGraphDependencies
 import com.ticketbox.RepositoryGraphOutbox
 import com.ticketbox.data.local.AppDatabase
+import com.ticketbox.data.local.PendingMutationDao
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiClient
 import com.ticketbox.data.remote.ApiService
@@ -43,6 +44,7 @@ internal class RecurringOccurrenceConnectedFixture(private val context: Context)
     private val adapters = OutboxAdapterGraph()
     private val session = occurrenceConnectedSession()
     lateinit var outbox: OutboxRepository
+    var failReplacePayload: Throwable? = null
     val confirmedStream = MutableStateFlow(listOf(occurrenceConnectedPayment()))
     val debts: DebtActions = object : DebtActions by occurrenceProxy<DebtActions>({ method, _ -> error("Unexpected debt method: $method") }) {
         override suspend fun listDebts(lens: DebtListLens) =
@@ -57,7 +59,13 @@ internal class RecurringOccurrenceConnectedFixture(private val context: Context)
     fun reopen(): RepositoryGraph {
         database?.close()
         val db = Room.databaseBuilder(context, AppDatabase::class.java, name).build().also { database = it }
-        outbox = OutboxRepository(db.pendingMutationDao(), clock, onRowsDeleted = {}, bindingProvider = { session.toOutboxBinding() })
+        val realDao = db.pendingMutationDao()
+        outbox = OutboxRepository(object : PendingMutationDao by realDao {
+            override suspend fun replacePayload(id: Long, type: String, payload: String): Int {
+                failReplacePayload?.let { throw it }
+                return realDao.replacePayload(id, type, payload)
+            }
+        }, clock, onRowsDeleted = {}, bindingProvider = { session.toOutboxBinding() })
         val sessions = occurrenceProxy<LocalSessionStore> { method, _ -> when (method) {
             "currentSession" -> session
             "observeSession" -> flowOf(session)

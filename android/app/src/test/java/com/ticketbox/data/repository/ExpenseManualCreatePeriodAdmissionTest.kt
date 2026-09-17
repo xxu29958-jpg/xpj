@@ -15,6 +15,7 @@ import kotlinx.coroutines.yield
 import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
@@ -389,6 +390,38 @@ internal class ExpenseManualCreatePeriodAdmissionTest : ExpensePendingRepository
                 pendingDao.rows.values.single { it.targetId == "expense:local:origin-a" }.payload,
             )?.retired == true,
         )
+    }
+
+    @Test
+    fun retireOriginReplacementFailureLeavesOccupantAndDoesNotRetire() = runTest {
+        val pendingDao = FakePendingMutationDao()
+        val repo = createRepo(FakeExpenseDao(), outbox(pendingDao))
+        val binding = requireNotNull(repo.captureDeferredLedgerBinding())
+        repo.manualCreation.create(draft, binding, "origin-a", RecurringPaymentOrigin("rec-1", "2026-08", 5)).getOrThrow()
+        val originA = pendingDao.rows.values.single { it.targetId == "expense:local:origin-a" }
+        pendingDao.markDone(originA.id, "done", "2026-09-16T00:00:00Z", null, expenseAcceptanceReceiptJson(71))
+        pendingDao.replacePayloadError = IllegalStateException("payload replacement")
+        assertFailsWith<IllegalStateException> {
+            repo.manualCreation.retireOrigin(binding, RecurringPaymentOrigin("rec-1", "2026-08", 5), "origin-a")
+        }
+        assertTrue(
+            decodeRecurringPaymentPayload(
+                com.ticketbox.OutboxAdapterGraph().recurringPaymentCreateAdapter,
+                pendingDao.rows.values.single { it.targetId == "expense:local:origin-a" }.payload,
+            )?.retired != true,
+        )
+        assertEquals(
+            RecurringPaymentPeriodOccupant.Occupied("origin-a", 5, 71),
+            repo.manualCreation.observePeriodOrigin(binding, "rec-1", "2026-08").first(),
+        )
+        assertEquals(
+            ManualExpenseCreateAdmission.Blocked(
+                RecurringPaymentAdmissionBlock.DifferentGeneration,
+                RecurringPaymentPeriodOccupant.Occupied("origin-a", 5, 71),
+            ),
+            repo.manualCreation.create(draft, binding, "current-b", RecurringPaymentOrigin("rec-1", "2026-08", 7)).getOrThrow(),
+        )
+        assertEquals(1, pendingDao.rows.size)
     }
 
     private fun keptDraft(clientRef: String) = RecurringPaymentDraft(

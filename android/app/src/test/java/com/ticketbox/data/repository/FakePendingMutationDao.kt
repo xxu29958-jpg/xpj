@@ -12,6 +12,7 @@ class FakePendingMutationDao : PendingMutationDao {
     val rows = linkedMapOf<Long, PendingMutationEntity>()
     var beforeNextRunnableBatchReturn: (suspend () -> Unit)? = null
     var beforeInsert: (suspend () -> Unit)? = null
+    var replacePayloadError: Throwable? = null
     private var nextId = 1L
     private val queueDepth = MutableStateFlow(0)
 
@@ -509,6 +510,7 @@ class FakePendingMutationDao : PendingMutationDao {
     }
 
     override suspend fun replacePayload(id: Long, type: String, payload: String): Int {
+        replacePayloadError?.let { throw it }
         val current = rows[id] ?: return 0
         if (current.type != type) return 0
         rows[id] = current.copy(payload = payload)
