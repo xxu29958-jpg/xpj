@@ -234,7 +234,7 @@ private fun occurrencePaymentGuard(
         conflict = origin is OriginObservation.Conflict,
         leftoverBlocked = blocked && origin !is OriginObservation.Conflict,
         leftoverUnreadable = held?.unreadable == true && origin !is OriginObservation.Conflict,
-        leftoverContinueDraft = held != null && !held.unreadable &&
+        leftoverContinueDraft = held != null && !held.busy && !held.unreadable &&
             held.continuation != null && origin is OriginObservation.Absent,
         leftoverExistingOrigin = blocked && origin is OriginObservation.Found,
         leftoverActionFailed = held?.notice is LegacyCompatibilityNotice.Failed,

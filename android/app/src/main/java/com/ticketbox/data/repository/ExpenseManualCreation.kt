@@ -2,7 +2,6 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.domain.model.ExpenseDraft
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -276,16 +275,10 @@ internal class ExpenseManualCreation(private val core: ExpenseRepositoryCore) {
     }
 }
 
-@Volatile
-internal var leftoverInspectHold: CompletableDeferred<Unit>? = null
-
 internal suspend fun ExpenseManualCreation.inspectOrigin(
     binding: LogicalSessionBinding,
     origin: RecurringPaymentOrigin,
-): RecurringPaymentOriginLookup {
-    leftoverInspectHold?.await()
-    return observeOrigin(binding, origin).first()
-}
+): RecurringPaymentOriginLookup = observeOrigin(binding, origin).first()
 
 private fun RecurringPaymentOriginAdopt.requireBoundOrRetired(
     stored: RecurringPaymentCreatePayload?,

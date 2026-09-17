@@ -93,6 +93,11 @@ internal class RecurringPaymentDraftStore(private val state: SavedStateHandle) {
     private val drafts: List<RecurringPaymentDraft>
         get() = state.get<String>(RECURRING_PAYMENT_DRAFTS_KEY)?.let { recurringPaymentDraftListAdapter.fromJson(it) }.orEmpty()
 
+    /**
+     * Canonical period task only. Does not delete another clientRef draft.
+     * After origin A wins, a current-version B draft may be unreachable until a later
+     * reopen/abandon surface; keep the bytes and do not auto-delete.
+     */
     fun remember(task: RecurringPaymentTask) {
         state[RECURRING_PAYMENT_TASKS_KEY] = recurringPaymentTaskListAdapter.toJson(
             tasks.filterNot { it.binding == task.binding && it.seriesPublicId == task.seriesPublicId && it.period == task.period } + task,

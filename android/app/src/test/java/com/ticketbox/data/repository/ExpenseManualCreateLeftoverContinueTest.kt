@@ -398,7 +398,7 @@ internal class ExpenseManualCreateLeftoverContinueTest : ExpensePendingRepositor
     }
 
     @Test
-    fun leftoverContinueHeldInspectKeepsEditedDraftAndMapping() = runTest {
+    fun leftoverContinueSecondDispatchDoesNotStartAnotherJob() = runTest {
         val pendingDao = FakePendingMutationDao()
         val repo = createRepo(FakeExpenseDao(), outbox(pendingDao))
         val binding = requireNotNull(repo.captureDeferredLedgerBinding())
@@ -411,27 +411,36 @@ internal class ExpenseManualCreateLeftoverContinueTest : ExpensePendingRepositor
         store.adoptLegacyPeriodPaymentSessions(leftover, repo.manualCreation, identity)
         store.write(RecurringPaymentDraft("legacy-b", "99.00", "CNY", "新商家", "住房", "已改", ""))
         val mapping = leftover.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY)
-        val held = identity.leftoverState(
+        var leftoverState: LegacyCompatibilityState = identity.leftoverState(
             store.legacyPeriodPaymentSessions(leftover),
             unresolved = true,
             remembered = store.remembered(binding, "rec-1", "2026-08"),
-        ) as LegacyCompatibilityState.Held
-        val busy = held.copy(busy = true)
+        )
+        var startedJobs = 0
         val started = CompletableDeferred<Unit>()
         val hold = CompletableDeferred<Unit>()
+        val done = CompletableDeferred<Unit>()
         val opened = mutableListOf<String>()
-        val done = CompletableDeferred<LegacyCompatibilityState>()
-        backgroundScope.launch {
-            done.complete(
-                identity.leftoverContinueSnapshot(store, leftover, {
+        fun dispatchContinue() {
+            val current = leftoverState as? LegacyCompatibilityState.Held ?: return
+            if (current.busy) return
+            leftoverState = current.copy(busy = true)
+            startedJobs += 1
+            backgroundScope.launch {
+                leftoverState = identity.leftoverContinueSnapshot(store, leftover, {
                     started.complete(Unit)
                     hold.await()
                     repo.manualCreation.inspectOrigin(binding, RecurringPaymentOrigin("rec-1", "2026-08", 5))
-                }) { opened += it.clientRef },
-            )
+                }) { opened += it.clientRef }
+                done.complete(Unit)
+            }
         }
+        dispatchContinue()
+        assertEquals(true, (leftoverState as LegacyCompatibilityState.Held).busy)
+        assertEquals(1, startedJobs)
         started.await()
-        assertTrue(busy.busy)
+        dispatchContinue()
+        assertEquals(1, startedJobs)
         hold.complete(Unit)
         done.await()
         assertEquals(listOf("legacy-b"), opened)
