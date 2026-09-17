@@ -95,8 +95,8 @@ internal class RecurringPaymentDraftStore(private val state: SavedStateHandle) {
 
     /**
      * Canonical period task only. Does not delete another clientRef draft.
-     * After origin A wins, a current-version B draft may be unreachable until a later
-     * reopen/abandon surface; keep the bytes and do not auto-delete.
+     * After origin A wins, keep a current-version B draft as the local task anchor until
+     * the user reopens or abandons it; do not auto-delete.
      */
     fun remember(task: RecurringPaymentTask) {
         state[RECURRING_PAYMENT_TASKS_KEY] = recurringPaymentTaskListAdapter.toJson(

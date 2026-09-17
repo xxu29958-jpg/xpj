@@ -72,6 +72,24 @@ class RecurringPaymentTaskTest {
             ),
         )
         assertEquals("outbox-august", focused.clientRef)
+        val kept = assertNotNull(
+            recurringPaymentFocused(
+                remembered = restored.copy(clientRef = "store-ref"),
+                task = restored.copy(clientRef = "route-ref"),
+                originClientRef = "outbox-august",
+                state = loaded("JPY", 1200),
+                localDraft = RecurringPaymentDraft(
+                    clientRef = "store-ref",
+                    amountText = "12",
+                    currencyCode = "JPY",
+                    merchant = "日元订阅",
+                    category = "住房",
+                    note = "当前草稿",
+                    expenseTime = "2026-08-01T00:00:00Z",
+                ),
+            ),
+        )
+        assertEquals("store-ref", kept.clientRef)
         assertEquals(
             71L,
             preferredPaymentExpenseId(
@@ -434,6 +452,28 @@ class RecurringPaymentTaskTest {
         assertEquals("origin-a", store.remembered(origin.binding, origin.seriesPublicId, origin.period)?.clientRef)
         assertEquals("旧草稿", store.read("store-b")?.note)
         assertNull(store.read("origin-a"))
+        val kept = assertNotNull(
+            recurringPaymentFocused(
+                remembered = origin.copy(clientRef = "store-b"),
+                task = origin.copy(clientRef = "store-b"),
+                originClientRef = "origin-a",
+                state = loaded("JPY", 1200),
+                localDraft = store.read("store-b"),
+            ),
+        )
+        assertEquals("store-b", kept.clientRef)
+        assertEquals("旧草稿", store.read("store-b")?.note)
+        store.removeDraft("store-b")
+        assertEquals(
+            "origin-a",
+            recurringPaymentFocused(
+                remembered = origin.copy(clientRef = "store-b"),
+                task = origin.copy(clientRef = "store-b"),
+                originClientRef = "origin-a",
+                state = loaded("JPY", 1200),
+                localDraft = store.read("store-b"),
+            )?.clientRef,
+        )
     }
 
     @Test

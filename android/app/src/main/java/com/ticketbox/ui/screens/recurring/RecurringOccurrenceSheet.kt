@@ -43,6 +43,7 @@ data class OccurrencePaymentGuard(
     val leftoverContinueDraft: Boolean = false,
     val leftoverExistingOrigin: Boolean = false,
     val leftoverActionFailed: Boolean = false,
+    val localDraftHeld: Boolean = false,
 )
 
 data class OccurrenceSheetActions(
@@ -56,6 +57,9 @@ data class OccurrenceSheetActions(
     val onRecordPayment: () -> Unit = {},
     val onAbandonLeftover: () -> Unit = {},
     val onContinueLeftover: () -> Unit = {},
+    val onOpenOrigin: () -> Unit = {},
+    val onContinueLocalDraft: () -> Unit = {},
+    val onAbandonLocalDraft: () -> Unit = {},
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -71,7 +75,7 @@ fun RecurringOccurrenceSheet(
         AppSheetScaffold(title = item.merchant, subtitle = stringResource(R.string.occurrence_subtitle)) {
             OccurrencePeriodControls(state, actions)
             state.message?.let { Text(it.asString(), modifier = Modifier.testTag("occurrence-message")) }
-            OccurrencePaymentConflict(origin, actions.onAbandonLeftover, actions.onContinueLeftover)
+            OccurrencePaymentConflict(origin, actions)
             state.seriesPending.forEach { OccurrencePending(it, state.access?.canModify == true, actions.onRecover) }
             state.occurrence?.let { occurrence ->
                 Text(stringResource(occurrenceStateLabel(occurrence.state)), modifier = Modifier.testTag("occurrence-state"))
@@ -103,8 +107,7 @@ fun RecurringOccurrenceSheet(
 @Composable
 private fun OccurrencePaymentConflict(
     origin: OccurrencePaymentGuard,
-    onAbandonLeftover: () -> Unit,
-    onContinueLeftover: () -> Unit,
+    actions: OccurrenceSheetActions,
 ) {
     if (origin.conflict) {
         Text(
@@ -113,6 +116,31 @@ private fun OccurrencePaymentConflict(
         )
         return
     }
+    OccurrenceLeftoverConflict(origin, actions)
+    if (!origin.localDraftHeld) return
+    Text(
+        stringResource(R.string.recurring_payment_local_draft_held),
+        modifier = Modifier.testTag("occurrence-payment-local-draft"),
+    )
+    TextButton(
+        onClick = actions.onOpenOrigin,
+        modifier = Modifier.testTag("occurrence-payment-local-draft-view"),
+    ) { Text(stringResource(R.string.recurring_payment_local_draft_view_origin)) }
+    TextButton(
+        onClick = actions.onContinueLocalDraft,
+        modifier = Modifier.testTag("occurrence-payment-local-draft-open"),
+    ) { Text(stringResource(R.string.recurring_payment_local_draft_open)) }
+    TextButton(
+        onClick = actions.onAbandonLocalDraft,
+        modifier = Modifier.testTag("occurrence-payment-local-draft-abandon"),
+    ) { Text(stringResource(R.string.recurring_payment_local_draft_abandon)) }
+}
+
+@Composable
+private fun OccurrenceLeftoverConflict(
+    origin: OccurrencePaymentGuard,
+    actions: OccurrenceSheetActions,
+) {
     if (!origin.leftoverBlocked) return
     var confirmUnreadable by rememberSaveable { mutableStateOf(false) }
     Text(
@@ -122,18 +150,14 @@ private fun OccurrencePaymentConflict(
     LeftoverPaymentNotices(origin)
     if (origin.leftoverContinueDraft) {
         TextButton(
-            onClick = onContinueLeftover,
+            onClick = actions.onContinueLeftover,
             modifier = Modifier.testTag("occurrence-payment-leftover-continue"),
-        ) {
-            Text(stringResource(R.string.recurring_payment_leftover_continue))
-        }
+        ) { Text(stringResource(R.string.recurring_payment_leftover_continue)) }
     }
     TextButton(
-        onClick = { if (origin.leftoverUnreadable) confirmUnreadable = true else onAbandonLeftover() },
+        onClick = { if (origin.leftoverUnreadable) confirmUnreadable = true else actions.onAbandonLeftover() },
         modifier = Modifier.testTag("occurrence-payment-leftover-abandon"),
-    ) {
-        Text(stringResource(R.string.recurring_payment_leftover_abandon))
-    }
+    ) { Text(stringResource(R.string.recurring_payment_leftover_abandon)) }
     if (!confirmUnreadable) return
     AlertDialog(
         onDismissRequest = { confirmUnreadable = false },
@@ -145,7 +169,7 @@ private fun OccurrencePaymentConflict(
         },
         confirmButton = {
             TextButton(
-                onClick = { confirmUnreadable = false; onAbandonLeftover() },
+                onClick = { confirmUnreadable = false; actions.onAbandonLeftover() },
                 modifier = Modifier.testTag("occurrence-payment-leftover-abandon-confirm"),
             ) { Text(stringResource(R.string.recurring_payment_leftover_abandon_confirm)) }
         },
@@ -185,7 +209,8 @@ private fun OccurrenceRecordPayment(
         text = stringResource(R.string.occurrence_record_payment),
         icon = Icons.Filled.Add,
         onClick = onRecord,
-        enabled = origin.resolved && !origin.conflict && (!origin.leftoverBlocked || origin.leftoverExistingOrigin),
+        enabled = origin.resolved && !origin.conflict && !origin.localDraftHeld &&
+            (!origin.leftoverBlocked || origin.leftoverExistingOrigin),
         modifier = Modifier.fillMaxWidth().testTag("occurrence-record-payment"),
     )
 }

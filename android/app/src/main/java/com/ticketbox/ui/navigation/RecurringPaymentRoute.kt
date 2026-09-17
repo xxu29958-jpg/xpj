@@ -20,6 +20,7 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -130,6 +131,7 @@ internal data class RecurringPaymentEntryContext(
     val exit: ExpenseEditExitActions,
     val drafts: RecurringPaymentDraftStore,
     val access: RecurringPaymentAccess,
+    val originOccupied: Boolean = false,
 ) {
     fun knownCurrencyBody(
         stored: RecurringPaymentDraft?,
@@ -192,16 +194,19 @@ internal fun RecurringPaymentRoute(
         RecurringPaymentOriginLookup.Absent -> admittedRow?.admittedClientRef()
     }
     val sameBinding = access?.binding == task.binding
+    val keepLocalDraft = admittedClientRef != null &&
+        admittedClientRef != task.clientRef &&
+        drafts.read(task.clientRef) != null
     RecurringPaymentAdmittedCleanup(
         RecurringPaymentAdmittedTarget(drafts, draftState, task, admittedClientRef, sameBinding, originConflict),
     )
-    if (admittedClientRef != null && sameBinding) {
+    if (admittedClientRef != null && sameBinding && !keepLocalDraft) {
         admitted(admittedClientRef)
         return
     }
     RecurringPaymentEntry(
         RecurringPaymentEntryContext(
-            task, factory, exit, drafts, RecurringPaymentAccess(accessResolved, access),
+            task, factory, exit, drafts, RecurringPaymentAccess(accessResolved, access), keepLocalDraft,
         ),
         draftState,
     )
@@ -222,7 +227,11 @@ private fun RecurringPaymentAdmittedCleanup(target: RecurringPaymentAdmittedTarg
     LaunchedEffect(target.canonicalRef, target.sameBinding, target.originConflict, task.clientRef, task.binding, task.seriesPublicId, task.period) {
         val ref = target.canonicalRef?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         if (!target.sameBinding || target.originConflict) return@LaunchedEffect
-        target.drafts.remember(task.copy(clientRef = ref))
+        val remembered = target.drafts.remembered(task.binding, task.seriesPublicId, task.period)
+        val keepLocal = remembered != null && remembered.clientRef != ref && target.drafts.read(remembered.clientRef) != null
+        if (!keepLocal) {
+            target.drafts.remember(task.copy(clientRef = ref))
+        }
         if (ref == task.clientRef) {
             target.drafts.removeDraft(task.clientRef)
             target.draftState.removeState(task.clientRef)
@@ -242,6 +251,12 @@ private fun RecurringPaymentEntry(ctx: RecurringPaymentEntryContext, draftState:
     val sameBinding = ctx.access.context?.binding == task.binding
     Column(Modifier.fillMaxSize().padding(AppSpacing.cardPadding)) {
         Text(stringResource(R.string.recurring_payment_return, task.period))
+        if (ctx.originOccupied) {
+            Text(
+                stringResource(R.string.recurring_payment_local_draft_held),
+                modifier = Modifier.testTag("recurring-payment-local-draft"),
+            )
+        }
         if (recurringPaymentShowsBindingChanged(ctx.access.resolved, sameBinding)) {
             Text(stringResource(R.string.recurring_payment_binding_changed))
             TextButton(onClick = ctx.exit.onBack) { Text(stringResource(R.string.common_cancel)) }
