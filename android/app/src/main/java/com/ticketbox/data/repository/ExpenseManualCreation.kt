@@ -45,6 +45,32 @@ internal class ExpenseManualCreation(private val core: ExpenseRepositoryCore) {
             }
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun observePeriodOrigin(
+        binding: LogicalSessionBinding,
+        seriesPublicId: String,
+        period: String,
+    ): Flow<RecurringPaymentPeriodOccupant> {
+        if (seriesPublicId.isBlank() || period.isBlank()) {
+            return flowOf(RecurringPaymentPeriodOccupant.Absent)
+        }
+        val requested = RecurringPaymentOrigin(seriesPublicId, period)
+        return core.offlineMutations.outbox
+            .observeActiveByTypes(setOf(PendingMutationType.CreateExpense), includeCompleted = true)
+            .mapLatest { rows ->
+                admission.withLock {
+                    classifyPeriodOccupant(
+                        matchingPeriodOrigins(
+                            rows,
+                            binding,
+                            requested,
+                            core.offlineMutations.recurringPaymentCreateAdapter,
+                        ) { core.describeManualCreation(it) },
+                    )
+                }
+            }
+    }
+
     suspend fun create(
         draft: ExpenseDraft,
         binding: LogicalSessionBinding,
@@ -98,7 +124,7 @@ internal class ExpenseManualCreation(private val core: ExpenseRepositoryCore) {
             return ManualExpenseCreateAdmission.Accepted(clientRef)
         }
         if (origin != null) {
-            val unattributed = unattributedCreations(rows, binding)
+            val unattributed = unattributedCreations(rows, binding, originAdapter) { core.describeManualCreation(it) }
             val review = ManualExpenseCreateAdmission.ReviewRequired(unattributed)
             if (unattributed.isNotEmpty() && review.candidateClientRefs.toSet() != acknowledgedUnattributed.toSet()) {
                 bound.requireStillActive()
@@ -172,7 +198,10 @@ internal class ExpenseManualCreation(private val core: ExpenseRepositoryCore) {
         ) {
             PeriodOriginAdmission.Conflict -> RecurringPaymentOriginAdopt.Conflict
             is PeriodOriginAdmission.DifferentGeneration ->
-                RecurringPaymentOriginAdopt.Blocked(RecurringPaymentAdmissionBlock.DifferentGeneration)
+                RecurringPaymentOriginAdopt.Blocked(
+                    RecurringPaymentAdmissionBlock.DifferentGeneration,
+                    periodOccupant(state.projection, state.occurrenceRowVersion),
+                )
             is PeriodOriginAdmission.Exact ->
                 if (state.projection.admittedClientRef() != clientRef) {
                     RecurringPaymentOriginAdopt.Conflict
@@ -218,7 +247,11 @@ internal class ExpenseManualCreation(private val core: ExpenseRepositoryCore) {
     ): Result<List<ManualExpenseCreationProjection>> = core.errorHandler.safeCall {
         admission.withLock {
             val bound = core.ledgerRequestGuard.bindExact(binding)
-            unattributedCreations(activeCreateRows(), binding).also { bound.requireStillActive() }
+            unattributedCreations(
+                activeCreateRows(),
+                binding,
+                core.offlineMutations.recurringPaymentCreateAdapter,
+            ) { core.describeManualCreation(it) }.also { bound.requireStillActive() }
         }
     }
 
@@ -226,24 +259,6 @@ internal class ExpenseManualCreation(private val core: ExpenseRepositoryCore) {
         core.offlineMutations.outbox
             .observeActiveByTypes(setOf(PendingMutationType.CreateExpense), includeCompleted = true)
             .first()
-
-    private suspend fun unattributedCreations(
-        rows: List<OutboxRow>,
-        binding: LogicalSessionBinding,
-    ): List<ManualExpenseCreationProjection> {
-        val originAdapter = core.offlineMutations.recurringPaymentCreateAdapter
-        return rows.mapNotNull { row ->
-            val boundRow = row.bindingOrNull() ?: return@mapNotNull null
-            if (boundRow.serverUrl != binding.serverUrl ||
-                boundRow.ledgerId != binding.ledgerId ||
-                boundRow.owner?.storageKey != binding.ownerKey
-            ) {
-                return@mapNotNull null
-            }
-            if (decodeRecurringPaymentPayload(originAdapter, row.payloadJson) != null) return@mapNotNull null
-            core.describeManualCreation(row)
-        }.sortedBy { it.admittedClientRef().orEmpty() }
-    }
 
     private suspend fun tryBindOrigin(row: OutboxRow, origin: RecurringPaymentOrigin): RecurringPaymentOriginAdopt {
         val originAdapter = core.offlineMutations.recurringPaymentCreateAdapter
@@ -318,7 +333,10 @@ private suspend fun admittedExistingPeriod(
 ): ManualExpenseCreateAdmission? = when (state) {
     PeriodOriginAdmission.Conflict -> error("本期付款命令冲突，请先处理重复提交。")
     is PeriodOriginAdmission.DifferentGeneration ->
-        ManualExpenseCreateAdmission.Blocked(RecurringPaymentAdmissionBlock.DifferentGeneration)
+        ManualExpenseCreateAdmission.Blocked(
+            RecurringPaymentAdmissionBlock.DifferentGeneration,
+            periodOccupant(state.projection, state.occurrenceRowVersion),
+        )
     is PeriodOriginAdmission.Exact ->
         ManualExpenseCreateAdmission.Accepted(
             state.projection.admittedClientRef() ?: error("本期付款命令冲突，请先处理重复提交。"),
@@ -380,4 +398,29 @@ private fun RecurringPaymentOriginAdopt.requireBoundOrRetired(
                 error("原付款命令无法补上来源。")
             }
     }
+}
+
+private suspend fun unattributedCreations(
+    rows: List<OutboxRow>,
+    binding: LogicalSessionBinding,
+    originAdapter: JsonAdapter<RecurringPaymentCreatePayload>?,
+    describe: suspend (OutboxRow) -> ManualExpenseCreationProjection?,
+): List<ManualExpenseCreationProjection> = rows.mapNotNull { row ->
+    val boundRow = row.bindingOrNull() ?: return@mapNotNull null
+    if (boundRow.serverUrl != binding.serverUrl ||
+        boundRow.ledgerId != binding.ledgerId ||
+        boundRow.owner?.storageKey != binding.ownerKey
+    ) {
+        return@mapNotNull null
+    }
+    if (decodeRecurringPaymentPayload(originAdapter, row.payloadJson) != null) return@mapNotNull null
+    describe(row)
+}.sortedBy { it.admittedClientRef().orEmpty() }
+
+private fun classifyPeriodOccupant(
+    active: List<Pair<RecurringPaymentCreatePayload, ManualExpenseCreationProjection>>,
+): RecurringPaymentPeriodOccupant {
+    if (active.size > 1) return RecurringPaymentPeriodOccupant.Conflict
+    val (stored, projection) = active.singleOrNull() ?: return RecurringPaymentPeriodOccupant.Absent
+    return periodOccupant(projection, stored.occurrenceRowVersion) ?: RecurringPaymentPeriodOccupant.Conflict
 }

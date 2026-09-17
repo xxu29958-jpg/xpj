@@ -86,13 +86,14 @@ class RecurringPaymentRouteRoomTest {
     } }
     private val mounted = mutableStateOf(true)
     private val openedExpense = mutableStateOf<Long?>(null)
+    private val openedSubmission = mutableStateOf<String?>(null)
     private val exited = mutableStateOf(false)
     private val drafts = RecurringPaymentDraftStore(SavedStateHandle())
     private val routeTask = mutableStateOf<RecurringPaymentTask?>(null)
     private var routeContent = false
 
     @After fun close() {
-        compose.runOnIdle { mounted.value = false; openedExpense.value = null; exited.value = false; harness.models.viewModelStore.clear() }
+        compose.runOnIdle { mounted.value = false; openedExpense.value = null; openedSubmission.value = null; exited.value = false; harness.models.viewModelStore.clear() }
         compose.waitForIdle()
         harness.close()
         sends = 0
@@ -772,6 +773,9 @@ class RecurringPaymentRouteRoomTest {
             compose.onAllNodes(hasText(context.getString(R.string.recurring_payment_generation_changed))).fetchSemanticsNodes().isNotEmpty()
         }
         compose.onNodeWithText(context.getString(R.string.ledger_manual_sheet_title)).assertExists()
+        compose.onNodeWithTag("recurring-payment-prior-origin").assertIsDisplayed()
+        compose.onNodeWithTag("recurring-payment-view-occupant").performScrollTo().performClick()
+        assertEquals("origin-a", openedSubmission.value)
         assertEquals(1, harness.fixture.stored().size)
         assertEquals("origin-a", readCreateRequest(requireNotNull(harness.fixture.stored().single()["payload"])).clientRef)
         assertEquals(
@@ -784,6 +788,47 @@ class RecurringPaymentRouteRoomTest {
         assertTrue(harness.fixture.stored().none { it["targetId"] == "expense:local:current-b" })
         assertEquals("当前草稿", drafts.read("current-b")?.note)
         assertEquals("current-b", drafts.remembered(localB.binding, localB.seriesPublicId, localB.period)?.clientRef)
+        assertEquals(0, sends)
+        assertEquals(0, occurrenceReads)
+    }
+
+    @Test fun laterGenerationSaveBlockedKeepsDraftAndOffersPriorOrigin() {
+        val occupant = periodTask("JPY", 1200).copy(clientRef = "origin-a", occurrenceRowVersion = 5L)
+        enqueueRaw(
+            occupant, "origin-a", "房租", CurrencyCode.JPY, 1200, "2026-08-01T00:00:00Z",
+            RecurringPaymentOrigin("rec-1", "2026-08", 5L),
+        )
+        val localB = periodTask("JPY", 1200).copy(clientRef = "current-b", occurrenceRowVersion = 7L)
+        drafts.remember(localB)
+        drafts.write(
+            RecurringPaymentDraft(
+                clientRef = "current-b",
+                amountText = "99.00",
+                currencyCode = "JPY",
+                merchant = "改过的商户",
+                category = "住房",
+                note = "当前草稿",
+                expenseTime = "2026-08-01T00:00:00Z",
+            ),
+        )
+        showRoute(localB)
+        waitForSheet()
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(hasText(context.getString(R.string.recurring_payment_prior_generation_occupied)))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performScrollTo().performClick()
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(hasText(context.getString(R.string.recurring_payment_generation_changed)))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_sheet_title)).assertExists()
+        assertEquals("当前草稿", drafts.read("current-b")?.note)
+        assertEquals("current-b", drafts.remembered(localB.binding, localB.seriesPublicId, localB.period)?.clientRef)
+        compose.onNodeWithTag("recurring-payment-view-occupant").performScrollTo().performClick()
+        assertEquals("origin-a", openedSubmission.value)
+        assertEquals(1, harness.fixture.stored().size)
+        assertEquals("origin-a", readCreateRequest(requireNotNull(harness.fixture.stored().single()["payload"])).clientRef)
         assertEquals(0, sends)
         assertEquals(0, occurrenceReads)
     }
@@ -895,6 +940,7 @@ class RecurringPaymentRouteRoomTest {
                 CompositionLocalProvider(
                     LocalViewModelStoreOwner provides harness.models,
                     LocalRecurringPaymentOpenExpense provides { openedExpense.value = it },
+                    LocalRecurringPaymentOpenSubmission provides { openedSubmission.value = it },
                 ) {
                     TicketboxTheme(skin = AppSkin.Default) {
                         val current = routeTask.value

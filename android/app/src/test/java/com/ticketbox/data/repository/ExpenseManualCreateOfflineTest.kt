@@ -481,7 +481,7 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
     }
 
     @Test
-    fun originBoundToAnOlderOccurrenceGenerationDoesNotOccupyTheCurrentOne() = runTest {
+    fun olderGenerationOccupantBlocksUntilExplicitlyRetired() = runTest {
         val dao = FakeExpenseDao()
         val pendingDao = FakePendingMutationDao()
         val outbox = outbox(pendingDao)
@@ -493,7 +493,10 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
         assertTrue(repo.manualCreation.observeOrigin(binding, later).first() is RecurringPaymentOriginLookup.Absent)
         val blocked = repo.manualCreation.create(draft, binding, "second-ref", later).getOrThrow()
         assertEquals(
-            ManualExpenseCreateAdmission.Blocked(RecurringPaymentAdmissionBlock.DifferentGeneration),
+            ManualExpenseCreateAdmission.Blocked(
+                RecurringPaymentAdmissionBlock.DifferentGeneration,
+                RecurringPaymentPeriodOccupant.Occupied("first-ref", 7),
+            ),
             blocked,
         )
         assertEquals(1, pendingDao.rows.size)

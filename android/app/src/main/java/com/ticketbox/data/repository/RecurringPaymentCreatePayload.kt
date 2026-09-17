@@ -26,7 +26,10 @@ internal sealed interface PeriodOriginAdmission {
     data object Empty : PeriodOriginAdmission
     data class Exact(val projection: ManualExpenseCreationProjection) : PeriodOriginAdmission
     data class UpgradeableSameRef(val projection: ManualExpenseCreationProjection) : PeriodOriginAdmission
-    data class DifferentGeneration(val projection: ManualExpenseCreationProjection) : PeriodOriginAdmission
+    data class DifferentGeneration(
+        val projection: ManualExpenseCreationProjection,
+        val occurrenceRowVersion: Long?,
+    ) : PeriodOriginAdmission
     data object Conflict : PeriodOriginAdmission
 }
 
@@ -35,7 +38,10 @@ internal sealed class RecurringPaymentOriginAdopt {
     data object Bound : RecurringPaymentOriginAdopt()
     data object Missing : RecurringPaymentOriginAdopt()
     data object Conflict : RecurringPaymentOriginAdopt()
-    data class Blocked(val reason: RecurringPaymentAdmissionBlock) : RecurringPaymentOriginAdopt()
+    data class Blocked(
+        val reason: RecurringPaymentAdmissionBlock,
+        val occupant: RecurringPaymentPeriodOccupant.Occupied? = null,
+    ) : RecurringPaymentOriginAdopt()
 }
 
 /** Admission result for the existing CreateExpense writer. Not a second command. */
@@ -48,7 +54,28 @@ internal sealed class ManualExpenseCreateAdmission {
                 .distinct()
                 .sorted()
     }
-    data class Blocked(val reason: RecurringPaymentAdmissionBlock) : ManualExpenseCreateAdmission()
+    data class Blocked(
+        val reason: RecurringPaymentAdmissionBlock,
+        val occupant: RecurringPaymentPeriodOccupant.Occupied? = null,
+    ) : ManualExpenseCreateAdmission()
+}
+
+internal sealed interface RecurringPaymentPeriodOccupant {
+    data object Absent : RecurringPaymentPeriodOccupant
+    data class Occupied(
+        val clientRef: String,
+        val occurrenceRowVersion: Long?,
+        val acceptedExpenseId: Long? = null,
+    ) : RecurringPaymentPeriodOccupant
+    data object Conflict : RecurringPaymentPeriodOccupant
+}
+
+internal fun periodOccupant(
+    projection: ManualExpenseCreationProjection,
+    occurrenceRowVersion: Long?,
+): RecurringPaymentPeriodOccupant.Occupied? {
+    val ref = projection.admittedClientRef()?.takeIf { it.isNotBlank() } ?: return null
+    return RecurringPaymentPeriodOccupant.Occupied(ref, occurrenceRowVersion, projection.acceptedExpenseId)
 }
 
 internal fun classifyPeriodAdmission(
@@ -64,7 +91,7 @@ internal fun classifyPeriodAdmission(
     if (stored.occurrenceRowVersion == null && projection.admittedClientRef() == requestedClientRef) {
         return PeriodOriginAdmission.UpgradeableSameRef(projection)
     }
-    return PeriodOriginAdmission.DifferentGeneration(projection)
+    return PeriodOriginAdmission.DifferentGeneration(projection, stored.occurrenceRowVersion)
 }
 
 /**

@@ -1835,7 +1835,7 @@ class RecurringOccurrenceRoomContinuityTest {
     }
 
     @Test
-    fun hostAbsentOccurrenceGenerationDoesNotOccupyTheCurrentOrigin() {
+    fun hostPriorGenerationOccupantIsVisibleAndCanBeRetiredThenCurrentPaymentAdmitted() {
         fixture.confirmedStream.value = emptyList()
         host.installModel()
         compose.waitUntil(10_000) {
@@ -1876,22 +1876,41 @@ class RecurringOccurrenceRoomContinuityTest {
         val drafts = RecurringPaymentDraftStore(SavedStateHandle())
         host.showOccurrenceHost(drafts)
         compose.waitUntil(10_000) {
-            runCatching { compose.onNodeWithTag("occurrence-record-payment").performScrollTo().performClick() }
+            runCatching {
+                compose.onNodeWithTag("occurrence-payment-prior-origin").performScrollTo().assertIsDisplayed()
+            }.isSuccess
+        }
+        compose.onNodeWithTag("occurrence-record-payment").performScrollTo().assertIsNotEnabled()
+        assertNull(host.paymentTask.value)
+        runBlocking {
+            assertEquals(
+                RecurringPaymentPeriodOccupant.Occupied("origin-a", previous),
+                requireNotNull(host.graph).expenseRepository.manualCreation
+                    .observePeriodOrigin(binding, "recurring-1", "2026-09")
+                    .first(),
+            )
+            assertTrue(
+                requireNotNull(host.graph).expenseRepository.manualCreation
+                    .observeOrigin(binding, RecurringPaymentOrigin("recurring-1", "2026-09", previous + 2))
+                    .first() is RecurringPaymentOriginLookup.Absent,
+            )
+        }
+        compose.onNodeWithTag("occurrence-payment-prior-origin-view").performScrollTo().performClick()
+        compose.waitUntil(10_000) { host.openedSubmissions.contains("origin-a") }
+        compose.onNodeWithTag("occurrence-payment-prior-origin-retire").performScrollTo().performClick()
+        compose.waitUntil(10_000) {
+            runCatching {
+                compose.onNodeWithTag("occurrence-record-payment").performScrollTo().assertIsEnabled()
+            }.isSuccess
+        }
+        compose.onNodeWithTag("occurrence-record-payment").performScrollTo().performClick()
+        compose.waitUntil(10_000) {
             host.paymentTask.value?.period == "2026-09" && host.paymentTask.value?.clientRef != "origin-a"
         }
         assertNotEquals("origin-a", host.paymentTask.value?.clientRef)
         assertEquals(previous + 2, host.paymentTask.value?.occurrenceRowVersion)
         runBlocking {
             val later = RecurringPaymentOrigin("recurring-1", "2026-09", previous + 2)
-            assertTrue(
-                requireNotNull(host.graph).expenseRepository.manualCreation
-                    .observeOrigin(binding, later)
-                    .first() is RecurringPaymentOriginLookup.Absent,
-            )
-            val original = requireNotNull(host.graph).expenseRepository.manualCreation
-                .observeOrigin(binding, RecurringPaymentOrigin("recurring-1", "2026-09", previous))
-                .first() as RecurringPaymentOriginLookup.Found
-            assertEquals("origin-a", original.projection.request?.clientRef)
             val admitted = requireNotNull(host.graph).expenseRepository.manualCreation.create(
                 ExpenseDraft(
                     amountCents = 10_000,
@@ -1910,12 +1929,16 @@ class RecurringOccurrenceRoomContinuityTest {
                 requireNotNull(host.paymentTask.value?.clientRef),
                 later,
             ).getOrThrow()
-            assertEquals(
-                ManualExpenseCreateAdmission.Blocked(RecurringPaymentAdmissionBlock.DifferentGeneration),
-                admitted,
+            assertEquals(requireNotNull(host.paymentTask.value?.clientRef), (admitted as ManualExpenseCreateAdmission.Accepted).clientRef)
+            val originA = fixture.stored().single { it["targetId"] == "expense:local:origin-a" }
+            val retired = decodeRecurringPaymentPayload(
+                OutboxAdapterGraph().recurringPaymentCreateAdapter,
+                requireNotNull(originA["payload"]),
             )
+            assertTrue(requireNotNull(retired).retired)
+            assertEquals("origin-a", retired.request.clientRef)
         }
-        assertEquals(1, fixture.stored().count { it["type"] == "create_expense" })
+        assertEquals(2, fixture.stored().count { it["type"] == "create_expense" })
     }
 
     @Test

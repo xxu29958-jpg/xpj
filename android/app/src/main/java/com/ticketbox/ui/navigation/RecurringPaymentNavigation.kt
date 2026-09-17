@@ -10,6 +10,7 @@ import com.ticketbox.data.repository.LegacyPeriodPaymentSession
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.RecurringPaymentOriginAdopt
 import com.ticketbox.data.repository.RecurringPaymentOriginLookup
+import com.ticketbox.data.repository.RecurringPaymentPeriodOccupant
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.ui.components.formatMinorAmountInput
 import com.ticketbox.viewmodel.RecurringOccurrenceUiState
@@ -292,7 +293,37 @@ internal sealed interface OriginObservation {
     data object Loading : OriginObservation
     data object Absent : OriginObservation
     data class Found(val clientRef: String, val acceptedExpenseId: Long? = null) : OriginObservation
+    data class Occupied(
+        val clientRef: String,
+        val acceptedExpenseId: Long? = null,
+        val occurrenceRowVersion: Long? = null,
+    ) : OriginObservation
     data object Conflict : OriginObservation
+
+    companion object {
+        fun fromLookups(
+            exact: RecurringPaymentOriginLookup,
+            occupant: RecurringPaymentPeriodOccupant,
+            generation: Long?,
+        ): OriginObservation {
+            val found = exact as? RecurringPaymentOriginLookup.Found
+            val clientRef = found?.projection?.request?.clientRef?.takeIf { it.isNotBlank() }
+            val occupied = occupant as? RecurringPaymentPeriodOccupant.Occupied
+            return when {
+                exact is RecurringPaymentOriginLookup.Conflict || (found != null && clientRef == null) ||
+                    occupant is RecurringPaymentPeriodOccupant.Conflict -> Conflict
+                clientRef != null -> Found(clientRef, found.projection.acceptedExpenseId)
+                occupied != null && occupied.occurrenceRowVersion == generation && generation != null ->
+                    Found(occupied.clientRef, occupied.acceptedExpenseId)
+                occupied != null -> Occupied(
+                    occupied.clientRef,
+                    occupied.acceptedExpenseId,
+                    occupied.occurrenceRowVersion,
+                )
+                else -> Absent
+            }
+        }
+    }
 }
 
 internal sealed interface LegacyCompatibilityNotice {

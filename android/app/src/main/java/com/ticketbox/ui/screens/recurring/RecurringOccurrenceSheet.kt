@@ -44,6 +44,7 @@ data class OccurrencePaymentGuard(
     val leftoverExistingOrigin: Boolean = false,
     val leftoverActionFailed: Boolean = false,
     val localDraftHeld: Boolean = false,
+    val priorGenerationOccupied: Boolean = false,
 )
 
 data class OccurrenceSheetActions(
@@ -60,6 +61,7 @@ data class OccurrenceSheetActions(
     val onOpenOrigin: () -> Unit = {},
     val onContinueLocalDraft: () -> Unit = {},
     val onAbandonLocalDraft: () -> Unit = {},
+    val onRetirePriorOrigin: () -> Unit = {},
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -117,15 +119,31 @@ private fun OccurrencePaymentConflict(
         return
     }
     OccurrenceLeftoverConflict(origin, actions)
+    if (origin.priorGenerationOccupied) {
+        Text(
+            stringResource(R.string.recurring_payment_prior_generation_occupied),
+            modifier = Modifier.testTag("occurrence-payment-prior-origin"),
+        )
+        TextButton(
+            onClick = actions.onOpenOrigin,
+            modifier = Modifier.testTag("occurrence-payment-prior-origin-view"),
+        ) { Text(stringResource(R.string.recurring_payment_local_draft_view_origin)) }
+        TextButton(
+            onClick = actions.onRetirePriorOrigin,
+            modifier = Modifier.testTag("occurrence-payment-prior-origin-retire"),
+        ) { Text(stringResource(R.string.recurring_payment_retire_prior_origin)) }
+    }
     if (!origin.localDraftHeld) return
     Text(
         stringResource(R.string.recurring_payment_local_draft_held),
         modifier = Modifier.testTag("occurrence-payment-local-draft"),
     )
-    TextButton(
-        onClick = actions.onOpenOrigin,
-        modifier = Modifier.testTag("occurrence-payment-local-draft-view"),
-    ) { Text(stringResource(R.string.recurring_payment_local_draft_view_origin)) }
+    if (!origin.priorGenerationOccupied) {
+        TextButton(
+            onClick = actions.onOpenOrigin,
+            modifier = Modifier.testTag("occurrence-payment-local-draft-view"),
+        ) { Text(stringResource(R.string.recurring_payment_local_draft_view_origin)) }
+    }
     TextButton(
         onClick = actions.onContinueLocalDraft,
         modifier = Modifier.testTag("occurrence-payment-local-draft-open"),
@@ -210,6 +228,7 @@ private fun OccurrenceRecordPayment(
         icon = Icons.Filled.Add,
         onClick = onRecord,
         enabled = origin.resolved && !origin.conflict && !origin.localDraftHeld &&
+            !origin.priorGenerationOccupied &&
             (!origin.leftoverBlocked || origin.leftoverExistingOrigin),
         modifier = Modifier.fillMaxWidth().testTag("occurrence-record-payment"),
     )

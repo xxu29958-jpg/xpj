@@ -17,6 +17,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.ticketbox.data.repository.ExpenseManualCreation
 import com.ticketbox.data.repository.inspectOrigin
 import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.RecurringPaymentPeriodOccupant
 import com.ticketbox.data.repository.RecurringPaymentOrigin
 import com.ticketbox.data.repository.RecurringPaymentOriginLookup
 import com.ticketbox.domain.model.RecurringItem
@@ -26,6 +27,7 @@ import com.ticketbox.ui.screens.recurring.RecurringOccurrenceSheet
 import com.ticketbox.viewmodel.RecurringOccurrenceUiState
 import com.ticketbox.viewmodel.RecurringOccurrenceViewModel
 import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -91,18 +93,21 @@ internal fun RecurringOccurrenceHost(
     val prior = remembered ?: matching
     val localDraft = draftEpoch.let { prior?.clientRef?.let { restore.drafts?.read(it) } }
     val originRef = (origin as? OriginObservation.Found)?.clientRef
+    val originExpenseId = (origin as? OriginObservation.Found)?.acceptedExpenseId
+        ?: (origin as? OriginObservation.Occupied)?.acceptedExpenseId
     val focused = recurringPaymentFocused(remembered, matching, originRef, state, localDraft)
     val local = RecurringPaymentCanonicalize(
         restore.drafts, origin, focused, task, visible.identity, leftover, remembered, localDraft, expenses, state, prior,
     )
     val guard = occurrencePaymentGuard(origin, leftover.state, local.held)
+    val scope = rememberCoroutineScope()
     CanonicalizeRecurringPaymentIdentity(local) { taskJson = it }
-    LaunchedEffect(userClosed, visible, taskJson, originRef, leftover.state) {
+    LaunchedEffect(userClosed, visible, taskJson, origin, leftover.state) {
         if (leftover.state is LegacyCompatibilityState.Loading) return@LaunchedEffect
         val current = readRecurringPaymentTask(taskJson)
         val decision = recurringPaymentHostDecision(current, userClosed, visible, remembered)
         if (decision.clearTask) taskJson = null
-        retireFulfilledPayment(RecurringPaymentRetirement(visible, restore.drafts, model.savedState, creation, RecurringPaymentRetirementRefs(decision.retireClientRefs, originRef)))
+        retireFulfilledPayment(RecurringPaymentRetirement(visible, restore.drafts, model.savedState, creation, RecurringPaymentRetirementRefs(decision.retireClientRefs, originRef ?: (origin as? OriginObservation.Occupied)?.clientRef)))
     }
     LaunchedEffect(taskJson, restore.items, state.item, state.access?.binding, userClosed) {
         val current = readRecurringPaymentTask(taskJson)
@@ -121,8 +126,10 @@ internal fun RecurringOccurrenceHost(
             { local.reopen { userClosed = false; taskJson = recurringPaymentTaskJson(it); expenses.onRecordPayment(it) } },
             { local.drop { draftEpoch += 1 } },
             { local.record { userClosed = false; taskJson = recurringPaymentTaskJson(it); expenses.onRecordPayment(it) } },
-        ),
-        preferredExpenseId = preferredPaymentExpenseId(focused, admitted?.acceptedExpenseId, visible.identity),
+        ).copy(onRetirePriorOrigin = local.retirePrior(creation, visible.identity, scope)),
+        preferredExpenseId = preferredPaymentExpenseId(
+            focused, admitted?.acceptedExpenseId ?: originExpenseId, visible.identity,
+        ) ?: originExpenseId,
         origin = guard,
     )
 }
@@ -225,7 +232,7 @@ private fun occurrencePaymentGuard(
         resolved = ready &&
             origin !is OriginObservation.Loading &&
             origin !is OriginObservation.Conflict &&
-            (!blocked || origin is OriginObservation.Found),
+            (!blocked || origin is OriginObservation.Found || origin is OriginObservation.Occupied),
         conflict = origin is OriginObservation.Conflict,
         leftoverBlocked = blocked && origin !is OriginObservation.Conflict,
         leftoverUnreadable = held?.unreadable == true && origin !is OriginObservation.Conflict,
@@ -234,6 +241,7 @@ private fun occurrencePaymentGuard(
         leftoverExistingOrigin = blocked && origin is OriginObservation.Found,
         leftoverActionFailed = held?.notice is LegacyCompatibilityNotice.Failed,
         localDraftHeld = localDraftHeld,
+        priorGenerationOccupied = origin is OriginObservation.Occupied,
     )
 }
 
@@ -252,22 +260,48 @@ private data class RecurringPaymentCanonicalize(
 ) {
     val held: Boolean
         get() {
-            val found = origin as? OriginObservation.Found ?: return false
+            val occupantRef = when (origin) {
+                is OriginObservation.Found -> origin.clientRef
+                is OriginObservation.Occupied -> origin.clientRef
+                else -> return false
+            }
             val current = focused ?: return false
             return leftover.state is LegacyCompatibilityState.Ready &&
                 localDraft?.clientRef == current.clientRef &&
-                current.clientRef != found.clientRef
+                current.clientRef != occupantRef
         }
 
     fun viewOrigin() {
-        val found = origin as? OriginObservation.Found ?: return
-        val expenseId = found.acceptedExpenseId
+        val occupant = when (origin) {
+            is OriginObservation.Found -> origin.clientRef to origin.acceptedExpenseId
+            is OriginObservation.Occupied -> origin.clientRef to origin.acceptedExpenseId
+            else -> return
+        }
+        val expenseId = occupant.second
         if (expenseId != null && expenseId > 0L) {
             expenses.onOpenExpense(expenseId)
             return
         }
-        val originRef = found.clientRef.takeIf { it.isNotBlank() } ?: return
+        val originRef = occupant.first.takeIf { it.isNotBlank() } ?: return
         expenses.onOpenSubmission(originRef)
+    }
+
+    fun retirePrior(
+        creation: ExpenseManualCreation,
+        identity: RecurringPaymentIdentity,
+        scope: kotlinx.coroutines.CoroutineScope,
+    ): () -> Unit = retire@{
+        val occupied = origin as? OriginObservation.Occupied ?: return@retire
+        val binding = identity.binding ?: return@retire
+        val series = identity.seriesPublicId?.takeIf { it.isNotBlank() } ?: return@retire
+        val period = identity.period?.takeIf { it.isNotBlank() } ?: return@retire
+        scope.launch {
+            creation.retireOrigin(
+                binding,
+                RecurringPaymentOrigin(series, period, occupied.occurrenceRowVersion),
+                occupied.clientRef,
+            )
+        }
     }
 
     fun reopen(open: (RecurringPaymentTask) -> Unit) {
@@ -281,6 +315,7 @@ private data class RecurringPaymentCanonicalize(
 
     fun record(open: (RecurringPaymentTask) -> Unit) {
         if (held || origin is OriginObservation.Loading || origin is OriginObservation.Conflict) return
+        if (origin is OriginObservation.Occupied) return
         if (leftover.state is LegacyCompatibilityState.Held && origin !is OriginObservation.Found) return
         val next = recurringPaymentTask(
             ui, existing = task, remembered = remembered,
@@ -366,23 +401,22 @@ private fun rememberRecurringPaymentOrigin(
         val series = identity.seriesPublicId
         val period = identity.period
         if (binding == null || series.isNullOrBlank() || period.isNullOrBlank()) {
-            flowOf(RecurringPaymentOriginLookup.Absent).onEach { originResolved = true }
+            flowOf(RecurringPaymentOriginLookup.Absent to RecurringPaymentPeriodOccupant.Absent)
+                .onEach { originResolved = true }
         } else {
-            creation.observeOrigin(
-                binding,
-                RecurringPaymentOrigin(series, period, identity.occurrenceRowVersion),
-            ).onEach { originResolved = true }
+            combine(
+                creation.observeOrigin(
+                    binding,
+                    RecurringPaymentOrigin(series, period, identity.occurrenceRowVersion),
+                ),
+                creation.observePeriodOrigin(binding, series, period),
+            ) { exact, occupant -> exact to occupant }.onEach { originResolved = true }
         }
-    }.collectAsStateWithLifecycle(initialValue = RecurringPaymentOriginLookup.Absent)
+    }.collectAsStateWithLifecycle(
+        initialValue = RecurringPaymentOriginLookup.Absent to RecurringPaymentPeriodOccupant.Absent,
+    )
     if (!originResolved) return OriginObservation.Loading
-    val found = lookup as? RecurringPaymentOriginLookup.Found
-    val clientRef = found?.projection?.request?.clientRef?.takeIf { it.isNotBlank() }
-    return when {
-        lookup is RecurringPaymentOriginLookup.Conflict || (found != null && clientRef == null) ->
-            OriginObservation.Conflict
-        clientRef != null -> OriginObservation.Found(clientRef, found.projection.acceptedExpenseId)
-        else -> OriginObservation.Absent
-    }
+    return OriginObservation.fromLookups(lookup.first, lookup.second, identity.occurrenceRowVersion)
 }
 
 private fun RecurringOccurrenceUiState.paymentVisible() = RecurringPaymentVisible(
