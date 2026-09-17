@@ -623,6 +623,47 @@ class RecurringPaymentRouteRoomTest {
         assertEquals(0, sends)
     }
 
+    @Test fun reopeningUnversionedCurrentDraftSaveReusesOriginAWithoutSecondCreate() {
+        val origin = periodTask("JPY", 1200).copy(clientRef = "origin-a", occurrenceRowVersion = 3L)
+        enqueueRaw(
+            origin, "origin-a", "房租", CurrencyCode.JPY, 1200, "2026-08-01T00:00:00Z",
+            RecurringPaymentOrigin("rec-1", "2026-08", 3L),
+        )
+        val localB = periodTask("JPY", 1200).copy(clientRef = "current-b")
+        assertNull(localB.occurrenceRowVersion)
+        drafts.remember(localB)
+        drafts.write(
+            RecurringPaymentDraft(
+                clientRef = "current-b",
+                amountText = "99.00",
+                currencyCode = "JPY",
+                merchant = "改过的商户",
+                category = "住房",
+                note = "当前草稿",
+                expenseTime = "2026-08-01T00:00:00Z",
+            ),
+        )
+        showRoute(localB.copy(occurrenceRowVersion = 3L))
+        waitForSheet()
+        compose.onNodeWithTag("recurring-payment-local-draft").assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performScrollTo().performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("recurring-payment-local-draft").assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_sheet_title)).assertExists()
+        assertEquals(1, harness.fixture.stored().size)
+        assertEquals("origin-a", readCreateRequest(requireNotNull(harness.fixture.stored().single()["payload"])).clientRef)
+        assertEquals(
+            RecurringPaymentOrigin("rec-1", "2026-08", 3L),
+            decodeRecurringPaymentOrigin(
+                OutboxAdapterGraph().recurringPaymentCreateAdapter,
+                requireNotNull(harness.fixture.stored().single()["payload"]),
+            ),
+        )
+        assertEquals("当前草稿", drafts.read("current-b")?.note)
+        assertEquals("current-b", drafts.remembered(localB.binding, localB.seriesPublicId, localB.period)?.clientRef)
+        assertEquals(0, sends)
+    }
+
     private fun waitForReview() {
         compose.waitUntil(10_000) {
             compose.onAllNodes(hasText(context.getString(R.string.recurring_payment_review_required))).fetchSemanticsNodes().isNotEmpty()

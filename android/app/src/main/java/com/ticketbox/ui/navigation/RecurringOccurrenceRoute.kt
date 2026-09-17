@@ -260,11 +260,14 @@ private data class RecurringPaymentCanonicalize(
         }
 
     fun viewOrigin() {
-        val originRef = (origin as? OriginObservation.Found)?.clientRef ?: return
-        val next = focused?.copy(clientRef = originRef)
-            ?: recurringPaymentTask(ui, admittedClientRef = originRef)
-            ?: return
-        expenses.onRecordPayment(next)
+        val found = origin as? OriginObservation.Found ?: return
+        val expenseId = found.acceptedExpenseId
+        if (expenseId != null && expenseId > 0L) {
+            expenses.onOpenExpense(expenseId)
+            return
+        }
+        val originRef = found.clientRef.takeIf { it.isNotBlank() } ?: return
+        expenses.onOpenSubmission(originRef)
     }
 
     fun reopen(open: (RecurringPaymentTask) -> Unit) {
@@ -319,14 +322,16 @@ internal fun recurringPaymentFocused(
 ): RecurringPaymentTask? {
     val originRef = originClientRef?.takeIf { it.isNotBlank() }
     val prior = remembered ?: task
+    val generation = state.occurrence?.rowVersion
     if (originRef != null) {
         if (prior != null && localDraft?.clientRef == prior.clientRef && prior.clientRef != originRef) {
-            return prior
+            return if (generation != null) prior.copy(occurrenceRowVersion = generation) else prior
         }
-        return prior?.copy(clientRef = originRef)
-            ?: recurringPaymentTask(state, admittedClientRef = originRef)
+        val admitted = prior?.copy(clientRef = originRef)
+            ?: return recurringPaymentTask(state, admittedClientRef = originRef)
+        return if (generation != null) admitted.copy(occurrenceRowVersion = generation) else admitted
     }
-    return prior
+    return if (prior != null && generation != null) prior.copy(occurrenceRowVersion = generation) else prior
 }
 
 @Composable
@@ -375,7 +380,7 @@ private fun rememberRecurringPaymentOrigin(
     return when {
         lookup is RecurringPaymentOriginLookup.Conflict || (found != null && clientRef == null) ->
             OriginObservation.Conflict
-        clientRef != null -> OriginObservation.Found(clientRef)
+        clientRef != null -> OriginObservation.Found(clientRef, found.projection.acceptedExpenseId)
         else -> OriginObservation.Absent
     }
 }

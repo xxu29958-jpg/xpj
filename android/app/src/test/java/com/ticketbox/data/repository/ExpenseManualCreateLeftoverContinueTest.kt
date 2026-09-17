@@ -398,6 +398,50 @@ internal class ExpenseManualCreateLeftoverContinueTest : ExpensePendingRepositor
     }
 
     @Test
+    fun unversionedCurrentDraftSaveInspectsCurrentGenerationAndReusesOriginA() = runTest {
+        val pendingDao = FakePendingMutationDao()
+        val repo = createRepo(FakeExpenseDao(), outbox(pendingDao))
+        val binding = requireNotNull(repo.captureDeferredLedgerBinding())
+        val store = RecurringPaymentDraftStore(SavedStateHandle())
+        val currentB = RecurringPaymentTask(
+            binding, "rec-1", "2026-08", "current-b", "新商家", "CNY", 12_345, "CNY",
+        )
+        assertNull(currentB.occurrenceRowVersion)
+        store.remember(currentB)
+        store.write(
+            RecurringPaymentDraft(
+                clientRef = "current-b",
+                amountText = "99.00",
+                currencyCode = "CNY",
+                merchant = "改过的商户",
+                category = "住房",
+                note = "当前草稿",
+                expenseTime = "2026-08-01T00:00:00Z",
+            ),
+        )
+        repo.manualCreation.create(draft, binding, "origin-a", RecurringPaymentOrigin("rec-1", "2026-08", 5)).getOrThrow()
+        val missed = repo.manualCreation.observeOrigin(
+            binding,
+            RecurringPaymentOrigin("rec-1", "2026-08", currentB.occurrenceRowVersion),
+        ).first()
+        assertTrue(missed is RecurringPaymentOriginLookup.Absent)
+        val stamped = RecurringPaymentOrigin("rec-1", "2026-08", 5)
+        val found = repo.manualCreation.observeOrigin(binding, stamped).first()
+        assertTrue(found is RecurringPaymentOriginLookup.Found)
+        assertEquals("origin-a", found.projection.request?.clientRef)
+        val admitted = repo.manualCreation.create(
+            draft,
+            binding,
+            "current-b",
+            stamped,
+        ).getOrThrow() as ManualExpenseCreateAdmission.Accepted
+        assertEquals("origin-a", admitted.clientRef)
+        assertEquals(1, pendingDao.rows.size)
+        assertEquals("当前草稿", store.read("current-b")?.note)
+        assertEquals("current-b", store.remembered(binding, "rec-1", "2026-08")?.clientRef)
+    }
+
+    @Test
     fun leftoverContinueSecondDispatchDoesNotStartAnotherJob() = runTest {
         val pendingDao = FakePendingMutationDao()
         val repo = createRepo(FakeExpenseDao(), outbox(pendingDao))

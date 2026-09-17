@@ -1707,7 +1707,11 @@ class RecurringOccurrenceRoomContinuityTest {
                 RecurringOccurrenceHost(
                     current,
                     requireNotNull(host.graph).expenseRepository.manualCreation,
-                    RecurringExpenseNavigation({ host.openedExpenses += it }, { host.paymentTask.value = it; host.openedPayments += it }),
+                    RecurringExpenseNavigation(
+                        { host.openedExpenses += it },
+                        { host.paymentTask.value = it; host.openedPayments += it },
+                        { host.openedSubmissions += it },
+                    ),
                     RecurringPaymentRestore(
                         items = listOf(occurrenceConnectedItem()),
                         drafts = drafts,
@@ -1726,11 +1730,15 @@ class RecurringOccurrenceRoomContinuityTest {
         compose.onNodeWithTag("occurrence-record-payment").performScrollTo().assertIsNotEnabled()
         compose.onNodeWithTag("occurrence-payment-local-draft-open").performScrollTo().performClick()
         compose.waitUntil(10_000) { host.openedPayments.any { it.clientRef == "current-b" } }
+        val reopened = host.openedPayments.single { it.clientRef == "current-b" }
         assertEquals("current-b", host.paymentTask.value?.clientRef)
+        assertEquals(fixture.network.current.rowVersion, reopened.occurrenceRowVersion)
         assertEquals("current-b", drafts.remembered(binding, "recurring-1", "2026-09")?.clientRef)
         host.paymentTask.value = null
         compose.onNodeWithTag("occurrence-payment-local-draft-view").performScrollTo().performClick()
-        compose.waitUntil(10_000) { host.paymentTask.value?.clientRef == "origin-a" }
+        compose.waitUntil(10_000) { host.openedSubmissions.contains("origin-a") }
+        assertNull(host.paymentTask.value)
+        assertTrue(host.openedPayments.none { it.clientRef == "origin-a" })
         assertEquals("current-b", drafts.remembered(binding, "recurring-1", "2026-09")?.clientRef)
         compose.onNodeWithTag("occurrence-payment-local-draft-abandon").performScrollTo().performClick()
         compose.waitUntil(10_000) {

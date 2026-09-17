@@ -85,6 +85,7 @@ private const val RECURRING_PAYMENT_DRAFTS_KEY = "recurring.payment.drafts"
 internal data class RecurringExpenseNavigation(
     val onOpenExpense: (Long) -> Unit,
     val onRecordPayment: (RecurringPaymentTask) -> Unit = {},
+    val onOpenSubmission: (String) -> Unit = {},
 )
 
 internal class RecurringPaymentDraftStore(private val state: SavedStateHandle) {
@@ -284,7 +285,7 @@ internal data class LegacyDraftContinuation(
 internal sealed interface OriginObservation {
     data object Loading : OriginObservation
     data object Absent : OriginObservation
-    data class Found(val clientRef: String) : OriginObservation
+    data class Found(val clientRef: String, val acceptedExpenseId: Long? = null) : OriginObservation
     data object Conflict : OriginObservation
 }
 

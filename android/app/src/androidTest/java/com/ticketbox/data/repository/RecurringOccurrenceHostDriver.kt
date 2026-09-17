@@ -38,6 +38,7 @@ internal class RecurringOccurrenceHostDriver(
     var graph: RepositoryGraph? = null
     val paymentTask = mutableStateOf<RecurringPaymentTask?>(null)
     val openedPayments = mutableListOf<RecurringPaymentTask>()
+    val openedSubmissions = mutableListOf<String>()
 
     fun close() {
         compose.runOnIdle { model.value?.viewModelScope?.cancel() }
@@ -88,7 +89,11 @@ internal class RecurringOccurrenceHostDriver(
                 RecurringOccurrenceHost(
                     current,
                     requireNotNull(graph).expenseRepository.manualCreation,
-                    RecurringExpenseNavigation({ openedExpenses += it }, { paymentTask.value = it; openedPayments += it }),
+                    RecurringExpenseNavigation(
+                        { openedExpenses += it },
+                        { paymentTask.value = it; openedPayments += it },
+                        { openedSubmissions += it },
+                    ),
                     RecurringPaymentRestore(items = listOf(occurrenceConnectedItem()), drafts = drafts),
                 )
             }

@@ -90,6 +90,7 @@ class RecurringPaymentTaskTest {
             ),
         )
         assertEquals("store-ref", kept.clientRef)
+        assertEquals(3L, kept.occurrenceRowVersion)
         assertEquals(
             71L,
             preferredPaymentExpenseId(
@@ -462,6 +463,7 @@ class RecurringPaymentTaskTest {
             ),
         )
         assertEquals("store-b", kept.clientRef)
+        assertEquals(3L, kept.occurrenceRowVersion)
         assertEquals("旧草稿", store.read("store-b")?.note)
         store.removeDraft("store-b")
         assertEquals(
@@ -474,6 +476,59 @@ class RecurringPaymentTaskTest {
                 localDraft = store.read("store-b"),
             )?.clientRef,
         )
+    }
+
+    @Test
+    fun focusedLocalDraftStampsCurrentGenerationWhenStoredBHasNoRowVersion() {
+        val stored = RecurringPaymentTask(
+            access.binding, "rec-1", "2026-08", "current-b", "日元订阅", "JPY", 1200, "CNY",
+        )
+        assertNull(stored.occurrenceRowVersion)
+        val kept = assertNotNull(
+            recurringPaymentFocused(
+                remembered = stored,
+                task = stored,
+                originClientRef = "origin-a",
+                state = loaded("JPY", 1200),
+                localDraft = RecurringPaymentDraft(
+                    clientRef = "current-b",
+                    amountText = "99.00",
+                    currencyCode = "JPY",
+                    merchant = "改过的商户",
+                    category = "住房",
+                    note = "当前草稿",
+                    expenseTime = "2026-08-01T00:00:00Z",
+                ),
+            ),
+        )
+        assertEquals("current-b", kept.clientRef)
+        assertEquals(3L, kept.occurrenceRowVersion)
+    }
+
+    @Test
+    fun focusedLocalDraftStampsCurrentGenerationWhenStoredBIsBehind() {
+        val stored = RecurringPaymentTask(
+            access.binding, "rec-1", "2026-08", "current-b", "日元订阅", "JPY", 1200, "CNY", 1,
+        )
+        val kept = assertNotNull(
+            recurringPaymentFocused(
+                remembered = stored,
+                task = stored,
+                originClientRef = "origin-a",
+                state = loaded("JPY", 1200),
+                localDraft = RecurringPaymentDraft(
+                    clientRef = "current-b",
+                    amountText = "99.00",
+                    currencyCode = "JPY",
+                    merchant = "改过的商户",
+                    category = "住房",
+                    note = "当前草稿",
+                    expenseTime = "2026-08-01T00:00:00Z",
+                ),
+            ),
+        )
+        assertEquals("current-b", kept.clientRef)
+        assertEquals(3L, kept.occurrenceRowVersion)
     }
 
     @Test
