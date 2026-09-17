@@ -1,6 +1,7 @@
 package com.ticketbox.data.repository
 
 import androidx.lifecycle.SavedStateHandle
+import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
@@ -289,7 +290,77 @@ internal class ExpenseManualCreatePeriodAdmissionTest : ExpensePendingRepository
             repo.manualCreation.observeOrigin(binding, RecurringPaymentOrigin("rec-1", "2026-08", 7)).first()
                 is RecurringPaymentOriginLookup.Absent,
         )
-        repo.manualCreation.retireOrigin(binding, RecurringPaymentOrigin("rec-1", "2026-08", 5), "origin-a")
+        assertEquals(
+            RecurringPaymentOriginRetire.CommandActive(PendingMutationStatus.Pending),
+            repo.manualCreation.retireOrigin(binding, RecurringPaymentOrigin("rec-1", "2026-08", 5), "origin-a"),
+        )
+        val originA = pendingDao.rows.values.single { it.targetId == "expense:local:origin-a" }
+        assertTrue(decodeRecurringPaymentPayload(com.ticketbox.OutboxAdapterGraph().recurringPaymentCreateAdapter, originA.payload)?.retired != true)
+        val blocked = repo.manualCreation.create(
+            draft, binding, "current-b", RecurringPaymentOrigin("rec-1", "2026-08", 7),
+        ).getOrThrow()
+        assertEquals(
+            ManualExpenseCreateAdmission.Blocked(
+                RecurringPaymentAdmissionBlock.DifferentGeneration,
+                RecurringPaymentPeriodOccupant.Occupied("origin-a", 5),
+            ),
+            blocked,
+        )
+        assertEquals(1, pendingDao.rows.size)
+        assertEquals(
+            1,
+            pendingDao.markInFlightIfPending(
+                originA.id,
+                PendingMutationStatus.Pending.wireValue,
+                PendingMutationStatus.InFlight.wireValue,
+                "2026-09-16T00:00:00Z",
+            ),
+        )
+        assertEquals(
+            RecurringPaymentOriginRetire.CommandActive(PendingMutationStatus.InFlight),
+            repo.manualCreation.retireOrigin(binding, RecurringPaymentOrigin("rec-1", "2026-08", 5), "origin-a"),
+        )
+        assertEquals(
+            ManualExpenseCreateAdmission.Blocked(
+                RecurringPaymentAdmissionBlock.DifferentGeneration,
+                RecurringPaymentPeriodOccupant.Occupied("origin-a", 5),
+            ),
+            repo.manualCreation.create(draft, binding, "current-b", RecurringPaymentOrigin("rec-1", "2026-08", 7)).getOrThrow(),
+        )
+        pendingDao.markFailed(originA.id, PendingMutationStatus.Failed.wireValue, "transport", false)
+        assertEquals(
+            RecurringPaymentOriginRetire.CommandActive(PendingMutationStatus.Failed),
+            repo.manualCreation.retireOrigin(binding, RecurringPaymentOrigin("rec-1", "2026-08", 5), "origin-a"),
+        )
+        pendingDao.markConflict(originA.id, PendingMutationStatus.Conflict.wireValue, "conflict")
+        assertEquals(
+            RecurringPaymentOriginRetire.CommandActive(PendingMutationStatus.Conflict),
+            repo.manualCreation.retireOrigin(binding, RecurringPaymentOrigin("rec-1", "2026-08", 5), "origin-a"),
+        )
+        assertEquals(
+            ManualExpenseCreateAdmission.Blocked(
+                RecurringPaymentAdmissionBlock.DifferentGeneration,
+                RecurringPaymentPeriodOccupant.Occupied("origin-a", 5),
+            ),
+            repo.manualCreation.create(draft, binding, "current-b", RecurringPaymentOrigin("rec-1", "2026-08", 7)).getOrThrow(),
+        )
+        pendingDao.markDone(originA.id, "done", "2026-09-16T00:00:00Z", null, null)
+        assertEquals(
+            RecurringPaymentOriginRetire.UnverifiedReceipt,
+            repo.manualCreation.retireOrigin(binding, RecurringPaymentOrigin("rec-1", "2026-08", 5), "origin-a"),
+        )
+        assertEquals(
+            ManualExpenseCreateAdmission.Blocked(
+                RecurringPaymentAdmissionBlock.DifferentGeneration,
+                RecurringPaymentPeriodOccupant.Occupied("origin-a", 5),
+            ),
+            repo.manualCreation.create(draft, binding, "current-b", RecurringPaymentOrigin("rec-1", "2026-08", 7)).getOrThrow(),
+        )
+        pendingDao.markDone(originA.id, "done", "2026-09-16T00:00:00Z", null, expenseAcceptanceReceiptJson(71))
+        assertEquals(
+            RecurringPaymentOriginRetire.Retired,
+            repo.manualCreation.retireOrigin(binding, RecurringPaymentOrigin("rec-1", "2026-08", 5), "origin-a"),
+        )
         val retired = decodeRecurringPaymentPayload(
             com.ticketbox.OutboxAdapterGraph().recurringPaymentCreateAdapter,
             pendingDao.rows.values.single { it.targetId == "expense:local:origin-a" }.payload,

@@ -1,6 +1,7 @@
 package com.ticketbox.data.repository
 
 import com.squareup.moshi.JsonAdapter
+import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.domain.model.ExpenseDraft
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -148,14 +149,20 @@ internal class ExpenseManualCreation(private val core: ExpenseRepositoryCore) {
         binding: LogicalSessionBinding,
         origin: RecurringPaymentOrigin,
         clientRef: String,
-    ) {
-        if (origin.seriesPublicId.isBlank() || origin.period.isBlank() || clientRef.isBlank()) return
-        admission.withLock {
+    ): RecurringPaymentOriginRetire {
+        if (origin.seriesPublicId.isBlank() || origin.period.isBlank() || clientRef.isBlank()) {
+            return RecurringPaymentOriginRetire.Missing
+        }
+        return admission.withLock {
             val bound = core.ledgerRequestGuard.bindExact(binding)
-            val row = observe(binding, clientRef).first()?.row ?: return@withLock
+            val projection = observe(binding, clientRef).first() ?: return@withLock RecurringPaymentOriginRetire.Missing
+            val row = projection.row
+            if (!row.isBoundCreate(binding, clientRef)) return@withLock RecurringPaymentOriginRetire.Missing
             val originAdapter = core.offlineMutations.recurringPaymentCreateAdapter
-            val stored = decodeRecurringPaymentPayload(originAdapter, row.payloadJson) ?: return@withLock
-            if (stored.retired || !stored.matchesOrigin(origin)) return@withLock
+            val stored = decodeRecurringPaymentPayload(originAdapter, row.payloadJson)
+                ?: return@withLock RecurringPaymentOriginRetire.Missing
+            stored.originRetireDecision(origin, clientRef, row.status, projection.acceptedExpenseId)
+                ?.let { return@withLock it }
             core.offlineMutations.outbox.replaceCreateExpensePayload(
                 row.id,
                 encodeManualCreatePayload(
@@ -167,6 +174,7 @@ internal class ExpenseManualCreation(private val core: ExpenseRepositoryCore) {
                 ),
             )
             bound.requireStillActive()
+            RecurringPaymentOriginRetire.Retired
         }
     }
 
@@ -416,6 +424,28 @@ private suspend fun unattributedCreations(
     if (decodeRecurringPaymentPayload(originAdapter, row.payloadJson) != null) return@mapNotNull null
     describe(row)
 }.sortedBy { it.admittedClientRef().orEmpty() }
+
+private fun OutboxRow.isBoundCreate(binding: LogicalSessionBinding, clientRef: String): Boolean {
+    val boundRow = bindingOrNull() ?: return false
+    return boundRow.serverUrl == binding.serverUrl &&
+        boundRow.ledgerId == binding.ledgerId &&
+        boundRow.owner?.storageKey == binding.ownerKey &&
+        targetId == expenseLocalTargetId(clientRef)
+}
+
+private fun RecurringPaymentCreatePayload.originRetireDecision(
+    origin: RecurringPaymentOrigin,
+    clientRef: String,
+    status: PendingMutationStatus,
+    acceptedExpenseId: Long?,
+): RecurringPaymentOriginRetire? {
+    if (retired) return RecurringPaymentOriginRetire.Retired
+    if (!matchesOrigin(origin) || request.clientRef != clientRef) return RecurringPaymentOriginRetire.Missing
+    if (occurrenceRowVersion != origin.occurrenceRowVersion) return RecurringPaymentOriginRetire.GenerationMismatch
+    if (status != PendingMutationStatus.Done) return RecurringPaymentOriginRetire.CommandActive(status)
+    if ((acceptedExpenseId ?: 0L) <= 0L) return RecurringPaymentOriginRetire.UnverifiedReceipt
+    return null
+}
 
 private fun classifyPeriodOccupant(
     active: List<Pair<RecurringPaymentCreatePayload, ManualExpenseCreationProjection>>,

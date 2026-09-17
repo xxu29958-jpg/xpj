@@ -25,6 +25,8 @@
     <string name="recurring_payment_generation_changed">期次状态已变化，请返回核对</string>
     <string name="recurring_payment_prior_generation_occupied">本期存在旧状态下的付款</string>
     <string name="recurring_payment_retire_prior_origin">确认旧付款不再占用本期</string>
+    <string name="recurring_payment_retire_prior_confirm">确认后仅解除本期占用。已送达的账单仍保留，未完成的原提交不会停止发送。</string>
+    <string name="recurring_payment_retire_prior_active">原付款命令尚未完成，请打开原提交核对或停止。不能在这里解除占用。</string>
     <string name="occurrence_payment_currency">选择本期付款币种</string>
     <string name="occurrence_choose_payment_currency">本期义务币种未确认。请选择实际付款币种，不要默认成账本本币。</string>
 </resources>

@@ -2,6 +2,7 @@ package com.ticketbox.data.repository
 
 import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.JsonClass
+import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
 
 /** Explicit period-payment origin on the existing CreateExpense Outbox row. Not a second Writer. */
@@ -68,6 +69,14 @@ internal sealed interface RecurringPaymentPeriodOccupant {
         val acceptedExpenseId: Long? = null,
     ) : RecurringPaymentPeriodOccupant
     data object Conflict : RecurringPaymentPeriodOccupant
+}
+
+internal sealed class RecurringPaymentOriginRetire {
+    data object Retired : RecurringPaymentOriginRetire()
+    data object Missing : RecurringPaymentOriginRetire()
+    data class CommandActive(val status: PendingMutationStatus) : RecurringPaymentOriginRetire()
+    data object UnverifiedReceipt : RecurringPaymentOriginRetire()
+    data object GenerationMismatch : RecurringPaymentOriginRetire()
 }
 
 internal fun periodOccupant(

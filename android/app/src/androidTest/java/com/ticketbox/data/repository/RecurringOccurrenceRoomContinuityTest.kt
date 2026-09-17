@@ -1798,9 +1798,9 @@ class RecurringOccurrenceRoomContinuityTest {
             host.model.value?.uiState?.value?.occurrence?.state == "fulfilled" &&
                 drafts.remembered(binding, "recurring-1", "2026-09") == null
         }
-        compose.waitUntil(10_000) {
+        runBlocking {
             val payload = fixture.stored().single { it["type"] == "create_expense" }["payload"]
-            decodeRecurringPaymentPayload(OutboxAdapterGraph().recurringPaymentCreateAdapter, requireNotNull(payload))?.retired == true
+            assertTrue(decodeRecurringPaymentPayload(OutboxAdapterGraph().recurringPaymentCreateAdapter, requireNotNull(payload))?.retired != true)
         }
         fixture.network.current = fixture.network.current.copy(
             state = "unfulfilled",
@@ -1818,18 +1818,17 @@ class RecurringOccurrenceRoomContinuityTest {
         host.paymentTask.value = null
         compose.waitUntil(10_000) {
             runCatching { compose.onNodeWithTag("occurrence-record-payment").performScrollTo().performClick() }
-            host.paymentTask.value?.period == "2026-09" && host.paymentTask.value?.clientRef != "origin-a"
+            host.paymentTask.value?.period == "2026-09" && host.paymentTask.value?.clientRef == "origin-a"
         }
-        assertNotEquals("origin-a", host.paymentTask.value?.clientRef)
+        assertEquals("origin-a", host.paymentTask.value?.clientRef)
         runBlocking {
-            assertTrue(
-                requireNotNull(host.graph).expenseRepository.manualCreation
-                    .observeOrigin(
-                        binding,
-                        RecurringPaymentOrigin("recurring-1", "2026-09", fixture.network.current.rowVersion),
-                    )
-                    .first() is RecurringPaymentOriginLookup.Absent,
-            )
+            val found = requireNotNull(host.graph).expenseRepository.manualCreation
+                .observeOrigin(
+                    binding,
+                    RecurringPaymentOrigin("recurring-1", "2026-09", fixture.network.current.rowVersion),
+                )
+                .first() as RecurringPaymentOriginLookup.Found
+            assertEquals("origin-a", found.projection.request?.clientRef)
         }
         assertEquals(1, fixture.stored().count { it["type"] == "create_expense" })
     }
@@ -1877,7 +1876,7 @@ class RecurringOccurrenceRoomContinuityTest {
         host.showOccurrenceHost(drafts)
         compose.waitUntil(10_000) {
             runCatching {
-                compose.onNodeWithTag("occurrence-payment-prior-origin").performScrollTo().assertIsDisplayed()
+                compose.onNodeWithTag("occurrence-payment-prior-origin").assertIsDisplayed()
             }.isSuccess
         }
         compose.onNodeWithTag("occurrence-record-payment").performScrollTo().assertIsNotEnabled()
@@ -1895,9 +1894,51 @@ class RecurringOccurrenceRoomContinuityTest {
                     .first() is RecurringPaymentOriginLookup.Absent,
             )
         }
-        compose.onNodeWithTag("occurrence-payment-prior-origin-view").performScrollTo().performClick()
+        compose.onNodeWithTag("occurrence-payment-prior-origin-view").performClick()
         compose.waitUntil(10_000) { host.openedSubmissions.contains("origin-a") }
-        compose.onNodeWithTag("occurrence-payment-prior-origin-retire").performScrollTo().performClick()
+        compose.onNodeWithTag("occurrence-payment-prior-origin-retire").performClick()
+        compose.onNodeWithTag("occurrence-payment-prior-origin-retire-confirm").performClick()
+        compose.waitUntil(10_000) {
+            runCatching {
+                compose.onNodeWithTag("occurrence-payment-prior-origin-retire-failed").assertIsDisplayed()
+            }.isSuccess
+        }
+        compose.onNodeWithTag("occurrence-record-payment").performScrollTo().assertIsNotEnabled()
+        assertNull(host.paymentTask.value)
+        runBlocking {
+            val later = RecurringPaymentOrigin("recurring-1", "2026-09", previous + 2)
+            assertEquals(
+                ManualExpenseCreateAdmission.Blocked(
+                    RecurringPaymentAdmissionBlock.DifferentGeneration,
+                    RecurringPaymentPeriodOccupant.Occupied("origin-a", previous),
+                ),
+                requireNotNull(host.graph).expenseRepository.manualCreation.create(
+                    ExpenseDraft(
+                        amountCents = 10_000,
+                        originalCurrencyCode = CurrencyCode.CNY,
+                        originalAmountMinor = 10_000,
+                        ledgerHomeCurrency = CurrencyCode.CNY,
+                        merchant = "房租",
+                        category = "餐饮",
+                        note = null,
+                        expenseTime = "2026-09-05T08:00:00Z",
+                        tags = null,
+                        valueScore = null,
+                        regretScore = null,
+                    ),
+                    binding,
+                    "current-b",
+                    later,
+                ).getOrThrow(),
+            )
+            val row = fixture.outbox.observeActiveByTypes(
+                setOf(com.ticketbox.data.local.PendingMutationType.CreateExpense),
+                includeCompleted = true,
+            ).first().single { it.targetId == "expense:local:origin-a" }
+            fixture.outbox.markDone(row.id, receiptJson = expenseAcceptanceReceiptJson(71))
+        }
+        compose.onNodeWithTag("occurrence-payment-prior-origin-retire").performClick()
+        compose.onNodeWithTag("occurrence-payment-prior-origin-retire-confirm").performClick()
         compose.waitUntil(10_000) {
             runCatching {
                 compose.onNodeWithTag("occurrence-record-payment").performScrollTo().assertIsEnabled()

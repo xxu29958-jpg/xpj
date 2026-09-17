@@ -45,6 +45,8 @@ data class OccurrencePaymentGuard(
     val leftoverActionFailed: Boolean = false,
     val localDraftHeld: Boolean = false,
     val priorGenerationOccupied: Boolean = false,
+    val priorRetireBusy: Boolean = false,
+    val priorRetireFailed: Boolean = false,
 )
 
 data class OccurrenceSheetActions(
@@ -120,18 +122,28 @@ private fun OccurrencePaymentConflict(
     }
     OccurrenceLeftoverConflict(origin, actions)
     if (origin.priorGenerationOccupied) {
-        Text(
-            stringResource(R.string.recurring_payment_prior_generation_occupied),
-            modifier = Modifier.testTag("occurrence-payment-prior-origin"),
+        var confirmRetire by rememberSaveable { mutableStateOf(false) }
+        Text(stringResource(R.string.recurring_payment_prior_generation_occupied), modifier = Modifier.testTag("occurrence-payment-prior-origin"))
+        TextButton(actions.onOpenOrigin, Modifier.testTag("occurrence-payment-prior-origin-view")) {
+            Text(stringResource(R.string.recurring_payment_local_draft_view_origin))
+        }
+        TextButton({ if (!origin.priorRetireBusy) confirmRetire = true }, Modifier.testTag("occurrence-payment-prior-origin-retire"), enabled = !origin.priorRetireBusy) {
+            Text(stringResource(R.string.recurring_payment_retire_prior_origin))
+        }
+        if (origin.priorRetireFailed) {
+            Text(stringResource(R.string.recurring_payment_retire_prior_active), modifier = Modifier.testTag("occurrence-payment-prior-origin-retire-failed"))
+        }
+        if (confirmRetire) AlertDialog(
+            onDismissRequest = { confirmRetire = false },
+            confirmButton = {
+                TextButton(
+                    { confirmRetire = false; actions.onRetirePriorOrigin() },
+                    Modifier.testTag("occurrence-payment-prior-origin-retire-confirm"),
+                ) { Text(stringResource(R.string.recurring_payment_retire_prior_origin)) }
+            },
+            dismissButton = { TextButton({ confirmRetire = false }) { Text(stringResource(R.string.occurrence_keep)) } },
+            text = { Text(stringResource(R.string.recurring_payment_retire_prior_confirm)) },
         )
-        TextButton(
-            onClick = actions.onOpenOrigin,
-            modifier = Modifier.testTag("occurrence-payment-prior-origin-view"),
-        ) { Text(stringResource(R.string.recurring_payment_local_draft_view_origin)) }
-        TextButton(
-            onClick = actions.onRetirePriorOrigin,
-            modifier = Modifier.testTag("occurrence-payment-prior-origin-retire"),
-        ) { Text(stringResource(R.string.recurring_payment_retire_prior_origin)) }
     }
     if (!origin.localDraftHeld) return
     Text(

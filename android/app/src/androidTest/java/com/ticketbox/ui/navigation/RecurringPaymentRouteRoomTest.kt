@@ -774,7 +774,7 @@ class RecurringPaymentRouteRoomTest {
         }
         compose.onNodeWithText(context.getString(R.string.ledger_manual_sheet_title)).assertExists()
         compose.onNodeWithTag("recurring-payment-prior-origin").assertIsDisplayed()
-        compose.onNodeWithTag("recurring-payment-view-occupant").performScrollTo().performClick()
+        compose.onNodeWithTag("recurring-payment-view-occupant").performClick()
         assertEquals("origin-a", openedSubmission.value)
         assertEquals(1, harness.fixture.stored().size)
         assertEquals("origin-a", readCreateRequest(requireNotNull(harness.fixture.stored().single()["payload"])).clientRef)
@@ -825,7 +825,7 @@ class RecurringPaymentRouteRoomTest {
         compose.onNodeWithText(context.getString(R.string.ledger_manual_sheet_title)).assertExists()
         assertEquals("当前草稿", drafts.read("current-b")?.note)
         assertEquals("current-b", drafts.remembered(localB.binding, localB.seriesPublicId, localB.period)?.clientRef)
-        compose.onNodeWithTag("recurring-payment-view-occupant").performScrollTo().performClick()
+        compose.onNodeWithTag("recurring-payment-view-occupant").performClick()
         assertEquals("origin-a", openedSubmission.value)
         assertEquals(1, harness.fixture.stored().size)
         assertEquals("origin-a", readCreateRequest(requireNotNull(harness.fixture.stored().single()["payload"])).clientRef)
