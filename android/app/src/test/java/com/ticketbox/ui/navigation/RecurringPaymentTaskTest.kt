@@ -437,66 +437,6 @@ class RecurringPaymentTaskTest {
     }
 
     @Test
-    fun rememberCanonicalClientRefKeepsPreviousDraftWhileLeftoverRemains() {
-        val leftover = SavedStateHandle()
-        leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = leftoverPeriodPaymentSessionsJson(
-            com.ticketbox.data.repository.LegacyPeriodPaymentSession(
-                binding = access.binding,
-                seriesPublicId = "rec-1",
-                period = "2026-08",
-                clientRef = "store-b",
-                merchant = "日元订阅",
-                obligationCurrencyCode = "JPY",
-                plannedAmountCents = 1200,
-                ledgerHomeCurrencyCode = "CNY",
-                admitted = false,
-            ),
-        )
-        val store = RecurringPaymentDraftStore(SavedStateHandle())
-        val stale = assertNotNull(recurringPaymentTask(loaded("JPY", 1200)))
-        val origin = stale.copy(clientRef = "origin-a")
-        store.remember(stale.copy(clientRef = "store-b"))
-        store.write(
-            RecurringPaymentDraft(
-                clientRef = "store-b",
-                amountText = "12",
-                currencyCode = "JPY",
-                merchant = "日元订阅",
-                category = "住房",
-                note = "旧草稿",
-                expenseTime = "",
-            ),
-        )
-        store.remember(origin, leftoverSource = leftover)
-        assertEquals("origin-a", store.remembered(origin.binding, origin.seriesPublicId, origin.period)?.clientRef)
-        assertEquals("旧草稿", store.read("store-b")?.note)
-    }
-
-    @Test
-    fun rememberCanonicalClientRefDropsPreviousDraftWhenLeftoverGone() {
-        val leftover = SavedStateHandle()
-        val store = RecurringPaymentDraftStore(SavedStateHandle())
-        val stale = assertNotNull(recurringPaymentTask(loaded("JPY", 1200)))
-        val origin = stale.copy(clientRef = "origin-a")
-        store.remember(stale.copy(clientRef = "store-b"))
-        store.write(
-            RecurringPaymentDraft(
-                clientRef = "store-b",
-                amountText = "12",
-                currencyCode = "JPY",
-                merchant = "日元订阅",
-                category = "住房",
-                note = "旧草稿",
-                expenseTime = "",
-            ),
-        )
-        store.remember(origin, leftoverSource = leftover)
-        assertEquals("origin-a", store.remembered(origin.binding, origin.seriesPublicId, origin.period)?.clientRef)
-        assertNull(store.read("store-b"))
-        assertNull(store.read("origin-a"))
-    }
-
-    @Test
     fun leftoverContinueNoticeIsTypedInsteadOfMagicStrings() {
         val store = RecurringPaymentDraftStore(SavedStateHandle())
         val opened = mutableListOf<String>()

@@ -93,16 +93,10 @@ internal class RecurringPaymentDraftStore(private val state: SavedStateHandle) {
     private val drafts: List<RecurringPaymentDraft>
         get() = state.get<String>(RECURRING_PAYMENT_DRAFTS_KEY)?.let { recurringPaymentDraftListAdapter.fromJson(it) }.orEmpty()
 
-    fun remember(task: RecurringPaymentTask, leftoverSource: SavedStateHandle? = null) {
-        val previous = tasks.firstOrNull {
-            it.binding == task.binding && it.seriesPublicId == task.seriesPublicId && it.period == task.period
-        }
+    fun remember(task: RecurringPaymentTask) {
         state[RECURRING_PAYMENT_TASKS_KEY] = recurringPaymentTaskListAdapter.toJson(
             tasks.filterNot { it.binding == task.binding && it.seriesPublicId == task.seriesPublicId && it.period == task.period } + task,
         )
-        if (leftoverSource == null || previous == null || previous.clientRef == task.clientRef) return
-        val identity = RecurringPaymentIdentity(task.binding, task.seriesPublicId, task.period, task.occurrenceRowVersion)
-        if (!leftoverUnresolved(leftoverSource, identity)) removeDraft(previous.clientRef)
     }
 
     fun remembered(

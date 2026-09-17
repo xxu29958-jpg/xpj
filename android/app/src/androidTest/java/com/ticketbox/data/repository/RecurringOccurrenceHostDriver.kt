@@ -40,6 +40,8 @@ internal class RecurringOccurrenceHostDriver(
     val openedPayments = mutableListOf<RecurringPaymentTask>()
 
     fun close() {
+        leftoverInspectHold?.complete(Unit)
+        leftoverInspectHold = null
         compose.runOnIdle { model.value?.viewModelScope?.cancel() }
         fixture.close()
     }

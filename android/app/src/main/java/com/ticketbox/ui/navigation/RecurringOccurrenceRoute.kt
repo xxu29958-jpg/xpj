@@ -87,7 +87,7 @@ internal fun RecurringOccurrenceHost(
     val guard = occurrencePaymentGuard(origin, leftover.state)
     val remembered = (leftover.state as? LegacyCompatibilityState.Ready)?.remembered
     val focused = recurringPaymentFocused(remembered, task?.takeIf { it.matches(visible.identity) }, (origin as? OriginObservation.Found)?.clientRef, state)
-    CanonicalizeRecurringPaymentIdentity(RecurringPaymentCanonicalize(restore.drafts, origin, focused, task, visible.identity, model.savedState)) {
+    CanonicalizeRecurringPaymentIdentity(RecurringPaymentCanonicalize(restore.drafts, origin, focused, task, visible.identity)) {
         taskJson = it
     }
     LaunchedEffect(userClosed, visible, taskJson, (origin as? OriginObservation.Found)?.clientRef, leftover.state) {
@@ -123,7 +123,7 @@ internal fun RecurringOccurrenceHost(
                 val next = recurringPaymentTask(state, existing = task, remembered = remembered, admittedClientRef = (origin as? OriginObservation.Found)?.clientRef)
                     ?: return@OccurrenceSheetActions
                 userClosed = false
-                restore.drafts?.remember(next, leftoverSource = model.savedState)
+                restore.drafts?.remember(next)
                 taskJson = recurringPaymentTaskJson(next)
                 expenses.onRecordPayment(next)
             },
@@ -182,11 +182,6 @@ private data class LeftoverAdoptRequest(
         }.getOrElse { snap(store, leftover, LegacyCompatibilityNotice.Failed(it.message)) }
     }
 
-    fun markBusy(state: LegacyCompatibilityState): LegacyCompatibilityState {
-        val current = state as? LegacyCompatibilityState.Held ?: return state
-        return if (current.busy) state else current.copy(busy = true)
-    }
-
     suspend fun openContinuation(store: RecurringPaymentDraftStore, leftover: SavedStateHandle): LegacyCompatibilityState {
         val bound = identity.binding
         val series = identity.seriesPublicId
@@ -216,9 +211,9 @@ private fun rememberAdoptedPaymentTask(input: LeftoverAdoptRequest): LeftoverPay
         leftover,
         abandon = { leftover = input.abandon(store, handle, leftover) },
         continueDraft = {
-            val next = input.markBusy(leftover)
-            if (next == leftover) return@LeftoverPaymentAdopt
-            leftover = next
+            val current = leftover as? LegacyCompatibilityState.Held ?: return@LeftoverPaymentAdopt
+            if (current.busy) return@LeftoverPaymentAdopt
+            leftover = current.copy(busy = true)
             scope.launch { leftover = input.openContinuation(store, handle) }
         },
     )
@@ -239,7 +234,7 @@ private fun occurrencePaymentGuard(
         conflict = origin is OriginObservation.Conflict,
         leftoverBlocked = blocked && origin !is OriginObservation.Conflict,
         leftoverUnreadable = held?.unreadable == true && origin !is OriginObservation.Conflict,
-        leftoverContinueDraft = held != null && !held.busy && !held.unreadable &&
+        leftoverContinueDraft = held != null && !held.unreadable &&
             held.continuation != null && origin is OriginObservation.Absent,
         leftoverExistingOrigin = blocked && origin is OriginObservation.Found,
         leftoverActionFailed = held?.notice is LegacyCompatibilityNotice.Failed,
@@ -252,7 +247,6 @@ private data class RecurringPaymentCanonicalize(
     val focused: RecurringPaymentTask?,
     val task: RecurringPaymentTask?,
     val identity: RecurringPaymentIdentity,
-    val leftover: SavedStateHandle,
 )
 
 internal fun recurringPaymentFocused(
@@ -283,7 +277,7 @@ private fun CanonicalizeRecurringPaymentIdentity(
         val next = focused ?: return@LaunchedEffect
         if (found.clientRef != next.clientRef) return@LaunchedEffect
         if (input.drafts?.remembered(identity.binding, identity.seriesPublicId, identity.period)?.clientRef != next.clientRef) {
-            input.drafts?.remember(next, leftoverSource = input.leftover)
+            input.drafts?.remember(next)
         }
         if (input.task != null && input.task.matches(identity) && input.task.clientRef != next.clientRef) {
             onTaskJson(recurringPaymentTaskJson(next))

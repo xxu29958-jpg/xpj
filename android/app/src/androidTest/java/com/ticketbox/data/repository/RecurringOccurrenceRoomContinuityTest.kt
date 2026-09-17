@@ -9,7 +9,6 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
-import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -1060,6 +1059,8 @@ class RecurringOccurrenceRoomContinuityTest {
 
     @Test
     fun leftoverUnsubmittedFirstOpenAfterGenerationMoveHoldsUntilContinue() {
+        val hold = kotlinx.coroutines.CompletableDeferred<Unit>()
+        leftoverInspectHold = hold
         val scene = host.openHeldLeftover { binding ->
             listOf(leftoverRentSession(binding, "2026-09", "legacy-ref", admitted = false))
         }
@@ -1067,17 +1068,15 @@ class RecurringOccurrenceRoomContinuityTest {
         compose.onNodeWithTag("occurrence-record-payment").performScrollTo().assertIsNotEnabled()
         assertTrue(scene.leftover.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY).orEmpty().contains("legacy-ref"))
         assertNull(scene.drafts.remembered(scene.binding, "recurring-1", "2026-09"))
+        val mapping = scene.leftover.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY)
         compose.onNodeWithTag("occurrence-payment-leftover-continue").performScrollTo().performClick()
-        compose.waitUntil(10_000) {
-            host.openedPayments.isNotEmpty() ||
-                compose.onAllNodesWithTag("occurrence-payment-leftover-continue").fetchSemanticsNodes().isEmpty()
-        }
-        if (compose.onAllNodesWithTag("occurrence-payment-leftover-continue").fetchSemanticsNodes().isEmpty()) {
-            compose.onNodeWithTag("occurrence-payment-leftover-continue").assertDoesNotExist()
-        }
-        compose.waitUntil(10_000) { host.paymentTask.value?.clientRef == "legacy-ref" }
-        assertEquals(listOf("legacy-ref"), host.openedPayments.map { it.clientRef }.distinct())
-        assertEquals("legacy-ref", host.openedPayments.first().clientRef)
+        compose.onNodeWithTag("occurrence-payment-leftover-continue").performClick()
+        hold.complete(Unit)
+        leftoverInspectHold = null
+        compose.waitUntil(10_000) { host.openedPayments.size == 1 }
+        assertEquals(1, host.openedPayments.size)
+        assertEquals("legacy-ref", host.openedPayments.single().clientRef)
+        assertEquals(mapping, scene.leftover.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY))
         assertTrue(scene.leftover.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY).orEmpty().contains("legacy-ref"))
         assertNull(scene.drafts.remembered(scene.binding, "recurring-1", "2026-09"))
         compose.onNodeWithTag("occurrence-payment-leftover").assertIsDisplayed()
