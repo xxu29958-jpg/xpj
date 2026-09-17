@@ -71,6 +71,7 @@ private data class RecurringPaymentOriginObservation(
     val resolved: Boolean,
     val clientRef: String?,
     val conflict: Boolean = false,
+    val absent: Boolean = false,
 )
 
 @Composable
@@ -141,6 +142,7 @@ private data class LeftoverPaymentAdopt(
     val blocked: Boolean = false,
     val unreadable: Boolean = false,
     val continueAvailable: Boolean = false,
+    val notice: LeftoverAdoptNotice = LeftoverAdoptNotice.Done,
     val abandon: () -> Unit = {},
     val continueDraft: () -> Unit = {},
 )
@@ -159,6 +161,7 @@ private fun rememberAdoptedPaymentTask(
         mutableStateOf<Result<Unit>?>(null)
     }
     var leftoverTick by remember(store, model, identity) { mutableStateOf(0) }
+    var leftoverNotice by remember(store, model, identity) { mutableStateOf(LeftoverAdoptNotice.Done) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(store, model, creation, identity) {
         if (identity.occurrenceRowVersion == null) return@LaunchedEffect
@@ -174,25 +177,35 @@ private fun rememberAdoptedPaymentTask(
     val ready = handoff != null
     return LeftoverPaymentAdopt(
         ready = ready,
-        remembered = if (handoff?.isSuccess == true) {
+        remembered = LeftoverAdoptNotice.remembered(handoff) {
             store.remembered(identity.binding, identity.seriesPublicId, identity.period)
-        } else {
-            null
         },
         blocked = leftoverTick.let {
-            handoff?.isFailure == true || (ready && store.leftoverUnresolved(model.savedState, identity))
+            LeftoverAdoptNotice.blocked(handoff, ready && store.leftoverUnresolved(model.savedState, identity))
         },
         unreadable = leftoverTick.let { ready && store.legacyPeriodPaymentSessions(model.savedState) == null },
         continueAvailable = leftoverTick.let {
-            ready && identity.leftoverContinueAvailable(store.legacyPeriodPaymentSessions(model.savedState))
+            identity.leftoverContinueVisible(
+                store.legacyPeriodPaymentSessions(model.savedState),
+                identity.leftoverSeen(model.savedState),
+                handoff?.isFailure == true,
+                ready,
+            )
         },
+        notice = leftoverTick.let { leftoverNotice },
         abandon = {
-            store.retireFulfilledLegacySessions(model.savedState, identity, dropUnreadable = true)
+            leftoverNotice = LeftoverAdoptNotice.run {
+                store.retireFulfilledLegacySessions(model.savedState, identity, dropUnreadable = true)
+            }
+            handoff = leftoverNotice.nextHandoff(handoff) ?: handoff
             leftoverTick++
         },
         continueDraft = {
             scope.launch {
-                store.adoptLegacyPeriodPaymentSessions(model.savedState, creation, identity, continueUnproven = true)
+                leftoverNotice = LeftoverAdoptNotice.runSuspend {
+                    store.adoptLegacyPeriodPaymentSessions(model.savedState, creation, identity, continueUnproven = true)
+                }
+                handoff = leftoverNotice.nextHandoff(handoff) ?: handoff
                 leftoverTick++
             }
         },
@@ -207,7 +220,9 @@ private fun occurrencePaymentGuard(
     conflict = origin.conflict,
     leftoverBlocked = leftover.blocked && !origin.conflict,
     leftoverUnreadable = leftover.unreadable && leftover.blocked && !origin.conflict,
-    leftoverContinueDraft = leftover.continueAvailable && leftover.blocked && !origin.conflict,
+    leftoverContinueDraft = leftover.continueAvailable && leftover.blocked && origin.resolved && origin.absent,
+    leftoverExistingOrigin = leftover.blocked && origin.resolved && !origin.conflict && !origin.absent,
+    leftoverActionFailed = leftover.notice == LeftoverAdoptNotice.Failed,
 )
 
 private data class RecurringPaymentCanonicalize(
@@ -274,7 +289,12 @@ private fun rememberRecurringPaymentOrigin(
         }
     }.collectAsStateWithLifecycle(initialValue = RecurringPaymentOriginLookup.Absent)
     val clientRef = (lookup as? RecurringPaymentOriginLookup.Found)?.projection?.request?.clientRef?.takeIf { it.isNotBlank() }
-    return RecurringPaymentOriginObservation(originResolved, clientRef, lookup is RecurringPaymentOriginLookup.Conflict)
+    return RecurringPaymentOriginObservation(
+        resolved = originResolved,
+        clientRef = clientRef,
+        conflict = lookup is RecurringPaymentOriginLookup.Conflict,
+        absent = originResolved && lookup is RecurringPaymentOriginLookup.Absent,
+    )
 }
 
 private fun RecurringOccurrenceUiState.paymentVisible() = RecurringPaymentVisible(

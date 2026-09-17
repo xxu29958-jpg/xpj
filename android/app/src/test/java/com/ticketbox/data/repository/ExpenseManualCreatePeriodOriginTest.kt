@@ -5,6 +5,7 @@ import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
 import com.ticketbox.ui.navigation.LEGACY_PERIOD_PAYMENT_SESSIONS_KEY
+import com.ticketbox.ui.navigation.LeftoverAdoptNotice
 import com.ticketbox.ui.navigation.RecurringPaymentDraftStore
 import com.ticketbox.ui.navigation.RecurringPaymentIdentity
 import com.ticketbox.ui.navigation.leftoverPeriodPaymentSessionsJson
@@ -522,6 +523,77 @@ internal class ExpenseManualCreatePeriodOriginTest : ExpensePendingRepositoryOut
                 is RecurringPaymentOriginLookup.Absent,
         )
         assertNull(identity.leftoverSeen(leftover))
+    }
+
+    @Test
+    fun leftoverContinueDoesNotCaptureWhenActiveOriginAlreadyExists() = runTest {
+        val pendingDao = FakePendingMutationDao()
+        val repo = createRepo(FakeExpenseDao(), outbox(pendingDao))
+        val binding = requireNotNull(repo.captureDeferredLedgerBinding())
+        repo.manualCreation.create(draft, binding, "origin-a", RecurringPaymentOrigin("rec-1", "2026-08", 5)).getOrThrow()
+        val leftover = SavedStateHandle()
+        leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = leftoverPeriodPaymentSessionsJson(
+            leftoverRow(binding, "2026-08", "legacy-b", admitted = false, category = "住房", note = "旧草稿", capturedAmountCents = 9800),
+        )
+        val identity = RecurringPaymentIdentity(binding, "rec-1", "2026-08", 5)
+        val store = RecurringPaymentDraftStore(SavedStateHandle())
+        store.adoptLegacyPeriodPaymentSessions(leftover, repo.manualCreation, identity)
+        assertTrue(store.leftoverUnresolved(leftover, identity))
+        assertEquals(
+            LeftoverAdoptNotice.ExistingOrigin,
+            store.adoptLegacyPeriodPaymentSessions(leftover, repo.manualCreation, identity, continueUnproven = true),
+        )
+        assertTrue(leftover.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY).orEmpty().contains("legacy-b"))
+        assertNull(store.remembered(binding, "rec-1", "2026-08"))
+        assertNull(store.read("legacy-b"))
+        val found = repo.manualCreation.observeOrigin(binding, RecurringPaymentOrigin("rec-1", "2026-08", 5)).first()
+        assertTrue(found is RecurringPaymentOriginLookup.Found)
+        assertEquals("origin-a", found.projection.request?.clientRef)
+    }
+
+    @Test
+    fun leftoverContinueAfterFailedHandoffCapturesWhenOriginIsAbsent() = runTest {
+        val pendingDao = FakePendingMutationDao()
+        val repo = createRepo(FakeExpenseDao(), outbox(pendingDao))
+        val binding = requireNotNull(repo.captureDeferredLedgerBinding())
+        val leftover = SavedStateHandle()
+        leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = leftoverPeriodPaymentSessionsJson(
+            leftoverRow(binding, "2026-08", "legacy-ref", admitted = false, category = "住房", note = "旧草稿", capturedAmountCents = 9800),
+        )
+        val identity = RecurringPaymentIdentity(binding, "rec-1", "2026-08", 0)
+        val failed = Result.failure<Unit>(IllegalStateException("adoptOrigin failed"))
+        assertTrue(LeftoverAdoptNotice.blocked(failed, true))
+        val store = RecurringPaymentDraftStore(SavedStateHandle())
+        assertEquals(
+            LeftoverAdoptNotice.Done,
+            store.adoptLegacyPeriodPaymentSessions(leftover, repo.manualCreation, identity, continueUnproven = true),
+        )
+        val unlocked = LeftoverAdoptNotice.Done.nextHandoff(failed)
+        assertTrue(unlocked?.isSuccess == true)
+        assertTrue(!LeftoverAdoptNotice.blocked(unlocked, store.leftoverUnresolved(leftover, identity)))
+        assertEquals("legacy-ref", store.remembered(binding, "rec-1", "2026-08")?.clientRef)
+        assertEquals("住房", store.read("legacy-ref")?.category)
+        assertNull(leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY])
+    }
+
+    @Test
+    fun leftoverAbandonAfterFailedHandoffClearsMapping() = runTest {
+        val pendingDao = FakePendingMutationDao()
+        val repo = createRepo(FakeExpenseDao(), outbox(pendingDao))
+        val binding = requireNotNull(repo.captureDeferredLedgerBinding())
+        val leftover = SavedStateHandle()
+        leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = leftoverPeriodPaymentSessionsJson(
+            leftoverRow(binding, "2026-08", "legacy-ref", admitted = false),
+        )
+        val identity = RecurringPaymentIdentity(binding, "rec-1", "2026-08", 0)
+        val failed = Result.failure<Unit>(IllegalStateException("handoff failed"))
+        val store = RecurringPaymentDraftStore(SavedStateHandle())
+        store.retireFulfilledLegacySessions(leftover, identity, dropUnreadable = true)
+        val unlocked = LeftoverAdoptNotice.Done.nextHandoff(failed)
+        assertTrue(unlocked?.isSuccess == true)
+        assertTrue(!LeftoverAdoptNotice.blocked(unlocked, store.leftoverUnresolved(leftover, identity)))
+        assertNull(leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY])
+        assertNull(store.remembered(binding, "rec-1", "2026-08"))
     }
 
     private fun leftoverRow(

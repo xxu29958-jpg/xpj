@@ -356,6 +356,13 @@ class RecurringPaymentTaskTest {
         )
         assertEquals(true, identity.leftoverContinueAvailable(listOf(LeftoverSessionView(september, null, admitted = false))))
         assertEquals(false, identity.leftoverContinueAvailable(listOf(LeftoverSessionView(september, null, admitted = true))))
+        val held = listOf(LeftoverSessionView(september, null, admitted = false))
+        assertEquals(true, identity.leftoverContinueVisible(held, seen = null, handoffFailed = false, ready = true))
+        assertEquals(false, RecurringPaymentIdentity(access.binding, "rec-1", "2026-09", 0).leftoverContinueVisible(held, seen = null, handoffFailed = false, ready = true))
+        assertEquals(true, RecurringPaymentIdentity(access.binding, "rec-1", "2026-09", 0).leftoverContinueVisible(held, seen = null, handoffFailed = true, ready = true))
+        assertTrue(LeftoverAdoptNotice.blocked(Result.failure(IllegalStateException("handoff")), unresolved = false))
+        assertTrue(LeftoverAdoptNotice.Done.nextHandoff(Result.failure(IllegalStateException("handoff")))?.isSuccess == true)
+        assertTrue(LeftoverAdoptNotice.Failed.nextHandoff(Result.failure(IllegalStateException("handoff")))?.isFailure == true)
     }
 
     @Test

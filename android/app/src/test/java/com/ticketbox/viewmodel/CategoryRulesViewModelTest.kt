@@ -35,8 +35,6 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import kotlin.test.AfterTest
-import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -45,23 +43,22 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class CategoryRulesViewModelTest {
 
-    private val dispatcher = StandardTestDispatcher()
     private val models = mutableListOf<CategoryRulesViewModel>()
 
-    @BeforeTest
-    fun setup() {
+    private fun rulesTest(block: suspend TestScope.() -> Unit) = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
         Dispatchers.setMain(dispatcher)
-    }
-
-    @AfterTest
-    fun tearDown() {
-        models.forEach { it.viewModelScope.cancel() }
-        dispatcher.scheduler.advanceUntilIdle()
-        Dispatchers.resetMain()
+        try {
+            block()
+        } finally {
+            models.forEach { it.viewModelScope.cancel() }
+            advanceUntilIdle()
+            Dispatchers.resetMain()
+        }
     }
 
     @Test
-    fun initShowsIndependentLoadingUntilRulesAndHistoryReturn() = runTest(dispatcher) {
+    fun initShowsIndependentLoadingUntilRulesAndHistoryReturn() = rulesTest {
         val rulesGate = CompletableDeferred<Unit>()
         val historyGate = CompletableDeferred<Unit>()
         val vm = harness(
@@ -96,7 +93,7 @@ class CategoryRulesViewModelTest {
     }
 
     @Test
-    fun initRuleLoadFailureClearsLoadingAndShowsMessage() = runTest(dispatcher) {
+    fun initRuleLoadFailureClearsLoadingAndShowsMessage() = rulesTest {
         val vm = harness(
             object : ApiService by FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0) {
                 override suspend fun categoryRules(): List<CategoryRuleDto> {
@@ -113,7 +110,7 @@ class CategoryRulesViewModelTest {
     }
 
     @Test
-    fun createIsOnlySubmittedAfterDurableSaveAndDoesNotInventConfirmedRule() = runTest(dispatcher) {
+    fun createIsOnlySubmittedAfterDurableSaveAndDoesNotInventConfirmedRule() = rulesTest {
         val vm = harness(FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0))
         awaitInitialLoads(vm)
         val confirmed = vm.uiState.value.categoryRules
@@ -128,7 +125,7 @@ class CategoryRulesViewModelTest {
     }
 
     @Test
-    fun previewApplyFailureShowsDangerToneAndClearsBusy() = runTest(dispatcher) {
+    fun previewApplyFailureShowsDangerToneAndClearsBusy() = rulesTest {
         val vm = harness(
             object : ApiService by FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0) {
                 override suspend fun applyConfirmedRules(
@@ -152,7 +149,7 @@ class CategoryRulesViewModelTest {
     }
 
     @Test
-    fun rollbackFailureShowsDangerToneAndClearsBusy() = runTest(dispatcher) {
+    fun rollbackFailureShowsDangerToneAndClearsBusy() = rulesTest {
         val vm = harness(
             object : ApiService by FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0) {
                 override suspend fun rollbackRuleApplication(publicId: String): RuleApplicationRollbackDto {
@@ -172,7 +169,7 @@ class CategoryRulesViewModelTest {
     }
 
     @Test
-    fun confirmApplyWithChangesBumpsApplicationRevisionOnly() = runTest(dispatcher) {
+    fun confirmApplyWithChangesBumpsApplicationRevisionOnly() = rulesTest {
         // 应用规则改写确认流水的分类：走 applicationRevision（流水行重同步），
         // 不再 bump changedRevision（字典并未变化）。
         val vm = harness(FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0))
@@ -190,7 +187,7 @@ class CategoryRulesViewModelTest {
     }
 
     @Test
-    fun rollbackWithChangesBumpsApplicationRevisionOnly() = runTest(dispatcher) {
+    fun rollbackWithChangesBumpsApplicationRevisionOnly() = rulesTest {
         val vm = harness(FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0))
         val application = awaitInitialLoads(vm).ruleApplications.single()
 
@@ -204,7 +201,7 @@ class CategoryRulesViewModelTest {
     }
 
     @Test
-    fun delayedPreviewCannotPopulateAnotherLedger() = runTest(dispatcher) {
+    fun delayedPreviewCannotPopulateAnotherLedger() = rulesTest {
         val session = TestSessionFixture().apply { saveToken("synthetic-rule-session") }
         val started = CompletableDeferred<Unit>()
         val finish = CompletableDeferred<Unit>()
@@ -229,7 +226,7 @@ class CategoryRulesViewModelTest {
     }
 
     @Test
-    fun historicalAcceptedReceiptCannotResurrectADeletedCanonicalRule() = runTest(dispatcher) {
+    fun historicalAcceptedReceiptCannotResurrectADeletedCanonicalRule() = rulesTest {
         val queue = com.ticketbox.data.repository.testOutboxRepository(com.ticketbox.data.repository.FakePendingMutationDao())
         val accepted = categoryRuleDto(keyword = "旅行", category = "交通").copy(amountMinCents = 1200, homeCurrencyCode = "JPY")
         var canonical = listOf(accepted)

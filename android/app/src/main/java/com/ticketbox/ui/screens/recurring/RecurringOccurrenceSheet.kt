@@ -41,6 +41,8 @@ data class OccurrencePaymentGuard(
     val leftoverBlocked: Boolean = false,
     val leftoverUnreadable: Boolean = false,
     val leftoverContinueDraft: Boolean = false,
+    val leftoverExistingOrigin: Boolean = false,
+    val leftoverActionFailed: Boolean = false,
 )
 
 data class OccurrenceSheetActions(
@@ -117,6 +119,7 @@ private fun OccurrencePaymentConflict(
         stringResource(R.string.recurring_payment_leftover_unresolved),
         modifier = Modifier.testTag("occurrence-payment-leftover"),
     )
+    LeftoverPaymentNotices(origin)
     if (origin.leftoverContinueDraft) {
         TextButton(
             onClick = onContinueLeftover,
@@ -152,6 +155,22 @@ private fun OccurrencePaymentConflict(
             }
         },
     )
+}
+
+@Composable
+private fun LeftoverPaymentNotices(origin: OccurrencePaymentGuard) {
+    if (origin.leftoverExistingOrigin) {
+        Text(
+            stringResource(R.string.recurring_payment_leftover_existing_origin),
+            modifier = Modifier.testTag("occurrence-payment-leftover-existing-origin"),
+        )
+    }
+    if (origin.leftoverActionFailed) {
+        Text(
+            stringResource(R.string.recurring_payment_leftover_action_failed),
+            modifier = Modifier.testTag("occurrence-payment-leftover-action-failed"),
+        )
+    }
 }
 
 @Composable

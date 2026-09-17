@@ -163,6 +163,9 @@ internal fun leftoverRentSession(
     clientRef: String,
     admitted: Boolean,
     home: String? = "CNY",
+    category: String? = null,
+    note: String? = null,
+    capturedAmountCents: Long? = null,
 ) = LegacyPeriodPaymentSession(
     binding = binding,
     seriesPublicId = "recurring-1",
@@ -172,6 +175,9 @@ internal fun leftoverRentSession(
     obligationCurrencyCode = "CNY",
     plannedAmountCents = 10_000,
     ledgerHomeCurrencyCode = home,
+    category = category,
+    note = note,
+    capturedAmountCents = capturedAmountCents,
     admitted = admitted,
 )
 

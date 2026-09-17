@@ -8,13 +8,16 @@ import com.squareup.moshi.Types
 import com.ticketbox.data.repository.ExpenseManualCreation
 import com.ticketbox.data.repository.LegacyPeriodPaymentSession
 import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.RecurringPaymentOrigin
 import com.ticketbox.data.repository.RecurringPaymentOriginAdopt
+import com.ticketbox.data.repository.RecurringPaymentOriginLookup
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.ui.components.formatMinorAmountInput
 import com.ticketbox.viewmodel.RecurringOccurrenceUiState
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.util.UUID
+import kotlinx.coroutines.flow.first
 
 /** Navigation identity only. CreateExpense / Confirm / link stay on their current owners. */
 @JsonClass(generateAdapter = true)
@@ -137,26 +140,32 @@ internal class RecurringPaymentDraftStore(private val state: SavedStateHandle) {
         creation: ExpenseManualCreation,
         identity: RecurringPaymentIdentity? = null,
         continueUnproven: Boolean = false,
-    ) {
-        val current = identity ?: return
-        val generation = current.occurrenceRowVersion ?: return
+    ): LeftoverAdoptNotice {
+        val current = identity ?: return LeftoverAdoptNotice.Done
+        val generation = current.occurrenceRowVersion ?: return LeftoverAdoptNotice.Done
         val json = source.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY)
         if (json == null) {
             current.rememberLeftoverSeen(source, false)
-            return
+            return LeftoverAdoptNotice.Done
         }
-        val sessions = runCatching { legacyPeriodPaymentSessionListAdapter.fromJson(json) }.getOrNull() ?: return
+        val sessions = runCatching { legacyPeriodPaymentSessionListAdapter.fromJson(json) }.getOrNull()
+            ?: return LeftoverAdoptNotice.Done
         val seen = current.leftoverSeen(source)
         val decision = current.leftoverTransition(seen)
-        val remaining = when {
-            continueUnproven -> current.adoptLoadedSessions(sessions, creation, bind = false) { captureLegacy(it, generation) }
-            decision == LeftoverTransition.Retire -> sessions.filterNot(current::matchesLoadedSession)
-            decision == LeftoverTransition.Adopt -> current.adoptLoadedSessions(sessions, creation, bind = true) { captureLegacy(it, generation) }
-            else -> sessions
+        if (continueUnproven) {
+            when (current.leftoverContinueDecision(creation)) {
+                LeftoverContinueDecision.KeepExistingOrigin -> return LeftoverAdoptNotice.ExistingOrigin
+                LeftoverContinueDecision.KeepConflict -> return LeftoverAdoptNotice.Conflict
+                LeftoverContinueDecision.Capture -> Unit
+            }
+        }
+        val remaining = current.leftoverApplySessions(sessions, creation, continueUnproven, seen) {
+            captureLegacy(it, generation)
         }
         if (remaining.isEmpty()) source.remove<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY)
         else source[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = legacyPeriodPaymentSessionListAdapter.toJson(remaining)
         current.rememberLeftoverSeen(source, leftoverUnresolved(source, current) && decision == LeftoverTransition.Adopt && !continueUnproven)
+        return LeftoverAdoptNotice.Done
     }
 
     fun leftoverUnresolved(
@@ -254,6 +263,44 @@ internal fun recurringPaymentRoute(task: RecurringPaymentTask): String =
 
 internal enum class LeftoverTransition { Adopt, Retire, Hold }
 
+internal enum class LeftoverContinueDecision { Capture, KeepExistingOrigin, KeepConflict }
+
+internal enum class LeftoverAdoptNotice {
+    Done,
+    ExistingOrigin,
+    Conflict,
+    Failed,
+    ;
+
+    fun nextHandoff(previous: Result<Unit>?): Result<Unit>? = when (this) {
+        Done -> Result.success(Unit)
+        else -> previous
+    }
+
+    companion object {
+        fun blocked(handoff: Result<Unit>?, unresolved: Boolean): Boolean =
+            handoff?.isFailure == true || (handoff != null && unresolved)
+
+        fun remembered(handoff: Result<Unit>?, load: () -> RecurringPaymentTask?): RecurringPaymentTask? =
+            if (handoff?.isSuccess == true) load() else null
+
+        fun run(block: () -> Unit): LeftoverAdoptNotice = try {
+            block()
+            Done
+        } catch (_: Exception) {
+            Failed
+        }
+
+        suspend fun runSuspend(block: suspend () -> LeftoverAdoptNotice): LeftoverAdoptNotice = try {
+            block()
+        } catch (cancelled: kotlin.coroutines.cancellation.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            Failed
+        }
+    }
+}
+
 internal data class LeftoverSessionView(
     val task: RecurringPaymentTask,
     val draft: RecurringPaymentDraft?,
@@ -296,6 +343,43 @@ internal data class RecurringPaymentIdentity(
                 it.task.seriesPublicId == seriesPublicId &&
                 it.task.period == period
         }
+
+    fun leftoverContinueVisible(
+        sessions: List<LeftoverSessionView>?,
+        seen: Long?,
+        handoffFailed: Boolean,
+        ready: Boolean,
+    ): Boolean {
+        if (!ready || sessions == null || !leftoverContinueAvailable(sessions)) return false
+        return leftoverTransition(seen) == LeftoverTransition.Hold || handoffFailed
+    }
+
+    suspend fun leftoverContinueDecision(creation: ExpenseManualCreation): LeftoverContinueDecision {
+        val bound = binding ?: return LeftoverContinueDecision.KeepConflict
+        val series = seriesPublicId?.takeIf { it.isNotBlank() } ?: return LeftoverContinueDecision.KeepConflict
+        val month = period?.takeIf { it.isNotBlank() } ?: return LeftoverContinueDecision.KeepConflict
+        return when (creation.observeOrigin(bound, RecurringPaymentOrigin(series, month, occurrenceRowVersion)).first()) {
+            is RecurringPaymentOriginLookup.Found -> LeftoverContinueDecision.KeepExistingOrigin
+            RecurringPaymentOriginLookup.Conflict -> LeftoverContinueDecision.KeepConflict
+            RecurringPaymentOriginLookup.Absent -> LeftoverContinueDecision.Capture
+        }
+    }
+
+    suspend fun leftoverApplySessions(
+        sessions: List<LegacyPeriodPaymentSession>,
+        creation: ExpenseManualCreation,
+        continueUnproven: Boolean,
+        seen: Long?,
+        capture: (LegacyPeriodPaymentSession) -> Unit,
+    ): List<LegacyPeriodPaymentSession> {
+        val decision = leftoverTransition(seen)
+        return when {
+            continueUnproven -> adoptLoadedSessions(sessions, creation, bind = false, capture)
+            decision == LeftoverTransition.Retire -> sessions.filterNot(::matchesLoadedSession)
+            decision == LeftoverTransition.Adopt -> adoptLoadedSessions(sessions, creation, bind = true, capture)
+            else -> sessions
+        }
+    }
 
     fun leftoverTransition(seen: Long?): LeftoverTransition {
         val current = occurrenceRowVersion ?: return LeftoverTransition.Hold
