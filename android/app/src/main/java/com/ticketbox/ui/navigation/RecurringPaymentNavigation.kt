@@ -450,7 +450,7 @@ internal data class RecurringPaymentIdentity(
             }
             when (creation.adoptOrigin(bound, session.clientRef, session.seriesPublicId, session.period, generation)) {
                 RecurringPaymentOriginAdopt.Bound -> capture(session)
-                RecurringPaymentOriginAdopt.Conflict -> remaining += session
+                RecurringPaymentOriginAdopt.Conflict, is RecurringPaymentOriginAdopt.Blocked -> remaining += session
                 RecurringPaymentOriginAdopt.Missing ->
                     if (session.admitted || session.toRecurringPaymentTaskOrNull() == null) remaining += session
                     else capture(session)

@@ -17,11 +17,25 @@ internal sealed class RecurringPaymentOriginLookup {
     data object Conflict : RecurringPaymentOriginLookup()
 }
 
+internal enum class RecurringPaymentAdmissionBlock {
+    MissingGeneration,
+    DifferentGeneration,
+}
+
+internal sealed interface PeriodOriginAdmission {
+    data object Empty : PeriodOriginAdmission
+    data class Exact(val projection: ManualExpenseCreationProjection) : PeriodOriginAdmission
+    data class UpgradeableSameRef(val projection: ManualExpenseCreationProjection) : PeriodOriginAdmission
+    data class DifferentGeneration(val projection: ManualExpenseCreationProjection) : PeriodOriginAdmission
+    data object Conflict : PeriodOriginAdmission
+}
+
 /** Bind leftover clientRef onto the existing CreateExpense row. Never enqueues. */
 internal sealed class RecurringPaymentOriginAdopt {
     data object Bound : RecurringPaymentOriginAdopt()
     data object Missing : RecurringPaymentOriginAdopt()
     data object Conflict : RecurringPaymentOriginAdopt()
+    data class Blocked(val reason: RecurringPaymentAdmissionBlock) : RecurringPaymentOriginAdopt()
 }
 
 /** Admission result for the existing CreateExpense writer. Not a second command. */
@@ -34,6 +48,23 @@ internal sealed class ManualExpenseCreateAdmission {
                 .distinct()
                 .sorted()
     }
+    data class Blocked(val reason: RecurringPaymentAdmissionBlock) : ManualExpenseCreateAdmission()
+}
+
+internal fun classifyPeriodAdmission(
+    active: List<Pair<RecurringPaymentCreatePayload, ManualExpenseCreationProjection>>,
+    requested: RecurringPaymentOrigin,
+    requestedClientRef: String,
+): PeriodOriginAdmission {
+    if (active.size > 1) return PeriodOriginAdmission.Conflict
+    val (stored, projection) = active.singleOrNull() ?: return PeriodOriginAdmission.Empty
+    if (stored.occurrenceRowVersion == requested.occurrenceRowVersion) {
+        return PeriodOriginAdmission.Exact(projection)
+    }
+    if (stored.occurrenceRowVersion == null && projection.admittedClientRef() == requestedClientRef) {
+        return PeriodOriginAdmission.UpgradeableSameRef(projection)
+    }
+    return PeriodOriginAdmission.DifferentGeneration(projection)
 }
 
 /**

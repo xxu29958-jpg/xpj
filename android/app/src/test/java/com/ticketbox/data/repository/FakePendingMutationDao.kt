@@ -11,10 +11,12 @@ import kotlinx.coroutines.flow.map
 class FakePendingMutationDao : PendingMutationDao {
     val rows = linkedMapOf<Long, PendingMutationEntity>()
     var beforeNextRunnableBatchReturn: (suspend () -> Unit)? = null
+    var beforeInsert: (suspend () -> Unit)? = null
     private var nextId = 1L
     private val queueDepth = MutableStateFlow(0)
 
     override suspend fun insert(row: PendingMutationEntity): Long {
+        beforeInsert?.invoke()
         return insertBatch(listOf(row)).single()
     }
 

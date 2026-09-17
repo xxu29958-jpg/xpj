@@ -541,7 +541,6 @@ class RecurringPaymentTaskTest {
         assertTrue(!task.copy(occurrenceRowVersion = null).matchesCurrentGeneration("rec-1", "2026-08", 5L))
         assertTrue(!task.matchesCurrentGeneration("rec-2", "2026-08", 5L))
         assertTrue(!task.matchesCurrentGeneration("rec-1", "2026-09", 5L))
-        assertEquals("期次状态已变化，请返回核对", RECURRING_PAYMENT_GENERATION_CHANGED)
     }
 
     @Test

@@ -56,6 +56,8 @@ class RecurringPaymentRouteRoomTest {
     @get:Rule val compose = createComposeRule()
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private var sends = 0
+    private var occurrenceReads = 0
+    private var failOccurrenceReads = false
     private var currentOccurrenceGeneration = 3L
     private val harness = FactEntryNavigationHarness(context) { api -> object : ApiService by api {
         override suspend fun debts(lens: String?) = DebtListResponseDto(emptyList(), "CNY")
@@ -64,6 +66,8 @@ class RecurringPaymentRouteRoomTest {
             error("Only the worker may send the persisted original")
         }
         override suspend fun recurringOccurrence(publicId: String, month: String): RecurringOccurrenceDto {
+            occurrenceReads++
+            check(!failOccurrenceReads) { "offline" }
             if (publicId != "rec-1") return api.recurringOccurrence(publicId, month)
             return RecurringOccurrenceDto(
                 seriesPublicId = publicId,
@@ -91,6 +95,10 @@ class RecurringPaymentRouteRoomTest {
         compose.runOnIdle { mounted.value = false; openedExpense.value = null; exited.value = false; harness.models.viewModelStore.clear() }
         compose.waitForIdle()
         harness.close()
+        sends = 0
+        occurrenceReads = 0
+        failOccurrenceReads = false
+        currentOccurrenceGeneration = 3L
     }
 
     @Test fun ordinaryBackReopensClearedAmountMerchantAndChosenCurrencyWithoutRefillingSuggestions() {
@@ -733,6 +741,7 @@ class RecurringPaymentRouteRoomTest {
         assertEquals("当前草稿", drafts.read("current-b")?.note)
         assertEquals("current-b", drafts.remembered(localB.binding, localB.seriesPublicId, localB.period)?.clientRef)
         assertEquals(0, sends)
+        assertEquals(0, occurrenceReads)
     }
 
     @Test fun openFormThenOccurrenceAdvancesSaveDoesNotEnqueueStaleGeneration() {
@@ -776,6 +785,71 @@ class RecurringPaymentRouteRoomTest {
         assertEquals("当前草稿", drafts.read("current-b")?.note)
         assertEquals("current-b", drafts.remembered(localB.binding, localB.seriesPublicId, localB.period)?.clientRef)
         assertEquals(0, sends)
+        assertEquals(0, occurrenceReads)
+    }
+
+    @Test fun hostStampedSaveWritesOutboxWhileOccurrenceApiIsOffline() {
+        failOccurrenceReads = true
+        val localB = periodTask("JPY", 1200).copy(clientRef = "current-b", occurrenceRowVersion = 5L)
+        drafts.remember(localB)
+        drafts.write(
+            RecurringPaymentDraft(
+                clientRef = "current-b",
+                amountText = "99.00",
+                currencyCode = "JPY",
+                merchant = "改过的商户",
+                category = "住房",
+                note = "当前草稿",
+                expenseTime = "2026-08-01T00:00:00Z",
+            ),
+        )
+        showRoute(localB)
+        waitForSheet()
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performScrollTo().performClick()
+        compose.waitUntil(10_000) { harness.fixture.stored().size == 1 }
+        val stored = harness.fixture.stored().single()
+        assertEquals("expense:local:current-b", stored["targetId"])
+        assertEquals("current-b", readCreateRequest(requireNotNull(stored["payload"])).clientRef)
+        assertEquals(
+            RecurringPaymentOrigin("rec-1", "2026-08", 5L),
+            decodeRecurringPaymentOrigin(
+                OutboxAdapterGraph().recurringPaymentCreateAdapter,
+                requireNotNull(stored["payload"]),
+            ),
+        )
+        assertEquals("current-b", drafts.remembered(localB.binding, localB.seriesPublicId, localB.period)?.clientRef)
+        assertEquals(0, sends)
+        assertEquals(0, occurrenceReads)
+    }
+
+    @Test fun restoringUnversionedWritableRouteSaveKeepsDraftWithoutOccurrenceGet() {
+        failOccurrenceReads = true
+        val localB = periodTask("JPY", 1200).copy(clientRef = "current-b")
+        assertNull(localB.occurrenceRowVersion)
+        drafts.remember(localB)
+        drafts.write(
+            RecurringPaymentDraft(
+                clientRef = "current-b",
+                amountText = "99.00",
+                currencyCode = "JPY",
+                merchant = "改过的商户",
+                category = "住房",
+                note = "当前草稿",
+                expenseTime = "2026-08-01T00:00:00Z",
+            ),
+        )
+        showRoute(localB)
+        waitForSheet()
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performScrollTo().performClick()
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(hasText(context.getString(R.string.recurring_payment_generation_changed))).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_sheet_title)).assertExists()
+        assertTrue(harness.fixture.stored().isEmpty())
+        assertEquals("当前草稿", drafts.read("current-b")?.note)
+        assertEquals("current-b", drafts.remembered(localB.binding, localB.seriesPublicId, localB.period)?.clientRef)
+        assertEquals(0, sends)
+        assertEquals(0, occurrenceReads)
     }
 
     private fun waitForReview() {

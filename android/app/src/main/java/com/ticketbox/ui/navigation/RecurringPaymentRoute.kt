@@ -355,8 +355,11 @@ private fun rememberRecurringPaymentSheetWrite(ctx: RecurringPaymentEntryContext
     var reviewCandidates by remember { mutableStateOf<List<ManualExpenseCreationProjection>>(emptyList()) }
     val scope = rememberCoroutineScope()
     val canMutate = ctx.access.context?.let { it.canModify && it.binding == ctx.task.binding } == true
-    val missingMessage = stringResource(R.string.recurring_payment_review_missing)
-    val conflictMessage = stringResource(R.string.recurring_payment_review_conflict)
+    val admissionCopy = RecurringPaymentAdmissionCopy(
+        missing = stringResource(R.string.recurring_payment_review_missing),
+        conflict = stringResource(R.string.recurring_payment_review_conflict),
+        generationChanged = stringResource(R.string.recurring_payment_generation_changed),
+    )
     val launch = rememberPeriodPaymentLaunch(scope, canMutate, saving) { saving = it }
     return RecurringPaymentSheetWrite(
         saving = saving,
@@ -366,7 +369,7 @@ private fun rememberRecurringPaymentSheetWrite(ctx: RecurringPaymentEntryContext
         events = RecurringPaymentReviewEvents(
             onAdopt = { candidate ->
                 launch({ reviewError = it }) {
-                    applyAdoptedOrigin(ctx, candidate, missingMessage, conflictMessage) { next, message, clear ->
+                    applyAdoptedOrigin(ctx, candidate, admissionCopy) { next, message, clear ->
                         reviewError = message
                         reviewCandidates = next
                         if (clear) pendingDraft = null
@@ -376,7 +379,9 @@ private fun rememberRecurringPaymentSheetWrite(ctx: RecurringPaymentEntryContext
             onConfirmUnrelated = {
                 val draft = pendingDraft ?: return@RecurringPaymentReviewEvents
                 launch({ reviewError = it }) {
-                    applyPeriodPaymentAdmission(ctx, draft, reviewCandidates.mapNotNull { it.admittedClientRef() }) { next, pending ->
+                    applyPeriodPaymentAdmission(
+                        ctx, draft, reviewCandidates.mapNotNull { it.admittedClientRef() }, admissionCopy.generationChanged,
+                    ) { next, pending ->
                         reviewCandidates = next
                         pendingDraft = pending
                     }
@@ -393,7 +398,7 @@ private fun rememberRecurringPaymentSheetWrite(ctx: RecurringPaymentEntryContext
         ),
         save = { draft ->
             launch({ sheetError = it }) {
-                applyPeriodPaymentAdmission(ctx, draft, emptyList()) { next, pending ->
+                applyPeriodPaymentAdmission(ctx, draft, emptyList(), admissionCopy.generationChanged) { next, pending ->
                     reviewCandidates = next
                     pendingDraft = pending
                 }

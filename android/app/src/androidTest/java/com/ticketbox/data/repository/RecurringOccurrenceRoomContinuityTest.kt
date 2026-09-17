@@ -1910,9 +1910,12 @@ class RecurringOccurrenceRoomContinuityTest {
                 requireNotNull(host.paymentTask.value?.clientRef),
                 later,
             ).getOrThrow()
-            assertEquals(host.paymentTask.value?.clientRef, (admitted as ManualExpenseCreateAdmission.Accepted).clientRef)
+            assertEquals(
+                ManualExpenseCreateAdmission.Blocked(RecurringPaymentAdmissionBlock.DifferentGeneration),
+                admitted,
+            )
         }
-        assertEquals(2, fixture.stored().count { it["type"] == "create_expense" })
+        assertEquals(1, fixture.stored().count { it["type"] == "create_expense" })
     }
 
     @Test

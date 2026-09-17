@@ -16,6 +16,7 @@ import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
 import com.ticketbox.data.repository.ManualExpenseCreateAdmission
 import com.ticketbox.data.repository.ManualExpenseCreationProjection
+import com.ticketbox.data.repository.RecurringPaymentAdmissionBlock
 import com.ticketbox.data.repository.RecurringPaymentOrigin
 import com.ticketbox.data.repository.RecurringPaymentOriginAdopt
 import com.ticketbox.data.repository.admittedClientRef
@@ -157,15 +158,19 @@ private fun originalSubmissionAmount(request: ExpenseManualCreateRequestDto): St
     return if (currency != null && amount != null) "$currency $amount" else null
 }
 
-internal const val RECURRING_PAYMENT_GENERATION_CHANGED = "期次状态已变化，请返回核对"
+internal data class RecurringPaymentAdmissionCopy(
+    val missing: String,
+    val conflict: String,
+    val generationChanged: String,
+)
 
 internal suspend fun applyPeriodPaymentAdmission(
     ctx: RecurringPaymentEntryContext,
     draft: ExpenseDraft,
     acknowledged: Collection<String>,
+    generationChanged: String,
     onDone: (List<ManualExpenseCreationProjection>, ExpenseDraft?) -> Unit,
 ) {
-    requireCurrentOccurrenceGeneration(ctx)
     when (
         val admission = ctx.factory.repository.manualCreation.create(
             draft,
@@ -177,17 +182,20 @@ internal suspend fun applyPeriodPaymentAdmission(
     ) {
         is ManualExpenseCreateAdmission.Accepted -> onDone(emptyList(), null)
         is ManualExpenseCreateAdmission.ReviewRequired -> onDone(admission.candidates, draft)
+        is ManualExpenseCreateAdmission.Blocked -> when (admission.reason) {
+            RecurringPaymentAdmissionBlock.MissingGeneration,
+            RecurringPaymentAdmissionBlock.DifferentGeneration,
+            -> error(generationChanged)
+        }
     }
 }
 
 internal suspend fun applyAdoptedOrigin(
     ctx: RecurringPaymentEntryContext,
     candidate: String,
-    missingMessage: String,
-    conflictMessage: String,
+    copy: RecurringPaymentAdmissionCopy,
     onDone: (List<ManualExpenseCreationProjection>, String?, Boolean) -> Unit,
 ) {
-    requireCurrentOccurrenceGeneration(ctx)
     when (
         ctx.factory.repository.manualCreation.adoptOrigin(
             ctx.task.binding,
@@ -198,18 +206,13 @@ internal suspend fun applyAdoptedOrigin(
         )
     ) {
         RecurringPaymentOriginAdopt.Bound -> onDone(emptyList(), null, true)
-        RecurringPaymentOriginAdopt.Missing -> onDone(refreshReviewCandidates(ctx), missingMessage, false)
-        RecurringPaymentOriginAdopt.Conflict -> onDone(refreshReviewCandidates(ctx), conflictMessage, false)
-    }
-}
-
-private suspend fun requireCurrentOccurrenceGeneration(ctx: RecurringPaymentEntryContext) {
-    val task = ctx.task
-    val current = ctx.factory.recurringRepository.occurrences
-        .fetch(task.binding, task.seriesPublicId, task.period)
-        .getOrElse { failure -> throw failure }
-    if (!task.matchesCurrentGeneration(current.seriesPublicId, current.period, current.rowVersion)) {
-        error(RECURRING_PAYMENT_GENERATION_CHANGED)
+        RecurringPaymentOriginAdopt.Missing -> onDone(refreshReviewCandidates(ctx), copy.missing, false)
+        RecurringPaymentOriginAdopt.Conflict -> onDone(refreshReviewCandidates(ctx), copy.conflict, false)
+        is RecurringPaymentOriginAdopt.Blocked -> onDone(
+            refreshReviewCandidates(ctx),
+            copy.generationChanged,
+            false,
+        )
     }
 }
 
