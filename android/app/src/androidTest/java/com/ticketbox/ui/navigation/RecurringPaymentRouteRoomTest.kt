@@ -63,12 +63,13 @@ class RecurringPaymentRouteRoomTest {
         }
     } }
     private val mounted = mutableStateOf(true)
+    private val openedExpense = mutableStateOf<Long?>(null)
     private val drafts = RecurringPaymentDraftStore(SavedStateHandle())
     private val routeTask = mutableStateOf<RecurringPaymentTask?>(null)
     private var routeContent = false
 
     @After fun close() {
-        compose.runOnIdle { mounted.value = false; harness.models.viewModelStore.clear() }
+        compose.runOnIdle { mounted.value = false; openedExpense.value = null; harness.models.viewModelStore.clear() }
         compose.waitForIdle()
         harness.close()
     }
@@ -351,6 +352,7 @@ class RecurringPaymentRouteRoomTest {
         compose.onNodeWithText("CNY 88.00").assertIsDisplayed()
         compose.onNodeWithText("2026-08-01T00:00:00Z").assertIsDisplayed()
         compose.onNodeWithText(context.getString(R.string.manual_submission_waiting)).assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.manual_submission_unknown)).assertDoesNotExist()
         compose.onNodeWithTag("recurring-payment-review-adopt:legacy-ref").performClick()
         compose.waitUntil(10_000) {
             compose.onAllNodes(hasText(context.getString(R.string.ledger_manual_sheet_title))).fetchSemanticsNodes().isEmpty()
@@ -366,6 +368,52 @@ class RecurringPaymentRouteRoomTest {
         )
         assertEquals(RecurringPaymentOrigin(task.seriesPublicId, task.period, 3L), stored)
         assertEquals("legacy-ref", readCreateRequest(requireNotNull(harness.fixture.stored().single()["payload"])).clientRef)
+        assertEquals(0, sends)
+    }
+
+    @Test fun reviewShowsDoneStatusAndExistingExpenseOutlet() {
+        val task = periodTask("CNY", 10_000).copy(occurrenceRowVersion = 3L)
+        enqueueRaw(task, "legacy-ref", "便利店", CurrencyCode.CNY, 8800, "2026-08-01T00:00:00Z")
+        runBlocking {
+            val row = harness.fixture.outbox
+                .observeActiveByTypes(setOf(PendingMutationType.CreateExpense), includeCompleted = true)
+                .first()
+                .single()
+            harness.fixture.outbox.markDone(row.id, receiptJson = expenseAcceptanceReceiptJson(71))
+        }
+        drafts.remember(task)
+        showRoute(task)
+        waitForSheet()
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performScrollTo().performClick()
+        waitForReview()
+        compose.onNodeWithText(context.getString(R.string.manual_submission_done)).assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.manual_submission_unknown)).assertDoesNotExist()
+        compose.onNodeWithText(context.getString(R.string.manual_submission_waiting)).assertDoesNotExist()
+        compose.onNodeWithTag("recurring-payment-review-open:71").performClick()
+        assertEquals(71L, openedExpense.value)
+        assertEquals(1, harness.fixture.stored().size)
+        assertEquals(0, sends)
+    }
+
+    @Test fun reviewShowsFailedStatusInsteadOfWaiting() {
+        val task = periodTask("CNY", 10_000).copy(occurrenceRowVersion = 3L)
+        enqueueRaw(task, "legacy-ref", "便利店", CurrencyCode.CNY, 8800, "2026-08-01T00:00:00Z")
+        runBlocking {
+            val row = harness.fixture.outbox
+                .observeActiveByTypes(setOf(PendingMutationType.CreateExpense), includeCompleted = true)
+                .first()
+                .single()
+            harness.fixture.outbox.markFailed(row.id, "gone")
+        }
+        drafts.remember(task)
+        showRoute(task)
+        waitForSheet()
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performScrollTo().performClick()
+        waitForReview()
+        compose.onNodeWithText(context.getString(R.string.sync_status_failed_fallback)).assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.manual_submission_waiting)).assertDoesNotExist()
+        compose.onNodeWithText(context.getString(R.string.manual_submission_unknown)).assertDoesNotExist()
+        assertEquals(1, harness.fixture.stored().size)
         assertEquals(0, sends)
     }
 
@@ -544,7 +592,10 @@ class RecurringPaymentRouteRoomTest {
         if (!routeContent) {
             routeContent = true
             compose.setContent {
-                CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models) {
+                CompositionLocalProvider(
+                    LocalViewModelStoreOwner provides harness.models,
+                    LocalRecurringPaymentOpenExpense provides { openedExpense.value = it },
+                ) {
                     TicketboxTheme(skin = AppSkin.Default) {
                         val current = routeTask.value
                         if (mounted.value && current != null) {

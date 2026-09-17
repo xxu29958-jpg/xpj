@@ -8,6 +8,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -65,6 +66,9 @@ internal fun NavGraphBuilder.addRecurringPaymentRoute(runtime: MainNavigationRun
                 back()
             },
         )
+        CompositionLocalProvider(
+            LocalRecurringPaymentOpenExpense provides { id -> runtime.navController.openExpense(id) },
+        ) {
         RecurringPaymentRoute(
             task = task,
             factory = factory,
@@ -88,10 +92,12 @@ internal fun NavGraphBuilder.addRecurringPaymentRoute(runtime: MainNavigationRun
                 )
             },
         )
+        }
     }
 }
 
 internal val LocalRecurringPaymentDraftHandle = staticCompositionLocalOf<SavedStateHandle?> { null }
+internal val LocalRecurringPaymentOpenExpense = staticCompositionLocalOf<(Long) -> Unit> { {} }
 
 @Composable
 internal fun rememberRecurringPaymentDraftStore(
@@ -322,8 +328,7 @@ private fun rememberRecurringPaymentSheetWrite(ctx: RecurringPaymentEntryContext
     var pendingDraft by remember { mutableStateOf<ExpenseDraft?>(null) }
     var reviewCandidates by remember { mutableStateOf<List<ManualExpenseCreationProjection>>(emptyList()) }
     val scope = rememberCoroutineScope()
-    val access = ctx.access.context
-    val canMutate = access?.canModify == true && access.binding == ctx.task.binding
+    val canMutate = ctx.access.context?.let { it.canModify && it.binding == ctx.task.binding } == true
     val missingMessage = stringResource(R.string.recurring_payment_review_missing)
     val conflictMessage = stringResource(R.string.recurring_payment_review_conflict)
     val launchWrite = { block: suspend () -> Unit ->
@@ -365,6 +370,7 @@ private fun rememberRecurringPaymentSheetWrite(ctx: RecurringPaymentEntryContext
                     pendingDraft = null
                 }
             },
+            onOpenExpense = LocalRecurringPaymentOpenExpense.current,
         ),
         save = { draft ->
             launchWrite {

@@ -71,16 +71,16 @@ internal fun RecurringOccurrenceHost(
     val task = remember(taskJson) { readRecurringPaymentTask(taskJson) }
     val visible = state.paymentVisible()
     val leftover = rememberAdoptedPaymentTask(restore.drafts, model, creation, visible.identity)
-    val remembered = leftover.remembered
     val origin = rememberRecurringPaymentOrigin(creation, visible.identity)
     val guard = occurrencePaymentGuard(origin, leftover)
-    val focused = recurringPaymentFocused(remembered, task?.takeIf { it.matches(visible.identity) }, origin.clientRef, state)
+    val focused = recurringPaymentFocused(leftover.remembered, task?.takeIf { it.matches(visible.identity) }, origin.clientRef, state)
     CanonicalizeRecurringPaymentIdentity(RecurringPaymentCanonicalize(restore.drafts, origin, focused, task, visible.identity)) {
         taskJson = it
     }
-    LaunchedEffect(userClosed, visible, taskJson, origin.clientRef) {
+    LaunchedEffect(userClosed, visible, taskJson, origin.clientRef, leftover.ready, leftover.blocked, leftover.remembered?.clientRef) {
+        if (!leftover.ready) return@LaunchedEffect
         val current = readRecurringPaymentTask(taskJson)
-        val decision = recurringPaymentHostDecision(current, userClosed, visible, remembered)
+        val decision = recurringPaymentHostDecision(current, userClosed, visible, leftover.remembered)
         if (decision.clearTask) taskJson = null
         retireFulfilledPayment(visible, restore.drafts, creation, decision.retireClientRefs, origin.clientRef)
     }
@@ -112,7 +112,7 @@ internal fun RecurringOccurrenceHost(
             onRecordPayment = {
                 if (!guard.resolved || guard.conflict) return@OccurrenceSheetActions
                 val next = recurringPaymentTask(
-                    state, existing = task, remembered = remembered, admittedClientRef = origin.clientRef,
+                    state, existing = task, remembered = leftover.remembered, admittedClientRef = origin.clientRef,
                 ) ?: return@OccurrenceSheetActions
                 userClosed = false
                 restore.drafts?.remember(next)

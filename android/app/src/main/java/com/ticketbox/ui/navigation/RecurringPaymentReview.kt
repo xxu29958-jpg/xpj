@@ -32,6 +32,7 @@ internal data class RecurringPaymentReviewEvents(
     val onAdopt: (String) -> Unit,
     val onConfirmUnrelated: () -> Unit,
     val onDismiss: () -> Unit,
+    val onOpenExpense: (Long) -> Unit = {},
 )
 
 @Composable
@@ -56,7 +57,7 @@ internal fun RecurringPaymentReviewDialog(
                 model.candidates.forEach { candidate ->
                     val ref = candidate.admittedClientRef().orEmpty()
                     key(ref) {
-                        RecurringPaymentReviewCandidate(candidate, model.saving, events.onAdopt)
+                        RecurringPaymentReviewCandidate(candidate, model.saving, events)
                     }
                 }
             }
@@ -85,7 +86,7 @@ internal fun RecurringPaymentReviewDialog(
 private fun RecurringPaymentReviewCandidate(
     candidate: ManualExpenseCreationProjection,
     saving: Boolean,
-    onAdopt: (String) -> Unit,
+    events: RecurringPaymentReviewEvents,
 ) {
     val ref = candidate.admittedClientRef().orEmpty()
     val request = candidate.request
@@ -95,9 +96,9 @@ private fun RecurringPaymentReviewCandidate(
         modifier = Modifier.padding(top = AppSpacing.smallGap),
     )
     RecurringPaymentReviewOriginalFacts(request)
-    RecurringPaymentReviewStatus(candidate)
+    RecurringPaymentReviewStatus(candidate, events.onOpenExpense)
     TextButton(
-        onClick = { if (!saving && ref.isNotBlank() && request != null) onAdopt(ref) },
+        onClick = { if (!saving && ref.isNotBlank() && request != null) events.onAdopt(ref) },
         enabled = !saving && ref.isNotBlank() && request != null,
         modifier = Modifier.testTag("recurring-payment-review-adopt:$ref"),
     ) {
@@ -122,19 +123,29 @@ private fun RecurringPaymentReviewOriginalFacts(request: ExpenseManualCreateRequ
 }
 
 @Composable
-private fun RecurringPaymentReviewStatus(candidate: ManualExpenseCreationProjection) {
-    Text(
-        stringResource(
-            when (candidate.row.status) {
-                PendingMutationStatus.InFlight -> R.string.manual_submission_sending
-                PendingMutationStatus.Done -> R.string.manual_submission_unknown
-                else -> R.string.manual_submission_waiting
-            },
-        ),
-    )
+private fun RecurringPaymentReviewStatus(
+    candidate: ManualExpenseCreationProjection,
+    onOpenExpense: (Long) -> Unit,
+) {
+    Text(stringResource(recurringPaymentReviewStatusRes(candidate.row.status)))
     candidate.acceptedExpenseId?.let { id ->
-        Text(stringResource(R.string.recurring_payment_review_received, id.toString()))
+        TextButton(
+            onClick = { onOpenExpense(id) },
+            modifier = Modifier.testTag("recurring-payment-review-open:$id"),
+        ) {
+            Text(stringResource(R.string.manual_submission_open))
+        }
     }
+}
+
+internal fun recurringPaymentReviewStatusRes(status: PendingMutationStatus): Int = when (status) {
+    PendingMutationStatus.Pending -> R.string.manual_submission_waiting
+    PendingMutationStatus.InFlight -> R.string.manual_submission_sending
+    PendingMutationStatus.Done -> R.string.manual_submission_done
+    PendingMutationStatus.Conflict -> R.string.sync_status_conflict_fallback
+    PendingMutationStatus.Failed -> R.string.sync_status_failed_fallback
+    PendingMutationStatus.Abandoned -> R.string.recurring_payment_review_abandoned
+    PendingMutationStatus.Unknown -> R.string.manual_submission_unknown
 }
 
 private fun originalSubmissionAmount(request: ExpenseManualCreateRequestDto): String? {
