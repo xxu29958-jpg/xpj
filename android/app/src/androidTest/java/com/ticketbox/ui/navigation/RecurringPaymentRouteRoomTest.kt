@@ -32,7 +32,6 @@ import com.ticketbox.data.remote.dto.RecurringOccurrenceDto
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.RecurringPaymentOrigin
 import com.ticketbox.data.repository.RecurringPaymentOriginAdopt
-import com.ticketbox.data.repository.decodeManualCreateRequest
 import com.ticketbox.data.repository.decodeRecurringPaymentOrigin
 import com.ticketbox.data.repository.encodeManualCreatePayload
 import com.ticketbox.data.repository.expenseAcceptanceReceiptJson
@@ -638,28 +637,10 @@ class RecurringPaymentRouteRoomTest {
         originalAmountMinor: Long,
         expenseTime: String,
         origin: RecurringPaymentOrigin? = null,
-    ) {
-        runBlocking {
-            harness.screenFactory.repository.manualCreation.create(
-                ExpenseDraft(
-                    amountCents = originalAmountMinor,
-                    originalCurrencyCode = currency,
-                    originalAmountMinor = originalAmountMinor,
-                    ledgerHomeCurrency = CurrencyCode.CNY,
-                    merchant = merchant,
-                    category = "餐饮",
-                    note = null,
-                    expenseTime = expenseTime,
-                    tags = null,
-                    valueScore = null,
-                    regretScore = null,
-                ),
-                task.binding,
-                ref,
-                origin,
-            ).getOrThrow()
-        }
-    }
+    ) = enqueueRawPeriodPayment(
+        harness.screenFactory.repository.manualCreation,
+        task, ref, merchant, currency, originalAmountMinor, expenseTime, origin,
+    )
 
     private fun stopDisplayedRaw() {
         runBlocking {
@@ -719,25 +700,10 @@ class RecurringPaymentRouteRoomTest {
 
     private fun periodTask(recorded: String?, amount: Long?): RecurringPaymentTask {
         val binding = requireNotNull(harness.screenFactory.repository.captureDeferredLedgerBinding())
-        return RecurringPaymentTask(
-            binding = binding,
-            seriesPublicId = "rec-1",
-            period = "2026-08",
-            clientRef = "period-ref",
-            merchant = "房租",
-            recordedCurrencyCode = recorded,
-            suggestedAmountMinor = amount,
-            ledgerHomeCurrencyCode = "CNY",
-        )
+        return periodPaymentTask(binding, recorded, amount)
     }
 
-    private fun readCreateRequest(payload: String) = requireNotNull(
-        decodeManualCreateRequest(
-            OutboxAdapterGraph().manualCreateAdapter,
-            OutboxAdapterGraph().recurringPaymentCreateAdapter,
-            payload,
-        ),
-    )
+    private fun readCreateRequest(payload: String) = readPeriodCreateRequest(payload)
 
     private fun augustUiState(task: RecurringPaymentTask) = RecurringOccurrenceUiState(
         access = LedgerAccessContext(task.binding, true),

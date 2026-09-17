@@ -36,7 +36,13 @@ internal sealed class ManualExpenseCreateAdmission {
     }
 }
 
-/** N-1 SavedState left by RecurringPeriodPaymentSession. Not a second Writer. */
+/**
+ * N-1 SavedState left by RecurringPeriodPaymentSession. Not a second Writer.
+ *
+ * Read through [com.ticketbox.ui.navigation.LEGACY_PERIOD_PAYMENT_SESSIONS_KEY].
+ * Supported from Android 1.2.0; delete the Host bridge no earlier than 1.4.0.
+ * Keep the leftover upgrade counterexamples listed on that key when the reader is removed.
+ */
 @JsonClass(generateAdapter = true)
 internal data class LegacyPeriodPaymentSession(
     val binding: LogicalSessionBinding,
