@@ -1141,6 +1141,87 @@ class RecurringOccurrenceRoomContinuityTest {
     }
 
     @Test
+    fun leftoverUnsubmittedFirstOpenAfterGenerationMoveHoldsUntilContinue() {
+        val binding = bindWritableSeptember()
+        val seen = requireNotNull(model.value?.uiState?.value?.occurrence?.rowVersion)
+        stopOccurrenceModel()
+        val leftover = leftoverHandle(binding, leftoverRentSession(binding, "2026-09", "legacy-ref", admitted = false))
+        bumpOccurrenceGenerationFrom(seen)
+        installModel(savedState = leftover)
+        val drafts = RecurringPaymentDraftStore(SavedStateHandle())
+        showOccurrenceHost(drafts)
+        waitLeftoverBlocked()
+        compose.onNodeWithTag("occurrence-record-payment").performScrollTo().assertIsNotEnabled()
+        assertTrue(leftover.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY).orEmpty().contains("legacy-ref"))
+        assertNull(drafts.remembered(binding, "recurring-1", "2026-09"))
+        compose.onNodeWithTag("occurrence-payment-leftover-continue").performScrollTo().performClick()
+        compose.waitUntil(10_000) {
+            leftover.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY) == null &&
+                drafts.remembered(binding, "recurring-1", "2026-09")?.clientRef == "legacy-ref"
+        }
+        compose.onNodeWithTag("occurrence-payment-leftover").assertDoesNotExist()
+        compose.onNodeWithTag("occurrence-record-payment").performScrollTo().assertIsEnabled()
+        paymentTask.value = null
+        compose.onNodeWithTag("occurrence-record-payment").performClick()
+        compose.waitUntil(10_000) { paymentTask.value?.clientRef == "legacy-ref" }
+        assertEquals("legacy-ref", paymentTask.value?.clientRef)
+        assertEquals(0, fixture.stored().count { it["type"] == "create_expense" })
+        assertNull(RecurringPaymentIdentity(binding, "recurring-1", "2026-09", seen + 2).leftoverSeen(leftover))
+    }
+
+    @Test
+    fun leftoverRawCreateExpenseFirstOpenAfterGenerationMoveStaysUnattributed() {
+        fixture.confirmedStream.value = emptyList()
+        val binding = bindWritableSeptember()
+        val seen = requireNotNull(model.value?.uiState?.value?.occurrence?.rowVersion)
+        runBlocking {
+            requireNotNull(graph).expenseRepository.manualCreation.create(
+                ExpenseDraft(
+                    amountCents = 10_000,
+                    originalCurrencyCode = CurrencyCode.CNY,
+                    originalAmountMinor = 10_000,
+                    ledgerHomeCurrency = CurrencyCode.CNY,
+                    merchant = "房租",
+                    category = "餐饮",
+                    note = null,
+                    expenseTime = "2026-09-05T08:00:00Z",
+                    tags = null,
+                    valueScore = null,
+                    regretScore = null,
+                ),
+                binding,
+                "legacy-ref",
+            ).getOrThrow()
+        }
+        val before = requireNotNull(fixture.stored().single { it["type"] == "create_expense" }["payload"])
+        stopOccurrenceModel()
+        val leftover = leftoverHandle(binding, leftoverRentSession(binding, "2026-09", "legacy-ref", admitted = false))
+        bumpOccurrenceGenerationFrom(seen)
+        installModel(savedState = leftover)
+        val drafts = RecurringPaymentDraftStore(SavedStateHandle())
+        showOccurrenceHost(drafts)
+        waitLeftoverBlocked()
+        compose.onNodeWithTag("occurrence-record-payment").performScrollTo().assertIsNotEnabled()
+        assertTrue(leftover.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY).orEmpty().contains("legacy-ref"))
+        assertNull(drafts.remembered(binding, "recurring-1", "2026-09"))
+        assertEquals(before, fixture.stored().single { it["type"] == "create_expense" }["payload"])
+        assertNull(
+            decodeRecurringPaymentOrigin(
+                OutboxAdapterGraph().recurringPaymentCreateAdapter,
+                before,
+            ),
+        )
+        runBlocking {
+            val lookup = requireNotNull(graph).expenseRepository.manualCreation.observeOrigin(
+                binding,
+                RecurringPaymentOrigin("recurring-1", "2026-09", fixture.network.current.rowVersion),
+            ).first()
+            assertTrue(lookup is RecurringPaymentOriginLookup.Absent)
+        }
+        assertEquals(1, fixture.stored().count { it["type"] == "create_expense" })
+    }
+
+    @Test
     fun leftoverRawCreateExpenseDoesNotBindAfterAbsentHostLinkAndClear() {
         fixture.confirmedStream.value = emptyList()
         val binding = bindWritableSeptember()

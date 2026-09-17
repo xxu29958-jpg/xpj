@@ -23,8 +23,10 @@ import com.ticketbox.ui.screens.recurring.OccurrenceSheetActions
 import com.ticketbox.ui.screens.recurring.RecurringOccurrenceSheet
 import com.ticketbox.viewmodel.RecurringOccurrenceUiState
 import com.ticketbox.viewmodel.RecurringOccurrenceViewModel
+import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
 
 internal data class RecurringPaymentRestore(
@@ -117,6 +119,7 @@ internal fun RecurringOccurrenceHost(
             onRecover = model::recover,
             onOpenExpense = expenses.onOpenExpense,
             onAbandonLeftover = leftover.abandon,
+            onContinueLeftover = leftover.continueDraft,
             onRecordPayment = {
                 if (!guard.resolved || guard.conflict) return@OccurrenceSheetActions
                 val next = recurringPaymentTask(state, existing = task, remembered = leftover.remembered, admittedClientRef = origin.clientRef)
@@ -137,7 +140,9 @@ private data class LeftoverPaymentAdopt(
     val remembered: RecurringPaymentTask? = null,
     val blocked: Boolean = false,
     val unreadable: Boolean = false,
+    val continueAvailable: Boolean = false,
     val abandon: () -> Unit = {},
+    val continueDraft: () -> Unit = {},
 )
 
 @Composable
@@ -154,6 +159,7 @@ private fun rememberAdoptedPaymentTask(
         mutableStateOf<Result<Unit>?>(null)
     }
     var leftoverTick by remember(store, model, identity) { mutableStateOf(0) }
+    val scope = rememberCoroutineScope()
     LaunchedEffect(store, model, creation, identity) {
         if (identity.occurrenceRowVersion == null) return@LaunchedEffect
         handoff = try {
@@ -174,13 +180,21 @@ private fun rememberAdoptedPaymentTask(
             null
         },
         blocked = leftoverTick.let {
-            handoff?.isFailure == true ||
-                (ready && store.leftoverUnresolved(model.savedState, identity))
+            handoff?.isFailure == true || (ready && store.leftoverUnresolved(model.savedState, identity))
         },
         unreadable = leftoverTick.let { ready && store.legacyPeriodPaymentSessions(model.savedState) == null },
+        continueAvailable = leftoverTick.let {
+            ready && identity.leftoverContinueAvailable(store.legacyPeriodPaymentSessions(model.savedState))
+        },
         abandon = {
             store.retireFulfilledLegacySessions(model.savedState, identity, dropUnreadable = true)
             leftoverTick++
+        },
+        continueDraft = {
+            scope.launch {
+                store.adoptLegacyPeriodPaymentSessions(model.savedState, creation, identity, continueUnproven = true)
+                leftoverTick++
+            }
         },
     )
 }
@@ -193,6 +207,7 @@ private fun occurrencePaymentGuard(
     conflict = origin.conflict,
     leftoverBlocked = leftover.blocked && !origin.conflict,
     leftoverUnreadable = leftover.unreadable && leftover.blocked && !origin.conflict,
+    leftoverContinueDraft = leftover.continueAvailable && leftover.blocked && !origin.conflict,
 )
 
 private data class RecurringPaymentCanonicalize(

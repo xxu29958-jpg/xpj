@@ -123,12 +123,12 @@ internal class RecurringPaymentDraftStore(private val state: SavedStateHandle) {
 
     fun legacyPeriodPaymentSessions(
         source: SavedStateHandle,
-    ): List<Pair<RecurringPaymentTask, RecurringPaymentDraft?>>? {
+    ): List<LeftoverSessionView>? {
         val json = source.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY) ?: return emptyList()
         val sessions = runCatching { legacyPeriodPaymentSessionListAdapter.fromJson(json) }.getOrNull() ?: return null
         return sessions.mapNotNull { session ->
             val task = session.toRecurringPaymentTaskOrNull() ?: return@mapNotNull null
-            task to session.toRecurringPaymentDraftOrNull()
+            LeftoverSessionView(task, session.toRecurringPaymentDraftOrNull(), session.admitted)
         }
     }
 
@@ -136,6 +136,7 @@ internal class RecurringPaymentDraftStore(private val state: SavedStateHandle) {
         source: SavedStateHandle,
         creation: ExpenseManualCreation,
         identity: RecurringPaymentIdentity? = null,
+        continueUnproven: Boolean = false,
     ) {
         val current = identity ?: return
         val generation = current.occurrenceRowVersion ?: return
@@ -145,14 +146,17 @@ internal class RecurringPaymentDraftStore(private val state: SavedStateHandle) {
             return
         }
         val sessions = runCatching { legacyPeriodPaymentSessionListAdapter.fromJson(json) }.getOrNull() ?: return
-        val remaining = if (current.generationMovedPast(current.leftoverSeen(source))) {
-            sessions.filterNot(current::matchesLoadedSession)
-        } else {
-            current.adoptLoadedSessions(sessions, creation) { captureLegacy(it, generation) }
+        val seen = current.leftoverSeen(source)
+        val decision = current.leftoverTransition(seen)
+        val remaining = when {
+            continueUnproven -> current.adoptLoadedSessions(sessions, creation, bind = false) { captureLegacy(it, generation) }
+            decision == LeftoverTransition.Retire -> sessions.filterNot(current::matchesLoadedSession)
+            decision == LeftoverTransition.Adopt -> current.adoptLoadedSessions(sessions, creation, bind = true) { captureLegacy(it, generation) }
+            else -> sessions
         }
         if (remaining.isEmpty()) source.remove<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY)
         else source[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = legacyPeriodPaymentSessionListAdapter.toJson(remaining)
-        current.rememberLeftoverSeen(source, leftoverUnresolved(source, current))
+        current.rememberLeftoverSeen(source, leftoverUnresolved(source, current) && decision == LeftoverTransition.Adopt && !continueUnproven)
     }
 
     fun leftoverUnresolved(
@@ -248,6 +252,14 @@ internal fun readRecurringPaymentTask(json: String?): RecurringPaymentTask? =
 internal fun recurringPaymentRoute(task: RecurringPaymentTask): String =
     "recurring-payment?task=${Uri.encode(recurringPaymentTaskJson(task))}"
 
+internal enum class LeftoverTransition { Adopt, Retire, Hold }
+
+internal data class LeftoverSessionView(
+    val task: RecurringPaymentTask,
+    val draft: RecurringPaymentDraft?,
+    val admitted: Boolean,
+)
+
 /** Visible occurrence identity. Not a Writer or Session. */
 internal data class RecurringPaymentIdentity(
     val binding: LogicalSessionBinding?,
@@ -266,7 +278,7 @@ internal data class RecurringPaymentIdentity(
         val bound = binding ?: return null
         val series = seriesPublicId?.takeIf { it.isNotBlank() } ?: return null
         val month = period?.takeIf { it.isNotBlank() } ?: return null
-        return "recurring.periodPayment.seen:${URLEncoder.encode(logicalSessionBindingAdapter.toJson(bound), StandardCharsets.UTF_8)}:$series:$month"
+        return "recurring.periodPayment.seen:${URLEncoder.encode(logicalSessionBindingAdapter.toJson(bound), StandardCharsets.UTF_8.name())}:$series:$month"
     }
 
     fun leftoverSeen(source: SavedStateHandle): Long? = leftoverSeenKey()?.let { source.get<Long>(it) }
@@ -277,14 +289,28 @@ internal data class RecurringPaymentIdentity(
         else source.remove<Long>(key)
     }
 
-    fun generationMovedPast(seen: Long?): Boolean {
-        val current = occurrenceRowVersion ?: return false
-        return seen != null && current > seen
+    fun leftoverContinueAvailable(sessions: List<LeftoverSessionView>?): Boolean =
+        sessions.orEmpty().any {
+            !it.admitted &&
+                it.task.binding == binding &&
+                it.task.seriesPublicId == seriesPublicId &&
+                it.task.period == period
+        }
+
+    fun leftoverTransition(seen: Long?): LeftoverTransition {
+        val current = occurrenceRowVersion ?: return LeftoverTransition.Hold
+        if (seen != null && current > seen) return LeftoverTransition.Retire
+        if (seen != null && current == seen) return LeftoverTransition.Adopt
+        if (seen == null && current == 0L) return LeftoverTransition.Adopt
+        return LeftoverTransition.Hold
     }
+
+    fun generationMovedPast(seen: Long?): Boolean = leftoverTransition(seen) == LeftoverTransition.Retire
 
     suspend fun adoptLoadedSessions(
         sessions: List<LegacyPeriodPaymentSession>,
         creation: ExpenseManualCreation,
+        bind: Boolean,
         capture: (LegacyPeriodPaymentSession) -> Unit,
     ): List<LegacyPeriodPaymentSession> {
         val bound = binding ?: return sessions
@@ -293,6 +319,10 @@ internal data class RecurringPaymentIdentity(
         for (session in sessions) {
             if (!matchesLoadedSession(session)) {
                 remaining += session
+                continue
+            }
+            if (!bind) {
+                capture(session)
                 continue
             }
             when (creation.adoptOrigin(bound, session.clientRef, session.seriesPublicId, session.period, generation)) {

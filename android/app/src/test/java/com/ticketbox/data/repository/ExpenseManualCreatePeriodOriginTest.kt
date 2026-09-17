@@ -181,7 +181,7 @@ internal class ExpenseManualCreatePeriodOriginTest : ExpensePendingRepositoryOut
         store.adoptLegacyPeriodPaymentSessions(
             leftover,
             repo.manualCreation,
-            RecurringPaymentIdentity(binding, "rec-1", "2026-09", 3),
+            RecurringPaymentIdentity(binding, "rec-1", "2026-09", 0),
         )
         val remaining = leftover.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY).orEmpty()
         assertTrue(remaining.contains("august-ref"))
@@ -198,11 +198,11 @@ internal class ExpenseManualCreatePeriodOriginTest : ExpensePendingRepositoryOut
         rebuilt.adoptLegacyPeriodPaymentSessions(
             leftover,
             repo.manualCreation,
-            RecurringPaymentIdentity(binding, "rec-1", "2026-08", 7),
+            RecurringPaymentIdentity(binding, "rec-1", "2026-08", 0),
         )
         assertNull(leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY])
         assertEquals("august-ref", rebuilt.remembered(binding, "rec-1", "2026-08")?.clientRef)
-        val august = RecurringPaymentOrigin("rec-1", "2026-08", 7)
+        val august = RecurringPaymentOrigin("rec-1", "2026-08", 0)
         val found = repo.manualCreation.observeOrigin(binding, august).first()
         assertTrue(found is RecurringPaymentOriginLookup.Found)
         assertEquals("august-ref", found.projection.request?.clientRef)
@@ -225,24 +225,24 @@ internal class ExpenseManualCreatePeriodOriginTest : ExpensePendingRepositoryOut
         store.adoptLegacyPeriodPaymentSessions(
             leftover,
             repo.manualCreation,
-            RecurringPaymentIdentity(binding, "rec-1", "2026-08", 7),
+            RecurringPaymentIdentity(binding, "rec-1", "2026-08", 0),
         )
         assertNull(leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY])
         assertEquals("legacy-ref", store.remembered(binding, "rec-1", "2026-08")?.clientRef)
-        assertEquals(7L, store.remembered(binding, "rec-1", "2026-08")?.occurrenceRowVersion)
+        assertEquals(0L, store.remembered(binding, "rec-1", "2026-08")?.occurrenceRowVersion)
         val restored = assertNotNull(store.read("legacy-ref"))
         assertEquals("98.00", restored.amountText)
         assertEquals("住房", restored.category)
         assertEquals("自填备注", restored.note)
         assertEquals("", restored.expenseTime)
-        val found = repo.manualCreation.observeOrigin(binding, RecurringPaymentOrigin("rec-1", "2026-08", 7)).first()
+        val found = repo.manualCreation.observeOrigin(binding, RecurringPaymentOrigin("rec-1", "2026-08", 0)).first()
         assertTrue(found is RecurringPaymentOriginLookup.Found)
         assertEquals("legacy-ref", found.projection.request?.clientRef)
         assertEquals(1, pendingDao.rows.size)
         val stored = requireNotNull(
             com.ticketbox.OutboxAdapterGraph().recurringPaymentCreateAdapter.fromJson(pendingDao.rows.values.single().payload),
         )
-        assertEquals(7L, stored.occurrenceRowVersion)
+        assertEquals(0L, stored.occurrenceRowVersion)
     }
 
     @Test
@@ -258,13 +258,13 @@ internal class ExpenseManualCreatePeriodOriginTest : ExpensePendingRepositoryOut
         store.adoptLegacyPeriodPaymentSessions(
             leftover,
             repo.manualCreation,
-            RecurringPaymentIdentity(binding, "rec-1", "2026-08", 7),
+            RecurringPaymentIdentity(binding, "rec-1", "2026-08", 0),
         )
         assertNull(leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY])
         assertEquals("legacy-ref", store.remembered(binding, "rec-1", "2026-08")?.clientRef)
-        assertEquals(7L, store.remembered(binding, "rec-1", "2026-08")?.occurrenceRowVersion)
+        assertEquals(0L, store.remembered(binding, "rec-1", "2026-08")?.occurrenceRowVersion)
         assertEquals(0, pendingDao.rows.size)
-        val identity = RecurringPaymentIdentity(binding, "rec-1", "2026-08", 7)
+        val identity = RecurringPaymentIdentity(binding, "rec-1", "2026-08", 0)
         assertTrue(!store.leftoverUnresolved(leftover, identity))
         assertNull(identity.leftoverSeen(leftover))
     }
@@ -283,14 +283,14 @@ internal class ExpenseManualCreatePeriodOriginTest : ExpensePendingRepositoryOut
         store.adoptLegacyPeriodPaymentSessions(
             leftover,
             repo.manualCreation,
-            RecurringPaymentIdentity(binding, "rec-1", "2026-09", 3),
+            RecurringPaymentIdentity(binding, "rec-1", "2026-09", 0),
         )
         val remaining = leftover.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY).orEmpty()
         assertTrue(remaining.contains("august-ref"))
         assertTrue(!remaining.contains("september-ref"))
         assertNull(store.remembered(binding, "rec-1", "2026-08"))
         assertEquals("september-ref", store.remembered(binding, "rec-1", "2026-09")?.clientRef)
-        assertEquals(3L, store.remembered(binding, "rec-1", "2026-09")?.occurrenceRowVersion)
+        assertEquals(0L, store.remembered(binding, "rec-1", "2026-09")?.occurrenceRowVersion)
         assertTrue(store.leftoverUnresolved(leftover, RecurringPaymentIdentity(binding, "rec-1", "2026-08", 7)))
         assertTrue(!store.leftoverUnresolved(leftover, RecurringPaymentIdentity(binding, "rec-1", "2026-09", 3)))
         assertEquals(0, pendingDao.rows.size)
@@ -299,7 +299,7 @@ internal class ExpenseManualCreatePeriodOriginTest : ExpensePendingRepositoryOut
         store.adoptLegacyPeriodPaymentSessions(
             leftover,
             repo.manualCreation,
-            RecurringPaymentIdentity(binding, "rec-1", "2026-09", 3),
+            RecurringPaymentIdentity(binding, "rec-1", "2026-09", 0),
         )
         assertNull(store.remembered(binding, "rec-1", "2026-09"))
         assertTrue(leftover.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY).orEmpty().contains("august-ref"))
@@ -320,7 +320,7 @@ internal class ExpenseManualCreatePeriodOriginTest : ExpensePendingRepositoryOut
         store.adoptLegacyPeriodPaymentSessions(
             leftover,
             repo.manualCreation,
-            RecurringPaymentIdentity(binding, "rec-1", "2026-09", 3),
+            RecurringPaymentIdentity(binding, "rec-1", "2026-09", 0),
         )
         assertEquals("september-ref", store.remembered(binding, "rec-1", "2026-09")?.clientRef)
         assertNull(store.remembered(binding, "rec-1", "2026-08"))
@@ -400,7 +400,7 @@ internal class ExpenseManualCreatePeriodOriginTest : ExpensePendingRepositoryOut
         store.adoptLegacyPeriodPaymentSessions(leftover, repo.manualCreation, second)
         assertNotEquals(first.leftoverSeenKey(), second.leftoverSeenKey())
         assertEquals(2L, leftover.get<Long>(requireNotNull(first.leftoverSeenKey())))
-        assertEquals(5L, leftover.get<Long>(requireNotNull(second.leftoverSeenKey())))
+        assertNull(second.leftoverSeen(leftover))
         assertTrue(store.leftoverUnresolved(leftover, second))
         assertTrue(leftover.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY).orEmpty().contains("legacy-ref"))
         assertNull(store.remembered(second.binding, "rec-1", "2026-09"))
@@ -440,6 +440,88 @@ internal class ExpenseManualCreatePeriodOriginTest : ExpensePendingRepositoryOut
         assertNull(identity.leftoverSeen(leftover))
         assertTrue(!store.leftoverUnresolved(leftover, identity))
         assertEquals(0, pendingDao.rows.size)
+    }
+
+    @Test
+    fun leftoverFirstOpenWithoutSeenDoesNotUpgradeUnsubmittedTaskOrDraft() = runTest {
+        val pendingDao = FakePendingMutationDao()
+        val repo = createRepo(FakeExpenseDao(), outbox(pendingDao))
+        val binding = requireNotNull(repo.captureDeferredLedgerBinding())
+        val identity = RecurringPaymentIdentity(binding, "rec-1", "2026-08", 5)
+        val leftover = SavedStateHandle()
+        leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = leftoverPeriodPaymentSessionsJson(
+            leftoverRow(binding, "2026-08", "legacy-ref", admitted = false, category = "住房", note = "旧草稿", capturedAmountCents = 9800),
+        )
+        val store = RecurringPaymentDraftStore(SavedStateHandle())
+        store.adoptLegacyPeriodPaymentSessions(leftover, repo.manualCreation, identity)
+        assertTrue(store.leftoverUnresolved(leftover, identity))
+        assertNull(store.remembered(binding, "rec-1", "2026-08"))
+        assertNull(store.read("legacy-ref"))
+        assertNull(identity.leftoverSeen(leftover))
+        assertEquals(0, pendingDao.rows.size)
+    }
+
+    @Test
+    fun leftoverFirstOpenWithoutSeenDoesNotBindRawCreateExpense() = runTest {
+        val pendingDao = FakePendingMutationDao()
+        val repo = createRepo(FakeExpenseDao(), outbox(pendingDao))
+        val binding = requireNotNull(repo.captureDeferredLedgerBinding())
+        repo.manualCreation.create(draft, binding, "legacy-ref").getOrThrow()
+        val before = pendingDao.rows.values.single().payload
+        val identity = RecurringPaymentIdentity(binding, "rec-1", "2026-08", 5)
+        val leftover = SavedStateHandle()
+        leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = leftoverPeriodPaymentSessionsJson(
+            leftoverRow(binding, "2026-08", "legacy-ref", admitted = false),
+        )
+        val store = RecurringPaymentDraftStore(SavedStateHandle())
+        store.adoptLegacyPeriodPaymentSessions(leftover, repo.manualCreation, identity)
+        assertTrue(store.leftoverUnresolved(leftover, identity))
+        assertNull(store.remembered(binding, "rec-1", "2026-08"))
+        assertNull(identity.leftoverSeen(leftover))
+        assertEquals(before, pendingDao.rows.values.single().payload)
+        assertNull(
+            decodeRecurringPaymentOrigin(
+                com.ticketbox.OutboxAdapterGraph().recurringPaymentCreateAdapter,
+                pendingDao.rows.values.single().payload,
+            ),
+        )
+        assertTrue(
+            repo.manualCreation.observeOrigin(binding, RecurringPaymentOrigin("rec-1", "2026-08", 5)).first()
+                is RecurringPaymentOriginLookup.Absent,
+        )
+        assertEquals(1, pendingDao.rows.size)
+    }
+
+    @Test
+    fun leftoverFirstOpenContinueDraftCapturesWithoutBindingRawCreateExpense() = runTest {
+        val pendingDao = FakePendingMutationDao()
+        val repo = createRepo(FakeExpenseDao(), outbox(pendingDao))
+        val binding = requireNotNull(repo.captureDeferredLedgerBinding())
+        repo.manualCreation.create(draft, binding, "legacy-ref").getOrThrow()
+        val before = pendingDao.rows.values.single().payload
+        val identity = RecurringPaymentIdentity(binding, "rec-1", "2026-08", 5)
+        val leftover = SavedStateHandle()
+        leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = leftoverPeriodPaymentSessionsJson(
+            leftoverRow(binding, "2026-08", "legacy-ref", admitted = false, category = "住房", note = "旧草稿", capturedAmountCents = 9800),
+        )
+        val store = RecurringPaymentDraftStore(SavedStateHandle())
+        store.adoptLegacyPeriodPaymentSessions(leftover, repo.manualCreation, identity, continueUnproven = true)
+        assertNull(leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY])
+        assertEquals("legacy-ref", store.remembered(binding, "rec-1", "2026-08")?.clientRef)
+        assertEquals(5L, store.remembered(binding, "rec-1", "2026-08")?.occurrenceRowVersion)
+        assertEquals("住房", store.read("legacy-ref")?.category)
+        assertEquals(before, pendingDao.rows.values.single().payload)
+        assertNull(
+            decodeRecurringPaymentOrigin(
+                com.ticketbox.OutboxAdapterGraph().recurringPaymentCreateAdapter,
+                pendingDao.rows.values.single().payload,
+            ),
+        )
+        assertTrue(
+            repo.manualCreation.observeOrigin(binding, RecurringPaymentOrigin("rec-1", "2026-08", 5)).first()
+                is RecurringPaymentOriginLookup.Absent,
+        )
+        assertNull(identity.leftoverSeen(leftover))
     }
 
     private fun leftoverRow(

@@ -255,7 +255,7 @@ class RecurringPaymentTaskTest {
         leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = json
         val store = RecurringPaymentDraftStore(SavedStateHandle())
         val parsed = assertNotNull(store.legacyPeriodPaymentSessions(leftover))
-        assertEquals("legacy-ref", parsed.single().first.clientRef)
+        assertEquals("legacy-ref", parsed.single().task.clientRef)
         assertEquals(json, leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY])
         assertNull(store.remembered(access.binding, "rec-1", "2026-08"))
     }
@@ -267,7 +267,7 @@ class RecurringPaymentTaskTest {
         val leftover = SavedStateHandle()
         leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = json
         val store = RecurringPaymentDraftStore(SavedStateHandle())
-        val draft = assertNotNull(store.legacyPeriodPaymentSessions(leftover)?.single()?.second)
+        val draft = assertNotNull(store.legacyPeriodPaymentSessions(leftover)?.single()?.draft)
         assertEquals("9800", draft.amountText)
         assertEquals("JPY", draft.currencyCode)
         assertEquals("住房", draft.category)
@@ -284,7 +284,7 @@ class RecurringPaymentTaskTest {
         val leftover = SavedStateHandle()
         leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = json
         val store = RecurringPaymentDraftStore(SavedStateHandle())
-        assertEquals(emptyList<Pair<RecurringPaymentTask, RecurringPaymentDraft?>>(), store.legacyPeriodPaymentSessions(leftover))
+        assertEquals(emptyList<LeftoverSessionView>(), store.legacyPeriodPaymentSessions(leftover))
         assertEquals(json, leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY])
         assertNull(store.remembered(access.binding, "rec-1", "2026-08"))
         assertTrue(store.leftoverUnresolved(leftover, RecurringPaymentIdentity(access.binding, "rec-1", "2026-08")))
@@ -299,7 +299,7 @@ class RecurringPaymentTaskTest {
         leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = json
         val store = RecurringPaymentDraftStore(SavedStateHandle())
         val parsed = assertNotNull(store.legacyPeriodPaymentSessions(leftover))
-        assertEquals("complete-ref", parsed.single().first.clientRef)
+        assertEquals("complete-ref", parsed.single().task.clientRef)
         assertEquals(json, leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY])
         assertTrue(store.leftoverUnresolved(leftover, RecurringPaymentIdentity(access.binding, "rec-1", "2026-08")))
         assertTrue(store.leftoverUnresolved(leftover, RecurringPaymentIdentity(access.binding, "rec-1", "2026-09")))
@@ -346,7 +346,16 @@ class RecurringPaymentTaskTest {
         assertEquals(false, identity.generationMovedPast(null))
         assertEquals(false, identity.generationMovedPast(2))
         assertEquals(true, identity.generationMovedPast(0))
+        assertEquals(LeftoverTransition.Hold, identity.leftoverTransition(null))
+        assertEquals(LeftoverTransition.Adopt, identity.leftoverTransition(2))
+        assertEquals(LeftoverTransition.Retire, identity.leftoverTransition(0))
+        assertEquals(LeftoverTransition.Adopt, RecurringPaymentIdentity(access.binding, "rec-1", "2026-09", 0).leftoverTransition(null))
         assertNotNull(identity.leftoverSeenKey())
+        val september = RecurringPaymentTask(
+            access.binding, "rec-1", "2026-09", "legacy-ref", "日元订阅", "JPY", 1200, "CNY", 2,
+        )
+        assertEquals(true, identity.leftoverContinueAvailable(listOf(LeftoverSessionView(september, null, admitted = false))))
+        assertEquals(false, identity.leftoverContinueAvailable(listOf(LeftoverSessionView(september, null, admitted = true))))
     }
 
     @Test

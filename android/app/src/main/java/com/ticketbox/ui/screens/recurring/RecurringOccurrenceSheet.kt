@@ -40,6 +40,7 @@ data class OccurrencePaymentGuard(
     val conflict: Boolean = false,
     val leftoverBlocked: Boolean = false,
     val leftoverUnreadable: Boolean = false,
+    val leftoverContinueDraft: Boolean = false,
 )
 
 data class OccurrenceSheetActions(
@@ -52,6 +53,7 @@ data class OccurrenceSheetActions(
     val onOpenExpense: (Long) -> Unit = {},
     val onRecordPayment: () -> Unit = {},
     val onAbandonLeftover: () -> Unit = {},
+    val onContinueLeftover: () -> Unit = {},
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -67,7 +69,7 @@ fun RecurringOccurrenceSheet(
         AppSheetScaffold(title = item.merchant, subtitle = stringResource(R.string.occurrence_subtitle)) {
             OccurrencePeriodControls(state, actions)
             state.message?.let { Text(it.asString(), modifier = Modifier.testTag("occurrence-message")) }
-            OccurrencePaymentConflict(origin, actions.onAbandonLeftover)
+            OccurrencePaymentConflict(origin, actions.onAbandonLeftover, actions.onContinueLeftover)
             state.seriesPending.forEach { OccurrencePending(it, state.access?.canModify == true, actions.onRecover) }
             state.occurrence?.let { occurrence ->
                 Text(stringResource(occurrenceStateLabel(occurrence.state)), modifier = Modifier.testTag("occurrence-state"))
@@ -97,7 +99,11 @@ fun RecurringOccurrenceSheet(
 }
 
 @Composable
-private fun OccurrencePaymentConflict(origin: OccurrencePaymentGuard, onAbandonLeftover: () -> Unit) {
+private fun OccurrencePaymentConflict(
+    origin: OccurrencePaymentGuard,
+    onAbandonLeftover: () -> Unit,
+    onContinueLeftover: () -> Unit,
+) {
     if (origin.conflict) {
         Text(
             stringResource(R.string.recurring_payment_origin_conflict),
@@ -111,6 +117,14 @@ private fun OccurrencePaymentConflict(origin: OccurrencePaymentGuard, onAbandonL
         stringResource(R.string.recurring_payment_leftover_unresolved),
         modifier = Modifier.testTag("occurrence-payment-leftover"),
     )
+    if (origin.leftoverContinueDraft) {
+        TextButton(
+            onClick = onContinueLeftover,
+            modifier = Modifier.testTag("occurrence-payment-leftover-continue"),
+        ) {
+            Text(stringResource(R.string.recurring_payment_leftover_continue))
+        }
+    }
     TextButton(
         onClick = { if (origin.leftoverUnreadable) confirmUnreadable = true else onAbandonLeftover() },
         modifier = Modifier.testTag("occurrence-payment-leftover-abandon"),
