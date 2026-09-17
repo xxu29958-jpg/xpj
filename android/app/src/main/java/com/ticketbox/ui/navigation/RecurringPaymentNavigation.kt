@@ -12,6 +12,8 @@ import com.ticketbox.data.repository.RecurringPaymentOriginAdopt
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.ui.components.formatMinorAmountInput
 import com.ticketbox.viewmodel.RecurringOccurrenceUiState
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 import java.util.UUID
 
 /** Navigation identity only. CreateExpense / Confirm / link stay on their current owners. */
@@ -58,6 +60,7 @@ private val recurringPaymentDraftListAdapter = Moshi.Builder().build().adapter<L
 private val legacyPeriodPaymentSessionListAdapter = Moshi.Builder().build().adapter<List<LegacyPeriodPaymentSession>>(
     Types.newParameterizedType(List::class.java, LegacyPeriodPaymentSession::class.java),
 )
+private val logicalSessionBindingAdapter = Moshi.Builder().build().adapter(LogicalSessionBinding::class.java)
 internal const val RECURRING_PAYMENT_ROUTE = "recurring-payment?task={task}"
 internal const val LEGACY_PERIOD_PAYMENT_SESSIONS_KEY = "recurring.periodPayment.sessions"
 private const val RECURRING_PAYMENT_TASKS_KEY = "recurring.payment.tasks"
@@ -136,27 +139,20 @@ internal class RecurringPaymentDraftStore(private val state: SavedStateHandle) {
     ) {
         val current = identity ?: return
         val generation = current.occurrenceRowVersion ?: return
-        val json = source.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY) ?: return
+        val json = source.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY)
+        if (json == null) {
+            current.rememberLeftoverSeen(source, false)
+            return
+        }
         val sessions = runCatching { legacyPeriodPaymentSessionListAdapter.fromJson(json) }.getOrNull() ?: return
-        val remaining = mutableListOf<LegacyPeriodPaymentSession>()
-        for (session in sessions) {
-            if (!current.matchesLoadedSession(session)) {
-                remaining += session
-                continue
-            }
-            when (creation.adoptOrigin(session.binding, session.clientRef, session.seriesPublicId, session.period, generation)) {
-                RecurringPaymentOriginAdopt.Bound -> captureLegacy(session, generation)
-                RecurringPaymentOriginAdopt.Conflict -> remaining += session
-                RecurringPaymentOriginAdopt.Missing ->
-                    if (session.admitted || session.toRecurringPaymentTaskOrNull() == null) {
-                        remaining += session
-                    } else {
-                        captureLegacy(session, generation)
-                    }
-            }
+        val remaining = if (current.generationMovedPast(current.leftoverSeen(source))) {
+            sessions.filterNot(current::matchesLoadedSession)
+        } else {
+            current.adoptLoadedSessions(sessions, creation) { captureLegacy(it, generation) }
         }
         if (remaining.isEmpty()) source.remove<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY)
         else source[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = legacyPeriodPaymentSessionListAdapter.toJson(remaining)
+        current.rememberLeftoverSeen(source, leftoverUnresolved(source, current))
     }
 
     fun leftoverUnresolved(
@@ -175,17 +171,31 @@ internal class RecurringPaymentDraftStore(private val state: SavedStateHandle) {
     fun retireFulfilledLegacySessions(
         source: SavedStateHandle,
         identity: RecurringPaymentIdentity,
+        dropUnreadable: Boolean = false,
     ) {
-        val json = source.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY) ?: return
-        val sessions = runCatching { legacyPeriodPaymentSessionListAdapter.fromJson(json) }.getOrNull() ?: return
+        val json = source.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY)
+        if (json == null) {
+            identity.rememberLeftoverSeen(source, false)
+            return
+        }
+        val sessions = runCatching { legacyPeriodPaymentSessionListAdapter.fromJson(json) }.getOrNull()
+        if (sessions == null) {
+            if (dropUnreadable) {
+                source.remove<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY)
+                identity.rememberLeftoverSeen(source, false)
+            }
+            return
+        }
         val remaining = sessions.filterNot {
             it.binding == identity.binding &&
                 it.seriesPublicId == identity.seriesPublicId &&
                 it.period == identity.period
         }
-        if (remaining.size == sessions.size) return
-        if (remaining.isEmpty()) source.remove<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY)
-        else source[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = legacyPeriodPaymentSessionListAdapter.toJson(remaining)
+        if (remaining.size != sessions.size) {
+            if (remaining.isEmpty()) source.remove<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY)
+            else source[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = legacyPeriodPaymentSessionListAdapter.toJson(remaining)
+        }
+        identity.rememberLeftoverSeen(source, false)
     }
 
     private fun captureLegacy(session: LegacyPeriodPaymentSession, occurrenceRowVersion: Long) {
@@ -256,12 +266,44 @@ internal data class RecurringPaymentIdentity(
         val bound = binding ?: return null
         val series = seriesPublicId?.takeIf { it.isNotBlank() } ?: return null
         val month = period?.takeIf { it.isNotBlank() } ?: return null
-        return "recurring.periodPayment.seen:${bound.serverUrl}:${bound.ledgerId}:${bound.ownerKey}:${bound.sessionGeneration}:$series:$month"
+        return "recurring.periodPayment.seen:${URLEncoder.encode(logicalSessionBindingAdapter.toJson(bound), StandardCharsets.UTF_8)}:$series:$month"
+    }
+
+    fun leftoverSeen(source: SavedStateHandle): Long? = leftoverSeenKey()?.let { source.get<Long>(it) }
+
+    fun rememberLeftoverSeen(source: SavedStateHandle, keep: Boolean) {
+        val key = leftoverSeenKey() ?: return
+        if (keep) source[key] = occurrenceRowVersion ?: return
+        else source.remove<Long>(key)
     }
 
     fun generationMovedPast(seen: Long?): Boolean {
         val current = occurrenceRowVersion ?: return false
         return seen != null && current > seen
+    }
+
+    suspend fun adoptLoadedSessions(
+        sessions: List<LegacyPeriodPaymentSession>,
+        creation: ExpenseManualCreation,
+        capture: (LegacyPeriodPaymentSession) -> Unit,
+    ): List<LegacyPeriodPaymentSession> {
+        val bound = binding ?: return sessions
+        val generation = occurrenceRowVersion ?: return sessions
+        val remaining = mutableListOf<LegacyPeriodPaymentSession>()
+        for (session in sessions) {
+            if (!matchesLoadedSession(session)) {
+                remaining += session
+                continue
+            }
+            when (creation.adoptOrigin(bound, session.clientRef, session.seriesPublicId, session.period, generation)) {
+                RecurringPaymentOriginAdopt.Bound -> capture(session)
+                RecurringPaymentOriginAdopt.Conflict -> remaining += session
+                RecurringPaymentOriginAdopt.Missing ->
+                    if (session.admitted || session.toRecurringPaymentTaskOrNull() == null) remaining += session
+                    else capture(session)
+            }
+        }
+        return remaining
     }
 }
 

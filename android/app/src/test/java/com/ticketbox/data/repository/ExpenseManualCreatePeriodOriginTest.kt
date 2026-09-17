@@ -7,11 +7,13 @@ import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
 import com.ticketbox.ui.navigation.LEGACY_PERIOD_PAYMENT_SESSIONS_KEY
 import com.ticketbox.ui.navigation.RecurringPaymentDraftStore
 import com.ticketbox.ui.navigation.RecurringPaymentIdentity
+import com.ticketbox.ui.navigation.leftoverPeriodPaymentSessionsJson
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -171,8 +173,10 @@ internal class ExpenseManualCreatePeriodOriginTest : ExpensePendingRepositoryOut
         repo.manualCreation.create(draft, binding, "august-ref").getOrThrow()
         repo.manualCreation.create(draft, binding, "september-ref").getOrThrow()
         val leftover = SavedStateHandle()
-        leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] =
-            """[{"binding":{"serverUrl":"${binding.serverUrl}","ledgerId":"${binding.ledgerId}","ownerKey":"${binding.ownerKey}","sessionGeneration":"${binding.sessionGeneration}","bindingRevision":"${binding.bindingRevision}"},"seriesPublicId":"rec-1","period":"2026-08","clientRef":"august-ref","merchant":"新商家","obligationCurrencyCode":"CNY","plannedAmountCents":12345,"ledgerHomeCurrencyCode":"CNY","admitted":false},{"binding":{"serverUrl":"${binding.serverUrl}","ledgerId":"${binding.ledgerId}","ownerKey":"${binding.ownerKey}","sessionGeneration":"${binding.sessionGeneration}","bindingRevision":"${binding.bindingRevision}"},"seriesPublicId":"rec-1","period":"2026-09","clientRef":"september-ref","merchant":"新商家","obligationCurrencyCode":"CNY","plannedAmountCents":12345,"ledgerHomeCurrencyCode":"CNY","admitted":false}]"""
+        leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = leftoverPeriodPaymentSessionsJson(
+            leftoverRow(binding, "2026-08", "august-ref", admitted = false),
+            leftoverRow(binding, "2026-09", "september-ref", admitted = false),
+        )
         val store = RecurringPaymentDraftStore(SavedStateHandle())
         store.adoptLegacyPeriodPaymentSessions(
             leftover,
@@ -214,8 +218,9 @@ internal class ExpenseManualCreatePeriodOriginTest : ExpensePendingRepositoryOut
         val binding = requireNotNull(repo.captureDeferredLedgerBinding())
         repo.manualCreation.create(draft, binding, "legacy-ref").getOrThrow()
         val leftover = SavedStateHandle()
-        leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] =
-            """[{"binding":{"serverUrl":"${binding.serverUrl}","ledgerId":"${binding.ledgerId}","ownerKey":"${binding.ownerKey}","sessionGeneration":"${binding.sessionGeneration}","bindingRevision":"${binding.bindingRevision}"},"seriesPublicId":"rec-1","period":"2026-08","clientRef":"legacy-ref","merchant":"新商家","obligationCurrencyCode":"CNY","plannedAmountCents":12345,"ledgerHomeCurrencyCode":"CNY","category":"住房","note":"自填备注","capturedAmountCents":9800,"admitted":false}]"""
+        leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = leftoverPeriodPaymentSessionsJson(
+            leftoverRow(binding, "2026-08", "legacy-ref", admitted = false, category = "住房", note = "自填备注", capturedAmountCents = 9800),
+        )
         val store = RecurringPaymentDraftStore(SavedStateHandle())
         store.adoptLegacyPeriodPaymentSessions(
             leftover,
@@ -246,8 +251,9 @@ internal class ExpenseManualCreatePeriodOriginTest : ExpensePendingRepositoryOut
         val repo = createRepo(FakeExpenseDao(), outbox(pendingDao))
         val binding = requireNotNull(repo.captureDeferredLedgerBinding())
         val leftover = SavedStateHandle()
-        leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] =
-            """[{"binding":{"serverUrl":"${binding.serverUrl}","ledgerId":"${binding.ledgerId}","ownerKey":"${binding.ownerKey}","sessionGeneration":"${binding.sessionGeneration}","bindingRevision":"${binding.bindingRevision}"},"seriesPublicId":"rec-1","period":"2026-08","clientRef":"legacy-ref","merchant":"新商家","obligationCurrencyCode":"CNY","plannedAmountCents":12345,"ledgerHomeCurrencyCode":"CNY","admitted":false}]"""
+        leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = leftoverPeriodPaymentSessionsJson(
+            leftoverRow(binding, "2026-08", "legacy-ref", admitted = false),
+        )
         val store = RecurringPaymentDraftStore(SavedStateHandle())
         store.adoptLegacyPeriodPaymentSessions(
             leftover,
@@ -258,7 +264,9 @@ internal class ExpenseManualCreatePeriodOriginTest : ExpensePendingRepositoryOut
         assertEquals("legacy-ref", store.remembered(binding, "rec-1", "2026-08")?.clientRef)
         assertEquals(7L, store.remembered(binding, "rec-1", "2026-08")?.occurrenceRowVersion)
         assertEquals(0, pendingDao.rows.size)
-        assertTrue(!store.leftoverUnresolved(leftover, RecurringPaymentIdentity(binding, "rec-1", "2026-08", 7)))
+        val identity = RecurringPaymentIdentity(binding, "rec-1", "2026-08", 7)
+        assertTrue(!store.leftoverUnresolved(leftover, identity))
+        assertNull(identity.leftoverSeen(leftover))
     }
 
     @Test
@@ -267,8 +275,10 @@ internal class ExpenseManualCreatePeriodOriginTest : ExpensePendingRepositoryOut
         val repo = createRepo(FakeExpenseDao(), outbox(pendingDao))
         val binding = requireNotNull(repo.captureDeferredLedgerBinding())
         val leftover = SavedStateHandle()
-        leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] =
-            """[{"binding":{"serverUrl":"${binding.serverUrl}","ledgerId":"${binding.ledgerId}","ownerKey":"${binding.ownerKey}","sessionGeneration":"${binding.sessionGeneration}","bindingRevision":"${binding.bindingRevision}"},"seriesPublicId":"rec-1","period":"2026-08","clientRef":"august-ref","merchant":"新商家","obligationCurrencyCode":"CNY","plannedAmountCents":12345,"ledgerHomeCurrencyCode":"CNY","admitted":true},{"binding":{"serverUrl":"${binding.serverUrl}","ledgerId":"${binding.ledgerId}","ownerKey":"${binding.ownerKey}","sessionGeneration":"${binding.sessionGeneration}","bindingRevision":"${binding.bindingRevision}"},"seriesPublicId":"rec-1","period":"2026-09","clientRef":"september-ref","merchant":"新商家","obligationCurrencyCode":"CNY","plannedAmountCents":12345,"ledgerHomeCurrencyCode":"CNY","admitted":false}]"""
+        leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = leftoverPeriodPaymentSessionsJson(
+            leftoverRow(binding, "2026-08", "august-ref", admitted = true),
+            leftoverRow(binding, "2026-09", "september-ref", admitted = false),
+        )
         val store = RecurringPaymentDraftStore(SavedStateHandle())
         store.adoptLegacyPeriodPaymentSessions(
             leftover,
@@ -302,8 +312,10 @@ internal class ExpenseManualCreatePeriodOriginTest : ExpensePendingRepositoryOut
         val repo = createRepo(FakeExpenseDao(), outbox(pendingDao))
         val binding = requireNotNull(repo.captureDeferredLedgerBinding())
         val leftover = SavedStateHandle()
-        leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] =
-            """[{"binding":{"serverUrl":"${binding.serverUrl}","ledgerId":"${binding.ledgerId}","ownerKey":"${binding.ownerKey}","sessionGeneration":"${binding.sessionGeneration}","bindingRevision":"${binding.bindingRevision}"},"seriesPublicId":"rec-1","period":"2026-08","clientRef":"august-ref","merchant":"新商家","obligationCurrencyCode":"CNY","plannedAmountCents":12345,"admitted":false},{"binding":{"serverUrl":"${binding.serverUrl}","ledgerId":"${binding.ledgerId}","ownerKey":"${binding.ownerKey}","sessionGeneration":"${binding.sessionGeneration}","bindingRevision":"${binding.bindingRevision}"},"seriesPublicId":"rec-1","period":"2026-09","clientRef":"september-ref","merchant":"新商家","obligationCurrencyCode":"CNY","plannedAmountCents":12345,"ledgerHomeCurrencyCode":"CNY","admitted":false}]"""
+        leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = leftoverPeriodPaymentSessionsJson(
+            leftoverRow(binding, "2026-08", "august-ref", admitted = false, home = null),
+            leftoverRow(binding, "2026-09", "september-ref", admitted = false),
+        )
         val store = RecurringPaymentDraftStore(SavedStateHandle())
         store.adoptLegacyPeriodPaymentSessions(
             leftover,
@@ -319,4 +331,127 @@ internal class ExpenseManualCreatePeriodOriginTest : ExpensePendingRepositoryOut
         assertTrue(!store.leftoverUnresolved(leftover, RecurringPaymentIdentity(binding, "rec-1", "2026-09", 3)))
         assertEquals(0, pendingDao.rows.size)
     }
+
+    @Test
+    fun leftoverGenerationMoveDoesNotUpgradeUnsubmittedTaskOrDraft() = runTest {
+        val pendingDao = FakePendingMutationDao()
+        val repo = createRepo(FakeExpenseDao(), outbox(pendingDao))
+        val binding = requireNotNull(repo.captureDeferredLedgerBinding())
+        val identity = RecurringPaymentIdentity(binding, "rec-1", "2026-08", 5)
+        val leftover = SavedStateHandle()
+        leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = leftoverPeriodPaymentSessionsJson(
+            leftoverRow(binding, "2026-08", "legacy-ref", admitted = false, category = "住房", note = "旧草稿", capturedAmountCents = 9800),
+        )
+        leftover[requireNotNull(identity.leftoverSeenKey())] = 2L
+        val store = RecurringPaymentDraftStore(SavedStateHandle())
+        store.adoptLegacyPeriodPaymentSessions(leftover, repo.manualCreation, identity)
+        assertNull(leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY])
+        assertNull(store.remembered(binding, "rec-1", "2026-08"))
+        assertNull(store.read("legacy-ref"))
+        assertNull(identity.leftoverSeen(leftover))
+        assertEquals(0, pendingDao.rows.size)
+    }
+
+    @Test
+    fun leftoverGenerationMoveDoesNotBindRawCreateExpenseAsCurrentOrigin() = runTest {
+        val pendingDao = FakePendingMutationDao()
+        val repo = createRepo(FakeExpenseDao(), outbox(pendingDao))
+        val binding = requireNotNull(repo.captureDeferredLedgerBinding())
+        repo.manualCreation.create(draft, binding, "legacy-ref").getOrThrow()
+        val before = pendingDao.rows.values.single().payload
+        val identity = RecurringPaymentIdentity(binding, "rec-1", "2026-08", 5)
+        val leftover = SavedStateHandle()
+        leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = leftoverPeriodPaymentSessionsJson(
+            leftoverRow(binding, "2026-08", "legacy-ref", admitted = false),
+        )
+        leftover[requireNotNull(identity.leftoverSeenKey())] = 2L
+        val store = RecurringPaymentDraftStore(SavedStateHandle())
+        store.adoptLegacyPeriodPaymentSessions(leftover, repo.manualCreation, identity)
+        assertNull(leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY])
+        assertNull(store.remembered(binding, "rec-1", "2026-08"))
+        assertNull(identity.leftoverSeen(leftover))
+        assertEquals(before, pendingDao.rows.values.single().payload)
+        assertNull(
+            decodeRecurringPaymentOrigin(
+                com.ticketbox.OutboxAdapterGraph().recurringPaymentCreateAdapter,
+                pendingDao.rows.values.single().payload,
+            ),
+        )
+        assertTrue(
+            repo.manualCreation.observeOrigin(binding, RecurringPaymentOrigin("rec-1", "2026-08", 5)).first()
+                is RecurringPaymentOriginLookup.Absent,
+        )
+        assertEquals(1, pendingDao.rows.size)
+    }
+
+    @Test
+    fun leftoverSeenFromAnotherBindingRevisionDoesNotRetireTheCurrentMapping() = runTest {
+        val pendingDao = FakePendingMutationDao()
+        val repo = createRepo(FakeExpenseDao(), outbox(pendingDao))
+        val binding = requireNotNull(repo.captureDeferredLedgerBinding())
+        val first = RecurringPaymentIdentity(binding.copy(bindingRevision = "revision-1"), "rec-1", "2026-09", 5)
+        val second = RecurringPaymentIdentity(binding, "rec-1", "2026-09", 5)
+        val leftover = SavedStateHandle()
+        leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = leftoverPeriodPaymentSessionsJson(
+            leftoverRow(binding, "2026-09", "legacy-ref", admitted = true),
+        )
+        leftover[requireNotNull(first.leftoverSeenKey())] = 2L
+        val store = RecurringPaymentDraftStore(SavedStateHandle())
+        store.adoptLegacyPeriodPaymentSessions(leftover, repo.manualCreation, second)
+        assertNotEquals(first.leftoverSeenKey(), second.leftoverSeenKey())
+        assertEquals(2L, leftover.get<Long>(requireNotNull(first.leftoverSeenKey())))
+        assertEquals(5L, leftover.get<Long>(requireNotNull(second.leftoverSeenKey())))
+        assertTrue(store.leftoverUnresolved(leftover, second))
+        assertTrue(leftover.get<String>(LEGACY_PERIOD_PAYMENT_SESSIONS_KEY).orEmpty().contains("legacy-ref"))
+        assertNull(store.remembered(second.binding, "rec-1", "2026-09"))
+        assertEquals(0, pendingDao.rows.size)
+    }
+
+    @Test
+    fun leftoverSeenOnTheSameBindingRevisionRetiresWhenGenerationMoves() = runTest {
+        val pendingDao = FakePendingMutationDao()
+        val repo = createRepo(FakeExpenseDao(), outbox(pendingDao))
+        val binding = requireNotNull(repo.captureDeferredLedgerBinding())
+        val identity = RecurringPaymentIdentity(binding, "rec-1", "2026-09", 5)
+        val leftover = SavedStateHandle()
+        leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY] = leftoverPeriodPaymentSessionsJson(
+            leftoverRow(binding, "2026-09", "legacy-ref", admitted = true),
+        )
+        leftover[requireNotNull(identity.leftoverSeenKey())] = 2L
+        val store = RecurringPaymentDraftStore(SavedStateHandle())
+        store.adoptLegacyPeriodPaymentSessions(leftover, repo.manualCreation, identity)
+        assertTrue(!store.leftoverUnresolved(leftover, identity))
+        assertNull(leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY])
+        assertNull(identity.leftoverSeen(leftover))
+        assertNull(store.remembered(binding, "rec-1", "2026-09"))
+        assertEquals(0, pendingDao.rows.size)
+    }
+
+    @Test
+    fun leftoverSeenIsNotWrittenWhenThereIsNoMapping() = runTest {
+        val pendingDao = FakePendingMutationDao()
+        val repo = createRepo(FakeExpenseDao(), outbox(pendingDao))
+        val binding = requireNotNull(repo.captureDeferredLedgerBinding())
+        val identity = RecurringPaymentIdentity(binding, "rec-1", "2026-09", 5)
+        val leftover = SavedStateHandle()
+        leftover[requireNotNull(identity.leftoverSeenKey())] = 2L
+        val store = RecurringPaymentDraftStore(SavedStateHandle())
+        store.adoptLegacyPeriodPaymentSessions(leftover, repo.manualCreation, identity)
+        assertNull(identity.leftoverSeen(leftover))
+        assertTrue(!store.leftoverUnresolved(leftover, identity))
+        assertEquals(0, pendingDao.rows.size)
+    }
+
+    private fun leftoverRow(
+        binding: LogicalSessionBinding,
+        period: String,
+        clientRef: String,
+        admitted: Boolean,
+        home: String? = "CNY",
+        category: String? = null,
+        note: String? = null,
+        capturedAmountCents: Long? = null,
+    ) = LegacyPeriodPaymentSession(
+        binding, "rec-1", period, clientRef, "新商家", "CNY", 12_345, home, category, note, capturedAmountCents, admitted,
+    )
 }

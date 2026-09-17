@@ -328,6 +328,16 @@ class RecurringPaymentTaskTest {
         assertNull(store.legacyPeriodPaymentSessions(leftover))
         assertTrue(store.leftoverUnresolved(leftover, RecurringPaymentIdentity(access.binding, "rec-1", "2026-08")))
         assertTrue(store.leftoverUnresolved(leftover, RecurringPaymentIdentity(access.binding, "rec-1", "2026-09")))
+        store.retireFulfilledLegacySessions(leftover, RecurringPaymentIdentity(access.binding, "rec-1", "2026-08"))
+        assertEquals("not-json", leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY])
+        store.retireFulfilledLegacySessions(
+            leftover,
+            RecurringPaymentIdentity(access.binding, "rec-1", "2026-08"),
+            dropUnreadable = true,
+        )
+        assertNull(leftover[LEGACY_PERIOD_PAYMENT_SESSIONS_KEY])
+        assertTrue(!store.leftoverUnresolved(leftover, RecurringPaymentIdentity(access.binding, "rec-1", "2026-08")))
+        assertTrue(!store.leftoverUnresolved(leftover, RecurringPaymentIdentity(access.binding, "rec-1", "2026-09")))
     }
 
     @Test
@@ -337,6 +347,19 @@ class RecurringPaymentTaskTest {
         assertEquals(false, identity.generationMovedPast(2))
         assertEquals(true, identity.generationMovedPast(0))
         assertNotNull(identity.leftoverSeenKey())
+    }
+
+    @Test
+    fun leftoverSeenKeyIncludesTheFullBindingRevision() {
+        val first = RecurringPaymentIdentity(access.binding.copy(bindingRevision = "revision-1"), "rec-1", "2026-09", 5)
+        val second = RecurringPaymentIdentity(access.binding.copy(bindingRevision = "revision-2"), "rec-1", "2026-09", 5)
+        val firstKey = requireNotNull(first.leftoverSeenKey())
+        val secondKey = requireNotNull(second.leftoverSeenKey())
+        assertNotEquals(firstKey, secondKey)
+        assertTrue(firstKey.contains("revision-1"))
+        assertTrue(secondKey.contains("revision-2"))
+        assertTrue(firstKey.contains(access.binding.sessionGeneration))
+        assertTrue(firstKey.contains(access.binding.ownerKey))
     }
 
     @Test

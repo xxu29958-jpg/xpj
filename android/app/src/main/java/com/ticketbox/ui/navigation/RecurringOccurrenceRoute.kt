@@ -136,6 +136,7 @@ private data class LeftoverPaymentAdopt(
     val ready: Boolean,
     val remembered: RecurringPaymentTask? = null,
     val blocked: Boolean = false,
+    val unreadable: Boolean = false,
     val abandon: () -> Unit = {},
 )
 
@@ -157,13 +158,6 @@ private fun rememberAdoptedPaymentTask(
         if (identity.occurrenceRowVersion == null) return@LaunchedEffect
         handoff = try {
             store.adoptLegacyPeriodPaymentSessions(model.savedState, creation, identity)
-            val seenKey = identity.leftoverSeenKey()
-            val seen = seenKey?.let { model.savedState.get<Long>(it) }
-            if (identity.generationMovedPast(seen) && store.leftoverUnresolved(model.savedState, identity)) {
-                store.retireFulfilledLegacySessions(model.savedState, identity)
-                leftoverTick++
-            }
-            seenKey?.let { model.savedState[it] = identity.occurrenceRowVersion }
             Result.success(Unit)
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -183,8 +177,9 @@ private fun rememberAdoptedPaymentTask(
             handoff?.isFailure == true ||
                 (ready && store.leftoverUnresolved(model.savedState, identity))
         },
+        unreadable = leftoverTick.let { ready && store.legacyPeriodPaymentSessions(model.savedState) == null },
         abandon = {
-            store.retireFulfilledLegacySessions(model.savedState, identity)
+            store.retireFulfilledLegacySessions(model.savedState, identity, dropUnreadable = true)
             leftoverTick++
         },
     )
@@ -197,6 +192,7 @@ private fun occurrencePaymentGuard(
     resolved = origin.resolved && leftover.ready && !leftover.blocked && !origin.conflict,
     conflict = origin.conflict,
     leftoverBlocked = leftover.blocked && !origin.conflict,
+    leftoverUnreadable = leftover.unreadable && leftover.blocked && !origin.conflict,
 )
 
 private data class RecurringPaymentCanonicalize(

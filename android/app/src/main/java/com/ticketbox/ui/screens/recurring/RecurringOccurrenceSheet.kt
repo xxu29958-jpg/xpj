@@ -39,6 +39,7 @@ data class OccurrencePaymentGuard(
     val resolved: Boolean = true,
     val conflict: Boolean = false,
     val leftoverBlocked: Boolean = false,
+    val leftoverUnreadable: Boolean = false,
 )
 
 data class OccurrenceSheetActions(
@@ -105,16 +106,38 @@ private fun OccurrencePaymentConflict(origin: OccurrencePaymentGuard, onAbandonL
         return
     }
     if (!origin.leftoverBlocked) return
+    var confirmUnreadable by rememberSaveable { mutableStateOf(false) }
     Text(
         stringResource(R.string.recurring_payment_leftover_unresolved),
         modifier = Modifier.testTag("occurrence-payment-leftover"),
     )
     TextButton(
-        onClick = onAbandonLeftover,
+        onClick = { if (origin.leftoverUnreadable) confirmUnreadable = true else onAbandonLeftover() },
         modifier = Modifier.testTag("occurrence-payment-leftover-abandon"),
     ) {
         Text(stringResource(R.string.recurring_payment_leftover_abandon))
     }
+    if (!confirmUnreadable) return
+    AlertDialog(
+        onDismissRequest = { confirmUnreadable = false },
+        text = {
+            Text(
+                stringResource(R.string.recurring_payment_leftover_abandon_unreadable),
+                modifier = Modifier.testTag("occurrence-payment-leftover-abandon-unreadable"),
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { confirmUnreadable = false; onAbandonLeftover() },
+                modifier = Modifier.testTag("occurrence-payment-leftover-abandon-confirm"),
+            ) { Text(stringResource(R.string.recurring_payment_leftover_abandon_confirm)) }
+        },
+        dismissButton = {
+            TextButton(onClick = { confirmUnreadable = false }) {
+                Text(stringResource(R.string.occurrence_keep))
+            }
+        },
+    )
 }
 
 @Composable
