@@ -367,16 +367,6 @@ def all_ci_scopes() -> dict[str, bool]:
     return dict.fromkeys(CI_HEAVY_SCOPES, True)
 
 
-def _scopes_for_path(path: str) -> tuple[str, ...] | None:
-    exact = _EXACT_SCOPE_RULES.get(path)
-    if exact is not None:
-        return exact
-    for prefixes, scopes in _PREFIX_SCOPE_RULES:
-        if path.startswith(prefixes):
-            return scopes
-    return None
-
-
 def _first_matching_prefix(path: str, prefixes: tuple[str, ...]) -> str:
     return next(prefix for prefix in prefixes if path.startswith(prefix))
 
@@ -452,6 +442,23 @@ def _decision(
     }
 
 
+def _full_path_hit(path: str) -> tuple[dict[str, object], str | None]:
+    if path != path.strip():
+        return _hit(path, "untrimmed", path, tuple(CI_HEAVY_SCOPES)), "untrimmed path"
+    if path in _FULL_PATHS:
+        return _hit(path, "policy_file", path, tuple(CI_HEAVY_SCOPES)), "CI policy or workflow change"
+    if path.startswith(_FULL_PREFIXES):
+        entry = _first_matching_prefix(path, _FULL_PREFIXES)
+        return _hit(path, "workflow_prefix", entry, tuple(CI_HEAVY_SCOPES)), "CI policy or workflow change"
+    if path.startswith(_CI_POLICY_PREFIXES):
+        entry = _first_matching_prefix(path, _CI_POLICY_PREFIXES)
+        return _hit(path, "policy_prefix", entry, tuple(CI_HEAVY_SCOPES)), "CI policy or workflow change"
+    kind, entry, scopes = _path_rule(path)
+    if scopes is None:
+        return _hit(path, "unknown", path, tuple(CI_HEAVY_SCOPES)), "unknown path"
+    return _hit(path, kind, entry, scopes), None
+
+
 def classify_ci_decision(paths: Iterable[str]) -> dict[str, object]:
     result = dict.fromkeys(CI_HEAVY_SCOPES, False)
     normalized = {path.replace("\\", "/") for path in paths if path}
@@ -460,28 +467,17 @@ def classify_ci_decision(paths: Iterable[str]) -> dict[str, object]:
     ignored = tuple(sorted(normalized & _ALWAYS_ON_CONTRACT_PATHS))
     normalized.difference_update(_ALWAYS_ON_CONTRACT_PATHS)
     hits: list[dict[str, object]] = []
+    full_reason: str | None = None
     for path in sorted(normalized):
-        if path != path.strip():
-            hits.append(_hit(path, "untrimmed", path, tuple(CI_HEAVY_SCOPES)))
-            return _decision(all_ci_scopes(), "UNKNOWN_FULL", "untrimmed path", hits, ignored)
-        if path in _FULL_PATHS:
-            hits.append(_hit(path, "policy_file", path, tuple(CI_HEAVY_SCOPES)))
-            return _decision(all_ci_scopes(), "UNKNOWN_FULL", "CI policy or workflow change", hits, ignored)
-        if path.startswith(_FULL_PREFIXES):
-            entry = _first_matching_prefix(path, _FULL_PREFIXES)
-            hits.append(_hit(path, "workflow_prefix", entry, tuple(CI_HEAVY_SCOPES)))
-            return _decision(all_ci_scopes(), "UNKNOWN_FULL", "CI policy or workflow change", hits, ignored)
-        if path.startswith(_CI_POLICY_PREFIXES):
-            entry = _first_matching_prefix(path, _CI_POLICY_PREFIXES)
-            hits.append(_hit(path, "policy_prefix", entry, tuple(CI_HEAVY_SCOPES)))
-            return _decision(all_ci_scopes(), "UNKNOWN_FULL", "CI policy or workflow change", hits, ignored)
-        kind, entry, scopes = _path_rule(path)
-        if scopes is None:
-            hits.append(_hit(path, "unknown", path, tuple(CI_HEAVY_SCOPES)))
-            return _decision(all_ci_scopes(), "UNKNOWN_FULL", "unknown path", hits, ignored)
-        hits.append(_hit(path, kind, entry, scopes))
-        for scope in scopes:
-            result[scope] = True
+        hit, reason = _full_path_hit(path)
+        hits.append(hit)
+        if reason:
+            full_reason = full_reason or reason
+            continue
+        for scope in hit["scopes"]:
+            result[str(scope)] = True
+    if full_reason:
+        return _decision(all_ci_scopes(), "UNKNOWN_FULL", full_reason, hits, ignored)
     status = "REQUIRED" if any(result.values()) else "NOT_AFFECTED"
     reason = (
         "known inputs selected the listed heavy jobs"

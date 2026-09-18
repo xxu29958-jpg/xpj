@@ -69,7 +69,60 @@ def _query_requested(args: argparse.Namespace) -> bool:
     return bool(args.path or args.module or args.symbol or args.changes or args.task)
 
 
-def main() -> int:
+def _print_task(repo: Path, name: str, source_sha: str, *, historical: bool) -> None:
+    print(render_task(resolve_task(name, repo, source_sha, historical=historical)), end="")
+
+
+def _query_from_args(report: dict, args: argparse.Namespace) -> dict:
+    return query_report(
+        report, path=args.path, module=args.module, symbol=args.symbol,
+        changes=args.changes, limit=args.limit,
+    )
+
+
+def _run_from_json(args: argparse.Namespace) -> int:
+    report = json.loads(args.from_json.read_text(encoding="utf-8"))
+    report["historical"] = True
+    if not _query_requested(args):
+        raise ValueError("query flags required with --from-json")
+    source_sha = (report.get("current") or {}).get("sha")
+    if not source_sha:
+        raise ValueError("historical query requires artifact current.sha")
+    if args.task:
+        _print_task(args.repo, args.task, source_sha, historical=True)
+    result = _query_from_args(report, args)
+    print(render_query(result), end="")
+    return 2 if result["missing"]["git_changes"] and args.changes else 0
+
+
+def _write_live_outputs(report: dict, rendered: str, args: argparse.Namespace) -> None:
+    if args.json:
+        args.json.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    if args.summary:
+        with args.summary.open("a", encoding="utf-8") as output:
+            fence = chr(96) * 3
+            output.write("### Repository codebase weight\n\n" + fence + "text\n" + rendered + fence + "\n")
+
+
+def _run_live(args: argparse.Namespace) -> int:
+    base = args.base
+    if not base:
+        selected, error = select_ratchet_base(args.repo, dict(os.environ))
+        if selected is None:
+            raise ValueError(error or "cannot resolve exact base")
+        base = selected.commit
+    report = build_report(args.repo, base, args.head)
+    rendered = render_report(report)
+    print(rendered, end="")
+    if _query_requested(args):
+        if args.task:
+            _print_task(args.repo, args.task, report["current"]["sha"], historical=False)
+        print(render_query(_query_from_args(report, args)), end="")
+    _write_live_outputs(report, rendered, args)
+    return 1 if report["failures"] else 0
+
+
+def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", type=Path, default=ROOT)
     parser.add_argument("--base")
@@ -83,53 +136,24 @@ def main() -> int:
     parser.add_argument("--changes", action="store_true")
     parser.add_argument("--task")
     parser.add_argument("--limit", type=int, default=50)
-    args = parser.parse_args()
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = _parse_args()
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")
     try:
         if args.task and not args.from_json and args.base is None:
-            print(render_task(resolve_task(args.task, args.repo)), end="")
+            _print_task(args.repo, args.task, exact_commit(args.repo, args.head, "head"), historical=False)
             return 0
         if args.from_json:
-            report = json.loads(args.from_json.read_text(encoding="utf-8"))
-            report["historical"] = True
-            if not _query_requested(args):
-                raise ValueError("query flags required with --from-json")
-            if args.task:
-                print(render_task(resolve_task(args.task, args.repo)), end="")
-            result = query_report(
-                report, path=args.path, module=args.module, symbol=args.symbol,
-                changes=args.changes, limit=args.limit,
-            )
-            print(render_query(result), end="")
-            return 2 if result["missing"]["git_changes"] and args.changes else 0
-        base = args.base
-        if not base:
-            selected, error = select_ratchet_base(args.repo, dict(os.environ))
-            if selected is None:
-                raise ValueError(error or "cannot resolve exact base")
-            base = selected.commit
-        report = build_report(args.repo, base, args.head)
-        rendered = render_report(report)
-        print(rendered, end="")
-        if _query_requested(args):
-            if args.task:
-                print(render_task(resolve_task(args.task, args.repo)), end="")
-            print(render_query(query_report(
-                report, path=args.path, module=args.module, symbol=args.symbol,
-                changes=args.changes, limit=args.limit,
-            )), end="")
-        if args.json:
-            args.json.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        if args.summary:
-            with args.summary.open("a", encoding="utf-8") as output:
-                fence = chr(96) * 3
-                output.write("### Repository codebase weight\n\n" + fence + "text\n" + rendered + fence + "\n")
+            return _run_from_json(args)
+        return _run_live(args)
     except (OSError, ValueError, KeyError, TypeError, ET.ParseError, yaml.YAMLError, subprocess.SubprocessError) as exc:
         print(f"CODEBASE WEIGHT INCOMPLETE: {exc}", file=sys.stderr)
         return 2
-    return 1 if report["failures"] else 0
 
 
 if __name__ == "__main__":

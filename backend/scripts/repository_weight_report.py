@@ -10,6 +10,7 @@ from repository_weight_functions import measure_functions
 from repository_weight_sources import DETEKT_BASELINES, exclusion, measure_source
 
 ROLES = ("production", "test", "tooling")
+COMPLEXITY_LIMIT = 15
 
 
 def grouped_loc(records: list[dict], field: str) -> dict[str, dict[str, int]]:
@@ -98,38 +99,83 @@ def _overlap(start: int, end: int, hunk_start: int, hunk_count: int) -> bool:
     return start <= hunk_start + hunk_count - 1 and end >= hunk_start
 
 
+def _group_key(row: dict, *fields: str) -> tuple:
+    return tuple(row.get(field) for field in fields)
+
+
+def paired_rows(base: list[dict], current: list[dict], *fields: str) -> list[tuple[dict | None, dict | None]]:
+    old_groups: dict[tuple, list[dict]] = defaultdict(list)
+    new_groups: dict[tuple, list[dict]] = defaultdict(list)
+    for row in sorted(base, key=lambda item: (item.get("path"), item.get("line"), item.get("name") or item.get("function"))):
+        old_groups[_group_key(row, *fields)].append(row)
+    for row in sorted(current, key=lambda item: (item.get("path"), item.get("line"), item.get("name") or item.get("function"))):
+        new_groups[_group_key(row, *fields)].append(row)
+    pairs: list[tuple[dict | None, dict | None]] = []
+    for key in sorted(set(old_groups) | set(new_groups), key=str):
+        olds, news = old_groups.get(key, []), new_groups.get(key, [])
+        for index in range(max(len(olds), len(news))):
+            pairs.append((olds[index] if index < len(olds) else None, news[index] if index < len(news) else None))
+    return pairs
+
+
+def paired_functions(base: list[dict], current: list[dict]) -> list[tuple[dict | None, dict | None]]:
+    return paired_rows(base, current, "path", "language", "metric", "name", "parameters")
+
+
+def _worsened_complexity(old: dict | None, new: dict | None, *, excess: bool) -> bool:
+    if new is None or new.get("complexity", 0) <= COMPLEXITY_LIMIT:
+        return False
+    if old is None:
+        return True
+    if old.get("complexity", 0) <= COMPLEXITY_LIMIT:
+        return True
+    return excess and new.get("complexity", 0) > old.get("complexity", 0)
+
+
+def _location_from_function(function: dict, attribution: str) -> dict:
+    return {
+        "path": function["path"], "line": function["line"], "end_line": function.get("end_line"),
+        "function": function.get("name") or function.get("function"), "side": "head",
+        "value": function.get("complexity"), "attribution": attribution,
+    }
+
+
+def _function_complexity_locations(report: dict, language: str, module: str, role: str, *, excess: bool) -> list[dict]:
+    found: list[dict] = []
+    for old, new in paired_functions(report["base"]["functions"], report["current"]["functions"]):
+        if new is None or new["language"] != language or new["module"] != module or new["role"] != role:
+            continue
+        if _worsened_complexity(old, new, excess=excess):
+            found.append(_location_from_function(new, "unique"))
+    return found
+
+
+def _c901_locations(report: dict, module: str, role: str, *, excess: bool) -> list[dict]:
+    found: list[dict] = []
+    pairs = paired_rows(
+        report["base"].get("python_complexity_findings") or [],
+        report["current"].get("python_complexity_findings") or [],
+        "path", "function",
+    )
+    for old, new in pairs:
+        if new is None:
+            continue
+        file_module, file_role = _file_role(report["current"], new["path"])
+        if file_module != module or file_role != role:
+            continue
+        if _worsened_complexity(old, new, excess=excess):
+            found.append(_location_from_function(new, "unique"))
+    return found
+
+
 def _debt_locations(report: dict, key: str) -> list[dict]:
-    current = report["current"]
-    if key.startswith("python_c901"):
-        _prefix, module, role = key.split(":", 2)
-        found: list[dict] = []
-        for finding in current.get("python_complexity_findings", []):
-            file_module, file_role = _file_role(current, finding["path"])
-            if file_module == module and file_role == role:
-                found.append({
-                    "path": finding["path"], "line": finding["line"], "side": "head",
-                    "value": finding["complexity"], "attribution": "unique",
-                })
-        return found
-    if key.startswith("function_complexity"):
-        _kind, language, module, role = key.split(":", 3)
-        found = []
-        for function in current.get("functions", []):
-            if (
-                function["language"] == language
-                and function["module"] == module
-                and function["role"] == role
-                and function["complexity"] > 15
-            ):
-                found.append({
-                    "path": function["path"], "line": function["line"], "end_line": function.get("end_line"),
-                    "function": function["name"], "side": "head", "value": function["complexity"],
-                    "attribution": "unique",
-                })
-        return found
-    if key.startswith("android_detekt:"):
-        role = key.split(":", 1)[1]
-        path = next((candidate for candidate, mapped in DETEKT_BASELINES.items() if mapped == role), None)
+    name, *parts = key.split(":")
+    if name in {"python_c901", "python_c901_excess"} and len(parts) == 2:
+        return _c901_locations(report, parts[0], parts[1], excess=name.endswith("excess"))
+    if name in {"function_complexity", "function_complexity_excess"} and len(parts) == 3:
+        return _function_complexity_locations(report, parts[0], parts[1], parts[2], excess=name.endswith("excess"))
+    if name == "android_detekt" and parts:
+        path = next((candidate for candidate, mapped in DETEKT_BASELINES.items() if mapped == parts[0]), None)
         if path:
             return [{"path": path, "side": "head", "attribution": "unique"}]
     return []
@@ -159,8 +205,7 @@ def failure_details(report: dict) -> list[dict]:
             locations = _debt_locations(report, key)
             item = {"failure": failure, "rule": key, "base": before, "head": after, "side": "head"}
             if locations:
-                for location in locations:
-                    details.append({**item, **location})
+                details.extend({**item, **location} for location in locations)
             else:
                 details.append({**item, "attribution": "cannot uniquely attribute"})
             continue
@@ -205,14 +250,12 @@ def _path_match(row_path: str, path: str | None) -> bool:
 
 
 def _deleted_functions(report: dict, path: str | None, module: str | None) -> list[dict]:
-    current_keys = {(row["path"], row["name"], row["line"]) for row in report["current"]["functions"]}
     deleted: list[dict] = []
-    for row in report["base"]["functions"]:
-        key = (row["path"], row["name"], row["line"])
-        if key in current_keys or not _path_match(row["path"], path):
+    for old, new in paired_functions(report["base"]["functions"], report["current"]["functions"]):
+        if new is not None or old is None or not _path_match(old["path"], path):
             continue
-        if module is None or row["module"] == module:
-            deleted.append({**row, "touch": "deleted"})
+        if module is None or old["module"] == module:
+            deleted.append({**old, "touch": "deleted"})
     return deleted
 
 
@@ -227,6 +270,104 @@ def _function_touch_for_report(function: dict, report: dict, git_changes: list, 
     return _function_touch(function, hunks, "head")
 
 
+def _matched_functions(functions: list[dict], report: dict, git_changes: list, measured: list, symbol: str | None) -> list[dict]:
+    matched: list[dict] = []
+    for function in functions:
+        if symbol and symbol not in {function["name"], function["path"]}:
+            continue
+        matched.append({**function, "touch": _function_touch_for_report(function, report, git_changes, measured)})
+    return matched
+
+
+def _rows_for_path(rows: list, path: str | None) -> list:
+    if path is None:
+        return list(rows)
+    return [row for row in rows if _path_match(row["path"], path)]
+
+
+def _rows_for_module(rows: list, module: str | None) -> list:
+    if module is None:
+        return rows
+    return [row for row in rows if row["module"] == module]
+
+
+def _measured_for_module(rows: list, module: str | None) -> list:
+    if module is None:
+        return rows
+    return [row for row in rows if module in row.get("modules", [])]
+
+
+def _files_for_symbol(files: list, matched: list, symbol: str | None) -> list:
+    if symbol is None:
+        return files
+    paths = {item["path"] for item in matched}
+    return [row for row in files if row["path"] in paths]
+
+
+def _select_query_rows(
+    report: dict, path: str | None, module: str | None, symbol: str | None, changes: bool,
+) -> tuple[list, list, list, list, list]:
+    git_changes = _rows_for_path(report.get("git_changes") or [], path)
+    measured = _measured_for_module(_rows_for_path(report["changes"], path), module)
+    files = _rows_for_module(_rows_for_path(report["current"]["files"], path), module)
+    functions = _rows_for_module(_rows_for_path(report["current"]["functions"], path), module)
+    deleted = _deleted_functions(report, path, module) if changes or symbol else []
+    matched = _matched_functions(functions, report, git_changes, measured, symbol)
+    return git_changes, measured, _files_for_symbol(files, matched, symbol), matched, deleted
+
+
+def _clipped(rows: list, limit: int) -> tuple[list, bool]:
+    if len(rows) > limit:
+        return rows[:limit], True
+    return rows, False
+
+
+def _take(rows: list, enabled: bool, limit: int) -> tuple[list, bool]:
+    return _clipped(rows if enabled else [], limit)
+
+
+def _serialize_query(
+    report: dict,
+    git_changes: list,
+    measured: list,
+    files: list,
+    functions: list,
+    deleted: list,
+    *,
+    show_changes: bool,
+    show_files: bool,
+    show_functions: bool,
+    show_deleted: bool,
+    limit: int,
+) -> dict:
+    git_rows, t1 = _take(git_changes, show_changes, limit)
+    measured_rows, t2 = _take(measured, show_changes, limit)
+    file_rows, t3 = _take(files, show_files, limit)
+    function_rows, t4 = _take(functions, show_functions, limit)
+    deleted_rows, t5 = _take(deleted, show_deleted, limit)
+    return {
+        "verdict": report["verdict"],
+        "verdict_scope": "unfiltered global verdict; query rows are a view",
+        "identity": {
+            "base": report["base"]["sha"],
+            "head": report["current"]["sha"],
+            "historical": bool(report.get("historical")),
+        },
+        "git_changes": git_rows,
+        "measured_changes": measured_rows,
+        "files": file_rows,
+        "functions": function_rows,
+        "deleted_functions": deleted_rows,
+        "failures": report.get("failure_details") or [],
+        "truncated": t1 or t2 or t3 or t4 or t5,
+        "limit": limit,
+        "missing": {
+            "git_hunks": "git_hunks" not in report,
+            "git_changes": "git_changes" not in report,
+        },
+    }
+
+
 def query_report(
     report: dict,
     *,
@@ -236,77 +377,25 @@ def query_report(
     changes: bool = False,
     limit: int = 50,
 ) -> dict:
-    git_changes = [row for row in report.get("git_changes") or [] if _path_match(row["path"], path)]
-    measured = [row for row in report["changes"] if _path_match(row["path"], path)]
-    files = list(report["current"]["files"])
-    functions = list(report["current"]["functions"])
-    if path:
-        files = [row for row in files if _path_match(row["path"], path)]
-        functions = [row for row in functions if _path_match(row["path"], path)]
-    if module:
-        files = [row for row in files if row["module"] == module]
-        functions = [row for row in functions if row["module"] == module]
-        measured = [row for row in measured if module in row.get("modules", [])]
-    deleted = _deleted_functions(report, path, module) if changes or symbol else []
-    matched_functions = []
-    for function in functions:
-        if symbol and symbol not in {function["name"], function["path"]}:
-            continue
-        matched_functions.append({**function, "touch": _function_touch_for_report(function, report, git_changes, measured)})
-    if symbol:
-        files = [row for row in files if any(item["path"] == row["path"] for item in matched_functions)]
-    truncated = False
+    git_changes, measured, files, functions, deleted = _select_query_rows(report, path, module, symbol, changes)
+    return _serialize_query(
+        report, git_changes, measured, files, functions, deleted,
+        show_changes=changes or bool(path or module),
+        show_files=bool(path or module or symbol),
+        show_functions=bool(symbol or path or module),
+        show_deleted=bool(symbol or changes),
+        limit=limit,
+    )
 
-    def _clip(rows: list) -> list:
-        nonlocal truncated
-        if len(rows) > limit:
-            truncated = True
-            return rows[:limit]
-        return rows
 
-    show_changes = changes or bool(path or module)
-    return {
-        "verdict": report["verdict"],
-        "verdict_scope": "unfiltered global verdict; query rows are a view",
-        "identity": {
-            "base": report["base"]["sha"],
-            "head": report["current"]["sha"],
-            "historical": bool(report.get("historical")),
-        },
-        "git_changes": _clip(git_changes if show_changes else []),
-        "measured_changes": _clip(measured if show_changes else []),
-        "files": _clip(files if path or module or symbol else []),
-        "functions": _clip(matched_functions if symbol or path or module else []),
-        "deleted_functions": _clip(deleted if symbol or changes else []),
-        "failures": report.get("failure_details") or [],
-        "truncated": truncated,
-        "limit": limit,
-        "missing": {
-            "git_hunks": "git_hunks" not in report,
-            "git_changes": "git_changes" not in report,
-        },
-    }
-    return {
-        "verdict": report["verdict"],
-        "verdict_scope": "unfiltered global verdict; query rows are a view",
-        "identity": {
-            "base": report["base"]["sha"],
-            "head": report["current"]["sha"],
-            "historical": bool(report.get("historical")),
-        },
-        "git_changes": _clip(git_changes if show_changes else []),
-        "measured_changes": _clip(measured if show_changes else []),
-        "files": _clip(files if path or module or symbol else []),
-        "functions": _clip(matched_functions if symbol or path or module else []),
-        "deleted_functions": _clip(deleted if symbol or changes else []),
-        "failures": report.get("failure_details") or [],
-        "truncated": truncated,
-        "limit": limit,
-        "missing": {
-            "git_hunks": "git_hunks" not in report,
-            "git_changes": "git_changes" not in report,
-        },
-    }
+def _query_row_line(row: dict) -> str:
+    if "status" in row and "inventory" in row:
+        return f"  {row['status']} {row['inventory']} {row['path']}"
+    if "change" in row:
+        return f"  {row['change']} {row['path']} loc_delta={row.get('loc_delta')}"
+    if "touch" in row and "name" in row:
+        return f"  {row['touch']} {row['path']}:{row['line']} {row['name']}"
+    return f"  {row.get('module')}/{row.get('role')} {row.get('path')}"
 
 
 def render_query(result: dict) -> str:
@@ -326,17 +415,7 @@ def render_query(result: dict) -> str:
     ):
         rows = result.get(key) or []
         lines.append(f"{label}: {len(rows)}")
-        for row in rows:
-            if "status" in row and "inventory" in row:
-                lines.append(f"  {row['status']} {row['inventory']} {row['path']}")
-            elif "change" in row:
-                lines.append(f"  {row['change']} {row['path']} loc_delta={row.get('loc_delta')}")
-            elif "touch" in row and "name" in row:
-                lines.append(
-                    f"  {row['touch']} {row['path']}:{row['line']} {row['name']}"
-                )
-            else:
-                lines.append(f"  {row.get('module')}/{row.get('role')} {row.get('path')}")
+        lines.extend(_query_row_line(row) for row in rows)
     if result["truncated"]:
         lines.append(f"results truncated at {result['limit']}; raise --limit to expand")
     return "\n".join(lines) + "\n"
@@ -375,9 +454,24 @@ def _hotspots(current: dict) -> list[str]:
     return lines
 
 
-def render_report(report: dict) -> str:
+def _failure_line(detail: dict) -> str:
+    location = detail.get("path") or "no unique file"
+    line = f":{detail['line']}" if detail.get("line") else ""
+    function = f" {detail['function']}" if detail.get("function") else ""
+    signature = f" signature={detail['signature']}" if detail.get("signature") else ""
+    attribution = detail.get("attribution") or "cannot uniquely attribute"
+    delta = ""
+    if "base" in detail and "head" in detail:
+        delta = f" {detail['base']} -> {detail['head']}"
+    return (
+        f"  {detail.get('rule') or detail['failure']}{delta} {attribution} "
+        f"{detail.get('side', 'head')} {location}{line}{function}{signature}"
+    )
+
+
+def _render_header(report: dict) -> list[str]:
     current, base = report["current"], report["base"]
-    lines = [
+    return [
         f"CODEBASE WEIGHT — exact {current['sha']}",
         f"Base: {base['sha']}",
         "Identity: audit pair of exact Git commits; dirty/untracked files are not measured.",
@@ -385,26 +479,20 @@ def render_report(report: dict) -> str:
         f"Verdict: {report['verdict']}",
         "",
     ]
-    if report.get("failure_details"):
-        lines.append("Failures:")
-        for detail in report["failure_details"]:
-            location = detail.get("path") or "no unique file"
-            line = f":{detail['line']}" if detail.get("line") else ""
-            function = f" {detail['function']}" if detail.get("function") else ""
-            signature = f" signature={detail['signature']}" if detail.get("signature") else ""
-            attribution = detail.get("attribution") or "cannot uniquely attribute"
-            delta = ""
-            if "base" in detail and "head" in detail:
-                delta = f" {detail['base']} -> {detail['head']}"
-            lines.append(
-                f"  {detail.get('rule') or detail['failure']}{delta} {attribution} "
-                f"{detail.get('side', 'head')} {location}{line}{function}{signature}"
-            )
-        lines.append("")
+
+
+def _render_failure_block(report: dict) -> list[str]:
+    if not report.get("failure_details"):
+        return []
+    lines = ["Failures:"]
+    lines.extend(_failure_line(detail) for detail in report["failure_details"])
+    lines.append("")
+    return lines
+
+
+def _render_change_block(report: dict) -> list[str]:
     git_changes = report.get("git_changes") or []
-    lines.append(
-        f"Changes: git_paths={len(git_changes)} measured_source={len(report['changes'])}"
-    )
+    lines = [f"Changes: git_paths={len(git_changes)} measured_source={len(report['changes'])}"]
     unmeasured = [row["path"] for row in git_changes if row.get("inventory") == "unmeasured"]
     if unmeasured:
         lines.append(f"Unmeasured Git paths still classified by CI (not LOC): {len(unmeasured)}")
@@ -420,8 +508,15 @@ def render_report(report: dict) -> str:
         lines.append("  " + ", ".join(f"{name}={scopes.get(name)}" for name in scopes))
     changed_modules = sorted({module for row in report["changes"] for module in row["modules"]})
     lines.append(f"Changed source files: {len(report['changes'])}; modules: {', '.join(changed_modules) or 'none'}")
-    lines.append("Tools: " + ", ".join(f"{key}={value}" for key, value in report["tools"].items()))
-    lines.append(f"PowerShell parser: {current['powershell_parser'] or 'no PowerShell source'}")
+    return lines
+
+
+def _render_metric_block(report: dict) -> list[str]:
+    current, base = report["current"], report["base"]
+    lines = [
+        "Tools: " + ", ".join(f"{key}={value}" for key, value in report["tools"].items()),
+        f"PowerShell parser: {current['powershell_parser'] or 'no PowerShell source'}",
+    ]
     lines.extend(f"Coverage: {report['policy'][key]}" for key in ("android_complexity", "function_metrics", "non_function_source", "verdict_scope"))
     labels = {
         "production_loc": "Production LOC", "test_loc": "Test LOC", "executable_total": "Executable total (P+T)",
@@ -446,4 +541,12 @@ def render_report(report: dict) -> str:
         lines.append("\nFailures:")
         lines.extend(f"  {failure}" for failure in report["failures"])
     lines.append(f"\nVerdict: {report['verdict']}")
+    return lines
+
+
+def render_report(report: dict) -> str:
+    lines = _render_header(report)
+    lines.extend(_render_failure_block(report))
+    lines.extend(_render_change_block(report))
+    lines.extend(_render_metric_block(report))
     return "\n".join(lines) + "\n"

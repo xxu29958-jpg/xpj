@@ -426,11 +426,32 @@ def test_symbol_query_distinguishes_inventory_from_missing(repo, tmp_path) -> No
     assert report["verdict"] == "NO DEBT REGRESSION" or report["verdict"] == "HEALTHY GROWTH"
 
 
-def test_task_navigation_entries_point_at_real_files() -> None:
-    from scripts.engineering_task_map import resolve_task
+def _query_report():
+    scripts = str(ENTRY.parent)
+    if scripts not in sys.path:
+        sys.path.insert(0, scripts)
+    from repository_weight_report import query_report
+    return query_report
 
-    ci_task = resolve_task("ci-trigger")
-    web_task = resolve_task("shared-web-theme")
+
+def _complex_python(name: str, branches: int) -> str:
+    lines = [f"def {name}(value):"]
+    for number in range(branches):
+        lines.append(f"    if value == {number}:")
+        lines.append(f"        return {number}")
+    lines.append("    return 0")
+    return "\n".join(lines) + "\n"
+
+
+def test_task_navigation_entries_point_at_real_files() -> None:
+    from scripts.engineering_task_map import ROOT, resolve_task
+    from scripts.repository_weight_sources import exact_commit
+
+    sha = exact_commit(ROOT, "HEAD", "head")
+    ci_task = resolve_task("ci-trigger", ROOT, sha)
+    web_task = resolve_task("shared-web-theme", ROOT, sha)
+    assert ci_task["source_sha"] == sha
+    assert ci_task["historical"] is False
     assert all(node["present"] for node in ci_task["chain"])
     assert all(node["present"] for node in web_task["chain"])
     assert ci_task["map_is_skip_authority"] is False
@@ -440,5 +461,108 @@ def test_task_navigation_entries_point_at_real_files() -> None:
         env={key: value for key, value in os.environ.items() if key != "GITHUB_STEP_SUMMARY"},
     )
     assert result.returncode == 0, result.stdout + result.stderr
+    assert f"source_sha={sha}" in result.stdout
+    assert "historical=false" in result.stdout
     assert "backend/app/static/shared/tokens.css" in result.stdout
     assert "desktop/backend_manager/web_bff.py" in result.stdout
+
+
+def test_historical_complex_functions_are_not_marked_unique(repo, tmp_path) -> None:
+    query_report = _query_report()
+
+    base = commit_files(repo, {"backend/app/branch.py": _complex_python("old_complex", 16)}, "base")
+    head = commit_files(repo, {
+        "backend/app/branch.py": _complex_python("old_complex", 16) + "\n" + _complex_python("new_complex", 16),
+    }, "new complexity")
+    result, report = run_weight(repo, base, head, tmp_path)
+    assert result.returncode == 1, result.stdout + result.stderr
+    unique = [row for row in report["failure_details"] if row.get("attribution") == "unique"]
+    assert {row.get("function") for row in unique} == {"new_complex"}
+    assert all(row.get("function") != "old_complex" for row in unique)
+    queried = query_report(report, path="backend/app/branch.py")
+    assert {row["name"] for row in queried["functions"]} == {"old_complex", "new_complex"}
+
+
+def test_worsened_complex_function_is_the_only_unique_detail(repo, tmp_path) -> None:
+    base = commit_files(repo, {"backend/app/branch.py": _complex_python("kept_complex", 16)}, "base")
+    head = commit_files(repo, {"backend/app/branch.py": _complex_python("kept_complex", 20)}, "worse")
+    result, report = run_weight(repo, base, head, tmp_path)
+    assert result.returncode == 1, result.stdout + result.stderr
+    unique = [row for row in report["failure_details"] if row.get("attribution") == "unique"]
+    assert unique
+    assert {row.get("function") for row in unique} == {"kept_complex"}
+
+
+def test_pure_line_shift_produces_zero_deleted_functions(repo, tmp_path) -> None:
+    query_report = _query_report()
+
+    original = "def kept(value):\n    return value\n"
+    base = commit_files(repo, {"backend/app/service.py": original}, "base")
+    head = commit_files(repo, {
+        "backend/app/service.py": "def helper():\n    return 0\n\n" + original,
+    }, "prepend helper")
+    result, report = run_weight(repo, base, head, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    queried = query_report(report, changes=True)
+    assert queried["deleted_functions"] == []
+    query = subprocess.run(
+        [sys.executable, str(ENTRY), "--from-json", str(tmp_path / "weight.json"), "--changes"],
+        capture_output=True, text=True, encoding="utf-8",
+        env={key: value for key, value in os.environ.items() if key != "GITHUB_STEP_SUMMARY"},
+    )
+    assert query.returncode == 0, query.stdout + query.stderr
+    assert "Deleted functions: 0" in query.stdout
+
+
+def test_duplicate_name_line_shift_is_not_a_deletion(repo, tmp_path) -> None:
+    query_report = _query_report()
+
+    two = "def work():\n    return 1\nif False:\n    def work():\n        return 2\n"
+    base = commit_files(repo, {"backend/app/service.py": two}, "two workers")
+    head = commit_files(repo, {"backend/app/service.py": "VALUE = 1\n" + two}, "shift both")
+    result, report = run_weight(repo, base, head, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert query_report(report, changes=True)["deleted_functions"] == []
+    removed = commit_files(repo, {
+        "backend/app/service.py": "VALUE = 1\ndef work():\n    return 1\n",
+    }, "drop duplicate")
+    result, report = run_weight(repo, base, removed, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    deleted = query_report(report, changes=True)["deleted_functions"]
+    assert [row["name"] for row in deleted] == ["work"]
+
+
+def test_historical_task_map_binds_to_artifact_head_not_worktree(repo, tmp_path) -> None:
+    from scripts.engineering_task_map import resolve_task
+
+    tracked = "backend/app/static/shared/tokens.css"
+    sha = commit_files(repo, {
+        tracked: "a { color: red; }\n",
+        "backend/app/service.py": "VALUE = 1\n",
+    }, "artifact head")
+    missing = repo / "desktop/backend_manager/web_bff.py"
+    missing.parent.mkdir(parents=True, exist_ok=True)
+    missing.write_text("def allowed_target():\n    return True\n", encoding="utf-8")
+    task = resolve_task("shared-web-theme", repo, sha, historical=True)
+    nodes = {node["path"]: node for node in task["chain"]}
+    assert task["source_sha"] == sha
+    assert task["historical"] is True
+    assert nodes[tracked]["present"] is True
+    assert nodes["desktop/backend_manager/web_bff.py"]["present"] is False
+    artifact = tmp_path / "historical.json"
+    artifact.write_text(json.dumps({
+        "verdict": "NO DEBT REGRESSION",
+        "base": {"sha": sha, "files": [], "functions": []},
+        "current": {"sha": sha, "files": [], "functions": []},
+        "changes": [],
+        "failure_details": [],
+    }), encoding="utf-8")
+    query = subprocess.run(
+        [sys.executable, str(ENTRY), "--repo", str(repo), "--from-json", str(artifact), "--task", "shared-web-theme"],
+        capture_output=True, text=True, encoding="utf-8",
+        env={key: value for key, value in os.environ.items() if key != "GITHUB_STEP_SUMMARY"},
+    )
+    assert query.returncode == 0, query.stdout + query.stderr
+    assert f"source_sha={sha}" in query.stdout
+    assert "historical=true" in query.stdout
+    assert "desktop/backend_manager/web_bff.py present=false" in query.stdout

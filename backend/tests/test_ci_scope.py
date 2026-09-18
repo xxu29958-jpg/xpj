@@ -483,6 +483,9 @@ def test_scope_cli_keeps_github_output_boolean_and_encodes_newline_paths(tmp_pat
     explanation = json.loads((tmp_path / "explain.json").read_text(encoding="utf-8"))
     assert explanation["status"] == "UNKNOWN_FULL"
     assert explanation["scopes"] == all_ci_scopes()
+    hit_paths = {hit["path"] for hit in explanation["hits"]}
+    assert "backend/app/static/shared/tokens.css" in hit_paths
+    assert "weird\nname.css" in hit_paths
 
 
 def test_push_without_base_explains_unknown_full(tmp_path, monkeypatch) -> None:
@@ -495,4 +498,21 @@ def test_push_without_base_explains_unknown_full(tmp_path, monkeypatch) -> None:
     text = output.read_text(encoding="utf-8")
     assert all(f"{name}=true" in text for name in ("postgres", "backend_frozen", "desktop", "android", "windows"))
     assert "no trusted incremental diff base" in summary.read_text(encoding="utf-8")
+
+
+def test_mixed_policy_known_and_unknown_paths_keep_all_hit_explanations() -> None:
+    decision = classify_ci_decision([
+        ".github/workflows/ci.yml",
+        "backend/app/static/shared/tokens.css",
+        "new-surface/config.toml",
+        "docs/runbook/CI.md",
+    ])
+    assert decision["status"] == "UNKNOWN_FULL"
+    assert decision["scopes"] == all_ci_scopes()
+    kinds = {hit["path"]: hit["kind"] for hit in decision["hits"]}
+    assert kinds[".github/workflows/ci.yml"] == "workflow_prefix"
+    assert kinds["backend/app/static/shared/tokens.css"] == "prefix"
+    assert kinds["new-surface/config.toml"] == "unknown"
+    assert kinds["docs/runbook/CI.md"] == "prefix"
+    assert {hit["path"] for hit in decision["hits"]} == set(kinds)
 

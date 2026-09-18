@@ -82,42 +82,65 @@ def resolve_ci_scope(event: str, base: str, head: str) -> dict[str, object]:
     return decision
 
 
-def render_scope_explanation(decision: dict[str, object]) -> str:
+def _scope_header(decision: dict[str, object]) -> list[str]:
     identity = decision.get("identity") if isinstance(decision.get("identity"), dict) else {}
     scopes = decision["scopes"]
     assert isinstance(scopes, dict)
-    lines = [
+    return [
         "CI SCOPE",
         f"event={identity.get('event') or 'unknown'} base={identity.get('diff_base') or '(none)'} head={identity.get('diff_head') or '(none)'}",
         f"decision={decision['status']}: {decision['reason']}",
         f"resident: {decision.get('resident')}",
         "selected: " + ", ".join(f"{name}={'true' if scopes[name] else 'false'}" for name in CI_HEAVY_SCOPES),
     ]
+
+
+def _scope_lane_lines(decision: dict[str, object]) -> list[str]:
     lanes = decision.get("lanes")
-    if isinstance(lanes, dict):
-        lines.append("lanes:")
-        for name in CI_HEAVY_SCOPES:
-            lane = lanes.get(name) or {}
-            lines.append(f"  {name}: {lane.get('status')} ({lane.get('reason')})")
+    if not isinstance(lanes, dict):
+        return []
+    lines = ["lanes:"]
+    for name in CI_HEAVY_SCOPES:
+        lane = lanes.get(name) or {}
+        lines.append(f"  {name}: {lane.get('status')} ({lane.get('reason')})")
+    return lines
+
+
+def _hit_line(hit: dict) -> str:
+    consumer = f" consumer={hit['consumer']}" if hit.get("consumer") else ""
+    return (
+        f"  {json.dumps(hit['path'], ensure_ascii=False)} {hit.get('kind')} {json.dumps(hit.get('entry'), ensure_ascii=False)}"
+        f" -> {','.join(hit.get('scopes') or [])}{consumer}"
+    )
+
+
+def _scope_hit_lines(decision: dict[str, object]) -> list[str]:
     ignored = decision.get("ignored_always_on") or []
+    lines: list[str] = []
     if ignored:
         lines.append("ignored always-on contract paths: " + json.dumps(ignored, ensure_ascii=False))
     hits = decision.get("hits") or []
-    if isinstance(hits, list) and hits:
-        lines.append("hits:")
-        for hit in hits:
-            if not isinstance(hit, dict):
-                continue
-            consumer = f" consumer={hit['consumer']}" if hit.get("consumer") else ""
-            lines.append(
-                f"  {json.dumps(hit['path'], ensure_ascii=False)} {hit.get('kind')} {json.dumps(hit.get('entry'), ensure_ascii=False)}"
-                f" -> {','.join(hit.get('scopes') or [])}{consumer}"
-            )
+    if not isinstance(hits, list) or not hits:
+        return lines
+    lines.append("hits:")
+    lines.extend(_hit_line(hit) for hit in hits if isinstance(hit, dict))
+    return lines
+
+
+def _scope_path_lines(decision: dict[str, object]) -> list[str]:
     git_paths = decision.get("git_paths")
-    if isinstance(git_paths, list):
-        lines.append(f"git_paths={len(git_paths)}")
-        for path in git_paths:
-            lines.append(f"  {json.dumps(path, ensure_ascii=False)}")
+    if not isinstance(git_paths, list):
+        return []
+    lines = [f"git_paths={len(git_paths)}"]
+    lines.extend(f"  {json.dumps(path, ensure_ascii=False)}" for path in git_paths)
+    return lines
+
+
+def render_scope_explanation(decision: dict[str, object]) -> str:
+    lines = _scope_header(decision)
+    lines.extend(_scope_lane_lines(decision))
+    lines.extend(_scope_hit_lines(decision))
+    lines.extend(_scope_path_lines(decision))
     return "\n".join(lines) + "\n"
 
 
@@ -125,6 +148,20 @@ def _write_summary(path: Path, text: str) -> None:
     with path.open("a", encoding="utf-8") as output:
         fence = chr(96) * 3
         output.write("### CI scope\n\n" + fence + "text\n" + text + fence + "\n")
+
+
+def _write_explanation(args: argparse.Namespace, decision: dict[str, object]) -> None:
+    rendered = render_scope_explanation(decision)
+    print(rendered, end="")
+    if args.explain_json:
+        args.explain_json.write_text(json.dumps(decision, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    if args.summary:
+        _write_summary(args.summary, rendered)
+
+
+def _append_output(path: Path, key: str, value: str) -> None:
+    with path.open("a", encoding="utf-8", newline="\n") as output:
+        output.write(f"{key}={value}\n")
 
 
 def main() -> int:
@@ -146,14 +183,12 @@ def main() -> int:
     assert isinstance(scopes, dict)
     write_outputs(args.output, {name: bool(scopes[name]) for name in CI_HEAVY_SCOPES})
     try:
-        rendered = render_scope_explanation(decision)
-        print(rendered, end="")
-        if args.explain_json:
-            args.explain_json.write_text(json.dumps(decision, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        if args.summary:
-            _write_summary(args.summary, rendered)
+        _write_explanation(args, decision)
     except (OSError, TypeError, ValueError, KeyError) as exc:
-        print(f"CI SCOPE EXPLANATION ERROR: {exc}")
+        print(f"CI SCOPE EXPLANATION ERROR: {exc}", file=sys.stderr)
+        _append_output(args.output, "explanation_status", "failed")
+        return 2
+    _append_output(args.output, "explanation_status", "ok")
     print(
         "CI heavy-job scope: "
         + ", ".join(f"{key}={scopes[key]}" for key in CI_HEAVY_SCOPES)

@@ -87,6 +87,14 @@ def exact_commit(repo: Path, ref: str, label: str) -> str:
     return sha
 
 
+def git_path_exists(repo: Path, sha: str, path: str) -> bool:
+    try:
+        git_bytes(repo, "cat-file", "-e", f"{sha}:{path}")
+    except subprocess.CalledProcessError:
+        return False
+    return True
+
+
 def git_changed_paths(repo: Path, base: str, head: str) -> list[dict[str, str]]:
     payload = git_bytes(repo, "diff", "--no-renames", "--name-status", "-z", f"{base}...{head}")
     entries = [part.decode("utf-8", errors="surrogateescape") for part in payload.split(b"\0") if part]
