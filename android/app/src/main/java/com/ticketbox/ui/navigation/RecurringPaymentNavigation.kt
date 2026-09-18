@@ -313,8 +313,6 @@ internal sealed interface OriginObservation {
                 exact is RecurringPaymentOriginLookup.Conflict || (found != null && clientRef == null) ||
                     occupant is RecurringPaymentPeriodOccupant.Conflict -> Conflict
                 clientRef != null -> Found(clientRef, found.projection.acceptedExpenseId)
-                occupied != null && occupied.occurrenceRowVersion == generation && generation != null ->
-                    Found(occupied.clientRef, occupied.acceptedExpenseId)
                 occupied != null -> Occupied(
                     occupied.clientRef,
                     occupied.acceptedExpenseId,

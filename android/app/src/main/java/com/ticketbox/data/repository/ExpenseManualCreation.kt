@@ -374,8 +374,9 @@ private suspend fun matchingPeriodOrigins(
         return@mapNotNull null
     }
     val stored = decodeRecurringPaymentPayload(originAdapter, row.payloadJson) ?: return@mapNotNull null
-    if (stored.retired || !stored.matchesOrigin(requested)) return@mapNotNull null
+    if (!stored.matchesOrigin(requested)) return@mapNotNull null
     val projection = describe(row) ?: return@mapNotNull null
+    if (stored.isSafeRetired(projection.row.status, projection.acceptedExpenseId)) return@mapNotNull null
     stored to projection
 }
 
@@ -439,11 +440,11 @@ private fun RecurringPaymentCreatePayload.originRetireDecision(
     status: PendingMutationStatus,
     acceptedExpenseId: Long?,
 ): RecurringPaymentOriginRetire? {
-    if (retired) return RecurringPaymentOriginRetire.Retired
     if (!matchesOrigin(origin) || request.clientRef != clientRef) return RecurringPaymentOriginRetire.Missing
     if (occurrenceRowVersion != origin.occurrenceRowVersion) return RecurringPaymentOriginRetire.GenerationMismatch
     if (status != PendingMutationStatus.Done) return RecurringPaymentOriginRetire.CommandActive(status)
     if ((acceptedExpenseId ?: 0L) <= 0L) return RecurringPaymentOriginRetire.UnverifiedReceipt
+    if (retired) return RecurringPaymentOriginRetire.Retired
     return null
 }
 

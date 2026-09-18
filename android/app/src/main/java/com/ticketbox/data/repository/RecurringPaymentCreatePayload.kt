@@ -188,3 +188,8 @@ internal fun RecurringPaymentCreatePayload.matchesOrigin(origin: RecurringPaymen
 
 internal fun RecurringPaymentCreatePayload.matchesActiveOrigin(origin: RecurringPaymentOrigin): Boolean =
     !retired && matchesOrigin(origin) && occurrenceRowVersion == origin.occurrenceRowVersion
+
+internal fun RecurringPaymentCreatePayload.isSafeRetired(
+    status: PendingMutationStatus,
+    acceptedExpenseId: Long?,
+): Boolean = retired && status == PendingMutationStatus.Done && (acceptedExpenseId ?: 0L) > 0L

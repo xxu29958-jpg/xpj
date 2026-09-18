@@ -302,17 +302,19 @@ private data class RecurringPaymentCanonicalize(
         val period = identity.period?.takeIf { it.isNotBlank() } ?: return@retire
         report(true, false)
         scope.launch {
+            var failed = true
             try {
-                val result = creation.retireOrigin(
+                failed = creation.retireOrigin(
                     binding,
                     RecurringPaymentOrigin(series, period, occupied.occurrenceRowVersion),
                     occupied.clientRef,
-                )
-                report(false, result !is RecurringPaymentOriginRetire.Retired)
+                ) !is RecurringPaymentOriginRetire.Retired
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                report(false, true)
+                failed = true
+            } finally {
+                report(false, failed)
             }
         }
     }
