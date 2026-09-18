@@ -361,3 +361,84 @@ def test_release_audit_rejects_missing_repository_weight_lane(tmp_path, monkeypa
     (tmp_path / "_audit_pr_delta_metrics.py").write_text("raise SystemExit(0)\n", encoding="utf-8")
     with pytest.raises(RuntimeError, match="_audit_repository_weight.py"):
         release_audit._discover_lanes(tmp_path)
+
+
+def test_failure_summary_lists_suppression_location_before_totals(repo, tmp_path) -> None:
+    base = commit_files(repo, {"backend/app/example.py": "VALUE = 1\n"}, "base")
+    head = commit_files(repo, {
+        "backend/app/example.py": "VALUE = 1  # noqa: C901\n",
+    }, "new suppression")
+    result, report = run_weight(repo, base, head, tmp_path)
+    assert result.returncode == 1
+    assert report["verdict"] == "DEBT REGRESSION"
+    stdout = result.stdout
+    assert stdout.index("Verdict: DEBT REGRESSION") < stdout.index("Production LOC")
+    assert stdout.index("Failures:") < stdout.index("Production LOC")
+    assert "backend/app/example.py" in stdout
+    assert report["failure_details"][0]["path"] == "backend/app/example.py"
+    assert report["failure_details"][0]["attribution"] == "unique"
+
+
+def test_query_reads_existing_json_without_changing_verdict(repo, tmp_path) -> None:
+    base = commit_files(repo, {
+        "backend/app/static/shared/tokens.css": "a { color: red; }\n",
+        "backend/app/service.py": "def answer():\n    return 1\n",
+    }, "base")
+    head = commit_files(repo, {
+        "backend/app/static/shared/tokens.css": "a { color: blue; }\n",
+        "docs/note.md": "docs only\n",
+    }, "theme")
+    result, report = run_weight(repo, base, head, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    output = tmp_path / "weight.json"
+    query = subprocess.run(
+        [sys.executable, str(ENTRY), "--from-json", str(output), "--path", "backend/app/static/shared/tokens.css", "--changes"],
+        capture_output=True, text=True, encoding="utf-8",
+        env={key: value for key, value in os.environ.items() if key != "GITHUB_STEP_SUMMARY"},
+    )
+    assert query.returncode == 0, query.stdout + query.stderr
+    assert f"GLOBAL VERDICT (unfiltered): {report['verdict']}" in query.stdout
+    assert report["verdict"] in {"HEALTHY GROWTH", "NO DEBT REGRESSION"}
+    assert "tokens.css" in query.stdout
+    assert any(row["inventory"] == "unmeasured" for row in report["git_changes"] if row["path"] == "docs/note.md")
+    assert all(row["path"] != "docs/note.md" for row in report["changes"])
+
+
+def test_symbol_query_distinguishes_inventory_from_missing(repo, tmp_path) -> None:
+    base = commit_files(repo, {"backend/app/service.py": "def answer():\n    return 1\n"}, "base")
+    head = commit_files(repo, {"backend/app/service.py": "def answer():\n    return 2\n"}, "edit")
+    result, report = run_weight(repo, base, head, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    query = subprocess.run(
+        [sys.executable, str(ENTRY), "--from-json", str(tmp_path / "weight.json"), "--symbol", "answer"],
+        capture_output=True, text=True, encoding="utf-8",
+        env={key: value for key, value in os.environ.items() if key != "GITHUB_STEP_SUMMARY"},
+    )
+    assert query.returncode == 0, query.stdout + query.stderr
+    assert "answer" in query.stdout
+    missing = subprocess.run(
+        [sys.executable, str(ENTRY), "--from-json", str(tmp_path / "weight.json"), "--symbol", "does_not_exist"],
+        capture_output=True, text=True, encoding="utf-8",
+        env={key: value for key, value in os.environ.items() if key != "GITHUB_STEP_SUMMARY"},
+    )
+    assert missing.returncode == 0
+    assert "Functions: 0" in missing.stdout
+    assert report["verdict"] == "NO DEBT REGRESSION" or report["verdict"] == "HEALTHY GROWTH"
+
+
+def test_task_navigation_entries_point_at_real_files() -> None:
+    from scripts.engineering_task_map import resolve_task
+
+    ci_task = resolve_task("ci-trigger")
+    web_task = resolve_task("shared-web-theme")
+    assert all(node["present"] for node in ci_task["chain"])
+    assert all(node["present"] for node in web_task["chain"])
+    assert ci_task["map_is_skip_authority"] is False
+    result = subprocess.run(
+        [sys.executable, str(ENTRY), "--task", "shared-web-theme"],
+        capture_output=True, text=True, encoding="utf-8",
+        env={key: value for key, value in os.environ.items() if key != "GITHUB_STEP_SUMMARY"},
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "backend/app/static/shared/tokens.css" in result.stdout
+    assert "desktop/backend_manager/web_bff.py" in result.stdout

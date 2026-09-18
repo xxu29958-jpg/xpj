@@ -156,6 +156,7 @@ jobs:
           tests/test_android_process_qualification.py
           tests/test_android_test_qualification.py
           tests/test_repository_weight.py
+          tests/test_ci_run_timing.py
           --noconftest -p no:cacheprovider
 
       - name: Audit (release lanes)

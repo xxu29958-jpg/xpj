@@ -47,6 +47,8 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import time
+from datetime import UTC, datetime
 from pathlib import Path
 
 _REQUIRED_LANES = frozenset(
@@ -147,7 +149,15 @@ def main() -> int:
         print(f"AUDIT LANE: {label} ({filename})")
         print("=" * 78)
         sys.stdout.flush()
+        started = time.monotonic()
+        started_utc = datetime.now(UTC).isoformat().replace("+00:00", "Z")
         ok = _run_lane(label, filename, scripts_dir, compact=compact)
+        elapsed = time.monotonic() - started
+        ended_utc = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        print(
+            f"AUDIT LANE TIMING: {label} ok={str(ok).lower()} elapsed_s={elapsed:.3f} "
+            f"started_utc={started_utc} ended_utc={ended_utc} clock=monotonic+utc return_intact=true"
+        )
         summary.append((label, ok))
         if not ok:
             overall_ok = False

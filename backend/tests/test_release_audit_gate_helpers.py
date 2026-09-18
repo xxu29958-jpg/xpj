@@ -125,6 +125,21 @@ def test_release_audit_compact_mode_prints_failure_output(monkeypatch, capsys) -
     assert "stderr detail" in captured.err
 
 
+def test_release_audit_records_lane_timing_without_changing_return(monkeypatch, capsys) -> None:
+    mod = importlib.reload(importlib.import_module("release_audit"))
+
+    def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(cmd, 0, stdout="ok\n", stderr="")
+
+    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+    monkeypatch.setattr(mod, "_discover_lanes", lambda _scripts: [("sample", "_audit_sample.py")])
+    assert mod.main() == 0
+    captured = capsys.readouterr()
+    assert "AUDIT LANE TIMING: sample ok=true" in captured.out
+    assert "clock=monotonic+utc" in captured.out
+    assert "return_intact=true" in captured.out
+
+
 def test_pr_delta_accepts_a3_exact_down_ratchet_exception(monkeypatch) -> None:
     # A3 adds the API/Web twins of one manual fixed-expense create capability.
     # Only its exact 128 -> 130 topology hop is grandfathered.
