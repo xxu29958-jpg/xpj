@@ -4,13 +4,10 @@
     <string name="recurring_payment_loading">正在核对原付款命令，请稍候。</string>
     <string name="recurring_payment_binding_changed">原账本或登录身份已变化，请返回原账本继续。原草稿仍保留。</string>
     <string name="recurring_payment_origin_conflict">本期已有多笔付款命令，请先处理重复提交。</string>
-    <string name="recurring_payment_leftover_unresolved">本期原付款命令无法核对，旧草稿已保留。请先处理后再记录付款。</string>
-    <string name="recurring_payment_leftover_abandon">放弃这条旧版恢复映射并开始新的付款。</string>
-    <string name="recurring_payment_leftover_continue">继续使用这条旧草稿，不自动记作本期付款。</string>
-    <string name="recurring_payment_leftover_existing_origin">本期已有原付款，旧草稿仍保留，没有改记到当前这一期。</string>
-    <string name="recurring_payment_leftover_action_failed">无法处理这条旧草稿，请稍后重试。原记录仍保留。</string>
-    <string name="recurring_payment_leftover_abandon_unreadable">无法识别具体条目，将删除全部无法读取的旧版恢复数据。</string>
-    <string name="recurring_payment_leftover_abandon_confirm">删除无法读取的旧版恢复数据</string>
+    <string name="recurring_payment_local_draft_held">本期已有付款，还有一份未提交的本地草稿。</string>
+    <string name="recurring_payment_local_draft_view_origin">查看已存在的付款</string>
+    <string name="recurring_payment_local_draft_open">重新打开本地草稿</string>
+    <string name="recurring_payment_local_draft_abandon">放弃这份本地草稿</string>
     <string name="recurring_payment_review_required">账本里还有未归属的记账，请确认是否为本期付款。当前草稿已保留。</string>
     <string name="recurring_payment_review_original">原提交</string>
     <string name="recurring_payment_review_adopt">将已有记账认作本期付款</string>
@@ -18,6 +15,11 @@
     <string name="recurring_payment_review_missing">原提交已不存在</string>
     <string name="recurring_payment_review_conflict">原提交归属已变化</string>
     <string name="recurring_payment_review_abandoned">本机已停止发送这笔原提交，服务器是否接收尚未确认。</string>
+    <string name="recurring_payment_generation_changed">期次状态已变化，请返回核对</string>
+    <string name="recurring_payment_prior_generation_occupied">本期存在旧状态下的付款</string>
+    <string name="recurring_payment_retire_prior_origin">确认旧付款不再占用本期</string>
+    <string name="recurring_payment_retire_prior_confirm">确认后仅解除本期占用。已送达的账单仍保留，未完成的原提交不会停止发送。</string>
+    <string name="recurring_payment_retire_prior_active">原付款命令尚未完成，请打开原提交核对并等待结果；失败后可停止。不能在这里解除占用。</string>
     <string name="occurrence_payment_currency">选择本期付款币种</string>
     <string name="occurrence_choose_payment_currency">本期义务币种未确认。请选择实际付款币种，不要默认成账本本币。</string>
 </resources>

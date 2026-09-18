@@ -2,6 +2,7 @@ package com.ticketbox.data.repository
 
 import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.JsonClass
+import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
 
 /** Explicit period-payment origin on the existing CreateExpense Outbox row. Not a second Writer. */
@@ -17,11 +18,30 @@ internal sealed class RecurringPaymentOriginLookup {
     data object Conflict : RecurringPaymentOriginLookup()
 }
 
-/** Bind leftover clientRef onto the existing CreateExpense row. Never enqueues. */
+internal enum class RecurringPaymentAdmissionBlock {
+    MissingGeneration,
+    DifferentGeneration,
+}
+
+internal sealed interface PeriodOriginAdmission {
+    data object Empty : PeriodOriginAdmission
+    data class Exact(val projection: ManualExpenseCreationProjection) : PeriodOriginAdmission
+    data class DifferentGeneration(
+        val projection: ManualExpenseCreationProjection,
+        val occurrenceRowVersion: Long?,
+    ) : PeriodOriginAdmission
+    data object Conflict : PeriodOriginAdmission
+}
+
+/** Bind an existing CreateExpense row onto the current period origin. Never enqueues. */
 internal sealed class RecurringPaymentOriginAdopt {
     data object Bound : RecurringPaymentOriginAdopt()
     data object Missing : RecurringPaymentOriginAdopt()
     data object Conflict : RecurringPaymentOriginAdopt()
+    data class Blocked(
+        val reason: RecurringPaymentAdmissionBlock,
+        val occupant: RecurringPaymentPeriodOccupant.Occupied? = null,
+    ) : RecurringPaymentOriginAdopt()
 }
 
 /** Admission result for the existing CreateExpense writer. Not a second command. */
@@ -34,30 +54,49 @@ internal sealed class ManualExpenseCreateAdmission {
                 .distinct()
                 .sorted()
     }
+    data class Blocked(
+        val reason: RecurringPaymentAdmissionBlock,
+        val occupant: RecurringPaymentPeriodOccupant.Occupied? = null,
+    ) : ManualExpenseCreateAdmission()
 }
 
-/**
- * N-1 SavedState left by RecurringPeriodPaymentSession. Not a second Writer.
- *
- * Read through [com.ticketbox.ui.navigation.LEGACY_PERIOD_PAYMENT_SESSIONS_KEY].
- * Supported from Android 1.2.0; delete the Host bridge no earlier than 1.4.0.
- * Keep the leftover upgrade counterexamples listed on that key when the reader is removed.
- */
-@JsonClass(generateAdapter = true)
-internal data class LegacyPeriodPaymentSession(
-    val binding: LogicalSessionBinding,
-    val seriesPublicId: String,
-    val period: String,
-    val clientRef: String,
-    val merchant: String,
-    val obligationCurrencyCode: String? = null,
-    val plannedAmountCents: Long? = null,
-    val ledgerHomeCurrencyCode: String? = null,
-    val category: String? = null,
-    val note: String? = null,
-    val capturedAmountCents: Long? = null,
-    val admitted: Boolean = false,
-)
+internal sealed interface RecurringPaymentPeriodOccupant {
+    data object Absent : RecurringPaymentPeriodOccupant
+    data class Occupied(
+        val clientRef: String,
+        val occurrenceRowVersion: Long?,
+        val acceptedExpenseId: Long? = null,
+    ) : RecurringPaymentPeriodOccupant
+    data object Conflict : RecurringPaymentPeriodOccupant
+}
+
+internal sealed class RecurringPaymentOriginRetire {
+    data object Retired : RecurringPaymentOriginRetire()
+    data object Missing : RecurringPaymentOriginRetire()
+    data class CommandActive(val status: PendingMutationStatus) : RecurringPaymentOriginRetire()
+    data object UnverifiedReceipt : RecurringPaymentOriginRetire()
+    data object GenerationMismatch : RecurringPaymentOriginRetire()
+}
+
+internal fun periodOccupant(
+    projection: ManualExpenseCreationProjection,
+    occurrenceRowVersion: Long?,
+): RecurringPaymentPeriodOccupant.Occupied? {
+    val ref = projection.admittedClientRef()?.takeIf { it.isNotBlank() } ?: return null
+    return RecurringPaymentPeriodOccupant.Occupied(ref, occurrenceRowVersion, projection.acceptedExpenseId)
+}
+
+internal fun classifyPeriodAdmission(
+    active: List<Pair<RecurringPaymentCreatePayload, ManualExpenseCreationProjection>>,
+    requested: RecurringPaymentOrigin,
+): PeriodOriginAdmission {
+    if (active.size > 1) return PeriodOriginAdmission.Conflict
+    val (stored, projection) = active.singleOrNull() ?: return PeriodOriginAdmission.Empty
+    if (stored.occurrenceRowVersion == requested.occurrenceRowVersion) {
+        return PeriodOriginAdmission.Exact(projection)
+    }
+    return PeriodOriginAdmission.DifferentGeneration(projection, stored.occurrenceRowVersion)
+}
 
 @JsonClass(generateAdapter = true)
 data class RecurringPaymentCreatePayload(
@@ -121,3 +160,8 @@ internal fun RecurringPaymentCreatePayload.matchesOrigin(origin: RecurringPaymen
 
 internal fun RecurringPaymentCreatePayload.matchesActiveOrigin(origin: RecurringPaymentOrigin): Boolean =
     !retired && matchesOrigin(origin) && occurrenceRowVersion == origin.occurrenceRowVersion
+
+internal fun RecurringPaymentCreatePayload.isSafeRetired(
+    status: PendingMutationStatus,
+    acceptedExpenseId: Long?,
+): Boolean = retired && status == PendingMutationStatus.Done && (acceptedExpenseId ?: 0L) > 0L

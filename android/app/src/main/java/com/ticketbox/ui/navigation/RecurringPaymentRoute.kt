@@ -20,6 +20,7 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -35,6 +36,7 @@ import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.ManualExpenseCreationProjection
 import com.ticketbox.data.repository.RecurringPaymentOrigin
 import com.ticketbox.data.repository.RecurringPaymentOriginLookup
+import com.ticketbox.data.repository.RecurringPaymentPeriodOccupant
 import com.ticketbox.data.repository.admittedClientRef
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
@@ -48,6 +50,7 @@ import com.ticketbox.ui.screens.ManualExpenseSheetDraft
 import com.ticketbox.ui.screens.ManualExpenseSheetInitials
 import com.ticketbox.ui.screens.ManualExpenseSheetState
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
@@ -68,6 +71,9 @@ internal fun NavGraphBuilder.addRecurringPaymentRoute(runtime: MainNavigationRun
         )
         CompositionLocalProvider(
             LocalRecurringPaymentOpenExpense provides { id -> runtime.navController.openExpense(id) },
+            LocalRecurringPaymentOpenSubmission provides { ref ->
+                runtime.navController.navigate(manualExpenseSubmissionRoute(ref))
+            },
         ) {
         RecurringPaymentRoute(
             task = task,
@@ -98,6 +104,7 @@ internal fun NavGraphBuilder.addRecurringPaymentRoute(runtime: MainNavigationRun
 
 internal val LocalRecurringPaymentDraftHandle = staticCompositionLocalOf<SavedStateHandle?> { null }
 internal val LocalRecurringPaymentOpenExpense = staticCompositionLocalOf<(Long) -> Unit> { {} }
+internal val LocalRecurringPaymentOpenSubmission = staticCompositionLocalOf<(String) -> Unit> { {} }
 
 @Composable
 internal fun rememberRecurringPaymentDraftStore(
@@ -124,12 +131,18 @@ internal data class RecurringPaymentAccess(
     val context: LedgerAccessContext?,
 )
 
+internal data class RecurringPaymentEntryNotice(
+    val localDraftHeld: Boolean = false,
+    val occupant: RecurringPaymentPeriodOccupant.Occupied? = null,
+)
+
 internal data class RecurringPaymentEntryContext(
     val task: RecurringPaymentTask,
     val factory: MainScreenFactory,
     val exit: ExpenseEditExitActions,
     val drafts: RecurringPaymentDraftStore,
     val access: RecurringPaymentAccess,
+    val notice: RecurringPaymentEntryNotice = RecurringPaymentEntryNotice(),
 ) {
     fun knownCurrencyBody(
         stored: RecurringPaymentDraft?,
@@ -173,18 +186,19 @@ internal fun RecurringPaymentRoute(
         factory.repository.manualCreation.observe(task.binding, task.clientRef).onEach { admittedResolved = true }
     }.collectAsStateWithLifecycle(initialValue = null)
     var originResolved by remember(task.binding, task.seriesPublicId, task.period, task.occurrenceRowVersion) { mutableStateOf(false) }
-    val originLookup by remember(factory.repository, task.binding, task.seriesPublicId, task.period, task.occurrenceRowVersion) {
-        factory.repository.manualCreation
-            .observeOrigin(
-                task.binding,
-                RecurringPaymentOrigin(task.seriesPublicId, task.period, task.occurrenceRowVersion),
-            )
-            .onEach { originResolved = true }
-    }.collectAsStateWithLifecycle(initialValue = RecurringPaymentOriginLookup.Absent)
+    val originPair by remember(factory.repository, task.binding, task.seriesPublicId, task.period, task.occurrenceRowVersion) {
+        combine(
+            factory.repository.manualCreation.observeOrigin(
+                task.binding, RecurringPaymentOrigin(task.seriesPublicId, task.period, task.occurrenceRowVersion),
+            ),
+            factory.repository.manualCreation.observePeriodOrigin(task.binding, task.seriesPublicId, task.period),
+        ) { exact, occupant -> exact to occupant }.onEach { originResolved = true }
+    }.collectAsStateWithLifecycle(initialValue = RecurringPaymentOriginLookup.Absent to RecurringPaymentPeriodOccupant.Absent)
     if (!recurringPaymentObservationsReady(accessResolved, admittedResolved && originResolved)) {
         Text(stringResource(R.string.recurring_payment_loading))
         return
     }
+    val originLookup = originPair.first
     val originConflict = originLookup is RecurringPaymentOriginLookup.Conflict
     val admittedClientRef = when (val found = originLookup) {
         is RecurringPaymentOriginLookup.Found -> found.projection.admittedClientRef()
@@ -192,16 +206,24 @@ internal fun RecurringPaymentRoute(
         RecurringPaymentOriginLookup.Absent -> admittedRow?.admittedClientRef()
     }
     val sameBinding = access?.binding == task.binding
+    val keepLocalDraft = admittedClientRef != null &&
+        admittedClientRef != task.clientRef &&
+        drafts.read(task.clientRef) != null
     RecurringPaymentAdmittedCleanup(
         RecurringPaymentAdmittedTarget(drafts, draftState, task, admittedClientRef, sameBinding, originConflict),
     )
-    if (admittedClientRef != null && sameBinding) {
+    if (admittedClientRef != null && sameBinding && !keepLocalDraft) {
         admitted(admittedClientRef)
         return
     }
     RecurringPaymentEntry(
         RecurringPaymentEntryContext(
             task, factory, exit, drafts, RecurringPaymentAccess(accessResolved, access),
+            RecurringPaymentEntryNotice(
+                keepLocalDraft,
+                (originPair.second as? RecurringPaymentPeriodOccupant.Occupied)
+                    ?.takeIf { it.clientRef != task.clientRef },
+            ),
         ),
         draftState,
     )
@@ -222,7 +244,11 @@ private fun RecurringPaymentAdmittedCleanup(target: RecurringPaymentAdmittedTarg
     LaunchedEffect(target.canonicalRef, target.sameBinding, target.originConflict, task.clientRef, task.binding, task.seriesPublicId, task.period) {
         val ref = target.canonicalRef?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         if (!target.sameBinding || target.originConflict) return@LaunchedEffect
-        target.drafts.remember(task.copy(clientRef = ref))
+        val remembered = target.drafts.remembered(task.binding, task.seriesPublicId, task.period)
+        val keepLocal = remembered != null && remembered.clientRef != ref && target.drafts.read(remembered.clientRef) != null
+        if (!keepLocal) {
+            target.drafts.remember(task.copy(clientRef = ref))
+        }
         if (ref == task.clientRef) {
             target.drafts.removeDraft(task.clientRef)
             target.draftState.removeState(task.clientRef)
@@ -240,8 +266,22 @@ private fun RecurringPaymentEntry(ctx: RecurringPaymentEntryContext, draftState:
     val home = CurrencyCode.fromStorageKeyOrNull(task.ledgerHomeCurrencyCode)
     val paymentCurrency = CurrencyCode.fromStorageKeyOrNull(chosenCurrency)
     val sameBinding = ctx.access.context?.binding == task.binding
+    val openExpense = LocalRecurringPaymentOpenExpense.current
+    val openSubmission = LocalRecurringPaymentOpenSubmission.current
     Column(Modifier.fillMaxSize().padding(AppSpacing.cardPadding)) {
         Text(stringResource(R.string.recurring_payment_return, task.period))
+        if (ctx.notice.localDraftHeld) {
+            Text(stringResource(R.string.recurring_payment_local_draft_held), modifier = Modifier.testTag("recurring-payment-local-draft"))
+        }
+        ctx.notice.occupant?.let { occupant ->
+            Text(stringResource(R.string.recurring_payment_prior_generation_occupied), modifier = Modifier.testTag("recurring-payment-prior-origin"))
+            TextButton(
+                onClick = {
+                    occupant.acceptedExpenseId?.takeIf { it > 0L }?.let(openExpense) ?: openSubmission(occupant.clientRef)
+                },
+                modifier = Modifier.testTag("recurring-payment-view-occupant"),
+            ) { Text(stringResource(R.string.recurring_payment_local_draft_view_origin)) }
+        }
         if (recurringPaymentShowsBindingChanged(ctx.access.resolved, sameBinding)) {
             Text(stringResource(R.string.recurring_payment_binding_changed))
             TextButton(onClick = ctx.exit.onBack) { Text(stringResource(R.string.common_cancel)) }
@@ -260,14 +300,11 @@ private fun RecurringPaymentEntry(ctx: RecurringPaymentEntryContext, draftState:
                         RecurringPaymentDraft(
                             clientRef = task.clientRef,
                             amountText = previous?.amountText ?: formatMinorAmountInput(
-                                task.suggestedAmountMinor,
-                                CurrencyCode.fromStorageKeyOrNull(code) ?: CurrencyCode.CNY,
+                                task.suggestedAmountMinor, CurrencyCode.fromStorageKeyOrNull(code) ?: CurrencyCode.CNY,
                             ),
-                            currencyCode = code,
-                            merchant = previous?.merchant ?: task.merchant,
+                            currencyCode = code, merchant = previous?.merchant ?: task.merchant,
                             category = previous?.category ?: DEFAULT_EXPENSE_CATEGORIES.first(),
-                            note = previous?.note.orEmpty(),
-                            expenseTime = previous?.expenseTime.orEmpty(),
+                            note = previous?.note.orEmpty(), expenseTime = previous?.expenseTime.orEmpty(),
                         ),
                     )
                 },
@@ -340,8 +377,11 @@ private fun rememberRecurringPaymentSheetWrite(ctx: RecurringPaymentEntryContext
     var reviewCandidates by remember { mutableStateOf<List<ManualExpenseCreationProjection>>(emptyList()) }
     val scope = rememberCoroutineScope()
     val canMutate = ctx.access.context?.let { it.canModify && it.binding == ctx.task.binding } == true
-    val missingMessage = stringResource(R.string.recurring_payment_review_missing)
-    val conflictMessage = stringResource(R.string.recurring_payment_review_conflict)
+    val admissionCopy = RecurringPaymentAdmissionCopy(
+        missing = stringResource(R.string.recurring_payment_review_missing),
+        conflict = stringResource(R.string.recurring_payment_review_conflict),
+        generationChanged = stringResource(R.string.recurring_payment_generation_changed),
+    )
     val launch = rememberPeriodPaymentLaunch(scope, canMutate, saving) { saving = it }
     return RecurringPaymentSheetWrite(
         saving = saving,
@@ -351,7 +391,7 @@ private fun rememberRecurringPaymentSheetWrite(ctx: RecurringPaymentEntryContext
         events = RecurringPaymentReviewEvents(
             onAdopt = { candidate ->
                 launch({ reviewError = it }) {
-                    applyAdoptedOrigin(ctx, candidate, missingMessage, conflictMessage) { next, message, clear ->
+                    applyAdoptedOrigin(ctx, candidate, admissionCopy) { next, message, clear ->
                         reviewError = message
                         reviewCandidates = next
                         if (clear) pendingDraft = null
@@ -361,7 +401,9 @@ private fun rememberRecurringPaymentSheetWrite(ctx: RecurringPaymentEntryContext
             onConfirmUnrelated = {
                 val draft = pendingDraft ?: return@RecurringPaymentReviewEvents
                 launch({ reviewError = it }) {
-                    applyPeriodPaymentAdmission(ctx, draft, reviewCandidates.mapNotNull { it.admittedClientRef() }) { next, pending ->
+                    applyPeriodPaymentAdmission(
+                        ctx, draft, reviewCandidates.mapNotNull { it.admittedClientRef() }, admissionCopy.generationChanged,
+                    ) { next, pending ->
                         reviewCandidates = next
                         pendingDraft = pending
                     }
@@ -378,7 +420,7 @@ private fun rememberRecurringPaymentSheetWrite(ctx: RecurringPaymentEntryContext
         ),
         save = { draft ->
             launch({ sheetError = it }) {
-                applyPeriodPaymentAdmission(ctx, draft, emptyList()) { next, pending ->
+                applyPeriodPaymentAdmission(ctx, draft, emptyList(), admissionCopy.generationChanged) { next, pending ->
                     reviewCandidates = next
                     pendingDraft = pending
                 }
