@@ -38,11 +38,6 @@ import com.ticketbox.viewmodel.RecurringOccurrenceUiState
 data class OccurrencePaymentGuard(
     val resolved: Boolean = true,
     val conflict: Boolean = false,
-    val leftoverBlocked: Boolean = false,
-    val leftoverUnreadable: Boolean = false,
-    val leftoverContinueDraft: Boolean = false,
-    val leftoverExistingOrigin: Boolean = false,
-    val leftoverActionFailed: Boolean = false,
     val localDraftHeld: Boolean = false,
     val priorGenerationOccupied: Boolean = false,
     val priorRetireBusy: Boolean = false,
@@ -58,8 +53,6 @@ data class OccurrenceSheetActions(
     val onRecover: (PendingOccurrencePayment, Boolean) -> Unit,
     val onOpenExpense: (Long) -> Unit = {},
     val onRecordPayment: () -> Unit = {},
-    val onAbandonLeftover: () -> Unit = {},
-    val onContinueLeftover: () -> Unit = {},
     val onOpenOrigin: () -> Unit = {},
     val onContinueLocalDraft: () -> Unit = {},
     val onAbandonLocalDraft: () -> Unit = {},
@@ -120,7 +113,6 @@ private fun OccurrencePaymentConflict(
         )
         return
     }
-    OccurrenceLeftoverConflict(origin, actions)
     if (origin.priorGenerationOccupied) {
         var confirmRetire by rememberSaveable { mutableStateOf(false) }
         Text(stringResource(R.string.recurring_payment_prior_generation_occupied), modifier = Modifier.testTag("occurrence-payment-prior-origin"))
@@ -167,67 +159,6 @@ private fun OccurrencePaymentConflict(
 }
 
 @Composable
-private fun OccurrenceLeftoverConflict(
-    origin: OccurrencePaymentGuard,
-    actions: OccurrenceSheetActions,
-) {
-    if (!origin.leftoverBlocked) return
-    var confirmUnreadable by rememberSaveable { mutableStateOf(false) }
-    Text(
-        stringResource(R.string.recurring_payment_leftover_unresolved),
-        modifier = Modifier.testTag("occurrence-payment-leftover"),
-    )
-    LeftoverPaymentNotices(origin)
-    if (origin.leftoverContinueDraft) {
-        TextButton(
-            onClick = actions.onContinueLeftover,
-            modifier = Modifier.testTag("occurrence-payment-leftover-continue"),
-        ) { Text(stringResource(R.string.recurring_payment_leftover_continue)) }
-    }
-    TextButton(
-        onClick = { if (origin.leftoverUnreadable) confirmUnreadable = true else actions.onAbandonLeftover() },
-        modifier = Modifier.testTag("occurrence-payment-leftover-abandon"),
-    ) { Text(stringResource(R.string.recurring_payment_leftover_abandon)) }
-    if (!confirmUnreadable) return
-    AlertDialog(
-        onDismissRequest = { confirmUnreadable = false },
-        text = {
-            Text(
-                stringResource(R.string.recurring_payment_leftover_abandon_unreadable),
-                modifier = Modifier.testTag("occurrence-payment-leftover-abandon-unreadable"),
-            )
-        },
-        confirmButton = {
-            TextButton(
-                onClick = { confirmUnreadable = false; actions.onAbandonLeftover() },
-                modifier = Modifier.testTag("occurrence-payment-leftover-abandon-confirm"),
-            ) { Text(stringResource(R.string.recurring_payment_leftover_abandon_confirm)) }
-        },
-        dismissButton = {
-            TextButton(onClick = { confirmUnreadable = false }) {
-                Text(stringResource(R.string.occurrence_keep))
-            }
-        },
-    )
-}
-
-@Composable
-private fun LeftoverPaymentNotices(origin: OccurrencePaymentGuard) {
-    if (origin.leftoverExistingOrigin) {
-        Text(
-            stringResource(R.string.recurring_payment_leftover_existing_origin),
-            modifier = Modifier.testTag("occurrence-payment-leftover-existing-origin"),
-        )
-    }
-    if (origin.leftoverActionFailed) {
-        Text(
-            stringResource(R.string.recurring_payment_leftover_action_failed),
-            modifier = Modifier.testTag("occurrence-payment-leftover-action-failed"),
-        )
-    }
-}
-
-@Composable
 private fun OccurrenceRecordPayment(
     canWrite: Boolean,
     unfulfilled: Boolean,
@@ -240,8 +171,7 @@ private fun OccurrenceRecordPayment(
         icon = Icons.Filled.Add,
         onClick = onRecord,
         enabled = origin.resolved && !origin.conflict && !origin.localDraftHeld &&
-            !origin.priorGenerationOccupied &&
-            (!origin.leftoverBlocked || origin.leftoverExistingOrigin),
+            !origin.priorGenerationOccupied,
         modifier = Modifier.fillMaxWidth().testTag("occurrence-record-payment"),
     )
 }

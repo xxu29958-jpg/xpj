@@ -8,14 +8,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.ticketbox.data.repository.ExpenseManualCreation
-import com.ticketbox.data.repository.inspectOrigin
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.RecurringPaymentPeriodOccupant
 import com.ticketbox.data.repository.RecurringPaymentOrigin
@@ -48,7 +46,6 @@ private data class RecurringPaymentHostDecision(
 private data class RecurringPaymentRetirement(
     val visible: RecurringPaymentVisible,
     val drafts: RecurringPaymentDraftStore?,
-    val leftover: SavedStateHandle,
     val creation: ExpenseManualCreation,
     val refs: RecurringPaymentRetirementRefs,
 )
@@ -87,27 +84,25 @@ internal fun RecurringOccurrenceHost(
     val task = remember(taskJson) { readRecurringPaymentTask(taskJson) }
     val visible = state.paymentVisible()
     val origin = rememberRecurringPaymentOrigin(creation, visible.identity)
-    val leftover = rememberAdoptedPaymentTask(LeftoverAdoptRequest(restore.drafts, model, creation, visible.identity, origin, expenses.onRecordPayment))
-    val remembered = (leftover.state as? LegacyCompatibilityState.Ready)?.remembered
+    val remembered = restore.drafts?.remembered(visible.identity.binding, visible.identity.seriesPublicId, visible.identity.period)
     val prior = remembered ?: task?.takeIf { it.matches(visible.identity) }
     val localDraft = draftEpoch.let { prior?.clientRef?.let { restore.drafts?.read(it) } }
     val originRef = (origin as? OriginObservation.Found)?.clientRef
     val originExpenseId = (origin as? OriginObservation.Found)?.acceptedExpenseId ?: (origin as? OriginObservation.Occupied)?.acceptedExpenseId
     val focused = recurringPaymentFocused(remembered, task?.takeIf { it.matches(visible.identity) }, originRef, state, localDraft)
     val local = RecurringPaymentCanonicalize(
-        restore.drafts, origin, focused, task, visible.identity, leftover, remembered, localDraft, expenses, state, prior,
+        restore.drafts, origin, focused, task, visible.identity, remembered, localDraft, expenses, state, prior,
     )
     var retireBusy by remember { mutableStateOf(false) }; var retireFailed by remember { mutableStateOf(false) }
-    val guard = occurrencePaymentGuard(origin, leftover.state, local.held, retireBusy, retireFailed && origin is OriginObservation.Occupied)
+    val guard = occurrencePaymentGuard(origin, local.held, retireBusy, retireFailed && origin is OriginObservation.Occupied)
     val scope = rememberCoroutineScope()
     CanonicalizeRecurringPaymentIdentity(local) { taskJson = it }
-    LaunchedEffect(userClosed, visible, taskJson, origin, leftover.state) {
-        if (leftover.state is LegacyCompatibilityState.Loading) return@LaunchedEffect
+    LaunchedEffect(userClosed, visible, taskJson, origin) {
         val current = readRecurringPaymentTask(taskJson)
         val decision = recurringPaymentHostDecision(current, userClosed, visible, remembered)
         if (decision.clearTask) taskJson = null
         val occupied = origin as? OriginObservation.Occupied
-        retireFulfilledPayment(RecurringPaymentRetirement(visible, restore.drafts, model.savedState, creation, RecurringPaymentRetirementRefs(decision.retireClientRefs, originRef ?: occupied?.clientRef, if (occupied != null) occupied.occurrenceRowVersion else visible.identity.occurrenceRowVersion)))
+        retireFulfilledPayment(RecurringPaymentRetirement(visible, restore.drafts, creation, RecurringPaymentRetirementRefs(decision.retireClientRefs, originRef ?: occupied?.clientRef, if (occupied != null) occupied.occurrenceRowVersion else visible.identity.occurrenceRowVersion)))
     }
     LaunchedEffect(taskJson, restore.items, state.item, state.access?.binding, userClosed) {
         val current = readRecurringPaymentTask(taskJson)
@@ -134,120 +129,19 @@ internal fun RecurringOccurrenceHost(
     )
 }
 
-private data class LeftoverPaymentAdopt(
-    val state: LegacyCompatibilityState,
-    val abandon: () -> Unit = {},
-    val continueDraft: () -> Unit = {},
-)
-
-private data class LeftoverAdoptRequest(
-    val drafts: RecurringPaymentDraftStore?,
-    val model: RecurringOccurrenceViewModel,
-    val creation: ExpenseManualCreation,
-    val identity: RecurringPaymentIdentity,
-    val origin: OriginObservation,
-    val onOpen: (RecurringPaymentTask) -> Unit,
-) {
-    fun snap(store: RecurringPaymentDraftStore, leftover: SavedStateHandle, notice: LegacyCompatibilityNotice? = null) =
-        identity.leftoverState(
-            store.legacyPeriodPaymentSessions(leftover),
-            store.leftoverUnresolved(leftover, identity),
-            store.remembered(identity.binding, identity.seriesPublicId, identity.period),
-            notice,
-        )
-
-    suspend fun handoff(store: RecurringPaymentDraftStore, leftover: SavedStateHandle) =
-        if (identity.occurrenceRowVersion == null) {
-            LegacyCompatibilityState.Loading
-        } else {
-            runCatching { store.adoptLegacyPeriodPaymentSessions(leftover, creation, identity); snap(store, leftover) }
-                .fold({ it }, { if (it is CancellationException) throw it else snap(store, leftover, LegacyCompatibilityNotice.Failed(it.message)) })
-        }
-
-    fun retireCanonical(store: RecurringPaymentDraftStore, leftover: SavedStateHandle, state: LegacyCompatibilityState): LegacyCompatibilityState {
-        val continuation = (state as? LegacyCompatibilityState.Held)?.continuation ?: return state
-        val found = origin as? OriginObservation.Found ?: return state
-        if (found.clientRef != continuation.task.clientRef) return state
-        store.removeLeftoverRecoveryMapping(leftover, identity, LeftoverMappingRemoval.CanonicalOriginTakeover)
-        store.removeDraft(continuation.task.clientRef)
-        return snap(store, leftover)
-    }
-
-    fun abandon(store: RecurringPaymentDraftStore, leftover: SavedStateHandle, state: LegacyCompatibilityState): LegacyCompatibilityState {
-        val current = state as? LegacyCompatibilityState.Held ?: return state
-        if (current.busy) return state
-        return runCatching {
-            store.removeLeftoverRecoveryMapping(leftover, identity, LeftoverMappingRemoval.UserAbandon)
-            current.continuation?.task?.clientRef?.let(store::removeDraft)
-            snap(store, leftover)
-        }.getOrElse { snap(store, leftover, LegacyCompatibilityNotice.Failed(it.message)) }
-    }
-
-    suspend fun openContinuation(store: RecurringPaymentDraftStore, leftover: SavedStateHandle): LegacyCompatibilityState {
-        val bound = identity.binding
-        val series = identity.seriesPublicId
-        val period = identity.period
-        if (bound == null || series.isNullOrBlank() || period.isNullOrBlank()) {
-            return snap(store, leftover, LegacyCompatibilityNotice.Conflict)
-        }
-        return runCatching {
-            identity.leftoverContinueSnapshot(store, leftover, {
-                creation.inspectOrigin(bound, RecurringPaymentOrigin(series, period, identity.occurrenceRowVersion))
-            }, onOpen)
-        }.fold({ it }, { if (it is CancellationException) throw it else snap(store, leftover, LegacyCompatibilityNotice.Failed(it.message)) })
-    }
-}
-
-@Composable
-private fun rememberAdoptedPaymentTask(input: LeftoverAdoptRequest): LeftoverPaymentAdopt {
-    val store = remember(input.drafts, input.model) { input.drafts ?: RecurringPaymentDraftStore(SavedStateHandle()) }
-    val handle = input.model.savedState
-    var leftover by remember(store, input.model, input.creation, input.identity) {
-        mutableStateOf<LegacyCompatibilityState>(LegacyCompatibilityState.Loading)
-    }
-    val scope = rememberCoroutineScope()
-    LaunchedEffect(store, input.model, input.creation, input.identity) { leftover = input.handoff(store, handle) }
-    LaunchedEffect(input.origin, leftover) { leftover = input.retireCanonical(store, handle, leftover) }
-    return LeftoverPaymentAdopt(
-        leftover,
-        abandon = { leftover = input.abandon(store, handle, leftover) },
-        continueDraft = {
-            val current = leftover as? LegacyCompatibilityState.Held ?: return@LeftoverPaymentAdopt
-            if (current.busy) return@LeftoverPaymentAdopt
-            leftover = current.copy(busy = true)
-            scope.launch { leftover = input.openContinuation(store, handle) }
-        },
-    )
-}
-
 private fun occurrencePaymentGuard(
     origin: OriginObservation,
-    leftover: LegacyCompatibilityState,
     localDraftHeld: Boolean,
     priorRetireBusy: Boolean = false,
     priorRetireFailed: Boolean = false,
-): OccurrencePaymentGuard {
-    val held = leftover as? LegacyCompatibilityState.Held
-    val ready = leftover !is LegacyCompatibilityState.Loading
-    val blocked = leftover is LegacyCompatibilityState.Held
-    return OccurrencePaymentGuard(
-        resolved = ready &&
-            origin !is OriginObservation.Loading &&
-            origin !is OriginObservation.Conflict &&
-            (!blocked || origin is OriginObservation.Found || origin is OriginObservation.Occupied),
-        conflict = origin is OriginObservation.Conflict,
-        leftoverBlocked = blocked && origin !is OriginObservation.Conflict,
-        leftoverUnreadable = held?.unreadable == true && origin !is OriginObservation.Conflict,
-        leftoverContinueDraft = held != null && !held.busy && !held.unreadable &&
-            held.continuation != null && origin is OriginObservation.Absent,
-        leftoverExistingOrigin = blocked && origin is OriginObservation.Found,
-        leftoverActionFailed = held?.notice is LegacyCompatibilityNotice.Failed,
-        localDraftHeld = localDraftHeld,
-        priorGenerationOccupied = origin is OriginObservation.Occupied,
-        priorRetireBusy = priorRetireBusy,
-        priorRetireFailed = priorRetireFailed,
-    )
-}
+): OccurrencePaymentGuard = OccurrencePaymentGuard(
+    resolved = origin !is OriginObservation.Loading && origin !is OriginObservation.Conflict,
+    conflict = origin is OriginObservation.Conflict,
+    localDraftHeld = localDraftHeld,
+    priorGenerationOccupied = origin is OriginObservation.Occupied,
+    priorRetireBusy = priorRetireBusy,
+    priorRetireFailed = priorRetireFailed,
+)
 
 private data class RecurringPaymentCanonicalize(
     val drafts: RecurringPaymentDraftStore?,
@@ -255,7 +149,6 @@ private data class RecurringPaymentCanonicalize(
     val focused: RecurringPaymentTask?,
     val task: RecurringPaymentTask?,
     val identity: RecurringPaymentIdentity,
-    val leftover: LeftoverPaymentAdopt,
     val remembered: RecurringPaymentTask?,
     val localDraft: RecurringPaymentDraft?,
     val expenses: RecurringExpenseNavigation,
@@ -270,9 +163,7 @@ private data class RecurringPaymentCanonicalize(
                 else -> return false
             }
             val current = focused ?: return false
-            return leftover.state is LegacyCompatibilityState.Ready &&
-                localDraft?.clientRef == current.clientRef &&
-                current.clientRef != occupantRef
+            return localDraft?.clientRef == current.clientRef && current.clientRef != occupantRef
         }
 
     fun viewOrigin() {
@@ -331,7 +222,6 @@ private data class RecurringPaymentCanonicalize(
     fun record(open: (RecurringPaymentTask) -> Unit) {
         if (held || origin is OriginObservation.Loading || origin is OriginObservation.Conflict) return
         if (origin is OriginObservation.Occupied) return
-        if (leftover.state is LegacyCompatibilityState.Held && origin !is OriginObservation.Found) return
         val next = recurringPaymentTask(
             ui, existing = task, remembered = remembered,
             admittedClientRef = (origin as? OriginObservation.Found)?.clientRef,
@@ -354,8 +244,6 @@ private data class RecurringPaymentCanonicalize(
         onSubmit = model::submit,
         onRecover = model::recover,
         onOpenExpense = expenses.onOpenExpense,
-        onAbandonLeftover = leftover.abandon,
-        onContinueLeftover = leftover.continueDraft,
         onOpenOrigin = ::viewOrigin,
         onContinueLocalDraft = continueLocal,
         onAbandonLocalDraft = abandonLocal,
@@ -448,8 +336,6 @@ private suspend fun retireFulfilledPayment(input: RecurringPaymentRetirement) {
     }
     refs.forEach { input.drafts?.retireTask(it) }
     if (visible.occurrenceState != "fulfilled") return
-    (input.drafts ?: RecurringPaymentDraftStore(SavedStateHandle()))
-        .removeLeftoverRecoveryMapping(input.leftover, visible.identity, LeftoverMappingRemoval.FulfilledRetirement)
     val binding = visible.identity.binding ?: return
     val series = visible.identity.seriesPublicId?.takeIf { it.isNotBlank() } ?: return
     val period = visible.identity.period?.takeIf { it.isNotBlank() } ?: return

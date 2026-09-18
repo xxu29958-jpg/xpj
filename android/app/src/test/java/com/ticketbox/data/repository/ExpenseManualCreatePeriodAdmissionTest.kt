@@ -425,109 +425,6 @@ internal class ExpenseManualCreatePeriodAdmissionTest : ExpensePendingRepository
         assertEquals(1, pendingDao.rows.size)
     }
 
-    @Test
-    fun unsafeRetiredN1OccupantBlocksUntilDoneReceipt() = runTest {
-        val pendingDao = FakePendingMutationDao()
-        val repo = createRepo(FakeExpenseDao(), outbox(pendingDao))
-        val binding = requireNotNull(repo.captureDeferredLedgerBinding())
-        repo.manualCreation.create(draft, binding, "origin-a", RecurringPaymentOrigin("rec-1", "2026-08", 5)).getOrThrow()
-        val originA = pendingDao.rows.values.single { it.targetId == "expense:local:origin-a" }
-        pendingDao.stampRetired(originA.id)
-        assertTrue(decodeRecurringPaymentPayload(com.ticketbox.OutboxAdapterGraph().recurringPaymentCreateAdapter, pendingDao.rows.getValue(originA.id).payload)?.retired == true)
-        assertEquals(
-            RecurringPaymentOriginRetire.CommandActive(PendingMutationStatus.Pending),
-            repo.manualCreation.retireOrigin(binding, RecurringPaymentOrigin("rec-1", "2026-08", 5), "origin-a"),
-        )
-        assertEquals(
-            RecurringPaymentPeriodOccupant.Occupied("origin-a", 5),
-            repo.manualCreation.observePeriodOrigin(binding, "rec-1", "2026-08").first(),
-        )
-        assertEquals(
-            ManualExpenseCreateAdmission.Blocked(
-                RecurringPaymentAdmissionBlock.DifferentGeneration,
-                RecurringPaymentPeriodOccupant.Occupied("origin-a", 5),
-            ),
-            repo.manualCreation.create(draft, binding, "current-b", RecurringPaymentOrigin("rec-1", "2026-08", 7)).getOrThrow(),
-        )
-        assertEquals(1, pendingDao.rows.size)
-        assertEquals(
-            1,
-            pendingDao.markInFlightIfPending(
-                originA.id,
-                PendingMutationStatus.Pending.wireValue,
-                PendingMutationStatus.InFlight.wireValue,
-                "2026-09-16T00:00:00Z",
-            ),
-        )
-        assertEquals(
-            RecurringPaymentOriginRetire.CommandActive(PendingMutationStatus.InFlight),
-            repo.manualCreation.retireOrigin(binding, RecurringPaymentOrigin("rec-1", "2026-08", 5), "origin-a"),
-        )
-        pendingDao.markFailed(originA.id, PendingMutationStatus.Failed.wireValue, "transport", false)
-        assertEquals(
-            RecurringPaymentOriginRetire.CommandActive(PendingMutationStatus.Failed),
-            repo.manualCreation.retireOrigin(binding, RecurringPaymentOrigin("rec-1", "2026-08", 5), "origin-a"),
-        )
-        pendingDao.markConflict(originA.id, PendingMutationStatus.Conflict.wireValue, "conflict")
-        assertEquals(
-            RecurringPaymentOriginRetire.CommandActive(PendingMutationStatus.Conflict),
-            repo.manualCreation.retireOrigin(binding, RecurringPaymentOrigin("rec-1", "2026-08", 5), "origin-a"),
-        )
-        assertEquals(
-            ManualExpenseCreateAdmission.Blocked(
-                RecurringPaymentAdmissionBlock.DifferentGeneration,
-                RecurringPaymentPeriodOccupant.Occupied("origin-a", 5),
-            ),
-            repo.manualCreation.create(draft, binding, "current-b", RecurringPaymentOrigin("rec-1", "2026-08", 7)).getOrThrow(),
-        )
-        pendingDao.markDone(originA.id, "done", "2026-09-16T00:00:00Z", null, null)
-        assertEquals(
-            RecurringPaymentOriginRetire.UnverifiedReceipt,
-            repo.manualCreation.retireOrigin(binding, RecurringPaymentOrigin("rec-1", "2026-08", 5), "origin-a"),
-        )
-        assertEquals(
-            RecurringPaymentPeriodOccupant.Occupied("origin-a", 5),
-            repo.manualCreation.observePeriodOrigin(binding, "rec-1", "2026-08").first(),
-        )
-        pendingDao.markDone(originA.id, "done", "2026-09-16T00:00:00Z", null, expenseAcceptanceReceiptJson(71))
-        assertEquals(
-            RecurringPaymentOriginRetire.Retired,
-            repo.manualCreation.retireOrigin(binding, RecurringPaymentOrigin("rec-1", "2026-08", 5), "origin-a"),
-        )
-        assertEquals(
-            RecurringPaymentPeriodOccupant.Absent,
-            repo.manualCreation.observePeriodOrigin(binding, "rec-1", "2026-08").first(),
-        )
-        val admitted = repo.manualCreation.create(
-            draft, binding, "current-b", RecurringPaymentOrigin("rec-1", "2026-08", 7),
-        ).getOrThrow()
-        assertEquals("current-b", (admitted as ManualExpenseCreateAdmission.Accepted).clientRef)
-        assertEquals(2, pendingDao.rows.size)
-        assertTrue(
-            decodeRecurringPaymentPayload(
-                com.ticketbox.OutboxAdapterGraph().recurringPaymentCreateAdapter,
-                pendingDao.rows.values.single { it.targetId == "expense:local:origin-a" }.payload,
-            )?.retired == true,
-        )
-    }
-
-    private suspend fun FakePendingMutationDao.stampRetired(id: Long) {
-        val row = requireNotNull(rows[id])
-        val graph = com.ticketbox.OutboxAdapterGraph()
-        val stored = requireNotNull(decodeRecurringPaymentPayload(graph.recurringPaymentCreateAdapter, row.payload))
-        replacePayload(
-            id,
-            PendingMutationType.CreateExpense.wireValue,
-            encodeManualCreatePayload(
-                graph.manualCreateAdapter,
-                graph.recurringPaymentCreateAdapter,
-                stored.request,
-                RecurringPaymentOrigin(stored.seriesPublicId, stored.period, stored.occurrenceRowVersion),
-                retired = true,
-            ),
-        )
-    }
-
     private fun keptDraft(clientRef: String) = RecurringPaymentDraft(
         clientRef = clientRef,
         amountText = "99.00",
@@ -538,3 +435,4 @@ internal class ExpenseManualCreatePeriodAdmissionTest : ExpensePendingRepository
         expenseTime = "2026-08-01T00:00:00Z",
     )
 }
+ 

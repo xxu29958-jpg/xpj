@@ -103,12 +103,8 @@ internal class ExpenseManualCreation(private val core: ExpenseRepositoryCore) {
                 classifyPeriodAdmission(
                     matchingPeriodOrigins(rows, binding, origin, originAdapter) { core.describeManualCreation(it) },
                     origin,
-                    clientRef,
                 ),
-                origin,
-                clientRef,
-                originAdapter,
-            ) { row, requested -> tryBindOrigin(row, requested) }?.let {
+            )?.let {
                 bound.requireStillActive()
                 return it
             }
@@ -201,7 +197,6 @@ internal class ExpenseManualCreation(private val core: ExpenseRepositoryCore) {
             val state = classifyPeriodAdmission(
                 matchingPeriodOrigins(rows, binding, origin, originAdapter) { core.describeManualCreation(it) },
                 origin,
-                clientRef,
             )
         ) {
             PeriodOriginAdmission.Conflict -> RecurringPaymentOriginAdopt.Conflict
@@ -216,10 +211,6 @@ internal class ExpenseManualCreation(private val core: ExpenseRepositoryCore) {
                 } else {
                     bound.requireStillActive()
                     RecurringPaymentOriginAdopt.Bound
-                }
-            is PeriodOriginAdmission.UpgradeableSameRef ->
-                tryBindOrigin(state.projection.row, origin).also { result ->
-                    if (result == RecurringPaymentOriginAdopt.Bound) bound.requireStillActive()
                 }
             PeriodOriginAdmission.Empty -> adoptUnwrappedOrigin(rows, binding, clientRef, origin, bound)
         }
@@ -332,12 +323,8 @@ private suspend fun classifyExactOrigin(
     }
 }
 
-private suspend fun admittedExistingPeriod(
+private fun admittedExistingPeriod(
     state: PeriodOriginAdmission,
-    origin: RecurringPaymentOrigin,
-    clientRef: String,
-    originAdapter: JsonAdapter<RecurringPaymentCreatePayload>?,
-    bind: suspend (OutboxRow, RecurringPaymentOrigin) -> RecurringPaymentOriginAdopt,
 ): ManualExpenseCreateAdmission? = when (state) {
     PeriodOriginAdmission.Conflict -> error("本期付款命令冲突，请先处理重复提交。")
     is PeriodOriginAdmission.DifferentGeneration ->
@@ -349,13 +336,6 @@ private suspend fun admittedExistingPeriod(
         ManualExpenseCreateAdmission.Accepted(
             state.projection.admittedClientRef() ?: error("本期付款命令冲突，请先处理重复提交。"),
         )
-    is PeriodOriginAdmission.UpgradeableSameRef -> {
-        bind(state.projection.row, origin).requireBoundOrRetired(
-            decodeRecurringPaymentPayload(originAdapter, state.projection.row.payloadJson),
-            origin,
-        )
-        ManualExpenseCreateAdmission.Accepted(clientRef)
-    }
     PeriodOriginAdmission.Empty -> null
 }
 

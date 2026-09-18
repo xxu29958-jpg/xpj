@@ -26,7 +26,6 @@ internal enum class RecurringPaymentAdmissionBlock {
 internal sealed interface PeriodOriginAdmission {
     data object Empty : PeriodOriginAdmission
     data class Exact(val projection: ManualExpenseCreationProjection) : PeriodOriginAdmission
-    data class UpgradeableSameRef(val projection: ManualExpenseCreationProjection) : PeriodOriginAdmission
     data class DifferentGeneration(
         val projection: ManualExpenseCreationProjection,
         val occurrenceRowVersion: Long?,
@@ -34,7 +33,7 @@ internal sealed interface PeriodOriginAdmission {
     data object Conflict : PeriodOriginAdmission
 }
 
-/** Bind leftover clientRef onto the existing CreateExpense row. Never enqueues. */
+/** Bind an existing CreateExpense row onto the current period origin. Never enqueues. */
 internal sealed class RecurringPaymentOriginAdopt {
     data object Bound : RecurringPaymentOriginAdopt()
     data object Missing : RecurringPaymentOriginAdopt()
@@ -90,41 +89,14 @@ internal fun periodOccupant(
 internal fun classifyPeriodAdmission(
     active: List<Pair<RecurringPaymentCreatePayload, ManualExpenseCreationProjection>>,
     requested: RecurringPaymentOrigin,
-    requestedClientRef: String,
 ): PeriodOriginAdmission {
     if (active.size > 1) return PeriodOriginAdmission.Conflict
     val (stored, projection) = active.singleOrNull() ?: return PeriodOriginAdmission.Empty
     if (stored.occurrenceRowVersion == requested.occurrenceRowVersion) {
         return PeriodOriginAdmission.Exact(projection)
     }
-    if (stored.occurrenceRowVersion == null && projection.admittedClientRef() == requestedClientRef) {
-        return PeriodOriginAdmission.UpgradeableSameRef(projection)
-    }
     return PeriodOriginAdmission.DifferentGeneration(projection, stored.occurrenceRowVersion)
 }
-
-/**
- * N-1 SavedState left by RecurringPeriodPaymentSession. Not a second Writer.
- *
- * Read through [com.ticketbox.ui.navigation.LEGACY_PERIOD_PAYMENT_SESSIONS_KEY].
- * Supported from Android 1.2.0; delete the Host bridge no earlier than 1.4.0.
- * Keep the leftover upgrade counterexamples listed on that key when the reader is removed.
- */
-@JsonClass(generateAdapter = true)
-internal data class LegacyPeriodPaymentSession(
-    val binding: LogicalSessionBinding,
-    val seriesPublicId: String,
-    val period: String,
-    val clientRef: String,
-    val merchant: String,
-    val obligationCurrencyCode: String? = null,
-    val plannedAmountCents: Long? = null,
-    val ledgerHomeCurrencyCode: String? = null,
-    val category: String? = null,
-    val note: String? = null,
-    val capturedAmountCents: Long? = null,
-    val admitted: Boolean = false,
-)
 
 @JsonClass(generateAdapter = true)
 data class RecurringPaymentCreatePayload(

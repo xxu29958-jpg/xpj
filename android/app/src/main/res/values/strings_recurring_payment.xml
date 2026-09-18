@@ -4,17 +4,10 @@
     <string name="recurring_payment_loading">正在核对原付款命令，请稍候。</string>
     <string name="recurring_payment_binding_changed">原账本或登录身份已变化，请返回原账本继续。原草稿仍保留。</string>
     <string name="recurring_payment_origin_conflict">本期已有多笔付款命令，请先处理重复提交。</string>
-    <string name="recurring_payment_leftover_unresolved">本期原付款命令无法核对，旧草稿已保留。请先处理后再记录付款。</string>
-    <string name="recurring_payment_leftover_abandon">放弃这条旧版恢复映射并开始新的付款。</string>
-    <string name="recurring_payment_leftover_continue">继续使用这条旧草稿，不自动记作本期付款。</string>
-    <string name="recurring_payment_leftover_existing_origin">本期已有原付款，旧草稿仍保留，没有改记到当前这一期。</string>
     <string name="recurring_payment_local_draft_held">本期已有付款，还有一份未提交的本地草稿。</string>
     <string name="recurring_payment_local_draft_view_origin">查看已存在的付款</string>
     <string name="recurring_payment_local_draft_open">重新打开本地草稿</string>
     <string name="recurring_payment_local_draft_abandon">放弃这份本地草稿</string>
-    <string name="recurring_payment_leftover_action_failed">无法处理这条旧草稿，请稍后重试。原记录仍保留。</string>
-    <string name="recurring_payment_leftover_abandon_unreadable">无法识别具体条目，将删除全部无法读取的旧版恢复数据。</string>
-    <string name="recurring_payment_leftover_abandon_confirm">删除无法读取的旧版恢复数据</string>
     <string name="recurring_payment_review_required">账本里还有未归属的记账，请确认是否为本期付款。当前草稿已保留。</string>
     <string name="recurring_payment_review_original">原提交</string>
     <string name="recurring_payment_review_adopt">将已有记账认作本期付款</string>

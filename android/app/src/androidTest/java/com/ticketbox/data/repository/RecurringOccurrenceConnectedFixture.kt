@@ -2,8 +2,6 @@ package com.ticketbox.data.repository
 
 import android.content.Context
 import androidx.room.Room
-import com.squareup.moshi.Moshi
-import com.squareup.moshi.Types
 import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.RepositoryGraph
 import com.ticketbox.RepositoryGraphDependencies
@@ -156,37 +154,6 @@ private fun occurrenceConnectedSession() = LocalSessionRecord(
     identity = LocalSessionIdentity(accountPublicId = "30000000-0000-4000-8000-000000000003",
         devicePublicId = "30000000-0000-4000-8000-000000000004", accountName = "测试成员", ledgerId = "recurring-ledger",
         ledgerName = "测试账本", deviceName = "测试设备", role = "owner", boundAt = "2026-09-06T00:00:00Z"),
-)
-
-internal fun leftoverPeriodPaymentSessionsJson(vararg sessions: LegacyPeriodPaymentSession): String =
-    requireNotNull(
-        Moshi.Builder().build().adapter<List<LegacyPeriodPaymentSession>>(
-            Types.newParameterizedType(List::class.java, LegacyPeriodPaymentSession::class.java),
-        ).toJson(sessions.toList()),
-    )
-
-internal fun leftoverRentSession(
-    binding: LogicalSessionBinding,
-    period: String,
-    clientRef: String,
-    admitted: Boolean,
-    home: String? = "CNY",
-    category: String? = null,
-    note: String? = null,
-    capturedAmountCents: Long? = null,
-) = LegacyPeriodPaymentSession(
-    binding = binding,
-    seriesPublicId = "recurring-1",
-    period = period,
-    clientRef = clientRef,
-    merchant = "房租",
-    obligationCurrencyCode = "CNY",
-    plannedAmountCents = 10_000,
-    ledgerHomeCurrencyCode = home,
-    category = category,
-    note = note,
-    capturedAmountCents = capturedAmountCents,
-    admitted = admitted,
 )
 
 private inline fun <reified T> occurrenceProxy(crossinline answer: (String, Array<out Any?>) -> Any?): T =

@@ -58,11 +58,6 @@ class RecurringOccurrenceViewModel(
     private val onChanged: () -> Unit = {},
     savedStateHandle: SavedStateHandle = SavedStateHandle(),
 ) : ViewModel() {
-    /**
-     * Same SavedStateHandle the N-1 RecurringPeriodPaymentSession wrote. Not a second Writer.
-     * Leftover session / seen / Hold / Continue-Abandon retire with Android 1.4.0; see
-     * [com.ticketbox.ui.navigation.LEGACY_PERIOD_PAYMENT_SESSIONS_KEY].
-     */
     internal val savedState: SavedStateHandle = savedStateHandle
     private val mutableState = MutableStateFlow(RecurringOccurrenceUiState(access = repository.currentAccess()))
     val uiState = mutableState.asStateFlow()
