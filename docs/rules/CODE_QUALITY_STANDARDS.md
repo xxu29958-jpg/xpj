@@ -71,7 +71,7 @@ python backend/scripts/_audit_repository_weight.py --from-json weight.json --sym
 python backend/scripts/_audit_repository_weight.py --from-json weight.json --changes
 python backend/scripts/_audit_repository_weight.py --task ci-trigger
 python backend/scripts/_audit_repository_weight.py --task shared-web-theme
-python backend/scripts/ci_run_timing.py --jobs-json jobs.json --attempt 1
+python backend/scripts/ci_run_timing.py --repository owner/repo --run-id 1 --run-id 2 --output-json timing.json
 ```
 
 脚本只读提交中的源码，不执行被测代码，也不计本机 dirty/untracked 文件。无法完成分析时退出 2；债务回归退出 1；测量范围内没有回归退出 0。报告的健康判定不取代原生编译、测试、审查或最终 RC 验收。

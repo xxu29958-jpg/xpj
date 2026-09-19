@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import importlib
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -68,7 +69,7 @@ def test_release_audit_compact_mode_suppresses_success_noise(monkeypatch, capsys
 
     monkeypatch.setattr(mod.subprocess, "run", fake_run)
 
-    assert mod._run_lane("sample", "_audit_sample.py", SCRIPTS, compact=True)
+    assert mod._run_lane("sample", "_audit_sample.py", SCRIPTS, compact=True) == 0
 
     captured = capsys.readouterr()
     assert "PASS  sample" in captured.out
@@ -117,7 +118,7 @@ def test_release_audit_compact_mode_prints_failure_output(monkeypatch, capsys) -
 
     monkeypatch.setattr(mod.subprocess, "run", fake_run)
 
-    assert not mod._run_lane("sample", "_audit_sample.py", SCRIPTS, compact=True)
+    assert mod._run_lane("sample", "_audit_sample.py", SCRIPTS, compact=True) == 1
 
     captured = capsys.readouterr()
     assert "FAIL  sample" in captured.out
@@ -135,9 +136,24 @@ def test_release_audit_records_lane_timing_without_changing_return(monkeypatch, 
     monkeypatch.setattr(mod, "_discover_lanes", lambda _scripts: [("sample", "_audit_sample.py")])
     assert mod.main() == 0
     captured = capsys.readouterr()
-    assert "AUDIT LANE TIMING: sample ok=true" in captured.out
-    assert "clock=monotonic+utc" in captured.out
-    assert "return_intact=true" in captured.out
+    assert "AUDIT_LANE_TIMING " in captured.out
+    record = json.loads(captured.out.split("AUDIT_LANE_TIMING ", 1)[1].splitlines()[0])
+    assert record["lane"] == "sample"
+    assert record["filename"] == "_audit_sample.py"
+    assert record["returncode"] == 0
+    assert record["elapsed_clock"] == "monotonic"
+    assert record["measurement_kind"] == "direct"
+    assert record["complete"] is True
+
+
+def test_release_audit_preserves_nonzero_lane_returncode(monkeypatch) -> None:
+    mod = importlib.reload(importlib.import_module("release_audit"))
+
+    def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(cmd, 2, stdout="", stderr="")
+
+    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+    assert mod._run_lane("sample", "_audit_sample.py", SCRIPTS, compact=True) == 2
 
 
 def test_pr_delta_accepts_a3_exact_down_ratchet_exception(monkeypatch) -> None:

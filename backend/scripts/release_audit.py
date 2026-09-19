@@ -44,6 +44,7 @@ spot-check the actual symptoms.
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -102,34 +103,56 @@ def _compact_output_enabled() -> bool:
     return os.environ.get("XPJ_RELEASE_AUDIT_COMPACT") == "1"
 
 
-def _run_lane(label: str, filename: str, scripts_dir: Path, *, compact: bool) -> bool:
+def _run_lane(label: str, filename: str, scripts_dir: Path, *, compact: bool) -> int | None:
     script = scripts_dir / filename
-    if not compact:
+    try:
+        if not compact:
+            result = subprocess.run(
+                [sys.executable, str(script)],
+                cwd=scripts_dir.parent,
+            )
+            return result.returncode
         result = subprocess.run(
             [sys.executable, str(script)],
             cwd=scripts_dir.parent,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
-        return result.returncode == 0
-
-    result = subprocess.run(
-        [sys.executable, str(script)],
-        cwd=scripts_dir.parent,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
-    ok = result.returncode == 0
-    if ok:
+    except OSError:
+        return None
+    if result.returncode == 0:
         print(f"PASS  {label}")
-        return True
-
+        return result.returncode
     print(f"FAIL  {label}")
     if result.stdout:
         print(result.stdout.rstrip())
     if result.stderr:
         print(result.stderr.rstrip(), file=sys.stderr)
-    return False
+    return result.returncode
+
+
+def _lane_timing_record(
+    *,
+    label: str,
+    filename: str,
+    returncode: int | None,
+    started_utc: str,
+    ended_utc: str,
+    elapsed_s: float,
+) -> dict[str, object]:
+    return {
+        "lane": label,
+        "filename": filename,
+        "returncode": returncode,
+        "started_utc": started_utc,
+        "ended_utc": ended_utc,
+        "elapsed_s": round(elapsed_s, 3),
+        "elapsed_clock": "monotonic",
+        "measurement_kind": "direct",
+        "complete": returncode is not None,
+    }
 
 
 def main() -> int:
@@ -151,13 +174,19 @@ def main() -> int:
         sys.stdout.flush()
         started = time.monotonic()
         started_utc = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-        ok = _run_lane(label, filename, scripts_dir, compact=compact)
+        returncode = _run_lane(label, filename, scripts_dir, compact=compact)
         elapsed = time.monotonic() - started
         ended_utc = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-        print(
-            f"AUDIT LANE TIMING: {label} ok={str(ok).lower()} elapsed_s={elapsed:.3f} "
-            f"started_utc={started_utc} ended_utc={ended_utc} clock=monotonic+utc return_intact=true"
+        record = _lane_timing_record(
+            label=label,
+            filename=filename,
+            returncode=returncode,
+            started_utc=started_utc,
+            ended_utc=ended_utc,
+            elapsed_s=elapsed,
         )
+        print("AUDIT_LANE_TIMING " + json.dumps(record, ensure_ascii=False, separators=(",", ":")))
+        ok = returncode == 0
         summary.append((label, ok))
         if not ok:
             overall_ok = False

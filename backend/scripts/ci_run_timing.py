@@ -1,31 +1,22 @@
-"""One-shot timing summary for already-finished GitHub Actions job pages."""
+"""On-demand timing collector for already-finished GitHub Actions runs."""
 
 from __future__ import annotations
 
 import argparse
-import io
 import json
 import os
 import re
 import sys
 import urllib.error
 import urllib.request
-import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
 
 _QUALIFICATION_LOG = re.compile(
     r"Qualification checkout SHA: ([0-9a-f]{40}); source SHA: ([0-9a-f]{40})"
 )
-IDENTITY_ARTIFACT = "ci-run-identity"
-INNER_ARTIFACT = "connected-inner-timing"
-IDENTITY_UNAVAILABLE = "target run identity artifact unavailable"
-CONNECTED_JOB_NAME = "Connected execution"
-CONNECTED_STEP_NAME = "Run connected test"
-_IDENTITY_CATCH = (
-    OSError, ValueError, KeyError, TypeError, json.JSONDecodeError,
-    urllib.error.URLError, zipfile.BadZipFile, zipfile.LargeZipFile,
-)
+_AUDIT_LANE = re.compile(r"^AUDIT_LANE_TIMING\s+(\{.*\})\s*$")
+_LOAD_CATCH = (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError, urllib.error.URLError)
 
 _INCOMPLETE_REASONS = {
     "mismatch": "attempt mismatch",
@@ -39,9 +30,6 @@ _INCOMPLETE_REASONS = {
 }
 _STEP_DETAIL = frozenset({"step_inverted", "step_missing", "step_unknown"})
 _NO_BILL = frozenset({"inherited", "skipped", "mismatch", "identity", "inverted", "missing"})
-OBSERVER_JOB_NAME = "CI run timing"
-OBSERVER_EXCLUSION = "CI run timing observer itself"
-
 _NAMED_BUCKETS = {
     "success": "success",
     "failure": "failure",
@@ -52,6 +40,7 @@ _EXECUTED_STEP = frozenset({"success", "failure", "cancelled"})
 _KNOWN_STEP = _EXECUTED_STEP | {"skipped"}
 _JOB_IDENTITY = ("run_id", "workflow_name", "head_sha", "run_attempt", "status", "conclusion")
 _JOB_INTERVAL = ("started_at", "completed_at")
+_PREFERRED_RUNNERS = ("ubuntu-latest", "windows-latest", "macos-latest")
 _GITHUB_API = "https://api.github.com"
 
 
@@ -68,10 +57,20 @@ def parse_utc(value: object) -> datetime | None:
     return parsed.astimezone(UTC)
 
 
+def _utc_text(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
 def _seconds(start: datetime | None, end: datetime | None) -> float | None:
     if start is None or end is None:
         return None
     return (end - start).total_seconds()
+
+
+def _minutes(seconds: float) -> float:
+    return round(seconds / 60, 3)
 
 
 def _queue_fields(created: datetime | None, started: datetime | None) -> tuple[float | None, str]:
@@ -188,14 +187,6 @@ def _claim_inherited(job: dict, unused: list[dict]) -> bool:
     return False
 
 
-def _matching_prior(job: dict, previous_jobs: list[dict]) -> dict | None:
-    fingerprint = _job_fingerprint(job)
-    for prior in previous_jobs:
-        if isinstance(prior, dict) and _job_fingerprint(prior) == fingerprint and _previous_same_scope(job, prior):
-            return prior
-    return None
-
-
 def _identity_values(jobs: list[dict], key: str) -> set[object]:
     return {job.get(key) for job in jobs if isinstance(job, dict) and job.get(key) not in {None, ""}}
 
@@ -265,6 +256,14 @@ def _empty_buckets() -> dict[str, float]:
     return {"success": 0.0, "failure": 0.0, "cancelled": 0.0, "neutral": 0.0, "other": 0.0}
 
 
+def _platform_for(job: dict) -> str:
+    labels = [str(item) for item in (job.get("labels") or []) if item not in {None, ""}]
+    for name in _PREFERRED_RUNNERS:
+        if name in labels:
+            return name
+    return labels[0] if labels else "unknown"
+
+
 def _record_interval(job: dict, starts: list[datetime], ends: list[datetime]) -> None:
     started, completed = parse_utc(job.get("started_at")), parse_utc(job.get("completed_at"))
     if started:
@@ -273,11 +272,19 @@ def _record_interval(job: dict, starts: list[datetime], ends: list[datetime]) ->
         ends.append(completed)
 
 
-def _bill_row(row: dict[str, object], conclusion: object, buckets: dict[str, float]) -> None:
+def _bill_row(
+    job: dict,
+    row: dict[str, object],
+    buckets: dict[str, float],
+    platforms: dict[str, float],
+) -> None:
     seconds = float(row["execution_s"] or 0)
-    bucket = _bucket_for(conclusion)
-    if bucket:
-        buckets[bucket] += seconds
+    bucket = _bucket_for(job.get("conclusion"))
+    if not bucket:
+        return
+    buckets[bucket] += seconds
+    platform = _platform_for(job)
+    platforms[platform] = platforms.get(platform, 0.0) + seconds
 
 
 def _same_run_scope(prior_identity: dict[str, object], identity: dict[str, object]) -> bool:
@@ -346,6 +353,7 @@ def _apply_status(
     incomplete: list[str],
     skipped: list[str],
     buckets: dict[str, float],
+    platforms: dict[str, float],
     starts: list[datetime],
     ends: list[datetime],
     previous_notes: list[str],
@@ -358,54 +366,8 @@ def _apply_status(
     if status in _INCOMPLETE_REASONS:
         incomplete.append(_status_note(job, status))
     if _interval_billable(status, row, identity, previous_notes):
-        _bill_row(row, job.get("conclusion"), buckets)
+        _bill_row(job, row, buckets, platforms)
         _record_interval(job, starts, ends)
-
-
-def _split_observer_jobs(
-    jobs: list[dict],
-    exclude_job_names: tuple[str, ...],
-) -> tuple[list[dict], list[str]]:
-    visible = [job for job in jobs if isinstance(job, dict)]
-    if not exclude_job_names:
-        return visible, []
-    kept = [job for job in visible if job.get("name") not in exclude_job_names]
-    exclusions = [
-        OBSERVER_EXCLUSION if name == OBSERVER_JOB_NAME else f"{name} observer itself"
-        for name in exclude_job_names
-    ]
-    return kept, exclusions
-
-
-def _timing_identity(
-    *,
-    repository: str | None,
-    workflow: str | None,
-    run_id: object,
-    run_attempt: object,
-    event: str | None,
-    source_sha: str | None,
-    measurement_sha: str | None,
-    base_sha: str | None = None,
-    job: str | None = None,
-    outer_step: str | None = None,
-) -> dict[str, object]:
-    identity: dict[str, object] = {
-        "repository": repository,
-        "workflow": workflow,
-        "run_id": run_id,
-        "run_attempt": run_attempt,
-        "target_attempt": run_attempt,
-        "event": event,
-        "base_sha": base_sha,
-        "source_sha": source_sha,
-        "measurement_sha": measurement_sha,
-    }
-    if job:
-        identity["job"] = job
-    if outer_step:
-        identity["outer_step"] = outer_step
-    return identity
 
 
 def summarize_jobs(
@@ -413,17 +375,15 @@ def summarize_jobs(
     *,
     attempt: int | None = None,
     previous_jobs: list[dict] | None = None,
-    exclude_job_names: tuple[str, ...] = (),
-    report_identity: dict[str, object] | None = None,
-    run_conclusion: str | None = None,
 ) -> dict[str, object]:
-    visible, exclusions = _split_observer_jobs(jobs, exclude_job_names)
+    visible = [job for job in jobs if isinstance(job, dict)]
     identity = _shared_identity(visible)
     unused, previous_notes = _previous_ready(previous_jobs, attempt, identity)
     timed: list[dict[str, object]] = []
     incomplete: list[str] = []
     skipped: list[str] = []
     buckets = _empty_buckets()
+    platforms: dict[str, float] = {}
     starts: list[datetime] = []
     ends: list[datetime] = []
     if identity["mixed"]:
@@ -436,117 +396,40 @@ def summarize_jobs(
         status = _status_for(job, row, attempt)
         row["timing_status"] = status
         _apply_status(
-            job, row, status, identity, incomplete, skipped, buckets, starts, ends, previous_notes,
+            job, row, status, identity, incomplete, skipped, buckets, platforms, starts, ends, previous_notes,
         )
         timed.append(row)
     total = sum(buckets.values())
     step_incomplete = any(row.get("timing_status") in _STEP_DETAIL for row in timed)
-    payload = {
+    return {
         "attempt": attempt,
         "run_id": identity["run_id"],
         "workflow_name": identity["workflow_name"],
         "head_sha": identity["head_sha"],
         "jobs": timed,
-        "runner_execution_minutes": round(total / 60, 3),
-        "total_execution_minutes": round(total / 60, 3),
-        "success_execution_minutes": round(buckets["success"] / 60, 3),
-        "failure_execution_minutes": round(buckets["failure"] / 60, 3),
-        "cancelled_consumed_minutes": round(buckets["cancelled"] / 60, 3),
-        "cancelled_execution_minutes": round(buckets["cancelled"] / 60, 3),
-        "neutral_execution_minutes": round(buckets["neutral"] / 60, 3),
-        "other_execution_minutes": round(buckets["other"] / 60, 3),
-        "run_conclusion": run_conclusion,
-        "target_attempt": attempt,
-        "identity_producer_attempt": None,
-        "wasted_execution_minutes": round(total / 60, 3) if run_conclusion == "cancelled" else 0.0,
+        "runner_execution_minutes": _minutes(total),
+        "total_execution_minutes": _minutes(total),
+        "success_execution_minutes": _minutes(buckets["success"]),
+        "failure_execution_minutes": _minutes(buckets["failure"]),
+        "cancelled_consumed_minutes": _minutes(buckets["cancelled"]),
+        "cancelled_execution_minutes": _minutes(buckets["cancelled"]),
+        "neutral_execution_minutes": _minutes(buckets["neutral"]),
+        "other_execution_minutes": _minutes(buckets["other"]),
+        "by_platform": {name: _minutes(seconds) for name, seconds in sorted(platforms.items())},
+        "by_conclusion": {
+            "success": _minutes(buckets["success"]),
+            "failure": _minutes(buckets["failure"]),
+            "cancelled": _minutes(buckets["cancelled"]),
+            "other": _minutes(buckets["neutral"] + buckets["other"]),
+        },
         "skipped_jobs": skipped,
         "observed_subset_wall_clock_s": _seconds(min(starts), max(ends)) if starts and ends else None,
         "coverage": "observed subset of supplied jobs only; not the final required-check wait",
-        "coverage_exclusions": exclusions,
         "incomplete": incomplete,
         "step_timing_complete": not step_incomplete,
         "complete": not incomplete,
         "unit": "raw runner execution seconds / 60, not billed minutes",
     }
-    _apply_identity_notes(payload, report_identity, identity, attempt)
-    return payload
-
-
-def _apply_identity_notes(
-    payload: dict[str, object],
-    report_identity: dict[str, object] | None,
-    job_identity: dict[str, object],
-    attempt: int | None,
-) -> None:
-    notes = _identity_notes(report_identity, job_identity, attempt)
-    if report_identity:
-        payload["identity"] = report_identity
-        payload["target_attempt"] = report_identity.get("target_attempt", report_identity.get("run_attempt"))
-        producer = report_identity.get("identity_producer_attempt")
-        if producer not in {None, ""}:
-            payload["identity_producer_attempt"] = producer
-    payload["identity_complete"] = bool(report_identity) and not notes
-    if not notes:
-        return
-    payload["incomplete"] = list(payload["incomplete"]) + notes
-    payload["complete"] = False
-    if report_identity and report_identity.get("identity_unavailable"):
-        payload["reason"] = str(report_identity["identity_unavailable"])
-
-
-def _ids_equal(left: object, right: object) -> bool:
-    if left in {None, ""} or right in {None, ""}:
-        return True
-    return str(left) == str(right)
-
-
-def _identity_notes(
-    report_identity: dict[str, object] | None,
-    job_identity: dict[str, object],
-    attempt: int | None,
-) -> list[str]:
-    if not report_identity:
-        return []
-    notes: list[str] = []
-    if report_identity.get("identity_unavailable"):
-        notes.append(str(report_identity["identity_unavailable"]))
-        return notes
-    required = [
-        "repository", "workflow", "run_id", "run_attempt", "event", "source_sha", "measurement_sha",
-    ]
-    if report_identity.get("event") == "pull_request":
-        required.append("base_sha")
-    missing = [key for key in required if report_identity.get(key) in {None, ""}]
-    if missing:
-        notes.append(f"missing timing identity ({', '.join(missing)})")
-        return notes
-    target_attempt = report_identity.get("target_attempt", report_identity.get("run_attempt"))
-    checks = (
-        ("run_id", report_identity.get("run_id"), job_identity.get("run_id")),
-        ("workflow", report_identity.get("workflow"), job_identity.get("workflow_name")),
-        ("run_attempt", target_attempt, attempt),
-        ("source_sha", report_identity.get("source_sha"), job_identity.get("head_sha")),
-    )
-    for name, left, right in checks:
-        if not _ids_equal(left, right):
-            notes.append(f"identity {name} mismatch: {left} != {right}")
-    producer_note = _producer_attempt_note(report_identity)
-    if producer_note:
-        notes.append(producer_note)
-    if (
-        report_identity.get("event") == "pull_request"
-        and report_identity.get("source_sha") == report_identity.get("measurement_sha")
-    ):
-        notes.append("pull_request measurement_sha must differ from source_sha")
-    return notes
-
-
-def _producer_attempt_note(report_identity: dict[str, object]) -> str | None:
-    producer = _attempt_number(report_identity.get("identity_producer_attempt"))
-    target = _attempt_number(report_identity.get("target_attempt") or report_identity.get("run_attempt"))
-    if producer is None or target is None or producer <= target:
-        return None
-    return f"identity producer attempt {producer} is after target attempt {target}"
 
 
 def _job_line(job: dict) -> list[str]:
@@ -564,49 +447,52 @@ def _job_line(job: dict) -> list[str]:
 
 
 def render_timing(summary: dict[str, object]) -> str:
+    if "runner_execution" in summary:
+        return _render_report(summary)
     skipped = summary.get("skipped_jobs") or []
     lines = [
         f"CI RUN TIMING attempt={summary.get('attempt')} complete={summary.get('complete')}",
         f"run_id={summary.get('run_id')} workflow_name={summary.get('workflow_name')} head_sha={summary.get('head_sha')}",
         f"step_timing_complete={summary.get('step_timing_complete')}",
-        f"identity_complete={summary.get('identity_complete')}",
-        f"coverage_exclusions={summary.get('coverage_exclusions')}",
-        f"run_conclusion={summary.get('run_conclusion')}",
-        f"target_attempt={summary.get('target_attempt')}",
-        f"identity_producer_attempt={summary.get('identity_producer_attempt')}",
-        f"reason={summary.get('reason')}",
-    ]
-    identity = summary.get("identity")
-    if isinstance(identity, dict):
-        lines.append(
-            "identity "
-            f"repository={identity.get('repository')} workflow={identity.get('workflow')} "
-            f"run_id={identity.get('run_id')} run_attempt={identity.get('run_attempt')} "
-            f"target_attempt={identity.get('target_attempt')} "
-            f"identity_producer_attempt={identity.get('identity_producer_attempt')} "
-            f"event={identity.get('event')} base_sha={identity.get('base_sha')} "
-            f"source_sha={identity.get('source_sha')} "
-            f"measurement_sha={identity.get('measurement_sha')}"
-        )
-    lines.extend([
         f"runner_execution_minutes={summary['runner_execution_minutes']} ({summary['unit']})",
         f"total_execution_minutes={summary['total_execution_minutes']}",
         f"success_execution_minutes={summary['success_execution_minutes']}",
         f"failure_execution_minutes={summary['failure_execution_minutes']}",
         f"cancelled_execution_minutes={summary['cancelled_execution_minutes']}",
-        f"wasted_execution_minutes={summary.get('wasted_execution_minutes')}",
-        f"neutral_execution_minutes={summary['neutral_execution_minutes']}",
-        f"other_execution_minutes={summary['other_execution_minutes']}",
+        f"by_platform={summary.get('by_platform')}",
         f"skipped_jobs={len(skipped)}",
         f"observed_subset_wall_clock_s={summary['observed_subset_wall_clock_s']}",
         f"coverage: {summary['coverage']}",
-    ])
+    ]
     for item in summary.get("incomplete") or []:
         lines.append(f"incomplete: {item}")
     for name in skipped:
         lines.append(f"skipped: {name}")
     for job in summary.get("jobs") or []:
         lines.extend(_job_line(job))
+    return "\n".join(lines) + "\n"
+
+
+def _render_report(report: dict[str, object]) -> str:
+    execution = report.get("runner_execution") or {}
+    wait = report.get("required_gate_wait") or {}
+    subject = report.get("subject") or {}
+    lines = [
+        f"CI RUN TIMING complete={report.get('complete')} identity_complete={report.get('identity_complete')}",
+        f"repository={subject.get('repository')} event={subject.get('event')} "
+        f"source_sha={subject.get('source_sha')} base_sha={subject.get('base_sha')}",
+        f"known_minutes={execution.get('known_minutes')} by_platform={execution.get('by_platform')}",
+        f"by_conclusion={execution.get('by_conclusion')}",
+        f"required_gate_wait complete={wait.get('complete')} elapsed_s={wait.get('elapsed_s')} "
+        f"missing_checks={wait.get('missing_checks')}",
+    ]
+    for item in report.get("incomplete_reasons") or []:
+        lines.append(f"incomplete: {item}")
+    for row in report.get("cancellations") or []:
+        lines.append(
+            f"cancelled run_id={row.get('run_id')} consumed_minutes={row.get('consumed_minutes')} "
+            f"cause={row.get('cause')} cause_confidence={row.get('cause_confidence')}"
+        )
     return "\n".join(lines) + "\n"
 
 
@@ -633,17 +519,7 @@ def fetch_github_jobs(
             f"{_GITHUB_API}/repos/{repository}/actions/runs/{run_id}"
             f"/attempts/{attempt}/jobs?per_page=100&page={page}"
         )
-        request = urllib.request.Request(
-            url,
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Accept": "application/vnd.github+json",
-                "X-GitHub-Api-Version": "2022-11-28",
-                "User-Agent": "ticketbox-ci-run-timing",
-            },
-        )
-        with opener(request) as response:
-            payload = json.loads(response.read().decode("utf-8"))
+        payload = _github_json(url, token, urlopen=opener)
         chunk = payload.get("jobs", []) if isinstance(payload, dict) else []
         jobs.extend(row for row in chunk if isinstance(row, dict))
         if len(chunk) < 100:
@@ -651,7 +527,19 @@ def fetch_github_jobs(
     raise ValueError("github jobs pagination exceeded 20 pages")
 
 
-def _github_json(url: str, token: str, *, urlopen=urllib.request.urlopen) -> dict:
+def fetch_github_run(
+    repository: str,
+    run_id: int,
+    token: str,
+    *,
+    urlopen=None,
+) -> dict:
+    opener = urlopen or urllib.request.urlopen
+    return _github_json(f"{_GITHUB_API}/repos/{repository}/actions/runs/{run_id}", token, urlopen=opener)
+
+
+def _github_json(url: str, token: str, *, urlopen=None) -> dict:
+    opener = urlopen or urllib.request.urlopen
     request = urllib.request.Request(
         url,
         headers={
@@ -661,7 +549,7 @@ def _github_json(url: str, token: str, *, urlopen=urllib.request.urlopen) -> dic
             "User-Agent": "ticketbox-ci-run-timing",
         },
     )
-    with urlopen(request) as response:
+    with opener(request) as response:
         payload = json.loads(response.read().decode("utf-8"))
     if not isinstance(payload, dict):
         raise ValueError("GitHub JSON object required")
@@ -675,109 +563,283 @@ def parse_qualification_log(text: str) -> tuple[str, str] | None:
     return match.group(1), match.group(2)
 
 
-def write_scope_identity(path: Path, identity: dict[str, object]) -> dict[str, object]:
-    payload = {
-        "repository": identity.get("repository"),
-        "workflow": identity.get("workflow"),
-        "run_id": identity.get("run_id"),
-        "run_attempt": identity.get("run_attempt"),
-        "event": identity.get("event"),
-        "base_sha": identity.get("base_sha"),
-        "source_sha": identity.get("source_sha"),
-        "measurement_sha": identity.get("measurement_sha"),
+def parse_audit_lane_timing(text: str) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for line in text.splitlines():
+        match = _AUDIT_LANE.match(line.strip())
+        if match is None:
+            continue
+        payload = json.loads(match.group(1))
+        if isinstance(payload, dict):
+            rows.append(payload)
+    return rows
+
+
+def _run_is_finished(metadata: dict) -> bool:
+    return metadata.get("status") == "completed"
+
+
+def _named_step(jobs: list[dict], name: str) -> dict | None:
+    for job in jobs:
+        for step in job.get("steps") or []:
+            if isinstance(step, dict) and step.get("name") == name:
+                return step
+    return None
+
+
+def _phase_row(name: str, phase: str, kind: str, step: dict | None) -> dict[str, object]:
+    elapsed = None
+    if step is not None:
+        elapsed = _seconds(parse_utc(step.get("started_at")), parse_utc(step.get("completed_at")))
+        if elapsed is not None and elapsed < 0:
+            elapsed = None
+    return {
+        "name": name,
+        "phase": phase,
+        "measurement_kind": kind if step is not None or kind == "unknown" else "unknown",
+        "elapsed_s": elapsed,
+        "source_step": None if step is None else step.get("name"),
     }
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return payload
 
 
-def cross_check_live_merge_ref(
-    repository: str,
-    number: int,
-    identity: dict[str, object],
-    token: str,
-    *,
-    urlopen=urllib.request.urlopen,
-) -> str:
-    ref = _github_json(
-        f"{_GITHUB_API}/repos/{repository}/git/ref/pull/{number}/merge",
-        token,
-        urlopen=urlopen,
-    )
-    live = (ref.get("object") or {}).get("sha") if isinstance(ref.get("object"), dict) else None
-    if not live:
-        return "unavailable"
-    commit = _github_json(
-        f"{_GITHUB_API}/repos/{repository}/git/commits/{live}",
-        token,
-        urlopen=urlopen,
-    )
-    parents = [
-        item.get("sha") for item in (commit.get("parents") or [])
-        if isinstance(item, dict) and item.get("sha")
-    ]
-    source = identity.get("source_sha")
-    base = identity.get("base_sha")
-    if len(parents) == 2 and source in parents and base in parents:
-        return "matches"
-    return "stale_or_mismatch"
-
-
-def _named_artifact_rows(listing: dict, name: str) -> list[dict]:
+def android_phases_from_jobs(jobs: list[dict]) -> list[dict[str, object]]:
+    compile_step = _named_step(jobs, "Precompile connected APKs")
+    connected_step = _named_step(jobs, "Run connected test")
     return [
-        row for row in (listing.get("artifacts") or [])
-        if isinstance(row, dict) and row.get("name") == name
-        and not row.get("expired") and row.get("archive_download_url")
+        _phase_row("compile", "compile", "direct", compile_step),
+        _phase_row(
+            "connected_test",
+            "emulator_prepare + install + test + qualification + exit",
+            "combined",
+            connected_step,
+        ),
+        {
+            "name": "cache_state",
+            "phase": "cache",
+            "measurement_kind": "unknown",
+            "elapsed_s": None,
+            "source_step": None,
+        },
     ]
 
 
-def _download_artifact_json(url: str, token: str, opener) -> dict[str, object] | None:
-    request = urllib.request.Request(
-        url,
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Accept": "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28",
-            "User-Agent": "ticketbox-ci-run-timing",
+def cancellation_record(run_id: object, consumed_minutes: float) -> dict[str, object]:
+    return {
+        "run_id": run_id,
+        "consumed_minutes": consumed_minutes,
+        "cause": "unknown",
+        "cause_confidence": "unknown",
+    }
+
+
+def _merge_minutes(left: dict[str, float], right: dict[str, float]) -> dict[str, float]:
+    merged = dict(left)
+    for name, value in right.items():
+        merged[name] = round(merged.get(name, 0.0) + value, 3)
+    return merged
+
+
+def _record_required_job(job: dict, required_checks: list[str], completed: dict[str, datetime]) -> None:
+    name = job.get("name")
+    if name not in required_checks or job.get("conclusion") in {None, "", "skipped"}:
+        return
+    ended = parse_utc(job.get("completed_at"))
+    if ended is None:
+        return
+    previous = completed.get(str(name))
+    if previous is None or ended > previous:
+        completed[str(name)] = ended
+
+
+def required_gate_wait(bundles: list[dict[str, object]], required_checks: list[str]) -> dict[str, object]:
+    starts: list[datetime] = []
+    completed: dict[str, datetime] = {}
+    for bundle in bundles:
+        metadata = bundle.get("metadata") or {}
+        started = parse_utc(metadata.get("run_started_at") or metadata.get("created_at"))
+        if started:
+            starts.append(started)
+        for job in bundle.get("jobs") or []:
+            _record_required_job(job, required_checks, completed)
+    missing = [name for name in required_checks if name not in completed]
+    last = max(completed.values()) if completed else None
+    first = min(starts) if starts else None
+    return {
+        "complete": bool(required_checks) and not missing and first is not None and last is not None,
+        "trigger_started_at": _utc_text(first),
+        "last_required_check_completed_at": _utc_text(last),
+        "elapsed_s": _seconds(first, last),
+        "missing_checks": missing,
+    }
+
+
+def _unique_meta(bundles: list[dict[str, object]], key: str) -> set[object]:
+    values = {bundle.get("metadata", {}).get(key) for bundle in bundles}
+    values.discard(None)
+    return values
+
+
+def _base_shas(bundles: list[dict[str, object]]) -> set[str]:
+    bases: set[str] = set()
+    for bundle in bundles:
+        for pull in bundle.get("metadata", {}).get("pull_requests") or []:
+            if isinstance(pull, dict) and (pull.get("base") or {}).get("sha"):
+                bases.add(str((pull.get("base") or {}).get("sha")))
+    return bases
+
+
+def _choose_source(heads: set[object], qualification: list[tuple[str, str]]) -> object:
+    log_sources = {item[1] for item in qualification}
+    if len(log_sources) == 1:
+        return next(iter(log_sources))
+    if len(heads) == 1:
+        return next(iter(heads))
+    return None
+
+
+def subject_from_bundles(
+    repository: str | None,
+    bundles: list[dict[str, object]],
+    qualification: list[tuple[str, str]],
+) -> tuple[dict[str, object], bool, list[str]]:
+    notes: list[str] = []
+    events = _unique_meta(bundles, "event")
+    heads = _unique_meta(bundles, "head_sha")
+    bases = _base_shas(bundles)
+    source = _choose_source(heads, qualification)
+    event = next(iter(events)) if len(events) == 1 else None
+    base = next(iter(bases)) if len(bases) == 1 else None
+    if not source:
+        notes.append("missing source_sha")
+    if event == "pull_request" and not base:
+        notes.append("missing base_sha")
+    if len(heads) > 1:
+        notes.append("mixed source_sha across runs")
+    return (
+        {
+            "repository": repository,
+            "event": event,
+            "source_sha": source,
+            "checkout_shas": [item[0] for item in qualification],
+            "base_sha": base,
         },
+        not notes,
+        notes,
     )
-    with opener(request) as response:
-        blob = response.read()
-    with zipfile.ZipFile(io.BytesIO(blob)) as archive:
-        member = next((item for item in archive.namelist() if item.endswith(".json")), None)
-        if member is None:
-            return None
-        payload = json.loads(archive.read(member).decode("utf-8"))
-    return payload if isinstance(payload, dict) else None
 
 
-def load_run_artifact(
-    repository: str,
-    run_id: int,
-    token: str,
-    name: str,
-    *,
-    urlopen=None,
-) -> dict[str, object] | None:
-    opener = urlopen or urllib.request.urlopen
-    listing = _github_json(
-        f"{_GITHUB_API}/repos/{repository}/actions/runs/{run_id}/artifacts?per_page=100",
-        token,
-        urlopen=opener,
+def _workflow_row(summary: dict[str, object], metadata: dict, run_id: object) -> dict[str, object]:
+    return {
+        "run_id": summary["run_id"] or run_id,
+        "name": metadata.get("name") or summary["workflow_name"],
+        "head_sha": summary["head_sha"] or metadata.get("head_sha"),
+        "attempt": summary["attempt"],
+        "conclusion": metadata.get("conclusion"),
+        "complete": summary["complete"],
+        "runner_execution_minutes": summary["runner_execution_minutes"],
+        "by_platform": summary["by_platform"],
+        "by_conclusion": summary["by_conclusion"],
+        "incomplete": summary["incomplete"],
+    }
+
+
+def _add_minutes(totals: dict[str, object], summary: dict[str, object]) -> None:
+    totals["platforms"] = _merge_minutes(totals["platforms"], dict(summary.get("by_platform") or {}))
+    by_conclusion = dict(summary.get("by_conclusion") or {})
+    for key in totals["conclusions"]:
+        totals["conclusions"][key] = round(totals["conclusions"][key] + float(by_conclusion.get(key) or 0), 3)
+    totals["known"] = round(totals["known"] + float(summary["runner_execution_minutes"]), 3)
+
+
+def _note_special_workflow(
+    bundle: dict[str, object],
+    metadata: dict,
+    summary: dict[str, object],
+    run_id: object,
+    totals: dict[str, object],
+) -> None:
+    if metadata.get("conclusion") == "cancelled":
+        totals["cancellations"].append(cancellation_record(run_id, float(summary["total_execution_minutes"])))
+    if summary.get("workflow_name") == "Android Connected Test" or metadata.get("name") == "Android Connected Test":
+        totals["android_jobs"].extend(job for job in (bundle.get("jobs") or []) if isinstance(job, dict))
+
+
+def _add_bundle(
+    bundle: dict[str, object],
+    totals: dict[str, object],
+) -> None:
+    metadata = bundle.get("metadata") or {}
+    run_id = metadata.get("id") or bundle.get("run_id")
+    if metadata and not _run_is_finished(metadata):
+        totals["incomplete"].append(f"unfinished run {run_id}")
+        totals["runner_complete"] = False
+    summary = summarize_jobs(
+        list(bundle.get("jobs") or []),
+        attempt=_attempt_number(bundle.get("attempt") or metadata.get("run_attempt")),
+        previous_jobs=bundle.get("previous_jobs"),
     )
-    rows = _named_artifact_rows(listing, name)
-    if not rows:
-        return None
-    return _download_artifact_json(str(rows[0]["archive_download_url"]), token, opener)
+    if not summary["complete"]:
+        totals["runner_complete"] = False
+        totals["incomplete"].extend(str(item) for item in summary["incomplete"])
+    _add_minutes(totals, summary)
+    _note_special_workflow(bundle, metadata, summary, run_id, totals)
+    totals["workflows"].append(_workflow_row(summary, metadata, run_id))
 
 
-def load_identity_artifact(
-    repository: str,
-    run_id: int,
-    token: str,
+def _wait_notes(wait: dict[str, object], required_checks: list[str]) -> list[str]:
+    if wait["complete"] or not required_checks:
+        return []
+    if wait["missing_checks"]:
+        return [f"missing required checks: {', '.join(wait['missing_checks'])}"]
+    return ["required-check wait is incomplete"]
+
+
+def build_report(
+    bundles: list[dict[str, object]],
     *,
-    urlopen=urllib.request.urlopen,
-) -> dict[str, object] | None:
-    return load_run_artifact(repository, run_id, token, IDENTITY_ARTIFACT, urlopen=urlopen)
+    repository: str | None = None,
+    required_checks: list[str] | None = None,
+    audit_lanes: list[dict[str, object]] | None = None,
+    qualification: list[tuple[str, str]] | None = None,
+) -> dict[str, object]:
+    totals: dict[str, object] = {
+        "incomplete": [],
+        "workflows": [],
+        "platforms": {},
+        "conclusions": {"success": 0.0, "failure": 0.0, "cancelled": 0.0, "other": 0.0},
+        "cancellations": [],
+        "android_jobs": [],
+        "known": 0.0,
+        "runner_complete": True,
+    }
+    for bundle in bundles:
+        _add_bundle(bundle, totals)
+    subject, identity_complete, identity_notes = subject_from_bundles(
+        repository, bundles, qualification or [],
+    )
+    incomplete = list(totals["incomplete"]) + identity_notes
+    checks = list(required_checks or [])
+    wait = required_gate_wait(bundles, checks)
+    incomplete.extend(_wait_notes(wait, checks))
+    complete = bool(totals["runner_complete"]) and identity_complete and (wait["complete"] or not checks)
+    return {
+        "subject": subject,
+        "identity_complete": identity_complete,
+        "workflows": totals["workflows"],
+        "runner_execution": {
+            "complete": totals["runner_complete"],
+            "known_minutes": totals["known"],
+            "by_platform": totals["platforms"],
+            "by_conclusion": totals["conclusions"],
+        },
+        "required_gate_wait": wait,
+        "audit_lanes": list(audit_lanes or []),
+        "android_phases": android_phases_from_jobs(list(totals["android_jobs"])),
+        "cancellations": totals["cancellations"],
+        "incomplete_reasons": incomplete,
+        "complete": complete,
+        "unit": "raw runner execution seconds / 60, not billed minutes",
+    }
 
 
 def _write_outputs(summary: dict[str, object], rendered: str, args: argparse.Namespace) -> None:
@@ -789,518 +851,129 @@ def _write_outputs(summary: dict[str, object], rendered: str, args: argparse.Nam
             output.write("### CI run timing\n\n" + fence + "text\n" + rendered + fence + "\n")
 
 
-def _load_github_pair(args: argparse.Namespace) -> tuple[list[dict], list[dict] | None, int]:
-    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
-    repository = args.github_repository or os.environ.get("GITHUB_REPOSITORY")
-    run_id = args.github_run_id or os.environ.get("GITHUB_RUN_ID")
-    attempt = args.attempt or int(os.environ.get("GITHUB_RUN_ATTEMPT") or "0")
-    if not token or not repository or not run_id or attempt < 1:
-        raise ValueError("GitHub timing needs token, repository, run id, and attempt")
-    current = fetch_github_jobs(repository, int(run_id), attempt, token)
-    previous = None
-    if attempt > 1:
-        previous = fetch_github_jobs(repository, int(run_id), attempt - 1, token)
-    return current, previous, attempt
+def _token() -> str | None:
+    return os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
 
 
-def _fallback_measurement_sha(args: argparse.Namespace) -> str | None:
-    explicit = args.measurement_sha or os.environ.get("XPJ_WEIGHT_MEASUREMENT_SHA")
-    if explicit or args.from_run_identity or args.run_identity_json:
-        return explicit
-    return os.environ.get("GITHUB_SHA")
+def _load_remote_bundles(args: argparse.Namespace) -> list[dict[str, object]]:
+    token = _token()
+    repository = args.repository or os.environ.get("GITHUB_REPOSITORY")
+    if not token or not repository or not args.run_ids:
+        raise ValueError("GitHub timing needs token, --repository, and at least one --run-id")
+    bundles = []
+    for run_id in args.run_ids:
+        metadata = fetch_github_run(repository, run_id, token)
+        attempt = _attempt_number(metadata.get("run_attempt")) or 1
+        current = fetch_github_jobs(repository, run_id, attempt, token)
+        previous = fetch_github_jobs(repository, run_id, attempt - 1, token) if attempt > 1 else None
+        bundles.append({
+            "metadata": metadata,
+            "jobs": current,
+            "previous_jobs": previous,
+            "attempt": attempt,
+        })
+    return bundles
 
 
-def _cli_identity(args: argparse.Namespace, attempt: int | None, jobs: list[dict]) -> dict[str, object]:
-    shared = _shared_identity(jobs)
-    return _timing_identity(
-        repository=args.github_repository or os.environ.get("GITHUB_REPOSITORY"),
-        workflow=args.workflow_name or os.environ.get("XPJ_TIMING_WORKFLOW") or shared.get("workflow_name"),
-        run_id=args.github_run_id or os.environ.get("GITHUB_RUN_ID") or shared.get("run_id"),
-        run_attempt=attempt,
-        event=args.event or os.environ.get("XPJ_WEIGHT_EVENT") or os.environ.get("GITHUB_EVENT_NAME"),
-        base_sha=args.base_sha or os.environ.get("XPJ_WEIGHT_BASE_SHA"),
-        source_sha=args.source_sha or os.environ.get("XPJ_WEIGHT_SOURCE_SHA"),
-        measurement_sha=_fallback_measurement_sha(args),
-        job=args.job_name,
-        outer_step=args.outer_step,
-    )
-
-
-def stamp_connected_inner(
-    path: Path,
-    identity: dict[str, object],
-    *,
-    state: str | None = None,
-    reason: str | None = None,
-) -> dict[str, object]:
-    payload: dict[str, object] = {}
-    if path.exists():
-        loaded = json.loads(path.read_text(encoding="utf-8"))
-        if isinstance(loaded, dict):
-            payload = loaded
-    if state:
-        payload["state"] = state
-    if reason:
-        payload["reason"] = reason
-    incomplete: list[str] = []
-    if payload.get("elapsed_s") is None:
-        payload.setdefault("state", state or "started")
-        payload.setdefault("reason", reason or "inner Gradle timing not finalized")
-        incomplete.append(str(payload["reason"]))
-    else:
-        payload["state"] = "finalized"
-        payload["reason"] = None
-    payload["kind"] = payload.get("kind") or "gradle_connected_test"
-    payload["identity"] = identity
-    payload["job"] = identity.get("job") or "Connected execution"
-    payload["outer_step"] = identity.get("outer_step") or "Run connected test"
-    payload["incomplete"] = incomplete
-    payload["complete"] = not incomplete
-    payload.setdefault("not", "emulator/action overhead residual lives outside this interval")
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return payload
+def _load_local_bundle(args: argparse.Namespace) -> list[dict[str, object]]:
+    if args.jobs_json is None:
+        raise ValueError("--jobs-json is required unless --run-id is set")
+    previous = _read_job_list(args.previous_jobs_json) if args.previous_jobs_json else None
+    jobs = _read_job_list(args.jobs_json)
+    return [{
+        "metadata": {
+            "id": args.run_ids[0] if args.run_ids else None,
+            "name": args.workflow_name,
+            "event": args.event,
+            "head_sha": args.source_sha,
+            "status": "completed",
+            "conclusion": args.run_conclusion,
+            "run_attempt": args.attempt,
+            "pull_requests": [{"base": {"sha": args.base_sha}}] if args.base_sha else [],
+        },
+        "jobs": jobs,
+        "previous_jobs": previous,
+        "attempt": args.attempt,
+    }]
 
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repository")
+    parser.add_argument("--run-id", action="append", type=int, dest="run_ids", default=[])
+    parser.add_argument("--required-check", action="append", default=[])
     parser.add_argument("--jobs-json", type=Path)
     parser.add_argument("--previous-jobs-json", type=Path)
     parser.add_argument("--attempt", type=int)
-    parser.add_argument("--from-github", action="store_true")
-    parser.add_argument("--from-run-identity", action="store_true")
-    parser.add_argument("--run-identity-json", type=Path)
-    parser.add_argument("--write-identity-json", type=Path)
-    parser.add_argument("--allow-partial", action="store_true")
-    parser.add_argument("--derive-cancelled-inner", action="store_true")
-    parser.add_argument("--run-conclusion")
-    parser.add_argument("--github-repository")
-    parser.add_argument("--github-run-id", type=int)
-    parser.add_argument("--exclude-job-name", action="append", default=[])
-    parser.add_argument("--source-sha")
-    parser.add_argument("--measurement-sha")
-    parser.add_argument("--base-sha")
-    parser.add_argument("--event")
     parser.add_argument("--workflow-name")
-    parser.add_argument("--job-name")
-    parser.add_argument("--outer-step")
-    parser.add_argument("--inner-state")
-    parser.add_argument("--inner-reason")
-    parser.add_argument("--stamp-connected-inner", type=Path)
+    parser.add_argument("--event")
+    parser.add_argument("--source-sha")
+    parser.add_argument("--base-sha")
+    parser.add_argument("--run-conclusion")
+    parser.add_argument("--audit-log", action="append", type=Path, default=[])
+    parser.add_argument("--qualification-log", action="append", type=Path, default=[])
     parser.add_argument("--output-json", type=Path)
     parser.add_argument("--summary", type=Path, default=os.environ.get("GITHUB_STEP_SUMMARY"))
     return parser.parse_args()
 
 
-def _run_stamp(args: argparse.Namespace) -> int:
-    if args.derive_cancelled_inner:
-        return _run_cancelled_inner(args)
-    identity = _cli_identity(args, args.attempt, [])
-    payload = stamp_connected_inner(
-        args.stamp_connected_inner,
-        identity,
-        state=args.inner_state,
-        reason=args.inner_reason,
-    )
-    print(json.dumps(payload, ensure_ascii=False, indent=2))
-    if payload["complete"] or args.allow_partial:
-        return 0
-    return 2
-
-
-def _run_write_identity(args: argparse.Namespace) -> int:
-    identity = _cli_identity(args, args.attempt, [])
-    payload = write_scope_identity(args.write_identity_json, identity)
-    print(json.dumps(payload, ensure_ascii=False, indent=2))
-    return 0
-
-
-def _load_jobs(args: argparse.Namespace) -> tuple[list[dict], list[dict] | None, int | None]:
-    if args.from_github:
-        return _load_github_pair(args)
-    if args.jobs_json is None:
-        raise ValueError("--jobs-json is required unless --from-github is set")
-    previous = _read_job_list(args.previous_jobs_json) if args.previous_jobs_json else None
-    return _read_job_list(args.jobs_json), previous, args.attempt
-
-
-def _failed_summary(reason: str) -> dict[str, object]:
+def _empty_report(reason: str) -> dict[str, object]:
     return {
-        "attempt": None,
-        "run_id": None,
-        "workflow_name": None,
-        "head_sha": None,
-        "jobs": [],
-        "runner_execution_minutes": 0,
-        "total_execution_minutes": 0,
-        "success_execution_minutes": 0,
-        "failure_execution_minutes": 0,
-        "cancelled_consumed_minutes": 0,
-        "cancelled_execution_minutes": 0,
-        "neutral_execution_minutes": 0,
-        "other_execution_minutes": 0,
-        "run_conclusion": None,
-        "target_attempt": None,
-        "identity_producer_attempt": None,
-        "wasted_execution_minutes": 0.0,
-        "skipped_jobs": [],
-        "observed_subset_wall_clock_s": None,
-        "coverage": "observed subset of supplied jobs only; not the final required-check wait",
-        "coverage_exclusions": [],
-        "incomplete": [reason],
-        "step_timing_complete": False,
+        "subject": {
+            "repository": None,
+            "event": None,
+            "source_sha": None,
+            "checkout_shas": [],
+            "base_sha": None,
+        },
         "identity_complete": False,
+        "workflows": [],
+        "runner_execution": {
+            "complete": False,
+            "known_minutes": 0,
+            "by_platform": {},
+            "by_conclusion": {"success": 0, "failure": 0, "cancelled": 0, "other": 0},
+        },
+        "required_gate_wait": {
+            "complete": False,
+            "trigger_started_at": None,
+            "last_required_check_completed_at": None,
+            "elapsed_s": None,
+            "missing_checks": [],
+        },
+        "audit_lanes": [],
+        "android_phases": [],
+        "cancellations": [],
+        "incomplete_reasons": [reason],
         "complete": False,
-        "reason": reason,
         "unit": "raw runner execution seconds / 60, not billed minutes",
     }
-
-
-def _merge_identity(base: dict[str, object], loaded: dict[str, object]) -> dict[str, object]:
-    merged = dict(base)
-    for key in ("repository", "workflow", "run_id", "event", "base_sha", "source_sha", "measurement_sha"):
-        if loaded.get(key) not in {None, ""}:
-            merged[key] = loaded[key]
-    return merged
-
-
-def _bind_loaded_identity(target: dict[str, object], loaded: dict[str, object]) -> dict[str, object]:
-    merged = _merge_identity(target, loaded)
-    merged["run_attempt"] = target.get("run_attempt")
-    merged["target_attempt"] = target.get("run_attempt")
-    merged["identity_producer_attempt"] = _attempt_number(loaded.get("run_attempt"))
-    return merged
-
-
-def _identity_from_file(path: Path) -> dict[str, object] | None:
-    loaded = json.loads(path.read_text(encoding="utf-8"))
-    return loaded if isinstance(loaded, dict) else None
-
-
-def _observed_run_context(args: argparse.Namespace) -> tuple[str, str, int] | None:
-    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
-    repository = args.github_repository or os.environ.get("GITHUB_REPOSITORY")
-    run_id = args.github_run_id or os.environ.get("GITHUB_RUN_ID")
-    if not (token and repository and run_id):
-        return None
-    return token, repository, int(run_id)
-
-
-def _iter_artifact_payloads(args: argparse.Namespace, name: str):
-    context = _observed_run_context(args)
-    if context is None:
-        return
-    token, repository, run_id = context
-    opener = urllib.request.urlopen
-    listing = _github_json(
-        f"{_GITHUB_API}/repos/{repository}/actions/runs/{run_id}/artifacts?per_page=100",
-        token,
-        urlopen=opener,
-    )
-    for row in _named_artifact_rows(listing, name):
-        try:
-            payload = _download_artifact_json(str(row["archive_download_url"]), token, opener)
-        except _IDENTITY_CATCH:
-            continue
-        if payload:
-            yield payload
-
-
-def _artifact_producer_attempt(payload: dict) -> int | None:
-    nested = payload.get("identity")
-    if isinstance(nested, dict):
-        nested_attempt = _attempt_number(nested.get("run_attempt"))
-        if nested_attempt is not None:
-            return nested_attempt
-    return _attempt_number(payload.get("run_attempt"))
-
-
-def _producer_not_after(producer: object, target_attempt: object) -> bool:
-    prod = _attempt_number(producer)
-    target = _attempt_number(target_attempt)
-    return prod is not None and target is not None and prod <= target
-
-
-def _field_matches(payload: dict, target: dict, key: str) -> bool:
-    expected = target.get(key)
-    if expected in {None, ""}:
-        return True
-    actual = payload.get(key)
-    if actual in {None, ""}:
-        return False
-    return str(actual) == str(expected)
-
-
-def _identity_candidate_valid(payload: dict[str, object], target: dict[str, object]) -> bool:
-    if not isinstance(payload, dict):
-        return False
-    if any(payload.get(key) in {None, ""} for key in ("run_id", "workflow", "source_sha", "run_attempt")):
-        return False
-    if not _producer_not_after(payload.get("run_attempt"), target.get("run_attempt")):
-        return False
-    return all(_field_matches(payload, target, key) for key in ("run_id", "workflow", "source_sha", "measurement_sha", "base_sha"))
-
-
-def _select_best_payload(
-    payloads: list[dict[str, object]],
-    target: dict[str, object],
-    valid_fn,
-) -> dict[str, object] | None:
-    valid = [payload for payload in payloads if valid_fn(payload, target)]
-    if not valid:
-        return None
-    best_n = max(_artifact_producer_attempt(payload) for payload in valid)
-    best = [payload for payload in valid if _artifact_producer_attempt(payload) == best_n]
-    if len(best) != 1:
-        return None
-    return best[0]
-
-
-def _load_validated_identity(
-    args: argparse.Namespace,
-    target: dict[str, object],
-) -> dict[str, object] | None:
-    if args.run_identity_json:
-        if not args.run_identity_json.exists():
-            return None
-        loaded = _identity_from_file(args.run_identity_json)
-        if loaded and _identity_candidate_valid(loaded, target):
-            return loaded
-        return None
-    if args.from_run_identity:
-        return _select_best_payload(
-            list(_iter_artifact_payloads(args, IDENTITY_ARTIFACT)),
-            target,
-            _identity_candidate_valid,
-        )
-    return None
-
-
-def _mark_unavailable(identity: dict[str, object]) -> dict[str, object]:
-    marked = dict(identity)
-    marked["identity_unavailable"] = IDENTITY_UNAVAILABLE
-    marked["measurement_sha"] = None
-    marked["target_attempt"] = identity.get("run_attempt")
-    marked.pop("identity_producer_attempt", None)
-    return marked
-
-
-def _strict_observed_identity(
-    args: argparse.Namespace,
-    identity: dict[str, object],
-) -> dict[str, object]:
-    try:
-        loaded = _load_validated_identity(args, identity)
-    except _IDENTITY_CATCH:
-        return _mark_unavailable(identity)
-    if not loaded:
-        return _mark_unavailable(identity)
-    return _bind_loaded_identity(identity, loaded)
-
-
-def _observed_identity(
-    args: argparse.Namespace,
-    jobs: list[dict],
-    attempt: int | None,
-) -> dict[str, object] | None:
-    identity = _cli_identity(args, attempt, jobs)
-    if args.from_run_identity or args.run_identity_json:
-        return _strict_observed_identity(args, identity)
-    if identity.get("source_sha") and identity.get("measurement_sha"):
-        return identity
-    return None
-
-
-def _named_job(jobs: list[dict], name: str) -> dict | None:
-    return next((job for job in jobs if isinstance(job, dict) and job.get("name") == name), None)
-
-
-def _named_step(job: dict, name: str) -> dict | None:
-    for step in job.get("steps") or []:
-        if isinstance(step, dict) and step.get("name") == name:
-            return step
-    return None
-
-
-def _never_started(row: dict | None) -> bool:
-    if not row:
-        return True
-    if row.get("conclusion") == "skipped":
-        return True
-    return not row.get("started_at")
-
-
-def derive_missing_inner_state(
-    jobs: list[dict],
-    *,
-    job_name: str | None = None,
-    step_name: str | None = None,
-) -> tuple[str, str]:
-    job = _named_job(jobs, job_name or CONNECTED_JOB_NAME)
-    if job is None or _never_started(job):
-        return "not_started", "connected execution did not start"
-    step = _named_step(job, step_name or CONNECTED_STEP_NAME)
-    if _never_started(step):
-        return "not_started", "connected test step did not start"
-    conclusion = step.get("conclusion") or job.get("conclusion")
-    if conclusion in {"success", "failure"}:
-        return "finished_but_artifact_missing", "connected test finished but inner timing artifact missing"
-    if conclusion == "cancelled":
-        return "cancelled_during_connected", "connected test cancelled after start"
-    return "unknown", "connected inner timing artifact missing with inconclusive job evidence"
-
-
-def _jobs_or_empty(args: argparse.Namespace) -> tuple[list[dict], list[dict] | None, bool]:
-    try:
-        jobs, previous, _attempt = _load_jobs(args)
-    except _IDENTITY_CATCH:
-        return [], None, False
-    return jobs, previous, True
-
-
-def _inner_evidence_identity(payload: dict[str, object]) -> dict[str, object]:
-    nested = payload.get("identity")
-    return nested if isinstance(nested, dict) else {}
-
-
-def _inner_candidate_valid(payload: dict[str, object], target: dict[str, object]) -> bool:
-    ident = _inner_evidence_identity(payload)
-    producer = _artifact_producer_attempt(payload)
-    if not ident or producer is None:
-        return False
-    probe = {
-        "run_id": ident.get("run_id"),
-        "workflow": ident.get("workflow"),
-        "source_sha": ident.get("source_sha"),
-        "measurement_sha": ident.get("measurement_sha"),
-        "base_sha": ident.get("base_sha"),
-        "run_attempt": producer,
-    }
-    return _identity_candidate_valid(probe, target)
-
-
-def _inner_usable_for_attempt(payload: dict[str, object], target_attempt: int, inherited_from: int | None) -> bool:
-    producer = _artifact_producer_attempt(payload)
-    if producer == target_attempt:
-        return True
-    return inherited_from is not None and producer == inherited_from
-
-
-def _annotate_inner(
-    payload: dict[str, object],
-    *,
-    target_attempt: object,
-    evidence_attempt: object,
-    inherited: bool,
-) -> dict[str, object]:
-    payload["target_attempt"] = target_attempt
-    payload["inner_evidence_attempt"] = evidence_attempt
-    payload["inherited"] = inherited
-    return payload
-
-
-def _retainable_inner(
-    args: argparse.Namespace,
-    jobs: list[dict],
-    previous: list[dict] | None,
-    target: dict[str, object],
-) -> dict[str, object] | None:
-    target_attempt = _attempt_number(target.get("run_attempt"))
-    if target_attempt is None:
-        return None
-    valid = [payload for payload in _iter_artifact_payloads(args, INNER_ARTIFACT) if _inner_candidate_valid(payload, target)]
-    job = _named_job(jobs, args.job_name or CONNECTED_JOB_NAME)
-    inherited_from = None
-    if job is not None:
-        prior = _matching_prior(job, previous or [])
-        inherited_from = _attempt_number(prior.get("run_attempt")) if prior else None
-    usable = [
-        payload for payload in valid
-        if _inner_usable_for_attempt(payload, target_attempt, inherited_from)
-    ]
-    selected = _select_best_payload(usable, target, lambda payload, _target: True)
-    if selected is None:
-        return None
-    producer = _artifact_producer_attempt(selected)
-    return _annotate_inner(
-        dict(selected),
-        target_attempt=target_attempt,
-        evidence_attempt=producer,
-        inherited=bool(producer is not None and producer < target_attempt),
-    )
-
-
-def _print_json(payload: dict[str, object]) -> None:
-    print(json.dumps(payload, ensure_ascii=False, indent=2))
-
-
-def _write_json_path(path: Path, payload: dict[str, object]) -> None:
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-
-
-def _stamp_cancelled_inner(args: argparse.Namespace) -> int:
-    jobs, previous, fetched = _jobs_or_empty(args)
-    identity = _strict_observed_identity(args, _cli_identity(args, args.attempt, jobs))
-    try:
-        retained = _retainable_inner(args, jobs, previous, identity)
-    except _IDENTITY_CATCH:
-        retained = None
-    if retained is not None:
-        _write_json_path(args.stamp_connected_inner, retained)
-        _print_json(retained)
-        return 0
-    if fetched:
-        state, reason = derive_missing_inner_state(
-            jobs, job_name=args.job_name, step_name=args.outer_step,
-        )
-    else:
-        state, reason = "unknown", "target run jobs unavailable"
-    payload = stamp_connected_inner(
-        args.stamp_connected_inner, identity, state=state, reason=reason,
-    )
-    _annotate_inner(
-        payload,
-        target_attempt=args.attempt,
-        evidence_attempt=args.attempt,
-        inherited=False,
-    )
-    _write_json_path(args.stamp_connected_inner, payload)
-    _print_json(payload)
-    return 0
-
-
-def _run_cancelled_inner(args: argparse.Namespace) -> int:
-    try:
-        return _stamp_cancelled_inner(args)
-    except _IDENTITY_CATCH as exc:
-        identity = _mark_unavailable(_cli_identity(args, args.attempt, []))
-        _print_json(stamp_connected_inner(
-            args.stamp_connected_inner, identity, state="unknown", reason=str(exc),
-        ))
-        return 0
 
 
 def main() -> int:
     args = _parse_args()
     summary: dict[str, object] | None = None
     try:
-        if args.write_identity_json:
-            return _run_write_identity(args)
-        if args.stamp_connected_inner:
-            return _run_stamp(args)
-        jobs, previous, attempt = _load_jobs(args)
-        visible, _exclusions = _split_observer_jobs(jobs, tuple(args.exclude_job_name))
-        summary = summarize_jobs(
-            jobs,
-            attempt=attempt,
-            previous_jobs=previous,
-            exclude_job_names=tuple(args.exclude_job_name),
-            report_identity=_observed_identity(args, visible, attempt),
-            run_conclusion=args.run_conclusion or os.environ.get("XPJ_TIMING_RUN_CONCLUSION"),
+        bundles = _load_remote_bundles(args) if args.run_ids and args.jobs_json is None else _load_local_bundle(args)
+        audit_lanes: list[dict[str, object]] = []
+        for path in args.audit_log:
+            audit_lanes.extend(parse_audit_lane_timing(path.read_text(encoding="utf-8")))
+        qualification = []
+        for path in args.qualification_log:
+            parsed = parse_qualification_log(path.read_text(encoding="utf-8"))
+            if parsed:
+                qualification.append(parsed)
+        summary = build_report(
+            bundles,
+            repository=args.repository or os.environ.get("GITHUB_REPOSITORY"),
+            required_checks=list(args.required_check or []),
+            audit_lanes=audit_lanes,
+            qualification=qualification,
         )
-    except _IDENTITY_CATCH as exc:
+    except _LOAD_CATCH as exc:
         print(f"CI RUN TIMING INCOMPLETE: {exc}", file=sys.stderr)
         if summary is None:
-            summary = _failed_summary(str(exc))
+            summary = _empty_report(str(exc))
     rendered = render_timing(summary)
     print(rendered, end="")
     _write_outputs(summary, rendered, args)
