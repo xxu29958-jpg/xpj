@@ -629,7 +629,11 @@ jobs:
 
   ci_run_timing:
     name: CI run timing
-    needs: backend
+    needs:
+      - backend
+      - backend-postgres
+      - desktop-manager
+      - android
     if: ${{ always() && !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -651,10 +655,16 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_RUN_ID: ${{ github.run_id }}
           GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_SHA: ${{ github.sha }}
+          XPJ_TIMING_WORKFLOW: CI
+          XPJ_WEIGHT_EVENT: ${{ github.event_name }}
+          XPJ_WEIGHT_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          XPJ_WEIGHT_MEASUREMENT_SHA: ${{ github.sha }}
         run: >-
           python -E -S backend/scripts/ci_run_timing.py
           --from-github
-          --observe
+          --exclude-job-name "CI run timing"
           --output-json ${{ runner.temp }}/ci-run-timing.json
           --summary "$GITHUB_STEP_SUMMARY"
 

@@ -594,20 +594,36 @@ def test_historical_task_map_binds_to_artifact_head_not_worktree(repo, tmp_path)
     assert "desktop/backend_manager/web_bff.py present=false" in query.stdout
 
 
+def test_pull_request_rejects_linear_descendant_as_merge(repo, tmp_path) -> None:
+    base = commit_files(repo, {"backend/app/service.py": "VALUE = 1\n"}, "base")
+    source = commit_files(repo, {"backend/app/service.py": "VALUE = 2\n"}, "source")
+    measurement = commit_files(repo, {"backend/app/service.py": "VALUE = 3\n"}, "linear child")
+    result, _report = run_weight(
+        repo, base, measurement, tmp_path,
+        extra=["--source-sha", source, "--event", "pull_request"],
+    )
+    assert result.returncode == 2
+    assert "must be a merge commit" in result.stderr
+
+
 def test_pull_request_identity_keeps_source_off_the_merge_snapshot(repo, tmp_path) -> None:
     from scripts.engineering_task_map import resolve_task
 
     tracked = "backend/app/static/shared/tokens.css"
-    source = commit_files(repo, {
+    base = commit_files(repo, {
         tracked: "a { color: red; }\n",
         "backend/app/service.py": "VALUE = 1\n",
-    }, "source head")
-    measurement = commit_files(repo, {
+    }, "base")
+    git(repo, "checkout", "-b", "feature")
+    source = commit_files(repo, {
         tracked: "a { color: blue; }\n",
         "backend/app/service.py": "VALUE = 2\n",
-    }, "merge snapshot")
+    }, "source head")
+    git(repo, "checkout", "main")
+    git(repo, "merge", "--no-ff", "--no-edit", "-m", "merge snapshot", "feature")
+    measurement = git(repo, "rev-parse", "HEAD")
     result, report = run_weight(
-        repo, source, measurement, tmp_path,
+        repo, base, measurement, tmp_path,
         extra=["--source-sha", source, "--event", "pull_request"],
     )
     assert result.returncode == 0, result.stdout + result.stderr
@@ -669,4 +685,35 @@ def test_historical_query_without_identity_source_fails_closed(repo, tmp_path) -
         },
     )
     assert query.returncode == 2
-    assert "identity.source_sha" in query.stderr or "identity.measurement_sha" in query.stderr
+    assert "format_version 2" in query.stderr
+
+
+def test_historical_query_rejects_identity_snapshot_mismatch(repo, tmp_path) -> None:
+    sha = commit_files(repo, {"backend/app/service.py": "VALUE = 1\n"}, "head")
+    other = commit_files(repo, {"backend/app/service.py": "VALUE = 2\n"}, "other")
+    artifact = tmp_path / "mismatch.json"
+    artifact.write_text(json.dumps({
+        "verdict": "NO DEBT REGRESSION",
+        "format_version": 2,
+        "identity": {
+            "base_sha": sha,
+            "measurement_sha": other,
+            "source_sha": sha,
+            "measurement_kind": "direct_head",
+            "event": None,
+        },
+        "base": {"sha": sha, "files": [], "functions": []},
+        "current": {"sha": sha, "files": [], "functions": []},
+        "changes": [],
+        "failure_details": [],
+    }), encoding="utf-8")
+    query = subprocess.run(
+        [sys.executable, str(ENTRY), "--repo", str(repo), "--from-json", str(artifact), "--task", "ci-trigger"],
+        capture_output=True, text=True, encoding="utf-8",
+        env={
+            key: value for key, value in os.environ.items()
+            if key not in {"GITHUB_STEP_SUMMARY", "XPJ_WEIGHT_SOURCE_SHA", "XPJ_WEIGHT_EVENT"}
+        },
+    )
+    assert query.returncode == 2
+    assert "identity.measurement_sha must equal current.sha" in query.stderr

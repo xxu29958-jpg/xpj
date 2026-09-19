@@ -51,6 +51,24 @@ def _assert_source_related(repo: Path, source_sha: str, measurement_sha: str) ->
     raise ValueError("source_sha is not an ancestor or parent of measurement_sha")
 
 
+def _assert_pull_request_merge(
+    repo: Path,
+    *,
+    base_sha: str,
+    source_sha: str,
+    measurement_sha: str,
+) -> None:
+    if source_sha == measurement_sha or base_sha == measurement_sha:
+        raise ValueError("pull_request report must not name the merge snapshot as source_sha")
+    if base_sha == source_sha:
+        raise ValueError("base_sha must differ from source_sha")
+    parents = _commit_parents(repo, measurement_sha)
+    if len(parents) != 2:
+        raise ValueError("pull_request measurement must be a merge commit")
+    if base_sha not in parents or source_sha not in parents:
+        raise ValueError("base_sha and source_sha must be the direct parents of measurement_sha")
+
+
 def _measurement_kind(event: str | None, source_sha: str, measurement_sha: str) -> str:
     if source_sha == measurement_sha:
         return "direct_head"
@@ -72,9 +90,12 @@ def bind_report_identity(
         raise ValueError("measurement_sha must equal current.sha")
     if report["base"]["sha"] != base_sha:
         raise ValueError("base_sha must equal base.sha")
-    if event == "pull_request" and source_sha == measurement_sha:
-        raise ValueError("pull_request report must not name the merge snapshot as source_sha")
-    _assert_source_related(repo, source_sha, measurement_sha)
+    if event == "pull_request":
+        _assert_pull_request_merge(
+            repo, base_sha=base_sha, source_sha=source_sha, measurement_sha=measurement_sha,
+        )
+    else:
+        _assert_source_related(repo, source_sha, measurement_sha)
     report["identity"] = {
         "base_sha": base_sha,
         "measurement_sha": measurement_sha,
@@ -154,13 +175,20 @@ def _print_task(
 
 
 def _artifact_identity(report: dict) -> tuple[str, str]:
+    if report.get("format_version") != 2:
+        raise ValueError("historical query requires format_version 2")
     identity = report.get("identity") if isinstance(report.get("identity"), dict) else {}
     measurement = identity.get("measurement_sha")
     source = identity.get("source_sha")
+    base = identity.get("base_sha")
     if not measurement:
         raise ValueError("historical query requires identity.measurement_sha")
     if not source:
         raise ValueError("historical query requires identity.source_sha")
+    if base != (report.get("base") or {}).get("sha"):
+        raise ValueError("identity.base_sha must equal base.sha")
+    if measurement != (report.get("current") or {}).get("sha"):
+        raise ValueError("identity.measurement_sha must equal current.sha")
     return str(source), str(measurement)
 
 
