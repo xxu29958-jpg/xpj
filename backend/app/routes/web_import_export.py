@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
+from app.routes._portable_file_response import PortableFileResponse
 from app.routes._web_money_views import _expense_view, _minor_amount_label
 from app.routes._web_session_common import resolve_web_actor
 from app.routes.web_common import (
@@ -39,11 +40,24 @@ from app.services.csv_import_batch_service import (
     list_csv_import_rows,
     list_imported_expenses,
 )
+from app.services.portable_export_service import create_portable_ledger_export
 from app.services.spending_contract_service import accounting_datetime_label
 from app.services.stats_service import export_confirmed_csv
 from app.services.tag_service import list_tags
 
 router = APIRouter(prefix="/web", tags=["web"])
+
+
+@router.get("/export/portable", include_in_schema=False)
+def web_export_portable(request: Request, ledger_id: str = "", _local: None = LocalOnly,
+                        db: Session = Depends(get_db)) -> PortableFileResponse:
+    if getattr(request.state, "web_session_auth", None) is None:
+        raise AppError("invalid_token", "请先确认本机浏览器身份，再下载当前账本的数据包。", status_code=401)
+    selected = _resolve_selected_ledger_id(db, ledger_id or None, request=request)
+    auth = request.state.web_session_auth
+    if auth.ledger_id != selected:
+        raise AppError("permission_denied", status_code=403)
+    return PortableFileResponse(create_portable_ledger_export(db, auth=auth))
 
 
 @router.get("/export.csv")
@@ -100,6 +114,7 @@ def web_import_form(
     ctx["flash_message"] = msg
     ctx["flash_type"] = "error" if flash_type == "error" else "success"
     ctx["q"] = "?ledger_id=" + selected_id
+    ctx["portable_export_available"] = getattr(request.state, "web_session_auth", None) is not None
     ctx["batch_page"] = batches
     ctx["batch_created_labels"] = {
         item.batch.id: accounting_datetime_label(item.batch.created_at) for item in batches.items

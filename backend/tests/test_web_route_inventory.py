@@ -195,6 +195,7 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("GET", "/web/expenses/{expense_id}/thumbnail"): "media",
     # CSV export
     ("GET", "/web/export.csv"): "local-only-rendering",
+    ("GET", "/web/export/portable"): "local-only-rendering",
     # Family members and invitations
     ("GET", "/web/family"): "local-only-rendering",
     ("POST", "/web/family/invitations"): "writer-only",

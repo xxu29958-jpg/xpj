@@ -57,6 +57,32 @@ entitled to see, without following them into another ledger's private records.
 Read authorization follows the current identity/membership owner. The new outlet
 does not confer write permission or replace existing local CSV access.
 
+The package distinguishes ledger records from explicitly named `account_*`
+relationship snapshots. The latter retain the exporter's account-wide split inbox
+and authorized cross-ledger debt/repayment/proposal views without revealing the
+other party's ledger, member or expense identifiers. Only an accepted inbox result
+in the selected ledger carries a local expense link. Selected-ledger sent
+invitations retain the sender's existing actor-scoped visibility; other members'
+accepted source relationships retain only the existing narrow agreement/debt
+reference projection. Repayment drafts remain restricted to their creating actor.
+These participant snapshots are not a complete copy of the other ledger.
+`account_debt_balances` preserves the existing participant owner's public balance
+and settlement observation in the same read snapshot; private adjustments and
+forgiveness rows remain outside this account view. The export adapter does not
+invent a second balance fold.
+
+Governance audit follows the existing member-management permission. Ledger-owner
+membership does not grant the separate local Owner Console AI/operational audit
+permission. Task observations retain only the actor's selected-ledger public
+state/result, never execution input or raw exception text that may contain host
+paths. Accepted operations are historical records, restricted by resource
+visibility. An upload receipt whose personal task access cannot be established
+retains its accepted business resource reference with an explicit
+`response_body_omission_reason`; its private task-bearing response body is omitted.
+Runtime import claims, credential material, machine settings and AI anonymization
+maps are not business record collections. Authorized account/device references
+carry only the identities needed to interpret exported records.
+
 ## Required content and relations
 
 | Product responsibility | Required retained data |
@@ -131,3 +157,29 @@ packaging qualification in the existing cloud lanes. No new proof framework.
 
 The maintained atlas will record implementation and exact evidence as they arrive.
 Preparation, this contract and a generated package schema are not completion.
+
+## Implementation checkpoint, 2026-09-20
+
+The candidate now supplies API and authenticated Web ZIP downloads through one
+snapshot/archive owner. Its explicit collections retain authorized facts, states,
+relations and history, with separately named account relationships. Derived
+participant balances call the existing Debt query owner. Credential validation is
+reused without activity writes or the global mutation fence; it is repeated after
+packaging before download. The caller's transaction is not committed or rolled back.
+
+JSONL keeps integer money and decimal FX precision. The manifest describes scope,
+counts and content hashes. Original observations include current, cleanup and
+accepted-receipt references; historical references never substitute the current
+file or revive a known cleaned one. Identical captured bytes share a ZIP member.
+Missing/corrupt/unverified originals remain explicit while surviving records export.
+The ordinary budget is 2 GiB of uncompressed package content and five minutes,
+with a 30-second SQL statement timeout. Exceeding it rejects the whole package;
+there is no successful truncated result. Request-owned temporary files are cleaned
+on success, failure and interrupted delivery.
+
+Executed locally: 143 short tests including actual temporary original/ZIP bytes,
+SQL authorization counterexamples, API/Web response lifetimes and existing Web
+route inventory; Ruff and OpenAPI generation. Eight PostgreSQL/real-browser-session
+tests were collected, not executed locally. PostgreSQL is still required to prove
+the snapshot, independent-session interleaving and real authorized download.
+This checkpoint is an implementation candidate, not main or Internal Beta RC.

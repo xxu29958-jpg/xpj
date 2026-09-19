@@ -40,6 +40,8 @@ ERROR_MESSAGES = {
     "dataset_authority_invalid": "数据集权威记录损坏或缺失，请停止写入并执行恢复诊断。",
     "dataset_authority_read_only": "数据集权威只能由受控迁移或恢复操作修改。",
     "backup_incomplete": "完整备份未生成：数据库或原始附件校验失败。",
+    "portable_export_limit": "本次完整导出超过资源上限，未生成不完整的数据包。",
+    "portable_export_unavailable": "暂时无法完成数据导出，请稍后重试。",
     "pairing_attempt_expired": "连接恢复凭据已过期，请重新生成绑定码。",
     "pairing_attempt_closed": "这次连接已完成或已失效，请使用当前会话；设备已移除时请重新绑定。",
     "invitation_attempt_expired": "邀请接入恢复凭据已过期，请让账本成员重新生成邀请。",
