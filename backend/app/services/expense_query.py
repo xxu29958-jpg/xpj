@@ -34,6 +34,7 @@ __all__ = [
     "FIRST_WRITE_ROW_VERSION",
     "LOCAL_REF_PREFIX",
     "get_expense",
+    "list_original_inspection_expenses",
     "local_ref_storage_key",
     "resolve_expense",
     "resolve_expense_for_mutation",
@@ -55,6 +56,14 @@ LOCAL_REF_PREFIX = "local:"
 # the local ref — its OCC CAS uses the accepted creation receipt's version.
 # Current state may already differ; that is a real conflict, never a fresh token.
 FIRST_WRITE_ROW_VERSION = 0
+
+
+def list_original_inspection_expenses(db: Session, *, tenant_id: str,
+                                     after: int = 0) -> tuple[list[Expense], int | None]:
+    """Page bill references of every status; original bytes are not inspected here."""
+    rows = list(db.scalars(ledger_scoped_select(Expense, tenant_id).where(Expense.id > after)
+                          .order_by(Expense.id).limit(26)))
+    return rows[:25], rows[24].id if len(rows) > 25 else None
 
 
 def search_import_root_expenses(db: Session, *, tenant_id: str, query: str = "",

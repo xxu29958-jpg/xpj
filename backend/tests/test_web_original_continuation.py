@@ -198,3 +198,20 @@ def test_original_viewer_is_denied_before_replenishment_parser(monkeypatch):
         response = client.post("/web/expenses/17/original/replenish", params=_command_query(), content=b"unknown")
     assert response.status_code == 403
     parser.assert_not_called()
+
+
+@pytest.mark.parametrize("row_count,next_after", [(25, None), (26, 75)])
+def test_original_reference_query_preserves_ledger_cursor_and_bounded_page(row_count, next_after):
+    from sqlalchemy.dialects import postgresql
+
+    from app.services.expense_query import list_original_inspection_expenses
+
+    rows = [SimpleNamespace(id=value) for value in range(51, 51 + row_count)]
+    db = Mock()
+    db.scalars.return_value = rows
+    page, cursor = list_original_inspection_expenses(db, tenant_id="selected-ledger", after=50)
+    assert page == rows[:25] and cursor == next_after
+    db.scalars.assert_called_once()
+    compiled = db.scalars.call_args.args[0].compile(dialect=postgresql.dialect())
+    assert compiled.params == {"tenant_id_1": "selected-ledger", "id_1": 50, "param_1": 26}
+    assert "ORDER BY expenses.id" in str(compiled)

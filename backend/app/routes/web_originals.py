@@ -8,8 +8,6 @@ from sqlalchemy.orm import Session
 from starlette.responses import Response
 
 from app.database import get_db
-from app.ledger_scope import ledger_scoped_select
-from app.models import Expense
 from app.routes._upload_request import read_request_upload
 from app.routes._web_attachment_intent import (
     attachment_ack_response,
@@ -31,7 +29,7 @@ from app.schemas._original_attachment import (
     OriginalReplenishmentRequest,
     OriginalVerificationRequest,
 )
-from app.services.expense_query import get_expense
+from app.services.expense_query import get_expense, list_original_inspection_expenses
 from app.services.original_command_service import continue_original_cleanup, replenish_original, verify_original
 from app.services.original_health_service import inspect_expense_original
 
@@ -56,11 +54,9 @@ def web_originals(request: Request, ledger_id: str | None = None, after: int = Q
                   _local: None = LocalOnly, db: Session = Depends(get_db)) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
-    # Only references for this page; bytes are inspected solely by an explicit action.
-    rows = list(db.scalars(ledger_scoped_select(Expense, selected).where(Expense.id > after)
-                          .order_by(Expense.id).limit(26)))
+    rows, next_after = list_original_inspection_expenses(db, tenant_id=selected, after=after)
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected, page_title="原件检查")
-    ctx.update(original_rows=rows[:25], next_after=rows[24].id if len(rows) > 25 else None)
+    ctx.update(original_rows=rows, next_after=next_after)
     return templates.TemplateResponse(request=request, name="originals.html", context=ctx)
 
 
