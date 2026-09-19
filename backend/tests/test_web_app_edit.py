@@ -9,7 +9,7 @@ from api_contract_helpers import web_confirm_expense, web_save_expense
 from fastapi.testclient import TestClient
 
 from tests._runtime_protocol import negotiated_headers
-from tests._web_native_form_support import hidden_post_forms
+from tests._web_native_form_support import accounting_time_fields, hidden_post_forms
 
 
 def _create_pending(client: TestClient, *, identity) -> int:
@@ -99,9 +99,11 @@ def test_web_correction_preserves_foreign_currency_fields(web_client: TestClient
 
 
 def test_web_edit_save_sets_expense_time_in_accounting_tz(web_client: TestClient, *, identity) -> None:
-    """批1: the datetime-local input is a Beijing wall-clock the route must
-    assume-local → store UTC. 20:00 Asia/Shanghai = 12:00Z. The edit page then
-    prefills the same 20:00 wall-clock (round-trip, no 8h drift)."""
+    """A legacy wall-clock submission keeps its UTC fact without inventing source evidence.
+
+    The editor uses the captured ledger rule to prefill 20:00, while the pending
+    list shows the known 12:00Z instant without claiming a known source zone.
+    """
     expense_id = _create_pending(web_client, identity=identity)
     resp = web_save_expense(
         web_client,
@@ -121,15 +123,22 @@ def test_web_edit_save_sets_expense_time_in_accounting_tz(web_client: TestClient
     payload = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()
     # 20:00 +08:00 stored as 12:00Z (storage stays UTC).
     assert payload["expense_time"] == "2026-05-04T12:00:00Z", payload["expense_time"]
+    assert payload["accounting_time"]["precision"] == "unknown"
+    assert payload["accounting_time"]["basis"] == "legacy_expense_time"
+    assert payload["accounting_time"]["source_timezone"] is None
+    assert payload["accounting_time"]["source_utc_offset_seconds"] is None
 
     detail = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
     assert detail.status_code == 200
     # Prefilled back into the datetime-local input as the Beijing wall-clock.
-    assert 'name="expense_time"' in detail.text
-    assert 'value="2026-05-04T20:00"' in detail.text
+    time_fields = accounting_time_fields(detail.text)
+    assert time_fields["expense_time"] == "2026-05-04T20:00:00"
+    assert time_fields["source_timezone"] == "Asia/Shanghai"
+    assert time_fields["source_utc_offset_seconds"] == "28800"
+    assert "当地发生时刻" in detail.text
     pending = web_client.get("/web/pending?ledger_id=owner")
     assert pending.status_code == 200
-    assert "2026-05-04 20:00" in pending.text
+    assert "2026-05-04 12:00:00+00:00" in pending.text
 
 
 def test_web_edit_save_bad_expense_time_shows_error(web_client: TestClient, *, identity) -> None:

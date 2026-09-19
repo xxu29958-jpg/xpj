@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 from starlette.requests import Request
 
-from app.models import Expense
+from app.models import Expense, LedgerCalendarRevision
 from app.routes import _web_expense_fact as fact
 from app.routes import _web_expense_helpers as helpers
 from app.schemas import ExpenseRevisionListResponse, ExpenseRevisionResponse
@@ -29,7 +29,13 @@ def fact_context(monkeypatch):
         original_currency_code="JPY", original_amount_minor=12, exchange_rate_to_cny=Decimal("0.05"),
         exchange_rate_source="manual", exchange_rate_date=now.date(), fx_status="ready",
         merchant="车票", category="交通", status="confirmed", fact_revision=2, row_version=2,
-        expense_time=now, created_at=now, confirmed_at=now, updated_at=now, duplicate_status="none")
+        expense_time=now, created_at=now, confirmed_at=now, updated_at=now, duplicate_status="none",
+        accounting_date=now.date(), calendar_revision=1, time_precision="instant",
+        user_local_date=now.date(), source_timezone="Asia/Shanghai", source_utc_offset_seconds=28800,
+        accounting_date_basis="instant_calendar")
+    rule = LedgerCalendarRevision(ledger_id="owner", revision=1, timezone_name="Asia/Shanghai",
+        basis="legacy_assumed", adopted_at=now)
+    monkeypatch.setattr(helpers, "current_calendar", lambda _db, *, ledger_id: rule)
     monkeypatch.setattr(helpers, "get_expense", lambda *_a: expense)
     monkeypatch.setattr(fact, "get_expense", lambda *_a: expense)
     monkeypatch.setattr(helpers, "_base_ctx", lambda *_a, **_k: {
