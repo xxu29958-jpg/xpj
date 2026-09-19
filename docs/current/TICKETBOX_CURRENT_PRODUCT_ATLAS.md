@@ -119,7 +119,7 @@ flowchart LR
 
 按当前风险/依赖安排，新反例可局部调整，不按五域或架构章节机械排队。每次完成一个真实纵向任务，同时改善入口、结果理解和续办；其他缺口继续留在本图。先产品能力完整，再剩余美术交互，最后 exact RC。
 
-当前施工：[原生 CSV 财务事件续办](TICKETBOX_CSV_EVENT_CONTINUATION_CONTRACT.md)已通过候选资格并以 #422 合并，`44d684fb` 的主线 CI、CodeQL、Connected 独立通过。下一片为[统一账务日期与原始时间意图](TICKETBOX_ACCOUNTING_CALENDAR_CONTRACT.md)，隔离树已有语义合同及 6 失败 / 2 通过的纯函数 RED，尚无生产实现。其余目标、保留条件和后续顺序继续有效。
+当前施工：[原生 CSV 财务事件续办](TICKETBOX_CSV_EVENT_CONTINUATION_CONTRACT.md)已通过候选资格并以 #422 合并，`44d684fb` 的主线 CI、CodeQL、Connected 独立通过。[统一账务日期与原始时间意图](TICKETBOX_ACCOUNTING_CALENDAR_CONTRACT.md)正在隔离树实施：已有时间内核、存储采用候选、手工命令/回执、共享期间查询、日历治理及 Android 持久数据层。原反例已在窄验证中转绿，Web、Android 实际表单和其他录入入口仍在闭合；数据库、完整多端及 exact candidate 云端资格尚未成立，不能提前算作主线能力。其余目标、保留条件和后续顺序继续有效。
 
 | 顺序 | 完整用户结果、复用与依赖 | 退出条件与保留要求 |
 |---|---|---|

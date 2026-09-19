@@ -181,6 +181,13 @@ their existing accounting day and date-only meaning. One optional
 remains absent. The rule itself is resolved by ledger and revision, not copied
 from a mutable display preference.
 
+An imported file or accepted split can carry an agreed accounting day while
+its original clock precision remains unknown. `recorded_date` preserves that
+day without inventing a user-local date; confirmation must not replace it with
+the confirmation day. Source rule identifiers are evidence, not authority in
+another ledger. The receiving import batch captures its own valid rule before
+review or deferred apply.
+
 Legacy request bodies remain byte/shape compatible. Their accepted original
 result wins; a genuinely new legacy execution uses the saved initial
 compatibility rule and is explicitly identified as such. Known captured calendar
@@ -240,3 +247,15 @@ instant. The exact-instant control passed. The tests supply intended new fields
 on in-memory Expense objects, so this proves the current pure owner does not yet
 honor the contract; it does not prove database persistence, migration or UI
 behavior. No production code or daily data changed for this RED.
+
+Local implementation checkpoint (2026-09-20, integrated source `762aa5e8e`):
+the pure kernel, calendar/adoption shape, original request/receipt preservation,
+manual create/edit/confirmation, frozen FX behavior, shared date queries and
+Owner calendar governance are now implemented in the isolated branch. The
+latest combined backend narrow run passed 88 tests in 2.27 seconds; OpenAPI
+and the Owner template compile. The Android data checkpoint `c16fe7a4` passed
+30 JVM tests and compiled instrumentation tests with generated Room 21 schema;
+it has been integrated, but no device result is claimed. The seven migration
+tests and three new HTTP/PG tests have only been collected locally. Web forms,
+Android actual input/display and non-manual producers remain in progress.
+This is neither a qualified candidate nor a merged/daily-installation result.
