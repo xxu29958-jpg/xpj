@@ -47814,6 +47814,28 @@
               "title": "Timezone",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "idempotency_key",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Idempotency Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "draft_scope",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 2048,
+              "title": "Draft Scope",
+              "type": "string"
+            }
           }
         ],
         "requestBody": {

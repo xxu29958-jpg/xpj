@@ -252,3 +252,54 @@ retry, every writer's authentication/role boundary, and actual separate-session
 cleanup acceptance followed by HTTP replenishment before old-file settlement.
 Those new cases require the next exact cloud source; collection is not execution.
 Web/Android file continuity and final integrated qualification remain open.
+
+The Web and Android consumers are now integrated into the same PR #424 candidate.
+Web pending/rejected editing and confirmed facts link to original inspection;
+data quality offers an explicit, paginated 25-bill check. The existing draft
+state machine retains binary files in IndexedDB under the original key and
+captured identity. Native fresh online upload remains available without JavaScript,
+without a device-bound loopback session, or when browser storage is unavailable;
+an existing uncertain task cannot use that fallback to invent a replacement key.
+Legacy verification uses the decoded actual image response and an explicit user
+review, never a digest copied from a health observation. The replaced desktop
+upload handler is retired after the new shared form handles its consumers.
+
+Android pending/rejected and confirmed screens use the existing UploadIntent,
+FileStore, Room and Outbox owners for the same-bill commands. Replenishment keeps
+the original bytes without the screenshot preprocessor. A successful image
+render and matching response ETag/byte digest precede explicit legacy review.
+Cleanup shows policy suspension and each file's outcome. Accepted receipts remain
+visible even when a later refresh fails. Editing retains raw inputs and the old
+OCC basis; explicit review may adopt a new basis only when Expense, items and
+splits differ solely in attachment metadata. Actual concurrent financial changes
+still use the existing conflict review; this slice does not introduce automatic
+financial draft merging.
+
+The Web constituent `510324408` passed 129 narrow tests and a real Chromium
+continuation exercise (file reload, offline, lost ACK, original-key replay, OCC,
+binding switch, storage refusal, and actual-image review). Its 34 PostgreSQL
+cases were collected only. The Android constituent `dc4cf206` passed 44 unit
+tests with no skips, production/test Detekt, and instrumentation compilation;
+the real Room reopen/uncertain-admission and Compose input-preservation tests
+still need Connected execution. Root integration reran the 15 direct Web adapter
+and draft tests successfully and regenerated OpenAPI from the actual routes.
+
+The preceding root checkpoint `46c60a9` had two actual CI failures: a newly added
+test suppression increased repository debt, and the new cleanup/replenishment
+concurrency test called a Pydantic method on the real Settings dataclass. The
+normal namespace import removes the suppression; `dataclasses.replace` constructs
+the real test settings. The four query-token tests pass without the suppression.
+No threshold or exemption was relaxed. The concurrency interleaving itself had
+not run in that failed job and remains a required final-source PostgreSQL check.
+Final integrated CI, CodeQL and Connected, protected merge and independent main
+qualification remain open. These client results do not qualify an Internal Beta RC.
+
+Final integration review found one route directly querying Expense for the
+inspection list. The bounded query now belongs to `expense_query`, preserving
+ledger isolation, every bill status and the 25+1 cursor window; the route only
+presents it. The actual route-layer count returned from one to the existing
+allowed zero. The integrated Web group passed 131 tests in 5.88 seconds, and
+the real Chromium continuation exercise passed again on the integrated source.
+The bounded consumer review found no remaining blocker in original entry,
+cleanup feedback, raw editing inputs or accepted-receipt handling. Its source
+review does not substitute for the final PostgreSQL/Connected executions.
