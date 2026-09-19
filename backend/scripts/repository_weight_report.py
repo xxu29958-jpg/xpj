@@ -67,7 +67,7 @@ def compare_snapshots(base: dict, current: dict, policy_failures: list[str]) -> 
     if not failures and not advisories and delta["production_loc"] > 0:
         verdict = "HEALTHY GROWTH"
     report = {
-        "format_version": 1,
+        "format_version": 2,
         "tools": {tool: version(tool) for tool in ("ruff", "Pygments", "PyYAML", "lizard")},
         "policy": {
             "loc": "Physical source lines, including comments and blanks; mixed lines count as code.",
@@ -351,6 +351,13 @@ def _serialize_query(
         "identity": {
             "base": report["base"]["sha"],
             "head": report["current"]["sha"],
+            "base_sha": (report.get("identity") or {}).get("base_sha") or report["base"]["sha"],
+            "measurement_sha": (
+                (report.get("identity") or {}).get("measurement_sha") or report["current"]["sha"]
+            ),
+            "source_sha": (report.get("identity") or {}).get("source_sha"),
+            "measurement_kind": (report.get("identity") or {}).get("measurement_kind"),
+            "event": (report.get("identity") or {}).get("event"),
             "historical": bool(report.get("historical")),
         },
         "git_changes": git_rows,
@@ -401,7 +408,11 @@ def _query_row_line(row: dict) -> str:
 def render_query(result: dict) -> str:
     lines = [
         f"GLOBAL VERDICT (unfiltered): {result['verdict']}",
-        f"Query identity base={result['identity']['base']} head={result['identity']['head']}",
+        (
+            f"Query identity base={result['identity']['base']} "
+            f"measurement_sha={result['identity'].get('measurement_sha')} "
+            f"source_sha={result['identity'].get('source_sha')}"
+        ),
         f"truncated={str(result['truncated']).lower()} limit={result['limit']}",
     ]
     if result["missing"]["git_changes"] or result["missing"]["git_hunks"]:
@@ -471,9 +482,15 @@ def _failure_line(detail: dict) -> str:
 
 def _render_header(report: dict) -> list[str]:
     current, base = report["current"], report["base"]
+    identity = report.get("identity") if isinstance(report.get("identity"), dict) else {}
+    measurement = identity.get("measurement_sha") or current["sha"]
+    source = identity.get("source_sha") or current["sha"]
+    kind = identity.get("measurement_kind") or "direct_head"
+    event = identity.get("event") or "none"
     return [
-        f"CODEBASE WEIGHT — exact {current['sha']}",
-        f"Base: {base['sha']}",
+        f"CODEBASE WEIGHT — exact {measurement}",
+        f"Base: {identity.get('base_sha') or base['sha']}",
+        f"source_sha={source} measurement_sha={measurement} measurement_kind={kind} event={event}",
         "Identity: audit pair of exact Git commits; dirty/untracked files are not measured.",
         "LOC = physical source lines (code + comment-only + blank); no LOC ceiling.",
         f"Verdict: {report['verdict']}",

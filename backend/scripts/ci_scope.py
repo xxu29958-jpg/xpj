@@ -42,6 +42,29 @@ def write_outputs(path: Path, scopes: dict[str, bool]) -> None:
         output.write(f"postgres_matrix={POSTGRES_RELEASE_POLICY.matrix_json()}\n")
 
 
+def _forced_full(
+    identity: dict[str, object],
+    reason: str,
+    status: str,
+    *,
+    diff_error: str | None = None,
+) -> dict[str, object]:
+    decision = classify_ci_decision([])
+    decision["reason"] = reason
+    decision["status"] = status
+    decision["identity"] = identity
+    if diff_error:
+        decision["diff_error"] = diff_error
+    lane_status = "CHECK_FAILED" if status == "CHECK_FAILED_FULL" else "UNKNOWN_FULL"
+    lanes = decision.get("lanes")
+    if isinstance(lanes, dict):
+        for lane in lanes.values():
+            if isinstance(lane, dict):
+                lane["status"] = lane_status
+                lane["reason"] = reason
+    return decision
+
+
 def resolve_ci_scope(event: str, base: str, head: str) -> dict[str, object]:
     identity = {
         "event": event,
@@ -50,32 +73,20 @@ def resolve_ci_scope(event: str, base: str, head: str) -> dict[str, object]:
         "source_kind": "event_diff",
     }
     if event not in {"pull_request", "push"} or not base or not head:
-        decision = classify_ci_decision([])
-        reason = "event has no trusted incremental diff base; running all heavy jobs"
-        decision["reason"] = reason
-        decision["status"] = "UNKNOWN_FULL"
-        decision["identity"] = identity
-        lanes = decision.get("lanes")
-        if isinstance(lanes, dict):
-            for lane in lanes.values():
-                if isinstance(lane, dict):
-                    lane["reason"] = reason
-        return decision
+        return _forced_full(
+            identity,
+            "event has no trusted incremental diff base; running all heavy jobs",
+            "UNKNOWN_FULL",
+        )
     try:
         paths = changed_paths(base, head)
     except (OSError, subprocess.CalledProcessError) as exc:
-        decision = classify_ci_decision([])
-        reason = f"diff unavailable; running all heavy jobs: {exc}"
-        decision["reason"] = reason
-        decision["status"] = "UNKNOWN_FULL"
-        decision["identity"] = identity
-        decision["diff_error"] = type(exc).__name__
-        lanes = decision.get("lanes")
-        if isinstance(lanes, dict):
-            for lane in lanes.values():
-                if isinstance(lane, dict):
-                    lane["reason"] = reason
-        return decision
+        return _forced_full(
+            identity,
+            f"diff unavailable; running all heavy jobs: {exc}",
+            "CHECK_FAILED_FULL",
+            diff_error=type(exc).__name__,
+        )
     decision = classify_ci_decision(paths)
     decision["identity"] = identity
     decision["git_paths"] = paths

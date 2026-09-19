@@ -43,11 +43,25 @@ def repo(tmp_path: Path) -> Path:
     return root
 
 
-def run_weight(repo: Path, base: str, head: str, tmp_path: Path) -> tuple[subprocess.CompletedProcess, dict]:
+def run_weight(
+    repo: Path,
+    base: str,
+    head: str,
+    tmp_path: Path,
+    extra: list[str] | None = None,
+) -> tuple[subprocess.CompletedProcess, dict]:
     output = tmp_path / "weight.json"
+    command = [
+        sys.executable, str(ENTRY), "--repo", str(repo), "--base", base, "--head", head, "--json", str(output),
+    ]
+    if extra:
+        command.extend(extra)
     result = subprocess.run(
-        [sys.executable, str(ENTRY), "--repo", str(repo), "--base", base, "--head", head, "--json", str(output)],
-        env={key: value for key, value in os.environ.items() if key != "GITHUB_STEP_SUMMARY"},
+        command,
+        env={
+            key: value for key, value in os.environ.items()
+            if key not in {"GITHUB_STEP_SUMMARY", "XPJ_WEIGHT_SOURCE_SHA", "XPJ_WEIGHT_EVENT"}
+        },
         capture_output=True, text=True, encoding="utf-8",
     )
     report = json.loads(output.read_text(encoding="utf-8")) if output.exists() else {}
@@ -451,6 +465,7 @@ def test_task_navigation_entries_point_at_real_files() -> None:
     ci_task = resolve_task("ci-trigger", ROOT, sha)
     web_task = resolve_task("shared-web-theme", ROOT, sha)
     assert ci_task["source_sha"] == sha
+    assert ci_task["measurement_sha"] == sha
     assert ci_task["historical"] is False
     assert all(node["present"] for node in ci_task["chain"])
     assert all(node["present"] for node in web_task["chain"])
@@ -462,6 +477,7 @@ def test_task_navigation_entries_point_at_real_files() -> None:
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert f"source_sha={sha}" in result.stdout
+    assert f"measurement_sha={sha}" in result.stdout
     assert "historical=false" in result.stdout
     assert "backend/app/static/shared/tokens.css" in result.stdout
     assert "desktop/backend_manager/web_bff.py" in result.stdout
@@ -546,12 +562,21 @@ def test_historical_task_map_binds_to_artifact_head_not_worktree(repo, tmp_path)
     task = resolve_task("shared-web-theme", repo, sha, historical=True)
     nodes = {node["path"]: node for node in task["chain"]}
     assert task["source_sha"] == sha
+    assert task["measurement_sha"] == sha
     assert task["historical"] is True
     assert nodes[tracked]["present"] is True
     assert nodes["desktop/backend_manager/web_bff.py"]["present"] is False
     artifact = tmp_path / "historical.json"
     artifact.write_text(json.dumps({
         "verdict": "NO DEBT REGRESSION",
+        "format_version": 2,
+        "identity": {
+            "base_sha": sha,
+            "measurement_sha": sha,
+            "source_sha": sha,
+            "measurement_kind": "direct_head",
+            "event": None,
+        },
         "base": {"sha": sha, "files": [], "functions": []},
         "current": {"sha": sha, "files": [], "functions": []},
         "changes": [],
@@ -564,5 +589,84 @@ def test_historical_task_map_binds_to_artifact_head_not_worktree(repo, tmp_path)
     )
     assert query.returncode == 0, query.stdout + query.stderr
     assert f"source_sha={sha}" in query.stdout
+    assert f"measurement_sha={sha}" in query.stdout
     assert "historical=true" in query.stdout
     assert "desktop/backend_manager/web_bff.py present=false" in query.stdout
+
+
+def test_pull_request_identity_keeps_source_off_the_merge_snapshot(repo, tmp_path) -> None:
+    from scripts.engineering_task_map import resolve_task
+
+    tracked = "backend/app/static/shared/tokens.css"
+    source = commit_files(repo, {
+        tracked: "a { color: red; }\n",
+        "backend/app/service.py": "VALUE = 1\n",
+    }, "source head")
+    measurement = commit_files(repo, {
+        tracked: "a { color: blue; }\n",
+        "backend/app/service.py": "VALUE = 2\n",
+    }, "merge snapshot")
+    result, report = run_weight(
+        repo, source, measurement, tmp_path,
+        extra=["--source-sha", source, "--event", "pull_request"],
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert report["format_version"] == 2
+    assert report["identity"]["source_sha"] == source
+    assert report["identity"]["measurement_sha"] == measurement
+    assert report["identity"]["measurement_kind"] == "pull_request_merge"
+    assert report["current"]["sha"] == measurement
+    assert "source_sha=" + source in result.stdout
+    assert "measurement_sha=" + measurement in result.stdout
+    task = resolve_task(
+        "shared-web-theme", repo, measurement, historical=True, source_sha=source,
+    )
+    assert task["source_sha"] == source
+    assert task["measurement_sha"] == measurement
+    query = subprocess.run(
+        [
+            sys.executable, str(ENTRY), "--repo", str(repo),
+            "--from-json", str(tmp_path / "weight.json"), "--task", "shared-web-theme",
+        ],
+        capture_output=True, text=True, encoding="utf-8",
+        env={
+            key: value for key, value in os.environ.items()
+            if key not in {"GITHUB_STEP_SUMMARY", "XPJ_WEIGHT_SOURCE_SHA", "XPJ_WEIGHT_EVENT"}
+        },
+    )
+    assert query.returncode == 0, query.stdout + query.stderr
+    assert f"source_sha={source}" in query.stdout
+    assert f"measurement_sha={measurement}" in query.stdout
+
+
+def test_pull_request_refuses_to_label_merge_snapshot_as_source(repo, tmp_path) -> None:
+    base = commit_files(repo, {"backend/app/service.py": "VALUE = 1\n"}, "base")
+    head = commit_files(repo, {"backend/app/service.py": "VALUE = 2\n"}, "head")
+    result, _report = run_weight(
+        repo, base, head, tmp_path,
+        extra=["--source-sha", head, "--event", "pull_request"],
+    )
+    assert result.returncode == 2
+    assert "must not name the merge snapshot as source_sha" in result.stderr
+
+
+def test_historical_query_without_identity_source_fails_closed(repo, tmp_path) -> None:
+    sha = commit_files(repo, {"backend/app/service.py": "VALUE = 1\n"}, "head")
+    artifact = tmp_path / "old.json"
+    artifact.write_text(json.dumps({
+        "verdict": "NO DEBT REGRESSION",
+        "base": {"sha": sha, "files": [], "functions": []},
+        "current": {"sha": sha, "files": [], "functions": []},
+        "changes": [],
+        "failure_details": [],
+    }), encoding="utf-8")
+    query = subprocess.run(
+        [sys.executable, str(ENTRY), "--repo", str(repo), "--from-json", str(artifact), "--task", "ci-trigger"],
+        capture_output=True, text=True, encoding="utf-8",
+        env={
+            key: value for key, value in os.environ.items()
+            if key not in {"GITHUB_STEP_SUMMARY", "XPJ_WEIGHT_SOURCE_SHA", "XPJ_WEIGHT_EVENT"}
+        },
+    )
+    assert query.returncode == 2
+    assert "identity.source_sha" in query.stderr or "identity.measurement_sha" in query.stderr

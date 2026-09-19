@@ -170,6 +170,8 @@ jobs:
           XPJ_AUDIT_DEFAULT_REF: refs/remotes/origin/${{ github.event.repository.default_branch }}
           XPJ_AUDIT_BASE_REF: ${{ needs.scope.outputs.audit_base_sha }}
           XPJ_CODEBASE_WEIGHT_JSON: ${{ runner.temp }}/codebase-weight.json
+          XPJ_WEIGHT_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          XPJ_WEIGHT_EVENT: ${{ github.event_name }}
         run: python scripts\release_audit.py
 
       - name: Upload repository codebase weight
@@ -624,6 +626,46 @@ jobs:
           WINDOWS_PACKAGING_SHA: ${{ needs.windows_packaging.outputs.qualification_sha }}
           WINDOWS_PACKAGING_SOURCE_SHA: ${{ needs.windows_packaging.outputs.qualification_source_sha }}
         run: python -E -S backend/scripts/verify_backend_ci_results.py
+
+  ci_run_timing:
+    name: CI run timing
+    needs: backend
+    if: ${{ always() && !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+
+      - name: Record observed runner timing
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: >-
+          python -E -S backend/scripts/ci_run_timing.py
+          --from-github
+          --observe
+          --output-json ${{ runner.temp }}/ci-run-timing.json
+          --summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload CI run timing
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ci-run-timing
+          path: ${{ runner.temp }}/ci-run-timing.json
+          if-no-files-found: error
+          retention-days: 30
 
   backend_postgres_ordinary:
     name: "Backend PostgreSQL / ordinary ${{ matrix.shard.label }} (PG ${{ matrix.postgres['postgres-major'] }})"

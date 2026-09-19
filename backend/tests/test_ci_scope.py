@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 from scripts import ci_gap_trigger_scope, ci_scope
@@ -488,6 +489,19 @@ def test_scope_cli_keeps_github_output_boolean_and_encodes_newline_paths(tmp_pat
     assert "weird\nname.css" in hit_paths
 
 
+def test_diff_unavailable_is_check_failed_full_not_unknown_full(monkeypatch) -> None:
+    def boom(base, head):
+        raise subprocess.CalledProcessError(1, ["git", "diff"])
+
+    monkeypatch.setattr(ci_scope, "changed_paths", boom)
+    decision = ci_scope.resolve_ci_scope("pull_request", "aa", "bb")
+    assert decision["status"] == "CHECK_FAILED_FULL"
+    assert decision["scopes"] == all_ci_scopes()
+    assert decision["diff_error"] == "CalledProcessError"
+    assert all(lane["status"] == "CHECK_FAILED" for lane in decision["lanes"].values())
+    assert all(lane["status"] != "UNKNOWN_FULL" for lane in decision["lanes"].values())
+
+
 def test_push_without_base_explains_unknown_full(tmp_path, monkeypatch) -> None:
     output = tmp_path / "github-output"
     summary = tmp_path / "summary.md"
@@ -498,6 +512,26 @@ def test_push_without_base_explains_unknown_full(tmp_path, monkeypatch) -> None:
     text = output.read_text(encoding="utf-8")
     assert all(f"{name}=true" in text for name in ("postgres", "backend_frozen", "desktop", "android", "windows"))
     assert "no trusted incremental diff base" in summary.read_text(encoding="utf-8")
+    assert "decision=UNKNOWN_FULL" in summary.read_text(encoding="utf-8")
+
+
+def test_scope_cli_reports_check_failed_full(tmp_path, monkeypatch) -> None:
+    output = tmp_path / "github-output"
+    summary = tmp_path / "summary.md"
+
+    def boom(base, head):
+        raise subprocess.CalledProcessError(1, ["git", "diff"])
+
+    monkeypatch.setattr(ci_scope, "changed_paths", boom)
+    monkeypatch.setattr(ci_scope.sys, "argv", [
+        "ci_scope.py", "--event", "pull_request", "--base", "aa", "--head", "bb",
+        "--output", str(output), "--summary", str(summary),
+    ])
+    assert ci_scope.main() == 0
+    text = summary.read_text(encoding="utf-8")
+    assert "decision=CHECK_FAILED_FULL" in text
+    assert "CHECK_FAILED" in text
+    assert "UNKNOWN_FULL" not in text
 
 
 def test_mixed_policy_known_and_unknown_paths_keep_all_hit_explanations() -> None:

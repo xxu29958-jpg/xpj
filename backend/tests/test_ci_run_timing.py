@@ -10,93 +10,12 @@ from scripts import ci_run_timing
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 
 
-def test_attempt_listing_does_not_double_count_inherited_jobs() -> None:
-    first = {
-        "id": 1,
-        "name": "Backend contracts",
-        "conclusion": "success",
-        "run_attempt": 1,
-        "created_at": "2026-09-18T02:52:30Z",
-        "started_at": "2026-09-18T02:52:34Z",
-        "completed_at": "2026-09-18T02:59:38Z",
-    }
-    latest = {
-        **first,
-        "run_attempt": 2,
-        "created_at": "2026-09-18T03:35:00Z",
-    }
-    summary = ci_run_timing.summarize_jobs([latest], attempt=2, previous_jobs=[first])
-    assert summary["jobs"][0]["inherited"] is True
-    assert summary["runner_execution_minutes"] == 0
-    assert summary["complete"] is False
-    assert any("inherited" in item for item in summary["incomplete"])
-
-
-def test_inverted_timestamps_are_incomplete_not_silently_zeroed() -> None:
-    summary = ci_run_timing.summarize_jobs(
-        [{
-            "id": 2,
-            "name": "inverted",
-            "conclusion": "success",
-            "started_at": "2026-09-18T04:00:00Z",
-            "completed_at": "2026-09-18T03:00:00Z",
-        }],
-        attempt=1,
-    )
-    assert summary["jobs"][0]["inverted"] is True
-    assert summary["jobs"][0]["execution_s"] is None
-    assert summary["runner_execution_minutes"] == 0
-    assert summary["complete"] is False
-
-
-def test_cancelled_consumed_time_is_listed_separately() -> None:
-    summary = ci_run_timing.summarize_jobs(
-        [{
-            "id": 3,
-            "name": "Android",
-            "conclusion": "cancelled",
-            "started_at": "2026-09-18T02:00:00Z",
-            "completed_at": "2026-09-18T02:10:00Z",
-        }],
-        attempt=1,
-    )
-    assert summary["cancelled_consumed_minutes"] == 10
-    assert summary["runner_execution_minutes"] == 10
-    assert summary["complete"] is True
-
-
-def test_cli_reads_fixture_jobs(tmp_path: Path) -> None:
-    jobs = tmp_path / "jobs.json"
-    jobs.write_text(json.dumps({"jobs": [{
-        "id": 4,
-        "name": "Connected",
-        "conclusion": "success",
-        "started_at": "2026-09-18T02:53:19Z",
-        "completed_at": "2026-09-18T03:15:53Z",
-        "steps": [{
-            "name": "Run connected test",
-            "conclusion": "success",
-            "started_at": "2026-09-18T02:57:33Z",
-            "completed_at": "2026-09-18T03:15:34Z",
-        }],
-    }]}), encoding="utf-8")
-    result = subprocess.run(
-        [sys.executable, str(SCRIPTS / "ci_run_timing.py"), "--jobs-json", str(jobs), "--attempt", "1"],
-        capture_output=True, text=True, encoding="utf-8",
-    )
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert "runner_execution_minutes=" in result.stdout
-    assert "Connected" in result.stdout
-    assert "queue_s=" in result.stdout
-    assert "step Run connected test" in result.stdout
-    assert "elapsed_s=" in result.stdout
-
-
 def _job(**fields: object) -> dict:
     row: dict[str, object] = {
         "id": 1,
         "name": "Backend contracts",
         "conclusion": "success",
+        "status": "completed",
         "run_attempt": 1,
         "run_id": 100,
         "head_sha": "a" * 40,
@@ -109,14 +28,185 @@ def _job(**fields: object) -> dict:
     return row
 
 
+def test_attempt_listing_does_not_double_count_inherited_jobs() -> None:
+    first = _job(
+        created_at="2026-09-18T02:52:30Z",
+        started_at="2026-09-18T02:52:34Z",
+        completed_at="2026-09-18T02:59:38Z",
+    )
+    latest = {
+        **first,
+        "run_attempt": 2,
+        "created_at": "2026-09-18T03:35:00Z",
+    }
+    summary = ci_run_timing.summarize_jobs([latest], attempt=2, previous_jobs=[first])
+    assert summary["jobs"][0]["inherited"] is True
+    assert summary["runner_execution_minutes"] == 0
+    assert summary["complete"] is True
+
+
+def test_different_id_inherited_job_contributes_zero_minutes() -> None:
+    first = _job(
+        id=105463540564,
+        name="CI scope",
+        started_at="2026-09-18T02:52:23Z",
+        completed_at="2026-09-18T02:52:32Z",
+        created_at="2026-09-18T02:52:20Z",
+        steps=[{
+            "name": "Resolve heavy-job scope",
+            "conclusion": "success",
+            "started_at": "2026-09-18T02:52:24Z",
+            "completed_at": "2026-09-18T02:52:31Z",
+        }],
+    )
+    inherited = {
+        **first,
+        "id": 105471586858,
+        "run_attempt": 2,
+        "created_at": "2026-09-18T03:35:00Z",
+    }
+    summary = ci_run_timing.summarize_jobs([inherited], attempt=2, previous_jobs=[first])
+    assert summary["jobs"][0]["id"] == 105471586858
+    assert summary["jobs"][0]["inherited"] is True
+    assert summary["jobs"][0]["queue_s"] is None
+    assert summary["jobs"][0]["queue_status"] == "created_after_start"
+    assert summary["runner_execution_minutes"] == 0
+    assert summary["complete"] is True
+
+
+def test_attempt_two_without_previous_evidence_is_incomplete() -> None:
+    summary = ci_run_timing.summarize_jobs([_job(run_attempt=2)], attempt=2)
+    assert summary["complete"] is False
+    assert summary["runner_execution_minutes"] == 0
+    assert any("previous-attempt evidence" in item for item in summary["incomplete"])
+
+
+def test_timed_out_execution_is_counted_and_incomplete() -> None:
+    summary = ci_run_timing.summarize_jobs(
+        [_job(
+            conclusion="timed_out",
+            started_at="2026-09-18T02:00:00Z",
+            completed_at="2026-09-18T02:10:00Z",
+        )],
+        attempt=1,
+    )
+    assert summary["other_execution_minutes"] == 10
+    assert summary["total_execution_minutes"] == 10
+    assert summary["runner_execution_minutes"] == 10
+    assert summary["complete"] is False
+    assert any("unsupported" in item for item in summary["incomplete"])
+
+
+def test_missing_shared_identity_is_incomplete() -> None:
+    summary = ci_run_timing.summarize_jobs(
+        [{
+            "id": 9,
+            "name": "anonymous",
+            "conclusion": "success",
+            "status": "completed",
+            "started_at": "2026-09-18T02:00:00Z",
+            "completed_at": "2026-09-18T02:10:00Z",
+        }],
+        attempt=1,
+    )
+    assert summary["complete"] is False
+    assert summary["run_id"] is None
+    assert summary["head_sha"] is None
+    assert summary["workflow_name"] is None
+    assert summary["runner_execution_minutes"] == 0
+    assert any("missing shared" in item for item in summary["incomplete"])
+
+
+def test_missing_run_attempt_is_incomplete() -> None:
+    summary = ci_run_timing.summarize_jobs(
+        [_job(run_attempt=None)],
+        attempt=1,
+    )
+    assert summary["complete"] is False
+    assert any("run_attempt" in item for item in summary["incomplete"])
+
+
+def test_successful_step_without_timestamps_is_incomplete() -> None:
+    summary = ci_run_timing.summarize_jobs(
+        [_job(steps=[{
+            "name": "Audit",
+            "conclusion": "success",
+            "started_at": None,
+            "completed_at": None,
+        }])],
+        attempt=1,
+    )
+    assert summary["complete"] is False
+    assert summary["runner_execution_minutes"] == 0
+    assert any("executed step missing timestamps" in item for item in summary["incomplete"])
+
+
+def test_inverted_timestamps_are_incomplete_not_silently_zeroed() -> None:
+    summary = ci_run_timing.summarize_jobs(
+        [_job(
+            started_at="2026-09-18T04:00:00Z",
+            completed_at="2026-09-18T03:00:00Z",
+        )],
+        attempt=1,
+    )
+    assert summary["jobs"][0]["inverted"] is True
+    assert summary["jobs"][0]["execution_s"] is None
+    assert summary["runner_execution_minutes"] == 0
+    assert summary["complete"] is False
+
+
+def test_cancelled_consumed_time_is_listed_separately() -> None:
+    summary = ci_run_timing.summarize_jobs(
+        [_job(
+            name="Android",
+            conclusion="cancelled",
+            started_at="2026-09-18T02:00:00Z",
+            completed_at="2026-09-18T02:10:00Z",
+        )],
+        attempt=1,
+    )
+    assert summary["cancelled_consumed_minutes"] == 10
+    assert summary["cancelled_execution_minutes"] == 10
+    assert summary["runner_execution_minutes"] == 10
+    assert summary["complete"] is True
+
+
+def test_cli_reads_fixture_jobs(tmp_path: Path) -> None:
+    jobs = tmp_path / "jobs.json"
+    jobs.write_text(json.dumps({"jobs": [_job(
+        id=4,
+        name="Connected",
+        started_at="2026-09-18T02:53:19Z",
+        completed_at="2026-09-18T03:15:53Z",
+        created_at="2026-09-18T02:53:00Z",
+        steps=[{
+            "name": "Run connected test",
+            "conclusion": "success",
+            "started_at": "2026-09-18T02:57:33Z",
+            "completed_at": "2026-09-18T03:15:34Z",
+        }],
+    )]}), encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, str(SCRIPTS / "ci_run_timing.py"), "--jobs-json", str(jobs), "--attempt", "1"],
+        capture_output=True, text=True, encoding="utf-8",
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "runner_execution_minutes=" in result.stdout
+    assert "Connected" in result.stdout
+    assert "queue_s=" in result.stdout
+    assert "step Run connected test" in result.stdout
+    assert "elapsed_s=" in result.stdout
+
+
 def test_attempt_mismatch_contributes_zero_current_attempt_minutes() -> None:
     summary = ci_run_timing.summarize_jobs(
         [_job(run_attempt=1, started_at="2026-09-18T02:00:00Z", completed_at="2026-09-18T02:10:00Z")],
         attempt=2,
+        previous_jobs=[],
     )
     assert summary["runner_execution_minutes"] == 0
     assert summary["complete"] is False
-    assert any("attempt mismatch" in item for item in summary["incomplete"])
+    assert any("previous-attempt evidence" in item or "attempt mismatch" in item for item in summary["incomplete"])
 
 
 def test_mixed_run_id_or_head_sha_is_incomplete() -> None:
@@ -188,3 +278,58 @@ def test_step_inversion_is_incomplete_and_not_billed() -> None:
     assert summary["complete"] is False
     assert summary["runner_execution_minutes"] == 0
     assert any("inverted step" in item for item in summary["incomplete"])
+
+
+def test_negative_created_to_started_is_not_queue_time() -> None:
+    rendered = ci_run_timing.render_timing(
+        ci_run_timing.summarize_jobs(
+            [_job(created_at="2026-09-18T03:35:00Z", started_at="2026-09-18T02:52:23Z")],
+            attempt=1,
+        )
+    )
+    assert "queue_s=None" in rendered
+    assert "created_after_start" in rendered
+    assert "queue_s=-" not in rendered
+
+
+class _FakeResponse:
+    def __init__(self, payload: dict) -> None:
+        self._payload = json.dumps(payload).encode("utf-8")
+
+    def read(self) -> bytes:
+        return self._payload
+
+    def __enter__(self) -> _FakeResponse:
+        return self
+
+    def __exit__(self, *args: object) -> bool:
+        return False
+
+
+def test_github_job_fetch_paginates() -> None:
+    def opener(request):
+        query = request.full_url.rsplit("&page=", 1)[-1]
+        if query == "1":
+            return _FakeResponse({"jobs": [_job(id=index, name=f"job-{index}") for index in range(100)]})
+        return _FakeResponse({"jobs": [_job(id=2, name="two")]})
+
+    jobs = ci_run_timing.fetch_github_jobs("o/r", 9, 1, "token", urlopen=opener)
+    assert len(jobs) == 101
+    assert jobs[-1]["name"] == "two"
+
+
+def test_connected_workflow_keeps_direct_gradle_and_inner_timing() -> None:
+    workflow = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "android-connected-test.yml"
+    text = workflow.read_text(encoding="utf-8")
+    assert "ci-connected-inner-timing.init.gradle" in text
+    raw_line = next(
+        stripped for raw in text.splitlines()
+        if (stripped := raw.strip()) and ":app:connectedGrayDebugAndroidTest" in stripped
+    )
+    line = raw_line.removeprefix("script:").strip()
+    tokens = line.split()
+    assert tokens[0] == "timeout"
+    assert "./gradlew" in tokens
+    assert ":app:connectedGrayDebugAndroidTest" in tokens
+    assert "-I" in tokens
+    assert "ci-connected-inner-timing.init.gradle" in tokens

@@ -406,8 +406,9 @@ def _lane_map(
 ) -> dict[str, dict[str, object]]:
     lanes: dict[str, dict[str, object]] = {}
     for name, selected in scopes.items():
-        if status == "UNKNOWN_FULL":
-            lanes[name] = {"status": "UNKNOWN_FULL", "reason": reason, "paths": [hit["path"] for hit in hits]}
+        if status in {"UNKNOWN_FULL", "CHECK_FAILED_FULL"}:
+            lane_status = "CHECK_FAILED" if status == "CHECK_FAILED_FULL" else "UNKNOWN_FULL"
+            lanes[name] = {"status": lane_status, "reason": reason, "paths": [hit["path"] for hit in hits]}
             continue
         if selected:
             lanes[name] = {

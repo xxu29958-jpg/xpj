@@ -31,8 +31,8 @@ _SHARED_WEB = (
 )
 
 
-def _node(repo: Path, source_sha: str, path: str, role: str, evidence: str) -> dict[str, object]:
-    present = git_path_exists(repo, source_sha, path)
+def _node(repo: Path, snapshot_sha: str, path: str, role: str, evidence: str) -> dict[str, object]:
+    present = git_path_exists(repo, snapshot_sha, path)
     return {
         "path": path,
         "role": role,
@@ -44,13 +44,15 @@ def _node(repo: Path, source_sha: str, path: str, role: str, evidence: str) -> d
 def resolve_task(
     name: str,
     repo: Path | None = None,
-    source_sha: str | None = None,
+    snapshot_sha: str | None = None,
     *,
     historical: bool = False,
+    source_sha: str | None = None,
 ) -> dict[str, object]:
     root = repo or ROOT
-    if not source_sha:
-        raise ValueError("task map requires an exact source SHA")
+    if not snapshot_sha:
+        raise ValueError("task map requires an exact snapshot SHA")
+    display_source = source_sha or snapshot_sha
     if name == "ci-trigger":
         chain = _CI_CHAIN
         title = "Why this change selected these CI jobs"
@@ -75,10 +77,12 @@ def resolve_task(
     return {
         "task": name,
         "title": title,
-        "source_sha": source_sha,
+        "snapshot_sha": snapshot_sha,
+        "measurement_sha": snapshot_sha,
+        "source_sha": display_source,
         "historical": historical,
         "map_is_skip_authority": False,
-        "chain": [_node(root, source_sha, path, role, evidence) for path, role, evidence in chain],
+        "chain": [_node(root, snapshot_sha, path, role, evidence) for path, role, evidence in chain],
         **extra,
     }
 
@@ -86,7 +90,10 @@ def resolve_task(
 def render_task(task: dict[str, object]) -> str:
     lines = [
         f"TASK {task['task']}: {task['title']}",
-        f"source_sha={task['source_sha']} historical={str(task['historical']).lower()}",
+        (
+            f"source_sha={task['source_sha']} measurement_sha={task['measurement_sha']} "
+            f"historical={str(task['historical']).lower()}"
+        ),
         f"map_is_skip_authority={task['map_is_skip_authority']}",
         str(task.get("notes") or ""),
         "chain:",
