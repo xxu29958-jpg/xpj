@@ -1,12 +1,8 @@
 """Binary original replenishment carries its required OCC basis in the query."""
 
-import sys
-from pathlib import Path
-
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from _audit_mutate_token_coverage import _operation_carries_token  # noqa: E402
+from scripts._audit_mutate_token_coverage import _operation_carries_token
 
 
 @pytest.mark.parametrize("location,required,name,expected", [

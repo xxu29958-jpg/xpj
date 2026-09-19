@@ -1,6 +1,7 @@
 """Real HTTP/PostgreSQL qualification for original continuation (cloud lane)."""
 
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from threading import Event
 from uuid import uuid4
 
@@ -145,7 +146,7 @@ def test_replenishment_between_cleanup_transactions_keeps_new_original(client, i
         db.commit()
     before = _financial_snapshot(expense_id)
     accepted, resume = Event(), Event()
-    settings = get_settings().model_copy(update={"delete_image_after_confirm": True})
+    settings = replace(get_settings(), delete_image_after_confirm=True)
 
     def clean_old_original():
         with SessionLocal() as db:
