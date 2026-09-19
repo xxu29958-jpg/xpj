@@ -80,6 +80,8 @@ ERROR_MESSAGES = {
     "exchange_rate_out_of_range": "汇率超出支持范围，请调整后再试。",
     "exchange_rate_base_currency": "人民币是基准币种，不需要维护汇率。",
     "image_not_found": "图片不存在或已被清理。",
+    "image_integrity_mismatch": "原件内容与保存时的记录不一致，已停止读取。请核对并补回这笔账单的同一原件。",
+    "image_read_failed": "原件暂时无法读取，请稍后重试；账单记录会保留。",
     "ocr_not_configured": "图片识别功能还没开启，请联系服务拥有者在电脑端开启后再试。",
     "rule_not_found": "分类规则不存在。",
     "rule_application_not_found": "规则应用批次不存在。",

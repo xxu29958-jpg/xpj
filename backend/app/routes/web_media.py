@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.routes._original_file_response import OriginalFileResponse
 from app.routes.web_common import LocalOnly, _resolve_selected_ledger_id
 from app.services.expense_service import ensure_image_file, ensure_thumbnail_file
 
@@ -22,8 +23,7 @@ def web_image(
     db: Session = Depends(get_db),
 ) -> FileResponse:
     selected_id = _resolve_selected_ledger_id(db, ledger_id, request=request)
-    path, media_type = ensure_image_file(db, expense_id, selected_id)
-    return FileResponse(path=path, media_type=media_type)
+    return OriginalFileResponse(ensure_image_file(db, expense_id, selected_id))
 
 
 @router.get("/expenses/{expense_id}/thumbnail", include_in_schema=False)
