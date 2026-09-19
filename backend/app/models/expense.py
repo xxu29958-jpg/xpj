@@ -30,6 +30,7 @@ from app.fx_constants import (
     FX_STATUS_READY,
     NO_FRACTION_CURRENCY_CODES,
 )
+from app.models.ledger_calendar import time_evidence_constraints
 from app.money_contract import money_check_constraints_for_table
 from app.services.time_service import now_utc
 from app.tenant_contract import DEFAULT_TENANT_ID
@@ -38,6 +39,16 @@ from app.tenant_contract import DEFAULT_TENANT_ID
 class Expense(Base):
     __tablename__ = "expenses"
     __table_args__ = (
+        *time_evidence_constraints("expenses"),
+        ForeignKeyConstraint(
+            ["tenant_id", "calendar_revision"],
+            ["ledger_calendar_revisions.ledger_id", "ledger_calendar_revisions.revision"],
+            name="fk_expenses_calendar_revision",
+        ),
+        CheckConstraint(
+            "time_precision IS DISTINCT FROM 'date_only' OR expense_time IS NULL",
+            name="ck_expenses_date_only_instant",
+        ),
         *money_check_constraints_for_table("expenses"),
         UniqueConstraint("id", "tenant_id", name="uq_expenses_id_tenant_id"),
         ForeignKeyConstraint(
@@ -148,6 +159,13 @@ class Expense(Base):
     regret_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False, index=True)
     expense_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    accounting_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    calendar_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    user_local_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    time_precision: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    source_timezone: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    source_utc_offset_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    accounting_date_basis: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     # ADR-0041: monotonic row_version OCC token (updated_at kept for display/sort).
