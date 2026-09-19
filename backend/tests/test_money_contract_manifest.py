@@ -153,7 +153,7 @@ def test_manifest_sign_semantics() -> None:
     assert "goal_type = 'debt_repayment' AND month IS NULL" in (goal_month.predicate)
 
 
-def test_orm_shape_matches_frozen_c07_manifest() -> None:
+def test_current_money_columns_have_explicit_frozen_or_projection_contracts() -> None:
     contract_keys = {(column.table, column.column) for column in MONEY_COLUMNS_V1}
     contract_tables = {table for table, _column in contract_keys}
     metadata_keys = {
@@ -167,6 +167,8 @@ def test_orm_shape_matches_frozen_c07_manifest() -> None:
     assert contract_keys.isdisjoint(projection_keys)
     assert metadata_keys == contract_keys | projection_keys
 
+
+def test_orm_shape_matches_frozen_c07_manifest() -> None:
     for column_contract in MONEY_COLUMNS_V1:
         table = Base.metadata.tables[column_contract.table]
         column = table.columns[column_contract.column]
