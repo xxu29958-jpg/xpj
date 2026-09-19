@@ -1,0 +1,93 @@
+"""Frozen ledger calendar reads and one-time runtime compatibility adoption."""
+
+from __future__ import annotations
+
+import json
+from zoneinfo import ZoneInfo
+
+from sqlalchemy import select, text
+from sqlalchemy.orm import Session
+
+from app.models import Ledger, LedgerAuditLog, LedgerCalendarRevision
+from app.services.time_service import now_utc
+
+_ADOPTION_SETTING = "xpj.calendar_adoption"
+
+
+def calendar_revision(db: Session, *, ledger_id: str, revision: int) -> LedgerCalendarRevision | None:
+    return db.get(LedgerCalendarRevision, (ledger_id, revision))
+
+
+def current_calendar(db: Session, *, ledger_id: str) -> LedgerCalendarRevision | None:
+    return db.scalar(select(LedgerCalendarRevision).join(
+        Ledger,
+        (Ledger.ledger_id == LedgerCalendarRevision.ledger_id)
+        & (Ledger.calendar_revision == LedgerCalendarRevision.revision),
+    ).where(Ledger.ledger_id == ledger_id))
+
+
+def adopt_ledger_calendar(
+    db: Session, *, ledger_id: str, timezone_name: str, actor_account_id: int | None = None,
+) -> LedgerCalendarRevision:
+    """Adopt within the caller's transaction; never commit or acquire currency authority.
+
+    This runtime bootstrap owner receives the correctly configured view snapshot.
+    A recorded rule always wins over a later environment or display preference.
+    """
+    ledger = db.scalar(select(Ledger).where(Ledger.ledger_id == ledger_id).with_for_update()
+                       .execution_options(populate_existing=True))
+    if ledger is None:
+        raise ValueError("calendar ledger does not exist")
+    if ledger.calendar_revision is not None:
+        rule = calendar_revision(db, ledger_id=ledger_id, revision=ledger.calendar_revision)
+        if rule is None:
+            raise RuntimeError("recorded ledger calendar rule is missing")
+        return rule
+    ZoneInfo(timezone_name)  # Reject unusable snapshots; never choose a fallback zone.
+    rule = LedgerCalendarRevision(
+        ledger_id=ledger_id, revision=1, timezone_name=timezone_name,
+        basis="legacy_assumed", adopted_at=now_utc(), actor_account_id=actor_account_id,
+    )
+    db.add(rule)
+    db.flush()
+    ledger.calendar_revision = rule.revision
+    db.add(LedgerAuditLog(
+        ledger_id=ledger_id, action="calendar_adopted", actor_account_id=actor_account_id,
+        resource_type="ledger_calendar_revision", resource_public_id=str(rule.revision),
+        detail=json.dumps({"timezone_name": timezone_name, "basis": rule.basis}, ensure_ascii=False),
+    ))
+    db.flush()
+    proof = json.dumps({"purpose": "legacy_adoption", "ledger_id": ledger_id, "revision": rule.revision})
+    db.execute(text("SELECT set_config(:setting, :proof, true)"), {"setting": _ADOPTION_SETTING, "proof": proof})
+    _materialize_legacy_dates(db, rule)
+    db.execute(text("SELECT set_config(:setting, '', true)"), {"setting": _ADOPTION_SETTING})
+    db.expire_all()
+    return rule
+
+
+def _materialize_legacy_dates(db: Session, rule: LedgerCalendarRevision) -> None:
+    parameters = {"ledger": rule.ledger_id, "revision": rule.revision, "zone": rule.timezone_name}
+    db.execute(text("""
+        UPDATE expenses SET calendar_revision = :revision,
+            accounting_date = (COALESCE(expense_time, confirmed_at) AT TIME ZONE :zone)::date,
+            time_precision = 'unknown',
+            accounting_date_basis = CASE WHEN expense_time IS NOT NULL THEN 'legacy_expense_time'
+                WHEN confirmed_at IS NOT NULL THEN 'legacy_confirmed_at' ELSE 'legacy_unknown' END
+        WHERE tenant_id = :ledger AND calendar_revision IS NULL
+    """), parameters)
+    db.execute(text("""
+        UPDATE expense_offset_facts SET calendar_revision = :revision,
+            time_precision = 'date_only', accounting_date_basis = 'legacy_offset_date'
+        WHERE tenant_id = :ledger AND calendar_revision IS NULL
+    """), parameters)
+
+
+def adopt_all_ledger_calendars(*, timezone_name: str) -> None:
+    """Adopt every ledger, including archived ledgers, in separate atomic transactions."""
+    from app.database import SessionLocal
+
+    with SessionLocal() as db:
+        ledgers = list(db.scalars(select(Ledger.ledger_id).order_by(Ledger.ledger_id)))
+    for ledger_id in ledgers:
+        with SessionLocal.begin() as db:
+            adopt_ledger_calendar(db, ledger_id=ledger_id, timezone_name=timezone_name)
