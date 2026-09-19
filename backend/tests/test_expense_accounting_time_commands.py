@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.models import Expense, LedgerCalendarRevision
 from app.schemas import ExpenseManualCreateRequest, ExpenseUpdateRequest
 from app.services import exchange_rate_service
-from app.services.expense_accounting_time_service import apply_expense_time_input
+from app.services.expense_accounting_time_service import apply_expense_time_input, refresh_legacy_expense_time
 from app.services.expense_service import _create, _update_currency
 
 
@@ -93,3 +93,15 @@ def test_old_null_timestamp_does_not_erase_date_only_evidence():
     assert apply_expense_time_input(db, expense, ExpenseUpdateRequest(expected_row_version=3, expense_time=None)) is False
     db.get.assert_not_called()
     assert expense.time_precision == "date_only" and expense.accounting_date == date(2026, 4, 30)
+
+
+def test_confirm_keeps_imported_agreed_day_when_source_precision_is_unknown():
+    db = Mock(spec=Session)
+    db.get.return_value = LedgerCalendarRevision(ledger_id="owner", revision=1, timezone_name="UTC")
+    expense = Expense(tenant_id="owner", expense_time=None, time_precision="unknown", user_local_date=None,
+        accounting_date=date(2026, 4, 30), calendar_revision=1, accounting_date_basis="recorded_date",
+        confirmed_at=datetime(2026, 5, 2, tzinfo=UTC))
+    refresh_legacy_expense_time(db, expense)
+    assert expense.accounting_date == date(2026, 4, 30)
+    assert expense.expense_time is None and expense.user_local_date is None
+    db.get.assert_not_called()

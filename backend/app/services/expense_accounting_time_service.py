@@ -61,7 +61,7 @@ def apply_expense_time_input(db: Session, expense: Expense, payload, *, creating
 
 def refresh_legacy_expense_time(db: Session, expense: Expense) -> None:
     """Freeze a legacy producer or confirmation fallback without changing known intent."""
-    if expense.time_precision in {"instant", "date_only"}:
+    if expense.time_precision in {"instant", "date_only"} or expense.accounting_date_basis == "recorded_date":
         return
     rule = _required_rule(db, expense, expense.calendar_revision or 1)
     apply_accounting_time(expense, legacy_accounting_time(expense_time=expense.expense_time,
