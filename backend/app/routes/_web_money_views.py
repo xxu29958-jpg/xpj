@@ -162,7 +162,7 @@ def _expense_amount_labels(
         meta += f" · {date_text}"
     source = getattr(expense, "exchange_rate_source", None)
     if source:
-        meta += " · " + ("手动汇率" if source == "manual" else str(source))
+        meta += " · " + {"manual": "手动汇率", "imported": "导入记录汇率"}.get(source, str(source))
     return primary, meta
 
 

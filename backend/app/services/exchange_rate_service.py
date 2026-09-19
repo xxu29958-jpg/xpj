@@ -73,6 +73,10 @@ class CurrencyPayload(Protocol):
     exchange_rate_source: str | None
 
 
+class ImportedCurrencyPayload(CurrencyPayload, Protocol):
+    home_currency_code: str
+
+
 def validate_currency_payload_money_command(
     payload: CurrencyPayload,
     *,
@@ -494,3 +498,41 @@ def apply_resolved_currency_rate(
         original_amount_minor=expense.original_amount_minor,
         exchange_rate_to_cny=rate,
     )
+
+
+def validate_imported_currency_snapshot(payload: ImportedCurrencyPayload) -> None:
+    """Check file money using the same precision/arithmetic as ordinary facts.
+
+    A file's source label is evidence retained by the import task, never an
+    assertion that this installation's provider supplied or verified the quote.
+    This path deliberately neither reads nor writes the shared daily-rate table.
+    """
+    try:
+        home = normalize_currency_code(payload.home_currency_code)
+        original = normalize_currency_code(payload.original_currency_code)
+        validate_currency_payload_money_command(payload, amount_was_explicit=True)
+        rate = payload.exchange_rate_to_cny
+        if (payload.amount_cents is None or payload.original_amount_minor is None
+                or rate is None or not rate.is_finite() or rate <= 0
+                or type(payload.exchange_rate_date) is not date):
+            raise ValueError("incomplete imported money")
+        if format_decimal_rate(rate) != rate or (home == original and rate != Decimal("1")):
+            raise ValueError("inconsistent imported quote")
+        computed = calculate_cny_cents(home_currency_code=home,
+            original_currency_code=original, original_amount_minor=payload.original_amount_minor,
+            exchange_rate_to_cny=rate)
+        if computed != payload.amount_cents:
+            raise ValueError("inconsistent imported amount")
+    except (AppError, ValueError, ArithmeticError) as exc:
+        raise AppError("currency_snapshot_invalid",
+            "文件中的原币、本位币金额与汇率不一致，请核对原记录后继续。", status_code=422) from exc
+
+
+def apply_imported_currency_snapshot(expense: Expense, payload: ImportedCurrencyPayload) -> None:
+    """Admit an inspected native file snapshot to an unconfirmed purchase."""
+    validate_imported_currency_snapshot(payload)
+    expense.home_currency_code = payload.home_currency_code
+    expense.original_currency_code = payload.original_currency_code
+    expense.original_amount_minor = payload.original_amount_minor
+    apply_resolved_currency_rate(expense, rate=payload.exchange_rate_to_cny,
+        source="imported", fx_status=FX_STATUS_READY, rate_date=payload.exchange_rate_date)

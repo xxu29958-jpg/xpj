@@ -21,7 +21,7 @@ RETURN_TO_PATHS: dict[str, str] = {
     "bill_splits_inbox": "/web/bill-splits/inbox",
     "bill_splits_sent": "/web/bill-splits/sent",
 }
-_DYNAMIC_RETURN_TO = frozenset({"recurring_occurrence"})
+_DYNAMIC_RETURN_TO = frozenset({"recurring_occurrence", "csv_import_event"})
 RETURN_TO_LABELS: dict[str, str] = {
     "pending": "返回待确认",
     "confirmed": "返回已确认流水",
@@ -31,6 +31,7 @@ RETURN_TO_LABELS: dict[str, str] = {
     "bill_splits_inbox": "返回拆账收件箱",
     "bill_splits_sent": "返回已发拆账",
     "recurring_occurrence": "返回本期固定支出",
+    "csv_import_event": "返回导入复核",
 }
 _PENDING_FILTERS = {
     "all",
@@ -71,6 +72,9 @@ class ExpenseReturnContext:
     return_merchant_category: str = ""
     return_recurring_public_id: str = ""
     return_payment_expense_id: str = ""
+    return_import_public_id: str = ""
+    return_import_line_number: str = ""
+    return_import_expense_id: str = ""
 
     def as_kwargs(self) -> dict[str, str]:
         return asdict(self)
@@ -89,6 +93,9 @@ def expense_return_query_context(
     return_merchant_category: str = "",
     return_recurring_public_id: str = "",
     return_payment_expense_id: str = "",
+    return_import_public_id: str = "",
+    return_import_line_number: str = "",
+    return_import_expense_id: str = "",
 ) -> ExpenseReturnContext:
     return ExpenseReturnContext(
         return_to=return_to,
@@ -103,6 +110,9 @@ def expense_return_query_context(
         return_merchant_category=return_merchant_category,
         return_recurring_public_id=return_recurring_public_id,
         return_payment_expense_id=return_payment_expense_id,
+        return_import_public_id=return_import_public_id,
+        return_import_line_number=return_import_line_number,
+        return_import_expense_id=return_import_expense_id,
     )
 
 
@@ -119,6 +129,9 @@ def expense_return_form_context(
     return_merchant_category: str = Form(default=""),
     return_recurring_public_id: str = Form(default=""),
     return_payment_expense_id: str = Form(default=""),
+    return_import_public_id: str = Form(default=""),
+    return_import_line_number: str = Form(default=""),
+    return_import_expense_id: str = Form(default=""),
 ) -> ExpenseReturnContext:
     return ExpenseReturnContext(
         return_to=return_to,
@@ -133,10 +146,13 @@ def expense_return_form_context(
         return_merchant_category=return_merchant_category,
         return_recurring_public_id=return_recurring_public_id,
         return_payment_expense_id=return_payment_expense_id,
+        return_import_public_id=return_import_public_id,
+        return_import_line_number=return_import_line_number,
+        return_import_expense_id=return_import_expense_id,
     )
 
 
-def _recurring_series_id(raw: str) -> str:
+def _public_uuid(raw: str) -> str:
     try:
         return str(UUID(str(raw)))
     except (TypeError, ValueError):
@@ -166,7 +182,7 @@ def recurring_occurrence_origin(
     return_month: str,
     return_payment_expense_id: str = "",
 ) -> dict[str, str] | None:
-    series_id = _recurring_series_id(return_recurring_public_id)
+    series_id = _public_uuid(return_recurring_public_id)
     period = _recurring_period(return_month)
     if not series_id or not period:
         return None
@@ -186,11 +202,29 @@ def clean_return_to(raw: str) -> str:
     return token if token in RETURN_TO_PATHS or token in _DYNAMIC_RETURN_TO else ""
 
 
+def _csv_import_origin(origin: dict[str, str]) -> dict[str, str]:
+    batch = _public_uuid(origin.get("return_import_public_id", ""))
+    line = _payment_expense_id(origin.get("return_import_line_number", ""))
+    if not batch or not line or int(line) < 2:
+        return {}
+    kept = {"return_to": "csv_import_event", "return_import_public_id": batch,
+        "return_import_line_number": line}
+    selected = _payment_expense_id(origin.get("return_import_expense_id", ""))
+    if selected:
+        kept["return_import_expense_id"] = selected
+    return kept
+
+
 def resolve_return_to(raw: str, default_path: str, **origin: str) -> str:
     token = clean_return_to(raw)
     if token == "recurring_occurrence":
-        series_id = _recurring_series_id(origin.get("return_recurring_public_id", ""))
+        series_id = _public_uuid(origin.get("return_recurring_public_id", ""))
         return f"/web/recurring/{series_id}/occurrence" if series_id else default_path
+    if token == "csv_import_event":
+        kept = _csv_import_origin(origin)
+        if kept:
+            return f"/web/import/{kept['return_import_public_id']}/rows/{kept['return_import_line_number']}/review"
+        return default_path
     return RETURN_TO_PATHS.get(token, default_path)
 
 
@@ -229,6 +263,10 @@ def return_context_params(return_to: str, **origin: str) -> dict[str, str]:
             return {"q": query}
     if token == "recurring_occurrence":
         return _recurring_list_return_params(origin)
+    if token == "csv_import_event":
+        kept = _csv_import_origin(origin)
+        selected = kept.get("return_import_expense_id")
+        return {"expense_id": selected} if selected else {}
     return {}
 
 
@@ -276,6 +314,8 @@ def _confirmed_report_return_params(
 def edit_context_params(return_to: str, **origin: str) -> dict[str, str]:
     """Keep a validated origin attached while the user remains in edit."""
     token = clean_return_to(return_to)
+    if token == "csv_import_event":
+        return _csv_import_origin(origin)
     if token == "recurring_occurrence":
         return recurring_occurrence_origin(
             return_recurring_public_id=origin.get("return_recurring_public_id", ""),

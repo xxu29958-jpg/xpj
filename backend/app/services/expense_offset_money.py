@@ -12,7 +12,12 @@ from app.errors import AppError
 from app.fx_constants import FX_STATUS_READY
 from app.models import Expense, ExpenseOffsetFact
 from app.schemas import ExpenseOffsetCorrectionRequest, ExpenseOffsetCreateRequest
-from app.services.exchange_rate_service import calculate_cny_cents, resolve_payload_rate
+from app.services.exchange_rate_service import (
+    ImportedCurrencyPayload,
+    calculate_cny_cents,
+    resolve_payload_rate,
+    validate_imported_currency_snapshot,
+)
 
 
 @dataclass(frozen=True)
@@ -47,13 +52,24 @@ def resolve_offset_money(
     expense: Expense,
     offsets: list[ExpenseOffsetFact],
     payload: ExpenseOffsetCreateRequest,
+    imported_snapshot: ImportedCurrencyPayload | None = None,
 ) -> OffsetMoney:
     gross_original = gross_original_minor(expense)
     active_refunded = sum(offset.original_amount_minor for offset in offsets if offset.kind != "reversal")
+    if imported_snapshot is not None:
+        validate_imported_currency_snapshot(imported_snapshot)
+        if (imported_snapshot.home_currency_code != expense.home_currency_code
+                or imported_snapshot.original_currency_code != expense.original_currency_code):
+            raise AppError("currency_snapshot_invalid", "文件与所选原单的币种不一致，请核对原单。", status_code=422)
     if payload.kind == "reversal":
         if active_refunded:
             db.rollback()
             raise AppError("expense_refund_exists", status_code=409)
+        if imported_snapshot is not None and any(
+            getattr(imported_snapshot, field) != getattr(expense, field)
+            for field in ("original_amount_minor", "amount_cents", "exchange_rate_to_cny", "exchange_rate_date")
+        ):
+            raise AppError("currency_snapshot_invalid", "冲正必须对应所选原单的完整金额与冻结汇率。", status_code=422)
         return OffsetMoney(
             original_amount_minor=gross_original,
             amount_cents=int(expense.amount_cents or 0),
@@ -66,6 +82,14 @@ def resolve_offset_money(
     if original_amount_minor > gross_original - active_refunded:
         db.rollback()
         raise AppError("expense_refund_exceeds_remaining", status_code=409)
+    if imported_snapshot is not None:
+        if imported_snapshot.original_amount_minor != original_amount_minor:
+            raise AppError("currency_snapshot_invalid", "文件原币金额与本次复核金额不一致，请核对后继续。", status_code=422)
+        return OffsetMoney(original_amount_minor=original_amount_minor,
+            amount_cents=imported_snapshot.amount_cents,
+            exchange_rate_to_cny=imported_snapshot.exchange_rate_to_cny,
+            exchange_rate_date=imported_snapshot.exchange_rate_date,
+            exchange_rate_source="imported")
     rate, source, status, effective_date = resolve_payload_rate(
         db,
         tenant_id=tenant_id,

@@ -18,6 +18,7 @@ it instead of scattering ``ledger_scoped_select(Expense, …).where(Expense.id =
 
 from __future__ import annotations
 
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -36,6 +37,7 @@ __all__ = [
     "local_ref_storage_key",
     "resolve_expense",
     "resolve_expense_for_mutation",
+    "search_import_root_expenses",
 ]
 
 
@@ -53,6 +55,23 @@ LOCAL_REF_PREFIX = "local:"
 # the local ref — its OCC CAS uses the accepted creation receipt's version.
 # Current state may already differ; that is a real conflict, never a fresh token.
 FIRST_WRITE_ROW_VERSION = 0
+
+
+def search_import_root_expenses(db: Session, *, tenant_id: str, query: str = "",
+                               page: int = 1, page_size: int = 20) -> tuple[list[Expense], int]:
+    """Bounded purchase selection; offsets and other ledgers are never candidates."""
+    text = query.strip()
+    if len(text) > 200:
+        raise AppError("invalid_request", "搜索内容最多 200 字。", status_code=422)
+    statement = ledger_scoped_select(Expense, tenant_id).where(Expense.status.in_(("pending", "confirmed")))
+    if text:
+        pattern = "%" + text.replace("/", "//").replace("%", "/%").replace("_", "/_") + "%"
+        statement = statement.where(or_(Expense.merchant.ilike(pattern, escape="/"),
+            Expense.note.ilike(pattern, escape="/"), Expense.public_id == text))
+    total = int(db.scalar(select(func.count()).select_from(statement.subquery())) or 0)
+    limit = min(max(page_size, 1), 100)
+    return list(db.scalars(statement.order_by(Expense.expense_time.desc().nulls_last(), Expense.id.desc())
+        .offset((max(page, 1) - 1) * limit).limit(limit))), total
 
 
 def _is_local_ref(ref: int | str) -> bool:

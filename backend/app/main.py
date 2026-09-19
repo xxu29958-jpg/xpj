@@ -89,6 +89,7 @@ from app.routes import (
     web_expense_splits,
     web_goal_edit,
     web_goals,
+    web_import_events,
     web_import_export,
     web_inbox_capture,
     web_income_edit,
@@ -409,6 +410,7 @@ app.include_router(web_receivables.router)
 app.include_router(web_categories.router)
 app.include_router(web_duplicates.router)
 app.include_router(web_import_export.router)
+app.include_router(web_import_events.router)
 app.include_router(web_recurring.router)
 app.include_router(web_merchants.router)
 app.include_router(web_tags.router)

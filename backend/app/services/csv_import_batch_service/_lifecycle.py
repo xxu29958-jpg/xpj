@@ -25,6 +25,8 @@ from app.services.csv_import_batch_service._csv_io import (
 )
 from app.services.csv_import_batch_service._queries import (
     build_csv_import_batch_response,
+    build_csv_row_responses,
+    csv_row_status_filter,
     get_csv_import_batch,
 )
 from app.services.currency_binding_service import require_runtime_home_currency_code, resolve_write_capability
@@ -233,14 +235,14 @@ def list_csv_import_rows(
     page_size = min(max(page_size, 1), 500)
     query = ledger_scoped_select(CsvImportRow, tenant_id).where(CsvImportRow.batch_id == batch.id)
     if status:
-        query = query.where(CsvImportRow.status == status)
+        query = query.where(csv_row_status_filter(tenant_id=tenant_id, status=status))
     total = int(db.scalar(select(func.count()).select_from(query.subquery())) or 0)
     rows = list(
         db.scalars(query.order_by(CsvImportRow.line_number.asc()).offset((page - 1) * page_size).limit(page_size))
     )
     return CsvImportRowsResponse(
         batch=build_csv_import_batch_response(db, batch=batch),
-        items=rows,
+        items=build_csv_row_responses(db, tenant_id=tenant_id, rows=rows),
         page=page,
         page_size=page_size,
         total=total,

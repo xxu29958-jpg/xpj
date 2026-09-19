@@ -5,9 +5,9 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 
-from app.schemas._money import NonNegativeMoneyMinor
+from app.schemas._money import NonNegativeMoneyMinor, PositiveCanonicalDecimalInput, SignedMoneyAggregate
 from app.services.time_service import to_iso
 
 __all__ = [
@@ -16,6 +16,7 @@ __all__ = [
     "CsvImportBatchResponse",
     "CsvImportRowResponse",
     "CsvImportRowsResponse",
+    "CsvImportReviewRequest",
 ]
 
 
@@ -30,6 +31,9 @@ class CsvImportBatchResponse(BaseModel):
     error_rows: int
     applied_rows: int
     inserted_count: int
+    matched_rows: int = 0
+    review_rows: int = 0
+    confirmed_offset_rows: int = 0
     locked_until: datetime | None
     last_error: str | None
     created_at: datetime
@@ -62,6 +66,20 @@ class CsvImportRowResponse(BaseModel):
     tags: str | None
     source: str
     expense_id: int | None
+    entry_kind: str = "expense"
+    offset_kind: str | None = None
+    source_event_public_id: str | None = None
+    source_root_public_id: str | None = None
+    accounting_date: date | None = None
+    stream_amount_cents: SignedMoneyAggregate | None = None
+    lineage_status: str | None = None
+    lineage_home_net_cents: SignedMoneyAggregate | None = None
+    event_input: dict[str, str] | None = None
+    review_reason: str | None = None
+    resolved_expense_id: int | None = None
+    resolved_offset_public_id: str | None = None
+    resolved_root_status: str | None = None
+    resolved_root_row_version: int | None = None
 
     @field_serializer("expense_time")
     def serialize_datetime(self, value: datetime | None) -> str | None:
@@ -90,3 +108,27 @@ class CsvImportApplyResponse(BaseModel):
     batch: CsvImportBatchResponse
     inserted_count: int
     remaining_valid_rows: int
+
+
+class CsvImportReviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expense_id: int | None = Field(default=None, gt=0)
+    expected_row_version: int | None = Field(default=None, ge=1)
+    reason: str = Field(min_length=1, max_length=500)
+    acknowledge_incomplete_lineage: bool = False
+    manual_exchange_rate: PositiveCanonicalDecimalInput | None = None
+    exchange_rate_date: date | None = None
+
+    @model_validator(mode="after")
+    def _quote_pair(self):
+        if (self.manual_exchange_rate is None) != (self.exchange_rate_date is None):
+            raise ValueError("补录汇率和报价日期必须同时提供")
+        return self
+
+    @field_validator("reason")
+    @classmethod
+    def _reason(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("review reason is required")
+        return value.strip()

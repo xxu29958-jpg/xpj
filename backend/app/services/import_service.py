@@ -17,8 +17,8 @@ Accepted columns (case-insensitive, BOM-aware):
 * ``source`` — optional, defaults to ``"CSV导入"``
 * ``original_currency_code`` / ``original_amount_minor`` /
   ``exchange_rate_to_cny`` / ``exchange_rate_date`` — optional legacy
-  metadata. Imported expenses still go through the backend FX resolver before
-  a home amount is frozen.
+  metadata. Ordinary imported expenses still use the backend FX resolver.
+  Native event rows retain their frozen quote as imported evidence for review.
 
 Unknown columns are ignored. Each row is validated independently; rows
 with errors are reported in the preview but skipped on import.
@@ -40,6 +40,11 @@ from app.services.currency_common import supported_currency_codes
 from app.services.exchange_rate_service import (
     BASE_CURRENCY_CODE,
     normalize_currency_code,
+)
+from app.services.import_financial_events import (
+    has_financial_event,
+    native_money_fields_error,
+    parse_financial_event,
 )
 from app.services.import_money import (
     _parse_amount as _parse_amount,
@@ -79,6 +84,15 @@ class ParsedRow:
     expense_time_display: str = ""
     tags: str = ""
     source: str = DEFAULT_SOURCE
+    entry_kind: str = "expense"
+    offset_kind: str | None = None
+    source_event_public_id: str | None = None
+    source_root_public_id: str | None = None
+    accounting_date: date | None = None
+    stream_amount_cents: int | None = None
+    lineage_status: str | None = None
+    lineage_home_net_cents: int | None = None
+    event_input: dict[str, str] | None = None
     error_code: str | None = None
     error: str | None = None
 
@@ -290,6 +304,7 @@ def _parse_csv_fx_columns(
     amount_error: str | None,
     expense_rate_date: date | None,
     home_currency: str,
+    native: bool = False,
 ) -> _CsvFxColumns:
     original_currency_code, currency_error = _parse_csv_currency_code(
         cells.get("original_currency_code", ""),
@@ -309,7 +324,7 @@ def _parse_csv_fx_columns(
     exchange_rate_date, exchange_rate_date_error = _parse_optional_date(
         cells.get("exchange_rate_date", "")
     )
-    if expense_rate_date is not None:
+    if expense_rate_date is not None and not native:
         exchange_rate_date = expense_rate_date
     has_original_currency_fields = any(
         cells.get(column, "").strip()
@@ -321,22 +336,23 @@ def _parse_csv_fx_columns(
         )
     )
     previous_amount_error = amount_error
-    amount_cents, amount_display, amount_error, original_amount_minor = (
-        _apply_csv_amount_currency_swap(
-            amount_cents=amount_cents,
-            amount_display=amount_display,
-            amount_error=amount_error,
-            original_amount_minor=original_amount_minor,
-            original_currency_code=original_currency_code,
-            home_currency=home_currency,
-            has_original_fields=has_original_currency_fields,
-            explicit_amount_cents=bool(cells.get("amount_cents", "").strip()),
-            has_legacy_fx_snapshot=(
-                parsed_exchange_rate is not None
-                and exchange_rate_date is not None
-            ),
+    if not native:
+        amount_cents, amount_display, amount_error, original_amount_minor = (
+            _apply_csv_amount_currency_swap(
+                amount_cents=amount_cents,
+                amount_display=amount_display,
+                amount_error=amount_error,
+                original_amount_minor=original_amount_minor,
+                original_currency_code=original_currency_code,
+                home_currency=home_currency,
+                has_original_fields=has_original_currency_fields,
+                explicit_amount_cents=bool(cells.get("amount_cents", "").strip()),
+                has_legacy_fx_snapshot=(
+                    parsed_exchange_rate is not None
+                    and exchange_rate_date is not None
+                ),
+            )
         )
-    )
     if amount_error is not None and previous_amount_error is None:
         amount_error_code = "currency_snapshot_invalid"
     return _CsvFxColumns(
@@ -366,6 +382,7 @@ def parse_csv_row(
     home_currency: str,
 ) -> ParsedRow:
     cells = dict(zip(headers, row + [""] * max(0, len(headers) - len(row)), strict=False))
+    native = has_financial_event(cells)
     declared_home = cells.get("home_currency_code", "").strip().upper()
     if declared_home in supported_currency_codes():
         home_currency = declared_home
@@ -386,13 +403,21 @@ def parse_csv_row(
         amount_error=amount_error,
         expense_rate_date=expense_rate_date,
         home_currency=home_currency,
+        native=native,
     )
     authoritative_rate, authoritative_rate_source = _authoritative_rate_for_currency(
         fx.original_currency_code,
         home_currency=home_currency,
     )
+    event_fields, event_error = parse_financial_event(cells, amount_cents=fx.amount_cents) if native else ({}, None)
+    native_money_error = native_money_fields_error(cells) if native else None
+    rate_source = cells.get("exchange_rate_source", "").strip() or (None if native else authoritative_rate_source)
+    if native and rate_source is not None and len(rate_source) > 32:
+        rate_source = None
     error = (
-        fx.currency_error
+        event_error
+        or native_money_error
+        or fx.currency_error
         or fx.original_amount_error
         or fx.exchange_rate_error
         or fx.exchange_rate_date_error
@@ -400,7 +425,8 @@ def parse_csv_row(
         or etime_error
     )
     error_code = (
-        ("currency_not_supported" if fx.currency_error else None)
+        ("financial_event_invalid" if event_error or native_money_error else None)
+        or ("currency_not_supported" if fx.currency_error else None)
         or fx.original_amount_error_code
         or ("exchange_rate_invalid" if fx.exchange_rate_error else None)
         or (
@@ -418,9 +444,9 @@ def parse_csv_row(
         amount_display=fx.amount_display,
         original_currency_code=fx.original_currency_code,
         original_amount_minor=fx.original_amount_minor if fx.has_original_currency_fields else fx.amount_cents,
-        exchange_rate_to_cny=authoritative_rate,
+        exchange_rate_to_cny=fx.exchange_rate_to_cny if native else authoritative_rate,
         exchange_rate_date=fx.exchange_rate_date,
-        exchange_rate_source=cells.get("exchange_rate_source", "").strip() or authoritative_rate_source,
+        exchange_rate_source=rate_source,
         merchant=cells.get("merchant", "").strip(),
         category=normalize_category(cells.get("category", "")),
         note=cells.get("note", "").strip(),
@@ -430,4 +456,5 @@ def parse_csv_row(
         source=cells.get("source", "").strip() or DEFAULT_SOURCE,
         error_code=error_code,
         error=error,
+        **event_fields,
     )

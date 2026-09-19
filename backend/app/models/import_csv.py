@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from sqlalchemy import (
     DDL,
+    JSON,
     BigInteger,
     CheckConstraint,
     Date,
@@ -80,7 +81,7 @@ class CsvImportRow(Base):
         CheckConstraint("home_currency_code IN ('CNY', 'USD', 'EUR', 'GBP', 'JPY', 'HKD', 'KRW')", name="ck_csv_import_rows_home_currency"),
         CheckConstraint("line_number >= 2", name="ck_csv_import_rows_line_number_valid"),
         CheckConstraint(
-            "status IN ('valid', 'error', 'applying', 'applied', 'insert_failed')",
+            "status IN ('valid', 'error', 'applying', 'applied', 'insert_failed', 'review', 'matched', 'conflict')",
             name="ck_csv_import_rows_status_valid",
         ),
         ForeignKeyConstraint(
@@ -94,6 +95,7 @@ class CsvImportRow(Base):
             name="fk_csv_import_rows_expense_tenant",
         ),
         UniqueConstraint("tenant_id", "batch_id", "line_number", name="uq_csv_import_rows_tenant_batch_line"),
+        UniqueConstraint("id", "tenant_id", name="uq_csv_import_rows_id_tenant"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -104,6 +106,16 @@ class CsvImportRow(Base):
     apply_token: Mapped[str | None] = mapped_column(String(36), nullable=True)
     error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     error_message: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    entry_kind: Mapped[str] = mapped_column(String(32), default="expense", server_default="expense", nullable=False)
+    offset_kind: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    source_event_public_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    source_root_public_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    accounting_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    stream_amount_cents: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    lineage_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    lineage_home_net_cents: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    event_input: Mapped[dict[str, str] | None] = mapped_column(JSON(none_as_null=True), nullable=True)
+    review_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     amount_cents: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     # Legacy unknown context remains NULL until the existing Owner adoption.
     home_currency_code: Mapped[str | None] = mapped_column(String(3), nullable=True)
@@ -126,6 +138,38 @@ class CsvImportRow(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
 
 
+class CsvImportEvent(Base):
+    """Ledger-local provenance/result shared by repeated native import rows.
+
+    This is an import receipt, not another financial event. A pending offset has
+    no offset_id until the canonical Facts command and this receipt commit together.
+    The first saved row retains file evidence, including the claimed FX source.
+    """
+
+    __tablename__ = "csv_import_events"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "entry_kind", "source_event_public_id", name="uq_csv_import_events_source"),
+        CheckConstraint("entry_kind IN ('expense', 'offset')", name="ck_csv_import_events_kind"),
+        CheckConstraint("offset_id IS NULL OR (entry_kind = 'offset' AND expense_id IS NOT NULL)", name="ck_csv_import_events_result"),
+        CheckConstraint("source_row_id IS NOT NULL OR (entry_kind = 'expense' AND expense_id IS NOT NULL AND offset_id IS NULL)", name="ck_csv_import_events_source"),
+        ForeignKeyConstraint(["source_row_id", "tenant_id"], ["csv_import_rows.id", "csv_import_rows.tenant_id"], name="fk_csv_import_events_source_row"),
+        ForeignKeyConstraint(["expense_id", "tenant_id"], ["expenses.id", "expenses.tenant_id"], name="fk_csv_import_events_expense"),
+        ForeignKeyConstraint(["offset_id", "tenant_id"], ["expense_offset_facts.id", "expense_offset_facts.tenant_id"], name="fk_csv_import_events_offset"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    entry_kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_event_public_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    # NULL only when a reviewed offset explicitly associates a source root
+    # with an existing local purchase before that purchase's own row arrives.
+    source_row_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    expense_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    offset_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+
+
+Index("ix_csv_import_rows_source_event", CsvImportRow.tenant_id, CsvImportRow.entry_kind, CsvImportRow.source_event_public_id)
 Index("ix_csv_import_rows_tenant_batch_line", CsvImportRow.tenant_id, CsvImportRow.batch_id, CsvImportRow.line_number)
 Index("ix_csv_import_rows_tenant_batch_status", CsvImportRow.tenant_id, CsvImportRow.batch_id, CsvImportRow.status)
 Index(
