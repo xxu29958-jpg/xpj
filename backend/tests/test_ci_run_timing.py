@@ -432,30 +432,168 @@ def test_stamp_connected_inner_adds_identity(tmp_path: Path) -> None:
     assert payload["identity"]["run_id"] in {35426715230, "35426715230"}
 
 
-def test_resolve_pr_merge_identity_uses_pull_head_and_merge_ref() -> None:
+def test_live_merge_ref_uses_singular_pull_path_and_does_not_adopt_stale_sha() -> None:
     calls: list[str] = []
 
     def opener(request):
         calls.append(request.full_url)
-        if request.full_url.endswith("/actions/runs/9"):
-            return _FakeResponse({
-                "event": "pull_request",
-                "pull_requests": [{"number": 420, "head": {"sha": "a" * 40}}],
-            })
-        if request.full_url.endswith("/git/ref/pulls/420/merge"):
+        if "/git/ref/pulls/" in request.full_url:
+            raise AssertionError(request.full_url)
+        if request.full_url.endswith("/git/ref/pull/420/merge"):
             return _FakeResponse({"object": {"sha": "c" * 40}})
+        if "/git/commits/" in request.full_url:
+            return _FakeResponse({"parents": [{"sha": "e" * 40}, {"sha": "f" * 40}]})
         raise AssertionError(request.full_url)
 
-    identity = ci_run_timing.resolve_pr_merge_identity(
+    status = ci_run_timing.cross_check_live_merge_ref(
         "xxu29958-jpg/xpj",
-        9,
+        420,
+        {"source_sha": "a" * 40, "base_sha": "d" * 40},
         "token",
-        {"source_sha": "b" * 40, "measurement_sha": "b" * 40, "event": "pull_request"},
         urlopen=opener,
     )
-    assert identity["source_sha"] == "a" * 40
-    assert identity["measurement_sha"] == "c" * 40
-    assert len(calls) == 2
+    assert status == "stale_or_mismatch"
+    assert any(url.endswith("/git/ref/pull/420/merge") for url in calls)
+
+
+def test_parse_qualification_log_reads_authoritative_line() -> None:
+    parsed = ci_run_timing.parse_qualification_log(
+        "Qualification checkout SHA: " + "b" * 40 + "; source SHA: " + "a" * 40 + "\n"
+    )
+    assert parsed == ("b" * 40, "a" * 40)
+
+
+def test_previous_mixed_identity_does_not_bill_current_attempt() -> None:
+    summary = ci_run_timing.summarize_jobs(
+        [_job(id=3, run_attempt=2, started_at="2026-09-18T03:00:00Z", completed_at="2026-09-18T03:10:00Z")],
+        attempt=2,
+        previous_jobs=[_job(run_attempt=1), _job(id=2, name="Android", run_id=999, run_attempt=1)],
+    )
+    assert summary["runner_execution_minutes"] == 0
+    assert summary["complete"] is False
+
+
+def test_previous_wrong_head_does_not_bill_current_attempt() -> None:
+    summary = ci_run_timing.summarize_jobs(
+        [_job(id=3, run_attempt=2, started_at="2026-09-18T03:00:00Z", completed_at="2026-09-18T03:10:00Z")],
+        attempt=2,
+        previous_jobs=[_job(run_attempt=1, head_sha="b" * 40)],
+    )
+    assert summary["runner_execution_minutes"] == 0
+    assert summary["complete"] is False
+
+
+def test_previous_attempt_not_older_does_not_bill() -> None:
+    summary = ci_run_timing.summarize_jobs(
+        [_job(id=3, run_attempt=2, started_at="2026-09-18T03:00:00Z", completed_at="2026-09-18T03:10:00Z")],
+        attempt=2,
+        previous_jobs=[_job(run_attempt=2)],
+    )
+    assert summary["runner_execution_minutes"] == 0
+    assert summary["complete"] is False
+
+
+def test_identity_run_id_mismatch_keeps_job_cost_and_is_incomplete() -> None:
+    summary = ci_run_timing.summarize_jobs(
+        [_job()],
+        attempt=1,
+        report_identity={
+            "repository": "xxu29958-jpg/xpj",
+            "workflow": "CI",
+            "run_id": 999,
+            "run_attempt": 1,
+            "event": "pull_request",
+            "source_sha": "a" * 40,
+            "measurement_sha": "b" * 40,
+        },
+    )
+    assert summary["runner_execution_minutes"] == 10
+    assert summary["complete"] is False
+    assert summary["identity_complete"] is False
+    assert any("run_id" in item for item in summary["incomplete"])
+
+
+def test_cancelled_run_without_distinct_measurement_still_writes_cost(tmp_path: Path) -> None:
+    jobs = tmp_path / "jobs.json"
+    jobs.write_text(json.dumps({"jobs": [
+        _job(),
+        _job(
+            id=2,
+            name="Android APK release",
+            conclusion="cancelled",
+            started_at="2026-09-18T02:00:00Z",
+            completed_at="2026-09-18T02:08:00Z",
+        ),
+    ]}), encoding="utf-8")
+    identity = tmp_path / "identity.json"
+    identity.write_text(json.dumps({
+        "repository": "xxu29958-jpg/xpj",
+        "workflow": "CI",
+        "run_id": 100,
+        "run_attempt": 1,
+        "event": "pull_request",
+        "source_sha": "a" * 40,
+        "measurement_sha": "a" * 40,
+    }), encoding="utf-8")
+    output = tmp_path / "timing.json"
+    result = subprocess.run(
+        [
+            sys.executable, str(SCRIPTS / "ci_run_timing.py"),
+            "--jobs-json", str(jobs), "--attempt", "1",
+            "--run-identity-json", str(identity),
+            "--github-repository", "xxu29958-jpg/xpj",
+            "--github-run-id", "100",
+            "--workflow-name", "CI",
+            "--event", "pull_request",
+            "--source-sha", "a" * 40,
+            "--measurement-sha", "a" * 40,
+            "--output-json", str(output),
+        ],
+        capture_output=True, text=True, encoding="utf-8",
+    )
+    assert result.returncode == 2
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["cancelled_execution_minutes"] == 8
+    assert payload["success_execution_minutes"] == 10
+    assert payload["complete"] is False
+    assert payload["identity_complete"] is False
+
+
+def test_cli_writes_json_when_jobs_input_is_missing(tmp_path: Path) -> None:
+    output = tmp_path / "timing.json"
+    result = subprocess.run(
+        [sys.executable, str(SCRIPTS / "ci_run_timing.py"), "--output-json", str(output)],
+        capture_output=True, text=True, encoding="utf-8",
+    )
+    assert result.returncode == 2
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["complete"] is False
+    assert payload["identity_complete"] is False
+    assert payload["reason"]
+
+
+def test_write_scope_identity_round_trip(tmp_path: Path) -> None:
+    path = tmp_path / "ci-run-identity.json"
+    result = subprocess.run(
+        [
+            sys.executable, str(SCRIPTS / "ci_run_timing.py"),
+            "--write-identity-json", str(path),
+            "--attempt", "1",
+            "--github-repository", "xxu29958-jpg/xpj",
+            "--github-run-id", "100",
+            "--workflow-name", "CI",
+            "--event", "pull_request",
+            "--source-sha", "a" * 40,
+            "--measurement-sha", "b" * 40,
+            "--base-sha", "d" * 40,
+        ],
+        capture_output=True, text=True, encoding="utf-8",
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload["source_sha"] == "a" * 40
+    assert payload["measurement_sha"] == "b" * 40
+    assert payload["base_sha"] == "d" * 40
 
 
 def test_stamp_connected_inner_missing_elapsed_is_incomplete(tmp_path: Path) -> None:
@@ -474,10 +612,11 @@ def test_stamp_connected_inner_missing_elapsed_is_incomplete(tmp_path: Path) -> 
         ],
         capture_output=True, text=True, encoding="utf-8",
     )
-    assert result.returncode == 2
+    assert result.returncode == 0
     payload = json.loads(inner.read_text(encoding="utf-8"))
     assert payload["complete"] is False
-    assert "missing" in str(payload["incomplete"]).lower()
+    assert payload["state"] == "started"
+    assert "not finalized" in str(payload["reason"])
 
 
 def test_connected_workflow_keeps_direct_gradle_and_inner_timing() -> None:

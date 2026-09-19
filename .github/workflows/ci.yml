@@ -74,6 +74,29 @@ jobs:
             --head "${{ github.event.pull_request.head.sha || github.sha }}" \
             --output "$GITHUB_OUTPUT"
 
+      - name: Write run identity
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          XPJ_TIMING_WORKFLOW: CI
+          XPJ_WEIGHT_EVENT: ${{ github.event_name }}
+          XPJ_WEIGHT_SOURCE_SHA: ${{ steps.qualification.outputs.source_sha }}
+          XPJ_WEIGHT_MEASUREMENT_SHA: ${{ steps.qualification.outputs.sha }}
+          XPJ_WEIGHT_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
+        run: >-
+          python -E -S backend/scripts/ci_run_timing.py
+          --write-identity-json ${{ runner.temp }}/ci-run-identity.json
+          --attempt "${{ github.run_attempt }}"
+
+      - name: Upload run identity
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ci-run-identity
+          path: ${{ runner.temp }}/ci-run-identity.json
+          if-no-files-found: error
+          retention-days: 30
+
   backend_contracts:
     name: Backend contracts
     needs: scope

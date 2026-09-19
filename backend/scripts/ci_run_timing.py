@@ -3,13 +3,21 @@
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.request
+import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
+
+_QUALIFICATION_LOG = re.compile(
+    r"Qualification checkout SHA: ([0-9a-f]{40}); source SHA: ([0-9a-f]{40})"
+)
+IDENTITY_ARTIFACT = "ci-run-identity"
 
 _INCOMPLETE_REASONS = {
     "mismatch": "attempt mismatch",
@@ -291,7 +299,7 @@ def _previous_ready(
 
 
 def _can_bill(identity: dict[str, object], previous_notes: list[str]) -> bool:
-    return not identity["mixed"] and not any("previous-attempt evidence" in note for note in previous_notes)
+    return not identity["mixed"] and not identity["missing"] and not previous_notes
 
 
 def _interval_billable(
@@ -436,28 +444,54 @@ def summarize_jobs(
         "complete": not incomplete,
         "unit": "raw runner execution seconds / 60, not billed minutes",
     }
+    identity_notes = _identity_notes(report_identity, identity, attempt)
     if report_identity:
         payload["identity"] = report_identity
-        missing_identity = [
-            key for key in (
-                "repository", "workflow", "run_id", "run_attempt", "event", "source_sha", "measurement_sha",
-            )
-            if report_identity.get(key) in {None, ""}
-        ]
-        if missing_identity:
-            payload["incomplete"] = list(payload["incomplete"]) + [
-                f"missing timing identity ({', '.join(missing_identity)})"
-            ]
-            payload["complete"] = False
-        elif (
-            report_identity.get("event") == "pull_request"
-            and report_identity.get("source_sha") == report_identity.get("measurement_sha")
-        ):
-            payload["incomplete"] = list(payload["incomplete"]) + [
-                "pull_request measurement_sha must differ from source_sha"
-            ]
-            payload["complete"] = False
+    payload["identity_complete"] = bool(report_identity) and not identity_notes
+    if identity_notes:
+        payload["incomplete"] = list(payload["incomplete"]) + identity_notes
+        payload["complete"] = False
     return payload
+
+
+def _ids_equal(left: object, right: object) -> bool:
+    if left in {None, ""} or right in {None, ""}:
+        return True
+    return str(left) == str(right)
+
+
+def _identity_notes(
+    report_identity: dict[str, object] | None,
+    job_identity: dict[str, object],
+    attempt: int | None,
+) -> list[str]:
+    if not report_identity:
+        return []
+    notes: list[str] = []
+    missing = [
+        key for key in (
+            "repository", "workflow", "run_id", "run_attempt", "event", "source_sha", "measurement_sha",
+        )
+        if report_identity.get(key) in {None, ""}
+    ]
+    if missing:
+        notes.append(f"missing timing identity ({', '.join(missing)})")
+        return notes
+    checks = (
+        ("run_id", report_identity.get("run_id"), job_identity.get("run_id")),
+        ("workflow", report_identity.get("workflow"), job_identity.get("workflow_name")),
+        ("run_attempt", report_identity.get("run_attempt"), attempt),
+        ("source_sha", report_identity.get("source_sha"), job_identity.get("head_sha")),
+    )
+    for name, left, right in checks:
+        if not _ids_equal(left, right):
+            notes.append(f"identity {name} mismatch: {left} != {right}")
+    if (
+        report_identity.get("event") == "pull_request"
+        and report_identity.get("source_sha") == report_identity.get("measurement_sha")
+    ):
+        notes.append("pull_request measurement_sha must differ from source_sha")
+    return notes
 
 
 def _job_line(job: dict) -> list[str]:
@@ -480,7 +514,9 @@ def render_timing(summary: dict[str, object]) -> str:
         f"CI RUN TIMING attempt={summary.get('attempt')} complete={summary.get('complete')}",
         f"run_id={summary.get('run_id')} workflow_name={summary.get('workflow_name')} head_sha={summary.get('head_sha')}",
         f"step_timing_complete={summary.get('step_timing_complete')}",
+        f"identity_complete={summary.get('identity_complete')}",
         f"coverage_exclusions={summary.get('coverage_exclusions')}",
+        f"reason={summary.get('reason')}",
     ]
     identity = summary.get("identity")
     if isinstance(identity, dict):
@@ -569,35 +605,98 @@ def _github_json(url: str, token: str, *, urlopen=urllib.request.urlopen) -> dic
     return payload
 
 
-def resolve_pr_merge_identity(
+def parse_qualification_log(text: str) -> tuple[str, str] | None:
+    match = _QUALIFICATION_LOG.search(text)
+    if match is None:
+        return None
+    return match.group(1), match.group(2)
+
+
+def write_scope_identity(path: Path, identity: dict[str, object]) -> dict[str, object]:
+    payload = {
+        "repository": identity.get("repository"),
+        "workflow": identity.get("workflow"),
+        "run_id": identity.get("run_id"),
+        "run_attempt": identity.get("run_attempt"),
+        "event": identity.get("event"),
+        "base_sha": identity.get("base_sha"),
+        "source_sha": identity.get("source_sha"),
+        "measurement_sha": identity.get("measurement_sha"),
+    }
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return payload
+
+
+def cross_check_live_merge_ref(
     repository: str,
-    run_id: int,
-    token: str,
+    number: int,
     identity: dict[str, object],
+    token: str,
     *,
     urlopen=urllib.request.urlopen,
-) -> dict[str, object]:
-    run = _github_json(f"{_GITHUB_API}/repos/{repository}/actions/runs/{run_id}", token, urlopen=urlopen)
-    if run.get("event") != "pull_request":
-        return identity
-    pulls = run.get("pull_requests") or []
-    if not pulls or not isinstance(pulls[0], dict):
-        return identity
-    head = (pulls[0].get("head") or {}).get("sha") if isinstance(pulls[0].get("head"), dict) else None
-    number = pulls[0].get("number")
-    if head:
-        identity["source_sha"] = head
-    if number is None:
-        return identity
+) -> str:
     ref = _github_json(
-        f"{_GITHUB_API}/repos/{repository}/git/ref/pulls/{number}/merge",
+        f"{_GITHUB_API}/repos/{repository}/git/ref/pull/{number}/merge",
         token,
         urlopen=urlopen,
     )
-    sha = (ref.get("object") or {}).get("sha") if isinstance(ref.get("object"), dict) else None
-    if sha:
-        identity["measurement_sha"] = sha
-    return identity
+    live = (ref.get("object") or {}).get("sha") if isinstance(ref.get("object"), dict) else None
+    if not live:
+        return "unavailable"
+    commit = _github_json(
+        f"{_GITHUB_API}/repos/{repository}/git/commits/{live}",
+        token,
+        urlopen=urlopen,
+    )
+    parents = [
+        item.get("sha") for item in (commit.get("parents") or [])
+        if isinstance(item, dict) and item.get("sha")
+    ]
+    source = identity.get("source_sha")
+    base = identity.get("base_sha")
+    if len(parents) == 2 and source in parents and base in parents:
+        return "matches"
+    return "stale_or_mismatch"
+
+
+def load_identity_artifact(
+    repository: str,
+    run_id: int,
+    token: str,
+    *,
+    urlopen=urllib.request.urlopen,
+) -> dict[str, object] | None:
+    listing = _github_json(
+        f"{_GITHUB_API}/repos/{repository}/actions/runs/{run_id}/artifacts?per_page=100",
+        token,
+        urlopen=urlopen,
+    )
+    artifact = next(
+        (
+            row for row in (listing.get("artifacts") or [])
+            if isinstance(row, dict) and row.get("name") == IDENTITY_ARTIFACT and not row.get("expired")
+        ),
+        None,
+    )
+    if not artifact or not artifact.get("archive_download_url"):
+        return None
+    request = urllib.request.Request(
+        str(artifact["archive_download_url"]),
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": "ticketbox-ci-run-timing",
+        },
+    )
+    with urlopen(request) as response:
+        blob = response.read()
+    with zipfile.ZipFile(io.BytesIO(blob)) as archive:
+        name = next((item for item in archive.namelist() if item.endswith(".json")), None)
+        if name is None:
+            return None
+        payload = json.loads(archive.read(name).decode("utf-8"))
+    return payload if isinstance(payload, dict) else None
 
 
 def _write_outputs(summary: dict[str, object], rendered: str, args: argparse.Namespace) -> None:
@@ -638,15 +737,30 @@ def _cli_identity(args: argparse.Namespace, attempt: int | None, jobs: list[dict
     )
 
 
-def stamp_connected_inner(path: Path, identity: dict[str, object]) -> dict[str, object]:
+def stamp_connected_inner(
+    path: Path,
+    identity: dict[str, object],
+    *,
+    state: str | None = None,
+    reason: str | None = None,
+) -> dict[str, object]:
     payload: dict[str, object] = {}
     if path.exists():
         loaded = json.loads(path.read_text(encoding="utf-8"))
         if isinstance(loaded, dict):
             payload = loaded
+    if state:
+        payload["state"] = state
+    if reason:
+        payload["reason"] = reason
     incomplete: list[str] = []
     if payload.get("elapsed_s") is None:
-        incomplete.append("inner gradle timing missing; buildFinished may not have run")
+        payload.setdefault("state", state or "started")
+        payload.setdefault("reason", reason or "inner Gradle timing not finalized")
+        incomplete.append(str(payload["reason"]))
+    else:
+        payload["state"] = "finalized"
+        payload["reason"] = None
     payload["kind"] = payload.get("kind") or "gradle_connected_test"
     payload["identity"] = identity
     payload["job"] = identity.get("job") or "Connected execution"
@@ -664,16 +778,21 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--previous-jobs-json", type=Path)
     parser.add_argument("--attempt", type=int)
     parser.add_argument("--from-github", action="store_true")
-    parser.add_argument("--resolve-pr-merge", action="store_true")
+    parser.add_argument("--from-run-identity", action="store_true")
+    parser.add_argument("--run-identity-json", type=Path)
+    parser.add_argument("--write-identity-json", type=Path)
     parser.add_argument("--github-repository")
     parser.add_argument("--github-run-id", type=int)
     parser.add_argument("--exclude-job-name", action="append", default=[])
     parser.add_argument("--source-sha")
     parser.add_argument("--measurement-sha")
+    parser.add_argument("--base-sha")
     parser.add_argument("--event")
     parser.add_argument("--workflow-name")
     parser.add_argument("--job-name")
     parser.add_argument("--outer-step")
+    parser.add_argument("--inner-state")
+    parser.add_argument("--inner-reason")
     parser.add_argument("--stamp-connected-inner", type=Path)
     parser.add_argument("--output-json", type=Path)
     parser.add_argument("--summary", type=Path, default=os.environ.get("GITHUB_STEP_SUMMARY"))
@@ -682,9 +801,24 @@ def _parse_args() -> argparse.Namespace:
 
 def _run_stamp(args: argparse.Namespace) -> int:
     identity = _cli_identity(args, args.attempt, [])
-    payload = stamp_connected_inner(args.stamp_connected_inner, identity)
+    payload = stamp_connected_inner(
+        args.stamp_connected_inner,
+        identity,
+        state=args.inner_state,
+        reason=args.inner_reason,
+    )
     print(json.dumps(payload, ensure_ascii=False, indent=2))
-    return 0 if payload["complete"] else 2
+    if payload["complete"] or payload.get("state") in {"started", "cancelled_before_inner_timing_upload"}:
+        return 0
+    return 2
+
+
+def _run_write_identity(args: argparse.Namespace) -> int:
+    identity = _cli_identity(args, args.attempt, [])
+    identity["base_sha"] = args.base_sha or os.environ.get("XPJ_WEIGHT_BASE_SHA")
+    payload = write_scope_identity(args.write_identity_json, identity)
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    return 0
 
 
 def _load_jobs(args: argparse.Namespace) -> tuple[list[dict], list[dict] | None, int | None]:
@@ -696,25 +830,87 @@ def _load_jobs(args: argparse.Namespace) -> tuple[list[dict], list[dict] | None,
     return _read_job_list(args.jobs_json), previous, args.attempt
 
 
-def _optional_report_identity(
+def _failed_summary(reason: str) -> dict[str, object]:
+    return {
+        "attempt": None,
+        "run_id": None,
+        "workflow_name": None,
+        "head_sha": None,
+        "jobs": [],
+        "runner_execution_minutes": 0,
+        "total_execution_minutes": 0,
+        "success_execution_minutes": 0,
+        "failure_execution_minutes": 0,
+        "cancelled_consumed_minutes": 0,
+        "cancelled_execution_minutes": 0,
+        "neutral_execution_minutes": 0,
+        "other_execution_minutes": 0,
+        "skipped_jobs": [],
+        "observed_subset_wall_clock_s": None,
+        "coverage": "observed subset of supplied jobs only; not the final required-check wait",
+        "coverage_exclusions": [],
+        "incomplete": [reason],
+        "step_timing_complete": False,
+        "identity_complete": False,
+        "complete": False,
+        "reason": reason,
+        "unit": "raw runner execution seconds / 60, not billed minutes",
+    }
+
+
+def _merge_identity(base: dict[str, object], loaded: dict[str, object]) -> dict[str, object]:
+    merged = dict(base)
+    for key in (
+        "repository", "workflow", "run_id", "run_attempt", "event",
+        "base_sha", "source_sha", "measurement_sha",
+    ):
+        if loaded.get(key) not in {None, ""}:
+            merged[key] = loaded[key]
+    return merged
+
+
+def _identity_from_file(path: Path) -> dict[str, object] | None:
+    loaded = json.loads(path.read_text(encoding="utf-8"))
+    return loaded if isinstance(loaded, dict) else None
+
+
+def _identity_from_observed_run(args: argparse.Namespace) -> dict[str, object] | None:
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    repository = args.github_repository or os.environ.get("GITHUB_REPOSITORY")
+    run_id = args.github_run_id or os.environ.get("GITHUB_RUN_ID")
+    if not (token and repository and run_id):
+        return None
+    return load_identity_artifact(repository, int(run_id), token)
+
+
+def _observed_identity(
     args: argparse.Namespace,
     jobs: list[dict],
     attempt: int | None,
 ) -> dict[str, object] | None:
     identity = _cli_identity(args, attempt, jobs)
-    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
-    repository = args.github_repository or os.environ.get("GITHUB_REPOSITORY")
-    run_id = args.github_run_id or os.environ.get("GITHUB_RUN_ID")
-    if args.resolve_pr_merge and token and repository and run_id:
-        identity = resolve_pr_merge_identity(repository, int(run_id), token, identity)
-    if identity.get("source_sha") and identity.get("measurement_sha"):
-        return identity
-    return None
+    identity["base_sha"] = args.base_sha or os.environ.get("XPJ_WEIGHT_BASE_SHA")
+    try:
+        loaded = None
+        if args.run_identity_json and args.run_identity_json.exists():
+            loaded = _identity_from_file(args.run_identity_json)
+        elif args.from_run_identity:
+            loaded = _identity_from_observed_run(args)
+        if loaded:
+            identity = _merge_identity(identity, loaded)
+    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError, urllib.error.URLError):
+        pass
+    keep = bool(identity.get("source_sha") and identity.get("measurement_sha"))
+    keep = keep or bool(args.from_run_identity or args.run_identity_json)
+    return identity if keep else None
 
 
 def main() -> int:
     args = _parse_args()
+    summary: dict[str, object] | None = None
     try:
+        if args.write_identity_json:
+            return _run_write_identity(args)
         if args.stamp_connected_inner:
             return _run_stamp(args)
         jobs, previous, attempt = _load_jobs(args)
@@ -724,11 +920,12 @@ def main() -> int:
             attempt=attempt,
             previous_jobs=previous,
             exclude_job_names=tuple(args.exclude_job_name),
-            report_identity=_optional_report_identity(args, visible, attempt),
+            report_identity=_observed_identity(args, visible, attempt),
         )
     except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError, urllib.error.URLError) as exc:
         print(f"CI RUN TIMING INCOMPLETE: {exc}", file=sys.stderr)
-        return 2
+        if summary is None:
+            summary = _failed_summary(str(exc))
     rendered = render_timing(summary)
     print(rendered, end="")
     _write_outputs(summary, rendered, args)
