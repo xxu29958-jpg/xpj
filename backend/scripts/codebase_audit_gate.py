@@ -56,7 +56,7 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
     "long_functions": 3,  # Physical spans include fixtures, declarations and comments.
     "deep_nesting_functions": 0,
     "route_layer_imports": 0,
-    "service_public_no_private": 2,
+    "service_public_no_private": 1,
     "global_usage": 0,  # 2026-07-08: process-local CSRF/executor/Windows-task state moved behind lifecycle stores.
     "cached_singletons": 3,
     "nested_dict_args": 0,  # 2026-07-08: JSON/DTO boundary signatures use named contracts.

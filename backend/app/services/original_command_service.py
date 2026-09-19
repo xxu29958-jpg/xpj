@@ -169,12 +169,13 @@ def replenish_original(db: Session, *, expense_id: int, auth: AuthContext,
         return receipt
     except Exception:
         db.rollback()
+        raise
+    finally:
         if saved is not None and not commit_attempted:
             try:
                 delete_relative_upload(saved.relative_path)
             except OSError as exc:
                 logger.warning("Original staging compensation failed (%s)", type(exc).__name__)
-        raise
 
 
 def continue_original_cleanup(db: Session, *, expense_id: int, auth: AuthContext,

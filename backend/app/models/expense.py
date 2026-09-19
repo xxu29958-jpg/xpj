@@ -200,7 +200,7 @@ class Expense(Base):
     split_origin_invitation_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
 
     @validates("attachment_cleanup_request")
-    def validate_attachment_cleanup_request(self, _key, value):
+    def validate_attachment_cleanup_request(self, _key: str, value: dict | None) -> dict | None:
         if value is None:
             return None
         return CleanupRequest.model_validate(value).model_dump(mode="json")

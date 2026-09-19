@@ -173,6 +173,7 @@ def _thumbnail_cleanup_missing() -> list[str]:
     expense_image = _read("app/services/expense_service/_image.py")
     publication_owner = _read("app/services/expense_service/_thumbnail_publication.py")
     cleanup_service = _read("app/services/cleanup_service.py")
+    attachment_cleanup = _read("app/services/attachment_cleanup_service.py")
     missing = [
         *_require_tokens(
             "thumbnail enrichment publication",
@@ -203,16 +204,28 @@ def _thumbnail_cleanup_missing() -> list[str]:
                 "db.refresh(expense, with_for_update=True)",
                 "expense.thumbnail_path == staged.final_reference",
                 "thumb_service.discard_published_thumbnail_attempt(staged)",
+                "cleanup_request_covers_source(expense, staged.source_reference)",
             ),
         ),
         *_require_tokens(
-            "thumbnail cleanup serialization",
+            "thumbnail cleanup delegation and orphan protection",
             cleanup_service,
             (
-                "def _cleanup_files_ready(expense: Expense) -> bool:",
+                'execute_attachment_cleanup(db, expense, reason="after_confirm", settings_provider=get_settings)',
+                'execute_attachment_cleanup(db, expense, reason=f"{status}_retention", settings_provider=get_settings)',
+                "pending_cleanup_references(cleanup_request)",
+            ),
+        ),
+        *_require_tokens(
+            "durable attachment cleanup serialization",
+            attachment_cleanup,
+            (
+                "def execute_attachment_cleanup(",
                 "db.refresh(expense, with_for_update=True)",
-                ".with_for_update()",
-                "if not _cleanup_files_ready(expense):",
+                'expense.attachment_cleanup_request = request.model_dump(mode="json")',
+                "db.commit()",
+                "expected_request_id=request.request_id",
+                'getattr(expense, f"{kind}_path") != item.reference',
             ),
         ),
     ]

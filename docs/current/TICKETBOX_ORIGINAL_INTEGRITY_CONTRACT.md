@@ -233,3 +233,22 @@ The combined backend checkpoint subsequently passed 192 pure/real-file tests in
 continuation, durable cleanup and the query-token audit. Ruff and diff checks
 passed; the generated OpenAPI contract records all five new endpoints. Four
 PostgreSQL/HTTP cases remain collection-only locally and await the cloud lane.
+
+The first cloud checkpoint `e93524d15007b56f823f3d4661eb9ac19cea7caa` ran all
+six PostgreSQL lanes successfully in [CI 35469452627](https://github.com/xxu29958-jpg/xpj/actions/runs/35469452627).
+CI itself failed its contract lane: the cleanup audit still required the removed
+path-only owner, the nullable ORM validator lacked its return annotation, the
+staging compensation mixed transaction rollback with filesystem cleanup, and
+the route matrix could not resolve concatenated test URLs. The follow-up moves
+that audit to the actual durable owner and thumbnail/orphan consumers, declares
+the nullable type, and separates rollback/reraise from precommit compensation.
+Uncertain commit still preserves new bytes. No debt allowance or route exemption
+is added; the improved public-service counter is reduced from two to one.
+
+The affected pure command/cleanup tests passed 70 cases in 1.73 seconds. The
+cloud-hardening, route-matrix and codebase audits then passed locally. Seven
+HTTP/PostgreSQL cases collect locally, including the original four plus cleanup
+retry, every writer's authentication/role boundary, and actual separate-session
+cleanup acceptance followed by HTTP replenishment before old-file settlement.
+Those new cases require the next exact cloud source; collection is not execution.
+Web/Android file continuity and final integrated qualification remain open.
