@@ -188,6 +188,14 @@ def _claim_inherited(job: dict, unused: list[dict]) -> bool:
     return False
 
 
+def _matching_prior(job: dict, previous_jobs: list[dict]) -> dict | None:
+    fingerprint = _job_fingerprint(job)
+    for prior in previous_jobs:
+        if isinstance(prior, dict) and _job_fingerprint(prior) == fingerprint and _previous_same_scope(job, prior):
+            return prior
+    return None
+
+
 def _identity_values(jobs: list[dict], key: str) -> set[object]:
     return {job.get(key) for job in jobs if isinstance(job, dict) and job.get(key) not in {None, ""}}
 
@@ -387,6 +395,7 @@ def _timing_identity(
         "workflow": workflow,
         "run_id": run_id,
         "run_attempt": run_attempt,
+        "target_attempt": run_attempt,
         "event": event,
         "base_sha": base_sha,
         "source_sha": source_sha,
@@ -447,6 +456,8 @@ def summarize_jobs(
         "neutral_execution_minutes": round(buckets["neutral"] / 60, 3),
         "other_execution_minutes": round(buckets["other"] / 60, 3),
         "run_conclusion": run_conclusion,
+        "target_attempt": attempt,
+        "identity_producer_attempt": None,
         "wasted_execution_minutes": round(total / 60, 3) if run_conclusion == "cancelled" else 0.0,
         "skipped_jobs": skipped,
         "observed_subset_wall_clock_s": _seconds(min(starts), max(ends)) if starts and ends else None,
@@ -470,6 +481,10 @@ def _apply_identity_notes(
     notes = _identity_notes(report_identity, job_identity, attempt)
     if report_identity:
         payload["identity"] = report_identity
+        payload["target_attempt"] = report_identity.get("target_attempt", report_identity.get("run_attempt"))
+        producer = report_identity.get("identity_producer_attempt")
+        if producer not in {None, ""}:
+            payload["identity_producer_attempt"] = producer
     payload["identity_complete"] = bool(report_identity) and not notes
     if not notes:
         return
@@ -505,21 +520,33 @@ def _identity_notes(
     if missing:
         notes.append(f"missing timing identity ({', '.join(missing)})")
         return notes
+    target_attempt = report_identity.get("target_attempt", report_identity.get("run_attempt"))
     checks = (
         ("run_id", report_identity.get("run_id"), job_identity.get("run_id")),
         ("workflow", report_identity.get("workflow"), job_identity.get("workflow_name")),
-        ("run_attempt", report_identity.get("run_attempt"), attempt),
+        ("run_attempt", target_attempt, attempt),
         ("source_sha", report_identity.get("source_sha"), job_identity.get("head_sha")),
     )
     for name, left, right in checks:
         if not _ids_equal(left, right):
             notes.append(f"identity {name} mismatch: {left} != {right}")
+    producer_note = _producer_attempt_note(report_identity)
+    if producer_note:
+        notes.append(producer_note)
     if (
         report_identity.get("event") == "pull_request"
         and report_identity.get("source_sha") == report_identity.get("measurement_sha")
     ):
         notes.append("pull_request measurement_sha must differ from source_sha")
     return notes
+
+
+def _producer_attempt_note(report_identity: dict[str, object]) -> str | None:
+    producer = _attempt_number(report_identity.get("identity_producer_attempt"))
+    target = _attempt_number(report_identity.get("target_attempt") or report_identity.get("run_attempt"))
+    if producer is None or target is None or producer <= target:
+        return None
+    return f"identity producer attempt {producer} is after target attempt {target}"
 
 
 def _job_line(job: dict) -> list[str]:
@@ -545,6 +572,8 @@ def render_timing(summary: dict[str, object]) -> str:
         f"identity_complete={summary.get('identity_complete')}",
         f"coverage_exclusions={summary.get('coverage_exclusions')}",
         f"run_conclusion={summary.get('run_conclusion')}",
+        f"target_attempt={summary.get('target_attempt')}",
+        f"identity_producer_attempt={summary.get('identity_producer_attempt')}",
         f"reason={summary.get('reason')}",
     ]
     identity = summary.get("identity")
@@ -553,6 +582,8 @@ def render_timing(summary: dict[str, object]) -> str:
             "identity "
             f"repository={identity.get('repository')} workflow={identity.get('workflow')} "
             f"run_id={identity.get('run_id')} run_attempt={identity.get('run_attempt')} "
+            f"target_attempt={identity.get('target_attempt')} "
+            f"identity_producer_attempt={identity.get('identity_producer_attempt')} "
             f"event={identity.get('event')} base_sha={identity.get('base_sha')} "
             f"source_sha={identity.get('source_sha')} "
             f"measurement_sha={identity.get('measurement_sha')}"
@@ -691,31 +722,17 @@ def cross_check_live_merge_ref(
     return "stale_or_mismatch"
 
 
-def load_run_artifact(
-    repository: str,
-    run_id: int,
-    token: str,
-    name: str,
-    *,
-    urlopen=None,
-) -> dict[str, object] | None:
-    opener = urlopen or urllib.request.urlopen
-    listing = _github_json(
-        f"{_GITHUB_API}/repos/{repository}/actions/runs/{run_id}/artifacts?per_page=100",
-        token,
-        urlopen=opener,
-    )
-    artifact = next(
-        (
-            row for row in (listing.get("artifacts") or [])
-            if isinstance(row, dict) and row.get("name") == name and not row.get("expired")
-        ),
-        None,
-    )
-    if not artifact or not artifact.get("archive_download_url"):
-        return None
+def _named_artifact_rows(listing: dict, name: str) -> list[dict]:
+    return [
+        row for row in (listing.get("artifacts") or [])
+        if isinstance(row, dict) and row.get("name") == name
+        and not row.get("expired") and row.get("archive_download_url")
+    ]
+
+
+def _download_artifact_json(url: str, token: str, opener) -> dict[str, object] | None:
     request = urllib.request.Request(
-        str(artifact["archive_download_url"]),
+        url,
         headers={
             "Authorization": f"Bearer {token}",
             "Accept": "application/vnd.github+json",
@@ -731,6 +748,26 @@ def load_run_artifact(
             return None
         payload = json.loads(archive.read(member).decode("utf-8"))
     return payload if isinstance(payload, dict) else None
+
+
+def load_run_artifact(
+    repository: str,
+    run_id: int,
+    token: str,
+    name: str,
+    *,
+    urlopen=None,
+) -> dict[str, object] | None:
+    opener = urlopen or urllib.request.urlopen
+    listing = _github_json(
+        f"{_GITHUB_API}/repos/{repository}/actions/runs/{run_id}/artifacts?per_page=100",
+        token,
+        urlopen=opener,
+    )
+    rows = _named_artifact_rows(listing, name)
+    if not rows:
+        return None
+    return _download_artifact_json(str(rows[0]["archive_download_url"]), token, opener)
 
 
 def load_identity_artifact(
@@ -902,6 +939,8 @@ def _failed_summary(reason: str) -> dict[str, object]:
         "neutral_execution_minutes": 0,
         "other_execution_minutes": 0,
         "run_conclusion": None,
+        "target_attempt": None,
+        "identity_producer_attempt": None,
         "wasted_execution_minutes": 0.0,
         "skipped_jobs": [],
         "observed_subset_wall_clock_s": None,
@@ -918,12 +957,17 @@ def _failed_summary(reason: str) -> dict[str, object]:
 
 def _merge_identity(base: dict[str, object], loaded: dict[str, object]) -> dict[str, object]:
     merged = dict(base)
-    for key in (
-        "repository", "workflow", "run_id", "run_attempt", "event",
-        "base_sha", "source_sha", "measurement_sha",
-    ):
+    for key in ("repository", "workflow", "run_id", "event", "base_sha", "source_sha", "measurement_sha"):
         if loaded.get(key) not in {None, ""}:
             merged[key] = loaded[key]
+    return merged
+
+
+def _bind_loaded_identity(target: dict[str, object], loaded: dict[str, object]) -> dict[str, object]:
+    merged = _merge_identity(target, loaded)
+    merged["run_attempt"] = target.get("run_attempt")
+    merged["target_attempt"] = target.get("run_attempt")
+    merged["identity_producer_attempt"] = _attempt_number(loaded.get("run_attempt"))
     return merged
 
 
@@ -932,26 +976,102 @@ def _identity_from_file(path: Path) -> dict[str, object] | None:
     return loaded if isinstance(loaded, dict) else None
 
 
-def _artifact_from_observed_run(args: argparse.Namespace, name: str) -> dict[str, object] | None:
+def _observed_run_context(args: argparse.Namespace) -> tuple[str, str, int] | None:
     token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
     repository = args.github_repository or os.environ.get("GITHUB_REPOSITORY")
     run_id = args.github_run_id or os.environ.get("GITHUB_RUN_ID")
     if not (token and repository and run_id):
         return None
-    return load_run_artifact(repository, int(run_id), token, name)
+    return token, repository, int(run_id)
 
 
-def _identity_from_observed_run(args: argparse.Namespace) -> dict[str, object] | None:
-    return _artifact_from_observed_run(args, IDENTITY_ARTIFACT)
+def _iter_artifact_payloads(args: argparse.Namespace, name: str):
+    context = _observed_run_context(args)
+    if context is None:
+        return
+    token, repository, run_id = context
+    opener = urllib.request.urlopen
+    listing = _github_json(
+        f"{_GITHUB_API}/repos/{repository}/actions/runs/{run_id}/artifacts?per_page=100",
+        token,
+        urlopen=opener,
+    )
+    for row in _named_artifact_rows(listing, name):
+        try:
+            payload = _download_artifact_json(str(row["archive_download_url"]), token, opener)
+        except _IDENTITY_CATCH:
+            continue
+        if payload:
+            yield payload
 
 
-def _required_identity_payload(args: argparse.Namespace) -> dict[str, object] | None:
+def _artifact_producer_attempt(payload: dict) -> int | None:
+    nested = payload.get("identity")
+    if isinstance(nested, dict):
+        nested_attempt = _attempt_number(nested.get("run_attempt"))
+        if nested_attempt is not None:
+            return nested_attempt
+    return _attempt_number(payload.get("run_attempt"))
+
+
+def _producer_not_after(producer: object, target_attempt: object) -> bool:
+    prod = _attempt_number(producer)
+    target = _attempt_number(target_attempt)
+    return prod is not None and target is not None and prod <= target
+
+
+def _field_matches(payload: dict, target: dict, key: str) -> bool:
+    expected = target.get(key)
+    if expected in {None, ""}:
+        return True
+    actual = payload.get(key)
+    if actual in {None, ""}:
+        return False
+    return str(actual) == str(expected)
+
+
+def _identity_candidate_valid(payload: dict[str, object], target: dict[str, object]) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    if any(payload.get(key) in {None, ""} for key in ("run_id", "workflow", "source_sha", "run_attempt")):
+        return False
+    if not _producer_not_after(payload.get("run_attempt"), target.get("run_attempt")):
+        return False
+    return all(_field_matches(payload, target, key) for key in ("run_id", "workflow", "source_sha", "measurement_sha", "base_sha"))
+
+
+def _select_best_payload(
+    payloads: list[dict[str, object]],
+    target: dict[str, object],
+    valid_fn,
+) -> dict[str, object] | None:
+    valid = [payload for payload in payloads if valid_fn(payload, target)]
+    if not valid:
+        return None
+    best_n = max(_artifact_producer_attempt(payload) for payload in valid)
+    best = [payload for payload in valid if _artifact_producer_attempt(payload) == best_n]
+    if len(best) != 1:
+        return None
+    return best[0]
+
+
+def _load_validated_identity(
+    args: argparse.Namespace,
+    target: dict[str, object],
+) -> dict[str, object] | None:
     if args.run_identity_json:
         if not args.run_identity_json.exists():
             return None
-        return _identity_from_file(args.run_identity_json)
+        loaded = _identity_from_file(args.run_identity_json)
+        if loaded and _identity_candidate_valid(loaded, target):
+            return loaded
+        return None
     if args.from_run_identity:
-        return _identity_from_observed_run(args)
+        return _select_best_payload(
+            list(_iter_artifact_payloads(args, IDENTITY_ARTIFACT)),
+            target,
+            _identity_candidate_valid,
+        )
     return None
 
 
@@ -959,6 +1079,8 @@ def _mark_unavailable(identity: dict[str, object]) -> dict[str, object]:
     marked = dict(identity)
     marked["identity_unavailable"] = IDENTITY_UNAVAILABLE
     marked["measurement_sha"] = None
+    marked["target_attempt"] = identity.get("run_attempt")
+    marked.pop("identity_producer_attempt", None)
     return marked
 
 
@@ -967,12 +1089,12 @@ def _strict_observed_identity(
     identity: dict[str, object],
 ) -> dict[str, object]:
     try:
-        loaded = _required_identity_payload(args)
+        loaded = _load_validated_identity(args, identity)
     except _IDENTITY_CATCH:
         return _mark_unavailable(identity)
     if not loaded:
         return _mark_unavailable(identity)
-    return _merge_identity(identity, loaded)
+    return _bind_loaded_identity(identity, loaded)
 
 
 def _observed_identity(
@@ -1027,33 +1149,103 @@ def derive_missing_inner_state(
     return "unknown", "connected inner timing artifact missing with inconclusive job evidence"
 
 
-def _jobs_or_empty(args: argparse.Namespace) -> tuple[list[dict], bool]:
+def _jobs_or_empty(args: argparse.Namespace) -> tuple[list[dict], list[dict] | None, bool]:
     try:
-        jobs, _previous, _attempt = _load_jobs(args)
+        jobs, previous, _attempt = _load_jobs(args)
     except _IDENTITY_CATCH:
-        return [], False
-    return jobs, True
+        return [], None, False
+    return jobs, previous, True
 
 
-def _retained_inner_payload(args: argparse.Namespace) -> dict[str, object] | None:
-    try:
-        return _artifact_from_observed_run(args, INNER_ARTIFACT)
-    except _IDENTITY_CATCH:
+def _inner_evidence_identity(payload: dict[str, object]) -> dict[str, object]:
+    nested = payload.get("identity")
+    return nested if isinstance(nested, dict) else {}
+
+
+def _inner_candidate_valid(payload: dict[str, object], target: dict[str, object]) -> bool:
+    ident = _inner_evidence_identity(payload)
+    producer = _artifact_producer_attempt(payload)
+    if not ident or producer is None:
+        return False
+    probe = {
+        "run_id": ident.get("run_id"),
+        "workflow": ident.get("workflow"),
+        "source_sha": ident.get("source_sha"),
+        "measurement_sha": ident.get("measurement_sha"),
+        "base_sha": ident.get("base_sha"),
+        "run_attempt": producer,
+    }
+    return _identity_candidate_valid(probe, target)
+
+
+def _inner_usable_for_attempt(payload: dict[str, object], target_attempt: int, inherited_from: int | None) -> bool:
+    producer = _artifact_producer_attempt(payload)
+    if producer == target_attempt:
+        return True
+    return inherited_from is not None and producer == inherited_from
+
+
+def _annotate_inner(
+    payload: dict[str, object],
+    *,
+    target_attempt: object,
+    evidence_attempt: object,
+    inherited: bool,
+) -> dict[str, object]:
+    payload["target_attempt"] = target_attempt
+    payload["inner_evidence_attempt"] = evidence_attempt
+    payload["inherited"] = inherited
+    return payload
+
+
+def _retainable_inner(
+    args: argparse.Namespace,
+    jobs: list[dict],
+    previous: list[dict] | None,
+    target: dict[str, object],
+) -> dict[str, object] | None:
+    target_attempt = _attempt_number(target.get("run_attempt"))
+    if target_attempt is None:
         return None
+    valid = [payload for payload in _iter_artifact_payloads(args, INNER_ARTIFACT) if _inner_candidate_valid(payload, target)]
+    job = _named_job(jobs, args.job_name or CONNECTED_JOB_NAME)
+    inherited_from = None
+    if job is not None:
+        prior = _matching_prior(job, previous or [])
+        inherited_from = _attempt_number(prior.get("run_attempt")) if prior else None
+    usable = [
+        payload for payload in valid
+        if _inner_usable_for_attempt(payload, target_attempt, inherited_from)
+    ]
+    selected = _select_best_payload(usable, target, lambda payload, _target: True)
+    if selected is None:
+        return None
+    producer = _artifact_producer_attempt(selected)
+    return _annotate_inner(
+        dict(selected),
+        target_attempt=target_attempt,
+        evidence_attempt=producer,
+        inherited=bool(producer is not None and producer < target_attempt),
+    )
 
 
 def _print_json(payload: dict[str, object]) -> None:
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
 
+def _write_json_path(path: Path, payload: dict[str, object]) -> None:
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
 def _stamp_cancelled_inner(args: argparse.Namespace) -> int:
-    jobs, fetched = _jobs_or_empty(args)
+    jobs, previous, fetched = _jobs_or_empty(args)
     identity = _strict_observed_identity(args, _cli_identity(args, args.attempt, jobs))
-    retained = _retained_inner_payload(args)
+    try:
+        retained = _retainable_inner(args, jobs, previous, identity)
+    except _IDENTITY_CATCH:
+        retained = None
     if retained is not None:
-        args.stamp_connected_inner.write_text(
-            json.dumps(retained, ensure_ascii=False, indent=2) + "\n", encoding="utf-8",
-        )
+        _write_json_path(args.stamp_connected_inner, retained)
         _print_json(retained)
         return 0
     if fetched:
@@ -1062,9 +1254,17 @@ def _stamp_cancelled_inner(args: argparse.Namespace) -> int:
         )
     else:
         state, reason = "unknown", "target run jobs unavailable"
-    _print_json(stamp_connected_inner(
+    payload = stamp_connected_inner(
         args.stamp_connected_inner, identity, state=state, reason=reason,
-    ))
+    )
+    _annotate_inner(
+        payload,
+        target_attempt=args.attempt,
+        evidence_attempt=args.attempt,
+        inherited=False,
+    )
+    _write_json_path(args.stamp_connected_inner, payload)
+    _print_json(payload)
     return 0
 
 

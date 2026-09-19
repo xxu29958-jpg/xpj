@@ -936,6 +936,7 @@ def test_derive_cancelled_inner_uses_explicit_run_id_not_observer_github_run_id(
     seen: list[str] = []
     job = _job(
         id=20, name="Connected execution", run_id=100, run_attempt=2,
+        workflow_name="Android Connected Test",
         conclusion="cancelled",
         started_at="2026-09-18T03:00:00Z", completed_at="2026-09-18T03:08:00Z",
         steps=[{
@@ -945,7 +946,10 @@ def test_derive_cancelled_inner_uses_explicit_run_id_not_observer_github_run_id(
             "completed_at": "2026-09-18T03:08:00Z",
         }],
     )
-    previous = _job(id=10, name="Connected execution", run_id=100, run_attempt=1)
+    previous = _job(
+        id=10, name="Connected execution", run_id=100, run_attempt=1,
+        workflow_name="Android Connected Test",
+    )
 
     def opener(request):
         url = request.full_url
@@ -1100,6 +1104,7 @@ def test_derive_cancelled_inner_retains_existing_artifact(tmp_path: Path) -> Non
     jobs = tmp_path / "jobs.json"
     jobs.write_text(json.dumps({"jobs": [_job(
         name="Connected execution",
+        workflow_name="Android Connected Test",
         conclusion="cancelled",
         steps=[{
             "name": "Run connected test",
@@ -1109,7 +1114,13 @@ def test_derive_cancelled_inner_retains_existing_artifact(tmp_path: Path) -> Non
         }],
     )]}), encoding="utf-8")
     inner = tmp_path / "connected-inner-timing.json"
-    retained = {"kind": "gradle_connected_test", "elapsed_s": 12.5, "state": "finalized", "complete": True}
+    retained = {
+        "kind": "gradle_connected_test",
+        "elapsed_s": 12.5,
+        "state": "finalized",
+        "complete": True,
+        "identity": _pr_identity(workflow="Android Connected Test", run_attempt=1),
+    }
 
     def opener(request):
         if "artifacts?per_page=100" in request.full_url:
@@ -1149,6 +1160,7 @@ def test_derive_cancelled_inner_uses_target_identity_not_observer_sha(tmp_path: 
     jobs = tmp_path / "jobs.json"
     jobs.write_text(json.dumps({"jobs": [_job(
         name="Connected execution",
+        workflow_name="Android Connected Test",
         conclusion="cancelled",
         steps=[{
             "name": "Run connected test",
@@ -1192,3 +1204,307 @@ def test_derive_cancelled_inner_uses_target_identity_not_observer_sha(tmp_path: 
     assert payload["identity"]["measurement_sha"] == "b" * 40
     assert payload["identity"]["measurement_sha"] != "f" * 40
     assert payload["complete"] is False
+
+
+def _inherited_scope_pair() -> tuple[dict, dict]:
+    first = _job(
+        id=105463540564,
+        name="CI scope",
+        run_attempt=1,
+        started_at="2026-09-18T02:52:23Z",
+        completed_at="2026-09-18T02:52:32Z",
+        created_at="2026-09-18T02:52:20Z",
+    )
+    latest = {
+        **first,
+        "id": 105471586858,
+        "run_attempt": 2,
+        "created_at": "2026-09-18T03:35:00Z",
+    }
+    return first, latest
+
+
+def _attempt_two_timing_argv(jobs: Path, previous: Path, identity: Path, output: Path) -> list[str]:
+    return [
+        "--jobs-json", str(jobs),
+        "--previous-jobs-json", str(previous),
+        "--attempt", "2",
+        "--run-identity-json", str(identity),
+        "--github-repository", "xxu29958-jpg/xpj",
+        "--github-run-id", "100",
+        "--workflow-name", "CI",
+        "--event", "pull_request",
+        "--source-sha", "a" * 40,
+        "--output-json", str(output),
+    ]
+
+
+def test_attempt_two_inherited_scope_accepts_attempt_one_identity(tmp_path: Path) -> None:
+    first, latest = _inherited_scope_pair()
+    rerun = _job(
+        id=3, name="Android", run_attempt=2,
+        conclusion="failure",
+        started_at="2026-09-18T03:36:00Z",
+        completed_at="2026-09-18T03:46:00Z",
+    )
+    jobs = tmp_path / "jobs.json"
+    previous = tmp_path / "previous.json"
+    identity = tmp_path / "identity.json"
+    output = tmp_path / "timing.json"
+    jobs.write_text(json.dumps({"jobs": [latest, rerun]}), encoding="utf-8")
+    previous.write_text(json.dumps({"jobs": [first]}), encoding="utf-8")
+    identity.write_text(json.dumps(_pr_identity(run_attempt=1)), encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, str(SCRIPTS / "ci_run_timing.py"), *_attempt_two_timing_argv(jobs, previous, identity, output)],
+        capture_output=True, text=True, encoding="utf-8",
+    )
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert payload["complete"] is True
+    assert payload["identity_complete"] is True
+    assert payload["target_attempt"] == 2
+    assert payload["identity_producer_attempt"] == 1
+    assert payload["identity"]["run_attempt"] in {2, "2"}
+    assert payload["failure_execution_minutes"] == 10
+    by_name = {job["name"]: job for job in payload["jobs"]}
+    assert by_name["CI scope"]["inherited"] is True
+    assert by_name["CI scope"]["execution_s"] == 9.0
+
+
+def test_identity_producer_attempt_after_target_is_rejected(tmp_path: Path) -> None:
+    first, latest = _inherited_scope_pair()
+    rerun = _job(
+        id=3, name="Android", run_attempt=2,
+        started_at="2026-09-18T03:36:00Z",
+        completed_at="2026-09-18T03:46:00Z",
+    )
+    jobs = tmp_path / "jobs.json"
+    previous = tmp_path / "previous.json"
+    identity = tmp_path / "identity.json"
+    output = tmp_path / "timing.json"
+    jobs.write_text(json.dumps({"jobs": [latest, rerun]}), encoding="utf-8")
+    previous.write_text(json.dumps({"jobs": [first]}), encoding="utf-8")
+    identity.write_text(json.dumps(_pr_identity(run_attempt=3)), encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, str(SCRIPTS / "ci_run_timing.py"), *_attempt_two_timing_argv(jobs, previous, identity, output)],
+        capture_output=True, text=True, encoding="utf-8",
+    )
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert result.returncode == 2
+    assert payload["complete"] is False
+    assert payload["identity_complete"] is False
+    assert payload["success_execution_minutes"] == 10
+    assert payload["reason"] == ci_run_timing.IDENTITY_UNAVAILABLE
+    assert payload["identity_producer_attempt"] is None
+
+
+def test_identity_run_source_mismatch_keeps_measured_cost(tmp_path: Path) -> None:
+    first, latest = _inherited_scope_pair()
+    rerun = _job(
+        id=3, name="Android", run_attempt=2,
+        started_at="2026-09-18T03:36:00Z",
+        completed_at="2026-09-18T03:46:00Z",
+    )
+    jobs = tmp_path / "jobs.json"
+    previous = tmp_path / "previous.json"
+    identity = tmp_path / "identity.json"
+    output = tmp_path / "timing.json"
+    jobs.write_text(json.dumps({"jobs": [latest, rerun]}), encoding="utf-8")
+    previous.write_text(json.dumps({"jobs": [first]}), encoding="utf-8")
+    identity.write_text(json.dumps(_pr_identity(run_attempt=1, source_sha="e" * 40, run_id=999)), encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, str(SCRIPTS / "ci_run_timing.py"), *_attempt_two_timing_argv(jobs, previous, identity, output)],
+        capture_output=True, text=True, encoding="utf-8",
+    )
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert result.returncode == 2
+    assert payload["complete"] is False
+    assert payload["identity_complete"] is False
+    assert payload["success_execution_minutes"] == 10
+    assert payload["reason"] == ci_run_timing.IDENTITY_UNAVAILABLE
+
+
+def test_multiple_identity_artifacts_select_validated_producer_not_api_order(tmp_path: Path) -> None:
+    first, latest = _inherited_scope_pair()
+    rerun = _job(
+        id=3, name="Android", run_attempt=2,
+        started_at="2026-09-18T03:36:00Z",
+        completed_at="2026-09-18T03:46:00Z",
+    )
+    jobs = tmp_path / "jobs.json"
+    previous = tmp_path / "previous.json"
+    output = tmp_path / "timing.json"
+    jobs.write_text(json.dumps({"jobs": [latest, rerun]}), encoding="utf-8")
+    previous.write_text(json.dumps({"jobs": [first]}), encoding="utf-8")
+
+    def opener(request):
+        if "artifacts?per_page=100" in request.full_url:
+            return _FakeResponse(_identity_listing(
+                (ci_run_timing.IDENTITY_ARTIFACT, "https://api.github.com/download/future"),
+                (ci_run_timing.IDENTITY_ARTIFACT, "https://api.github.com/download/valid"),
+            ))
+        if request.full_url == "https://api.github.com/download/future":
+            return _FakeResponse(_zip_json(_pr_identity(run_attempt=3)))
+        if request.full_url == "https://api.github.com/download/valid":
+            return _FakeResponse(_zip_json(_pr_identity(run_attempt=1)))
+        raise AssertionError(request.full_url)
+
+    code = _main(
+        [
+            "--jobs-json", str(jobs),
+            "--previous-jobs-json", str(previous),
+            "--attempt", "2",
+            "--from-run-identity",
+            "--github-repository", "xxu29958-jpg/xpj",
+            "--github-run-id", "100",
+            "--workflow-name", "CI",
+            "--event", "pull_request",
+            "--source-sha", "a" * 40,
+            "--output-json", str(output),
+        ],
+        {"GITHUB_TOKEN": "t", "GITHUB_SHA": "f" * 40},
+        opener,
+    )
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert code == 0
+    assert payload["complete"] is True
+    assert payload["identity_complete"] is True
+    assert payload["target_attempt"] == 2
+    assert payload["identity_producer_attempt"] == 1
+
+
+def _connected_attempt_job(attempt: int, job_id: int, *, started: str, completed: str, conclusion: str) -> dict:
+    return _job(
+        id=job_id,
+        name="Connected execution",
+        workflow_name="Android Connected Test",
+        run_attempt=attempt,
+        conclusion=conclusion,
+        started_at=started,
+        completed_at=completed,
+        steps=[{
+            "name": "Run connected test",
+            "conclusion": conclusion,
+            "started_at": started,
+            "completed_at": completed,
+        }],
+    )
+
+
+def _finalized_inner(attempt: int, elapsed: float) -> dict:
+    return {
+        "kind": "gradle_connected_test",
+        "elapsed_s": elapsed,
+        "state": "finalized",
+        "complete": True,
+        "identity": _pr_identity(workflow="Android Connected Test", run_attempt=attempt),
+    }
+
+
+def test_rerun_cancelled_connected_ignores_prior_attempt_inner(tmp_path: Path) -> None:
+    previous_job = _connected_attempt_job(
+        1, 10, started="2026-09-18T02:00:00Z", completed="2026-09-18T02:20:00Z", conclusion="success",
+    )
+    current = _connected_attempt_job(
+        2, 20, started="2026-09-18T03:00:00Z", completed="2026-09-18T03:08:00Z", conclusion="cancelled",
+    )
+    jobs = tmp_path / "jobs.json"
+    previous = tmp_path / "previous.json"
+    inner = tmp_path / "connected-inner-timing.json"
+    jobs.write_text(json.dumps({"jobs": [current]}), encoding="utf-8")
+    previous.write_text(json.dumps({"jobs": [previous_job]}), encoding="utf-8")
+
+    def opener(request):
+        if "artifacts?per_page=100" in request.full_url:
+            return _FakeResponse(_identity_listing(
+                (ci_run_timing.IDENTITY_ARTIFACT, "https://api.github.com/download/identity"),
+                (ci_run_timing.INNER_ARTIFACT, "https://api.github.com/download/inner"),
+            ))
+        if request.full_url == "https://api.github.com/download/identity":
+            return _FakeResponse(_zip_json(_pr_identity(workflow="Android Connected Test", run_attempt=1)))
+        if request.full_url == "https://api.github.com/download/inner":
+            return _FakeResponse(_zip_json(_finalized_inner(1, 976.03), "connected-inner-timing.json"))
+        raise AssertionError(request.full_url)
+
+    code = _main(
+        [
+            "--stamp-connected-inner", str(inner),
+            "--jobs-json", str(jobs),
+            "--previous-jobs-json", str(previous),
+            "--from-run-identity",
+            "--derive-cancelled-inner",
+            "--allow-partial",
+            "--attempt", "2",
+            "--github-repository", "xxu29958-jpg/xpj",
+            "--github-run-id", "100",
+            "--workflow-name", "Android Connected Test",
+            "--event", "pull_request",
+            "--source-sha", "a" * 40,
+            "--job-name", "Connected execution",
+            "--outer-step", "Run connected test",
+        ],
+        {"GITHUB_TOKEN": "t", "GITHUB_SHA": "f" * 40},
+        opener,
+    )
+    payload = json.loads(inner.read_text(encoding="utf-8"))
+    assert code == 0
+    assert payload["state"] == "cancelled_during_connected"
+    assert payload.get("elapsed_s") is None
+    assert payload["inherited"] is False
+    assert payload["target_attempt"] == 2
+    assert payload["inner_evidence_attempt"] == 2
+
+
+def test_inherited_connected_retains_prior_inner_with_evidence_attempt(tmp_path: Path) -> None:
+    previous_job = _connected_attempt_job(
+        1, 10, started="2026-09-18T02:00:00Z", completed="2026-09-18T02:20:00Z", conclusion="success",
+    )
+    current = _connected_attempt_job(
+        2, 20, started="2026-09-18T02:00:00Z", completed="2026-09-18T02:20:00Z", conclusion="success",
+    )
+    current["created_at"] = "2026-09-18T03:35:00Z"
+    jobs = tmp_path / "jobs.json"
+    previous = tmp_path / "previous.json"
+    inner = tmp_path / "connected-inner-timing.json"
+    jobs.write_text(json.dumps({"jobs": [current]}), encoding="utf-8")
+    previous.write_text(json.dumps({"jobs": [previous_job]}), encoding="utf-8")
+
+    def opener(request):
+        if "artifacts?per_page=100" in request.full_url:
+            return _FakeResponse(_identity_listing(
+                (ci_run_timing.IDENTITY_ARTIFACT, "https://api.github.com/download/identity"),
+                (ci_run_timing.INNER_ARTIFACT, "https://api.github.com/download/inner"),
+            ))
+        if request.full_url == "https://api.github.com/download/identity":
+            return _FakeResponse(_zip_json(_pr_identity(workflow="Android Connected Test", run_attempt=1)))
+        if request.full_url == "https://api.github.com/download/inner":
+            return _FakeResponse(_zip_json(_finalized_inner(1, 976.03), "connected-inner-timing.json"))
+        raise AssertionError(request.full_url)
+
+    code = _main(
+        [
+            "--stamp-connected-inner", str(inner),
+            "--jobs-json", str(jobs),
+            "--previous-jobs-json", str(previous),
+            "--from-run-identity",
+            "--derive-cancelled-inner",
+            "--allow-partial",
+            "--attempt", "2",
+            "--github-repository", "xxu29958-jpg/xpj",
+            "--github-run-id", "100",
+            "--workflow-name", "Android Connected Test",
+            "--event", "pull_request",
+            "--source-sha", "a" * 40,
+            "--job-name", "Connected execution",
+            "--outer-step", "Run connected test",
+        ],
+        {"GITHUB_TOKEN": "t", "GITHUB_SHA": "f" * 40},
+        opener,
+    )
+    payload = json.loads(inner.read_text(encoding="utf-8"))
+    assert code == 0
+    assert payload["elapsed_s"] == 976.03
+    assert payload["state"] == "finalized"
+    assert payload["inherited"] is True
+    assert payload["target_attempt"] == 2
+    assert payload["inner_evidence_attempt"] == 1
