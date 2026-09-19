@@ -284,6 +284,7 @@ private fun GoalPriorityRow(model: GoalDisplayModel) {
             )
         }
         GoalSummaryProgress(model, tone)
+        com.ticketbox.ui.components.AccountingDateNotice(goal.undatedExpenseCount)
     }
 }
 

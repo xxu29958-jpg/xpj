@@ -1,6 +1,8 @@
 package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
+import com.ticketbox.data.repository.LedgerCalendarReader
+import com.ticketbox.data.repository.newTaskMonth
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.GoalEditActions
@@ -23,6 +25,7 @@ data class CreateSpendingGoalUiState(
     val canModify: Boolean = true,
     val name: String = "",
     val month: String = YearMonth.now().toString(),
+    val monthReady: Boolean = true,
     val targetAmountInput: String = "",
     val category: String = "",
     val isSubmitting: Boolean = false,
@@ -34,7 +37,7 @@ data class CreateSpendingGoalUiState(
 ) {
     val editable: Boolean get() = canModify && !isSubmitting && pending == null && originalSubmissionId == null
     val canSubmit: Boolean
-        get() = editable &&
+        get() = editable && monthReady &&
             ledgerCurrency != null &&
             name.trim().isNotEmpty() &&
             (ledgerCurrency.let { parseAmountCents(targetAmountInput, it)?.let { a -> a > 0L } == true })
@@ -42,18 +45,20 @@ data class CreateSpendingGoalUiState(
 
 class CreateSpendingGoalViewModel(
     private val edits: GoalEditActions,
+    private val calendars: LedgerCalendarReader? = null,
 ) : ViewModel() {
     private val _state = MutableStateFlow(CreateSpendingGoalUiState(canModify = edits.currentAccess()?.canModify == true))
     val state: StateFlow<CreateSpendingGoalUiState> = _state.asStateFlow()
 
     private var binding: LogicalSessionBinding? = edits.currentAccess()?.binding
     private var generation = 0L
+    private var monthSelected = false
     private var currencyJob: Job? = null
     private var submitJob: Job? = null
     private var observationJob: Job? = null
 
     init {
-        retryCurrency()
+        if (calendars != null) reset() else retryCurrency()
         observeCreations()
         viewModelScope.launch {
             edits.observeAccess().collect { access ->
@@ -64,26 +69,41 @@ class CreateSpendingGoalViewModel(
                     submitJob?.cancel()
                     observeCreations()
                     _state.value = CreateSpendingGoalUiState(canModify = access?.canModify == true)
-                    if (access != null) retryCurrency()
+                    if (access != null) reset()
                 } else _state.update { it.copy(canModify = access?.canModify == true) }
             }
         }
     }
 
-    fun reset(month: String = YearMonth.now().toString(), originalId: Long? = null) {
+    fun reset(month: String? = null, originalId: Long? = null) {
+        val taskMonth = month?.cleanGoalMonth() ?: _state.value.month
         if (originalId != null && _state.value.originalSubmissionId != originalId) {
             _state.value = CreateSpendingGoalUiState(canModify = edits.currentAccess()?.canModify == true,
-                month = month.cleanGoalMonth(), originalSubmissionId = originalId, isSubmitting = true)
+                month = taskMonth, originalSubmissionId = originalId, isSubmitting = true)
             observeCreations()
             return
         }
         if (_state.value.pending != null) return
-        if (_state.value.month == month && (_state.value.name.isNotEmpty() || _state.value.targetAmountInput.isNotEmpty())) return
+        if (_state.value.month == taskMonth && (_state.value.name.isNotEmpty() || _state.value.targetAmountInput.isNotEmpty())) return
         generation += 1
         submitJob?.cancel()
         _state.value = CreateSpendingGoalUiState(canModify = edits.currentAccess()?.canModify == true,
-            month = month.cleanGoalMonth())
+            month = taskMonth, monthReady = month != null || calendars == null)
+        monthSelected = month != null
+        resolveNewTaskMonth()
         retryCurrency()
+    }
+
+    private fun resolveNewTaskMonth() {
+        if (monthSelected) return
+        val origin = binding
+        val task = generation
+        viewModelScope.launch {
+            val resolved = calendars.newTaskMonth(origin)
+            if (binding != origin || edits.currentAccess()?.binding != origin || generation != task) return@launch
+            if (_state.value.pending != null || _state.value.originalSubmissionId != null) return@launch
+            _state.update { it.copy(month = if (monthSelected) it.month else resolved, monthReady = true) }
+        }
     }
 
     fun retryCurrency() {
@@ -127,7 +147,7 @@ class CreateSpendingGoalViewModel(
         val current = _state.value
         val origin = binding ?: return
         val revision = generation
-        if (current.isSubmitting || current.originalSubmissionId != null || edits.currentAccess()?.binding != origin || edits.currentAccess()?.canModify != true) return
+        if (!current.monthReady || current.isSubmitting || current.originalSubmissionId != null || edits.currentAccess()?.binding != origin || edits.currentAccess()?.canModify != true) return
         val currency = current.ledgerCurrency
         if (currency == null) {
             _state.update { it.copy(formError = UiText.res(R.string.currency_unconfirmed_write_blocked)) }
@@ -172,12 +192,12 @@ class CreateSpendingGoalViewModel(
     }
 
     fun shiftMonth(delta: Long) {
+        monthSelected = true
         if (!_state.value.editable) return
         _state.update {
-            val next = runCatching { YearMonth.parse(it.month).plusMonths(delta) }
-                .getOrDefault(YearMonth.now())
-                .toString()
-            it.copy(month = next, formError = null)
+            val next = (runCatching { YearMonth.parse(it.month).plusMonths(delta) }.getOrNull()
+                ?: return@update it).toString()
+            it.copy(month = next, monthReady = true, formError = null)
         }
     }
 
@@ -221,7 +241,7 @@ private fun String.cleanGoalMonth(): String =
 private fun CreateSpendingGoalUiState.withOriginalCreation(original: PendingGoalCreation): CreateSpendingGoalUiState {
     val request = original.request
     val currency = CurrencyCode.fromStorageKeyOrNull(request?.homeCurrencyCode)
-    return copy(pending = original, originalSubmissionId = original.row.id, isSubmitting = false, name = request?.name.orEmpty(), month = request?.month ?: month,
+    return copy(pending = original, originalSubmissionId = original.row.id, monthReady = true, isSubmitting = false, name = request?.name.orEmpty(), month = request?.month ?: month,
         category = request?.category.orEmpty(), ledgerCurrency = currency,
         targetAmountInput = if (currency != null) formatAmountInput(request?.targetAmountCents, currency)
             else request?.targetAmountCents?.toString().orEmpty(),

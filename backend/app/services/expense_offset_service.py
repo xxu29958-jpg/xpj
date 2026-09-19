@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -22,6 +22,8 @@ from app.schemas import (
     ExpenseOffsetResponse,
     ExpenseOffsetRevisionResponse,
 )
+from app.schemas._accounting_time import AccountingTimeSnapshot
+from app.services.accounting_time_service import accounting_time_snapshot
 from app.services.bill_split_service import (
     AcceptedSourceRelationship,
     settle_source_financial_change,
@@ -40,6 +42,7 @@ from app.services.expense_offset_summary import expense_financial_summary
 from app.services.expense_response_service import expense_to_response
 from app.services.expense_service import get_expense
 from app.services.idempotency import claim_idempotent_request, mark_idempotency_succeeded
+from app.services.ledger_calendar_service import calendar_revision, current_calendar
 from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.time_service import now_utc, to_iso
 
@@ -52,6 +55,8 @@ class ReviewedOffsetImport:
 
     money: ImportedCurrencyPayload
     category: str
+    calendar_revision: int | None = None
+    accounting_time: AccountingTimeSnapshot | None = None
 
     def command_body(self) -> dict[str, object]:
         snapshot = self.money
@@ -62,7 +67,9 @@ class ReviewedOffsetImport:
             "exchange_rate_to_cny": str(snapshot.exchange_rate_to_cny),
             "exchange_rate_date": snapshot.exchange_rate_date.isoformat() if snapshot.exchange_rate_date else None,
             "declared_exchange_rate_source": snapshot.exchange_rate_source,
-            "category": self.category}
+            "category": self.category,
+            **({"calendar_revision": self.calendar_revision} if self.calendar_revision is not None else {}),
+            **({"accounting_time": self.accounting_time.model_dump(mode="json")} if self.accounting_time is not None else {})}
 
 def _require_confirmed(expense: Expense) -> None:
     if expense.status == "confirmed" and expense.amount_cents is not None:
@@ -73,7 +80,9 @@ def _require_confirmed(expense: Expense) -> None:
 
 
 def _offset_snapshot(offset: ExpenseOffsetFact) -> dict[str, object]:
+    time_snapshot = accounting_time_snapshot(offset)
     return {
+        **({"accounting_time": time_snapshot.model_dump(mode="json")} if time_snapshot is not None else {}),
         "public_id": offset.public_id,
         "kind": offset.kind,
         "status": offset.status,
@@ -170,7 +179,8 @@ def expense_fact_bundle(
     return ExpenseFactBundleResponse(
         root=expense_to_response(db, tenant_id=tenant_id, expense=expense),
         financial_summary=summary,
-        active_offsets=[ExpenseOffsetResponse.model_validate(offset) for offset in offsets],
+        active_offsets=[ExpenseOffsetResponse.model_validate(offset).model_copy(update={
+            "accounting_time": accounting_time_snapshot(offset)}) for offset in offsets],
         recent_history=[
             _revision_to_response(
                 db,
@@ -294,6 +304,7 @@ def _persist_new_offset(
     idempotency_key: str,
     now: datetime,
     category: str | None = None,
+    time_values: dict[str, object],
 ) -> ExpenseOffsetFact:
     offset = ExpenseOffsetFact(
         tenant_id=tenant_id,
@@ -306,7 +317,7 @@ def _persist_new_offset(
         exchange_rate_to_cny=money.exchange_rate_to_cny,
         exchange_rate_date=money.exchange_rate_date,
         exchange_rate_source=money.exchange_rate_source,
-        accounting_date=payload.accounting_date,
+        **time_values,
         category=category if category is not None else expense.category,
         reason=payload.reason,
         created_actor_account_id=actor_account_id,
@@ -339,6 +350,25 @@ def _persist_new_offset(
     )
     db.flush()
     return offset
+
+
+def offset_accounting_values(db: Session, *, tenant_id: str, accounting_date: date,
+                              imported: ReviewedOffsetImport | None = None) -> dict[str, object]:
+    rule = (calendar_revision(db, ledger_id=tenant_id, revision=imported.calendar_revision or 1)
+            if imported is not None else current_calendar(db, ledger_id=tenant_id))
+    if rule is None:
+        raise AppError("calendar_revision_conflict", status_code=409)
+    snapshot = AccountingTimeSnapshot(precision="date_only", accounting_date=accounting_date,
+        user_local_date=None if imported is not None else accounting_date, calendar_revision=rule.revision,
+        basis="recorded_date" if imported is not None else "user_date")
+    if imported is not None and imported.accounting_time is not None:
+        snapshot = imported.accounting_time.model_copy(update={"calendar_revision": rule.revision, "basis": "recorded_date"})
+        if snapshot.precision != "date_only" or snapshot.accounting_date != accounting_date or snapshot.instant_utc is not None:
+            raise AppError("accounting_time_invalid", status_code=422)
+    return {"accounting_date": snapshot.accounting_date, "calendar_revision": snapshot.calendar_revision,
+        "user_local_date": snapshot.user_local_date, "time_precision": snapshot.precision,
+        "source_timezone": snapshot.source_timezone, "source_utc_offset_seconds": snapshot.source_utc_offset_seconds,
+        "accounting_date_basis": snapshot.basis}
 
 
 def _commit_offset_creation(
@@ -402,6 +432,8 @@ def create_expense_offset(
         expense_id=expense_id,
         expected_row_version=effective_expected_row_version,
     )
+    time_values = offset_accounting_values(db, tenant_id=tenant_id, accounting_date=payload.accounting_date,
+        imported=imported)
     money = resolve_offset_money(
         db,
         tenant_id=tenant_id,
@@ -422,6 +454,7 @@ def create_expense_offset(
         idempotency_key=idempotency_key,
         now=now,
         category=imported.category if imported is not None else None,
+        time_values=time_values,
     )
     reason_code = source_relationship_reason(payload.kind)
     relationship_result = settle_source_financial_change(

@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import datetime
-from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -26,10 +25,9 @@ from app.services.data_quality_service import is_usable_pending_merchant
 from app.services.expense_service import NOTIFICATION_DRAFT_SOURCE_PREFIX
 from app.services.money_projection_service import sum_projected_amounts
 from app.services.spending_contract_service import (
-    accounting_zone,
+    calendar_month_bounds,
     clean_month,
     confirmed_query,
-    month_bounds_utc,
 )
 from app.services.spending_projection_service import entry_gaps, read_projected_entries
 from app.services.time_service import now_utc
@@ -94,10 +92,9 @@ def confirmed_by_day(
 ) -> list[dict]:
     """Project each recorded contribution before grouping calendar days."""
     month = _clean_month_filter(month)
-    zone = _web_stats_zone()
     home = currency_code or require_runtime_home_currency_code(db)
-    entries = read_projected_entries(db, tenant_id=ledger_id, ranges=[month_bounds_utc(month, zone.key)],
-        timezone_name=zone.key, home=home, tag=tag)
+    entries = read_projected_entries(db, tenant_id=ledger_id, ranges=[calendar_month_bounds(month)],
+        timezone_name=None, home=home, tag=tag)
     days = defaultdict(list)
     for entry in entries:
         days[entry.stream_date.isoformat()].append(entry)
@@ -118,12 +115,10 @@ def source_breakdown(
     tag: str | None = None,
 ) -> list[dict]:
     """指定月的已确认账单来源占比。返回 [{'label', 'count', 'percent'}]。"""
-    zone = _web_stats_zone()
     filtered = confirmed_query(
         tenant_id=ledger_id,
         month=month,
         tag=tag,
-        timezone_name=zone.key,
     ).subquery()
     q = (
         select(filtered.c.source, func.count(filtered.c.id))
@@ -151,14 +146,6 @@ def source_breakdown(
 
 def _clean_month_filter(month: str) -> str:
     return clean_month(month)
-
-
-def _web_stats_zone() -> ZoneInfo:
-    return accounting_zone()
-
-
-def _month_bounds(month: str, zone: ZoneInfo) -> tuple[datetime, datetime]:
-    return month_bounds_utc(month, zone.key)
 
 
 def pending_quality_counts(db: Session, ledger_id: str) -> dict[str, int]:

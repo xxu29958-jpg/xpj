@@ -41,6 +41,7 @@ from app.routes.web_recurring_occurrences import router as occurrences_router
 from app.schemas import RecurringCandidateConfirmRequest
 from app.services.currency_common import normalize_currency_code, supported_currency_codes
 from app.services.insights_service import recurring_candidates
+from app.services.ledger_calendar_service import current_ledger_month
 from app.services.recurring_candidate_confirmation_service import confirm_recurring_candidate
 from app.services.recurring_item_command_service import (
     create_manual_recurring_item,
@@ -57,7 +58,7 @@ from app.services.recurring_service import (
     restore_recurring_item,
     resume_recurring_item,
 )
-from app.services.spending_contract_service import accounting_zone, current_accounting_month
+from app.services.spending_contract_service import accounting_zone
 from app.services.time_service import now_utc
 
 logger = logging.getLogger(__name__)
@@ -105,7 +106,7 @@ def _candidate_review(
 def _recurring_hero(db, *, selected_id, items, currency_code, due_dates):
     active = [item for item in items if item.status == "active"]
     total = recurring_monthly_total(db, tenant_id=selected_id, items=active,
-        home_currency_code=currency_code, month=current_accounting_month())
+        home_currency_code=currency_code, month=current_ledger_month(db, ledger_id=selected_id))
     return hero_view(active, currency_code=currency_code, total_cents=total, due_dates=due_dates)
 
 
@@ -127,9 +128,6 @@ def _render_recurring(
     if status and status not in _VALID_STATUS_FILTERS:
         raise AppError("recurring_status_invalid", status_code=422)
     all_items = list_recurring_items(db, tenant_id=selected_id, include_archived=True)
-    # No explicit month: the service defaults to current_accounting_month
-    # (Asia/Shanghai). current_month(None) here was UTC — in the 00:00-07:59
-    # Beijing window on the 1st the whole page mis-binned into last month.
     anomalies = recurring_amount_anomalies(
         db,
         tenant_id=selected_id,

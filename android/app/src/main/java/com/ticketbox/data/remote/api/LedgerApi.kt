@@ -15,6 +15,12 @@ import retrofit2.http.Path
 import retrofit2.http.Query
 
 interface LedgerApi {
+    @GET("api/ledgers/{ledgerId}/calendar")
+    suspend fun ledgerCalendar(
+        @Path("ledgerId") ledgerId: String,
+        @Query("revision") revision: Long? = null,
+    ): com.ticketbox.data.remote.dto.LedgerCalendarDto
+
     @GET("api/ledgers")
     suspend fun listLedgers(): LedgerListResponseDto
 

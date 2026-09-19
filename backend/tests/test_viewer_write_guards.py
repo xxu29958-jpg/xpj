@@ -13,6 +13,7 @@ from app.database import SessionLocal
 from app.main import app
 from app.models import AuthToken, Expense, LedgerMember
 from app.routes.web_app import _require_local as _web_require_local
+from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from app.services.identity_service import hash_secret
 from app.services.time_service import now_utc
 from tests._infra.assets import PNG_BYTES
@@ -86,20 +87,20 @@ def _make_web_ledger_with_role(client: TestClient, role: str, *, identity) -> st
 def _insert_confirmed_expense(ledger_id: str, merchant: str = "Viewer Export Cafe") -> None:
     now = now_utc()
     with SessionLocal() as db:
-        db.add(
-            Expense(
-                tenant_id=ledger_id,
-                amount_cents=850,
-                merchant=merchant,
-                category="餐饮",
-                note="",
-                source="test",
-                status="confirmed",
-                created_at=now,
-                updated_at=now,
-                confirmed_at=now,
-            )
+        _calendar_expense = Expense(
+            tenant_id=ledger_id,
+            amount_cents=850,
+            merchant=merchant,
+            category="餐饮",
+            note="",
+            source="test",
+            status="confirmed",
+            created_at=now,
+            updated_at=now,
+            confirmed_at=now,
         )
+        refresh_legacy_expense_time(db, _calendar_expense)
+        db.add(_calendar_expense)
         db.commit()
 
 

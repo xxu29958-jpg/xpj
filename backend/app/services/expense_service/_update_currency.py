@@ -29,6 +29,7 @@ _CURRENCY_RELEVANT_FIELDS = _ORIGINAL_AMOUNT_FIELDS | _ORIGINAL_CURRENCY_FIELDS 
     "amount_cents",
     "spent_at",
     "expense_time",
+    "time_input",
 }
 
 
@@ -120,8 +121,17 @@ def _apply_update_currency(
     expense: Expense,
     payload: ExpenseUpdateRequest,
     updates: dict,
+    time_changed: bool | None = None,
 ) -> None:
-    if not (_CURRENCY_RELEVANT_FIELDS & updates.keys()):
+    currency_intent = _CURRENCY_RELEVANT_FIELDS & updates.keys()
+    if payload.manual_exchange_rate is None:
+        currency_intent.discard("manual_exchange_rate")
+    if time_changed is False:
+        # The shared time owner distinguishes a transaction-time correction
+        # from period/source evidence. The latter must not resolve even a
+        # pending quote; explicit money and manual-rate inputs remain active.
+        currency_intent -= {"spent_at", "expense_time", "time_input"}
+    if not currency_intent:
         return
     if payload.manual_exchange_rate is not None:
         if expense.status != "pending":
@@ -138,7 +148,8 @@ def _apply_update_currency(
         return
     if _has_frozen_snapshot(expense):
         current_currency = _current_currency(expense)
-        time_changed = bool({"spent_at", "expense_time"} & updates.keys())
+        if time_changed is None:
+            time_changed = bool({"spent_at", "expense_time"} & updates.keys())
         if (
             _submitted_currency(expense, updates) == current_currency
             and not time_changed

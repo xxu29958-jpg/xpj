@@ -88,4 +88,6 @@ data class BudgetMonthlyDto(
     @param:Json(name = "missing_currency_codes")
     val missingCurrencyCodes: List<String> = emptyList(),
     @param:Json(name = "reference_rates") val referenceRates: List<ProjectionReferenceDto> = emptyList(),
+    @param:Json(name = "undated_expense_count")
+    val undatedExpenseCount: Int? = null,
 )

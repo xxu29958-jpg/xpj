@@ -22,6 +22,7 @@ from app.money_contract import projection_sum_to_int, round_minor_ratio_half_up
 from app.services.budget_service import get_monthly_budget
 from app.services.currency_common import currency_symbol
 from app.services.data_quality_service import DataQualitySummary, data_quality_summary
+from app.services.ledger_calendar_service import current_ledger_month
 from app.services.ledger_service import LedgerSummary
 from app.services.owner_console_service._common import (
     OWNER_CONSOLE_TIMEZONE,
@@ -39,7 +40,6 @@ from app.services.owner_console_service._recurring_ops import (
     RecurringOpsVM,
     get_recurring_ops,
 )
-from app.services.time_service import current_month
 from app.tenants import DEFAULT_TENANT_ID
 from app.version import BACKEND_VERSION, IDENTITY_SCHEMA_VERSION
 
@@ -150,7 +150,7 @@ def _budget_status_for_primary_ledger(
 ) -> BudgetStatusVM | None:
     if primary_ledger is None:
         return None
-    month = current_month(OWNER_CONSOLE_TIMEZONE)
+    month = current_ledger_month(db, ledger_id=primary_ledger.ledger_id)
     budget = get_monthly_budget(
         db,
         tenant_id=primary_ledger.ledger_id,

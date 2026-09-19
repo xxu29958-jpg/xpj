@@ -21,6 +21,7 @@ from fastapi.testclient import TestClient
 from app.database import SessionLocal
 from app.models import Expense
 from app.services.currency_binding_service import resolve_write_capability
+from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from app.services.spending_contract_service import (
     current_accounting_month,
     shift_month,
@@ -71,6 +72,7 @@ def _seed_confirmed(
             updated_at=confirmation_time,
         )
         db.add(expense)
+        refresh_legacy_expense_time(db, expense)
         db.flush()
         if tags:
             sync_expense_tags(db, expense)
@@ -158,7 +160,7 @@ def test_confirmed_default_list_and_summary_share_current_month(
     assert f"{current_month} · 共 1 笔 ·" in response.text
 
 
-def test_confirmed_list_and_summary_share_configured_accounting_timezone(
+def test_confirmed_list_and_summary_keep_adopted_day_after_display_zone_change(
     web_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -169,7 +171,7 @@ def test_confirmed_list_and_summary_share_configured_accounting_timezone(
         "get_settings",
         lambda: SimpleNamespace(ocr_default_timezone="America/New_York"),
     )
-    # 2026-05-01 00:30Z is still April in New York but already May in Shanghai.
+    # The stored Shanghai rule owns May even when the mutable display setting is New York.
     _seed_confirmed(
         merchant="Timezone Boundary Cafe",
         when=datetime(2026, 5, 1, 0, 30, tzinfo=UTC),
@@ -178,8 +180,8 @@ def test_confirmed_list_and_summary_share_configured_accounting_timezone(
     response = web_client.get("/web/confirmed?ledger_id=owner&month=2026-05")
 
     assert response.status_code == 200, response.text
-    assert "Timezone Boundary Cafe" not in response.text
-    assert "2026-05 · 共 0 笔 ·" in response.text
+    assert "Timezone Boundary Cafe" in response.text
+    assert "2026-05 · 共 1 笔 ·" in response.text
 
 
 def test_confirmed_native_snapshot_updates_without_javascript(

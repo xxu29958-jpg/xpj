@@ -23,7 +23,9 @@ def render_web_fx_action(db: Session, request: Request, expense_id: int, form: W
     options = _list_ledger_options(db)
     selected = _resolve_selected_ledger_id(db, form.ledger_id or None, options, request=request)
     values = {key: value or "" for key, value in asdict(form).items()
-        if key not in {"ledger_id", "fragment", "return_context", "save_before_confirm"}}
+        if key not in {"ledger_id", "fragment", "return_context", "save_before_confirm", "time_fields"}}
+    if form.time_fields is not None:
+        values.update(form.time_fields)
     retained = preserve_original_ledger_form(request, db, options=options, selected=selected,
         fields={**values, **form.return_context.as_kwargs(), "ledger_id": form.ledger_id,
             "fragment": str(form.fragment), "save_before_confirm": "1" if form.save_before_confirm else "0"},

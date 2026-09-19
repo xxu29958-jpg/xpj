@@ -9,6 +9,7 @@ import pytest
 from app.database import SessionLocal
 from app.models import Expense, LedgerLearningEvent
 from app.services.currency_binding_service import resolve_write_capability
+from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from app.services.learning_service import (
     CATEGORY_SUGGESTION,
     DUPLICATE_CANDIDATE,
@@ -38,6 +39,7 @@ def _seed_confirmed(category: str, *, merchant: str = "麦当劳") -> int:
             expense_time=now - timedelta(days=2),
             confirmed_at=now - timedelta(days=2),
         )
+        refresh_legacy_expense_time(db, expense)
         db.add(expense)
         db.commit()
         return expense.id

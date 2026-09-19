@@ -94,6 +94,7 @@ internal fun BudgetRoute(
     val budgetViewModel: BudgetViewModel = viewModel(
         factory = budgetViewModelFactory(
             repository = screenFactory.budgetRepository,
+            calendars = screenFactory.repositories.ledgerCalendarRepository,
             onDataChanged = onDataChanged,
         ),
     )

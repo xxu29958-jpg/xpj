@@ -9,8 +9,9 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.main import app
 from app.models import IncomePlanRevision, LedgerMember, MonthlyIncomePlan
+from app.routes import income_plans, web_income_edit, web_income_plans
 from app.routes.web_app import _require_local as _web_require_local
-from app.services import income_plan_service, spending_contract_service
+from app.services import income_plan_service
 from tests._runtime_protocol import negotiated_headers
 from tests._web_native_form_support import hidden_post_forms
 
@@ -19,7 +20,8 @@ from tests._web_native_form_support import hidden_post_forms
 def web_income(client, monkeypatch):
     clock = {"month": "2026-09", "now": datetime(2026, 9, 5, tzinfo=UTC)}
     monkeypatch.setattr(income_plan_service, "now_utc", lambda: clock["now"])
-    monkeypatch.setattr(spending_contract_service, "current_month", lambda _timezone: clock["month"])
+    for routes in (income_plans, web_income_edit, web_income_plans):
+        monkeypatch.setattr(routes, "current_ledger_month", lambda _db, *, ledger_id: clock["month"])
     app.dependency_overrides[_web_require_local] = lambda: None
     yield client, clock
     app.dependency_overrides.pop(_web_require_local, None)

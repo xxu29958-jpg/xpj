@@ -28,7 +28,7 @@ from app.services.income_plan_service import (
     restore_income_plan,
 )
 from app.services.income_plan_service._delivery import create_income_plan_idempotently, update_income_plan_idempotently
-from app.services.spending_contract_service import current_accounting_month
+from app.services.ledger_calendar_service import current_ledger_month
 from app.tenants import AuthContext
 
 if TYPE_CHECKING:
@@ -69,7 +69,7 @@ def list_plans(
     db: Session = Depends(get_db),
 ) -> IncomePlanListResponse:
     status_filter = None if status == "all" else status
-    month_label = month or current_accounting_month()
+    month_label = month or current_ledger_month(db, ledger_id=auth.tenant_id)
     plans = list_income_plans(db, tenant_id=auth.tenant_id, status=status_filter)
     forecast = income_forecast(db, tenant_id=auth.tenant_id, month=month_label)
     return IncomePlanListResponse(

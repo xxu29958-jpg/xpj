@@ -242,6 +242,7 @@ private fun MainProductScaffold(
         },
     ) { innerPadding ->
         CompositionLocalProvider(
+            com.ticketbox.ui.components.LocalAccountingDateReview provides runtime.shellState::reviewAccountingDates,
             LocalPrimaryNavigationInsetHandled provides shellLayout.outerBottomBarHandlesInsets,
             LocalPrimaryStatusInsetHandled provides shellLayout.showPrimaryNavigation,
             LocalAppAdaptiveLayoutPolicy provides shellLayout.adaptiveLayoutPolicy,

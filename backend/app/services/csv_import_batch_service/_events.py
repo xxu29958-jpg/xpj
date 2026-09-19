@@ -9,13 +9,17 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
-from app.models import CsvImportEvent, CsvImportRow, Expense, ExpenseOffsetFact
-from app.services.spending_contract_service import stat_time
-from app.services.time_service import now_utc
+from app.models import CsvImportBatch, CsvImportEvent, CsvImportRow, Expense, ExpenseOffsetFact
+from app.schemas._accounting_time import AccountingTimeInput, AccountingTimeSnapshot
+from app.services.accounting_time_service import apply_accounting_time, resolve_accounting_time
+from app.services.expense_accounting_time_service import refresh_legacy_expense_time
+from app.services.import_financial_events import native_accounting_time
+from app.services.ledger_calendar_service import calendar_revision
+from app.services.time_service import ensure_utc, now_utc
 
 _MONEY_FIELDS = ("home_currency_code", "original_currency_code", "original_amount_minor",
     "amount_cents", "exchange_rate_to_cny", "exchange_rate_date")
-_PURCHASE_FIELDS = ("merchant", "category", "note", "expense_time", "tags", "source")
+_PURCHASE_FIELDS = ("merchant", "category", "note", "expense_time", "accounting_date", "tags", "source")
 _OFFSET_FIELDS = ("offset_kind", "source_root_public_id", "accounting_date", "category")
 _QUOTE_FIELDS = ("exchange_rate_to_cny", "exchange_rate_date", "exchange_rate_source")
 
@@ -46,8 +50,11 @@ def _same_source_row(left: CsvImportRow, right: CsvImportRow) -> bool:
     fields = _MONEY_FIELDS + ("exchange_rate_source",) + (
         _PURCHASE_FIELDS if left.entry_kind == "expense" else _OFFSET_FIELDS)
     # Stream contribution/lineage are current projections, not an event identity.
-    return left.entry_kind == right.entry_kind and all(
-        _source_value(left, field) == _source_value(right, field) for field in fields)
+    left_time = native_accounting_time(left.event_input or {})
+    right_time = native_accounting_time(right.event_input or {})
+    return ((left_time is None or right_time is None or left_time == right_time)
+        and left.entry_kind == right.entry_kind and all(
+        _source_value(left, field) == _source_value(right, field) for field in fields))
 
 
 def _source_value(row: CsvImportRow, field: str) -> object | None:
@@ -61,14 +68,57 @@ def _source_value(row: CsvImportRow, field: str) -> object | None:
 def _matches_fact(row: CsvImportRow, fact: Expense | ExpenseOffsetFact) -> bool:
     if any(getattr(row, field) != getattr(fact, field) for field in _MONEY_FIELDS):
         return False
+    if not _matches_time_evidence(row, fact):
+        return False
     if isinstance(fact, ExpenseOffsetFact):
         return (fact.status == "active" and row.offset_kind == fact.kind
             and row.accounting_date == fact.accounting_date and row.category == fact.category)
-    effective_time = stat_time(fact)
-    exported_time = effective_time.replace(microsecond=0) if effective_time else None
-    return (fact.status in {"pending", "confirmed"} and row.expense_time == exported_time and all(
+    return (fact.status in {"pending", "confirmed"} and _matches_purchase_clock(row, fact) and all(
         (getattr(row, field) or None) == (getattr(fact, field) or None)
         for field in _PURCHASE_FIELDS if field != "expense_time"))
+
+
+def _matches_purchase_clock(row: CsvImportRow, fact: Expense) -> bool:
+    source = native_accounting_time(row.event_input or {})
+    if source is not None:
+        effective_time = ensure_utc(fact.expense_time)
+    elif fact.accounting_date_basis == "recorded_date" and fact.expense_time is None:
+        effective_time = row.expense_time  # Original legacy file evidence remains on the canonical row.
+    else:
+        # Old exports used this presentation fallback. It is only a matching
+        # witness here, never the producer of a new purchase instant.
+        effective_time = ensure_utc(fact.expense_time) or ensure_utc(fact.confirmed_at)
+    exported_time = (effective_time if source is not None else effective_time.replace(microsecond=0)) if effective_time else None
+    return row.expense_time == exported_time
+
+
+def _matches_time_evidence(row: CsvImportRow, fact: Expense | ExpenseOffsetFact) -> bool:
+    source = native_accounting_time(row.event_input or {})
+    if source is None:
+        return True
+    if source.instant_utc != ensure_utc(getattr(fact, "expense_time", None)):
+        return False
+    return all(getattr(source, field) == getattr(fact, attribute) for field, attribute in (
+        ("precision", "time_precision"), ("user_local_date", "user_local_date"),
+        ("source_timezone", "source_timezone"), ("source_utc_offset_seconds", "source_utc_offset_seconds")))
+
+
+def freeze_csv_expense_time(db: Session, *, row: CsvImportRow, batch: CsvImportBatch, expense: Expense) -> None:
+    if row.event_input is None and row.time_input is None:
+        refresh_legacy_expense_time(db, expense)
+        return
+    revision = batch.calendar_revision or 1
+    rule = calendar_revision(db, ledger_id=row.tenant_id, revision=revision)
+    if rule is None:
+        raise AppError("calendar_revision_conflict", status_code=409)
+    if row.event_input is not None:
+        source = native_accounting_time(row.event_input)
+        snapshot = (source or AccountingTimeSnapshot()).model_copy(update={
+            "accounting_date": row.accounting_date, "calendar_revision": rule.revision, "basis": "recorded_date"})
+    else:
+        value = AccountingTimeInput.model_validate(row.time_input)
+        snapshot = resolve_accounting_time(value, ledger_timezone=rule.timezone_name, calendar_revision=rule.revision)
+    apply_accounting_time(expense, snapshot)
 
 
 def find_source_root(db: Session, *, tenant_id: str, source_public_id: str) -> Expense | None:
@@ -123,7 +173,7 @@ def _match_existing_event(db: Session, row: CsvImportRow, canonical_row: CsvImpo
     source_root = find_source_root(db, tenant_id=row.tenant_id,
         source_public_id=row.source_root_public_id) if row.entry_kind == "offset" else None
     relationship_matches = row.entry_kind == "expense" or (source_root is not None and source_root.id == fact.expense_id)
-    if _matches_fact(canonical_row, fact) and relationship_matches:
+    if _matches_fact(canonical_row, fact) and _matches_time_evidence(row, fact) and relationship_matches:
         if event.source_row_id is None:
             event.source_row_id = row.id
         _finish_row(row, "matched")

@@ -66,6 +66,14 @@ class ConfirmedStreamCacheMapperTest {
     }
 
     @Test
+    fun missingOffsetDateIsRejectedBeforeCaching() {
+        assertFailsWith<RepositoryException> {
+            confirmedStreamEnvelope(ConfirmedStreamEntryKindDto.Offset, offset = offsetDto())
+                .copy(streamDate = null).toConfirmedStreamCacheItem("owner")
+        }
+    }
+
+    @Test
     fun malformedEnvelopeOrUnknownWireValueFailsClosed() {
         assertFailsWith<RepositoryException> {
             confirmedStreamEnvelope(entryKind = ConfirmedStreamEntryKindDto.Expense, offset = offsetDto())

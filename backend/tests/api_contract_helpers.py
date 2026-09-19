@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from app.database import SessionLocal
 from app.models import Expense
 from app.services.currency_binding_service import resolve_write_capability
+from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from tests._infra.assets import PNG_BYTES
 from tests._infra.env import TEST_UPLOAD_DIR
 from tests._infra.identity import TestIdentity
@@ -473,6 +474,7 @@ def insert_confirmed_expense(
             updated_at=confirmed_at,
             confirmed_at=confirmed_at,
         )
+        refresh_legacy_expense_time(db, expense)
         db.add(expense)
         db.commit()
         db.refresh(expense)

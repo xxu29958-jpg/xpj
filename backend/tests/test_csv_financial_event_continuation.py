@@ -147,6 +147,7 @@ def test_native_root_retains_gross_money_even_when_its_stream_contribution_is_ze
         exchange_rate_source="manual", merchant="Synthetic purchase", category="购物", note="",
         source="CSV导入", expense_time=datetime(2026, 5, 9, 12, tzinfo=UTC),
         confirmed_at=datetime(2026, 5, 10, 12, tzinfo=UTC), tags="", value_score=None, regret_score=None,
+        accounting_time=None,
     )
     entry = SimpleNamespace(
         entry_kind="expense", root=root, stream_date=date(2026, 5, 9),

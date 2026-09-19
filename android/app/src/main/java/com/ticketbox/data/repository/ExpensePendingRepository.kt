@@ -150,7 +150,9 @@ internal class ExpensePendingRepository(private val core: ExpenseRepositoryCore)
             merchant = draft.merchant ?: baseline.merchant,
             category = draft.category ?: baseline.category,
             note = draft.note ?: baseline.note,
-            expenseTime = draft.expenseTime ?: baseline.expenseTime,
+            expenseTime = if (draft.timeInput == null) draft.expenseTime ?: baseline.expenseTime else draft.timeInput.instantUtc,
+            accountingTime = draft.timeInput?.takeUnless { it.matches(baseline.accountingTime) }
+                ?.toCapturedTime() ?: baseline.accountingTime,
             tags = draft.tags ?: baseline.tags,
             valueScore = draft.valueScore ?: baseline.valueScore,
             regretScore = draft.regretScore ?: baseline.regretScore,

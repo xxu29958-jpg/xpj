@@ -167,9 +167,10 @@ carriers. Those are corrected; the exact carrier inventory changes from 120 to
 122 with no exemption added. Physical file/span growth remains a responsibility
 review signal; no threshold or suppression is relaxed.
 
-**Pending:** exact candidate PostgreSQL/HTTP/migration/concurrency and rendered
-Web journeys, cloud builds/gates, protected merge and independent main qualification.
-Local pure GREEN and source review are not these results, and no daily installation
+At the initial implementation stage, exact PostgreSQL/HTTP/migration/concurrency
+and rendered Web journeys, cloud builds/gates, protected merge and independent
+main qualification were still pending. They are closed by the final records below;
+the earlier local pure GREEN alone did not qualify them. No daily installation
 or data has been changed. The first complete portable-data export, shared accounting
 time migration and all remaining atlas outcomes are still separate active work.
 
@@ -192,3 +193,36 @@ fact resolution, row projection, return navigation and schema checks. Those
 responsibilities are separated without changing thresholds or financial owners.
 All of these fixes require a new exact candidate run; the first run's failure is
 not a qualification result.
+
+## Final candidate and independent main qualification
+
+Final candidate `a2eb2791efa64810b82b1a1a30b71b4aba000597` passed
+[CI 35455455536](https://github.com/xxu29958-jpg/xpj/actions/runs/35455455536),
+[CodeQL 35455455539](https://github.com/xxu29958-jpg/xpj/actions/runs/35455455539)
+and [Connected 35455455531](https://github.com/xxu29958-jpg/xpj/actions/runs/35455455531).
+All protected required contexts were successful before protected squash merge
+of [#422](https://github.com/xxu29958-jpg/xpj/pull/422).
+
+Merged main is `44d684fbbd49a4b35b8a386842c43e0c7e9e0445`, tree
+`96e640ad7442b086b5b89b7a51d9407ef93ce320`, identical to the qualified candidate
+tree. Independently executed on that main SHA:
+[CI 35456525238](https://github.com/xxu29958-jpg/xpj/actions/runs/35456525238),
+[CodeQL 35456525214](https://github.com/xxu29958-jpg/xpj/actions/runs/35456525214)
+and [Connected 35456525210](https://github.com/xxu29958-jpg/xpj/actions/runs/35456525210)
+all succeeded. The main repository-weight artifact identifies both source and
+measurement as that exact SHA (`direct_head`) and reports **NO DEBT REGRESSION**.
+
+Both runs include PostgreSQL ordinary/real-db/recovery lanes, backend contracts,
+Windows build, Desktop, Android build/fast checks and connected execution. The
+real-db shard containing the existing manual-FX payment journey passed after its
+provider-unavailable fixture was made deterministic; real task execution, OCC
+and strict financial assertions remain intact. The legacy JPY export control
+also remains unchanged and passed. No threshold, exemption or frozen C07 v1
+manifest was relaxed.
+
+The synthetic actual-template preview at 360/768/1440 checked layout only; it is
+not database or device runtime evidence. This qualification closes native CSV
+event continuation, not full portable export, whole-product RC, daily deployment
+or Windows lifecycle HOLDs. Continue with the
+[accounting calendar contract](TICKETBOX_ACCOUNTING_CALENDAR_CONTRACT.md) and the
+unchanged full endpoint recorded in the atlas.

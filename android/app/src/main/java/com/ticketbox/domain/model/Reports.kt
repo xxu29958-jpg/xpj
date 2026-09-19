@@ -51,11 +51,12 @@ data class ReportCategoryComparison(
     val previousAmountCents: Long?,
     val previousCount: Int,
     val deltaAmountCents: Long?,
-    val deltaCount: Int,
+    val deltaCount: Int?,
     val yearOverYearAmountCents: Long?,
     val yearOverYearCount: Int,
     val yearOverYearDeltaAmountCents: Long?,
-    val yearOverYearDeltaCount: Int,
+    val yearOverYearDeltaCount: Int?,
+    val undatedExpenseCount: Int? = null,
 )
 
 data class ReportsOverview(
@@ -71,7 +72,7 @@ data class ReportsOverview(
     val yearOverYearTotalAmountCents: Long?,
     val yearOverYearCount: Int,
     val yearOverYearDeltaAmountCents: Long?,
-    val yearOverYearDeltaCount: Int,
+    val yearOverYearDeltaCount: Int?,
     val merchantCategory: String?,
     val rankingMetric: ReportRankingMetric,
     val trend: List<ReportTrendPoint>,
@@ -79,6 +80,7 @@ data class ReportsOverview(
     val categoryComparison: List<ReportCategoryComparison>,
     val homeCurrencyCode: String,
     val missingRates: List<CurrencyProjectionGap> = emptyList(),
+    val undatedExpenseCount: Int? = null,
 )
 
 data class CurrencyReferenceRate(val sourceCurrencyCode: String, val homeCurrencyCode: String, val rateDate: String)
@@ -123,6 +125,7 @@ data class Goal(
     // Debt goals carry a non-monetary evaluation; their spend fields remain null.
     val debtRepayment: DebtRepaymentEvaluation? = null,
     val homeCurrencyCode: String? = null,
+    val undatedExpenseCount: Int? = null,
 ) {
     val progress: Float? = progressPercent?.let { (it / 100f).coerceIn(0f, 1f) }
     val isArchived: Boolean = status == "archived" || archivedAt != null

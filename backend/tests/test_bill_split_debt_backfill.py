@@ -31,6 +31,8 @@ from app.services.bill_split_service import (
     backfill_bill_split_debts,
     reconcile_bill_split_debts_if_enabled,
 )
+from app.services.expense_accounting_time_service import refresh_legacy_expense_time
+from app.services.ledger_calendar_service import adopt_ledger_calendar
 from app.services.time_service import now_utc
 from tests.test_bill_split import _split_headers
 
@@ -50,6 +52,7 @@ def _seed_receiver(name: str = "B", ledger_id: str = "receiver_b") -> int:
         db.flush()
         db.add(Ledger(ledger_id=ledger_id, name=f"{name} 的账本", owner_account_id=account.id))
         db.flush()
+        adopt_ledger_calendar(db, ledger_id=ledger_id, timezone_name="Asia/Shanghai", actor_account_id=account.id)
         db.add(LedgerMember(ledger_id=ledger_id, account_id=account.id, role="owner"))
         db.commit()
         return account.id
@@ -70,6 +73,7 @@ def _make_expense_for_owner(*, amount_cents: int = 5000, merchant: str = "Pizza 
             expense_time=now_utc(),
             confirmed_at=now_utc(),
         )
+        refresh_legacy_expense_time(db, expense)
         db.add(expense)
         db.commit()
         return expense.id
@@ -132,6 +136,7 @@ def _invite_foreign_parent(
             expense_time=now_utc(),
             confirmed_at=now_utc(),
         )
+        refresh_legacy_expense_time(db, parent)
         db.add(parent)
         db.commit()
         parent_id = parent.id

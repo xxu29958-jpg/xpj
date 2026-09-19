@@ -34,7 +34,12 @@ def record_context(monkeypatch):
         original_currency_code="JPY", original_amount_minor=240, exchange_rate_to_cny=Decimal("0.05"),
         exchange_rate_source="manual", exchange_rate_date=now.date(), fx_status="ready",
         merchant="车票", category="交通", status="confirmed", fact_revision=1, row_version=1,
-        expense_time=now, created_at=now, confirmed_at=now, updated_at=now, duplicate_status="none")
+        expense_time=now, created_at=now, confirmed_at=now, updated_at=now, duplicate_status="none",
+        accounting_date=now.date(), calendar_revision=1, time_precision="instant",
+        user_local_date=now.date(), source_timezone="Asia/Shanghai", source_utc_offset_seconds=28800,
+        accounting_date_basis="instant_calendar")
+    monkeypatch.setattr(helpers, "calendar_revision", lambda *_a, **_k: SimpleNamespace(
+        revision=1, timezone_name="Asia/Shanghai"))
     monkeypatch.setattr(helpers, "get_expense", lambda *_a: expense)
     monkeypatch.setattr(fact, "get_expense", lambda *_a: expense)
     monkeypatch.setattr(helpers, "_base_ctx", lambda request, **_k: {
@@ -60,9 +65,13 @@ def record_context(monkeypatch):
     monkeypatch.setattr(fact, "list_expense_revisions", lambda *_a, **_k: ExpenseRevisionListResponse(
         items=[], page=1, page_size=50, total=0, snapshot_revision=1))
 
-    def read(mode, status="mismatch_known"):
+    def read(mode, status="mismatch_known", *, source_unknown=False):
         item_response.items_sum_status = status
         expense.status = "pending" if mode == "pending" else "confirmed"
+        if source_unknown:
+            expense.source_timezone = expense.source_utc_offset_seconds = expense.user_local_date = None
+            expense.time_precision = "unknown"
+            expense.accounting_date_basis = "legacy_expense_time"
         request = Request({"type": "http", "method": "GET", "headers": [],
             "path": "/web/expenses/41/edit", "query_string": b""})
         factory = {"fact": fact.web_fact_context, "correction": correction.web_correction_context,
@@ -75,6 +84,15 @@ def record_context(monkeypatch):
         return context
 
     return read
+
+
+@pytest.mark.parametrize("mode", ["pending", "correction"])
+def test_legacy_editor_uses_recorded_calendar_without_inventing_source(record_context, mode):
+    context = record_context(mode, source_unknown=True)
+    assert context["time_form"]["calendar_revision"] == "1"
+    assert context["time_form"]["source_timezone"] == "Asia/Shanghai"
+    assert context["time_form"]["wall_time"] == "2026-09-01T12:00:00"
+    assert context["expense"]["expense_time"] == "2026-09-01 04:00:00+00:00"
 
 
 def _render(name, context):
@@ -112,8 +130,11 @@ def test_pending_record_uses_the_same_record_basis_for_child_summaries(record_co
     assert "还差 ¥2.00 未分配" in html
 
 
+@pytest.mark.parametrize("time_fields", [None, {"time_precision": "instant", "calendar_revision": "1",
+    "user_local_date": "2026-09-01", "source_timezone": "Asia/Shanghai",
+    "source_utc_offset_seconds": "28800", "accounting_date": ""}])
 def test_fx_status_keeps_original_form_and_offers_review_when_current_bill_no_longer_needs_fx(
-    record_context, monkeypatch,
+    record_context, monkeypatch, time_fields,
 ):
     expense = helpers.get_expense(None, 41, "owner")
     expense.amount_cents = None
@@ -142,13 +163,17 @@ def test_fx_status_keeps_original_form_and_offers_review_when_current_bill_no_lo
             idempotency_key="original-edit-key", save_before_confirm=True, amount_yuan="999",
             original_currency="JPY", manual_exchange_rate="", merchant="Unsent merchant",
             category="交通", note="Unsent note", tags="trip", expense_time="2026-09-01T12:00",
-            fragment=fragment, return_context=ExpenseReturnContext(return_to="pending"))
+            fragment=fragment, return_context=ExpenseReturnContext(return_to="pending"), time_fields=time_fields)
         response = edit.web_refresh_expense_fx(41, request, form, db=db)
         assert response.status_code == 200
         assert response.context["expense_fx"] is None
         assert response.context["conflict_current"] is None
         body = response.body.decode()
         retained = hidden_post_forms(body)["/web/expenses/41/save"]
+        if time_fields is not None:
+            assert all(retained[name] == value for name, value in time_fields.items())
+        else:
+            assert "calendar_revision" not in retained
         assert (retained["expected_row_version"], retained["idempotency_key"],
             retained["ledger_id"], retained["original_currency"]) == (
                 "1", "original-edit-key", "owner", "JPY")

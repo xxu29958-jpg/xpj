@@ -32,9 +32,15 @@ class StatsRows:
         self.records = records if records is not None else [fact(row) for row in rows if row.entry_kind == "expense"]
         self.statements = []
 
+    def scalar(self, statement):
+        assert "ledger_calendar_revisions" in str(statement)
+        return SimpleNamespace(timezone_name="UTC")
+
     def execute(self, statement):
         self.statements.append(statement)
         columns = [column.name for column in statement.selected_columns]
+        if columns == ["category", "count"]:
+            return iter(())
         if columns == ["expense_id", "name"]:
             return iter(self.tags)
         assert "home_currency_code" in columns

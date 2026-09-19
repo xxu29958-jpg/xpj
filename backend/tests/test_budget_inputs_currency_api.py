@@ -7,6 +7,7 @@ from uuid import uuid4
 from app.database import SessionLocal
 from app.models import Expense
 from app.services.budget_advisor_service import _runner
+from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 
 
 def test_historical_rate_recovery_rereads_inputs_before_explicit_generation(client, identity, monkeypatch):
@@ -15,9 +16,11 @@ def test_historical_rate_recovery_rereads_inputs_before_explicit_generation(clie
         history = Expense(tenant_id="owner", status="confirmed", category="餐饮", amount_cents=500,
             home_currency_code="JPY", original_currency_code="JPY", original_amount_minor=500,
             expense_time=when, confirmed_at=when)
+        refresh_legacy_expense_time(db, history)
         current = Expense(tenant_id="owner", status="confirmed", category="餐饮", amount_cents=300,
             home_currency_code="CNY", original_currency_code="CNY", original_amount_minor=300,
             expense_time=datetime(2026, 9, 3, 12, tzinfo=UTC), confirmed_at=when)
+        refresh_legacy_expense_time(db, current)
         db.add_all([history, current])
         db.commit()
         history_id = history.id

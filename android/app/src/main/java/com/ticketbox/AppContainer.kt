@@ -85,6 +85,9 @@ class AppContainer(context: Context) {
     private val apiClient = ApiClient(appContext)
     private val apiServiceProvider = ApiServiceProvider(apiClient, sessionStore, credentials)
     private val outboxRequestGuard = LedgerRequestGuard(apiServiceProvider)
+    val ledgerCalendarRepository = com.ticketbox.data.repository.LedgerCalendarRepository(
+        outboxRequestGuard, appContext.getSharedPreferences("ticketbox.calendar.rules", Context.MODE_PRIVATE),
+    )
     private val outboxAdapters = OutboxAdapterGraph()
     private val uploadFiles = UploadIntentFileStore(appContext)
     private val outboxWriteBlock = MutableStateFlow<OutboxWriteBlock?>(null)
@@ -396,6 +399,7 @@ class AppContainer(context: Context) {
             apiServiceProvider = apiServiceProvider,
             recurringRepository = recurringRepository,
             budgetRepository = budgetRepository,
+            ledgerCalendarRepository = ledgerCalendarRepository,
         ),
     )
 

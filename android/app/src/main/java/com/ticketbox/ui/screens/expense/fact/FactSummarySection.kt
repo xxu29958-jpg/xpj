@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens.expense.fact
 
+import com.ticketbox.ui.asString
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -220,7 +221,7 @@ private fun factHeroCaption(
 private fun FactMetaLine(expense: Expense) {
     val parts = listOfNotNull(
         expense.category.takeIf { it.isNotBlank() },
-        expense.expenseTime?.let { displayDateTime(it) },
+        com.ticketbox.ui.components.expenseTimeLabel(expense).asString(),
         expense.source.takeIf { it.isNotBlank() },
     )
     if (parts.isEmpty()) return
@@ -245,6 +246,12 @@ private fun FactFieldRows(expense: Expense) {
         }
         expense.note?.takeIf { it.isNotBlank() }?.let {
             FactFieldRow(label = stringResource(R.string.expense_fact_field_note), value = it)
+        }
+        com.ticketbox.ui.components.expenseKnownInstant(expense)?.let {
+            FactFieldRow(label = stringResource(R.string.calendar_known_instant), value = displayDateTime(it))
+        }
+        if (expense.accountingTime?.basis?.startsWith("legacy") == true) {
+            FactFieldRow(label = stringResource(R.string.calendar_date_basis), value = stringResource(R.string.calendar_legacy_basis_explanation))
         }
         FactScoreFieldRow(expense = expense)
         FactFieldRow(

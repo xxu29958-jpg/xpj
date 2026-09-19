@@ -10,6 +10,7 @@ from app.database import SessionLocal, engine
 from app.models import Expense, LedgerMember
 from app.money_contract import MONEY_AGGREGATE_MAX
 from app.routes._web_report_money_views import six_month_average_amount_yuan
+from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from app.services.reports_service import reports_overview, six_month_summary
 from app.services.time_service import now_utc
 from tests._reports_overview_contracts import (
@@ -56,24 +57,25 @@ def _insert_expense(
 ) -> None:
     now = now_utc()
     with SessionLocal() as db:
-        db.add(
-            Expense(
-                tenant_id=tenant_id,
-                amount_cents=amount_cents,
-                home_currency_code="CNY",
-                original_currency_code="CNY",
-                original_amount_minor=amount_cents,
-                merchant=merchant,
-                category=category,
-                note="",
-                source="pytest",
-                status=status,
-                expense_time=expense_time,
-                created_at=confirmed_at or now,
-                updated_at=confirmed_at or now,
-                confirmed_at=confirmed_at,
-            )
+        _calendar_expense = Expense(
+            tenant_id=tenant_id,
+            amount_cents=amount_cents,
+            home_currency_code="CNY",
+            original_currency_code="CNY",
+            original_amount_minor=amount_cents,
+            merchant=merchant,
+            category=category,
+            note="",
+            source="pytest",
+            status=status,
+            expense_time=expense_time,
+            created_at=confirmed_at or now,
+            updated_at=confirmed_at or now,
+            confirmed_at=confirmed_at,
         )
+        if _calendar_expense.status == "confirmed":
+            refresh_legacy_expense_time(db, _calendar_expense)
+        db.add(_calendar_expense)
         db.commit()
 
 
@@ -238,7 +240,7 @@ def test_reports_daily_trend_uses_bounded_aggregate_query_shape(
     assert len(expense_selects) <= 6
 
 
-def test_reports_overview_uses_timezone_and_confirmed_at_fallback(
+def test_reports_overview_preserves_adopted_confirmation_date_across_query_timezones(
     client: TestClient,
     *,
     identity,
@@ -268,15 +270,15 @@ def test_reports_overview_uses_timezone_and_confirmed_at_fallback(
 
     utc_may = client.get("/api/reports/overview?month=2026-05&timezone=UTC", headers=identity.app_headers)
     assert utc_may.status_code == 200, utc_may.json()
-    assert utc_may.json()["total_amount_cents"] == 0
+    assert utc_may.json()["total_amount_cents"] == 1851
 
     utc_april = client.get(
         "/api/reports/overview?month=2026-04&timezone=UTC&granularity=week",
         headers=identity.app_headers,
     )
     assert utc_april.status_code == 200, utc_april.json()
-    assert utc_april.json()["total_amount_cents"] == 1851
-    assert any(point["amount_cents"] == 1851 for point in utc_april.json()["trend"])
+    assert utc_april.json()["total_amount_cents"] == 0
+    assert all(point["amount_cents"] == 0 for point in utc_april.json()["trend"])
 
 
 def test_reports_overview_month_granularity_and_viewer_read(

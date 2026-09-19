@@ -7,8 +7,9 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import ExchangeRate, Expense, LedgerMember
-from app.services import spending_contract_service
+from app.routes import web_budget_fx
 from app.services.budget_advisor_service import _runner
+from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from tests._web_native_form_support import hidden_post_forms
 
 ACTION = "/web/budget-advise/rates"
@@ -30,6 +31,7 @@ def test_native_save_and_lost_ack_replay_return_original_month_with_current_proj
             home_currency_code="CNY", original_currency_code="CNY", original_amount_minor=300,
             expense_time=when, confirmed_at=when)
         db.add(expense)
+        refresh_legacy_expense_time(db, expense)
         db.commit()
         expense_id = expense.id
     provider = Mock(side_effect=AssertionError("rate recovery must not generate paid advice"))
@@ -37,7 +39,7 @@ def test_native_save_and_lost_ack_replay_return_original_month_with_current_proj
     missing = web_client.get("/web/budget-advise", params=TASK)
     assert missing.status_code == 200 and "待补汇率" in missing.text
     original = _rate_form(web_client)
-    monkeypatch.setattr(spending_contract_service, "current_month", lambda _tz: "2026-10")
+    monkeypatch.setattr(web_budget_fx, "current_ledger_month", lambda _db, *, ledger_id: "2026-10")
     accepted = web_client.post(ACTION, data=original)
     assert accepted.status_code == 200, accepted.text
     budget_form = hidden_post_forms(accepted.text)["/web/budget-advise"]

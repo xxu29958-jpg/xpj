@@ -23,6 +23,7 @@ from app.services.currency_binding_service import resolve_write_capability
 from app.services.exchange_rate_service import validate_imported_currency_snapshot
 from app.services.expense_offset_service import ReviewedOffsetImport, create_expense_offset
 from app.services.expense_query import resolve_expense
+from app.services.import_financial_events import native_accounting_time
 from app.services.time_service import now_utc
 
 
@@ -64,7 +65,7 @@ def _associate_source_root(db: Session, row: CsvImportRow, root: Expense) -> Non
 
 def _review_offset(db: Session, row: CsvImportRow, *, payload: CsvImportReviewRequest,
                    actor_account_id: int, actor_device_public_id: str | None,
-                   actor_device_name: str | None) -> None:
+                   actor_device_name: str | None, calendar_revision: int | None) -> None:
     root = find_source_root(db, tenant_id=row.tenant_id, source_public_id=row.source_root_public_id)
     if payload.expense_id is not None:
         if root is not None and root.id != payload.expense_id:
@@ -86,7 +87,8 @@ def _review_offset(db: Session, row: CsvImportRow, *, payload: CsvImportReviewRe
             expected_row_version=payload.expected_row_version),
         effective_expected_row_version=payload.expected_row_version, actor_account_id=actor_account_id,
         actor_device_public_id=actor_device_public_id, actor_device_name=actor_device_name,
-        idempotency_key=request_key, imported=ReviewedOffsetImport(money=row, category=row.category), commit=False)
+        idempotency_key=request_key, imported=ReviewedOffsetImport(money=row, category=row.category,
+            calendar_revision=calendar_revision, accounting_time=native_accounting_time(row.event_input or {})), commit=False)
     receipt = db.scalar(ledger_scoped_select(ApiIdempotencyKey, row.tenant_id).where(
         ApiIdempotencyKey.idempotency_key == request_key))
     offset = db.scalar(ledger_scoped_select(ExpenseOffsetFact, row.tenant_id).where(
@@ -127,7 +129,8 @@ def review_csv_import_row(db: Session, *, tenant_id: str, public_id: str, line_n
             _complete_reviewed_quote(row, payload)
             if row.entry_kind == "offset":
                 _review_offset(db, row, payload=payload, actor_account_id=actor_account_id,
-                    actor_device_public_id=actor_device_public_id, actor_device_name=actor_device_name)
+                    actor_device_public_id=actor_device_public_id, actor_device_name=actor_device_name,
+                    calendar_revision=batch.calendar_revision)
             else:
                 if not may_admit_purchase and not prepare_native_csv_row(db, row,
                         accept_incomplete=payload.acknowledge_incomplete_lineage):

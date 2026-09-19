@@ -37,6 +37,7 @@ from app.services.identity_service import (
     pair_device,
 )
 from app.services.time_service import now_utc
+from tests._infra.alembic_runtime import reset_public_schema
 from tests._infra.bootstrap_recovery import (
     _VECTOR_ADMIN_TOKEN,
     _VECTOR_PAIRING_CODE,
@@ -48,7 +49,7 @@ from tests.pairing_test_support import invitation_accept_payload, pairing_payloa
 
 
 def _setup_exposed_sessions() -> tuple[str, str]:
-    Base.metadata.drop_all(bind=engine)
+    reset_public_schema(engine)
     init_db()
     with TestClient(app) as client:
         initial = _post_bootstrap(client, secret=_VECTOR_SECRET)
@@ -89,7 +90,7 @@ def _attempt_pairing_while_bootstrap_locked(started: threading.Event) -> str:
 
 
 def _assert_pairing_consume_revalidates_after_bootstrap_lock() -> None:
-    Base.metadata.drop_all(bind=engine)
+    reset_public_schema(engine)
     init_db()
     with TestClient(app) as client:
         assert _post_bootstrap(client, secret=_VECTOR_SECRET).status_code == 200
@@ -287,7 +288,7 @@ def assert_concurrent_bootstrap_recovery_lock_order(
         "assert_bootstrap_sensitive_mutation_allowed",
         lambda *args, **kwargs: None,
     )
-    Base.metadata.drop_all(bind=engine)
+    reset_public_schema(engine)
     init_db()
     try:
         with TestClient(app) as client:
@@ -313,7 +314,7 @@ def _bootstrap_distinct_secret(secret: str, barrier: threading.Barrier) -> str:
 
 
 def assert_distinct_bootstrap_secrets_create_one_identity() -> None:
-    Base.metadata.drop_all(bind=engine)
+    reset_public_schema(engine)
     Base.metadata.create_all(bind=engine)
     barrier = threading.Barrier(2)
     secrets = (

@@ -25,12 +25,13 @@ in the target path ledger.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, Query, Response
 from sqlalchemy.orm import Session
 
 from app.auth import (
     _bearer_token,
     get_current_app_principal,
+    get_current_ledger_app_context,
     get_current_owner_or_admin_context,
 )
 from app.database import get_db
@@ -42,7 +43,9 @@ from app.schemas import (
     LedgerSwitchPrepareRequest,
     LedgerSwitchResponse,
 )
+from app.schemas._ledger_calendar import LedgerCalendarChangeRequest, LedgerCalendarResponse
 from app.services.desktop_switch_service import prepare_desktop_ledger_switch
+from app.services.ledger_calendar_commands import change_ledger_calendar, read_ledger_calendar
 from app.services.ledger_service import (
     LedgerSummary,
     create_ledger,
@@ -53,6 +56,21 @@ from app.services.server_identity_service import read_server_data_identity
 from app.tenants import AuthContext, SessionPrincipal
 
 router = APIRouter(prefix="/api/ledgers", tags=["ledgers"])
+
+
+@router.get("/{ledger_id}/calendar", response_model=LedgerCalendarResponse)
+def get_calendar(ledger_id: str, response: Response, revision: int | None = Query(default=None, gt=0),
+                 auth: AuthContext = Depends(get_current_ledger_app_context), db: Session = Depends(get_db)):
+    response.headers["Cache-Control"] = "private, no-store"
+    return read_ledger_calendar(db, ledger_id=ledger_id, account_id=auth.account_id, revision=revision)
+
+
+@router.post("/{ledger_id}/calendar", response_model=LedgerCalendarResponse)
+def change_calendar(ledger_id: str, payload: LedgerCalendarChangeRequest,
+                    idempotency_key: str = Header(alias="Idempotency-Key", min_length=1, max_length=64),
+                    auth: AuthContext = Depends(get_current_ledger_app_context), db: Session = Depends(get_db)):
+    return change_ledger_calendar(db, ledger_id=ledger_id, actor_account_id=auth.account_id,
+        auth=auth, payload=payload, idempotency_key=idempotency_key)
 
 
 def _to_response(summary: LedgerSummary) -> LedgerResponse:

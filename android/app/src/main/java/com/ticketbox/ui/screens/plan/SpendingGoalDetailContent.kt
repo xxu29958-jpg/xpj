@@ -48,6 +48,7 @@ internal fun SpendingGoalViewContent(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
     ) {
+        com.ticketbox.ui.components.AccountingDateNotice(goal.undatedExpenseCount)
         SpendingGoalSummaryCard(goal)
         SpendingGoalFactsCard(goal)
         if (canModify && !goal.isArchived) {

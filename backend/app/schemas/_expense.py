@@ -10,8 +10,9 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_serializer, model_validator
 
+from app.schemas._accounting_time import AccountingTimeInput, AccountingTimeSnapshot
 from app.schemas._background_task import BackgroundTaskResponse
 from app.schemas._money import (
     NonNegativeCanonicalDecimalInput,
@@ -77,6 +78,7 @@ class UploadResponse(BaseModel):
 class ExpenseManualCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    time_input: AccountingTimeInput | None = None
     home_currency_code: str | None = Field(default=None, min_length=3, max_length=3,
         description="Currency captured when this manual draft began; independent of the current default. "
         "Legacy requests may omit it only with complete original money, or to replay an accepted client_ref.")
@@ -110,6 +112,7 @@ class ExpenseManualCreateRequest(BaseModel):
 class NotificationDraftCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    time_input: AccountingTimeInput | None = None
     source: str = Field(min_length=1, max_length=32)
     amount_cents: NonNegativeMoneyMinor | None = None
     original_currency: str | None = Field(default=None, min_length=3, max_length=3)
@@ -138,6 +141,7 @@ class ExpenseFieldChanges(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    time_input: AccountingTimeInput | None = None
     expected_row_version: int
     amount_cents: NonNegativeMoneyMinor | None = None
     original_currency: str | None = Field(default=None, min_length=3, max_length=3)
@@ -305,6 +309,7 @@ class PendingDuplicateCandidateResponse(BaseModel):
 class ExpenseResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
+    accounting_time: AccountingTimeSnapshot | None = None
     id: int
     public_id: str
     amount_cents: NonNegativeMoneyMinor | None
@@ -349,6 +354,13 @@ class ExpenseResponse(BaseModel):
     thumbnail_deleted_at: datetime | None
     category_suggestion: PendingCategorySuggestionResponse | None = None
     duplicate_candidates: list[PendingDuplicateCandidateResponse] = Field(default_factory=list)
+
+    @model_serializer(mode="wrap")
+    def preserve_absent_receipt_time(self, handler):
+        data = handler(self)
+        if "accounting_time" not in self.model_fields_set:
+            data.pop("accounting_time", None)
+        return data
 
     @field_serializer(
         "expense_time",

@@ -50,7 +50,7 @@ internal class RecurringOccurrenceConnectedFixture(private val context: Context)
     }
     val ledger: LedgerActions = object : LedgerActions by occurrenceProxy<LedgerActions>({ method, _ -> error("Unexpected ledger method: $method") }) {
         override fun observeConfirmedStream() = confirmedStream
-        override suspend fun syncConfirmed(month: String?, category: String?, tag: String?): Result<List<Expense>> =
+        override suspend fun syncConfirmed(month: String?, category: String?, tag: String?, missingAccountingDate: Boolean): Result<List<Expense>> =
             Result.success(confirmedStream.value.map { it.root })
     }
 

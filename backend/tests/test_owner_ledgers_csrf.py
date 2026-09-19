@@ -35,3 +35,29 @@ def test_owner_ledgers_index_injects_csrf_token(local_client: TestClient) -> Non
     match = _CSRF_META.search(resp.text)
     assert match is not None, "/owner/ledgers 缺 <meta name=csrf-token>"
     assert match.group(1).strip() != "", "csrf-token content 为空(csrf_context 未注入)"
+
+
+def test_owner_calendar_form_changes_once_and_retains_original_revision_on_replay(local_client, identity):
+    path = "/owner/ledgers/owner/calendar"
+    page = local_client.get(path)
+    assert page.status_code == 200
+    assert _CSRF_META.search(page.text).group(1)
+    original = local_client.get("/api/ledgers/owner/calendar", headers=identity.app_headers).json()
+    change = {"timezone_name": "UTC" if original["timezone_name"] != "UTC" else "Asia/Shanghai",
+        "expected_revision": str(original["revision"]), "idempotency_key": "owner-calendar-original"}
+    for _ in range(2):
+        response = local_client.post(path, data=change, follow_redirects=False)
+        assert response.status_code == 303 and response.headers["location"] == path
+    current = local_client.get("/api/ledgers/owner/calendar", headers=identity.app_headers).json()
+    assert current["revision"] == original["revision"] + 1
+    assert current["timezone_name"] == change["timezone_name"]
+    stale = local_client.post(path, data={**change, "idempotency_key": "owner-calendar-stale"})
+    assert stale.status_code == 409
+    assert change["timezone_name"] in stale.text
+
+
+def test_owner_calendar_rejects_nonlocal_get_and_post(client):
+    path = "/owner/ledgers/owner/calendar"
+    assert client.get(path).status_code == 403
+    assert client.post(path, data={"timezone_name": "UTC", "expected_revision": "1",
+        "idempotency_key": "remote-calendar"}).status_code == 403

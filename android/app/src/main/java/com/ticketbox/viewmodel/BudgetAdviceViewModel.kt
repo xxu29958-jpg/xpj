@@ -1,6 +1,8 @@
 package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
+import com.ticketbox.data.repository.LedgerCalendarReader
+import com.ticketbox.data.repository.newTaskMonth
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.BudgetActions
@@ -58,15 +60,19 @@ data class BudgetAdviceUiState(
 
 class BudgetAdviceViewModel(
     internal val repository: BudgetActions,
-    initialMonth: String = YearMonth.now().toString(),
+    initialMonth: String? = null,
+    private val calendars: LedgerCalendarReader? = null,
 ) : ViewModel() {
     internal val _state = MutableStateFlow(
         BudgetAdviceUiState(
-            month = initialMonth,
+            month = initialMonth ?: YearMonth.now().toString(),
             canRequest = repository.canModifyLedger(),
         ),
     )
     val uiState: StateFlow<BudgetAdviceUiState> = _state.asStateFlow()
+    internal var monthSelected = initialMonth != null
+    internal var resolvingMonth = false
+    internal suspend fun defaultMonth(binding: com.ticketbox.data.repository.LogicalSessionBinding): String = calendars.newTaskMonth(binding)
     internal var requestGeneration = 0
     internal var inputGeneration = 0
     internal var rateObservation: kotlinx.coroutines.Job? = null

@@ -12,7 +12,7 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.main import app
 from app.models import LedgerMember
-from tests._web_native_form_support import hidden_post_forms
+from tests._web_native_form_support import accounting_time_fields, hidden_post_forms
 from tests.expense_correction_support import idem, manual_confirmed
 from tests.test_csv_financial_events_http import _bundle, _export, _fact_counts, _foreign_source_export, _rows
 from tests.test_expense_offset_lifecycle import _create_refund
@@ -31,10 +31,11 @@ def _confirm_visible_root(browser, review, expense_id):
     assert edit.status_code == 200, edit.text
     form = hidden_post_forms(edit.text)[f"/web/expenses/{expense_id}/save"]
     # Submit the displayed scalar values, as the native save-and-confirm button does.
-    for name in ("amount_yuan", "merchant", "category", "expense_time", "tags"):
+    for name in ("amount_yuan", "merchant", "category", "tags"):
         match = re.search(rf'name="{name}"\s+value="([^"]*)"', edit.text)
         assert match is not None, (name, edit.text)
         form[name] = unescape(match.group(1))
+    form.update(accounting_time_fields(edit.text))
     note = re.search(r'<textarea\b[^>]*name="note"[^>]*>(.*?)</textarea>', edit.text, re.DOTALL)
     form["note"] = unescape(note.group(1)) if note else ""
     confirmed = _post(browser, edit, f"/web/expenses/{expense_id}/confirm", form)

@@ -26,7 +26,7 @@ from app.services.budget_advisor_service import (
     read_budget_inputs,
     run_budget_advisor,
 )
-from app.services.spending_contract_service import current_accounting_month
+from app.services.ledger_calendar_service import current_ledger_month
 from app.tenants import AuthContext
 
 router = APIRouter(prefix="/api/budget", tags=["budget-advisor"])
@@ -54,7 +54,7 @@ def get_discretionary(
         sign=MoneySign.NONNEGATIVE,
         label="budget_discretionary.reserved_buffer_cents",
     )
-    month_label = month or current_accounting_month()
+    month_label = month or current_ledger_month(db, ledger_id=auth.tenant_id)
     projection = read_budget_inputs(
         db, tenant_id=auth.tenant_id, month=month_label,
         savings_target_cents=savings_target,

@@ -73,6 +73,7 @@ from app.services.idempotency import (
     claim_idempotent_request,
     mark_idempotency_succeeded,
 )
+from app.services.ledger_calendar_commands import read_ledger_calendar
 from app.services.pending_fx_task_service import (
     prepare_pending_expense_fx,
     request_pending_expense_fx,
@@ -87,6 +88,7 @@ from app.services.receipt_item_service import (
     list_expense_items,
     replace_expense_items,
 )
+from app.services.spending_contract_service import count_undated_expenses
 from app.services.stats_service import export_confirmed_csv, list_categories, list_months
 from app.services.tag_service import list_tags
 from app.tenants import AuthContext
@@ -173,6 +175,7 @@ def get_confirmed_expenses(
     category: str | None = None,
     tag: str | None = None,
     timezone: str | None = None,
+    missing_accounting_date: bool = False,
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> PaginatedExpensesResponse:
@@ -185,12 +188,15 @@ def get_confirmed_expenses(
         category=category,
         tag=tag,
         timezone_name=timezone,
+        missing_accounting_date=missing_accounting_date,
     )
     return PaginatedExpensesResponse(
         items=items,
         page=page,
         page_size=page_size,
         total=total,
+        undated_expense_count=count_undated_expenses(db, tenant_id=auth.tenant_id, category=category, tag=tag),
+        calendar_revision=read_ledger_calendar(db, ledger_id=auth.ledger_id, account_id=auth.account_id).revision,
     )
 
 

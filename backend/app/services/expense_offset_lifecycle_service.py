@@ -20,6 +20,7 @@ from app.services.expense_offset_service import (
     _offset_snapshot,
     _replayed_bundle,
     expense_fact_bundle,
+    offset_accounting_values,
 )
 from app.services.idempotency import claim_idempotent_request, mark_idempotency_succeeded
 from app.services.optimistic_concurrency import claim_row_with_token
@@ -294,6 +295,8 @@ def correct_expense_offset(
         expense_id=expense_id,
         offset_public_id=offset_public_id,
     )
+    time_values = (offset_accounting_values(db, tenant_id=tenant_id, accounting_date=payload.accounting_date)
+        if payload.accounting_date != offset.accounting_date else {})
     money = resolve_corrected_offset_money(
         db,
         tenant_id=tenant_id,
@@ -317,6 +320,7 @@ def correct_expense_offset(
             "exchange_rate_date": money.exchange_rate_date,
             "exchange_rate_source": money.exchange_rate_source,
             "accounting_date": payload.accounting_date,
+            **time_values,
             "category": payload.category,
             "reason": payload.offset_reason,
             "fact_revision": ExpenseOffsetFact.fact_revision + 1,

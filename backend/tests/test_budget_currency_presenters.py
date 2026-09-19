@@ -39,6 +39,7 @@ def test_missing_conversion_has_no_fake_budget_progress_or_available_amount():
 
 
 def test_owner_budget_summary_preserves_jpy_and_missing_fx(monkeypatch):
+    monkeypatch.setattr(_index, "current_ledger_month", lambda _db, *, ledger_id: "2026-09")
     monkeypatch.setattr(_index, "get_monthly_budget", lambda *args, **kw: _budget(spent=None, remaining=None))
     status = _index._budget_status_for_primary_ledger(object(), SimpleNamespace(ledger_id="owner", name="Owner"))
     assert status.total_amount_yuan == "1200"

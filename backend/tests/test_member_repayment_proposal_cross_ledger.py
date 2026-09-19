@@ -41,6 +41,7 @@ from app.models import (
 )
 from app.services import bill_split_service as bsplit
 from app.services.identity_service import hash_secret, new_session_token
+from app.services.ledger_calendar_service import adopt_ledger_calendar
 from tests._runtime_protocol import current_protocol_headers
 
 # Reuse the slice-4 linkage helpers (owner expense → invite → service-level accept).
@@ -70,6 +71,7 @@ def _seed_personal_ledger(*, name: str, ledger_id: str) -> int:
         db.flush()
         db.add(Ledger(ledger_id=ledger_id, name=f"{name} 的账本", owner_account_id=account.id))
         db.flush()
+        adopt_ledger_calendar(db, ledger_id=ledger_id, timezone_name="Asia/Shanghai")
         db.add(LedgerMember(ledger_id=ledger_id, account_id=account.id, role="owner"))
         db.commit()
         return account.id

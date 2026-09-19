@@ -11,6 +11,7 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.models import Expense, LedgerMember
 from app.services.currency_binding_service import resolve_write_capability
+from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from app.services.time_service import now_utc
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
@@ -54,21 +55,22 @@ def _insert_expense(
         # Direct fixture insert: mirror the transaction-local proof required of
         # the production expense writer instead of weakening the DB fence.
         resolve_write_capability(db)
-        db.add(
-            Expense(
-                tenant_id=tenant_id,
-                amount_cents=amount_cents,
-                merchant=merchant,
-                category=category,
-                note="",
-                source="pytest",
-                status=status,
-                expense_time=expense_time,
-                created_at=confirmed_at or now,
-                updated_at=confirmed_at or now,
-                confirmed_at=confirmed_at,
-            )
+        _calendar_expense = Expense(
+            tenant_id=tenant_id,
+            amount_cents=amount_cents,
+            merchant=merchant,
+            category=category,
+            note="",
+            source="pytest",
+            status=status,
+            expense_time=expense_time,
+            created_at=confirmed_at or now,
+            updated_at=confirmed_at or now,
+            confirmed_at=confirmed_at,
         )
+        if _calendar_expense.status == "confirmed":
+            refresh_legacy_expense_time(db, _calendar_expense)
+        db.add(_calendar_expense)
         db.commit()
 
 
@@ -202,7 +204,7 @@ def test_goals_create_list_and_progress_by_total_and_category(client: TestClient
     _assert_goal_list_progress(client, identity)
 
 
-def test_goals_progress_uses_timezone_and_confirmed_at_fallback(client: TestClient, *, identity) -> None:
+def test_goals_progress_preserves_adopted_confirmation_date_across_query_timezones(client: TestClient, *, identity) -> None:
     _insert_expense(
         amount_cents=1851,
         merchant="手机时区边界账单",
@@ -232,8 +234,8 @@ def test_goals_progress_uses_timezone_and_confirmed_at_fallback(client: TestClie
         headers=identity.app_headers,
     )
     assert utc_detail.status_code == 200, utc_detail.json()
-    assert utc_detail.json()["spent_amount_cents"] == 0
-    assert utc_detail.json()["progress_state"] == "not_started"
+    assert utc_detail.json()["spent_amount_cents"] == 1851
+    assert utc_detail.json()["progress_state"] == "near_limit"
 
 
 def test_goals_permissions_and_ledger_isolation(client: TestClient, *, identity) -> None:

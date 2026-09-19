@@ -54,7 +54,7 @@ internal fun LifestyleCard(lifestyle: LifestyleStats) {
             }
             if (hasMerchants) {
                 androidx.compose.runtime.CompositionLocalProvider(LocalCurrencyDisplay provides currencyDisplay) {
-                    FrequentMerchantsSection(lifestyle.frequentMerchants, lifestyle.missingRates.isEmpty())
+                    FrequentMerchantsSection(lifestyle.frequentMerchants, lifestyle.missingRates.isEmpty() && (lifestyle.undatedExpenseCount ?: 0) == 0)
                 }
             }
             if (hasMerchants && hasValueRegret) {
@@ -80,7 +80,7 @@ private fun LifestyleHeader(
 ) {
     val merchantFallback = stringResource(R.string.stats_lifestyle_merchant_fallback)
     val maxExpense = lifestyle.maxExpense
-    val frequentMerchant = frequentMerchantDisplayRows(lifestyle.frequentMerchants, compareAmounts = lifestyle.missingRates.isEmpty()).firstOrNull()
+    val frequentMerchant = frequentMerchantDisplayRows(lifestyle.frequentMerchants, compareAmounts = lifestyle.missingRates.isEmpty() && (lifestyle.undatedExpenseCount ?: 0) == 0).firstOrNull()
     val merchantCount = lifestyle.frequentMerchants.size
     val caption = when {
         maxExpense != null -> stringResource(

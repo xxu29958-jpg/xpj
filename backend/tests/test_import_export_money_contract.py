@@ -18,6 +18,7 @@ from app.main import app
 from app.models import CsvImportBatch, CsvImportRow, Expense
 from app.money_contract import MONEY_MINOR_MAX
 from app.routes.web_app import _require_local as _web_require_local
+from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from app.services.import_service import parse_csv_preview
 from tests._infra.currency import activate_test_currency_authority
 
@@ -73,26 +74,26 @@ def test_csv_export_preserves_legacy_column_and_adds_exact_jpy_home_value(
     try:
         with SessionLocal() as db:
             activate_test_currency_authority(db, "JPY")
-            db.add(
-                Expense(
-                    tenant_id="owner",
-                    amount_cents=1234,
-                    home_currency_code="JPY",
-                    original_currency_code="JPY",
-                    original_amount_minor=1234,
-                    exchange_rate_to_cny=Decimal("1"),
-                    exchange_rate_source="base",
-                    merchant="Tokyo",
-                    category="餐饮",
-                    note="",
-                    source="pytest",
-                    status="confirmed",
-                    expense_time=datetime(2026, 5, 4, 0, 0, tzinfo=UTC),
-                    created_at=datetime(2026, 5, 4, 0, 0, tzinfo=UTC),
-                    updated_at=datetime(2026, 5, 4, 0, 0, tzinfo=UTC),
-                    confirmed_at=datetime(2026, 5, 4, 0, 0, tzinfo=UTC),
-                )
+            _calendar_expense = Expense(
+                tenant_id="owner",
+                amount_cents=1234,
+                home_currency_code="JPY",
+                original_currency_code="JPY",
+                original_amount_minor=1234,
+                exchange_rate_to_cny=Decimal("1"),
+                exchange_rate_source="base",
+                merchant="Tokyo",
+                category="餐饮",
+                note="",
+                source="pytest",
+                status="confirmed",
+                expense_time=datetime(2026, 5, 4, 0, 0, tzinfo=UTC),
+                created_at=datetime(2026, 5, 4, 0, 0, tzinfo=UTC),
+                updated_at=datetime(2026, 5, 4, 0, 0, tzinfo=UTC),
+                confirmed_at=datetime(2026, 5, 4, 0, 0, tzinfo=UTC),
             )
+            refresh_legacy_expense_time(db, _calendar_expense)
+            db.add(_calendar_expense)
             db.commit()
 
         response = web_client.get(

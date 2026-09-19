@@ -158,6 +158,7 @@ internal data class RecurringPaymentEntryContext(
             amountMinor = if (task.recordedCurrencyCode == null) null else task.suggestedAmountMinor,
             amountText = stored?.amountText,
             expenseTime = stored?.expenseTime?.takeIf { it.isNotBlank() },
+            timeFormJson = stored?.timeFormJson,
         ),
     )
 }
@@ -305,6 +306,7 @@ private fun RecurringPaymentEntry(ctx: RecurringPaymentEntryContext, draftState:
                             currencyCode = code, merchant = previous?.merchant ?: task.merchant,
                             category = previous?.category ?: DEFAULT_EXPENSE_CATEGORIES.first(),
                             note = previous?.note.orEmpty(), expenseTime = previous?.expenseTime.orEmpty(),
+                            timeFormJson = previous?.timeFormJson,
                         ),
                     )
                 },
@@ -360,7 +362,7 @@ private fun RecurringPaymentKnownCurrencySheet(
             ctx.drafts.write(
                 RecurringPaymentDraft(
                     ctx.task.clientRef, form.amountText, form.currency.storageKey,
-                    form.merchant, form.category, form.note, form.expenseTime,
+                    form.merchant, form.category, form.note, form.expenseTime, form.timeFormJson,
                 ),
             )
         },

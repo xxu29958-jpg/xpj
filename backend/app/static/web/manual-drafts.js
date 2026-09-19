@@ -4,7 +4,8 @@
   "use strict";
   const axes = ["datasetId", "clientGeneration", "accountId", "ledgerId", "deviceId"];
 
-  function createStore({prefix, fields, validRef, legacyMissing = []}) {
+  function createStore({prefix, fields, validRef, legacyMissing = [], optionalFields = []}) {
+    fields = [...fields, ...optionalFields];
 
     function key(ref) {
       if (typeof ref !== "string" || !validRef.test(ref)) throw Error("invalid_draft_ref");
@@ -29,6 +30,9 @@
     function fieldValues(values) {
       const result = {};
       fields.forEach(name => {
+        // Missing accounting evidence stays absent on v1 retry; never acquire
+        // the new page's calendar revision or zone during recovery.
+        if (optionalFields.includes(name) && values[name] === undefined) return;
         // Older drafts did not capture the home basis. Keep them discoverable;
         // an empty basis cannot become today's default during restore or retry.
         if (legacyMissing.includes(name) && values[name] === undefined) {
@@ -99,7 +103,7 @@
       return true;
     }
 
-    return {fields, key, matches, read, save, list, acknowledge, discardRejected};
+    return {fields, optionalFields, key, matches, read, save, list, acknowledge, discardRejected};
   }
 
   window.TicketboxDraftStore = {createStore};
@@ -108,5 +112,7 @@
     fields: ["amount_major", "currency_code", "merchant", "category", "spent_at", "note", "home_currency_code",
       "return_to", "return_recurring_public_id", "return_month", "return_payment_expense_id"],
     legacyMissing: ["home_currency_code", "return_to", "return_recurring_public_id", "return_month", "return_payment_expense_id"],
+    optionalFields: ["time_precision", "calendar_revision", "user_local_date", "source_timezone",
+      "source_utc_offset_seconds", "accounting_date"],
   });
 })(window);

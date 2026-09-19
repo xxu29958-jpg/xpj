@@ -292,9 +292,8 @@ class SpendingGoalDetailViewModel(
 
     fun shiftMonth(delta: Long) {
         _state.update {
-            val nextMonth = runCatching { YearMonth.parse(it.month).plusMonths(delta) }
-                .getOrDefault(YearMonth.now())
-                .toString()
+            val nextMonth = (runCatching { YearMonth.parse(it.month).plusMonths(delta) }.getOrNull()
+                ?: return@update it).toString()
             it.copy(month = nextMonth, formError = null)
         }
     }

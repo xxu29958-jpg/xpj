@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import replace
 from decimal import Decimal, InvalidOperation
+from types import SimpleNamespace
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -15,6 +16,13 @@ from starlette.responses import Response
 
 from app.database import get_db
 from app.errors import AppError
+from app.routes._web_accounting_time import (
+    accounting_time_form_fields,
+    parse_web_accounting_time,
+    submitted_time_form_values,
+    time_form_projection,
+    time_form_values,
+)
 from app.routes._web_expense_form import (
     parse_amount_yuan,
     parse_expense_time_local,
@@ -47,9 +55,9 @@ from app.services.currency_common import (
     supported_currency_codes,
 )
 from app.services.expense_service import create_manual_expense
+from app.services.ledger_calendar_service import current_calendar
 from app.services.manual_expense_draft_presenter import manual_draft_scope
 from app.services.recurring_service import get_recurring_item
-from app.services.spending_contract_service import accounting_zone
 from app.services.time_service import now_utc
 from app.tenants import AuthContext
 
@@ -81,6 +89,14 @@ def _manual_expense_context(
     )
     home = context["home_currency_code"]
     current_values = values or {}
+    if draft_result:
+        time_values = submitted_time_form_values(current_values, wall_time_field="spent_at")
+    else:
+        time_values = time_form_values(SimpleNamespace(expense_time=now_utc()),
+            current_calendar(db, ledger_id=selected_id))
+        # A new instant has no user-selected accounting-date override.
+        time_values["accounting_date"] = ""
+    context["time_form"] = time_form_projection(time_values) if time_values is not None else None
     origin = (return_context or ExpenseReturnContext()).as_kwargs()
     return_fields = edit_context_params(**origin)
     for name in (
@@ -115,10 +131,7 @@ def _manual_expense_context(
                 )
                 if type(review_expense_id) is int and review_expense_id > 0 else None
             ),
-            "spent_at": current_values.get("spent_at")
-            or now_utc()
-            .astimezone(accounting_zone())
-            .strftime("%Y-%m-%dT%H:%M"),
+            "spent_at": current_values.get("spent_at", time_values["wall_time"] if time_values else ""),
             "values": current_values,
             "edit_return_fields": return_fields,
             "edit_return_href": (
@@ -164,6 +177,20 @@ def _require_manual_form_binding(
         )
 
 
+def _manual_expense_time_payload(spent_at: str, time_fields: dict[str, str] | None) -> dict:
+    """Choose one wire representation, preserving the old draft's timestamp alias."""
+    if time_fields is not None:
+        return {"time_input": parse_web_accounting_time(spent_at, time_fields)}
+    parsed_time, time_error = parse_expense_time_local(spent_at)
+    if time_error or parsed_time is None:
+        raise AppError(
+            "invalid_request",
+            time_error or "请填写发生时间。",
+            status_code=422,
+        )
+    return {"spent_at": parsed_time}
+
+
 def _manual_expense_payload(
     *,
     amount_major: str,
@@ -174,6 +201,7 @@ def _manual_expense_payload(
     spent_at: str,
     client_ref: str,
     home_currency: str,
+    time_fields: dict[str, str] | None = None,
 ) -> ExpenseManualCreateRequest:
     if not home_currency:
         raise AppError("manual_currency_context_required", "这份旧草稿缺少记账币种，输入仍保留。请先核对已有流水，再用新表单确认这笔支出。", status_code=409)
@@ -187,13 +215,7 @@ def _manual_expense_payload(
         raise AppError("amount_invalid", amount_error, status_code=422)
     if amount_minor is None:
         raise AppError("amount_required", status_code=422)
-    parsed_time, time_error = parse_expense_time_local(spent_at)
-    if time_error or parsed_time is None:
-        raise AppError(
-            "invalid_request",
-            time_error or "请填写发生时间。",
-            status_code=422,
-        )
+    time_payload = _manual_expense_time_payload(spent_at, time_fields)
     clean_ref = (client_ref or "").strip()
     if not re.fullmatch(r"[0-9a-f]{32}", clean_ref):
         raise AppError(
@@ -205,7 +227,7 @@ def _manual_expense_payload(
         "merchant": (merchant or "").strip() or None,
         "category": (category or "").strip() or None,
         "note": (note or "").strip() or None,
-        "spent_at": parsed_time,
+        **time_payload,
         "client_ref": clean_ref,
         "home_currency_code": home_currency,
     }
@@ -308,6 +330,7 @@ def web_manual_expense_create(
     note: str = Form(default=""),
     csrf_token: str = Form(default=""),
     return_context: ExpenseReturnContext = Depends(expense_return_form_context),
+    time_fields: dict[str, str] | None = Depends(accounting_time_form_fields),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> Response:
@@ -328,6 +351,8 @@ def web_manual_expense_create(
         "spent_at": spent_at,
         "note": note,
     }
+    if time_fields is not None:
+        values.update(time_fields)
     if not currency_code.strip():
         values["currency_unspecified"] = "1"
     try:
@@ -346,6 +371,7 @@ def web_manual_expense_create(
             spent_at=spent_at,
             client_ref=client_ref,
             home_currency=home_currency_code,
+            time_fields=time_fields,
         )
         created = create_manual_expense(db, payload, auth)
     except (AppError, ValidationError, InvalidOperation) as exc:

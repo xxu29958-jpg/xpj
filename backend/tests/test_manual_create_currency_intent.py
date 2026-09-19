@@ -7,6 +7,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
+from app.models import LedgerCalendarRevision
 from app.schemas import ExpenseManualCreateRequest
 from app.services import exchange_rate_service
 from app.services.expense_service import _create as owner
@@ -16,6 +17,7 @@ from app.services.idempotency import IdempotencyOutcomeKind
 @pytest.fixture()
 def create_context(monkeypatch):
     db = Mock(spec=Session)
+    db.get.return_value = LedgerCalendarRevision(ledger_id="owner", revision=1, timezone_name="Asia/Shanghai")
     monkeypatch.setattr(owner, "resolve_write_capability", Mock())
     monkeypatch.setattr(exchange_rate_service, "resolve_write_capability", Mock())
     monkeypatch.setattr(owner, "require_runtime_home_currency_code", lambda _db: "CNY")

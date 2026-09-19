@@ -5,21 +5,15 @@ import com.ticketbox.data.remote.dto.addCategoryRuleWireAdapters
 import com.ticketbox.data.remote.dto.addBudgetWireAdapters
 import com.ticketbox.data.remote.dto.addExpenseCorrectionWireAdapters
 import com.ticketbox.data.remote.dto.addRecurringWireAdapters
-import com.ticketbox.data.remote.dto.RuntimeCompatibilityDto
-import com.ticketbox.data.remote.dto.RuntimeWriteCompatibility
-import com.ticketbox.data.remote.dto.ErrorDto
-import com.ticketbox.data.remote.dto.toWriteCompatibility
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.BuildConfig
 import com.ticketbox.security.RequestAuthSnapshot
 import com.ticketbox.security.SessionCredentialRotator
 import okhttp3.Interceptor
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
-import okhttp3.ResponseBody.Companion.toResponseBody
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
@@ -36,13 +30,6 @@ internal const val TICKETBOX_API_VERSION_HEADER = "Ticketbox-Api-Version"
 internal const val TICKETBOX_CURRENCY_BINDING_HEADER = "Ticketbox-Currency-Binding"
 internal const val CURRENT_TICKETBOX_API_VERSION = "2026-09-13"
 internal const val UPLOAD_ORIGINAL_RECEIPT_VERSION = 1
-private val MUTATING_HTTP_METHODS = setOf("POST", "PUT", "PATCH", "DELETE")
-private val runtimeMoshi = Moshi.Builder()
-    .add(KotlinJsonAdapterFactory())
-    .build()
-private val runtimeCompatibilityAdapter = runtimeMoshi.adapter(RuntimeCompatibilityDto::class.java)
-private val runtimeErrorAdapter = runtimeMoshi.adapter(ErrorDto::class.java)
-
 internal fun buildApiHttpClient(
     routeProvider: BackendNetworkRouteProvider?,
     tokenProvider: () -> String?,
@@ -138,74 +125,6 @@ private fun appendLedgerId(requestBuilder: Request.Builder, ledgerId: String?) {
         requestBuilder.header(LEDGER_ID_HEADER, selectedLedger)
     }
 }
-
-internal class RuntimeNegotiationInterceptor : Interceptor {
-    override fun intercept(chain: Interceptor.Chain): Response {
-        val request = chain.request()
-        // Income forecasts require the declared month and separate expected/scheduled fields.
-        // Check their read protocol before Retrofit decodes a response from another epoch.
-        val incomeForecastRead = request.method == "GET" && request.url.encodedPath == "/api/income-plans"
-        val keyedUpload = request.method == "POST" &&
-            request.url.encodedPath.endsWith("/api/app/upload-screenshot") && request.header("Idempotency-Key") != null
-        // An API date, including one already attached to this request, does not prove receipt replay support.
-        if (!request.requiresRuntimeNegotiation(incomeForecastRead, keyedUpload)) {
-            return chain.proceed(request)
-        }
-        val compatibility = readCompatibility(chain, request)
-        if (compatibility != null && compatibility.apiVersion != CURRENT_TICKETBOX_API_VERSION) {
-            return incompatibleProtocolResponse(request)
-        }
-        if (keyedUpload && compatibility?.uploadOriginalReceiptVersion != UPLOAD_ORIGINAL_RECEIPT_VERSION) {
-            return incompatibleProtocolResponse(request)
-        }
-        // A readable forecast does not require writer permission or an activated currency binding.
-        if (incomeForecastRead || compatibility == null) return chain.proceed(request)
-        // Negotiated evidence identifies this request; the backend still authorizes the write.
-        // An unchosen installation has no binding; the server returns the Owner action.
-        val negotiatedRequest = request.newBuilder()
-            .header(TICKETBOX_API_VERSION_HEADER, checkNotNull(compatibility.apiVersion))
-            .removeHeader(TICKETBOX_CURRENCY_BINDING_HEADER)
-        compatibility.requestBinding?.let { negotiatedRequest.header(TICKETBOX_CURRENCY_BINDING_HEADER, it) }
-        // Preserve semantic refusals for the existing command recovery owner.
-        // Renegotiating on an IO retry cannot establish the old amount's currency.
-        return chain.proceed(negotiatedRequest.build())
-    }
-
-    /** The same runtime query supplies evidence for ordinary writes, income reads and keyed uploads. */
-    private fun readCompatibility(chain: Interceptor.Chain, request: Request): RuntimeWriteCompatibility? {
-        val response = chain.proceed(compatibilityRequest(request))
-        if (!response.isSuccessful) {
-            response.close()
-            throw IOException("Runtime compatibility is temporarily unavailable.")
-        }
-        return response.use { runtimeCompatibilityAdapter.fromJson(it.body.string())?.toWriteCompatibility() }
-    }
-
-    private fun Request.requiresRuntimeNegotiation(incomeForecastRead: Boolean, keyedUpload: Boolean): Boolean =
-        keyedUpload || ((incomeForecastRead || method in MUTATING_HTTP_METHODS) &&
-            header("Authorization") != null && !url.encodedPath.startsWith("/api/auth/") &&
-            header(TICKETBOX_API_VERSION_HEADER) == null)
-
-    private fun compatibilityRequest(request: Request): Request {
-        val url = request.url.newBuilder()
-            .encodedPath("/api/system/runtime-compatibility")
-            .query(null)
-            .build()
-        val builder = Request.Builder().url(url).get()
-        listOf("Authorization", LEDGER_ID_HEADER, "User-Agent").forEach { name ->
-            request.header(name)?.let { value -> builder.header(name, value) }
-        }
-        return builder.build()
-    }
-}
-
-private fun incompatibleProtocolResponse(request: Request): Response =
-    Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(409)
-        .message("Runtime protocol mismatch")
-        .body(runtimeErrorAdapter.toJson(ErrorDto(
-            error = "runtime_version_mismatch",
-            message = "客户端与此服务器的协议版本不匹配，请更新为配套版本后继续。",
-        )).toResponseBody("application/json".toMediaType())).build()
 
 private fun retryableGetStatusInterceptor(): Interceptor =
     Interceptor { chain ->

@@ -28,6 +28,7 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database_model_registry import Base
@@ -119,6 +120,8 @@ class BillSplitInvitation(Base):
     merchant_snapshot: Mapped[str | None] = mapped_column(String(255), nullable=True)
     category_suggestion: Mapped[str | None] = mapped_column(String(64), nullable=True)
     expense_time_snapshot: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Frozen invitation evidence; old invitations remain unknown even if their source changes later.
+    accounting_time_snapshot: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     # --- state machine -----------------------------------------------
     status: Mapped[str] = mapped_column(

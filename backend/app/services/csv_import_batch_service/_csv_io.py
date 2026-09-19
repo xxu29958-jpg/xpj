@@ -74,6 +74,8 @@ def _row_from_parsed(batch: CsvImportBatch, parsed) -> CsvImportRow:
         lineage_status=parsed.lineage_status,
         lineage_home_net_cents=parsed.lineage_home_net_cents,
         event_input=parsed.event_input,
+        time_input=parsed.time_input,
+        expense_time_input=parsed.expense_time_display,
         amount_cents=amount_cents,
         home_currency_code=parsed.home_currency_code,
         original_currency_code=parsed.original_currency_code,
@@ -153,7 +155,8 @@ def _error_csv_values(row: CsvImportRow) -> dict[str, object]:
         "original_amount_minor": row.original_amount_minor, "exchange_rate_to_cny": row.exchange_rate_to_cny,
         "exchange_rate_date": row.exchange_rate_date, "exchange_rate_source": row.exchange_rate_source,
         "merchant": row.merchant, "category": row.category, "note": row.note,
-        "expense_time": row.expense_time.isoformat() if row.expense_time else "", "tags": row.tags, "source": row.source,
+        "expense_time": (row.expense_time_input if row.expense_time_input is not None
+                         else row.expense_time.isoformat() if row.expense_time else ""), "tags": row.tags, "source": row.source,
         "entry_kind": row.entry_kind if row.event_input is not None or row.source_event_public_id is not None else "",
         "offset_kind": row.offset_kind, "public_id": row.source_event_public_id,
         "root_expense_public_id": row.source_root_public_id, "stream_date": row.accounting_date,

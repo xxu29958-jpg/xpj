@@ -161,9 +161,16 @@ def default_rate_date(expense_time: datetime | None = None) -> date:
     return fx_rate_date_for_expense_time(expense_time)
 
 
-def _payload_rate_date(payload: CurrencyPayload, expense_time: datetime | None) -> date:
+def expense_rate_date(expense: Expense) -> date:
+    """A known input day survives date-only recording and display-zone changes."""
+    return expense.user_local_date or expense.accounting_date or default_rate_date(expense.expense_time)
+
+
+def _payload_rate_date(payload: CurrencyPayload, expense: Expense) -> date:
+    if expense.user_local_date is not None or expense.accounting_date is not None:
+        return expense_rate_date(expense)
     payload_time = _payload_attr(payload, "spent_at") or _payload_attr(payload, "expense_time")
-    return default_rate_date(payload_time or expense_time)
+    return default_rate_date(payload_time or expense.expense_time)
 
 
 def get_exchange_rate(
@@ -399,6 +406,7 @@ def _currency_payload_has_original_fields(payload: CurrencyPayload) -> bool:
             _payload_attr(payload, "original_amount_minor"),
             _payload_attr(payload, "exchange_rate_to_cny"),
             _payload_attr(payload, "exchange_rate_date"),
+            _payload_attr(payload, "time_input"),
         )
     )
 
@@ -415,7 +423,7 @@ def _apply_legacy_home_amount(
     expense.original_currency_code = home
     expense.original_amount_minor = amount_cents
     expense.exchange_rate_to_cny = Decimal("1") if amount_cents is not None else None
-    expense.exchange_rate_date = default_rate_date(expense.expense_time) if amount_cents is not None else None
+    expense.exchange_rate_date = expense_rate_date(expense) if amount_cents is not None else None
     expense.exchange_rate_source = FX_SOURCE_BASE if amount_cents is not None else None
     expense.fx_status = FX_STATUS_READY
 
@@ -454,19 +462,19 @@ def apply_currency_payload(
     if original_amount is None:
         original_amount = expense.original_amount_minor
     explicit_rate_date = _payload_attr(payload, "exchange_rate_date")
-    time_changed = _payload_attr(payload, "spent_at") is not None or _payload_attr(payload, "expense_time") is not None
+    time_changed = any(_payload_attr(payload, field) is not None for field in ("spent_at", "expense_time", "time_input"))
     rate_date = (
         explicit_rate_date
-        or (_payload_rate_date(payload, expense.expense_time) if time_changed else None)
+        or (_payload_rate_date(payload, expense) if time_changed else None)
         or expense.exchange_rate_date
-        or _payload_rate_date(payload, expense.expense_time)
+        or _payload_rate_date(payload, expense)
     )
     if manual_exchange_rate is not None:
         if code == home:
             raise AppError("exchange_rate_base_currency", status_code=422)
         rate = format_decimal_rate(manual_exchange_rate)
         source, fx_status = FX_SOURCE_MANUAL, FX_STATUS_READY
-        effective_rate_date = _payload_rate_date(payload, expense.expense_time)
+        effective_rate_date = _payload_rate_date(payload, expense)
     elif code == home:
         rate, source, fx_status, effective_rate_date = Decimal("1"), FX_SOURCE_BASE, FX_STATUS_READY, rate_date
     else:

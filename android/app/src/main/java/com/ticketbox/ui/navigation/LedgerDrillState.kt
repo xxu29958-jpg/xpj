@@ -48,3 +48,8 @@ internal class LedgerDrillState {
         return request
     }
 }
+
+internal fun MainShellState.reviewAccountingDates() {
+    ledgerDrill.post(LedgerDrillRequest.DataQuality(LedgerDataQualityFilter.MissingAccountingDate))
+    openPrimaryDomainRoot(PrimaryDomain.Transactions)
+}

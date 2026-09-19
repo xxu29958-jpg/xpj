@@ -42,8 +42,17 @@ private fun projectedCorrectionParent(
     if (targetCurrency == homeCurrency) return targetAmount
     val originalCurrency = CurrencyCode.fromStorageKeyOrNull(expense.originalCurrencyCodeRaw)
         ?: expense.originalCurrencyCode.takeIf { expense.originalCurrencyCodeRaw.isNullOrBlank() }
-    if (draft.expenseTimeChanged || targetCurrency != originalCurrency || expense.fxStatus != FxContract.StatusReady) return null
-    val rate = expense.exchangeRateToCny?.trim()?.toBigDecimalOrNull()?.takeIf { it.signum() > 0 } ?: return null
+    if (draft.expenseTimeChanged || draft.timeInputChanged || targetCurrency != originalCurrency || expense.fxStatus != FxContract.StatusReady) return null
+    return correctionAmountAtFrozenRate(targetCurrency, targetAmount, homeCurrency, expense.exchangeRateToCny)
+}
+
+private fun correctionAmountAtFrozenRate(
+    targetCurrency: CurrencyCode,
+    targetAmount: Long,
+    homeCurrency: CurrencyCode,
+    frozenRate: String?,
+): Long? {
+    val rate = frozenRate?.trim()?.toBigDecimalOrNull()?.takeIf { it.signum() > 0 } ?: return null
     // Validation-only use of the existing frozen snapshot; never a canonical publication.
     return runCatching {
         BigDecimal.valueOf(targetAmount).movePointLeft(targetCurrency.minorUnitDigits)

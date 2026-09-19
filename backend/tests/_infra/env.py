@@ -105,6 +105,8 @@ os.environ.update(
         "GENERATE_THUMBNAIL": "true",
         "DELETE_IMAGE_AFTER_DAYS": "0",
         "OCR_PROVIDER": "empty",
+        # Production init_db adopts this explicit test-household calendar.
+        "OCR_DEFAULT_TIMEZONE": "Asia/Shanghai",
         # Batch 1 public surface hardening defaults disabled in tests
         # (default lane fires multiple uploads through the same upload
         # link in quick succession). Dedicated throttle / quota tests

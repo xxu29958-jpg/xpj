@@ -10,7 +10,7 @@ import com.ticketbox.domain.model.FxContract
 
 @Database(
     entities = [ExpenseEntity::class, PendingMutationEntity::class, ExpenseOffsetStreamEntity::class, StatsProjectionCacheEntity::class, GoalQueryCacheEntity::class],
-    version = 20,
+    version = 21,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -544,6 +544,23 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        internal val MIGRATION_20_21_STATEMENTS: List<String> = listOf(
+            "ALTER TABLE expenses ADD COLUMN timePrecision TEXT",
+            "ALTER TABLE expenses ADD COLUMN timeInstantUtc TEXT",
+            "ALTER TABLE expenses ADD COLUMN userLocalDate TEXT",
+            "ALTER TABLE expenses ADD COLUMN sourceTimezone TEXT",
+            "ALTER TABLE expenses ADD COLUMN sourceUtcOffsetSeconds INTEGER",
+            "ALTER TABLE expenses ADD COLUMN accountingDate TEXT",
+            "ALTER TABLE expenses ADD COLUMN calendarRevision INTEGER",
+            "ALTER TABLE expenses ADD COLUMN accountingDateBasis TEXT",
+        )
+
+        internal val Migration20To21 = object : Migration(20, 21) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_20_21_STATEMENTS.forEach(db::execSQL)
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -571,6 +588,7 @@ abstract class AppDatabase : RoomDatabase() {
                         Migration17To18,
                         Migration18To19,
                         Migration19To20,
+                        Migration20To21,
                     )
                     .build()
                     .also { instance = it }

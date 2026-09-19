@@ -33,6 +33,7 @@ class RuntimeCurrencyCapabilityResponse(BaseModel):
 
 class RuntimeProductCapabilitiesResponse(BaseModel):
     upload_original_receipt_version: int = Field(ge=1)
+    accounting_time_input_version: int = Field(ge=1)
     currency: RuntimeCurrencyCapabilityResponse
 
 

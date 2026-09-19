@@ -67,8 +67,13 @@
       </div>
       {% endif %}
       <div>
-        <dt>消费时间</dt>
-        <dd>{{ e.expense_time or '时间待核对' }}</dd>
+        <dt>账务日期</dt>
+        <dd>{{ e.accounting_date or '日期待核对' }}</dd>
+        {% if e.accounting_date_assumed %}<dd>历史日期按初始账本日历推定，可更正</dd>{% endif %}
+      </div>
+      <div>
+        <dt>发生时刻</dt>
+        <dd>{{ e.expense_time or '未记录时刻' }}</dd>
       </div>
       <div>
         <dt>分类</dt>

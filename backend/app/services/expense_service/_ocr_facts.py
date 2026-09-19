@@ -5,9 +5,14 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.models import Expense
+from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from app.services.learning_service import OcrFactDraft, record_ocr_fact
 from app.services.ocr_service import OcrResult, ocr_fact_snapshot
-from app.services.ocr_service._apply import _apply_ocr_result_to_expense
+from app.services.ocr_service._apply import (
+    _apply_ocr_home_snapshot,
+    _apply_ocr_result_to_expense,
+    _expense_ocr_materialization_money_context,
+)
 
 
 def apply_ocr_result_and_append_fact(
@@ -35,6 +40,8 @@ def apply_ocr_result_and_append_fact(
             expense=expense,
         ),
     )
+    refresh_legacy_expense_time(db, expense)
+    _apply_ocr_home_snapshot(expense, _expense_ocr_materialization_money_context(expense))
     append_ocr_fact(
         db,
         expense=expense,

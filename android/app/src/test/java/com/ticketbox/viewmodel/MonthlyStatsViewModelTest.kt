@@ -41,6 +41,24 @@ private fun statsTest(block: suspend TestScope.() -> Unit) = runTest {
 @OptIn(ExperimentalCoroutinesApi::class)
 class MonthlyStatsViewModelTest {
     @Test
+    fun newTaskWaitsForCalendarAndLateRulePreservesExplicitMonth() = statsTest {
+        val stats = FakeStatsActions()
+        val binding = requireNotNull(stats.bindingFlow.value)
+        val gate = CompletableDeferred<Unit>()
+        val calendars = com.ticketbox.data.repository.MonthCalendarFixture(binding).apply { this.gate = { gate.await() } }
+        val vm = MonthlyStatsViewModel(stats, calendars = calendars)
+        runCurrent()
+        assertFalse(vm.uiState.value.ledgerReady)
+        assertTrue(stats.queries.isEmpty())
+        vm.setMonth("2024-02")
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.ledgerReady)
+        assertEquals("2024-02", stats.queries.single().month)
+        assertEquals("2024-02", vm.uiState.value.month)
+    }
+
+    @Test
     fun cachedServerSnapshotRetainsOriginalMonthCurrencyAndReadTime() = statsTest {
         val stats = FakeStatsActions().apply {
             cached = true

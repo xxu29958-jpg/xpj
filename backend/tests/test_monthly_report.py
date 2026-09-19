@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 
 from app.database import SessionLocal
 from app.models import Expense
+from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from app.services.monthly_report_service import (
     compose_budget_explanation,
     compose_monthly_report,
@@ -20,22 +21,22 @@ def _seed(
     confirmed: datetime,
 ) -> None:
     with SessionLocal() as db:
-        db.add(
-            Expense(
-                tenant_id=tenant_id,
-                home_currency_code="CNY",
-                original_currency_code="CNY",
-                original_amount_minor=amount_cents,
-                amount_cents=amount_cents,
-                merchant="m",
-                category=category,
-                source="pytest",
-                raw_text="",
-                status="confirmed",
-                expense_time=confirmed,
-                confirmed_at=confirmed,
-            )
+        _calendar_expense = Expense(
+            tenant_id=tenant_id,
+            home_currency_code="CNY",
+            original_currency_code="CNY",
+            original_amount_minor=amount_cents,
+            amount_cents=amount_cents,
+            merchant="m",
+            category=category,
+            source="pytest",
+            raw_text="",
+            status="confirmed",
+            expense_time=confirmed,
+            confirmed_at=confirmed,
         )
+        refresh_legacy_expense_time(db, _calendar_expense)
+        db.add(_calendar_expense)
         db.commit()
 
 
@@ -48,22 +49,22 @@ def _seed_with_times(
     confirmed_at: datetime | None,
 ) -> None:
     with SessionLocal() as db:
-        db.add(
-            Expense(
-                tenant_id=tenant_id,
-                home_currency_code="CNY",
-                original_currency_code="CNY",
-                original_amount_minor=amount_cents,
-                amount_cents=amount_cents,
-                merchant="m",
-                category=category,
-                source="pytest",
-                raw_text="",
-                status="confirmed",
-                expense_time=expense_time,
-                confirmed_at=confirmed_at,
-            )
+        _calendar_expense = Expense(
+            tenant_id=tenant_id,
+            home_currency_code="CNY",
+            original_currency_code="CNY",
+            original_amount_minor=amount_cents,
+            amount_cents=amount_cents,
+            merchant="m",
+            category=category,
+            source="pytest",
+            raw_text="",
+            status="confirmed",
+            expense_time=expense_time,
+            confirmed_at=confirmed_at,
         )
+        refresh_legacy_expense_time(db, _calendar_expense)
+        db.add(_calendar_expense)
         db.commit()
 
 
@@ -186,7 +187,7 @@ def test_monthly_report_tenant_isolation(*, identity) -> None:
         assert tester.total_cents == 0
 
 
-def test_monthly_report_uses_expense_time_and_accounting_timezone(
+def test_monthly_report_preserves_adopted_dates_across_query_timezones(
     *, identity,
 ) -> None:
     _seed_with_times(
@@ -217,4 +218,4 @@ def test_monthly_report_uses_expense_time_and_accounting_timezone(
         )
 
     assert shanghai.total_cents == 3000
-    assert utc.total_cents == 0
+    assert utc.total_cents == 3000

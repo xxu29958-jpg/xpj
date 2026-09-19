@@ -35,7 +35,7 @@ from app.services.idempotency import (
     claim_idempotent_request,
     mark_idempotency_succeeded,
 )
-from app.services.time_service import current_month
+from app.services.ledger_calendar_service import current_ledger_month
 from app.tenants import AuthContext
 
 router = APIRouter(
@@ -65,7 +65,7 @@ def get_goals(
             )
         )
     timezone_name = timezone or get_settings().ocr_default_timezone
-    target_month = month or current_month(timezone_name)
+    target_month = month or current_ledger_month(db, ledger_id=auth.tenant_id)
     return GoalListResponse(
         items=list_goals(
             db,

@@ -42,6 +42,7 @@ class MonthsResponse(BaseModel):
 
 
 class MonthlyStatsResponse(BaseModel):
+    undated_expense_count: int = Field(default=0, ge=0)
     month: str
     home_currency_code: str
     missing_rates: list[ProjectionGapDto]

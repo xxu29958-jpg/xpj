@@ -26,19 +26,20 @@ from app.services.currency_binding_service import (
     require_runtime_home_currency_code,
     resolve_write_capability,
 )
+from app.services.ledger_calendar_service import current_calendar
 from app.services.money_projection_service import (
     CategorySpend,
     ProjectionReference,
-    project_category_spend,
     sum_projected_amounts,
 )
 from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.recurring_service import recurring_monthly_total
 from app.services.spending_contract_service import (
+    calendar_month_bounds,
     clean_month,
-    confirmed_amount_query,
     monthly_recurring_items_query,
 )
+from app.services.spending_projection_service import entry_gaps, projected_category_spend, read_spending_period
 from app.services.time_service import now_utc
 
 
@@ -159,6 +160,7 @@ def _fixed_amount_cents_for_month(
     home_currency_code: str,
     reference_rates: set[ProjectionReference] | None = None,
 ) -> int | None:
+    timezone_name = current_calendar(db, ledger_id=tenant_id).timezone_name
     items = db.scalars(
         monthly_recurring_items_query(
             tenant_id=tenant_id,
@@ -177,13 +179,13 @@ def _month_spend_by_category(
     month: str,
     timezone_name: str | None,
     home_currency_code: str,
-) -> tuple[dict[str, CategorySpend], set[str]]:
-    rows = db.execute(confirmed_amount_query(
-        tenant_id=tenant_id,
-        month=month,
-        timezone_name=timezone_name,
-    ))
-    return project_category_spend(db, tenant_id=tenant_id, home=home_currency_code, rows=rows)
+) -> tuple[dict[str, CategorySpend], set[str], dict[str, int]]:
+    projection = read_spending_period(db, tenant_id=tenant_id, ranges=[calendar_month_bounds(month)],
+        timezone_name=timezone_name, home=home_currency_code)
+    spend = projected_category_spend(projection.entries)
+    missing = {gap.source_currency_code or "UNKNOWN" for gap in entry_gaps(projection.entries)}
+    return spend, missing, projection.undated_by_category
+
 
 
 def _build_excluded_breakdown(
@@ -239,8 +241,11 @@ def _budget_response(
     budget = _get_budget(db, tenant_id=tenant_id, month=month)
     home = budget.home_currency_code if budget else require_runtime_home_currency_code(db)
     category_rows = _list_category_budgets(db, tenant_id=tenant_id, month=month) if budget is not None else []
-    spend_by_category, missing = _month_spend_by_category(db, tenant_id=tenant_id, month=month,
+    spend_by_category, missing, undated = _month_spend_by_category(db, tenant_id=tenant_id, month=month,
         timezone_name=timezone_name, home_currency_code=home)
+    for category in undated:
+        known = spend_by_category.get(category, CategorySpend())
+        spend_by_category[category] = CategorySpend(amount_cents=None, count=known.count)
     excluded_categories = _parse_excluded_categories(budget.excluded_categories if budget else None)
     excluded_set = set(excluded_categories)
     excluded_breakdown, excluded_amount_cents = _build_excluded_breakdown(spend_by_category, excluded_set)
@@ -272,6 +277,7 @@ def _budget_response(
         ledger_id=tenant_id,
         home_currency_code=home,
         missing_currency_codes=sorted(missing),
+        undated_expense_count=sum(undated.values()),
         reference_rates=sorted(references),
         month=month,
         configured=budget is not None,

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.models import Account, BillSplitInvitation, Expense
 from app.money_contract import MoneySign, ensure_money_minor, fold_sum_to_int
+from app.services.accounting_time_service import accounting_time_snapshot
 from app.services.bill_split_service._common import (
     INVITATION_TTL,
     SPLIT_RECEIVED_SOURCE,
@@ -244,6 +245,7 @@ def _build_invitation(
     now = now_utc()
     home_currency = normalize_currency_code(expense.home_currency_code)
     original_currency = normalize_currency_code(expense.original_currency_code)
+    time_snapshot = accounting_time_snapshot(expense)
     return BillSplitInvitation(
         sender_account_id=sender_account_id,
         sender_ledger_id=sender_ledger_id,
@@ -262,6 +264,7 @@ def _build_invitation(
         merchant_snapshot=expense.merchant,
         category_suggestion=expense.category,
         expense_time_snapshot=expense.expense_time,
+        accounting_time_snapshot=time_snapshot.model_dump(mode="json") if time_snapshot is not None else None,
         status="invited",
         expires_at=now + INVITATION_TTL,
         created_at=now,

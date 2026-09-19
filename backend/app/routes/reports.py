@@ -9,8 +9,8 @@ from app.auth import get_current_app_context
 from app.config import get_settings
 from app.database import get_db
 from app.schemas import ReportsOverviewResponse
+from app.services.ledger_calendar_service import current_ledger_month
 from app.services.reports_service import export_reports_overview_csv, reports_overview
-from app.services.time_service import current_month
 from app.tenants import AuthContext
 
 router = APIRouter(
@@ -32,7 +32,7 @@ def get_reports_overview(
     db: Session = Depends(get_db),
 ) -> ReportsOverviewResponse:
     timezone_name = timezone or get_settings().ocr_default_timezone
-    target_month = month or current_month(timezone_name)
+    target_month = month or current_ledger_month(db, ledger_id=auth.tenant_id)
     return ReportsOverviewResponse(
         **reports_overview(
             db,
@@ -61,7 +61,7 @@ def get_reports_overview_csv(
     db: Session = Depends(get_db),
 ) -> Response:
     timezone_name = timezone or get_settings().ocr_default_timezone
-    target_month = month or current_month(timezone_name)
+    target_month = month or current_ledger_month(db, ledger_id=auth.tenant_id)
     content = "\ufeff" + export_reports_overview_csv(
         db,
         month=target_month,

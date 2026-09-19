@@ -363,16 +363,16 @@ def test_overview_recent_count_is_confirmed_only(web_client: TestClient, *, iden
     assert "过去 7 天 · 已入账" in card.group(0)
 
 
-def test_dashboard_month_follows_accounting_timezone(monkeypatch: pytest.MonkeyPatch) -> None:
-    """PR #253 P2-7: cards.month / budget / goals 与 monthly_stats 同口径 (accounting tz)。"""
+def test_dashboard_month_uses_ledger_rule_with_a_separate_display_timezone(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Cards, budgets and goals use the captured ledger month; display timezone stays separate."""
     monkeypatch.setenv("OCR_DEFAULT_TIMEZONE", "Pacific/Auckland")
     get_settings.cache_clear()
     seen: dict[str, str] = {}
-    real_current_month = web_common.current_month
+    real_current_month = web_common.current_ledger_month
 
-    def _spy_current_month(timezone_name: str) -> str:
-        seen["month_tz"] = timezone_name
-        return real_current_month(timezone_name)
+    def _spy_current_month(db, *, ledger_id: str) -> str:
+        seen["month_ledger"] = ledger_id
+        return real_current_month(db, ledger_id=ledger_id)
 
     real_get_budget = web_common.get_monthly_budget
 
@@ -386,7 +386,7 @@ def test_dashboard_month_follows_accounting_timezone(monkeypatch: pytest.MonkeyP
         seen["goals_tz"] = timezone_name
         return real_list_goals(db, tenant_id=tenant_id, month=month, timezone_name=timezone_name)
 
-    monkeypatch.setattr(web_common, "current_month", _spy_current_month)
+    monkeypatch.setattr(web_common, "current_ledger_month", _spy_current_month)
     monkeypatch.setattr(web_common, "get_monthly_budget", _spy_budget)
     monkeypatch.setattr(web_common, "list_goals", _spy_goals)
     try:
@@ -395,7 +395,7 @@ def test_dashboard_month_follows_accounting_timezone(monkeypatch: pytest.MonkeyP
     finally:
         get_settings.cache_clear()
     assert seen == {
-        "month_tz": "Pacific/Auckland",
+        "month_ledger": "owner",
         "budget_tz": "Pacific/Auckland",
         "goals_tz": "Pacific/Auckland",
     }

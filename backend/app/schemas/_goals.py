@@ -222,6 +222,7 @@ class DebtRepaymentEvaluation(BaseModel):
 
 
 class GoalResponse(BaseModel):
+    undated_expense_count: int = Field(default=0, ge=0)
     public_id: str
     ledger_id: str
     name: str

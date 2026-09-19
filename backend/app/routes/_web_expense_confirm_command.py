@@ -15,6 +15,7 @@ from app.routes._web_session_common import parse_form_row_version_token
 from app.schemas import ExpenseUpdateRequest
 from app.services.expense_review_command_service import confirm_expense_submission
 from app.services.expense_service import get_expense
+from app.services.time_service import ensure_utc
 
 _ROTATE_IDEMPOTENCY_ERRORS = frozenset(
     {"idempotency_key_required", "idempotency_key_reused"}
@@ -65,6 +66,13 @@ def _manual_fx_submission_needs_preview(
         or update_payload.manual_exchange_rate != expense.exchange_rate_to_cny
     ):
         return True
+    time_input = update_payload.time_input
+    if time_input is not None:
+        if time_input.precision == "date_only":
+            if expense.time_precision != "date_only" or expense.user_local_date != time_input.user_local_date:
+                return True
+        elif expense.time_precision == "date_only" or ensure_utc(expense.expense_time) != time_input.instant_utc:
+            return True
     return bool(update_payload.model_fields_set & _MANUAL_FX_PREVIEW_FIELDS)
 
 
@@ -99,6 +107,7 @@ def prepare_web_expense_confirmation(
         note=form.note,
         tags=form.tags,
         expense_time=form.expense_time,
+        time_fields=form.time_fields,
     )
     if payload is None:
         return WebExpenseConfirmPreparation(

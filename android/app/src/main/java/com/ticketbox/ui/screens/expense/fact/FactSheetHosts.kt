@@ -109,6 +109,7 @@ private fun FactCorrectionHost(
             onNoteChange = { viewModel.updateCorrectionField(CorrectionScalarField.Note, it) },
             onAmountChange = { viewModel.updateCorrectionField(CorrectionScalarField.Amount, it) },
             onExpenseTimeChange = { viewModel.updateCorrectionField(CorrectionScalarField.ExpenseTime, it) },
+            onTimeFormChange = { viewModel.updateCorrectionField(CorrectionScalarField.TimeForm, it) },
             onCurrencyChange = viewModel::updateCorrectionCurrency,
             onScoreChange = viewModel::updateCorrectionScore,
             onOpenItems = viewModel::openCorrectionItemsEditor,

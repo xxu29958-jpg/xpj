@@ -19,7 +19,7 @@ def seed_reads(monkeypatch, *, gap=None, references=()):
     report = MonthlyReport("2026-08", "JPY", 300, 1, [CategoryRollup("餐饮", 300, 1)])
     monkeypatch.setattr(builder, "compose_monthly_report", lambda *args, **kwargs: report)
     monkeypatch.setattr(builder, "compose_budget_explanation", lambda *args, **kwargs: SimpleNamespace(
-        p50_cents=None if gap else 200, p75_cents=None if gap else 400, missing_rates=(gap,) if gap else (),
+        undated_expense_count=0, p50_cents=None if gap else 200, p75_cents=None if gap else 400, missing_rates=(gap,) if gap else (),
     ))
     plan = SimpleNamespace(source_type="private employer", pay_day=15)
     monkeypatch.setattr(builder, "income_forecast", lambda *args, **kwargs: SimpleNamespace(
@@ -76,7 +76,7 @@ def test_hidden_historical_rate_change_invalidates_advice_without_changing_month
         object(), tenant_id="owner", month="2026-08", home_currency_code="JPY")).model_dump()
     assert repeated == before
     monkeypatch.setattr(builder, "compose_budget_explanation", lambda *args, **kwargs: SimpleNamespace(
-        p50_cents=250, p75_cents=500, missing_rates=()))
+        undated_expense_count=0, p50_cents=250, p75_cents=500, missing_rates=()))
     after = BudgetInputsResponse.model_validate(builder.read_budget_inputs(
         object(), tenant_id="owner", month="2026-08", home_currency_code="JPY")).model_dump()
     assert before.pop("inputs_fingerprint") != after.pop("inputs_fingerprint")
@@ -89,7 +89,7 @@ def test_generation_rechecks_gap_before_provider_quota_or_audit(monkeypatch):
     monkeypatch.setattr(_runner, "get_advisor_readiness", lambda: SimpleNamespace(
         provider="openai_compat", is_live=True, blocked_reason=lambda role: None,
     ))
-    read = Mock(return_value=SimpleNamespace(home_currency_code="JPY", missing_rates=(gap,), provider_inputs=None))
+    read = Mock(return_value=SimpleNamespace(home_currency_code="JPY", undated_expense_count=0, missing_rates=(gap,), provider_inputs=None))
     monkeypatch.setattr(_runner, "read_budget_inputs", read, raising=False)
     forbidden = Mock(side_effect=AssertionError("incomplete money must block first"))
     for name in ("get_budget_advisor", "_reserve_live_call", "compute_input_hash", "_complete_live_call"):
@@ -112,7 +112,7 @@ def test_unused_previous_comparison_does_not_block_advice(monkeypatch):
     monkeypatch.setattr(money_projection_service, "resolve_payload_rate", lambda *args, **kwargs: (None, None, None, None))
     batches = iter([[], [SimpleNamespace(category="餐饮", amount_cents=10_000,
         home_currency_code="CNY", stream_date=date(2026, 7, 2))]])
-    db = SimpleNamespace(execute=lambda query: next(batches))
+    db = SimpleNamespace(execute=lambda query: () if [c.name for c in query.selected_columns] == ["category", "count"] else next(batches))
     result = builder.read_budget_inputs(db, tenant_id="owner", month="2026-08", home_currency_code="JPY")
     assert result.breakdown.spent_amount_cents == 0
     assert result.missing_rates == ()
@@ -124,7 +124,7 @@ def test_generation_keeps_the_original_input_currency(monkeypatch):
         provider="empty", is_live=False, blocked_reason=lambda role: None,
     ))
     inputs = BudgetInputs(month="2026-08", home_currency="JPY")
-    read = Mock(return_value=SimpleNamespace(home_currency_code="JPY", missing_rates=(), provider_inputs=inputs))
+    read = Mock(return_value=SimpleNamespace(home_currency_code="JPY", undated_expense_count=0, missing_rates=(), provider_inputs=inputs))
     monkeypatch.setattr(_runner, "read_budget_inputs", read)
     provider = Mock()
     provider.advise.return_value = None
@@ -145,14 +145,34 @@ def test_anonymous_category_group_checks_every_contributing_history(monkeypatch)
     def explanation(*args, **kwargs):
         categories = kwargs.get("categories", {kwargs["category"]})
         calls.append(categories)
-        return SimpleNamespace(p50_cents=None, p75_cents=None,
+        return SimpleNamespace(undated_expense_count=0, p50_cents=None, p75_cents=None,
             missing_rates=(gap,) if "legacy-b" in categories else ())
 
     monkeypatch.setattr(builder, "compose_budget_explanation", explanation)
     gaps = set()
-    rows = builder._historical_baseline(object(), tenant_id="owner", month="2026-09",
+    rows, undated = builder._historical_baseline(object(), tenant_id="owner", month="2026-09",
         report=report, timezone_name="UTC", home="JPY", gaps=gaps)
     assert [(row.category, row.amount_cents, row.count) for row in builder._category_breakdown(report)] == [("其他", 500, 2)]
     assert calls == [{"legacy-a", "legacy-b"}]
-    assert rows == []
+    assert rows == [] and undated == 0
     assert gaps == {gap}
+
+
+def test_undated_input_is_visible_without_provider_envelope_or_fake_fx_gap(monkeypatch):
+    seed_reads(monkeypatch)
+    report = MonthlyReport("2026-08", "JPY", None, 0, undated_expense_count=1)
+    monkeypatch.setattr(builder, "compose_monthly_report", lambda *a, **kw: report)
+    projection = builder.read_budget_inputs(object(), tenant_id="owner", month="2026-08", home_currency_code="JPY")
+    assert projection.undated_expense_count == 1 and projection.missing_rates == ()
+    assert projection.breakdown.discretionary_cents is None and projection.provider_inputs is None
+    monkeypatch.setattr(_runner, "get_advisor_readiness", lambda: SimpleNamespace(
+        provider="openai_compat", is_live=True, blocked_reason=lambda role: None))
+    monkeypatch.setattr(_runner, "read_budget_inputs", lambda *a, **kw: projection)
+    forbidden = Mock(side_effect=AssertionError("undated financial inputs cannot reach provider or quota"))
+    monkeypatch.setattr(_runner, "get_budget_advisor", forbidden)
+    monkeypatch.setattr(_runner, "_reserve_live_call", forbidden)
+    with pytest.raises(AppError) as exc:
+        _runner.run_budget_advisor(object(), tenant_id="owner", actor_account_id=1,
+            actor_role="owner", month="2026-08", timezone_name="UTC")
+    assert exc.value.error == "accounting_date_required" and exc.value.status_code == 409
+    forbidden.assert_not_called()

@@ -105,10 +105,19 @@ fun ExpenseDto.toDomain(): Expense {
         factRevision = factRevision,
         confirmedAt = confirmedAt,
         rejectedAt = rejectedAt,
+        accountingTime = accountingTime?.toDomain(),
     )
 }
 
 fun ExpenseDto.toEntity(ledgerId: String): ExpenseEntity = ExpenseEntity(
+    timePrecision = accountingTime?.precision,
+    timeInstantUtc = accountingTime?.instantUtc,
+    userLocalDate = accountingTime?.userLocalDate,
+    sourceTimezone = accountingTime?.sourceTimezone,
+    sourceUtcOffsetSeconds = accountingTime?.sourceUtcOffsetSeconds,
+    accountingDate = accountingTime?.accountingDate,
+    calendarRevision = accountingTime?.calendarRevision,
+    accountingDateBasis = accountingTime?.basis,
     ledgerId = ledgerId,
     serverId = id,
     publicId = requiredPublicId(),
@@ -229,6 +238,7 @@ fun ExpenseEntity.toDomain(): Expense {
         rejectedAt = null,
         clientRef = clientRef,
         pendingSync = serverId == null,
+        accountingTime = accountingTime(),
     )
 }
 
@@ -243,14 +253,15 @@ fun ExpenseDraft.toManualCreateRequest(clientRef: String? = null): ExpenseManual
     val submittedOriginalMinor = requireNotNull(originalAmountMinor ?: amountCents) { "Manual entry requires an amount" }
     val submittedCurrency = originalCurrencyCode ?: homeCurrency
     return ExpenseManualCreateRequestDto(
+        timeInput = timeInput?.toRequest(),
         originalCurrency = submittedCurrency.storageKey,
         originalAmount = minorToMajorText(submittedOriginalMinor, submittedCurrency),
         homeCurrencyCode = homeCurrency.storageKey,
-        spentAt = expenseTime,
+        spentAt = expenseTime.takeIf { timeInput == null },
         merchant = merchant,
         category = normalizeExpenseCategory(category),
         note = note,
-        expenseTime = expenseTime,
+        expenseTime = expenseTime.takeIf { timeInput == null },
         tags = tags,
         valueScore = valueScore,
         regretScore = regretScore,
@@ -285,6 +296,13 @@ fun ExpenseDraft.toLocalCreateEntity(ledgerId: String, clientRef: String): Expen
         else -> null
     }
     return ExpenseEntity(
+        timePrecision = timeInput?.precision,
+        timeInstantUtc = timeInput?.instantUtc,
+        userLocalDate = timeInput?.userLocalDate,
+        sourceTimezone = timeInput?.sourceTimezone,
+        sourceUtcOffsetSeconds = timeInput?.sourceUtcOffsetSeconds,
+        accountingDate = timeInput?.accountingDate,
+        calendarRevision = timeInput?.calendarRevision,
         ledgerId = ledgerId,
         serverId = null,
         publicId = "local-$clientRef",
@@ -310,7 +328,7 @@ fun ExpenseDraft.toLocalCreateEntity(ledgerId: String, clientRef: String): Expen
         valueScore = valueScore,
         regretScore = regretScore,
         status = "confirmed",
-        expenseTime = expenseTime,
+        expenseTime = if (timeInput == null) expenseTime else timeInput.instantUtc,
         createdAt = Instant.now().toString(),
         confirmedAt = Instant.now().toString(),
         updatedAt = null,
@@ -331,15 +349,18 @@ fun ExpenseDraft.toRequest(baseline: Expense?): ExpenseUpdateRequest {
     val currencyChanged = baseline != null && submittedCurrency != baseline.originalCurrencyCode
     val amountChanged = baseline != null && submittedOriginalMinor != baseline.originalAmountMinor
     val timeChanged = baseline != null && expenseTime != baseline.expenseTime
+    val changedTimeInput = timeInput?.takeUnless { it.matches(baseline?.accountingTime) }
+    val legacyTime = expenseTime.takeIf { timeInput == null && (isCreate || timeChanged) }
 
     return ExpenseUpdateRequest(
+        timeInput = changedTimeInput?.toRequest(),
         // ADR-0041: PATCH 必须携带 baseline.rowVersion 作为乐观锁 token。
         // manual create 已拆到 toManualCreateRequest()（专用 DTO 无 token 字段）；
         // baseline 参数不再有默认值，PATCH 调用点必须显式传。
         expectedRowVersion = baseline?.rowVersion,
         originalCurrency = if (isCreate || currencyChanged) submittedCurrency?.storageKey else null,
         originalAmount = if (isCreate || amountChanged) submittedAmountText else null,
-        spentAt = if (isCreate || timeChanged) expenseTime else null,
+        spentAt = legacyTime,
         manualExchangeRate = manualExchangeRate,
         merchant = merchant,
         // null/blank category stays OUT of the PATCH body (exclude_unset):
@@ -347,7 +368,7 @@ fun ExpenseDraft.toRequest(baseline: Expense?): ExpenseUpdateRequest {
         // every quick-fix/edit of an uncategorized row (PR #230 round 12).
         category = category?.trim()?.takeIf { it.isNotBlank() }?.let(::normalizeExpenseCategory),
         note = note,
-        expenseTime = if (isCreate || timeChanged) expenseTime else null,
+        expenseTime = legacyTime,
         tags = tags,
         valueScore = valueScore,
         regretScore = regretScore,
@@ -369,6 +390,7 @@ fun ExpenseDraft.changesAdvisorPayloadAgainst(baseline: Expense): Boolean {
     if (submittedOriginalMinor != baseline.originalAmountMinor) return true
     if (submittedCurrency != baseline.originalCurrencyCode) return true
     if (expenseTime != baseline.expenseTime) return true
+    if (timeInput != null && !timeInput.matches(baseline.accountingTime)) return true
     val submittedCategory = category?.trim()?.takeIf { it.isNotBlank() }
     return submittedCategory != null && submittedCategory != baseline.category?.trim()
 }
@@ -392,6 +414,7 @@ fun MonthlyStatsDto.toDomain(): MonthlyStats = MonthlyStats(
     count = count,
     byCategory = byCategory.map { it.toDomain() },
     byTag = byTag.map { it.toDomain() },
+    undatedExpenseCount = undatedExpenseCount,
 )
 
 fun CategoryStatsDto.toDomain(): CategoryStats = CategoryStats(
@@ -417,6 +440,7 @@ fun LifestyleStatsDto.toDomain(): LifestyleStats = LifestyleStats(
     frequentMerchants = frequentMerchants.map { it.toDomain() },
     bestValueExpenses = bestValueExpenses.map { it.toDomain() },
     mostRegrettedExpenses = mostRegrettedExpenses.map { it.toDomain() },
+    undatedExpenseCount = undatedExpenseCount,
 )
 
 fun FrequentMerchantDto.toDomain(): FrequentMerchant = FrequentMerchant(

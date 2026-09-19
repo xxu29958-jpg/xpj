@@ -23,13 +23,17 @@
 {% block content %}
 <header class="product-page-header">
   <div class="product-page-heading">
-    {% if filter == 'missing_category' %}
+    {% if filter == 'missing_accounting_date' %}
+    <h1 class="page-title">账务日期待核对</h1>
+    <p class="product-page-summary">共 {{ total }} 笔已确认账单尚未归入月份。金额和原始证据仍保留；{% if can_write %}打开详情，核对依据后更正日期{% else %}打开详情查看，并请有写入权限的成员核对{% endif %}。</p>
+    <a href="/web/data-quality?ledger_id={{ selected_ledger_id }}">返回数据体检</a>
+    {% elif filter == 'missing_category' %}
     <h1 class="page-title">待补分类账单</h1>
     <p class="product-page-summary">全部月份 · 共 {{ total }} 笔已确认账单 · {% if can_write %}打开详情或勾选账单更正分类{% else %}打开详情查看，当前角色只读{% endif %}。</p>
     <a href="/web/data-quality?ledger_id={{ selected_ledger_id }}">返回数据体检</a>
     {% else %}
     <h1 class="page-title">已确认流水</h1>
-    <p class="confirmed-hero-amount"><span class="sr-only">{{ selected_month }} 合计 </span>{% if month_total_amount_yuan is not none %}{{ home_currency_symbol }}{{ month_total_amount_yuan }}{% else %}待补齐换算信息{% endif %}</p>
+    <p class="confirmed-hero-amount"><span class="sr-only">{{ selected_month }} 合计 </span>{% if month_total_amount_yuan is not none %}{{ home_currency_symbol }}{{ month_total_amount_yuan }}{% elif ledger_undated_expense_count|default(0) %}待核对账务日期{% else %}待补齐换算信息{% endif %}</p>
     <p class="product-page-summary">
       {{ selected_month }} · 共 {{ month_total_count }} 笔 · 打开任意一行可查看详情与变更记录。
     </p>
@@ -48,7 +52,7 @@
    ledger 与 month 或跨月 filter 上下文，回到第 1 页;
    不重建通用 query — Jinja 是 HTML escape 不是 URL encode, 且 msg/flash_type
    等过时反馈本就不该跨导航存活。 #}
-{% set _clear_scope = '&filter=missing_category' if filter == 'missing_category' else '&month=' ~ month %}
+{% set _clear_scope = '&filter=' ~ filter if filter in ['missing_category', 'missing_accounting_date'] else '&month=' ~ month %}
 {% set _clear_href = '/web/confirmed?ledger_id=' ~ selected_ledger_id ~ _clear_scope ~ '&home_currency_code=' ~ home_currency_code %}
 <div class="ledger-active-filter" role="status">
   <span class="product-status product-status--info">标签：{{ tag }}</span>
@@ -68,12 +72,11 @@
 <div class="confirmed-desk">
 <section class="product-panel ledger-stream" aria-label="已确认流水">
   {% if expenses %}
-  {# 分组日期是 server-owned stream_date (expense 按请求时区的本地日,
-     offset 直接是 accounting_date); 前端不再从 timestamp 自行转日。 #}
+  {# 分组使用已存账务日期；未知日期单列，不从录入或确认时间补造。 #}
   {% set _groups = {} %}
   {% set _order = [] %}
   {% for e in expenses %}
-    {% set _d = e.stream_date or '—' %}
+    {% set _d = e.stream_date or '' %}
     {% if _d not in _groups %}{% set _ = _groups.update({_d: []}) %}{% set _ = _order.append(_d) %}{% endif %}
     {% set _ = _groups[_d].append(e) %}
   {% endfor %}
@@ -91,7 +94,7 @@
       {% set _items = _groups[d] %}
       {# 服务端按同一目标币种投影本页贡献；原事实的符号与币种不在模板重算。 #}
   <div class="lday">
-    <span class="lday-d">{{ d[5:7] }} 月 {{ d.split('-')[2] if '-' in d else d }} 日</span>
+    <span class="lday-d">{% if d %}{{ d[5:7] }} 月 {{ d.split('-')[2] }} 日{% else %}账务日期待核对{% endif %}</span>
     <span class="lday-n">{{ _items | length }} 笔</span>
     <span class="lday-s">本页 {{ home_amount_label(page_day_totals[d]) }}</span>
   </div>
@@ -148,7 +151,11 @@
   {% include "product/_pagination.html" %}
   {% else %}
   <div class="product-state">
-    {% if filter == 'missing_category' %}
+    {% if filter == 'missing_accounting_date' %}
+    <div class="product-state-title">{% if tag %}这个标签下{% else %}当前账本{% endif %}没有账务日期待核对的账单</div>
+    <div class="product-state-body">更正日期后，原账单会进入所选月份，并从此清单移除。</div>
+    <a class="product-state-action" href="/web/confirmed?ledger_id={{ selected_ledger_id }}">返回流水</a>
+    {% elif filter == 'missing_category' %}
     <div class="product-state-title">{% if tag %}这个标签下{% else %}全部月份{% endif %}没有待补分类的已确认账单</div>
     <div class="product-state-body">已更正的账单会从此清单移除，可以回到体检查看其余待办。</div>
     {% if tag %}<a class="product-state-action" href="{{ _clear_href }}">清除标签筛选</a>{% endif %}
@@ -171,7 +178,7 @@
 {# 本月概况: 次要信息区, 下沉到流水之后; 每日分布按 server-owned typed stream
    净贡献 (含退款/拒付/冲销, 与列表日合计同一投影), 原始账单来源是 root-only
    入账渠道。 #}
-{% if filter != 'missing_category' %}
+{% if filter not in ['missing_category', 'missing_accounting_date'] %}
 <section class="month-overview" aria-label="本月概况">
   <div class="product-panel product-panel--padded">
     <div class="product-panel-header">

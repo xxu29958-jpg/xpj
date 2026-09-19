@@ -64,10 +64,11 @@ from app.services.currency_default_service import is_installation_currency_owner
 from app.services.dashboard_service import list_dashboard_cards
 from app.services.goal_service import list_goals
 from app.services.insights_service import unclaimed_recurring_candidate_count
+from app.services.ledger_calendar_service import current_ledger_month
 from app.services.money_projection_service import ordered_projection_gaps
-from app.services.spending_contract_service import default_accounting_timezone_name
+from app.services.spending_contract_service import count_undated_expenses, default_accounting_timezone_name
 from app.services.stats_service import monthly_stats
-from app.services.time_service import current_month, now_utc
+from app.services.time_service import now_utc
 from app.services.time_service import to_iso as _datetime_to_iso
 from app.tenants import AuthContext
 from app.version import BACKEND_VERSION, STATIC_ASSET_VERSION
@@ -164,6 +165,7 @@ def _base_ctx(
         "ledger_switch_next_url": _ledger_switch_next_url(request),
         "ledger_options": options,
         "selected_ledger_id": selected_ledger_id,
+        "ledger_undated_expense_count": count_undated_expenses(db, tenant_id=selected_ledger_id),
         "selected_ledger_name": selected.name,
         "selected_ledger_role": selected.role,
         "selected_ledger_is_default": selected.is_default,
@@ -294,7 +296,7 @@ def _dashboard_cards(
     home = currency_code or require_runtime_home_currency_code(db)
     quality = web_stats_service.pending_quality_counts(db, ledger_id)
     timezone_name = default_accounting_timezone_name()
-    month = month or current_month(timezone_name)
+    month = month or current_ledger_month(db, ledger_id=ledger_id)
     stats = monthly_stats(db, month, ledger_id, timezone_name=timezone_name, home_currency_code=home)
     home = stats["home_currency_code"]
     prev_month = previous_month_string(month)
@@ -359,7 +361,7 @@ def _dashboard_category_share(
     month: str | None = None,
 ) -> list[dict]:
     timezone_name = default_accounting_timezone_name()
-    month = month or current_month(timezone_name)
+    month = month or current_ledger_month(db, ledger_id=selected_id)
     home = currency_code or require_runtime_home_currency_code(db)
     stats = monthly_stats(
         db,

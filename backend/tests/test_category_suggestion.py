@@ -17,6 +17,7 @@ from datetime import UTC, datetime, timedelta
 
 from app.database import SessionLocal
 from app.models import Expense
+from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from app.services.learning_service import (
     EventDraft,
     compute_category_suggestion,
@@ -45,6 +46,7 @@ def _make_confirmed(
             confirmed_at=confirmed_at,
             expense_time=confirmed_at,
         )
+        refresh_legacy_expense_time(db, expense)
         db.add(expense)
         db.commit()
         return expense.id

@@ -22,6 +22,12 @@
     </div>
   </div>
   <div class="quality-actions">
+    {% if ledger_undated_expense_count|default(0) %}
+    <a class="quality-action" href="/web/confirmed?ledger_id={{ selected_ledger_id }}&amp;filter=missing_accounting_date">
+      <span><strong>{{ ledger_undated_expense_count }} 笔账务日期待核对</strong><small>金额与原证据保留，尚未归入月份</small></span>
+      <span>{% if can_write %}核对日期{% else %}查看账单{% endif %} →</span>
+    </a>
+    {% endif %}
     {% if summary.missing_amount > 0 %}
     <a class="quality-action" href="/web/pending?ledger_id={{ selected_ledger_id }}&amp;filter=missing_amount">
       <span><strong>{{ summary.missing_amount }} 条缺金额</strong></span>
@@ -67,7 +73,7 @@
       <span>{% if can_write %}去更正分类{% else %}查看账单{% endif %} →</span>
     </a>
     {% endif %}
-    {% if summary.pending_total == 0 and summary.missing_category == 0 and summary.suspected_duplicates == 0 %}
+    {% if summary.pending_total == 0 and summary.missing_category == 0 and summary.suspected_duplicates == 0 and not ledger_undated_expense_count|default(0) %}
     <div class="quality-action">
       <span><strong>数据状态良好。继续保持。</strong></span>
     </div>

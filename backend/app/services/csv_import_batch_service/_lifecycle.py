@@ -35,6 +35,7 @@ from app.services.import_service import (
     parse_csv_row,
     validate_csv_headers,
 )
+from app.services.ledger_calendar_service import current_calendar
 from app.services.time_service import now_utc
 
 _ = get_csv_import_batch  # quiet F401: re-exported through this module's surface
@@ -68,7 +69,7 @@ def _assert_cells_bounded(row: list[str], *, max_cell_bytes: int) -> None:
             )
 
 
-def _csv_import_limits() -> tuple[int, int, int, int, str]:
+def _csv_import_limits() -> tuple[int, int, int, int]:
     cfg = get_settings()
     max_bytes = max(cfg.csv_import_max_bytes, 1)
     max_lines = max(cfg.csv_import_max_lines, 1)
@@ -78,7 +79,6 @@ def _csv_import_limits() -> tuple[int, int, int, int, str]:
         max_cell_bytes,
         min(MAX_CSV_IMPORT_ROWS, max_lines),
         CREATE_BATCH_INSERT_CHUNK_SIZE,
-        cfg.ocr_default_timezone,
     )
 
 
@@ -100,6 +100,7 @@ def _parse_csv_import_rows(
     max_data_rows: int,
     timezone_name: str,
     home_currency: str,
+    calendar_revision: int,
 ) -> tuple[list[ParsedRow], int, int, int]:
     raw_bytes = _read_csv_bounded(file_obj, max_bytes=max_bytes)
     text_stream = TextIOWrapper(BytesIO(raw_bytes), encoding="utf-8-sig", newline="")
@@ -125,6 +126,7 @@ def _parse_csv_import_rows(
             line_number=line_number,
             timezone_name=timezone_name,
             home_currency=home_currency,
+            calendar_revision=calendar_revision,
         )
         valid_rows += 1 if parsed.is_valid else 0
         error_rows += 0 if parsed.is_valid else 1
@@ -140,6 +142,7 @@ def _create_csv_import_batch_record(
     total_rows: int,
     valid_rows: int,
     error_rows: int,
+    calendar_revision: int,
 ) -> CsvImportBatch:
     now = now_utc()
     batch = CsvImportBatch(
@@ -149,6 +152,7 @@ def _create_csv_import_batch_record(
         total_rows=total_rows,
         valid_rows=valid_rows,
         error_rows=error_rows,
+        calendar_revision=calendar_revision,
         created_at=now,
         updated_at=now,
     )
@@ -184,15 +188,19 @@ def create_csv_import_batch(
     file_name: str | None,
     file_obj: BinaryIO,
 ) -> CsvImportBatch:
-    max_bytes, max_cell_bytes, max_data_rows, chunk_size, timezone_name = _csv_import_limits()
+    max_bytes, max_cell_bytes, max_data_rows, chunk_size = _csv_import_limits()
     try:
         parsed_home_currency = require_runtime_home_currency_code(db)
+        rule = current_calendar(db, ledger_id=tenant_id)
+        if rule is None:
+            raise AppError("calendar_revision_conflict", status_code=409)
         parsed_rows, total_rows, valid_rows, error_rows = _parse_csv_import_rows(
             file_obj,
             max_bytes=max_bytes,
             max_cell_bytes=max_cell_bytes,
             max_data_rows=max_data_rows,
-            timezone_name=timezone_name,
+            timezone_name=rule.timezone_name,
+            calendar_revision=rule.revision,
             home_currency=parsed_home_currency,
         )
         batch = _create_csv_import_batch_record(
@@ -202,6 +210,7 @@ def create_csv_import_batch(
             total_rows=total_rows,
             valid_rows=valid_rows,
             error_rows=error_rows,
+            calendar_revision=rule.revision,
         )
         _insert_csv_import_rows_in_chunks(db, batch=batch, parsed_rows=parsed_rows, chunk_size=chunk_size)
         db.commit()

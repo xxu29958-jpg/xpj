@@ -16,6 +16,7 @@ from app.services.budget_advisor_service import (
     BudgetInputs,
     BudgetSuggestion,
 )
+from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from app.services.time_service import now_utc
 from tests._infra.budget_advise_fixtures import current_month
 from tests._infra.currency import activate_test_currency_authority
@@ -63,22 +64,22 @@ def test_advise_binds_outbound_and_returned_minor_units_to_runtime_home(
     try:
         with SessionLocal() as db:
             activate_test_currency_authority(db, currency)
-            db.add(
-                Expense(
-                    tenant_id="owner",
-                    status="confirmed",
-                    amount_cents=120_000,
-                    home_currency_code=currency,
-                    original_currency_code=currency,
-                    original_amount_minor=120_000,
-                    merchant="Home Currency Merchant",
-                    category="餐饮",
-                    expense_time=month_anchor,
-                    confirmed_at=month_anchor,
-                    created_at=month_anchor,
-                    updated_at=month_anchor,
-                )
+            _calendar_expense = Expense(
+                tenant_id="owner",
+                status="confirmed",
+                amount_cents=120_000,
+                home_currency_code=currency,
+                original_currency_code=currency,
+                original_amount_minor=120_000,
+                merchant="Home Currency Merchant",
+                category="餐饮",
+                expense_time=month_anchor,
+                confirmed_at=month_anchor,
+                created_at=month_anchor,
+                updated_at=month_anchor,
             )
+            refresh_legacy_expense_time(db, _calendar_expense)
+            db.add(_calendar_expense)
             db.commit()
         with patch(
             "app.services.budget_advisor_service._runner.get_budget_advisor",

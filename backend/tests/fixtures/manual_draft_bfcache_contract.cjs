@@ -11,6 +11,10 @@ const elements = Object.fromEntries(names.map((name, i) => [name, {
   name, value:defaults[i], tagName:name === 'currency_code' ? 'SELECT' : 'INPUT',
 }]));
 elements.client_ref = {value:fresh};
+for (const [name, value] of Object.entries({time_precision:'instant', calendar_revision:'2',
+ user_local_date:'2026-09-06', source_timezone:'America/New_York', source_utc_offset_seconds:'-14400', accounting_date:''})) {
+  elements[name] = {name, value, tagName:name === 'time_precision' ? 'SELECT' : 'INPUT'};
+}
 const fields = {}, submit = {}, status = {}, summary = {};
 const options = {dataset:{startExpanded:'false'}, querySelector:() => summary, contains:() => false};
 const actions = {}, list = {replaceChildren(){}, appendChild(){}}, count = {};
@@ -55,6 +59,9 @@ vm.runInNewContext(fs.readFileSync(process.argv[3], 'utf8'), {window, document})
   assert.equal(elements.currency_code.value, 'CNY');
   assert.equal(elements.home_currency_code.value, 'CNY');
   assert.equal(elements.amount_major.readOnly, true);
+  assert.equal(elements.calendar_revision.disabled, true, 'old original body must not acquire current calendar');
+  assert.equal(elements.time_precision.disabled, true);
+  assert.equal(drafts.read(original).values.calendar_revision, undefined);
   assert.equal(window.location.hash, '#manual-' + original);
   assert.equal(drafts.read(original).phase, 'submitted');
   assert.equal(drafts.read(fresh), null);
