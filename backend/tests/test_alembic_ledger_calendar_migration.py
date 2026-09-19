@@ -168,11 +168,15 @@ def test_calendar_shape_preserves_history_and_empty_edge_round_trips(calendar_ed
     _run(command.upgrade, _HEAD)
     assert _without_calendar(_snapshot()) == original
     inspector = inspect(engine)
+    # PostgreSQL stores unqualified FLOAT as float8 and reflects its full name.
+    postgresql_aliases = {"FLOAT": "DOUBLE PRECISION"}
     for model in (Ledger, LedgerCalendarRevision, Expense, ExpenseOffsetFact, BillSplitInvitation, CsvImportBatch, CsvImportRow):
         columns = {item["name"]: item for item in inspector.get_columns(model.__tablename__)}
         for column in model.__table__.c:
             assert columns[column.name]["nullable"] == column.nullable
-            assert str(columns[column.name]["type"].compile(dialect=engine.dialect)) == str(column.type.compile(dialect=engine.dialect))
+            actual_type = str(columns[column.name]["type"].compile(dialect=engine.dialect))
+            declared_type = str(column.type.compile(dialect=engine.dialect))
+            assert actual_type == postgresql_aliases.get(declared_type, declared_type), (model.__tablename__, column.name)
         assert {item["name"] for item in inspector.get_check_constraints(model.__tablename__)} == {
             item.name for item in model.__table__.constraints if isinstance(item, CheckConstraint)
         }
