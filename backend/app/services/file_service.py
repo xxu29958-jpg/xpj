@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -192,14 +193,13 @@ async def read_upload_bytes(
     return bytes(data)
 
 
-def save_upload_bytes(
+def _validated_upload_extension(
     data: bytes,
     *,
-    tenant_id: str,
     filename: str | None = None,
     content_type: str | None = None,
     max_size_bytes: int | None = None,
-) -> SavedUpload:
+) -> str:
     settings = get_settings()
     limit = settings.max_upload_size_bytes
     if max_size_bytes is not None:
@@ -215,8 +215,56 @@ def save_upload_bytes(
     ext = header_ext or metadata_ext
     if ext is None or not _looks_like_allowed_image(ext, header) or not _is_decodable_image(ext, data):
         raise AppError("unsupported_file_type", status_code=400)
+    return ext
+
+
+def save_upload_bytes(
+    data: bytes,
+    *,
+    tenant_id: str,
+    filename: str | None = None,
+    content_type: str | None = None,
+    max_size_bytes: int | None = None,
+) -> SavedUpload:
+    ext = _validated_upload_extension(
+        data, filename=filename, content_type=content_type, max_size_bytes=max_size_bytes,
+    )
     sanitized_data, ext = _sanitize_image_bytes(ext, data)
-    image_perceptual_hash = compute_image_perceptual_hash(sanitized_data)
+    return _store_admitted_image(sanitized_data, tenant_id=tenant_id, ext=ext)
+
+
+def save_original_replenishment_bytes(
+    data: bytes,
+    *,
+    tenant_id: str,
+    expected_sha256: str,
+    filename: str | None = None,
+    content_type: str | None = None,
+    max_size_bytes: int | None = None,
+) -> SavedUpload:
+    """Admit only the known original, then publish it under a new unique path.
+
+    An already admitted JPEG must not be encoded again. Camera inputs whose raw
+    digest differs may match after the ordinary upload privacy normalization.
+    The caller owns authorization, receipts and publishing the new reference.
+    """
+    ext = _validated_upload_extension(
+        data, filename=filename, content_type=content_type, max_size_bytes=max_size_bytes,
+    )
+    expected = (expected_sha256 or "").strip().lower()
+    if re.fullmatch(r"[0-9a-f]{64}", expected) is None:
+        raise AppError("image_replenishment_mismatch", status_code=409)
+    admitted = data
+    if hashlib.sha256(admitted).hexdigest() != expected:
+        admitted, ext = _sanitize_image_bytes(ext, data)
+        if hashlib.sha256(admitted).hexdigest() != expected:
+            raise AppError("image_replenishment_mismatch", status_code=409)
+    return _store_admitted_image(admitted, tenant_id=tenant_id, ext=ext)
+
+
+def _store_admitted_image(data: bytes, *, tenant_id: str, ext: str) -> SavedUpload:
+    settings = get_settings()
+    image_perceptual_hash = compute_image_perceptual_hash(data)
 
     now = datetime.now(UTC)
     target_dir = settings.upload_dir / tenant_id / now.strftime("%Y") / now.strftime("%m")
@@ -224,11 +272,14 @@ def save_upload_bytes(
 
     filename = f"{secrets.token_hex(16)}.{ext}"
     target_path = target_dir / filename
-    hasher = hashlib.sha256(sanitized_data)
+    hasher = hashlib.sha256(data)
 
+    # Claim a fresh path before entering compensation. A collision must never
+    # overwrite or delete an earlier upload's original.
+    output = target_path.open("xb")
     try:
-        with target_path.open("wb") as output:
-            output.write(sanitized_data)
+        with output as stream:
+            stream.write(data)
     except Exception:  # noqa: BLE001 - failed image sanitation must clean up the partial file.
         target_path.unlink(missing_ok=True)
         raise
@@ -241,7 +292,7 @@ def save_upload_bytes(
         media_type=MEDIA_TYPES.get(target_path.suffix.lower(), "application/octet-stream"),
         # Report bytes actually written to disk (post-sanitization), not the raw
         # request body — the daily byte budget reconciles against storage cost.
-        size_bytes=len(sanitized_data),
+        size_bytes=len(data),
     )
 
 
