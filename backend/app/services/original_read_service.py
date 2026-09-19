@@ -73,7 +73,7 @@ def read_original_snapshot(
                 path=path, media_type=media_type, sha256=digest, size_bytes=size,
                 verified=known_digest, source_modified_at=modified_at, _cleanup=cleanup.pop_all(),
             )
-    except FileNotFoundError as exc:
-        raise AppError("image_not_found", status_code=404) from exc
     except OSError as exc:
+        # The resolver owns definite missing references. A failed capture can
+        # also mean unavailable temporary storage; it is not proof of lost data.
         raise AppError("image_read_failed", status_code=503) from exc

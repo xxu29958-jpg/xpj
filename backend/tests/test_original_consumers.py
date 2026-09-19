@@ -15,6 +15,7 @@ from app.errors import AppError
 from app.models import Expense
 from app.services import file_service, thumb_service
 from app.services.ocr_service import _providers
+from app.services.time_service import now_utc
 
 
 def _png(color: str) -> bytes:
@@ -67,6 +68,37 @@ def test_ocr_does_not_consume_replaced_original(monkeypatch, original, provider)
         ocr.extract(expense)
     assert rejected.value.error == "image_integrity_mismatch"
     assert consumed == []
+
+
+@pytest.mark.parametrize("provider", ["local_llm", "rapidocr"])
+def test_ocr_does_not_reopen_intentionally_cleaned_original(monkeypatch, original, provider):
+    expense, path, _ = original
+    expense.image_deleted_at = now_utc()
+    consumed = []
+    ocr = _ocr_consumer(monkeypatch, provider, consumed)
+    with pytest.raises(AppError) as rejected:
+        ocr.extract(expense)
+    assert rejected.value.error == "image_not_found"
+    assert path.is_file()  # Durable cleanup intent wins even before physical GC.
+    assert consumed == []
+
+
+def test_rapidocr_reads_snapshot_when_source_changes_after_verification(monkeypatch, original):
+    from pathlib import Path
+    expense, source, data = original
+    consumed = []
+    paths = []
+
+    def run(path):
+        paths.append(Path(path))
+        source.write_bytes(_png("blue"))
+        consumed.append(Path(path).read_bytes())
+        return SimpleNamespace(txts=[], scores=[])
+
+    monkeypatch.setitem(sys.modules, "rapidocr", SimpleNamespace(RapidOCR=lambda: run))
+    _providers.RapidOcrProvider().extract(expense)
+    assert consumed == [data]
+    assert paths[0] != source and not paths[0].exists()
 
 
 @pytest.mark.parametrize("provider", ["local_llm", "rapidocr"])

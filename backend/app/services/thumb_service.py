@@ -9,6 +9,7 @@ from uuid import uuid4
 from app.config import get_settings
 from app.errors import PathTraversalError
 from app.services.file_service import resolve_upload_path_for_tenant, upload_reference_for_path
+from app.services.original_read_service import read_original_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +88,7 @@ def stage_thumbnail(
     relative_path: str | None,
     *,
     tenant_id: str,
+    expected_sha256: str | None = None,
     size: tuple[int, int] = (512, 512),
 ) -> StagedThumbnail | None:
     """Render a unique thumbnail without publishing its attempt final."""
@@ -112,8 +114,10 @@ def stage_thumbnail(
 
     staged: StagedThumbnail | None = None
     try:
-        if not _render_thumbnail(source, staging_path, size):
-            return None
+        with read_original_snapshot(relative_path=relative_path, tenant_id=tenant_id,
+                expected_sha256=expected_sha256) as original:
+            if not _render_thumbnail(original.path, staging_path, size):
+                return None
         staged = StagedThumbnail(
             source_reference=relative_path,
             staging_path=staging_path,

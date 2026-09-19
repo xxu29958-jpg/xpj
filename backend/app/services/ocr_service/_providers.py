@@ -8,18 +8,23 @@ receipt JSON→``OcrResult`` mapping.
 
 from __future__ import annotations
 
-import mimetypes
-
 from app.config import get_settings
 from app.errors import AppError
 from app.models import Expense
 from app.services.category_common import DEFAULT_CATEGORIES
-from app.services.file_service import resolve_protected_image
 from app.services.local_llm_vision import call_local_llm_vision, require_local_llm_base_url
 from app.services.ocr_service._llm_parsing import _result_from_llm_json
 from app.services.ocr_service._merge import _merge_result_with_text_parse
 from app.services.ocr_service._models import OcrProvider, OcrResult
+from app.services.original_read_service import OriginalSnapshot, read_original_snapshot
 from app.services.receipt_parse_service import parse_receipt_text
+
+
+def _original_snapshot(expense: Expense) -> OriginalSnapshot:
+    if expense.image_deleted_at is not None:
+        raise AppError("image_not_found", status_code=404)
+    return read_original_snapshot(relative_path=expense.image_path,
+        tenant_id=expense.tenant_id, expected_sha256=expense.image_hash)
 
 
 class EmptyOcrProvider:
@@ -65,11 +70,11 @@ class RapidOcrProvider:
                 status_code=500,
             ) from exc
 
-        image_path, _ = resolve_protected_image(expense.image_path, expense.tenant_id)
-        try:
-            result = RapidOCR()(str(image_path))
-        except (ImportError, OSError, RuntimeError, ValueError, TypeError) as exc:
-            raise AppError("server_error", "本地 OCR 识别失败。", status_code=500) from exc
+        with _original_snapshot(expense) as original:
+            try:
+                result = RapidOCR()(str(original.path))
+            except (ImportError, OSError, RuntimeError, ValueError, TypeError) as exc:
+                raise AppError("server_error", "本地 OCR 识别失败。", status_code=500) from exc
 
         try:
             raw_texts = result.txts or ()
@@ -93,9 +98,9 @@ class LocalLlmOcrProvider:
         settings = get_settings()
         # Fail fast before reading the image off disk when config rejected the URL.
         require_local_llm_base_url(settings.local_llm_base_url)
-        image_path, media_type = resolve_protected_image(expense.image_path, expense.tenant_id)
-        image_bytes = image_path.read_bytes()
-        media_type = media_type or mimetypes.guess_type(image_path.name)[0] or "image/jpeg"
+        with _original_snapshot(expense) as original:
+            image_bytes = original.path.read_bytes()
+            media_type = original.media_type
         parsed_json = call_local_llm_vision(image_bytes, media_type, _local_llm_prompt_text())
         return _result_from_llm_json(parsed_json, timezone_name=timezone_name)
 

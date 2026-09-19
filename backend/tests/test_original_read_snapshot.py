@@ -123,3 +123,17 @@ def test_source_read_failure_removes_partial_snapshot(original_store, monkeypatc
         _read(None)
     assert rejected.value.error == "image_read_failed"
     assert not list(snapshots.iterdir())
+
+
+def test_missing_temporary_storage_does_not_claim_original_is_missing(original_store, monkeypatch):
+    original, _ = original_store
+
+    def unavailable_temporary_directory(**_kwargs):
+        raise FileNotFoundError("temporary storage is unavailable")
+
+    monkeypatch.setattr(original_read_service, "TemporaryDirectory", unavailable_temporary_directory)
+    with pytest.raises(AppError) as rejected:
+        _read(hashlib.sha256(ORIGINAL).hexdigest())
+    assert rejected.value.error == "image_read_failed"
+    assert rejected.value.status_code == 503
+    assert original.read_bytes() == ORIGINAL

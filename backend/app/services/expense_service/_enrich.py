@@ -60,6 +60,7 @@ class PendingEnrichmentResult:
 class _PreparedEnrichment:
     predecessor_row_version: int
     thumbnail_source_path: str | None
+    thumbnail_source_hash: str | None
     thumbnail_needed: bool
     ocr_extractions: tuple[OcrExtraction, ...]
 
@@ -78,16 +79,12 @@ def _checkpoint(callback: Callable[[], None] | None) -> None:
         callback()
 
 
-def _try_stage_thumbnail(relative_path: str | None, tenant_id: str) -> StagedThumbnail | None:
+def _try_stage_thumbnail(relative_path: str | None, tenant_id: str, expected_sha256: str | None) -> StagedThumbnail | None:
     try:
-        return stage_thumbnail(relative_path, tenant_id=tenant_id)
-    except (OSError, PathTraversalError, RecursionError, RuntimeError, ValueError):
+        return stage_thumbnail(relative_path, tenant_id=tenant_id, expected_sha256=expected_sha256)
+    except (AppError, OSError, PathTraversalError, RecursionError, RuntimeError, ValueError) as exc:
         _record_background_failure("thumbnail")
-        logger.exception(
-            "thumbnail staging failed for ledger=%s path=%s",
-            tenant_id,
-            relative_path,
-        )
+        logger.warning("event=thumbnail_staging_failed error_type=%s", type(exc).__name__)
         return None
 
 
@@ -138,6 +135,7 @@ def _prepare_enrichment(
         return _PreparedEnrichment(
             predecessor_row_version=predecessor_row_version,
             thumbnail_source_path=expense.image_path,
+            thumbnail_source_hash=expense.image_hash,
             thumbnail_needed=not expense.thumbnail_path,
             ocr_extractions=tuple(
                 collect_auto_ocr_extractions(
@@ -273,6 +271,7 @@ def enrich_pending_expense(
             staged_thumbnail = _try_stage_thumbnail(
                 prepared.thumbnail_source_path,
                 tenant_id,
+                prepared.thumbnail_source_hash,
             )
         _checkpoint(before_apply)
         return _apply_enrichment(
