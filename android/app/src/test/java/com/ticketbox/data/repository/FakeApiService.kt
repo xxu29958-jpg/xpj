@@ -86,6 +86,9 @@ internal class FakeApiService(
     private val serverSettingsResult: ServerSettingsDto? = null,
     private val merchantApi: FakeMerchantApi = FakeMerchantApi(),
 ) : ApiService {
+    override suspend fun ledgerCalendar(ledgerId: String, revision: Long?): com.ticketbox.data.remote.dto.LedgerCalendarDto =
+        error("Unexpected ledger calendar query")
+
     override suspend fun recurringOccurrence(publicId: String, month: String): com.ticketbox.data.remote.dto.RecurringOccurrenceDto =
         error("Unexpected recurring occurrence read")
     override suspend fun setRecurringOccurrencePayment(

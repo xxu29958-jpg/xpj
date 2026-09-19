@@ -58,7 +58,6 @@ import com.ticketbox.ui.components.AppAdaptiveContentActionStateRow
 import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.AppEndAlignedAmountStatusText
 import com.ticketbox.ui.components.autosizeMinFontSize
-import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppAmountRole
@@ -68,9 +67,6 @@ import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTypography
 import com.ticketbox.ui.design.LocalThemeVisuals
-import java.time.Instant
-import java.time.OffsetDateTime
-import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 private object LedgerItemLayout {
@@ -297,7 +293,7 @@ internal fun LedgerExpenseCard(
                             LedgerLineageChip(status = state.lineageStatus)
                         }
                         Text(
-                            text = displayTime(expense.expenseTime ?: expense.confirmedAt ?: expense.createdAt),
+                            text = com.ticketbox.ui.components.expenseClockLabel(expense),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodySmall,
                             maxLines = 1,
@@ -354,7 +350,7 @@ internal fun LedgerExpenseListRow(
 ) {
     val expense = state.expense
     val rowMetrics = AppDensity.rowMetrics(AppListDensity.Compact)
-    val timeText = ledgerRowTime(expense.ledgerTimestamp()) ?: stringResource(R.string.ledger_item_time_empty)
+    val timeText = com.ticketbox.ui.components.expenseClockLabel(expense)
     val metaText = stringResource(R.string.ledger_item_meta, timeText, expense.category)
     Column(
         modifier = Modifier
@@ -465,7 +461,7 @@ internal fun LedgerExpenseTableRow(
                             LedgerLineageChip(status = state.lineageStatus)
                         }
                         Text(
-                            text = displayTime(expense.expenseTime ?: expense.confirmedAt ?: expense.createdAt),
+                            text = com.ticketbox.ui.components.expenseClockLabel(expense),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.labelSmall,
                             maxLines = 1,
@@ -587,14 +583,4 @@ private fun LedgerCategoryMark(category: String, density: AppListDensity) {
             )
         }
     }
-}
-
-private fun Expense.ledgerTimestamp(): String? = expenseTime ?: confirmedAt ?: createdAt
-
-private fun ledgerRowTime(value: String?): String? {
-    if (value.isNullOrBlank()) return null
-    val formatter = LedgerItemLayout.RowTimeFormatter.withZone(ZoneId.systemDefault())
-    return runCatching { formatter.format(Instant.parse(value)) }
-        .recoverCatching { formatter.format(OffsetDateTime.parse(value).toInstant()) }
-        .getOrNull()
 }

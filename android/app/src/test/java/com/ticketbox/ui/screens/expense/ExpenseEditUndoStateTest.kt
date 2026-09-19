@@ -13,16 +13,14 @@ internal class ExpenseEditUndoStateTest {
 
     @Test
     fun timeUndoHiddenWhenUntouched() {
-        assertFalse(expenseEditTimeModifiedSinceBaseline("2026-05-12T10:15:00Z", "2026-05-12T10:15:00Z"))
-        assertFalse(expenseEditTimeModifiedSinceBaseline("", ""))
-        // baseline 为 null（服务端未存时间）与本地空串同义：不是一次修改。
-        assertFalse(expenseEditTimeModifiedSinceBaseline("", null))
+        assertFalse(ExpenseTimeForm.initial("2026-05-12T10:15:00Z", null, null, java.time.ZoneOffset.UTC).changed)
     }
 
     @Test
     fun timeUndoShownAfterLocalEdit() {
-        assertTrue(expenseEditTimeModifiedSinceBaseline("2026-09-03T01:00:00Z", "2026-05-12T10:15:00Z"))
-        assertTrue(expenseEditTimeModifiedSinceBaseline("2026-09-03T01:00:00Z", null))
+        val original = ExpenseTimeForm.initial("2026-05-12T10:15:00Z", null, null, java.time.ZoneOffset.UTC)
+        assertTrue(original.copy(date = "2026-09-03", changed = true).changed)
+        assertFalse(requireNotNull(readExpenseTimeForm(original.toSavedJson())).changed)
     }
 
     @Test

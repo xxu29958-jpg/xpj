@@ -138,6 +138,8 @@ data class CorrectionFormState(
     val unsupportedCurrencyCode: String? = null,
     val foreignCurrency: Boolean = false,
     val expenseTimeText: String = "",
+    val timeFormJson: String? = null,
+    val expenseTimeZoneId: String? = null,
     val valueScore: Int? = null,
     val regretScore: Int? = null,
     val amountError: UiText? = null,

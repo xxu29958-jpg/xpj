@@ -23,6 +23,8 @@ internal data class ScalarCorrectionChanges(
     val tags: String? = null,
     val expenseTime: String? = null,
     val expenseTimeChanged: Boolean = false,
+    val timeInput: com.ticketbox.domain.model.ExpenseTimeInput? = null,
+    val timeInputChanged: Boolean = false,
     val valueScore: Int? = null,
     val valueScoreChanged: Boolean = false,
     val regretScore: Int? = null,
@@ -30,7 +32,7 @@ internal data class ScalarCorrectionChanges(
 ) {
     val hasAny: Boolean
         get() = originalAmountMinor != null || merchant != null || category != null ||
-            note != null || tags != null || expenseTimeChanged ||
+            note != null || tags != null || expenseTimeChanged || timeInputChanged ||
             valueScoreChanged || regretScoreChanged
 }
 
@@ -47,7 +49,9 @@ private fun parseCorrectionTimeIso(text: String, zoneId: ZoneId): String {
     for (format in LOCAL_TIME_FORMATS) {
         try {
             val local = LocalDateTime.parse(cleaned, format)
-            return local.atZone(zoneId).toInstant().toString()
+            val offset = zoneId.rules.getValidOffsets(local).singleOrNull()
+                ?: throw CorrectionValidationError(R.string.expense_correction_time_invalid)
+            return local.toInstant(offset).toString()
         } catch (_: java.time.format.DateTimeParseException) {
             // try next format
         }
@@ -128,16 +132,7 @@ internal fun computeScalarChanges(
     }?.let { normalizeExpenseCategory(it) }
     val note = form.note.takeIf { it != expense.note.orEmpty() }
     val tags = form.tags.trim().takeIf { it != expense.tags.orEmpty() }
-    val expenseTimeChanged: Boolean
-    val expenseTime: String?
-    if (form.expenseTimeText.isBlank()) {
-        expenseTimeChanged = expense.expenseTime != null
-        expenseTime = null
-    } else {
-        val parsed = parseCorrectionTimeIso(form.expenseTimeText, zoneId)
-        expenseTimeChanged = !sameInstant(parsed, expense.expenseTime)
-        expenseTime = parsed.takeIf { expenseTimeChanged }
-    }
+    val time = correctionTimeChanges(expense, form, zoneId)
     if (form.valueScore !in listOf(null, 1, 2, 3, 4, 5) ||
         form.regretScore !in listOf(null, 1, 2, 3, 4, 5)
     ) {
@@ -152,8 +147,10 @@ internal fun computeScalarChanges(
         category = category,
         note = note,
         tags = tags,
-        expenseTime = expenseTime,
-        expenseTimeChanged = expenseTimeChanged,
+        expenseTime = time.expenseTime,
+        expenseTimeChanged = time.expenseTimeChanged,
+        timeInput = time.timeInput,
+        timeInputChanged = time.timeInputChanged,
         valueScore = form.valueScore.takeIf { valueScoreChanged },
         valueScoreChanged = valueScoreChanged,
         regretScore = form.regretScore.takeIf { regretScoreChanged },
@@ -177,7 +174,24 @@ internal fun initialCorrectionFormState(expense: Expense, zoneId: ZoneId): Corre
         unsupportedCurrencyCode = rawCurrency.takeIf { knownCurrency == null },
         foreignCurrency = rawCurrency != homeRaw,
         expenseTimeText = formatCorrectionTimeInput(expense.expenseTime, zoneId),
+        expenseTimeZoneId = zoneId.id,
         valueScore = expense.valueScore,
         regretScore = expense.regretScore,
     )
+}
+
+private fun correctionTimeChanges(expense: Expense, form: CorrectionFormState, zone: ZoneId): ScalarCorrectionChanges {
+    val captured = com.ticketbox.ui.screens.expense.readExpenseTimeForm(form.timeFormJson)
+    if (captured != null) {
+        if (!captured.changed) return ScalarCorrectionChanges()
+        val result = captured.resolve()
+        if (result.error != null) throw CorrectionValidationError(R.string.expense_correction_time_invalid)
+        return if (result.input != null) ScalarCorrectionChanges(timeInput = result.input, timeInputChanged = true)
+        else ScalarCorrectionChanges(expenseTime = result.instant, expenseTimeChanged = !sameInstant(result.instant, expense.expenseTime))
+    }
+    val capturedZone = form.expenseTimeZoneId?.let(ZoneId::of) ?: zone
+    // An unchanged formatted local value must not select the first occurrence of a known later fold.
+    if (form.expenseTimeText == formatCorrectionTimeInput(expense.expenseTime, capturedZone)) return ScalarCorrectionChanges()
+    val parsed = if (form.expenseTimeText.isBlank()) null else parseCorrectionTimeIso(form.expenseTimeText, capturedZone)
+    return ScalarCorrectionChanges(expenseTime = parsed, expenseTimeChanged = !sameInstant(parsed, expense.expenseTime))
 }

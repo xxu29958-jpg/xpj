@@ -59,6 +59,7 @@ private val FACT_FIELD_ORDER: List<Pair<String, Int>> = listOf(
     "note" to R.string.expense_fact_timeline_field_note,
     "tags" to R.string.expense_fact_timeline_field_tags,
     "expense_time" to R.string.expense_fact_timeline_field_time,
+    "accounting_time" to R.string.expense_fact_timeline_field_time,
     "value_score" to R.string.expense_fact_timeline_field_value_score,
     "regret_score" to R.string.expense_fact_timeline_field_regret_score,
     "items" to R.string.expense_fact_timeline_field_items,
@@ -76,8 +77,19 @@ private fun formatFactValue(
         "amount_cents" -> UiText.raw(formatHomeAmountSnapshot(value, snapshot, currency))
         "original_amount_minor" -> formatOriginalAmountSnapshot(value, snapshot)
         "expense_time" -> UiText.raw(displayDateTime(value.toString()))
+        "accounting_time" -> UiText.raw(formatAccountingTimeSnapshot(value))
         "items", "splits" -> formatLineCountSnapshot(value)
         else -> UiText.raw(value.toString())
+    }
+}
+
+private fun formatAccountingTimeSnapshot(value: Any): String {
+    val time = value as? Map<*, *> ?: return "日期依据未知"
+    val day = time["accounting_date"]?.toString() ?: "日期待补充"
+    return when (time["precision"]) {
+        "date_only" -> "$day · 仅日期"
+        "instant" -> listOfNotNull(day, time["instant_utc"]?.toString()?.let(::displayDateTime)).joinToString(" · ")
+        else -> "$day · 历史规则归属"
     }
 }
 
@@ -169,11 +181,12 @@ private fun ExpenseRevision.correctionTimelineContent(
     memberNames: Map<Long, String>?,
 ): TimelineCorrectionContent {
     val beforeSnapshot = before ?: emptyMap()
+    val visibleFields = if ("accounting_time" in changedFields) changedFields - "expense_time" else changedFields
     val collections = mutableListOf<FactTimelineCollectionDetail>()
     val collectionContext = TimelineCollectionContext(beforeSnapshot, after, currency, memberNames)
     val deltas = buildList {
         FACT_FIELD_ORDER
-            .filter { (field, _) -> field in changedFields }
+            .filter { (field, _) -> field in visibleFields }
             .forEach { (field, labelRes) ->
                 if (field == "splits") {
                     val beforeCount = formatFactValue(field, beforeSnapshot[field], beforeSnapshot, currency)

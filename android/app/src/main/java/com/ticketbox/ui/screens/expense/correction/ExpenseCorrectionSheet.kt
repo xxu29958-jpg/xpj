@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import com.ticketbox.ui.screens.expense.toSavedJson
 import com.ticketbox.R
 import com.ticketbox.ui.asString
 import com.ticketbox.domain.model.MessageTone
@@ -45,6 +46,7 @@ internal data class ExpenseCorrectionSheetActions(
     val onNoteChange: (String) -> Unit,
     val onAmountChange: (String) -> Unit,
     val onExpenseTimeChange: (String) -> Unit,
+    val onTimeFormChange: (String) -> Unit,
     val onCurrencyChange: (com.ticketbox.domain.model.CurrencyCode) -> Unit,
     val onScoreChange: (field: com.ticketbox.viewmodel.CorrectionScoreField, value: Int?) -> Unit,
     val onOpenItems: () -> Unit,
@@ -359,16 +361,22 @@ private fun CorrectionTimeSection(
     actions: ExpenseCorrectionSheetActions,
 ) {
     val form = state.correction
-    AppTextInput(
-        state = AppTextInputState(
-            label = stringResource(R.string.expense_correction_time_label),
-            value = form.expenseTimeText,
-            placeholder = stringResource(R.string.expense_correction_time_placeholder),
-            enabled = !form.saving,
-        ),
-        actions = AppTextInputActions(onValueChange = actions.onExpenseTimeChange),
-        modifier = Modifier.fillMaxWidth(),
+    val expense = state.expense ?: return
+    val (initial, setInitial) = com.ticketbox.ui.screens.expense.rememberExpenseTimeForm(
+        expense.id, expense.expenseTime, expense.accountingTime, form.timeFormJson,
     )
+    val captured = com.ticketbox.ui.screens.expense.readExpenseTimeForm(form.timeFormJson) ?: initial
+    com.ticketbox.ui.screens.expense.ExpenseTimeEditor(captured, {
+        setInitial(it)
+        actions.onTimeFormChange(it.toSavedJson())
+    }, !form.saving)
+    if (expense.expenseTime != null) TextButton(enabled = !form.saving, onClick = {
+        setInitial(captured.copy(date = "", time = "", originalInstant = null, offsetSeconds = null, changed = false))
+        actions.onExpenseTimeChange("")
+    }) { Text(stringResource(R.string.calendar_input_clear_instant)) }
+    if (form.expenseTimeText.isBlank() && form.timeFormJson == null && expense.expenseTime != null) {
+        Text(stringResource(R.string.calendar_input_instant_cleared), style = MaterialTheme.typography.bodySmall)
+    }
     form.timeError?.let { error ->
         Text(
             text = error.asString(),

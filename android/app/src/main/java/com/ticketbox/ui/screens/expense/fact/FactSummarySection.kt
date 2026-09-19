@@ -220,7 +220,7 @@ private fun factHeroCaption(
 private fun FactMetaLine(expense: Expense) {
     val parts = listOfNotNull(
         expense.category.takeIf { it.isNotBlank() },
-        expense.expenseTime?.let { displayDateTime(it) },
+        com.ticketbox.ui.components.expenseTimeLabel(expense),
         expense.source.takeIf { it.isNotBlank() },
     )
     if (parts.isEmpty()) return
@@ -245,6 +245,12 @@ private fun FactFieldRows(expense: Expense) {
         }
         expense.note?.takeIf { it.isNotBlank() }?.let {
             FactFieldRow(label = stringResource(R.string.expense_fact_field_note), value = it)
+        }
+        com.ticketbox.ui.components.expenseKnownInstant(expense)?.let {
+            FactFieldRow(label = "已知消费时刻", value = displayDateTime(it))
+        }
+        if (expense.accountingTime?.basis?.startsWith("legacy") == true) {
+            FactFieldRow(label = "账务日期依据", value = "按账本历史规则归属，可通过更正调整")
         }
         FactScoreFieldRow(expense = expense)
         FactFieldRow(

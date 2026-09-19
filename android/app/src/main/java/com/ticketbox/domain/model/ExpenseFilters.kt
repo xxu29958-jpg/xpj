@@ -75,7 +75,7 @@ fun recentLedgerMerchants(
     val seen = mutableSetOf<String>()
     return expenses
         .asSequence()
-        .sortedByDescending { it.expenseTime ?: it.confirmedAt ?: it.createdAt }
+        .sortedByDescending { it.accountingTime?.accountingDate ?: it.expenseTime ?: it.confirmedAt ?: it.createdAt }
         .mapNotNull { expense ->
             val merchant = expense.merchant?.trim()?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
             if (!seen.add(merchant.lowercase())) return@mapNotNull null
@@ -106,6 +106,9 @@ internal fun Expense.normalizedTagNames(): List<String> {
 }
 
 private fun Expense.ledgerLocalDate(zoneId: ZoneId): LocalDate? {
+    accountingTime?.let { evidence ->
+        return evidence.accountingDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+    }
     val value = expenseTime ?: confirmedAt ?: createdAt
     return runCatching { Instant.parse(value).atZone(zoneId).toLocalDate() }
         .recoverCatching { OffsetDateTime.parse(value).toInstant().atZone(zoneId).toLocalDate() }

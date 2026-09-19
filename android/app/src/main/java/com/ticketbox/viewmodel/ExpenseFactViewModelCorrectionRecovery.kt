@@ -20,7 +20,7 @@ internal fun ExpenseFactViewModel.refreshNewCorrectionCompletions(
     val changesAdvice = corrections.any {
         val request = it.intent?.request
         request?.originalAmountMinor != null || request?.originalCurrencyCode != null ||
-            request?.category != null || request?.expenseTime?.changed == true
+            request?.category != null || request?.expenseTime?.changed == true || request?.timeInput?.changed == true
     }
     _uiState.update { it.copy(factBundle = null, message = null,
         doneAdviceInputsChanged = it.doneAdviceInputsChanged || changesAdvice) }

@@ -313,32 +313,18 @@ class FormattersTest {
 
     @Test
     fun updatesDateWithoutLosingExistingTime() {
-        val selectedDateMillis = LocalDate.parse("2026-05-04")
-            .atStartOfDay(ZoneOffset.UTC)
-            .toInstant()
-            .toEpochMilli()
-
-        val iso = datePickerMillisToUtcIso(
-            value = selectedDateMillis,
-            currentIso = "2026-05-03T04:20:00Z",
-            zoneId = ZoneOffset.UTC,
+        val original = com.ticketbox.ui.screens.expense.ExpenseTimeForm.initial(
+            "2026-05-03T04:20:00Z", null, null, ZoneOffset.UTC,
         )
-
-        assertEquals("2026-05-04T04:20:00Z", iso)
+        assertEquals("2026-05-04T04:20:00Z", original.copy(date = "2026-05-04", changed = true).resolve().instant)
     }
 
     @Test
     fun updatesTimeWithoutLosingExistingDate() {
-        val iso = timePickerToUtcIso(
-            hour = 8,
-            minute = 45,
-            currentIso = "2026-05-03T04:20:00Z",
-            zoneId = ZoneOffset.UTC,
+        val original = com.ticketbox.ui.screens.expense.ExpenseTimeForm.initial(
+            "2026-05-03T04:20:00Z", null, null, ZoneOffset.UTC,
         )
-
-        assertEquals("2026-05-03T08:45:00Z", iso)
-        assertEquals(8, selectedHourFromIso(iso, ZoneOffset.UTC))
-        assertEquals(45, selectedMinuteFromIso(iso, ZoneOffset.UTC))
+        assertEquals("2026-05-03T08:45:00Z", original.copy(time = "08:45", changed = true).resolve().instant)
     }
 
     @Test

@@ -14,7 +14,6 @@ import java.text.DecimalFormatSymbols
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
-import java.time.LocalTime
 import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.ZoneOffset
@@ -217,49 +216,7 @@ fun selectedDateMillisFromIso(value: String?, zoneId: ZoneId = ZoneId.systemDefa
     return localDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
 }
 
-fun selectedHourFromIso(value: String?, zoneId: ZoneId = ZoneId.systemDefault()): Int {
-    return parseLocalDateTime(value, zoneId)?.hour ?: LocalTime.now(zoneId).hour
-}
-
-fun selectedMinuteFromIso(value: String?, zoneId: ZoneId = ZoneId.systemDefault()): Int {
-    return parseLocalDateTime(value, zoneId)?.minute ?: LocalTime.now(zoneId).minute
-}
-
-fun datePickerMillisToUtcIso(
-    value: Long,
-    currentIso: String? = null,
-    zoneId: ZoneId = ZoneId.systemDefault(),
-): String {
-    val selectedDate = Instant.ofEpochMilli(value).atZone(ZoneOffset.UTC).toLocalDate()
-    val time = parseLocalDateTime(currentIso, zoneId)?.toLocalTime()
-        ?: LocalTime.now(zoneId).truncatedTo(ChronoUnit.MINUTES)
-    return LocalDateTime.of(selectedDate, time)
-        .atZone(zoneId)
-        .toInstant()
-        .toString()
-}
-
-fun timePickerToUtcIso(
-    hour: Int,
-    minute: Int,
-    currentIso: String? = null,
-    zoneId: ZoneId = ZoneId.systemDefault(),
-): String {
-    val date = parseLocalDateTime(currentIso, zoneId)?.toLocalDate()
-        ?: LocalDate.now(zoneId)
-    return LocalDateTime.of(date, LocalTime.of(hour, minute))
-        .atZone(zoneId)
-        .toInstant()
-        .toString()
-}
-
-fun nowUtcIso(zoneId: ZoneId = ZoneId.systemDefault()): String {
-    return LocalDateTime.now(zoneId)
-        .truncatedTo(ChronoUnit.MINUTES)
-        .atZone(zoneId)
-        .toInstant()
-        .toString()
-}
+fun nowUtcIso(): String = Instant.now().truncatedTo(ChronoUnit.MINUTES).toString()
 
 private fun parseLocalDateTime(
     value: String?,

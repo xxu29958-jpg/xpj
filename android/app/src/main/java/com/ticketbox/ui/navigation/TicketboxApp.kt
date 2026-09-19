@@ -333,6 +333,9 @@ private fun MainShell(
         surfaceRole = shellState.surfaceRole(currentBackStackEntry?.destination?.route),
     ) {
         ShellBodyWithBanner(localUnlockDisabled = startup.localUnlockDisabled) {
+            androidx.compose.runtime.CompositionLocalProvider(
+                com.ticketbox.ui.screens.expense.LocalLedgerCalendarRepository provides dependencies.repositories.ledgerCalendarRepository,
+            ) {
             MainNavGraph(
                 runtime = MainNavigationRuntime(
                     navController = navController,
@@ -343,6 +346,7 @@ private fun MainShell(
                 preferenceControls = preferenceControls,
                 onBindingCleared = actions.onBindingCleared,
             )
+            }
         }
     }
 }

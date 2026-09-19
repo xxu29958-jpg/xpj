@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="calendar_input_title">消费日期</string>
+    <string name="calendar_input_instant">准确时间</string>
+    <string name="calendar_input_date_only">只记日期</string>
+    <string name="calendar_input_day">日期</string>
+    <string name="calendar_input_clock">时间（时:分，可含秒）</string>
+    <string name="calendar_input_zone">输入所在地时区</string>
+    <string name="calendar_input_no_rule">尚未取得账本规则；准确时间仍可保存。</string>
+    <string name="calendar_input_rule">账本日期规则：%1$s · %2$d</string>
+    <string name="calendar_input_adopt_rule">使用已取得的账本日期规则</string>
+    <string name="calendar_input_invalid_day">请输入有效日期。</string>
+    <string name="calendar_input_rule_required">需取得支持此日期方式的账本规则。请连接或升级服务器，日期草稿已保留。</string>
+    <string name="calendar_input_invalid_zone">请输入有效的地区时区，例如 Asia/Shanghai。</string>
+    <string name="calendar_input_invalid_clock">请输入有效时间。</string>
+    <string name="calendar_input_gap">该地区在此日跳过了这个时间，请修改；原输入已保留。</string>
+    <string name="calendar_input_fold">这个时间出现两次，请选择时差。</string>
+    <string name="calendar_input_retry">重试获取账本日期规则</string>
+    <string name="calendar_input_clear_instant">清除已记时刻</string>
+    <string name="calendar_input_instant_cleared">已清除时刻；保存前仍可重新填写。</string>
+</resources>

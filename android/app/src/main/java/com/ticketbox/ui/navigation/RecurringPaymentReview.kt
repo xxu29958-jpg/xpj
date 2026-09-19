@@ -121,7 +121,7 @@ private fun RecurringPaymentReviewOriginalFacts(request: ExpenseManualCreateRequ
         style = MaterialTheme.typography.titleLarge,
     )
     request.merchant?.takeIf { it.isNotBlank() }?.let { Text(it) }
-    (request.spentAt ?: request.expenseTime)?.let {
+    (request.timeInput?.let { com.ticketbox.ui.components.timeInputLabel(it) } ?: request.spentAt ?: request.expenseTime)?.let {
         Text(it, style = MaterialTheme.typography.bodySmall)
     }
 }
