@@ -214,6 +214,8 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("GET", "/web/import/{public_id}"): "local-only-rendering",
     ("POST", "/web/import/{public_id}/apply"): "writer-only",
     ("GET", "/web/import/{public_id}/errors.csv"): "local-only-rendering",
+    ("GET", "/web/import/{public_id}/rows/{line_number}/review"): "local-only-rendering",
+    ("POST", "/web/import/{public_id}/rows/{line_number}/review"): "writer-only",
     ("POST", "/web/import/confirm"): "writer-only",
     # Merchants
     ("GET", "/web/merchants"): "local-only-rendering",

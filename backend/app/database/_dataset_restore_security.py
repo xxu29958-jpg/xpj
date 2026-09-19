@@ -43,6 +43,7 @@ RESTORE_TABLE_SECURITY: Mapping[str, RestoreTableSecurity] = MappingProxyType(
         "category_preferences": "preserve",
         "category_rules": "preserve",
         "csv_import_batches": "preserve",
+        "csv_import_events": "preserve",
         "csv_import_rows": "preserve",
         "dashboard_card_preferences": "preserve",
         "dataset_authority": "preserve",

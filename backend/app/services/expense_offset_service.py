@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 
 from sqlalchemy import select
@@ -26,6 +27,7 @@ from app.services.bill_split_service import (
     settle_source_financial_change,
 )
 from app.services.currency_binding_service import authorize_currency_metadata_write
+from app.services.exchange_rate_service import ImportedCurrencyPayload
 from app.services.expense_offset_money import (
     OffsetMoney,
     resolve_offset_money,
@@ -42,6 +44,25 @@ from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.time_service import now_utc, to_iso
 
 __all__ = ["create_expense_offset", "expense_fact_bundle"]
+
+
+@dataclass(frozen=True)
+class ReviewedOffsetImport:
+    """A saved file snapshot explicitly reviewed by the current writer."""
+
+    money: ImportedCurrencyPayload
+    category: str
+
+    def command_body(self) -> dict[str, object]:
+        snapshot = self.money
+        return {"home_currency_code": snapshot.home_currency_code,
+            "original_currency_code": snapshot.original_currency_code,
+            "original_amount_minor": snapshot.original_amount_minor,
+            "amount_cents": snapshot.amount_cents,
+            "exchange_rate_to_cny": str(snapshot.exchange_rate_to_cny),
+            "exchange_rate_date": snapshot.exchange_rate_date.isoformat() if snapshot.exchange_rate_date else None,
+            "declared_exchange_rate_source": snapshot.exchange_rate_source,
+            "category": self.category}
 
 def _require_confirmed(expense: Expense) -> None:
     if expense.status == "confirmed" and expense.amount_cents is not None:
@@ -195,6 +216,7 @@ def _claim_offset_command(
     payload: ExpenseOffsetCreateRequest,
     actor_account_id: int,
     idempotency_key: str | None,
+    imported: ReviewedOffsetImport | None = None,
 ) -> ApiIdempotencyKey | ExpenseFactBundleResponse:
     claim = claim_idempotent_request(
         db,
@@ -206,6 +228,7 @@ def _claim_offset_command(
         body={
             **payload.model_dump(mode="json", exclude={"expected_row_version"}),
             "actor_account_id": actor_account_id,
+            **({"reviewed_import": imported.command_body()} if imported is not None else {}),
         },
         expected_row_version=payload.expected_row_version,
     )
@@ -270,6 +293,7 @@ def _persist_new_offset(
     actor_device_name: str | None,
     idempotency_key: str,
     now: datetime,
+    category: str | None = None,
 ) -> ExpenseOffsetFact:
     offset = ExpenseOffsetFact(
         tenant_id=tenant_id,
@@ -283,7 +307,7 @@ def _persist_new_offset(
         exchange_rate_date=money.exchange_rate_date,
         exchange_rate_source=money.exchange_rate_source,
         accounting_date=payload.accounting_date,
-        category=expense.category,
+        category=category if category is not None else expense.category,
         reason=payload.reason,
         created_actor_account_id=actor_account_id,
         created_device_public_id=actor_device_public_id,
@@ -323,6 +347,7 @@ def _commit_offset_creation(
     claim: ApiIdempotencyKey,
     offset: ExpenseOffsetFact,
     result: ExpenseFactBundleResponse,
+    commit: bool,
 ) -> ExpenseFactBundleResponse:
     mark_idempotency_succeeded(
         db,
@@ -334,7 +359,8 @@ def _commit_offset_creation(
         # receipt as extra input.
         response_body=result.model_dump(mode="json", exclude_computed_fields=True),
     )
-    db.commit()
+    if commit:
+        db.commit()
     return result
 
 
@@ -349,6 +375,8 @@ def create_expense_offset(
     actor_device_public_id: str | None,
     actor_device_name: str | None,
     idempotency_key: str | None,
+    imported: ReviewedOffsetImport | None = None,
+    commit: bool = True,
 ) -> ExpenseFactBundleResponse:
     """Create one offset fact and publish its immutable first revision."""
 
@@ -359,6 +387,7 @@ def create_expense_offset(
         payload=payload,
         actor_account_id=actor_account_id,
         idempotency_key=idempotency_key,
+        imported=imported,
     )
     if isinstance(claim_or_replay, ExpenseFactBundleResponse):
         return claim_or_replay
@@ -379,6 +408,7 @@ def create_expense_offset(
         expense=expense,
         offsets=offsets,
         payload=payload,
+        imported_snapshot=imported.money if imported is not None else None,
     )
     offset = _persist_new_offset(
         db,
@@ -391,6 +421,7 @@ def create_expense_offset(
         actor_device_name=actor_device_name,
         idempotency_key=idempotency_key,
         now=now,
+        category=imported.category if imported is not None else None,
     )
     reason_code = source_relationship_reason(payload.kind)
     relationship_result = settle_source_financial_change(
@@ -413,4 +444,5 @@ def create_expense_offset(
         claim=claim,
         offset=offset,
         result=result,
+        commit=commit,
     )

@@ -11,8 +11,8 @@
    kpi-strip 随本页迁移零消费者, pages/reports.css 整文件退役。 #}
 {% block content %}
 {% set _status_label, _status_tone = progress.display_status %}
-{% set _row_label = {'valid': '可导入', 'applying': '处理中', 'applied': '已导入', 'insert_failed': '写入失败'} %}
-{% set _row_tone = {'valid': '', 'applying': 'product-status--warning', 'applied': 'product-status--success', 'insert_failed': 'product-status--danger'} %}
+{% set _row_label = {'valid': '可导入', 'applying': '处理中', 'applied': '新消费草稿', 'matched': '已有记录', 'review': '待复核', 'conflict': '内容冲突', 'insert_failed': '写入失败'} %}
+{% set _row_tone = {'valid': '', 'applying': 'product-status--warning', 'applied': 'product-status--success', 'matched': 'product-status--success', 'review': 'product-status--warning', 'insert_failed': 'product-status--danger'} %}
 <header class="product-page-header">
   <div class="product-page-heading">
     <span class="product-eyebrow">流水 / 导入 / 批次</span>
@@ -34,7 +34,10 @@
   <div class="import-metric is-primary"><span>总行数</span><strong>{{ batch.total_rows }}</strong></div>
   <div class="import-metric is-success"><span>剩余可导入</span><strong>{{ progress.row_counts.remaining_valid_rows }}</strong></div>
   <div class="import-metric is-warning"><span>错误行</span><strong>{{ progress.row_counts.error_rows }}</strong></div>
-  <div class="import-metric"><span>已导入</span><strong>{{ progress.row_counts.applied_rows }}</strong></div>
+  <div class="import-metric"><span>新增消费草稿</span><strong>{{ progress.row_counts.inserted_count }}</strong></div>
+  <div class="import-metric"><span>已有记录</span><strong>{{ progress.row_counts.matched_rows }}</strong></div>
+  <div class="import-metric is-warning"><span>待复核事件</span><strong>{{ progress.row_counts.review_rows }}</strong></div>
+  <div class="import-metric"><span>已登记退款 / 冲销</span><strong>{{ progress.row_counts.confirmed_offset_rows }}</strong></div>
 </section>
 
 <section class="product-panel product-panel--padded" aria-label="下一步">
@@ -52,17 +55,21 @@
     </div>
     <button type="submit" class="product-button product-button--primary">导入下一批</button>
   </form>
-  <p class="import-export-note">导入的账单只进「待确认」队列复核，不会直接入账。</p>
+  <p class="import-export-note">新消费先进入「待确认」。已有事件关联原记录；退款、拒付和冲销需在本批次逐条复核后入账。</p>
   {% elif not can_write %}
   <p class="text-meta">只读角色只能查看导入批次。</p>
   {% endif %}
-  {% if progress.row_counts.applied_rows > 0 %}
+  {% if progress.row_counts.inserted_count > 0 %}
   <div class="import-batch-done">
     <a href="/web/pending{{ q }}" class="product-button product-button--primary">查看待确认</a>
-    <p class="text-meta">本批次已导入 {{ progress.row_counts.applied_rows }} 行，可前往「待确认」队列复核；复核后才入账。</p>
+    <p class="text-meta">本批次新增 {{ progress.row_counts.inserted_count }} 条消费草稿，可前往「待确认」复核，或从下面各行查看当前原单。</p>
   </div>
-  {% elif progress.row_counts.remaining_valid_rows == 0 %}
+  {% elif progress.row_counts.remaining_valid_rows == 0 and progress.row_counts.review_rows == 0 %}
   <p class="text-meta">本批次没有进入待确认队列的账单，也没有可继续导入的行。</p>
+  {% endif %}
+  {% if progress.row_counts.review_rows > 0 %}
+  <p><a class="product-button product-button--primary" href="/web/import/{{ batch.public_id }}{{ q }}&status=review">复核 {{ progress.row_counts.review_rows }} 条事件</a></p>
+  <p class="text-meta">选择下面的「复核事件」继续；需要补原单或确认原单时，完成后返回本批次。</p>
   {% endif %}
   {% if progress.row_counts.error_rows > 0 %}
   <p class="import-export-note"><a href="/web/import/{{ batch.public_id }}/errors.csv{{ q }}">下载错误行 CSV</a>，修正后重新上传即可。</p>
@@ -84,6 +91,9 @@
           <option value="valid" {% if status == 'valid' %}selected{% endif %}>可导入</option>
           <option value="error" {% if status == 'error' %}selected{% endif %}>错误</option>
           <option value="applied" {% if status == 'applied' %}selected{% endif %}>已导入</option>
+          <option value="matched" {% if status == 'matched' %}selected{% endif %}>已有记录</option>
+          <option value="review" {% if status == 'review' %}selected{% endif %}>待复核事件</option>
+          <option value="conflict" {% if status == 'conflict' %}selected{% endif %}>内容冲突</option>
           <option value="insert_failed" {% if status == 'insert_failed' %}selected{% endif %}>写入失败</option>
         </select>
       </div>
@@ -96,33 +106,38 @@
       <thead>
         <tr>
           <th scope="col">行号</th>
+          <th scope="col">事件</th>
           <th scope="col">状态</th>
           <th scope="col" class="amount">金额</th>
           <th scope="col">商家</th>
           <th scope="col">分类</th>
           <th scope="col">时间</th>
           <th scope="col">备注 / 错误</th>
+          <th scope="col">继续处理</th>
         </tr>
       </thead>
       <tbody>
         {% for row in rows %}
         <tr>
           <td>{{ row.line_number }}</td>
-          <td><span class="product-status {{ _row_tone.get(row.status, 'product-status--danger') }}">{{ _row_label.get(row.status, '错误') }}</span></td>
+          <td>{{ {'refund': '退款', 'chargeback': '拒付', 'reversal': '冲销'}.get(row.offset_kind, '支出' if row.entry_kind == 'expense' else '未知事件') }}</td>
+          <td><span class="product-status {{ _row_tone.get(row.status, 'product-status--danger') }}">{{ '事件已入账' if row.status == 'applied' and row.entry_kind == 'offset' else _row_label.get(row.status, '错误') }}</span></td>
           <td class="amount">
             {% if row.original_amount_minor is not none and row.original_currency_code %}
             {{ row.original_currency_code }} {{ row_amount_label(row.original_amount_minor, row.original_currency_code) }}
             {% elif row.amount_cents is none %}—{% elif not row.home_currency_code %}待确认币种{% else %}{{ row.home_currency_code }} {{ row_amount_label(row.amount_cents, row.home_currency_code) }}{% endif %}
-            {% if row.expense_id %}
-            {% set current = current_expenses.get(row.expense_id) %}
+            {% if row.resolved_expense_id or row.expense_id %}
+            {% set current = current_expenses.get(row.resolved_expense_id or row.expense_id) %}
             {% if current %}
             <div class="text-meta" data-import-current-expense="{{ current.id }}">
-              <a href="/web/expenses/{{ current.id }}/edit?ledger_id={{ selected_ledger_id }}">查看当前账单</a>
+              <a href="/web/expenses/{{ current.id }}/edit?ledger_id={{ selected_ledger_id }}{% if row.event_input %}&return_to=csv_import_event&return_import_public_id={{ batch.public_id }}&return_import_line_number={{ row.line_number }}{% endif %}">查看当前原单</a>
               <span>{{ current.original_currency_code }} {{ current.original_amount_value }}</span>
               {% if current.status == 'rejected' %}<span>已忽略</span>
+              {% elif current.status == 'deleted' %}<span>已移除</span>
               {% elif current.fx_pending %}<span>待补汇率 · 原币金额已保留</span>
               {% elif current.status == 'pending' %}<span>待人工确认</span>
-              {% else %}<span>已入账</span>{% endif %}
+              {% elif current.status == 'confirmed' %}<span>已入账</span>
+              {% else %}<span>{{ current.status }}</span>{% endif %}
               {% if current.fx_meta %}<span>{{ current.fx_meta }}</span>{% endif %}
             </div>
             {% else %}<div class="text-meta">原账单已移除</div>{% endif %}
@@ -132,10 +147,11 @@
           <td>{{ row.category }}</td>
           <td>{{ row.expense_time or '—' }}</td>
           <td>{% if row.error_message %}<span class="import-row-error">{{ row.error_message }}</span>{% else %}{{ row.note or '—' }}{% endif %}</td>
+          <td>{% if row.event_input %}<a href="/web/import/{{ batch.public_id }}/rows/{{ row.line_number }}/review{{ q }}" class="product-button product-button--quiet">{{ '复核事件' if row.status in ['review', 'valid'] else '查看事件' }}</a>{% else %}—{% endif %}</td>
         </tr>
         {% endfor %}
         {% if not rows %}
-        <tr><td colspan="7" class="text-meta">没有符合条件的行。</td></tr>
+        <tr><td colspan="9" class="text-meta">没有符合条件的行。</td></tr>
         {% endif %}
       </tbody>
     </table>

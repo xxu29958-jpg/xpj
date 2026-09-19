@@ -25,6 +25,7 @@ from app.routes.web_common import (
     _resolve_selected_ledger_id,
     _web_redirect,
     _with_ledger,
+    preserve_original_ledger_form,
     templates,
 )
 from app.services.category_service import list_ledger_category_options
@@ -118,6 +119,9 @@ async def web_import_preview(
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
+    if ledger_id != selected_id:
+        return _web_redirect("/web/import", selected_id,
+            msg="当前账本已变更，本次文件尚未导入。请核对账本后重新选择文件上传。", flash_type="error")
     _require_selected_ledger_write(options, selected_id)
     # A bad upload (GBK/ANSI CSV from Excel, oversized, headerless …) is the
     # most common failure on this page — flash it back instead of letting the
@@ -163,7 +167,8 @@ def web_import_batch_detail(
     except AppError as exc:
         return _web_redirect("/web/import", selected_id, msg=exc.message, flash_type="error")
     batch = progress.batch
-    expense_ids = [row.expense_id for row in rows_page.items if row.expense_id is not None]
+    expense_ids = list({row.resolved_expense_id or row.expense_id for row in rows_page.items
+                        if row.resolved_expense_id or row.expense_id})
     current_expenses = {
         expense.id: _expense_view(expense)
         for expense in list_imported_expenses(db, tenant_id=selected_id, expense_ids=expense_ids)
@@ -203,9 +208,13 @@ def web_import_batch_apply(
     batch_size: int = Form(500),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
-) -> RedirectResponse:
+) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
+    retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
+        fields={"ledger_id": ledger_id, "batch_size": str(batch_size)}, task="继续原 CSV 批次")
+    if retained is not None:
+        return retained
     _require_selected_ledger_write(options, selected_id)
     safe_batch_size = min(max(batch_size, 1), 1000)
     # The apply commits every row independently, so the handler-entry
@@ -230,7 +239,8 @@ def web_import_batch_apply(
     except AppError as exc:
         target = "/web/import" if exc.status_code in {401, 404} else f"/web/import/{public_id}"
         return _web_redirect(target, selected_id, msg=exc.message, flash_type="error")
-    msg = f"本次导入 {applied.inserted_count} 条，剩余 {applied.remaining_valid_rows} 条可导入。"
+    msg = (f"本次新增 {applied.inserted_count} 条消费草稿，剩余 {applied.remaining_valid_rows} 条可导入。"
+           "已存在记录和待复核事件请查看批次结果。")
     return _web_redirect(f"/web/import/{public_id}", selected_id, msg=msg)
 
 

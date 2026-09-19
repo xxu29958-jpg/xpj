@@ -81,7 +81,7 @@ from app.models.identity import (
     LedgerAuditLog,
     LedgerMember,
 )
-from app.models.import_csv import CsvImportBatch, CsvImportRow
+from app.models.import_csv import CsvImportBatch, CsvImportEvent, CsvImportRow
 from app.models.income_plan_revision import IncomePlanRevision
 from app.models.learning import AlgorithmDecision, LedgerLearningEvent
 from app.models.ocr_facts import OcrFact
@@ -113,6 +113,7 @@ __all__ = [
     "CategoryPreference",
     "CategoryRule",
     "CsvImportBatch",
+    "CsvImportEvent",
     "CsvImportRow",
     "DashboardCardPreference",
     "Debt",

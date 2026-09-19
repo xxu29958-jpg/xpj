@@ -68,6 +68,14 @@ from tests._infra.c07_money_contract_manifest import (
     v1_digest as _v1_digest,
 )
 
+# These later CSV columns retain signed export projections, not canonical facts
+# from the frozen C07 expansion. Every extra money-shaped column in a frozen
+# table still needs an explicit classification and its own checked boundary.
+_CSV_IMPORT_PROJECTION_COLUMNS = (
+    ("csv_import_rows", "stream_amount_cents", "ck_csv_import_rows_stream_amount_cents_projection_bounds"),
+    ("csv_import_rows", "lineage_home_net_cents", "ck_csv_import_rows_lineage_home_net_cents_projection_bounds"),
+)
+
 
 def test_public_money_contract_reexports_focused_contract_modules() -> None:
     assert money_contract_manifest.MONEY_COLUMNS_V1 is MONEY_COLUMNS_V1
@@ -145,7 +153,7 @@ def test_manifest_sign_semantics() -> None:
     assert "goal_type = 'debt_repayment' AND month IS NULL" in (goal_month.predicate)
 
 
-def test_orm_shape_matches_frozen_c07_manifest() -> None:
+def test_current_money_columns_have_explicit_frozen_or_projection_contracts() -> None:
     contract_keys = {(column.table, column.column) for column in MONEY_COLUMNS_V1}
     contract_tables = {table for table, _column in contract_keys}
     metadata_keys = {
@@ -155,8 +163,12 @@ def test_orm_shape_matches_frozen_c07_manifest() -> None:
         if table.name in contract_tables
         if column.name.endswith(("_cents", "_minor"))
     }
-    assert metadata_keys == contract_keys
+    projection_keys = {(table, column) for table, column, _check in _CSV_IMPORT_PROJECTION_COLUMNS}
+    assert contract_keys.isdisjoint(projection_keys)
+    assert metadata_keys == contract_keys | projection_keys
 
+
+def test_orm_shape_matches_frozen_c07_manifest() -> None:
     for column_contract in MONEY_COLUMNS_V1:
         table = Base.metadata.tables[column_contract.table]
         column = table.columns[column_contract.column]
@@ -180,6 +192,21 @@ def test_orm_shape_matches_frozen_c07_manifest() -> None:
         if isinstance(constraint, CheckConstraint)
     }
     assert legacy_names.isdisjoint(orm_check_names)
+
+
+def test_csv_import_projection_columns_keep_signed_aggregate_bounds() -> None:
+    for table_name, column_name, check_name in _CSV_IMPORT_PROJECTION_COLUMNS:
+        table = Base.metadata.tables[table_name]
+        column = table.columns[column_name]
+        assert isinstance(column.type, BigInteger)
+        assert column.nullable is True
+        assert column.default is None and column.server_default is None
+        checks = {
+            constraint.name: str(constraint.sqltext)
+            for constraint in table.constraints
+            if isinstance(constraint, CheckConstraint)
+        }
+        assert checks[check_name] == f"{column_name} BETWEEN {-MONEY_AGGREGATE_MAX} AND {MONEY_AGGREGATE_MAX}"
 
 
 def test_migration_manifest_matches_runtime_contract() -> None:

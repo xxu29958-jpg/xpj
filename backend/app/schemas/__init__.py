@@ -79,6 +79,7 @@ from app.schemas._csv_import import (
     CsvImportApplyRequest,
     CsvImportApplyResponse,
     CsvImportBatchResponse,
+    CsvImportReviewRequest,
     CsvImportRowResponse,
     CsvImportRowsResponse,
 )
@@ -365,6 +366,7 @@ __all__ = [
     "CsvImportApplyRequest",
     "CsvImportApplyResponse",
     "CsvImportBatchResponse",
+    "CsvImportReviewRequest",
     "CsvImportRowResponse",
     "CsvImportRowsResponse",
     "RuntimeCompatibilitySnapshotResponse",

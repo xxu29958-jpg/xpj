@@ -10,6 +10,8 @@ from app.schemas import (
     CsvImportApplyRequest,
     CsvImportApplyResponse,
     CsvImportBatchResponse,
+    CsvImportReviewRequest,
+    CsvImportRowResponse,
     CsvImportRowsResponse,
 )
 from app.services.csv_import_batch_service import (
@@ -20,6 +22,7 @@ from app.services.csv_import_batch_service import (
     get_csv_import_batch,
     list_csv_import_rows,
 )
+from app.services.csv_import_batch_service._review import review_csv_import_row
 from app.services.desktop_switch_service import is_desktop_platform_device
 from app.tenants import AuthContext
 
@@ -111,3 +114,13 @@ def get_csv_import_batch_errors_csv(
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": 'attachment; filename="ticketbox-import-errors.csv"'},
     )
+
+
+@router.post("/{public_id}/rows/{line_number}/review", response_model=CsvImportRowResponse)
+def post_csv_import_row_review(public_id: str, line_number: int, payload: CsvImportReviewRequest,
+                               auth: AuthContext = Depends(get_current_writer_context),
+                               db: Session = Depends(get_db)) -> CsvImportRowResponse:
+    return review_csv_import_row(db, tenant_id=auth.tenant_id, public_id=public_id,
+        line_number=line_number, payload=payload, actor_account_id=auth.account_id,
+        actor_device_id=auth.device_id, actor_device_public_id=auth.device_public_id,
+        actor_device_name=auth.device_name)

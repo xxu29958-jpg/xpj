@@ -3,12 +3,15 @@
 import re
 from datetime import datetime, timedelta
 from html import unescape
+from pathlib import Path
+from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
 import pytest
 from _web_native_form_support import hidden_post_forms
 from fastapi.testclient import TestClient
+from jinja2 import ChoiceLoader, DictLoader, Environment, FileSystemLoader, StrictUndefined
 from sqlalchemy import select
 
 from app.database import SessionLocal
@@ -337,16 +340,53 @@ def _interrupt_csv_before_finalize(monkeypatch, *, public_id: str, row_outcome: 
         )
 
 
-def _csv_receipt_rendered_counts(hub: str, detail: str, public_id: str) -> tuple[list[int], list[int]]:
+def _csv_receipt_rendered_counts(hub: str, detail: str, public_id: str) -> tuple[dict[str, int], dict[str, int]]:
     batch_row = next(
         row for row in re.findall(r"<tr\b[^>]*>(.*?)</tr>", hub, re.DOTALL)
         if f"/web/import/{public_id}?" in row
     )
     cells = re.findall(r"<td\b[^>]*>(.*?)</td>", batch_row, re.DOTALL)
     metrics = dict(re.findall(r"<span>([^<]+)</span><strong>(\d+)</strong>", detail))
-    return [int(value.strip()) for value in cells[2:5]], [
-        int(metrics[label]) for label in ("剩余可导入", "已导入", "错误行")
-    ]
+    hub_counts = {"remaining_valid_rows": int(cells[2].strip()), "error_rows": int(cells[4].strip())}
+    for field, label in {"inserted_count": "消费草稿", "confirmed_offset_rows": "事件入账",
+                         "matched_rows": "已有", "review_rows": "待复核"}.items():
+        values = re.findall(rf"{label}\s+(\d+)", cells[3])
+        assert len(values) == 1, f"Expected one {label} count in the saved batch result: {cells[3]}"
+        hub_counts[field] = int(values[0])
+    detail_labels = {"remaining_valid_rows": "剩余可导入", "error_rows": "错误行",
+        "inserted_count": "新增消费草稿", "confirmed_offset_rows": "已登记退款 / 冲销",
+        "matched_rows": "已有记录", "review_rows": "待复核事件"}
+    return hub_counts, {field: int(metrics[label]) for field, label in detail_labels.items()}
+
+
+def test_native_csv_rendered_counts_preserve_each_financial_result_kind(monkeypatch) -> None:
+    from sqlalchemy.engine import Engine
+
+    from app.services.csv_import_batch_service._queries import (
+        CsvImportBatchPage,
+        CsvImportBatchProgress,
+        CsvImportRowCounts,
+    )
+
+    monkeypatch.setattr(Engine, "connect", lambda *_a, **_k: pytest.fail("receipt rendering opened a database"))
+    environment = Environment(loader=ChoiceLoader([
+        DictLoader({"base.html": "{% block content %}{% endblock %}"}),
+        FileSystemLoader(Path(__file__).resolve().parents[1] / "app/templates/web"),
+    ]), undefined=StrictUndefined, autoescape=True)
+    batch = SimpleNamespace(id=7, public_id="saved-events", file_name="events.csv", total_rows=53, last_error=None)
+    progress = CsvImportBatchProgress(batch, CsvImportRowCounts(remaining_valid_rows=17,
+        applied_rows=5, error_rows=13, matched_rows=7, review_rows=11, confirmed_offset_rows=2))
+    context = {"batch": batch, "progress": progress, "created_label": "2026-09-20", "updated_label": "2026-09-20",
+        "q": "?ledger_id=family", "selected_ledger_id": "family", "can_write": True, "csrf_token": "fixture",
+        "flash_message": "", "flash_type": "success", "rows": [], "page": 1, "page_size": 100,
+        "total": 0, "total_pages": 1, "status": "", "home_currency_code": "CNY", "max_rows": 1000,
+        "export_categories": [], "export_tags": [], "batch_created_labels": {7: "2026-09-20"},
+        "batch_page": CsvImportBatchPage([progress], page=1, page_size=20, total=1, total_pages=1)}
+    hub = environment.get_template("import_export.html").render(context)
+    detail = environment.get_template("import_batch.html").render(context)
+    expected = {"remaining_valid_rows": 17, "error_rows": 13, "inserted_count": 3,
+        "confirmed_offset_rows": 2, "matched_rows": 7, "review_rows": 11}
+    assert _csv_receipt_rendered_counts(hub, detail, batch.public_id) == (expected, expected)
 
 
 def _csv_persisted_receipt_state(public_id: str) -> tuple[int, int, int, str, datetime | None, datetime]:
@@ -391,7 +431,10 @@ def test_native_csv_committed_result_survives_interrupted_finalization(
     assert f"/web/import/{public_id}/apply" not in hidden_post_forms(detail.text)
     # GET must expose committed facts without refreshing the cached batch or releasing its lease.
     assert _csv_persisted_receipt_state(public_id) == cached
-    count_fields = ("valid_rows", "applied_rows", "error_rows", "inserted_count")
+    count_fields = ("valid_rows", "applied_rows", "error_rows", "inserted_count",
+                    "confirmed_offset_rows", "matched_rows", "review_rows")
+    rendered_counts = {"remaining_valid_rows": 0, "inserted_count": applied_count, "error_rows": error_count,
+        "confirmed_offset_rows": 0, "matched_rows": 0, "review_rows": 0}
     observed = {
         "api_detail_counts": [api_detail.json()[key] for key in count_fields],
         "api_rows_counts": [rows.json()["batch"][key] for key in count_fields],
@@ -403,9 +446,9 @@ def test_native_csv_committed_result_survives_interrupted_finalization(
         "detail_errors": f'href="/web/import/{public_id}/errors.csv?ledger_id=owner"' in detail.text,
     }
     assert observed == {
-        "api_detail_counts": [1, applied_count, error_count, applied_count],
-        "api_rows_counts": [1, applied_count, error_count, applied_count],
-        "counts": ([0, applied_count, error_count], [0, applied_count, error_count]),
+        "api_detail_counts": [1, applied_count, error_count, applied_count, 0, 0, 0],
+        "api_rows_counts": [1, applied_count, error_count, applied_count, 0, 0, 0],
+        "counts": (rendered_counts, rendered_counts),
         "hub_empty": False, "detail_empty": False, "review": bool(applied_count),
         "hub_errors": bool(error_count), "detail_errors": bool(error_count),
     }

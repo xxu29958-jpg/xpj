@@ -13,7 +13,7 @@
   <div class="product-page-heading">
     <span class="product-eyebrow">流水 / 导入导出</span>
     <h1 class="page-title page-title--compact">导入 / 导出</h1>
-    <p class="product-page-summary">把账单放进小票夹，或带出去备份分析。</p>
+    <p class="product-page-summary">把账单放进小票夹，或导出流水用于分析、核对和再次导入。</p>
   </div>
 </header>
 
@@ -27,7 +27,7 @@
     <div class="product-panel-header">
       <div>
         <h2 class="product-panel-title">导入 CSV</h2>
-        <p class="product-panel-subtitle">上传后先生成预览批次，确认无误再分批导入；导入的账单只进「待确认」队列复核，不会直接入账。</p>
+        <p class="product-panel-subtitle">上传后先生成预览批次。新消费进入「待确认」；退款、拒付和冲销在批次中逐条复核，已有事件关联原记录。</p>
       </div>
     </div>
     {% if can_write %}
@@ -44,7 +44,7 @@
       <summary>CSV 需要哪些列？</summary>
       <div class="import-schema-body">
         <p>推荐使用 <code>home_currency_code</code>（记账币种）和 <code>amount_cents</code>（该币种最小单位的整数金额）。<code>merchant</code>、<code>category</code>、<code>note</code>、<code>expense_time</code>（ISO 时间，建议带时区）、<code>tags</code> 按需填写。</p>
-        <p><strong>外币账单：</strong>保留 <code>amount_cents</code> 列，但金额可以留空；填写 <code>original_currency_code</code> 和 <code>original_amount_minor</code>，保留原币及其最小单位金额。例如 USD 的 12345 表示 123.45 美元，JPY 的 12345 表示 12345 日元。填写真实消费时间，系统按账单日期获取汇率；缺率时原账单会留在待确认中，可重试或补充本笔汇率。</p>
+        <p><strong>普通外币账单：</strong>保留 <code>amount_cents</code> 列，但金额可以留空；填写 <code>original_currency_code</code> 和 <code>original_amount_minor</code>，保留原币及其最小单位金额。例如 USD 的 12345 表示 123.45 美元，JPY 的 12345 表示 12345 日元。填写真实消费时间，系统按账单日期获取汇率；缺率时原账单会留在待确认中，可重试或补充本笔汇率。</p>
         <p>本币示例（记账币种为 {{ home_currency_code }}）：</p>
         <pre><code>home_currency_code,amount_cents,merchant,category,expense_time
 {{ home_currency_code }},1299,日常商店,日用品,2026-05-04T12:00:00+08:00</code></pre>
@@ -53,6 +53,7 @@
         <pre><code>home_currency_code,amount_cents,original_currency_code,original_amount_minor,merchant,category,expense_time
 {{ home_currency_code }},,{{ example_foreign_currency }},12345,旅行商店,购物,2026-05-04T12:00:00+08:00</code></pre>
         <p>旧格式 <code>amount_yuan</code> 仅适用于 CNY 人民币行，表示元；其它币种请使用上述格式。金额不加千位分隔符。</p>
+        <p><strong>重新导入小票夹导出文件：</strong>保留事件类型、来源标识、原单关联、原始总额及冻结汇率列。在原账本识别已有事件；换账本时先复核新消费，再关联原单并登记退款、拒付或冲销。按月份或分类导出的文件可能缺少相关原单或事件，可补充上传后回到原任务继续。</p>
         <p>单批最多 {{ max_rows }} 行。</p>
       </div>
     </details>
@@ -110,7 +111,7 @@
           <th scope="col">文件 / 上传时间</th>
           <th scope="col">结果</th>
           <th scope="col">剩余可导入</th>
-          <th scope="col">已导入</th>
+          <th scope="col">新增 / 已有 / 待复核</th>
           <th scope="col">错误行</th>
           <th scope="col">操作</th>
         </tr>
@@ -123,10 +124,10 @@
           <td>{{ batch.file_name }}<div class="text-meta">{{ batch_created_labels[batch.id] }}</div></td>
           <td><span class="product-status {{ status_tone }}">{{ status_label }}</span></td>
           <td>{{ progress.row_counts.remaining_valid_rows }}</td>
-          <td>{{ progress.row_counts.applied_rows }}</td>
+          <td>消费草稿 {{ progress.row_counts.inserted_count }} · 事件入账 {{ progress.row_counts.confirmed_offset_rows }}<div class="text-meta">已有 {{ progress.row_counts.matched_rows }} · 待复核 {{ progress.row_counts.review_rows }}</div></td>
           <td>{{ progress.row_counts.error_rows }}</td>
           <td>
-            <a class="product-button product-button--quiet" href="/web/import/{{ batch.public_id }}{{ q }}">{{ '继续导入' if can_write and progress.row_counts.remaining_valid_rows > 0 else '查看结果' }}</a>
+            <a class="product-button product-button--quiet" href="/web/import/{{ batch.public_id }}{{ q }}">{{ '继续处理' if can_write and (progress.row_counts.remaining_valid_rows > 0 or progress.row_counts.review_rows > 0) else '查看结果' }}</a>
             {% if progress.row_counts.error_rows > 0 %}
             <a href="/web/import/{{ batch.public_id }}/errors.csv{{ q }}">下载错误行</a>
             {% endif %}

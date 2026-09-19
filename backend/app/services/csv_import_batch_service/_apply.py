@@ -41,6 +41,7 @@ from app.services.csv_import_batch_service._apply_lease import (
     _mark_csv_import_apply_failed,
     _release_csv_import_apply_lease,
 )
+from app.services.csv_import_batch_service._events import bind_created_purchase, prepare_native_csv_row
 from app.services.csv_import_batch_service._idempotency import (
     _csv_import_row_idempotency_key,
     _existing_csv_import_expense_id,
@@ -62,7 +63,7 @@ from app.services.currency_binding_service import (
     resolve_write_capability,
 )
 from app.services.desktop_switch_service import revalidate_desktop_session_under_lock
-from app.services.exchange_rate_service import apply_currency_payload
+from app.services.exchange_rate_service import apply_currency_payload, apply_imported_currency_snapshot
 from app.services.import_service import DEFAULT_SOURCE
 from app.services.pending_fx_task_service import (
     prepare_pending_expense_fx,
@@ -81,6 +82,7 @@ def _process_csv_import_apply_row(
     tenant_id: str,
     apply_token: str,
     now: datetime,
+    accept_incomplete: bool = False,
 ) -> Expense | None:
     """Run one CSV row through the apply pipeline.
 
@@ -90,6 +92,8 @@ def _process_csv_import_apply_row(
     stale claim).
     """
     if not _refresh_claimed_csv_import_row(db, tenant_id=tenant_id, row_id=row.id, apply_token=apply_token, now=now):
+        return None
+    if row.event_input is not None and not prepare_native_csv_row(db, row, accept_incomplete=accept_incomplete):
         return None
     if row.amount_cents is None and row.original_amount_minor is None:
         row.status = "insert_failed"
@@ -120,14 +124,12 @@ def _process_csv_import_apply_row(
         created_at=now,
         updated_at=now,
     )
-    apply_currency_payload(
-        db,
-        tenant_id=tenant_id,
-        home_currency_code=row.home_currency_code,
-        expense=expense,
-        payload=row,
-        amount_was_explicit=row.original_currency_code == row.home_currency_code and row.amount_cents is not None,
-    )
+    if row.event_input is not None:
+        apply_imported_currency_snapshot(expense, row)
+    else:
+        apply_currency_payload(db, tenant_id=tenant_id, home_currency_code=row.home_currency_code,
+            expense=expense, payload=row,
+            amount_was_explicit=row.original_currency_code == row.home_currency_code and row.amount_cents is not None)
     return expense
 
 
@@ -243,6 +245,7 @@ def _apply_one_claimed_csv_import_row(
     initiator_device_id: int | None,
     apply_token: str,
     now: datetime,
+    accept_incomplete: bool = False,
 ) -> int:
     resolve_write_capability(db)
     row = db.scalar(
@@ -263,6 +266,7 @@ def _apply_one_claimed_csv_import_row(
             tenant_id=tenant_id,
             apply_token=apply_token,
             now=now,
+            accept_incomplete=accept_incomplete,
         )
         if expense is None:
             db.commit()
@@ -270,6 +274,8 @@ def _apply_one_claimed_csv_import_row(
 
         db.add(expense)
         db.flush()
+        if row.event_input is not None:
+            bind_created_purchase(db, row, expense)
         sync_expense_tags(db, expense)
         fx_task = prepare_pending_expense_fx(
             db,
