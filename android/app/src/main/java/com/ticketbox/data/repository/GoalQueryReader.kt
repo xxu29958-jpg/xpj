@@ -122,10 +122,10 @@ private data class GoalQuery(
     val key: String get() = publicId?.let { "detail:$it" } ?: "list:$type:$month:$includeArchived"
 
     fun validated(timezone: String): GoalQuery {
-        val zone = ZoneId.of(timezone)
+        ZoneId.of(timezone)
         if (type == "detail") require(!publicId.isNullOrBlank()) { "目标编号不能为空。" }
         return if (type == "spending_limit") copy(month = month?.trim()?.takeIf { it.isNotEmpty() }
-            ?.let { YearMonth.parse(it).toString() } ?: YearMonth.now(zone).toString()) else this
+            ?.let { YearMonth.parse(it).toString() }) else this
     }
 }
 
@@ -137,7 +137,7 @@ private fun validateGoals(rows: List<GoalDto>, query: GoalQuery, binding: Logica
         require(goal.goalType in setOf("spending_limit", "debt_repayment")) { "目标类型无法识别。" }
         if (query.publicId == null) {
             require(goal.goalType == query.type && (query.includeArchived || goal.status != "archived")) { "目标列表范围不匹配。" }
-            if (query.type == "spending_limit") require(goal.month == query.month) { "目标月份不匹配。" }
+            if (query.type == "spending_limit" && query.month != null) require(goal.month == query.month) { "目标月份不匹配。" }
         }
     }
 }

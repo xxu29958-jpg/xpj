@@ -1,6 +1,8 @@
 package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
+import com.ticketbox.data.repository.LedgerCalendarReader
+import com.ticketbox.data.repository.newTaskMonth
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.DebtActions
@@ -188,6 +190,7 @@ class LedgerViewModel(
     private val repository: LedgerActions,
     private val debts: DebtActions,
     private val onDataChanged: () -> Unit = {},
+    private val calendars: LedgerCalendarReader? = null,
 ) : ViewModel() {
     /** Fired only when a ledger write changes the budget advisor's
      *  confirmed-expense inputs: manual create, and batch applies that move
@@ -201,6 +204,8 @@ class LedgerViewModel(
         ),
     )
     val uiState: StateFlow<LedgerUiState> = _uiState.asStateFlow()
+    private var monthSelected = false
+    private var resolvingMonth = calendars != null
     private var allConfirmed: List<ConfirmedStreamItem> = emptyList()
     private var inFlightSyncKey: LedgerSyncKey? = null
 
@@ -231,7 +236,19 @@ class LedgerViewModel(
                 }
             }
         }
-        sync()
+        viewModelScope.launch {
+            val binding = calendars?.currentBinding()
+            val month = calendars.newTaskMonth(binding)
+            if (binding != calendars?.currentBinding()) return@launch
+            resolvingMonth = false
+            if (!monthSelected) {
+                _uiState.update { state ->
+                    val next = state.copy(monthFilter = month)
+                    next.copy(items = filterItems(allConfirmed, next))
+                }
+            }
+            sync()
+        }
     }
 
     private fun loadCategories() {
@@ -303,6 +320,7 @@ class LedgerViewModel(
     }
 
     fun setMonthFilter(value: String) {
+        monthSelected = true
         _uiState.update { state ->
             state.copy(monthFilter = value, items = filterItems(allConfirmed, state.copy(monthFilter = value)))
         }
@@ -322,6 +340,7 @@ class LedgerViewModel(
      * 旧搜索词会让结果对不上统计数字。
      */
     fun applyDrillFilter(month: String, category: String) {
+        monthSelected = true
         _uiState.update { state ->
             val next = state.copy(
                 monthFilter = month,
@@ -339,6 +358,7 @@ class LedgerViewModel(
      * Clear ordinary filters so the issue context starts ledger-wide, then sync that scope.
      */
     fun applyDataQualityFilter(filter: LedgerDataQualityFilter) {
+        monthSelected = true
         _uiState.update { state ->
             val next = state.copy(
                 monthFilter = "",
@@ -369,6 +389,7 @@ class LedgerViewModel(
     }
 
     fun clearFilters() {
+        monthSelected = true
         _uiState.update { state ->
             val next = state.copy(
                 monthFilter = "",
@@ -382,6 +403,7 @@ class LedgerViewModel(
     }
 
     fun sync() {
+        if (resolvingMonth) return
         val key = _uiState.value.toSyncKey()
         if (inFlightSyncKey == key) return
         inFlightSyncKey = key
@@ -518,6 +540,7 @@ class LedgerViewModel(
             // JPY 安装手记乐观行与同步后权威行同口径。
             repository.createManualExpense(draft.copy(ledgerHomeCurrency = draft.ledgerHomeCurrency ?: _uiState.value.ledgerCurrency))
                 .onSuccess { expense ->
+                    monthSelected = true
                     loadCategories()
                     loadTags()
                     loadMonths()

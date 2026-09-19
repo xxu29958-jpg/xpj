@@ -151,7 +151,9 @@ class IncomePlanEditViewModel(
         mutateDraft { draft ->
             val current = runCatching {
                 YearMonth.parse(draft.incomeMonthInput.trim())
-            }.getOrDefault(YearMonth.now())
+            }.getOrElse {
+                runCatching { YearMonth.parse(draft.intentMonth) }.getOrNull() ?: return@mutateDraft draft
+            }
             draft.copy(
                 incomeMonthInput = current.plusMonths(deltaMonths).toString(),
                 validationError = null,

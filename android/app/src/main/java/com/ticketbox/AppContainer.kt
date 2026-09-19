@@ -399,6 +399,7 @@ class AppContainer(context: Context) {
             apiServiceProvider = apiServiceProvider,
             recurringRepository = recurringRepository,
             budgetRepository = budgetRepository,
+            ledgerCalendarRepository = ledgerCalendarRepository,
         ),
     )
 

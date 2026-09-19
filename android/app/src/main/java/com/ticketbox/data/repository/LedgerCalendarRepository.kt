@@ -10,19 +10,19 @@ import kotlinx.coroutines.CancellationException
 class LedgerCalendarRepository internal constructor(
     private val guard: LedgerRequestGuard,
     private val preferences: SharedPreferences,
-) {
+) : LedgerCalendarReader {
     private val moshi = Moshi.Builder().build()
     private val bindingAdapter = moshi.adapter(LogicalSessionBinding::class.java)
     private val ruleAdapter = moshi.adapter(LedgerCalendarDto::class.java)
 
-    fun currentBinding(): LogicalSessionBinding? = guard.captureLogicalBinding()
+    override fun currentBinding(): LogicalSessionBinding? = guard.captureLogicalBinding()
 
-    fun cached(binding: LogicalSessionBinding, revision: Long? = null): LedgerCalendarDto? {
+    override fun cached(binding: LogicalSessionBinding, revision: Long?): LedgerCalendarDto? {
         val raw = preferences.getString(key(binding, revision), null) ?: return null
         return runCatching { ruleAdapter.fromJson(raw) }.getOrNull()
     }
 
-    suspend fun refresh(binding: LogicalSessionBinding, revision: Long? = null): Result<LedgerCalendarDto?> = try {
+    override suspend fun refresh(binding: LogicalSessionBinding, revision: Long?): Result<LedgerCalendarDto?> = try {
         val bound = guard.bindExact(binding)
         val rule = bound.call { api ->
             if (!api.runtimeCompatibility().toWriteCompatibility().supportsAccountingTimeInput) null

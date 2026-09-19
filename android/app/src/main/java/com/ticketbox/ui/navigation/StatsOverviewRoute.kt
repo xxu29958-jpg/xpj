@@ -77,7 +77,7 @@ internal fun StatsRoute(shellState: MainShellState, screenFactory: MainScreenFac
         ).copy(
             onRefresh = {
                 reloadAllStats(monthly, reports)
-                budget.refresh(monthlyState.month, force = true)
+                if (monthlyState.ledgerReady) budget.refresh(monthlyState.month, force = true)
                 recurring.refresh()
                 layout.refresh()
             },
@@ -86,6 +86,7 @@ internal fun StatsRoute(shellState: MainShellState, screenFactory: MainScreenFac
 }
 
 internal fun reloadAllStats(monthly: MonthlyStatsViewModel, reports: StatsReportsViewModel) {
+    if (!monthly.uiState.value.ledgerReady) return
     monthly.reloadTags()
     monthly.refresh()
     val state = monthly.uiState.value

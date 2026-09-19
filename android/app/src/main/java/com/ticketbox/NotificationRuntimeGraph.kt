@@ -28,8 +28,8 @@ import com.ticketbox.notification.recurring.SharedPrefsRecurringReminderStore
 import com.ticketbox.notification.recurring.WorkManagerRecurringReminderScheduler
 import com.ticketbox.security.LocalSessionStore
 import java.time.LocalDate
-import java.time.YearMonth
-import java.time.ZoneId
+import com.ticketbox.data.repository.LedgerCalendarRepository
+import com.ticketbox.data.repository.newTaskMonth
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -41,12 +41,12 @@ internal data class NotificationRuntimeDependencies(
     val apiServiceProvider: ApiServiceProvider,
     val recurringRepository: RecurringRepository,
     val budgetRepository: BudgetRepository,
+    val ledgerCalendarRepository: LedgerCalendarRepository,
 )
 
 internal class NotificationRuntimeGraph(
     private val dependencies: NotificationRuntimeDependencies,
 ) {
-    private val budgetOverspendZone = ZoneId.of("Asia/Shanghai")
 
     val notifier = TicketboxNotifier(
         context = dependencies.appContext,
@@ -75,7 +75,6 @@ internal class NotificationRuntimeGraph(
         source = BudgetOverspendSource { month ->
             dependencies.budgetRepository.monthlyBudget(
                 month = month,
-                timezone = budgetOverspendZone.id,
             )
         },
         store = SharedPrefsBudgetOverspendStore(dependencies.appContext),
@@ -87,7 +86,8 @@ internal class NotificationRuntimeGraph(
             activeLedgerId = {
                 dependencies.sessionStore.currentSession()?.identity?.ledgerId
             },
-            currentMonth = { YearMonth.now(budgetOverspendZone).toString() },
+            currentMonth = { dependencies.ledgerCalendarRepository.newTaskMonth() },
+            activeBinding = dependencies.ledgerCalendarRepository::currentBinding,
             monotonicNowMillis = { SystemClock.elapsedRealtime() },
         ),
         scope = CoroutineScope(SupervisorJob() + Dispatchers.IO),

@@ -43,7 +43,7 @@ class StatsBudgetViewModel(private val budgetRepository: BudgetActions) : ViewMo
     }
 
     fun refresh(month: String, force: Boolean = false) {
-        val requestedMonth = month.trim().ifBlank { YearMonth.now().toString() }
+        val requestedMonth = runCatching { YearMonth.parse(month.trim()).toString() }.getOrNull() ?: return
         selectedMonth = requestedMonth
         publish(requestedMonth)
         val binding = activeBinding ?: return
