@@ -1,200 +1,142 @@
-# Ticketbox current product atlas
+# Ticketbox 当前产品地图与修订规划
 
-This map answers **what the system is, where it stands, and what remains**.
-Authority is the Goal and latest user rulings → three final Gmail contracts →
-exact current code/database/build/runtime. This document is derived navigation,
-not an independent product authority or an Internal Beta readiness claim.
+核实日期：2026-09-19。源码基线为 `main 8e1aa228`，日常安装对应 `0ac27032`，两者分开核实。完整身份、来源和证据边界见[本次事实记录](../qualification/2026-09-19-product-assessment.md)。
 
-**Standing standard for the entire Goal:** “允许问题域复杂，不允许复杂性在代码里到处扩散。”
-ACK loss, OCC, binding changes, offline recovery and cross-client consistency
-remain necessary. Explicit owners and stable contracts must reduce the places
-that change together. This applies to implementation and documentation, through
-compaction and final integration.
+**产品已经远超截图记账：五域都有真实业务实现，跨域关联、外币、纠错、离线提交和恢复已有大量可保留成果；完整产品与 exact Internal Beta RC 尚未完成。** 主要欠账是财务解释的一致性、完整历史与业务续办、数据可携带性、持续使用的跨端连续性，以及最终真实场景资格化。不能把这些缩成几个页面或最近几个 PR。
 
-The atlas owns boundaries, capability status, remaining delivery and next action.
-The [user journey contract](TICKETBOX_USER_JOURNEYS_CONTRACT.md) owns detailed task
-semantics; linked slice contracts and plans own impact closure and qualification.
-Maintain these by replacing stale current statements, repairing references and
-retiring superseded instructions. Keep only information needed for the document's
-responsibility; adding another paragraph is not a substitute for updating it.
-[Earlier qualification notes](../qualification/2026-09-07-product-atlas-history.md)
-are a frozen historical extraction. Candidate/main hashes, run IDs, test counts,
-RED/GREEN narratives and review dispositions belong in those evidence sources,
-not here. Reverify affected map entries when their implementation changes.
+本图负责现状、差距、保留条件和施工顺序；[用户旅程](TICKETBOX_USER_JOURNEYS_CONTRACT.md)及已有纵向合同负责详细语义。历史资格记录继续保留，失效的“当前下一步”由本图替换。本图是从有效目标推导的施工地图，不是第四份架构，也不增加运行时或证明体系。
 
-## 1. Five domains and their consumers
+## 1. 目标、版本与阶段
+
+| 依据 | 本次确认的身份与适用范围 |
+|---|---|
+| 当前 Goal 全文、后续用户裁决 | 方向、边界和授权的上位依据。Codex 主导架构、产品、实现、美术、交互、验证和集成，自行安排施工，不逐片等待确认。2026-09-19 再明确：按原完整目标摸排，能力只能加强。 |
+| 2026-08-26《产品与全系统架构合同（当前版）》Rev 2.0 | 两份顶层架构之一，正式继承 8.17 完整产品并补齐容器、领域、权威和数据流。五域、共享承重、S/D/F/C/Q、Promote/Consolidate/Extend 保留。 |
+| 2026-08-26《Windows 与数据生命周期架构合同（当前版）》Rev 2.0 | 第二份顶层架构；8.24 Fresh-G2 是纳入其中的 action profile，不取代产品目标，不自动授予其他生命周期资格。 |
+| 2026-08-26《G2 后产品完整化与 Internal Beta 施工合同》 | 当前阶段执行合同。Fresh-G2 关闭后完成产品 P1/P2，再冻结并演练 exact RC 的 P3，随后进入观察。不是第三份架构。 |
+| 2026-09-01 公网连接任务裁决 | Stage 1 只读观察及产品投影；Stage 2 宿主 mutation 仍受明确条件约束。配置 URL、Tunnel 正常不能代替产品可用。 |
+
+本次读取 Gmail 最终邮件并核对附件包及三份文件哈希；所检索后续邮件未发现替代这两份架构的新版本。旧 ADR、路线图、助手归纳、测试名和 PR 都是线索或实现证据。
+
+Goal 末尾 9 月 13 日安装版本、未闭合 #404 和交接顺序已经被实际实现推进；失效的是这些接续状态，完整 Goal 与持续授权保持有效。当前无须改变既定目标或边界即可推进本规划。
+
+**保留与加强是交付条件：**每片明确原来能完成的任务、权限、币种、历史、离线、冲突和恢复路径；替代路径承接全部有效能力，再以更少重复输入、更清楚结果或更强恢复证明增强。旧实现在真实消费者迁移后物理退役。不得以删入口、缩支持范围、丢历史、改成只读或仅增加拒绝交差。
+
+## 2. 真实产品与数据关系
+
+五域回答用户问题：收件“有什么待处理”，流水“实际发生什么”，往来“和谁未了结”，计划“怎么花、存、还”，洞察“发生什么变化”。它们不冻结 tab 数量，也不是五个微服务；Owner 与 Desktop 属于 Backstage。
 
 ```mermaid
 flowchart LR
-    Person[Household member] --> Web[Responsive Web]
-    Person --> Android[Android app]
-    Person --> Shortcut[iPhone Shortcut]
-    Operator[Installation Owner] --> Console[Owner Console / loopback]
-    Operator --> Desktop[Desktop Manager]
-    Web -->|session + CSRF| Backend[One FastAPI modular monolith]
-    Android -->|API + OCC + idempotency| Backend
-    Android <--> Outbox[(Room / unsent intentions)]
-    Shortcut -->|upload capability| Backend
-    Console -->|local governance| Backend
-    Desktop -->|same-origin BFF / host status| Backend
-    Backend --> Facts[(PostgreSQL / financial and identity facts)]
-    Backend --> Originals[(Protected originals)]
-    Backend --> Runtime[(Service-owned runtime settings)]
-    Backend --> Tools[Recognition / FX / advisor / import adapters]
+    U[家庭成员] --> A[Android：采集、高频处理、离线意图]
+    U --> W[Web：深度复核、批量、五域任务]
+    U --> I[iPhone Shortcut：最短上传]
+    O[安装 Owner] --> C[Owner Console：本机治理]
+    O --> D[Desktop：状态、配对、产品入口、诊断]
+    A <--> Q[(Room：查询投影与原始未提交意图)]
+    A --> B[FastAPI 模块化单体：身份及唯一领域命令与查询]
+    W --> B
+    I --> B
+    C --> B
+    D --> B
+    B --> P[(PostgreSQL：结构化业务事实)]
+    B --> F[(受保护原件 bytes)]
+    B --> T[OCR、规则、AI、汇率工具适配]
+    D --> H[Windows Lifecycle：宿主 action 权威]
 ```
 
-Web, Android, Shortcut, Owner Console and Desktop Manager are consumers with
-different trust and interaction boundaries. They share one backend and one set
-of fact/command/query owners. Adapters are replaceable tools; the application
-owns permission, financial meaning and receipts. These are responsibility
-boundaries within the modular monolith, not a microservice construction plan.
-
-| Product domain | User task | Authoritative responsibility |
+| 真实业务链 | 已有事实、意图及关联 | 必须保留的意义 |
 |---|---|---|
-| Capture / Inbox | Capture or import, review suggestions, recover a remainder, confirm | Upload, import and Expense commands; protected originals and provenance |
-| Transactions / Facts | Search and inspect confirmed records, correct facts, follow references | Financial facts, revisions and offsets; canonical query and correction owners |
-| Relationships | Understand debts/splits/reimbursements, settle or correct an obligation | Relationship commands, lineage and derived totals |
-| Planning | Set budgets/goals, manage recurring and income plans, associate actual payments | Planning commands and their links to confirmed facts; a plan is not a payment |
-| Insights | Review periods, trends and projections; act on data-health results | Read models derived from authoritative facts, with exact navigation back to them |
+| 证据成为流水 | 上传请求/CSV 行 → 原件及来源 → OCR/规则建议 → Pending Expense → 人工确认；ExpenseRevision 记更正，ExpenseOffsetFact 表达退款/冲正 | 建议、工作流和事实分开。保留商品项、分摊、分类、商家、标签及来源；人工确认仍是事实入口。 |
+| 消费产生往来 | Expense/Split → BillSplitInvitation → 接受后的关联流水及成员 Debt；外部欠款/应收由 Debt 命令创建 | 保留对方接受、经济事件身份、可见范围和防双计数；跨账本关联不是两笔独立消费。 |
+| 往来被了结或纠正 | Debt + Repayment/RepaymentVoid + Adjustment/Forgiveness/Void → fold → 余额、状态、还债目标进度 | 余额由事实推导。还款、退款、免除和作废分工，不能直接改余额掩盖未闭合业务。 |
+| 计划读取与关联实际发生 | confirmed stream → Budget/开销 Goal 的执行进度；Debt fold + DebtGoalLink → 还债目标；IncomePlanRevision → 收入预测 → Budget/Advisor；Recurring Series → Occurrence ↔ 已确认 Expense 的显式关联 | 各计划不共用一种付款关联。固定支出义务月份与付款月份独立，显式关联后解除预留。收入计划和储蓄试算不代表到账或余额。 |
+| 回看并继续处理 | 事实流 → 总览/月报/趋势/目标/预算/数据健康/CSV → 原流水、原往来、原任务 | 查询可重建，不成为第二 writer；金额、币种、期间及关联一致。 |
+| 家庭和设备协作 | Account/Ledger/Member/Device/Session + Pairing/UploadLink/Invitation；Outbox 绑定主体、账本、版本和 key | 后端决定权限；receipt 不是新财务事实。撤销、换账本、换 token 不重新归属旧意图。 |
+| 数据离开安装 | 分析 CSV、原件、历史和关联；已有完整备份 owner、manifest、原件校验、restore lineage 零件 | CSV、数据库归档、可携带产品数据、可恢复整套安装分别核实；现成零件继续复用，不互相顶替完成声明。 |
 
-Attachments and the reference library support Capture, Facts and Planning. Work
-crosses domains through these existing owners; a report, suggestion or client
-projection must not become a second financial authority.
+## 3. 能力现状与保留条件
 
-## 2. Backstage and capability readiness
+“已成链”表示所列任务已有集成实现和相应证据，受其覆盖边界约束；“局部”表示有可用能力但整项不完整；“未验”是证据不足，不直接认定功能缺失。按适用的 Surface/Domain/Foundation/Continuity/Qualification 判断短板，不伪造产品总完成率。
 
-Backstage makes the five domains configurable, observable and recoverable. It is
-not a second household product navigation. A tool is usable only through the
-applicable chain: **configured → enabled → reachable → operable → observable**.
-Valid configuration alone proves neither reachability nor successful execution.
-
-| Responsibility | Owner / consumer | Boundary |
+| 用户能力 / 主要端与 owner | 已成立且必须保留 | 仍需加强或核实 |
 |---|---|---|
-| Ledger and business preferences | Domain service → Web / Android | Available where the household performs the task |
-| Safe live operator settings | Service-owned runtime projection → Owner Console | One validated atomic save, with observable effect |
-| Identity, permissions and local governance | Identity / membership owners → all lawful entries | Backend enforces Account, Device, ledger and current role; loopback is not identity |
-| Task and provider health | Existing worker, scheduler and provider owners → Owner / task consumer | Separate configuration, worker liveness and actual outcomes; readable recovery |
-| Secrets, database, services and installation boundary | Windows lifecycle → Desktop Manager / read-only diagnostics | No casual Web toggle or alternate host writer |
-| Public connectivity | Existing connectivity adapter → Backstage status | Configured endpoint and tunnel health do not establish Ticketbox usability |
-| Backup / restore adapters | Windows lifecycle | Existing code does not open the held lifecycle program |
+| 上传、分享、待处理；Android/Shortcut/Web，Capture/Expense/Assets | 原始上传身份、任务/原单续办、识别草稿、人工复核、批量确认/拒绝、权限和重复提示已有成链实现；日常 Web 实际可进入上传/导入。 | 当前实体 Android/iPhone 未在线；最终 RC 补断网、重试、原图和 Shortcut 错误分支实机演练，保留最短入口。 |
+| 通知采集与提醒；Android notification / draft owners | 可选通知消费/还款草稿、包名白名单、投递去重及原账本绑定；消费与还款分流，仍待人工复核；已有预算/备份等提醒保留。 | 核实系统授权、原任务深链与续办；还款草稿当前不发“去核对”通知，不能误导到消费待处理页。按真实任务补便利性，保留默认隐私与关闭能力。 |
+| CSV 与外币账单导入；Web，CSV batch owner | 保存批次、剩余行续办、历史日期汇率、逐单手动汇率、确认前复核已合并；#404 不是待实现功能。 | 自身导出的退款行会被当前导入器当正向支出草稿。完整来源/事件语义和可携带数据仍局部。 |
+| 手工记录、编辑、确认；Android/Web，Expense command + receipt | Web 原始草稿/key/绑定；Android 原子 admission、receipt 和身份提升；pending 保存/确认/拒绝/撤销/重识别已进既有持久提交路径。 | 浏览器/OS 中断、服务端已成功后本地接收失败等完整演练仍需完成；不能再列为“仍在线直写”。 |
+| 已确认事实、更正、退款、冲正；Facts/correction/offset | 原币/本位币、冻结 FX、历史更正、偏移事实、原单追溯、商品项/分摊和复合更正；退款/冲正导出的 FX 证据已在 main。 | 根流水期间仍随查询时区解释；附件状态和完整出口不足。财务更正与回收站恢复继续分工。 |
+| 币种选择与换算恢复；Money/binding/FX | 显式初始币种、可改默认、记录金额不改标签、多币种精度、历史/单据汇率续办、外币固定支出创建。 | 补全期间/计划/导出消费者的一致性；保留缺汇率时的输入和原任务，不能统一 CNY 简化。 |
+| 欠款、应收、拆账、还款；Relationships，Android/Web | 外部往来、成员拆账接受/结算、幂等还款、调整/免除/作废事实和 fold；原提交重试、债务图像绑定、还债目标关联。 | 完整时间线还缺调整/免除/作废等消费者；已接受拆账发生部分退款后，差额主要可见，双方继续解决的路径不足。 |
+| 预算、收入、开销/还债目标；Planning，Android/Web | 简洁预算初用、分类/总额、月度及单次收入计划与不可变 revision、两种目标、还债关联/进度、归档/恢复；已接事实变更通知。 | Budget/Goal/Series 的可回看修订历史不完整，不能只剩 row_version 和最后值。原始未提交草稿及部分冷启动离线读取不足。 |
+| 储蓄与备用金；Planning/预算建议 | 已有储蓄和备用金参数，可以解释“计划收入 − 待履约预留 − 已花 − 储蓄 − 备用金”；本地试算不依赖 AI。 | 仍主要是请求参数，未形成可保存修订、跨端续办的储蓄计划；Goal 仅有 spending_limit/debt_repayment。补“存”的任务，保留试算，不把估算当实际存款。 |
+| 固定支出到付款；Recurring/Expense/Outbox | 外币创建、series/occurrence、缺付款时记录、原义务/付款月份、回原期间、显式关联、取消重复预留已集成；有效冲正会使付款失去资格、返回 needs_review 并恢复预留。安装版入口可打开。 | 核验退款/冲正、后台接受及跨端回看的完整履约旅程，补实际发现的续办缺口及修改历史。建议候选是否仍读已冲正原金额属待复现，不能直接宣布事实错误。 |
+| 搜索与资料库；Reference，Web 深度/Android 轻量 | 分类偏好、商家别名、标签改名/合并/撤销、规则预览/应用/回滚、重复处理和历史引用有既有 owner。 | 分类维护与改名/合并后的引用处理不完整；规则/计划/历史/查询一起承接。Owner 孤立标签清理迁移独有行为后退役。 |
+| 回顾、报表、数据健康；Insights | 真数据总览、月度净额、分类/趋势、计划状态、事实下钻、CSV 事件/FX 字段；安装版总览和预算实际可对照。 | 保存查询视图缺失，卡片布局偏好不等于它；健康状态未覆盖原件 bytes 损坏和完整关系历史。 |
+| 离线与跨端；Room/Outbox/query owners | 核心财务提交、原始 key/body/绑定/OCC、未知结果续办/隔离；Expense/统计/Goal 持久读取，预算草稿存储；#402/#419 等成果保留。 | Budget/Debt 等查询冷启动恢复、收入/目标原始草稿不足；补跨设备重入刷新、撤权、混合版本和 OS 中断，不另建队列、不靠清缓存解决。 |
+| 首用、家庭、权限；Identity + Desktop/Owner/客户端 | Owner 接入、配对、明确币种、邀请原代码续办、成员/只读角色、设备/上传能力撤销、账本隔离；公网管理和重复 Owner 回收站已退役。 | exact RC 重演各角色、重入、撤销；Shortcut 旧 bootstrap 文档需对齐当前首用。恢复代际相关限制按原 HOLD。 |
+| OCR/AI/FX/后台任务；provider/worker/task | 识别热配置、原单任务续办；Advisor 区分配置/同意/角色/实际调用；FX 已有 worker/lease/最近结果。 | OCR 的 Owner 设置/诊断主要显示配置，缺最近执行结果、失败原因和回原任务的一体入口，本次运行已确认。 |
+| 原件、数据出口、宿主；Assets/Portability/Windows | 鉴权原图、上传 digest、受限 resolver、缩略图/清理、备份原件 hash 与 inventory；Fresh-G2 关闭，Desktop 诊断已有实现。 | 在线 missing/corrupt/orphan 解释/处置、含历史/关系/原件的可携带出口，以及当前阶段可执行数据安全边界不足。完整 restore/upgrade 等继续 HOLD。 |
+| 消费级美术与便利性；各端消费者 | 已选美术、Paper/Midnight、空态/表单、快捷键/批量/少步骤入口和细节修正；本次读取 current main 的 Connected 截图。 | 全五域窄屏、键盘/触控、焦点/a11y、浅深色、自定义背景、复杂错误/离线态需整体收敛。#372 仅是债务键盘候选。 |
 
-Runtime projection files, raw paths and route inventories are implementation
-details. Prefer ordinary task health and a useful recovery action; retire
-replaced developer surfaces when their real consumers migrate.
+## 4. 改变施工优先级的差距
 
-## 3. Shared boundaries
+### 财务解释与数据出口
 
-| Foundation | Rule for every affected journey |
+1. **账务日期尚未成为共同事实。** 同一已确认根流水在 UTC 与 Asia/Shanghai 查询下会跨月；offset 已存 accounting_date，根流水主要靠 expense_time/confirmed_at 现场换算。影响流水、预算、目标、月报和导出，不能仅加默认时区设置。复用时间/事实 owner，记录用户日期、账务归属和规则版本并迁移全部消费者；历史迁移依据现有证据，不能用今天的设置静默重解释。
+2. **导入导出有错误解释。** 导出能表达负向退款及原单来源，导入只取正值 amount/original amount 等字段，忽略事件种类/方向。纯函数反例已跑实；未在日常库导入，未证明实际用户账目污染。保留普通支出导入与完整分析导出，增强事件识别、可理解预览、原单关联、重复识别和原意续办，不能把只拒绝文件当交付。
+3. **数据健康尚不等于原件完整性。** 在线原图主要查路径/存在，健康主要识别缺路径/清理标记；digest 和备份 hash adapter 已有。把这些接到 missing/corrupt/orphan 用户任务，不新建附件真相。无图片记录可能是正常手工录入，不能据此宣称损坏。
+4. **数据主权只有部分出口。** CSV 未覆盖完整修订、关系、计划、资料库和原件；备份代码不等于可恢复产品。复用导出、原件、manifest/inventory owner，补可携带数据与 Internal Beta 允许的诊断/导出/冷备边界；完整 Windows 生命周期不因此重开。
+
+### 完整业务任务
+
+5. **往来不能只见余额和还款列表。** 现有 append-only 事实应组成完整关系时间线；接受拆账后的部分退款要有双方确认/调整/结算的续办，保留原约定、消费和退款。不得自动把退款当还款、绕过同意或另造余额 owner。
+6. **计划不能只剩当前行。** 复用 IncomePlan/Occurrence revision 经验和各计划命令，让预算、目标、series 可修订回看。储蓄/备用金从试算增强为可保存的计划，联合收入、已花和预留回答“花、存、还”，不靠新增净资产或银行账户产品填空。
+7. **资料库与回顾有缺失任务。** 补分类引用治理、保存查询视图，复用筛选/查询/审计，回到受影响历史/规则/计划。无需因此重写 Dashboard 或造通用报告引擎。
+
+### 持续使用
+
+8. **Outbox 不等于草稿和离线读取齐全。** 补适用 Budget/Debt 等快照及收入/目标未提交草稿，明确过期、撤权、冲突和重入。保留已成功命令的结果，刷新失败另给重试，避免用户再次提交。
+9. **Backstage 最后一段不足。** 接通 OCR 配置、实际任务、原单结果和失败续办；复用 AI/FX 已有链路。连接健康分清配置、可达、身份、权限和实际任务，Tunnel 状态不代替产品结果。
+10. **全产品实际演练未完成。** 云端 Connected 和既往实机证据只覆盖各自范围；本次旧模拟器、缺席的实体 Android/iPhone 不算当前实机证明。剩余角色/系统中断/宽窄屏/exact RC 明列，不以未验否认功能，也不增全项目停工门。
+
+## 5. 继续、调整和退役的裁决
+
+| 对象 | 裁决及能力保留条件 |
 |---|---|
-| Identity and household | Reuse backend Account/Device, membership and ledger scope; no page-local authorization |
-| Money and time | Preserve minor units, original/home currency, binding, intended dates/months and revisions; ambiguity needs a reachable recovery task |
-| OCC, idempotency and acknowledgement | Preserve original binding/key/body and the applicable OCC; distinguish refusal, uncertain submission and canonical success |
-| Offline intentions | Android enqueue, dispatcher, label, settlement and recovery move together; a local receipt is not a server fact |
-| Attachments and recognition | Keep protected originals and provenance; suggestions remain drafts until explicit confirmation |
-| Background work | Report queued/running/failed/succeeded honestly and preserve recoverable work; no endless spinner without a result |
-| Client feedback | Preserve drafts on conflict/refusal; a successful command stays successful when a later query refresh fails, with separate refresh retry |
-| Presentation | Share product meaning and semantic tokens without forcing identical layouts; retire replaced component, CSS and asset owners |
+| 领域 owner、Outbox、事实流、receipt、revision、原件/provider adapters | **继续加强。** 复用唯一责任点；复杂性收口，迁移全部真实消费者。 |
+| “#404 未完、pending 未持久化、外币 recurring 无创建入口、付款不能回原期间、#407 未落地” | **从待办退役。** 描述已落后主线；保留成果，检验完整旅程余项，不重复实现。 |
+| 开放 #415 | **产品实现任务已被 #416 吸收。** 8 个文件中 7 个与 main 相同，含全部生产文件；剩一个恢复测试。保留有价值的独有验证后关闭冗余 PR，不整包再合并。 |
+| 草稿 #372 | **保留交互候选。** 在 current main 的键盘、滚动、退出/恢复上验证后采用有效部分，保持债务提交语义，不拿旧分支作基线。 |
+| 旧 #405/#411 和本地交接 | **保留历史，取消当前排程权。** 以 #412/#414/#416/#419 等实际整合结果识别余项；保护脏树和临时证据。 |
+| Owner 孤立标签清理 | **迁移后物理退役重复入口。** Web 先承接孤立筛选、删除保护和撤销；Owner 其他管理/只读能力保留。 |
+| 已退役直接财务 writer、Owner 回收站、公网管理 | **保持退役。** 合法当前消费者承接任务，不因旧测试/导航/新外观恢复第二 owner。 |
+| 旧 v0.5→v1.0 主控与截图总目标叙述 | **标历史并指回本图。** 不再重设目标、阶段或门禁；现有大批量、商品项等能力保留，规模声明按真实边界核实。 |
+| #420 后泛化 CI/地图工程 | **不列产品先手。** 使用现有 exact-head 工程地图和云端门；真实阻断交付时才最小修复。 |
+| Windows | **Fresh-G2 保持 CLOSED，既定 HOLD 保持原条件。** 无资格 action 不出假按钮；产品出现可执行阻断只解必要范围，不加“先完整修 Windows”限制。 |
 
-Before and after each business-semantic or owner change, record the impact in
-its slice contract: **all entries, consumers, old success exits, persistence,
-protocol/recovery paths and direct verification producers**. An unaffected claim
-needs source or execution evidence. Unknown impact remains open. Use the
-smallest sufficient TDD/gate map, bounded FIX/REJECT/HOLD review and exact-source
-cloud qualification; local tests must stay short. Auditing verifies the product
-and does not define it.
+## 6. 修订施工顺序与可交付结果
 
-## 4. Capability status
+按当前风险/依赖安排，新反例可局部调整，不按五域或架构章节机械排队。每次完成一个真实纵向任务，同时改善入口、结果理解和续办；其他缺口继续留在本图。先产品能力完整，再剩余美术交互，最后 exact RC。
 
-`EXISTING` means present, with integrated usability still to establish;
-`STRONG_SLICE` means a bounded task is integrated and qualified, not the whole
-product. `PARTIAL` requires completion, `RETIRED` must stay retired, and `HOLD`
-requires its stated reactivation condition. `CLOSED` applies only to the named
-slice. Full Internal Beta RC completion is still outstanding.
-
-| Capability | State and current boundary | Detail / evidence |
+| 顺序 | 完整用户结果、复用与依赖 | 退出条件与保留要求 |
 |---|---|---|
-| Upload links, Shortcut and pending review | `STRONG_SLICE`; #385 and #387 CLOSED, integrated and main-qualified. Real-device recovery, review completion, retained drafts and original access passed | [Upload contract](TICKETBOX_UPLOAD_INTENT_CONTINUITY_CONTRACT.md), [#387](https://github.com/xxu29958-jpg/xpj/pull/387) |
-| Batch import through confirmation | `PARTIAL`; saved CSV continuation is integrated. Dated foreign-bill conversion, original-bill recovery and separate human review have an implementation candidate awaiting qualification | [Batch](TICKETBOX_CAPTURE_BATCH_CONTINUATION_CONTRACT.md), [CSV](TICKETBOX_CSV_IMPORT_CONTINUATION_CONTRACT.md), [Foreign-bill continuation](TICKETBOX_FOREIGN_BILL_CONTINUATION_CONTRACT.md) |
-| Confirmed facts and composite correction | `STRONG_SLICE`; #382 CLOSED, durable correction owner integrated and main-qualified; actual OS interruption remains to rehearse | [Correction contract](TICKETBOX_EXPENSE_CORRECTION_CONTINUITY_CONTRACT.md) |
-| Recognition and assisted entry | `STRONG_SLICE`; #353 CLOSED. Shared configured suggestions remain drafts. Debt image/binding continuity #386 CLOSED, integrated and main-qualified | [Journeys](TICKETBOX_USER_JOURNEYS_CONTRACT.md#recognition-and-assisted-entry), [Debt image contract](TICKETBOX_DEBT_BILL_BINDING_CONTRACT.md) |
-| Currency choice and correction | `PARTIAL`; #397 CLOSED, explicit choice, changeable defaults and recorded-money consumers are integrated and main-qualified. Historical FX correction continuation #399 is also integrated and main-qualified | [Currency contract](TICKETBOX_CURRENCY_CHOICE_CORRECTION_CONTRACT.md) |
-| One-bill manual FX recovery | `STRONG_SLICE`; #355 CLOSED. Shared pending Expense editor, canonical review and Android PatchExpense intent | [FX journey](TICKETBOX_USER_JOURNEYS_CONTRACT.md#missing-fx-rate-recovery) |
-| Historical correction FX continuation | `STRONG_SLICE`; #399 CLOSED. Exact pair/date, independent rate save and original correction continuation are integrated and main-qualified | [Historical FX](TICKETBOX_HISTORICAL_FX_CONTINUATION_CONTRACT.md) |
-| Manual expense and browser draft | `STRONG_SLICE`; #398 CLOSED. Durable admission, original receipt replay and visible submission continuation are integrated and independently main-qualified. Recovery from local identity-adoption failure after server acceptance, notification timing and cross-client interruption rehearsal remain in delivery | [Manual continuity](TICKETBOX_MANUAL_CREATION_CONTINUITY_CONTRACT.md), [Manual entry](TICKETBOX_USER_JOURNEYS_CONTRACT.md#manual-expense-entry) |
-| External debt, split and reimbursement | `PARTIAL`; split acceptance, member settlement, adjustment and original direct-repayment recovery are integrated. #403 CLOSED and main-qualified; complete relationship journeys remain in delivery | [Debt context](TICKETBOX_USER_JOURNEYS_CONTRACT.md#external-debt-context), [Direct repayment](TICKETBOX_DIRECT_REPAYMENT_CONTINUITY_CONTRACT.md) |
-| Android external-debt creation and recovery | `STRONG_SLICE`; #369/#370 CLOSED. Original submitted intent and readable retry/discard; keyboard, OS interruption and unsubmitted editing restoration remain | [Convenience plan](../superpowers/plans/2026-09-05-consumer-art-convenience.md) |
-| Debt adjustment continuity | `STRONG_SLICE`; #379 CLOSED. Sole dispatcher preserves original submission and refreshes affected consumers | [Adjustment contract](TICKETBOX_DEBT_ADJUSTMENT_CONTINUITY_CONTRACT.md) |
-| Budgets and goals | `PARTIAL`; compact first use, accurate feedback and durable Goal reads are main-qualified. Budget/debt query persistence, unsubmitted goal drafts and complete cross-client refresh remain | [Budget journey](TICKETBOX_USER_JOURNEYS_CONTRACT.md#budget-first-step), [Goal reads](TICKETBOX_GOAL_OFFLINE_READING_CONTRACT.md) |
-| Fixed commitments through actual payment | `PARTIAL`; occurrence association and removal of fulfilled reserves are integrated. Existing cross-currency valuation has no usable foreign-currency creation flow; recording a missing payment cannot return directly to the original period for association | [Recurring](TICKETBOX_RECURRING_OCCURRENCE_CONTRACT.md) |
-| Income planning | `STRONG_SLICE`; server-month revision and original submitted recovery are integrated; plans remain forecasts. Unsubmitted create/edit drafts still need interruption recovery | [Income plans](TICKETBOX_INCOME_PLAN_CONTRACT.md) |
-| Period review and explainable export | `PARTIAL`; canonical fact navigation and shared reports exist. #407 merges frozen FX evidence into refund/reversal CSV rows; independent main qualification is blocked by Desktop session cleanup. Shared default accounting-time scope remains in delivery | [Insight navigation](TICKETBOX_INSIGHT_FACT_NAVIGATION_CONTRACT.md), [Complete export](TICKETBOX_COMPLETE_FX_EXPORT_CONTRACT.md), [Journeys](TICKETBOX_USER_JOURNEYS_CONTRACT.md) |
-| First use, connection and household entry | `STRONG_SLICE`; invitation, real local Web identity and #378 original-code continuation integrated; full Owner/member/viewer rehearsal remains | [Household journeys](TICKETBOX_USER_JOURNEYS_CONTRACT.md#household-invitation), [Desktop first use](TICKETBOX_DESKTOP_FIRST_USE_CONTRACT.md) |
-| Recycle recovery | `STRONG_SLICE`; #375 CLOSED. Canonical Web query/dispatcher owns business restore; duplicate Owner surface retired; ledger governance restore remains local | [Recycle journey](TICKETBOX_USER_JOURNEYS_CONTRACT.md#recycle-recovery) |
-| Public admin exposure | `RETIRED`; #383 CLOSED. Local governance boundary integrated and main-qualified; lawful remote ledger consumers remain | [Governance contract](TICKETBOX_LOCAL_GOVERNANCE_BOUNDARY_CONTRACT.md) |
-| Advisor readiness and FX worker recovery | `STRONG_SLICE`; #376/#374 CLOSED. Existing factory/consent/role and worker/lease owners; configuration and observed results stay distinct | [Migrated evidence](../qualification/2026-09-07-product-atlas-history.md) |
-| Runtime diagnostics and task recovery | `PARTIAL`; original-bill continuation and ordinary connection recovery are integrated. Recognition settings/diagnostics still expose configuration without a recent execution result or its task continuation | [#389](https://github.com/xxu29958-jpg/xpj/pull/389), Backstage delivery below |
-| Durable offline financial reads | `PARTIAL`; expense/statistics storage exists. Goal list/detail reopening and explicit-access-refusal handling #401 are integrated and main-qualified; budget and debt query persistence remain. Page memory, drafts and command receipts do not prove offline query coverage | [Goal read contract](TICKETBOX_GOAL_OFFLINE_READING_CONTRACT.md) |
-| Android financial submission and recovery | `PARTIAL`; durable dispatch exists and accepted-response cache repair is under qualification. Online-first pending-bill commands still need durable admission. Preserve original context, visible recovery and dispatcher coverage | Capture and cross-client delivery below and affected slice contracts |
-| Consumer visual art and convenience | `PARTIAL`; selected art/frame/forms integrated. Full consumer art and real cross-screen interaction acceptance remain required | [Art / convenience plan](../superpowers/plans/2026-09-05-consumer-art-convenience.md) |
-| Windows Fresh G2 | `CLOSED`; preserve qualification boundary | Executable current-product counterexample required to reopen minimal host work |
-| Complete Windows lifecycle | `HOLD`; repair, preserved reinstall, complete uninstall, upgrade/downgrade, complete backup/restore and Cut C/D/E | Outside current delivery; no implicit lifecycle claim |
+| 1. 财务回看与数据带走 | 先闭合自身 CSV 再导入的语义、原单/重复识别和续办；随后统一根流水/offset/预算/目标/报表/导出的账务日期。附件完整性与数据出口沿现有事实/原件/备份 owner 补齐。 | 用户能解释方向、来源、日期、FX 和同一事件；换端/查询时区不改历史，重试不造第二事实。保留并加强普通导入、批次续办、完整分析字段、原图；Beta 数据出口与恢复边界可实际执行。 |
+| 2. 往来与计划的持续使用 | 完整时间线、拆账后退款续办；预算/目标/series 历史；持久储蓄安排；收入/固定支出/付款/目标统一回看。复用 debt fold、修订和关联，依赖稳定时间意义。 | 双方看懂为何未了结且能继续；改计划可回溯，“花、存、还”都有安排。保留双边权限、外币、还款/履约，退款不自动改约定。 |
+| 3. 跨端日常工作与 Backstage | 离线读取、原始草稿、跨端重入、成功/刷新失败分离；OCR 结果/原任务；分类引用和保存视图；首用、角色、Shortcut 文档对齐。按原 owner 施工并移除被替代 surface。 | 中断后回同一任务，旧意图保留主体/币种/期间；拒绝与离线可区分。配置到结果可理解，失败可继续，操作更省；告警数量不是便利性。 |
+| 4. 消费级美术与整体交互 | 基于真实内容收敛层级、控件、图标/插画/空态/背景、字体颜色、焦点/动效、浅深色/自定义背景；实际验证 Web 360/768/1440 和 Android，采用 #372 有效增强。 | 键盘/触控均能完成任务，批量/快捷键/默认值/少跳转保留；复杂权限、错误、冲突、离线态同样可用。迁移后删旧视觉 owner；当前配色/参考图不冻结设计，已否决的绿色帽子方向不回流。 |
+| 5. exact Internal Beta RC | P1/P2 完成后冻结 main/tree、Setup/APK/manifest/schema/依赖/profile；按阶段合同完成 clean Windows、五端分工、数据/身份/附件/intent、重启等 18 项演练。 | 证据属于最终 artifact，必要后台与普通用户恢复可用，非阻断限制明确；保留 Windows HOLD 后进入观察。CI 全绿或单片完成不冒充 RC。 |
 
-## 5. Remaining delivery packages
+**当前施工先手：**沿 CSV batch、import preview 和 Expense/offset owner，完成“把自己的完整流水带出并正确继续使用”。用已跑实的退款错误解释写最小反例，增强事件识别、预览、原单关联及幂等续办，保留普通支出导入。账务日期紧接其后；不能修完导入又退回零散页面队列。完整可携带出口还要承接关系、计划、资料和原件，分析 CSV 不独自冒充它。
 
-These are the finite packages of the same full Goal, assessed by complete daily
-tasks across the five domains and Backstage. A closed mechanism is evidence for
-that part of a journey, not proof of the entire capability. Source-confirmed gaps
-below still require direct counterexamples before construction; unverified runtime
-or visual quality remains qualification work, not a claimed missing feature.
+施工前后覆盖入口、消费者、旧成功出口、持久化、协议/恢复和直接验证生产者。高风险事实/身份/原件用最小充分反例及 exact SHA 云端资格；文档/局部外观按对应风险验证。主审、定向回归、final-head 复核满足后收片继续，不用无关矩阵拖延交付。
 
-| Package | Remaining user outcome / exit |
-|---|---|
-| First use and household | Rehearse the integrated explicit currency choice and changeable defaults, household admission, roles and connection recovery. Make default accounting time discoverable and shared across clients without reinterpreting recorded facts |
-| Capture, facts and reference | Complete historical foreign-bill import through dated reference-rate acquisition, visible pending/retry and human confirmation. Next, move online-first pending-bill commands into their durable submission owner and retire direct writers; server success followed by local failure must retain the original key and recovery. Finish manual identity-adoption recovery, then rehearse search, reference maintenance and correction through their real entries |
-| Relationships | Qualify complete settlement through debt balances, goal progress and history. Original direct-repayment recovery after ACK loss/restart is integrated; the direct per-call writer is retired. Preserve split/member settlement and adjustment owners |
-| Planning and insights | Express a foreign fixed commitment, understand its budget valuation, record actual payment and return to the original period to associate it. Retained views must reflect accepted facts; period queries and refund/reversal exports must explain the same recorded money/time |
-| Backstage | Surface recent recognition execution and its existing task continuation alongside configuration. Keep Advisor readiness, ordinary connection recovery and original-bill task recovery; do not build another health/configuration system |
-| Consumer art and convenience | Actual Web 360/768/1440 and Android journeys meet the selected modern consumer design and reduce interaction burden; retire replaced visual owners. Replace raw split-source metadata; resolve the observed intermittent first bottom-navigation tap |
-| Cross-client continuity and data safety | Refresh actual queries when returning after another client changed facts; persist applicable budget/debt reads and raw unsubmitted planning drafts. Rehearse role/revocation, token rotation, ledger switch, OS interruption, conflict/quarantine, originals and supported export; receipts and page memory are not query snapshots |
-| Exact RC freeze and delivery | Freeze final main/tree, Setup/APK and manifests; complete clean-Windows ordinary product and cross-client/reboot/data/identity rehearsal; publish accepted non-blocking limits and unchanged Windows HOLDs |
+## 7. 边界、未知项与终点
 
-Visual delivery includes coherent icons/illustrations/empty states/backgrounds
-and textures, typography, color, hierarchy, controls, focus/motion and light/dark
-appearance. Custom backgrounds must work across applicable surfaces. Existing
-Paper/Midnight UI and the Owner reference photo are not design authority; the
-rejected green-hat direction must not return. Defaults, shortcuts, keyboard/touch,
-batches, fewer repeated inputs/page transitions and recoverable drafts are user
-outcomes. Inspect real tasks and states, not just assets, tokens or screenshots.
+完整 Windows repair、preserved reinstall、complete uninstall、upgrade/downgrade、complete backup/restore、Cut C/D/E 和 Stage 2 宿主 mutation 仍遵守有效 Goal/合同条件。Internal Beta 明确允许的导出/诊断/冷备须可执行，既不能扩成完整 restore，也不能因后者 HOLD 漏掉当前数据安全。
 
-Restore-dependent identity limitations remain explicitly HOLD:
-[local Web expected preview identity and Android unbound invitation generation](TICKETBOX_USER_JOURNEYS_CONTRACT.md#restore-dependent-identity-holds).
-Do not drop these or open full lifecycle work while handling other journeys.
+[恢复代际身份限制](TICKETBOX_USER_JOURNEYS_CONTRACT.md#restore-dependent-identity-holds)继续登记。实际到账/银行余额/净资产、银行直连、插件市场、多活、通用 workflow engine 不由本次摸排引入。具体增强若真要改变边界，单独呈现用户后果、既有能力不足和取舍理由，只裁决该变化，其他授权工作继续。
 
-## 6. Construction order and next action
+本次未直接枚举日常 PostgreSQL 全表或原件 bytes，未重新安装/重绑/导入日常数据，未把旧模拟器或未完成的窄屏设置算成 current main 实测。已核实与未核实范围见事实记录；这些限制不妨碍按确认缺口施工。
 
-**Priority:** whole-system horizontal and vertical capability gaps first, then
-remaining art/interaction details, then the exact full RC. Keep useful state
-feedback and efficient actions within each active capability change.
-
-**Active work:** #385–#396 are CLOSED, integrated and independently main-qualified.
-[Member settlement evidence](TICKETBOX_MEMBER_SETTLEMENT_CONTINUITY_CONTRACT.md).
-[Spending-goal continuity evidence](TICKETBOX_PLANNING_GOAL_CONTINUITY_CONTRACT.md).
-
-**#402 CLOSED:** [financial read propagation](TICKETBOX_FINANCIAL_READ_PROPAGATION_CONTRACT.md) is integrated and main-qualified.
-**#403 CLOSED:** [direct repayment recovery](TICKETBOX_DIRECT_REPAYMENT_CONTINUITY_CONTRACT.md) is integrated and main-qualified.
-
-**Next action:** qualify and integrate [foreign-bill continuation](TICKETBOX_FOREIGN_BILL_CONTINUATION_CONTRACT.md) across import, review, affected money commands and actual Web/Android consumers. Complete durable admission for online-first pending-bill commands, then continue the
-fixed-commitment journey, shared accounting-time and
-complete export, then remaining read/draft/Backstage continuity. Select each
-bounded change from these full user outcomes; an isolated semantic fix, working
-API or green test never closes its entire delivery package. Reuse sufficient
-owners and physically retire replaced paths. Assess visual/interaction results
-through real tasks after the capability gaps, before the final RC rehearsal.
-Preserve draft #372 for the later detail wave.
-The full Goal and all remaining packages above stay active.
-
-After a slice's agreed user postcondition, targeted regression, bounded review
-and exact-source qualification are satisfied, close it and proceed. Keep other
-real gaps in their package. Cosmetic alternatives, speculative abstractions,
-redundant tests and unsupported-platform matrices do not delay RC; a missing
-required task, data/identity/intent risk or required final evidence does.
+**完整终点保持：**五域和 Backstage 的必要任务可以找到、完成、解释、跨端继续并从失败恢复；事实、计划、关系、原件和身份一致且可带走；已有能力全部承接并加强，被替代实现退役，消费级体验完成，exact RC 通过后进入观察。本次地图交付不代表总 Goal 完成，也不新增逐片批准门。

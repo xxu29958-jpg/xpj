@@ -1,7 +1,7 @@
 # 小票夹第二版能力说明
 
 > **定位**：本文聚焦 OCR/分类/重复检测/缩略图/图片清理能力。这些已在 v0.4+ 落地。
-> 作为功能上下文参考保留，当前开发路线见 `docs/roadmap/POST_BETA_DEVELOPMENT_ROADMAP.md`。
+> 作为历史功能上下文保留，不代表当前完整目标；当前现状与施工路线见[当前产品地图与修订规划](../current/TICKETBOX_CURRENT_PRODUCT_ATLAS.md)。已有能力继续保留并加强。
 
 ## 1. 当前定位
 
