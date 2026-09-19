@@ -13,6 +13,7 @@ from app.errors import AppError, DataIntegrityError
 from app.models import Ledger, LedgerAuditLog, LedgerCalendarRevision
 from app.services.time_service import now_utc
 
+
 def calendar_revision(db: Session, *, ledger_id: str, revision: int) -> LedgerCalendarRevision | None:
     return db.get(LedgerCalendarRevision, (ledger_id, revision))
 
