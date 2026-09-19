@@ -148,6 +148,36 @@ matching or issue a new financial command under a new key. Mixed-server support
 uses existing capability negotiation and preserves the task when the new intent
 cannot be represented. It must not silently strip the new meaning.
 
+## Shared implementation shape
+
+Use one optional `time_input` value on new Expense create/edit/correction requests.
+It carries `precision` (`instant` or `date_only`), `calendar_revision`,
+`user_local_date`, and the applicable `instant_utc`, `source_timezone`,
+`source_utc_offset_seconds` and explicit `accounting_date`. Exact inputs validate
+the original date and selected offset against the source zone. Without an
+explicit accounting day, derive it once from the captured ledger calendar. An
+explicit day is a user-selected interpretation; the existing correction command
+still requires its reason. Date-only input never accepts an instant or offset;
+an explicitly different source locality needs an explicit accounting day.
+
+Persist Expense time evidence alongside the existing UTC `expense_time`:
+`accounting_date`, `calendar_revision`, `user_local_date`, `time_precision`,
+`source_timezone`, `source_utc_offset_seconds`, `accounting_date_basis`. Unknown
+source precision is distinct from the legacy-assumed basis. Offset facts retain
+their existing accounting day and date-only meaning. One optional
+`accounting_time` response value presents this evidence; absent old receipt data
+remains absent. The rule itself is resolved by ledger and revision, not copied
+from a mutable display preference.
+
+Legacy request bodies remain byte/shape compatible. Their accepted original
+result wins; a genuinely new legacy execution uses the saved initial
+compatibility rule and is explicitly identified as such. Known captured calendar
+revisions remain usable for original offline intent even after the current rule
+changes. New clients send the new value only under the existing server capability
+contract. Do not scatter time fields or interpretation branches through each
+writer; the shared time owner computes evidence and the existing financial owner
+applies it in its current transaction.
+
 ## Impact closure and scope
 
 | Responsibility | Required preservation and migration |
