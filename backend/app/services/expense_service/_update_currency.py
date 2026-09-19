@@ -123,7 +123,15 @@ def _apply_update_currency(
     updates: dict,
     time_changed: bool | None = None,
 ) -> None:
-    if not (_CURRENCY_RELEVANT_FIELDS & updates.keys()):
+    currency_intent = _CURRENCY_RELEVANT_FIELDS & updates.keys()
+    if payload.manual_exchange_rate is None:
+        currency_intent.discard("manual_exchange_rate")
+    if time_changed is False:
+        # The shared time owner distinguishes a transaction-time correction
+        # from period/source evidence. The latter must not resolve even a
+        # pending quote; explicit money and manual-rate inputs remain active.
+        currency_intent -= {"spent_at", "expense_time", "time_input"}
+    if not currency_intent:
         return
     if payload.manual_exchange_rate is not None:
         if expense.status != "pending":

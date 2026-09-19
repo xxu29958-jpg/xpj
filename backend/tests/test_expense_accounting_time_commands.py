@@ -105,3 +105,79 @@ def test_confirm_keeps_imported_agreed_day_when_source_precision_is_unknown():
     assert expense.accounting_date == date(2026, 4, 30)
     assert expense.expense_time is None and expense.user_local_date is None
     db.get.assert_not_called()
+
+
+def _foreign_time_row(*, ready: bool, precision: str = "instant") -> Expense:
+    return Expense(tenant_id="owner", status="pending", calendar_revision=2,
+        expense_time=datetime(2026, 4, 30, 12, tzinfo=UTC) if precision == "instant" else None,
+        time_precision=precision, user_local_date=date(2026, 4, 30), accounting_date=date(2026, 4, 30),
+        source_timezone="UTC", source_utc_offset_seconds=0 if precision == "instant" else None,
+        home_currency_code="CNY", original_currency_code="USD", original_amount_minor=100,
+        amount_cents=700 if ready else None, exchange_rate_to_cny=Decimal("7") if ready else None,
+        exchange_rate_date=date(2026, 4, 30), exchange_rate_source="manual" if ready else None,
+        fx_status="ready" if ready else "pending")
+
+
+def _time_edit(*, precision="instant", transaction_day="2026-04-30", **extra):
+    time_input = {"precision": precision, "calendar_revision": 2, "user_local_date": transaction_day,
+        "source_timezone": "UTC", "accounting_date": "2026-05-01"}
+    if precision == "instant":
+        time_input["instant_utc"] = f"{transaction_day}T12:00:00Z"
+    return ExpenseUpdateRequest(expected_row_version=3, time_input=time_input, **extra)
+
+
+def _apply_time_and_currency(expense, payload):
+    db = Mock(spec=Session)
+    db.get.return_value = LedgerCalendarRevision(ledger_id="owner", revision=2, timezone_name="UTC")
+    changed = apply_expense_time_input(db, expense, payload)
+    _update_currency._apply_update_currency(db, tenant_id="owner", expense=expense, payload=payload,
+        updates=payload.model_dump(exclude_unset=True), time_changed=changed)
+    return changed
+
+
+@pytest.mark.parametrize("ready", [False, True])
+@pytest.mark.parametrize("precision", ["instant", "date_only"])
+@pytest.mark.parametrize("rate_fields", [{}, {"manual_exchange_rate": None}])
+def test_accounting_day_only_never_resolves_a_pending_or_ready_quote(monkeypatch, ready, precision, rate_fields):
+    expense = _foreign_time_row(ready=ready, precision=precision)
+    before = (expense.amount_cents, expense.exchange_rate_to_cny, expense.exchange_rate_date,
+        expense.exchange_rate_source, expense.fx_status)
+    lookup = Mock(return_value=(Decimal("9"), "manual", "ready", date(2026, 4, 30)))
+    monkeypatch.setattr(exchange_rate_service, "resolve_payload_rate", lookup)
+    monkeypatch.setattr(exchange_rate_service, "resolve_write_capability", lambda _db: None)
+
+    assert _apply_time_and_currency(expense, _time_edit(precision=precision, **rate_fields)) is False
+
+    lookup.assert_not_called()
+    assert expense.accounting_date == date(2026, 5, 1)
+    assert (expense.amount_cents, expense.exchange_rate_to_cny, expense.exchange_rate_date,
+        expense.exchange_rate_source, expense.fx_status) == before
+
+
+def test_accounting_day_with_explicit_manual_quote_keeps_quote_recovery(monkeypatch):
+    expense = _foreign_time_row(ready=False)
+    lookup = Mock()
+    monkeypatch.setattr(exchange_rate_service, "resolve_payload_rate", lookup)
+    monkeypatch.setattr(exchange_rate_service, "resolve_write_capability", lambda _db: None)
+
+    assert _apply_time_and_currency(expense, _time_edit(manual_exchange_rate="8")) is False
+
+    lookup.assert_not_called()
+    assert expense.fx_status == "ready" and expense.amount_cents == 800
+    assert expense.exchange_rate_to_cny == Decimal("8")
+    assert expense.exchange_rate_date == date(2026, 4, 30)
+
+
+@pytest.mark.parametrize("ready", [False, True])
+@pytest.mark.parametrize("precision", ["instant", "date_only"])
+def test_real_transaction_day_edit_still_resolves_new_quote(monkeypatch, ready, precision):
+    expense = _foreign_time_row(ready=ready, precision=precision)
+    lookup = Mock(return_value=(Decimal("9"), "manual", "ready", date(2026, 5, 2)))
+    monkeypatch.setattr(exchange_rate_service, "resolve_payload_rate", lookup)
+    monkeypatch.setattr(exchange_rate_service, "resolve_write_capability", lambda _db: None)
+
+    assert _apply_time_and_currency(expense, _time_edit(precision=precision, transaction_day="2026-05-02")) is True
+
+    assert lookup.call_count == 1 and lookup.call_args.kwargs["rate_date"] == date(2026, 5, 2)
+    assert expense.fx_status == "ready" and expense.amount_cents == 900
+    assert expense.exchange_rate_date == date(2026, 5, 2)
