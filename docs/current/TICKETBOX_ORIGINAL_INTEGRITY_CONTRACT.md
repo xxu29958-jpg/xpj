@@ -93,11 +93,54 @@ read creates or replaces a digest. Upload request and Android staging hashes
 remain separate from the admitted original's hash. Existing thumbnails remain
 usable derivatives, while actual original health is reported separately.
 
-Mutation storage and transport are still to be selected from the existing command
-and cleanup owners before dependent writes. Implementation must close all affected
-consumers and retire replaced paths; a new read error alone is not this slice's
-exit. Same-bill replenishment, explicit legacy verification and durable cleanup
-remain part of the delivery, together with their actual client continuations.
+### Mutation and continuation decisions
+
+The existing Expense row remains the relationship and concurrency owner. Add one
+nullable, typed pending cleanup request there, with its reason/time and frozen
+original/thumbnail references and per-file outcomes. Retain `image_deleted_at`
+and `thumbnail_deleted_at` as completed cleanup markers; do not repurpose them
+as uncommitted requests. This is smaller than expanding BackgroundTask admission,
+dispatch and generic restart/cancel/retry semantics for each bill's bounded GC.
+The existing cleanup owner must first commit the request, then re-lock and
+continue that same request. An initial missing file is not intentional cleanup;
+only an already accepted request can explain a missing file on retry. Counts
+distinguish physical deletion in this run from settlement of earlier work.
+
+Only one unresolved cleanup request is retained per Expense. Replenishment can
+publish a new unique path while retaining the old frozen request; the old request
+must neither delete the new path nor mark it as deleted. New cleanup admission
+waits for the previous request to settle. A disabled policy stops new admission
+and remaining deletion, retaining visible pending state. Explicit cancellation
+first settles any already completed/uncertain deletion, then cancels only work
+not executed. Metadata changes use existing row_version/updated_at and audit;
+financial revisions do not acquire attachment or GC meanings. Completed history
+can use the existing audit log; that log must not become a hidden execution queue.
+
+Replenishment and explicit legacy verification use the existing ledger writer,
+actor revalidation, OCC and command-receipt owners. Accepted-key replay precedes
+new execution checks and returns its original result. Replenishment admits exact
+stored bytes unchanged when they match the known digest; a camera input may use
+the existing privacy normalization before comparison. It must not blindly
+re-encode an already admitted JPEG or reuse the Android screenshot preprocessor.
+A different resulting digest cannot replace a known identity. Legacy verification
+compares the explicitly reviewed observation with the current bytes and reference
+before recording a new baseline and actor; a read never performs that adoption.
+
+Android will extend the existing UploadIntent/FileStore/Outbox target and receipt
+branches for an existing expense, preserving its staged file, logical binding,
+original key/body and OCC. Normal upload grouping and required enrichment receipt
+remain specific to creation. A repair receipt resolves the same bill and media,
+not a new Pending bill; it proves accepted execution, not permanent file health.
+The Web native image form currently has neither durable file input nor a supplied
+upload idempotency key. Reuse its existing logical draft/ACK owner with persistent
+file accompaniment and migrate the affected image submit path; string-only manual
+draft storage and a browser file input are insufficient. This is an explicit
+missing capability to complete, not a capability removed from the product goal.
+
+These decisions precede dependent storage and client writes. Implementation must
+close all affected consumers and retire replaced paths; a new read error alone is
+not this slice's exit. Same-bill replenishment, explicit legacy verification,
+visible health and durable cleanup remain required with their client continuations.
 
 ## Evidence and exit
 
@@ -116,3 +159,20 @@ PostgreSQL and affected client/packaging lanes on the final exact source for the
 claims that need them; do not run ten-minute local suites or duplicate a proof
 framework. Verify ordinary user task completion and retained file behavior before
 closing this slice, then continue the same atlas toward the full product endpoint.
+
+At `0d5854019`, verified snapshots and API/Web delivery are integrated with both
+real OCR providers and thumbnail producers. The actual consumer RED had two OCR
+mismatch failures and three missing thumbnail-identity interface failures, with
+four matching/legacy controls passing. The integrated narrow run passed 68 tests
+in 2.04 seconds, including Range, cancellation, legacy reads, correct snapshot
+consumption and unavailable temporary storage distinguished from a missing original.
+The existing upload/thumbnail/enrichment/cleanup group collected 67 tests; that is
+collection only, not PostgreSQL execution. No daily data or installation changed.
+
+`d6c9619d6` also carries three deliberately failing real-file cleanup tests:
+after-confirm and both retention entry points remove bytes before their cleanup
+commit is accepted. The confirmation case first commits the financial fact through
+the actual command owner. Mock Sessions inject the cleanup commit failure; these
+tests do not prove PostgreSQL persistence or concurrency. Cleanup, visible health,
+same-bill mutations and client continuations are still incomplete. No source in
+this preparation is a qualified new main or a completed original-attachment slice.
