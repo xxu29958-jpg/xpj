@@ -849,6 +849,154 @@ def test_observer_cancelled_inner_runs_after_timing_failure() -> None:
     assert "--run-conclusion" in timing["run"]
 
 
+def _observer_target_steps() -> tuple[dict, dict]:
+    workflow = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "ci-run-timing-observer.yml"
+    parsed = yaml.safe_load(workflow.read_text(encoding="utf-8"))
+    steps = parsed["jobs"]["observe"]["steps"]
+    timing = next(step for step in steps if step["name"] == "Record observed run timing")
+    cancelled = next(step for step in steps if step["name"] == "Record cancelled Connected inner timing")
+    return timing, cancelled
+
+
+def test_observer_workflow_passes_explicit_workflow_run_target() -> None:
+    timing, cancelled = _observer_target_steps()
+    text = Path(__file__).resolve().parents[2].joinpath(
+        ".github", "workflows", "ci-run-timing-observer.yml",
+    ).read_text(encoding="utf-8")
+    assert "GITHUB_RUN_ID:" not in text
+    assert "GITHUB_RUN_ATTEMPT:" not in text
+    for step in (timing, cancelled):
+        env = step.get("env") or {}
+        assert "GITHUB_RUN_ID" not in env
+        assert "GITHUB_RUN_ATTEMPT" not in env
+        run = step["run"]
+        assert "--github-repository" in run
+        assert "--github-run-id" in run
+        assert "--attempt" in run
+        assert "${{ github.event.workflow_run.id }}" in run
+        assert "${{ github.event.workflow_run.run_attempt }}" in run
+        assert "${{ github.repository }}" in run
+
+
+def test_from_github_uses_explicit_run_id_not_observer_github_run_id(tmp_path: Path) -> None:
+    output = tmp_path / "timing.json"
+    seen: list[str] = []
+    current = _job(
+        id=20, run_id=100, run_attempt=2,
+        started_at="2026-09-18T03:00:00Z", completed_at="2026-09-18T03:10:00Z",
+    )
+    previous = _job(id=10, run_id=100, run_attempt=1)
+
+    def opener(request):
+        url = request.full_url
+        seen.append(url)
+        assert "/runs/999" not in url
+        if "/runs/100/attempts/2/jobs" in url:
+            return _FakeResponse({"jobs": [current]})
+        if "/runs/100/attempts/1/jobs" in url:
+            return _FakeResponse({"jobs": [previous]})
+        if "/runs/100/artifacts?per_page=100" in url:
+            return _FakeResponse(_identity_listing(
+                (ci_run_timing.IDENTITY_ARTIFACT, "https://api.github.com/download/identity"),
+            ))
+        if url == "https://api.github.com/download/identity":
+            return _FakeResponse(_zip_json(_pr_identity(run_id=100, run_attempt=2)))
+        raise AssertionError(url)
+
+    code = _main(
+        [
+            "--from-github",
+            "--from-run-identity",
+            "--github-repository", "xxu29958-jpg/xpj",
+            "--github-run-id", "100",
+            "--attempt", "2",
+            "--event", "pull_request",
+            "--output-json", str(output),
+        ],
+        {
+            "GITHUB_TOKEN": "t",
+            "GITHUB_SHA": "f" * 40,
+            "GITHUB_RUN_ID": "999",
+            "GITHUB_RUN_ATTEMPT": "1",
+            "GITHUB_REPOSITORY": "observer/should-not-matter",
+        },
+        opener,
+    )
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert code == 0, payload
+    assert payload["identity"]["run_id"] in {100, "100"}
+    assert any("/runs/100/attempts/2/jobs" in url for url in seen)
+    assert any("/runs/100/artifacts" in url for url in seen)
+    assert all("/runs/999" not in url for url in seen)
+    assert all("observer/should-not-matter" not in url for url in seen)
+
+
+def test_derive_cancelled_inner_uses_explicit_run_id_not_observer_github_run_id(tmp_path: Path) -> None:
+    inner = tmp_path / "connected-inner-timing.json"
+    seen: list[str] = []
+    job = _job(
+        id=20, name="Connected execution", run_id=100, run_attempt=2,
+        conclusion="cancelled",
+        started_at="2026-09-18T03:00:00Z", completed_at="2026-09-18T03:08:00Z",
+        steps=[{
+            "name": "Run connected test",
+            "conclusion": "cancelled",
+            "started_at": "2026-09-18T03:01:00Z",
+            "completed_at": "2026-09-18T03:08:00Z",
+        }],
+    )
+    previous = _job(id=10, name="Connected execution", run_id=100, run_attempt=1)
+
+    def opener(request):
+        url = request.full_url
+        seen.append(url)
+        assert "/runs/999" not in url
+        if "/runs/100/attempts/2/jobs" in url:
+            return _FakeResponse({"jobs": [job]})
+        if "/runs/100/attempts/1/jobs" in url:
+            return _FakeResponse({"jobs": [previous]})
+        if "/runs/100/artifacts?per_page=100" in url:
+            return _FakeResponse(_identity_listing(
+                (ci_run_timing.IDENTITY_ARTIFACT, "https://api.github.com/download/identity"),
+            ))
+        if url == "https://api.github.com/download/identity":
+            return _FakeResponse(_zip_json(_pr_identity(
+                run_id=100, run_attempt=2, workflow="Android Connected Test",
+            )))
+        raise AssertionError(url)
+
+    code = _main(
+        [
+            "--stamp-connected-inner", str(inner),
+            "--from-github",
+            "--from-run-identity",
+            "--github-repository", "xxu29958-jpg/xpj",
+            "--github-run-id", "100",
+            "--attempt", "2",
+            "--allow-partial",
+            "--derive-cancelled-inner",
+            "--job-name", "Connected execution",
+            "--outer-step", "Run connected test",
+        ],
+        {
+            "GITHUB_TOKEN": "t",
+            "GITHUB_SHA": "f" * 40,
+            "GITHUB_RUN_ID": "999",
+            "GITHUB_RUN_ATTEMPT": "1",
+            "GITHUB_REPOSITORY": "observer/should-not-matter",
+        },
+        opener,
+    )
+    payload = json.loads(inner.read_text(encoding="utf-8"))
+    assert code == 0
+    assert payload["identity"]["run_id"] in {100, "100"}
+    assert payload["state"] == "cancelled_during_connected"
+    assert any("/runs/100/attempts/2/jobs" in url for url in seen)
+    assert any("/runs/100/artifacts" in url for url in seen)
+    assert all("/runs/999" not in url for url in seen)
+    assert all("observer/should-not-matter" not in url for url in seen)
+
+
 def test_cancelled_run_with_successful_jobs_reports_full_wasted_minutes() -> None:
     summary = ci_run_timing.summarize_jobs(
         [

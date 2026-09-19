@@ -37,9 +37,6 @@ jobs:
       - name: Record observed run timing
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          GITHUB_RUN_ID: ${{ github.event.workflow_run.id }}
-          GITHUB_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
           XPJ_TIMING_WORKFLOW: ${{ github.event.workflow_run.name }}
           XPJ_WEIGHT_EVENT: ${{ github.event.workflow_run.event }}
           XPJ_WEIGHT_SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
@@ -48,6 +45,9 @@ jobs:
           python -E -S backend/scripts/ci_run_timing.py
           --from-github
           --from-run-identity
+          --github-repository "${{ github.repository }}"
+          --github-run-id "${{ github.event.workflow_run.id }}"
+          --attempt "${{ github.event.workflow_run.run_attempt }}"
           --run-conclusion "${{ github.event.workflow_run.conclusion }}"
           --output-json ${{ runner.temp }}/ci-run-timing.json
           --summary "$GITHUB_STEP_SUMMARY"
@@ -59,9 +59,6 @@ jobs:
               && github.event.workflow_run.conclusion == 'cancelled' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          GITHUB_RUN_ID: ${{ github.event.workflow_run.id }}
-          GITHUB_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
           XPJ_TIMING_WORKFLOW: ${{ github.event.workflow_run.name }}
           XPJ_WEIGHT_EVENT: ${{ github.event.workflow_run.event }}
           XPJ_WEIGHT_SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
@@ -70,9 +67,11 @@ jobs:
           --stamp-connected-inner ${{ runner.temp }}/connected-inner-timing.json
           --from-github
           --from-run-identity
+          --github-repository "${{ github.repository }}"
+          --github-run-id "${{ github.event.workflow_run.id }}"
+          --attempt "${{ github.event.workflow_run.run_attempt }}"
           --allow-partial
           --derive-cancelled-inner
-          --attempt "${{ github.event.workflow_run.run_attempt }}"
           --job-name "Connected execution"
           --outer-step "Run connected test"
 

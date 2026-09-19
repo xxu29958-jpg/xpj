@@ -593,8 +593,9 @@ def fetch_github_jobs(
     attempt: int,
     token: str,
     *,
-    urlopen=urllib.request.urlopen,
+    urlopen=None,
 ) -> list[dict]:
+    opener = urlopen or urllib.request.urlopen
     jobs: list[dict] = []
     for page in range(1, 21):
         url = (
@@ -610,7 +611,7 @@ def fetch_github_jobs(
                 "User-Agent": "ticketbox-ci-run-timing",
             },
         )
-        with urlopen(request) as response:
+        with opener(request) as response:
             payload = json.loads(response.read().decode("utf-8"))
         chunk = payload.get("jobs", []) if isinstance(payload, dict) else []
         jobs.extend(row for row in chunk if isinstance(row, dict))
