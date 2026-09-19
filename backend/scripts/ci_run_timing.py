@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import os
 import re
 import sys
 import urllib.error
 import urllib.request
+import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -33,10 +35,17 @@ _NO_BILL = frozenset({"inherited", "skipped", "mismatch", "identity", "inverted"
 _NAMED_BUCKETS = {
     "success": "success",
     "failure": "failure",
+    "timed_out": "timed_out",
     "cancelled": "cancelled",
     "neutral": "neutral",
 }
-_EXECUTED_STEP = frozenset({"success", "failure", "cancelled"})
+_EXECUTED_STEP = frozenset({"success", "failure", "timed_out", "cancelled"})
+_SCOPE_LOG_JOBS = {
+    "CI": ("CI scope",),
+    "CodeQL": ("CodeQL scope",),
+    "Android Connected Test": ("Connected scope",),
+}
+_AUDIT_LOG_JOBS = {"CI": ("Backend contracts",)}
 _KNOWN_STEP = _EXECUTED_STEP | {"skipped"}
 _JOB_IDENTITY = ("run_id", "workflow_name", "head_sha", "run_attempt", "status", "conclusion")
 _JOB_INTERVAL = ("started_at", "completed_at")
@@ -253,7 +262,24 @@ def _bucket_for(conclusion: object) -> str | None:
 
 
 def _empty_buckets() -> dict[str, float]:
-    return {"success": 0.0, "failure": 0.0, "cancelled": 0.0, "neutral": 0.0, "other": 0.0}
+    return {
+        "success": 0.0,
+        "failure": 0.0,
+        "timed_out": 0.0,
+        "cancelled": 0.0,
+        "neutral": 0.0,
+        "other": 0.0,
+    }
+
+
+def _conclusion_view(buckets: dict[str, float]) -> dict[str, float]:
+    return {
+        "success": _minutes(buckets["success"]),
+        "failure": _minutes(buckets["failure"]),
+        "timed_out": _minutes(buckets["timed_out"]),
+        "cancelled": _minutes(buckets["cancelled"]),
+        "other": _minutes(buckets["neutral"] + buckets["other"]),
+    }
 
 
 def _platform_for(job: dict) -> str:
@@ -411,17 +437,13 @@ def summarize_jobs(
         "total_execution_minutes": _minutes(total),
         "success_execution_minutes": _minutes(buckets["success"]),
         "failure_execution_minutes": _minutes(buckets["failure"]),
+        "timed_out_execution_minutes": _minutes(buckets["timed_out"]),
         "cancelled_consumed_minutes": _minutes(buckets["cancelled"]),
         "cancelled_execution_minutes": _minutes(buckets["cancelled"]),
         "neutral_execution_minutes": _minutes(buckets["neutral"]),
         "other_execution_minutes": _minutes(buckets["other"]),
         "by_platform": {name: _minutes(seconds) for name, seconds in sorted(platforms.items())},
-        "by_conclusion": {
-            "success": _minutes(buckets["success"]),
-            "failure": _minutes(buckets["failure"]),
-            "cancelled": _minutes(buckets["cancelled"]),
-            "other": _minutes(buckets["neutral"] + buckets["other"]),
-        },
+        "by_conclusion": _conclusion_view(buckets),
         "skipped_jobs": skipped,
         "observed_subset_wall_clock_s": _seconds(min(starts), max(ends)) if starts and ends else None,
         "coverage": "observed subset of supplied jobs only; not the final required-check wait",
@@ -483,7 +505,9 @@ def _render_report(report: dict[str, object]) -> str:
         f"source_sha={subject.get('source_sha')} base_sha={subject.get('base_sha')}",
         f"known_minutes={execution.get('known_minutes')} by_platform={execution.get('by_platform')}",
         f"by_conclusion={execution.get('by_conclusion')}",
-        f"required_gate_wait complete={wait.get('complete')} elapsed_s={wait.get('elapsed_s')} "
+        f"required_gate_wait complete={wait.get('complete')} "
+        f"elapsed_from_created_s={wait.get('elapsed_from_created_s')} "
+        f"elapsed_from_started_s={wait.get('elapsed_from_started_s')} "
         f"missing_checks={wait.get('missing_checks')}",
     ]
     for item in report.get("incomplete_reasons") or []:
@@ -569,7 +593,10 @@ def parse_audit_lane_timing(text: str) -> list[dict[str, object]]:
         match = _AUDIT_LANE.match(line.strip())
         if match is None:
             continue
-        payload = json.loads(match.group(1))
+        try:
+            payload = json.loads(match.group(1))
+        except json.JSONDecodeError as exc:
+            raise ValueError("audit lane timing JSON is invalid") from exc
         if isinstance(payload, dict):
             rows.append(payload)
     return rows
@@ -602,24 +629,59 @@ def _phase_row(name: str, phase: str, kind: str, step: dict | None) -> dict[str,
     }
 
 
+def _derived_span(jobs: list[dict], start_name: str, end_name: str) -> dict[str, object]:
+    start = _named_step(jobs, start_name)
+    end = _named_step(jobs, end_name)
+    if start is None or end is None:
+        return {
+            "measurement_kind": "unknown",
+            "elapsed_s": None,
+            "source_step": None,
+        }
+    elapsed = _seconds(parse_utc(start.get("started_at")), parse_utc(end.get("completed_at")))
+    if elapsed is not None and elapsed < 0:
+        elapsed = None
+    return {
+        "measurement_kind": "derived",
+        "elapsed_s": elapsed,
+        "source_step": f"{start_name} -> {end_name}",
+    }
+
+
 def android_phases_from_jobs(jobs: list[dict]) -> list[dict[str, object]]:
-    compile_step = _named_step(jobs, "Precompile connected APKs")
-    connected_step = _named_step(jobs, "Run connected test")
+    configuration = {
+        "name": "configuration",
+        "phase": "configuration",
+        **_derived_span(jobs, "Set up Java", "Accept Android SDK licenses"),
+    }
     return [
-        _phase_row("compile", "compile", "direct", compile_step),
-        _phase_row(
-            "connected_test",
-            "emulator_prepare + install + test + qualification + exit",
-            "combined",
-            connected_step,
-        ),
+        configuration,
+        _phase_row("compile", "compile", "direct", _named_step(jobs, "Precompile connected APKs")),
         {
             "name": "cache_state",
             "phase": "cache",
             "measurement_kind": "unknown",
             "elapsed_s": None,
-            "source_step": None,
+            "source_step": "Set up Gradle",
         },
+        _phase_row(
+            "emulator_prepare_install_test_exit",
+            "emulator_prepare + install + test + exit",
+            "combined",
+            _named_step(jobs, "Run connected test"),
+        ),
+        _phase_row(
+            "checkout_qualification",
+            "checkout qualification",
+            "direct",
+            _named_step(jobs, "Verify qualification SHA"),
+        ),
+        _phase_row(
+            "result_qualification",
+            "result qualification",
+            "direct",
+            _named_step(jobs, "Enforce Connected result"),
+        ),
     ]
 
 
@@ -651,24 +713,56 @@ def _record_required_job(job: dict, required_checks: list[str], completed: dict[
         completed[str(name)] = ended
 
 
+def _inferred_attempts(bundle: dict[str, object]) -> list[dict[str, object]]:
+    metadata = bundle.get("metadata") or {}
+    attempt = _attempt_number(bundle.get("attempt") or metadata.get("run_attempt")) or 1
+    jobs = [job for job in (bundle.get("jobs") or []) if isinstance(job, dict)]
+    previous = [job for job in (bundle.get("previous_jobs") or []) if isinstance(job, dict)]
+    if previous and attempt > 1:
+        return [{"attempt": attempt - 1, "jobs": previous}, {"attempt": attempt, "jobs": jobs}]
+    return [{"attempt": attempt, "jobs": jobs}]
+
+
+def _bundle_attempts(bundle: dict[str, object]) -> list[dict[str, object]]:
+    raw = bundle.get("attempts")
+    if not isinstance(raw, list) or not raw:
+        return _inferred_attempts(bundle)
+    rows = [item for item in raw if isinstance(item, dict) and item.get("jobs") is not None]
+    return sorted(rows, key=lambda item: _attempt_number(item.get("attempt")) or 0)
+
+
+def _iter_bundle_jobs(bundle: dict[str, object]):
+    for item in _bundle_attempts(bundle):
+        for job in item.get("jobs") or []:
+            if isinstance(job, dict):
+                yield job
+
+
 def required_gate_wait(bundles: list[dict[str, object]], required_checks: list[str]) -> dict[str, object]:
-    starts: list[datetime] = []
+    created: list[datetime] = []
+    started: list[datetime] = []
     completed: dict[str, datetime] = {}
     for bundle in bundles:
         metadata = bundle.get("metadata") or {}
-        started = parse_utc(metadata.get("run_started_at") or metadata.get("created_at"))
-        if started:
-            starts.append(started)
-        for job in bundle.get("jobs") or []:
+        created_at = parse_utc(metadata.get("created_at"))
+        started_at = parse_utc(metadata.get("run_started_at"))
+        if created_at:
+            created.append(created_at)
+        if started_at:
+            started.append(started_at)
+        for job in _iter_bundle_jobs(bundle):
             _record_required_job(job, required_checks, completed)
     missing = [name for name in required_checks if name not in completed]
     last = max(completed.values()) if completed else None
-    first = min(starts) if starts else None
+    first_created = min(created) if created else None
+    first_started = min(started) if started else None
     return {
-        "complete": bool(required_checks) and not missing and first is not None and last is not None,
-        "trigger_started_at": _utc_text(first),
+        "complete": bool(required_checks) and not missing and first_created is not None and last is not None,
+        "trigger_created_at": _utc_text(first_created),
+        "first_workflow_started_at": _utc_text(first_started),
         "last_required_check_completed_at": _utc_text(last),
-        "elapsed_s": _seconds(first, last),
+        "elapsed_from_created_s": _seconds(first_created, last),
+        "elapsed_from_started_s": _seconds(first_started, last),
         "missing_checks": missing,
     }
 
@@ -697,6 +791,22 @@ def _choose_source(heads: set[object], qualification: list[tuple[str, str]]) -> 
     return None
 
 
+def _bundle_checkout(bundle: dict[str, object]) -> str | None:
+    if bundle.get("checkout_sha"):
+        return str(bundle.get("checkout_sha"))
+    metadata = bundle.get("metadata") or {}
+    if metadata.get("checkout_sha"):
+        return str(metadata.get("checkout_sha"))
+    return None
+
+
+def _bundle_source(bundle: dict[str, object]) -> str | None:
+    if bundle.get("source_sha"):
+        return str(bundle.get("source_sha"))
+    metadata = bundle.get("metadata") or {}
+    return metadata.get("head_sha") or metadata.get("source_sha")
+
+
 def subject_from_bundles(
     repository: str | None,
     bundles: list[dict[str, object]],
@@ -709,8 +819,12 @@ def subject_from_bundles(
     source = _choose_source(heads, qualification)
     event = next(iter(events)) if len(events) == 1 else None
     base = next(iter(bases)) if len(bases) == 1 else None
+    checkouts = [item[0] for item in qualification]
+    checkouts.extend(sha for sha in (_bundle_checkout(bundle) for bundle in bundles) if sha)
     if not source:
         notes.append("missing source_sha")
+    if not checkouts:
+        notes.append("missing checkout SHA")
     if event == "pull_request" and not base:
         notes.append("missing base_sha")
     if len(heads) > 1:
@@ -720,7 +834,7 @@ def subject_from_bundles(
             "repository": repository,
             "event": event,
             "source_sha": source,
-            "checkout_shas": [item[0] for item in qualification],
+            "checkout_shas": list(dict.fromkeys(checkouts)),
             "base_sha": base,
         },
         not notes,
@@ -728,18 +842,69 @@ def subject_from_bundles(
     )
 
 
-def _workflow_row(summary: dict[str, object], metadata: dict, run_id: object) -> dict[str, object]:
+def _final_job_completed_at(bundle: dict[str, object]) -> str | None:
+    ended = [parse_utc(job.get("completed_at")) for job in _iter_bundle_jobs(bundle)]
+    present = [item for item in ended if item is not None]
+    return _utc_text(max(present)) if present else None
+
+
+def _attempt_row(summary: dict[str, object]) -> dict[str, object]:
+    inherited = sum(1 for job in summary.get("jobs") or [] if job.get("inherited"))
     return {
-        "run_id": summary["run_id"] or run_id,
-        "name": metadata.get("name") or summary["workflow_name"],
-        "head_sha": summary["head_sha"] or metadata.get("head_sha"),
         "attempt": summary["attempt"],
-        "conclusion": metadata.get("conclusion"),
+        "actual_execution_minutes": summary["runner_execution_minutes"],
+        "inherited_job_count": inherited,
         "complete": summary["complete"],
-        "runner_execution_minutes": summary["runner_execution_minutes"],
         "by_platform": summary["by_platform"],
         "by_conclusion": summary["by_conclusion"],
         "incomplete": summary["incomplete"],
+    }
+
+
+def _merge_conclusions(left: dict[str, float], right: dict[str, float]) -> dict[str, float]:
+    merged = dict(left)
+    for key, value in right.items():
+        if key in merged:
+            merged[key] = round(merged[key] + float(value), 3)
+    return merged
+
+
+def _workflow_row(
+    bundle: dict[str, object],
+    metadata: dict,
+    run_id: object,
+    attempt_rows: list[dict[str, object]],
+    latest: dict[str, object],
+    total_minutes: float,
+) -> dict[str, object]:
+    name = metadata.get("name") or latest.get("workflow_name")
+    platforms: dict[str, float] = {}
+    conclusions = {"success": 0.0, "failure": 0.0, "timed_out": 0.0, "cancelled": 0.0, "other": 0.0}
+    incomplete: list[str] = []
+    for row in attempt_rows:
+        platforms = _merge_minutes(platforms, dict(row.get("by_platform") or {}))
+        conclusions = _merge_conclusions(conclusions, dict(row.get("by_conclusion") or {}))
+        incomplete.extend(str(item) for item in row.get("incomplete") or [])
+    return {
+        "run_id": latest.get("run_id") or run_id,
+        "name": name,
+        "event": metadata.get("event"),
+        "source_sha": _bundle_source(bundle),
+        "checkout_sha": _bundle_checkout(bundle),
+        "base_sha": next(iter(_base_shas([bundle])), None),
+        "created_at": metadata.get("created_at"),
+        "run_started_at": metadata.get("run_started_at"),
+        "final_job_completed_at": _final_job_completed_at(bundle),
+        "final_job_completed_at_kind": "derived_from_job_completed_at",
+        "status": metadata.get("status"),
+        "conclusion": metadata.get("conclusion"),
+        "attempt": latest.get("attempt") or metadata.get("run_attempt"),
+        "attempts": attempt_rows,
+        "complete": bool(attempt_rows) and all(row.get("complete") for row in attempt_rows),
+        "runner_execution_minutes": total_minutes,
+        "by_platform": platforms,
+        "by_conclusion": conclusions,
+        "incomplete": incomplete,
     }
 
 
@@ -751,17 +916,45 @@ def _add_minutes(totals: dict[str, object], summary: dict[str, object]) -> None:
     totals["known"] = round(totals["known"] + float(summary["runner_execution_minutes"]), 3)
 
 
+def _summarize_attempts(bundle: dict[str, object]) -> tuple[list[dict[str, object]], dict[str, object], float]:
+    rows: list[dict[str, object]] = []
+    previous_jobs: list[dict] | None = None
+    latest: dict[str, object] = summarize_jobs([])
+    total = 0.0
+    for item in _bundle_attempts(bundle):
+        attempt = _attempt_number(item.get("attempt")) or 1
+        jobs = [job for job in (item.get("jobs") or []) if isinstance(job, dict)]
+        latest = summarize_jobs(jobs, attempt=attempt, previous_jobs=previous_jobs)
+        rows.append(_attempt_row(latest))
+        total = round(total + float(latest["runner_execution_minutes"]), 3)
+        previous_jobs = jobs
+    return rows, latest, total
+
+
 def _note_special_workflow(
     bundle: dict[str, object],
     metadata: dict,
-    summary: dict[str, object],
+    total_minutes: float,
     run_id: object,
     totals: dict[str, object],
 ) -> None:
     if metadata.get("conclusion") == "cancelled":
-        totals["cancellations"].append(cancellation_record(run_id, float(summary["total_execution_minutes"])))
-    if summary.get("workflow_name") == "Android Connected Test" or metadata.get("name") == "Android Connected Test":
-        totals["android_jobs"].extend(job for job in (bundle.get("jobs") or []) if isinstance(job, dict))
+        totals["cancellations"].append(cancellation_record(run_id, total_minutes))
+    if metadata.get("name") == "Android Connected Test":
+        totals["android_jobs"].extend(_iter_bundle_jobs(bundle))
+
+
+def _attempt_gap_notes(bundle: dict[str, object]) -> list[str]:
+    metadata = bundle.get("metadata") or {}
+    expected = _attempt_number(metadata.get("run_attempt") or bundle.get("attempt"))
+    if expected is None:
+        return ["missing attempt"]
+    have = {_attempt_number(item.get("attempt")) for item in _bundle_attempts(bundle)}
+    missing = [index for index in range(1, expected + 1) if index not in have]
+    if not missing:
+        return []
+    name = metadata.get("name") or metadata.get("id")
+    return [f"missing attempt {index} jobs for {name}" for index in missing]
 
 
 def _add_bundle(
@@ -773,25 +966,93 @@ def _add_bundle(
     if metadata and not _run_is_finished(metadata):
         totals["incomplete"].append(f"unfinished run {run_id}")
         totals["runner_complete"] = False
-    summary = summarize_jobs(
-        list(bundle.get("jobs") or []),
-        attempt=_attempt_number(bundle.get("attempt") or metadata.get("run_attempt")),
-        previous_jobs=bundle.get("previous_jobs"),
-    )
-    if not summary["complete"]:
-        totals["runner_complete"] = False
-        totals["incomplete"].extend(str(item) for item in summary["incomplete"])
-    _add_minutes(totals, summary)
-    _note_special_workflow(bundle, metadata, summary, run_id, totals)
-    totals["workflows"].append(_workflow_row(summary, metadata, run_id))
+    attempt_rows, latest, total_minutes = _summarize_attempts(bundle)
+    for row in attempt_rows:
+        if not row.get("complete"):
+            totals["runner_complete"] = False
+            totals["incomplete"].extend(str(item) for item in row.get("incomplete") or [])
+        _add_minutes(totals, {
+            "by_platform": row.get("by_platform") or {},
+            "by_conclusion": row.get("by_conclusion") or {},
+            "runner_execution_minutes": row.get("actual_execution_minutes") or 0,
+        })
+    totals["incomplete"].extend(_attempt_gap_notes(bundle))
+    _note_special_workflow(bundle, metadata, total_minutes, run_id, totals)
+    totals["workflows"].append(_workflow_row(bundle, metadata, run_id, attempt_rows, latest, total_minutes))
 
 
 def _wait_notes(wait: dict[str, object], required_checks: list[str]) -> list[str]:
-    if wait["complete"] or not required_checks:
+    if not required_checks:
+        return ["required-check set not supplied"]
+    if wait["complete"]:
         return []
     if wait["missing_checks"]:
         return [f"missing required checks: {', '.join(wait['missing_checks'])}"]
     return ["required-check wait is incomplete"]
+
+
+def _backend_contracts_executed(bundles: list[dict[str, object]]) -> bool:
+    for bundle in bundles:
+        for job in _iter_bundle_jobs(bundle):
+            if job.get("name") == "Backend contracts" and job.get("conclusion") in _EXECUTED_STEP:
+                return True
+    return False
+
+
+def _audit_lanes_complete(audit_lanes: list[dict[str, object]]) -> bool:
+    if not audit_lanes:
+        return False
+    return all(lane.get("returncode") is not None and lane.get("complete") is not False for lane in audit_lanes)
+
+
+def _workflow_evidence_notes(bundle: dict[str, object]) -> list[str]:
+    metadata = bundle.get("metadata") or {}
+    name = str(metadata.get("name") or metadata.get("id") or "workflow")
+    notes: list[str] = []
+    if not metadata.get("event"):
+        notes.append(f"missing event for {name}")
+    if not _bundle_source(bundle):
+        notes.append(f"missing source SHA for {name}")
+    if not _bundle_checkout(bundle):
+        notes.append(f"missing checkout SHA for {name}")
+    if metadata.get("id") in {None, ""} and bundle.get("run_id") in {None, ""}:
+        notes.append(f"missing run_id for {name}")
+    if _attempt_number(metadata.get("run_attempt") or bundle.get("attempt")) is None:
+        notes.append(f"missing attempt for {name}")
+    return notes
+
+
+def _strict_complete_notes(
+    bundles: list[dict[str, object]],
+    *,
+    required_checks: list[str],
+    wait: dict[str, object],
+    identity_notes: list[str],
+    audit_lanes: list[dict[str, object]],
+    evidence_errors: list[str],
+    runner_complete: bool,
+) -> list[str]:
+    notes = list(evidence_errors)
+    notes.extend(identity_notes)
+    notes.extend(_wait_notes(wait, required_checks))
+    for bundle in bundles:
+        notes.extend(_workflow_evidence_notes(bundle))
+        notes.extend(_attempt_gap_notes(bundle))
+        metadata = bundle.get("metadata") or {}
+        if metadata and not _run_is_finished(metadata):
+            notes.append(f"unfinished run {metadata.get('id')}")
+    if _backend_contracts_executed(bundles) and not _audit_lanes_complete(audit_lanes):
+        notes.append("audit lane timing unavailable")
+    if not runner_complete:
+        notes.append("runner cost incomplete")
+    # Deduplicate while preserving order
+    seen: set[str] = set()
+    unique: list[str] = []
+    for item in notes:
+        if item not in seen:
+            seen.add(item)
+            unique.append(item)
+    return unique
 
 
 def build_report(
@@ -801,12 +1062,15 @@ def build_report(
     required_checks: list[str] | None = None,
     audit_lanes: list[dict[str, object]] | None = None,
     qualification: list[tuple[str, str]] | None = None,
+    evidence_errors: list[str] | None = None,
 ) -> dict[str, object]:
     totals: dict[str, object] = {
         "incomplete": [],
         "workflows": [],
         "platforms": {},
-        "conclusions": {"success": 0.0, "failure": 0.0, "cancelled": 0.0, "other": 0.0},
+        "conclusions": {
+            "success": 0.0, "failure": 0.0, "timed_out": 0.0, "cancelled": 0.0, "other": 0.0,
+        },
         "cancellations": [],
         "android_jobs": [],
         "known": 0.0,
@@ -814,14 +1078,26 @@ def build_report(
     }
     for bundle in bundles:
         _add_bundle(bundle, totals)
+    pairs = list(qualification or [])
+    if len(pairs) == 1:
+        checkout, source = pairs[0]
+        for bundle in bundles:
+            bundle.setdefault("checkout_sha", checkout)
+            bundle.setdefault("source_sha", source)
     subject, identity_complete, identity_notes = subject_from_bundles(
-        repository, bundles, qualification or [],
+        repository, bundles, pairs,
     )
-    incomplete = list(totals["incomplete"]) + identity_notes
     checks = list(required_checks or [])
     wait = required_gate_wait(bundles, checks)
-    incomplete.extend(_wait_notes(wait, checks))
-    complete = bool(totals["runner_complete"]) and identity_complete and (wait["complete"] or not checks)
+    incomplete = _strict_complete_notes(
+        bundles,
+        required_checks=checks,
+        wait=wait,
+        identity_notes=identity_notes + list(totals["incomplete"]),
+        audit_lanes=list(audit_lanes or []),
+        evidence_errors=list(evidence_errors or []),
+        runner_complete=bool(totals["runner_complete"]),
+    )
     return {
         "subject": subject,
         "identity_complete": identity_complete,
@@ -837,7 +1113,7 @@ def build_report(
         "android_phases": android_phases_from_jobs(list(totals["android_jobs"])),
         "cancellations": totals["cancellations"],
         "incomplete_reasons": incomplete,
-        "complete": complete,
+        "complete": not incomplete,
         "unit": "raw runner execution seconds / 60, not billed minutes",
     }
 
@@ -855,6 +1131,90 @@ def _token() -> str | None:
     return os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
 
 
+def _decode_log_blob(blob: bytes) -> str:
+    if blob.startswith(b"PK"):
+        with zipfile.ZipFile(io.BytesIO(blob)) as archive:
+            parts = [archive.read(name).decode("utf-8", errors="replace") for name in archive.namelist()]
+        return "\n".join(parts)
+    return blob.decode("utf-8", errors="replace")
+
+
+def fetch_job_logs(
+    repository: str,
+    job_id: int,
+    token: str,
+    *,
+    urlopen=None,
+) -> str:
+    opener = urlopen or urllib.request.urlopen
+    request = urllib.request.Request(
+        f"{_GITHUB_API}/repos/{repository}/actions/jobs/{job_id}/logs",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "*/*",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": "ticketbox-ci-run-timing",
+        },
+    )
+    with opener(request) as response:
+        return _decode_log_blob(response.read())
+
+
+def _find_named_job(bundle: dict[str, object], name: str) -> dict | None:
+    for item in reversed(_bundle_attempts(bundle)):
+        for job in item.get("jobs") or []:
+            if (
+                isinstance(job, dict)
+                and job.get("name") == name
+                and job.get("id") not in {None, ""}
+                and job.get("conclusion") != "skipped"
+            ):
+                return job
+    return None
+
+
+def attach_remote_evidence(
+    bundles: list[dict[str, object]],
+    repository: str,
+    token: str,
+    *,
+    urlopen=None,
+) -> tuple[list[tuple[str, str]], list[dict[str, object]], list[str]]:
+    qualification: list[tuple[str, str]] = []
+    audit_lanes: list[dict[str, object]] = []
+    errors: list[str] = []
+    for bundle in bundles:
+        metadata = bundle.get("metadata") or {}
+        workflow = str(metadata.get("name") or "")
+        for job_name in _SCOPE_LOG_JOBS.get(workflow, ()):
+            job = _find_named_job(bundle, job_name)
+            if job is None:
+                errors.append(f"missing checkout SHA for {workflow}")
+                continue
+            try:
+                text = fetch_job_logs(repository, int(job["id"]), token, urlopen=urlopen)
+            except _LOAD_CATCH:
+                errors.append(f"missing checkout SHA for {workflow}")
+                continue
+            parsed = parse_qualification_log(text)
+            if parsed is None:
+                errors.append(f"missing checkout SHA for {workflow}")
+                continue
+            bundle["checkout_sha"] = parsed[0]
+            bundle["source_sha"] = parsed[1]
+            qualification.append(parsed)
+        for job_name in _AUDIT_LOG_JOBS.get(workflow, ()):
+            job = _find_named_job(bundle, job_name)
+            if job is None:
+                continue
+            try:
+                text = fetch_job_logs(repository, int(job["id"]), token, urlopen=urlopen)
+                audit_lanes.extend(parse_audit_lane_timing(text))
+            except _LOAD_CATCH:
+                errors.append("audit lane timing unavailable")
+    return qualification, audit_lanes, errors
+
+
 def _load_remote_bundles(args: argparse.Namespace) -> list[dict[str, object]]:
     token = _token()
     repository = args.repository or os.environ.get("GITHUB_REPOSITORY")
@@ -863,37 +1223,58 @@ def _load_remote_bundles(args: argparse.Namespace) -> list[dict[str, object]]:
     bundles = []
     for run_id in args.run_ids:
         metadata = fetch_github_run(repository, run_id, token)
-        attempt = _attempt_number(metadata.get("run_attempt")) or 1
-        current = fetch_github_jobs(repository, run_id, attempt, token)
-        previous = fetch_github_jobs(repository, run_id, attempt - 1, token) if attempt > 1 else None
+        latest = _attempt_number(metadata.get("run_attempt")) or 1
+        attempts = []
+        for attempt in range(1, latest + 1):
+            try:
+                attempts.append({
+                    "attempt": attempt,
+                    "jobs": fetch_github_jobs(repository, run_id, attempt, token),
+                })
+            except _LOAD_CATCH:
+                continue
         bundles.append({
             "metadata": metadata,
-            "jobs": current,
-            "previous_jobs": previous,
-            "attempt": attempt,
+            "attempts": attempts,
+            "attempt": latest,
         })
     return bundles
+
+
+def _local_metadata(args: argparse.Namespace, payload: dict) -> dict[str, object]:
+    metadata = dict(payload.get("metadata") or {})
+    metadata.setdefault("id", args.run_ids[0] if args.run_ids else None)
+    metadata.setdefault("name", args.workflow_name)
+    metadata.setdefault("event", args.event)
+    metadata.setdefault("head_sha", args.source_sha)
+    metadata.setdefault("status", "completed")
+    metadata.setdefault("conclusion", args.run_conclusion)
+    metadata.setdefault("run_attempt", args.attempt)
+    if args.base_sha and not metadata.get("pull_requests"):
+        metadata["pull_requests"] = [{"base": {"sha": args.base_sha}}]
+    return metadata
 
 
 def _load_local_bundle(args: argparse.Namespace) -> list[dict[str, object]]:
     if args.jobs_json is None:
         raise ValueError("--jobs-json is required unless --run-id is set")
+    payload = json.loads(args.jobs_json.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        payload = {"jobs": payload}
+    metadata = _local_metadata(args, payload)
+    if isinstance(payload.get("attempts"), list):
+        return [{"metadata": metadata, "attempts": payload["attempts"], "attempt": metadata.get("run_attempt")}]
     previous = _read_job_list(args.previous_jobs_json) if args.previous_jobs_json else None
-    jobs = _read_job_list(args.jobs_json)
+    jobs = payload.get("jobs", payload)
+    if not isinstance(jobs, list):
+        raise ValueError("jobs JSON must be a list or an object with jobs")
     return [{
-        "metadata": {
-            "id": args.run_ids[0] if args.run_ids else None,
-            "name": args.workflow_name,
-            "event": args.event,
-            "head_sha": args.source_sha,
-            "status": "completed",
-            "conclusion": args.run_conclusion,
-            "run_attempt": args.attempt,
-            "pull_requests": [{"base": {"sha": args.base_sha}}] if args.base_sha else [],
-        },
-        "jobs": jobs,
+        "metadata": metadata,
+        "jobs": [row for row in jobs if isinstance(row, dict)],
         "previous_jobs": previous,
         "attempt": args.attempt,
+        "checkout_sha": payload.get("checkout_sha"),
+        "source_sha": args.source_sha,
     }]
 
 
@@ -932,13 +1313,17 @@ def _empty_report(reason: str) -> dict[str, object]:
             "complete": False,
             "known_minutes": 0,
             "by_platform": {},
-            "by_conclusion": {"success": 0, "failure": 0, "cancelled": 0, "other": 0},
+            "by_conclusion": {
+                "success": 0, "failure": 0, "timed_out": 0, "cancelled": 0, "other": 0,
+            },
         },
         "required_gate_wait": {
             "complete": False,
-            "trigger_started_at": None,
+            "trigger_created_at": None,
+            "first_workflow_started_at": None,
             "last_required_check_completed_at": None,
-            "elapsed_s": None,
+            "elapsed_from_created_s": None,
+            "elapsed_from_started_s": None,
             "missing_checks": [],
         },
         "audit_lanes": [],
@@ -950,30 +1335,60 @@ def _empty_report(reason: str) -> dict[str, object]:
     }
 
 
-def main() -> int:
-    args = _parse_args()
-    summary: dict[str, object] | None = None
+def _collect_file_evidence(args: argparse.Namespace) -> tuple[list[tuple[str, str]], list[dict[str, object]], list[str]]:
+    qualification: list[tuple[str, str]] = []
+    audit_lanes: list[dict[str, object]] = []
+    errors: list[str] = []
     try:
-        bundles = _load_remote_bundles(args) if args.run_ids and args.jobs_json is None else _load_local_bundle(args)
-        audit_lanes: list[dict[str, object]] = []
         for path in args.audit_log:
             audit_lanes.extend(parse_audit_lane_timing(path.read_text(encoding="utf-8")))
-        qualification = []
+    except _LOAD_CATCH as exc:
+        errors.append(f"audit lane timing unavailable: {exc}")
+    try:
         for path in args.qualification_log:
             parsed = parse_qualification_log(path.read_text(encoding="utf-8"))
             if parsed:
                 qualification.append(parsed)
-        summary = build_report(
-            bundles,
-            repository=args.repository or os.environ.get("GITHUB_REPOSITORY"),
-            required_checks=list(args.required_check or []),
-            audit_lanes=audit_lanes,
-            qualification=qualification,
-        )
+    except _LOAD_CATCH as exc:
+        errors.append(f"qualification log unavailable: {exc}")
+    return qualification, audit_lanes, errors
+
+
+def main() -> int:
+    args = _parse_args()
+    summary: dict[str, object] | None = None
+    try:
+        remote = bool(args.run_ids) and args.jobs_json is None
+        bundles = _load_remote_bundles(args) if remote else _load_local_bundle(args)
     except _LOAD_CATCH as exc:
         print(f"CI RUN TIMING INCOMPLETE: {exc}", file=sys.stderr)
-        if summary is None:
-            summary = _empty_report(str(exc))
+        summary = _empty_report(str(exc))
+        rendered = render_timing(summary)
+        print(rendered, end="")
+        _write_outputs(summary, rendered, args)
+        return 2
+    qualification, audit_lanes, evidence_errors = _collect_file_evidence(args)
+    if remote:
+        token = _token()
+        repository = args.repository or os.environ.get("GITHUB_REPOSITORY")
+        if token and repository:
+            try:
+                extra_q, extra_a, extra_errors = attach_remote_evidence(
+                    bundles, repository, token,
+                )
+                qualification.extend(extra_q)
+                audit_lanes.extend(extra_a)
+                evidence_errors.extend(extra_errors)
+            except _LOAD_CATCH as exc:
+                evidence_errors.append(str(exc))
+    summary = build_report(
+        bundles,
+        repository=args.repository or os.environ.get("GITHUB_REPOSITORY"),
+        required_checks=list(args.required_check or []),
+        audit_lanes=audit_lanes,
+        qualification=qualification,
+        evidence_errors=evidence_errors,
+    )
     rendered = render_timing(summary)
     print(rendered, end="")
     _write_outputs(summary, rendered, args)
