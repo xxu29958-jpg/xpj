@@ -17,8 +17,13 @@ from pathlib import Path
 _QUALIFICATION_LOG = re.compile(
     r"Qualification checkout SHA: ([0-9a-f]{40}); source SHA: ([0-9a-f]{40})"
 )
-_AUDIT_LANE = re.compile(r"^AUDIT_LANE_TIMING\s+(\{.*\})\s*$")
-_LOAD_CATCH = (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError, urllib.error.URLError)
+_GITHUB_LOG_PREFIX = re.compile(r"^\d{4}-\d{2}-\d{2}T[0-9:.]+Z\s+")
+_AUDIT_LANE = re.compile(r"(?:^|\s)AUDIT_LANE_TIMING\s+(\{.*\})\s*$")
+_AUDIT_RUN = re.compile(r"(?:^|\s)AUDIT_RUN_TIMING\s+(\{.*\})\s*$")
+_LOAD_CATCH = (
+    OSError, ValueError, KeyError, TypeError, json.JSONDecodeError,
+    urllib.error.URLError, zipfile.BadZipFile, zipfile.LargeZipFile,
+)
 
 _INCOMPLETE_REASONS = {
     "mismatch": "attempt mismatch",
@@ -587,19 +592,39 @@ def parse_qualification_log(text: str) -> tuple[str, str] | None:
     return match.group(1), match.group(2)
 
 
+def _log_lines(text: str) -> list[str]:
+    cleaned = text.lstrip("\ufeff").replace("\r\n", "\n").replace("\r", "\n")
+    return cleaned.split("\n")
+
+
+def _marker_payload(line: str, pattern: re.Pattern[str]) -> dict[str, object] | None:
+    stripped = _GITHUB_LOG_PREFIX.sub("", line.strip())
+    match = pattern.search(stripped) or pattern.search(line)
+    if match is None:
+        return None
+    try:
+        payload = json.loads(match.group(1))
+    except json.JSONDecodeError as exc:
+        raise ValueError("audit timing JSON is invalid") from exc
+    return payload if isinstance(payload, dict) else None
+
+
 def parse_audit_lane_timing(text: str) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
-    for line in text.splitlines():
-        match = _AUDIT_LANE.match(line.strip())
-        if match is None:
-            continue
-        try:
-            payload = json.loads(match.group(1))
-        except json.JSONDecodeError as exc:
-            raise ValueError("audit lane timing JSON is invalid") from exc
-        if isinstance(payload, dict):
+    for line in _log_lines(text):
+        payload = _marker_payload(line, _AUDIT_LANE)
+        if payload is not None:
             rows.append(payload)
     return rows
+
+
+def parse_audit_run_timing(text: str) -> dict[str, object] | None:
+    found: dict[str, object] | None = None
+    for line in _log_lines(text):
+        payload = _marker_payload(line, _AUDIT_RUN)
+        if payload is not None:
+            found = payload
+    return found
 
 
 def _run_is_finished(metadata: dict) -> bool:
@@ -611,6 +636,24 @@ def _named_step(jobs: list[dict], name: str) -> dict | None:
         for step in job.get("steps") or []:
             if isinstance(step, dict) and step.get("name") == name:
                 return step
+    return None
+
+
+def _job_with_step(jobs: list[dict], name: str) -> dict | None:
+    for job in jobs:
+        for step in job.get("steps") or []:
+            if isinstance(step, dict) and step.get("name") == name:
+                return job
+    return None
+
+
+def _matching_prior_job(job: dict | None, previous_jobs: list[dict]) -> dict | None:
+    if job is None:
+        return None
+    fingerprint = _job_fingerprint(job)
+    for prior in previous_jobs:
+        if isinstance(prior, dict) and _job_fingerprint(prior) == fingerprint and _previous_same_scope(job, prior):
+            return prior
     return None
 
 
@@ -648,41 +691,90 @@ def _derived_span(jobs: list[dict], start_name: str, end_name: str) -> dict[str,
     }
 
 
-def android_phases_from_jobs(jobs: list[dict]) -> list[dict[str, object]]:
-    configuration = {
-        "name": "configuration",
-        "phase": "configuration",
-        **_derived_span(jobs, "Set up Java", "Accept Android SDK licenses"),
+def _phase_attempt_fields(
+    jobs: list[dict],
+    previous_jobs: list[dict],
+    target_attempt: int,
+    step_name: str,
+) -> dict[str, object]:
+    prior = _matching_prior_job(_job_with_step(jobs, step_name), previous_jobs)
+    if prior is None:
+        return {"attempt": target_attempt, "evidence_attempt": target_attempt, "inherited": False}
+    return {
+        "attempt": target_attempt,
+        "evidence_attempt": _attempt_number(prior.get("run_attempt")) or target_attempt,
+        "inherited": True,
     }
+
+
+def _annotate_phase(
+    row: dict[str, object],
+    jobs: list[dict],
+    previous_jobs: list[dict],
+    target_attempt: int,
+    step_name: str,
+) -> dict[str, object]:
+    row.update(_phase_attempt_fields(jobs, previous_jobs, target_attempt, step_name))
+    return row
+
+
+def android_phases_from_attempts(attempts: list[dict[str, object]]) -> list[dict[str, object]]:
+    latest = attempts[-1] if attempts else {"attempt": 1, "jobs": []}
+    jobs = [job for job in (latest.get("jobs") or []) if isinstance(job, dict)]
+    previous = [job for job in (attempts[-2].get("jobs") or []) if isinstance(job, dict)] if len(attempts) > 1 else []
+    target = _attempt_number(latest.get("attempt")) or 1
+    configuration = _annotate_phase(
+        {"name": "configuration", "phase": "configuration", **_derived_span(jobs, "Set up Java", "Accept Android SDK licenses")},
+        jobs, previous, target, "Set up Java",
+    )
     return [
         configuration,
-        _phase_row("compile", "compile", "direct", _named_step(jobs, "Precompile connected APKs")),
-        {
-            "name": "cache_state",
-            "phase": "cache",
-            "measurement_kind": "unknown",
-            "elapsed_s": None,
-            "source_step": "Set up Gradle",
-        },
-        _phase_row(
-            "emulator_prepare_install_test_exit",
-            "emulator_prepare + install + test + exit",
-            "combined",
-            _named_step(jobs, "Run connected test"),
+        _annotate_phase(
+            _phase_row("compile", "compile", "direct", _named_step(jobs, "Precompile connected APKs")),
+            jobs, previous, target, "Precompile connected APKs",
         ),
-        _phase_row(
-            "checkout_qualification",
-            "checkout qualification",
-            "direct",
-            _named_step(jobs, "Verify qualification SHA"),
+        _annotate_phase(
+            {
+                "name": "cache_state",
+                "phase": "cache",
+                "measurement_kind": "unknown",
+                "elapsed_s": None,
+                "source_step": "Set up Gradle",
+            },
+            jobs, previous, target, "Set up Gradle",
         ),
-        _phase_row(
-            "result_qualification",
-            "result qualification",
-            "direct",
-            _named_step(jobs, "Enforce Connected result"),
+        _annotate_phase(
+            _phase_row(
+                "emulator_prepare_install_test_exit",
+                "emulator_prepare + install + test + exit",
+                "combined",
+                _named_step(jobs, "Run connected test"),
+            ),
+            jobs, previous, target, "Run connected test",
+        ),
+        _annotate_phase(
+            _phase_row(
+                "checkout_qualification",
+                "checkout qualification",
+                "direct",
+                _named_step(jobs, "Verify qualification SHA"),
+            ),
+            jobs, previous, target, "Verify qualification SHA",
+        ),
+        _annotate_phase(
+            _phase_row(
+                "result_qualification",
+                "result qualification",
+                "direct",
+                _named_step(jobs, "Enforce Connected result"),
+            ),
+            jobs, previous, target, "Enforce Connected result",
         ),
     ]
+
+
+def android_phases_from_jobs(jobs: list[dict]) -> list[dict[str, object]]:
+    return android_phases_from_attempts([{"attempt": 1, "jobs": jobs}])
 
 
 def cancellation_record(run_id: object, consumed_minutes: float) -> dict[str, object]:
@@ -713,6 +805,32 @@ def _record_required_job(job: dict, required_checks: list[str], completed: dict[
         completed[str(name)] = ended
 
 
+def _collect_gate_times(
+    bundles: list[dict[str, object]],
+    required_checks: list[str],
+) -> tuple[list[datetime], list[datetime], dict[str, datetime]]:
+    created: list[datetime] = []
+    started: list[datetime] = []
+    completed: dict[str, datetime] = {}
+    for bundle in bundles:
+        metadata = bundle.get("metadata") or {}
+        created_at = parse_utc(metadata.get("created_at"))
+        started_at = parse_utc(metadata.get("run_started_at"))
+        if created_at:
+            created.append(created_at)
+        if started_at:
+            started.append(started_at)
+        for job in _iter_bundle_jobs(bundle):
+            _record_required_job(job, required_checks, completed)
+    return created, started, completed
+
+
+def _gate_span_ok(created: datetime | None, started: datetime | None, last: datetime | None) -> bool:
+    if created is None or started is None or last is None:
+        return False
+    return created <= started <= last
+
+
 def _inferred_attempts(bundle: dict[str, object]) -> list[dict[str, object]]:
     metadata = bundle.get("metadata") or {}
     attempt = _attempt_number(bundle.get("attempt") or metadata.get("run_attempt")) or 1
@@ -739,37 +857,28 @@ def _iter_bundle_jobs(bundle: dict[str, object]):
 
 
 def required_gate_wait(bundles: list[dict[str, object]], required_checks: list[str]) -> dict[str, object]:
-    created: list[datetime] = []
-    started: list[datetime] = []
-    completed: dict[str, datetime] = {}
-    for bundle in bundles:
-        metadata = bundle.get("metadata") or {}
-        created_at = parse_utc(metadata.get("created_at"))
-        started_at = parse_utc(metadata.get("run_started_at"))
-        if created_at:
-            created.append(created_at)
-        if started_at:
-            started.append(started_at)
-        for job in _iter_bundle_jobs(bundle):
-            _record_required_job(job, required_checks, completed)
+    created, started, completed = _collect_gate_times(bundles, required_checks)
     missing = [name for name in required_checks if name not in completed]
     last = max(completed.values()) if completed else None
     first_created = min(created) if created else None
     first_started = min(started) if started else None
     return {
-        "complete": bool(required_checks) and not missing and first_created is not None and last is not None,
+        "complete": bool(required_checks) and not missing and _gate_span_ok(first_created, first_started, last),
         "trigger_created_at": _utc_text(first_created),
         "first_workflow_started_at": _utc_text(first_started),
         "last_required_check_completed_at": _utc_text(last),
         "elapsed_from_created_s": _seconds(first_created, last),
         "elapsed_from_started_s": _seconds(first_started, last),
         "missing_checks": missing,
+        "required_checks": list(required_checks),
+        "required_check_source": "explicit_cli",
     }
 
 
 def _unique_meta(bundles: list[dict[str, object]], key: str) -> set[object]:
-    values = {bundle.get("metadata", {}).get(key) for bundle in bundles}
+    values = {(bundle.get("metadata") or {}).get(key) for bundle in bundles}
     values.discard(None)
+    values.discard("")
     return values
 
 
@@ -782,12 +891,31 @@ def _base_shas(bundles: list[dict[str, object]]) -> set[str]:
     return bases
 
 
-def _choose_source(heads: set[object], qualification: list[tuple[str, str]]) -> object:
-    log_sources = {item[1] for item in qualification}
-    if len(log_sources) == 1:
-        return next(iter(log_sources))
-    if len(heads) == 1:
-        return next(iter(heads))
+def _one_value(values: set[object], name: str) -> tuple[object | None, str | None]:
+    if not values:
+        return None, f"missing {name}"
+    if len(values) > 1:
+        return None, f"mixed {name}"
+    return next(iter(values)), None
+
+
+def _identity_source_notes(source: object | None, log_sources: set[object]) -> list[str]:
+    if len(log_sources) > 1:
+        return ["mixed qualification source"]
+    if log_sources and source is not None and source not in log_sources:
+        return [f"qualification source mismatch: {next(iter(log_sources))} != {source}"]
+    return []
+
+
+def _identity_checkout_notes(log_checkouts: set[str], bundle_checkouts: set[str]) -> list[str]:
+    if log_checkouts and bundle_checkouts and log_checkouts != bundle_checkouts:
+        return ["mixed checkout SHA"]
+    return []
+
+
+def _identity_base_note(event: object | None, base_note: str | None) -> str | None:
+    if base_note == "mixed base_sha" or (event == "pull_request" and base_note):
+        return base_note
     return None
 
 
@@ -813,28 +941,24 @@ def subject_from_bundles(
     qualification: list[tuple[str, str]],
 ) -> tuple[dict[str, object], bool, list[str]]:
     notes: list[str] = []
-    events = _unique_meta(bundles, "event")
-    heads = _unique_meta(bundles, "head_sha")
-    bases = _base_shas(bundles)
-    source = _choose_source(heads, qualification)
-    event = next(iter(events)) if len(events) == 1 else None
-    base = next(iter(bases)) if len(bases) == 1 else None
-    checkouts = [item[0] for item in qualification]
-    checkouts.extend(sha for sha in (_bundle_checkout(bundle) for bundle in bundles) if sha)
-    if not source:
-        notes.append("missing source_sha")
-    if not checkouts:
-        notes.append("missing checkout SHA")
-    if event == "pull_request" and not base:
-        notes.append("missing base_sha")
-    if len(heads) > 1:
-        notes.append("mixed source_sha across runs")
+    event, event_note = _one_value(_unique_meta(bundles, "event"), "event")
+    source, source_note = _one_value(_unique_meta(bundles, "head_sha"), "source_sha")
+    base, base_note = _one_value(_base_shas(bundles), "base_sha")
+    log_sources = {item[1] for item in qualification}
+    log_checkouts = {item[0] for item in qualification}
+    bundle_checkouts = {sha for sha in (_bundle_checkout(bundle) for bundle in bundles) if sha}
+    checkout, checkout_note = _one_value(log_checkouts or bundle_checkouts, "checkout SHA")
+    for note in (event_note, source_note, checkout_note, _identity_base_note(event, base_note)):
+        if note:
+            notes.append(note)
+    notes.extend(_identity_source_notes(source, log_sources))
+    notes.extend(_identity_checkout_notes(log_checkouts, bundle_checkouts))
     return (
         {
             "repository": repository,
             "event": event,
             "source_sha": source,
-            "checkout_shas": list(dict.fromkeys(checkouts)),
+            "checkout_shas": [checkout] if checkout else [],
             "base_sha": base,
         },
         not notes,
@@ -848,16 +972,32 @@ def _final_job_completed_at(bundle: dict[str, object]) -> str | None:
     return _utc_text(max(present)) if present else None
 
 
+def _actual_job_bounds(jobs: list[dict[str, object]]) -> tuple[str | None, str | None]:
+    starts = [item for item in (parse_utc(job.get("started_at")) for job in jobs) if item is not None]
+    ends = [item for item in (parse_utc(job.get("completed_at")) for job in jobs) if item is not None]
+    return (
+        _utc_text(min(starts) if starts else None),
+        _utc_text(max(ends) if ends else None),
+    )
+
+
 def _attempt_row(summary: dict[str, object]) -> dict[str, object]:
-    inherited = sum(1 for job in summary.get("jobs") or [] if job.get("inherited"))
+    jobs = [job for job in summary.get("jobs") or [] if isinstance(job, dict)]
+    actual = [job for job in jobs if not job.get("inherited")]
+    inherited_only = bool(jobs) and not actual
+    started, completed = (None, None) if inherited_only else _actual_job_bounds(actual)
     return {
         "attempt": summary["attempt"],
         "actual_execution_minutes": summary["runner_execution_minutes"],
-        "inherited_job_count": inherited,
+        "inherited_job_count": sum(1 for job in jobs if job.get("inherited")),
         "complete": summary["complete"],
         "by_platform": summary["by_platform"],
         "by_conclusion": summary["by_conclusion"],
         "incomplete": summary["incomplete"],
+        "first_actual_job_started_at": started,
+        "last_actual_job_completed_at": completed,
+        "execution_state": "inherited_only" if inherited_only else "completed",
+        "measurement_kind": "derived_from_jobs",
     }
 
 
@@ -941,7 +1081,7 @@ def _note_special_workflow(
     if metadata.get("conclusion") == "cancelled":
         totals["cancellations"].append(cancellation_record(run_id, total_minutes))
     if metadata.get("name") == "Android Connected Test":
-        totals["android_jobs"].extend(_iter_bundle_jobs(bundle))
+        totals["android_attempts"] = _bundle_attempts(bundle)
 
 
 def _attempt_gap_notes(bundle: dict[str, object]) -> list[str]:
@@ -976,9 +1116,25 @@ def _add_bundle(
             "by_conclusion": row.get("by_conclusion") or {},
             "runner_execution_minutes": row.get("actual_execution_minutes") or 0,
         })
-    totals["incomplete"].extend(_attempt_gap_notes(bundle))
+    gap_notes = _attempt_gap_notes(bundle)
+    if gap_notes:
+        totals["runner_complete"] = False
+        totals["incomplete"].extend(gap_notes)
     _note_special_workflow(bundle, metadata, total_minutes, run_id, totals)
-    totals["workflows"].append(_workflow_row(bundle, metadata, run_id, attempt_rows, latest, total_minutes))
+    workflow = _workflow_row(bundle, metadata, run_id, attempt_rows, latest, total_minutes)
+    if gap_notes:
+        workflow["complete"] = False
+        workflow["incomplete"] = list(workflow.get("incomplete") or []) + gap_notes
+    totals["workflows"].append(workflow)
+
+
+def _gate_times_ordered(wait: dict[str, object]) -> bool:
+    created = parse_utc(wait.get("trigger_created_at"))
+    started = parse_utc(wait.get("first_workflow_started_at"))
+    last = parse_utc(wait.get("last_required_check_completed_at"))
+    if created is None or started is None or last is None:
+        return True
+    return created <= started <= last
 
 
 def _wait_notes(wait: dict[str, object], required_checks: list[str]) -> list[str]:
@@ -986,9 +1142,16 @@ def _wait_notes(wait: dict[str, object], required_checks: list[str]) -> list[str
         return ["required-check set not supplied"]
     if wait["complete"]:
         return []
-    if wait["missing_checks"]:
-        return [f"missing required checks: {', '.join(wait['missing_checks'])}"]
-    return ["required-check wait is incomplete"]
+    notes: list[str] = []
+    if wait.get("missing_checks"):
+        notes.append(f"missing required checks: {', '.join(wait['missing_checks'])}")
+    if not wait.get("trigger_created_at"):
+        notes.append("missing created_at")
+    if not wait.get("first_workflow_started_at"):
+        notes.append("missing run_started_at")
+    if not _gate_times_ordered(wait):
+        notes.append("inverted required-gate wait timestamps")
+    return notes or ["required-check wait is incomplete"]
 
 
 def _backend_contracts_executed(bundles: list[dict[str, object]]) -> bool:
@@ -999,10 +1162,71 @@ def _backend_contracts_executed(bundles: list[dict[str, object]]) -> bool:
     return False
 
 
-def _audit_lanes_complete(audit_lanes: list[dict[str, object]]) -> bool:
-    if not audit_lanes:
-        return False
-    return all(lane.get("returncode") is not None and lane.get("complete") is not False for lane in audit_lanes)
+def _lane_names(audit_lanes: list[dict[str, object]]) -> list[str]:
+    return [str(lane.get("lane")) for lane in audit_lanes if lane.get("lane") not in {None, ""}]
+
+
+def _lane_set_notes(expected: list[str], names: list[str]) -> list[str]:
+    notes: list[str] = []
+    if len(expected) != len(set(expected)):
+        notes.append("audit run expected lanes are not unique")
+    if len(names) != len(set(names)):
+        notes.append("duplicate audit lanes")
+    missing = [name for name in expected if name not in names]
+    extra = [name for name in names if name not in expected]
+    if missing:
+        notes.append(f"missing audit lanes: {', '.join(missing)}")
+    if extra:
+        notes.append(f"unexpected audit lanes: {', '.join(extra)}")
+    return notes
+
+
+def _audit_count_notes(audit_run: dict[str, object], expected: list[str], names: list[str]) -> list[str]:
+    notes: list[str] = []
+    if audit_run.get("expected_lane_count") != len(expected):
+        notes.append("audit run expected_lane_count mismatch")
+    if audit_run.get("completed_lane_count") != len(names):
+        notes.append("audit run completed_lane_count mismatch")
+    if audit_run.get("complete") is not True:
+        notes.append("audit run timing incomplete")
+    return notes
+
+
+def _audit_set_notes(
+    audit_lanes: list[dict[str, object]],
+    audit_run: dict[str, object] | None,
+) -> list[str]:
+    if not audit_run:
+        return ["audit lane timing unavailable"]
+    expected = [str(name) for name in (audit_run.get("expected_lanes") or [])]
+    names = _lane_names(audit_lanes)
+    notes: list[str] = []
+    if not expected:
+        notes.append("audit run expected_lanes missing")
+    notes.extend(_lane_set_notes(expected, names))
+    notes.extend(_audit_count_notes(audit_run, expected, names))
+    if any(lane.get("returncode") is None for lane in audit_lanes):
+        notes.append("audit lane returncode missing")
+    return notes
+
+
+def _audit_job_contradiction(
+    bundles: list[dict[str, object]],
+    audit_run: dict[str, object] | None,
+) -> str | None:
+    if not audit_run:
+        return None
+    overall = audit_run.get("overall_returncode")
+    for bundle in bundles:
+        for job in _iter_bundle_jobs(bundle):
+            if job.get("name") != "Backend contracts":
+                continue
+            conclusion = job.get("conclusion")
+            if conclusion == "success" and overall not in {0, None}:
+                return "audit overall returncode contradicts Backend contracts success"
+            if conclusion == "failure" and overall == 0:
+                return "audit overall returncode contradicts Backend contracts failure"
+    return None
 
 
 def _workflow_evidence_notes(bundle: dict[str, object]) -> list[str]:
@@ -1029,6 +1253,7 @@ def _strict_complete_notes(
     wait: dict[str, object],
     identity_notes: list[str],
     audit_lanes: list[dict[str, object]],
+    audit_run: dict[str, object] | None,
     evidence_errors: list[str],
     runner_complete: bool,
 ) -> list[str]:
@@ -1041,8 +1266,11 @@ def _strict_complete_notes(
         metadata = bundle.get("metadata") or {}
         if metadata and not _run_is_finished(metadata):
             notes.append(f"unfinished run {metadata.get('id')}")
-    if _backend_contracts_executed(bundles) and not _audit_lanes_complete(audit_lanes):
-        notes.append("audit lane timing unavailable")
+    if _backend_contracts_executed(bundles):
+        notes.extend(_audit_set_notes(audit_lanes, audit_run))
+        contradiction = _audit_job_contradiction(bundles, audit_run)
+        if contradiction:
+            notes.append(contradiction)
     if not runner_complete:
         notes.append("runner cost incomplete")
     # Deduplicate while preserving order
@@ -1062,6 +1290,7 @@ def build_report(
     required_checks: list[str] | None = None,
     audit_lanes: list[dict[str, object]] | None = None,
     qualification: list[tuple[str, str]] | None = None,
+    audit_run: dict[str, object] | None = None,
     evidence_errors: list[str] | None = None,
 ) -> dict[str, object]:
     totals: dict[str, object] = {
@@ -1072,7 +1301,7 @@ def build_report(
             "success": 0.0, "failure": 0.0, "timed_out": 0.0, "cancelled": 0.0, "other": 0.0,
         },
         "cancellations": [],
-        "android_jobs": [],
+        "android_attempts": [],
         "known": 0.0,
         "runner_complete": True,
     }
@@ -1080,10 +1309,9 @@ def build_report(
         _add_bundle(bundle, totals)
     pairs = list(qualification or [])
     if len(pairs) == 1:
-        checkout, source = pairs[0]
+        checkout, _source = pairs[0]
         for bundle in bundles:
             bundle.setdefault("checkout_sha", checkout)
-            bundle.setdefault("source_sha", source)
     subject, identity_complete, identity_notes = subject_from_bundles(
         repository, bundles, pairs,
     )
@@ -1095,6 +1323,7 @@ def build_report(
         wait=wait,
         identity_notes=identity_notes + list(totals["incomplete"]),
         audit_lanes=list(audit_lanes or []),
+        audit_run=audit_run,
         evidence_errors=list(evidence_errors or []),
         runner_complete=bool(totals["runner_complete"]),
     )
@@ -1105,12 +1334,14 @@ def build_report(
         "runner_execution": {
             "complete": totals["runner_complete"],
             "known_minutes": totals["known"],
+            "known_partial": not bool(totals["runner_complete"]),
             "by_platform": totals["platforms"],
             "by_conclusion": totals["conclusions"],
         },
         "required_gate_wait": wait,
         "audit_lanes": list(audit_lanes or []),
-        "android_phases": android_phases_from_jobs(list(totals["android_jobs"])),
+        "audit_run": audit_run,
+        "android_phases": android_phases_from_attempts(list(totals["android_attempts"])),
         "cancellations": totals["cancellations"],
         "incomplete_reasons": incomplete,
         "complete": not incomplete,
@@ -1179,9 +1410,10 @@ def attach_remote_evidence(
     token: str,
     *,
     urlopen=None,
-) -> tuple[list[tuple[str, str]], list[dict[str, object]], list[str]]:
+) -> tuple[list[tuple[str, str]], list[dict[str, object]], dict[str, object] | None, list[str]]:
     qualification: list[tuple[str, str]] = []
     audit_lanes: list[dict[str, object]] = []
+    audit_run: dict[str, object] | None = None
     errors: list[str] = []
     for bundle in bundles:
         metadata = bundle.get("metadata") or {}
@@ -1201,7 +1433,6 @@ def attach_remote_evidence(
                 errors.append(f"missing checkout SHA for {workflow}")
                 continue
             bundle["checkout_sha"] = parsed[0]
-            bundle["source_sha"] = parsed[1]
             qualification.append(parsed)
         for job_name in _AUDIT_LOG_JOBS.get(workflow, ()):
             job = _find_named_job(bundle, job_name)
@@ -1210,9 +1441,12 @@ def attach_remote_evidence(
             try:
                 text = fetch_job_logs(repository, int(job["id"]), token, urlopen=urlopen)
                 audit_lanes.extend(parse_audit_lane_timing(text))
+                parsed_run = parse_audit_run_timing(text)
+                if parsed_run is not None:
+                    audit_run = parsed_run
             except _LOAD_CATCH:
                 errors.append("audit lane timing unavailable")
-    return qualification, audit_lanes, errors
+    return qualification, audit_lanes, audit_run, errors
 
 
 def _load_remote_bundles(args: argparse.Namespace) -> list[dict[str, object]]:
@@ -1312,6 +1546,7 @@ def _empty_report(reason: str) -> dict[str, object]:
         "runner_execution": {
             "complete": False,
             "known_minutes": 0,
+            "known_partial": True,
             "by_platform": {},
             "by_conclusion": {
                 "success": 0, "failure": 0, "timed_out": 0, "cancelled": 0, "other": 0,
@@ -1325,8 +1560,11 @@ def _empty_report(reason: str) -> dict[str, object]:
             "elapsed_from_created_s": None,
             "elapsed_from_started_s": None,
             "missing_checks": [],
+            "required_checks": [],
+            "required_check_source": "explicit_cli",
         },
         "audit_lanes": [],
+        "audit_run": None,
         "android_phases": [],
         "cancellations": [],
         "incomplete_reasons": [reason],
@@ -1335,13 +1573,20 @@ def _empty_report(reason: str) -> dict[str, object]:
     }
 
 
-def _collect_file_evidence(args: argparse.Namespace) -> tuple[list[tuple[str, str]], list[dict[str, object]], list[str]]:
+def _collect_file_evidence(
+    args: argparse.Namespace,
+) -> tuple[list[tuple[str, str]], list[dict[str, object]], dict[str, object] | None, list[str]]:
     qualification: list[tuple[str, str]] = []
     audit_lanes: list[dict[str, object]] = []
+    audit_run: dict[str, object] | None = None
     errors: list[str] = []
     try:
         for path in args.audit_log:
-            audit_lanes.extend(parse_audit_lane_timing(path.read_text(encoding="utf-8")))
+            text = path.read_text(encoding="utf-8")
+            audit_lanes.extend(parse_audit_lane_timing(text))
+            parsed_run = parse_audit_run_timing(text)
+            if parsed_run is not None:
+                audit_run = parsed_run
     except _LOAD_CATCH as exc:
         errors.append(f"audit lane timing unavailable: {exc}")
     try:
@@ -1351,7 +1596,7 @@ def _collect_file_evidence(args: argparse.Namespace) -> tuple[list[tuple[str, st
                 qualification.append(parsed)
     except _LOAD_CATCH as exc:
         errors.append(f"qualification log unavailable: {exc}")
-    return qualification, audit_lanes, errors
+    return qualification, audit_lanes, audit_run, errors
 
 
 def main() -> int:
@@ -1367,18 +1612,20 @@ def main() -> int:
         print(rendered, end="")
         _write_outputs(summary, rendered, args)
         return 2
-    qualification, audit_lanes, evidence_errors = _collect_file_evidence(args)
+    qualification, audit_lanes, audit_run, evidence_errors = _collect_file_evidence(args)
     if remote:
         token = _token()
         repository = args.repository or os.environ.get("GITHUB_REPOSITORY")
         if token and repository:
             try:
-                extra_q, extra_a, extra_errors = attach_remote_evidence(
+                extra_q, extra_a, extra_run, extra_errors = attach_remote_evidence(
                     bundles, repository, token,
                 )
                 qualification.extend(extra_q)
                 audit_lanes.extend(extra_a)
                 evidence_errors.extend(extra_errors)
+                if extra_run is not None:
+                    audit_run = extra_run
             except _LOAD_CATCH as exc:
                 evidence_errors.append(str(exc))
     summary = build_report(
@@ -1387,6 +1634,7 @@ def main() -> int:
         required_checks=list(args.required_check or []),
         audit_lanes=audit_lanes,
         qualification=qualification,
+        audit_run=audit_run,
         evidence_errors=evidence_errors,
     )
     rendered = render_timing(summary)

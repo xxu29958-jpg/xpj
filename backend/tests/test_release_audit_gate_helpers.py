@@ -144,6 +144,12 @@ def test_release_audit_records_lane_timing_without_changing_return(monkeypatch, 
     assert record["elapsed_clock"] == "monotonic"
     assert record["measurement_kind"] == "direct"
     assert record["complete"] is True
+    run_record = json.loads(captured.out.split("AUDIT_RUN_TIMING ", 1)[1].splitlines()[0])
+    assert run_record["expected_lanes"] == ["sample"]
+    assert run_record["expected_lane_count"] == 1
+    assert run_record["completed_lane_count"] == 1
+    assert run_record["overall_returncode"] == 0
+    assert run_record["complete"] is True
 
 
 def test_release_audit_preserves_nonzero_lane_returncode(monkeypatch) -> None:

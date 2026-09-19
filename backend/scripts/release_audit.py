@@ -164,7 +164,7 @@ def main() -> int:
         return 1
 
     overall_ok = True
-    summary: list[tuple[str, bool]] = []
+    summary: list[tuple[str, int | None]] = []
     compact = _compact_output_enabled()
 
     for label, filename in lanes:
@@ -186,17 +186,33 @@ def main() -> int:
             elapsed_s=elapsed,
         )
         print("AUDIT_LANE_TIMING " + json.dumps(record, ensure_ascii=False, separators=(",", ":")))
-        ok = returncode == 0
-        summary.append((label, ok))
-        if not ok:
+        summary.append((label, returncode))
+        if returncode != 0:
             overall_ok = False
         print()
 
+    expected = [label for label, _filename in lanes]
+    completed = [label for label, returncode in summary if returncode is not None]
+    run_complete = len(completed) == len(expected) and all(returncode is not None for _label, returncode in summary)
+    print(
+        "AUDIT_RUN_TIMING "
+        + json.dumps(
+            {
+                "expected_lanes": expected,
+                "expected_lane_count": len(expected),
+                "completed_lane_count": len(completed),
+                "overall_returncode": None if not run_complete else (0 if overall_ok else 1),
+                "complete": run_complete,
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+    )
     print("=" * 78)
     print("RELEASE AUDIT SUMMARY")
     print("=" * 78)
-    for label, ok in summary:
-        marker = "PASS" if ok else "FAIL"
+    for label, returncode in summary:
+        marker = "PASS" if returncode == 0 else "FAIL"
         print(f"  {marker}  {label}")
     print()
     return 0 if overall_ok else 1
