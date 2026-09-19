@@ -243,7 +243,7 @@ def test_inbox_empty_state_matches_real_ingestion_routing(
     assert body.count('id="capture"') == 1
     capture = re.search(r'<form[^>]+id="capture".*?</form>', body, re.S)
     assert capture is not None
-    assert 'action="/web/pending/upload?ledger_id=owner"' in capture.group(0)
+    assert 'action="/web/pending/upload?ledger_id=owner&amp;idempotency_key=' in capture.group(0)
     assert 'name="csrf_token"' in capture.group(0)
     assert 'type="file" name="file" accept="image/*" required' in capture.group(0)
     assert "新上传的截图、OCR 识别结果和导入草稿会出现在这里" in body

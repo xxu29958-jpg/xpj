@@ -32,7 +32,6 @@
     call("initCategoryDonut");
     call("initDragReorder");
     call("initSplitLayout");
-    call("initInboxCapture");
     call("initInboxEnrichmentWatch");
   }
 

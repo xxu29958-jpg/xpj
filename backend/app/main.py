@@ -96,6 +96,7 @@ from app.routes import (
     web_income_edit,
     web_income_plans,
     web_media,
+    web_originals,
     web_merchants,
     web_pending,
     web_receivables,
@@ -387,6 +388,7 @@ app.include_router(web_expense_items.router)
 app.include_router(web_expense_splits.router)
 app.include_router(web_family.router)
 app.include_router(web_media.router)
+app.include_router(web_originals.router)
 app.include_router(web_pending.router)
 app.include_router(web_inbox_capture.router)
 app.include_router(web_rules_routes.router)

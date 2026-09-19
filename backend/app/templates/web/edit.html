@@ -87,6 +87,7 @@
 
   <div class="detail-aside">
     <section class="product-panel receipt-preview" aria-label="小票原件">
+      <a class="product-button" href="/web/expenses/{{ e.id }}/original{{ _q }}">检查原件与继续处理</a>
       {% if e.has_image %}
       <div class="receipt-image-shell" data-image-skeleton>
         <div class="receipt-image-skeleton" aria-hidden="true"></div>

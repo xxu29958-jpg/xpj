@@ -149,7 +149,7 @@ def test_web_upload_enrichment_task_presents_real_ocr_success(
     )
 
     response = web_client.post(
-        "/web/pending/upload?ledger_id=owner&timezone=Asia%2FShanghai",
+        "/web/pending/upload?ledger_id=owner&idempotency_key=original-upload&timezone=Asia%2FShanghai",
         files={"file": ("receipt.png", PNG_BYTES, "image/png")},
         follow_redirects=False,
     )
@@ -193,7 +193,7 @@ def test_web_upload_enrichment_task_presents_provider_failure(
     )
 
     response = web_client.post(
-        "/web/pending/upload?ledger_id=owner",
+        "/web/pending/upload?ledger_id=owner&idempotency_key=original-upload",
         files={"file": ("receipt.png", PNG_BYTES, "image/png")},
         follow_redirects=False,
     )

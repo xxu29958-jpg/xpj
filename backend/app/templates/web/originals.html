@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}原件检查 · 小票夹{% endblock %}
+{% block page_scripts %}<script defer src="/static/web/originals.js?v={{ asset_version }}"></script>{% endblock %}
+{% block content %}
+<header class="product-page-header"><div><h1 class="page-title">原件检查</h1><p>只检查本页最多 25 笔账单，按需读取实际文件；不会更改摘要或财务事实。</p></div>
+<a class="product-button" href="/web/data-quality?ledger_id={{ selected_ledger_id }}">返回数据体检</a></header>
+<button class="product-button" type="button" data-original-scan>检查本页</button>
+<p data-original-scan-status role="status">尚未检查本页。可逐笔打开检查，也可开始本页检查。</p>
+<section class="product-panel product-panel--padded">
+{% for row in original_rows %}<p data-original-row data-health-href="/web/expenses/{{ row.id }}/original/health?ledger_id={{ selected_ledger_id }}">
+<a href="/web/expenses/{{ row.id }}/original?ledger_id={{ selected_ledger_id }}">{{ row.merchant or '未填写商家' }} · #{{ row.id }}</a> <span data-original-row-status>未检查</span></p>
+{% else %}<p>没有更多账单。</p>{% endfor %}
+</section>
+{% if next_after %}<a class="product-button" href="/web/originals?ledger_id={{ selected_ledger_id }}&amp;after={{ next_after }}">下一页</a>{% endif %}
+{% endblock %}

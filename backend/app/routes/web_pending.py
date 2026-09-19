@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
+from app.routes._web_attachment_intent import attachment_form_context
 from app.routes._web_bulk_snapshot import parse_bulk_snapshot
 from app.routes._web_pending_bulk_response import (
     REMOVAL_ACTIONS,
@@ -179,6 +180,7 @@ def web_pending(
         sidebar_counts=(pending_total, suspected_total),
     )
     ctx["expenses"] = items
+    ctx["upload_intent"] = attachment_form_context(db, request, action="/web/pending/upload", ledger_id=selected_id)
     ctx["pending_count"] = pending_total
     ctx["filtered_count"] = len(items)
     ctx["filter"] = filter_key

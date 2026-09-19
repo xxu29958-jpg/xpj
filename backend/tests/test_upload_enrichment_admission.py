@@ -126,7 +126,7 @@ def test_web_capacity_rejection_returns_to_pending_with_honest_flash(
     before_files = _stored_upload_files()
 
     response = web_client.post(
-        "/web/pending/upload?ledger_id=owner",
+        "/web/pending/upload?ledger_id=owner&idempotency_key=original-upload",
         files={"file": ("receipt.png", PNG_BYTES, "image/png")},
         follow_redirects=False,
     )

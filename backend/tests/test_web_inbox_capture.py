@@ -41,7 +41,7 @@ def test_web_pending_upload_uses_shared_owner_and_creates_real_pending_expense(
     assert web_inbox_capture_routes.handle_upload is handle_upload
 
     response = web_client.post(
-        "/web/pending/upload?ledger_id=owner&timezone=Asia%2FShanghai",
+        "/web/pending/upload?ledger_id=owner&idempotency_key=original-native-upload&timezone=Asia%2FShanghai",
         files={"file": ("receipt.png", PNG_BYTES, "image/png")},
         follow_redirects=False,
     )
@@ -102,7 +102,7 @@ def test_web_pending_upload_enqueues_without_rereading_committed_expense(
     )
 
     response = web_client.post(
-        "/web/pending/upload?ledger_id=owner",
+        "/web/pending/upload?ledger_id=owner&idempotency_key=original-native-upload",
         files={"file": ("receipt.png", PNG_BYTES, "image/png")},
         follow_redirects=False,
     )
@@ -128,7 +128,7 @@ def test_web_pending_upload_rejects_viewer_before_saving(
     _demote_owner_ledger_to_viewer()
 
     response = web_client.post(
-        "/web/pending/upload?ledger_id=owner&timezone=Asia%2FShanghai",
+        "/web/pending/upload?ledger_id=owner&idempotency_key=original-native-upload&timezone=Asia%2FShanghai",
         files={"file": ("receipt.png", PNG_BYTES, "image/png")},
         follow_redirects=False,
     )
@@ -159,7 +159,7 @@ def test_web_pending_upload_keeps_saved_row_visible_when_task_submit_fails(
     monkeypatch.setattr("app.services.background_task_executor.submit_task", fail_submit)
 
     response = web_client.post(
-        "/web/pending/upload?ledger_id=owner",
+        "/web/pending/upload?ledger_id=owner&idempotency_key=original-native-upload",
         files={"file": ("receipt.png", PNG_BYTES, "image/png")},
         follow_redirects=False,
     )
@@ -196,7 +196,7 @@ def test_web_pending_upload_rejects_viewer_before_multipart_parse(
     _demote_owner_ledger_to_viewer()
 
     response = web_client.post(
-        "/web/pending/upload?ledger_id=owner",
+        "/web/pending/upload?ledger_id=owner&idempotency_key=original-native-upload",
         headers={"Content-Type": "multipart/form-data; boundary=ticketbox"},
         content=b"not-a-valid-multipart-body",
         follow_redirects=False,
@@ -214,7 +214,7 @@ def test_web_pending_upload_applies_shared_multipart_file_count_limit(
     ]
 
     response = web_client.post(
-        "/web/pending/upload?ledger_id=owner",
+        "/web/pending/upload?ledger_id=owner&idempotency_key=original-native-upload",
         files=files,
         follow_redirects=False,
     )
@@ -250,8 +250,8 @@ def test_inbox_pending_header_has_native_upload_form_and_flat_queue_summary(
     body = response.text
     form = re.search(
         r'<form class="inbox-upload-form" id="capture" method="post"'
-        r' action="/web/pending/upload\?ledger_id=owner" data-inbox-capture'
-        r' enctype="multipart/form-data">.*?</form>',
+        r' action="/web/pending/upload\?ledger_id=owner&amp;idempotency_key=[a-f0-9]{32}" data-inbox-capture'
+        r' enctype="multipart/form-data"\s*>.*?</form>',
         body,
         re.S,
     )
@@ -276,13 +276,13 @@ def test_inbox_pending_header_has_native_upload_form_and_flat_queue_summary(
     assert "笔待整理" in body
 
     static_root = Path(__file__).resolve().parents[1] / "app" / "static" / "web"
-    core_js = (static_root / "desktop" / "core.js").read_text(encoding="utf-8")
-    assert "initInboxCapture" in core_js
-    assert "data-inbox-capture" in core_js
-    assert 'searchParams.set("timezone", tz)' in core_js
-    assert ".submit(" not in core_js
+    capture_js = (static_root / "attachment-entry.js").read_text(encoding="utf-8")
+    assert "data-inbox-capture" in capture_js
+    assert 'searchParams.set("timezone", Intl.DateTimeFormat()' in capture_js
+    assert ".submit(" not in capture_js
+    assert "attachment-entry.js" in body
     desktop_js = (static_root / "desktop.js").read_text(encoding="utf-8")
-    assert 'call("initInboxCapture");' in desktop_js
+    assert 'call("initInboxCapture");' not in desktop_js
 
 
 def test_inbox_pending_row_single_priority_status_and_one_writer_action(web_client: TestClient, *, identity) -> None:

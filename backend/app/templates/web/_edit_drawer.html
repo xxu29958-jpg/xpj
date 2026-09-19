@@ -22,6 +22,7 @@
     </header>
 
     <p class="product-drawer-meta">{{ e.source_label }} · 上传于 {{ e.created_at or '时间待核对' }}</p>
+    <a class="product-button product-button--small" href="/web/expenses/{{ e.id }}/original{{ '?ledger_id=' ~ selected_ledger_id }}">检查原件与继续处理</a>
 
     <div class="product-drawer-receipt"
          {% if e.has_image %}data-image-skeleton{% endif %}>
