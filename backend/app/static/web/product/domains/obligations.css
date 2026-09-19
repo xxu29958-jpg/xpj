@@ -175,6 +175,10 @@
     gap: var(--space-1);
 }
 
+.debt-activity .debt-history-main {
+    justify-items: start;
+}
+
 .debt-history-note,
 .debt-history-date {
     color: var(--text-meta);

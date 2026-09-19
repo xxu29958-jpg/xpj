@@ -29,6 +29,7 @@
 <div class="product-feedback product-feedback--success" role="status">
   已接受，{{ receipt.amount_label }} 已记入 {{ receipt.ledger_name }}。
   <a class="product-feedback-link" href="{{ receipt.fact_href }}">查看这笔记录</a>
+  {% if receipt.debt_href %}<a class="product-feedback-link" href="{{ receipt.debt_href }}">查看这笔往来</a>{% endif %}
 </div>
 {% endif %}
 {% if flash_message %}

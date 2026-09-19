@@ -131,6 +131,10 @@ def _amount_segments(
     return {"cur": symbol, "int": f"{sign}{whole:,}", "dec": f".{frac:02d}"}
 
 
+def _exchange_rate_source_label(source: str) -> str:
+    return {"manual": "手动汇率", "imported": "导入记录汇率"}.get(source, str(source))
+
+
 def _expense_amount_labels(
     expense,
     *,
@@ -163,7 +167,7 @@ def _expense_amount_labels(
         meta += f" · {date_text}"
     source = getattr(expense, "exchange_rate_source", None)
     if source:
-        meta += " · " + {"manual": "手动汇率", "imported": "导入记录汇率"}.get(source, str(source))
+        meta += " · " + _exchange_rate_source_label(source)
     return primary, meta
 
 

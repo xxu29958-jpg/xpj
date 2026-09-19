@@ -94,6 +94,7 @@ from app.schemas._dashboard import (
     DashboardCardsUpdateRequest,
     DashboardCardUpdateRequest,
 )
+from app.schemas._debt_activity import DebtActivityListResponse, DebtActivityResponse
 from app.schemas._debts import (
     DebtAdjustmentCreateRequest,
     DebtBillParseResponse,
@@ -386,6 +387,8 @@ __all__ = [
     "DebtGoalLinksReplaceRequest",
     "DebtGoalTargetDateRequest",
     "DebtKindSetRequest",
+    "DebtActivityListResponse",
+    "DebtActivityResponse",
     "DebtListResponse",
     "DebtRepaymentEvaluation",
     "DebtResponse",

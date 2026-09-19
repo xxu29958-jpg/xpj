@@ -554,6 +554,7 @@ internal class StubApi(
         file: MultipartBody.Part,
     ): com.ticketbox.data.remote.dto.DebtBillParseResponseDto = ledgerUnsupported()
     override suspend fun debt(publicId: String): com.ticketbox.data.remote.dto.DebtDto = ledgerUnsupported()
+    override suspend fun debtActivity(publicId: String, page: Int, focusRepayment: String?): com.ticketbox.data.remote.dto.DebtActivityListDto = ledgerUnsupported()
     override suspend fun debtRepayments(publicId: String, page: Int): com.ticketbox.data.remote.dto.RepaymentFactListDto = ledgerUnsupported()
     override suspend fun voidDebtRepayment(
         publicId: String,

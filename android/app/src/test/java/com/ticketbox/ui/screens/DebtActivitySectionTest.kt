@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens
 
+import com.ticketbox.R
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtDirections
@@ -11,13 +12,23 @@ import com.ticketbox.domain.model.DebtSourceTypes
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 /**
  * 单笔还款作废入口的展示资格（纯呈现规则，镜像服务端 guard_direct_fact_writable）：
  * 仅 external+manual 欠款、可写角色、整笔未作废（terminal）、该笔还款仍 active 时才出现。
  * member/bill_split 的历史永远只读；整笔已作废后服务端对后续 fact 一律 debt_already_voided。
  */
-class DebtRepaymentHistorySectionTest {
+class DebtActivitySectionTest {
+    @Test
+    fun frozenRateSourcesUseTheirMeaningAndKeepCustomProvenance() {
+        assertEquals(R.string.debt_activity_fx_manual, debtActivityFxSourceLabel("manual"))
+        assertEquals(R.string.debt_activity_fx_base, debtActivityFxSourceLabel("base"))
+        assertEquals(R.string.debt_activity_fx_imported, debtActivityFxSourceLabel("imported"))
+        assertEquals(R.string.debt_activity_fx_ecb, debtActivityFxSourceLabel("ecb"))
+        assertNull(debtActivityFxSourceLabel("我的银行结算价"))
+    }
 
     private fun debt(
         counterpartyType: String = DebtCounterpartyTypes.EXTERNAL,

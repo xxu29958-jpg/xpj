@@ -62,6 +62,22 @@ internal class MemberSettlementConnectedNetwork {
             return result
         }
 
+        override suspend fun debtActivity(publicId: String, page: Int, focusRepayment: String?): com.ticketbox.data.remote.dto.DebtActivityListDto {
+            val history = debtRepayments(publicId, page)
+            val events = history.items.map { payment -> com.ticketbox.data.remote.dto.DebtActivityDto(
+                kind = "repayment", publicId = payment.publicId, recordedAt = payment.createdAt,
+                actorIsYou = true, repayment = payment,
+            ) }
+            val proposalEvents = listOfNotNull(
+                com.ticketbox.data.remote.dto.DebtActivityDto("proposal_created", proposal.publicId, proposal.createdAt,
+                    actorIsYou = false, proposal = proposal),
+                proposal.resolvedAt?.let { com.ticketbox.data.remote.dto.DebtActivityDto("proposal_resolved", proposal.publicId, it,
+                    actorIsYou = true, proposal = proposal) },
+            )
+            return com.ticketbox.data.remote.dto.DebtActivityListDto(publicId, history.homeCurrencyCode,
+                events + proposalEvents, history.page, history.pageSize, events.size + proposalEvents.size)
+        }
+
         override suspend fun debtRepayments(publicId: String, page: Int): RepaymentFactListDto {
             check(publicId == current.publicId)
             val items = listOfNotNull(payment)

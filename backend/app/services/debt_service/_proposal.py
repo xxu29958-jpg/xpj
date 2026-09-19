@@ -34,7 +34,6 @@ from app.money_contract import (
     MoneySign,
     ensure_money_minor,
     fold_sum_to_int,
-    projection_sum_to_int,
 )
 from app.schemas import (
     DebtResponse,
@@ -58,6 +57,7 @@ from app.services.debt_service._money import (
     freeze_home_amount,
     validate_home_amount_command,
 )
+from app.services.debt_service._proposal_response import proposal_response, proposal_responses
 from app.services.debt_service._query import (
     get_participant_debt_response,
     resolve_debt_for_participant,
@@ -571,43 +571,4 @@ def list_repayment_proposals(
             )
         )
     )
-    return MemberRepaymentProposalListResponse(items=[proposal_response(db, proposal) for proposal in proposals])
-
-
-def _public_id_for(db: Session, model: type, internal_id: int | None) -> str | None:
-    """Resolve a linked row's ``public_id`` by internal id (or None)."""
-    if internal_id is None:
-        return None
-    return db.scalar(select(model.public_id).where(model.id == internal_id).limit(1))
-
-
-def proposal_response(db: Session, proposal: MemberRepaymentProposal) -> MemberRepaymentProposalResponse:
-    """Map a proposal to its public response — internal int ids → public_ids (§3)."""
-    debt_public_id = db.scalar(select(Debt.public_id).where(Debt.id == proposal.debt_id).limit(1))
-    return MemberRepaymentProposalResponse(
-        public_id=proposal.public_id,
-        debt_public_id=debt_public_id,
-        status=proposal.status,
-        proposed_amount_cents=projection_sum_to_int(
-            proposal.proposed_amount_cents,
-            label="debt_proposal.response_proposed_amount",
-        ),
-        confirmed_amount_cents=(
-            projection_sum_to_int(
-                proposal.confirmed_amount_cents,
-                label="debt_proposal.response_confirmed_amount",
-            )
-            if proposal.confirmed_amount_cents is not None
-            else None
-        ),
-        home_currency_code=proposal.home_currency_code,
-        original_currency_code=proposal.original_currency_code,
-        original_amount_minor=proposal.original_amount_minor,
-        paid_at=proposal.paid_at,
-        note=proposal.note,
-        expires_at=proposal.expires_at,
-        created_at=proposal.created_at,
-        resolved_at=proposal.resolved_at,
-        supersedes_proposal_public_id=_public_id_for(db, MemberRepaymentProposal, proposal.supersedes_proposal_id),
-        committed_repayment_public_id=_public_id_for(db, Repayment, proposal.committed_repayment_id),
-    )
+    return MemberRepaymentProposalListResponse(items=proposal_responses(db, proposals))

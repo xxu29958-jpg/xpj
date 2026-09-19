@@ -11,6 +11,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -22,7 +23,6 @@ import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtLinkStatuses
 import com.ticketbox.domain.model.DebtRepayment
 import com.ticketbox.domain.model.MessageTone
-import com.ticketbox.ui.components.AppListRow
 import com.ticketbox.ui.components.AppSectionGroup
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.QuietOutlinedButton
@@ -32,7 +32,7 @@ import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.DebtAction
-import com.ticketbox.viewmodel.DebtRepaymentHistoryUiState
+import com.ticketbox.viewmodel.DebtActivityUiState
 
 /**
  * 单笔还款作废入口的展示资格（纯呈现规则，镜像服务端 guard_direct_fact_writable）：
@@ -44,16 +44,16 @@ internal fun repaymentVoidActionAllowed(debt: Debt, canModify: Boolean, repaymen
     debt.isDirectWritable && canModify && debt.status != DebtLinkStatuses.VOIDED && repayment.isActive
 
 /**
- * 还款记录段（只读历史 + 单笔作废入口）：分页一次一页（服务端只有 page/total，无 snapshot
+ * 完整往来历史（只读事件 + 单笔还款作废入口）：分页一次一页（服务端只有 page/total，无 snapshot
  * cursor——不拼暗示同快照的假 timeline）；加载失败只在本段内提示+重试，不阻断上方的还款/调整
  * 命令。金额按父欠款本位币（响应信封 homeCurrencyCode）显示，原币字段仅作 raw 展示、不换算。
  */
 @Composable
-internal fun DebtRepaymentHistorySection(
+internal fun DebtActivitySection(
     debt: Debt,
     canModify: Boolean,
-    history: DebtRepaymentHistoryUiState,
-    callbacks: DebtRepaymentHistoryCallbacks,
+    history: DebtActivityUiState,
+    callbacks: DebtActivityCallbacks,
 ) {
     AppSectionGroup(
         modifier = Modifier.fillMaxWidth(),
@@ -61,7 +61,7 @@ internal fun DebtRepaymentHistorySection(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
     ) {
         Text(
-            text = stringResource(R.string.debt_repayment_history_title),
+            text = stringResource(R.string.debt_activity_title),
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.SemiBold,
         )
@@ -80,34 +80,40 @@ internal fun DebtRepaymentHistorySection(
                 CircularProgressIndicator(modifier = Modifier.size(24.dp))
             }
             history.items.isEmpty() && history.error == null -> Text(
-                text = stringResource(R.string.debt_repayment_history_empty),
+                text = stringResource(R.string.debt_activity_empty),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            else -> history.items.forEachIndexed { index, repayment ->
-                DebtRepaymentHistoryRow(
-                    repayment = repayment,
-                    homeCurrencyCode = history.homeCurrencyCode,
-                    showDivider = index < history.items.lastIndex,
-                    voidAllowed = repaymentVoidActionAllowed(debt, canModify, repayment),
-                    onVoid = { callbacks.onVoidRepayment(repayment) },
-                )
+            else -> history.items.forEachIndexed { index, event ->
+                key(event.key) {
+                    DebtActivityRow(
+                        state = DebtActivityRowState(
+                            event = event,
+                            homeCurrencyCode = history.homeCurrencyCode,
+                            showDivider = index < history.items.lastIndex,
+                            voidAllowed = event.kind == "repayment" && event.repayment?.let {
+                                repaymentVoidActionAllowed(debt, canModify, it)
+                            } == true,
+                            focused = event.kind == "repayment" && event.repayment?.publicId == history.focusedRepaymentId,
+                        ),
+                        callbacks = callbacks,
+                    )
+                }
             }
         }
-        DebtRepaymentHistoryPager(history = history, onLoadPage = callbacks.onLoadPage)
+        DebtActivityPager(history = history, onLoadPage = callbacks.onLoadPage)
     }
 }
 
 @Composable
-private fun DebtRepaymentHistoryRow(
+internal fun DebtActivityRepayment(
     repayment: DebtRepayment,
     homeCurrencyCode: String?,
-    showDivider: Boolean,
     voidAllowed: Boolean,
     onVoid: () -> Unit,
 ) {
     val recordDisplay = CurrencyDisplay.forRecord(homeCurrencyCode)
-    AppListRow(settled = !repayment.isActive, showDivider = showDivider) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
         Column(modifier = Modifier.weight(1f)) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -137,6 +143,14 @@ private fun DebtRepaymentHistoryRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            val source = repayment.exchangeRateSource?.let { raw ->
+                debtActivityFxSourceLabel(raw)?.let { stringResource(it) } ?: raw
+            }
+            listOfNotNull(repayment.exchangeRateToCny, repayment.exchangeRateDate, source)
+                .takeIf { it.isNotEmpty() }?.let { provenance ->
+                    Text(stringResource(R.string.debt_activity_fx, provenance.joinToString(" · ")),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             repayment.voidFact?.reason?.takeIf { it.isNotBlank() }?.let { reason ->
                 Text(
                     text = stringResource(R.string.debt_repayment_voided_reason, reason),
@@ -165,8 +179,8 @@ private fun DebtRepayment.originalAmountLine(homeCurrencyCode: String?): String?
 
 /** 分页 footer：仅在确有上一页/下一页时出现；一次一页，加载中禁用防重复请求。 */
 @Composable
-private fun DebtRepaymentHistoryPager(
-    history: DebtRepaymentHistoryUiState,
+private fun DebtActivityPager(
+    history: DebtActivityUiState,
     onLoadPage: (Int) -> Unit,
 ) {
     if (!history.hasPrevious && !history.hasNext) return
@@ -181,7 +195,7 @@ private fun DebtRepaymentHistoryPager(
             onClick = { onLoadPage(history.page - 1) },
         )
         Text(
-            text = stringResource(R.string.debt_repayment_history_total, history.total),
+            text = stringResource(R.string.debt_activity_total, history.total),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(1f),

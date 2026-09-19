@@ -10,6 +10,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.Debt
+import com.ticketbox.domain.model.DebtActivity
 import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.domain.model.DebtLinkStatuses
@@ -20,7 +21,7 @@ import com.ticketbox.domain.model.DebtSourceTypes
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.displayDate
 import com.ticketbox.ui.theme.TicketboxTheme
-import com.ticketbox.viewmodel.DebtRepaymentHistoryUiState
+import com.ticketbox.viewmodel.DebtActivityUiState
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -30,7 +31,7 @@ import org.junit.Test
  * 行金额/日期/作废原因、分页 footer 只在确有上下页时出现、Viewer/整笔已作废/成员欠款无作废入口、
  * 加载失败段内提示+重试且不吞列表。只读历史；命令资格仍由服务端 guard 最终裁决。
  */
-class DebtRepaymentHistorySectionRenderTest {
+class DebtActivitySectionRenderTest {
 
     @get:Rule
     val composeRule = createComposeRule()
@@ -66,28 +67,29 @@ class DebtRepaymentHistorySectionRenderTest {
         cents: Long,
         status: String = DebtRepaymentStatuses.ACTIVE,
         voidReason: String? = null,
-    ): DebtRepayment = DebtRepayment(
+    ): DebtActivity = DebtActivity(kind = "repayment", publicId = id, recordedAt = "2026-06-18T00:00:00Z",
+        actorDisplayName = null, actorIsYou = true, repayment = DebtRepayment(
         publicId = id,
         amountCents = cents,
         paidAt = "2026-06-18T00:00:00Z",
         createdAt = "2026-06-18T00:00:00Z",
         status = status,
         voidFact = voidReason?.let { DebtRepaymentVoid(publicId = "void-$id", reason = it, createdAt = "2026-06-19T00:00:00Z") },
-    )
+    ))
 
     private fun render(
         currentDebt: () -> Debt = { debt() },
         canModify: () -> Boolean = { true },
-        history: () -> DebtRepaymentHistoryUiState,
+        history: () -> DebtActivityUiState,
         onVoidRepayment: (DebtRepayment) -> Unit = {},
     ) {
         composeRule.setContent {
             TicketboxTheme(skin = AppSkin.Paper) {
-                DebtRepaymentHistorySection(
+                DebtActivitySection(
                     debt = currentDebt(),
                     canModify = canModify(),
                     history = history(),
-                    callbacks = DebtRepaymentHistoryCallbacks(
+                    callbacks = DebtActivityCallbacks(
                         onVoidRepayment = onVoidRepayment,
                         onLoadPage = {},
                         onRetry = {},
@@ -101,7 +103,7 @@ class DebtRepaymentHistorySectionRenderTest {
     fun rowsShowAmountDateAndVoidedReason() {
         render(
             history = {
-                DebtRepaymentHistoryUiState(
+                DebtActivityUiState(
                     debtPublicId = "debt-1",
                     homeCurrencyCode = "CNY",
                     items = listOf(
@@ -114,7 +116,7 @@ class DebtRepaymentHistorySectionRenderTest {
             },
         )
 
-        composeRule.onNodeWithText(context.getString(R.string.debt_repayment_history_title)).assertExists()
+        composeRule.onNodeWithText(context.getString(R.string.debt_activity_title)).assertExists()
         composeRule.onNodeWithText("¥60.00").assertExists()
         composeRule.onNodeWithText("¥25.00").assertExists()
         composeRule.onAllNodesWithText(displayDate("2026-06-18T00:00:00Z")).assertCountEquals(2)
@@ -129,7 +131,7 @@ class DebtRepaymentHistorySectionRenderTest {
         var voided: DebtRepayment? = null
         render(
             history = {
-                DebtRepaymentHistoryUiState(
+                DebtActivityUiState(
                     debtPublicId = "debt-1",
                     homeCurrencyCode = "CNY",
                     items = listOf(
@@ -151,7 +153,7 @@ class DebtRepaymentHistorySectionRenderTest {
 
     @Test
     fun viewerAndTerminalVoidedAndMemberDebtSeeNoVoidEntry() {
-        val history = DebtRepaymentHistoryUiState(
+        val history = DebtActivityUiState(
             debtPublicId = "debt-1",
             homeCurrencyCode = "CNY",
             items = listOf(repayment("r1", 6_000)),
@@ -184,7 +186,7 @@ class DebtRepaymentHistorySectionRenderTest {
     @Test
     fun pagerAppearsOnlyWhenMorePagesExist() {
         val history = mutableStateOf(
-            DebtRepaymentHistoryUiState(
+            DebtActivityUiState(
                 debtPublicId = "debt-1",
                 homeCurrencyCode = "CNY",
                 items = listOf(repayment("r1", 6_000)),
@@ -196,10 +198,10 @@ class DebtRepaymentHistorySectionRenderTest {
         render(history = { history.value })
         composeRule.onNodeWithText(context.getString(R.string.debt_repayment_history_newer)).assertExists()
         composeRule.onNodeWithText(context.getString(R.string.debt_repayment_history_older)).assertExists()
-        composeRule.onNodeWithText(context.getString(R.string.debt_repayment_history_total, 3)).assertExists()
+        composeRule.onNodeWithText(context.getString(R.string.debt_activity_total, 3)).assertExists()
 
         composeRule.runOnIdle {
-            history.value = DebtRepaymentHistoryUiState(
+            history.value = DebtActivityUiState(
                 debtPublicId = "debt-1",
                 homeCurrencyCode = "CNY",
                 items = listOf(repayment("r1", 6_000)),
@@ -215,7 +217,7 @@ class DebtRepaymentHistorySectionRenderTest {
     fun loadFailureShowsBannerAndRetryWithoutBlockingContent() {
         render(
             history = {
-                DebtRepaymentHistoryUiState(
+                DebtActivityUiState(
                     debtPublicId = "debt-1",
                     homeCurrencyCode = "CNY",
                     items = listOf(repayment("r1", 6_000)),
@@ -235,7 +237,7 @@ class DebtRepaymentHistorySectionRenderTest {
     fun emptyHistoryIsHonest() {
         render(
             history = {
-                DebtRepaymentHistoryUiState(
+                DebtActivityUiState(
                     debtPublicId = "debt-1",
                     homeCurrencyCode = "CNY",
                     items = emptyList(),
@@ -244,6 +246,6 @@ class DebtRepaymentHistorySectionRenderTest {
                 )
             },
         )
-        composeRule.onNodeWithText(context.getString(R.string.debt_repayment_history_empty)).assertExists()
+        composeRule.onNodeWithText(context.getString(R.string.debt_activity_empty)).assertExists()
     }
 }

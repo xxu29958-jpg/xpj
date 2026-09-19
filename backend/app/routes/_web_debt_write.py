@@ -1,7 +1,7 @@
 """Write-surface context helpers for the /web/debts pages (slice C2).
 
-Native to main's page structure: action keys, create-form context, repayment-fact
-timeline rows, and the soft write gate. The routes themselves stay in
+Native to main's page structure: action keys, create-form context, pending
+proposal controls, and the soft write gate. The routes themselves stay in
 ``web_debts.py``; these builders keep view shaping out of the handlers.
 """
 
@@ -34,8 +34,6 @@ _PROPOSAL_STATUS_LABELS = {
     "expired": "这次没对上",
     "superseded": "重记过了",
 }
-_PROPOSAL_HISTORY_TITLE = "过往"
-_PROPOSAL_HISTORY_COLLAPSED = 3  # 折叠时显示前 3 条，其余进 <details> (镜像 ResolvedHistoryCard 的 take(3))
 # 解决日期前缀 (mirror resolvedDateText)：confirmed 标「对上」、partial「收了一部分」、其余纯日期不加负面前缀。
 _PROPOSAL_DATE_CONFIRMED = "{} 对上"
 _PROPOSAL_DATE_PARTIAL = "{} 收了一部分"
@@ -108,23 +106,12 @@ def _resolved_proposal_row(proposal) -> dict:
 
 
 def _proposal_section(proposals, viewer_is_debtor: bool | None) -> dict:
-    """收发箱视图模型：在途 pending 一行状态句 + 已解决「过往」沉降 + 动作可用性。
-
-    显示层契约不变：在途 (≤1，one-pending-per-debt) 与已解决拆开，折叠前 3 + 其余 <details>，
-    已解决逐行冻结额·neutral 状态·日粒度日期，集合零汇总，永不红。
-    写面 (slice C2) 增加动作可用性字段 (can_propose/can_withdraw/can_confirm + pending 本体)，
-    由服务端按角色与状态裁决，模板不推导；空箱也返回 dict (动作判定不依赖历史)。
-    """
+    """Current proposal controls; settled records live in the paged activity view."""
 
     pending = next((p for p in proposals if p.status == "pending"), None)
-    resolved_rows = [_resolved_proposal_row(p) for p in proposals if p.status != "pending"]
     section = {
         "pending_line": _proposal_pending_line(pending, viewer_is_debtor) if pending else None,
-        "history_title": _PROPOSAL_HISTORY_TITLE,
-        "resolved_visible": resolved_rows[:_PROPOSAL_HISTORY_COLLAPSED],
-        "resolved_hidden": resolved_rows[_PROPOSAL_HISTORY_COLLAPSED:],
-        "history_expand_label": f"查看全部 {len(resolved_rows)} 条过往",
-        "has_resolved": bool(resolved_rows),
+        "has_resolved": any(p.status != "pending" for p in proposals),
         # 写面动作：债务人可发起(无 pending 时)/撤回(自己 pending 时)；债权人可确认/拒绝(对方 pending 时)。
         # pending 以视图行下送 (public_id + 金额标签)，模板与表单不再触碰原始行。
         "pending": (
@@ -215,27 +202,6 @@ def _debt_create_context(
     ctx["values"] = values
     ctx["form_error"] = error
     return ctx
-
-
-def _fact_rows(facts_page) -> list[dict]:
-    """还款事实时间线行：金额 + 日期 + 作废注记（读模型，只描述不裁决）。"""
-
-    rows: list[dict] = []
-    for fact in facts_page.items:
-        void = fact.void_fact
-        rows.append(
-            {
-                "amount_label": _home_amount_label(fact.amount_cents, facts_page.home_currency_code),
-                "date_text": _day_label(fact.paid_at),
-                "is_voided": fact.status == "voided",
-                "void_reason": (void.reason or "").strip() if void else "",
-                "void_date_text": _day_label(void.created_at) if void else "",
-                "public_id": fact.public_id,
-                # 每行独立幂等键 (撤销单条误记，重复提交同键 HIT)。
-                "void_key": str(uuid4()),
-            }
-        )
-    return rows
 
 
 def _debt_write_gate(options, selected_id: str) -> bool:

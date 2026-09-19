@@ -126,6 +126,16 @@ internal class DebtAdjustmentConnectedNetwork {
             return GoalListResponseDto(listOf(adjustmentConnectedGoal(readCanonicalDebt())))
         }
 
+        override suspend fun debtActivity(publicId: String, page: Int, focusRepayment: String?): com.ticketbox.data.remote.dto.DebtActivityListDto {
+            val history = debtRepayments(publicId, page)
+            val events = history.items.map { payment -> com.ticketbox.data.remote.dto.DebtActivityDto(
+                kind = "repayment", publicId = payment.publicId, recordedAt = payment.createdAt,
+                actorIsYou = true, repayment = payment,
+            ) }
+            return com.ticketbox.data.remote.dto.DebtActivityListDto(publicId, history.homeCurrencyCode,
+                events, history.page, history.pageSize, history.total)
+        }
+
         override suspend fun debtRepayments(publicId: String, page: Int): RepaymentFactListDto {
             if (failReads) throw IOException("Synthetic unavailable repayment history")
             val facts = repaymentResults.values.map { (request, receipt) ->

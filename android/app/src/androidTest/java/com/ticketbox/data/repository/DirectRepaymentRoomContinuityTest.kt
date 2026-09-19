@@ -16,7 +16,7 @@ import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.ui.screens.DebtDetailScreen
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.DebtDetailViewModel
-import com.ticketbox.viewmodel.DebtRepaymentHistoryViewModel
+import com.ticketbox.viewmodel.DebtActivityViewModel
 import com.ticketbox.viewmodel.MemberRepaymentProposalViewModel
 import com.ticketbox.viewmodel.OutboxRecoveryRepositories
 import com.ticketbox.viewmodel.OutboxStatusViewModel
@@ -37,7 +37,7 @@ class DirectRepaymentRoomContinuityTest {
     private val fixture = DebtAdjustmentConnectedFixture(context)
     private val detail = mutableStateOf<DebtDetailViewModel?>(null)
     private lateinit var proposals: MemberRepaymentProposalViewModel
-    private lateinit var history: DebtRepaymentHistoryViewModel
+    private lateinit var history: DebtActivityViewModel
 
     @After fun close() { stopModels(); fixture.close() }
 
@@ -88,7 +88,7 @@ class DirectRepaymentRoomContinuityTest {
         compose.waitUntil(10_000) { detail.value?.state?.value?.debt?.rowVersion == 3L && history.state.value.items.size == 1 }
         assertEquals(40_000L, detail.value?.state?.value?.debt?.remainingAmountCents)
         assertEquals("repayment-1", history.state.value.items.single().publicId)
-        assertEquals(pending.request.paidAt, history.state.value.items.single().paidAt)
+        assertEquals(pending.request.paidAt, history.state.value.items.single().repayment?.paidAt)
         assertTrue(requireNotNull(detail.value).state.value.canWriteActions)
         assertEquals(2, fixture.network.repaymentCalls.size)
     }
@@ -157,7 +157,7 @@ class DirectRepaymentRoomContinuityTest {
         val graph = fixture.reopen()
         compose.runOnIdle {
             proposals = MemberRepaymentProposalViewModel(graph.debtRepository.proposals)
-            history = DebtRepaymentHistoryViewModel(graph.debtRepository.repayments)
+            history = DebtActivityViewModel(graph.debtRepository.activity)
             detail.value = DebtDetailViewModel(graph.debtRepository, graph.debtWriteRepository)
                 .also { it.loadDebt(fixture.network.current.publicId) }
         }

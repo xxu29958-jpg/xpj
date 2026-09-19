@@ -46,6 +46,7 @@
       <div class="bsplit-meta">
         {{ row.merchant or '一笔账单' }}{% if row.expense_time %} · {{ row.expense_time }}{% endif %}
         · <a class="bsplit-source" href="{{ row.source_href }}">查看来源账单</a>
+        {% if row.debt_href %} · <a href="{{ row.debt_href }}">查看这笔往来</a>{% endif %}
       </div>
       <div class="bsplit-deadline">
         {%- if row_live %}对方可在 {{ row.expires_at }} 前接受

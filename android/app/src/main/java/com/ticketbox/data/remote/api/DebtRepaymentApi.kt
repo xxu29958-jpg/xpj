@@ -12,6 +12,13 @@ import retrofit2.http.Query
 
 /** Immutable repayment records and corrections, under the existing Debt fact owner. */
 interface DebtRepaymentApi {
+    @GET("api/debts/{publicId}/activity")
+    suspend fun debtActivity(
+        @Path("publicId") publicId: String,
+        @Query("page") page: Int,
+        @Query("focus_repayment") focusRepayment: String? = null,
+    ): com.ticketbox.data.remote.dto.DebtActivityListDto
+
     @GET("api/debts/{publicId}/repayments")
     suspend fun debtRepayments(
         @Path("publicId") publicId: String,

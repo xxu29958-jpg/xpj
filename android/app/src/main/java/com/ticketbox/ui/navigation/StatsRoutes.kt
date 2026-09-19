@@ -43,7 +43,7 @@ import com.ticketbox.viewmodel.CreateDebtGoalViewModel
 import com.ticketbox.viewmodel.DebtDetailViewModel
 import com.ticketbox.viewmodel.DebtGoalViewModel
 import com.ticketbox.viewmodel.DebtListViewModel
-import com.ticketbox.viewmodel.DebtRepaymentHistoryViewModel
+import com.ticketbox.viewmodel.DebtActivityViewModel
 import com.ticketbox.viewmodel.IncomePlanEditViewModel
 import com.ticketbox.viewmodel.IncomePlanViewModel
 import com.ticketbox.viewmodel.MemberRepaymentProposalViewModel
@@ -53,7 +53,7 @@ import com.ticketbox.viewmodel.budgetViewModelFactory
 import com.ticketbox.viewmodel.createDebtGoalViewModelFactory
 import com.ticketbox.viewmodel.debtDetailViewModelFactory
 import com.ticketbox.viewmodel.debtGoalViewModelFactory
-import com.ticketbox.viewmodel.debtRepaymentHistoryViewModelFactory
+import com.ticketbox.viewmodel.debtActivityViewModelFactory
 import com.ticketbox.viewmodel.debtViewModelFactory
 import com.ticketbox.viewmodel.incomePlanEditViewModelFactory
 import com.ticketbox.viewmodel.incomePlanViewModelFactory
@@ -81,7 +81,7 @@ internal const val DebtGoalLinkedRepaymentHistoryViewModelKey = "debt-goal-linke
 internal const val ReceivablesDetailViewModelKey = "receivables-detail"
 internal const val ReceivablesProposalViewModelKey = "receivables-proposal"
 internal const val ReceivablesRepaymentHistoryViewModelKey = "receivables-repayment-history"
-internal const val DebtRepaymentHistoryViewModelKey = "debt-repayment-history"
+internal const val DebtActivityViewModelKey = "debt-repayment-history"
 internal const val RepaymentDraftInboxViewModelKey = "repayment-draft-inbox"
 
 @Composable
@@ -137,7 +137,7 @@ internal fun IncomePlanRoute(
             onDataChanged = onDataChanged,
         ),
     )
-    // 编辑会话 VM 与列表 VM 分离（同 DebtRepaymentHistoryViewModel 先例）：打开时捕获 binding +
+    // 编辑会话 VM 与列表 VM 分离（同 DebtActivityViewModel 先例）：打开时捕获 binding +
     // rowVersion baseline，成功 receipt 独立展示，列表刷新失败不吞「已更新收入」。
     val incomePlanEditViewModel: IncomePlanEditViewModel = viewModel(
         key = IncomePlanEditViewModelKey,
@@ -245,9 +245,9 @@ internal fun DebtRoute(
         key = MemberRepaymentProposalViewModelKey,
         factory = memberRepaymentProposalViewModelFactory(screenFactory.debtRepository.proposals),
     )
-    val repaymentHistoryViewModel: DebtRepaymentHistoryViewModel = viewModel(
-        key = DebtRepaymentHistoryViewModelKey,
-        factory = debtRepaymentHistoryViewModelFactory(screenFactory.debtRepaymentRepository),
+    val repaymentHistoryViewModel: DebtActivityViewModel = viewModel(
+        key = DebtActivityViewModelKey,
+        factory = debtActivityViewModelFactory(screenFactory.debtActivityRepository),
     )
     val context = LocalContext.current
     val parseScope = rememberCoroutineScope()
@@ -318,7 +318,7 @@ private fun DebtDetailHost(
     openDebtId: String,
     detailViewModel: DebtDetailViewModel,
     proposalViewModel: MemberRepaymentProposalViewModel,
-    historyViewModel: DebtRepaymentHistoryViewModel,
+    historyViewModel: DebtActivityViewModel,
     onBack: () -> Unit,
 ) {
     LaunchedEffect(openDebtId) { detailViewModel.loadDebt(openDebtId) }
@@ -367,9 +367,9 @@ internal fun ReceivablesRoute(
         key = ReceivablesProposalViewModelKey,
         factory = memberRepaymentProposalViewModelFactory(screenFactory.debtRepository.proposals),
     )
-    val repaymentHistoryViewModel: DebtRepaymentHistoryViewModel = viewModel(
+    val repaymentHistoryViewModel: DebtActivityViewModel = viewModel(
         key = ReceivablesRepaymentHistoryViewModelKey,
-        factory = debtRepaymentHistoryViewModelFactory(screenFactory.debtRepaymentRepository),
+        factory = debtActivityViewModelFactory(screenFactory.debtActivityRepository),
     )
     LaunchedEffect(Unit) { viewModel.reload() }
     // 域级新建抽屉（RelationsRoute composer，方向预选应收）落账后 bump revision，这里刷新。

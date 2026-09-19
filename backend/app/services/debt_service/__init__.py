@@ -33,6 +33,7 @@ supersedes any pending proposal in the same transaction.
 
 from __future__ import annotations
 
+from app.services.debt_service._activity import list_debt_activity
 from app.services.debt_service._adjustment import (
     record_adjustment,
     validate_adjustment_command,
@@ -117,6 +118,7 @@ __all__ = [
     "installment_paid_count",
     "installment_payoff_date",
     "latest_fact_at",
+    "list_debt_activity",
     "list_debts",
     "list_member_receivables_for_account",
     "list_payables_for_account",

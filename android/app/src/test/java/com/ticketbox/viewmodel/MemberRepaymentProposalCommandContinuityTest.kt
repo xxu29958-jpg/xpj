@@ -86,5 +86,9 @@ class MemberRepaymentProposalCommandContinuityTest {
         assertEquals(repository.proposalResult.getOrThrow(), viewModel.state.value.pendingProposal)
         assertNull(viewModel.state.value.activeForm)
         assertNotNull(viewModel.state.value.flashMessage)
+        assertEquals(1L, viewModel.state.value.acknowledgedCommandRevision)
+        viewModel.refresh()
+        advanceUntilIdle()
+        assertEquals(1L, viewModel.state.value.acknowledgedCommandRevision)
     }
 }

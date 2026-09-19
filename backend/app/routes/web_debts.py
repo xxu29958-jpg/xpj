@@ -1,22 +1,4 @@
-"""/web/debts pages (ADR-0049 债务域 · web 面 slice 1 + 2a + 2b).
-
-slice 1: 只读欠款列表 (``GET /web/debts``)，镜像 Android ``DebtListScreen``。
-slice 2a: 只读欠款详情 (``GET /web/debts/{public_id}``)，**按角色分轴**镜像 Android
-``DebtDetailScreen`` —— 外部债走 businesslike 会计卡 (剩余/本金/已偿还/状态)，家庭(成员)
-债走 communal 关系卡 (一起处理眉 + 无金额关系主句 + 件数进度 + 「看看账」展开，永不红)。
-
-成员债的角色 (你帮我垫的 / 我帮你垫的 / 第三方) 由服务端权威字段 ``viewer_is_debtor`` 决定
-(客户端不推导)，所以详情走 ``get_participant_debt_response`` —— 需要 viewer 的 account_id：
-Web session 用会话账户，loopback owner-console 用账本 owner 账户。
-
-slice 2b: 成员债的还款 proposal **状态 + 过往历史** (``list_repayment_proposals``，**无新端点**)。
-在途 pending 渲染成一行**关系状态句** (「谁该接下一步」非「谁欠」，web 只读=描述非「立即确认」CTA)；
-已解决 proposal 沉降进「过往」块 (冻结额·neutral 状态·日粒度日期·可选备注，集合零汇总，永不红)。
-
-**纯只读**：记账/还款/调整/作废/成员还款确认全部留 Android + ``/api``。文案逐字镜像 Android
-``MemberDebtLabels`` + ``ResolvedHistoryCard`` + ``strings_stats_budget.xml`` (§14 三端 copy 同步)；
-pending 状态行是 web 特定描述性文案 (Android 的是带「确认一下吧」动作 hint，web 无确认钮会误导)。
-"""
+"""Web debt pages: participant facts, complete history and retained command forms."""
 
 from __future__ import annotations
 
@@ -27,12 +9,12 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
+from app.routes._web_debt_activity import debt_activity_context
 from app.routes._web_debt_write import (
     PROPOSAL_CONFIRM_AMOUNT_FIELD,
     _debt_action_keys,
     _debt_create_context,
     _debt_write_gate,
-    _fact_rows,
     _proposal_section,
 )
 from app.routes.web_common import (
@@ -58,7 +40,6 @@ from app.routes.web_debt_presenters import (
 from app.services.debt_service import (
     get_participant_debt_response,
     list_debts,
-    list_repayment_facts,
     list_repayment_proposals,
 )
 from app.services.ledger_service import find_owner_account_id_for_ledger
@@ -368,27 +349,6 @@ def _load_debt_detail_state(
     return ctx, debt, account_id, proposal_items
 
 
-def _repayment_fact_rows(
-    db: Session,
-    *,
-    selected_id: str,
-    account_id: int | None,
-    public_id: str,
-) -> list[dict]:
-    if account_id is None:
-        return []
-    return _fact_rows(
-        list_repayment_facts(
-            db,
-            tenant_id=selected_id,
-            actor_account_id=account_id,
-            public_id=public_id,
-            page=1,
-            page_size=20,
-        )
-    )
-
-
 def _render_debt_detail(
     request: Request,
     db: Session,
@@ -464,11 +424,12 @@ def _render_debt_detail(
         # post-commit outcomes. The old terminal fallback's "not saved" claim
         # cannot describe those commands. Member debts retain their static guard.
         ctx["action_form"]["fallback"] = ctx["debt"]["is_member"]
-    ctx["repayment_facts"] = _repayment_fact_rows(
-        db,
+    ctx["activity"] = debt_activity_context(
+        request, db,
         selected_id=selected_id,
         account_id=account_id,
         public_id=public_id,
+        focus_repayment=action_target_public_id if action_kind == "repayment_void" else None,
     )
     return templates.TemplateResponse(
         request=request,

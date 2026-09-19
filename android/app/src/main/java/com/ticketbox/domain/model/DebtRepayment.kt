@@ -15,17 +15,11 @@ data class DebtRepayment(
     val voidFact: DebtRepaymentVoid? = null,
     val originalCurrencyCode: String? = null,
     val originalAmountMinor: Long? = null,
+    val exchangeRateToCny: String? = null,
+    val exchangeRateDate: String? = null,
+    val exchangeRateSource: String? = null,
 ) {
     val isActive: Boolean get() = status == DebtRepaymentStatuses.ACTIVE
 }
 
 data class DebtRepaymentVoid(val publicId: String, val reason: String, val createdAt: String)
-
-data class DebtRepaymentPage(
-    val debtPublicId: String,
-    val homeCurrencyCode: String,
-    val items: List<DebtRepayment>,
-    val page: Int,
-    val pageSize: Int,
-    val total: Int,
-)

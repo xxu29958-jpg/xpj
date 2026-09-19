@@ -7,6 +7,8 @@ from uuid import uuid4
 from sqlalchemy.orm import Session
 
 from app.routes._web_money_views import _minor_amount_label
+from app.routes._web_relationship_links import authorized_debt_href
+from app.routes._web_session_common import resolve_web_actor_account_id
 from app.schemas import ExpenseFactBundleResponse
 from app.services.currency_common import currency_input_metadata, minor_amount_value
 from app.services.expense_offset_service import expense_fact_bundle
@@ -117,6 +119,8 @@ def _relationship_view(bundle: ExpenseFactBundleResponse) -> dict[str, object]:
         "cancelled_count": len(impacts.pending_invites_cancelled),
         "accepted": [
             {
+                "debt_public_id": impact.debt_public_id,
+                "invitation_public_id": impact.invitation_public_id,
                 "receiver_display_name": impact.receiver_display_name or "家庭成员",
                 "original_share_label": _minor_amount_label(
                     impact.original_agreed_share_home_minor,
@@ -179,6 +183,15 @@ def expense_offset_fact_view(
     tenant_id: str,
     expense_id: int,
     can_write: bool,
+    request,
 ) -> dict[str, object]:
     bundle = expense_fact_bundle(db, tenant_id=tenant_id, expense_id=expense_id)
-    return offset_fact_view(bundle, can_write=can_write)
+    view = offset_fact_view(bundle, can_write=can_write)
+    accepted = view["offset_relationship_impacts"]["accepted"]
+    if accepted:
+        account_id = resolve_web_actor_account_id(db, request, tenant_id)
+        for impact in accepted:
+            impact["debt_href"] = authorized_debt_href(
+                db, public_id=impact["debt_public_id"], selected_id=tenant_id, account_id=account_id,
+            )
+    return view

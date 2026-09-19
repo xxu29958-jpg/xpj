@@ -68,41 +68,31 @@ def list_repayment_facts(
         .limit(page_size)
     ).all()
 
-    items: list[RepaymentFactResponse] = []
-    for repayment, repayment_void in rows:
-        void_fact = (
-            RepaymentVoidFactResponse(
-                public_id=repayment_void.public_id,
-                reason=repayment_void.reason,
-                created_at=repayment_void.created_at,
-            )
-            if repayment_void is not None
-            else None
-        )
-        items.append(
-            RepaymentFactResponse(
-                public_id=repayment.public_id,
-                amount_cents=projection_sum_to_int(
-                    repayment.amount_cents,
-                    label="debt_activity.repayment_amount",
-                ),
-                original_currency_code=repayment.original_currency_code,
-                original_amount_minor=repayment.original_amount_minor,
-                exchange_rate_to_cny=repayment.exchange_rate_to_cny,
-                exchange_rate_date=repayment.exchange_rate_date,
-                exchange_rate_source=repayment.exchange_rate_source,
-                paid_at=repayment.paid_at,
-                created_at=repayment.created_at,
-                status="voided" if void_fact is not None else "active",
-                void_fact=void_fact,
-            )
-        )
-
     return RepaymentFactListResponse(
         debt_public_id=debt.public_id,
         home_currency_code=debt.home_currency_code,
-        items=items,
+        items=[repayment_fact_response(repayment, void) for repayment, void in rows],
         page=page,
         page_size=page_size,
         total=total,
+    )
+
+
+def repayment_fact_response(repayment: Repayment, void: RepaymentVoid | None) -> RepaymentFactResponse:
+    """Keep the legacy read and the complete timeline on the same fact projection."""
+    return RepaymentFactResponse(
+        public_id=repayment.public_id,
+        amount_cents=projection_sum_to_int(repayment.amount_cents, label="debt_activity.repayment_amount"),
+        original_currency_code=repayment.original_currency_code,
+        original_amount_minor=repayment.original_amount_minor,
+        exchange_rate_to_cny=repayment.exchange_rate_to_cny,
+        exchange_rate_date=repayment.exchange_rate_date,
+        exchange_rate_source=repayment.exchange_rate_source,
+        paid_at=repayment.paid_at,
+        created_at=repayment.created_at,
+        status="voided" if void is not None else "active",
+        void_fact=(
+            RepaymentVoidFactResponse(public_id=void.public_id, reason=void.reason, created_at=void.created_at)
+            if void is not None else None
+        ),
     )

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="debt_activity_title">往来历史</string>
+    <string name="debt_activity_empty">暂无历史记录</string>
+    <string name="debt_activity_load_failed">暂时无法读取往来历史，请重试。</string>
+    <string name="debt_activity_total">共 %1$d 条记录</string>
+    <string name="debt_activity_created">建立往来</string>
+    <string name="debt_activity_repayment">记录还款</string>
+    <string name="debt_activity_repayment_void">撤销还款</string>
+    <string name="debt_activity_adjustment">调整金额</string>
+    <string name="debt_activity_forgiveness">免除剩余</string>
+    <string name="debt_activity_debt_void">整笔作废</string>
+    <string name="debt_activity_proposal_created">发起还款申报</string>
+    <string name="debt_activity_proposal_resolved">处理还款申报</string>
+    <string name="debt_activity_unknown">往来记录</string>
+    <string name="debt_activity_actor_you">你</string>
+    <string name="debt_activity_proposed_amount">申报金额：%1$s</string>
+    <string name="debt_activity_confirmed_amount">实际确认：%1$s</string>
+    <string name="debt_activity_paid_at">付款日期：%1$s</string>
+    <string name="debt_activity_proposal_expires">申报有效期至：%1$s</string>
+    <string name="debt_activity_open_repayment">查看关联还款</string>
+    <string name="debt_activity_linked_payment">已定位关联还款</string>
+    <string name="debt_activity_supersedes">替代申报：%1$s</string>
+    <string name="debt_activity_fx">冻结汇率：%1$s</string>
+    <string name="debt_activity_fx_manual">手动汇率</string>
+    <string name="debt_activity_fx_base">同币种，无需换算</string>
+    <string name="debt_activity_fx_imported">导入记录汇率</string>
+    <string name="debt_activity_fx_ecb">欧洲央行参考汇率</string>
+</resources>

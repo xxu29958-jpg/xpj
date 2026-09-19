@@ -82,7 +82,7 @@ interface DebtProposalActions {
 class DebtRepository(
     private val apiProvider: ApiServiceProvider,
 ) : DebtActions, ReceivablesActions {
-    val repayments: DebtRepaymentQueries = DebtRepaymentRepository(apiProvider)
+    val activity: DebtActivityQueries = DebtActivityRepository(apiProvider)
     private val ledgerRequestGuard = LedgerRequestGuard(apiProvider)
     private val errorHandler = NetworkErrorHandler(
         serverUrlProvider = { apiProvider.currentSession()?.serverUrl },
