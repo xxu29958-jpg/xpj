@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 from scripts import ci_gap_trigger_scope, ci_scope
-from scripts.ci_gap_trigger_scope import all_ci_scopes, classify_ci_paths
+from scripts.ci_gap_trigger_scope import all_ci_scopes, classify_ci_decision, classify_ci_paths
 from scripts.postgres_release_policy import POSTGRES_RELEASE_POLICY
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
@@ -435,3 +436,117 @@ def test_changed_paths_is_rename_and_newline_safe(monkeypatch) -> None:
         "-z",
         "base...head",
     ]
+
+
+def test_classifier_explanation_matches_existing_selection() -> None:
+    docs = classify_ci_decision(["docs/runbook/CI.md"])
+    assert docs["scopes"] == classify_ci_paths(["docs/runbook/CI.md"])
+    assert docs["status"] == "NOT_AFFECTED"
+    assert docs["lanes"]["android"]["status"] == "NOT_AFFECTED"
+    shared = classify_ci_decision(["backend/app/static/shared/tokens.css"])
+    assert shared["scopes"] == classify_ci_paths(["backend/app/static/shared/tokens.css"])
+    assert shared["status"] == "REQUIRED"
+    assert shared["lanes"]["desktop"]["status"] == "REQUIRED"
+    assert shared["hits"][0]["consumer"] == "desktop_bff_static_allowlist"
+    unknown = classify_ci_decision(["new-surface/config.toml"])
+    assert unknown["scopes"] == all_ci_scopes()
+    assert unknown["status"] == "UNKNOWN_FULL"
+    empty = classify_ci_decision([])
+    assert empty["status"] == "UNKNOWN_FULL"
+    assert empty["reason"] == "empty path set"
+
+
+def test_scope_cli_keeps_github_output_boolean_and_encodes_newline_paths(tmp_path, monkeypatch) -> None:
+    output = tmp_path / "github-output"
+    summary = tmp_path / "summary.md"
+    monkeypatch.setattr(
+        ci_scope,
+        "changed_paths",
+        lambda base, head: ["backend/app/static/shared/tokens.css", "weird\nname.css"],
+    )
+    monkeypatch.setattr(ci_scope.sys, "argv", [
+        "ci_scope.py",
+        "--event", "pull_request",
+        "--base", "aa",
+        "--head", "bb",
+        "--output", str(output),
+        "--summary", str(summary),
+        "--explain-json", str(tmp_path / "explain.json"),
+    ])
+    assert ci_scope.main() == 0
+    text = output.read_text(encoding="utf-8")
+    assert text.splitlines()[0].startswith("postgres=")
+    assert "weird" not in text
+    assert "android=true" in text
+    rendered = summary.read_text(encoding="utf-8")
+    assert r"weird\nname.css" in rendered
+    assert "decision=UNKNOWN_FULL" in rendered
+    explanation = json.loads((tmp_path / "explain.json").read_text(encoding="utf-8"))
+    assert explanation["status"] == "UNKNOWN_FULL"
+    assert explanation["scopes"] == all_ci_scopes()
+    hit_paths = {hit["path"] for hit in explanation["hits"]}
+    assert "backend/app/static/shared/tokens.css" in hit_paths
+    assert "weird\nname.css" in hit_paths
+
+
+def test_diff_unavailable_is_check_failed_full_not_unknown_full(monkeypatch) -> None:
+    def boom(base, head):
+        raise subprocess.CalledProcessError(1, ["git", "diff"])
+
+    monkeypatch.setattr(ci_scope, "changed_paths", boom)
+    decision = ci_scope.resolve_ci_scope("pull_request", "aa", "bb")
+    assert decision["status"] == "CHECK_FAILED_FULL"
+    assert decision["scopes"] == all_ci_scopes()
+    assert decision["diff_error"] == "CalledProcessError"
+    assert all(lane["status"] == "CHECK_FAILED" for lane in decision["lanes"].values())
+    assert all(lane["status"] != "UNKNOWN_FULL" for lane in decision["lanes"].values())
+
+
+def test_push_without_base_explains_unknown_full(tmp_path, monkeypatch) -> None:
+    output = tmp_path / "github-output"
+    summary = tmp_path / "summary.md"
+    monkeypatch.setattr(ci_scope.sys, "argv", [
+        "ci_scope.py", "--event", "push", "--output", str(output), "--summary", str(summary),
+    ])
+    assert ci_scope.main() == 0
+    text = output.read_text(encoding="utf-8")
+    assert all(f"{name}=true" in text for name in ("postgres", "backend_frozen", "desktop", "android", "windows"))
+    assert "no trusted incremental diff base" in summary.read_text(encoding="utf-8")
+    assert "decision=UNKNOWN_FULL" in summary.read_text(encoding="utf-8")
+
+
+def test_scope_cli_reports_check_failed_full(tmp_path, monkeypatch) -> None:
+    output = tmp_path / "github-output"
+    summary = tmp_path / "summary.md"
+
+    def boom(base, head):
+        raise subprocess.CalledProcessError(1, ["git", "diff"])
+
+    monkeypatch.setattr(ci_scope, "changed_paths", boom)
+    monkeypatch.setattr(ci_scope.sys, "argv", [
+        "ci_scope.py", "--event", "pull_request", "--base", "aa", "--head", "bb",
+        "--output", str(output), "--summary", str(summary),
+    ])
+    assert ci_scope.main() == 0
+    text = summary.read_text(encoding="utf-8")
+    assert "decision=CHECK_FAILED_FULL" in text
+    assert "CHECK_FAILED" in text
+    assert "UNKNOWN_FULL" not in text
+
+
+def test_mixed_policy_known_and_unknown_paths_keep_all_hit_explanations() -> None:
+    decision = classify_ci_decision([
+        ".github/workflows/ci.yml",
+        "backend/app/static/shared/tokens.css",
+        "new-surface/config.toml",
+        "docs/runbook/CI.md",
+    ])
+    assert decision["status"] == "UNKNOWN_FULL"
+    assert decision["scopes"] == all_ci_scopes()
+    kinds = {hit["path"]: hit["kind"] for hit in decision["hits"]}
+    assert kinds[".github/workflows/ci.yml"] == "workflow_prefix"
+    assert kinds["backend/app/static/shared/tokens.css"] == "prefix"
+    assert kinds["new-surface/config.toml"] == "unknown"
+    assert kinds["docs/runbook/CI.md"] == "prefix"
+    assert {hit["path"] for hit in decision["hits"]} == set(kinds)
+

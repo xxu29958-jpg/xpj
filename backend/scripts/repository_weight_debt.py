@@ -60,12 +60,16 @@ def python_complexity(files: dict[str, str], records: list[dict]) -> tuple[dict[
             path = source_paths[int(filename.removeprefix("source_"))]
             record = python[path]
             match = re.search(r"\((\d+) > 15\)", issue["message"])
-            if match is None:
+            name_match = re.search(r"`?([^\s`]+)`? is too complex", issue["message"])
+            if match is None or name_match is None:
                 raise ValueError("native Ruff C901 format changed; cannot measure debt")
             key = f"{record['module']}:{record['role']}"
             counters[f"python_c901:{key}"] += 1
             counters[f"python_c901_excess:{key}"] += int(match[1]) - 15
-            findings.append({"path": path, "line": issue["location"]["row"], "complexity": int(match[1])})
+            findings.append({
+                "path": path, "line": issue["location"]["row"], "function": name_match[1],
+                "complexity": int(match[1]),
+            })
     return dict(counters), findings
 
 

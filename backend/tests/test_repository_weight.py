@@ -43,11 +43,25 @@ def repo(tmp_path: Path) -> Path:
     return root
 
 
-def run_weight(repo: Path, base: str, head: str, tmp_path: Path) -> tuple[subprocess.CompletedProcess, dict]:
+def run_weight(
+    repo: Path,
+    base: str,
+    head: str,
+    tmp_path: Path,
+    extra: list[str] | None = None,
+) -> tuple[subprocess.CompletedProcess, dict]:
     output = tmp_path / "weight.json"
+    command = [
+        sys.executable, str(ENTRY), "--repo", str(repo), "--base", base, "--head", head, "--json", str(output),
+    ]
+    if extra:
+        command.extend(extra)
     result = subprocess.run(
-        [sys.executable, str(ENTRY), "--repo", str(repo), "--base", base, "--head", head, "--json", str(output)],
-        env={key: value for key, value in os.environ.items() if key != "GITHUB_STEP_SUMMARY"},
+        command,
+        env={
+            key: value for key, value in os.environ.items()
+            if key not in {"GITHUB_STEP_SUMMARY", "XPJ_WEIGHT_SOURCE_SHA", "XPJ_WEIGHT_EVENT"}
+        },
         capture_output=True, text=True, encoding="utf-8",
     )
     report = json.loads(output.read_text(encoding="utf-8")) if output.exists() else {}
@@ -361,3 +375,345 @@ def test_release_audit_rejects_missing_repository_weight_lane(tmp_path, monkeypa
     (tmp_path / "_audit_pr_delta_metrics.py").write_text("raise SystemExit(0)\n", encoding="utf-8")
     with pytest.raises(RuntimeError, match="_audit_repository_weight.py"):
         release_audit._discover_lanes(tmp_path)
+
+
+def test_failure_summary_lists_suppression_location_before_totals(repo, tmp_path) -> None:
+    base = commit_files(repo, {"backend/app/example.py": "VALUE = 1\n"}, "base")
+    head = commit_files(repo, {
+        "backend/app/example.py": "VALUE = 1  # noqa: C901\n",
+    }, "new suppression")
+    result, report = run_weight(repo, base, head, tmp_path)
+    assert result.returncode == 1
+    assert report["verdict"] == "DEBT REGRESSION"
+    stdout = result.stdout
+    assert stdout.index("Verdict: DEBT REGRESSION") < stdout.index("Production LOC")
+    assert stdout.index("Failures:") < stdout.index("Production LOC")
+    assert "backend/app/example.py" in stdout
+    assert report["failure_details"][0]["path"] == "backend/app/example.py"
+    assert report["failure_details"][0]["attribution"] == "unique"
+
+
+def test_query_reads_existing_json_without_changing_verdict(repo, tmp_path) -> None:
+    base = commit_files(repo, {
+        "backend/app/static/shared/tokens.css": "a { color: red; }\n",
+        "backend/app/service.py": "def answer():\n    return 1\n",
+    }, "base")
+    head = commit_files(repo, {
+        "backend/app/static/shared/tokens.css": "a { color: blue; }\n",
+        "docs/note.md": "docs only\n",
+    }, "theme")
+    result, report = run_weight(repo, base, head, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    output = tmp_path / "weight.json"
+    query = subprocess.run(
+        [sys.executable, str(ENTRY), "--from-json", str(output), "--path", "backend/app/static/shared/tokens.css", "--changes"],
+        capture_output=True, text=True, encoding="utf-8",
+        env={key: value for key, value in os.environ.items() if key != "GITHUB_STEP_SUMMARY"},
+    )
+    assert query.returncode == 0, query.stdout + query.stderr
+    assert f"GLOBAL VERDICT (unfiltered): {report['verdict']}" in query.stdout
+    assert report["verdict"] in {"HEALTHY GROWTH", "NO DEBT REGRESSION"}
+    assert "tokens.css" in query.stdout
+    assert any(row["inventory"] == "unmeasured" for row in report["git_changes"] if row["path"] == "docs/note.md")
+    assert all(row["path"] != "docs/note.md" for row in report["changes"])
+
+
+def test_symbol_query_distinguishes_inventory_from_missing(repo, tmp_path) -> None:
+    base = commit_files(repo, {"backend/app/service.py": "def answer():\n    return 1\n"}, "base")
+    head = commit_files(repo, {"backend/app/service.py": "def answer():\n    return 2\n"}, "edit")
+    result, report = run_weight(repo, base, head, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    query = subprocess.run(
+        [sys.executable, str(ENTRY), "--from-json", str(tmp_path / "weight.json"), "--symbol", "answer"],
+        capture_output=True, text=True, encoding="utf-8",
+        env={key: value for key, value in os.environ.items() if key != "GITHUB_STEP_SUMMARY"},
+    )
+    assert query.returncode == 0, query.stdout + query.stderr
+    assert "answer" in query.stdout
+    missing = subprocess.run(
+        [sys.executable, str(ENTRY), "--from-json", str(tmp_path / "weight.json"), "--symbol", "does_not_exist"],
+        capture_output=True, text=True, encoding="utf-8",
+        env={key: value for key, value in os.environ.items() if key != "GITHUB_STEP_SUMMARY"},
+    )
+    assert missing.returncode == 0
+    assert "Functions: 0" in missing.stdout
+    assert report["verdict"] == "NO DEBT REGRESSION" or report["verdict"] == "HEALTHY GROWTH"
+
+
+def _query_report():
+    scripts = str(ENTRY.parent)
+    if scripts not in sys.path:
+        sys.path.insert(0, scripts)
+    from repository_weight_report import query_report
+    return query_report
+
+
+def _complex_python(name: str, branches: int) -> str:
+    lines = [f"def {name}(value):"]
+    for number in range(branches):
+        lines.append(f"    if value == {number}:")
+        lines.append(f"        return {number}")
+    lines.append("    return 0")
+    return "\n".join(lines) + "\n"
+
+
+def test_task_navigation_entries_point_at_real_files() -> None:
+    from scripts.engineering_task_map import ROOT, resolve_task
+    from scripts.repository_weight_sources import exact_commit
+
+    sha = exact_commit(ROOT, "HEAD", "head")
+    ci_task = resolve_task("ci-trigger", ROOT, sha)
+    web_task = resolve_task("shared-web-theme", ROOT, sha)
+    assert ci_task["source_sha"] == sha
+    assert ci_task["measurement_sha"] == sha
+    assert ci_task["historical"] is False
+    assert all(node["present"] for node in ci_task["chain"])
+    assert all(node["present"] for node in web_task["chain"])
+    assert ci_task["map_is_skip_authority"] is False
+    result = subprocess.run(
+        [sys.executable, str(ENTRY), "--task", "shared-web-theme"],
+        capture_output=True, text=True, encoding="utf-8",
+        env={key: value for key, value in os.environ.items() if key != "GITHUB_STEP_SUMMARY"},
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert f"source_sha={sha}" in result.stdout
+    assert f"measurement_sha={sha}" in result.stdout
+    assert "historical=false" in result.stdout
+    assert "backend/app/static/shared/tokens.css" in result.stdout
+    assert "desktop/backend_manager/web_bff.py" in result.stdout
+
+
+def test_historical_complex_functions_are_not_marked_unique(repo, tmp_path) -> None:
+    query_report = _query_report()
+
+    base = commit_files(repo, {"backend/app/branch.py": _complex_python("old_complex", 16)}, "base")
+    head = commit_files(repo, {
+        "backend/app/branch.py": _complex_python("old_complex", 16) + "\n" + _complex_python("new_complex", 16),
+    }, "new complexity")
+    result, report = run_weight(repo, base, head, tmp_path)
+    assert result.returncode == 1, result.stdout + result.stderr
+    unique = [row for row in report["failure_details"] if row.get("attribution") == "unique"]
+    assert {row.get("function") for row in unique} == {"new_complex"}
+    assert all(row.get("function") != "old_complex" for row in unique)
+    queried = query_report(report, path="backend/app/branch.py")
+    assert {row["name"] for row in queried["functions"]} == {"old_complex", "new_complex"}
+
+
+def test_worsened_complex_function_is_the_only_unique_detail(repo, tmp_path) -> None:
+    base = commit_files(repo, {"backend/app/branch.py": _complex_python("kept_complex", 16)}, "base")
+    head = commit_files(repo, {"backend/app/branch.py": _complex_python("kept_complex", 20)}, "worse")
+    result, report = run_weight(repo, base, head, tmp_path)
+    assert result.returncode == 1, result.stdout + result.stderr
+    unique = [row for row in report["failure_details"] if row.get("attribution") == "unique"]
+    assert unique
+    assert {row.get("function") for row in unique} == {"kept_complex"}
+
+
+def test_pure_line_shift_produces_zero_deleted_functions(repo, tmp_path) -> None:
+    query_report = _query_report()
+
+    original = "def kept(value):\n    return value\n"
+    base = commit_files(repo, {"backend/app/service.py": original}, "base")
+    head = commit_files(repo, {
+        "backend/app/service.py": "def helper():\n    return 0\n\n" + original,
+    }, "prepend helper")
+    result, report = run_weight(repo, base, head, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    queried = query_report(report, changes=True)
+    assert queried["deleted_functions"] == []
+    query = subprocess.run(
+        [sys.executable, str(ENTRY), "--from-json", str(tmp_path / "weight.json"), "--changes"],
+        capture_output=True, text=True, encoding="utf-8",
+        env={key: value for key, value in os.environ.items() if key != "GITHUB_STEP_SUMMARY"},
+    )
+    assert query.returncode == 0, query.stdout + query.stderr
+    assert "Deleted functions: 0" in query.stdout
+
+
+def test_duplicate_name_line_shift_is_not_a_deletion(repo, tmp_path) -> None:
+    query_report = _query_report()
+
+    two = "def work():\n    return 1\nif False:\n    def work():\n        return 2\n"
+    base = commit_files(repo, {"backend/app/service.py": two}, "two workers")
+    head = commit_files(repo, {"backend/app/service.py": "VALUE = 1\n" + two}, "shift both")
+    result, report = run_weight(repo, base, head, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert query_report(report, changes=True)["deleted_functions"] == []
+    removed = commit_files(repo, {
+        "backend/app/service.py": "VALUE = 1\ndef work():\n    return 1\n",
+    }, "drop duplicate")
+    result, report = run_weight(repo, base, removed, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    deleted = query_report(report, changes=True)["deleted_functions"]
+    assert [row["name"] for row in deleted] == ["work"]
+
+
+def test_historical_task_map_binds_to_artifact_head_not_worktree(repo, tmp_path) -> None:
+    from scripts.engineering_task_map import resolve_task
+
+    tracked = "backend/app/static/shared/tokens.css"
+    sha = commit_files(repo, {
+        tracked: "a { color: red; }\n",
+        "backend/app/service.py": "VALUE = 1\n",
+    }, "artifact head")
+    missing = repo / "desktop/backend_manager/web_bff.py"
+    missing.parent.mkdir(parents=True, exist_ok=True)
+    missing.write_text("def allowed_target():\n    return True\n", encoding="utf-8")
+    task = resolve_task("shared-web-theme", repo, sha, historical=True)
+    nodes = {node["path"]: node for node in task["chain"]}
+    assert task["source_sha"] == sha
+    assert task["measurement_sha"] == sha
+    assert task["historical"] is True
+    assert nodes[tracked]["present"] is True
+    assert nodes["desktop/backend_manager/web_bff.py"]["present"] is False
+    artifact = tmp_path / "historical.json"
+    artifact.write_text(json.dumps({
+        "verdict": "NO DEBT REGRESSION",
+        "format_version": 2,
+        "identity": {
+            "base_sha": sha,
+            "measurement_sha": sha,
+            "source_sha": sha,
+            "measurement_kind": "direct_head",
+            "event": None,
+        },
+        "base": {"sha": sha, "files": [], "functions": []},
+        "current": {"sha": sha, "files": [], "functions": []},
+        "changes": [],
+        "failure_details": [],
+    }), encoding="utf-8")
+    query = subprocess.run(
+        [sys.executable, str(ENTRY), "--repo", str(repo), "--from-json", str(artifact), "--task", "shared-web-theme"],
+        capture_output=True, text=True, encoding="utf-8",
+        env={key: value for key, value in os.environ.items() if key != "GITHUB_STEP_SUMMARY"},
+    )
+    assert query.returncode == 0, query.stdout + query.stderr
+    assert f"source_sha={sha}" in query.stdout
+    assert f"measurement_sha={sha}" in query.stdout
+    assert "historical=true" in query.stdout
+    assert "desktop/backend_manager/web_bff.py present=false" in query.stdout
+
+
+def test_pull_request_rejects_linear_descendant_as_merge(repo, tmp_path) -> None:
+    base = commit_files(repo, {"backend/app/service.py": "VALUE = 1\n"}, "base")
+    source = commit_files(repo, {"backend/app/service.py": "VALUE = 2\n"}, "source")
+    measurement = commit_files(repo, {"backend/app/service.py": "VALUE = 3\n"}, "linear child")
+    result, _report = run_weight(
+        repo, base, measurement, tmp_path,
+        extra=["--source-sha", source, "--event", "pull_request"],
+    )
+    assert result.returncode == 2
+    assert "must be a merge commit" in result.stderr
+
+
+def test_pull_request_identity_keeps_source_off_the_merge_snapshot(repo, tmp_path) -> None:
+    from scripts.engineering_task_map import resolve_task
+
+    tracked = "backend/app/static/shared/tokens.css"
+    base = commit_files(repo, {
+        tracked: "a { color: red; }\n",
+        "backend/app/service.py": "VALUE = 1\n",
+    }, "base")
+    git(repo, "checkout", "-b", "feature")
+    source = commit_files(repo, {
+        tracked: "a { color: blue; }\n",
+        "backend/app/service.py": "VALUE = 2\n",
+    }, "source head")
+    git(repo, "checkout", "main")
+    git(repo, "merge", "--no-ff", "--no-edit", "-m", "merge snapshot", "feature")
+    measurement = git(repo, "rev-parse", "HEAD")
+    result, report = run_weight(
+        repo, base, measurement, tmp_path,
+        extra=["--source-sha", source, "--event", "pull_request"],
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert report["format_version"] == 2
+    assert report["identity"]["source_sha"] == source
+    assert report["identity"]["measurement_sha"] == measurement
+    assert report["identity"]["measurement_kind"] == "pull_request_merge"
+    assert report["current"]["sha"] == measurement
+    assert "source_sha=" + source in result.stdout
+    assert "measurement_sha=" + measurement in result.stdout
+    task = resolve_task(
+        "shared-web-theme", repo, measurement, historical=True, source_sha=source,
+    )
+    assert task["source_sha"] == source
+    assert task["measurement_sha"] == measurement
+    query = subprocess.run(
+        [
+            sys.executable, str(ENTRY), "--repo", str(repo),
+            "--from-json", str(tmp_path / "weight.json"), "--task", "shared-web-theme",
+        ],
+        capture_output=True, text=True, encoding="utf-8",
+        env={
+            key: value for key, value in os.environ.items()
+            if key not in {"GITHUB_STEP_SUMMARY", "XPJ_WEIGHT_SOURCE_SHA", "XPJ_WEIGHT_EVENT"}
+        },
+    )
+    assert query.returncode == 0, query.stdout + query.stderr
+    assert f"source_sha={source}" in query.stdout
+    assert f"measurement_sha={measurement}" in query.stdout
+
+
+def test_pull_request_refuses_to_label_merge_snapshot_as_source(repo, tmp_path) -> None:
+    base = commit_files(repo, {"backend/app/service.py": "VALUE = 1\n"}, "base")
+    head = commit_files(repo, {"backend/app/service.py": "VALUE = 2\n"}, "head")
+    result, _report = run_weight(
+        repo, base, head, tmp_path,
+        extra=["--source-sha", head, "--event", "pull_request"],
+    )
+    assert result.returncode == 2
+    assert "must not name the merge snapshot as source_sha" in result.stderr
+
+
+def test_historical_query_without_identity_source_fails_closed(repo, tmp_path) -> None:
+    sha = commit_files(repo, {"backend/app/service.py": "VALUE = 1\n"}, "head")
+    artifact = tmp_path / "old.json"
+    artifact.write_text(json.dumps({
+        "verdict": "NO DEBT REGRESSION",
+        "base": {"sha": sha, "files": [], "functions": []},
+        "current": {"sha": sha, "files": [], "functions": []},
+        "changes": [],
+        "failure_details": [],
+    }), encoding="utf-8")
+    query = subprocess.run(
+        [sys.executable, str(ENTRY), "--repo", str(repo), "--from-json", str(artifact), "--task", "ci-trigger"],
+        capture_output=True, text=True, encoding="utf-8",
+        env={
+            key: value for key, value in os.environ.items()
+            if key not in {"GITHUB_STEP_SUMMARY", "XPJ_WEIGHT_SOURCE_SHA", "XPJ_WEIGHT_EVENT"}
+        },
+    )
+    assert query.returncode == 2
+    assert "format_version 2" in query.stderr
+
+
+def test_historical_query_rejects_identity_snapshot_mismatch(repo, tmp_path) -> None:
+    sha = commit_files(repo, {"backend/app/service.py": "VALUE = 1\n"}, "head")
+    other = commit_files(repo, {"backend/app/service.py": "VALUE = 2\n"}, "other")
+    artifact = tmp_path / "mismatch.json"
+    artifact.write_text(json.dumps({
+        "verdict": "NO DEBT REGRESSION",
+        "format_version": 2,
+        "identity": {
+            "base_sha": sha,
+            "measurement_sha": other,
+            "source_sha": sha,
+            "measurement_kind": "direct_head",
+            "event": None,
+        },
+        "base": {"sha": sha, "files": [], "functions": []},
+        "current": {"sha": sha, "files": [], "functions": []},
+        "changes": [],
+        "failure_details": [],
+    }), encoding="utf-8")
+    query = subprocess.run(
+        [sys.executable, str(ENTRY), "--repo", str(repo), "--from-json", str(artifact), "--task", "ci-trigger"],
+        capture_output=True, text=True, encoding="utf-8",
+        env={
+            key: value for key, value in os.environ.items()
+            if key not in {"GITHUB_STEP_SUMMARY", "XPJ_WEIGHT_SOURCE_SHA", "XPJ_WEIGHT_EVENT"}
+        },
+    )
+    assert query.returncode == 2
+    assert "identity.measurement_sha must equal current.sha" in query.stderr

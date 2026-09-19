@@ -44,9 +44,12 @@ spot-check the actual symptoms.
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
+import time
+from datetime import UTC, datetime
 from pathlib import Path
 
 _REQUIRED_LANES = frozenset(
@@ -100,34 +103,56 @@ def _compact_output_enabled() -> bool:
     return os.environ.get("XPJ_RELEASE_AUDIT_COMPACT") == "1"
 
 
-def _run_lane(label: str, filename: str, scripts_dir: Path, *, compact: bool) -> bool:
+def _run_lane(label: str, filename: str, scripts_dir: Path, *, compact: bool) -> int | None:
     script = scripts_dir / filename
-    if not compact:
+    try:
+        if not compact:
+            result = subprocess.run(
+                [sys.executable, str(script)],
+                cwd=scripts_dir.parent,
+            )
+            return result.returncode
         result = subprocess.run(
             [sys.executable, str(script)],
             cwd=scripts_dir.parent,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
-        return result.returncode == 0
-
-    result = subprocess.run(
-        [sys.executable, str(script)],
-        cwd=scripts_dir.parent,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
-    ok = result.returncode == 0
-    if ok:
+    except OSError:
+        return None
+    if result.returncode == 0:
         print(f"PASS  {label}")
-        return True
-
+        return result.returncode
     print(f"FAIL  {label}")
     if result.stdout:
         print(result.stdout.rstrip())
     if result.stderr:
         print(result.stderr.rstrip(), file=sys.stderr)
-    return False
+    return result.returncode
+
+
+def _lane_timing_record(
+    *,
+    label: str,
+    filename: str,
+    returncode: int | None,
+    started_utc: str,
+    ended_utc: str,
+    elapsed_s: float,
+) -> dict[str, object]:
+    return {
+        "lane": label,
+        "filename": filename,
+        "returncode": returncode,
+        "started_utc": started_utc,
+        "ended_utc": ended_utc,
+        "elapsed_s": round(elapsed_s, 3),
+        "elapsed_clock": "monotonic",
+        "measurement_kind": "direct",
+        "complete": returncode is not None,
+    }
 
 
 def main() -> int:
@@ -139,7 +164,7 @@ def main() -> int:
         return 1
 
     overall_ok = True
-    summary: list[tuple[str, bool]] = []
+    summary: list[tuple[str, int | None]] = []
     compact = _compact_output_enabled()
 
     for label, filename in lanes:
@@ -147,17 +172,47 @@ def main() -> int:
         print(f"AUDIT LANE: {label} ({filename})")
         print("=" * 78)
         sys.stdout.flush()
-        ok = _run_lane(label, filename, scripts_dir, compact=compact)
-        summary.append((label, ok))
-        if not ok:
+        started = time.monotonic()
+        started_utc = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        returncode = _run_lane(label, filename, scripts_dir, compact=compact)
+        elapsed = time.monotonic() - started
+        ended_utc = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        record = _lane_timing_record(
+            label=label,
+            filename=filename,
+            returncode=returncode,
+            started_utc=started_utc,
+            ended_utc=ended_utc,
+            elapsed_s=elapsed,
+        )
+        print("AUDIT_LANE_TIMING " + json.dumps(record, ensure_ascii=False, separators=(",", ":")))
+        summary.append((label, returncode))
+        if returncode != 0:
             overall_ok = False
         print()
 
+    expected = [label for label, _filename in lanes]
+    completed = [label for label, returncode in summary if returncode is not None]
+    run_complete = len(completed) == len(expected) and all(returncode is not None for _label, returncode in summary)
+    print(
+        "AUDIT_RUN_TIMING "
+        + json.dumps(
+            {
+                "expected_lanes": expected,
+                "expected_lane_count": len(expected),
+                "completed_lane_count": len(completed),
+                "overall_returncode": None if not run_complete else (0 if overall_ok else 1),
+                "complete": run_complete,
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+    )
     print("=" * 78)
     print("RELEASE AUDIT SUMMARY")
     print("=" * 78)
-    for label, ok in summary:
-        marker = "PASS" if ok else "FAIL"
+    for label, returncode in summary:
+        marker = "PASS" if returncode == 0 else "FAIL"
         print(f"  {marker}  {label}")
     print()
     return 0 if overall_ok else 1

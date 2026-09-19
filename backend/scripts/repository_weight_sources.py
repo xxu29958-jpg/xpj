@@ -87,6 +87,60 @@ def exact_commit(repo: Path, ref: str, label: str) -> str:
     return sha
 
 
+def git_path_exists(repo: Path, sha: str, path: str) -> bool:
+    try:
+        git_bytes(repo, "cat-file", "-e", f"{sha}:{path}")
+    except subprocess.CalledProcessError:
+        return False
+    return True
+
+
+def git_changed_paths(repo: Path, base: str, head: str) -> list[dict[str, str]]:
+    payload = git_bytes(repo, "diff", "--no-renames", "--name-status", "-z", f"{base}...{head}")
+    entries = [part.decode("utf-8", errors="surrogateescape") for part in payload.split(b"\0") if part]
+    changes: list[dict[str, str]] = []
+    index = 0
+    while index + 1 < len(entries):
+        status, path = entries[index], entries[index + 1]
+        changes.append({
+            "path": path,
+            "status": status[:1],
+            "inventory": "source" if exclusion(path) is None else "unmeasured",
+        })
+        index += 2
+    return changes
+
+
+def git_file_hunks(repo: Path, base: str, head: str) -> dict[str, list[dict[str, object]]]:
+    payload = git_bytes(repo, "diff", "--no-renames", "-U0", f"{base}...{head}")
+    text = payload.decode("utf-8", errors="surrogateescape")
+    hunks: dict[str, list[dict[str, object]]] = {}
+    current: str | None = None
+    header = re.compile(r"^diff --git a/(.*) b/(.*)$")
+    marker = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
+    for line in text.splitlines():
+        match = header.match(line)
+        if match:
+            current = match.group(2)
+            hunks.setdefault(current, [])
+            continue
+        if current is None:
+            continue
+        if line.startswith("Binary files "):
+            hunks[current].append({"kind": "binary"})
+            continue
+        hunk = marker.match(line)
+        if hunk:
+            hunks[current].append({
+                "kind": "unified",
+                "old_start": int(hunk.group(1)),
+                "old_count": int(hunk.group(2) or "1"),
+                "new_start": int(hunk.group(3)),
+                "new_count": int(hunk.group(4) or "1"),
+            })
+    return hunks
+
+
 def exclusion(path: str) -> str | None:
     parts = PurePosixPath(path).parts
     if not parts or parts[0] in {"docs", ".agents", ".claude", "tmp"}:

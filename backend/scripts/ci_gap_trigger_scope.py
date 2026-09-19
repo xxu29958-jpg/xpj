@@ -367,34 +367,133 @@ def all_ci_scopes() -> dict[str, bool]:
     return dict.fromkeys(CI_HEAVY_SCOPES, True)
 
 
-def _scopes_for_path(path: str) -> tuple[str, ...] | None:
+def _first_matching_prefix(path: str, prefixes: tuple[str, ...]) -> str:
+    return next(prefix for prefix in prefixes if path.startswith(prefix))
+
+
+def _path_rule(path: str) -> tuple[str, str, tuple[str, ...] | None]:
     exact = _EXACT_SCOPE_RULES.get(path)
     if exact is not None:
-        return exact
+        return "exact", path, exact
     for prefixes, scopes in _PREFIX_SCOPE_RULES:
         if path.startswith(prefixes):
-            return scopes
-    return None
+            return "prefix", _first_matching_prefix(path, prefixes), scopes
+    return "unknown", path, None
 
 
-def classify_ci_paths(paths: Iterable[str]) -> dict[str, bool]:
+def _hit(path: str, kind: str, entry: str, scopes: tuple[str, ...] | None) -> dict[str, object]:
+    consumer = None
+    if kind == "prefix" and entry in _SHARED_WEB_DESKTOP_PREFIXES:
+        consumer = (
+            "desktop_bff_static_allowlist"
+            if entry.startswith("backend/app/static/")
+            else "shared_web_desktop_surface"
+        )
+    return {
+        "path": path,
+        "kind": kind,
+        "entry": entry,
+        "scopes": list(scopes or ()),
+        "consumer": consumer,
+    }
+
+
+def _lane_map(
+    scopes: dict[str, bool],
+    status: str,
+    reason: str,
+    hits: list[dict[str, object]],
+) -> dict[str, dict[str, object]]:
+    lanes: dict[str, dict[str, object]] = {}
+    for name, selected in scopes.items():
+        if status in {"UNKNOWN_FULL", "CHECK_FAILED_FULL"}:
+            lane_status = "CHECK_FAILED" if status == "CHECK_FAILED_FULL" else "UNKNOWN_FULL"
+            lanes[name] = {"status": lane_status, "reason": reason, "paths": [hit["path"] for hit in hits]}
+            continue
+        if selected:
+            lanes[name] = {
+                "status": "REQUIRED",
+                "reason": "known input matched a classifier rule",
+                "paths": [hit["path"] for hit in hits if name in hit["scopes"]],
+            }
+            continue
+        lanes[name] = {
+            "status": "NOT_AFFECTED",
+            "reason": "complete known input set does not select this capability",
+            "paths": [],
+        }
+    return lanes
+
+
+def _decision(
+    scopes: dict[str, bool],
+    status: str,
+    reason: str,
+    hits: list[dict[str, object]],
+    ignored: tuple[str, ...],
+) -> dict[str, object]:
+    return {
+        "scopes": scopes,
+        "status": status,
+        "reason": reason,
+        "hits": hits,
+        "ignored_always_on": list(ignored),
+        "lanes": _lane_map(scopes, status, reason, hits),
+        "resident": "Backend contracts and other always-on jobs still run when every heavy scope is false",
+    }
+
+
+def _full_path_hit(path: str) -> tuple[dict[str, object], str | None]:
+    if path != path.strip():
+        return _hit(path, "untrimmed", path, tuple(CI_HEAVY_SCOPES)), "untrimmed path"
+    if path in _FULL_PATHS:
+        return _hit(path, "policy_file", path, tuple(CI_HEAVY_SCOPES)), "CI policy or workflow change"
+    if path.startswith(_FULL_PREFIXES):
+        entry = _first_matching_prefix(path, _FULL_PREFIXES)
+        return _hit(path, "workflow_prefix", entry, tuple(CI_HEAVY_SCOPES)), "CI policy or workflow change"
+    if path.startswith(_CI_POLICY_PREFIXES):
+        entry = _first_matching_prefix(path, _CI_POLICY_PREFIXES)
+        return _hit(path, "policy_prefix", entry, tuple(CI_HEAVY_SCOPES)), "CI policy or workflow change"
+    kind, entry, scopes = _path_rule(path)
+    if scopes is None:
+        return _hit(path, "unknown", path, tuple(CI_HEAVY_SCOPES)), "unknown path"
+    return _hit(path, kind, entry, scopes), None
+
+
+def classify_ci_decision(paths: Iterable[str]) -> dict[str, object]:
     result = dict.fromkeys(CI_HEAVY_SCOPES, False)
     normalized = {path.replace("\\", "/") for path in paths if path}
     if not normalized:
-        return all_ci_scopes()
+        return _decision(all_ci_scopes(), "UNKNOWN_FULL", "empty path set", [], ())
+    ignored = tuple(sorted(normalized & _ALWAYS_ON_CONTRACT_PATHS))
     normalized.difference_update(_ALWAYS_ON_CONTRACT_PATHS)
-
+    hits: list[dict[str, object]] = []
+    full_reason: str | None = None
     for path in sorted(normalized):
-        if path != path.strip():
-            return all_ci_scopes()
-        if path in _FULL_PATHS or path.startswith(_FULL_PREFIXES) or path.startswith(_CI_POLICY_PREFIXES):
-            return all_ci_scopes()
-        scopes = _scopes_for_path(path)
-        if scopes is None:
-            return all_ci_scopes()
-        for scope in scopes:
-            result[scope] = True
-    return result
+        hit, reason = _full_path_hit(path)
+        hits.append(hit)
+        if reason:
+            full_reason = full_reason or reason
+            continue
+        for scope in hit["scopes"]:
+            result[str(scope)] = True
+    if full_reason:
+        return _decision(all_ci_scopes(), "UNKNOWN_FULL", full_reason, hits, ignored)
+    status = "REQUIRED" if any(result.values()) else "NOT_AFFECTED"
+    reason = (
+        "known inputs selected the listed heavy jobs"
+        if status == "REQUIRED"
+        else "complete known input set does not select a heavy job"
+    )
+    return _decision(result, status, reason, hits, ignored)
+
+
+def classify_ci_paths(paths: Iterable[str]) -> dict[str, bool]:
+    decision = classify_ci_decision(paths)
+    scopes = decision["scopes"]
+    if not isinstance(scopes, dict):
+        raise TypeError("classifier scopes must be a mapping")
+    return {name: bool(scopes[name]) for name in CI_HEAVY_SCOPES}
 
 
 def workflow_action_requires_prior_success(value: object) -> bool:

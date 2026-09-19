@@ -156,6 +156,7 @@ jobs:
           tests/test_android_process_qualification.py
           tests/test_android_test_qualification.py
           tests/test_repository_weight.py
+          tests/test_ci_run_timing.py
           --noconftest -p no:cacheprovider
 
       - name: Audit (release lanes)
@@ -169,6 +170,8 @@ jobs:
           XPJ_AUDIT_DEFAULT_REF: refs/remotes/origin/${{ github.event.repository.default_branch }}
           XPJ_AUDIT_BASE_REF: ${{ needs.scope.outputs.audit_base_sha }}
           XPJ_CODEBASE_WEIGHT_JSON: ${{ runner.temp }}/codebase-weight.json
+          XPJ_WEIGHT_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          XPJ_WEIGHT_EVENT: ${{ github.event_name }}
         run: python scripts\release_audit.py
 
       - name: Upload repository codebase weight
