@@ -116,6 +116,15 @@ not executed. Metadata changes use existing row_version/updated_at and audit;
 financial revisions do not acquire attachment or GC meanings. Completed history
 can use the existing audit log; that log must not become a hidden execution queue.
 
+Storage uses nullable `Expense.attachment_cleanup_request` (one validated JSONB
+request, not arbitrary task payload) and `image_replenished_at`. Existing rows
+receive no invented request or replenishment timestamp. A replenished original
+starts a fresh configured retention period: compare the later of the relevant
+confirmation/rejection time and replenishment time, so an old bill's restored
+file is not immediately deleted again. Financial dates stay intact; merely
+verifying legacy evidence does not renew retention. An existing frozen cleanup
+request still refers only to its old files.
+
 Replenishment and explicit legacy verification use the existing ledger writer,
 actor revalidation, OCC and command-receipt owners. Accepted-key replay precedes
 new execution checks and returns its original result. Replenishment admits exact
