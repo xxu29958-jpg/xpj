@@ -88,7 +88,6 @@ fun ManualExpenseSheet(
     initials: ManualExpenseSheetInitials = ManualExpenseSheetInitials(),
     onDraftChange: ((ManualExpenseSheetDraft) -> Unit)? = null,
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
     var amountText by rememberSaveable {
         mutableStateOf(initials.amountText ?: formatMinorAmountInput(initials.amountMinor, state.initialCurrency))
     }
@@ -102,9 +101,11 @@ fun ManualExpenseSheet(
     val (timeForm, setTimeForm) = com.ticketbox.ui.screens.expense.rememberExpenseTimeForm(
         "manual", initials.expenseTime ?: nowUtcIso(), saved = initials.timeFormJson,
     )
-    val expenseTime = timeForm.resolve().instant.orEmpty()
+    val time = timeForm.resolve()
+    val expenseTime = time.instant.orEmpty()
     var message by rememberSaveable { mutableStateOf<String?>(null) }
     val invalidAmountMessage = stringResource(R.string.ledger_manual_amount_invalid)
+    val timeErrorMessage = time.error?.let { stringResource(it) }
     val density = LocalDensity.current
     val keyboardVisible = LocalAppImeVisible.current || WindowInsets.ime.getBottom(density) > 0
     LaunchedEffect(amountText, currency, merchant, category, note, timeForm) {
@@ -127,8 +128,7 @@ fun ManualExpenseSheet(
             message = invalidAmountMessage
             return null
         }
-        val time = timeForm.resolve()
-        if (time.error != null) { message = context.getString(time.error); return null }
+        if (timeErrorMessage != null) { message = timeErrorMessage; return null }
         return ExpenseDraft(
             amountCents = null,
             originalCurrencyCode = currency,

@@ -155,7 +155,6 @@ fun ExpenseEditScreen(
     screenState: ExpenseEditScreenState,
     actions: ExpenseEditScreenActions,
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
     val expense = screenState.expense
     val state = screenState.editState
     val actionAvailability = screenState.actionAvailability
@@ -284,6 +283,7 @@ fun ExpenseEditScreen(
     val amountRequiredMessage = stringResource(R.string.expense_edit_amount_required)
     val currencyUnsupportedMessage = stringResource(R.string.expense_edit_currency_unsupported)
     val manualExchangeRateInvalidMessage = stringResource(R.string.expense_edit_manual_rate_invalid)
+    val timeErrorMessage = time.error?.let { stringResource(it) }
     val isPendingExpense = currentExpense.status == "pending"
     val homeCurrencyCode = currentExpense.homeCurrencyCode
         ?.takeIf { it.isNotBlank() }
@@ -364,7 +364,7 @@ fun ExpenseEditScreen(
         }
         val valueScore = if (valueScoreText.isBlank()) null else (parseScore(valueScoreText, valueScoreLabel) ?: return null)
         val regretScore = if (regretScoreText.isBlank()) null else (parseScore(regretScoreText, regretScoreLabel) ?: return null)
-        if (time.error != null) { message = context.getString(time.error); return null }
+        if (timeErrorMessage != null) { message = timeErrorMessage; return null }
         return ExpenseDraft(
             amountCents = null,
             originalCurrencyCode = currency,
