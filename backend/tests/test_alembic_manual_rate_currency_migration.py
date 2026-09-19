@@ -58,8 +58,8 @@ def test_unadopted_manual_rate_waits_for_the_same_audited_owner_transaction():
     reset_schema()
     try:
         run_alembic(command.upgrade, "20260729_0001")
+        owner_id, _ = seed_owner()
         with SessionLocal() as db:
-            bootstrap = bootstrap_owner(db, account_name="Owner", ledger_name="Owner ledger", device_name="migration-admin")
             key = str(uuid4())
             db.execute(text(_INSERT), {"id": key})
             db.commit()
@@ -69,7 +69,10 @@ def test_unadopted_manual_rate_waits_for_the_same_audited_owner_transaction():
         # Runtime adoption uses the current schema, after the frozen migration probe.
         run_alembic(command.upgrade, "head")
         with SessionLocal() as db:
+            # Authenticate the existing historical owner only on the current schema.
+            bootstrap = bootstrap_owner(db, account_name="Owner", ledger_name="Owner ledger", device_name="migration-admin")
             auth = authenticate_session_token(db, bootstrap.admin_token, {"app", "admin"})
+            assert auth.account_id == owner_id
             preview = adoption_preview(db)
             assert "JPY" in preview.allowed_home_currency_codes
             receipt = adopt_currency_binding(

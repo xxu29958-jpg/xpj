@@ -16,6 +16,7 @@ from app.services.currency_binding_service import (
     resolve_write_capability,
 )
 from app.services.duplicate_service import clear_duplicate_references_to
+from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from app.services.expense_revision_service import record_confirmation_revision
 from app.services.expense_service._field_mutation import apply_expense_fields_to_claimed_row
 from app.services.expense_service._helpers import (
@@ -176,6 +177,7 @@ def _publish_confirmation(
     actor_device_id: int | None,
     commit: bool,
 ) -> Expense:
+    refresh_legacy_expense_time(db, expense)
     sync_expense_tags(db, expense)
     from app.services.learning_service import close_active_decisions_for_subject
 

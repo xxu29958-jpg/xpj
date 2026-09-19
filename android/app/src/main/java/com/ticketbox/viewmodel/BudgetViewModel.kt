@@ -1,6 +1,8 @@
 package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
+import com.ticketbox.data.repository.LedgerCalendarReader
+import com.ticketbox.data.repository.newTaskMonth
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.squareup.moshi.JsonClass
@@ -61,18 +63,22 @@ data class BudgetUiState(
 
 class BudgetViewModel(
     private val repository: BudgetActions,
-    initialMonth: String = YearMonth.now().toString(),
+    initialMonth: String? = null,
     private val onDataChanged: () -> Unit = {},
     private val savedStateHandle: SavedStateHandle = SavedStateHandle(),
+    private val calendars: LedgerCalendarReader? = null,
 ) : ViewModel() {
     private val drafts = BudgetDraftStore(savedStateHandle)
-    private val _uiState = MutableStateFlow(BudgetUiState(month = savedStateHandle["month"] ?: initialMonth))
+    private val _uiState = MutableStateFlow(BudgetUiState(month = savedStateHandle["month"] ?: initialMonth ?: YearMonth.now().toString()))
     val uiState: StateFlow<BudgetUiState> = _uiState.asStateFlow()
     private var requestGeneration = 0
     private var refreshGeneration = 0
     private var activeBinding: LogicalSessionBinding? = null
     private var savesJob: Job? = null
     private var observedSaves: List<PendingBudgetSave> = emptyList()
+
+    private var monthSelected = initialMonth != null || savedStateHandle.get<String>("month") != null
+    private var resolvingMonth = false
 
     init {
         viewModelScope.launch {
@@ -87,7 +93,20 @@ class BudgetViewModel(
                     _uiState.value = BudgetUiState(month = _uiState.value.month, canModify = access?.canModify == true,
                         binding = access?.binding)
                     restoreDraft()
-                    access?.let { observeSaves(it.binding); refresh() }
+                    access?.let {
+                        observeSaves(it.binding)
+                        resolvingMonth = !monthSelected && !uiState.value.formDirty && calendars != null
+                        viewModelScope.launch {
+                            val month = if (resolvingMonth) calendars.newTaskMonth(it.binding) else uiState.value.month
+                            if (activeBinding != it.binding) return@launch
+                            resolvingMonth = false
+                            if (!monthSelected && !uiState.value.formDirty && !uiState.value.hasPendingSave) {
+                                _uiState.update { state -> state.copy(month = month, saves = observedSaves.forMonth(month)) }
+                                restoreDraft()
+                            }
+                            refresh()
+                        }
+                    }
                 }
             }
         }
@@ -125,7 +144,7 @@ class BudgetViewModel(
     }
 
     fun refresh() {
-        if (_uiState.value.saving) return
+        if (_uiState.value.saving || resolvingMonth) return
         val binding = activeBinding ?: return
         val generation = requestGeneration
         val refresh = ++refreshGeneration
@@ -219,6 +238,7 @@ class BudgetViewModel(
     private fun isCurrent(generation: Int, month: String): Boolean = requestGeneration == generation && _uiState.value.month == month
 
     private fun changeMonth(delta: Long) {
+        monthSelected = true
         if (_uiState.value.saving) return
         val month = YearMonth.parse(_uiState.value.month).plusMonths(delta).toString()
         savedStateHandle["month"] = month
@@ -237,6 +257,8 @@ class BudgetViewModel(
     }
 
     private fun updateForm(transform: (BudgetFormState) -> BudgetFormState) {
+        monthSelected = true
+        savedStateHandle["month"] = _uiState.value.month
         _uiState.update { if (it.saving || it.hasPendingSave) it else it.copy(form = transform(it.form),
             formDirty = true, message = null, messageTone = MessageTone.Neutral) }
         val state = _uiState.value

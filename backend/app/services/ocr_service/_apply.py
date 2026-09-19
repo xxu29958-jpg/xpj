@@ -17,7 +17,7 @@ from app.money_contract import (
 )
 from app.services.category_service import normalize_category
 from app.services.currency_common import minor_unit_digits
-from app.services.exchange_rate_service import default_rate_date
+from app.services.exchange_rate_service import expense_rate_date
 from app.services.ocr_service._draft_fields import _write_ocr_draft_fields, ocr_draft_fields
 from app.services.ocr_service._merge import _best_confidence, _safe_category
 from app.services.ocr_service._models import (
@@ -191,6 +191,13 @@ def collect_auto_ocr_extractions(
             raw_text=expense.raw_text,
             confidence=expense.confidence,
             expense_time=expense.expense_time,
+            time_precision=expense.time_precision,
+            user_local_date=expense.user_local_date,
+            accounting_date=expense.accounting_date,
+            calendar_revision=expense.calendar_revision,
+            source_timezone=expense.source_timezone,
+            source_utc_offset_seconds=expense.source_utc_offset_seconds,
+            accounting_date_basis=expense.accounting_date_basis,
             ocr_draft_fields=expense.ocr_draft_fields,
             status="pending",
         )
@@ -289,7 +296,9 @@ def _apply_ocr_candidate_fields(
         expense.merchant = merged.merchant
         applied_fields.add("merchant")
     if (
-        _can_apply_ocr_field("expense_time", draft_fields, expense.expense_time is None)
+        expense.time_precision not in {"instant", "date_only"}
+        and expense.accounting_date_basis != "recorded_date"
+        and _can_apply_ocr_field("expense_time", draft_fields, expense.expense_time is None)
         and merged.expense_time is not None
     ):
         expense.expense_time = ensure_utc(merged.expense_time)
@@ -312,7 +321,7 @@ def _apply_ocr_home_snapshot(
         return
     expense.original_amount_minor = expense.amount_cents
     expense.exchange_rate_to_cny = Decimal("1")
-    expense.exchange_rate_date = default_rate_date(expense.expense_time)
+    expense.exchange_rate_date = expense_rate_date(expense)
     expense.exchange_rate_source = FX_SOURCE_BASE
     expense.home_currency_code = frozen_home
     expense.fx_status = FX_STATUS_READY
@@ -367,7 +376,8 @@ def _apply_ocr_result_to_expense(
         draft_fields=draft_fields,
         split_allocation_floor_cents=split_allocation_floor_cents,
     )
-    _apply_ocr_home_snapshot(expense, materialization_context)
+    if not allow_session_bound:
+        _apply_ocr_home_snapshot(expense, materialization_context)
     if applied_fields:
         _write_ocr_draft_fields(expense, draft_fields.union(applied_fields))
 
@@ -392,7 +402,7 @@ def _needs_fallback(expense: Expense) -> bool:
         confidence < get_settings().ocr_min_confidence
         or expense.amount_cents is None
         or not (expense.merchant or "").strip()
-        or expense.expense_time is None
+        or (expense.expense_time is None and expense.time_precision != "date_only")
     )
 
 

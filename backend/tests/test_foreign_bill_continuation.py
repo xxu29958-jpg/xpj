@@ -44,6 +44,8 @@ def _import_foreign_bill(client: TestClient, identity) -> dict:
     )
     assert bill["expense_time"] == "2026-05-03T16:30:00Z"
     assert bill["category"] == "交通"
+    assert bill["accounting_time"]["user_local_date"] == "2026-05-03"
+    assert bill["accounting_time"]["accounting_date"] == "2026-05-04"
     return bill
 
 
@@ -51,8 +53,8 @@ def test_csv_missing_historical_rate_has_a_durable_task_back_to_the_pending_bill
     bill = _import_foreign_bill(client, identity)
     assert bill["fx_status"] == "pending"
     assert bill["amount_cents"] is None
-    # The intended day is the household's spending day, not today's import day.
-    assert bill["fx_rate_date"] == "2026-05-04"
+    # FX uses the original UTC-source user date; its adopted accounting day is independent.
+    assert bill["fx_rate_date"] == "2026-05-03"
 
     health = client.get("/api/insights/data-quality", headers=identity.app_headers)
     assert health.status_code == 200, health.text
@@ -88,18 +90,18 @@ def test_csv_cannot_treat_an_unrelated_older_cache_row_as_historical_coverage(cl
     assert bill["fx_status"] == "pending", "A prior cached quote does not prove the requested date was checked"
     assert bill["amount_cents"] is None
     assert bill["fx_rate"] is None
-    assert bill["fx_rate_date"] == "2026-05-04"
+    assert bill["fx_rate_date"] == "2026-05-03"
 
 
 def test_confirm_does_not_resolve_a_new_rate_and_accept_an_unreviewed_home_amount(client: TestClient, identity):
     bill = _import_foreign_bill(client, identity)
     assert (bill["fx_status"], bill["amount_cents"]) == ("pending", None)
     rate = client.put(
-        "/api/exchange-rates/USD/2026-05-04",
+        "/api/exchange-rates/USD/2026-05-03",
         headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": 0, "home_currency_code": "CNY", "currency_code": "USD",
-            "rate_date": "2026-05-04", "rate_to_cny": "7", "source": "manual",
+            "rate_date": "2026-05-03", "rate_to_cny": "7", "source": "manual",
         },
     )
     assert rate.status_code == 200, rate.text
@@ -159,13 +161,13 @@ def test_import_conversion_failure_retry_review_then_confirm_is_one_complete_tas
         retry_id = task.id
     assert submitted.call_args.args[0] == retry_id
     monkeypatch.setattr(service, "fetch_pending_fx_reference", lambda _original: EcbDailyRates(
-        date(2026, 5, 4), {"EUR": Decimal(1), "USD": Decimal(1), "CNY": Decimal(7)}))
+        date(2026, 5, 3), {"EUR": Decimal(1), "USD": Decimal(1), "CNY": Decimal(7)}))
     background_task_worker.run_task(retry_id, {})
     resolved = client.get(url, headers=identity.app_headers).json()
     assert (resolved["status"], resolved["fx_status"], resolved["amount_cents"], resolved["row_version"]) == (
         "pending", "ready", 86415, bill["row_version"] + 1)
     assert resolved["fx_task"]["status"] == "completed"
-    assert resolved["fx_rate_date"] == "2026-05-04"
+    assert resolved["fx_rate_date"] == "2026-05-03"
     old_review = client.post(f"{url}/confirm", headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": bill["row_version"]})
     assert old_review.status_code == 409 and old_review.json()["error"] == "state_conflict"
@@ -218,7 +220,7 @@ def test_fx_worker_keeps_receipt_reconciliation_and_split_allocation_consistent(
     with SessionLocal() as db:
         task_id = db.scalar(select(BackgroundTask.id).where(BackgroundTask.public_id == prepared.json()["public_id"]))
     monkeypatch.setattr(pending_fx_task_service, "fetch_pending_fx_reference", lambda _: EcbDailyRates(
-        date(2026, 5, 4), {"EUR": Decimal(1), "USD": Decimal(1), "CNY": Decimal(7)}))
+        date(2026, 5, 3), {"EUR": Decimal(1), "USD": Decimal(1), "CNY": Decimal(7)}))
     background_task_worker.run_task(task_id, {})
     current = client.get(url, headers=identity.app_headers).json()
     detail = client.get(f"{url}/{child}", headers=identity.app_headers).json()

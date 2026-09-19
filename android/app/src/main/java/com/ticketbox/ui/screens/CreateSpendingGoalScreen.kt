@@ -35,12 +35,11 @@ import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.budget.MonthSwitcher
 import com.ticketbox.viewmodel.CreateSpendingGoalUiState
 import com.ticketbox.viewmodel.CreateSpendingGoalViewModel
-import java.time.YearMonth
 
 @Composable
 fun CreateSpendingGoalScreen(
     viewModel: CreateSpendingGoalViewModel,
-    initialMonth: String = YearMonth.now().toString(),
+    initialMonth: String? = null,
     onBack: () -> Unit,
     onCreated: () -> Unit,
     originalId: Long? = null,

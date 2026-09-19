@@ -14,9 +14,11 @@ from pydantic import (
     computed_field,
     field_serializer,
     field_validator,
+    model_serializer,
     model_validator,
 )
 
+from app.schemas._accounting_time import AccountingTimeSnapshot
 from app.schemas._expense import ExpenseResponse
 from app.schemas._money import (
     NonNegativeMoneyAggregate,
@@ -157,6 +159,7 @@ class ExpenseOffsetResponse(BaseModel):
     exchange_rate_date: date | None
     exchange_rate_source: str | None
     accounting_date: date
+    accounting_time: AccountingTimeSnapshot | None = None
     category: str
     reason: str
     row_version: int
@@ -164,6 +167,13 @@ class ExpenseOffsetResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     voided_at: datetime | None
+
+    @model_serializer(mode="wrap")
+    def preserve_absent_receipt_time(self, handler):
+        data = handler(self)
+        if "accounting_time" not in self.model_fields_set:
+            data.pop("accounting_time", None)
+        return data
 
     @computed_field
     @property

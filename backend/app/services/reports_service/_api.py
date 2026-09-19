@@ -10,6 +10,7 @@ from app.services.category_service import normalize_category
 from app.services.csv_security import safe_csv_cell
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import normalize_currency_code
+from app.services.ledger_calendar_service import current_calendar
 from app.services.reports_service._aggregation import (
     _amount_count,
     _amount_delta,
@@ -19,8 +20,9 @@ from app.services.reports_service._aggregation import (
 )
 from app.services.reports_service._models import ReportGranularity, ReportRankingMetric
 from app.services.reports_service._ranking import _category_comparison, _merchant_ranking
-from app.services.reports_service._time import _month_bounds, _parse_month, _resolve_timezone, _shift_month
-from app.services.spending_projection_service import entry_gaps, read_projected_entries
+from app.services.reports_service._time import _parse_month, _resolve_timezone, _shift_month
+from app.services.spending_contract_service import calendar_month_bounds
+from app.services.spending_projection_service import entry_gaps, read_spending_period
 
 
 def reports_overview(db: Session, *, month: str, tenant_id: str,
@@ -29,30 +31,38 @@ def reports_overview(db: Session, *, month: str, tenant_id: str,
     home_currency_code: str | None = None,
 ) -> dict:
     _parse_month(month)
-    timezone_key, zone = _resolve_timezone(timezone_name)
+    timezone_key, zone = _resolve_timezone(current_calendar(db, ledger_id=tenant_id).timezone_name)
     home = normalize_currency_code(home_currency_code or require_runtime_home_currency_code(db))
     previous_month, yoy_month = _shift_month(month, -1), _shift_month(month, -12)
-    periods = [_month_bounds(label, timezone_key) for label in (month, previous_month, yoy_month)]
+    periods = [calendar_month_bounds(label) for label in (month, previous_month, yoy_month)]
     buckets = _trend_buckets(month=month, granularity=granularity, timezone_name=timezone_key, zone=zone)
-    entries = read_projected_entries(db, tenant_id=tenant_id, home=home, timezone_name=timezone_key,
-        ranges=periods + [(bucket.start_utc, bucket.end_utc) for bucket in buckets])
+    projection = read_spending_period(db, tenant_id=tenant_id, home=home, timezone_name=timezone_key,
+        ranges=periods + [(bucket.start_date, bucket.end_date) for bucket in buckets])
+    entries = projection.entries
+    undated_categories = projection.undated_by_category
+    undated = sum(undated_categories.values())
     current, previous, yoy = [_entries_in_range(entries, period, zone) for period in periods]
     total_amount, count = _amount_count(current)
     previous_total, previous_count = _amount_count(previous)
     yoy_total, yoy_count = _amount_count(yoy)
+    if undated:
+        total_amount = previous_total = yoy_total = None
     return {
+        "undated_expense_count": undated,
         "month": month, "timezone": timezone_key, "home_currency_code": home,
         "missing_rates": entry_gaps(entries), "granularity": granularity,
         "total_amount_cents": total_amount, "count": count,
         "previous_month": previous_month, "previous_total_amount_cents": previous_total, "previous_count": previous_count,
         "year_over_year_month": yoy_month, "year_over_year_total_amount_cents": yoy_total, "year_over_year_count": yoy_count,
         "year_over_year_delta_amount_cents": _amount_delta(total_amount, yoy_total),
-        "year_over_year_delta_count": count - yoy_count,
+        "year_over_year_delta_count": None if undated else count - yoy_count,
         "merchant_category": normalize_category(merchant_category) if merchant_category else None,
-        "ranking_metric": ranking_metric, "trend": _trend_points(entries, buckets, zone),
-        "merchant_ranking": _merchant_ranking(db, current, tenant_id=tenant_id, top_n=top_n,
+        "ranking_metric": ranking_metric, "trend": _trend_points(entries, buckets, zone, undated=undated),
+        "merchant_ranking": [] if ranking_metric == "amount" and (
+            undated_categories.get(normalize_category(merchant_category), 0) if merchant_category else undated)
+            else _merchant_ranking(db, current, tenant_id=tenant_id, top_n=top_n,
             category=merchant_category, ranking_metric=ranking_metric),
-        "category_comparison": _category_comparison(current, previous, yoy),
+        "category_comparison": _category_comparison(current, previous, yoy, undated_categories),
     }
 
 
@@ -62,6 +72,7 @@ def _write_overview_summary(writer: Any, overview: dict) -> None:
         "month",
         "timezone",
         "home_currency_code",
+        "undated_expense_count",
         "granularity",
         "total_amount_cents",
         "count",

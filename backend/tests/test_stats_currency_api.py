@@ -8,15 +8,17 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.models import Account, Expense, ExpenseOffsetFact, LedgerMember, Tag
 from app.services.currency_binding_service import resolve_write_capability
+from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from app.services.tag_service import set_expense_tags
 
 
 def record(db, *, amount, currency, merchant, tenant="owner", when=None, category="数码", tags="旅行"):
     when = when or datetime(2026, 9, 9, 12, tzinfo=UTC)
     expense = Expense(tenant_id=tenant, status="confirmed", amount_cents=amount,
-        home_currency_code=currency, original_currency_code=currency, original_amount_minor=amount,
-        merchant=merchant, category=category, value_score=5, regret_score=5,
-        expense_time=when, confirmed_at=when)
+    home_currency_code=currency, original_currency_code=currency, original_amount_minor=amount,
+    merchant=merchant, category=category, value_score=5, regret_score=5,
+    expense_time=when, confirmed_at=when)
+    refresh_legacy_expense_time(db, expense)
     db.add(expense)
     db.flush()
     set_expense_tags(db, expense, tags)
@@ -84,8 +86,8 @@ def test_offset_uses_own_currency_date_and_root_tags_across_timezone_boundary(cl
         db.commit()
     save_rate(client, identity, "2026-09-01")
     utc = read(client, identity, tag="旅行")
-    assert (utc["total_amount_cents"], utc["count"]) == (-300, 1)
-    assert utc["by_category"] == [{"category": "交通", "amount_cents": -300, "count": 1}]
+    assert (utc["total_amount_cents"], utc["count"]) == (1700, 2)
+    assert {item["category"]: item["amount_cents"] for item in utc["by_category"]} == {"餐饮": 2000, "交通": -300}
     shanghai = read(client, identity, tag="旅行", timezone="Asia/Shanghai")
     assert (shanghai["total_amount_cents"], shanghai["count"]) == (1700, 2)
     assert shanghai["by_tag"] == [{"tag": "旅行", "amount_cents": 1700, "count": 2}]

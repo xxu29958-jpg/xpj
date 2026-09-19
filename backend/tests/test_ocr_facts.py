@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from api_contract_helpers import recognize_text_api, retry_ocr_api, upload_png
@@ -351,6 +351,12 @@ def test_recognize_text_writes_manual_text_fact(client, *, identity) -> None:
     assert rows[0].ocr_provider == "manual_text"
     assert rows[0].parsed_amount_cents == 2900
     assert rows[0].raw_text.startswith("星巴克")
+    evidence = response.json()["accounting_time"]
+    assert evidence["accounting_date"] == "2026-05-04"
+    assert evidence["precision"] == "unknown" and evidence["user_local_date"] is None
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense.exchange_rate_date == expense.accounting_date == date(2026, 5, 4)
 
 
 def test_expense_response_does_not_fall_back_to_raw_text_column(

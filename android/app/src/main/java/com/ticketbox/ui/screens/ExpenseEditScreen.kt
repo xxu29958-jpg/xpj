@@ -1,5 +1,7 @@
 package com.ticketbox.ui.screens
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -11,13 +13,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import com.ticketbox.ui.screens.expense.toSavedJson
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.DuplicateStatusValues
@@ -34,7 +35,6 @@ import com.ticketbox.ui.components.AppSecondaryPageSlots
 import com.ticketbox.ui.components.AppSecondaryScrollableColumn
 import com.ticketbox.ui.components.rememberAppHaptics
 import com.ticketbox.ui.components.StatusPill
-import com.ticketbox.ui.components.nowUtcIso
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.formatExpenseExchangeMeta
 import com.ticketbox.ui.components.parseMinorAmount
@@ -55,8 +55,6 @@ import com.ticketbox.ui.screens.expense.ExpenseEditAmountClusterState
 import com.ticketbox.ui.screens.expense.ExpenseEditCategorySelector
 import com.ticketbox.ui.screens.expense.ExpenseEditCategorySelectorActions
 import com.ticketbox.ui.screens.expense.ExpenseEditCategorySelectorState
-import com.ticketbox.ui.screens.expense.ExpenseEditDatePicker
-import com.ticketbox.ui.screens.expense.ExpenseEditTimePicker
 import com.ticketbox.ui.screens.expense.ExpenseEditDetailsActions
 import com.ticketbox.ui.screens.expense.ExpenseEditDetailsSection
 import com.ticketbox.ui.screens.expense.ExpenseEditDetailsState
@@ -71,11 +69,7 @@ import com.ticketbox.ui.screens.expense.ExpenseEditNoteField
 import com.ticketbox.ui.screens.expense.ExpenseEditRecognizeTextDialog
 import com.ticketbox.ui.screens.expense.ExpenseEditRejectDialog
 import com.ticketbox.ui.screens.expense.ExpenseEditSourceInfo
-import com.ticketbox.ui.screens.expense.ExpenseEditTimeRow
-import com.ticketbox.ui.screens.expense.ExpenseEditTimeRowActions
-import com.ticketbox.ui.screens.expense.ExpenseEditTimeRowState
 import com.ticketbox.ui.screens.expense.ExpenseDetailActionButtonRow
-import com.ticketbox.domain.model.canonicalManualExchangeRateOrNull
 import com.ticketbox.ui.screens.expense.manualExchangeRateEditorVisible
 import com.ticketbox.ui.screens.expense.manualExchangeRateNeedsServerReview
 import com.ticketbox.ui.screens.expense.ItemsEditorSheetActions
@@ -242,9 +236,19 @@ fun ExpenseEditScreen(
         mutableStateOf(initialFormValues.category)
     }
     var note by rememberSaveable(currentExpense.id, currentExpense.updatedAt, state.formRevision) { mutableStateOf(initialFormValues.note) }
-    var expenseTime by rememberSaveable(currentExpense.id, currentExpense.updatedAt, state.formRevision) {
-        mutableStateOf(initialFormValues.expenseTime)
+    val (timeForm, setTimeForm) = com.ticketbox.ui.screens.expense.rememberExpenseTimeForm(
+        "${currentExpense.id}:${currentExpense.updatedAt}:${state.formRevision}",
+        currentExpense.expenseTime, currentExpense.accountingTime,
+    )
+    val baselineTimeFormJson = rememberSaveable(currentExpense.id, currentExpense.updatedAt, state.formRevision) {
+        com.ticketbox.ui.screens.expense.ExpenseTimeForm.initial(
+            currentExpense.expenseTime, currentExpense.accountingTime, null, java.time.ZoneId.of(timeForm.sourceZone),
+        ).toSavedJson()
     }
+    val time = remember(timeForm, initialFormValues.expenseTime) {
+        timeForm.resolveEdit(initialFormValues.expenseTime.ifBlank { null })
+    }
+    val expenseTime = time.instant.orEmpty()
     var tags by rememberSaveable(currentExpense.id, currentExpense.updatedAt, state.formRevision) { mutableStateOf(initialFormValues.tags) }
     var valueScoreText by rememberSaveable(currentExpense.id, currentExpense.updatedAt, state.formRevision) {
         mutableStateOf(initialFormValues.valueScoreText)
@@ -255,8 +259,6 @@ fun ExpenseEditScreen(
     var message by rememberSaveable { mutableStateOf<String?>(null) }
     var rawTextExpanded by remember(currentExpense.id) { mutableStateOf(false) }
     var moreExpanded by remember(currentExpense.id) { mutableStateOf(false) }
-    var showDatePicker by remember(currentExpense.id) { mutableStateOf(false) }
-    var showTimePicker by remember(currentExpense.id) { mutableStateOf(false) }
     var showRejectDialog by remember(currentExpense.id) { mutableStateOf(false) }
     var showLargeImage by remember(currentExpense.id) { mutableStateOf(false) }
     var categorySheetOpen by remember(currentExpense.id) { mutableStateOf(false) }
@@ -281,6 +283,7 @@ fun ExpenseEditScreen(
     val amountRequiredMessage = stringResource(R.string.expense_edit_amount_required)
     val currencyUnsupportedMessage = stringResource(R.string.expense_edit_currency_unsupported)
     val manualExchangeRateInvalidMessage = stringResource(R.string.expense_edit_manual_rate_invalid)
+    val timeErrorMessage = time.error?.let { stringResource(it) }
     val isPendingExpense = currentExpense.status == "pending"
     val homeCurrencyCode = currentExpense.homeCurrencyCode
         ?.takeIf { it.isNotBlank() }
@@ -322,20 +325,6 @@ fun ExpenseEditScreen(
         }
     )
 
-    if (showDatePicker) {
-        ExpenseEditDatePicker(
-            expenseTime = expenseTime,
-            onSetExpenseTime = { expenseTime = it },
-            onDismiss = { showDatePicker = false },
-        )
-    }
-    if (showTimePicker) {
-        ExpenseEditTimePicker(
-            expenseTime = expenseTime,
-            onSetExpenseTime = { expenseTime = it },
-            onDismiss = { showTimePicker = false },
-        )
-    }
     if (showRejectDialog) {
         ExpenseEditRejectDialog(
             isConfirmedExpense = currentExpense.status == "confirmed",
@@ -365,28 +354,22 @@ fun ExpenseEditScreen(
             message = amountInvalidMessage
             return null
         }
-        val trimmedManualRate = manualExchangeRateText.trim()
-        val canonicalManualRate = when {
-            manualExchangeRateVisible && trimmedManualRate.isBlank() && savedManualExchangeRate != null -> {
-                manualExchangeRateIsError = true
-                message = manualExchangeRateInvalidMessage
-                return null
-            }
-            !manualExchangeRateVisible || trimmedManualRate.isBlank() -> null
-            else -> canonicalManualExchangeRateOrNull(manualExchangeRateText) ?: run {
-                manualExchangeRateIsError = true
-                message = manualExchangeRateInvalidMessage
-                return null
-            }
+        val manualRate = com.ticketbox.ui.screens.expense.manualExchangeRateEditValue(
+            manualExchangeRateVisible, manualExchangeRateText, savedManualExchangeRate,
+        )
+        manualExchangeRateIsError = manualRate.invalid
+        if (manualRate.invalid) {
+            message = manualExchangeRateInvalidMessage
+            return null
         }
-        manualExchangeRateIsError = false
         val valueScore = if (valueScoreText.isBlank()) null else (parseScore(valueScoreText, valueScoreLabel) ?: return null)
         val regretScore = if (regretScoreText.isBlank()) null else (parseScore(regretScoreText, regretScoreLabel) ?: return null)
+        if (timeErrorMessage != null) { message = timeErrorMessage; return null }
         return ExpenseDraft(
             amountCents = null,
             originalCurrencyCode = currency,
             originalAmountMinor = originalMinor,
-            manualExchangeRate = canonicalManualRate?.takeIf { manualExchangeRateNeedsReview },
+            manualExchangeRate = manualRate.rate?.takeIf { manualExchangeRateNeedsReview },
             // Blank merchant/tags submit as "" (NOT null): Moshi omits null
             // keys and the backend PATCH is exclude_unset, so null silently
             // means "unchanged" — clearing a field then never took effect.
@@ -400,6 +383,7 @@ fun ExpenseEditScreen(
             category = category.trim().ifBlank { null }?.let { normalizeExpenseCategory(it) },
             note = note,
             expenseTime = expenseTime.ifBlank { null },
+            timeInput = time.input,
             tags = tags,
             valueScore = valueScore,
             regretScore = regretScore,
@@ -452,7 +436,7 @@ fun ExpenseEditScreen(
         }
     }
 
-    val hasDraftChanges = formValues != initialFormValues
+    val hasDraftChanges = formValues != initialFormValues || timeForm.changed
     val formSections: @Composable () -> Unit = {
         ExpenseFxStatusCard(
             expense = currentExpense,
@@ -514,19 +498,10 @@ fun ExpenseEditScreen(
             onNoteChange = { note = it },
             enabled = !readOnly,
         )
-        ExpenseEditTimeRow(
-            state = ExpenseEditTimeRowState(
-                expenseTime = expenseTime,
-                baselineExpenseTime = currentExpense.expenseTime.orEmpty(),
-                enabled = !readOnly,
-            ),
-            actions = ExpenseEditTimeRowActions(
-                onPickDate = { showDatePicker = true },
-                onPickTime = { showTimePicker = true },
-                onUseNow = { expenseTime = nowUtcIso() },
-                onUndoChange = { expenseTime = currentExpense.expenseTime.orEmpty() },
-            ),
-        )
+        com.ticketbox.ui.screens.expense.ExpenseTimeEditor(timeForm, setTimeForm, !readOnly)
+        if (timeForm.changed) androidx.compose.material3.TextButton(enabled = !readOnly, onClick = {
+            com.ticketbox.ui.screens.expense.readExpenseTimeForm(baselineTimeFormJson)?.let(setTimeForm)
+        }) { androidx.compose.material3.Text(stringResource(R.string.expense_edit_undo_change_button)) }
         // 来源 quiet meta：单栏按定稿跟在时间行后；宽屏由证据辅列承载，
         // 主列不再重复（否则 1440 同行信息出现两次）。
         if (!wideTwoColumn) {

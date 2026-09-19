@@ -98,6 +98,7 @@ def _assert_home_amount_report(client: TestClient, *, identity) -> None:
     ]
     assert report_body["category_comparison"] == [
         {
+            "undated_expense_count": 0,
             "category": "餐饮",
             "amount_cents": 86415,
             "count": 1,

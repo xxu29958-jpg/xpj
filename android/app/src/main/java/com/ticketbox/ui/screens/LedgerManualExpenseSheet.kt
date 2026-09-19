@@ -1,32 +1,26 @@
 package com.ticketbox.ui.screens
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TimeInput
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import com.ticketbox.ui.screens.expense.toSavedJson
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
@@ -42,19 +36,10 @@ import com.ticketbox.ui.components.AppSheetActionFeedback
 import com.ticketbox.ui.components.AppSheetActionFeedbackState
 import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.components.LocalAppImeVisible
-import com.ticketbox.ui.components.datePickerMillisToUtcIso
 import com.ticketbox.ui.components.formatMinorAmountInput
 import com.ticketbox.ui.components.nowUtcIso
 import com.ticketbox.ui.components.parseMinorAmount
-import com.ticketbox.ui.components.selectedDateMillisFromIso
-import com.ticketbox.ui.components.selectedHourFromIso
-import com.ticketbox.ui.components.selectedMinuteFromIso
-import com.ticketbox.ui.components.timePickerToUtcIso
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.screens.expense.ExpenseDateControl
-import com.ticketbox.ui.screens.expense.ExpenseDateControlActions
-import com.ticketbox.ui.screens.expense.ExpenseDateControlLabels
-import com.ticketbox.ui.screens.expense.ExpenseDateControlState
 import com.ticketbox.ui.screens.expense.ExpenseCurrencyFields
 import com.ticketbox.ui.screens.expense.ExpenseCurrencyFieldOptions
 import com.ticketbox.ui.screens.expense.ExpenseEditTextField
@@ -82,6 +67,7 @@ data class ManualExpenseSheetInitials(
     val amountMinor: Long? = null,
     val amountText: String? = null,
     val expenseTime: String? = null,
+    val timeFormJson: String? = null,
 )
 
 data class ManualExpenseSheetDraft(
@@ -91,6 +77,7 @@ data class ManualExpenseSheetDraft(
     val category: String,
     val note: String,
     val expenseTime: String,
+    val timeFormJson: String? = null,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -111,14 +98,17 @@ fun ManualExpenseSheet(
         mutableStateOf(initials.category.ifBlank { DEFAULT_EXPENSE_CATEGORIES.first() })
     }
     var note by rememberSaveable { mutableStateOf(initials.note) }
-    var expenseTime by rememberSaveable { mutableStateOf(initials.expenseTime ?: nowUtcIso()) }
+    val (timeForm, setTimeForm) = com.ticketbox.ui.screens.expense.rememberExpenseTimeForm(
+        "manual", initials.expenseTime ?: nowUtcIso(), saved = initials.timeFormJson,
+    )
+    val time = timeForm.resolve()
+    val expenseTime = time.instant.orEmpty()
     var message by rememberSaveable { mutableStateOf<String?>(null) }
-    var showDatePicker by rememberSaveable { mutableStateOf(false) }
-    var showTimePicker by rememberSaveable { mutableStateOf(false) }
     val invalidAmountMessage = stringResource(R.string.ledger_manual_amount_invalid)
+    val timeErrorMessage = time.error?.let { stringResource(it) }
     val density = LocalDensity.current
     val keyboardVisible = LocalAppImeVisible.current || WindowInsets.ime.getBottom(density) > 0
-    LaunchedEffect(amountText, currency, merchant, category, note, expenseTime) {
+    LaunchedEffect(amountText, currency, merchant, category, note, timeForm) {
         onDraftChange?.invoke(
             ManualExpenseSheetDraft(
                 amountText = amountText,
@@ -127,79 +117,8 @@ fun ManualExpenseSheet(
                 category = category,
                 note = note,
                 expenseTime = expenseTime,
+                timeFormJson = timeForm.toSavedJson(),
             ),
-        )
-    }
-
-    if (showDatePicker) {
-        val datePickerState = androidx.compose.material3.rememberDatePickerState(
-            initialSelectedDateMillis = selectedDateMillisFromIso(expenseTime),
-        )
-        DatePickerDialog(
-            onDismissRequest = { showDatePicker = false },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        datePickerState.selectedDateMillis?.let { selected ->
-                            expenseTime = datePickerMillisToUtcIso(selected, expenseTime)
-                        }
-                        showDatePicker = false
-                    },
-                ) {
-                    Text(stringResource(R.string.common_confirm))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) {
-                    Text(stringResource(R.string.common_cancel))
-                }
-            },
-        ) {
-            DatePicker(
-                state = datePickerState,
-                title = {
-                    Text(
-                        stringResource(R.string.ledger_manual_date_picker_title),
-                        modifier = Modifier.padding(
-                            start = AppSpacing.cardPadding,
-                            end = AppSpacing.compactGap,
-                            top = AppSpacing.cardPaddingSmall,
-                        ),
-                    )
-                },
-            )
-        }
-    }
-
-    if (showTimePicker) {
-        val timePickerState = androidx.compose.material3.rememberTimePickerState(
-            initialHour = selectedHourFromIso(expenseTime),
-            initialMinute = selectedMinuteFromIso(expenseTime),
-            is24Hour = true,
-        )
-        AlertDialog(
-            onDismissRequest = { showTimePicker = false },
-            title = { Text(stringResource(R.string.ledger_manual_time_picker_title)) },
-            text = { TimeInput(state = timePickerState) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        expenseTime = timePickerToUtcIso(
-                            hour = timePickerState.hour,
-                            minute = timePickerState.minute,
-                            currentIso = expenseTime,
-                        )
-                        showTimePicker = false
-                    },
-                ) {
-                    Text(stringResource(R.string.common_confirm))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showTimePicker = false }) {
-                    Text(stringResource(R.string.common_cancel))
-                }
-            },
         )
     }
 
@@ -209,6 +128,7 @@ fun ManualExpenseSheet(
             message = invalidAmountMessage
             return null
         }
+        if (timeErrorMessage != null) { message = timeErrorMessage; return null }
         return ExpenseDraft(
             amountCents = null,
             originalCurrencyCode = currency,
@@ -216,7 +136,8 @@ fun ManualExpenseSheet(
             merchant = merchant.ifBlank { null },
             category = normalizeExpenseCategory(category),
             note = note,
-            expenseTime = expenseTime.ifBlank { nowUtcIso() },
+            expenseTime = time.instant,
+            timeInput = time.input,
             tags = null,
             valueScore = null,
             regretScore = null,
@@ -301,13 +222,7 @@ fun ManualExpenseSheet(
                 onValueChange = { note = it },
                 modifier = Modifier.fillMaxWidth(),
             )
-            ManualExpenseTimeSection(
-                expenseTime = expenseTime,
-                enabled = fieldsEnabled,
-                onPickDate = { showDatePicker = true },
-                onPickTime = { showTimePicker = true },
-                onUseNow = { expenseTime = nowUtcIso() },
-            )
+            com.ticketbox.ui.screens.expense.ExpenseTimeEditor(timeForm, setTimeForm, fieldsEnabled)
             ManualExpenseActionSlot(
                 feedbackMessage = feedbackMessage,
                 saving = state.saving,
@@ -328,33 +243,6 @@ private fun submitManualExpenseDraft(
     if (!editable || saving) return
     val created = draft() ?: return
     onCreate(created)
-}
-
-@Composable
-private fun ManualExpenseTimeSection(
-    expenseTime: String,
-    enabled: Boolean = true,
-    onPickDate: () -> Unit,
-    onPickTime: () -> Unit,
-    onUseNow: () -> Unit,
-) {
-    ExpenseDateControl(
-        state = ExpenseDateControlState(
-            title = stringResource(R.string.ledger_manual_time_section_title),
-            expenseTime = expenseTime,
-            enabled = enabled,
-        ),
-        labels = ExpenseDateControlLabels(
-            pickDate = stringResource(R.string.ledger_manual_pick_date_button),
-            pickTime = stringResource(R.string.ledger_manual_pick_time_button),
-            useNow = stringResource(R.string.ledger_manual_now_button),
-        ),
-        actions = ExpenseDateControlActions(
-            onPickDate = onPickDate,
-            onPickTime = onPickTime,
-            onUseNow = onUseNow,
-        ),
-    )
 }
 
 @Composable

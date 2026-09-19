@@ -1,0 +1,36 @@
+<fieldset class="product-field product-field--wide" {% if time_disabled %}disabled{% endif %}>
+  <legend>发生日期与账务日期</legend>
+  {% if expense is defined %}<span class="meta">已存账务日期：{{ expense.accounting_date or '待核对' }}{% if expense.accounting_date_assumed %}（按初始账本日历推定）{% endif %}</span>{% endif %}
+  <input type="hidden" name="calendar_revision" value="{{ time_form.calendar_revision }}">
+  <label for="{{ time_prefix }}-precision">已知时间精度</label>
+  <select id="{{ time_prefix }}-precision" name="time_precision">
+    <option value="instant" {% if time_form.time_precision == 'instant' %}selected{% endif %}>日期和时刻</option>
+    <option value="date_only" {% if time_form.time_precision == 'date_only' %}selected{% endif %}>只有日期</option>
+  </select>
+  <label for="{{ time_prefix }}-wall">当地发生时刻（知道时刻时填写）</label>
+  <input id="{{ time_prefix }}-wall" name="{{ time_name }}" type="datetime-local" step="any" value="{{ time_form.wall_time }}">
+  {% if time_name == 'expense_time' %}<span class="meta">选择“日期和时刻”后，{% if correction_mode %}留空可清除已知时刻{% else %}留空表示不修改时刻{% endif %}；只有日期请选“只有日期”。</span>{% endif %}
+  <label for="{{ time_prefix }}-date">原始发生日期（只有日期时填写）</label>
+  <input id="{{ time_prefix }}-date" name="user_local_date" type="date" value="{{ time_form.user_local_date }}">
+  <details{% if time_form.offset_options or time_form.accounting_date %} open{% endif %}>
+  <summary>发生地区与账务归属{% if time_form.source_timezone %} · {{ time_form.source_timezone }}{% endif %}</summary>
+  <label for="{{ time_prefix }}-zone">发生地时区</label>
+  <input id="{{ time_prefix }}-zone" name="source_timezone" value="{{ time_form.source_timezone }}" placeholder="例如 Asia/Shanghai">
+  <label for="{{ time_prefix }}-offset">UTC 偏移（重复时刻需要选择）</label>
+  <select id="{{ time_prefix }}-offset" name="source_utc_offset_seconds">
+    <option value="" {% if not time_form.source_utc_offset_seconds %}selected{% endif %}>按时区确定；重复时刻先提示</option>
+    {% set offsets = time_form.offset_options %}
+    {% if time_form.source_utc_offset_seconds and time_form.source_utc_offset_seconds|int not in offsets %}
+    {% set original_offset = time_form.source_utc_offset_seconds|int %}
+    <option value="{{ time_form.source_utc_offset_seconds }}" selected>UTC {{ '+' if original_offset >= 0 else '−' }}{{ '%02d:%02d'|format((original_offset|abs)//3600, ((original_offset|abs)%3600)//60) }}（原选择）</option>
+    {% endif %}
+    {% for offset in offsets %}
+    <option value="{{ offset }}" {% if time_form.source_utc_offset_seconds == offset|string %}selected{% endif %}>UTC {{ '+' if offset >= 0 else '−' }}{{ '%02d:%02d'|format((offset|abs)//3600, ((offset|abs)%3600)//60) }}</option>
+    {% endfor %}
+  </select>
+  <label for="{{ time_prefix }}-accounting-date">账务日期（可选，按此日进入流水和统计）</label>
+  <input id="{{ time_prefix }}-accounting-date" name="accounting_date" type="date" value="{{ time_form.accounting_date }}">
+  <span class="meta">未指定账务日期时，按本表单捕获的账本日历确定。只有日期不会补造时刻；发生地与账本时区不同时，请明确账务日期。</span>
+  </details>
+  {% if field_errors is defined and field_errors.get('expense_time') %}<span class="error-text">{{ field_errors.get('expense_time') }}</span>{% endif %}
+</fieldset>

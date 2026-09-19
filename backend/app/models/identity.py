@@ -7,6 +7,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
@@ -33,6 +34,13 @@ class Account(Base):
 
 class Ledger(Base):
     __tablename__ = "ledgers"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["ledger_id", "calendar_revision"],
+            ["ledger_calendar_revisions.ledger_id", "ledger_calendar_revisions.revision"],
+            name="fk_ledgers_calendar_revision", use_alter=True,
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     ledger_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
@@ -40,6 +48,7 @@ class Ledger(Base):
     owner_account_id: Mapped[int] = mapped_column(Integer, ForeignKey("accounts.id"), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    calendar_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class LedgerMember(Base):

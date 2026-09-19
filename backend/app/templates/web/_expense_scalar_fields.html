@@ -3,6 +3,9 @@
    契约（由调用方上下文提供）：form_prefix, expense, field_errors, category_options,
    expense_currency_input, can_write, frozen_scalars（强制禁用的字段名元组，
    拆账接收票的协定冻结面；无冻结时为 ()），correction_mode（更正恒为 true）。 #}
+{% if time_form %}
+{% with time_prefix=form_prefix, time_name='expense_time', time_disabled=(not can_write or 'expense_time' in frozen_scalars) %}{% include '_accounting_time_fields.html' %}{% endwith %}
+{% endif %}
 <div class="product-field">
   <label for="{{ form_prefix }}-amount-yuan">金额{% if not correction_mode %} ({{ expense.original_currency_code }}){% endif %}</label>
   {# step 参与浏览器 constraint validation（非纯视觉提示）：correction 允许改币种，
@@ -19,12 +22,14 @@
   <input id="{{ form_prefix }}-merchant" type="text" name="merchant" value="{{ expense.merchant }}" maxlength="255" placeholder="未填写商家" {% if field_errors.get('merchant') %}aria-invalid="true" aria-describedby="{{ form_prefix }}-merchant-error"{% endif %} {% if not can_write or 'merchant' in frozen_scalars %}disabled{% endif %}>
   {% if field_errors.get('merchant') %}<div id="{{ form_prefix }}-merchant-error" class="field-error">{{ field_errors.get('merchant') }}</div>{% endif %}
 </div>
+{% if not time_form %}
 <div class="product-field">
   <label for="{{ form_prefix }}-expense-time">消费时间</label>
   <input id="{{ form_prefix }}-expense-time" type="datetime-local" name="expense_time" value="{{ expense.expense_time_local }}" {% if field_errors.get('expense_time') %}aria-invalid="true" aria-describedby="{{ form_prefix }}-time-error"{% endif %} {% if not can_write or 'expense_time' in frozen_scalars %}disabled{% endif %}>
   {% if field_errors.get('expense_time') %}<div id="{{ form_prefix }}-time-error" class="field-error">{{ field_errors.get('expense_time') }}</div>{% endif %}
   {% if correction_mode %}<div class="meta">留空表示清空现有时间。</div>{% else %}<div class="meta">留空表示不修改时间。</div>{% endif %}
 </div>
+{% endif %}
 <div class="product-field">
   <label for="{{ form_prefix }}-category">分类</label>
   <input id="{{ form_prefix }}-category" type="text" name="category" value="{{ expense.category_input }}" maxlength="64" placeholder="例如 餐饮" list="category-options" {% if field_errors.get('category') %}aria-invalid="true" aria-describedby="{{ form_prefix }}-category-error"{% endif %} {% if not can_write %}disabled{% endif %}>

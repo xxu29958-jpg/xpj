@@ -1,6 +1,6 @@
 """Rule thresholds retain units, and unavailable conversion cannot choose a fallback."""
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from types import SimpleNamespace
 
 import pytest
@@ -35,7 +35,8 @@ def test_nonmonetary_rule_can_remain_currencyless_and_clear_is_distinct_from_omi
 
 def _expense():
     return Expense(id=1, tenant_id="owner", category="其他", merchant="store", amount_cents=10000,
-        home_currency_code="CNY", row_version=1, expense_time=datetime(2026, 9, 3, tzinfo=UTC),
+        home_currency_code="CNY", row_version=1, accounting_date=date(2026, 9, 3),
+        calendar_revision=1, time_precision="unknown", accounting_date_basis="legacy_expense_time", expense_time=datetime(2026, 9, 3, tzinfo=UTC),
         created_at=datetime(2026, 9, 3, tzinfo=UTC), updated_at=datetime(2026, 9, 3, tzinfo=UTC))
 
 

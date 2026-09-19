@@ -13,6 +13,11 @@ from fastapi.responses import HTMLResponse, Response
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
+from app.routes._web_accounting_time import (
+    submitted_time_form_values,
+    time_form_projection,
+    time_form_values,
+)
 from app.routes._web_expense_manual_fx_presenter import project_manual_fx_edit_views
 from app.routes._web_expense_return_context import (
     ExpenseReturnContext,
@@ -33,6 +38,7 @@ from app.routes.web_common import (
 )
 from app.services.category_service import list_ledger_category_options
 from app.services.expense_service import get_expense
+from app.services.ledger_calendar_service import calendar_revision
 from app.services.manual_expense_draft_presenter import manual_draft_ack
 from app.services.receipt_item_service import list_expense_items
 
@@ -212,8 +218,15 @@ def web_edit_context(
         expense,
         presentation_currency_code=ctx["home_currency_code"],
     )
+    # Existing bills retain their recorded rule, including the initial legacy rule.
+    rule = calendar_revision(db, ledger_id=selected_id, revision=expense.calendar_revision or 1)
+    time_values = time_form_values(expense, rule)
+    expense_view["expense_time_local"] = time_values["wall_time"]
     current_expense_view = expense_view.copy()
     _overlay_submitted_expense_values(expense_view, form_values)
+    if form_values is not None:
+        time_values = submitted_time_form_values(form_values, wall_time_field="expense_time")
+    ctx["time_form"] = time_form_projection(time_values) if time_values is not None else None
     project_manual_fx_edit_views(expense_view, current_expense_view, form_values)
     if form_values and not conflict and form_values.get("expected_row_version"):
         expense_view["row_version"] = form_values["expected_row_version"]

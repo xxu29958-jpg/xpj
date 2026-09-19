@@ -140,9 +140,12 @@ def test_patch_unknown_expense_returns_404(
 
 @pytest.mark.real_db
 def test_two_sessions_seeing_same_updated_at_only_first_writer_wins(
-    client: TestClient, *, identity
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, *, identity
 ) -> None:
-    expense_id = _create_pending(client, identity=identity)
+    # Finish the upload's enrichment before starting this two-writer OCC race.
+    with monkeypatch.context() as upload_setup:
+        upload_setup.setenv("XPJ_BACKGROUND_TASK_INLINE", "1")
+        expense_id = _create_pending(client, identity=identity)
     tenant_id = "owner"
 
     session_a = SessionLocal()
@@ -189,7 +192,7 @@ def test_two_sessions_seeing_same_updated_at_only_first_writer_wins(
 
 @pytest.mark.real_db
 def test_two_sessions_concurrent_reject_then_patch_resolves_to_404(
-    client: TestClient, *, identity
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, *, identity
 ) -> None:
     """Variant: writer A rejects (moves row to ``rejected`` — not in
     ``EDITABLE_STATUSES``); writer B tries to PATCH with the
@@ -198,7 +201,10 @@ def test_two_sessions_concurrent_reject_then_patch_resolves_to_404(
     surfaces ``expense_not_found`` because the row is no longer
     editable.
     """
-    expense_id = _create_pending(client, identity=identity)
+    # Finish the upload's enrichment before starting this two-writer OCC race.
+    with monkeypatch.context() as upload_setup:
+        upload_setup.setenv("XPJ_BACKGROUND_TASK_INLINE", "1")
+        expense_id = _create_pending(client, identity=identity)
     tenant_id = "owner"
 
     session_a = SessionLocal()

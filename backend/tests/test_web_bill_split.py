@@ -15,6 +15,8 @@ from app.main import app
 from app.models import Account, BillSplitInvitation, Expense, Ledger, LedgerMember
 from app.routes.web_common import _require_local as _web_require_local
 from app.services import bill_split_service as bsplit
+from app.services.expense_accounting_time_service import refresh_legacy_expense_time
+from app.services.ledger_calendar_service import adopt_ledger_calendar
 from app.services.spending_contract_service import accounting_zone
 from app.services.time_service import ensure_utc, now_utc
 
@@ -42,6 +44,7 @@ def _seed_receiver(ledger_id: str = "receiver_web", display: str = "B-web") -> t
         ledger = Ledger(ledger_id=ledger_id, name=f"{display} 账本", owner_account_id=acct.id)
         db.add(ledger)
         db.flush()
+        adopt_ledger_calendar(db, ledger_id=ledger_id, timezone_name="Asia/Shanghai", actor_account_id=acct.id)
         db.add(LedgerMember(ledger_id=ledger_id, account_id=acct.id, role="owner"))
         db.commit()
         return acct.id, ledger_id
@@ -62,6 +65,7 @@ def _make_owner_expense(amount_cents: int = 4000) -> int:
             expense_time=now_utc(),
             confirmed_at=now_utc(),
         )
+        refresh_legacy_expense_time(db, e)
         db.add(e)
         db.commit()
         return e.id
@@ -325,6 +329,7 @@ def _seed_expense_in(ledger_id: str, amount_cents: int = 3000) -> int:
             expense_time=now_utc(),
             confirmed_at=now_utc(),
         )
+        refresh_legacy_expense_time(db, e)
         db.add(e)
         db.commit()
         return e.id

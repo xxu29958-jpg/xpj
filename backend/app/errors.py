@@ -93,6 +93,8 @@ ERROR_MESSAGES = {
     "route_not_found": "没有找到这个功能入口。",
     "method_not_allowed": "这个入口不支持当前操作。",
     "ledger_not_found": "账本不存在或没有访问权限。",
+    "calendar_revision_conflict": "账本日期规则已变化或无法读取，请刷新规则并核对原输入后继续。",
+    "accounting_time_invalid": "这份日期或时间无法确定，请核对原输入、时区及账务日期后继续。",
     "ledger_name_required": "请填写账本名称。",
     "ledger_name_too_long": "账本名称过长，请控制在 60 个字以内。",
     "ledger_forbidden": "当前账号没有该账本的访问权限。",

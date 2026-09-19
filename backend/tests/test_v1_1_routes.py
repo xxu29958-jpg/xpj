@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.models import Expense
+from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from tests._runtime_protocol import negotiated_headers
 
 # ---------------------------------------------------------------------------
@@ -271,22 +272,22 @@ def test_discretionary_late_salary_backfill_offsets_existing_spend(
 ) -> None:  # noqa: ARG001
     spent_at = datetime(2026, 6, 12, 4, tzinfo=UTC)
     with SessionLocal() as db:
-        db.add(
-            Expense(
-                tenant_id="owner",
-                status="confirmed",
-                amount_cents=300_000,
-                home_currency_code="CNY",
-                original_currency_code="CNY",
-                original_amount_minor=300_000,
-                merchant="永辉超市",
-                category="购物",
-                expense_time=spent_at,
-                confirmed_at=spent_at,
-                created_at=spent_at,
-                updated_at=spent_at,
-            )
+        _calendar_expense = Expense(
+            tenant_id="owner",
+            status="confirmed",
+            amount_cents=300_000,
+            home_currency_code="CNY",
+            original_currency_code="CNY",
+            original_amount_minor=300_000,
+            merchant="永辉超市",
+            category="购物",
+            expense_time=spent_at,
+            confirmed_at=spent_at,
+            created_at=spent_at,
+            updated_at=spent_at,
         )
+        refresh_legacy_expense_time(db, _calendar_expense)
+        db.add(_calendar_expense)
         db.commit()
 
     income_resp = client.post(

@@ -7,8 +7,8 @@ from app.auth import get_current_app_context
 from app.config import get_settings
 from app.database import get_db
 from app.schemas import LifestyleStatsResponse, MonthlyStatsResponse
+from app.services.ledger_calendar_service import current_ledger_month
 from app.services.stats_service import lifestyle_stats, monthly_stats
-from app.services.time_service import current_month
 from app.tenants import AuthContext
 
 router = APIRouter(
@@ -27,7 +27,7 @@ def get_monthly_stats(
     db: Session = Depends(get_db),
 ) -> MonthlyStatsResponse:
     timezone_name = timezone or get_settings().ocr_default_timezone
-    target_month = month or current_month(timezone_name)
+    target_month = month or current_ledger_month(db, ledger_id=auth.tenant_id)
     return MonthlyStatsResponse(**monthly_stats(db, target_month, auth.tenant_id,
         timezone_name=timezone_name, tag=tag, home_currency_code=home_currency_code))
 
@@ -41,6 +41,6 @@ def get_lifestyle_stats(
     db: Session = Depends(get_db),
 ) -> LifestyleStatsResponse:
     timezone_name = timezone or get_settings().ocr_default_timezone
-    target_month = month or current_month(timezone_name)
+    target_month = month or current_ledger_month(db, ledger_id=auth.tenant_id)
     return LifestyleStatsResponse(**lifestyle_stats(db, target_month, auth.tenant_id,
         timezone_name=timezone_name, home_currency_code=home_currency_code))

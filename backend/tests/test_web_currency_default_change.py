@@ -200,6 +200,7 @@ def test_real_account_menu_only_exposes_the_installation_owners_entry(owner_brow
         "state": {"web_session_platform": platform, "web_session_auth": owner_browser.auth}})
     monkeypatch.setattr(web_common, "require_runtime_home_currency_code", lambda _: "CNY")
     owner_browser.db.scalars.return_value = claims
+    owner_browser.db.execute.return_value = []  # This menu fixture has no undated expense roots.
     # Installation Owner authority is independent of the selected ledger's role.
     option = web_common.LedgerOption("ledger", "Ledger", "viewer", False, 0, 0)
     context = web_common._base_ctx(request, db=owner_browser.db, options=[option], selected_ledger_id="ledger")

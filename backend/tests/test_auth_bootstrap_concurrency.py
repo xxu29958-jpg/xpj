@@ -8,7 +8,6 @@ from fastapi.testclient import TestClient
 
 from app.config import get_settings
 from app.database import SessionLocal, engine, init_db
-from app.database_model_registry import Base
 from app.errors import AppError
 from app.main import app
 from app.models import AuthToken, PairingCode
@@ -29,6 +28,7 @@ from tests._infra.admin_mutation_concurrency import (
     assert_owner_transfer_invalidates_precomputed_admin_scope,
     assert_revoked_admin_mutation_is_rejected,
 )
+from tests._infra.alembic_runtime import reset_public_schema
 from tests._infra.bootstrap_exposure_rotation import assert_exposed_secret_rotation
 from tests._infra.bootstrap_owner_mutation_concurrency import (
     REVOKED_OWNER_MUTATION_CASES,
@@ -143,7 +143,7 @@ def test_exposed_bootstrap_principal_blocks_sensitive_identity_mutations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _enable_http_bootstrap(monkeypatch, _VECTOR_SECRET)
-    Base.metadata.drop_all(bind=engine)
+    reset_public_schema(engine)
     init_db()
     try:
         with TestClient(app) as client:
@@ -194,7 +194,7 @@ def test_replacement_pairing_collision_is_reported_before_rotation(
         derive_bootstrap_pairing_code(replacement_secret),
     )
     _enable_http_bootstrap(monkeypatch, _VECTOR_SECRET)
-    Base.metadata.drop_all(bind=engine)
+    reset_public_schema(engine)
     init_db()
     try:
         with TestClient(app) as client:

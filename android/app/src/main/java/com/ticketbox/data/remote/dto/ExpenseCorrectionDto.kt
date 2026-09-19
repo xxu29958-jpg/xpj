@@ -6,6 +6,38 @@ import com.squareup.moshi.JsonClass
 import com.squareup.moshi.JsonReader
 import com.squareup.moshi.JsonWriter
 import com.squareup.moshi.Moshi
+import java.lang.reflect.Type
+
+data class CorrectionOptionalTimeInput(val changed: Boolean, val value: ExpenseTimeInputDto?) {
+    companion object {
+        fun unchanged(): CorrectionOptionalTimeInput = CorrectionOptionalTimeInput(false, null)
+        fun changed(value: ExpenseTimeInputDto?): CorrectionOptionalTimeInput = CorrectionOptionalTimeInput(true, value)
+    }
+}
+
+private class CorrectionOptionalTimeInputJsonAdapter(
+    private val valueAdapter: JsonAdapter<ExpenseTimeInputDto>,
+) : JsonAdapter<CorrectionOptionalTimeInput>() {
+    override fun fromJson(reader: JsonReader): CorrectionOptionalTimeInput =
+        if (reader.peek() == JsonReader.Token.NULL) {
+            reader.nextNull<Unit>()
+            CorrectionOptionalTimeInput.changed(null)
+        } else {
+            CorrectionOptionalTimeInput.changed(valueAdapter.fromJson(reader))
+        }
+
+    override fun toJson(writer: JsonWriter, value: CorrectionOptionalTimeInput?) {
+        val field = requireNotNull(value)
+        writeOptionalNull(writer, field.changed, field.value) { valueAdapter.toJson(writer, it) }
+    }
+
+    object Factory : JsonAdapter.Factory {
+        override fun create(type: Type, annotations: Set<Annotation>, moshi: Moshi): JsonAdapter<*>? =
+            if (type == CorrectionOptionalTimeInput::class.java && annotations.isEmpty()) {
+                CorrectionOptionalTimeInputJsonAdapter(moshi.adapter(ExpenseTimeInputDto::class.java))
+            } else null
+    }
+}
 
 /**
  * A correction field has three wire states: absent (unchanged), a concrete
@@ -86,6 +118,7 @@ private inline fun <T> writeOptionalNull(
 fun Moshi.Builder.addExpenseCorrectionWireAdapters(): Moshi.Builder =
     add(CorrectionOptionalInt::class.java, CorrectionOptionalIntJsonAdapter())
         .add(CorrectionOptionalString::class.java, CorrectionOptionalStringJsonAdapter())
+        .add(CorrectionOptionalTimeInputJsonAdapter.Factory)
 
 @JsonClass(generateAdapter = true)
 data class ExpenseCorrectionRequestDto(
@@ -110,6 +143,8 @@ data class ExpenseCorrectionRequestDto(
     val regretScore: CorrectionOptionalInt = CorrectionOptionalInt.unchanged(),
     val items: List<ExpenseItemRequestDto>? = null,
     val splits: List<ExpenseSplitRequestDto>? = null,
+    @param:Json(name = "time_input")
+    val timeInput: CorrectionOptionalTimeInput = CorrectionOptionalTimeInput.unchanged(),
 )
 
 data class ExpenseRevisionDto(

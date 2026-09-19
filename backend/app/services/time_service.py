@@ -4,6 +4,8 @@ import re
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from app.errors import AppError
+
 MONTH_LABEL_PATTERN = re.compile(r"^\d{4}-\d{2}$")
 
 
@@ -40,6 +42,49 @@ def safe_zone(timezone_name: str | None) -> ZoneInfo:
         return ZoneInfo(name)
     except ZoneInfoNotFoundError:
         return ZoneInfo("UTC")
+
+
+def strict_zone(timezone_name: str) -> ZoneInfo:
+    """Financial input cannot silently fall back from an unknown zone to UTC."""
+    try:
+        return ZoneInfo(timezone_name)
+    except (ZoneInfoNotFoundError, ValueError, TypeError) as exc:
+        raise AppError("accounting_timezone_invalid", "请选择有效的地区时区。", status_code=422) from exc
+
+
+def _local_time_candidates(value: datetime, zone: ZoneInfo) -> dict[datetime, int]:
+    # PEP 495 permits imaginary gap values in replace(); only UTC round-trips prove validity.
+    candidates = {}
+    for fold in (0, 1):
+        candidate = value.replace(tzinfo=zone, fold=fold).astimezone(UTC)
+        returned = candidate.astimezone(zone)
+        if returned.replace(tzinfo=None) == value:
+            candidates[candidate] = int(returned.utcoffset().total_seconds())
+    return candidates
+
+
+def resolve_local_datetime(
+    value: datetime, timezone_name: str, *, utc_offset_seconds: int | None = None,
+) -> datetime:
+    """Resolve a local input without guessing through DST gaps or repeated hours."""
+    zone = strict_zone(timezone_name)
+    if value.utcoffset() is not None:
+        actual_offset = int(value.utcoffset().total_seconds())
+        if utc_offset_seconds is not None and utc_offset_seconds != actual_offset:
+            raise AppError("accounting_time_invalid", "已知时刻与选择的 UTC 偏移不一致。", status_code=422)
+        utc_offset_seconds = actual_offset
+    candidates = _local_time_candidates(value.replace(tzinfo=None), zone)
+    if not candidates:
+        raise AppError("local_time_nonexistent", "这个本地时间因夏令时调整不存在，请保留输入并选择有效时间。", status_code=422)
+    if utc_offset_seconds is not None:
+        for instant, offset in candidates.items():
+            if offset == utc_offset_seconds:
+                return instant
+        raise AppError("accounting_time_invalid", "选择的 UTC 偏移与本地时间不一致。", status_code=422)
+    if len(candidates) > 1:
+        raise AppError("local_time_ambiguous", "这个本地时间对应两个时刻，请选择 UTC 偏移。", status_code=422,
+            details={"utc_offset_seconds_options": list(candidates.values())})
+    return next(iter(candidates))
 
 
 def current_month(timezone_name: str | None) -> str:

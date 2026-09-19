@@ -3,6 +3,9 @@ package com.ticketbox.viewmodel
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtListPage
 import com.ticketbox.data.repository.LedgerActions
+import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.MonthCalendarFixture
+import com.ticketbox.data.repository.calendar
 import com.ticketbox.domain.model.BatchApplyResult
 import com.ticketbox.domain.model.ConfirmedStreamItem
 import com.ticketbox.domain.model.CsvExport
@@ -12,6 +15,7 @@ import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.ExpenseLineageStatus
 import com.ticketbox.domain.model.StreamOffset
 import com.ticketbox.domain.model.StreamOffsetKind
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -20,6 +24,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import java.lang.reflect.Proxy
@@ -42,6 +47,61 @@ class LedgerViewModelStreamTest {
         } finally {
             Dispatchers.resetMain()
         }
+    }
+
+    @Test
+    fun firstMonthReadSyncsAllRootsAndLocalFiltersQualifyOnlyAffectedPeriodTotals() = streamTest {
+        val unknown = rootRow(streamExpense(1, 12000, "超市").copy(tags = "待核对")).copy(streamDate = null)
+        val known = rootRow(streamExpense(2, 3000, "地铁").copy(category = "交通"))
+        val fake = StreamLedgerActions(listOf(unknown, known))
+        val vm = LedgerViewModel(fake, StreamDebtActions())
+        advanceUntilIdle()
+        assertEquals(listOf(null, null, null), fake.lastSyncFilters)
+        vm.setMonthFilter(FIXTURE_STREAM_MONTH)
+        assertEquals(1, vm.uiState.value.undatedExpenseCount)
+        assertEquals(mapOf<String?, Long?>("CNY" to null), vm.uiState.value.summary.amountsByCurrency)
+        vm.setCategoryFilter("交通")
+        assertEquals(0, vm.uiState.value.undatedExpenseCount)
+        assertEquals(mapOf<String?, Long?>("CNY" to 3000L), vm.uiState.value.summary.amountsByCurrency)
+        vm.setCategoryFilter("")
+        vm.setTagFilter("different-tag")
+        assertEquals(0, vm.uiState.value.undatedExpenseCount)
+        vm.setTagFilter("")
+        vm.setQuery("地铁")
+        assertEquals(0, vm.uiState.value.undatedExpenseCount)
+        assertEquals(1, fake.syncReads)
+        vm.clearFilters()
+        assertEquals(mapOf<String?, Long?>("CNY" to 15000L), vm.uiState.value.summary.amountsByCurrency)
+    }
+
+    @Test
+    fun missingDateDrillSurvivesLateCalendarAndKeepsTheRootAvailableForFactCorrection() = streamTest {
+        val root = streamExpense(id = 1, amountCents = 12000, merchant = "超市")
+        val fake = StreamLedgerActions(listOf(rootRow(root).copy(streamDate = null),
+            refundRow(publicId = "off-1", root = root, streamDate = "2026-06-02", amountCents = 3000)))
+        val binding = LogicalSessionBinding("https://example.test", "owner", "owner", "session", "revision")
+        val gate = CompletableDeferred<Unit>()
+        val calendars = MonthCalendarFixture(binding).apply {
+            this.gate = { gate.await() }
+            response = Result.success(calendar(binding))
+        }
+        val vm = LedgerViewModel(fake, StreamDebtActions(), calendars = calendars)
+        runCurrent()
+        vm.applyDataQualityFilter(LedgerDataQualityFilter.MissingAccountingDate)
+        assertEquals(0, fake.syncReads)
+        assertEquals(1, vm.uiState.value.undatedExpenseCount)
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals("", vm.uiState.value.monthFilter)
+        assertEquals(LedgerDataQualityFilter.MissingAccountingDate, vm.uiState.value.dataQualityFilter)
+        assertEquals(1, vm.uiState.value.undatedExpenseCount)
+        assertEquals(1, fake.undatedReads)
+        assertEquals(listOf("expense-1"), vm.uiState.value.items.map { it.rowKey })
+        assertEquals(root.id, vm.uiState.value.items.single().root.id)
+        assertEquals(mapOf<String?, Long?>("CNY" to 12000L), vm.uiState.value.summary.amountsByCurrency)
+        vm.clearFilters()
+        advanceUntilIdle()
+        assertEquals(2, vm.uiState.value.items.size)
     }
 
     @Test
@@ -144,6 +204,9 @@ private const val FIXTURE_STREAM_MONTH = "2026-05"
 private class StreamLedgerActions(
     private val stream: List<ConfirmedStreamItem>,
 ) : LedgerActions {
+    var syncReads = 0
+    var lastSyncFilters: List<String?>? = null
+    var undatedReads = 0
     var lastBatchExpenses: List<Expense> = emptyList()
         private set
 
@@ -161,8 +224,12 @@ private class StreamLedgerActions(
 
     override suspend fun months(): Result<List<String>> = Result.success(listOf("2026-05", "2026-06"))
 
-    override suspend fun syncConfirmed(month: String?, category: String?, tag: String?): Result<List<Expense>> =
-        Result.success(stream.map { it.root }.distinctBy { it.id })
+    override suspend fun syncConfirmed(month: String?, category: String?, tag: String?, missingAccountingDate: Boolean): Result<List<Expense>> {
+        if (missingAccountingDate) undatedReads += 1
+        syncReads += 1
+        lastSyncFilters = listOf(month, category, tag)
+        return Result.success(stream.map { it.root }.distinctBy { it.id })
+    }
 
     override suspend fun exportConfirmedCsv(month: String?, category: String?, tag: String?): Result<CsvExport> =
         Result.success(CsvExport("ledger.csv", ByteArray(0)))

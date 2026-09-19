@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 
 from app.database import SessionLocal
 from app.models import Expense
+from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from app.services.insight_radar_service import (
     cashflow_radar,
     subscription_radar,
@@ -20,19 +21,19 @@ def _add_expense(
     confirmed: datetime,
 ) -> None:
     with SessionLocal() as db:
-        db.add(
-            Expense(
-                tenant_id=tenant_id,
-                amount_cents=amount_cents,
-                merchant=merchant,
-                category="餐饮",
-                source="pytest",
-                raw_text="",
-                status="confirmed",
-                expense_time=confirmed,
-                confirmed_at=confirmed,
-            )
+        _calendar_expense = Expense(
+            tenant_id=tenant_id,
+            amount_cents=amount_cents,
+            merchant=merchant,
+            category="餐饮",
+            source="pytest",
+            raw_text="",
+            status="confirmed",
+            expense_time=confirmed,
+            confirmed_at=confirmed,
         )
+        refresh_legacy_expense_time(db, _calendar_expense)
+        db.add(_calendar_expense)
         db.commit()
 
 
@@ -45,19 +46,19 @@ def _add_expense_with_times(
     confirmed_at: datetime | None,
 ) -> None:
     with SessionLocal() as db:
-        db.add(
-            Expense(
-                tenant_id=tenant_id,
-                amount_cents=amount_cents,
-                merchant=merchant,
-                category="餐饮",
-                source="pytest",
-                raw_text="",
-                status="confirmed",
-                expense_time=expense_time,
-                confirmed_at=confirmed_at,
-            )
+        _calendar_expense = Expense(
+            tenant_id=tenant_id,
+            amount_cents=amount_cents,
+            merchant=merchant,
+            category="餐饮",
+            source="pytest",
+            raw_text="",
+            status="confirmed",
+            expense_time=expense_time,
+            confirmed_at=confirmed_at,
         )
+        refresh_legacy_expense_time(db, _calendar_expense)
+        db.add(_calendar_expense)
         db.commit()
 
 
@@ -191,7 +192,7 @@ def test_subscription_radar_tenant_isolation(*, identity) -> None:
         assert tester == []
 
 
-def test_cashflow_radar_uses_expense_time_and_accounting_timezone(
+def test_cashflow_radar_preserves_adopted_dates_across_query_timezones(
     *, identity,
 ) -> None:
     _add_expense_with_times(
@@ -225,7 +226,7 @@ def test_cashflow_radar_uses_expense_time_and_accounting_timezone(
     shanghai_by_month = {row.year_month: row for row in shanghai}
     utc_by_month = {row.year_month: row for row in utc}
     assert shanghai_by_month["2026-05"].expense_cents == 3000
-    assert utc_by_month["2026-05"].expense_cents == 0
+    assert utc_by_month["2026-05"].expense_cents == 3000
 
 
 def test_subscription_radar_groups_by_expense_time_not_confirmation_time(

@@ -21,6 +21,7 @@ from sqlalchemy import (
     UniqueConstraint,
     event,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database_model_registry import Base
@@ -32,6 +33,9 @@ from app.tenant_contract import DEFAULT_TENANT_ID
 class CsvImportBatch(Base):
     __tablename__ = "csv_import_batches"
     __table_args__ = (
+        ForeignKeyConstraint(["tenant_id", "calendar_revision"],
+            ["ledger_calendar_revisions.ledger_id", "ledger_calendar_revisions.revision"],
+            name="fk_csv_import_batches_calendar_revision"),
         CheckConstraint(
             "status IN ('parsed', 'parsed_with_errors', 'applying', 'applied', 'applied_with_errors')",
             name="ck_csv_import_batches_status_valid",
@@ -56,6 +60,7 @@ class CsvImportBatch(Base):
         index=True,
     )
     file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    calendar_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="parsed", nullable=False, index=True)
     total_rows: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     valid_rows: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
@@ -124,6 +129,8 @@ class CsvImportRow(Base):
     lineage_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
     lineage_home_net_cents: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     event_input: Mapped[dict[str, str] | None] = mapped_column(JSON(none_as_null=True), nullable=True)
+    time_input: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
+    expense_time_input: Mapped[str | None] = mapped_column(Text, nullable=True)
     review_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     amount_cents: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     # Legacy unknown context remains NULL until the existing Owner adoption.

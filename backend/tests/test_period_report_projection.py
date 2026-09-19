@@ -17,8 +17,14 @@ class StreamRows:
         self.rows = rows
         self.statements = []
 
+    def scalar(self, statement):
+        assert "ledger_calendar_revisions" in str(statement)
+        return SimpleNamespace(timezone_name="UTC")
+
     def execute(self, statement):
         self.statements.append(statement)
+        if [column.name for column in statement.selected_columns] == ["category", "count"]:
+            return iter(())
         return iter(self.rows)
 
 

@@ -261,6 +261,7 @@ private fun ledgerInlineFilterLabel(
         activeFilterCount > 1 -> stringResource(R.string.ledger_inline_filter_count, activeFilterCount)
         state.categoryFilter.isNotBlank() -> state.categoryFilter
         state.tagFilter.isNotBlank() -> "#${state.tagFilter}"
+        state.dataQualityFilter == LedgerDataQualityFilter.MissingAccountingDate -> stringResource(R.string.calendar_date_pending)
         state.dataQualityFilter == LedgerDataQualityFilter.MissingCategory ->
             stringResource(R.string.ledger_inline_filter_missing_category)
         state.dataQualityFilter == LedgerDataQualityFilter.ConfirmedWithoutImage ->

@@ -23,6 +23,7 @@ from app.services.exchange_rate_service import (
     apply_currency_payload,
     validate_currency_payload_money_command,
 )
+from app.services.expense_accounting_time_service import apply_expense_time_input, refresh_legacy_expense_time
 from app.services.expense_response_service import expense_to_response
 from app.services.expense_revision_service import record_confirmation_revision
 from app.services.expense_service._helpers import (
@@ -98,6 +99,7 @@ def stage_pending_expense(
         created_at=now,
         updated_at=now,
     )
+    refresh_legacy_expense_time(db, expense)
     db.add(expense)
     db.flush()
     mark_duplicate_status(db, expense)
@@ -155,6 +157,7 @@ def _insert_manual_expense(
         draft_idempotency_key=draft_idempotency_key,
         draft_request_fingerprint=draft_request_fingerprint,
     )
+    apply_expense_time_input(db, expense, payload, creating=True)
     apply_currency_payload(
         db,
         tenant_id=tenant_id,
@@ -301,6 +304,7 @@ def create_notification_draft(
         created_at=now,
         updated_at=now,
     )
+    apply_expense_time_input(db, expense, payload, creating=True)
     apply_currency_payload(
         db,
         tenant_id=tenant_id,

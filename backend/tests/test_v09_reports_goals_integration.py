@@ -8,6 +8,7 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import Expense, LedgerMember
+from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from app.services.time_service import now_utc
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
@@ -27,25 +28,26 @@ def _insert_expense(
     status_time = confirmed_at or now
     rejected_at = status_time if status == "rejected" else None
     with SessionLocal() as db:
-        db.add(
-            Expense(
-                tenant_id=tenant_id,
-                amount_cents=amount_cents,
-                home_currency_code="CNY",
-                original_currency_code="CNY",
-                original_amount_minor=amount_cents,
-                merchant=merchant,
-                category=category,
-                note="",
-                source="pytest-v09-integration",
-                status=status,
-                expense_time=expense_time,
-                created_at=status_time,
-                updated_at=status_time,
-                confirmed_at=confirmed_at,
-                rejected_at=rejected_at,
-            )
+        _calendar_expense = Expense(
+            tenant_id=tenant_id,
+            amount_cents=amount_cents,
+            home_currency_code="CNY",
+            original_currency_code="CNY",
+            original_amount_minor=amount_cents,
+            merchant=merchant,
+            category=category,
+            note="",
+            source="pytest-v09-integration",
+            status=status,
+            expense_time=expense_time,
+            created_at=status_time,
+            updated_at=status_time,
+            confirmed_at=confirmed_at,
+            rejected_at=rejected_at,
         )
+        if _calendar_expense.status == "confirmed":
+            refresh_legacy_expense_time(db, _calendar_expense)
+        db.add(_calendar_expense)
         db.commit()
 
 
@@ -221,14 +223,14 @@ def _assert_utc_time_scope(client: TestClient, identity: object) -> None:
         headers=identity.app_headers,
     )
     assert utc_stats.status_code == 200, utc_stats.json()
-    assert utc_stats.json()["total_amount_cents"] == 1200
+    assert utc_stats.json()["total_amount_cents"] == 3500
 
     utc_report = client.get(
         "/api/reports/overview?month=2026-05&timezone=UTC",
         headers=identity.app_headers,
     )
     assert utc_report.status_code == 200, utc_report.json()
-    assert utc_report.json()["total_amount_cents"] == 1200
+    assert utc_report.json()["total_amount_cents"] == 3500
 
     utc_goals = client.get(
         "/api/goals?month=2026-05&timezone=UTC",
@@ -236,7 +238,7 @@ def _assert_utc_time_scope(client: TestClient, identity: object) -> None:
     )
     assert utc_goals.status_code == 200, utc_goals.json()
     utc_goal_payloads = {item["name"]: item for item in utc_goals.json()["items"]}
-    assert utc_goal_payloads["本月总支出"]["spent_amount_cents"] == 1200
+    assert utc_goal_payloads["本月总支出"]["spent_amount_cents"] == 3500
     assert utc_goal_payloads["餐饮目标"]["spent_amount_cents"] == 1200
 
 

@@ -121,6 +121,9 @@ internal data class LedgerStubApiState(
 internal class StubApi(
     private val state: LedgerStubApiState = LedgerStubApiState(),
 ) : ApiService {
+    override suspend fun ledgerCalendar(ledgerId: String, revision: Long?): com.ticketbox.data.remote.dto.LedgerCalendarDto =
+        error("Unexpected ledger calendar query")
+
     var onLedgerMembers: (() -> Unit)? = null
     var onListLedgers: (() -> Unit)? = null
     var onAcceptInvitation: (() -> Unit)? = null

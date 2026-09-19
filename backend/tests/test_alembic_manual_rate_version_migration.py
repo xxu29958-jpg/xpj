@@ -9,7 +9,6 @@ from sqlalchemy.exc import DBAPIError
 
 from app.database import SessionLocal, engine
 from app.services.currency_binding_service import resolve_write_capability
-from app.services.identity_service import bootstrap_owner
 from tests._infra.c07_money_migration import reset_schema, run_alembic, seed_owner
 from tests._infra.currency import activate_test_currency_authority
 
@@ -56,8 +55,8 @@ def test_unadopted_rate_gets_only_version_metadata_without_an_invented_currency(
     reset_schema()
     try:
         run_alembic(command.upgrade, "20260729_0001")
+        seed_owner()
         with SessionLocal() as db:
-            bootstrap_owner(db, account_name="Owner", ledger_name="Owner ledger", device_name="migration-admin")
             public_id = str(uuid4())
             db.execute(text("""INSERT INTO exchange_rates (public_id, tenant_id, currency_code,
                 rate_date, rate_to_cny, source, created_at, updated_at)

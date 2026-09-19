@@ -37,6 +37,7 @@ class BudgetInputProjection:
     missing_rates: tuple[ProjectionGap, ...]
     provider_inputs: BudgetInputs | None
     reference_rates: tuple[ProjectionReference, ...] = ()
+    undated_expense_count: int = 0
 
     @property
     def inputs_fingerprint(self) -> str | None:
@@ -55,7 +56,7 @@ def read_budget_inputs(
     report = compose_monthly_report(db, tenant_id=tenant_id, year_month=month, top_n=None,
         timezone_name=timezone_name, home_currency_code=home, compare_previous=False)
     gaps = set(report.missing_rates)
-    baseline = _historical_baseline(db, tenant_id=tenant_id, month=month, report=report,
+    baseline, history_undated = _historical_baseline(db, tenant_id=tenant_id, month=month, report=report,
         timezone_name=timezone_name, home=home, gaps=gaps)
     forecast = income_forecast(db, tenant_id=tenant_id, month=month, timezone_name=timezone_name,
         home_currency_code=home, missing_rates=gaps)
@@ -69,11 +70,13 @@ def read_budget_inputs(
         fixed_expenses_cents=fixed, spent_amount_cents=report.total_cents,
         savings_target_cents=savings_target_cents, reserved_buffer_cents=reserved_buffer_cents)
     inputs = None
-    if not gaps:
+    undated = max(report.undated_expense_count, history_undated)
+    if not gaps and not undated:
         inputs = BudgetInputs(month=month, home_currency=home, category_breakdown=_category_breakdown(report),
             historical_baseline=baseline, income_plan=_income_snapshots(forecast),
             recurring_total_monthly_cents=recurring, recurring_active_count=len(items))
-    return BudgetInputProjection(month, home, breakdown, ordered_projection_gaps(gaps), inputs, tuple(sorted(references)))
+    return BudgetInputProjection(month, home, breakdown, ordered_projection_gaps(gaps), inputs, tuple(sorted(references)),
+        undated_expense_count=undated)
 
 
 def _active_recurring_items(db: Session, *, tenant_id: str) -> list[RecurringItem]:
@@ -90,7 +93,8 @@ def _category_breakdown(report: MonthlyReport) -> list[CategorySnapshot]:
     return [CategorySnapshot(category, amount, count) for category, (amount, count) in grouped.items()]
 
 
-def _historical_baseline(db, *, tenant_id, month, report, timezone_name, home, gaps) -> list[HistoricalBaseline]:
+def _historical_baseline(db, *, tenant_id, month, report, timezone_name, home, gaps) -> tuple[list[HistoricalBaseline], int]:
+    undated = 0
     rows: list[HistoricalBaseline] = []
     grouped: dict[str, set[str]] = {}
     for item in report.top_categories:
@@ -99,9 +103,10 @@ def _historical_baseline(db, *, tenant_id, month, report, timezone_name, home, g
         explanation = compose_budget_explanation(db, tenant_id=tenant_id, category=category, categories=values,
             year_month=month, timezone_name=timezone_name, home_currency_code=home)
         gaps.update(explanation.missing_rates)
+        undated = max(undated, explanation.undated_expense_count)
         if explanation.p50_cents is not None and explanation.p75_cents is not None:
             rows.append(HistoricalBaseline(category, explanation.p50_cents, explanation.p75_cents))
-    return rows
+    return rows, undated
 
 
 def _income_snapshots(forecast) -> list[IncomePlanSnapshot]:

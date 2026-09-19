@@ -7,15 +7,17 @@ from sqlalchemy.orm import Session
 from app.models import Goal
 from app.money_contract import projection_sum_to_int
 from app.schemas import GoalResponse
-from app.services.money_projection_service import project_category_spend, sum_projected_amounts
-from app.services.spending_contract_service import confirmed_amount_query
+from app.services.money_projection_service import sum_projected_amounts
+from app.services.spending_contract_service import calendar_month_bounds, undated_expense_counts_by_category
+from app.services.spending_projection_service import projected_category_spend, read_spending_period
 
 
 class GoalSpendTotals:
-    def __init__(self, total_amount_cents: int | None, by_category: dict[str, int | None], *, home_currency_code: str | None) -> None:
+    def __init__(self, total_amount_cents: int | None, by_category: dict[str, int | None], *, home_currency_code: str | None, undated_by_category: dict[str, int] | None = None) -> None:
         self.total_amount_cents = total_amount_cents
         self.by_category = by_category
         self.home_currency_code = home_currency_code
+        self.undated_by_category = undated_by_category or {}
 
 
 def month_spend_totals(
@@ -27,13 +29,18 @@ def month_spend_totals(
     timezone_name: str | None = None,
 ) -> GoalSpendTotals:
     if home_currency_code is None:
-        return GoalSpendTotals(None, {}, home_currency_code=None)
-    rows = db.execute(confirmed_amount_query(tenant_id=tenant_id, month=month, timezone_name=timezone_name))
-    spending, _ = project_category_spend(db, tenant_id=tenant_id, home=home_currency_code, rows=rows)
+        undated = undated_expense_counts_by_category(db, tenant_id=tenant_id)
+        return GoalSpendTotals(None, {}, home_currency_code=None, undated_by_category=undated)
+    projection = read_spending_period(db, tenant_id=tenant_id, ranges=[calendar_month_bounds(month)],
+        timezone_name=timezone_name, home=home_currency_code)
+    spending = projected_category_spend(projection.entries)
+    undated = projection.undated_by_category
     by_category = {category: value.amount_cents for category, value in spending.items()}
+    for category in undated:
+        by_category[category] = None
     return GoalSpendTotals(
         sum_projected_amounts(by_category.values(), label="goal_spending.total"),
-        by_category, home_currency_code=home_currency_code,
+        by_category, home_currency_code=home_currency_code, undated_by_category=undated,
     )
 
 
@@ -74,6 +81,8 @@ def goal_response(goal: Goal, totals: GoalSpendTotals) -> GoalResponse:
         category=goal.category,
         target_amount_cents=target,
         spent_amount_cents=spent,
+        undated_expense_count=(totals.undated_by_category.get(goal.category, 0) if goal.category
+            else sum(totals.undated_by_category.values())),
         remaining_amount_cents=remaining,
         # Display progress is a bounded range value. Exact overage remains in
         # spent/target/remaining and ``progress_state=over_limit``; emitting an

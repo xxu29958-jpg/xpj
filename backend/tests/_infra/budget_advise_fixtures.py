@@ -6,6 +6,7 @@ from datetime import datetime
 
 from app.database import SessionLocal
 from app.models import Expense, RecurringItem
+from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from app.services.income_plan_service import create_income_plan
 from app.services.spending_contract_service import current_accounting_month
 from app.services.time_service import now_utc
@@ -32,22 +33,22 @@ def seed_minimal_data() -> None:
     with SessionLocal() as db:
         create_income_plan(db, home_currency_code="CNY", tenant_id="owner", label="工资", source_type="salary",
             amount_cents=1_000_000, pay_day=10, now=now)
-        db.add(
-            Expense(
-                tenant_id="owner",
-                status="confirmed",
-                amount_cents=120_000,
-                home_currency_code="CNY",
-                original_currency_code="CNY",
-                original_amount_minor=120_000,
-                merchant="麦当劳",
-                category="餐饮",
-                expense_time=month_anchor,
-                confirmed_at=month_anchor,
-                created_at=month_anchor,
-                updated_at=month_anchor,
-            )
+        expense = Expense(
+            tenant_id="owner",
+            status="confirmed",
+            amount_cents=120_000,
+            home_currency_code="CNY",
+            original_currency_code="CNY",
+            original_amount_minor=120_000,
+            merchant="麦当劳",
+            category="餐饮",
+            expense_time=month_anchor,
+            confirmed_at=month_anchor,
+            created_at=month_anchor,
+            updated_at=month_anchor,
         )
+        refresh_legacy_expense_time(db, expense)
+        db.add(expense)
         db.add(
             RecurringItem(home_currency_code="CNY",
                 tenant_id="owner",

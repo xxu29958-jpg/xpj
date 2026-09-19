@@ -48,7 +48,8 @@ internal fun SpendingGoalsRoute(
         models = SpendingGoalRouteModels(
             list = viewModel(
                 key = SpendingGoalsViewModelKey,
-                factory = spendingGoalsViewModelFactory(screenFactory.reportsRepository, screenFactory.goalEditRepository),
+                factory = spendingGoalsViewModelFactory(screenFactory.reportsRepository, screenFactory.goalEditRepository,
+                    screenFactory.repositories.ledgerCalendarRepository),
             ),
             detail = viewModel(
                 key = SpendingGoalDetailViewModelKey,
@@ -56,7 +57,7 @@ internal fun SpendingGoalsRoute(
             ),
             create = viewModel(
                 key = CreateSpendingGoalViewModelKey,
-                factory = createSpendingGoalViewModelFactory(screenFactory.goalEditRepository),
+                factory = createSpendingGoalViewModelFactory(screenFactory.goalEditRepository, screenFactory.repositories.ledgerCalendarRepository),
             ),
         ),
         onBack = onBack,
@@ -81,7 +82,7 @@ private fun SpendingGoalRouteContent(
     }) }
     var creationToOpen by rememberSaveable(originalCreationId) { mutableStateOf(originalCreationId) }
     var detailPublicId by rememberSaveable(originalGoalPublicId) { mutableStateOf(originalGoalPublicId) }
-    var createMonth by rememberSaveable { mutableStateOf(models.list.state.value.month) }
+    var createMonth by rememberSaveable { mutableStateOf(models.list.monthForNewGoal) }
     val detailState by models.detail.state.collectAsStateWithLifecycle()
 
     LaunchedEffect(financialDataRevision) {
@@ -105,7 +106,7 @@ private fun SpendingGoalRouteContent(
                 onBack = onBack,
                 onCreate = {
                     creationToOpen = null
-                    createMonth = models.list.state.value.month
+                    createMonth = models.list.monthForNewGoal
                     page = SpendingGoalPage.Create
                 },
                 onOpenGoal = {

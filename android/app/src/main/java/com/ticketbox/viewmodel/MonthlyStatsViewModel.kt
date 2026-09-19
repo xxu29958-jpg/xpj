@@ -1,6 +1,8 @@
 package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
+import com.ticketbox.data.repository.LedgerCalendarReader
+import com.ticketbox.data.repository.newTaskMonth
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.LogicalSessionBinding
@@ -21,12 +23,16 @@ private data class MonthlyStatsRefreshSnapshot(val generation: Long, val query: 
 
 class MonthlyStatsViewModel(
     private val repository: StatsActions,
-    initialMonth: String = YearMonth.now().toString(),
+    initialMonth: String? = null,
+    private val calendars: LedgerCalendarReader? = null,
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(MonthlyStatsUiState(month = initialMonth))
+    private val _uiState = MutableStateFlow(MonthlyStatsUiState(month = initialMonth ?: YearMonth.now().toString()))
     val uiState: StateFlow<MonthlyStatsUiState> = _uiState.asStateFlow()
     private var refreshGeneration = 0L
     private var inFlightRefresh: MonthlyStatsRefreshSnapshot? = null
+
+    private var monthSelected = initialMonth != null
+    private var resolvingMonth = false
 
     init {
         viewModelScope.launch {
@@ -35,12 +41,19 @@ class MonthlyStatsViewModel(
                 inFlightRefresh = null
                 _uiState.update {
                     MonthlyStatsUiState(month = it.month, selectedTag = it.selectedTag,
-                        binding = binding, ledgerReady = binding != null)
+                        binding = binding, ledgerReady = binding != null && (monthSelected || calendars == null))
                 }
                 if (binding != null) {
-                    loadMonths()
-                    loadTags()
-                    refresh()
+                    resolvingMonth = !monthSelected && calendars != null
+                    viewModelScope.launch {
+                        val month = if (resolvingMonth) calendars.newTaskMonth(binding) else _uiState.value.month
+                        if (!isBindingCurrent(binding)) return@launch
+                        resolvingMonth = false
+                        _uiState.update { it.copy(month = if (monthSelected) it.month else month, ledgerReady = true) }
+                        loadMonths()
+                        loadTags()
+                        refresh()
+                    }
                 }
             }
         }
@@ -78,6 +91,7 @@ class MonthlyStatsViewModel(
     fun reloadTags() = loadTags()
 
     fun setMonth(value: String) {
+        if (runCatching { YearMonth.parse(value) }.isSuccess) monthSelected = true
         if (runCatching { YearMonth.parse(value) }.isFailure || value == _uiState.value.month) return
         changeQuery(value, _uiState.value.selectedTag)
     }
@@ -101,6 +115,7 @@ class MonthlyStatsViewModel(
     }
 
     fun refresh() {
+        if (resolvingMonth) return
         val state = _uiState.value
         val binding = state.binding ?: return
         val query = StatsQuery(binding, state.month, state.selectedTag, state.homeCurrencyCode, state.timezone)
@@ -198,7 +213,7 @@ class MonthlyStatsViewModel(
 }
 
 private fun statsMonthOptions(authoritativeMonths: List<String>, selectedMonth: String): List<String> {
-    val requiredMonth = selectedMonth.trim().ifBlank { YearMonth.now().toString() }
+    val requiredMonth = selectedMonth.trim()
     val remainingMonths = authoritativeMonths
         .map { it.trim() }
         .filter { it.isNotBlank() }

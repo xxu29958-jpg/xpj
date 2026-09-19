@@ -14,10 +14,23 @@ from app.services.monthly_report_service import compose_budget_explanation, comp
 
 class Rows:
     def __init__(self, *batches):
-        self.batches = iter(batches)
+        self.rows = []
+        for index, raw in enumerate(row for batch in batches for row in batch):
+            if isinstance(raw, tuple):
+                day, amount, currency = raw
+                raw = spending(amount, currency, day)
+            self.rows.append(SimpleNamespace(entry_id=index, root_expense_id=index, entry_kind="expense",
+                stream_date=raw.stream_date, stream_amount_cents=raw.amount_cents,
+                home_currency_code=raw.home_currency_code, category=raw.category, merchant=None))
+
+    def scalar(self, statement):
+        assert "ledger_calendar_revisions" in str(statement)
+        return SimpleNamespace(timezone_name="UTC")
 
     def execute(self, statement):
-        return iter(next(self.batches))
+        dates = [value for key, value in statement.compile().params.items() if key.startswith("stream_date_")]
+        return iter(row for row in self.rows if any(start <= row.stream_date < end
+            for start, end in zip(dates[::2], dates[1::2], strict=True)))
 
 
 def spending(amount, currency="CNY", day=date(2026, 8, 12), category="餐饮"):
@@ -141,7 +154,7 @@ def test_recurring_query_preserves_paid_filter_and_unknown_reservation(monkeypat
         SimpleNamespace(id=2, home_currency_code="JPY", baseline_amount_cents=500)]
     monkeypatch.setattr(recurring, "fulfilled_periods", lambda *args, **kwargs: {1: {date(2026, 8, 1)}})
     gaps = set()
-    db = SimpleNamespace(scalars=lambda query: items)
+    db = SimpleNamespace(scalars=lambda query: items, scalar=lambda query: SimpleNamespace(timezone_name="UTC"))
     assert recurring.total_outstanding_recurring_cents(db, tenant_id="owner", month="2026-08",
         home_currency_code="JPY", missing_rates=gaps) == 500
     assert gaps == set()  # A paid series adds no fixed reservation and needs no reservation FX.
@@ -156,7 +169,7 @@ def test_explanation_aggregates_the_full_anonymous_category_group(monkeypatch):
     explanation = compose_budget_explanation(Rows([
         spending(200, "JPY", category="legacy-a"), spending(300, "JPY", category="legacy-b"),
         spending(999, "JPY", category="餐饮"),
-    ], [(date(2026, 7, 10), 10_000, "CNY")]), tenant_id="owner", category="其他",
+    ], [spending(10_000, "CNY", date(2026, 7, 10), "legacy-b")]), tenant_id="owner", category="其他",
         categories={"legacy-a", "legacy-b"}, year_month="2026-08", timezone_name="UTC", home_currency_code="JPY")
     assert explanation.actual_cents == 500
     assert explanation.verdict == "projection_unavailable"

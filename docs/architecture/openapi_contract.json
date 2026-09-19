@@ -89,6 +89,191 @@
         "title": "AcceptedInvitationImpact",
         "type": "object"
       },
+      "AccountingTimeInput": {
+        "additionalProperties": false,
+        "properties": {
+          "accounting_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accounting Date"
+          },
+          "calendar_revision": {
+            "exclusiveMinimum": 0.0,
+            "title": "Calendar Revision",
+            "type": "integer"
+          },
+          "instant_utc": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instant Utc"
+          },
+          "precision": {
+            "enum": [
+              "instant",
+              "date_only"
+            ],
+            "title": "Precision",
+            "type": "string"
+          },
+          "source_timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Timezone"
+          },
+          "source_utc_offset_seconds": {
+            "anyOf": [
+              {
+                "exclusiveMaximum": 86400.0,
+                "exclusiveMinimum": -86400.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Utc Offset Seconds"
+          },
+          "user_local_date": {
+            "format": "date",
+            "title": "User Local Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "precision",
+          "calendar_revision",
+          "user_local_date"
+        ],
+        "title": "AccountingTimeInput",
+        "type": "object"
+      },
+      "AccountingTimeSnapshot": {
+        "description": "Unknown historical evidence stays nullable; the containing receipt may omit it.",
+        "properties": {
+          "accounting_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accounting Date"
+          },
+          "basis": {
+            "anyOf": [
+              {
+                "enum": [
+                  "instant_calendar",
+                  "user_date",
+                  "user_selected",
+                  "legacy_expense_time",
+                  "legacy_confirmed_at",
+                  "legacy_unknown",
+                  "legacy_offset_date",
+                  "recorded_date"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basis"
+          },
+          "calendar_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calendar Revision"
+          },
+          "instant_utc": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instant Utc"
+          },
+          "precision": {
+            "default": "unknown",
+            "enum": [
+              "instant",
+              "date_only",
+              "unknown"
+            ],
+            "title": "Precision",
+            "type": "string"
+          },
+          "source_timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Timezone"
+          },
+          "source_utc_offset_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Utc Offset Seconds"
+          },
+          "user_local_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Local Date"
+          }
+        },
+        "title": "AccountingTimeSnapshot",
+        "type": "object"
+      },
       "AdminDeviceRenameRequest": {
         "additionalProperties": false,
         "properties": {
@@ -637,6 +822,16 @@
             ],
             "title": "Accepted At"
           },
+          "accounting_time_snapshot": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountingTimeSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "amount_cents": {
             "format": "int64",
             "maximum": 9000000000000.0,
@@ -930,6 +1125,16 @@
             ],
             "title": "Accepted At"
           },
+          "accounting_time_snapshot": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountingTimeSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "amount_cents": {
             "format": "int64",
             "maximum": 9000000000000.0,
@@ -1183,6 +1388,34 @@
           "algorithm_version"
         ],
         "title": "Body_owner_algorithm_versions_withdraw_post_owner_algorithm_versions_withdraw_post",
+        "type": "object"
+      },
+      "Body_owner_calendar_post_owner_ledgers__ledger_id__calendar_post": {
+        "properties": {
+          "expected_revision": {
+            "exclusiveMinimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "idempotency_key": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "timezone_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Timezone Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "timezone_name",
+          "expected_revision",
+          "idempotency_key"
+        ],
+        "title": "Body_owner_calendar_post_owner_ledgers__ledger_id__calendar_post",
         "type": "object"
       },
       "Body_owner_learning_maintenance_dismiss_post_owner_learning_maintenance_dismiss_decision_post": {
@@ -6562,6 +6795,12 @@
             },
             "title": "Reference Rates",
             "type": "array"
+          },
+          "undated_expense_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Undated Expense Count",
+            "type": "integer"
           }
         },
         "required": [
@@ -6775,6 +7014,12 @@
             "maximum": 9000000000000.0,
             "minimum": 0.0,
             "title": "Total Amount Cents",
+            "type": "integer"
+          },
+          "undated_expense_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Undated Expense Count",
             "type": "integer"
           },
           "updated_at": {
@@ -7666,9 +7911,16 @@
             "type": "integer"
           },
           "stream_date": {
-            "format": "date",
-            "title": "Stream Date",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stream Date"
           },
           "stream_sort_id": {
             "title": "Stream Sort Id",
@@ -7694,6 +7946,16 @@
       },
       "ConfirmedOffsetStreamProjection": {
         "properties": {
+          "accounting_time": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountingTimeSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "amount_cents": {
             "format": "int64",
             "maximum": 9000000000000.0,
@@ -10252,6 +10514,16 @@
             ],
             "title": "Tags"
           },
+          "time_input": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountingTimeInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "value_score": {
             "anyOf": [
               {
@@ -10963,6 +11235,16 @@
             ],
             "title": "Tags"
           },
+          "time_input": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountingTimeInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "value_score": {
             "anyOf": [
               {
@@ -11129,6 +11411,16 @@
             "format": "date",
             "title": "Accounting Date",
             "type": "string"
+          },
+          "accounting_time": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountingTimeSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "amount_cents": {
             "format": "int64",
@@ -11487,6 +11779,16 @@
       },
       "ExpenseResponse": {
         "properties": {
+          "accounting_time": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountingTimeSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "amount_cents": {
             "anyOf": [
               {
@@ -12467,6 +12769,16 @@
             ],
             "title": "Tags"
           },
+          "time_input": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountingTimeInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "value_score": {
             "anyOf": [
               {
@@ -12760,6 +13072,12 @@
               }
             ],
             "title": "Target Amount Cents"
+          },
+          "undated_expense_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Undated Expense Count",
+            "type": "integer"
           },
           "updated_at": {
             "anyOf": [
@@ -14296,6 +14614,61 @@
         "title": "LedgerAuditResponse",
         "type": "object"
       },
+      "LedgerCalendarChangeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "exclusiveMinimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "timezone_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Timezone Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "timezone_name",
+          "expected_revision"
+        ],
+        "title": "LedgerCalendarChangeRequest",
+        "type": "object"
+      },
+      "LedgerCalendarResponse": {
+        "properties": {
+          "adopted_at": {
+            "title": "Adopted At",
+            "type": "string"
+          },
+          "basis": {
+            "title": "Basis",
+            "type": "string"
+          },
+          "ledger_id": {
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "timezone_name": {
+            "title": "Timezone Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ledger_id",
+          "revision",
+          "timezone_name",
+          "basis",
+          "adopted_at"
+        ],
+        "title": "LedgerCalendarResponse",
+        "type": "object"
+      },
       "LedgerCreateRequest": {
         "additionalProperties": false,
         "properties": {
@@ -14701,6 +15074,12 @@
               }
             ],
             "title": "Recent 7 Days Amount Cents"
+          },
+          "undated_expense_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Undated Expense Count",
+            "type": "integer"
           }
         },
         "required": [
@@ -15624,6 +16003,12 @@
               }
             ],
             "title": "Total Amount Cents"
+          },
+          "undated_expense_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Undated Expense Count",
+            "type": "integer"
           }
         },
         "required": [
@@ -15865,6 +16250,16 @@
               }
             ],
             "title": "Spent At"
+          },
+          "time_input": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountingTimeInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -15896,6 +16291,17 @@
       },
       "PaginatedExpensesResponse": {
         "properties": {
+          "calendar_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calendar Revision"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/ConfirmedExpenseStreamItem"
@@ -15913,6 +16319,11 @@
           },
           "total": {
             "title": "Total",
+            "type": "integer"
+          },
+          "undated_expense_count": {
+            "default": 0,
+            "title": "Undated Expense Count",
             "type": "integer"
           }
         },
@@ -18040,8 +18451,15 @@
             "title": "Delta Amount Cents"
           },
           "delta_count": {
-            "title": "Delta Count",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta Count"
           },
           "previous_amount_cents": {
             "anyOf": [
@@ -18059,6 +18477,12 @@
           },
           "previous_count": {
             "title": "Previous Count",
+            "type": "integer"
+          },
+          "undated_expense_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Undated Expense Count",
             "type": "integer"
           },
           "year_over_year_amount_cents": {
@@ -18094,8 +18518,15 @@
             "title": "Year Over Year Delta Amount Cents"
           },
           "year_over_year_delta_count": {
-            "title": "Year Over Year Delta Count",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year Over Year Delta Count"
           }
         },
         "required": [
@@ -18286,6 +18717,12 @@
             "title": "Trend",
             "type": "array"
           },
+          "undated_expense_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Undated Expense Count",
+            "type": "integer"
+          },
           "year_over_year_count": {
             "title": "Year Over Year Count",
             "type": "integer"
@@ -18305,8 +18742,15 @@
             "title": "Year Over Year Delta Amount Cents"
           },
           "year_over_year_delta_count": {
-            "title": "Year Over Year Delta Count",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year Over Year Delta Count"
           },
           "year_over_year_month": {
             "title": "Year Over Year Month",
@@ -19078,6 +19522,11 @@
       },
       "RuntimeProductCapabilitiesResponse": {
         "properties": {
+          "accounting_time_input_version": {
+            "minimum": 1.0,
+            "title": "Accounting Time Input Version",
+            "type": "integer"
+          },
           "currency": {
             "$ref": "#/components/schemas/RuntimeCurrencyCapabilityResponse"
           },
@@ -19089,6 +19538,7 @@
         },
         "required": [
           "upload_original_receipt_version",
+          "accounting_time_input_version",
           "currency"
         ],
         "title": "RuntimeProductCapabilitiesResponse",
@@ -24806,6 +25256,16 @@
                 }
               ],
               "title": "Timezone"
+            }
+          },
+          {
+            "in": "query",
+            "name": "missing_accounting_date",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Missing Accounting Date",
+              "type": "boolean"
             }
           },
           {
@@ -31325,6 +31785,184 @@
         "summary": "List Audit Endpoint",
         "tags": [
           "family-ledger"
+        ]
+      }
+    },
+    "/api/ledgers/{ledger_id}/calendar": {
+      "get": {
+        "operationId": "get_calendar_api_ledgers__ledger_id__calendar_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ledger_id",
+            "required": true,
+            "schema": {
+              "title": "Ledger Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "revision",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Revision"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/LedgerCalendarResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Get Calendar",
+        "tags": [
+          "ledgers"
+        ]
+      },
+      "post": {
+        "operationId": "change_calendar_api_ledgers__ledger_id__calendar_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ledger_id",
+            "required": true,
+            "schema": {
+              "title": "Ledger Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LedgerCalendarChangeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/LedgerCalendarResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Change Calendar",
+        "tags": [
+          "ledgers"
         ]
       }
     },
@@ -38979,6 +39617,98 @@
           }
         },
         "summary": "Owner Ledger Archive Post",
+        "tags": [
+          "owner-console"
+        ]
+      }
+    },
+    "/owner/ledgers/{ledger_id}/calendar": {
+      "get": {
+        "operationId": "owner_calendar_get_owner_ledgers__ledger_id__calendar_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ledger_id",
+            "required": true,
+            "schema": {
+              "title": "Ledger Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Owner Calendar Get",
+        "tags": [
+          "owner-console"
+        ]
+      },
+      "post": {
+        "operationId": "owner_calendar_post_owner_ledgers__ledger_id__calendar_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ledger_id",
+            "required": true,
+            "schema": {
+              "title": "Ledger Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_owner_calendar_post_owner_ledgers__ledger_id__calendar_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Owner Calendar Post",
         "tags": [
           "owner-console"
         ]

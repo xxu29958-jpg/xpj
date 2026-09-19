@@ -22,6 +22,7 @@ RETURN_TO_PATHS: dict[str, str] = {
     "bill_splits_sent": "/web/bill-splits/sent",
 }
 _DYNAMIC_RETURN_TO = frozenset({"recurring_occurrence", "csv_import_event"})
+CONFIRMED_CROSS_PERIOD_FILTERS = frozenset({"missing_category", "missing_accounting_date"})
 RETURN_TO_LABELS: dict[str, str] = {
     "pending": "返回待确认",
     "confirmed": "返回已确认流水",
@@ -288,9 +289,10 @@ def _confirmed_return_params(origin: dict[str, str]) -> dict[str, str]:
     clean_month = (origin.get("return_month") or "").strip()
     if _MONTH_RE.fullmatch(clean_month):
         params["month"] = clean_month
-    if (origin.get("return_filter") or "").strip() == "missing_category":
+    clean_filter = (origin.get("return_filter") or "").strip()
+    if clean_filter in CONFIRMED_CROSS_PERIOD_FILTERS:
         params.pop("month", None)
-        params["filter"] = "missing_category"
+        params["filter"] = clean_filter
     clean_page = (origin.get("return_page") or "").strip()
     if clean_page.isdigit() and 1 <= int(clean_page) <= 100_000:
         params["page"] = clean_page

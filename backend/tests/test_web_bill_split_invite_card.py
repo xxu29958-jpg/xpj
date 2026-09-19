@@ -22,6 +22,8 @@ from app.main import app
 from app.models import Account, BillSplitInvitation, Expense, LedgerMember
 from app.routes.web_common import _require_local as _web_require_local
 from app.services import bill_split_service as bsplit
+from app.services.expense_accounting_time_service import refresh_legacy_expense_time
+from app.services.ledger_calendar_service import adopt_ledger_calendar
 from app.services.time_service import now_utc
 
 
@@ -55,6 +57,7 @@ def _make_owner_expense(amount_cents: int = 4000) -> int:
             expense_time=now_utc(),
             confirmed_at=now_utc(),
         )
+        refresh_legacy_expense_time(db, e)
         db.add(e)
         db.commit()
         return e.id
@@ -133,6 +136,7 @@ def test_web_edit_received_split_hides_invite_card(web_client: TestClient) -> No
             expense_time=now_utc(),
             confirmed_at=now_utc(),
         )
+        refresh_legacy_expense_time(db, e)
         db.add(e)
         db.commit()
         received_id = e.id
@@ -312,6 +316,7 @@ def test_native_split_form_replays_the_same_invitation_after_acceptance(web_clie
         ledger = Ledger(ledger_id="web-replay-receiver", name="接收账本", owner_account_id=receiver_id)
         db.add(ledger)
         db.flush()
+        adopt_ledger_calendar(db, ledger_id=ledger.ledger_id, timezone_name="Asia/Shanghai", actor_account_id=receiver_id)
         db.add(LedgerMember(ledger_id=ledger.ledger_id, account_id=receiver_id, role="owner"))
         db.commit()
         bsplit.accept_invitation(db, public_id=original_id, accepting_account_id=receiver_id, target_ledger_id=ledger.ledger_id)

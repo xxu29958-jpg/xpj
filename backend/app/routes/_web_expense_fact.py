@@ -18,6 +18,7 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
+from app.routes._web_accounting_time import accounting_snapshot_label
 from app.routes._web_bill_split_context import build_split_invite_context
 from app.routes._web_expense_fact_pager import fact_timeline_page_context
 from app.routes._web_expense_helpers import web_edit_context
@@ -50,6 +51,7 @@ _FACT_FIELD_LABELS: dict[str, str] = {
     "note": "备注",
     "tags": "标签",
     "expense_time": "消费时间",
+    "accounting_time": "账务日期与发生时间",
     "value_score": "值回票价",
     "regret_score": "后悔指数",
     "items": "小票明细",
@@ -89,6 +91,8 @@ def _format_fact_value(
         return _snapshot_money(value, snapshot.get("original_currency_code"))
     if field == "expense_time":
         return _snapshot_time_label(value)
+    if field == "accounting_time" and isinstance(value, dict):
+        return accounting_snapshot_label(value)
     if field in {"items", "splits"} and isinstance(value, list):
         return f"共 {len(value)} 行"
     return str(value)

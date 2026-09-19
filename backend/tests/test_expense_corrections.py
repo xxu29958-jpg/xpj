@@ -147,6 +147,7 @@ def test_correction_can_explicitly_clear_time_and_scores(client: TestClient, *, 
     assert body["expense"]["regret_score"] is None
     assert set(body["revision"]["changed_fields"]) == {
         "expense_time",
+        "accounting_time",
         "value_score",
         "regret_score",
     }

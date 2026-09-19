@@ -36,9 +36,9 @@ from app.services.category_service import (
     list_uncategorized_pending,
     merge_categories,
 )
+from app.services.ledger_calendar_service import current_ledger_month
 from app.services.spending_contract_service import (
     accounting_datetime_label,
-    current_accounting_month,
     default_accounting_timezone_name,
 )
 
@@ -58,7 +58,7 @@ def _render_categories(
     status_code: int = 200,
 ) -> HTMLResponse:
     timezone_name = default_accounting_timezone_name()
-    target_month = month.strip() or current_accounting_month(timezone_name)
+    target_month = month.strip() or current_ledger_month(db, ledger_id=selected_id)
     try:
         dashboard = list_category_summary(
             db,

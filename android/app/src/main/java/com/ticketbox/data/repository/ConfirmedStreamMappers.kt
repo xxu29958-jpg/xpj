@@ -31,7 +31,8 @@ internal fun ConfirmedExpenseStreamItemDto.toConfirmedStreamCacheItem(
     if (root.status != "confirmed") {
         throw streamContractError("流水原账单不是已确认事实")
     }
-    requireConfirmedStreamDate(streamDate)
+    streamDate?.let(::requireConfirmedStreamDate)
+    if (isOffset && streamDate == null) throw streamContractError("退款事实缺少入账日期")
     confirmedStreamSortInstant(streamSortTime)
 
     val rootEntity = root.toEntity(ledgerId).copy(
@@ -48,7 +49,7 @@ internal fun ConfirmedExpenseStreamItemDto.toConfirmedStreamCacheItem(
             publicId = projection.publicId,
             rootServerId = root.id,
             kind = projection.kind.wireValue,
-            streamDate = streamDate,
+            streamDate = requireNotNull(streamDate),
             streamSortTime = streamSortTime,
             streamSortId = streamSortId,
             streamAmountCents = streamAmountCents,
@@ -68,7 +69,7 @@ internal fun confirmedStreamFromCache(
 ): List<ConfirmedStreamItem> {
     val rootsByServerId = roots.mapNotNull { root -> root.serverId?.let { it to root } }.toMap()
     val rootRows = roots.mapNotNull { root ->
-        val date = root.streamDate ?: return@mapNotNull null
+        val date = root.streamDate
         val sortTime = root.streamSortTime ?: return@mapNotNull null
         val sortId = root.streamSortId ?: return@mapNotNull null
         val amount = root.streamAmountCents ?: return@mapNotNull null

@@ -7,7 +7,9 @@
     <span class="product-eyebrow">流水 / 账单详情</span>
     <h1 class="page-title">{{ expense.merchant or '未填写商家' }}</h1>
     <div class="fact-keymeta">
-      <span>{{ expense.expense_time or '时间待核对' }}</span>
+      <span>账务日期 {{ expense.accounting_date or '待核对' }}</span>
+      {% if expense.accounting_date_assumed %}<span>历史日期按初始账本日历推定，可更正</span>{% endif %}
+      <span>发生时刻 {{ expense.expense_time or '未记录' }}</span>
       <span class="fact-keymeta-sep" aria-hidden="true">·</span>
       <span>{{ expense.category }}</span>
       {% if expense.value_score or expense.regret_score %}

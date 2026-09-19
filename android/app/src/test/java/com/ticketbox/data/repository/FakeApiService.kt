@@ -86,6 +86,9 @@ internal class FakeApiService(
     private val serverSettingsResult: ServerSettingsDto? = null,
     private val merchantApi: FakeMerchantApi = FakeMerchantApi(),
 ) : ApiService {
+    override suspend fun ledgerCalendar(ledgerId: String, revision: Long?): com.ticketbox.data.remote.dto.LedgerCalendarDto =
+        error("Unexpected ledger calendar query")
+
     override suspend fun recurringOccurrence(publicId: String, month: String): com.ticketbox.data.remote.dto.RecurringOccurrenceDto =
         error("Unexpected recurring occurrence read")
     override suspend fun setRecurringOccurrencePayment(
@@ -182,12 +185,15 @@ internal class FakeApiService(
         request: com.ticketbox.data.remote.dto.RefreshSessionRequestDto,
     ): RefreshSessionResponseDto = unsupported()
 
+    var lastMissingAccountingDate: String? = null
+
     override suspend fun confirmedExpenses(
         query: Map<String, String>,
     ): PaginatedExpensesDto {
         val page = query["page"]?.toIntOrNull() ?: 1
         val pageSize = query["page_size"]?.toIntOrNull() ?: 50
         events += "syncConfirmed"
+        lastMissingAccountingDate = query["missing_accounting_date"]
         lastConfirmedMonth = query["month"]
         lastConfirmedCategory = query["category"]
         lastConfirmedTag = query["tag"]

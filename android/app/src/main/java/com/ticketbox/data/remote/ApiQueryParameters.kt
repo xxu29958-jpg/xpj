@@ -12,6 +12,7 @@ data class PageQuery(
 )
 
 data class ExpenseListFilterQuery(
+    val missingAccountingDate: Boolean? = null,
     val month: String? = null,
     val category: String? = null,
     val tag: String? = null,
@@ -25,6 +26,7 @@ data class ConfirmedExpensesApiQuery(
     fun toQueryMap(): Map<String, String> = buildMap {
         put("page", page.page.toString())
         put("page_size", page.pageSize.toString())
+        filters.missingAccountingDate?.let { put("missing_accounting_date", it.toString()) }
         putIfPresent("month", filters.month)
         putIfPresent("category", filters.category)
         putIfPresent("tag", filters.tag)

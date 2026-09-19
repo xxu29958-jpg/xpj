@@ -7,6 +7,7 @@ from app.models import Expense
 from app.services.budget_service import _get_budget
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import minor_amount_major_number, minor_amount_value, normalize_currency_code
+from app.services.ledger_calendar_service import current_calendar
 from app.services.money_projection_service import (
     ordered_projection_gaps,
     project_recorded_amount,
@@ -18,26 +19,29 @@ from app.services.reports_service._aggregation import (
     _entries_in_range,
 )
 from app.services.reports_service._models import ExpenseRanking, RankedExpense
-from app.services.reports_service._time import _month_bounds, _month_labels_ending_at, _resolve_timezone
-from app.services.spending_projection_service import entry_gaps, read_projected_entries
+from app.services.reports_service._time import _month_labels_ending_at, _resolve_timezone
+from app.services.spending_contract_service import calendar_month_bounds
+from app.services.spending_projection_service import entry_gaps, read_spending_period
 from app.services.time_service import now_utc
 
 
-def _history_row(db, *, tenant_id, month, period, entries, home, zone, today, rate_cache):
+def _history_row(db, *, tenant_id, month, period, entries, home, zone, today, rate_cache, undated) -> dict:
     rows = _entries_in_range(entries, period, zone)
     gaps = set(entry_gaps(rows))
     references = set()
     amount, count = _amount_count(rows)
+    if undated:
+        amount = None
     budget = _get_budget(db, tenant_id=tenant_id, month=month)
     limit = 0
     if budget is not None:
-        rate_date = min(today, period[1].astimezone(zone).date() - timedelta(days=1))
+        rate_date = min(today, period[1] - timedelta(days=1))
         project_amount = project_valuation_amount if rate_date == today else project_recorded_amount
         limit = sum_projected_amounts((project_amount(db, tenant_id=tenant_id,
             amount_minor=value, source_currency=budget.home_currency_code, home_currency=home,
             rate_date=rate_date, missing_rates=gaps, rate_cache=rate_cache, reference_rates=references)
             for value in (budget.total_amount_cents, budget.rollover_amount_cents)), label="reports.budget_available")
-    return {"month": month, "home_currency_code": home, "missing_rates": ordered_projection_gaps(gaps),
+    return {"month": month, "home_currency_code": home, "undated_expense_count": undated, "missing_rates": ordered_projection_gaps(gaps),
         "reference_rates": tuple(sorted(references)),
         "amount_cents": amount, "count": count, "budget_cents": limit,
         "amount_yuan": None if amount is None else minor_amount_major_number(amount, home),
@@ -47,28 +51,30 @@ def _history_row(db, *, tenant_id, month, period, entries, home, zone, today, ra
 
 
 def six_month_summary(db, *, anchor_month, tenant_id, timezone_name=None, currency_code=None):
-    timezone_key, zone = _resolve_timezone(timezone_name)
+    timezone_key, zone = _resolve_timezone(current_calendar(db, ledger_id=tenant_id).timezone_name)
     home = normalize_currency_code(currency_code or require_runtime_home_currency_code(db))
     months = _month_labels_ending_at(anchor_month, 6)
-    periods = [_month_bounds(month, timezone_key) for month in months]
-    entries = read_projected_entries(db, tenant_id=tenant_id, ranges=periods, timezone_name=timezone_key, home=home)
+    periods = [calendar_month_bounds(month) for month in months]
+    projection = read_spending_period(db, tenant_id=tenant_id, ranges=periods, timezone_name=timezone_key, home=home)
+    entries, undated = projection.entries, projection.undated_expense_count
     rate_cache = {}
     today = now_utc().astimezone(zone).date()
     return [_history_row(db, tenant_id=tenant_id, month=month, period=period, entries=entries,
-        home=home, zone=zone, today=today, rate_cache=rate_cache)
+        home=home, zone=zone, today=today, rate_cache=rate_cache, undated=undated)
         for month, period in zip(months, periods, strict=True)]
 
 
 def top_expenses_for_month(db, *, tenant_id, month=None, tag=None, timezone_name=None, limit=5, home_currency_code=None):
-    timezone_key, zone = _resolve_timezone(timezone_name)
+    timezone_key, zone = _resolve_timezone(current_calendar(db, ledger_id=tenant_id).timezone_name)
     home = normalize_currency_code(home_currency_code or require_runtime_home_currency_code(db))
     target_month = month or now_utc().astimezone(zone).strftime("%Y-%m")
-    entries = read_projected_entries(db, tenant_id=tenant_id, ranges=[_month_bounds(target_month, timezone_key)],
+    projection = read_spending_period(db, tenant_id=tenant_id, ranges=[calendar_month_bounds(target_month)],
         timezone_name=timezone_key, home=home, tag=tag)
+    entries, undated = projection.entries, projection.undated_expense_count
     roots = [entry for entry in entries if entry.entry_kind == "expense"]
     gaps = entry_gaps(roots)
-    if gaps:
-        return ExpenseRanking(home, (), gaps)
+    if gaps or undated:
+        return ExpenseRanking(home, (), gaps, undated_expense_count=undated)
     ranked = sorted(roots, key=lambda entry: (-entry.amount_cents, -entry.entry_id))[:limit]
     if not ranked:
         return ExpenseRanking(home, (), ())

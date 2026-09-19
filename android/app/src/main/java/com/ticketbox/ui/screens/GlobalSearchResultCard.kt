@@ -25,7 +25,6 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppContentCard
-import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.expenseSourceLabelRes
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppRadius
@@ -74,7 +73,7 @@ internal fun SearchResultCard(
                         R.string.global_search_result_meta,
                         expense.category,
                         sourceLabel,
-                        displayTime(expense.expenseTime ?: expense.confirmedAt ?: expense.createdAt),
+                        com.ticketbox.ui.components.expenseClockLabel(expense).asString(),
                     ),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,

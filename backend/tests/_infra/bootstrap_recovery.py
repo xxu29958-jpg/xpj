@@ -10,7 +10,6 @@ from fastapi.testclient import TestClient
 import app.services.identity_service as identity_service
 from app.config import get_settings
 from app.database import SessionLocal, engine, init_db
-from app.database_model_registry import Base
 from app.main import app
 from app.models import (
     Account,
@@ -32,6 +31,7 @@ from app.services.session_lifecycle_service import (
     derive_bootstrap_upload_key,
 )
 from app.services.time_service import ensure_utc, now_utc
+from tests._infra.alembic_runtime import reset_public_schema
 from tests.pairing_test_support import pairing_payload
 
 _VECTOR_SECRET = "ticketbox-bootstrap-vector-2026-07-10"
@@ -170,7 +170,7 @@ def _bootstrap_identity_snapshot() -> dict[str, tuple[tuple[object, ...], ...]]:
 def assert_response_loss_recovery(monkeypatch: pytest.MonkeyPatch) -> None:
     _assert_cross_runtime_vector()
     _enable_http_bootstrap(monkeypatch, _VECTOR_SECRET)
-    Base.metadata.drop_all(bind=engine)
+    reset_public_schema(engine)
     init_db()
 
     def fail_response_materialization(**_kwargs: object) -> None:
@@ -215,7 +215,7 @@ def assert_response_loss_recovery(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def assert_migration_revoked_pairing_recovery(monkeypatch: pytest.MonkeyPatch) -> None:
     _enable_http_bootstrap(monkeypatch, _VECTOR_SECRET)
-    Base.metadata.drop_all(bind=engine)
+    reset_public_schema(engine)
     init_db()
 
     try:
@@ -269,7 +269,7 @@ def assert_migration_revoked_pairing_recovery(monkeypatch: pytest.MonkeyPatch) -
 def assert_failure_rolls_back_and_retries(monkeypatch: pytest.MonkeyPatch) -> None:
     secret = "rollback-bootstrap-secret-with-32-byte-minimum"
     _enable_http_bootstrap(monkeypatch, secret)
-    Base.metadata.drop_all(bind=engine)
+    reset_public_schema(engine)
     init_db()
 
     def fail_pairing_creation(*_args: object, **_kwargs: object) -> None:
@@ -305,7 +305,7 @@ def assert_expired_pairing_recovery_fails_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _enable_http_bootstrap(monkeypatch, _VECTOR_SECRET)
-    Base.metadata.drop_all(bind=engine)
+    reset_public_schema(engine)
     init_db()
     advanced_now = now_utc() + timedelta(days=1)
     expired_at = advanced_now - timedelta(seconds=1)
@@ -356,7 +356,7 @@ def assert_used_pairing_recovery_finalizes_existing_identity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _enable_http_bootstrap(monkeypatch, _VECTOR_SECRET)
-    Base.metadata.drop_all(bind=engine)
+    reset_public_schema(engine)
     init_db()
 
     try:
@@ -406,7 +406,7 @@ def assert_used_pairing_recovery_finalizes_existing_identity(
 
 def assert_revoked_admin_recovery_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     _enable_http_bootstrap(monkeypatch, _VECTOR_SECRET)
-    Base.metadata.drop_all(bind=engine)
+    reset_public_schema(engine)
     init_db()
 
     try:

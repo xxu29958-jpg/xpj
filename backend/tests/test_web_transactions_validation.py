@@ -71,7 +71,7 @@ def test_confirmed_tag_filter_shares_list_total_calendar_and_source_cohort(
         ]
 
 
-def test_confirmed_rows_display_the_same_stat_time_used_by_month_queries(
+def test_adopted_confirmation_day_does_not_invent_a_purchase_clock(
     web_client: TestClient,
 ) -> None:
     _seed_confirmed(
@@ -86,7 +86,7 @@ def test_confirmed_rows_display_the_same_stat_time_used_by_month_queries(
     assert response.status_code == 200, response.text
     assert "Confirmed Time Fallback" in response.text
     assert "08 月 04 日" in response.text
-    assert ">09:30<" in response.text
+    assert ">09:30<" not in response.text
     assert "07 月 01 日" not in response.text
 
 

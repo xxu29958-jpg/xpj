@@ -65,10 +65,14 @@
           {% for category in category_options %}<option value="{{ category }}">{% endfor %}
         </datalist>
       </div>
+      {% if time_form %}
+      {% with time_prefix='manual-expense', time_name='spent_at', time_disabled=false %}{% include '_accounting_time_fields.html' %}{% endwith %}
+      {% else %}
       <div class="product-field">
         <label for="manual-expense-spent-at">发生时间</label>
         <input id="manual-expense-spent-at" class="product-input" name="spent_at" type="datetime-local" value="{{ spent_at }}" required>
       </div>
+      {% endif %}
       <div class="product-field product-field--wide">
         <label for="manual-expense-note">备注（可选）</label>
         <textarea id="manual-expense-note" class="product-input" name="note" rows="3" placeholder="补充这笔支出的用途">{{ values.note or '' }}</textarea>

@@ -32,7 +32,14 @@ internal fun BudgetAdviceViewModel.observeAdviceAccess() {
             observedInputBinding = true
             access?.let {
                 observeRateSubmissions(it.binding)
-                refreshInputs()
+                resolvingMonth = !monthSelected
+                viewModelScope.launch {
+                    val month = if (resolvingMonth) defaultMonth(it.binding) else _state.value.month
+                    if (_state.value.binding != it.binding) return@launch
+                    resolvingMonth = false
+                    if (!monthSelected) _state.update { state -> state.copy(month = month) }
+                    refreshInputs()
+                }
             }
         }
     }
@@ -55,6 +62,7 @@ private fun BudgetAdviceViewModel.observeRateSubmissions(binding: LogicalSession
 
 /** A rate acknowledgement refreshes inputs and canonical rates, never the live provider. */
 fun BudgetAdviceViewModel.refreshInputs() {
+    if (resolvingMonth) return
     val snapshot = _state.value
     val binding = snapshot.binding ?: return
     val generation = ++inputGeneration
@@ -77,6 +85,7 @@ fun BudgetAdviceViewModel.refreshInputs() {
 fun BudgetAdviceViewModel.shiftMonth(delta: Long) {
     if (_state.value.rateBusy || _state.value.loadState == BudgetAdviceLoadState.Loading) return
     val month = runCatching { YearMonth.parse(_state.value.month).plusMonths(delta).toString() }.getOrNull() ?: return
+    monthSelected = true
     requestGeneration += 1
     _state.update { it.copy(month = month, inputs = null, result = null, loadState = BudgetAdviceLoadState.Idle,
         error = null, terminalErrorCode = null, selectedRateSubmissionId = null, rateEditor = null) }
@@ -84,6 +93,7 @@ fun BudgetAdviceViewModel.shiftMonth(delta: Long) {
 }
 
 fun BudgetAdviceViewModel.openRateSubmission(id: Long) {
+    monthSelected = true
     _state.update { it.copy(selectedRateSubmissionId = id) }
     val original = _state.value.rateSubmissions.firstOrNull { it.row.id == id } ?: return
     val intent = original.intent?.takeIf { it.supports(original.row) } ?: return

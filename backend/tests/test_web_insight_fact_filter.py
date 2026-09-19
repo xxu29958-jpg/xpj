@@ -15,6 +15,8 @@ from fastapi.testclient import TestClient
 from app.database import SessionLocal
 from app.models import Expense, LedgerMember
 from app.services.currency_binding_service import resolve_write_capability
+from app.services.expense_accounting_time_service import refresh_legacy_expense_time
+from tests._web_native_form_support import accounting_time_fields
 from tests.web_expense_fact_test_support import create_confirmed, owner_member_id, row_version
 
 pytestmark = pytest.mark.real_db
@@ -70,6 +72,8 @@ def _seed_categories(
             for index, category in enumerate(categories)
         ]
         db.add_all(rows)
+        for row in rows:
+            refresh_legacy_expense_time(db, row)
         db.commit()
         return [row.id for row in rows]
 
@@ -235,7 +239,8 @@ def test_reports_fact_correction_keeps_original_month_through_422_409_and_succes
     form = web_client.get(form_href)
     assert form.status_code == 200, form.text
     action = f"/web/expenses/{expense_id}/corrections"
-    data = {**_hidden_form(form.text, action), "merchant": "月报更正后的商家", "category": "餐饮", "reason": ""}
+    data = {**_hidden_form(form.text, action), **accounting_time_fields(form.text),
+        "merchant": "月报更正后的商家", "category": "餐饮", "reason": ""}
     invalid = web_client.post(action, data=data, follow_redirects=False)
     assert invalid.status_code == 422, invalid.text
     assert "请说明这次更正的原因" in invalid.text

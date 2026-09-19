@@ -14,6 +14,7 @@ from app.schemas import (
     RecurringItemUpdateRequest,
 )
 from app.schemas._recurring_occurrence import RecurringOccurrenceResponse, RecurringOccurrenceWriteRequest
+from app.services.ledger_calendar_service import current_ledger_month
 from app.services.recurring_candidate_confirmation_service import confirm_recurring_candidate
 from app.services.recurring_item_command_service import (
     create_manual_recurring_item,
@@ -52,7 +53,7 @@ def get_recurring_occurrence(
     db: Session = Depends(get_db),
 ) -> RecurringOccurrenceResponse:
     item = get_recurring_item(db, tenant_id=auth.tenant_id, public_id=public_id)
-    return occurrence_response(db, item=item, period=occurrence_period(None if month == "current" else month))
+    return occurrence_response(db, item=item, period=occurrence_period(current_ledger_month(db, ledger_id=auth.tenant_id) if month == "current" else month))
 
 
 @router.put("/items/{public_id}/occurrences/{month}", response_model=RecurringOccurrenceResponse)

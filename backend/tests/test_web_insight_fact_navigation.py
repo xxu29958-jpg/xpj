@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from html import unescape
 from pathlib import Path
 from types import SimpleNamespace
@@ -30,6 +30,7 @@ def test_report_top_rows_link_to_exact_facts_even_when_display_fields_match(
         SimpleNamespace(
             id=expense_id, merchant="同一家商店", category="餐饮", amount_cents=12_300,
             home_currency_code="CNY", expense_time=datetime(2026, 5, 18, 10, tzinfo=UTC),
+            accounting_date=date(2026, 5, 18),
         )
         for expense_id in (41, 42)
     ]

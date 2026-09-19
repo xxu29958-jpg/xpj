@@ -37,6 +37,7 @@ from app.services.classify_service import undo_delete_rule
 from app.services.currency_common import minor_amount_label
 from app.services.goal_service import restore_goal
 from app.services.income_plan_service import restore_income_plan
+from app.services.ledger_calendar_service import current_ledger_month
 from app.services.merchant_alias_service import undo_delete_merchant_alias
 from app.services.merchant_catalog_service import restore_merchant_catalog
 from app.services.recurring_service import (
@@ -47,7 +48,6 @@ from app.services.soft_delete_policy import (
     is_within_recycle_bin_window,
     recycle_bin_retention_label,
 )
-from app.services.spending_contract_service import current_accounting_month
 from app.services.tag_undo_service import undo_tag_mutation
 
 
@@ -217,7 +217,7 @@ def _sort_key(row: RecycleBinItem) -> datetime:
 
 
 def _archived_income_rows(db: Session, tenant_id: str) -> list[RecycleBinItem]:
-    intent_month = current_accounting_month()
+    intent_month = current_ledger_month(db, ledger_id=tenant_id)
     rows = db.scalars(
         select(MonthlyIncomePlan)
         .where(MonthlyIncomePlan.tenant_id == tenant_id)

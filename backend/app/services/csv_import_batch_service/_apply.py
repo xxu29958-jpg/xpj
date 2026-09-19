@@ -41,7 +41,11 @@ from app.services.csv_import_batch_service._apply_lease import (
     _mark_csv_import_apply_failed,
     _release_csv_import_apply_lease,
 )
-from app.services.csv_import_batch_service._events import bind_created_purchase, prepare_native_csv_row
+from app.services.csv_import_batch_service._events import (
+    bind_created_purchase,
+    freeze_csv_expense_time,
+    prepare_native_csv_row,
+)
 from app.services.csv_import_batch_service._idempotency import (
     _csv_import_row_idempotency_key,
     _existing_csv_import_expense_id,
@@ -124,6 +128,7 @@ def _process_csv_import_apply_row(
         created_at=now,
         updated_at=now,
     )
+    freeze_csv_expense_time(db, row=row, batch=batch, expense=expense)
     if row.event_input is not None:
         apply_imported_currency_snapshot(expense, row)
     else:

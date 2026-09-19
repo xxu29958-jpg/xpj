@@ -51,8 +51,13 @@
         </div>
         <div class="expense-conflict-compare-row">
           <dt>消费时间</dt>
-          <dd>{{ e.expense_time_local or '未填写' }}</dd>
+          <dd>{% if time_form and time_form.time_precision == 'date_only' %}{{ time_form.user_local_date }}（只有日期）{% else %}{{ e.expense_time_local or '未填写' }}{% endif %}</dd>
           <dd>{{ conflict_current.expense_time_local or '未填写' }}</dd>
+        </div>
+        <div class="expense-conflict-compare-row">
+          <dt>账务日期</dt>
+          <dd>{{ time_form.accounting_date if time_form and time_form.accounting_date else '按发生日期与账本日历确定' }}</dd>
+          <dd>{{ conflict_current.accounting_date or '待核对' }}</dd>
         </div>
         <div class="expense-conflict-compare-row">
           <dt>标签</dt>
@@ -146,6 +151,9 @@
     {% if field_errors.get('merchant') %}<span id="{{ _p }}-merchant-error" class="error-text">{{ field_errors.get('merchant') }}</span>{% endif %}
   </label>
 
+  {% if time_form %}
+  {% with time_prefix=_p, time_name='expense_time', time_disabled=(not can_write or e.is_split_received) %}{% include '_accounting_time_fields.html' %}{% endwith %}
+  {% else %}
   <label class="product-field" for="{{ _p }}-expense-time">
     <span>消费时间</span>
     <input id="{{ _p }}-expense-time"
@@ -158,6 +166,7 @@
     {% if field_errors.get('expense_time') %}<span id="{{ _p }}-time-error" class="error-text">{{ field_errors.get('expense_time') }}</span>{% endif %}
     <span class="meta">留空表示不修改时间。</span>
   </label>
+  {% endif %}
 
   <label class="product-field" for="{{ _p }}-category">
     <span>分类</span>

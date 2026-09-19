@@ -111,8 +111,9 @@ def test_actual_confirmed_template_distinguishes_unknown_calendar_and_page_sum()
         flash_message="", flash_type="", missing_rates=[],
         money_task={"ledger_id": "family", "month": "2026-08", "home_currency_code": "JPY", "return_to": "confirmed"},
         **projected_money_context("JPY"))
-    assert 'title="2026-08-05 · 待补齐换算信息"' in html
-    assert html.count("待补齐换算信息") >= 3 and "CN¥1.00" in re.sub(r"<[^>]+>", "", html)
+    assert 'title="2026-08-05 · 账务信息待补齐"' in html
+    assert html.count("账务信息待补齐") >= 2 and "待补齐换算信息" in html
+    assert "CN¥1.00" in re.sub(r"<[^>]+>", "", html)
     assert "None" not in html and "¥100" not in html
 
 

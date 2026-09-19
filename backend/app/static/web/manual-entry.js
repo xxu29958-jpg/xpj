@@ -10,7 +10,8 @@
   const options = form.querySelector("[data-manual-options]");
   const actions = document.querySelector("[data-manual-draft-actions]");
   const shelf = document.querySelector("[data-manual-draft-shelf]");
-  const controls = drafts.fields.map(name => form.elements.namedItem(name));
+  const controls = drafts.fields.map(name => form.elements.namedItem(name)).filter(Boolean);
+  const omitted = new Set();
   const refInput = form.elements.namedItem("client_ref");
   const nativeRef = refInput.value;
   let nativeResult = form.dataset.manualDraftResult;
@@ -30,20 +31,26 @@
   }
 
   function values() {
-    return Object.fromEntries(controls.map(control => [control.name, control.value]));
+    return Object.fromEntries(controls.filter(control => !omitted.has(control.name))
+      .map(control => [control.name, control.value]));
   }
 
   const nativeValues = values();
 
   function showValues(saved) {
-    controls.forEach(control => { control.value = saved[control.name] ?? ""; });
+    controls.forEach(control => {
+      control.value = saved[control.name] ?? "";
+      const absent = drafts.optionalFields.includes(control.name) && saved[control.name] === undefined;
+      if (absent) omitted.add(control.name); else omitted.delete(control.name);
+      control.disabled = absent;
+    });
     if (saved.merchant || saved.note || saved.category !== nativeValues.category ||
         saved.spent_at !== nativeValues.spent_at) options.open = true;
   }
 
   function readOnly(value) {
     controls.forEach(control => {
-      if (control.tagName === "SELECT") control.disabled = value;
+      if (control.tagName === "SELECT") control.disabled = value || omitted.has(control.name);
       else control.readOnly = value;
     });
   }
@@ -237,7 +244,9 @@
       readOnly(true);
       // Disabled selects are omitted from a native POST; keep the fixed currency
       // successful while the document leaves. No fetch or automatic retry.
-      controls.forEach(control => { if (control.tagName === "SELECT") control.disabled = false; });
+      controls.forEach(control => {
+        if (control.tagName === "SELECT") control.disabled = omitted.has(control.name);
+      });
       submit.disabled = true;
       notice("正在保存这笔支出…", "submitting");
     } catch (_) {

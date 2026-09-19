@@ -271,7 +271,10 @@ class IncomePlanViewModel(
         _state.update { state ->
             val current = runCatching {
                 YearMonth.parse(state.addDraft.incomeMonthInput.trim())
-            }.getOrDefault(YearMonth.now())
+            }.getOrElse {
+                state.forecastMonth?.let { month -> runCatching { YearMonth.parse(month) }.getOrNull() }
+                    ?: return@update state
+            }
             state.copy(
                 addDraft = state.addDraft.copy(
                     incomeMonthInput = current.plusMonths(deltaMonths).toString(),

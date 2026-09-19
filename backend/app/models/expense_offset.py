@@ -27,6 +27,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database_model_registry import Base
 from app.fx_constants import DEFAULT_HOME_CURRENCY_CODE
+from app.models.ledger_calendar import time_evidence_constraints
 from app.money_contract_types import MONEY_MINOR_MAX
 from app.services.time_service import now_utc
 
@@ -36,6 +37,16 @@ class ExpenseOffsetFact(Base):
 
     __tablename__ = "expense_offset_facts"
     __table_args__ = (
+        *time_evidence_constraints("expense_offset_facts"),
+        CheckConstraint(
+            "time_precision IS NULL OR time_precision = 'date_only'",
+            name="ck_expense_offset_facts_date_only_precision",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "calendar_revision"],
+            ["ledger_calendar_revisions.ledger_id", "ledger_calendar_revisions.revision"],
+            name="fk_expense_offset_facts_calendar_revision",
+        ),
         CheckConstraint(
             f"amount_cents BETWEEN 1 AND {MONEY_MINOR_MAX}",
             name="ck_expense_offset_facts_amount_cents_money_bounds",
@@ -100,6 +111,12 @@ class ExpenseOffsetFact(Base):
     exchange_rate_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     exchange_rate_source: Mapped[str | None] = mapped_column(String(32), nullable=True)
     accounting_date: Mapped[date] = mapped_column(Date, nullable=False)
+    calendar_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    user_local_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    time_precision: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    source_timezone: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    source_utc_offset_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    accounting_date_basis: Mapped[str | None] = mapped_column(String(64), nullable=True)
     category: Mapped[str] = mapped_column(String(64), nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     row_version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)

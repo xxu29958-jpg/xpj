@@ -69,8 +69,8 @@ def test_unknown_income_history_is_declared_in_the_same_owner_adoption_transacti
     reset_schema()
     try:
         run_alembic(command.upgrade, "20260729_0001")
+        owner_id, _ = seed_owner()
         with SessionLocal() as db:
-            bootstrap = bootstrap_owner(db, account_name="Owner", ledger_name="Owner ledger", device_name="migration-admin")
             key, _ = _seed_plan(db)
         run_alembic(command.upgrade, _HEAD)
         with engine.connect() as db:
@@ -79,7 +79,10 @@ def test_unknown_income_history_is_declared_in_the_same_owner_adoption_transacti
         # The historical edge is frozen; the live adoption owner needs its full current schema.
         run_alembic(command.upgrade, "head")
         with SessionLocal() as db:
+            # Authenticate the existing historical owner only on the current schema.
+            bootstrap = bootstrap_owner(db, account_name="Owner", ledger_name="Owner ledger", device_name="migration-admin")
             auth = authenticate_session_token(db, bootstrap.admin_token, {"app", "admin"})
+            assert auth.account_id == owner_id
             preview = adoption_preview(db)
             receipt = adopt_currency_binding(
                 db, auth=auth, idempotency_key=uuid4(), home_code="CNY",

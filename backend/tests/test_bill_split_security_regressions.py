@@ -22,6 +22,7 @@ from app.models import (
 )
 from app.services import bill_split_service as bsplit
 from app.services.identity_service import hash_secret, new_session_token
+from app.services.ledger_calendar_service import adopt_ledger_calendar
 from app.services.time_service import now_utc
 from tests._runtime_protocol import current_protocol_headers
 from tests.test_bill_split import (
@@ -82,6 +83,7 @@ def _add_viewer_ledger(ledger_id: str, account_id: int, owner_account_id: int) -
             owner_account_id=owner_account_id,
         ))
         db.flush()
+        adopt_ledger_calendar(db, ledger_id=ledger_id, timezone_name="Asia/Shanghai", actor_account_id=owner_account_id)
         db.add(LedgerMember(
             ledger_id=ledger_id,
             account_id=account_id,

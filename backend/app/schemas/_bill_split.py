@@ -21,9 +21,10 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_serializer
 from pydantic_core import PydanticCustomError
 
+from app.schemas._accounting_time import AccountingTimeSnapshot
 from app.schemas._money import PositiveMoneyMinor
 from app.services.time_service import to_iso
 
@@ -93,6 +94,7 @@ class _BillSplitCommon(BaseModel):
     merchant_snapshot: str | None = None
     category_suggestion: str | None = None
     expense_time_snapshot: datetime | None = None
+    accounting_time_snapshot: AccountingTimeSnapshot | None = None
     expires_at: datetime
     created_at: datetime
     accepted_at: datetime | None = None
@@ -104,6 +106,13 @@ class _BillSplitCommon(BaseModel):
         "source_reversed",
     ] | None = None
     expired_at: datetime | None = None
+
+    @model_serializer(mode="wrap")
+    def preserve_absent_receipt_time(self, handler):
+        data = handler(self)
+        if "accounting_time_snapshot" not in self.model_fields_set:
+            data.pop("accounting_time_snapshot", None)
+        return data
 
     @field_serializer(
         "exchange_rate_date", "expense_time_snapshot",

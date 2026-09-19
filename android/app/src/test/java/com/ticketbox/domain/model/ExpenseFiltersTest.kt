@@ -110,6 +110,14 @@ class ExpenseFiltersTest {
     }
 
     @Test
+    fun legacyReceiptWithoutAnyEffectiveTimeDoesNotAcquireItsCreationMonth() {
+        val unknown = expense(id = 9, category = "餐饮", expenseTime = null, details = FixtureDetails(confirmedAt = null))
+        assertEquals(null, expenseLedgerMonth(unknown, ZoneId.of("Asia/Shanghai")))
+        assertEquals(listOf(unknown), filterConfirmedExpenses(listOf(unknown)))
+        assertEquals(emptyList(), filterConfirmedExpenses(listOf(unknown), ExpenseFilterCriteria(month = "2026-05")))
+    }
+
+    @Test
     fun invalidLedgerMonthMatchesNothing() {
         val items = listOf(
             expense(id = 1, category = "餐饮", expenseTime = "2026-05-03T04:20:00Z"),

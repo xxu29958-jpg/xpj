@@ -16,6 +16,7 @@ from app.schemas import (
     ConfirmedOffsetStreamProjection,
     ExpenseResponse,
 )
+from app.services.accounting_time_service import accounting_time_snapshot
 from app.services.data_quality_service import uncategorized_expense_category_predicate
 from app.services.expense_offset_summary import expense_financial_summary
 from app.services.expense_query import (  # noqa: F401 — re-exported
@@ -144,17 +145,22 @@ def list_confirmed(
     tag: str | None = None,
     timezone_name: str | None = None,
     missing_category: bool = False,
+    missing_accounting_date: bool = False,
 ) -> tuple[list[ConfirmedExpenseStreamItem], int]:
     page = max(page, 1)
     page_size = min(max(page_size, 1), 200)
 
     stream = _confirmed_stream_locator_query(
         tenant_id=tenant_id,
-        month=month,
+        month=None if missing_accounting_date else month,
         category=category,
         tag=tag,
         timezone_name=timezone_name,
     )
+    if missing_accounting_date:
+        stream = select(stream).where(
+            stream.c.entry_kind == "expense", stream.c.stream_date.is_(None),
+        ).subquery("undated_confirmed")
     if missing_category:
         stream = select(stream).where(
             stream.c.entry_kind == "expense",
@@ -329,7 +335,7 @@ def _stream_entry(
     active_offsets: list[ExpenseOffsetFact],
     *,
     offset: ExpenseOffsetFact | None,
-    stream_date: date,
+    stream_date: date | None,
     stream_sort_time: datetime,
     stream_sort_id: int,
 ) -> ConfirmedExpenseStreamItem:
@@ -369,4 +375,5 @@ def _offset_stream_projection(
         exchange_rate_to_cny=offset.exchange_rate_to_cny,
         exchange_rate_date=offset.exchange_rate_date,
         exchange_rate_source=offset.exchange_rate_source,
+        accounting_time=accounting_time_snapshot(offset),
     )

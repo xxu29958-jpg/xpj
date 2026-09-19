@@ -20,9 +20,7 @@ fun interface BudgetOverspendSource {
  *
  * @property budgetOverspendAlertsEnabled 「预算超支提醒」开关现读（关 → 不拉预算、不发、不 markSent）。
  * @property activeLedgerId 当前 active ledger（拉取前后各验一次，账本切换竞态时丢弃）。
- * @property currentMonth 检测月 `yyyy-MM`。生产传 Asia/Shanghai 当月——对齐服务端统计口径
- *   （`COALESCE(expense_time, confirmed_at)` 按沪月聚合），不用设备时区（跨日几小时窗口里
- *   会拉错相邻月，错配口径宁可保守）。可注入便于测试钉边界。
+ * @property currentMonth 从当前账本规则捕获检测月 `yyyy-MM`；同次检测的查询、节流与提醒键共用。
  * @property monotonicNowMillis 单调毫秒时钟（throttle 用，生产传 `SystemClock.elapsedRealtime`，
  *   不用墙钟避免改时间穿越 throttle）。
  * @property logWarning 轻量日志注入：source 失败时记 error class，**不记** token / 金额明细。
@@ -31,9 +29,10 @@ fun interface BudgetOverspendSource {
 class BudgetOverspendRuntime(
     val budgetOverspendAlertsEnabled: () -> Boolean,
     val activeLedgerId: () -> String?,
-    val currentMonth: () -> String,
+    val currentMonth: suspend () -> String,
     val monotonicNowMillis: () -> Long,
     val logWarning: (String, Throwable?) -> Unit = { _, _ -> },
+    val activeBinding: () -> com.ticketbox.data.repository.LogicalSessionBinding? = { null },
 )
 
 /**
@@ -72,7 +71,9 @@ class BudgetOverspendChecker(
         if (ledgerId.isBlank()) return
         if (!runtime.budgetOverspendAlertsEnabled()) return
         if (runtime.activeLedgerId() != ledgerId) return
+        val binding = runtime.activeBinding()
         val month = runtime.currentMonth()
+        if (runtime.activeLedgerId() != ledgerId || runtime.activeBinding() != binding) return
         if (store.wasSent(budgetOverspendSentKey(ledgerId, month))) return
         if (!claimThrottleSlot(ledgerId, month)) return
         val budget = source.monthlyBudget(month).getOrElse { error ->
@@ -82,7 +83,7 @@ class BudgetOverspendChecker(
         // 响应月与请求月不一致（不该发生）→ 丢弃，保证 sent-key 与查询 key 永不错位。
         if (budget.month != month) return
         // 拉取期间切了账本 → monthlyBudget 绑的是新 active ledger 的数据，丢弃。
-        if (runtime.activeLedgerId() != ledgerId) return
+        if (runtime.activeLedgerId() != ledgerId || runtime.activeBinding() != binding) return
         val decision = evaluateBudgetOverspend(ledgerId, budget) ?: return
         if (dispatcher.dispatch(decision) == BudgetOverspendDispatchOutcome.SENT) {
             store.markSent(decision.key)

@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 
 from app.database import SessionLocal
 from app.models import Expense
+from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from app.services.learning_service import (
     BudgetQuantileSuggestion,
     compute_budget_quantile_suggestion,
@@ -36,22 +37,22 @@ def _seed(
     if confirmed_at is None:
         confirmed_at = confirmed
     with SessionLocal() as db:
-        db.add(
-            Expense(
-                tenant_id=tenant_id,
-                home_currency_code="CNY",
-                original_currency_code="CNY",
-                original_amount_minor=amount_cents,
-                amount_cents=amount_cents,
-                merchant="x",
-                category=category,
-                source="pytest",
-                raw_text="",
-                status="confirmed",
-                expense_time=expense_time,
-                confirmed_at=confirmed_at,
-            )
+        _calendar_expense = Expense(
+            tenant_id=tenant_id,
+            home_currency_code="CNY",
+            original_currency_code="CNY",
+            original_amount_minor=amount_cents,
+            amount_cents=amount_cents,
+            merchant="x",
+            category=category,
+            source="pytest",
+            raw_text="",
+            status="confirmed",
+            expense_time=expense_time,
+            confirmed_at=confirmed_at,
         )
+        refresh_legacy_expense_time(db, _calendar_expense)
+        db.add(_calendar_expense)
         db.commit()
 
 
@@ -206,7 +207,7 @@ def test_other_categories_ignored(*, identity) -> None:
         assert result.p50_cents == 2500
 
 
-def test_quantile_uses_expense_time_and_accounting_timezone(
+def test_quantile_preserves_adopted_date_across_query_timezones(
     *, identity,
 ) -> None:
     _seed(
@@ -241,4 +242,5 @@ def test_quantile_uses_expense_time_and_accounting_timezone(
 
     assert shanghai is not None
     assert shanghai.p50_cents == 777
-    assert utc is None
+    assert utc is not None
+    assert utc.p50_cents == 777

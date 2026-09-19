@@ -27,7 +27,7 @@ from app.schemas import IncomePlanUpdateRequest
 from app.services.currency_common import minor_amount_value
 from app.services.income_plan_service import get_income_plan
 from app.services.income_plan_service._delivery import update_income_plan_idempotently
-from app.services.spending_contract_service import current_accounting_month
+from app.services.ledger_calendar_service import current_ledger_month
 
 router = APIRouter(prefix="/web/income-plans", tags=["web"])
 
@@ -54,7 +54,7 @@ def _render_editor(
     ctx.update(
         plan=plan, current=current, currency_input=_currency_input_view(plan.home_currency_code), values=values if values is not None else {
             **current, "intent_month": intent_month, "idempotency_key": str(uuid4()),
-        }, error=error, conflict=conflict, review_month=current_accounting_month(),
+        }, error=error, conflict=conflict, review_month=current_ledger_month(db, ledger_id=selected),
     )
     return templates.TemplateResponse(
         request=request, name="income_edit.html", context=ctx, status_code=status_code,
@@ -111,7 +111,7 @@ def web_income_save(
     plan = get_income_plan(db, tenant_id=selected, public_id=public_id)
     if review_latest:
         # The labelled review action prepares, but never publishes, a new intent.
-        values.update(intent_month=current_accounting_month(), expected_row_version=str(plan.row_version), idempotency_key=str(uuid4()))
+        values.update(intent_month=current_ledger_month(db, ledger_id=selected), expected_row_version=str(plan.row_version), idempotency_key=str(uuid4()))
         return _render_editor(request, db, options, selected, plan, intent_month=values["intent_month"], values=values)
     try:
         payload = _edit_payload(values, currency_code=plan.home_currency_code)

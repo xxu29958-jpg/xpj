@@ -15,16 +15,15 @@ from app.services.currency_binding_service import require_runtime_home_currency_
 from app.services.money_projection_service import ProjectionGap, ProjectionReference
 from app.services.recurring_service import recurring_monthly_total
 from app.services.spending_contract_service import (
+    calendar_month_bounds,
     clean_month,
-    current_accounting_month,
-    month_bounds_utc,
     shift_month,
-    stat_time_expr,
+    stat_sort_time_expr,
 )
 
 
-def occurrence_period(month: str | None) -> date:
-    return date.fromisoformat(f"{clean_month(month or current_accounting_month())}-01")
+def occurrence_period(month: str) -> date:
+    return date.fromisoformat(f"{clean_month(month)}-01")
 
 
 def get_occurrence(db: Session, *, tenant_id: str, series_id: int, period: date) -> RecurringOccurrence | None:
@@ -61,13 +60,14 @@ def _eligible_payments_for_ledgers(tenant_ids: list[str]):
 def find_recurring_payments(db: Session, *, tenant_id: str, month: str | None, query: str) -> list[Expense]:
     statement = eligible_payment_query(tenant_id=tenant_id)
     if month:
-        start, end = month_bounds_utc(month)
-        statement = statement.where(stat_time_expr() >= start, stat_time_expr() < end)
+        start, end = calendar_month_bounds(month)
+        statement = statement.where(Expense.accounting_date >= start, Expense.accounting_date < end)
     if query:
         statement = statement.where(or_(
             Expense.merchant.contains(query, autoescape=True), Expense.note.contains(query, autoescape=True),
         ))
-    return list(db.scalars(statement.order_by(stat_time_expr().desc(), Expense.id.desc()).limit(101)))
+    return list(db.scalars(statement.order_by(
+        Expense.accounting_date.desc(), stat_sort_time_expr().desc(), Expense.id.desc()).limit(101)))
 
 
 def next_due_dates_for_ledgers(db: Session, *, tenant_ids: list[str]) -> list[date]:

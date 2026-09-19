@@ -45,14 +45,11 @@ def _nonmonetary_conditions_match(expense: Expense, rule: CategoryRule) -> bool:
 
 
 def _rule_amount(db: Session, expense: Expense, rule: CategoryRule) -> int | None:
-    from app.services.spending_contract_service import accounting_zone, stat_time
-
     if expense.amount_cents is None:
         return None
-    instant = stat_time(expense)
-    rate_date = instant.astimezone(accounting_zone()).date() if instant else None
     return project_recorded_amount(db, tenant_id=expense.tenant_id, amount_minor=expense.amount_cents,
-        source_currency=expense.home_currency_code, home_currency=rule.home_currency_code, rate_date=rate_date)
+        source_currency=expense.home_currency_code, home_currency=rule.home_currency_code,
+        rate_date=expense.accounting_date)
 
 
 def match_category_rule(db: Session, expense: Expense, rules: list[CategoryRule], *, haystack: str) -> RuleMatch:

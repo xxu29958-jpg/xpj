@@ -24,6 +24,7 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
+from app.routes._web_accounting_time import accounting_time_form_fields
 from app.routes._web_correction_sources import (
     item_sources_match_current,
     preserve_item_provenance,
@@ -91,6 +92,7 @@ class CorrectionFormData:
     expected_row_version: str
     idempotency_key: str
     return_context: ExpenseReturnContext
+    time_fields: dict[str, str] | None = None
 
 
 @dataclass
@@ -115,6 +117,8 @@ def web_correction_idempotency_body(form: CorrectionFormData) -> dict[str, objec
     submitted.pop("expected_row_version")
     submitted.pop("idempotency_key")
     submitted.pop("return_context")
+    if submitted["time_fields"] is None:
+        submitted.pop("time_fields")
     return {"web_form": submitted}
 
 
@@ -157,6 +161,7 @@ def correction_form_data(
     idempotency_key: str = Form(default=""),
     return_context: ExpenseReturnContext = Depends(expense_return_form_context),
     submitted_fields: frozenset[str] = Depends(_submitted_form_field_names),
+    time_fields: dict[str, str] | None = Depends(accounting_time_form_fields),
 ) -> CorrectionFormData:
     """Bind FastAPI form fields without making the HTTP route a giant parser."""
 
@@ -188,6 +193,7 @@ def correction_form_data(
         expected_row_version=expected_row_version,
         idempotency_key=idempotency_key,
         return_context=return_context,
+        time_fields=time_fields,
     )
 
 
@@ -265,6 +271,8 @@ def _form_values_from(form: CorrectionFormData) -> dict[str, str]:
         "value_score": (form.value_score or "") if form.value_score_present else None,
         "regret_score": (form.regret_score or "") if form.regret_score_present else None,
     }
+    if form.time_fields is not None:
+        values.update(form.time_fields)
     return {key: value for key, value in values.items() if value is not None}
 
 
@@ -349,6 +357,7 @@ def _scalar_changes(
         note=form.note,
         tags=form.tags,
         expense_time=form.expense_time,
+        time_fields=form.time_fields,
         allow_currency_change=True,
     )
     if update_payload is None:
@@ -357,7 +366,8 @@ def _scalar_changes(
         outcome.field_errors = prepared.field_errors or {}
         return None
     changes = update_payload.model_dump(exclude_unset=True, exclude={"expected_row_version"})
-    if form.expense_time_present and not (form.expense_time or "").strip() and expense.expense_time is not None:
+    clear_clock = form.time_fields is None or form.time_fields.get("time_precision") == "instant"
+    if clear_clock and form.expense_time_present and not (form.expense_time or "").strip() and expense.expense_time is not None:
         changes["expense_time"] = None
     for field_name, raw, current, present in (
         ("value_score", form.value_score, expense.value_score, form.value_score_present),

@@ -42,8 +42,8 @@ fun groupConfirmedStream(resources: Resources, items: List<ConfirmedStreamItem>)
         .groupBy { it.streamDate }
         .map { (key, groupItems) ->
             LedgerStreamGroup(
-                key = key,
-                label = ledgerDayLabel(resources, key.toLocalDateOrNull()),
+                key = key ?: "undated",
+                label = ledgerDayLabel(resources, key?.toLocalDateOrNull()),
                 items = groupItems,
             )
         }

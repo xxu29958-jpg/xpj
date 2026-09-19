@@ -19,6 +19,7 @@ interface LedgerActions {
         month: String? = null,
         category: String? = null,
         tag: String? = null,
+        missingAccountingDate: Boolean = false,
     ): Result<List<Expense>>
     suspend fun exportConfirmedCsv(
         month: String? = null,

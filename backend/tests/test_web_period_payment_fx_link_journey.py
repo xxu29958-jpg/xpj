@@ -45,7 +45,10 @@ def installed_web(monkeypatch) -> Iterator[_InstalledWeb]:
 
 
 def _hidden_fields(html: str) -> dict[str, str]:
-    return dict(re.findall(r'<input type="hidden" name="([^"]+)" value="([^"]*)"', html))
+    from tests._web_native_form_support import accounting_time_fields
+
+    return {**dict(re.findall(r'<input type="hidden" name="([^"]+)" value="([^"]*)"', html)),
+        **accounting_time_fields(html)}
 
 
 def _headers(session_token: str, page) -> dict[str, str]:

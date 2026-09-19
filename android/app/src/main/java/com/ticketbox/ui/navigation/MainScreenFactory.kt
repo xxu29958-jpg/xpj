@@ -53,6 +53,7 @@ internal class MainScreenFactory(
             budgetRepository = repositories.budgetRepository,
             reportsRepository = repositories.reportsRepository,
             debtRepository = repositories.debtRepository,
+            calendars = repositories.ledgerCalendarRepository,
         ),
     )
 
@@ -65,6 +66,7 @@ internal class MainScreenFactory(
             budgetRepository = repositories.budgetRepository,
             reportsRepository = repositories.reportsRepository,
             debtRepository = repositories.debtRepository,
+            calendars = repositories.ledgerCalendarRepository,
         ),
         onExpenseDataChanged = onExpenseDataChanged,
     )
@@ -87,6 +89,7 @@ internal data class MainFeatureRepositories(
     val outboxRepository: OutboxRepository,
     val tagRepository: TagRepository,
     val categoryPreferenceRepository: CategoryPreferenceRepository,
+    val ledgerCalendarRepository: com.ticketbox.data.repository.LedgerCalendarRepository? = null,
 )
 
 internal data class MainScreenViewModelFactories(

@@ -14,7 +14,9 @@ from app.models import Account, Expense, ExpenseRevision, Ledger, LedgerMember
 from app.schemas import ExpenseCorrectionRequest
 from app.services import bill_split_service as bsplit
 from app.services.currency_binding_service import resolve_write_capability
+from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from app.services.expense_correction_service import correct_expense
+from app.services.ledger_calendar_service import adopt_ledger_calendar
 from app.services.time_service import now_utc
 from tests._runtime_protocol import negotiated_headers
 
@@ -42,6 +44,7 @@ def _seed_receiver(name: str = "B", ledger_id: str = "receiver_b") -> int:
         ledger = Ledger(ledger_id=ledger_id, name=f"{name} 的账本", owner_account_id=account.id)
         db.add(ledger)
         db.flush()
+        adopt_ledger_calendar(db, ledger_id=ledger_id, timezone_name="Asia/Shanghai", actor_account_id=account.id)
         member = LedgerMember(
             ledger_id=ledger_id,
             account_id=account.id,
@@ -69,6 +72,7 @@ def _make_expense_for_owner(*, amount_cents: int = 5000, merchant: str = "Pizza 
             expense_time=now_utc(),
             confirmed_at=now_utc(),
         )
+        refresh_legacy_expense_time(db, expense)
         db.add(expense)
         db.commit()
         return expense.id
@@ -215,6 +219,14 @@ def test_accept_idempotent_returns_same_received_expense() -> None:
             target_ledger_id="receiver_idem",
         )
         exp1_id = exp1.id
+        # The fixture represents an adopted legacy instant; receiving it must
+        # keep its original day without inventing a source-local date.
+        snapshot = _inv1.accounting_time_snapshot
+        assert snapshot is not None
+        assert exp1.accounting_date.isoformat() == snapshot["accounting_date"]
+        assert exp1.expense_time == _inv1.expense_time_snapshot
+        assert exp1.user_local_date is None and exp1.time_precision == "unknown"
+        frozen_time = (exp1.accounting_date, exp1.expense_time, exp1.calendar_revision)
 
     with SessionLocal() as db:
         _inv2, exp2 = bsplit.accept_invitation(
@@ -224,6 +236,7 @@ def test_accept_idempotent_returns_same_received_expense() -> None:
             target_ledger_id="receiver_idem",
         )
     assert exp2.id == exp1_id
+    assert (exp2.accounting_date, exp2.expense_time, exp2.calendar_revision) == frozen_time
 
 
 # -------------------------------------------------------------------------
@@ -240,6 +253,8 @@ def test_accept_to_viewer_ledger_403() -> None:
         )
         db.add(viewer_ledger)
         db.flush()
+        adopt_ledger_calendar(db, ledger_id=viewer_ledger.ledger_id, timezone_name="Asia/Shanghai",
+            actor_account_id=viewer_ledger.owner_account_id)
         db.add(LedgerMember(
             ledger_id="shared_viewer",
             account_id=receiver_account_id,

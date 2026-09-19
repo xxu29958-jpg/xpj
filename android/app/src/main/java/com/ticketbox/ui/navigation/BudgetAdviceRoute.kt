@@ -19,7 +19,7 @@ internal fun BudgetAdviceRoute(
     correctionContinuation: Boolean = false,
 ) {
     val viewModel: BudgetAdviceViewModel = viewModel(
-        factory = budgetAdviceViewModelFactory(screenFactory.budgetRepository),
+        factory = budgetAdviceViewModelFactory(screenFactory.budgetRepository, screenFactory.repositories.ledgerCalendarRepository),
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     LaunchedEffect(originalSubmissionId) { originalSubmissionId?.let(viewModel::openRateSubmission) }

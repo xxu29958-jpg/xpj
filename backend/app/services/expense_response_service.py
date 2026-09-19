@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Expense
 from app.schemas import BackgroundTaskResponse, ExpenseResponse
+from app.services.accounting_time_service import accounting_time_snapshot
 from app.services.background_task_response import task_response_dicts
 from app.services.learning_service import read_ocr_text, read_ocr_texts
 
@@ -21,6 +22,7 @@ def expense_to_response(
     fx_tasks_by_id: dict[int, BackgroundTaskResponse] | None = None,
 ) -> ExpenseResponse:
     dto = ExpenseResponse.model_validate(expense)
+    dto.accounting_time = accounting_time_snapshot(expense)
     if fx_tasks_by_id is None:
         fx_tasks_by_id = expense_fx_tasks_by_id(db, tenant_id=tenant_id, expenses=[expense])
     dto.fx_task = fx_tasks_by_id.get(expense.id)

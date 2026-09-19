@@ -242,7 +242,7 @@ private fun OccurrencePaymentPicker(
     if (payments.size > 20) Text(stringResource(R.string.occurrence_narrow_search))
     payments.take(20).forEach { payment ->
         TextButton(onClick = { choose(payment) }, modifier = Modifier.fillMaxWidth().testTag("occurrence-payment-" + payment.root.id)) {
-            Text(payment.streamDate + " · " + payment.root.merchant.orEmpty() + " · " +
+            Text((payment.streamDate ?: stringResource(R.string.calendar_date_pending)) + " · " + payment.root.merchant.orEmpty() + " · " +
                 occurrencePaymentAmountText(payment.root.amountCents, payment.root.homeCurrencyCode) +
                 if (payment.lineageStatus != ExpenseLineageStatus.Confirmed) stringResource(R.string.occurrence_has_refund) else "")
         }

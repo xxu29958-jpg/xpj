@@ -181,6 +181,7 @@ class RecurringPaymentTaskTest {
                 category = "住房",
                 note = "自填备注",
                 expenseTime = "2026-08-20T10:00:00Z",
+                timeFormJson = "{raw calendar draft with invalid time}",
             ),
         )
         val restored = RecurringPaymentDraftStore(
@@ -192,6 +193,7 @@ class RecurringPaymentTaskTest {
         assertEquals("住房", restored?.category)
         assertEquals("自填备注", restored?.note)
         assertEquals("2026-08-20T10:00:00Z", restored?.expenseTime)
+        assertEquals("{raw calendar draft with invalid time}", restored?.timeFormJson)
         drafts.removeDraft(task.clientRef)
         assertNull(drafts.read(task.clientRef))
         drafts.remember(task)

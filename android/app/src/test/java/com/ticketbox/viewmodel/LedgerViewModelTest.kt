@@ -25,6 +25,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import java.lang.reflect.Proxy
@@ -107,6 +108,24 @@ class LedgerExportViewModelTest {
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class LedgerViewModelTest {
+    @Test
+    fun slowCalendarCannotReplaceAnExplicitLedgerDrillOrAllMonths() = ledgerTest {
+        val binding = com.ticketbox.data.repository.LogicalSessionBinding("https://example.test", "owner", "owner", "session", "revision")
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val calendars = com.ticketbox.data.repository.MonthCalendarFixture(binding).apply { this.gate = { gate.await() } }
+        val vm = LedgerViewModel(FakeLedgerActions(expenses = emptyList()), CapabilityDebtActions(), calendars = calendars)
+        runCurrent()
+        vm.applyDrillFilter("2024-02", "餐饮")
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals("2024-02", vm.uiState.value.monthFilter)
+        vm.clearFilters()
+        vm.sync()
+        advanceUntilIdle()
+        assertEquals("", vm.uiState.value.monthFilter)
+        assertEquals(1, calendars.refreshes)
+    }
+
     @Test
     fun derivesSummaryFromFilteredItemsAndKeepsViewModeInState() = ledgerTest {
         val fake = FakeLedgerActions(
@@ -927,6 +946,7 @@ private class FakeLedgerActions(
         month: String?,
         category: String?,
         tag: String?,
+        missingAccountingDate: Boolean,
     ): Result<List<Expense>> {
         syncCallCount++
         syncGate?.await()

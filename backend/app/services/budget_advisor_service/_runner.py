@@ -59,6 +59,8 @@ def run_budget_advisor(
         timezone_name=timezone_name,
         home_currency_code=home_currency_code,
     )
+    if projection.undated_expense_count:
+        raise AppError("accounting_date_required", "存在账务日期待确认的账单，请核对原记录后再生成建议。", status_code=409)
     if projection.missing_rates:
         raise AppError("money_projection_unavailable", "预算输入缺少原币种或折算汇率，请补充后再生成建议。", status_code=409)
     home = projection.home_currency_code

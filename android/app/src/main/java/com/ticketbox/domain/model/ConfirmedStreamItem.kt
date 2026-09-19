@@ -14,7 +14,7 @@ package com.ticketbox.domain.model
  * net state (on offset rows too), never the row's own event.
  */
 sealed interface ConfirmedStreamItem {
-    val streamDate: String
+    val streamDate: String?
     val streamAmountCents: Long
     val root: Expense
     val lineageStatus: ExpenseLineageStatus
@@ -24,7 +24,7 @@ sealed interface ConfirmedStreamItem {
     val rowKey: String
 
     data class ExpenseRow(
-        override val streamDate: String,
+        override val streamDate: String?,
         override val streamAmountCents: Long,
         override val root: Expense,
         override val lineageStatus: ExpenseLineageStatus,
@@ -106,7 +106,7 @@ fun filterConfirmedStreamItems(
         return emptyList()
     }
     return items.filter { item ->
-        val monthMatched = cleanMonth.isBlank() || item.streamDate.startsWith(cleanMonth)
+        val monthMatched = cleanMonth.isBlank() || item.streamDate?.startsWith(cleanMonth) == true
         val categoryMatched = cleanCategory.isBlank() || item.streamCategory() == cleanCategory
         val tagMatched = cleanTagKey.isBlank() || item.root.streamTagNames().any { it.lowercase() == cleanTagKey }
         val queryMatched = cleanQuery.isBlank() || item.streamQueryFields().any { it.lowercase().contains(cleanQuery) }

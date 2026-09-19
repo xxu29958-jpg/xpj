@@ -43,16 +43,17 @@ internal class ExpenseLedgerRepositoryActions(
         month: String?,
         category: String?,
         tag: String?,
+        missingAccountingDate: Boolean,
     ): Result<List<Expense>> = core.errorHandler.safeCall {
         val bound = core.ledgerRequestGuard.bind()
-        core.syncConfirmedFromService(
-            bound = bound,
-            request = ConfirmedSyncRequest(
-                month = month,
-                category = category,
-                tag = tag,
-            ),
-        )
+        val cachedIds = if (missingAccountingDate) core.expenseDao.getConfirmed(bound.ledgerId)
+            .filter { it.streamSortId != null && it.streamDate == null }.mapNotNull { it.serverId }.toSet() else emptySet()
+        val current = core.syncConfirmedFromService(bound, ConfirmedSyncRequest(
+            month = month, category = category, tag = tag, missingAccountingDate = missingAccountingDate,
+        ))
+        // A corrected row left this filter; refresh its real projection instead of deleting its cached fact.
+        if (cachedIds.any { id -> current.none { it.id == id } }) core.syncConfirmedFromService(bound)
+        current
     }
 
     override suspend fun exportConfirmedCsv(

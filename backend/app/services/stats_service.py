@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import csv
+import json
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
-from datetime import timedelta
+from datetime import date, timedelta
 from io import StringIO
 
 from sqlalchemy import select
@@ -16,15 +17,15 @@ from app.services.csv_security import safe_csv_cell
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import normalize_currency_code
 from app.services.expense_service import filtered_confirmed_stream
+from app.services.ledger_calendar_service import current_calendar
 from app.services.money_projection_service import sum_projected_amounts
 from app.services.spending_contract_service import (
     accounting_zone,
+    calendar_month_bounds,
     canonical_merchant_display,
     confirmed_stream_query,
     current_accounting_month,
-    default_accounting_timezone_name,
     enabled_merchant_display_map,
-    month_bounds_utc,
 )
 from app.services.spending_contract_service import (
     clean_month as _contract_clean_month,
@@ -32,7 +33,7 @@ from app.services.spending_contract_service import (
 from app.services.spending_contract_service import (
     stat_time as _contract_stat_time,
 )
-from app.services.spending_projection_service import entry_gaps, read_projected_entries
+from app.services.spending_projection_service import entry_gaps, read_spending_period
 from app.services.stats_money import (
     export_money_values as _export_money_values,
 )
@@ -46,16 +47,6 @@ def _stat_time(expense: Expense):
     return _contract_stat_time(expense)
 
 
-def _stat_timezone(timezone_name: str | None = None) -> str:
-    return default_accounting_timezone_name(timezone_name)
-
-
-def _stat_month_bounds(
-    month: str, timezone_name: str | None = None
-):
-    return month_bounds_utc(month, timezone_name)
-
-
 def _clean_month_filter(month: str) -> str:
     return _contract_clean_month(month)
 
@@ -67,7 +58,7 @@ def list_categories(db: Session, tenant_id: str) -> list[str]:
 def list_months(
     db: Session, tenant_id: str, timezone_name: str | None = None
 ) -> list[str]:
-    resolved_timezone = _stat_timezone(timezone_name)
+    resolved_timezone = current_calendar(db, ledger_id=tenant_id).timezone_name
     current_month_label = current_accounting_month(resolved_timezone)
     stream = confirmed_stream_query(
         tenant_id=tenant_id,
@@ -134,11 +125,16 @@ def export_confirmed_csv(
             "stream_amount_cents",
             "lineage_status",
             "lineage_home_net_cents",
+            "accounting_time",
         ]
     )
     for entry in entries:
         writer.writerow(_confirmed_stream_csv_row(entry))
     return output.getvalue()
+
+
+def _export_stream_date(value: date | None) -> str:
+    return value.isoformat() if value is not None else ""
 
 
 def _confirmed_stream_csv_row(entry) -> list:
@@ -176,10 +172,11 @@ def _confirmed_stream_csv_row(entry) -> list:
             "",
             root.id,
             root.public_id,
-            entry.stream_date.isoformat(),
+            _export_stream_date(entry.stream_date),
             entry.stream_amount_cents,
             entry.lineage_status,
             entry.lineage_home_net_cents,
+            _export_accounting_time(root),
         ]
     offset = entry.offset
     if offset is None:
@@ -203,7 +200,7 @@ def _confirmed_stream_csv_row(entry) -> list:
         safe_csv_cell(offset.category),
         "",
         "",
-        entry.stream_date.isoformat(),
+        _export_stream_date(entry.stream_date),
         "",
         "",
         "",
@@ -214,11 +211,17 @@ def _confirmed_stream_csv_row(entry) -> list:
         offset.kind,
         root.id,
         root.public_id,
-        entry.stream_date.isoformat(),
+        _export_stream_date(entry.stream_date),
         entry.stream_amount_cents,
         entry.lineage_status,
         entry.lineage_home_net_cents,
+        _export_accounting_time(offset),
     ]
+
+
+def _export_accounting_time(fact) -> str:
+    snapshot = fact.accounting_time
+    return json.dumps(snapshot.model_dump(mode="json"), ensure_ascii=False) if snapshot is not None else ""
 
 
 def _amount_rows(grouped, key):
@@ -255,19 +258,22 @@ def _tag_rows(db, *, tenant_id, entries):
 
 def _read_stats_entries(db, *, tenant_id, month, timezone_name, home_currency_code, tag=None):
     home = normalize_currency_code(home_currency_code or require_runtime_home_currency_code(db))
-    entries = read_projected_entries(db, tenant_id=tenant_id, ranges=[_stat_month_bounds(month, timezone_name)],
+    projection = read_spending_period(db, tenant_id=tenant_id, ranges=[calendar_month_bounds(month)],
         timezone_name=timezone_name, home=home, tag=tag)
-    return home, entries
+    return home, projection
 
 
 def monthly_stats(db: Session, month: str, tenant_id: str, timezone_name: str | None = None,
     tag: str | None = None, home_currency_code: str | None = None,
 ) -> dict:
     month = _clean_month_filter(month)
-    home, entries = _read_stats_entries(db, tenant_id=tenant_id, month=month, timezone_name=timezone_name,
+    home, projection = _read_stats_entries(db, tenant_id=tenant_id, month=month, timezone_name=timezone_name,
         home_currency_code=home_currency_code, tag=tag)
+    entries = projection.entries
+    undated = projection.undated_expense_count
     return {"month": month, "home_currency_code": home, "missing_rates": entry_gaps(entries),
-        "total_amount_cents": sum_projected_amounts((entry.amount_cents for entry in entries), label="stats.month_total"),
+        "undated_expense_count": undated,
+        "total_amount_cents": None if undated else sum_projected_amounts((entry.amount_cents for entry in entries), label="stats.month_total"),
         "count": len(entries), "by_category": _category_rows(entries),
         "by_tag": _tag_rows(db, tenant_id=tenant_id, entries=entries)}
 
@@ -315,7 +321,7 @@ def _frequent_merchants(db, *, tenant_id, entries):
 
 def _recent_seven_days(entries, *, month, timezone_name):
     zone = accounting_zone(timezone_name)
-    start, end = (bound.astimezone(zone).date() for bound in _stat_month_bounds(month, timezone_name))
+    start, end = calendar_month_bounds(month)
     last_day = min(now_utc().astimezone(zone).date(), end - timedelta(days=1))
     first_day = max(start, last_day - timedelta(days=6))
     return sum_projected_amounts((entry.amount_cents for entry in entries
@@ -326,17 +332,22 @@ def lifestyle_stats(db: Session, month: str, tenant_id: str, timezone_name: str 
     home_currency_code: str | None = None,
 ) -> dict:
     month = _clean_month_filter(month)
-    home, entries = _read_stats_entries(db, tenant_id=tenant_id, month=month, timezone_name=timezone_name,
+    timezone_name = current_calendar(db, ledger_id=tenant_id).timezone_name
+    home, projection = _read_stats_entries(db, tenant_id=tenant_id, month=month, timezone_name=timezone_name,
         home_currency_code=home_currency_code)
+    entries = projection.entries
     amount_by_id = {entry.root_expense_id: entry.amount_cents for entry in entries if entry.entry_kind == "expense"}
     expenses = list(db.scalars(ledger_scoped_select(Expense, tenant_id).where(
         Expense.id.in_(amount_by_id)))) if amount_by_id else []
     categories = {row["category"]: row["amount_cents"] for row in _category_rows(entries)}
+    undated_categories = projection.undated_by_category
+    undated = sum(undated_categories.values())
     return {"month": month, "home_currency_code": home, "missing_rates": entry_gaps(entries),
-        "ai_subscription_amount_cents": categories.get("AI订阅", 0),
-        "digital_amount_cents": categories.get("数码", 0),
-        "max_expense": _highest_expense(expenses, amount_by_id),
-        "recent_7_days_amount_cents": _recent_seven_days(entries, month=month, timezone_name=timezone_name),
+        "undated_expense_count": undated,
+        "ai_subscription_amount_cents": None if undated_categories.get("AI订阅") else categories.get("AI订阅", 0),
+        "digital_amount_cents": None if undated_categories.get("数码") else categories.get("数码", 0),
+        "max_expense": None if undated else _highest_expense(expenses, amount_by_id),
+        "recent_7_days_amount_cents": None if undated else _recent_seven_days(entries, month=month, timezone_name=timezone_name),
         "frequent_merchants": _frequent_merchants(db, tenant_id=tenant_id, entries=entries),
         "best_value_expenses": _ranked_scored_expenses(expenses, amount_by_id=amount_by_id, score_attr="value_score"),
         "most_regretted_expenses": _ranked_scored_expenses(expenses, amount_by_id=amount_by_id, score_attr="regret_score")}

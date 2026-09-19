@@ -44,6 +44,7 @@ data class RepositoryViewModelRepositories(
     val budgetRepository: BudgetActions? = null,
     val reportsRepository: ReportsActions? = null,
     val debtRepository: DebtActions? = null,
+    val calendars: com.ticketbox.data.repository.LedgerCalendarReader? = null,
 )
 
 @Suppress("UNCHECKED_CAST")
@@ -64,9 +65,10 @@ fun repositoryViewModelFactory(
                 repository,
                 checkNotNull(repositories.debtRepository) { "LedgerViewModel requires DebtActions for R13-6 capability" },
                 onDataChanged = onExpenseDataChanged,
+                calendars = repositories.calendars,
             )
             GlobalSearchViewModel::class.java -> GlobalSearchViewModel(repository)
-            MonthlyStatsViewModel::class.java -> MonthlyStatsViewModel(repository)
+            MonthlyStatsViewModel::class.java -> MonthlyStatsViewModel(repository, calendars = repositories.calendars)
             StatsBudgetViewModel::class.java -> StatsBudgetViewModel(checkNotNull(repositories.budgetRepository))
             StatsReportsViewModel::class.java -> StatsReportsViewModel(repositories.reportsRepository)
             else -> error("Unsupported ViewModel: ${modelClass.name}")
@@ -78,21 +80,23 @@ fun repositoryViewModelFactory(
 fun budgetViewModelFactory(
     repository: BudgetActions,
     onDataChanged: () -> Unit = {},
+    calendars: com.ticketbox.data.repository.LedgerCalendarReader? = null,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return BudgetViewModel(repository, onDataChanged = onDataChanged) as T
+        return BudgetViewModel(repository, onDataChanged = onDataChanged, calendars = calendars) as T
     }
     override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T {
-        return BudgetViewModel(repository, onDataChanged = onDataChanged, savedStateHandle = extras.createSavedStateHandle()) as T
+        return BudgetViewModel(repository, onDataChanged = onDataChanged, savedStateHandle = extras.createSavedStateHandle(), calendars = calendars) as T
     }
 }
 
 @Suppress("UNCHECKED_CAST")
 fun budgetAdviceViewModelFactory(
     repository: BudgetActions,
+    calendars: com.ticketbox.data.repository.LedgerCalendarReader? = null,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return BudgetAdviceViewModel(repository) as T
+        return BudgetAdviceViewModel(repository, calendars = calendars) as T
     }
 }
 
@@ -213,9 +217,10 @@ fun createDebtGoalViewModelFactory(
 @Suppress("UNCHECKED_CAST")
 fun createSpendingGoalViewModelFactory(
     edits: com.ticketbox.data.repository.GoalEditActions,
+    calendars: com.ticketbox.data.repository.LedgerCalendarReader? = null,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return CreateSpendingGoalViewModel(edits) as T
+        return CreateSpendingGoalViewModel(edits, calendars) as T
     }
 }
 

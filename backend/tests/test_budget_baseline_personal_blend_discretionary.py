@@ -27,6 +27,7 @@ from app.services.budget_baseline_service import (
     compute_monthly_discretionary,
     personal_trust_weight,
 )
+from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from app.services.learning_service import compute_budget_quantile_suggestion
 from app.services.time_service import now_utc
 
@@ -187,21 +188,21 @@ def test_personal_baseline_aggregates_per_month_per_category(identity) -> None: 
             (datetime(2026, 3, 1, tzinfo=base.tzinfo), "餐饮", 300_00),
         ]
         for spent_at, category, amount in rows:
-            db.add(
-                Expense(
-                    tenant_id="owner",
-                    status="confirmed",
-                    amount_cents=amount,
-                    home_currency_code="CNY",
-                    original_currency_code="CNY",
-                    original_amount_minor=amount,
-                    category=category,
-                    expense_time=spent_at,
-                    confirmed_at=spent_at,
-                    created_at=spent_at,
-                    updated_at=spent_at,
-                )
+            _calendar_expense = Expense(
+                tenant_id="owner",
+                status="confirmed",
+                amount_cents=amount,
+                home_currency_code="CNY",
+                original_currency_code="CNY",
+                original_amount_minor=amount,
+                category=category,
+                expense_time=spent_at,
+                confirmed_at=spent_at,
+                created_at=spent_at,
+                updated_at=spent_at,
             )
+            refresh_legacy_expense_time(db, _calendar_expense)
+            db.add(_calendar_expense)
         db.commit()
         baseline = compute_budget_quantile_suggestion(
             db, tenant_id="owner", category="餐饮", home_currency_code="CNY", include_zero_months=False,
@@ -223,21 +224,22 @@ def test_personal_baseline_excludes_pending_and_rejected(identity) -> None:  # n
             ("pending", 999_00),
             ("rejected", 888_00),
         ]:
-            db.add(
-                Expense(
-                    tenant_id="owner",
-                    status=status,
-                    amount_cents=amount,
-                    home_currency_code="CNY",
-                    original_currency_code="CNY",
-                    original_amount_minor=amount,
-                    category="餐饮",
-                    expense_time=base,
-                    confirmed_at=base if status == "confirmed" else None,
-                    created_at=base,
-                    updated_at=base,
-                )
+            _calendar_expense = Expense(
+                tenant_id="owner",
+                status=status,
+                amount_cents=amount,
+                home_currency_code="CNY",
+                original_currency_code="CNY",
+                original_amount_minor=amount,
+                category="餐饮",
+                expense_time=base,
+                confirmed_at=base if status == "confirmed" else None,
+                created_at=base,
+                updated_at=base,
             )
+            if _calendar_expense.status == "confirmed":
+                refresh_legacy_expense_time(db, _calendar_expense)
+            db.add(_calendar_expense)
         db.commit()
         baseline = compute_budget_quantile_suggestion(
             db, tenant_id="owner", category="餐饮", home_currency_code="CNY", include_zero_months=False, min_months=1,

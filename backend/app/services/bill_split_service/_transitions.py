@@ -13,6 +13,8 @@ from app.config import get_settings
 from app.errors import AppError
 from app.fx_constants import FX_SOURCE_BASE, FX_STATUS_READY
 from app.models import BillSplitInvitation, Expense, LedgerMember
+from app.schemas._accounting_time import AccountingTimeSnapshot
+from app.services.accounting_time_service import apply_accounting_time, legacy_accounting_time
 from app.services.bill_split_service._common import (
     SPLIT_RECEIVED_SOURCE,
     _audit,
@@ -21,8 +23,9 @@ from app.services.bill_split_service._common import (
 from app.services.bill_split_service._query import get_invitation
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.debt_service import create_bill_split_debt
-from app.services.exchange_rate_service import default_rate_date
+from app.services.exchange_rate_service import expense_rate_date
 from app.services.expense_revision_service import record_confirmation_revision
+from app.services.ledger_calendar_service import calendar_revision, current_calendar
 from app.services.time_service import ensure_utc, now_utc
 
 
@@ -69,6 +72,7 @@ def accept_invitation(
         target_ledger_id=target_ledger_id,
         accepted_at=accepted_at,
     )
+    _freeze_received_time(db, inv, received)
     db.add(received)
 
     lost_accept = _flush_received_expense(db, public_id, target_ledger_id)
@@ -170,7 +174,6 @@ def _build_received_expense(
         original_currency_code=inv.home_currency_code,
         original_amount_minor=inv.amount_cents,
         exchange_rate_to_cny=Decimal("1"),
-        exchange_rate_date=default_rate_date(inv.expense_time_snapshot),
         exchange_rate_source=FX_SOURCE_BASE,
         fx_status=FX_STATUS_READY,
         merchant=inv.merchant_snapshot,
@@ -184,6 +187,24 @@ def _build_received_expense(
         confirmed_at=accepted_at,
         split_origin_invitation_id=inv.public_id,
     )
+
+
+def _freeze_received_time(db: Session, inv: BillSplitInvitation, received: Expense) -> None:
+    if inv.accounting_time_snapshot is None:
+        rule = calendar_revision(db, ledger_id=received.tenant_id, revision=1)
+    else:
+        rule = current_calendar(db, ledger_id=received.tenant_id)
+    if rule is None:
+        raise AppError("calendar_revision_conflict", status_code=409)
+    if inv.accounting_time_snapshot is None:
+        snapshot = legacy_accounting_time(expense_time=inv.expense_time_snapshot,
+            confirmed_at=received.confirmed_at, ledger_timezone=rule.timezone_name, calendar_revision=rule.revision)
+    else:
+        source = AccountingTimeSnapshot.model_validate(inv.accounting_time_snapshot)
+        snapshot = source.model_copy(update={"calendar_revision": rule.revision,
+            "basis": "recorded_date" if source.accounting_date is not None else "legacy_unknown"})
+    apply_accounting_time(received, snapshot)
+    received.exchange_rate_date = expense_rate_date(received)
 
 
 def _flush_received_expense(

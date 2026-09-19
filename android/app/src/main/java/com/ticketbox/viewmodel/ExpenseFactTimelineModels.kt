@@ -59,6 +59,7 @@ private val FACT_FIELD_ORDER: List<Pair<String, Int>> = listOf(
     "note" to R.string.expense_fact_timeline_field_note,
     "tags" to R.string.expense_fact_timeline_field_tags,
     "expense_time" to R.string.expense_fact_timeline_field_time,
+    "accounting_time" to R.string.expense_fact_timeline_field_time,
     "value_score" to R.string.expense_fact_timeline_field_value_score,
     "regret_score" to R.string.expense_fact_timeline_field_regret_score,
     "items" to R.string.expense_fact_timeline_field_items,
@@ -76,9 +77,22 @@ private fun formatFactValue(
         "amount_cents" -> UiText.raw(formatHomeAmountSnapshot(value, snapshot, currency))
         "original_amount_minor" -> formatOriginalAmountSnapshot(value, snapshot)
         "expense_time" -> UiText.raw(displayDateTime(value.toString()))
+        "accounting_time" -> formatAccountingTimeSnapshot(value)
         "items", "splits" -> formatLineCountSnapshot(value)
         else -> UiText.raw(value.toString())
     }
+}
+
+private fun formatAccountingTimeSnapshot(value: Any): UiText {
+    val time = value as? Map<*, *> ?: return UiText.res(R.string.calendar_basis_unknown)
+    val day = time["accounting_date"]?.toString()?.let(UiText::raw) ?: UiText.res(R.string.calendar_date_pending)
+    val precision = when (time["precision"]) {
+        "date_only" -> UiText.res(R.string.calendar_date_only_label)
+        "instant" -> time["instant_utc"]?.toString()?.let { UiText.raw(displayDateTime(it)) }
+        else -> UiText.res(if (time["basis"]?.toString()?.startsWith("legacy") == true)
+            R.string.calendar_legacy_basis_label else R.string.calendar_clock_unknown)
+    }
+    return UiText.compound(listOfNotNull(day, precision), " · ")
 }
 
 private fun formatHomeAmountSnapshot(
@@ -169,11 +183,12 @@ private fun ExpenseRevision.correctionTimelineContent(
     memberNames: Map<Long, String>?,
 ): TimelineCorrectionContent {
     val beforeSnapshot = before ?: emptyMap()
+    val visibleFields = if ("accounting_time" in changedFields) changedFields - "expense_time" else changedFields
     val collections = mutableListOf<FactTimelineCollectionDetail>()
     val collectionContext = TimelineCollectionContext(beforeSnapshot, after, currency, memberNames)
     val deltas = buildList {
         FACT_FIELD_ORDER
-            .filter { (field, _) -> field in changedFields }
+            .filter { (field, _) -> field in visibleFields }
             .forEach { (field, labelRes) ->
                 if (field == "splits") {
                     val beforeCount = formatFactValue(field, beforeSnapshot[field], beforeSnapshot, currency)

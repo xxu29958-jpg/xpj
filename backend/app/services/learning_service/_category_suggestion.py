@@ -39,8 +39,8 @@ from app.services.learning_service._algorithm_registry import (
     CATEGORY_SUGGESTION,
     canonical_marker_hash,
 )
-from app.services.spending_contract_service import stat_time_expr
-from app.services.time_service import now_utc
+from app.services.ledger_calendar_service import current_calendar
+from app.services.time_service import now_utc, strict_zone
 
 # Source of truth lives in the algorithm registry. Keep the
 # module-level constant as a shim so callers / tests that import
@@ -133,12 +133,12 @@ def compute_category_suggestion(
     if not normalised:
         return None
 
-    cutoff = now_utc() - timedelta(days=max(look_back_days, 0))
-    time_expr = stat_time_expr()
+    zone = strict_zone(current_calendar(db, ledger_id=tenant_id).timezone_name)
+    cutoff = now_utc().astimezone(zone).date() - timedelta(days=max(look_back_days, 0))
     conditions = [
         Expense.tenant_id == tenant_id,
         Expense.status == "confirmed",
-        time_expr >= cutoff,
+        Expense.accounting_date >= cutoff,
         func.lower(func.trim(Expense.merchant)) == normalised,
     ]
     if expense_id is not None:

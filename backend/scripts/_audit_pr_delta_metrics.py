@@ -18,8 +18,8 @@ Auto-discovered by :file:`release_audit.py` (any ``_audit_*.py`` in
 What this lane counts
 ---------------------
 
-- **mutate_token_carriers** — routes whose request body declares
-  ``expected_row_version`` or ``expected_row_version_by_id``.
+- **mutate_token_carriers** — routes whose request body declares an OCC field
+  recognized by the shared mutation-token coverage audit.
 - **mutate_token_exempted** — routes in
   :data:`_mutate_token_ledger.ALLOWLIST`.
 - **mutate_token_reason_<code>** — one counter per reason_code in

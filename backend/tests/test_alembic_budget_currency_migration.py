@@ -67,15 +67,18 @@ def test_unknown_budget_currency_is_filled_only_by_owner_adoption():
     reset_schema()
     try:
         run_alembic(command.upgrade, "20260729_0001")
+        owner_id, _ = seed_owner()
         with SessionLocal() as db:
-            bootstrap = bootstrap_owner(db, account_name="Owner", ledger_name="Owner ledger", device_name="migration-admin")
             key = _seed_budget(db)
         run_alembic(command.upgrade, _HEAD)
         with engine.connect() as db:
             assert db.scalar(text("SELECT home_currency_code FROM budgets")) is None
         run_alembic(command.upgrade, "head")
         with SessionLocal() as db:
+            # Authenticate the existing historical owner only on the current schema.
+            bootstrap = bootstrap_owner(db, account_name="Owner", ledger_name="Owner ledger", device_name="migration-admin")
             auth = authenticate_session_token(db, bootstrap.admin_token, {"app", "admin"})
+            assert auth.account_id == owner_id
             preview = adoption_preview(db)
             receipt = adopt_currency_binding(db, auth=auth, idempotency_key=uuid4(), home_code="CNY",
                 expected_contract_version=preview.currency_contract_version, expected_state=preview.state,

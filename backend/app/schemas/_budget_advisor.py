@@ -51,6 +51,7 @@ class ProjectionGapDto(BaseModel):
 
 
 class BudgetInputsResponse(BaseModel):
+    undated_expense_count: int = Field(default=0, ge=0)
     model_config = ConfigDict(from_attributes=True)
 
     month: str

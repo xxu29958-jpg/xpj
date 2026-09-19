@@ -31,6 +31,7 @@ from app.routes.web_common import (
 from app.schemas._recurring_occurrence import RecurringOccurrenceWriteRequest
 from app.services.expense_query import resolve_expense
 from app.services.expense_service import fetch_expense_row_version_in_status
+from app.services.ledger_calendar_service import current_ledger_month
 from app.services.recurring_occurrence_command import set_occurrence_payment
 from app.services.recurring_occurrence_query import (
     eligible_payment,
@@ -39,10 +40,6 @@ from app.services.recurring_occurrence_query import (
     occurrence_response,
 )
 from app.services.recurring_service import get_recurring_item
-from app.services.spending_contract_service import (
-    accounting_datetime_label,
-    stat_time,
-)
 
 router = APIRouter()
 
@@ -71,7 +68,7 @@ def _payment_view(row, *, ledger_id, item, occurrence) -> dict[str, object]:
         "merchant": row.merchant or "未填写商家",
         "home_currency_code": row.home_currency_code,
         "amount": _amount_yuan(row.amount_cents, row.home_currency_code) if row.home_currency_code else "币种待确认",
-        "date": accounting_datetime_label(stat_time(row), pattern="%Y-%m-%d"),
+        "date": str(row.accounting_date or ""),
         "key": uuid4().hex,
         "href": _payment_edit_href(
             ledger_id=ledger_id, expense_id=row.id, item=item, occurrence=occurrence,
@@ -147,7 +144,7 @@ def _page(
     options = _list_ledger_options(db)
     selected = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
     item = get_recurring_item(db, tenant_id=selected, public_id=public_id)
-    period = occurrence_period(month)
+    period = occurrence_period(month or current_ledger_month(db, ledger_id=selected))
     occurrence = occurrence_response(db, item=item, period=period)
     context = _base_ctx(
         request, db=db, options=options, selected_ledger_id=selected, page_title="本期固定支出",
