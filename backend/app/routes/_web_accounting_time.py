@@ -24,6 +24,20 @@ async def accounting_time_form_fields(request: Request) -> dict[str, str] | None
     return {name: str(raw[name]) for name in TIME_FIELDS if name in raw}
 
 
+def _resolve_form_instant(
+    wall: datetime, zone: str | None, offset: int | None,
+) -> tuple[datetime, int]:
+    """Resolve the submitted wall clock using its actual zone or offset evidence."""
+    if zone:
+        instant = resolve_local_datetime(wall, zone, utc_offset_seconds=offset)
+        return instant, int(instant.astimezone(strict_zone(zone)).utcoffset().total_seconds())
+    if offset is None:
+        raise ValueError("missing source timezone or offset")
+    if wall.utcoffset() is not None and wall.utcoffset() != timedelta(seconds=offset):
+        raise ValueError("conflicting explicit offsets")
+    return ensure_utc(wall.replace(tzinfo=timezone(timedelta(seconds=offset)))), offset
+
+
 def parse_web_accounting_time(
     wall_time: str | None, fields: dict[str, str] | None,
 ) -> AccountingTimeInput | None:
@@ -39,15 +53,7 @@ def parse_web_accounting_time(
         if precision == "instant":
             wall = datetime.fromisoformat((wall_time or "").replace("Z", "+00:00"))
             local_date = wall.date()
-            if zone:
-                instant = resolve_local_datetime(wall, zone, utc_offset_seconds=offset)
-                offset = int(instant.astimezone(strict_zone(zone)).utcoffset().total_seconds())
-            elif offset is not None:
-                if wall.utcoffset() is not None and wall.utcoffset() != timedelta(seconds=offset):
-                    raise ValueError("conflicting explicit offsets")
-                instant = ensure_utc(wall.replace(tzinfo=timezone(timedelta(seconds=offset))))
-            else:
-                raise ValueError("missing source timezone or offset")
+            instant, offset = _resolve_form_instant(wall, zone, offset)
         return AccountingTimeInput(
             precision=precision, calendar_revision=int(fields.get("calendar_revision", "")),
             user_local_date=local_date, instant_utc=instant, source_timezone=zone,
@@ -116,7 +122,9 @@ def time_form_projection(values: dict[str, str]) -> dict:
     return {**values, "offset_options": options}
 
 
-def changed_time_input(expense, rule, wall_time: str | None, fields: dict[str, str]):
+def changed_time_input(
+    expense, rule, wall_time: str | None, fields: dict[str, str],
+) -> AccountingTimeInput | None:
     # Native pending edits have always treated a blank clock as unchanged;
     # correction's explicit-null adapter owns clearing a known clock. A blank
     # date-only clock must still carry its real date through the value object.
