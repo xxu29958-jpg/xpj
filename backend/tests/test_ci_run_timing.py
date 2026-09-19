@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 import os
 import subprocess
@@ -266,6 +267,28 @@ def test_github_job_fetch_paginates() -> None:
     jobs = ci_run_timing.fetch_github_jobs("o/r", 9, 1, "token", urlopen=opener)
     assert len(jobs) == 101
     assert jobs[-1]["name"] == "two"
+
+
+def test_job_log_authorization_is_not_redirected() -> None:
+    text_blob = b'AUDIT_LANE_TIMING {"lane":"repository-weight","complete":true}\n'
+    zip_buf = io.BytesIO()
+    with zipfile.ZipFile(zip_buf, "w") as archive:
+        archive.writestr("job.txt", text_blob.decode("utf-8"))
+    payloads = (text_blob, zip_buf.getvalue())
+    blob_url = "https://productionresultssa15.blob.core.windows.net/job-logs"
+    handler = ci_run_timing.urllib.request.HTTPRedirectHandler()
+    for payload in payloads:
+        def opener(request, body=payload):
+            redirected = handler.redirect_request(request, None, 302, "Found", {}, blob_url)
+            assert request.get_header("Authorization") == "Bearer secret-token"
+            assert request.has_header("Authorization")
+            assert redirected.get_header("Authorization") is None
+            assert not redirected.has_header("Authorization")
+            return _FakeResponse(body)
+
+        text = ci_run_timing.fetch_job_logs("o/r", 9, "secret-token", urlopen=opener)
+        assert "AUDIT_LANE_TIMING" in text
+        assert "repository-weight" in text
 
 
 def test_cli_reads_fixture_jobs(tmp_path: Path) -> None:

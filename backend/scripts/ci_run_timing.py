@@ -1507,12 +1507,12 @@ def fetch_job_logs(
     request = urllib.request.Request(
         f"{_GITHUB_API}/repos/{repository}/actions/jobs/{job_id}/logs",
         headers={
-            "Authorization": f"Bearer {token}",
             "Accept": "*/*",
-            "X-GitHub-Api-Version": "2022-11-28",
             "User-Agent": "ticketbox-ci-run-timing",
         },
     )
+    request.add_unredirected_header("Authorization", f"Bearer {token}")
+    request.add_unredirected_header("X-GitHub-Api-Version", "2022-11-28")
     with opener(request) as response:
         return _decode_log_blob(response.read())
 
