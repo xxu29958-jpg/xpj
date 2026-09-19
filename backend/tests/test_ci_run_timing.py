@@ -29,18 +29,31 @@ def _job(**fields: object) -> dict:
         "created_at": "2026-09-18T02:00:00Z",
         "started_at": "2026-09-18T02:01:00Z",
         "completed_at": "2026-09-18T02:11:00Z",
+        "steps": [{
+            "name": "Audit (release lanes)",
+            "conclusion": "success",
+            "started_at": "2026-09-18T02:01:05Z",
+            "completed_at": "2026-09-18T02:10:50Z",
+        }],
     }
     row.update(fields)
     return row
 
 
-def _audit_lane(name: str = "repository-weight", returncode: int = 0) -> dict[str, object]:
-    return {
+def _audit_lane(name: str = "repository-weight", returncode: int = 0, **fields: object) -> dict[str, object]:
+    row: dict[str, object] = {
         "lane": name,
         "filename": f"_audit_{name.replace('-', '_')}.py",
         "returncode": returncode,
+        "started_utc": "2026-09-18T02:00:00Z",
+        "ended_utc": "2026-09-18T02:00:04Z",
+        "elapsed_s": 4.217,
+        "elapsed_clock": "monotonic",
+        "measurement_kind": "direct",
         "complete": True,
     }
+    row.update(fields)
+    return row
 
 
 def _audit_run(lanes: list[str] | None = None, *, returncode: int = 0, complete: bool = True) -> dict[str, object]:
@@ -353,6 +366,7 @@ def test_required_gate_wait_uses_last_required_check() -> None:
     assert wait["missing_checks"] == []
     assert wait["required_checks"] == ["Backend", "Android", "CodeQL", "Connected (emulator)"]
     assert wait["required_check_source"] == "explicit_cli"
+    assert wait["workflow_time_errors"] == []
     assert report["identity_complete"] is True
     assert report["complete"] is True
     workflow = report["workflows"][0]
@@ -685,7 +699,8 @@ def test_remote_mode_fetches_all_attempts_and_scope_logs() -> None:
         f"Qualification checkout SHA: {'b' * 40}; source SHA: {'a' * 40}\r\n"
         "2026-09-19T10:42:32.1076787Z "
         'AUDIT_LANE_TIMING {"lane":"repository-weight","filename":"_audit_repository_weight.py",'
-        '"returncode":0,"complete":true}\r\n'
+        '"returncode":0,"started_utc":"2026-09-19T10:42:28Z","ended_utc":"2026-09-19T10:42:32Z",'
+        '"elapsed_s":4.1,"elapsed_clock":"monotonic","measurement_kind":"direct","complete":true}\r\n'
         "2026-09-19T10:42:32.2076787Z "
         'AUDIT_RUN_TIMING {"expected_lanes":["repository-weight"],"expected_lane_count":1,'
         '"completed_lane_count":1,"overall_returncode":0,"complete":true}\r\n'
@@ -1036,4 +1051,163 @@ def test_inverted_gate_times_keep_original_and_fail_complete() -> None:
     assert wait["required_check_source"] == "explicit_cli"
     assert any("inverted required-gate wait timestamps" in item for item in report["incomplete_reasons"])
     assert report["complete"] is False
+
+
+def test_per_workflow_inversion_is_not_hidden_by_global_minima() -> None:
+    report = ci_run_timing.build_report(
+        [
+            _finished_ci(
+                run_id=1,
+                created_at="2026-09-18T02:00:00Z",
+                run_started_at="2026-09-18T02:05:00Z",
+                jobs=[_job(name="Backend", completed_at="2026-09-18T02:11:00Z")],
+            ),
+            _finished_ci(
+                run_id=2,
+                name="CodeQL",
+                created_at="2026-09-18T02:20:00Z",
+                run_started_at="2026-09-18T02:04:00Z",
+                jobs=[_job(
+                    id=2, name="CodeQL", run_id=2, workflow_name="CodeQL",
+                    started_at="2026-09-18T02:04:30Z", completed_at="2026-09-18T02:18:00Z",
+                )],
+            ),
+        ],
+        repository="xxu29958-jpg/xpj",
+        required_checks=["Backend", "CodeQL"],
+    )
+    wait = report["required_gate_wait"]
+    assert wait["trigger_created_at"].startswith("2026-09-18T02:00:00")
+    assert wait["first_workflow_started_at"].startswith("2026-09-18T02:04:00")
+    assert wait["complete"] is False
+    assert any("inverted workflow timestamps for CodeQL" in item for item in wait["workflow_time_errors"])
+    assert report["runner_execution"]["known_minutes"] > 0
+    assert report["complete"] is False
+
+
+def test_audit_lane_missing_elapsed_or_utc_is_incomplete() -> None:
+    lane = _audit_lane()
+    del lane["elapsed_s"]
+    del lane["started_utc"]
+    report = ci_run_timing.build_report(
+        [_finished_ci(jobs=[_job()], checkout="b" * 40)],
+        repository="xxu29958-jpg/xpj",
+        required_checks=["Backend contracts"],
+        audit_lanes=[lane],
+        audit_run=_audit_run(),
+    )
+    assert report["complete"] is False
+    assert any("elapsed_s" in item for item in report["incomplete_reasons"])
+    assert any("started_utc" in item for item in report["incomplete_reasons"])
+    assert report["runner_execution"]["known_minutes"] == 10
+
+
+def test_duplicate_audit_run_markers_are_incomplete() -> None:
+    text = (
+        'AUDIT_RUN_TIMING {"expected_lanes":["repository-weight"],"expected_lane_count":1,'
+        '"completed_lane_count":1,"overall_returncode":0,"complete":true}\n'
+    ) * 2
+    markers = ci_run_timing.parse_audit_run_markers(text)
+    audit_run, errors = ci_run_timing._resolve_audit_run(markers)
+    assert len(markers) == 2
+    assert audit_run is None
+    assert errors == ["duplicate AUDIT_RUN_TIMING markers"]
+    report = ci_run_timing.build_report(
+        [_finished_ci(jobs=[_job()], checkout="b" * 40)],
+        repository="xxu29958-jpg/xpj",
+        required_checks=["Backend contracts"],
+        audit_lanes=[_audit_lane()],
+        audit_run=audit_run,
+        evidence_errors=errors,
+    )
+    assert report["complete"] is False
+    assert "duplicate AUDIT_RUN_TIMING markers" in report["incomplete_reasons"]
+    assert report["runner_execution"]["known_minutes"] == 10
+
+
+def test_audit_success_with_later_job_failure_is_not_contradiction() -> None:
+    job = _job(
+        conclusion="failure",
+        steps=[
+            {
+                "name": "Audit (release lanes)",
+                "conclusion": "success",
+                "started_at": "2026-09-18T02:01:05Z",
+                "completed_at": "2026-09-18T02:08:00Z",
+            },
+            {
+                "name": "API contract",
+                "conclusion": "failure",
+                "started_at": "2026-09-18T02:08:01Z",
+                "completed_at": "2026-09-18T02:09:00Z",
+            },
+            {
+                "name": "pip-audit",
+                "conclusion": "failure",
+                "started_at": "2026-09-18T02:09:01Z",
+                "completed_at": "2026-09-18T02:10:00Z",
+            },
+        ],
+    )
+    report = ci_run_timing.build_report(
+        [_finished_ci(jobs=[job], checkout="b" * 40)],
+        repository="xxu29958-jpg/xpj",
+        required_checks=["Backend contracts"],
+        audit_lanes=[_audit_lane()],
+        audit_run=_audit_run(),
+    )
+    assert not any("contradict" in item for item in report["incomplete_reasons"])
+    assert report["complete"] is True
+    assert report["runner_execution"]["known_minutes"] == 10
+
+
+def test_cli_qualification_log_checkout_matches_workflow_row(tmp_path: Path) -> None:
+    jobs = tmp_path / "jobs.json"
+    jobs.write_text(json.dumps({
+        "metadata": {
+            "id": 1, "name": "CI", "event": "pull_request", "head_sha": "a" * 40,
+            "status": "completed", "conclusion": "success", "run_attempt": 1,
+            "created_at": "2026-09-18T02:00:00Z", "run_started_at": "2026-09-18T02:00:05Z",
+            "pull_requests": [{"base": {"sha": "d" * 40}}],
+        },
+        "jobs": [_job(name="Backend")],
+    }), encoding="utf-8")
+    qual = tmp_path / "qual.log"
+    qual.write_text(f"Qualification checkout SHA: {'c' * 40}; source SHA: {'a' * 40}\n", encoding="utf-8")
+    output = tmp_path / "timing.json"
+    result = subprocess.run(
+        [
+            sys.executable, str(SCRIPTS / "ci_run_timing.py"),
+            "--jobs-json", str(jobs), "--attempt", "1",
+            "--required-check", "Backend",
+            "--qualification-log", str(qual),
+            "--output-json", str(output),
+        ],
+        capture_output=True, text=True, encoding="utf-8",
+    )
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert result.returncode == 0
+    assert payload["subject"]["checkout_shas"] == ["c" * 40]
+    assert payload["workflows"][0]["checkout_sha"] == "c" * 40
+    assert payload["identity_complete"] is True
+    assert payload["complete"] is True
+
+
+def test_android_phase_evidence_walks_full_attempt_lineage() -> None:
+    first = _job(
+        name="Connected execution",
+        workflow_name="Android Connected Test",
+        steps=_connected_steps(run_started="2026-09-18T02:15:00Z", run_ended="2026-09-18T02:35:00Z"),
+    )
+    second = {**first, "id": 2, "run_attempt": 2, "created_at": "2026-09-18T03:35:00Z"}
+    third = {**first, "id": 3, "run_attempt": 3, "created_at": "2026-09-18T04:35:00Z"}
+    phases = {row["name"]: row for row in ci_run_timing.android_phases_from_attempts([
+        {"attempt": 1, "jobs": [first]},
+        {"attempt": 2, "jobs": [second]},
+        {"attempt": 3, "jobs": [third]},
+    ])}
+    row = phases["emulator_prepare_install_test_exit"]
+    assert row["attempt"] == 3
+    assert row["evidence_attempt"] == 1
+    assert row["inherited"] is True
 
