@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterator
 from html import unescape
+from unittest.mock import Mock
 from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
@@ -15,6 +16,8 @@ from app.database import SessionLocal
 from app.middleware.csrf import CSRF_COOKIE_NAME
 from app.models import Expense
 from app.routes.web_auth import SESSION_COOKIE_NAME
+from app.services import pending_fx_task_service
+from app.services.fx_rate_provider import FxFetchError
 from app.services.income_plan_service import create_income_plan
 from tests._local_web_identity_support import (
     _connect_local_session,
@@ -31,7 +34,13 @@ _PAYMENT_MONTH = "2026-09"
 
 
 @pytest.fixture()
-def installed_web() -> Iterator[_InstalledWeb]:
+def installed_web(monkeypatch) -> Iterator[_InstalledWeb]:
+    # These journeys exercise manual FX recovery while real background tasks run.
+    monkeypatch.setattr(
+        pending_fx_task_service,
+        "fetch_pending_fx_reference",
+        Mock(side_effect=FxFetchError("provider unavailable")),
+    )
     yield from installed_web_setup()
 
 
