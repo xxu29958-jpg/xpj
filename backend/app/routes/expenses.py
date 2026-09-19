@@ -73,6 +73,7 @@ from app.services.idempotency import (
     claim_idempotent_request,
     mark_idempotency_succeeded,
 )
+from app.services.ledger_calendar_commands import read_ledger_calendar
 from app.services.pending_fx_task_service import (
     prepare_pending_expense_fx,
     request_pending_expense_fx,
@@ -191,6 +192,7 @@ def get_confirmed_expenses(
         page=page,
         page_size=page_size,
         total=total,
+        calendar_revision=read_ledger_calendar(db, ledger_id=auth.ledger_id, account_id=auth.account_id).revision,
     )
 
 

@@ -16,6 +16,7 @@ from app.currency_binding_contract import (
     CURRENCY_CONTRACT_VERSION,
 )
 from app.runtime_compatibility_contract import (
+    ACCOUNTING_TIME_INPUT_VERSION,
     CURRENT_API_VERSION,
     RUNTIME_COMPATIBILITY_CONTRACT,
     TICKETBOX_API_VERSION_HEADER,
@@ -59,6 +60,7 @@ class RuntimeCompatibilitySnapshot:
     write_compatibility: CompatibilityConclusion
     legacy_write_compatibility: Literal["compatible", "client_upgrade_required"]
     upload_original_receipt_version: int
+    accounting_time_input_version: int
     currency: RuntimeCurrencyCapability
 
 
@@ -98,6 +100,7 @@ def runtime_compatibility_snapshot(db: Session) -> RuntimeCompatibilitySnapshot:
         write_compatibility=write_compatibility,
         legacy_write_compatibility="client_upgrade_required",
         upload_original_receipt_version=UPLOAD_ORIGINAL_RECEIPT_VERSION,
+        accounting_time_input_version=ACCOUNTING_TIME_INPUT_VERSION,
         currency=RuntimeCurrencyCapability(
             home_currency_code=product_home_currency,
             minor_unit_exponent=capability.minor_unit_exponent,

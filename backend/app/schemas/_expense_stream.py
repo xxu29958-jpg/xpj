@@ -70,6 +70,7 @@ class PaginatedExpensesResponse(BaseModel):
     page: int
     page_size: int
     total: int
+    calendar_revision: int | None = None
 
 
 __all__ = [

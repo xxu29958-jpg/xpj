@@ -39,6 +39,7 @@ from app.services.ledger_archive_service import (
     find_owner_account_id_for_ledger,
     unarchive_ledger,
 )
+from app.services.ledger_calendar_service import adopt_ledger_calendar
 from app.services.ledger_contracts import LedgerSummary, SwitchLedgerResult
 from app.services.session_credential_lock import (
     lock_and_revalidate_mutation_actor,
@@ -223,6 +224,10 @@ def create_ledger(
     db.add(ledger)
     db.flush()
     _ensure_membership(db, ledger.ledger_id, account.id, "owner")
+    from app.config import get_settings
+
+    adopt_ledger_calendar(db, ledger_id=ledger.ledger_id, timezone_name=get_settings().ocr_default_timezone,
+                         actor_account_id=account.id)
     db.commit()
     db.refresh(ledger)
     return _summary(ledger, "owner")

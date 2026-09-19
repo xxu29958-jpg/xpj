@@ -14,6 +14,8 @@ Endpoints:
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
@@ -23,7 +25,9 @@ from app.errors import AppError
 from app.network_boundary import require_owner_console_local
 from app.routes.owner_console import _base
 from app.routes.owner_console._shared import templates
+from app.schemas._ledger_calendar import LedgerCalendarChangeRequest
 from app.services import owner_console_service as svc
+from app.services.ledger_calendar_commands import change_ledger_calendar, ledger_calendar_history, read_ledger_calendar
 from app.version import BACKEND_VERSION  # noqa: F401  (kept for parity with sibling pages)
 
 # CSRF 修复:复用 owner_console._shared 的共享 templates(已带 context_processors=[csrf_context]
@@ -40,6 +44,45 @@ def _require_local(request: Request) -> None:
 
 
 LocalOnly = Depends(_require_local)
+
+
+def _calendar_owner_id(db: Session) -> int:
+    owner_id = svc.get_owner_account_id(db)
+    if owner_id is None:
+        raise AppError("permission_denied", status_code=403)
+    return owner_id
+
+
+def _render_calendar_page(request: Request, db: Session, ledger_id: str, *,
+                          submitted_timezone: str | None = None, error: str | None = None,
+                          status_code: int = 200) -> HTMLResponse:
+    account_id = _calendar_owner_id(db)
+    current = read_ledger_calendar(db, ledger_id=ledger_id, account_id=account_id)
+    context = _base(request, db)
+    context.update(calendar=current, calendar_history=ledger_calendar_history(db, ledger_id=ledger_id, account_id=account_id),
+        submitted_timezone=submitted_timezone if submitted_timezone is not None else current.timezone_name,
+        idempotency_key=uuid4().hex, error=error)
+    return templates.TemplateResponse(request=request, name="ledger_calendar.html", context=context, status_code=status_code)
+
+
+@router.get("/ledgers/{ledger_id}/calendar", response_class=HTMLResponse)
+def owner_calendar_get(request: Request, ledger_id: str, _local: None = LocalOnly,
+                       db: Session = Depends(get_db)) -> HTMLResponse:
+    return _render_calendar_page(request, db, ledger_id)
+
+
+@router.post("/ledgers/{ledger_id}/calendar", response_class=HTMLResponse)
+def owner_calendar_post(request: Request, ledger_id: str, timezone_name: str = Form(min_length=1, max_length=128),
+                        expected_revision: int = Form(gt=0), idempotency_key: str = Form(min_length=1, max_length=64),
+                        _local: None = LocalOnly, db: Session = Depends(get_db)) -> HTMLResponse:
+    try:
+        change_ledger_calendar(db, ledger_id=ledger_id, actor_account_id=_calendar_owner_id(db), auth=None,
+            payload=LedgerCalendarChangeRequest(timezone_name=timezone_name, expected_revision=expected_revision),
+            idempotency_key=idempotency_key)
+    except AppError as exc:
+        return _render_calendar_page(request, db, ledger_id, submitted_timezone=timezone_name,
+            error=exc.message, status_code=exc.status_code)
+    return RedirectResponse(url=f"/owner/ledgers/{ledger_id}/calendar", status_code=303)
 
 
 def _render_ledgers_page(

@@ -103,6 +103,7 @@ def test_runtime_snapshot_is_authenticated_private_and_product_facing(
         "legacy_write_compatibility": "client_upgrade_required",
         "capabilities": {
             "upload_original_receipt_version": 1,
+            "accounting_time_input_version": 1,
             "currency": {
                 "home_currency_code": None,
                 "minor_unit_exponent": None,

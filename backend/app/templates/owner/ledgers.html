@@ -49,6 +49,7 @@
         <td>
           <a href="/web?ledger_id={{ row.ledger_id }}" class="btn btn-secondary btn--compact">打开账本</a>
           <a href="/web/family?ledger_id={{ row.ledger_id }}" class="btn btn-secondary btn--compact ml-2">家庭成员</a>
+          {% if row.role == 'owner' %}<a href="/owner/ledgers/{{ row.ledger_id }}/calendar" class="btn btn-secondary btn--compact ml-2">账务日历</a>{% endif %}
           {% if row.role == 'owner' and not row.is_default %}
           {% set archive_confirm = '归档账本「' ~ row.name ~ '」？该账本将从所有活跃界面（账本列表、登录、配对、邀请）隐藏，已绑定设备的会话随即失效。数据完整保留，可在下方「已归档账本」中恢复。' %}
           <form method="post" action="/owner/ledgers/{{ row.ledger_id }}/archive" class="inline-form" data-confirm="{{ archive_confirm }}">

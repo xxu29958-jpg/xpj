@@ -39,6 +39,7 @@ def get_runtime_compatibility(
         legacy_write_compatibility=snapshot.legacy_write_compatibility,
         capabilities=RuntimeProductCapabilitiesResponse(
             upload_original_receipt_version=snapshot.upload_original_receipt_version,
+            accounting_time_input_version=snapshot.accounting_time_input_version,
             currency=RuntimeCurrencyCapabilityResponse(**snapshot.currency.__dict__),
         ),
     )
