@@ -27,7 +27,7 @@ from app.schemas import GoalCreateRequest
 from app.services.currency_common import currency_input_metadata, major_amount_to_minor, normalize_currency_code
 from app.services.goal_create_command import create_spending_goal_idempotently
 from app.services.goal_service import archive_goal, list_goals
-from app.services.time_service import current_month
+from app.services.ledger_calendar_service import current_ledger_month
 
 router = APIRouter(prefix="/web/goals", tags=["web"])
 
@@ -137,8 +137,7 @@ def web_goals(
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
-    timezone_name = get_settings().ocr_default_timezone
-    target_month = (month or "").strip() or current_month(timezone_name)
+    target_month = (month or "").strip() or current_ledger_month(db, ledger_id=selected_id)
     return _render_goals(
         request=request,
         db=db,
@@ -166,7 +165,7 @@ def web_goals_create(
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     timezone_name = get_settings().ocr_default_timezone
-    target_month = (month or "").strip() or current_month(timezone_name)
+    target_month = (month or "").strip() or current_ledger_month(db, ledger_id=selected_id)
     values = {"name": name, "month": month, "target_amount_yuan": target_amount_yuan,
         "category": category, "home_currency_code": home_currency_code, "idempotency_key": idempotency_key}
     retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
@@ -218,7 +217,7 @@ def web_goals_archive(
     _require_selected_ledger_write(options, selected_id)
     timezone_name = get_settings().ocr_default_timezone
     archive_goal(db, tenant_id=selected_id, public_id=public_id, timezone_name=timezone_name)
-    target_month = (month or "").strip() or current_month(timezone_name)
+    target_month = (month or "").strip() or current_ledger_month(db, ledger_id=selected_id)
     return _web_redirect(
         "/web/goals",
         selected_id,

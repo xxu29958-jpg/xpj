@@ -42,6 +42,11 @@ record between financial periods. All confirmed-stream consumers read the same
 stored date. Existing offset accounting dates are already facts and are preserved.
 Recurring obligation periods remain distinct from the actual payment date.
 
+An omitted current-period selection uses the ledger's current calendar, including
+API, Web, Owner summaries and new plan forms. An explicit month or previously
+captured intent stays unchanged. Display-zone preferences still format known
+instants; they do not choose the default financial month or a record's day label.
+
 Calendar choice is not an FX quote date or a currency-binding revision. Existing
 original/home amounts, frozen quotes, source provenance and offset values must
 not be recalculated during adoption or calendar changes. Explicit financial

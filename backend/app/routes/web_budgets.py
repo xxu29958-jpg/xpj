@@ -30,12 +30,12 @@ from app.services.budget_command_service import review_monthly_budget_save, save
 from app.services.budget_service import get_monthly_budget
 from app.services.category_service import list_ledger_category_options
 from app.services.currency_common import major_amount_to_minor, normalize_currency_code
+from app.services.ledger_calendar_service import current_ledger_month
 from app.services.spending_contract_service import (
     clean_month,
-    current_accounting_month,
     default_accounting_timezone_name,
 )
-from app.services.time_service import local_month_bounds_utc
+from app.services.time_service import normalize_month_label
 
 router = APIRouter(prefix="/web/budgets", tags=["web"])
 
@@ -84,14 +84,6 @@ def _split_categories(raw: str) -> list[str]:
 
 def _budget_timezone_name() -> str:
     return default_accounting_timezone_name()
-
-
-def _safe_month(value: str, timezone_name: str | None = None) -> str:
-    month = (value or "").strip()
-    resolved_timezone = timezone_name or _budget_timezone_name()
-    if not month or local_month_bounds_utc(month, resolved_timezone) is None:
-        return current_accounting_month(resolved_timezone)
-    return month
 
 
 def _parse_category_budgets(
@@ -334,7 +326,7 @@ def web_budgets(
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
-    target_month = _safe_month(month or current_accounting_month(_budget_timezone_name()))
+    target_month = normalize_month_label(month) or current_ledger_month(db, ledger_id=selected_id)
     return _render_budgets(
         request=request,
         db=db,

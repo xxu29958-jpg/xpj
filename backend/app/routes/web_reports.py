@@ -37,6 +37,7 @@ from app.routes.web_common import (
 )
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import currency_input_metadata, normalize_currency_code
+from app.services.ledger_calendar_service import current_ledger_month
 from app.services.monthly_report_service import (
     BudgetExplanation,
     MonthlyReport,
@@ -49,8 +50,6 @@ from app.services.reports_service import (
     six_month_summary,
     top_expenses_for_month,
 )
-from app.services.spending_contract_service import accounting_datetime_label
-from app.services.time_service import current_month
 
 router = APIRouter(prefix="/web/reports", tags=["web"])
 
@@ -157,7 +156,7 @@ def _top_expenses_view(
                 **return_context.as_kwargs()),
             "amount_yuan": _projected_amount(item.amount_cents, projection.home_currency_code),
             "category": expense.category or "未分类",
-            "expense_time": accounting_datetime_label(expense.expense_time, timezone_name, pattern="%Y-%m-%d"),
+            "expense_time": expense.accounting_date.isoformat() if expense.accounting_date is not None else "",
         })
     return {"top_expenses": rows, "top_expenses_missing_rates": projection.missing_rates}
 
@@ -237,7 +236,7 @@ def web_reports(
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
     home = normalize_currency_code(home_currency_code or require_runtime_home_currency_code(db))
     timezone_name = get_settings().ocr_default_timezone
-    target_month = (month or "").strip() or current_month(timezone_name)
+    target_month = (month or "").strip() or current_ledger_month(db, ledger_id=selected_id)
     selected_granularity = _clean_granularity(granularity)
     selected_metric = _clean_ranking_metric(ranking_metric)
     payload = reports_overview(
@@ -310,7 +309,7 @@ def web_reports_csv(
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
     timezone_name = get_settings().ocr_default_timezone
-    target_month = (month or "").strip() or current_month(timezone_name)
+    target_month = (month or "").strip() or current_ledger_month(db, ledger_id=selected_id)
     selected_granularity = _clean_granularity(granularity)
     selected_metric = _clean_ranking_metric(ranking_metric)
     home = normalize_currency_code(home_currency_code or require_runtime_home_currency_code(db))

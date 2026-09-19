@@ -29,7 +29,7 @@ from app.services.currency_common import (
     normalize_currency_code,
     supported_currency_codes,
 )
-from app.services.spending_contract_service import current_accounting_month
+from app.services.ledger_calendar_service import current_ledger_month
 
 router = APIRouter(prefix="/web/budget-advise", tags=["web"])
 router.include_router(rates_router)
@@ -119,7 +119,7 @@ def _render_budget_advise(
         if retained is not None:
             return retained
     readiness_ctx = _advisor_readiness_context(request, selected=selected, options=options)
-    month_label = month or current_accounting_month()
+    month_label = month or current_ledger_month(db, ledger_id=selected)
     home = normalize_currency_code(home_currency_code or require_runtime_home_currency_code(db))
     currency_choice_required = request.method == "POST" and not home_currency_code
     savings_cents, reserved_cents, form_error = _reserve_values(

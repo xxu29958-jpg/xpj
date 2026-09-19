@@ -31,6 +31,7 @@ from app.routes.web_common import (
 from app.schemas._recurring_occurrence import RecurringOccurrenceWriteRequest
 from app.services.expense_query import resolve_expense
 from app.services.expense_service import fetch_expense_row_version_in_status
+from app.services.ledger_calendar_service import current_ledger_month
 from app.services.recurring_occurrence_command import set_occurrence_payment
 from app.services.recurring_occurrence_query import (
     eligible_payment,
@@ -143,7 +144,7 @@ def _page(
     options = _list_ledger_options(db)
     selected = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
     item = get_recurring_item(db, tenant_id=selected, public_id=public_id)
-    period = occurrence_period(month)
+    period = occurrence_period(month or current_ledger_month(db, ledger_id=selected))
     occurrence = occurrence_response(db, item=item, period=period)
     context = _base_ctx(
         request, db=db, options=options, selected_ledger_id=selected, page_title="本期固定支出",

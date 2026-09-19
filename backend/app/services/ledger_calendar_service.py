@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
+from app.errors import AppError
 from app.models import Ledger, LedgerAuditLog, LedgerCalendarRevision
 from app.services.time_service import now_utc
 
@@ -24,6 +25,14 @@ def current_calendar(db: Session, *, ledger_id: str) -> LedgerCalendarRevision |
         (Ledger.ledger_id == LedgerCalendarRevision.ledger_id)
         & (Ledger.calendar_revision == LedgerCalendarRevision.revision),
     ).where(Ledger.ledger_id == ledger_id))
+
+
+def current_ledger_month(db: Session, *, ledger_id: str) -> str:
+    """Default a new read or intent from the ledger, never a display preference."""
+    rule = current_calendar(db, ledger_id=ledger_id)
+    if rule is None:
+        raise AppError("calendar_revision_conflict", "未找到当前账本的账务日历，请稍后重试。", status_code=409)
+    return now_utc().astimezone(ZoneInfo(rule.timezone_name)).strftime("%Y-%m")
 
 
 def adopt_ledger_calendar(

@@ -17,14 +17,13 @@ from app.services.recurring_service import recurring_monthly_total
 from app.services.spending_contract_service import (
     calendar_month_bounds,
     clean_month,
-    current_accounting_month,
     shift_month,
     stat_sort_time_expr,
 )
 
 
-def occurrence_period(month: str | None) -> date:
-    return date.fromisoformat(f"{clean_month(month or current_accounting_month())}-01")
+def occurrence_period(month: str) -> date:
+    return date.fromisoformat(f"{clean_month(month)}-01")
 
 
 def get_occurrence(db: Session, *, tenant_id: str, series_id: int, period: date) -> RecurringOccurrence | None:

@@ -37,7 +37,7 @@ from app.services.income_plan_service import (
     restore_income_plan,
 )
 from app.services.income_plan_service._delivery import create_income_plan_idempotently
-from app.services.spending_contract_service import current_accounting_month
+from app.services.ledger_calendar_service import current_ledger_month
 
 router = APIRouter(prefix="/web/income-plans", tags=["web"])
 
@@ -101,8 +101,7 @@ def _income_month_from_form(
         raise AppError("invalid_request", "请选择正确的预计月份。", status_code=422) from exc
 
 
-def _income_month_options() -> tuple[list[int], str, str]:
-    current = current_accounting_month()
+def _income_month_options(current: str) -> tuple[list[int], str, str]:
     year_text, month_text = current.split("-", maxsplit=1)
     current_year = int(year_text)
     return list(range(current_year - 1, current_year + 3)), year_text, str(int(month_text))
@@ -112,7 +111,7 @@ def _render_income_plans(request, db, *, options, selected, message=None, error=
                          draft=None, review=False, status_code=200) -> HTMLResponse:
     plans_active = list_income_plans(db, tenant_id=selected, status="active")
     plans_archived = list_income_plans(db, tenant_id=selected, status="archived")
-    intent_month = current_accounting_month()
+    intent_month = current_ledger_month(db, ledger_id=selected)
     forecast = income_forecast(
         db,
         tenant_id=selected,
@@ -123,7 +122,7 @@ def _render_income_plans(request, db, *, options, selected, message=None, error=
         _require_selected_ledger_write(options, selected)
     except AppError:
         can_write = False
-    income_year_options, income_default_year, income_default_month = _income_month_options()
+    income_year_options, income_default_year, income_default_month = _income_month_options(intent_month)
     ctx = _base_ctx(
         request,
         db=db,

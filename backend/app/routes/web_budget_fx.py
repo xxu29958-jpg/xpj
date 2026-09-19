@@ -27,7 +27,7 @@ from app.schemas import ExchangeRateRequest
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import normalize_currency_code, supported_currency_codes
 from app.services.exchange_rate_service import list_exchange_rates, set_exchange_rate_idempotently
-from app.services.spending_contract_service import current_accounting_month
+from app.services.ledger_calendar_service import current_ledger_month
 
 router = APIRouter(prefix="/rates", tags=["web"])
 _TASK_FIELDS = ("ledger_id", "month", "home_currency_code", "savings_target_yuan", "reserved_buffer_yuan",
@@ -111,7 +111,7 @@ def page_budget_rates(request: Request, db: Session = Depends(get_db), _local: N
     options = _list_ledger_options(db)
     selected = _resolve_selected_ledger_id(db, values["ledger_id"] or None, options, request=request)
     month = "" if values["return_to"] == "confirmed" and values["filter"] == "missing_category" else (
-        values["month"] or current_accounting_month())
+        values["month"] or current_ledger_month(db, ledger_id=selected))
     values.update(ledger_id=selected, month=month,
         home_currency_code=normalize_currency_code(values["home_currency_code"] or require_runtime_home_currency_code(db)),
         savings_target_yuan=values["savings_target_yuan"] or "0", reserved_buffer_yuan=values["reserved_buffer_yuan"] or "0",

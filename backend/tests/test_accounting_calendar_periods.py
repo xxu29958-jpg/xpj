@@ -146,13 +146,19 @@ def test_recurring_observation_period_uses_accounting_day_not_original_instant()
 
 
 def test_date_only_csv_keeps_the_financial_day_without_confirmation_as_event_time():
+    from app.schemas import ExpenseResponse
+    from app.schemas._accounting_time import AccountingTimeSnapshot
     from app.services.stats_service import _confirmed_stream_csv_row
 
-    expense = Expense(id=1, public_id="calendar-root", status="confirmed", amount_cents=10000,
-        original_currency_code="CNY", original_amount_minor=10000, home_currency_code="CNY", category="其他", source="手动记账",
-        accounting_date=date(2026, 4, 30), time_precision="date_only", calendar_revision=1,
+    evidence = AccountingTimeSnapshot(precision="date_only", calendar_revision=1,
+        user_local_date=date(2026, 4, 30), accounting_date=date(2026, 4, 30), basis="user_date")
+    expense = ExpenseResponse.model_construct(id=1, public_id="calendar-root", status="confirmed", amount_cents=10000,
+        original_currency_code="CNY", original_amount_minor=10000, home_currency="CNY", category="其他", source="手动记账",
+        accounting_time=evidence, expense_time=None, exchange_rate_to_cny=None,
+        exchange_rate_date=None, exchange_rate_source=None, merchant=None, note=None,
+        tags=None, value_score=None, regret_score=None,
         confirmed_at=datetime(2026, 5, 2, tzinfo=UTC))
-    entry = SimpleNamespace(root=expense, entry_kind="expense", stream_date=expense.accounting_date,
+    entry = SimpleNamespace(root=expense, entry_kind="expense", stream_date=evidence.accounting_date,
         stream_amount_cents=10000, lineage_status="normal", lineage_home_net_cents=10000)
     row = _confirmed_stream_csv_row(entry)
     assert row[13] == ""

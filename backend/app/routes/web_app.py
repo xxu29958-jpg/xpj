@@ -43,10 +43,10 @@ from app.routes.web_common import (
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import average_minor_amount, normalize_currency_code
 from app.services.expense_service import list_confirmed
+from app.services.ledger_calendar_service import current_ledger_month
 from app.services.money_projection_service import ordered_projection_gaps, sum_projected_amounts
 from app.services.spending_contract_service import (
     accounting_timezone_key,
-    current_accounting_month,
 )
 from app.services.spending_projection_service import project_confirmed_items
 from app.services.stats_service import monthly_stats
@@ -212,7 +212,7 @@ def _confirmed_page_rows(
 ) -> tuple[str, str, list[dict], int, int, str, int]:
     timezone_name = accounting_timezone_key()
     missing_category = filter == "missing_category"
-    effective_month = "" if missing_category else month or current_accounting_month(timezone_name)
+    effective_month = "" if missing_category else month or current_ledger_month(db, ledger_id=selected_id)
     page = max(1, page)
     query = {
         "tenant_id": selected_id,

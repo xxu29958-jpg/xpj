@@ -58,7 +58,7 @@ def test_recycle_income_display_and_restore_share_one_accounting_month(monkeypat
     from app.services import recycle_bin_service
 
     clock = Mock(side_effect=["2026-09", "2026-10", "2026-10", "2026-10"])
-    monkeypatch.setattr(recycle_bin_service, "current_accounting_month", clock)
+    monkeypatch.setattr(recycle_bin_service, "current_ledger_month", clock)
     monkeypatch.setattr(recycle_bin_service, "_income_detail", lambda _item: "计划")
     db = Mock()
     db.scalars.return_value = [
@@ -73,7 +73,7 @@ def test_recycle_income_display_and_restore_share_one_accounting_month(monkeypat
     for row in responses:
         assert row.restore_intent_month == "2026-09"
         assert row.detail.endswith("恢复从 2026-09 生效")
-    clock.assert_called_once_with()
+    clock.assert_called_once_with(db, ledger_id="owner")
 
 
 @pytest.mark.parametrize("version", [None, MONTHLESS_API_VERSION, "current"])
