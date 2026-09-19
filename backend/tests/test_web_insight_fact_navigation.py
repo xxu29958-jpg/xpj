@@ -121,7 +121,9 @@ def test_data_quality_routes_each_uncategorized_count_to_its_records() -> None:
         "/web/confirmed?ledger_id=family&filter=missing_category": "3",
     }
 
-    assert set(actions) == set(expected)
+    originals_href = "/web/originals?ledger_id=family"
+    assert set(actions) == {*expected, originals_href}
+    assert "原件" in actions[originals_href]
     for href, count in expected.items():
         assert re.search(rf"(?<!\d){count}(?!\d)", actions[href])
 

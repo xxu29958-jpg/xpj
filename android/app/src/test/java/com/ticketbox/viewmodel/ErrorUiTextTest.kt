@@ -1,6 +1,7 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.R
+import com.ticketbox.data.repository.LocalRepositoryFailure
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.UiText
 import kotlin.test.Test
@@ -17,6 +18,34 @@ import kotlin.test.assertEquals
  * calls — not via a faked VM.
  */
 class ErrorUiTextTest {
+
+    @Test
+    fun originalServerFailuresKeepTheirDistinctRecoveryCopy() {
+        val expected = mapOf(
+            "image_replenishment_mismatch" to R.string.error_image_replenishment_mismatch,
+            "original_review_conflict" to R.string.error_original_review_conflict,
+            "original_already_verified" to R.string.error_original_already_verified,
+            "original_identity_unverified" to R.string.error_original_identity_unverified,
+            "attachment_cleanup_changed" to R.string.error_attachment_cleanup_changed,
+            "attachment_cleanup_invalid" to R.string.error_attachment_cleanup_invalid,
+        )
+        expected.forEach { (code, resource) ->
+            assertEquals(UiText.res(resource), RepositoryException("raw diagnostic", code).toUiText(), code)
+        }
+    }
+
+    @Test
+    fun localOriginalAdmissionFailuresDoNotInventServerErrorCodes() {
+        val expected = mapOf(
+            LocalRepositoryFailure.OriginalSourceUnavailable to R.string.original_source_unavailable,
+            LocalRepositoryFailure.OriginalWriterRequired to R.string.original_writer_required,
+        )
+        expected.forEach { (failure, resource) ->
+            val error = RepositoryException("local diagnostic", localFailure = failure)
+            assertEquals(null, error.errorCode)
+            assertEquals(UiText.res(resource), error.toUiText())
+        }
+    }
 
     @Test
     fun knownCodeMapsToResourceNotRawServerMessage() {

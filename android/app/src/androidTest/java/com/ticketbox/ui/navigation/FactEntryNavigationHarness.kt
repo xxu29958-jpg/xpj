@@ -29,6 +29,7 @@ internal class FactEntryNavigationHarness(context: Context,
         MainFeatureRepositories(
             repository = graph.expenseRepository,
             uploadIntents = fixture.uploadIntents,
+            originalAttachments = fixture.uploadIntents,
             ledgerRepository = graph.ledgerRepository,
             recurringRepository = graph.recurringRepository,
             budgetRepository = graph.budgetRepository,

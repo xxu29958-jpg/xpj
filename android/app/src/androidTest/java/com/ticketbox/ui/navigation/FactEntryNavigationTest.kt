@@ -120,14 +120,16 @@ class FactEntryNavigationTest {
         harness.fixture.network.current = harness.fixture.network.current.copy(imagePath = "synthetic/original.png")
         installMainGraph()
         openFact()
-        val original = context.getString(R.string.expense_fact_image_view_full)
+        val original = context.getString(R.string.original_view)
         waitForText(original)
+        compose.waitUntil(5_000) { harness.fixture.network.originalHealthReads.contains(42L) }
         compose.onNodeWithText(original).performScrollTo().performClick()
         compose.waitUntil(5_000) { harness.fixture.network.imageReads.size == 1 }
         compose.waitForIdle()
         compose.onNodeWithContentDescription(context.getString(R.string.components_async_image_content_description))
             .performScrollTo().assertIsDisplayed()
         assertEquals(listOf(42L), harness.fixture.network.imageReads)
+        assertEquals(null, harness.fixture.network.current.thumbnailPath)
     }
 
     @Test fun splitSaveShowsTheOriginalAtItsActionWithoutScrollingBackToThePageTop() {

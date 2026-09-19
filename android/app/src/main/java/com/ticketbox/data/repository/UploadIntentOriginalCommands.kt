@@ -70,7 +70,9 @@ internal suspend fun UploadIntentRepository.recoverOriginalAttachment(binding: L
 }
 
 private fun UploadIntentRepository.requireOriginalWriter() {
-    if (!ledgerRoleCanModify(apiProvider.currentLedgerRole())) throw RepositoryException("original_writer_required", "original_writer_required")
+    if (!ledgerRoleCanModify(apiProvider.currentLedgerRole())) throw RepositoryException(
+        "Original attachment requires write access", localFailure = LocalRepositoryFailure.OriginalWriterRequired,
+    )
 }
 
 private suspend fun OriginalSubmission.prepareOriginalSource() = try {
@@ -78,5 +80,5 @@ private suspend fun OriginalSubmission.prepareOriginalSource() = try {
 } catch (error: kotlinx.coroutines.CancellationException) {
     throw error
 } catch (_: Exception) {
-    throw RepositoryException("original_source_unavailable", "original_source_unavailable")
+    throw RepositoryException("Selected original is unavailable", localFailure = LocalRepositoryFailure.OriginalSourceUnavailable)
 }

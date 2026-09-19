@@ -140,10 +140,13 @@ private fun OriginalCommandCard(command: PendingOriginalCommand, busy: Boolean, 
 }
 
 private fun originalFailureLabel(code: String?): Int = when (code) {
-    "image_replenishment_mismatch" -> R.string.original_digest_mismatch
-    "state_conflict", "original_review_conflict", "attachment_cleanup_changed", "original_already_verified" -> R.string.original_review_conflict
-    "original_identity_unverified" -> R.string.original_unverified
-    "attachment_cleanup_invalid" -> R.string.original_cleanup_invalid
+    "image_replenishment_mismatch" -> R.string.error_image_replenishment_mismatch
+    "state_conflict" -> R.string.original_review_conflict
+    "original_review_conflict" -> R.string.error_original_review_conflict
+    "attachment_cleanup_changed" -> R.string.error_attachment_cleanup_changed
+    "original_already_verified" -> R.string.error_original_already_verified
+    "original_identity_unverified" -> R.string.error_original_identity_unverified
+    "attachment_cleanup_invalid" -> R.string.error_attachment_cleanup_invalid
     else -> R.string.original_attention
 }
 
