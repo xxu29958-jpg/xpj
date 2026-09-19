@@ -16,6 +16,8 @@ from app.errors import AppError
 from app.models import BillSplitInvitation, Expense, Ledger, LedgerMember
 from app.services import bill_split_service as bsplit
 from app.services.currency_binding_service import resolve_write_capability
+from app.services.expense_accounting_time_service import refresh_legacy_expense_time
+from app.services.ledger_calendar_service import adopt_ledger_calendar
 from app.services.time_service import now_utc
 from tests.test_bill_split import (
     _make_expense_for_owner,
@@ -175,6 +177,9 @@ def test_reaccept_with_different_target_ledger_is_conflict() -> None:
                 owner_account_id=receiver_account_id,
             )
         )
+        db.flush()
+        adopt_ledger_calendar(db, ledger_id="receiver_idem_target_b", timezone_name="Asia/Shanghai",
+            actor_account_id=receiver_account_id)
         db.add(
             LedgerMember(
                 ledger_id="receiver_idem_target_b",
@@ -240,6 +245,7 @@ def test_foreign_currency_split_lands_received_expense_in_home_currency() -> Non
             expense_time=now_utc(),
             confirmed_at=now_utc(),
         )
+        refresh_legacy_expense_time(db, expense)
         db.add(expense)
         db.commit()
         expense_id = expense.id
