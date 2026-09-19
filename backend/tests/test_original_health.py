@@ -23,7 +23,7 @@ def original_health_case(tmp_path, monkeypatch):
     expense = SimpleNamespace(id=7, public_id="bill-seven", row_version=4, tenant_id="owner",
         image_path="uploads/owner/receipt.png", image_hash=hashlib.sha256(ORIGINAL).hexdigest(),
         image_deleted_at=None, thumbnail_path="uploads/owner/receipt.thumb.webp",
-        thumbnail_deleted_at=None, fact_revision=3, amount_minor=1234)
+        thumbnail_deleted_at=None, fact_revision=3, amount_minor=1234, attachment_cleanup_request=None)
     return expense, source
 
 
@@ -132,6 +132,35 @@ def test_out_of_scope_bill_fails_before_file_inspection(monkeypatch):
     with pytest.raises(AppError):
         original_health_service.inspect_expense_original(Mock(), expense_id=7, tenant_id="other")
     read.assert_not_called()
+
+
+def test_invalid_cleanup_metadata_does_not_hide_actual_original(original_health_case, monkeypatch):
+    expense, _ = original_health_case
+    expense.attachment_cleanup_request = {"invalid": "old evidence"}
+    result = _inspect(monkeypatch, expense)
+    assert result.state == "verified"
+    assert result.cleanup is None
+    assert result.cleanup_error == "attachment_cleanup_invalid"
+
+
+def test_pending_old_cleanup_is_separate_from_replenished_original(original_health_case, monkeypatch):
+    from uuid import uuid4
+
+    from app.attachment_cleanup_contract import CleanupFile, CleanupRequest
+    from app.services import original_health_service
+
+    expense, _ = original_health_case
+    request = CleanupRequest(request_id=uuid4(), reason="after_confirm", requested_at=datetime.now(UTC),
+        image=CleanupFile(reference="uploads/owner/an-old-original.png", error_code="unlink_failed"))
+    expense.attachment_cleanup_request = request.model_dump(mode="json")
+    monkeypatch.setattr(original_health_service, "get_settings", lambda: SimpleNamespace(
+        delete_image_after_confirm=False, delete_image_after_days=0, delete_rejected_after_days=0))
+    result = _inspect(monkeypatch, expense)
+    assert result.state == "verified"
+    assert result.cleanup.request_id == request.request_id
+    assert result.cleanup.image == "pending"
+    assert result.cleanup.image_error == "unlink_failed"
+    assert result.cleanup.policy_enabled is False
 
 
 @pytest.mark.parametrize("authorized", [True, False])

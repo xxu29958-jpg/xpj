@@ -48,7 +48,7 @@ logger = logging.getLogger("ticketbox.upload")
 
 
 @dataclass(frozen=True)
-class _UploadContent:
+class UploadContent:
     data: bytes
     filename: str | None
     content_type: str | None
@@ -125,11 +125,11 @@ def _install_multipart_receive_limit(request: Request, *, max_body_bytes: int):
     return original_receive
 
 
-async def _read_request_upload(
+async def read_request_upload(
     request: Request,
     *,
     max_size_bytes: int | None = None,
-) -> tuple[_UploadContent, dict[str, int]]:
+) -> tuple[UploadContent, dict[str, int]]:
     timing_ms: dict[str, int] = {}
     limit = get_settings().max_upload_size_bytes
     if max_size_bytes is not None:
@@ -154,7 +154,7 @@ async def _read_request_upload(
                     read_started_at = perf_counter()
                     data = await read_upload_bytes(upload_file, max_size_bytes=limit)
                     timing_ms["body_read_ms"] = elapsed_ms(read_started_at)
-                    return _UploadContent(data, upload_file.filename, upload_file.content_type), timing_ms
+                    return UploadContent(data, upload_file.filename, upload_file.content_type), timing_ms
         except StarletteHTTPException as exc:
             detail = str(exc.detail).lower()
             if "maximum size" in detail or "too large" in detail:
@@ -171,11 +171,11 @@ async def _read_request_upload(
     if not body:
         raise AppError("invalid_request", status_code=422)
 
-    return _UploadContent(body, request.headers.get("X-Upload-Filename"), content_type), timing_ms
+    return UploadContent(body, request.headers.get("X-Upload-Filename"), content_type), timing_ms
 
 
 def _save_content(
-    content: _UploadContent,
+    content: UploadContent,
     tenant_id: str,
     timing_ms: dict[str, int],
     max_size_bytes: int | None,
@@ -194,11 +194,11 @@ async def save_request_upload(
     max_size_bytes: int | None = None,
 ) -> tuple[SavedUpload, dict[str, int]]:
     """Preserve the file-saved / pre-commit boundary for existing consumers."""
-    content, timing_ms = await _read_request_upload(request, max_size_bytes=max_size_bytes)
+    content, timing_ms = await read_request_upload(request, max_size_bytes=max_size_bytes)
     return _save_content(content, tenant_id, timing_ms, max_size_bytes), timing_ms
 
 
-def _upload_fingerprint(content: _UploadContent, intent: _UploadIntent) -> str:
+def _upload_fingerprint(content: UploadContent, intent: _UploadIntent) -> str:
     return fingerprint_request(
         operation="upload_screenshot", target_id=None, expected_row_version=None,
         body={
@@ -222,7 +222,7 @@ async def _prepare_request_upload(
     if intent is None:
         saved, timing = await save_request_upload(request, tenant_id, max_size_bytes=max_size_bytes)
         return saved, timing, None
-    content, timing = await _read_request_upload(request, max_size_bytes=max_size_bytes)
+    content, timing = await read_request_upload(request, max_size_bytes=max_size_bytes)
     claim = claim_idempotency_key(
         db, tenant_id=tenant_id, idempotency_key=intent.key, operation="upload_screenshot",
         request_fingerprint=_upload_fingerprint(content, intent), target_type="upload_receipt",

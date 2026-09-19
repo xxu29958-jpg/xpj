@@ -200,3 +200,36 @@ ordering and metadata meaning, not PostgreSQL atomicity. The health/verification
 group passed 26 tests in 1.26 seconds with `--noconftest`; the separate health/read
 group passed 29 in 1.27 seconds. Consumer screens, replenishment, cleanup and
 final exact-source database/client qualification remain open.
+
+The backend continuation checkpoint includes a read-only per-bill health query
+and four writer commands: verify a legacy digest, replenish the known original,
+retry an accepted cleanup, and cancel its remaining work. Health includes pending
+cleanup outcomes separately from the current original; an old request does not
+make a replenished original missing. No response publishes internal references.
+The required reviewed row version applies to all four commands, and the original
+accepted receipt precedes fresh currency/OCC/file checks after current identity
+revalidation. Binary replenishment uses the existing bounded multipart/raw reader,
+with expected row version and original digest in query parameters. The existing
+mutation audit now recognizes this required query carrier; no exemption was added.
+
+Replenishment retains a usable existing thumbnail unless a frozen old request
+owns it or it was already cleaned. In those cases the new source starts with no
+current thumbnail reference and uses the existing regeneration owner; the old
+request and its old files remain intact until that request settles. Newly saved
+files are compensated only before a commit attempt; an uncertain commit preserves
+the file for original-key reconciliation. `image_replenished_at` renews retention,
+not financial history. The request schema is migration `20260920_0002`, with no
+invented old request/date and a refusal to downgrade across retained evidence.
+
+The local backend continuation group passed 115 pure/real-file tests in 2.48
+seconds using `--noconftest`; four new real HTTP/PostgreSQL continuation cases were
+collected only. Existing original read/OCR/HTTP tests and final integration are
+rechecked against the combined checkpoint. These results do not qualify real DB
+transactions, packaged execution, Web durable file drafts or Android continuation.
+All remain required before this vertical slice is complete.
+
+The combined backend checkpoint subsequently passed 192 pure/real-file tests in
+3.63 seconds, including the pre-existing original HTTP/OCR/read contracts, command
+continuation, durable cleanup and the query-token audit. Ruff and diff checks
+passed; the generated OpenAPI contract records all five new endpoints. Four
+PostgreSQL/HTTP cases remain collection-only locally and await the cloud lane.

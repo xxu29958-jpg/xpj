@@ -62,7 +62,7 @@ def pending_cleanup_references(raw: dict | None) -> tuple[str, ...]:
     return tuple(item.reference for item in (request.image, request.thumbnail) if item and item.outcome == "pending")
 
 
-def _policy_enabled(request: CleanupRequest, settings) -> bool:
+def cleanup_policy_enabled(request: CleanupRequest, settings) -> bool:
     return {
         "after_confirm": settings.delete_image_after_confirm,
         "confirmed_retention": settings.delete_image_after_days > 0,
@@ -171,7 +171,7 @@ def settle_cleanup_request(
     if request is None or request.request_id != expected_request_id:
         return CleanupSettlement(pending=request is not None)
     authorize_currency_metadata_write(db)
-    delete_enabled = _policy_enabled(request, settings or get_settings())
+    delete_enabled = cleanup_policy_enabled(request, settings or get_settings())
     items, counts = {}, {}
     marker_changed = False
     for kind in ("image", "thumbnail"):
@@ -209,7 +209,7 @@ def execute_attachment_cleanup(
         if not _retention_due(expense, reason, settings):
             return CleanupSettlement()
         request = _new_request(expense, reason)
-        if request is None or not _policy_enabled(request, settings):
+        if request is None or not cleanup_policy_enabled(request, settings):
             return CleanupSettlement()
         expense.attachment_cleanup_request = request.model_dump(mode="json")
         expense.updated_at = now_utc()
