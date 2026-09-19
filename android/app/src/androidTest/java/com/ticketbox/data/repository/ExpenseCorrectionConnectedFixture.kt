@@ -201,6 +201,7 @@ internal class CorrectionConnectedNetwork {
     val occurrenceReads = CopyOnWriteArrayList<Pair<String, String>>()
     val editCalls = CopyOnWriteArrayList<String>()
     val imageReads = CopyOnWriteArrayList<Long>()
+    val originalHealthReads = CopyOnWriteArrayList<Long>()
     val originalImage: ByteArray by lazy {
         val bitmap = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888)
         ByteArrayOutputStream().use { output ->
@@ -257,6 +258,13 @@ internal class CorrectionConnectedNetwork {
         }
         override suspend fun expenseThumbnail(id: Long): Response<ResponseBody> = Response.error(404,
             """{"error":"not_found","message":"图片不存在。"}""".toResponseBody("application/json".toMediaType()))
+        override suspend fun originalHealth(id: Long): com.ticketbox.data.remote.dto.OriginalHealthDto {
+            readable()
+            originalHealthReads += id
+            return com.ticketbox.data.remote.dto.OriginalHealthDto(expenseId = current.id, publicId = requireNotNull(current.publicId),
+                rowVersion = current.rowVersion, state = if (current.imagePath == null) "none" else "unverified",
+                checkedAt = "2026-09-20T00:00:00Z")
+        }
         override suspend fun expenseImage(id: Long): Response<ResponseBody> {
             readable()
             imageReads += id

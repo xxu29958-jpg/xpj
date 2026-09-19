@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import json
-import re
 from dataclasses import replace
+from urllib.parse import parse_qs, urlsplit
 
+from _web_native_form_support import hidden_post_forms
 from _web_public_session_support import PUBLIC_HOST, mint_session, public_client
 from fastapi.testclient import TestClient
 
@@ -33,6 +34,7 @@ def _public_upload_scope(
     csrf_token: str,
     csrf_seed: str,
     boundary: str,
+    action: str,
 ) -> dict[str, object]:
     return {
         "type": "http",
@@ -42,7 +44,7 @@ def _public_upload_scope(
         "scheme": "https",
         "path": "/web/pending/upload",
         "raw_path": b"/web/pending/upload",
-        "query_string": b"ledger_id=owner",
+        "query_string": urlsplit(action).query.encode("ascii"),
         "root_path": "",
         "headers": [
             (b"host", PUBLIC_HOST.encode()),
@@ -101,8 +103,14 @@ def test_public_pending_upload_caps_chunked_multipart_before_framework_parse(
     pub = public_client()
     pub.cookies.set(SESSION_COOKIE_NAME, token, domain=PUBLIC_HOST, path="/")
     page = pub.get("/web/pending")
-    csrf = re.search(r'name="csrf_token" value="([^"]+)"', page.text)
-    assert page.status_code == 200 and csrf is not None, page.text
+    assert page.status_code == 200, page.text
+    action, fields = next((action, fields) for action, fields in hidden_post_forms(page.text).items()
+                          if urlsplit(action).path == "/web/pending/upload")
+    csrf_token = fields["csrf_token"]
+    assert csrf_token
+    query = parse_qs(urlsplit(action).query)
+    assert query["idempotency_key"][0]
+    assert json.loads(query["draft_scope"][0])["ledgerId"] == "owner"
 
     small_settings = replace(file_service.get_settings(), max_upload_size_mb=0)
     monkeypatch.setattr(file_service, "get_settings", lambda: small_settings)
@@ -113,12 +121,13 @@ def test_public_pending_upload_caps_chunked_multipart_before_framework_parse(
     assert csrf_seed
     scope = _public_upload_scope(
         token=token,
-        csrf_token=csrf.group(1),
+        csrf_token=csrf_token,
         csrf_seed=csrf_seed,
         boundary=boundary,
+        action=action,
     )
     sent, yielded_bytes = asyncio.run(
-        _run_chunked_request(scope, _multipart_chunks(csrf.group(1), boundary))
+        _run_chunked_request(scope, _multipart_chunks(csrf_token, boundary))
     )
 
     start = next(message for message in sent if message["type"] == "http.response.start")

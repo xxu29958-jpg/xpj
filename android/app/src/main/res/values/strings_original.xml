@@ -34,7 +34,6 @@
     <string name="original_source_saved">本次原件操作尚未完成本机接纳。已保留原输入，可继续保存。</string>
     <string name="original_source_retry">继续保存原操作</string>
     <string name="original_source_cancel">取消尚未接纳的操作</string>
-    <string name="original_digest_mismatch">所选文件不是记录中的同一原件。文件已保留，请核对后停止本次尝试并选择正确原件。</string>
     <string name="original_review_conflict">原件或账单在核对后发生变化。请刷新并重新查看原图。</string>
     <string name="original_verify_no_digest">此响应没有可验证的原件摘要，可继续查看，但不能据此建立核验基准。</string>
     <string name="original_writer_required">当前角色仅能查看原件。</string>
