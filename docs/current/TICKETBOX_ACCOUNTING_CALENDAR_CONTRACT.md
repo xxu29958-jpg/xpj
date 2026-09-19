@@ -21,8 +21,8 @@ draft, frozen command and ACK recovery capabilities.
 Starting source is merged #422, `44d684fbbd49a4b35b8a386842c43e0c7e9e0445`,
 tree `96e640ad7442b086b5b89b7a51d9407ef93ce320`. Its candidate qualified at
 `a2eb2791`; independent main CI `35456525238`, CodeQL `35456525214` and Connected
-`35456525210` all passed. This document does not claim that the calendar
-implementation exists or that the whole product is complete.
+`35456525210` all passed. That starting-source qualification does not qualify
+the calendar implementation or mean that the whole product is complete.
 
 ## Decisions within the delegated boundary
 
@@ -253,14 +253,19 @@ on in-memory Expense objects, so this proves the current pure owner does not yet
 honor the contract; it does not prove database persistence, migration or UI
 behavior. No production code or daily data changed for this RED.
 
-Local implementation checkpoint (2026-09-20, integrated source `762aa5e8e`):
-the pure kernel, calendar/adoption shape, original request/receipt preservation,
-manual create/edit/confirmation, frozen FX behavior, shared date queries and
-Owner calendar governance are now implemented in the isolated branch. The
-latest combined backend narrow run passed 88 tests in 2.27 seconds; OpenAPI
-and the Owner template compile. The Android data checkpoint `c16fe7a4` passed
-30 JVM tests and compiled instrumentation tests with generated Room 21 schema;
-it has been integrated, but no device result is claimed. The seven migration
-tests and three new HTTP/PG tests have only been collected locally. Web forms,
-Android actual input/display and non-manual producers remain in progress.
-This is neither a qualified candidate nor a merged/daily-installation result.
+Local implementation checkpoint (2026-09-20, integration base `038475cc6`):
+the kernel, adoption shape, original request/receipt preservation, shared date
+queries, calendar governance, Web forms/drafts and Android data/forms/history
+are now present in the isolated branch. CSV captures its original input and
+batch rule; split acceptance, offsets and OCR use the same evidence owners.
+Backend default-month consumers now use the ledger calendar while explicit
+periods remain unchanged. A pending FX counterexample was fixed: changing only
+the accounting day cannot fetch a quote or change the home amount.
+
+The combined backend narrow run passed 196 tests in 6.97 seconds; service graph
+audit found no cycles. Integrated Android UI source `f593d1293` passed 94 JVM
+tests, compiled instrumentation tests and passed production/unit Detekt. These
+are not device or PostgreSQL results: migration and HTTP/PG tests have only been
+collected locally. Android default-month consumers and final impact review
+remain in progress; cloud database/client qualification has not passed. No
+candidate, main or daily-installation completion is claimed.
