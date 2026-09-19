@@ -22,15 +22,7 @@ internal fun ExpenseEditViewModel.submitExpenseCommand(
     val state = uiState.value
     if (state.saving || state.ocrRunning) return
     val binding = fxBinding
-    val refusal = when {
-        !repository.canModifyLedger() -> R.string.common_readonly_ledger
-        binding == null || binding != repository.captureDeferredLedgerBinding() -> R.string.expense_fx_binding_changed
-        state.expense == null -> R.string.expense_edit_page_not_loaded
-        state.commandRowIds.isNotEmpty() -> if (state.commandsCompleted) {
-            R.string.expense_command_completed
-        } else R.string.expense_command_needs_attention
-        else -> null
-    }
+    val refusal = expenseSubmissionRefusal(state, binding)
     if (refusal != null) {
         _uiState.update {
             it.copy(
@@ -59,6 +51,17 @@ internal fun ExpenseEditViewModel.submitExpenseCommand(
         }
     }
 }
+
+private fun ExpenseEditViewModel.expenseSubmissionRefusal(state: ExpenseEditUiState, binding: LogicalSessionBinding?): Int? = when {
+        !repository.canModifyLedger() -> R.string.common_readonly_ledger
+        binding == null || binding != repository.captureDeferredLedgerBinding() -> R.string.expense_fx_binding_changed
+        state.expense == null -> R.string.expense_edit_page_not_loaded
+        state.originalBaselineRequired -> R.string.original_edit_baseline
+        state.commandRowIds.isNotEmpty() -> if (state.commandsCompleted) {
+            R.string.expense_command_completed
+        } else R.string.expense_command_needs_attention
+        else -> null
+    }
 
 internal fun ExpenseEditViewModel.observeExpenseCommands() {
     viewModelScope.launch {

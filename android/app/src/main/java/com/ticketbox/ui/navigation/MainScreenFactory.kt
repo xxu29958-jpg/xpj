@@ -90,6 +90,7 @@ internal data class MainFeatureRepositories(
     val tagRepository: TagRepository,
     val categoryPreferenceRepository: CategoryPreferenceRepository,
     val ledgerCalendarRepository: com.ticketbox.data.repository.LedgerCalendarRepository? = null,
+    val originalAttachments: com.ticketbox.data.repository.OriginalAttachmentActions? = null,
 )
 
 internal data class MainScreenViewModelFactories(

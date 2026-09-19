@@ -160,7 +160,8 @@ internal class ExpenseRepositoryCore(
         if (BuildConfig.DEBUG) {
             Log.d(NETWORK_LOG_TAG, "Protected image loaded: contentType=$contentType bytes=${bytes.size}")
         }
-        return ProtectedImage(bytes = bytes, contentType = contentType)
+        return ProtectedImage(bytes = bytes, contentType = contentType,
+            originalSha256 = reviewedOriginalDigest(bytes, response.headers()["ETag"]))
     }
 
     fun diagnosticErrorMessage(error: Throwable): String {

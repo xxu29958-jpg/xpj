@@ -26,14 +26,21 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 
 /** Owns acceptance and recovery of original files in the existing Outbox; it never sends HTTP. */
 class UploadIntentRepository(
-    private val apiProvider: ApiServiceProvider,
-    private val outbox: OutboxRepository,
-    private val files: UploadIntentFileStore,
+    internal val apiProvider: ApiServiceProvider,
+    internal val outbox: OutboxRepository,
+    internal val files: UploadIntentFileStore,
     private val payloadAdapter: JsonAdapter<UploadScreenshotPayload>,
     private val receiptAdapter: JsonAdapter<UploadResponseDto>,
-    private val settingsStore: TicketboxSettingsStore,
-) : UploadIntentActions {
-    private val guard = LedgerRequestGuard(apiProvider)
+    internal val settingsStore: TicketboxSettingsStore,
+) : UploadIntentActions, OriginalAttachmentActions {
+    internal val guard = LedgerRequestGuard(apiProvider)
+
+    override fun currentOriginalBinding() = guard.captureLogicalBinding()
+    override fun observeOriginalCommands() = observeOriginalAttachmentCommands()
+    override suspend fun fetchOriginalHealth(id: Long) = readOriginalHealth(id)
+    override suspend fun submitOriginal(request: OriginalSubmission) = acceptOriginalAttachment(request)
+    override suspend fun recoverOriginal(binding: LogicalSessionBinding, rowId: Long, drop: Boolean) =
+        recoverOriginalAttachment(binding, rowId, drop)
 
     override fun currentUploadBinding(): LogicalSessionBinding? = guard.captureLogicalBinding()
 
@@ -122,42 +129,23 @@ class UploadIntentRepository(
                     val payload = payloadAdapter.readSupportedUpload(row.toDomain()) ?: return@collectOrphans null
                     payload.file?.let { referenced += it.key }
                 }
+                PendingMutationType.OriginalAttachment -> {
+                    val payload = readOriginalPayload(row.toDomain()) ?: return@collectOrphans null
+                    payload.file?.let { referenced += it.key }
+                }
                 else -> Unit
             }
         }
         referenced
     }
 
-    private suspend fun continuationGroup(bound: BoundLedgerRequest, binding: LogicalSessionBinding): String? {
-        val rows = outbox.observeActiveByTypes(setOf(PendingMutationType.UploadScreenshot)).first()
-        bound.requireStillActive()
-        return rows.filter { it.belongsToUploadBinding(binding) }
-            .sortedWith(compareBy(OutboxRow::createdAt, OutboxRow::id))
-            .firstNotNullOfOrNull { row -> row.targetId.removePrefix("upload_batch:")
-                .takeIf { row.targetId == "upload_batch:$it" && isUploadIntentFileKey(it) } }
-    }
+
 
     private fun describe(row: OutboxRow): PendingUploadIntent = PendingUploadIntent(
         row, payloadAdapter.readSupportedUpload(row), row.receiptJson?.let(receiptAdapter::readUploadJsonOrNull),
     )
 
-    private suspend fun recordLastUpload(observation: UploadIntentObservation) {
-        val binding = observation.access?.binding ?: return
-        val latest = observation.uploads.filter { it.row.status == PendingMutationStatus.Done && it.receipt != null }
-            .mapNotNull { it.row.completedAt?.let(::uploadInstantOrNull) }.maxOrNull() ?: return
-        // This derived timestamp is recoverable from DONE. A failed write cannot erase its receipt or resend it.
-        uploadIntentResult {
-            val bound = guard.bindExact(binding)
-            outbox.withActiveBinding(bound) {
-                val previous = settingsStore.lastUploadAtForLedger(bound.ledgerId)?.let(::uploadInstantOrNull)
-                if (previous == null || previous < latest) {
-                    val originalTimestamp = observation.uploads.first { uploadInstantOrNull(it.row.completedAt) == latest }
-                        .row.completedAt
-                    settingsStore.saveLastUploadAtForLedger(bound.ledgerId, requireNotNull(originalTimestamp))
-                }
-            }
-        }
-    }
+
 }
 
 private fun OutboxRow.belongsToUploadBinding(binding: LogicalSessionBinding): Boolean =
@@ -238,4 +226,31 @@ private suspend fun <T> uploadIntentResult(block: suspend () -> T): Result<T> = 
     Result.failure(RepositoryException(message))
 } catch (error: Exception) {
     Result.failure(error)
+}
+
+private suspend fun UploadIntentRepository.continuationGroup(bound: BoundLedgerRequest, binding: LogicalSessionBinding): String? {
+    val rows = outbox.observeActiveByTypes(setOf(PendingMutationType.UploadScreenshot)).first()
+    bound.requireStillActive()
+    return rows.filter { it.belongsToUploadBinding(binding) }
+        .sortedWith(compareBy(OutboxRow::createdAt, OutboxRow::id))
+        .firstNotNullOfOrNull { row -> row.targetId.removePrefix("upload_batch:")
+            .takeIf { row.targetId == "upload_batch:$it" && isUploadIntentFileKey(it) } }
+}
+
+private suspend fun UploadIntentRepository.recordLastUpload(observation: UploadIntentObservation) {
+    val binding = observation.access?.binding ?: return
+    val latest = observation.uploads.filter { it.row.status == PendingMutationStatus.Done && it.receipt != null }
+        .mapNotNull { it.row.completedAt?.let(::uploadInstantOrNull) }.maxOrNull() ?: return
+    // This derived timestamp is recoverable from DONE. A failed write cannot erase its receipt or resend it.
+    uploadIntentResult {
+        val bound = guard.bindExact(binding)
+        outbox.withActiveBinding(bound) {
+            val previous = settingsStore.lastUploadAtForLedger(bound.ledgerId)?.let(::uploadInstantOrNull)
+            if (previous == null || previous < latest) {
+                val originalTimestamp = observation.uploads.first { uploadInstantOrNull(it.row.completedAt) == latest }
+                    .row.completedAt
+                settingsStore.saveLastUploadAtForLedger(bound.ledgerId, requireNotNull(originalTimestamp))
+            }
+        }
+    }
 }

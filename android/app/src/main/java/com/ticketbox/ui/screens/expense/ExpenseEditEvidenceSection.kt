@@ -32,6 +32,7 @@ internal data class ExpenseEditEvidenceState(
     val ocrRunning: Boolean,
     val readOnly: Boolean,
     val showLargeImage: Boolean,
+    val originalTaskAvailable: Boolean = false,
 )
 
 internal data class ExpenseEditEvidenceActions(
@@ -98,7 +99,7 @@ private fun ExpenseEvidenceActions(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
-        QuietOutlinedButton(
+        if (!state.originalTaskAvailable) QuietOutlinedButton(
             text = when {
                 state.imageLoading -> stringResource(R.string.expense_edit_preview_image_button_loading)
                 state.showLargeImage -> stringResource(R.string.expense_edit_preview_image_button_collapse)

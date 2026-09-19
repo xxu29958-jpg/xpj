@@ -44,6 +44,7 @@ fun ExpenseFactScreen(
     viewModel: ExpenseFactViewModel,
     onBack: () -> Unit,
     onRepairCorrectionRate: CorrectionRateAction,
+    originalContent: (@Composable () -> Unit)? = null,
 ) {
     AppSecondaryScrollableColumn(
         chrome = AppSecondaryPageChrome(
@@ -73,7 +74,7 @@ fun ExpenseFactScreen(
                 )
             }
             else -> {
-                FactContentSections(state = state, viewModel = viewModel)
+                FactContentSections(state = state, viewModel = viewModel, originalContent = originalContent)
             }
         }
     }
@@ -111,6 +112,7 @@ private fun FactBillSplitSubmissions(state: ExpenseFactUiState, viewModel: Expen
 private fun FactContentSections(
     state: ExpenseFactUiState,
     viewModel: ExpenseFactViewModel,
+    originalContent: (@Composable () -> Unit)?,
 ) {
                 val expense = state.expense ?: return
                 // 已知内容 + 权威刷新失败：低层级 stale 提示，不抢任务焦点。
@@ -127,6 +129,7 @@ private fun FactContentSections(
                     state = state,
                     onLoadFullImage = viewModel::loadFullImage,
                     onRetryThumbnail = viewModel::retryLoadThumbnail,
+                    originalContent = originalContent,
                 )
                 FactLinesSection(
                     state = state,

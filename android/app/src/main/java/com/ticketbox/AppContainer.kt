@@ -197,6 +197,7 @@ class AppContainer(context: Context) {
      */
     private val outboxDispatchers: List<OutboxMutationDispatcher> by lazy {
         listOf(
+            com.ticketbox.data.repository.OriginalAttachmentDispatcher(::outboxApi, uploadFiles::read),
             UploadScreenshotDispatcher(
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.uploadPayloadAdapter,

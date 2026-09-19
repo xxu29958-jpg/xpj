@@ -28,10 +28,22 @@ import com.ticketbox.data.remote.api.LedgerDeviceApi
 import com.ticketbox.data.remote.api.RecycleBinApi
 import com.ticketbox.data.remote.api.BackgroundTaskApi
 import com.ticketbox.data.remote.dto.PaginatedExpensesDto
+import com.ticketbox.data.remote.dto.OriginalCleanupRequestDto
+import com.ticketbox.data.remote.dto.OriginalCommandReceiptDto
+import com.ticketbox.data.remote.dto.OriginalHealthDto
+import com.ticketbox.data.remote.dto.OriginalVerificationRequestDto
 import com.ticketbox.data.remote.dto.ReportsOverviewDto
+import okhttp3.MultipartBody
 import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.GET
+import retrofit2.http.Body
+import retrofit2.http.Header
+import retrofit2.http.Multipart
+import retrofit2.http.Part
+import retrofit2.http.Path
+import retrofit2.http.POST
+import retrofit2.http.Query
 import retrofit2.http.QueryMap
 import retrofit2.http.Streaming
 
@@ -64,6 +76,40 @@ interface ApiService :
     RecycleBinApi,
     BackgroundTaskApi,
     RuntimeCompatibilityApi {
+    @GET("api/expenses/{id}/original")
+    suspend fun originalHealth(@Path("id") id: Long): OriginalHealthDto
+
+    @POST("api/expenses/{id}/original/verify")
+    suspend fun verifyOriginal(
+        @Path("id") id: Long,
+        @Body body: OriginalVerificationRequestDto,
+        @Header("Idempotency-Key") idempotencyKey: String,
+    ): OriginalCommandReceiptDto
+
+    @Multipart
+    @POST("api/expenses/{id}/original/replenish")
+    suspend fun replenishOriginal(
+        @Path("id") id: Long,
+        @Part file: MultipartBody.Part,
+        @Query("expected_row_version") expectedRowVersion: Long,
+        @Query("expected_sha256") expectedSha256: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+    ): OriginalCommandReceiptDto
+
+    @POST("api/expenses/{id}/original/cleanup/retry")
+    suspend fun retryOriginalCleanup(
+        @Path("id") id: Long,
+        @Body body: OriginalCleanupRequestDto,
+        @Header("Idempotency-Key") idempotencyKey: String,
+    ): OriginalCommandReceiptDto
+
+    @POST("api/expenses/{id}/original/cleanup/cancel")
+    suspend fun cancelOriginalCleanup(
+        @Path("id") id: Long,
+        @Body body: OriginalCleanupRequestDto,
+        @Header("Idempotency-Key") idempotencyKey: String,
+    ): OriginalCommandReceiptDto
+
     @GET("api/expenses/confirmed")
     suspend fun confirmedExpenses(
         @QueryMap query: Map<String, String>,

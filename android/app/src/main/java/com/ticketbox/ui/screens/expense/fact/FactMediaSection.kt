@@ -28,6 +28,7 @@ internal fun FactMediaSection(
     state: ExpenseFactUiState,
     onLoadFullImage: () -> Unit,
     onRetryThumbnail: () -> Unit,
+    originalContent: (@Composable () -> Unit)? = null,
 ) {
     val expense = state.expense ?: return
     Column(
@@ -75,7 +76,7 @@ internal fun FactMediaSection(
                 )
             }
         }
-        FactOriginalImageAction(state, onLoadFullImage)
+        if (originalContent != null) originalContent() else FactOriginalImageAction(state, onLoadFullImage)
     }
 }
 

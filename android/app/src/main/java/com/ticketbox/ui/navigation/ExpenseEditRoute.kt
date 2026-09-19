@@ -39,6 +39,8 @@ import com.ticketbox.ui.screens.ExpenseEditScreenState
 import com.ticketbox.ui.screens.ExpenseEditSplitEditingActions
 import com.ticketbox.ui.screens.expense.ItemsEditorSheetActions
 import com.ticketbox.ui.screens.expense.SplitsEditorSheetActions
+import com.ticketbox.viewmodel.originalCommandAccepted
+import com.ticketbox.viewmodel.reviewOriginalBaseline
 import com.ticketbox.viewmodel.refreshFx
 import com.ticketbox.viewmodel.retryFx
 import com.ticketbox.viewmodel.loadFxReview
@@ -117,6 +119,7 @@ internal fun ExpenseEditRoute(
     }
 
     ExpenseEditScreen(
+        originalContent = { ExpenseEditOriginalTask(expenseId, screenFactory, editViewModel, editState) },
         screenState = ExpenseEditScreenState(
             expense = expense,
             editState = editState,
@@ -135,6 +138,16 @@ internal fun ExpenseEditRoute(
             splitEditing = expenseEditSplitEditingActions(editViewModel),
         ),
     )
+}
+
+@Composable
+private fun ExpenseEditOriginalTask(id: Long, factory: MainScreenFactory, vm: ExpenseEditViewModel, state: ExpenseEditUiState) {
+    OriginalAttachmentRoute(id, factory, vm::originalCommandAccepted)
+    if (state.originalBaselineRequired) {
+        Text(stringResource(R.string.original_edit_baseline))
+        androidx.compose.material3.TextButton(onClick = vm::reviewOriginalBaseline,
+            enabled = !state.expenseLoading) { Text(stringResource(R.string.original_edit_review)) }
+    }
 }
 
 private fun expenseEditPrimaryActions(

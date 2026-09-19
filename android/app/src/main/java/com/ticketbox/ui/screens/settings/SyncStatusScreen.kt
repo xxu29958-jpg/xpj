@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.SyncProblem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import com.ticketbox.data.repository.manualCreateReviewExpenseId
 import androidx.compose.runtime.getValue
@@ -234,7 +235,7 @@ private fun SyncStatusPageBody(
 }
 
 private val SEPARATE_RECOVERY_TYPES = setOf(PendingMutationType.CreateExpense, PendingMutationType.CreateBillSplitInvitation,
-    PendingMutationType.CorrectExpense, PendingMutationType.UploadScreenshot)
+    PendingMutationType.CorrectExpense, PendingMutationType.UploadScreenshot, PendingMutationType.OriginalAttachment)
 
 @Composable
 private fun SyncStatusUploadSection(state: OutboxStatusUiState, onOpenInbox: () -> Unit) {
@@ -249,6 +250,11 @@ private fun SyncStatusUploadSection(state: OutboxStatusUiState, onOpenInbox: () 
 
 @Composable
 private fun SyncStatusExpenseRecoverySection(state: OutboxStatusUiState, actions: SyncStatusActions) {
+    (state.status.conflicts + state.status.failed).filter { it.type == PendingMutationType.OriginalAttachment }.forEach { row ->
+        val id = row.targetId.removePrefix("expense:").toLongOrNull()
+        Text(stringResource(R.string.original_attention))
+        if (id != null) TextButton(onClick = { actions.onOpenExpense(id) }) { Text(stringResource(R.string.original_open_bill)) }
+    }
     state.correctionObservation.corrections.filter { !it.delivered || it.refreshRequired }.forEach { pending ->
         com.ticketbox.ui.screens.expense.fact.ExpenseCorrectionSubmissionCard(
             pending = pending,
@@ -503,6 +509,7 @@ private val failedCardDangerLabels = mapOf(
 
 internal val syncStatusMutationLabelResources = mapOf(
     PendingMutationType.UploadScreenshot to R.string.sync_status_mutation_upload_screenshot,
+    PendingMutationType.OriginalAttachment to R.string.original_title,
     PendingMutationType.PatchExpense to R.string.sync_status_mutation_patch_expense,
     PendingMutationType.CorrectExpense to R.string.sync_status_mutation_correct_expense,
     PendingMutationType.CreateExpense to R.string.sync_status_mutation_create_expense,
