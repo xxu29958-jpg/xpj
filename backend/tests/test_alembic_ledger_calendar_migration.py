@@ -167,6 +167,15 @@ def test_calendar_shape_preserves_history_and_empty_edge_round_trips(calendar_ed
     _, original = calendar_edge
     _run(command.upgrade, _HEAD)
     assert _without_calendar(_snapshot()) == original
+    _run(command.downgrade, _PARENT)
+    assert _snapshot() == original
+    assert "ledger_calendar_revisions" not in inspect(engine).get_table_names()
+    with engine.connect() as db:
+        assert db.scalar(text("SELECT schema_revision FROM dataset_authority")) == _PARENT
+
+    # Historical round-trip above stays on its original edge. Current ORM shape
+    # includes later expansions and must be compared with the current schema.
+    _run(command.upgrade, "head")
     inspector = inspect(engine)
     # PostgreSQL stores unqualified FLOAT as float8 and reflects its full name.
     postgresql_aliases = {"FLOAT": "DOUBLE PRECISION"}
@@ -185,11 +194,6 @@ def test_calendar_shape_preserves_history_and_empty_edge_round_trips(calendar_ed
                 actual = next(item for item in inspector.get_foreign_keys(model.__tablename__) if item["name"] == constraint.name)
                 assert actual["constrained_columns"] == list(constraint.column_keys)
                 assert actual["referred_columns"] == ["ledger_id", "revision"]
-    _run(command.downgrade, _PARENT)
-    assert _snapshot() == original
-    assert "ledger_calendar_revisions" not in inspect(engine).get_table_names()
-    with engine.connect() as db:
-        assert db.scalar(text("SELECT schema_revision FROM dataset_authority")) == _PARENT
 
 
 @pytest.mark.parametrize("currency_state", ["ACTIVE", "EMPTY", "ADOPTION_REQUIRED"])

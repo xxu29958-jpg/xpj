@@ -9,7 +9,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.models import Expense
-from app.services import cleanup_service, file_service
+from app.services import attachment_cleanup_service, cleanup_service, file_service
 from app.services.expense_review_command_service import _commit_confirmation_and_cleanup
 from app.services.time_service import now_utc
 from tests._infra.assets import PNG_BYTES
@@ -29,14 +29,14 @@ def test_cleanup_commit_failure_preserves_files_without_durable_delete_authority
                                delete_image_after_days=1, delete_rejected_after_days=1)
     monkeypatch.setattr(cleanup_service, "get_settings", lambda: settings)
     monkeypatch.setattr(file_service, "get_settings", lambda: settings)
-    monkeypatch.setattr(cleanup_service, "authorize_currency_metadata_write", lambda _db: None)
+    monkeypatch.setattr(attachment_cleanup_service, "authorize_currency_metadata_write", lambda _db: None)
     old = now_utc() - timedelta(days=3)
     expense = Expense(id=42, tenant_id="owner", status="rejected" if entry == "rejected_retention" else "confirmed",
                       image_path="uploads/owner/2026/09/original.png", image_deleted_at=None,
                       thumbnail_path="uploads/owner/2026/09/thumbnail.png", thumbnail_deleted_at=None,
                       confirmed_at=old, rejected_at=old, updated_at=old, row_version=7, fact_revision=2)
     fields = ("image_path", "thumbnail_path", "image_deleted_at", "thumbnail_deleted_at",
-              "status", "row_version", "fact_revision", "updated_at")
+              "status", "row_version", "fact_revision", "updated_at", "attachment_cleanup_request")
     durable = {field: getattr(expense, field) for field in fields}
     db = Mock(spec=Session)
     db.scalars.return_value = [expense]
