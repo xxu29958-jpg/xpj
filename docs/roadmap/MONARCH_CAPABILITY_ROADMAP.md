@@ -1,13 +1,13 @@
 # 小票夹 vs Monarch 能力路线图
 
-> **定位**：本文是产品能力规划（以 Monarch 为参照），用于理解"做什么"和"不做什么"。
-> 工程排期和验收闸门见 `docs/roadmap/POST_BETA_DEVELOPMENT_ROADMAP.md`。
+> **历史能力对照**：本文保留 v0.4→v1.0 时期以 Monarch 为参照的规划，不裁决当前完整目标或能力范围。
+> 当前依据为有效 Goal、Gmail 最终合同及后续明确裁决；现状、保留条件和施工顺序见[当前产品地图与修订规划](../current/TICKETBOX_CURRENT_PRODUCT_ATLAS.md)。
 
 版本范围：`v0.4-alpha3-rc1 -> v1.0`
 
 本文记录小票夹从 `v0.4-alpha3-rc1` 到 `v1.0` 的结构化能力规划。Monarch Money 只作为成熟个人财务产品的信息架构参考，不复制其银行聚合、投资净资产、品牌视觉、专有文案或家庭共享权限模型。
 
-基于当前 `main` 代码基线继续排期时，以 `docs/roadmap/POST_BETA_DEVELOPMENT_ROADMAP.md` 作为后续开发顺序、先修风险和验收闸门。
+下文“当前”、版本边界和先修条件均属于当时基线；同目录旧工程路线也已归为历史。继续施工时从上方当前地图及有效依据恢复，不重放旧版本队列。
 
 ## 1. 设计原则
 
