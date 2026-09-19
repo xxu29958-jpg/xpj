@@ -169,36 +169,49 @@ def build_csv_import_batch_response(
     })
 
 
+def _csv_fact_references(db: Session, *, tenant_id: str, rows: list[CsvImportRow],
+                         source_ids: set[str], events: list[CsvImportEvent]
+                         ) -> tuple[dict[int, Expense], dict[str, Expense], dict[int, str]]:
+    """Load purchase and offset facts referenced by this page's source mappings."""
+    expense_ids = {row.expense_id for row in rows if row.expense_id}
+    expense_ids.update(event.expense_id for event in events if event.expense_id)
+    expenses = list(db.scalars(ledger_scoped_select(Expense, tenant_id).where(
+        or_(Expense.id.in_(expense_ids), Expense.public_id.in_(source_ids))))) if expense_ids or source_ids else []
+    offset_ids = {event.offset_id for event in events if event.offset_id is not None}
+    offsets = {offset.id: offset.public_id for offset in db.scalars(
+        ledger_scoped_select(ExpenseOffsetFact, tenant_id).where(ExpenseOffsetFact.id.in_(offset_ids)))} if offset_ids else {}
+    return {expense.id: expense for expense in expenses}, {expense.public_id: expense for expense in expenses}, offsets
+
+
+def _csv_row_response(row: CsvImportRow, *, events: dict[tuple[str, str], CsvImportEvent],
+                       expenses: dict[int, Expense], source_expenses: dict[str, Expense],
+                       offsets: dict[int, str]) -> CsvImportRowResponse:
+    """Project navigation and effective status without querying or changing the saved task."""
+    event = events.get((row.entry_kind, row.source_event_public_id))
+    root_event = events.get(("expense", row.source_root_public_id))
+    expense_id = row.expense_id or (event.expense_id if event else None) or (root_event.expense_id if root_event else None)
+    root = expenses.get(expense_id) or source_expenses.get(row.source_root_public_id)
+    resolved = event is not None and (
+        event.offset_id is not None if row.entry_kind == "offset" else event.expense_id is not None)
+    return CsvImportRowResponse.model_validate(row).model_copy(update={
+        "status": "matched" if row.status == "review" and resolved else row.status,
+        "resolved_expense_id": root.id if root else None,
+        "resolved_root_status": root.status if root else None,
+        "resolved_root_row_version": root.row_version if root else None,
+        "resolved_offset_public_id": offsets.get(event.offset_id) if event else None,
+    })
+
+
 def build_csv_row_responses(db: Session, *, tenant_id: str, rows: list[CsvImportRow]) -> list[CsvImportRowResponse]:
     """Resolve source navigation in bounded queries, without mutating task state."""
     source_ids = {value for row in rows for value in (row.source_event_public_id, row.source_root_public_id) if value}
     events = list(db.scalars(ledger_scoped_select(CsvImportEvent, tenant_id).where(
         CsvImportEvent.source_event_public_id.in_(source_ids)))) if source_ids else []
     by_source = {(event.entry_kind, event.source_event_public_id): event for event in events}
-    expense_ids = {value for value in [*(row.expense_id for row in rows), *(event.expense_id for event in events)] if value}
-    expenses = list(db.scalars(ledger_scoped_select(Expense, tenant_id).where(
-        or_(Expense.id.in_(expense_ids), Expense.public_id.in_(source_ids))))) if expense_ids or source_ids else []
-    by_id = {expense.id: expense for expense in expenses}
-    by_public = {expense.public_id: expense for expense in expenses}
-    offset_ids = {event.offset_id for event in events if event.offset_id is not None}
-    offsets = {offset.id: offset.public_id for offset in db.scalars(
-        ledger_scoped_select(ExpenseOffsetFact, tenant_id).where(ExpenseOffsetFact.id.in_(offset_ids)))} if offset_ids else {}
-    result = []
-    for row in rows:
-        event = by_source.get((row.entry_kind, row.source_event_public_id))
-        root_event = by_source.get(("expense", row.source_root_public_id))
-        expense_id = row.expense_id or (event.expense_id if event else None) or (root_event.expense_id if root_event else None)
-        root = by_id.get(expense_id) or by_public.get(row.source_root_public_id)
-        resolved = event is not None and (
-            event.offset_id is not None if row.entry_kind == "offset" else event.expense_id is not None)
-        result.append(CsvImportRowResponse.model_validate(row).model_copy(update={
-            "status": "matched" if row.status == "review" and resolved else row.status,
-            "resolved_expense_id": root.id if root else None,
-            "resolved_root_status": root.status if root else None,
-            "resolved_root_row_version": root.row_version if root else None,
-            "resolved_offset_public_id": offsets.get(event.offset_id) if event else None,
-        }))
-    return result
+    expenses, source_expenses, offsets = _csv_fact_references(db, tenant_id=tenant_id, rows=rows,
+        source_ids=source_ids, events=events)
+    return [_csv_row_response(row, events=by_source, expenses=expenses, source_expenses=source_expenses,
+        offsets=offsets) for row in rows]
 
 
 def get_csv_import_batch_progress(

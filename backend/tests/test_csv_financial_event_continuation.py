@@ -185,9 +185,6 @@ def test_native_root_retains_gross_money_even_when_its_stream_contribution_is_ze
     {"home_currency_code": ""},
     {"original_currency_code": ""},
     {"original_amount_minor": ""},
-    {"exchange_rate_to_cny": ""},
-    {"exchange_rate_date": ""},
-    {"exchange_rate_source": ""},
     {"exchange_rate_source": "unknown-provider-" * 5},
 ])
 def test_native_missing_or_contradictory_cells_remain_repairable_errors(monkeypatch, changes):
@@ -218,16 +215,22 @@ def test_native_lineage_net_preserves_the_projection_range_not_the_single_fact_l
     assert not invalid.is_valid
 
 
-def test_native_legacy_null_quote_remains_missing_evidence_instead_of_an_invented_rate(monkeypatch):
+@pytest.mark.parametrize("missing", [
+    ("exchange_rate_to_cny", "exchange_rate_date", "exchange_rate_source"),
+    ("exchange_rate_to_cny",), ("exchange_rate_date",), ("exchange_rate_source",),
+])
+def test_native_legacy_null_quote_remains_missing_evidence_instead_of_an_invented_rate(monkeypatch, missing):
     content = _replace_cells(_export_offset(monkeypatch, "refund"),
-        exchange_rate_to_cny="", exchange_rate_date="", exchange_rate_source="")
+        **dict.fromkeys(missing, ""))
 
     row, = parse_csv_preview(content, home_currency="JPY").rows
 
     assert row.is_valid, row.error
-    assert row.exchange_rate_to_cny is None
-    assert row.exchange_rate_date is None
-    assert row.exchange_rate_source is None
+    expected = {"exchange_rate_to_cny": Decimal("149.12345678"),
+        "exchange_rate_date": date(2026, 5, 5), "exchange_rate_source": "manual"}
+    for field, value in expected.items():
+        assert getattr(row, field) == (None if field in missing else value)
+    assert all(row.event_input[field] == "" for field in missing)
     assert row.amount_cents == 3728
     assert row.accounting_date == date(2026, 5, 9)
 

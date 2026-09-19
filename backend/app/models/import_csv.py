@@ -24,7 +24,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database_model_registry import Base
-from app.money_contract import money_check_constraints_for_table
+from app.money_contract import MONEY_AGGREGATE_MAX, money_check_constraints_for_table
 from app.services.time_service import now_utc
 from app.tenant_contract import DEFAULT_TENANT_ID
 
@@ -80,6 +80,15 @@ class CsvImportRow(Base):
         *money_check_constraints_for_table("csv_import_rows"),
         CheckConstraint("home_currency_code IN ('CNY', 'USD', 'EUR', 'GBP', 'JPY', 'HKD', 'KRW')", name="ck_csv_import_rows_home_currency"),
         CheckConstraint("line_number >= 2", name="ck_csv_import_rows_line_number_valid"),
+        # Exported stream/lineage projections are staged evidence, not new facts.
+        CheckConstraint(
+            f"stream_amount_cents BETWEEN {-MONEY_AGGREGATE_MAX} AND {MONEY_AGGREGATE_MAX}",
+            name="ck_csv_import_rows_stream_amount_cents_projection_bounds",
+        ),
+        CheckConstraint(
+            f"lineage_home_net_cents BETWEEN {-MONEY_AGGREGATE_MAX} AND {MONEY_AGGREGATE_MAX}",
+            name="ck_csv_import_rows_lineage_home_net_cents_projection_bounds",
+        ),
         CheckConstraint(
             "status IN ('valid', 'error', 'applying', 'applied', 'insert_failed', 'review', 'matched', 'conflict')",
             name="ck_csv_import_rows_status_valid",

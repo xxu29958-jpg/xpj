@@ -29,13 +29,18 @@ from app.services.time_service import now_utc
 def _complete_reviewed_quote(row: CsvImportRow, payload: CsvImportReviewRequest) -> None:
     """Retain the file cells and commit a missing quote with the reviewed result."""
     if payload.manual_exchange_rate is not None:
-        if any(value is not None for value in (
-                row.exchange_rate_to_cny, row.exchange_rate_date, row.exchange_rate_source)):
+        complete = all(value is not None for value in (
+            row.exchange_rate_to_cny, row.exchange_rate_date, row.exchange_rate_source))
+        changed = any(known is not None and known != supplied for known, supplied in (
+            (row.exchange_rate_to_cny, payload.manual_exchange_rate),
+            (row.exchange_rate_date, payload.exchange_rate_date)))
+        if complete or changed:
             raise AppError("currency_snapshot_invalid", "文件已有汇率依据，不能在导入中替换。", status_code=422)
         row.exchange_rate_to_cny = payload.manual_exchange_rate
         row.exchange_rate_date = payload.exchange_rate_date
-        row.exchange_rate_source = "manual"
-    if row.exchange_rate_to_cny is None:
+        row.exchange_rate_source = row.exchange_rate_source or "manual"
+    if any(value is None for value in (
+            row.exchange_rate_to_cny, row.exchange_rate_date, row.exchange_rate_source)):
         raise AppError("currency_snapshot_invalid", "请补录本笔汇率和报价日期，再继续复核。", status_code=422)
     validate_imported_currency_snapshot(row)
 

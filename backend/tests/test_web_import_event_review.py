@@ -233,7 +233,7 @@ def test_incomplete_purchase_explicit_ack_and_historical_null_quote_display(revi
     body = response.body.decode()
     assert 'name="acknowledge_incomplete_lineage" value="true"' in body
     assert "未导入的退款、拒付或冲销不会自动生成" in body
-    assert "文件未提供汇率" in body and "未携带冻结汇率证据的历史行" in body
+    assert "文件未提供汇率" in body and "汇率证据不完整的历史行" in body
     assert "1 USD = 7.10 CNY" not in body
     assert 'name="manual_exchange_rate"' in body and 'name="exchange_rate_date"' in body
     payloads = []
@@ -246,6 +246,16 @@ def test_incomplete_purchase_explicit_ack_and_historical_null_quote_display(revi
     submit(review_web, expense_id="", expected_row_version="", acknowledge_incomplete_lineage="true")
     assert payloads[0].acknowledge_incomplete_lineage is True
     assert payloads[0].expense_id is None
+
+
+def test_historical_partial_quote_keeps_known_rate_and_offers_missing_date(review_web, monkeypatch):
+    event = row(exchange_rate_date=None, resolved_expense_id=42)
+    arrange(monkeypatch, review_web, event, root())
+    response = review_web.web_import_event_review(request(), BATCH, 3, ledger_id="family", db=object())
+    body = response.body.decode()
+    assert 'name="manual_exchange_rate" inputmode="decimal" value="7.10" readonly' in body
+    assert 'type="date" name="exchange_rate_date" value=""' in body
+    assert "已有值不能替换" in body
 
 
 @pytest.mark.parametrize("status", ["applied", "matched", "conflict"])

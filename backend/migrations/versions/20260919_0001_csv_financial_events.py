@@ -14,6 +14,12 @@ _EVENT_COLUMNS = (
     "accounting_date", "stream_amount_cents", "lineage_status", "lineage_home_net_cents",
     "event_input", "review_reason",
 )
+# Frozen on this schema edge; the C07 v1 canonical-money manifest is unchanged.
+_PROJECTION_MAX = 9_007_199_254_740_991
+_PROJECTION_CHECKS = (
+    ("stream_amount_cents", "ck_csv_import_rows_stream_amount_cents_projection_bounds"),
+    ("lineage_home_net_cents", "ck_csv_import_rows_lineage_home_net_cents_projection_bounds"),
+)
 
 
 def _set_authority_revision(bind, expected, target):
@@ -41,6 +47,8 @@ def upgrade():
         sa.Column("review_reason", sa.Text(), nullable=True),
     ):
         op.add_column("csv_import_rows", column)
+    for column, name in _PROJECTION_CHECKS:
+        op.create_check_constraint(name, "csv_import_rows", f"{column} BETWEEN {-_PROJECTION_MAX} AND {_PROJECTION_MAX}")
     op.drop_constraint("ck_csv_import_rows_status_valid", "csv_import_rows", type_="check")
     op.create_check_constraint(
         "ck_csv_import_rows_status_valid", "csv_import_rows",
@@ -108,25 +116,38 @@ def downgrade():
     op.create_check_constraint(
         "ck_csv_import_rows_status_valid", "csv_import_rows", f"status IN ({_LEGACY_STATUSES})",
     )
+    for _column, name in _PROJECTION_CHECKS:
+        op.drop_constraint(name, "csv_import_rows", type_="check")
     for column in reversed(_EVENT_COLUMNS):
         op.drop_column("csv_import_rows", column)
     _set_authority_revision(bind, revision, down_revision)
 
 
-def assert_postcondition(bind):
-    inspector = sa.inspect(bind)
+def _assert_csv_row_shape(inspector):
     columns = {column["name"]: column for column in inspector.get_columns("csv_import_rows")}
     if set(_EVENT_COLUMNS) - columns.keys() or columns["entry_kind"]["nullable"]:
         raise RuntimeError("native CSV row evidence is missing")
+    for column, _name in _PROJECTION_CHECKS:
+        shape = columns[column]
+        if not isinstance(shape["type"], sa.BigInteger) or not shape["nullable"] or shape["default"] is not None:
+            raise RuntimeError("native CSV aggregate projection shape is invalid")
+
+
+def _assert_csv_row_checks(inspector):
+    checks = {item["name"]: item["sqltext"] for item in inspector.get_check_constraints("csv_import_rows")}
+    statuses = checks.get("ck_csv_import_rows_status_valid", "")
+    if any(f"'{status}'" not in statuses for status in ("review", "matched", "conflict")):
+        raise RuntimeError("native CSV review states are missing")
+    if {name for _column, name in _PROJECTION_CHECKS} - checks.keys():
+        raise RuntimeError("native CSV aggregate projection bounds are missing")
+
+
+def _assert_csv_event_receipts(inspector):
     if not inspector.has_table("csv_import_events"):
         raise RuntimeError("ledger-local CSV event receipts are missing")
     checks = {item["name"] for item in inspector.get_check_constraints("csv_import_events")}
     if {"ck_csv_import_events_kind", "ck_csv_import_events_result", "ck_csv_import_events_source"} - checks:
         raise RuntimeError("CSV event receipt shape constraints are missing")
-    statuses = next((item["sqltext"] for item in inspector.get_check_constraints("csv_import_rows")
-                     if item["name"] == "ck_csv_import_rows_status_valid"), "")
-    if any(f"'{status}'" not in statuses for status in ("review", "matched", "conflict")):
-        raise RuntimeError("native CSV review states are missing")
     uniques = {tuple(item["column_names"]) for item in inspector.get_unique_constraints("csv_import_events")}
     if ("tenant_id", "entry_kind", "source_event_public_id") not in uniques:
         raise RuntimeError("CSV source event uniqueness is missing")
@@ -139,11 +160,22 @@ def assert_postcondition(bind):
     ):
         if ((source, "tenant_id"), target, ("id", "tenant_id")) not in foreign_keys:
             raise RuntimeError("CSV event receipt ledger isolation is missing")
+
+
+def _assert_csv_row_indexes(inspector):
     indexes = inspector.get_indexes("csv_import_rows")
     if not any(item["column_names"] == ["tenant_id", "entry_kind", "source_event_public_id"] for item in indexes):
         raise RuntimeError("native CSV source lookup is missing")
     if not any(item["unique"] and item["column_names"] == ["tenant_id", "expense_id"] for item in indexes):
         raise RuntimeError("original CSV inserted-expense uniqueness is missing")
+
+
+def assert_postcondition(bind):
+    inspector = sa.inspect(bind)
+    _assert_csv_row_shape(inspector)
+    _assert_csv_row_checks(inspector)
+    _assert_csv_event_receipts(inspector)
+    _assert_csv_row_indexes(inspector)
     live = bind.scalar(sa.text("SELECT version_num FROM alembic_version"))
     expected = revision if live == down_revision else live
     if bind.scalar(sa.text("SELECT schema_revision FROM dataset_authority WHERE singleton_id = 1")) != expected:

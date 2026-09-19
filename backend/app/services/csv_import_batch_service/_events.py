@@ -53,7 +53,7 @@ def _same_source_row(left: CsvImportRow, right: CsvImportRow) -> bool:
 def _source_value(row: CsvImportRow, field: str) -> object | None:
     # A reviewed missing quote fills typed evidence, without rewriting the file.
     if (field in _QUOTE_FIELDS and row.event_input is not None
-            and not any(row.event_input.get(name, "").strip() for name in _QUOTE_FIELDS)):
+            and not row.event_input.get(field, "").strip()):
         return None
     return getattr(row, field) or None
 
@@ -107,6 +107,30 @@ def _finish_row(row: CsvImportRow, status: str, message: str | None = None) -> N
     row.updated_at = now_utc()
 
 
+def _find_event_fact(db: Session, row: CsvImportRow, event: CsvImportEvent) -> Expense | ExpenseOffsetFact | None:
+    if row.entry_kind == "expense":
+        return db.scalar(ledger_scoped_select(Expense, row.tenant_id).where(
+            Expense.id == event.expense_id if event.expense_id else Expense.public_id == row.source_event_public_id))
+    return db.scalar(ledger_scoped_select(ExpenseOffsetFact, row.tenant_id).where(
+        ExpenseOffsetFact.id == event.offset_id if event.offset_id else ExpenseOffsetFact.public_id == row.source_event_public_id))
+
+
+def _match_existing_event(db: Session, row: CsvImportRow, canonical_row: CsvImportRow,
+                          event: CsvImportEvent, fact: Expense | ExpenseOffsetFact) -> None:
+    event.expense_id = fact.id if row.entry_kind == "expense" else fact.expense_id
+    if row.entry_kind == "offset":
+        event.offset_id = fact.id
+    source_root = find_source_root(db, tenant_id=row.tenant_id,
+        source_public_id=row.source_root_public_id) if row.entry_kind == "offset" else None
+    relationship_matches = row.entry_kind == "expense" or (source_root is not None and source_root.id == fact.expense_id)
+    if _matches_fact(canonical_row, fact) and relationship_matches:
+        if event.source_row_id is None:
+            event.source_row_id = row.id
+        _finish_row(row, "matched")
+    else:
+        _finish_row(row, "conflict", "来源事件已有记录，但内容或状态不同；请核对已有记录，不会重复入账。")
+
+
 def prepare_native_csv_row(db: Session, row: CsvImportRow, *, accept_incomplete: bool = False) -> bool:
     """Return True only when the existing apply owner should admit a new purchase."""
     event = claim_csv_event(db, row)
@@ -118,25 +142,9 @@ def prepare_native_csv_row(db: Session, row: CsvImportRow, *, accept_incomplete:
             _finish_row(row, "conflict", "同一来源事件的内容已变化，请查看已有记录并通过更正处理。")
             return False
         canonical_row = original
-    if row.entry_kind == "expense":
-        fact = db.scalar(ledger_scoped_select(Expense, row.tenant_id).where(
-            Expense.id == event.expense_id if event.expense_id else Expense.public_id == row.source_event_public_id))
-    else:
-        fact = db.scalar(ledger_scoped_select(ExpenseOffsetFact, row.tenant_id).where(
-            ExpenseOffsetFact.id == event.offset_id if event.offset_id else ExpenseOffsetFact.public_id == row.source_event_public_id))
+    fact = _find_event_fact(db, row, event)
     if fact is not None:
-        event.expense_id = fact.id if row.entry_kind == "expense" else fact.expense_id
-        if row.entry_kind == "offset":
-            event.offset_id = fact.id
-        source_root = find_source_root(db, tenant_id=row.tenant_id,
-            source_public_id=row.source_root_public_id) if row.entry_kind == "offset" else None
-        relationship_matches = row.entry_kind == "expense" or (source_root is not None and source_root.id == fact.expense_id)
-        if _matches_fact(canonical_row, fact) and relationship_matches:
-            if event.source_row_id is None:
-                event.source_row_id = row.id
-            _finish_row(row, "matched")
-        else:
-            _finish_row(row, "conflict", "来源事件已有记录，但内容或状态不同；请核对已有记录，不会重复入账。")
+        _match_existing_event(db, row, canonical_row, event, fact)
         return False
     if (event.expense_id is not None and row.entry_kind == "expense") or event.offset_id is not None:
         _finish_row(row, "conflict", "此前关联的记录已移除，请核对原任务，不会重新创建。")
@@ -144,7 +152,7 @@ def prepare_native_csv_row(db: Session, row: CsvImportRow, *, accept_incomplete:
     if row.entry_kind == "offset":
         _finish_row(row, "review")
         return False
-    if row.exchange_rate_to_cny is None:
+    if any(getattr(row, field) is None for field in _QUOTE_FIELDS):
         _finish_row(row, "review", "旧文件缺少汇率依据，请复核并补录本笔汇率和报价日期后继续。")
         return False
     if not accept_incomplete and not purchase_lineage_is_present(db, row):

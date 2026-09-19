@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.database import SessionLocal, engine
 from app.models import CsvImportEvent, CsvImportRow
+from app.money_contract import MONEY_AGGREGATE_MAX, MONEY_MINOR_MAX
 from tests._infra.alembic_runtime import reset_public_schema, run_alembic_for_test
 from tests._infra.currency import activate_test_currency_authority
 
@@ -188,6 +189,29 @@ def _new_event(db, *, source_row, source_id=None, tenant="csv-owner", **values):
     ).returning(CsvImportEvent.id))
 
 
+def _assert_staged_projection_bounds(owner):
+    # Unknown ordinary/error inputs stay NULL. Signed exported projections can
+    # exceed a single fact's limit, but must fit the supported aggregate range.
+    accepted = (None, -MONEY_AGGREGATE_MAX, -MONEY_MINOR_MAX - 1, 0, MONEY_MINOR_MAX + 1, MONEY_AGGREGATE_MAX)
+    with SessionLocal.begin() as db:
+        activate_test_currency_authority(db, "CNY")
+        row_ids = [
+            _new_row(db, owner, line=line, stream_amount_cents=value, lineage_home_net_cents=value)
+            for line, value in enumerate(accepted, start=100)
+        ]
+    with engine.connect() as db:
+        actual = db.execute(text(
+            "SELECT stream_amount_cents, lineage_home_net_cents FROM csv_import_rows "
+            "WHERE id = ANY(:ids) ORDER BY line_number"
+        ), {"ids": row_ids}).all()
+    assert actual == [(value, value) for value in accepted]
+    for column in ("stream_amount_cents", "lineage_home_net_cents"):
+        for invalid in (-MONEY_AGGREGATE_MAX - 1, MONEY_AGGREGATE_MAX + 1):
+            with pytest.raises(IntegrityError, match=f"ck_csv_import_rows_{column}_projection_bounds"), SessionLocal.begin() as db:
+                activate_test_currency_authority(db, "CNY")
+                _new_row(db, owner, line=200, **{column: invalid})
+
+
 def test_csv_event_migration_preserves_history_round_trips_and_enforces_ledger_receipts(csv_event_edge):
     records, original = csv_event_edge
     owner, other = records["csv-owner"], records["csv-other"]
@@ -203,6 +227,7 @@ def test_csv_event_migration_preserves_history_round_trips_and_enforces_ledger_r
     _assert_authority(_PARENT)
     _run(command.upgrade, _HEAD)
     _assert_upgraded_history(original)
+    _assert_staged_projection_bounds(owner)
 
     source_id = str(uuid4())
     with SessionLocal.begin() as db:

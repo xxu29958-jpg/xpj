@@ -248,15 +248,10 @@ def return_context_params(return_to: str, **origin: str) -> dict[str, str]:
     if token == "pending":
         clean_filter = (origin.get("return_filter") or "").strip()
         return {"filter": clean_filter} if clean_filter in _PENDING_FILTERS else {}
-    if token in {"confirmed", "reports"}:
-        params = _confirmed_report_return_params(token, **{key: origin.get(key, "") for key in
-            ("return_month", "return_filter", "return_page", "return_tag")})
-        if token == "reports":
-            params.update(_report_return_params(origin))
-        home = (origin.get("return_home_currency_code") or "").strip()
-        if home in supported_currency_codes():
-            params["home_currency_code"] = home
-        return params
+    if token == "confirmed":
+        return _confirmed_return_params(origin)
+    if token == "reports":
+        return _report_return_params(origin)
     if token == "search":
         query = (origin.get("return_query") or "").strip()
         if query and len(query) <= MAX_QUERY_LENGTH:
@@ -272,6 +267,9 @@ def return_context_params(return_to: str, **origin: str) -> dict[str, str]:
 
 def _report_return_params(origin: dict[str, str]) -> dict[str, str]:
     params = {}
+    month = (origin.get("return_month") or "").strip()
+    if _MONTH_RE.fullmatch(month):
+        params["month"] = month
     choices = {"home_currency_code": supported_currency_codes(),
         "granularity": {"day", "week", "month"}, "ranking_metric": {"amount", "count"}}
     for key, allowed in choices.items():
@@ -284,30 +282,24 @@ def _report_return_params(origin: dict[str, str]) -> dict[str, str]:
     return params
 
 
-def _confirmed_report_return_params(
-    token: str,
-    *,
-    return_month: str,
-    return_filter: str,
-    return_page: str,
-    return_tag: str,
-) -> dict[str, str]:
-    """Preserve only the selected confirmed-list or report origin's fields."""
+def _confirmed_return_params(origin: dict[str, str]) -> dict[str, str]:
+    """Keep the confirmed-list filters, including its currency projection."""
     params: dict[str, str] = {}
-    clean_month = (return_month or "").strip()
+    clean_month = (origin.get("return_month") or "").strip()
     if _MONTH_RE.fullmatch(clean_month):
         params["month"] = clean_month
-    if token == "reports":
-        return params
-    if (return_filter or "").strip() == "missing_category":
+    if (origin.get("return_filter") or "").strip() == "missing_category":
         params.pop("month", None)
         params["filter"] = "missing_category"
-    clean_page = (return_page or "").strip()
+    clean_page = (origin.get("return_page") or "").strip()
     if clean_page.isdigit() and 1 <= int(clean_page) <= 100_000:
         params["page"] = clean_page
-    clean_tag = (return_tag or "").strip()
+    clean_tag = (origin.get("return_tag") or "").strip()
     if clean_tag and len(clean_tag) <= 64:
         params["tag"] = clean_tag
+    home = (origin.get("return_home_currency_code") or "").strip()
+    if home in supported_currency_codes():
+        params["home_currency_code"] = home
     return params
 
 

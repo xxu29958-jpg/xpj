@@ -373,6 +373,21 @@ def _parse_csv_fx_columns(
     )
 
 
+def _csv_row_error(fx: _CsvFxColumns, event_error: str | None,
+                   etime_error: str | None) -> tuple[str | None, str | None]:
+    """Choose one invalid input and its matching code in the established order."""
+    errors = (
+        ("financial_event_invalid", event_error),
+        ("currency_not_supported", fx.currency_error),
+        (fx.original_amount_error_code, fx.original_amount_error),
+        ("exchange_rate_invalid", fx.exchange_rate_error),
+        ("exchange_rate_date_invalid", fx.exchange_rate_date_error),
+        (fx.amount_error_code, fx.amount_error),
+        ("expense_time_invalid", etime_error),
+    )
+    return next(((code, message) for code, message in errors if message), (None, None))
+
+
 def parse_csv_row(
     headers: list[str],
     row: list[str],
@@ -414,29 +429,7 @@ def parse_csv_row(
     rate_source = cells.get("exchange_rate_source", "").strip() or (None if native else authoritative_rate_source)
     if native and rate_source is not None and len(rate_source) > 32:
         rate_source = None
-    error = (
-        event_error
-        or native_money_error
-        or fx.currency_error
-        or fx.original_amount_error
-        or fx.exchange_rate_error
-        or fx.exchange_rate_date_error
-        or fx.amount_error
-        or etime_error
-    )
-    error_code = (
-        ("financial_event_invalid" if event_error or native_money_error else None)
-        or ("currency_not_supported" if fx.currency_error else None)
-        or fx.original_amount_error_code
-        or ("exchange_rate_invalid" if fx.exchange_rate_error else None)
-        or (
-            "exchange_rate_date_invalid"
-            if fx.exchange_rate_date_error
-            else None
-        )
-        or fx.amount_error_code
-        or ("expense_time_invalid" if etime_error else None)
-    )
+    error_code, error = _csv_row_error(fx, event_error or native_money_error, etime_error)
     return ParsedRow(
         line_number=line_number,
         home_currency_code=home_currency,

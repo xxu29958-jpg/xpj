@@ -64,7 +64,7 @@ def _event_amount(cells: dict[str, str], name: str, errors: list[str]) -> int | 
     return None
 
 
-def _event_shape_error(fields: dict[str, object], amount_cents: int | None) -> str | None:
+def _event_identity_error(fields: dict[str, object], amount_cents: int | None) -> str | None:
     kind, offset_kind = fields["entry_kind"], fields["offset_kind"]
     event_id, root_id = fields["source_event_public_id"], fields["source_root_public_id"]
     if kind not in {"expense", "offset"}:
@@ -76,6 +76,14 @@ def _event_shape_error(fields: dict[str, object], amount_cents: int | None) -> s
         return "offset 必须明确退款或冲正类型，并具有独立于原单的事件 UUID"
     if kind == "offset" and (amount_cents is None or amount_cents <= 0):
         return "offset 必须保留正数原始金额，零贡献不等于零金额"
+    return None
+
+
+def _event_shape_error(fields: dict[str, object], amount_cents: int | None) -> str | None:
+    identity_error = _event_identity_error(fields, amount_cents)
+    if identity_error:
+        return identity_error
+    kind, offset_kind = fields["entry_kind"], fields["offset_kind"]
     status = fields["lineage_status"]
     if status not in _LINEAGE_STATUSES:
         return "lineage_status 缺失或未知"
@@ -126,10 +134,8 @@ def native_money_fields_error(cells: dict[str, str]) -> str | None:
     missing = [name for name in required if not cells.get(name, "").strip()]
     if missing:
         return f"原生事件缺少冻结金额字段：{', '.join(missing)}"
-    quote = ("exchange_rate_to_cny", "exchange_rate_date", "exchange_rate_source")
-    supplied = [bool(cells.get(name, "").strip()) for name in quote]
-    if any(supplied) and not all(supplied):
-        return "冻结汇率必须同时保留报价、日期和来源；请核对缺失证据"
+    # Historical exports may retain only part of the quote. Keep each known
+    # value; a new fact needs explicit completion through the saved review.
     if len(cells.get("exchange_rate_source", "").strip()) > 32:
         return "exchange_rate_source 超出可保存的来源长度"
     return None

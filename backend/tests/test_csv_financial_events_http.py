@@ -436,8 +436,12 @@ def test_duplicate_saved_refund_tasks_share_matched_filters_and_changed_event_co
     assert original["financial_summary"]["lineage_home_net_cents"] == 7500
 
 
-def test_historical_empty_quote_review_preserves_raw_money_and_reupload_matches(
-    client: TestClient, identity,
+@pytest.mark.parametrize("missing_quote_fields", [
+    ("exchange_rate_to_cny", "exchange_rate_date", "exchange_rate_source"),
+    ("exchange_rate_date",),
+])
+def test_historical_incomplete_quote_review_preserves_raw_money_and_reupload_matches(
+    client: TestClient, identity, missing_quote_fields,
 ) -> None:
     _seed_usd_rate(client, identity, "2026-05-04", "7")
     source_root = _foreign_expense(client, identity, "旧文件的原币消费")
@@ -459,7 +463,7 @@ def test_historical_empty_quote_review_preserves_raw_money_and_reupload_matches(
     reader = csv.DictReader(StringIO(content.decode("utf-8-sig")))
     source_row, = list(reader)
     quote_fields = ("exchange_rate_to_cny", "exchange_rate_date", "exchange_rate_source")
-    for field in quote_fields:
+    for field in missing_quote_fields:
         source_row[field] = ""
     historical = StringIO()
     writer = csv.DictWriter(historical, fieldnames=reader.fieldnames, lineterminator="\n")
@@ -469,8 +473,9 @@ def test_historical_empty_quote_review_preserves_raw_money_and_reupload_matches(
     batch = _batch(client, target, historical_content)
     preview, = _rows(client, target, batch)["items"]
     assert preview["status"] == "valid"
-    assert all(preview[field] is None for field in quote_fields)
-    assert all(preview["event_input"][field] == "" for field in quote_fields)
+    for field in quote_fields:
+        assert preview[field] == (None if field in missing_quote_fields else quoted_row[field])
+        assert preview["event_input"][field] == source_row[field]
     assert _apply(client, target, batch)["inserted_count"] == 0
     staged, = _rows(client, target, batch)["items"]
     assert staged["status"] == "review"

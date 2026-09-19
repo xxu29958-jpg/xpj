@@ -60,11 +60,14 @@ Chosen behavior:
   amount. File-supplied quote evidence must be identified as imported evidence;
   it cannot silently rewrite the shared daily-rate table or attest that the current
   provider supplied it. Use existing money and fact owners for validation/review.
-- A historical native file with all three quote fields empty remains reviewable.
-  The writer supplies this event's positive exact quote and date, whose arithmetic
-  must match the file's unchanged original/home amounts. Retain raw file cells;
-  save reviewed typed evidence with the canonical result. Never replace a quote
-  already present in the file, or update a shared quote table.
+- A historical native file with any missing quote evidence remains reviewable,
+  including a recorded base-currency rate without a quote date. Retain each known
+  value. For a new event the writer completes this event's positive exact quote
+  and date, whose arithmetic must match the unchanged original/home amounts.
+  Missing source is recorded as manual completion. Retain raw file cells and
+  save reviewed typed evidence with the canonical result. Never replace a known
+  quote/date or update a shared quote table. Existing local facts can match the
+  original partial snapshot without inventing historical evidence.
 - A preview, draft admission, matched existing fact and confirmed new event are
   distinct user results. Import never silently confirms purchases or offsets.
   User confirmation uses current actor/role/OCC and a durable original request key;
@@ -169,3 +172,23 @@ Web journeys, cloud builds/gates, protected merge and independent main qualifica
 Local pure GREEN and source review are not these results, and no daily installation
 or data has been changed. The first complete portable-data export, shared accounting
 time migration and all remaining atlas outcomes are still separate active work.
+
+The first candidate (`38ab7734`, CI `35453349176`) found an actual compatibility
+counterexample: an existing JPY export retains rate/source but no quote date.
+Partial historical quote evidence is now accepted for matching or saved review;
+completion preserves every known value. Short parser/money/Web controls first
+failed **8/72** and then passed; the expanded focused suite passed **81 tests**,
+and **17 existing ordinary import/parser controls** passed separately. The original
+database-backed JPY export test is retained unchanged for final cloud qualification.
+
+The same cloud run found an unclassified new Web route, an old native-form test
+parsing a now-separated result display as one integer, and two new staged aggregate
+columns outside the frozen C07 v1 inventory. The route/result checks now cover their
+actual permissions and separate counts. The frozen 30-column money manifest stays
+unchanged; the two explicitly classified input projections have their own signed
+aggregate bounds, including database CHECKs and migration boundary probes.
+Repository-weight identified concentrated branching in event interpretation,
+fact resolution, row projection, return navigation and schema checks. Those
+responsibilities are separated without changing thresholds or financial owners.
+All of these fixes require a new exact candidate run; the first run's failure is
+not a qualification result.

@@ -85,15 +85,19 @@ def test_purchase_draft_freezes_imported_evidence_without_asserting_provider_aut
     assert expense.fx_status == "ready"
 
 
-def _legacy_import_row():
-    values = vars(_snapshot(exchange_rate_to_cny=None, exchange_rate_date=None,
-        exchange_rate_source=None))
+def _legacy_import_row(missing=("exchange_rate_to_cny", "exchange_rate_date", "exchange_rate_source")):
+    values = vars(_snapshot(**dict.fromkeys(missing)))
     return CsvImportRow(**values, entry_kind="expense", category="其他", source="manual",
-        event_input={"exchange_rate_to_cny": "", "exchange_rate_date": "", "exchange_rate_source": ""})
+        event_input={field: "" if values[field] is None else str(values[field])
+            for field in ("exchange_rate_to_cny", "exchange_rate_date", "exchange_rate_source")})
 
 
-def test_legacy_file_quote_can_be_reviewed_without_rewriting_the_source_evidence():
-    row = _legacy_import_row()
+@pytest.mark.parametrize("missing", [
+    ("exchange_rate_to_cny", "exchange_rate_date", "exchange_rate_source"),
+    ("exchange_rate_to_cny",), ("exchange_rate_date",), ("exchange_rate_source",),
+])
+def test_legacy_file_quote_can_be_reviewed_without_rewriting_the_source_evidence(missing):
+    row = _legacy_import_row(missing)
     original_input = dict(row.event_input)
     payload = CsvImportReviewRequest(reason="根据原单补录", manual_exchange_rate="149.12345678",
         exchange_rate_date="2026-05-05")
@@ -105,7 +109,17 @@ def test_legacy_file_quote_can_be_reviewed_without_rewriting_the_source_evidence
     assert (expense.amount_cents, expense.exchange_rate_date) == (3728, date(2026, 5, 5))
     assert row.event_input == original_input
     assert row.exchange_rate_source == "manual"
-    assert _same_source_row(row, _legacy_import_row()), "review evidence must not make the same file conflict"
+    assert _same_source_row(row, _legacy_import_row(missing)), "review evidence must not make the same file conflict"
+
+
+@pytest.mark.parametrize("missing", [("exchange_rate_date",), ("exchange_rate_to_cny",)])
+def test_review_cannot_overwrite_the_known_part_of_a_historical_quote(missing):
+    row = _legacy_import_row(missing)
+    with pytest.raises(AppError) as error:
+        _review._complete_reviewed_quote(row, CsvImportReviewRequest(reason="不能改写已有依据",
+            manual_exchange_rate="150", exchange_rate_date="2026-05-06"))
+    assert error.value.error == "currency_snapshot_invalid"
+    assert getattr(row, missing[0]) is None
 
 
 def test_review_cannot_replace_a_quote_recorded_in_the_file():

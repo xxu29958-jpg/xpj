@@ -2,6 +2,7 @@
 {% set page_title = '复核导入事件' %}
 {% set product_body_domain = 'transactions' %}
 {% set event_label = {'refund': '退款', 'chargeback': '拒付', 'reversal': '冲销'}.get(row.offset_kind, '支出' if row.entry_kind == 'expense' else '未知事件') %}
+{% set quote_incomplete = row.exchange_rate_to_cny is none or row.exchange_rate_date is none or row.exchange_rate_source is none %}
 {% block title %}复核导入事件 · 小票夹{% endblock %}
 {% block content %}
 <header class="product-page-header">
@@ -32,8 +33,8 @@
     <div><dt>来源原单标识</dt><dd>{{ row.source_root_public_id or '未提供或无效' }}</dd></div>
     <div><dt>来源原单状态 / 净额</dt><dd>{{ {'active': '有效', 'partially_refunded': '部分退回', 'fully_refunded': '全部退回', 'reversed': '已冲销'}.get(row.lineage_status, row.lineage_status or '未提供') }} / {{ row_amount_label(row.lineage_home_net_cents, row.home_currency_code) if row.lineage_home_net_cents is not none and row.home_currency_code else '未提供' }}</dd></div>
   </dl>
-  {% if row.exchange_rate_to_cny is none and row.exchange_rate_date is none and row.exchange_rate_source is none %}
-  <p class="text-meta">这是未携带冻结汇率证据的历史行。请核对来源，在下面为本条事件补录汇率及日期。补录值必须与文件中的原币和本位币金额一致，仅用于本条事件。</p>
+  {% if quote_incomplete %}
+  <p class="text-meta">这是汇率证据不完整的历史行。请核对来源，在下面为本条事件补齐汇率依据；已有值不能替换。补录值必须与文件中的原币和本位币金额一致，仅用于本条事件。缺失的来源会记为人工补录。</p>
   {% endif %}
   {% if row.review_reason %}<p class="text-meta">上次复核原因：{{ row.review_reason }}</p>{% endif %}
   {% if row.event_input %}
@@ -105,9 +106,9 @@
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
     <input type="hidden" name="expense_id" value="{{ draft.expense_id }}">
     <input type="hidden" name="expected_row_version" value="{{ draft.expected_row_version }}">
-    {% if row.exchange_rate_to_cny is none and row.exchange_rate_date is none and row.exchange_rate_source is none %}
-    <div class="product-field"><label for="event-manual-rate">本条汇率（1 {{ row.original_currency_code }} 折合 {{ row.home_currency_code }}）</label><input id="event-manual-rate" name="manual_exchange_rate" inputmode="decimal" value="{{ draft.manual_exchange_rate }}" required></div>
-    <div class="product-field"><label for="event-rate-date">本条汇率日期</label><input id="event-rate-date" type="date" name="exchange_rate_date" value="{{ draft.exchange_rate_date }}" required></div>
+    {% if quote_incomplete %}
+    <div class="product-field"><label for="event-manual-rate">本条汇率（1 {{ row.original_currency_code }} 折合 {{ row.home_currency_code }}）</label><input id="event-manual-rate" name="manual_exchange_rate" inputmode="decimal" value="{{ row.exchange_rate_to_cny if row.exchange_rate_to_cny is not none else draft.manual_exchange_rate }}" {% if row.exchange_rate_to_cny is not none %}readonly {% endif %}required></div>
+    <div class="product-field"><label for="event-rate-date">本条汇率日期</label><input id="event-rate-date" type="date" name="exchange_rate_date" value="{{ row.exchange_rate_date or draft.exchange_rate_date }}" {% if row.exchange_rate_date is not none %}readonly {% endif %}required></div>
     {% endif %}
     {% if row.entry_kind == 'expense' and row.lineage_status in ['partially_refunded', 'fully_refunded', 'reversed'] %}
     <div class="product-feedback product-feedback--warning">来源原单包含退回或冲销。如果相关事件尚未补齐，请补充上传；若本次只需带入消费总额草稿，请明确勾选下项并说明原因。相关事件齐全时无需勾选。</div>
