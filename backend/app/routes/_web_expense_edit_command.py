@@ -24,7 +24,7 @@ from app.services.currency_common import normalize_currency_code
 from app.services.data_quality_service import is_uncategorized_expense_category
 from app.services.expense_edit_command_service import edit_expense_submission
 from app.services.expense_service import get_expense
-from app.services.ledger_calendar_service import current_calendar
+from app.services.ledger_calendar_service import calendar_revision
 from app.services.tag_service import normalize_tags
 from app.services.time_service import ensure_utc
 
@@ -449,8 +449,9 @@ def prepare_web_expense_form(
         expense = get_expense(db, expense_id, selected_ledger_id)
         time_input = None
         if time_fields is not None:
-            time_input = changed_time_input(expense, current_calendar(db, ledger_id=selected_ledger_id),
-                expense_time, time_fields)
+            # Posted revisions describe new intent, not the original edit baseline.
+            rule = calendar_revision(db, ledger_id=selected_ledger_id, revision=expense.calendar_revision or 1)
+            time_input = changed_time_input(expense, rule, expense_time, time_fields)
     except AppError as exc:
         db.rollback()
         return None, _failure(exc.message, form_values=form_values,

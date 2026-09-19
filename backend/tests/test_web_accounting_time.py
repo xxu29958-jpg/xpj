@@ -69,9 +69,10 @@ def prepare(monkeypatch, expense, raw, time_fields):
     from app.routes import _web_expense_edit_command as command
 
     monkeypatch.setattr(command, "get_expense", lambda *_: expense)
-    monkeypatch.setattr(command, "current_calendar", lambda *_, **__: SimpleNamespace(
-        timezone_name="America/New_York", revision=1))
-    return command.prepare_web_expense_form(Mock(), expense_id=1, selected_ledger_id="owner",
+    db = Mock()
+    db.get.return_value = SimpleNamespace(timezone_name="America/New_York", revision=1)
+    db.scalar.return_value = SimpleNamespace(timezone_name="Asia/Tokyo", revision=2)
+    return command.prepare_web_expense_form(db, expense_id=1, selected_ledger_id="owner",
         expected_row_version="7", idempotency_key="original-key", amount_yuan="1.00",
         original_currency="CNY", merchant="更正商家", category="餐饮", note="", tags="",
         expense_time=raw, time_fields=time_fields)
@@ -85,6 +86,79 @@ def test_unchanged_later_fold_edit_omits_time_mutation(monkeypatch):
     assert result.error is None
     assert payload.model_fields_set == {"expected_row_version", "merchant"}
     assert result.form_values["source_utc_offset_seconds"] == "-18000"
+
+
+def test_merchant_edit_after_calendar_change_keeps_unknown_time_evidence(monkeypatch):
+    from app.routes import _web_expense_edit_command as command
+    from app.routes._web_expense_edit_form import WebExpenseEditForm
+    from app.routes._web_expense_return_context import ExpenseReturnContext
+    from app.services.expense_accounting_time_service import apply_expense_time_input
+
+    expense = expense_snapshot(time_precision="unknown", tenant_id="owner",
+        accounting_date_basis="legacy_expense_time")
+    expense.source_timezone = expense.source_utc_offset_seconds = expense.user_local_date = None
+    original_rule = SimpleNamespace(timezone_name="America/New_York", revision=1)
+    form = time_form_values(expense, original_rule)
+    wall = form.pop("wall_time")
+    db = Mock()
+    db.get.return_value = original_rule
+    db.scalar.return_value = SimpleNamespace(timezone_name="Asia/Tokyo", revision=2)
+    monkeypatch.setattr(command, "get_expense", lambda *_: expense)
+    submit = Mock(return_value=SimpleNamespace(row_version=8))
+    monkeypatch.setattr(command, "edit_expense_submission", submit)
+
+    result = command.apply_web_expense_form(db, expense_id=1, selected_ledger_id="owner",
+        initiator_account_id=13, initiator_device_id=17, form=WebExpenseEditForm(
+            ledger_id="owner", expected_row_version="7", idempotency_key="original-key",
+            save_before_confirm=False, amount_yuan="1.00", original_currency="CNY", manual_exchange_rate="",
+            merchant="更正商家", category="餐饮", note="", tags="", expense_time=wall,
+            fragment=0, return_context=ExpenseReturnContext(return_to="pending"), time_fields=form))
+
+    assert result.error is None and result.row_version == 8
+    submitted = submit.call_args.kwargs
+    payload = submitted["update_payload"]
+    assert payload.model_fields_set == {"expected_row_version", "merchant"}
+    assert (submitted["tenant_id"], submitted["initiator_account_id"], submitted["initiator_device_id"]) == (
+        "owner", 13, 17)
+    assert submitted["idempotency_key"] == "original-key"
+    assert result.form_values["idempotency_key"] == "original-key"
+    assert all(result.form_values[key] == value for key, value in form.items())
+    assert apply_expense_time_input(db, expense, payload) is False
+    assert expense.time_precision == "unknown" and expense.accounting_date_basis == "legacy_expense_time"
+    assert expense.source_timezone is None and expense.source_utc_offset_seconds is None
+    assert expense.expense_time == datetime(2026, 11, 1, 6, 30, tzinfo=UTC)
+    assert db.get.call_args.args[1] == ("owner", 1)
+    db.scalar.assert_not_called()
+
+
+@pytest.mark.parametrize("raw,changes", [
+    ("2026-11-01T02:30", {"source_utc_offset_seconds": "-18000"}),
+    ("2026-11-01T01:30", {"source_timezone": "UTC", "source_utc_offset_seconds": "0"}),
+    ("2026-11-01T01:30", {"accounting_date": "2026-10-31", "source_utc_offset_seconds": "-18000"}),
+])
+def test_actual_time_edits_remain_explicit_after_current_calendar_changes(monkeypatch, raw, changes):
+    submitted = fields(**changes)
+    payload, result = prepare(monkeypatch, expense_snapshot(time_precision="instant"), raw, submitted)
+    assert result.error is None
+    assert payload.time_input == parse_web_accounting_time(raw, submitted)
+    assert "expense_time" not in payload.model_fields_set
+    assert result.form_values["idempotency_key"] == "original-key"
+
+
+def test_raw_revision_cannot_select_a_cross_ledger_edit_baseline(monkeypatch):
+    from app.services.expense_accounting_time_service import apply_expense_time_input
+
+    expense = expense_snapshot(time_precision="instant", tenant_id="owner")
+    payload, result = prepare(monkeypatch, expense, "2026-11-01T01:30",
+        fields(calendar_revision="9", source_utc_offset_seconds="-18000"))
+    assert result.error is None and payload.time_input.calendar_revision == 9
+    db = Mock()
+    db.get.return_value = None  # Revision 9 exists only in another ledger.
+    with pytest.raises(AppError) as caught:
+        apply_expense_time_input(db, expense, payload)
+    assert caught.value.error == "calendar_revision_conflict"
+    assert db.get.call_args.args[1] == ("owner", 9)
+    assert expense.calendar_revision == 1 and expense.source_timezone == "America/New_York"
 
 
 def test_date_only_edit_uses_value_object_without_legacy_timestamp(monkeypatch):

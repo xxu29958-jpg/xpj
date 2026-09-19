@@ -38,7 +38,7 @@ def record_context(monkeypatch):
         accounting_date=now.date(), calendar_revision=1, time_precision="instant",
         user_local_date=now.date(), source_timezone="Asia/Shanghai", source_utc_offset_seconds=28800,
         accounting_date_basis="instant_calendar")
-    monkeypatch.setattr(helpers, "current_calendar", lambda *_a, **_k: SimpleNamespace(
+    monkeypatch.setattr(helpers, "calendar_revision", lambda *_a, **_k: SimpleNamespace(
         revision=1, timezone_name="Asia/Shanghai"))
     monkeypatch.setattr(helpers, "get_expense", lambda *_a: expense)
     monkeypatch.setattr(fact, "get_expense", lambda *_a: expense)
@@ -65,9 +65,13 @@ def record_context(monkeypatch):
     monkeypatch.setattr(fact, "list_expense_revisions", lambda *_a, **_k: ExpenseRevisionListResponse(
         items=[], page=1, page_size=50, total=0, snapshot_revision=1))
 
-    def read(mode, status="mismatch_known"):
+    def read(mode, status="mismatch_known", *, source_unknown=False):
         item_response.items_sum_status = status
         expense.status = "pending" if mode == "pending" else "confirmed"
+        if source_unknown:
+            expense.source_timezone = expense.source_utc_offset_seconds = expense.user_local_date = None
+            expense.time_precision = "unknown"
+            expense.accounting_date_basis = "legacy_expense_time"
         request = Request({"type": "http", "method": "GET", "headers": [],
             "path": "/web/expenses/41/edit", "query_string": b""})
         factory = {"fact": fact.web_fact_context, "correction": correction.web_correction_context,
@@ -80,6 +84,15 @@ def record_context(monkeypatch):
         return context
 
     return read
+
+
+@pytest.mark.parametrize("mode", ["pending", "correction"])
+def test_legacy_editor_uses_recorded_calendar_without_inventing_source(record_context, mode):
+    context = record_context(mode, source_unknown=True)
+    assert context["time_form"]["calendar_revision"] == "1"
+    assert context["time_form"]["source_timezone"] == "Asia/Shanghai"
+    assert context["time_form"]["wall_time"] == "2026-09-01T12:00:00"
+    assert context["expense"]["expense_time"] == "2026-09-01 04:00:00+00:00"
 
 
 def _render(name, context):

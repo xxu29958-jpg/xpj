@@ -35,7 +35,7 @@ def fact_context(monkeypatch):
         accounting_date_basis="instant_calendar")
     rule = LedgerCalendarRevision(ledger_id="owner", revision=1, timezone_name="Asia/Shanghai",
         basis="legacy_assumed", adopted_at=now)
-    monkeypatch.setattr(helpers, "current_calendar", lambda _db, *, ledger_id: rule)
+    monkeypatch.setattr(helpers, "calendar_revision", lambda _db, *, ledger_id, revision: rule)
     monkeypatch.setattr(helpers, "get_expense", lambda *_a: expense)
     monkeypatch.setattr(fact, "get_expense", lambda *_a: expense)
     monkeypatch.setattr(helpers, "_base_ctx", lambda *_a, **_k: {
