@@ -75,8 +75,9 @@ def test_missing_conversion_keeps_progress_unknown_instead_of_zero_or_success() 
 
 @pytest.mark.parametrize("source, expected", [("CNY", 4000), (None, None)])
 def test_goal_projects_confirmed_spending_in_its_own_yen_units(monkeypatch, source, expected):
-    rows = [SimpleNamespace(category="交通", amount_cents=amount, home_currency_code=currency, stream_date=date(2026, 9, 3))
-            for amount, currency in [(10000, source), (2000, "JPY")]]
+    rows = [SimpleNamespace(entry_id=index, root_expense_id=index, entry_kind="expense", merchant="fixture",
+            category="交通", stream_amount_cents=amount, home_currency_code=currency, stream_date=date(2026, 9, 3))
+            for index, (amount, currency) in enumerate([(10000, source), (2000, "JPY")], 1)]
     db = SimpleNamespace(execute=lambda query: rows)
     monkeypatch.setattr("app.services.money_projection_service.resolve_payload_rate", lambda *args, **kw: (20, None, None, None))
     goal = _spending_goal(category="交通", target_amount_cents=5000)

@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.models import Expense
+from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from app.services.time_service import current_month, now_utc
 from tests._infra.currency import activate_test_currency_authority
 
@@ -66,23 +67,23 @@ def seed_confirmed_expense_fact(
             f"{current_month('Asia/Shanghai')}-15T04:00:00+00:00"
         )
         timestamp = now_utc()
-        db.add(
-            Expense(
-                tenant_id="owner",
-                amount_cents=amount_minor,
-                home_currency_code=currency_code,
-                original_currency_code=currency_code,
-                original_amount_minor=amount_minor,
-                exchange_rate_to_cny=Decimal("1"),
-                merchant=merchant,
-                category=category,
-                status="confirmed",
-                expense_time=recorded_at,
-                confirmed_at=timestamp,
-                created_at=timestamp,
-                updated_at=timestamp,
-            )
+        expense = Expense(
+            tenant_id="owner",
+            amount_cents=amount_minor,
+            home_currency_code=currency_code,
+            original_currency_code=currency_code,
+            original_amount_minor=amount_minor,
+            exchange_rate_to_cny=Decimal("1"),
+            merchant=merchant,
+            category=category,
+            status="confirmed",
+            expense_time=recorded_at,
+            confirmed_at=timestamp,
+            created_at=timestamp,
+            updated_at=timestamp,
         )
+        refresh_legacy_expense_time(db, expense)
+        db.add(expense)
         db.commit()
 
 
