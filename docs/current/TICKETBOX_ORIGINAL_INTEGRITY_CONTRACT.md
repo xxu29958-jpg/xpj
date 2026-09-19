@@ -74,10 +74,30 @@ Those are rejected as substitutes for this delivery.
 | Cleanup and orphan handling | Retain retention policy, dry-run/grace and row/thumbnail concurrency boundaries; close the demonstrated durable-state/physical-delete gap without a new host lifecycle. |
 | Original-copy/backup adapters and future portable outlet | Reuse existing stable-handle, digest and referenced-original work; preserve full-copy integrity. Keep current shipment exclusions explicit rather than reviving unrelated backup/restore actions. |
 
-The transport, storage changes and exact code/file boundary remain to be selected
-from this consumer trace before dependent production changes. Implementation must
-close all affected current consumers and retire replaced read/write paths; a new
-error message alone does not complete the user result.
+### Verified-read implementation decision
+
+API/Web, real OCR providers and newly generated thumbnails will use one original
+read owner above the existing ledger/path resolver and stable single-handle
+reader. It captures and hashes the same bytes into a private temporary snapshot;
+consumers use that snapshot and never reopen the mutable original after checking
+it. The snapshot is request/work scoped and removed on completion or failure,
+including interrupted HTTP delivery. It is not a persistent copy or inventory.
+HTTP delivery continues through Starlette FileResponse, preserving its streaming,
+single/multiple Range and invalid-range handling; HEAD is tested at the response
+layer without claiming the current GET-only routes already accept HEAD.
+
+Known SHA-256 identity mismatches stop original consumption with an actionable
+integrity error. Legacy absent or unusable digest metadata remains readable but
+unverified, retaining the old metadata until an explicit reviewed command; no
+read creates or replaces a digest. Upload request and Android staging hashes
+remain separate from the admitted original's hash. Existing thumbnails remain
+usable derivatives, while actual original health is reported separately.
+
+Mutation storage and transport are still to be selected from the existing command
+and cleanup owners before dependent writes. Implementation must close all affected
+consumers and retire replaced paths; a new read error alone is not this slice's
+exit. Same-bill replenishment, explicit legacy verification and durable cleanup
+remain part of the delivery, together with their actual client continuations.
 
 ## Evidence and exit
 
