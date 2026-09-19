@@ -77,8 +77,10 @@ QUERY_STRING_TOKEN_ROUTES: frozenset[str] = frozenset()
 
 # Native recovery posts the manual-rate token separately from the retained
 # original financial command's token. Both are real owner-consumed fields.
+# Calendar governance compares its immutable rule revision under the ledger
+# lock; its token names that revision rather than an expense row version.
 TOKEN_FIELD_NAMES = frozenset({
-    "expected_row_version", "expected_row_version_by_id", "fx_expected_row_version",
+    "expected_row_version", "expected_row_version_by_id", "fx_expected_row_version", "expected_revision",
 })
 
 

@@ -54,7 +54,6 @@ def strict_zone(timezone_name: str) -> ZoneInfo:
 
 def _local_time_candidates(value: datetime, zone: ZoneInfo) -> dict[datetime, int]:
     # PEP 495 permits imaginary gap values in replace(); only UTC round-trips prove validity.
-    # https://peps.python.org/pep-0495/#mind-the-gap
     candidates = {}
     for fold in (0, 1):
         candidate = value.replace(tzinfo=zone, fold=fold).astimezone(UTC)

@@ -5,15 +5,13 @@ from __future__ import annotations
 import json
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.errors import AppError
+from app.database._ledger_calendar_adoption import materialize_legacy_accounting_dates
+from app.errors import AppError, DataIntegrityError
 from app.models import Ledger, LedgerAuditLog, LedgerCalendarRevision
 from app.services.time_service import now_utc
-
-_ADOPTION_SETTING = "xpj.calendar_adoption"
-
 
 def calendar_revision(db: Session, *, ledger_id: str, revision: int) -> LedgerCalendarRevision | None:
     return db.get(LedgerCalendarRevision, (ledger_id, revision))
@@ -50,7 +48,7 @@ def adopt_ledger_calendar(
     if ledger.calendar_revision is not None:
         rule = calendar_revision(db, ledger_id=ledger_id, revision=ledger.calendar_revision)
         if rule is None:
-            raise RuntimeError("recorded ledger calendar rule is missing")
+            raise DataIntegrityError("recorded ledger calendar rule is missing")
         return rule
     ZoneInfo(timezone_name)  # Reject unusable snapshots; never choose a fallback zone.
     rule = LedgerCalendarRevision(
@@ -66,29 +64,10 @@ def adopt_ledger_calendar(
         detail=json.dumps({"timezone_name": timezone_name, "basis": rule.basis}, ensure_ascii=False),
     ))
     db.flush()
-    proof = json.dumps({"purpose": "legacy_adoption", "ledger_id": ledger_id, "revision": rule.revision})
-    db.execute(text("SELECT set_config(:setting, :proof, true)"), {"setting": _ADOPTION_SETTING, "proof": proof})
-    _materialize_legacy_dates(db, rule)
-    db.execute(text("SELECT set_config(:setting, '', true)"), {"setting": _ADOPTION_SETTING})
+    materialize_legacy_accounting_dates(db, ledger_id=ledger_id,
+        revision=rule.revision, timezone_name=rule.timezone_name)
     db.expire_all()
     return rule
-
-
-def _materialize_legacy_dates(db: Session, rule: LedgerCalendarRevision) -> None:
-    parameters = {"ledger": rule.ledger_id, "revision": rule.revision, "zone": rule.timezone_name}
-    db.execute(text("""
-        UPDATE expenses SET calendar_revision = :revision,
-            accounting_date = (COALESCE(expense_time, confirmed_at) AT TIME ZONE :zone)::date,
-            time_precision = 'unknown',
-            accounting_date_basis = CASE WHEN expense_time IS NOT NULL THEN 'legacy_expense_time'
-                WHEN confirmed_at IS NOT NULL THEN 'legacy_confirmed_at' ELSE 'legacy_unknown' END
-        WHERE tenant_id = :ledger AND calendar_revision IS NULL
-    """), parameters)
-    db.execute(text("""
-        UPDATE expense_offset_facts SET calendar_revision = :revision,
-            time_precision = 'date_only', accounting_date_basis = 'legacy_offset_date'
-        WHERE tenant_id = :ledger AND calendar_revision IS NULL
-    """), parameters)
 
 
 def adopt_all_ledger_calendars(*, timezone_name: str) -> None:

@@ -25,7 +25,7 @@ from app.services.spending_projection_service import entry_gaps, read_spending_p
 from app.services.time_service import now_utc
 
 
-def _history_row(db, *, tenant_id, month, period, entries, home, zone, today, rate_cache, undated):
+def _history_row(db, *, tenant_id, month, period, entries, home, zone, today, rate_cache, undated) -> dict:
     rows = _entries_in_range(entries, period, zone)
     gaps = set(entry_gaps(rows))
     references = set()
