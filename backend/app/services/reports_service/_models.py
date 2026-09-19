@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date
 from typing import Literal
 
 from app.models import Expense
@@ -17,8 +17,8 @@ ReportRankingMetric = Literal["amount", "count"]
 class _TrendBucket:
     bucket: str
     label: str
-    start_utc: datetime
-    end_utc: datetime
+    start_date: date
+    end_date: date
 
 
 @dataclass(frozen=True)

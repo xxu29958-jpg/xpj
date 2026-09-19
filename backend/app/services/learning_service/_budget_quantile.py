@@ -45,6 +45,7 @@ from app.services.currency_common import normalize_currency_code
 from app.services.learning_service._algorithm_registry import (
     BUDGET_SUGGESTION,
 )
+from app.services.ledger_calendar_service import current_calendar
 from app.services.money_projection_service import (
     ProjectionGap,
     ordered_projection_gaps,
@@ -53,9 +54,8 @@ from app.services.money_projection_service import (
 )
 from app.services.spending_contract_service import (
     accounting_timezone_key,
-    accounting_zone,
+    calendar_month_bounds,
     confirmed_stream_query,
-    month_bounds_utc,
     month_labels_ending_at,
     shift_month,
 )
@@ -146,6 +146,7 @@ def compute_budget_quantile_suggestion(
 
     look_back_months = max(int(look_back_months), 1)
     anchor = ensure_utc(now) or now_utc()
+    timezone_name = current_calendar(db, ledger_id=tenant_id).timezone_name
     months = _lookback_months(
         now=anchor,
         look_back_months=look_back_months,
@@ -153,13 +154,12 @@ def compute_budget_quantile_suggestion(
     )
     if not months:
         return None
-    earliest_start, _ = month_bounds_utc(months[0], timezone_name)
-    _, latest_end = month_bounds_utc(months[-1], timezone_name)
+    earliest_start, _ = calendar_month_bounds(months[0])
+    _, latest_end = calendar_month_bounds(months[-1])
     match_values = set(categories) if categories else {category}
-    zone = accounting_zone(timezone_name)
     stream = confirmed_stream_query(
         tenant_id=tenant_id,
-        timezone_name=zone.key,
+        timezone_name=timezone_name,
         amount_required=True,
     )
     home = normalize_currency_code(home_currency_code or require_runtime_home_currency_code(db))
@@ -168,8 +168,8 @@ def compute_budget_quantile_suggestion(
     rows = db.execute(
         select(stream.c.stream_date, stream.c.stream_amount_cents, stream.c.home_currency_code)
         .where(stream.c.category.in_(match_values))
-        .where(stream.c.stream_date >= earliest_start.astimezone(zone).date())
-        .where(stream.c.stream_date < latest_end.astimezone(zone).date())
+        .where(stream.c.stream_date >= earliest_start)
+        .where(stream.c.stream_date < latest_end)
     )
     for stream_date, stream_amount, source_currency in rows:
         key = stream_date.strftime("%Y-%m")

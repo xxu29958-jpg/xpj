@@ -16,15 +16,15 @@ from app.services.csv_security import safe_csv_cell
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import normalize_currency_code
 from app.services.expense_service import filtered_confirmed_stream
+from app.services.ledger_calendar_service import current_calendar
 from app.services.money_projection_service import sum_projected_amounts
 from app.services.spending_contract_service import (
     accounting_zone,
+    calendar_month_bounds,
     canonical_merchant_display,
     confirmed_stream_query,
     current_accounting_month,
-    default_accounting_timezone_name,
     enabled_merchant_display_map,
-    month_bounds_utc,
 )
 from app.services.spending_contract_service import (
     clean_month as _contract_clean_month,
@@ -46,16 +46,6 @@ def _stat_time(expense: Expense):
     return _contract_stat_time(expense)
 
 
-def _stat_timezone(timezone_name: str | None = None) -> str:
-    return default_accounting_timezone_name(timezone_name)
-
-
-def _stat_month_bounds(
-    month: str, timezone_name: str | None = None
-):
-    return month_bounds_utc(month, timezone_name)
-
-
 def _clean_month_filter(month: str) -> str:
     return _contract_clean_month(month)
 
@@ -67,7 +57,7 @@ def list_categories(db: Session, tenant_id: str) -> list[str]:
 def list_months(
     db: Session, tenant_id: str, timezone_name: str | None = None
 ) -> list[str]:
-    resolved_timezone = _stat_timezone(timezone_name)
+    resolved_timezone = current_calendar(db, ledger_id=tenant_id).timezone_name
     current_month_label = current_accounting_month(resolved_timezone)
     stream = confirmed_stream_query(
         tenant_id=tenant_id,
@@ -255,7 +245,7 @@ def _tag_rows(db, *, tenant_id, entries):
 
 def _read_stats_entries(db, *, tenant_id, month, timezone_name, home_currency_code, tag=None):
     home = normalize_currency_code(home_currency_code or require_runtime_home_currency_code(db))
-    entries = read_projected_entries(db, tenant_id=tenant_id, ranges=[_stat_month_bounds(month, timezone_name)],
+    entries = read_projected_entries(db, tenant_id=tenant_id, ranges=[calendar_month_bounds(month)],
         timezone_name=timezone_name, home=home, tag=tag)
     return home, entries
 
@@ -315,7 +305,7 @@ def _frequent_merchants(db, *, tenant_id, entries):
 
 def _recent_seven_days(entries, *, month, timezone_name):
     zone = accounting_zone(timezone_name)
-    start, end = (bound.astimezone(zone).date() for bound in _stat_month_bounds(month, timezone_name))
+    start, end = calendar_month_bounds(month)
     last_day = min(now_utc().astimezone(zone).date(), end - timedelta(days=1))
     first_day = max(start, last_day - timedelta(days=6))
     return sum_projected_amounts((entry.amount_cents for entry in entries
@@ -326,6 +316,7 @@ def lifestyle_stats(db: Session, month: str, tenant_id: str, timezone_name: str 
     home_currency_code: str | None = None,
 ) -> dict:
     month = _clean_month_filter(month)
+    timezone_name = current_calendar(db, ledger_id=tenant_id).timezone_name
     home, entries = _read_stats_entries(db, tenant_id=tenant_id, month=month, timezone_name=timezone_name,
         home_currency_code=home_currency_code)
     amount_by_id = {entry.root_expense_id: entry.amount_cents for entry in entries if entry.entry_kind == "expense"}

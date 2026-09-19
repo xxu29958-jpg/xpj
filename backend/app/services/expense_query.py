@@ -70,7 +70,8 @@ def search_import_root_expenses(db: Session, *, tenant_id: str, query: str = "",
             Expense.note.ilike(pattern, escape="/"), Expense.public_id == text))
     total = int(db.scalar(select(func.count()).select_from(statement.subquery())) or 0)
     limit = min(max(page_size, 1), 100)
-    return list(db.scalars(statement.order_by(Expense.expense_time.desc().nulls_last(), Expense.id.desc())
+    return list(db.scalars(statement.order_by(
+        Expense.accounting_date.desc().nulls_last(), Expense.expense_time.desc().nulls_last(), Expense.id.desc())
         .offset((max(page, 1) - 1) * limit).limit(limit))), total
 
 

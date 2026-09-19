@@ -12,6 +12,7 @@ from app.services.category_common import category_filter_values, normalize_categ
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import normalize_currency_code
 from app.services.learning_service._budget_quantile import compute_budget_quantile_suggestion
+from app.services.ledger_calendar_service import current_calendar
 from app.services.money_projection_service import (
     ProjectionGap,
     ordered_projection_gaps,
@@ -99,6 +100,7 @@ def compose_budget_explanation(
     spend, _ = project_category_spend(db, tenant_id=tenant_id, home=home,
         rows=(row for row in rows if row.category in values), missing_rates=gaps)
     actual = sum_projected_amounts((row.amount_cents for row in spend.values()), label="monthly_report.category_actual")
+    timezone_name = current_calendar(db, ledger_id=tenant_id).timezone_name
     anchor, _ = month_bounds_utc(year_month, timezone_name)
     suggestion = compute_budget_quantile_suggestion(db, tenant_id=tenant_id, category=category,
         categories=values, now=anchor, min_months=3, timezone_name=timezone_name, home_currency_code=home)

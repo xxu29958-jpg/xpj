@@ -26,6 +26,7 @@ from app.services.currency_binding_service import (
     require_runtime_home_currency_code,
     resolve_write_capability,
 )
+from app.services.ledger_calendar_service import current_calendar
 from app.services.money_projection_service import (
     CategorySpend,
     ProjectionReference,
@@ -159,6 +160,7 @@ def _fixed_amount_cents_for_month(
     home_currency_code: str,
     reference_rates: set[ProjectionReference] | None = None,
 ) -> int | None:
+    timezone_name = current_calendar(db, ledger_id=tenant_id).timezone_name
     items = db.scalars(
         monthly_recurring_items_query(
             tenant_id=tenant_id,

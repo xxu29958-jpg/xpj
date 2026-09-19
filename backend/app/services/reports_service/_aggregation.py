@@ -7,15 +7,13 @@ from app.services.money_projection_service import sum_projected_amounts
 from app.services.reports_service._models import ReportGranularity, _TrendBucket
 from app.services.reports_service._time import (
     _days_in_month,
-    _local_date_range_bounds_utc,
-    _local_day_bounds_utc,
-    _month_bounds,
     _month_labels_ending_at,
 )
+from app.services.spending_contract_service import calendar_month_bounds
 
 
 def _entries_in_range(entries, period, zone):
-    start, end = (value.astimezone(zone).date() for value in period)
+    start, end = period
     return [entry for entry in entries if start <= entry.stream_date < end]
 
 
@@ -37,13 +35,13 @@ def _trend_buckets(
     if granularity == "month":
         buckets: list[_TrendBucket] = []
         for label in _month_labels_ending_at(month, 6):
-            start_utc, end_utc = _month_bounds(label, timezone_name)
+            start, end = calendar_month_bounds(label)
             buckets.append(
                 _TrendBucket(
                     bucket=label,
                     label=label,
-                    start_utc=start_utc,
-                    end_utc=end_utc,
+                    start_date=start,
+                    end_date=end,
                 )
             )
         return buckets
@@ -58,27 +56,25 @@ def _trend_buckets(
             week_end_exclusive = week_start + timedelta(days=7)
             start_day = max(week_start, month_start)
             end_day = min(week_end_exclusive, month_end_exclusive)
-            start_utc, end_utc = _local_date_range_bounds_utc(start_day, end_day, zone)
             label_end = end_day - timedelta(days=1)
             buckets.append(
                 _TrendBucket(
                     bucket=week_start.isoformat(),
                     label=f"{start_day.strftime('%m-%d')}~{label_end.strftime('%m-%d')}",
-                    start_utc=start_utc,
-                    end_utc=end_utc,
+                    start_date=start_day,
+                    end_date=end_day,
                 )
             )
         return buckets
 
     buckets = []
     for day in days:
-        start_utc, end_utc = _local_day_bounds_utc(day, zone)
         buckets.append(
             _TrendBucket(
                 bucket=day.isoformat(),
                 label=day.strftime("%m-%d"),
-                start_utc=start_utc,
-                end_utc=end_utc,
+                start_date=day,
+                end_date=day + timedelta(days=1),
             )
         )
     return buckets
@@ -87,6 +83,6 @@ def _trend_buckets(
 def _trend_points(entries, buckets, zone):
     points = []
     for bucket in buckets:
-        amount, count = _amount_count(_entries_in_range(entries, (bucket.start_utc, bucket.end_utc), zone))
+        amount, count = _amount_count(_entries_in_range(entries, (bucket.start_date, bucket.end_date), zone))
         points.append({"bucket": bucket.bucket, "label": bucket.label, "amount_cents": amount, "count": count})
     return points

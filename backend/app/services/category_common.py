@@ -5,7 +5,7 @@ Extracted to break the category_service ↔ spending_contract_service
 cycle: spending_contract_service.confirmed_query lazy-imported
 ``category_filter_values`` from category_service, while
 category_service.list_category_summary top-level-imported
-``month_bounds_utc`` / ``stat_time_expr`` from spending_contract_service.
+``calendar_month_bounds`` from spending_contract_service.
 With both pulling the pure name helpers from this third module, the
 cycle goes away.
 

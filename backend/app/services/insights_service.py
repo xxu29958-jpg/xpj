@@ -8,22 +8,23 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Iterable
-from datetime import UTC, datetime
+from datetime import date, datetime
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
 from app.errors import AppError
 from app.models import Expense, RecurringItem
 from app.money_contract import projection_sum_to_int
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import normalize_currency_code
+from app.services.ledger_calendar_service import current_calendar
 from app.services.merchant_service import normalize_merchant
 from app.services.money_projection_service import project_recorded_amount
-from app.services.time_service import ensure_utc, local_month_label, now_utc, safe_zone
+from app.services.spending_contract_service import stat_sort_time_expr
+from app.services.time_service import ensure_utc, now_utc, strict_zone
 
-_RecurringEntry = tuple[datetime, int, str]
+_RecurringEntry = tuple[date, int, str, datetime | None]
 _RecurringCandidate = dict[str, object]
 
 
@@ -59,10 +60,6 @@ def _amount_close(values: list[int]) -> tuple[bool, int]:
     return (hi - lo) <= tolerance, representative
 
 
-def _recurring_timezone(timezone_name: str | None) -> str:
-    return (timezone_name or "").strip() or get_settings().ocr_default_timezone
-
-
 # 候选扫描窗口 (PR #253 R4): 候选的可行动口径就是「近 N 个月每月出现 /
 # 已连续 N 个月」(见 _recurring_reason), 扫全历史只会把多年前的老商家
 # 也摆成待确认。取当前月 + 前 5 个月共 6 个月桶——既覆盖 medium/high 两档
@@ -70,36 +67,29 @@ def _recurring_timezone(timezone_name: str | None) -> str:
 _CANDIDATE_LOOKBACK_MONTHS = 6
 
 
-def _candidate_lookback_start(timezone_name: str) -> datetime:
-    zone = safe_zone(_recurring_timezone(timezone_name))
+def _candidate_lookback_start(timezone_name: str) -> date:
+    zone = strict_zone(timezone_name)
     today = now_utc().astimezone(zone).date()
     month = today.month - (_CANDIDATE_LOOKBACK_MONTHS - 1)
     year = today.year
     while month <= 0:
         month += 12
         year -= 1
-    return datetime(year, month, 1, tzinfo=zone)
+    return date(year, month, 1)
 
 
 def _confirmed_expenses_for_recurring(
     db: Session, *, tenant_id: str, timezone_name: str | None = None
 ) -> list[Expense]:
-    since_local = _candidate_lookback_start(_recurring_timezone(timezone_name))
-    since_utc = since_local.astimezone(UTC)
+    since = _candidate_lookback_start(current_calendar(db, ledger_id=tenant_id).timezone_name)
     return list(
         db.scalars(
             select(Expense)
             .where(Expense.tenant_id == tenant_id)
             .where(Expense.status == "confirmed")
             .where(Expense.merchant.is_not(None))
-            # 与 _group_recurring_entries 的时间回退同口径: expense_time 优先,
-            # 空则 confirmed_at。
-            .where(
-                or_(
-                    Expense.expense_time >= since_utc,
-                    and_(Expense.expense_time.is_(None), Expense.confirmed_at >= since_utc),
-                )
-            )
+            .where(Expense.accounting_date >= since)
+            .order_by(Expense.accounting_date, stat_sort_time_expr(), Expense.id)
         )
     )
 
@@ -114,7 +104,7 @@ def _group_recurring_entries(
         key = normalize_merchant(merchant_raw)
         if not key or key in formal_keys:
             continue
-        when = ensure_utc(expense.expense_time) or ensure_utc(expense.confirmed_at)
+        when = expense.accounting_date
         if when is None:
             continue
         amount = projection_sum_to_int(
@@ -126,17 +116,17 @@ def _group_recurring_entries(
             continue
         amount = project_recorded_amount(db, tenant_id=tenant_id, amount_minor=amount,
             source_currency=expense.home_currency_code, home_currency=home,
-            rate_date=when.astimezone(safe_zone(timezone_name)).date())
+            rate_date=when)
         if amount is None:
             raise AppError("recurring_projection_unavailable", "部分账目的币种或汇率待补充，暂时无法生成固定支出建议。", status_code=409)
-        grouped[key].append((when, amount, merchant_raw))
+        grouped[key].append((when, amount, merchant_raw, ensure_utc(expense.expense_time)))
     return grouped
 
 
 def _distinct_month_count(entries: list[_RecurringEntry], timezone_name: str) -> int:
     month_labels: set[str] = set()
-    for when, _amount, _raw in entries:
-        label = local_month_label(when, timezone_name)
+    for when, _amount, _raw, _instant in entries:
+        label = when.strftime("%Y-%m")
         if label:
             month_labels.add(label)
     return len(month_labels)
@@ -156,12 +146,12 @@ def _candidate_from_entries(
     if occurrence_count < min_occurrences:
         return None
 
-    amounts = [amount for _, amount, _ in entries]
+    amounts = [amount for _, amount, _, _ in entries]
     amount_ok, representative = _amount_close(amounts)
     if not amount_ok:
         return None
 
-    display = _display_merchant(raw for _, _, raw in entries)
+    display = _display_merchant(raw for _, _, raw, _ in entries)
     return {
         "merchant": display,
         "amount_cents": projection_sum_to_int(
@@ -169,7 +159,7 @@ def _candidate_from_entries(
             label="insights.representative",
         ),
         "occurrence_count": occurrence_count,
-        "last_seen_at": entries[-1][0],
+        "last_seen_at": entries[-1][3],
         "confidence": "high" if occurrence_count >= 3 else "medium",
         "reason": _recurring_reason(occurrence_count),
     }
@@ -213,7 +203,7 @@ def recurring_candidates(
         occurrence_count (distinct months), last_seen_at, confidence, reason.
     Never writes.
     """
-    tz = _recurring_timezone(timezone_name)
+    tz = current_calendar(db, ledger_id=tenant_id).timezone_name
     home = normalize_currency_code(home_currency_code) if home_currency_code is not None else require_runtime_home_currency_code(db)
     formal_keys = set(
         db.scalars(

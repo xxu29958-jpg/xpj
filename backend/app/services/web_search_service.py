@@ -178,7 +178,9 @@ def _expense_subtitle(expense: Expense) -> str:
         source_label(expense.source, "未知来源"),
     ]
     when = stat_time(expense)
-    if when:
+    if expense.accounting_date is not None:
+        parts.append(expense.accounting_date.isoformat())
+    elif when:
         parts.append(accounting_datetime_label(when))
     elif expense.created_at:
         parts.append(accounting_datetime_label(expense.created_at))

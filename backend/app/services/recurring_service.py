@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from calendar import monthrange
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date
 
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
@@ -18,6 +18,7 @@ from app.money_contract import (
 )
 from app.schemas import RecurringItemResponse
 from app.services.currency_binding_service import resolve_write_capability
+from app.services.ledger_calendar_service import current_calendar
 from app.services.merchant_service import normalize_merchant
 from app.services.money_projection_service import (
     ProjectionGap,
@@ -27,9 +28,9 @@ from app.services.money_projection_service import (
 )
 from app.services.spending_contract_service import (
     accounting_zone,
+    calendar_month_bounds,
     current_accounting_month,
-    month_bounds_utc,
-    stat_time,
+    stat_sort_time_expr,
 )
 from app.services.time_service import now_utc
 
@@ -60,7 +61,7 @@ def recurring_monthly_total(
 ) -> int | None:
     """Project captured commitments; a missing rate makes the whole total unknown."""
     period = date.fromisoformat(f"{month}-01")
-    today = now_utc().astimezone(accounting_zone()).date()
+    today = now_utc().astimezone(accounting_zone(current_calendar(db, ledger_id=tenant_id).timezone_name)).date()
     rate_date = min(today, period.replace(day=monthrange(period.year, period.month)[1]))
     project_amount = project_valuation_amount if rate_date == today else project_recorded_amount
     amounts = [project_amount(db, tenant_id=tenant_id, amount_minor=item.baseline_amount_cents,
@@ -144,14 +145,11 @@ def recurring_amount_anomalies(
     if not active_items:
         return {}
 
-    start_utc, end_utc = month_bounds_utc(
-        month or current_accounting_month(timezone_name),
-        timezone_name,
-    )
+    timezone_name = current_calendar(db, ledger_id=tenant_id).timezone_name
+    start, end = calendar_month_bounds(month or current_accounting_month(timezone_name))
 
     history_amounts, current_entries, unavailable = _recurring_observation_groups(
-        db, tenant_id=tenant_id, items=active_items, start_utc=start_utc,
-        end_utc=end_utc, timezone_name=timezone_name,
+        db, tenant_id=tenant_id, items=active_items, start=start, end=end,
     )
 
     anomalies: dict[str, RecurringAmountAnomaly] = {}
@@ -184,14 +182,14 @@ def recurring_amount_anomalies(
 
 def _recurring_observation_groups(
     db: Session, *, tenant_id: str, items: list[RecurringItem],
-    start_utc: datetime, end_utc: datetime, timezone_name: str | None,
+    start: date, end: date,
 ):
     """Convert observations into each plan's unit before grouping or comparison."""
     merchant_keys = {item.merchant_key for item in items}
     merchant_names = {item.merchant_name for item in items}
     active_by_key = {item.merchant_key: item for item in items}
     history_amounts: dict[str, list[int]] = {key: [] for key in merchant_keys}
-    current_entries: dict[str, list[tuple[datetime, int]]] = {key: [] for key in merchant_keys}
+    current_entries: dict[str, list[tuple[date, int]]] = {key: [] for key in merchant_keys}
     unavailable: set[str] = set()
     expenses = db.scalars(
         select(Expense)
@@ -205,12 +203,13 @@ def _recurring_observation_groups(
                 func.lower(func.trim(Expense.merchant)).in_(merchant_keys),
             )
         )
+        .order_by(Expense.accounting_date, stat_sort_time_expr(), Expense.id)
     )
     for expense in expenses:
         key = normalize_merchant(expense.merchant)
         if key not in merchant_keys:
             continue
-        when = stat_time(expense)
+        when = expense.accounting_date
         if when is None:
             continue
         amount = projection_sum_to_int(
@@ -222,15 +221,15 @@ def _recurring_observation_groups(
         item = active_by_key[key]
         amount = project_recorded_amount(db, tenant_id=tenant_id, amount_minor=amount,
             source_currency=expense.home_currency_code, home_currency=item.home_currency_code,
-            rate_date=when.astimezone(accounting_zone(timezone_name)).date())
+            rate_date=when)
         if amount is None:
             unavailable.add(key)
             continue
         if not _is_recurring_like_amount(item, amount):
             continue
-        if start_utc <= when < end_utc:
+        if start <= when < end:
             current_entries[key].append((when, amount))
-        elif when < start_utc:
+        elif when < start:
             history_amounts[key].append(amount)
 
     return history_amounts, current_entries, unavailable

@@ -29,14 +29,13 @@ from sqlalchemy.orm import Session
 from app.models import Expense
 from app.money_contract import projection_sum_to_int
 from app.services.income_plan_service import total_monthly_income_cents
+from app.services.ledger_calendar_service import current_calendar
 from app.services.spending_contract_service import (
     accounting_timezone_key,
-    accounting_zone,
+    calendar_month_bounds,
     confirmed_stream_query,
-    month_bounds_utc,
     month_labels_ending_at,
     stat_month_label,
-    stat_time_expr,
 )
 from app.services.time_service import ensure_utc, local_month_label, now_utc
 
@@ -105,12 +104,12 @@ def cashflow_radar(
 
     look_back_months = max(int(look_back_months), 1)
     anchor = ensure_utc(now) or now_utc()
+    timezone_name = current_calendar(db, ledger_id=tenant_id).timezone_name
     months = _months_back(anchor, look_back_months, timezone_name)
     if not months:
         return []
-    start_utc, _ = month_bounds_utc(months[0], timezone_name)
-    _, end_utc = month_bounds_utc(months[-1], timezone_name)
-    zone = accounting_zone(timezone_name)
+    start, _ = calendar_month_bounds(months[0])
+    _, end = calendar_month_bounds(months[-1])
     stream = confirmed_stream_query(
         tenant_id=tenant_id,
         timezone_name=timezone_name,
@@ -119,8 +118,8 @@ def cashflow_radar(
     expense_by_month: dict[str, int] = defaultdict(int)
     rows = db.execute(
         select(stream.c.stream_date, stream.c.stream_amount_cents)
-        .where(stream.c.stream_date >= start_utc.astimezone(zone).date())
-        .where(stream.c.stream_date < end_utc.astimezone(zone).date())
+        .where(stream.c.stream_date >= start)
+        .where(stream.c.stream_date < end)
     )
     for stream_date, stream_amount_cents in rows:
         key = stream_date.strftime("%Y-%m")
@@ -204,19 +203,19 @@ def subscription_radar(
     """
 
     anchor = ensure_utc(now) or now_utc()
+    timezone_name = current_calendar(db, ledger_id=tenant_id).timezone_name
     months_window = _months_back(anchor, look_back_months, timezone_name)
     if not months_window:
         return []
-    start_utc, _ = month_bounds_utc(months_window[0], timezone_name)
-    _, end_utc = month_bounds_utc(months_window[-1], timezone_name)
-    time_expr = stat_time_expr()
+    start, _ = calendar_month_bounds(months_window[0])
+    _, end = calendar_month_bounds(months_window[-1])
 
     expenses = db.scalars(
         select(Expense)
         .where(Expense.tenant_id == tenant_id)
         .where(Expense.status == "confirmed")
-        .where(time_expr >= start_utc)
-        .where(time_expr < end_utc)
+        .where(Expense.accounting_date >= start)
+        .where(Expense.accounting_date < end)
         .where(Expense.merchant.is_not(None))
         .where(Expense.amount_cents.is_not(None))
     )

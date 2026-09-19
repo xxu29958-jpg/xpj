@@ -10,6 +10,7 @@ from app.services.category_service import normalize_category
 from app.services.csv_security import safe_csv_cell
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import normalize_currency_code
+from app.services.ledger_calendar_service import current_calendar
 from app.services.reports_service._aggregation import (
     _amount_count,
     _amount_delta,
@@ -19,7 +20,8 @@ from app.services.reports_service._aggregation import (
 )
 from app.services.reports_service._models import ReportGranularity, ReportRankingMetric
 from app.services.reports_service._ranking import _category_comparison, _merchant_ranking
-from app.services.reports_service._time import _month_bounds, _parse_month, _resolve_timezone, _shift_month
+from app.services.reports_service._time import _parse_month, _resolve_timezone, _shift_month
+from app.services.spending_contract_service import calendar_month_bounds
 from app.services.spending_projection_service import entry_gaps, read_projected_entries
 
 
@@ -29,13 +31,13 @@ def reports_overview(db: Session, *, month: str, tenant_id: str,
     home_currency_code: str | None = None,
 ) -> dict:
     _parse_month(month)
-    timezone_key, zone = _resolve_timezone(timezone_name)
+    timezone_key, zone = _resolve_timezone(current_calendar(db, ledger_id=tenant_id).timezone_name)
     home = normalize_currency_code(home_currency_code or require_runtime_home_currency_code(db))
     previous_month, yoy_month = _shift_month(month, -1), _shift_month(month, -12)
-    periods = [_month_bounds(label, timezone_key) for label in (month, previous_month, yoy_month)]
+    periods = [calendar_month_bounds(label) for label in (month, previous_month, yoy_month)]
     buckets = _trend_buckets(month=month, granularity=granularity, timezone_name=timezone_key, zone=zone)
     entries = read_projected_entries(db, tenant_id=tenant_id, home=home, timezone_name=timezone_key,
-        ranges=periods + [(bucket.start_utc, bucket.end_utc) for bucket in buckets])
+        ranges=periods + [(bucket.start_date, bucket.end_date) for bucket in buckets])
     current, previous, yoy = [_entries_in_range(entries, period, zone) for period in periods]
     total_amount, count = _amount_count(current)
     previous_total, previous_count = _amount_count(previous)

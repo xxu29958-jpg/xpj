@@ -2,7 +2,7 @@
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
@@ -15,7 +15,7 @@ from app.services.money_projection_service import (
     ordered_projection_gaps,
     project_recorded_amount,
 )
-from app.services.spending_contract_service import accounting_zone, confirmed_stream_query
+from app.services.spending_contract_service import confirmed_stream_query
 
 if TYPE_CHECKING:
     from app.schemas._expense_stream import ConfirmedExpenseStreamItem
@@ -48,16 +48,14 @@ def _project_rows(db, *, tenant_id, home, rows):
     return entries
 
 
-def read_projected_entries(db: Session, *, tenant_id: str, ranges: Sequence[tuple[datetime, datetime]],
+def read_projected_entries(db: Session, *, tenant_id: str, ranges: Sequence[tuple[date, date]],
     timezone_name: str | None, home: str, tag: str | None = None,
 ) -> list[ProjectedSpendingEntry]:
-    zone = accounting_zone(timezone_name)
-    dates = [(start.astimezone(zone).date(), end.astimezone(zone).date()) for start, end in ranges]
-    if not dates:
+    if not ranges:
         return []
     stream = confirmed_stream_query(tenant_id=tenant_id, tag=tag, timezone_name=timezone_name, amount_required=True)
     statement = select(stream).where(or_(*(
-        (stream.c.stream_date >= start) & (stream.c.stream_date < end) for start, end in dates)))
+        (stream.c.stream_date >= start) & (stream.c.stream_date < end) for start, end in ranges)))
     return _project_rows(db, tenant_id=tenant_id, home=home, rows=db.execute(statement))
 
 
