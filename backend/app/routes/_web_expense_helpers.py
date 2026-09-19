@@ -13,7 +13,11 @@ from fastapi.responses import HTMLResponse, Response
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.routes._web_accounting_time import TIME_FIELDS, time_form_projection, time_form_values
+from app.routes._web_accounting_time import (
+    submitted_time_form_values,
+    time_form_projection,
+    time_form_values,
+)
 from app.routes._web_expense_manual_fx_presenter import project_manual_fx_edit_views
 from app.routes._web_expense_return_context import (
     ExpenseReturnContext,
@@ -219,10 +223,7 @@ def web_edit_context(
     current_expense_view = expense_view.copy()
     _overlay_submitted_expense_values(expense_view, form_values)
     if form_values is not None:
-        time_values = ({name: form_values.get(name, "") for name in TIME_FIELDS}
-            if any(name in form_values for name in TIME_FIELDS) else None)
-        if time_values is not None:
-            time_values["wall_time"] = form_values.get("expense_time", "")
+        time_values = submitted_time_form_values(form_values, wall_time_field="expense_time")
     ctx["time_form"] = time_form_projection(time_values) if time_values is not None else None
     project_manual_fx_edit_views(expense_view, current_expense_view, form_values)
     if form_values and not conflict and form_values.get("expected_row_version"):

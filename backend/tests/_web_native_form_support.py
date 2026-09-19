@@ -23,12 +23,19 @@ class _PostForms(HTMLParser):
             return
         if tag == "form" and values.get("method", "").lower() == "post":
             self.current = self.forms.setdefault(values.get("action", ""), {})
-        if tag == "input" and self.current is not None and (
+        if tag == "input":
+            self._read_input(values)
+        self._read_time_select(tag, values)
+
+    def _read_input(self, values: dict[str, str | None]) -> None:
+        if self.current is not None and (
             values.get("type") == "hidden" or values.get("name") in _TIME_FIELDS
         ):
             name = values.get("name")
             if name and "disabled" not in values:
                 self.current[name] = values.get("value") or ""
+
+    def _read_time_select(self, tag: str, values: dict[str, str | None]) -> None:
         if tag == "select" and values.get("name") in _TIME_FIELDS and "disabled" not in values:
             self.time_select = values["name"]
         if (tag == "option" and self.time_select and self.current is not None

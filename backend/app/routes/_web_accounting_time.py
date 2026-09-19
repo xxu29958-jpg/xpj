@@ -58,10 +58,8 @@ def parse_web_accounting_time(
         raise AppError("accounting_time_invalid", "请检查发生日期、时间、时区与日历版本。", status_code=422) from exc
 
 
-def time_form_values(expense, rule) -> dict[str, str]:
-    """Present known source evidence, preserving seconds and the selected fold."""
-    if rule is None:
-        raise AppError("accounting_calendar_required", "请先采用账本日历，再填写发生日期。", status_code=409)
+def _source_wall_time(expense, rule) -> tuple[datetime | None, str | None]:
+    """Project a known instant with its source zone or fixed-offset evidence."""
     instant = ensure_utc(getattr(expense, "expense_time", None))
     source_zone = getattr(expense, "source_timezone", None)
     offset = getattr(expense, "source_utc_offset_seconds", None)
@@ -70,19 +68,36 @@ def time_form_values(expense, rule) -> dict[str, str]:
     if instant is not None:
         display_zone = strict_zone(zone) if zone else timezone(timedelta(seconds=offset))
         wall = instant.astimezone(display_zone)
-        offset = int(wall.utcoffset().total_seconds())
+    return wall, zone
+
+
+def time_form_values(expense, rule) -> dict[str, str]:
+    """Present known source evidence, preserving seconds and the selected fold."""
+    if rule is None:
+        raise AppError("accounting_calendar_required", "请先采用账本日历，再填写发生日期。", status_code=409)
+    wall, zone = _source_wall_time(expense, rule)
     date = getattr(expense, "user_local_date", None) or (wall.date() if wall else None)
     accounting_date = getattr(expense, "accounting_date", None)
     return {
-        "time_precision": "instant" if instant else "date_only",
+        "time_precision": "instant" if wall else "date_only",
         "calendar_revision": str(getattr(expense, "calendar_revision", None) or rule.revision),
         "user_local_date": date.isoformat() if date else "",
         "source_timezone": zone or "",
-        "source_utc_offset_seconds": str(offset) if instant and offset is not None else "",
+        "source_utc_offset_seconds": str(int(wall.utcoffset().total_seconds())) if wall else "",
         "accounting_date": (accounting_date.isoformat()
             if accounting_date and getattr(expense, "accounting_date_basis", None) == "user_selected" else ""),
         "wall_time": wall.replace(tzinfo=None).isoformat() if wall else "",
     }
+
+
+def submitted_time_form_values(
+    values: dict[str, str], *, wall_time_field: str,
+) -> dict[str, str] | None:
+    """Restore submitted time controls without upgrading an old raw draft."""
+    if not any(name in values for name in TIME_FIELDS):
+        return None
+    return {**{name: values.get(name, "") for name in TIME_FIELDS},
+        "wall_time": values.get(wall_time_field, "")}
 
 
 def time_form_projection(values: dict[str, str]) -> dict:

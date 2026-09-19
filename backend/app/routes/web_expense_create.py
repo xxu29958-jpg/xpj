@@ -17,9 +17,9 @@ from starlette.responses import Response
 from app.database import get_db
 from app.errors import AppError
 from app.routes._web_accounting_time import (
-    TIME_FIELDS,
     accounting_time_form_fields,
     parse_web_accounting_time,
+    submitted_time_form_values,
     time_form_projection,
     time_form_values,
 )
@@ -90,10 +90,7 @@ def _manual_expense_context(
     home = context["home_currency_code"]
     current_values = values or {}
     if draft_result:
-        time_values = ({name: current_values.get(name, "") for name in TIME_FIELDS}
-            if any(name in current_values for name in TIME_FIELDS) else None)
-        if time_values is not None:
-            time_values["wall_time"] = current_values.get("spent_at", "")
+        time_values = submitted_time_form_values(current_values, wall_time_field="spent_at")
     else:
         time_values = time_form_values(SimpleNamespace(expense_time=now_utc()),
             current_calendar(db, ledger_id=selected_id))
@@ -180,6 +177,20 @@ def _require_manual_form_binding(
         )
 
 
+def _manual_expense_time_payload(spent_at: str, time_fields: dict[str, str] | None) -> dict:
+    """Choose one wire representation, preserving the old draft's timestamp alias."""
+    if time_fields is not None:
+        return {"time_input": parse_web_accounting_time(spent_at, time_fields)}
+    parsed_time, time_error = parse_expense_time_local(spent_at)
+    if time_error or parsed_time is None:
+        raise AppError(
+            "invalid_request",
+            time_error or "请填写发生时间。",
+            status_code=422,
+        )
+    return {"spent_at": parsed_time}
+
+
 def _manual_expense_payload(
     *,
     amount_major: str,
@@ -204,14 +215,7 @@ def _manual_expense_payload(
         raise AppError("amount_invalid", amount_error, status_code=422)
     if amount_minor is None:
         raise AppError("amount_required", status_code=422)
-    time_input = parse_web_accounting_time(spent_at, time_fields)
-    parsed_time, time_error = (None, None) if time_fields is not None else parse_expense_time_local(spent_at)
-    if time_error or (time_input is None and parsed_time is None):
-        raise AppError(
-            "invalid_request",
-            time_error or "请填写发生时间。",
-            status_code=422,
-        )
+    time_payload = _manual_expense_time_payload(spent_at, time_fields)
     clean_ref = (client_ref or "").strip()
     if not re.fullmatch(r"[0-9a-f]{32}", clean_ref):
         raise AppError(
@@ -223,13 +227,10 @@ def _manual_expense_payload(
         "merchant": (merchant or "").strip() or None,
         "category": (category or "").strip() or None,
         "note": (note or "").strip() or None,
-        "spent_at": parsed_time,
+        **time_payload,
         "client_ref": clean_ref,
         "home_currency_code": home_currency,
     }
-    if time_input is not None:
-        common.pop("spent_at")
-        common["time_input"] = time_input
     if code == home_currency:
         return ExpenseManualCreateRequest(
             amount_cents=amount_minor,

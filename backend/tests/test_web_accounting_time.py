@@ -148,6 +148,28 @@ def test_fold_failure_template_retains_input_and_offers_both_offsets():
     assert 'name="calendar_revision" value="1"' in html
 
 
+def test_native_submission_keeps_selected_fold_and_excludes_disabled_controls():
+    from tests._web_native_form_support import hidden_post_forms
+
+    forms = hidden_post_forms('''
+        <form method="POST" action="/web/expenses/7/save">
+          <input type="hidden" name="idempotency_key" value="original-key">
+          <input name="expense_time" value="2026-11-01T01:30:15.123456">
+          <select name="source_utc_offset_seconds">
+            <option value="-14400">Earlier</option>
+            <option value="-18000" selected>Later</option>
+          </select>
+          <fieldset disabled><fieldset>
+            <input type="hidden" name="idempotency_key" value="wrong-key">
+          </fieldset></fieldset>
+          <input type="hidden" name="calendar_revision" value="1">
+          <input name="accounting_date" value="2026-10-31" disabled>
+        </form>''')
+    assert forms == {"/web/expenses/7/save": {
+        "idempotency_key": "original-key", "expense_time": "2026-11-01T01:30:15.123456",
+        "source_utc_offset_seconds": "-18000", "calendar_revision": "1"}}
+
+
 def test_only_accounting_day_change_does_not_require_fx_repricing_preview(monkeypatch):
     from decimal import Decimal
 
