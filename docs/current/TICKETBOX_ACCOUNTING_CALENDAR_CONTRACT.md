@@ -346,3 +346,12 @@ type alias and retains every other type, nullable, constraint and snapshot check
 The affected group collected 15 tests and its two pure shape tests passed.
 CodeQL passed on `d42b9b2a4`; final-source CI/Connected and merge-main remain
 required. These fixes change tests only, not financial or migration behavior.
+
+CI on `bab4d4fb` then passed 19 jobs, including those historical fixes. Its only
+underlying error was teardown of an existing two-session OCC test: seed-upload
+enrichment could still read the schema while the fixture dropped it (99 passed,
+one teardown error in that shard). The test setup now completes that real
+enrichment inline, restores normal execution mode, and only then opens the same
+two competing Sessions. All 20 original assertions and session close calls remain;
+production concurrency and shared database cleanup are unchanged. The affected
+file collected six tests; actual PostgreSQL execution awaits the final source.
