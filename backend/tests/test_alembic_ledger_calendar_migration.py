@@ -50,9 +50,9 @@ def _seed():
                                  "VALUES (:id, 'Calendar owner', CURRENT_TIMESTAMP) RETURNING id"), {"id": str(uuid4())})
         for ledger in ("calendar-live", "calendar-archived"):
             db.execute(text("INSERT INTO ledgers (ledger_id, name, owner_account_id, created_at, archived_at) "
-                            "VALUES (:ledger, :ledger, :owner, CURRENT_TIMESTAMP, "
-                            "CASE WHEN :ledger = 'calendar-archived' THEN CURRENT_TIMESTAMP END)"),
-                       {"ledger": ledger, "owner": account})
+                            "VALUES (:ledger, :name, :owner, CURRENT_TIMESTAMP, :archived_at)"),
+                       {"ledger": ledger, "name": ledger, "owner": account,
+                        "archived_at": "2026-06-01T00:00:00Z" if ledger == "calendar-archived" else None})
         roots = []
         for instant, confirmed in (("2026-04-30T16:30:00Z", "2026-05-03T00:00:00Z"),
                                    (None, "2026-04-30T16:30:00Z"), (None, None)):

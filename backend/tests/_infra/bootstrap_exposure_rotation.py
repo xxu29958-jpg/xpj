@@ -11,7 +11,6 @@ from sqlalchemy.orm import Session
 import app.services.identity_service as identity_service
 from app.config import get_settings
 from app.database import SessionLocal, engine, init_db
-from app.database_model_registry import Base
 from app.errors import AppError
 from app.main import app
 from app.models import (
@@ -40,6 +39,7 @@ from app.services.session_lifecycle_service import (
     upload_link_expires_at,
 )
 from app.services.time_service import ensure_utc, now_utc
+from tests._infra.alembic_runtime import reset_public_schema
 from tests._infra.bootstrap_exposure_setup import (
     _expire_exposed_upload_link,
     _ExposureWindow,
@@ -392,7 +392,7 @@ def _assert_revoked_rotation_replay_is_rejected(*, replacement_secret: str) -> N
 def assert_exposed_secret_rotation(monkeypatch: pytest.MonkeyPatch) -> None:
     replacement_secret = "ticketbox-bootstrap-replacement-2026-07-10"
     _enable_http_bootstrap(monkeypatch, _VECTOR_SECRET)
-    Base.metadata.drop_all(bind=engine)
+    reset_public_schema(engine)
     init_db()
 
     exposure = None

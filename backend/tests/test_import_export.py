@@ -182,24 +182,26 @@ def test_web_export_csv_returns_attachment(web_client: TestClient) -> None:
 
 
 def test_web_export_csv_neutralizes_formula_cells(web_client: TestClient) -> None:
+    from app.services.expense_accounting_time_service import refresh_legacy_expense_time
+
     with SessionLocal() as db:
         resolve_write_capability(db)
-        db.add(
-            Expense(
-                tenant_id="owner",
-                amount_cents=1200,
-                merchant='=HYPERLINK("http://example.invalid")',
-                category="餐饮",
-                note="@note",
-                source="+source",
-                tags="-tag",
-                status="confirmed",
-                expense_time=datetime(2026, 5, 4, 0, 0, tzinfo=UTC),
-                created_at=datetime(2026, 5, 4, 0, 0, tzinfo=UTC),
-                updated_at=datetime(2026, 5, 4, 0, 0, tzinfo=UTC),
-                confirmed_at=datetime(2026, 5, 4, 0, 0, tzinfo=UTC),
-            )
+        expense = Expense(
+            tenant_id="owner",
+            amount_cents=1200,
+            merchant='=HYPERLINK("http://example.invalid")',
+            category="餐饮",
+            note="@note",
+            source="+source",
+            tags="-tag",
+            status="confirmed",
+            expense_time=datetime(2026, 5, 4, 0, 0, tzinfo=UTC),
+            created_at=datetime(2026, 5, 4, 0, 0, tzinfo=UTC),
+            updated_at=datetime(2026, 5, 4, 0, 0, tzinfo=UTC),
+            confirmed_at=datetime(2026, 5, 4, 0, 0, tzinfo=UTC),
         )
+        db.add(expense)
+        refresh_legacy_expense_time(db, expense)
         db.commit()
 
     resp = web_client.get("/web/export.csv?ledger_id=owner&month=2026-05&timezone=UTC")

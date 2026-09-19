@@ -75,7 +75,8 @@ def test_overview_assembles_original_month_and_one_display_home(monkeypatch):
             "count": 1, "missing_rates": ()}
 
     monkeypatch.setattr(web, "monthly_stats", stats)
-    monkeypatch.setattr(web, "current_month", lambda _tz: "2026-10")
+    monkeypatch.setattr(web, "current_ledger_month",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("explicit month must survive")))
     monkeypatch.setattr(web.web_stats_service, "pending_quality_counts", lambda *a: {})
     monkeypatch.setattr(web, "recurring_status_counts", lambda *a: (0, 0))
     monkeypatch.setattr(web, "get_monthly_budget", lambda *a, **kw: None)

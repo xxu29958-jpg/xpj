@@ -18,7 +18,6 @@ from app.models import (
     Account,
     ExpenseItem,
     ExpenseSplit,
-    Ledger,
     LedgerMember,
 )
 from app.money_contract import MONEY_COLUMNS_V1
@@ -181,7 +180,9 @@ def assert_head_shape() -> None:
 
 def seed_owner() -> tuple[int, int]:
     with SessionLocal() as db:
-        existing = db.scalar(select(Ledger).where(Ledger.ledger_id == "owner"))
+        # These probes run historical migration edges, before later ledger columns.
+        ledgers = Table("ledgers", MetaData(), autoload_with=db.connection())
+        existing = db.execute(select(ledgers.c.owner_account_id).where(ledgers.c.ledger_id == "owner")).first()
         if existing is not None:
             member = db.scalar(
                 select(LedgerMember).where(
@@ -196,13 +197,12 @@ def seed_owner() -> tuple[int, int]:
         account = Account(display_name="boundary")
         db.add(account)
         db.flush()
-        ledger = Ledger(
+        db.execute(ledgers.insert().values(
             ledger_id="owner",
             name="boundary ledger",
             owner_account_id=account.id,
-        )
-        db.add(ledger)
-        db.flush()
+            created_at=now_utc(),
+        ))
         member = LedgerMember(
             ledger_id="owner",
             account_id=account.id,

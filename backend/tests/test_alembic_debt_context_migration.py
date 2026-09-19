@@ -9,7 +9,7 @@ from alembic.config import Config
 from sqlalchemy import inspect, text
 
 from app.database import SessionLocal, engine
-from app.models import Account, Ledger
+from app.models import Account
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.time_service import now_utc
 from tests._infra.alembic_runtime import reset_public_schema, run_alembic_for_test
@@ -34,8 +34,9 @@ def _seed_old_debt() -> int:
         account = Account(display_name="往来迁移用户")
         db.add(account)
         db.flush()
-        db.add(Ledger(ledger_id="debt-context-migration", name="往来迁移", owner_account_id=account.id))
-        db.flush()
+        db.execute(text("INSERT INTO ledgers (ledger_id, name, owner_account_id, created_at) "
+            "VALUES ('debt-context-migration', '往来迁移', :owner, :created)"),
+            {"owner": account.id, "created": now_utc()})
         return db.execute(
             text(
                 "INSERT INTO debts (public_id, tenant_id, owner_account_id, created_by_account_id, "
