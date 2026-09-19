@@ -21,6 +21,7 @@ IMMUTABLE_ON_SPLIT_RECEIVED: frozenset[str] = frozenset({
     "exchange_rate_source",
     "expense_time",
     "spent_at",
+    "time_input",
     "merchant",
 })
 

@@ -29,6 +29,7 @@ _CURRENCY_RELEVANT_FIELDS = _ORIGINAL_AMOUNT_FIELDS | _ORIGINAL_CURRENCY_FIELDS 
     "amount_cents",
     "spent_at",
     "expense_time",
+    "time_input",
 }
 
 
@@ -120,6 +121,7 @@ def _apply_update_currency(
     expense: Expense,
     payload: ExpenseUpdateRequest,
     updates: dict,
+    time_changed: bool | None = None,
 ) -> None:
     if not (_CURRENCY_RELEVANT_FIELDS & updates.keys()):
         return
@@ -138,7 +140,8 @@ def _apply_update_currency(
         return
     if _has_frozen_snapshot(expense):
         current_currency = _current_currency(expense)
-        time_changed = bool({"spent_at", "expense_time"} & updates.keys())
+        if time_changed is None:
+            time_changed = bool({"spent_at", "expense_time"} & updates.keys())
         if (
             _submitted_currency(expense, updates) == current_currency
             and not time_changed

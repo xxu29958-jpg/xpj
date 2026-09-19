@@ -47,6 +47,11 @@ original/home amounts, frozen quotes, source provenance and offset values must
 not be recalculated during adoption or calendar changes. Explicit financial
 corrections still use their current money/FX workflow and immutable history.
 
+For a new quote, a known original user date is its transaction-date evidence;
+legacy input uses its adopted date before any historical no-date fallback. A
+change of accounting period alone does not request a new quote. Date-only
+correction of the actual transaction date uses the existing FX recovery path.
+
 ### Preserve evidence; make legacy assumptions visible
 
 Old root records generally preserve a UTC value, not the user's original date
@@ -159,6 +164,13 @@ explicit accounting day, derive it once from the captured ledger calendar. An
 explicit day is a user-selected interpretation; the existing correction command
 still requires its reason. Date-only input never accepts an instant or offset;
 an explicitly different source locality needs an explicit accounting day.
+
+Omitted/null `time_input` supplies no new value object; it does not erase a saved
+date. Legacy timestamp fields keep their original explicit-null meaning. An
+unchanged legacy timestamp (including null on a date-only record) preserves
+richer saved evidence. New date-only input is the way to keep a day without
+claiming a clock time. The original field set still determines the request
+fingerprint, including explicit nulls.
 
 Persist Expense time evidence alongside the existing UTC `expense_time`:
 `accounting_date`, `calendar_revision`, `user_local_date`, `time_precision`,
