@@ -72,6 +72,7 @@ private fun SpendingGoalRow(
             )
             SpendingGoalProgress(goal)
             SpendingGoalAmountSummary(goal)
+            com.ticketbox.ui.components.AccountingDateNotice(goal.undatedExpenseCount)
         }
     }
 }

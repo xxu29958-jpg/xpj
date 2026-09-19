@@ -33,7 +33,7 @@ data class ReportCategoryComparisonDto(
     @param:Json(name = "delta_amount_cents")
     val deltaAmountCents: Long?,
     @param:Json(name = "delta_count")
-    val deltaCount: Int,
+    val deltaCount: Int?,
     @param:Json(name = "year_over_year_amount_cents")
     val yearOverYearAmountCents: Long?,
     @param:Json(name = "year_over_year_count")
@@ -41,7 +41,9 @@ data class ReportCategoryComparisonDto(
     @param:Json(name = "year_over_year_delta_amount_cents")
     val yearOverYearDeltaAmountCents: Long?,
     @param:Json(name = "year_over_year_delta_count")
-    val yearOverYearDeltaCount: Int,
+    val yearOverYearDeltaCount: Int?,
+    @param:Json(name = "undated_expense_count")
+    val undatedExpenseCount: Int? = null,
 )
 
 @JsonClass(generateAdapter = true)
@@ -67,7 +69,7 @@ data class ReportsOverviewDto(
     @param:Json(name = "year_over_year_delta_amount_cents")
     val yearOverYearDeltaAmountCents: Long?,
     @param:Json(name = "year_over_year_delta_count")
-    val yearOverYearDeltaCount: Int,
+    val yearOverYearDeltaCount: Int?,
     @param:Json(name = "merchant_category")
     val merchantCategory: String?,
     @param:Json(name = "ranking_metric")
@@ -79,6 +81,8 @@ data class ReportsOverviewDto(
     val categoryComparison: List<ReportCategoryComparisonDto>,
     @param:Json(name = "home_currency_code") val homeCurrencyCode: String,
     @param:Json(name = "missing_rates") val missingRates: List<MissingExchangeRateDto>,
+    @param:Json(name = "undated_expense_count")
+    val undatedExpenseCount: Int? = null,
 )
 
 /**
@@ -163,6 +167,8 @@ data class GoalDto(
     val debtRepayment: DebtRepaymentEvaluationDto? = null,
     @param:Json(name = "home_currency_code")
     val homeCurrencyCode: String? = null,
+    @param:Json(name = "undated_expense_count")
+    val undatedExpenseCount: Int? = null,
 )
 
 data class GoalListResponseDto(

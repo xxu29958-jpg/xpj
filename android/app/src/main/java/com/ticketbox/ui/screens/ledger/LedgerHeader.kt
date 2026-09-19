@@ -64,6 +64,8 @@ internal fun LedgerHeader(
                 modifier = Modifier.fillMaxWidth(),
                 role = AppAmountRole.Hero,
             )
+            if (state.undatedExpenseCount > 0) com.ticketbox.ui.components.AccountingDateNotice(state.undatedExpenseCount)
+            else com.ticketbox.ui.components.AccountingDateReviewEntry()
             Text(
                 text = stringResource(R.string.ledger_header_count_value, summary.itemCount) +
                     " · " + statusText,

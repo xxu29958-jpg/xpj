@@ -270,7 +270,7 @@ internal class CorrectionConnectedNetwork {
             readable()
             if (failStreamReads) throw IOException("Synthetic failed stream read")
             val items = confirmedStreamItems?.invoke(current)?.filter { item ->
-                query["month"].isNullOrBlank() || item.streamDate.startsWith(requireNotNull(query["month"]))
+                query["month"].isNullOrBlank() || item.streamDate?.startsWith(requireNotNull(query["month"])) == true
             } ?: listOf(ConfirmedExpenseStreamItemDto(ConfirmedStreamEntryKindDto.Expense,
                 "2026-09-06", current.createdAt, current.id, current.amountCents ?: 0, current,
                 lineageStatus = ExpenseLineageStatusDto.Confirmed, lineageHomeNetCents = current.amountCents ?: 0))

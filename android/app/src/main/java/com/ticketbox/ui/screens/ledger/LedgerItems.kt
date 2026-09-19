@@ -2,6 +2,8 @@
 
 package com.ticketbox.ui.screens.ledger
 
+import com.ticketbox.ui.asString
+
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -293,7 +295,7 @@ internal fun LedgerExpenseCard(
                             LedgerLineageChip(status = state.lineageStatus)
                         }
                         Text(
-                            text = com.ticketbox.ui.components.expenseClockLabel(expense),
+                            text = com.ticketbox.ui.components.expenseClockLabel(expense).asString(),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodySmall,
                             maxLines = 1,
@@ -350,7 +352,7 @@ internal fun LedgerExpenseListRow(
 ) {
     val expense = state.expense
     val rowMetrics = AppDensity.rowMetrics(AppListDensity.Compact)
-    val timeText = com.ticketbox.ui.components.expenseClockLabel(expense)
+    val timeText = com.ticketbox.ui.components.expenseClockLabel(expense).asString()
     val metaText = stringResource(R.string.ledger_item_meta, timeText, expense.category)
     Column(
         modifier = Modifier
@@ -461,7 +463,7 @@ internal fun LedgerExpenseTableRow(
                             LedgerLineageChip(status = state.lineageStatus)
                         }
                         Text(
-                            text = com.ticketbox.ui.components.expenseClockLabel(expense),
+                            text = com.ticketbox.ui.components.expenseClockLabel(expense).asString(),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.labelSmall,
                             maxLines = 1,

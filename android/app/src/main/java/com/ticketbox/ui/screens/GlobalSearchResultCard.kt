@@ -73,7 +73,7 @@ internal fun SearchResultCard(
                         R.string.global_search_result_meta,
                         expense.category,
                         sourceLabel,
-                        com.ticketbox.ui.components.expenseClockLabel(expense),
+                        com.ticketbox.ui.components.expenseClockLabel(expense).asString(),
                     ),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,

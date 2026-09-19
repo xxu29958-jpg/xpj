@@ -18,4 +18,14 @@
     <string name="calendar_input_retry">重试获取账本日期规则</string>
     <string name="calendar_input_clear_instant">清除已记时刻</string>
     <string name="calendar_input_instant_cleared">已清除时刻；保存前仍可重新填写。</string>
+    <string name="calendar_date_pending">账务日期待核对</string>
+    <string name="calendar_date_only_label">仅日期</string>
+    <string name="calendar_clock_unknown">时间未知</string>
+    <string name="calendar_known_instant">已知消费时刻</string>
+    <string name="calendar_date_basis">账务日期依据</string>
+    <string name="calendar_legacy_basis_explanation">按账本历史规则归属，可通过更正调整</string>
+    <string name="calendar_basis_unknown">日期依据未知</string>
+    <string name="calendar_legacy_basis_label">历史规则归属</string>
+    <string name="calendar_undated_notice">有 %1$d 笔账单的账务日期待核对；涉及这些账单的期间金额和进度暂不可评估。</string>
+    <string name="calendar_review_dates">核对账务日期</string>
 </resources>

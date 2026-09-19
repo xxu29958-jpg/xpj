@@ -273,6 +273,7 @@ data class MonthlyStats(
     val count: Int,
     val byCategory: List<CategoryStats>,
     val byTag: List<TagStats> = emptyList(),
+    val undatedExpenseCount: Int? = null,
 )
 
 data class FrequentMerchant(
@@ -357,6 +358,7 @@ data class LifestyleStats(
     val frequentMerchants: List<FrequentMerchant>,
     val bestValueExpenses: List<Expense> = emptyList(),
     val mostRegrettedExpenses: List<Expense> = emptyList(),
+    val undatedExpenseCount: Int? = null,
 )
 
 data class CategoryRule(

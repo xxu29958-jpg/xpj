@@ -9,6 +9,14 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ManualExchangeRateInputTest {
+    @Test fun editDistinguishesBlankNewQuoteFromClearingSavedQuoteWithoutDroppingInvalidInput() {
+        assertEquals(ManualExchangeRateEditValue(null), manualExchangeRateEditValue(true, "", null))
+        assertTrue(manualExchangeRateEditValue(true, "  ", "7.20").invalid)
+        assertTrue(manualExchangeRateEditValue(true, "1e3", null).invalid)
+        assertEquals(ManualExchangeRateEditValue("7.20"), manualExchangeRateEditValue(true, " 7.20 ", "7.20"))
+        assertEquals(ManualExchangeRateEditValue(null), manualExchangeRateEditValue(false, "invalid", "7.20"))
+    }
+
     @Test
     fun inputSanitizerPreservesInvalidIntentForVisibleValidation() {
         assertEquals("-1", sanitizeManualExchangeRateInput("-1"))

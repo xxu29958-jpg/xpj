@@ -185,12 +185,15 @@ internal class FakeApiService(
         request: com.ticketbox.data.remote.dto.RefreshSessionRequestDto,
     ): RefreshSessionResponseDto = unsupported()
 
+    var lastMissingAccountingDate: String? = null
+
     override suspend fun confirmedExpenses(
         query: Map<String, String>,
     ): PaginatedExpensesDto {
         val page = query["page"]?.toIntOrNull() ?: 1
         val pageSize = query["page_size"]?.toIntOrNull() ?: 50
         events += "syncConfirmed"
+        lastMissingAccountingDate = query["missing_accounting_date"]
         lastConfirmedMonth = query["month"]
         lastConfirmedCategory = query["category"]
         lastConfirmedTag = query["tag"]

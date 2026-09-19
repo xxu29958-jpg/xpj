@@ -48,6 +48,7 @@ fun ReportsOverviewDto.toDomain(): ReportsOverview = ReportsOverview(
     categoryComparison = categoryComparison.map { it.toDomain() },
     homeCurrencyCode = homeCurrencyCode,
     missingRates = missingRates.map { com.ticketbox.domain.model.CurrencyProjectionGap(it.sourceCurrencyCode, it.homeCurrencyCode, it.rateDate) },
+    undatedExpenseCount = undatedExpenseCount,
 )
 
 private fun ReportTrendPointDto.toDomain(): ReportTrendPoint = ReportTrendPoint(
@@ -75,6 +76,7 @@ private fun ReportCategoryComparisonDto.toDomain(): ReportCategoryComparison = R
     yearOverYearCount = yearOverYearCount,
     yearOverYearDeltaAmountCents = yearOverYearDeltaAmountCents,
     yearOverYearDeltaCount = yearOverYearDeltaCount,
+    undatedExpenseCount = undatedExpenseCount,
 )
 
 fun GoalDto.toDomain(): Goal = Goal(
@@ -97,6 +99,7 @@ fun GoalDto.toDomain(): Goal = Goal(
     archivedAt = archivedAt,
     debtRepayment = debtRepayment?.toDomain(),
     homeCurrencyCode = homeCurrencyCode,
+    undatedExpenseCount = undatedExpenseCount,
 )
 
 fun GoalDraft.toRequest(): GoalCreateRequestDto = GoalCreateRequestDto(

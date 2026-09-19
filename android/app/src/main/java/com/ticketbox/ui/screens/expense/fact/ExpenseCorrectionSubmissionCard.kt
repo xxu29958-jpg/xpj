@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens.expense.fact
 
+import com.ticketbox.ui.asString
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.AlertDialog
@@ -120,7 +121,7 @@ private fun CorrectionScalarFields(request: com.ticketbox.data.remote.dto.Expens
     request.note?.let { CorrectionField(R.string.correction_field_note, it.ifEmpty { clear }) }
     request.tags?.let { CorrectionField(R.string.correction_field_tags, it.ifEmpty { clear }) }
     if (request.expenseTime.changed) CorrectionField(R.string.correction_field_time, request.expenseTime.value ?: clear)
-    request.timeInput.value?.let { CorrectionField(R.string.correction_field_time, com.ticketbox.ui.components.timeInputLabel(it)) }
+    request.timeInput.value?.let { CorrectionField(R.string.correction_field_time, com.ticketbox.ui.components.timeInputLabel(it).asString()) }
     if (request.valueScore.changed) CorrectionField(R.string.correction_field_value, request.valueScore.value?.toString() ?: clear)
     if (request.regretScore.changed) CorrectionField(R.string.correction_field_regret, request.regretScore.value?.toString() ?: clear)
 }

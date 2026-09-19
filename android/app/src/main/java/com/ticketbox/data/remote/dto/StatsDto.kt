@@ -50,6 +50,8 @@ data class MonthlyStatsDto(
     val byCategory: List<CategoryStatsDto>,
     @param:Json(name = "by_tag")
     val byTag: List<TagStatsDto> = emptyList(),
+    @param:Json(name = "undated_expense_count")
+    val undatedExpenseCount: Int? = null,
 ) : StatsProjectionDto
 
 @JsonClass(generateAdapter = true)
@@ -73,6 +75,8 @@ data class LifestyleStatsDto(
     val bestValueExpenses: List<ExpenseDto> = emptyList(),
     @param:Json(name = "most_regretted_expenses")
     val mostRegrettedExpenses: List<ExpenseDto> = emptyList(),
+    @param:Json(name = "undated_expense_count")
+    val undatedExpenseCount: Int? = null,
 ) : StatsProjectionDto
 
 @JsonClass(generateAdapter = true)

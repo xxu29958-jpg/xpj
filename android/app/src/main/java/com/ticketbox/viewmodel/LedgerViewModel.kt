@@ -38,6 +38,7 @@ enum class LedgerViewMode {
 }
 
 enum class LedgerDataQualityFilter {
+    MissingAccountingDate,
     MissingCategory,
     ConfirmedWithoutImage,
 }
@@ -73,11 +74,7 @@ data class LedgerFilterUi(
     val hasFilters: Boolean = false,
 )
 
-private data class LedgerSyncKey(
-    val month: String?,
-    val category: String?,
-    val tag: String?,
-)
+private data class LedgerSyncKey(val missingAccountingDate: Boolean)
 
 data class LedgerUiState(
     // Typed confirmed stream (Refund/Chargeback/Reversal 纵向片): expense root
@@ -139,7 +136,9 @@ data class LedgerUiState(
     /** 账本币种（R13-6）：VM 由列表信封 capability 注入；null=未确认 → 手记禁提交
      *  （JPY 安装下速记不再按 CNY 默认币种落 FX 放大）。 */
     val ledgerCurrency: CurrencyCode? = null,
+    val undatedExpenseCountsByCurrency: Map<String?, Int> = emptyMap(),
 ) {
+    val undatedExpenseCount: Int get() = undatedExpenseCountsByCurrency.values.sum()
     val selectedCount: Int get() = selectedIds.size
 
     /**
@@ -163,7 +162,10 @@ data class LedgerUiState(
             // Page header totals = signed contributions grouped by recorded currency
             // (refund/chargeback negative, reversal & reversed root zero). Never
             // gross amountCents, never lineage net.
-            amountsByCurrency = confirmedStreamAmountsByCurrency(items),
+            amountsByCurrency = confirmedStreamAmountsByCurrency(items).let { amounts ->
+                if (monthFilter.isBlank()) amounts
+                else amounts + undatedExpenseCountsByCurrency.keys.associateWith { null }
+            },
             itemCount = items.size,
             monthFilter = monthFilter,
             syncing = syncing,
@@ -221,7 +223,6 @@ class LedgerViewModel(
                 allConfirmed = streamItems
                 _uiState.update { state ->
                     state.copy(
-                        items = filterItems(streamItems, state),
                         // Keep the replace-gate flag honest if the synced data
                         // changes while a selection is open. Selection ids are
                         // root ids; offset rows carry the same root, so `any`
@@ -232,7 +233,7 @@ class LedgerViewModel(
                         // root carried by every entry so a much-refunded bill
                         // can't dominate the chips.
                         recentMerchants = recentLedgerMerchants(streamItems.map { it.root }.distinctBy { it.id }),
-                    )
+                    ).withFilteredItems(streamItems)
                 }
             }
         }
@@ -289,6 +290,14 @@ class LedgerViewModel(
         loadTags()
     }
 
+    private fun LedgerUiState.withFilteredItems(streamItems: List<ConfirmedStreamItem>): LedgerUiState {
+        val undated = filterItems(streamItems, copy(monthFilter = "", dataQualityFilter = LedgerDataQualityFilter.MissingAccountingDate))
+        return copy(
+            items = filterItems(streamItems, this),
+            undatedExpenseCountsByCurrency = undated.groupingBy { it.root.homeCurrencyCode }.eachCount(),
+        )
+    }
+
     private fun filterItems(
         streamItems: List<ConfirmedStreamItem>,
         state: LedgerUiState,
@@ -305,6 +314,8 @@ class LedgerViewModel(
         // Data-quality calibers are root-bill predicates (uncategorized /
         // missing image): offset event rows never match them.
         return when (state.dataQualityFilter) {
+            LedgerDataQualityFilter.MissingAccountingDate ->
+                normallyFiltered.filter { it is ConfirmedStreamItem.ExpenseRow && it.streamDate == null }
             LedgerDataQualityFilter.MissingCategory ->
                 // Same serverCategory-first caliber as the inbox (pendingNeedsCategory).
                 normallyFiltered.filter { item ->
@@ -322,14 +333,14 @@ class LedgerViewModel(
     fun setMonthFilter(value: String) {
         monthSelected = true
         _uiState.update { state ->
-            state.copy(monthFilter = value, items = filterItems(allConfirmed, state.copy(monthFilter = value)))
+            state.copy(monthFilter = value).withFilteredItems(allConfirmed)
         }
     }
 
     fun setCategoryFilter(value: String) {
         _uiState.update { state ->
             val next = state.copy(categoryFilter = value, dataQualityFilter = null)
-            next.copy(items = filterItems(allConfirmed, next))
+            next.withFilteredItems(allConfirmed)
         }
     }
 
@@ -349,7 +360,7 @@ class LedgerViewModel(
                 query = "",
                 dataQualityFilter = null,
             )
-            next.copy(items = filterItems(allConfirmed, next))
+            next.withFilteredItems(allConfirmed)
         }
     }
 
@@ -367,20 +378,20 @@ class LedgerViewModel(
                 query = "",
                 dataQualityFilter = filter,
             )
-            next.copy(items = filterItems(allConfirmed, next))
+            next.withFilteredItems(allConfirmed)
         }
         sync()
     }
 
     fun setTagFilter(value: String) {
         _uiState.update { state ->
-            state.copy(tagFilter = value, items = filterItems(allConfirmed, state.copy(tagFilter = value)))
+            state.copy(tagFilter = value).withFilteredItems(allConfirmed)
         }
     }
 
     fun setQuery(value: String) {
         _uiState.update { state ->
-            state.copy(query = value, items = filterItems(allConfirmed, state.copy(query = value)))
+            state.copy(query = value).withFilteredItems(allConfirmed)
         }
     }
 
@@ -398,7 +409,7 @@ class LedgerViewModel(
                 query = "",
                 dataQualityFilter = null,
             )
-            next.copy(items = filterItems(allConfirmed, next))
+            next.withFilteredItems(allConfirmed)
         }
     }
 
@@ -418,11 +429,7 @@ class LedgerViewModel(
                         messageTone = MessageTone.Neutral,
                     )
                 }
-                repository.syncConfirmed(
-                    month = key.month,
-                    category = key.category,
-                    tag = key.tag,
-                )
+                repository.syncConfirmed(missingAccountingDate = key.missingAccountingDate)
                     .onSuccess {
                         _uiState.update {
                             it.copy(
@@ -452,9 +459,7 @@ class LedgerViewModel(
 
     private fun LedgerUiState.toSyncKey(): LedgerSyncKey =
         LedgerSyncKey(
-            month = monthFilter.trim().ifBlank { null },
-            category = categoryFilter.trim().ifBlank { null },
-            tag = tagFilter.trim().ifBlank { null },
+            missingAccountingDate = dataQualityFilter == LedgerDataQualityFilter.MissingAccountingDate,
         )
 
     private fun finishSync(key: LedgerSyncKey) {
@@ -558,7 +563,7 @@ class LedgerViewModel(
                             },
                             messageTone = if (expense.pendingSync) MessageTone.Info else MessageTone.Success,
                         )
-                        next.copy(items = filterItems(allConfirmed, next))
+                        next.withFilteredItems(allConfirmed)
                     }
                     // A fresh confirmed expense is always an advisor input.
                     onDataChanged().also { onAdviceInputsChanged() }

@@ -70,7 +70,6 @@ import com.ticketbox.ui.screens.expense.ExpenseEditRecognizeTextDialog
 import com.ticketbox.ui.screens.expense.ExpenseEditRejectDialog
 import com.ticketbox.ui.screens.expense.ExpenseEditSourceInfo
 import com.ticketbox.ui.screens.expense.ExpenseDetailActionButtonRow
-import com.ticketbox.domain.model.canonicalManualExchangeRateOrNull
 import com.ticketbox.ui.screens.expense.manualExchangeRateEditorVisible
 import com.ticketbox.ui.screens.expense.manualExchangeRateNeedsServerReview
 import com.ticketbox.ui.screens.expense.ItemsEditorSheetActions
@@ -247,7 +246,10 @@ fun ExpenseEditScreen(
             currentExpense.expenseTime, currentExpense.accountingTime, null, java.time.ZoneId.of(timeForm.sourceZone),
         ).toSavedJson()
     }
-    val expenseTime = if (timeForm.changed) timeForm.resolve().instant.orEmpty() else initialFormValues.expenseTime
+    val time = remember(timeForm, initialFormValues.expenseTime) {
+        timeForm.resolveEdit(initialFormValues.expenseTime.ifBlank { null })
+    }
+    val expenseTime = time.instant.orEmpty()
     var tags by rememberSaveable(currentExpense.id, currentExpense.updatedAt, state.formRevision) { mutableStateOf(initialFormValues.tags) }
     var valueScoreText by rememberSaveable(currentExpense.id, currentExpense.updatedAt, state.formRevision) {
         mutableStateOf(initialFormValues.valueScoreText)
@@ -352,30 +354,22 @@ fun ExpenseEditScreen(
             message = amountInvalidMessage
             return null
         }
-        val trimmedManualRate = manualExchangeRateText.trim()
-        val canonicalManualRate = when {
-            manualExchangeRateVisible && trimmedManualRate.isBlank() && savedManualExchangeRate != null -> {
-                manualExchangeRateIsError = true
-                message = manualExchangeRateInvalidMessage
-                return null
-            }
-            !manualExchangeRateVisible || trimmedManualRate.isBlank() -> null
-            else -> canonicalManualExchangeRateOrNull(manualExchangeRateText) ?: run {
-                manualExchangeRateIsError = true
-                message = manualExchangeRateInvalidMessage
-                return null
-            }
+        val manualRate = com.ticketbox.ui.screens.expense.manualExchangeRateEditValue(
+            manualExchangeRateVisible, manualExchangeRateText, savedManualExchangeRate,
+        )
+        manualExchangeRateIsError = manualRate.invalid
+        if (manualRate.invalid) {
+            message = manualExchangeRateInvalidMessage
+            return null
         }
-        manualExchangeRateIsError = false
         val valueScore = if (valueScoreText.isBlank()) null else (parseScore(valueScoreText, valueScoreLabel) ?: return null)
         val regretScore = if (regretScoreText.isBlank()) null else (parseScore(regretScoreText, regretScoreLabel) ?: return null)
-        val time = timeForm.takeIf { it.changed }?.resolve()
-        if (time?.error != null) { message = context.getString(time.error); return null }
+        if (time.error != null) { message = context.getString(time.error); return null }
         return ExpenseDraft(
             amountCents = null,
             originalCurrencyCode = currency,
             originalAmountMinor = originalMinor,
-            manualExchangeRate = canonicalManualRate?.takeIf { manualExchangeRateNeedsReview },
+            manualExchangeRate = manualRate.rate?.takeIf { manualExchangeRateNeedsReview },
             // Blank merchant/tags submit as "" (NOT null): Moshi omits null
             // keys and the backend PATCH is exclude_unset, so null silently
             // means "unchanged" — clearing a field then never took effect.
@@ -389,7 +383,7 @@ fun ExpenseEditScreen(
             category = category.trim().ifBlank { null }?.let { normalizeExpenseCategory(it) },
             note = note,
             expenseTime = expenseTime.ifBlank { null },
-            timeInput = time?.input,
+            timeInput = time.input,
             tags = tags,
             valueScore = valueScore,
             regretScore = regretScore,

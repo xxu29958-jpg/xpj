@@ -258,7 +258,7 @@ private class OccurrenceChoiceLedger(
     override suspend fun tags(): Result<List<String>> = error("Unexpected tag read")
     override suspend fun months(): Result<List<String>> = error("Unexpected month read")
 
-    override suspend fun syncConfirmed(month: String?, category: String?, tag: String?): Result<List<Expense>> {
+    override suspend fun syncConfirmed(month: String?, category: String?, tag: String?, missingAccountingDate: Boolean): Result<List<Expense>> {
         rows.value = if (emitConfirmedStream) listOf(payment.asPaymentRow()) else emptyList()
         return Result.success(if (emitConfirmedStream) listOf(payment) else emptyList())
     }

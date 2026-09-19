@@ -41,7 +41,7 @@ class LedgerCurrencyHeaderTest {
         val root = ledgerHeaderConfirmedRow(100L) as ConfirmedStreamItem.ExpenseRow
         val yen = root.copy(root = root.root.copy(id = 2, homeCurrencyCode = "JPY"))
         val refund = ConfirmedStreamItem.OffsetRow(
-            streamDate = root.streamDate, streamAmountCents = -150L, root = root.root,
+            streamDate = requireNotNull(root.streamDate), streamAmountCents = -150L, root = root.root,
             lineageStatus = ExpenseLineageStatus.PartiallyRefunded, lineageHomeNetCents = 0L,
             offset = StreamOffset("yen-refund", StreamOffsetKind.Refund, 150L, 150L, "JPY", "JPY", "餐饮"),
         )
@@ -104,7 +104,7 @@ class LedgerCurrencyHeaderTest {
     fun refundRowsKeepOriginalCurrencyAndNeverInventMissingCurrency() {
         val root = ledgerHeaderConfirmedRow(100L) as ConfirmedStreamItem.ExpenseRow
         val refund = ConfirmedStreamItem.OffsetRow(
-            streamDate = root.streamDate, streamAmountCents = -150L, root = root.root,
+            streamDate = requireNotNull(root.streamDate), streamAmountCents = -150L, root = root.root,
             lineageStatus = ExpenseLineageStatus.PartiallyRefunded, lineageHomeNetCents = 0L,
             offset = StreamOffset("refund", StreamOffsetKind.Refund, 150L, 100L,
                 originalCurrencyCode = "USD", homeCurrencyCode = "JPY", category = "餐饮"),

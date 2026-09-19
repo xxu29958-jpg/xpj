@@ -77,20 +77,22 @@ private fun formatFactValue(
         "amount_cents" -> UiText.raw(formatHomeAmountSnapshot(value, snapshot, currency))
         "original_amount_minor" -> formatOriginalAmountSnapshot(value, snapshot)
         "expense_time" -> UiText.raw(displayDateTime(value.toString()))
-        "accounting_time" -> UiText.raw(formatAccountingTimeSnapshot(value))
+        "accounting_time" -> formatAccountingTimeSnapshot(value)
         "items", "splits" -> formatLineCountSnapshot(value)
         else -> UiText.raw(value.toString())
     }
 }
 
-private fun formatAccountingTimeSnapshot(value: Any): String {
-    val time = value as? Map<*, *> ?: return "日期依据未知"
-    val day = time["accounting_date"]?.toString() ?: "日期待补充"
-    return when (time["precision"]) {
-        "date_only" -> "$day · 仅日期"
-        "instant" -> listOfNotNull(day, time["instant_utc"]?.toString()?.let(::displayDateTime)).joinToString(" · ")
-        else -> "$day · 历史规则归属"
+private fun formatAccountingTimeSnapshot(value: Any): UiText {
+    val time = value as? Map<*, *> ?: return UiText.res(R.string.calendar_basis_unknown)
+    val day = time["accounting_date"]?.toString()?.let(UiText::raw) ?: UiText.res(R.string.calendar_date_pending)
+    val precision = when (time["precision"]) {
+        "date_only" -> UiText.res(R.string.calendar_date_only_label)
+        "instant" -> time["instant_utc"]?.toString()?.let { UiText.raw(displayDateTime(it)) }
+        else -> UiText.res(if (time["basis"]?.toString()?.startsWith("legacy") == true)
+            R.string.calendar_legacy_basis_label else R.string.calendar_clock_unknown)
     }
+    return UiText.compound(listOfNotNull(day, precision), " · ")
 }
 
 private fun formatHomeAmountSnapshot(

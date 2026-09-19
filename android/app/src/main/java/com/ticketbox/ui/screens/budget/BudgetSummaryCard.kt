@@ -50,6 +50,7 @@ internal fun BudgetSummarySection(
         title = stringResource(R.string.budget_summary_title),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
     ) {
+        com.ticketbox.ui.components.AccountingDateNotice(budget?.undatedExpenseCount)
         BudgetSummaryStatus(configuredBudget)
         if (configuredBudget == null) {
             BudgetSummaryPlaceholder(loading)

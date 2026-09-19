@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens.pending
 
+import com.ticketbox.ui.asString
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -180,7 +181,7 @@ private fun RowScope.PendingExpenseTextBlock(item: PendingExpenseReviewItem) {
         Text(
             text = stringResource(
                 R.string.pending_row_meta,
-                com.ticketbox.ui.components.expenseTimeLabel(expense),
+                com.ticketbox.ui.components.expenseTimeLabel(expense).asString(),
             ),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,

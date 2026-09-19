@@ -46,19 +46,21 @@ import java.util.TimeZone
 private const val CONFIRMED_SYNC_PAGE_SIZE = 200
 
 internal data class ConfirmedSyncRequest(
+    val missingAccountingDate: Boolean = false,
     val month: String? = null,
     val category: String? = null,
     val tag: String? = null,
     val replaceCache: Boolean = false,
     val recordSyncTimestamp: Boolean = true,
 ) {
-    val isFullLedger: Boolean get() = month == null && category == null && tag == null
+    val isFullLedger: Boolean get() = !missingAccountingDate && month == null && category == null && tag == null
 }
 
 private fun ConfirmedSyncRequest.matchesCachedOffset(
     offset: ExpenseOffsetStreamEntity,
     root: Expense?,
 ): Boolean {
+    if (missingAccountingDate) return false
     val cleanMonth = month?.trim().orEmpty()
     val cleanCategory = category?.trim().orEmpty()
     val cleanTag = tag?.trim().orEmpty()
@@ -317,6 +319,7 @@ internal class ExpenseRepositoryCore(
                     query = ConfirmedExpensesApiQuery(
                         page = PageQuery(page = page, pageSize = pageSize),
                         filters = ExpenseListFilterQuery(
+                            missingAccountingDate = true.takeIf { request.missingAccountingDate },
                             month = request.month,
                             category = request.category,
                             tag = request.tag,
@@ -356,12 +359,12 @@ internal class ExpenseRepositoryCore(
             .groupBy { requireNotNull(it.root.serverId) }
             .values
             .map { candidates ->
-                candidates.firstOrNull { it.root.streamDate != null }?.root ?: candidates.first().root
+                candidates.firstOrNull { it.root.streamSortId != null }?.root ?: candidates.first().root
             }
         val offsets = cacheItems.mapNotNull { it.offset }
         if (requiredCorrection != null && roots.none {
                 it.serverId == requiredCorrection.id && it.publicId == requiredCorrection.publicId &&
-                    it.rowVersion >= requiredCorrection.rowVersion && it.streamDate != null
+                    it.rowVersion >= requiredCorrection.rowVersion && it.streamSortId != null
             }) throw RepositoryException("更正已送达，流水投影尚待刷新。")
         val collected = roots.map { it.toDomain() }
         val acceptedRootIds = withActiveBindingCommit(bound) {
@@ -382,7 +385,7 @@ internal class ExpenseRepositoryCore(
         }
         // A root month can omit an offset in another month. Only the complete projection repairs the receipt.
         if (request.isFullLedger) {
-            acknowledgeExpenseRefresh(bound, roots.filter { it.streamDate != null && it.serverId in acceptedRootIds }
+            acknowledgeExpenseRefresh(bound, roots.filter { it.streamSortId != null && it.serverId in acceptedRootIds }
                 .associate { requireNotNull(it.serverId) to it.rowVersion })
             // The advisor also consumes the complete set; a filtered fingerprint would flap.
             onFullConfirmedSyncSnapshot(fetched.freshnessStamp(roots))

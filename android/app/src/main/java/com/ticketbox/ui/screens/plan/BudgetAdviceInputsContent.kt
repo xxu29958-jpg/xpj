@@ -43,6 +43,7 @@ internal fun BudgetAdviceInputsContent(state: BudgetAdviceUiState, actions: Budg
     AppContentCard {
         Text(stringResource(R.string.advice_inputs_title), style = MaterialTheme.typography.titleMedium)
         state.inputs?.let { inputs ->
+            com.ticketbox.ui.components.AccountingDateNotice(inputs.undatedExpenseCount)
             val currency = CurrencyDisplay.forRecord(inputs.homeCurrencyCode)
             val amounts = listOf(R.string.advice_inputs_income to inputs.breakdown.monthlyIncomeCents,
                 R.string.advice_inputs_fixed to inputs.breakdown.fixedExpensesCents,

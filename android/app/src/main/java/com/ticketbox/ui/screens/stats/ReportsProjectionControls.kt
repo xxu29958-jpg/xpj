@@ -30,6 +30,7 @@ internal fun ReportsProjectionControls(
 ) {
     Column {
         Text(stringResource(R.string.reports_currency, overview.homeCurrencyCode))
+        com.ticketbox.ui.components.AccountingDateNotice(overview.undatedExpenseCount)
         ProjectionRateGaps(overview.missingRates, actions.onRepairRates)
         TextButton(onClick = { actions.onRepairRates(null) }) { Text(stringResource(R.string.reports_repair_rates)) }
         ReportsMerchantCategoryFilter(overview, actions.onMerchantCategoryChange)

@@ -96,7 +96,6 @@ interface ExpenseDao {
         SELECT * FROM expenses
         WHERE ledgerId = :ledgerId
           AND status = 'confirmed'
-          AND streamDate IS NOT NULL
           AND streamSortTime IS NOT NULL
           AND streamSortId IS NOT NULL
           AND streamAmountCents IS NOT NULL
@@ -472,7 +471,7 @@ interface ExpenseDao {
 }
 
 private fun ExpenseEntity.withPreservedStreamProjection(existing: ExpenseEntity): ExpenseEntity {
-    if (status != "confirmed" || streamDate != null) return this
+    if (status != "confirmed" || streamSortId != null) return this
     return copy(
         streamDate = existing.streamDate,
         streamSortTime = streamSortTime ?: existing.streamSortTime,

@@ -18,6 +18,15 @@ class ExpenseTimeFormTest {
         assertEquals(-18000, restored.input?.sourceUtcOffsetSeconds)
     }
 
+    @Test fun unchangedUnknownEditDoesNotInventTimeOrValidateEmptySourceFields() {
+        val unknown = ExpenseTimeForm.initial(null, null, rule, ZoneId.of("UTC"))
+        val edit = unknown.resolveEdit(null)
+        assertNull(edit.error)
+        assertNull(edit.instant)
+        assertNull(edit.input)
+        assertEquals("date_only", unknown.withPrecision("date_only", rule).copy(date = "2026-09-20").resolveEdit(null).input?.precision)
+    }
+
     @Test fun gapKeepsRawInputAndOffersNoInventedInstant() {
         val raw = form().copy(date = "2026-03-08", time = "02:30", offsetSeconds = null, changed = true)
         val restored = requireNotNull(readExpenseTimeForm(raw.toSavedJson()))

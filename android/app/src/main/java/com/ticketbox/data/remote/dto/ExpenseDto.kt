@@ -274,7 +274,7 @@ data class ConfirmedExpenseStreamItemDto(
     @param:Json(name = "entry_kind")
     val entryKind: ConfirmedStreamEntryKindDto,
     @param:Json(name = "stream_date")
-    val streamDate: String,
+    val streamDate: String?,
     @param:Json(name = "stream_sort_time")
     val streamSortTime: String,
     @param:Json(name = "stream_sort_id")
@@ -297,4 +297,6 @@ data class PaginatedExpensesDto(
     val total: Int,
     @param:Json(name = "calendar_revision")
     val calendarRevision: Long? = null,
+    @param:Json(name = "undated_expense_count")
+    val undatedExpenseCount: Int? = null,
 )

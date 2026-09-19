@@ -1,6 +1,8 @@
 package com.ticketbox.ui.components
 
+import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.domain.model.UiText
 import com.ticketbox.data.remote.dto.ExpenseTimeInputDto
 
 /** A financial day and a known clock time are separate labels; confirmation is never purchase evidence. */
@@ -12,14 +14,19 @@ fun expenseKnownInstant(expense: Expense): String? = when (expense.accountingTim
     else -> expense.expenseTime
 }
 
-fun expenseTimeLabel(expense: Expense): String =
-    expenseAccountingDayLabel(expense) ?: expenseKnownInstant(expense)?.let(::displayDateTime) ?: "消费日期待补充"
+fun expenseTimeLabel(expense: Expense): UiText =
+    (expenseAccountingDayLabel(expense) ?: expenseKnownInstant(expense)?.let(::displayDateTime))?.let(UiText::raw)
+        ?: UiText.res(R.string.calendar_date_pending)
 
-fun expenseClockLabel(expense: Expense): String = expenseKnownInstant(expense)?.let(::displayTime)
-    ?: if (expense.accountingTime?.precision == "date_only") "仅日期" else "时间未知"
+fun expenseClockLabel(expense: Expense): UiText = when {
+    expense.accountingTime != null && expense.accountingTime.accountingDate == null -> UiText.res(R.string.calendar_date_pending)
+    expenseKnownInstant(expense) != null -> UiText.raw(displayTime(expenseKnownInstant(expense)))
+    expense.accountingTime?.precision == "date_only" -> UiText.res(R.string.calendar_date_only_label)
+    else -> UiText.res(R.string.calendar_clock_unknown)
+}
 
-fun timeInputLabel(input: ExpenseTimeInputDto): String = if (input.precision == "date_only") {
-    "${input.accountingDate ?: input.userLocalDate} · 仅日期"
+fun timeInputLabel(input: ExpenseTimeInputDto): UiText = if (input.precision == "date_only") {
+    UiText.compound(listOf(UiText.raw(input.accountingDate ?: input.userLocalDate), UiText.res(R.string.calendar_date_only_label)), " · ")
 } else {
-    listOfNotNull(input.userLocalDate, input.instantUtc?.let(::displayDateTime), input.sourceTimezone).joinToString(" · ")
+    UiText.raw(listOfNotNull(input.userLocalDate, input.instantUtc?.let(::displayDateTime), input.sourceTimezone).joinToString(" · "))
 }

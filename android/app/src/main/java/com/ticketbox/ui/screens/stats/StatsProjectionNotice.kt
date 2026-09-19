@@ -29,6 +29,7 @@ internal fun StatsProjectionNotice(state: StatsUiState, onRepair: (CurrencyProje
             Text(stringResource(R.string.stats_lifestyle_snapshot_updated, com.ticketbox.ui.components.displayDateTime(state.lifestyleFetchedAt)),
                 style = MaterialTheme.typography.bodySmall)
         }
+        com.ticketbox.ui.components.AccountingDateNotice(listOfNotNull(stats.undatedExpenseCount, lifestyle?.undatedExpenseCount).maxOrNull())
         ProjectionRateGaps(gaps, onRepair, "stats-rate")
     }
 }

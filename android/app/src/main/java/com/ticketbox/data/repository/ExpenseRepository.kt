@@ -376,6 +376,13 @@ class ExpenseRepository(
         tag = tag,
     )
 
+    override suspend fun syncConfirmed(
+        month: String?,
+        category: String?,
+        tag: String?,
+        missingAccountingDate: Boolean,
+    ): Result<List<Expense>> = ledgerRepository.syncConfirmed(month, category, tag, missingAccountingDate)
+
     override suspend fun categories(): Result<List<String>> =
         pendingRepository.categories()
 

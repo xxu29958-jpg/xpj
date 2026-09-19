@@ -1,5 +1,6 @@
 package com.ticketbox.ui.navigation
 
+import com.ticketbox.ui.asString
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
@@ -121,7 +122,7 @@ private fun RecurringPaymentReviewOriginalFacts(request: ExpenseManualCreateRequ
         style = MaterialTheme.typography.titleLarge,
     )
     request.merchant?.takeIf { it.isNotBlank() }?.let { Text(it) }
-    (request.timeInput?.let { com.ticketbox.ui.components.timeInputLabel(it) } ?: request.spentAt ?: request.expenseTime)?.let {
+    (request.timeInput?.let { com.ticketbox.ui.components.timeInputLabel(it).asString() } ?: request.spentAt ?: request.expenseTime)?.let {
         Text(it, style = MaterialTheme.typography.bodySmall)
     }
 }

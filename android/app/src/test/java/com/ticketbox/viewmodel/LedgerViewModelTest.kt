@@ -946,6 +946,7 @@ private class FakeLedgerActions(
         month: String?,
         category: String?,
         tag: String?,
+        missingAccountingDate: Boolean,
     ): Result<List<Expense>> {
         syncCallCount++
         syncGate?.await()

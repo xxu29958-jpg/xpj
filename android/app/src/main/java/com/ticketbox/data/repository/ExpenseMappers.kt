@@ -414,6 +414,7 @@ fun MonthlyStatsDto.toDomain(): MonthlyStats = MonthlyStats(
     count = count,
     byCategory = byCategory.map { it.toDomain() },
     byTag = byTag.map { it.toDomain() },
+    undatedExpenseCount = undatedExpenseCount,
 )
 
 fun CategoryStatsDto.toDomain(): CategoryStats = CategoryStats(
@@ -439,6 +440,7 @@ fun LifestyleStatsDto.toDomain(): LifestyleStats = LifestyleStats(
     frequentMerchants = frequentMerchants.map { it.toDomain() },
     bestValueExpenses = bestValueExpenses.map { it.toDomain() },
     mostRegrettedExpenses = mostRegrettedExpenses.map { it.toDomain() },
+    undatedExpenseCount = undatedExpenseCount,
 )
 
 fun FrequentMerchantDto.toDomain(): FrequentMerchant = FrequentMerchant(

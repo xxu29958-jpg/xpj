@@ -53,6 +53,9 @@ data class ExpenseTimeForm(
         return ExpenseTimeResolution(instant, input)
     }
 
+    fun resolveEdit(originalInstant: String?): ExpenseTimeResolution =
+        if (changed) resolve() else ExpenseTimeResolution(instant = originalInstant)
+
     fun withPrecision(value: String, rule: LedgerCalendarDto?): ExpenseTimeForm = copy(
         precision = value, changed = true,
         calendarRevision = calendarRevision ?: rule?.revision,

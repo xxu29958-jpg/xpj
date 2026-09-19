@@ -12,6 +12,37 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class ExpenseRepositoryConfirmedStreamSyncTest {
+    @Test fun missingDateQueryRetainsOtherDatesAndOffsetsAndUsesTheServerFilter() = runTest {
+        val dao = FakeExpenseDao()
+        val unknown = confirmedStreamEnvelopeFixture().copy(streamDate = null)
+        val dated = unknown.copy(streamDate = "2026-09-03", root = unknown.root.copy(id = 10, publicId = "dated-10"))
+        dao.insert(dated.toConfirmedStreamCacheItem("owner").root)
+        val api = FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0)
+        api.confirmedResponses[1] = PaginatedExpensesDto(listOf(unknown), 1, 200, 1, undatedExpenseCount = 1)
+        val repo = confirmedRepository(dao, api)
+        repo.syncConfirmed(missingAccountingDate = true).getOrThrow()
+        assertEquals("true", api.lastMissingAccountingDate)
+        assertEquals(null, api.lastConfirmedMonth)
+        assertEquals(setOf(9L, 10L), dao.getConfirmed("owner").map { it.serverId }.toSet())
+        assertEquals(2, confirmedStreamFromCache(dao.getConfirmed("owner"), emptyList()).size)
+    }
+
+    @Test fun aCorrectedRowLeavingTheUndatedQueryRefreshesInsteadOfDeletingItsFact() = runTest {
+        val dao = FakeExpenseDao()
+        val unknown = confirmedStreamEnvelopeFixture().copy(streamDate = null)
+        dao.insert(unknown.toConfirmedStreamCacheItem("owner").root)
+        val api = FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0)
+        var reads = 0
+        api.onConfirmedRequest = {
+            reads += 1
+            api.confirmedResponses[1] = if (reads == 1) PaginatedExpensesDto(emptyList(), 1, 200, 0)
+                else PaginatedExpensesDto(listOf(unknown.copy(streamDate = "2026-09-04")), 1, 200, 1)
+        }
+        confirmedRepository(dao, api).syncConfirmed(missingAccountingDate = true).getOrThrow()
+        assertEquals(2, reads)
+        assertEquals("2026-09-04", dao.getConfirmed("owner").single().streamDate)
+    }
+
     @Test fun calendarAdoptionChangesFullSyncFreshnessWithoutInventingFactVersions() = runTest {
         val dao = FakeExpenseDao()
         val api = FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0)
