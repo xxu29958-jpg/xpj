@@ -1,0 +1,200 @@
+# Stable accounting dates and original time intent
+
+## Outcome and authority
+
+A household can explain which day and month a financial event belongs to. The
+same record, refund, budget, goal, report and export agree across clients and
+display timezones. A date-only record stays date-only. Editing a note, retrying
+an offline command or changing a calendar setting does not silently change the
+original date, financial amounts or historical result.
+
+This continues the full Goal and the [current product atlas](TICKETBOX_CURRENT_PRODUCT_ATLAS.md).
+The governing semantic requirement is the final 2026-08-26 Product Rev 2.0
+contract §10.2: distinguish `instant_utc`, `user_local_date`, `accounting_date`
+and `calendar_revision`; do not hide DST, naive input or timezone changes in UI
+conversion. The Goal delegates the in-bound product and engineering choices to
+Codex. The latest user ruling requires preserving and strengthening capabilities.
+ADR-0070 is historical guidance, not an additional authority or approval gate.
+Its old Web offline limitation does not override the already implemented Web
+draft, frozen command and ACK recovery capabilities.
+
+Starting source is merged #422, `44d684fbbd49a4b35b8a386842c43e0c7e9e0445`,
+tree `96e640ad7442b086b5b89b7a51d9407ef93ce320`. Its candidate qualified at
+`a2eb2791`; independent main CI `35456525238`, CodeQL `35456525214` and Connected
+`35456525210` all passed. This document does not claim that the calendar
+implementation exists or that the whole product is complete.
+
+## Decisions within the delegated boundary
+
+### One ledger calendar and one financial date
+
+The ledger owns an explicit IANA calendar zone and monotonically versioned
+calendar rules. The initial choice and later changes are visible. Only an
+authorized ledger owner changes the shared calendar; ordinary writers retain
+their existing authority to record and explicitly correct financial events.
+Changing the calendar applies to future interpretation, not a hidden historical
+rewrite. Preserve the previous rules so a frozen command can identify them.
+
+Reuse the existing time/spending and fact command owners. Persist the financial
+event's accounting date and the calendar revision used to interpret it. A request
+or device timezone may format a known instant but must not move an existing
+record between financial periods. All confirmed-stream consumers read the same
+stored date. Existing offset accounting dates are already facts and are preserved.
+Recurring obligation periods remain distinct from the actual payment date.
+
+Calendar choice is not an FX quote date or a currency-binding revision. Existing
+original/home amounts, frozen quotes, source provenance and offset values must
+not be recalculated during adoption or calendar changes. Explicit financial
+corrections still use their current money/FX workflow and immutable history.
+
+### Preserve evidence; make legacy assumptions visible
+
+Old root records generally preserve a UTC value, not the user's original date
+or zone. Historical adoption freezes one explicit compatibility policy per
+ledger, based on the default accounting view immediately before adoption. Record
+the chosen zone, rule revision, adoption time and basis. A setting observed today
+is evidence for this chosen compatibility policy, not proof of a historical
+user's timezone.
+
+Persist a legacy-assumed accounting date from the existing effective-time basis:
+stored expense time, or the existing confirmation-time fallback where needed.
+Retain the original values and identify which basis was used. Do not label a
+confirmation time as a known purchase instant. Missing original user-local date
+or source zone stays unknown. Do not rewrite old immutable revisions or receipts
+to pretend these fields were known at the time.
+
+Alembic expands the storage shape; it must not call application settings to guess
+this policy. The installed maintenance path can run before the real runtime
+settings are published. The correctly configured runtime passes its explicit
+adoption snapshot to the calendar owner after identity seeding and before normal
+workers/readiness. Include archived ledgers. Freeze a typed immutable rule row,
+identified by ledger and revision, with the selected zone and adoption basis;
+use existing ledger governance audit for its action/actor explanation. A restart
+must resume the recorded policy, not choose again from new settings.
+
+Adoption must preserve reads while currency adoption is still pending: existing
+confirmed/month/CSV API paths can read historical periods in that state. Waiting
+to fill accounting dates until currency adoption would make those periods empty.
+Extend the existing database currency writer fence narrowly for this calendar
+owner's metadata-only update. The database must verify that money, currency,
+status, identity and all unrelated fields are unchanged. Do not fabricate a
+CURRENT currency proof or permit ordinary financial writes through this path.
+
+This one-time compatibility adoption does not increment financial fact revisions
+or expense OCC versions, and does not fabricate a user correction. Its own rule
+and governance evidence identify the adoption. Preserve the old offline commands
+that depend on those versions. Existing projection refresh must nevertheless see
+the calendar adoption: include its revision in the existing synchronization
+freshness and preserve known time metadata when an old same-version receipt lacks
+the new fields. Explicit user corrections continue to advance normal revisions.
+
+The product shows the adopted policy, affected records and period differences,
+and leads to the existing explicit fact-correction task for review. Assumed
+history remains usable; requiring every old record to be manually approved before
+ordinary work would regress the product. Missing usable date evidence or an
+actual contradiction remains visible and recoverable at that record, without
+inventing a date or dropping its financial value from an unqualified total.
+
+It is impossible to preserve all former timezone-dependent period answers: the
+current UTC and Shanghai answers already disagree. Preserve and explain one
+compatibility baseline, the original evidence and the ability to correct it.
+Keep display-timezone use for known instants; retire request-timezone authority
+over financial period membership.
+
+### New input preserves precision and the original choice
+
+- Exact-time input retains the original local date, selected zone/offset and
+  resolved UTC instant. An unchanged edit preserves that evidence. Capture the
+  actual input zone when a draft is established, rather than substituting the
+  device or server's later zone during send/retry.
+- Date-only input carries an explicit precision and date. It does not acquire
+  midnight, noon, the current time or confirmation time. The ordinary date-only
+  form explicitly means a day in the ledger calendar. A source that gives only
+  a different locality's date needs an explicit accounting-day interpretation;
+  do not invent an instant to convert between zones.
+- Handle nonexistent and ambiguous local times in the existing time owner.
+  Preserve a nonexistent input for correction. An ambiguous input offers the
+  two actual offsets; a known unchanged instant keeps its original offset.
+  Neither case removes precise-time or date-editing capability.
+- New commands freeze calendar identity/revision with the original intent.
+  A later calendar change cannot regenerate their body. If current execution
+  finds that recorded revision, it uses those frozen rules rather than forcing
+  the intent onto the current revision. Unknown or contradictory evidence stays
+  in the existing review/conflict task for explicit continuation.
+- Native CSV's retained accounting date and raw event fields are evidence to
+  carry through existing import review. Ordinary CSV, OCR and notification
+  proposals retain their source precision and still require existing human
+  confirmation. A suggestion does not become an independent financial writer.
+
+### Existing commands, results and drafts survive
+
+Authentication, original principal/ledger binding and key/body matching still
+apply. A matched accepted command returns its saved success before new calendar
+or current-OCC validation. New semantics must not invalidate an old successful
+receipt. New response fields allow an absent historical value to mean unknown;
+do not fill an old receipt from today's mutable fact.
+
+Preserve absent/null/value distinctions and the old fingerprint field set.
+Adding optional fields to a Python dataclass or client DTO must not append nulls
+or today's revision to an old request. Keep Web v1 raw drafts, Android flat and
+wrapped Room/outbox commands, original keys and ACK-before-clear behavior. A
+note-only change must not opportunistically replace time evidence.
+
+Old unaccepted input without source evidence uses an explicit versioned legacy
+interpretation or retained review, never a silent current-device conversion.
+If old raw input cannot reproduce a previously normalized request, recover its
+original result through the scoped receipt/fact owner; do not bypass fingerprint
+matching or issue a new financial command under a new key. Mixed-server support
+uses existing capability negotiation and preserves the task when the new intent
+cannot be represented. It must not silently strip the new meaning.
+
+## Impact closure and scope
+
+| Responsibility | Required preservation and migration |
+|---|---|
+| Calendar binding | Existing Ledger management/bootstrap, owner permissions and audit; explicit initial rules/history and future-only changes, without a second settings authority. |
+| Fact storage/history | Expense, confirmation/correction owners, immutable revision snapshots, existing offset facts; schema, historical adoption and revision evidence. Preserve money, identities, attachments and original snapshots. |
+| Input owners | Manual create, pending edit/confirm, correction, OCR/notification proposals, split acceptance and native/ordinary CSV admission; no financial entry bypasses the shared interpretation. |
+| Durable commands | Manual receipt, correction/idempotency, pending and recurring-payment commands; old JSON and exact fingerprints, original accepted result, OCC and transaction boundary. |
+| Shared queries | Spending stream/month filters, FX projections, statistics/export, budget/goals, reports, recurring eligibility, search/rules/learning and recycle projections. Migrate actual date consumers; display and sort metadata must not masquerade as event time. |
+| Web | Create/edit/correction forms, existing raw draft/ACK, confirmed day grouping/details/history, calendar governance, review/return navigation and export. Preserve native forms, permissions and input on errors. |
+| Android | Picker/formatter, ExpenseDraft and mappers, DTO/Room/outbox and wrapped recurring-payment bodies, response/acceptedExpense decoding, facts/timeline/grouping; preserve offline creation, retries and original success. |
+| Other surfaces | API/OpenAPI and runtime capability owner, Owner/ledger management; Shortcut upload remains the shortest capture path. Desktop does not gain a second financial or calendar writer. |
+| Retirement | Remove dynamic query-zone period authority and date-only synthetic instants after consumers migrate. Do not remove valid timezone display, date editing, ordinary imports or drafts to satisfy old tests. |
+
+Use isolated fixtures and cloud databases for implementation evidence and protect
+the daily installation and data. Later installation actions follow the effective
+user authorization; this document does not add an approval gate. Keep
+Fresh-G2 CLOSED and the existing Windows lifecycle HOLD conditions; schema work
+does not open complete backup/restore, upgrade or host mutation engineering.
+Do not introduce a generic event engine, another outbox, or a proof framework.
+
+## Direct proof and exit
+
+Start with the actual shared owner: a CNY 100 purchase at
+`2026-04-30T16:30:00Z`, adopted to May 1 under an explicitly recorded Shanghai
+compatibility policy, and a May 1 refund. UTC and Shanghai clients must show the
+same May financial result, including budget, goal, report and CSV consumers.
+Retain the original instant and the fact that the original user date is unknown.
+
+Use small local counterexamples for period stability, precise/date-only handling,
+DST and legacy receipt/fingerprint decoding. Use the existing PostgreSQL and
+client lanes for migration, actual HTTP/form/Room flows, calendar change with
+offline intent, OCC/ACK recovery and currency/refund controls. A source-only or
+pure-function result is not database or device evidence. No ten-minute local
+suites or duplicated proof system.
+
+Close the impact table against real entrypoints and consumers. Final candidate
+qualification, bounded review, protected integration and independent main
+qualification remain required. Then update the same product atlas and continue
+the remaining portability, relationships, planning, continuity, visual and RC
+work; this slice is not a substitute for that complete endpoint.
+
+Initial RED on the starting production source: the existing pure
+`stat_month_label` / `stat_time` owners produced **6 failing / 2 passing** probes
+in **2.43 seconds**. A supplied frozen May accounting day still became April in
+UTC/Los Angeles; date-only April input became May or acquired the confirmation
+instant. The exact-instant control passed. The tests supply intended new fields
+on in-memory Expense objects, so this proves the current pure owner does not yet
+honor the contract; it does not prove database persistence, migration or UI
+behavior. No production code or daily data changed for this RED.
