@@ -44,6 +44,33 @@ class RecurringEditorRestorationTest {
     }
 
     @Test
+    fun cnyCreateEntryKeepsSelectedJpyAmountAfterRestoration() {
+        val restorationTester = StateRestorationTester(composeRule)
+        lateinit var openAndFill: () -> Unit
+        restorationTester.setContent {
+            val host = rememberRecurringEditorHostState(editorEpoch = 7L, runtimeId = "runtime-create-fx")
+            openAndFill = {
+                host.openCreate(CurrencyCode.CNY)
+                checkNotNull(host.editor).session.apply {
+                    selectCurrency(CurrencyCode.JPY)
+                    merchant = "交通月票"
+                    amountText = "1200"
+                }
+            }
+            val session = host.editor?.session
+            BasicText(
+                listOf(host.editor?.target, session?.homeCurrencyCode, session?.merchant, session?.amountText)
+                    .joinToString("|"),
+                Modifier.testTag(EDITOR_STATE_TAG),
+            )
+        }
+        composeRule.runOnIdle(openAndFill)
+        composeRule.onNodeWithTag(EDITOR_STATE_TAG).assertTextEquals("Create|JPY|交通月票|1200")
+        restorationTester.emulateSavedInstanceStateRestore()
+        composeRule.onNodeWithTag(EDITOR_STATE_TAG).assertTextEquals("Create|JPY|交通月票|1200")
+    }
+
+    @Test
     fun targetDraftOccBaselineAndAttemptRestoreAsOneEditorSession() {
         val restorationTester = StateRestorationTester(composeRule)
         lateinit var openAndEdit: () -> Unit
