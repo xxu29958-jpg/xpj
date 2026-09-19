@@ -39,10 +39,6 @@ from app.services.recurring_occurrence_query import (
     occurrence_response,
 )
 from app.services.recurring_service import get_recurring_item
-from app.services.spending_contract_service import (
-    accounting_datetime_label,
-    stat_time,
-)
 
 router = APIRouter()
 
@@ -71,7 +67,7 @@ def _payment_view(row, *, ledger_id, item, occurrence) -> dict[str, object]:
         "merchant": row.merchant or "未填写商家",
         "home_currency_code": row.home_currency_code,
         "amount": _amount_yuan(row.amount_cents, row.home_currency_code) if row.home_currency_code else "币种待确认",
-        "date": accounting_datetime_label(stat_time(row), pattern="%Y-%m-%d"),
+        "date": str(row.accounting_date or ""),
         "key": uuid4().hex,
         "href": _payment_edit_href(
             ledger_id=ledger_id, expense_id=row.id, item=item, occurrence=occurrence,

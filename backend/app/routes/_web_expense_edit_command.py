@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
+from app.routes._web_accounting_time import changed_time_input
 from app.routes._web_expense_edit_form import WebExpenseEditForm
 from app.routes._web_expense_form import (
     parse_expense_time_local,
@@ -18,10 +19,12 @@ from app.routes._web_expense_form import (
 )
 from app.routes._web_session_common import parse_form_row_version_token
 from app.schemas import ExpenseUpdateRequest
+from app.schemas._accounting_time import AccountingTimeInput
 from app.services.currency_common import normalize_currency_code
 from app.services.data_quality_service import is_uncategorized_expense_category
 from app.services.expense_edit_command_service import edit_expense_submission
 from app.services.expense_service import get_expense
+from app.services.ledger_calendar_service import current_calendar
 from app.services.tag_service import normalize_tags
 from app.services.time_service import ensure_utc
 
@@ -275,6 +278,7 @@ def _validated_update_request(
     manual_exchange_rate: str | None,
     form_values: dict[str, str],
     allow_currency_change: bool,
+    time_input: AccountingTimeInput | None = None,
 ) -> tuple[ExpenseUpdateRequest | None, WebExpenseSaveOutcome | None]:
     selected_currency, currency_error = _validated_currency_snapshot(
         expense,
@@ -302,6 +306,8 @@ def _validated_update_request(
     if value_error is not None or parsed_row_version is None:
         return None, value_error
     payload_args: dict[str, object] = {"expected_row_version": parsed_row_version}
+    if time_input is not None:
+        payload_args["time_input"] = time_input
     payload_args.update(
         _changed_update_fields(
             expense,
@@ -356,6 +362,7 @@ def apply_web_expense_form(
         note=form.note,
         tags=form.tags,
         expense_time=form.expense_time,
+        time_fields=form.time_fields,
     )
     if payload is None:
         return prepared
@@ -420,6 +427,7 @@ def prepare_web_expense_form(
     expense_time: str | None,
     allow_currency_change: bool = False,
     manual_exchange_rate: str | None = None,
+    time_fields: dict[str, str] | None = None,
 ) -> tuple[ExpenseUpdateRequest | None, WebExpenseSaveOutcome]:
     """Parse one browser snapshot without owning its write transaction."""
 
@@ -435,11 +443,18 @@ def prepare_web_expense_form(
         tags=tags,
         expense_time=expense_time,
     )
+    if time_fields is not None:
+        form_values.update(time_fields)
     try:
         expense = get_expense(db, expense_id, selected_ledger_id)
+        time_input = None
+        if time_fields is not None:
+            time_input = changed_time_input(expense, current_calendar(db, ledger_id=selected_ledger_id),
+                expense_time, time_fields)
     except AppError as exc:
         db.rollback()
-        return None, _failure(exc.message, form_values=form_values, status_code=web_form_error_status(exc))
+        return None, _failure(exc.message, form_values=form_values,
+            field_errors={"expense_time": exc.message}, status_code=web_form_error_status(exc))
     payload, validation_error = _validated_update_request(
         expense,
         expected_row_version=expected_row_version,
@@ -449,7 +464,8 @@ def prepare_web_expense_form(
         category=category,
         note=note,
         tags=tags,
-        expense_time=expense_time,
+        expense_time=expense_time if time_fields is None else None,
+        time_input=time_input,
         manual_exchange_rate=manual_exchange_rate,
         form_values=form_values,
         allow_currency_change=allow_currency_change,

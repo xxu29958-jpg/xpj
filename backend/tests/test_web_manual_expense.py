@@ -23,6 +23,7 @@ from tests._local_web_identity_support import (
     _InstalledWeb,
     installed_web_setup,
 )
+from tests._web_native_form_support import accounting_time_fields
 
 pytestmark = [pytest.mark.real_db, pytest.mark.currency_binding_unbound]
 
@@ -113,7 +114,8 @@ def _assert_confirmed_manual_fact(
 
 
 def _hidden_fields(html: str) -> dict[str, str]:
-    return dict(re.findall(r'<input type="hidden" name="([^"]+)" value="([^"]*)"', html))
+    return {**dict(re.findall(r'<input type="hidden" name="([^"]+)" value="([^"]*)"', html)),
+        **accounting_time_fields(html)}
 
 
 def _draft_attribute(body: str, name: str) -> dict:

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from fastapi import Depends, Form
 
+from app.routes._web_accounting_time import accounting_time_form_fields
 from app.routes._web_expense_return_context import (
     ExpenseReturnContext,
     expense_return_form_context,
@@ -28,6 +29,7 @@ class WebExpenseEditForm:
     expense_time: str | None
     fragment: int
     return_context: ExpenseReturnContext
+    time_fields: dict[str, str] | None = None
 
 
 def web_expense_edit_form(
@@ -45,6 +47,7 @@ def web_expense_edit_form(
     expense_time: str | None = Form(default=None),
     fragment: int = Form(default=0),
     return_context: ExpenseReturnContext = Depends(expense_return_form_context),
+    time_fields: dict[str, str] | None = Depends(accounting_time_form_fields),
 ) -> WebExpenseEditForm:
     """Bind one raw browser intent without giving the HTTP handler ownership."""
 
@@ -63,4 +66,5 @@ def web_expense_edit_form(
         expense_time=expense_time,
         fragment=fragment,
         return_context=return_context,
+        time_fields=time_fields,
     )

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.fx_constants import CURRENCY_SYMBOLS, FX_STATUS_PENDING, NO_FRACTION_CURRENCY_CODES
 from app.money_contract import projection_sum_to_int
+from app.routes._web_accounting_time import known_instant_label
 from app.schemas import ConfirmedExpenseStreamItem
 from app.services import bill_split_service, web_stats_service
 from app.services.currency_common import (
@@ -250,7 +251,9 @@ def _expense_view(
         "value_score": getattr(expense, "value_score", None),
         "regret_score": getattr(expense, "regret_score", None),
         "status": expense.status,
-        "expense_time": accounting_datetime_label(expense.expense_time),
+        "expense_time": known_instant_label(expense),
+        "accounting_date": str(getattr(expense, "accounting_date", None) or ""),
+        "accounting_date_assumed": (getattr(expense, "accounting_date_basis", None) or "").startswith("legacy_"),
         "stat_time": accounting_datetime_label(stat_time(expense)),
         "expense_time_local": _expense_time_local_input(getattr(expense, "expense_time", None)),
         "updated_at_iso": _datetime_to_iso(getattr(expense, "updated_at", None)),

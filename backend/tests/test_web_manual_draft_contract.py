@@ -35,6 +35,18 @@ const ref = 'a'.repeat(32);
 const fields = {amount_major:'28.50', currency_code:'CNY', home_currency_code:'CNY', merchant:'合成咖啡店', category:'其他', spent_at:'2026-09-06T12:30', note:'合成草稿', return_to:'', return_recurring_public_id:'', return_month:'', return_payment_expense_id:'', csrf_token:'never-store', token:'never-store'};
 const record = drafts.save(scope, ref, 'editing', fields);
 assert.equal(record.clientRef, ref);
+assert.equal(record.values.calendar_revision, undefined);
+assert.equal(drafts.save(scope, ref, 'submitted', fields).values.calendar_revision, undefined);
+assert.throws(() => drafts.save(scope, ref, 'submitted', {...fields, calendar_revision:'2'}));
+drafts.save(scope, ref, 'editing', fields, 'rejected');
+const timedRef = 'c'.repeat(32);
+const timeFields = {time_precision:'date_only', calendar_revision:'1', user_local_date:'2026-09-06',
+ source_timezone:'Asia/Shanghai', source_utc_offset_seconds:'', accounting_date:''};
+drafts.save(scope, timedRef, 'submitted', {...fields, ...timeFields, spent_at:''});
+assert.equal(drafts.read(timedRef).values.spent_at, '');
+assert.equal(drafts.read(timedRef).values.calendar_revision, '1');
+assert.throws(() => drafts.save(scope, timedRef, 'submitted', {...fields, ...timeFields, calendar_revision:'2'}));
+assert.equal(drafts.acknowledge({scope, clientRef:timedRef}), true);
 assert.equal(drafts.read(ref).values.amount_major, '28.50');
 assert.equal(drafts.read(ref).values.home_currency_code, 'CNY');
 assert.equal(drafts.read(ref).values.csrf_token, undefined);
