@@ -276,19 +276,44 @@ on in-memory Expense objects, so this proves the current pure owner does not yet
 honor the contract; it does not prove database persistence, migration or UI
 behavior. No production code or daily data changed for this RED.
 
-Local implementation checkpoint (2026-09-20, integration base `038475cc6`):
+Local implementation checkpoint (2026-09-20, source `df4be09d0`):
 the kernel, adoption shape, original request/receipt preservation, shared date
 queries, calendar governance, Web forms/drafts and Android data/forms/history
-are now present in the isolated branch. CSV captures its original input and
+are integrated in the isolated branch. CSV captures its original input and
 batch rule; split acceptance, offsets and OCR use the same evidence owners.
-Backend default-month consumers now use the ledger calendar while explicit
-periods remain unchanged. A pending FX counterexample was fixed: changing only
-the accounting day cannot fetch a quote or change the home amount.
+API, Web, Owner and Android default-month consumers use the ledger calendar;
+explicit periods and stored draft intent win over a later default response.
+Changing only the accounting day cannot fetch a quote or change the home amount.
+Existing Web edits display and compare against the fact's same-ledger recorded
+rule, so a merchant-only edit after a calendar change preserves unknown source
+evidence. Explicit time, source-zone and accounting-day changes remain possible.
 
-The combined backend narrow run passed 196 tests in 6.97 seconds; service graph
-audit found no cycles. Integrated Android UI source `f593d1293` passed 94 JVM
-tests, compiled instrumentation tests and passed production/unit Detekt. These
-are not device or PostgreSQL results: migration and HTTP/PG tests have only been
-collected locally. Android default-month consumers and final impact review
-remain in progress; cloud database/client qualification has not passed. No
-candidate, main or daily-installation completion is claimed.
+Confirmed legacy roots with no purchase or confirmation time remain in the
+stream, CSV and cross-period missing-date task. One shared period projection
+includes their scoped count; affected totals and comparisons are incomplete,
+while unaffected categories remain usable. Web and Android explain the missing
+date and retain the original root's correction path. Correction restores period
+membership through the existing fact owner and preserves revision history.
+No synthetic date, current clock, new receipt owner or independent cache is added.
+
+At `58068e2ff`, the combined latest backend narrow run passed 70 tests in 4.36
+seconds; all 25 Python structure counters remained within their existing
+baseline, the service graph had no cycles and direct-head repository weight
+reported NO DEBT REGRESSION. The later Web recorded-rule fix passed 57 targeted
+tests, including the actual submit consumer and draft/ACK recovery. Integrated
+Android source `56160bb1` passed 70 JVM tests, instrumentation compilation and
+production/unit Detekt in 1 minute 24 seconds. Its Android tree is identical to
+this checkpoint; no device execution is claimed by that local run. After both
+final client fixes were integrated at `df4be09d0`, a combined Web time/form,
+draft/ACK, correction and undated projection/revision run passed 70 tests in
+4.05 seconds.
+
+The first diagnostic cloud run belongs only to intermediate `b2268ac2`: CodeQL
+and Connected passed, while CI exposed contract/fixture/old-schema integration
+failures. Those findings are repaired in this checkpoint and await a new exact
+head run. PostgreSQL migration/HTTP execution, full client qualification and
+independent merge-main qualification have not passed for the integrated source.
+The bounded adoption review found no current counterexample in transaction,
+metadata-only writes, archived coverage or old-schema test boundaries; it was
+source review, not attachment-byte or PostgreSQL runtime evidence. No candidate,
+main or daily-installation completion is claimed.
