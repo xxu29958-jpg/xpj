@@ -3,6 +3,9 @@ package com.ticketbox.viewmodel
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtListPage
 import com.ticketbox.data.repository.LedgerActions
+import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.MonthCalendarFixture
+import com.ticketbox.data.repository.calendar
 import com.ticketbox.domain.model.BatchApplyResult
 import com.ticketbox.domain.model.ConfirmedStreamItem
 import com.ticketbox.domain.model.CsvExport
@@ -12,6 +15,7 @@ import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.ExpenseLineageStatus
 import com.ticketbox.domain.model.StreamOffset
 import com.ticketbox.domain.model.StreamOffsetKind
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -20,6 +24,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import java.lang.reflect.Proxy
@@ -70,15 +75,26 @@ class LedgerViewModelStreamTest {
     }
 
     @Test
-    fun missingDateDrillClearsTheMonthAndKeepsTheRootAvailableForFactCorrection() = streamTest {
+    fun missingDateDrillSurvivesLateCalendarAndKeepsTheRootAvailableForFactCorrection() = streamTest {
         val root = streamExpense(id = 1, amountCents = 12000, merchant = "超市")
         val fake = StreamLedgerActions(listOf(rootRow(root).copy(streamDate = null),
             refundRow(publicId = "off-1", root = root, streamDate = "2026-06-02", amountCents = 3000)))
-        val vm = LedgerViewModel(fake, StreamDebtActions())
-        advanceUntilIdle()
+        val binding = LogicalSessionBinding("https://example.test", "owner", "owner", "session", "revision")
+        val gate = CompletableDeferred<Unit>()
+        val calendars = MonthCalendarFixture(binding).apply {
+            this.gate = { gate.await() }
+            response = Result.success(calendar(binding))
+        }
+        val vm = LedgerViewModel(fake, StreamDebtActions(), calendars = calendars)
+        runCurrent()
         vm.applyDataQualityFilter(LedgerDataQualityFilter.MissingAccountingDate)
+        assertEquals(0, fake.syncReads)
+        assertEquals(1, vm.uiState.value.undatedExpenseCount)
+        gate.complete(Unit)
         advanceUntilIdle()
         assertEquals("", vm.uiState.value.monthFilter)
+        assertEquals(LedgerDataQualityFilter.MissingAccountingDate, vm.uiState.value.dataQualityFilter)
+        assertEquals(1, vm.uiState.value.undatedExpenseCount)
         assertEquals(1, fake.undatedReads)
         assertEquals(listOf("expense-1"), vm.uiState.value.items.map { it.rowKey })
         assertEquals(root.id, vm.uiState.value.items.single().root.id)

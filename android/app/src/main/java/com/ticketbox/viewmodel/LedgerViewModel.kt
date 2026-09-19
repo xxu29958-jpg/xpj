@@ -244,8 +244,7 @@ class LedgerViewModel(
             resolvingMonth = false
             if (!monthSelected) {
                 _uiState.update { state ->
-                    val next = state.copy(monthFilter = month)
-                    next.copy(items = filterItems(allConfirmed, next))
+                    state.copy(monthFilter = month).withFilteredItems(allConfirmed)
                 }
             }
             sync()
