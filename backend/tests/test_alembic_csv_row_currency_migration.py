@@ -8,7 +8,6 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
 from app.database import SessionLocal, engine
-from app.models import CsvImportBatch
 from app.services.currency_adoption_service import adopt_currency_binding, adoption_preview
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.identity_service import authenticate_session_token, bootstrap_owner
@@ -27,12 +26,16 @@ _INSERT = """
 
 
 def _seed_row(db, home):
-    batch = CsvImportBatch(tenant_id="owner", file_name="legacy.csv", total_rows=1, valid_rows=1)
-    db.add(batch)
-    db.flush()
-    row_id = db.scalar(text(_INSERT), {"batch": batch.id, "line": 2, "home": home})
+    # The fixture runs before captured calendar metadata exists on batches.
+    batch_id = db.scalar(text("""
+        INSERT INTO csv_import_batches (public_id, tenant_id, file_name, status,
+            total_rows, valid_rows, error_rows, applied_rows, inserted_count, created_at, updated_at)
+        VALUES (:id, 'owner', 'legacy.csv', 'parsed', 1, 1, 0, 0, 0,
+            CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) RETURNING id
+    """), {"id": str(uuid4())})
+    row_id = db.scalar(text(_INSERT), {"batch": batch_id, "line": 2, "home": home})
     db.commit()
-    return batch.id, row_id
+    return batch_id, row_id
 
 
 @pytest.mark.parametrize("home", ["CNY", "JPY"])
@@ -65,8 +68,8 @@ def test_unadopted_csv_row_waits_for_the_audited_owner_choice():
     reset_schema()
     try:
         run_alembic(command.upgrade, "20260729_0001")
+        owner_id, _ = seed_owner()
         with SessionLocal() as db:
-            bootstrap = bootstrap_owner(db, account_name="Owner", ledger_name="Owner ledger", device_name="migration-admin")
             _, row_id = _seed_row(db, "CNY")
         run_alembic(command.upgrade, _HEAD)
         with SessionLocal() as db:
@@ -74,7 +77,10 @@ def test_unadopted_csv_row_waits_for_the_audited_owner_choice():
         # Adopt through the current runtime after checking the frozen CSV edge.
         run_alembic(command.upgrade, "head")
         with SessionLocal() as db:
+            # Authenticate the existing historical owner only on the current schema.
+            bootstrap = bootstrap_owner(db, account_name="Owner", ledger_name="Owner ledger", device_name="migration-admin")
             auth = authenticate_session_token(db, bootstrap.admin_token, {"app", "admin"})
+            assert auth.account_id == owner_id
             preview = adoption_preview(db)
             receipt = adopt_currency_binding(
                 db, auth=auth, idempotency_key=uuid4(), home_code="CNY",
