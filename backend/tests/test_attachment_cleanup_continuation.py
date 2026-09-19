@@ -17,6 +17,8 @@ from app.errors import AppError
 from app.models import Expense
 from app.services import attachment_cleanup_service as cleanup
 from app.services import cleanup_service, file_service, thumb_service
+from app.services import expense_review_command_service as review
+from app.services.expense_service import _update
 from app.services.expense_service._thumbnail_publication import claim_staged_thumbnail, publish_claimed_thumbnail
 from app.services.time_service import now_utc
 
@@ -307,3 +309,50 @@ def test_replenishment_renews_retention_without_changing_financial_time(cleanup_
     assert case.original.is_file() and case.thumbnail.is_file()
     assert getattr(case.expense, f"{status}_at") == original_time
     assert case.expense.attachment_cleanup_request is None
+
+
+@pytest.fixture
+def confirmation_publication(monkeypatch):
+    from app.services import learning_service
+
+    monkeypatch.setattr(_update, "refresh_legacy_expense_time", lambda *_a: None)
+    monkeypatch.setattr(_update, "sync_expense_tags", lambda *_a: None)
+    monkeypatch.setattr(_update, "record_confirmation_revision", lambda *_a, **_k: None)
+    monkeypatch.setattr(learning_service, "close_active_decisions_for_subject", lambda *_a, **_k: None)
+    return lambda case, commit: _update._publish_confirmation(
+        case.db, case.expense, actor_account_id=None, actor_device_id=None, commit=commit,
+    )
+
+
+@pytest.mark.parametrize("consumer", ["review_command", "direct_confirmation"])
+@pytest.mark.parametrize("enabled", [True, False])
+def test_confirmation_consumers_delegate_cleanup_transactions_to_its_owner(
+    cleanup_case, confirmation_publication, consumer, enabled,
+):
+    case = cleanup_case
+    case.settings.delete_image_after_confirm = enabled
+    observed = []
+    case.before_commit = lambda number: observed.append(
+        (number, case.original.is_file(), case.expense.attachment_cleanup_request is not None))
+    if consumer == "review_command":
+        review._commit_confirmation_and_cleanup(case.db, case.expense)
+    else:
+        assert confirmation_publication(case, True) is case.expense
+    # Commit 1 owns the confirmed fact. Only cleanup owns admission and result;
+    # no extra consumer commit can turn a completed cleanup into another failure.
+    assert observed == ([(1, True, False), (2, True, True), (3, False, False)]
+                        if enabled else [(1, True, False)])
+    assert case.db.refresh.call_count == (3 if enabled else 1)
+    assert case.expense.status == "confirmed" and case.expense.fact_revision == 2
+
+
+def test_deferred_confirmation_keeps_cleanup_after_the_callers_financial_commit(
+    cleanup_case, confirmation_publication,
+):
+    case = cleanup_case
+    assert confirmation_publication(case, False) is case.expense
+    case.db.flush.assert_called_once_with()
+    case.db.commit.assert_not_called()
+    case.db.refresh.assert_not_called()
+    assert case.expense.attachment_cleanup_request is None
+    assert case.original.is_file() and case.thumbnail.is_file()

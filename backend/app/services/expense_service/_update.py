@@ -177,6 +177,7 @@ def _publish_confirmation(
     actor_device_id: int | None,
     commit: bool,
 ) -> Expense:
+    """Publish confirmation before cleanup; deferred callers own that first commit."""
     refresh_legacy_expense_time(db, expense)
     sync_expense_tags(db, expense)
     from app.services.learning_service import close_active_decisions_for_subject
@@ -198,9 +199,7 @@ def _publish_confirmation(
         return expense
     db.commit()
     db.refresh(expense)
-    if cleanup_after_confirm(db, expense):
-        db.commit()
-        db.refresh(expense)
+    cleanup_after_confirm(db, expense)
     return expense
 
 
@@ -224,8 +223,9 @@ def confirm_expense(
 
     ADR-0042: ``commit=False`` lets the idempotent confirm route fold the
     key claim + this status flip + ``mark_idempotency_succeeded`` into ONE
-    commit (§4.5); the route then runs ``cleanup_after_confirm`` as the same
-    post-confirm side-effect commit this method does internally when ``commit``.
+    commit (§4.5). After that financial commit, the caller delegates to the same
+    ``cleanup_after_confirm`` owner used here; cleanup publishes its own durable
+    request and result in separate transactions.
     """
     resolve_write_capability(db)
     expense, newly_confirmed = _claim_pending_confirmation(

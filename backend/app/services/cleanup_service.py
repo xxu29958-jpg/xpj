@@ -113,6 +113,11 @@ def _is_supported_upload_file(path: Path) -> bool:
 
 
 def cleanup_after_confirm(db: Session, expense: Expense) -> bool:
+    """Own GC commits after the caller has committed this confirmed Expense.
+
+    The return value reports cleanup metadata change; callers must not add a
+    second cleanup commit or refresh after this owner's completed transactions.
+    """
     settings = get_settings()
     if not settings.delete_image_after_confirm:
         return False
