@@ -317,3 +317,21 @@ The bounded adoption review found no current counterexample in transaction,
 metadata-only writes, archived coverage or old-schema test boundaries; it was
 source review, not attachment-byte or PostgreSQL runtime evidence. No candidate,
 main or daily-installation completion is claimed.
+
+Follow-up source `19986a856` incorporates the findings from cloud `19fd45a50`:
+the two ordinary lanes had 12 fixture/projection expectation failures, and three
+historical database shards had 9 old-schema seed/bootstrap failures. Existing
+historical assertions and migration edges are retained; current bootstrap now
+runs after those tests' existing upgrade to head and reuses the historical owner.
+The two new protected calendar commands are recorded in the exact OCC inventory
+(122 to 124 carriers, no new exemption). Android's two Compose resource-read
+Lint errors are fixed through the existing stringResource pattern; submission
+and validation meanings are unchanged.
+
+The failed inventory lane now passes all 15 counters. The combined affected
+Web/projection/inventory test selection passed 35 tests in 4.22 seconds; the
+historical group collected 22 tests and retained its previous assertions and
+48 migration calls. The identical final Android tree at `aba160f35` passed its
+7 time-form tests, full Gray Lint and production/unit Detekt in 2 minutes 47
+seconds. PostgreSQL rerun and complete final-source cloud qualification remain
+pending; the passing CodeQL result on `19fd45a50` does not qualify this source.
