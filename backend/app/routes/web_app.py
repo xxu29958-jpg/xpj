@@ -23,7 +23,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.routes._web_expense_return_context import edit_context_params
+from app.routes._web_expense_return_context import CONFIRMED_CROSS_PERIOD_FILTERS, edit_context_params
 from app.routes._web_money_views import projected_amount, projected_money_context
 from app.routes.web_common import (
     LocalOnly,
@@ -99,7 +99,7 @@ def _confirmed_redirect(
         tag=tag,
         page=page_value,
         msg=msg,
-        filter="missing_category" if filter == "missing_category" else "",
+        filter=filter if filter in CONFIRMED_CROSS_PERIOD_FILTERS else "",
         home_currency_code=home_currency_code,
     )
 
@@ -132,7 +132,8 @@ def _confirmed_month_context(
         currency_code=currency_code,
         tag=tag,
     )
-    peak_day_cents = None if any(item["amount_cents"] is None for item in by_day) else max(
+    undated_count = month_stats.get("undated_expense_count", 0)
+    peak_day_cents = None if undated_count or any(item["amount_cents"] is None for item in by_day) else max(
         (item["amount_cents"] for item in by_day), default=0)
     return {
         "month_total_amount_yuan": projected_amount(month_total_cents, currency_code),
@@ -144,6 +145,7 @@ def _confirmed_month_context(
         "month_peak_amount_yuan": projected_amount(peak_day_cents, currency_code),
         "calendar_max": peak_day_cents,
         "missing_rates": month_stats["missing_rates"],
+        "undated_expense_count": undated_count,
         "by_day": by_day,
         "source_breakdown": _confirmed_source_breakdown(
             db,
@@ -167,7 +169,7 @@ def _confirmed_items(entries, home_currency_code: str, *, db, ledger_id: str) ->
             view = _expense_view(entry.root, presentation_currency_code=entry.root.home_currency)
             view.update(
                 entry_kind="expense",
-                stream_date=entry.stream_date.isoformat(),
+                stream_date=entry.stream_date.isoformat() if entry.stream_date is not None else "",
                 stream_amount_cents=entry.stream_amount_cents,
                 **_lineage_chip(entry.lineage_status),
             )
@@ -212,7 +214,8 @@ def _confirmed_page_rows(
 ) -> tuple[str, str, list[dict], int, int, str, int]:
     timezone_name = accounting_timezone_key()
     missing_category = filter == "missing_category"
-    effective_month = "" if missing_category else month or current_ledger_month(db, ledger_id=selected_id)
+    cross_period = filter in CONFIRMED_CROSS_PERIOD_FILTERS
+    effective_month = "" if cross_period else month or current_ledger_month(db, ledger_id=selected_id)
     page = max(1, page)
     query = {
         "tenant_id": selected_id,
@@ -222,6 +225,8 @@ def _confirmed_page_rows(
         "timezone_name": timezone_name,
         "missing_category": missing_category,
     }
+    if filter == "missing_accounting_date":
+        query["missing_accounting_date"] = True
     entries, total = list_confirmed(db, page=page, **query)
     home = normalize_currency_code(home_currency_code or require_runtime_home_currency_code(db))
     total_pages = max(1, (total + _CONFIRMED_PAGE_SIZE - 1) // _CONFIRMED_PAGE_SIZE)
@@ -229,8 +234,8 @@ def _confirmed_page_rows(
         page = total_pages
         entries, total = list_confirmed(db, page=page, **query)
     pager_params = {"ledger_id": selected_id, "month": effective_month}
-    if missing_category:
-        pager_params = {"ledger_id": selected_id, "filter": "missing_category"}
+    if cross_period:
+        pager_params = {"ledger_id": selected_id, "filter": filter}
     if tag:
         pager_params["tag"] = tag
     pager_params["home_currency_code"] = home
@@ -291,7 +296,7 @@ def _render_confirmed_page(
         options=options,
         selected_ledger_id=selected_id,
         page_title="已确认",
-        show_month_picker=filter != "missing_category",
+        show_month_picker=filter not in CONFIRMED_CROSS_PERIOD_FILTERS,
         selected_month=effective_month,
         sidebar_counts=_sidebar_counts(db, selected_id),
     )
@@ -303,7 +308,7 @@ def _render_confirmed_page(
         total=total,
         month=effective_month,
         tag=tag or "",
-        filter="missing_category" if filter == "missing_category" else "",
+        filter=filter if filter in CONFIRMED_CROSS_PERIOD_FILTERS else "",
         pager_query=pager_query,
         confirmed_edit_query=_confirmed_edit_query(
             selected_id,

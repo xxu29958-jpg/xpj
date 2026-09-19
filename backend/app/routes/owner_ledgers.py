@@ -28,6 +28,7 @@ from app.routes.owner_console._shared import templates
 from app.schemas._ledger_calendar import LedgerCalendarChangeRequest
 from app.services import owner_console_service as svc
 from app.services.ledger_calendar_commands import change_ledger_calendar, ledger_calendar_history, read_ledger_calendar
+from app.services.spending_contract_service import count_undated_expenses
 from app.version import BACKEND_VERSION  # noqa: F401  (kept for parity with sibling pages)
 
 # CSRF 修复:复用 owner_console._shared 的共享 templates(已带 context_processors=[csrf_context]
@@ -60,6 +61,7 @@ def _render_calendar_page(request: Request, db: Session, ledger_id: str, *,
     current = read_ledger_calendar(db, ledger_id=ledger_id, account_id=account_id)
     context = _base(request, db)
     context.update(calendar=current, calendar_history=ledger_calendar_history(db, ledger_id=ledger_id, account_id=account_id),
+        ledger_undated_expense_count=count_undated_expenses(db, tenant_id=ledger_id),
         submitted_timezone=submitted_timezone if submitted_timezone is not None else current.timezone_name,
         idempotency_key=uuid4().hex, error=error)
     return templates.TemplateResponse(request=request, name="ledger_calendar.html", context=context, status_code=status_code)

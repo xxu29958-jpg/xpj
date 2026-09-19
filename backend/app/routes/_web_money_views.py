@@ -49,7 +49,7 @@ def projected_money_context(home: str) -> dict:
     return {"home_currency_code": home, "home_currency_symbol": _currency_symbol(home),
         "home_currency_minor_digits": minor_unit_digits(home), "currency_input": _currency_input_view(home),
         "home_amount_value": lambda amount: projected_amount(amount, home),
-        "home_amount_label": lambda amount: _minor_amount_label(amount, home) if amount is not None else "待补齐换算信息"}
+        "home_amount_label": lambda amount: _minor_amount_label(amount, home) if amount is not None else "账务信息待补齐"}
 
 
 def _month_display_label(value: str | None, *, fallback: str = "所选月份") -> str:
@@ -194,6 +194,21 @@ def _confirmed_source_breakdown(
     return web_stats_service.source_breakdown(db, ledger_id, month, tag=tag)
 
 
+def _expense_time_view(expense) -> dict:
+    """Present saved accounting evidence separately from audit timestamps."""
+    evidence = getattr(expense, "accounting_time", None) or expense
+    basis = getattr(evidence, "basis", None) or getattr(evidence, "accounting_date_basis", "")
+    return {
+        "expense_time": known_instant_label(expense),
+        "accounting_date": str(getattr(evidence, "accounting_date", None) or ""),
+        "accounting_date_assumed": (basis or "").startswith("legacy_"),
+        "stat_time": accounting_datetime_label(stat_time(expense)),
+        "expense_time_local": _expense_time_local_input(getattr(expense, "expense_time", None)),
+        "updated_at_iso": _datetime_to_iso(getattr(expense, "updated_at", None)),
+        "created_at": accounting_datetime_label(expense.created_at),
+    }
+
+
 def _expense_view(
     expense,
     *,
@@ -251,14 +266,8 @@ def _expense_view(
         "value_score": getattr(expense, "value_score", None),
         "regret_score": getattr(expense, "regret_score", None),
         "status": expense.status,
-        "expense_time": known_instant_label(expense),
-        "accounting_date": str(getattr(expense, "accounting_date", None) or ""),
-        "accounting_date_assumed": (getattr(expense, "accounting_date_basis", None) or "").startswith("legacy_"),
-        "stat_time": accounting_datetime_label(stat_time(expense)),
-        "expense_time_local": _expense_time_local_input(getattr(expense, "expense_time", None)),
-        "updated_at_iso": _datetime_to_iso(getattr(expense, "updated_at", None)),
+        **_expense_time_view(expense),
         "row_version": getattr(expense, "row_version", None),
-        "created_at": accounting_datetime_label(expense.created_at),
         "has_image": has_image,
         "image_state": image_state,
         "duplicate_status": expense.duplicate_status,

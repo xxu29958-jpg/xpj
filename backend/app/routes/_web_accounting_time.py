@@ -122,8 +122,9 @@ def known_instant_label(expense) -> str:
     instant = ensure_utc(getattr(expense, "expense_time", None))
     if instant is None:
         return ""
-    zone = getattr(expense, "source_timezone", None)
-    offset = getattr(expense, "source_utc_offset_seconds", None)
+    evidence = getattr(expense, "accounting_time", None) or expense
+    zone = getattr(evidence, "source_timezone", None)
+    offset = getattr(evidence, "source_utc_offset_seconds", None)
     if zone:
         return f"{instant.astimezone(strict_zone(zone)).isoformat(sep=' ')} ({zone})"
     if offset is not None:

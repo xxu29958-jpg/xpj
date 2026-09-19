@@ -255,6 +255,12 @@
         当前为<strong>只读角色</strong>。查看与分析保持可用，写入动作已隐藏或禁用。
       </div>
       {% endif %}
+      {% if ledger_undated_expense_count|default(0) %}
+      <div class="product-feedback product-feedback--warning" role="status">
+        当前账本有 {{ ledger_undated_expense_count }} 笔已确认账单的账务日期待核对。它们尚未归入月份，受影响的合计与剩余额度暂不完整；已显示的按期明细仅含日期已知的记录。
+        <a href="/web/confirmed?ledger_id={{ selected_ledger_id }}&amp;filter=missing_accounting_date">查看并核对日期</a>
+      </div>
+      {% endif %}
       {% block content %}{% endblock %}
       {% if manual_draft_ack %}
       <span hidden data-manual-draft-ack="{{ manual_draft_ack | tojson | forceescape }}"></span>

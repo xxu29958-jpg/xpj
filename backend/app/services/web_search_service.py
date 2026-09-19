@@ -180,10 +180,12 @@ def _expense_subtitle(expense: Expense) -> str:
     when = stat_time(expense)
     if expense.accounting_date is not None:
         parts.append(expense.accounting_date.isoformat())
+    elif expense.status == "confirmed":
+        parts.append("账务日期待核对")
     elif when:
-        parts.append(accounting_datetime_label(when))
+        parts.append("发生时刻 " + accounting_datetime_label(when))
     elif expense.created_at:
-        parts.append(accounting_datetime_label(expense.created_at))
+        parts.append("录入于 " + accounting_datetime_label(expense.created_at))
     return " · ".join(parts)
 
 

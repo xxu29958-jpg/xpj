@@ -120,6 +120,14 @@ from FX gaps. After an explicit correction supplies the date, the existing
 refresh removes the gap and places the same fact in its chosen period. It does
 not create a new expense, rewrite old receipts or require a second review owner.
 
+A confirmed status, a known confirmation timestamp or an existing positive fact
+revision each establishes that a root was published. A missing confirmation
+timestamp does not demote such a root to an unpublished draft or disable its
+ordinary correction command. If this legacy root has no revision yet, capture
+its known pre-correction snapshot through the existing revision owner before
+the correction. Do not invent a confirmation time; preserve the existing
+permission, reason, OCC and original-key replay requirements.
+
 It is impossible to preserve all former timezone-dependent period answers: the
 current UTC and Shanghai answers already disagree. Preserve and explain one
 compatibility baseline, the original evidence and the ability to correct it.

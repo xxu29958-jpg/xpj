@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
-from app.routes._web_expense_return_context import return_context_params
+from app.routes._web_expense_return_context import CONFIRMED_CROSS_PERIOD_FILTERS, return_context_params
 from app.routes._web_session_common import resolve_web_actor_account_id
 from app.routes.web_common import (
     LocalOnly,
@@ -110,7 +110,7 @@ def page_budget_rates(request: Request, db: Session = Depends(get_db), _local: N
     values = {key: request.query_params.get(key, "") for key in (*_TASK_FIELDS, *_RATE_FIELDS)}
     options = _list_ledger_options(db)
     selected = _resolve_selected_ledger_id(db, values["ledger_id"] or None, options, request=request)
-    month = "" if values["return_to"] == "confirmed" and values["filter"] == "missing_category" else (
+    month = "" if values["return_to"] == "confirmed" and values["filter"] in CONFIRMED_CROSS_PERIOD_FILTERS else (
         values["month"] or current_ledger_month(db, ledger_id=selected))
     values.update(ledger_id=selected, month=month,
         home_currency_code=normalize_currency_code(values["home_currency_code"] or require_runtime_home_currency_code(db)),

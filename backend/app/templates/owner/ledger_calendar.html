@@ -3,6 +3,9 @@
 {% block content %}
 <h1>账务日历</h1>
 <p>选择这个账本记录新支出时使用的地区时区。已经保存的账务日期、金额和汇率保持原样；未提交的旧草稿继续使用创建时的规则。</p>
+{% if ledger_undated_expense_count|default(0) %}
+<p role="status">有 {{ ledger_undated_expense_count }} 笔已确认账单缺少可用的日期依据。<a href="/web/confirmed?ledger_id={{ calendar.ledger_id }}&amp;filter=missing_accounting_date">查看并沿原流水更正日期</a>；更换日历设置不会替这些账单补造日期。</p>
+{% endif %}
 {% if error %}<div class="alert alert-danger" role="alert">{{ error }} 输入已保留，下方已显示当前规则，请核对后重新保存。</div>{% endif %}
 <div class="card">
   <h2>当前规则</h2>

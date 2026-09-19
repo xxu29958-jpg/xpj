@@ -66,7 +66,7 @@ from app.services.goal_service import list_goals
 from app.services.insights_service import unclaimed_recurring_candidate_count
 from app.services.ledger_calendar_service import current_ledger_month
 from app.services.money_projection_service import ordered_projection_gaps
-from app.services.spending_contract_service import default_accounting_timezone_name
+from app.services.spending_contract_service import count_undated_expenses, default_accounting_timezone_name
 from app.services.stats_service import monthly_stats
 from app.services.time_service import now_utc
 from app.services.time_service import to_iso as _datetime_to_iso
@@ -165,6 +165,7 @@ def _base_ctx(
         "ledger_switch_next_url": _ledger_switch_next_url(request),
         "ledger_options": options,
         "selected_ledger_id": selected_ledger_id,
+        "ledger_undated_expense_count": count_undated_expenses(db, tenant_id=selected_ledger_id),
         "selected_ledger_name": selected.name,
         "selected_ledger_role": selected.role,
         "selected_ledger_is_default": selected.is_default,
