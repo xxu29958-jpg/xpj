@@ -335,3 +335,23 @@ historical group collected 22 tests and retained its previous assertions and
 7 time-form tests, full Gray Lint and production/unit Detekt in 2 minutes 47
 seconds. PostgreSQL rerun and complete final-source cloud qualification remain
 pending; the passing CodeQL result on `19fd45a50` does not qualify this source.
+
+The next diagnostic CI on `d42b9b2a4` passed both ordinary PostgreSQL lanes,
+three historical database shards, contract/packaging and Android fast checks.
+Its remaining real-db 1/4 failures were two historical bootstrap fixtures and
+the existing unqualified FLOAT column's PostgreSQL DOUBLE PRECISION reflection
+name. The fixtures now preserve their old-schema seeds and authenticate only
+after their original head upgrade; the shape test normalizes only that exact
+type alias and retains every other type, nullable, constraint and snapshot check.
+The affected group collected 15 tests and its two pure shape tests passed.
+CodeQL passed on `d42b9b2a4`; final-source CI/Connected and merge-main remain
+required. These fixes change tests only, not financial or migration behavior.
+
+CI on `bab4d4fb` then passed 19 jobs, including those historical fixes. Its only
+underlying error was teardown of an existing two-session OCC test: seed-upload
+enrichment could still read the schema while the fixture dropped it (99 passed,
+one teardown error in that shard). The test setup now completes that real
+enrichment inline, restores normal execution mode, and only then opens the same
+two competing Sessions. All 20 original assertions and session close calls remain;
+production concurrency and shared database cleanup are unchanged. The affected
+file collected six tests; actual PostgreSQL execution awaits the final source.
