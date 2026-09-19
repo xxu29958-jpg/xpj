@@ -8,6 +8,7 @@ from typing import Literal
 
 from pydantic import BaseModel, field_serializer, model_validator
 
+from app.schemas._accounting_time import AccountingTimeSnapshot
 from app.schemas._expense import ExpenseResponse
 from app.schemas._expense_offset import ExpenseOffsetKind
 from app.schemas._money import PositiveMoneyMinor, SignedMoneyAggregate
@@ -32,6 +33,7 @@ class ConfirmedOffsetStreamProjection(BaseModel):
     exchange_rate_to_cny: Decimal | None = None
     exchange_rate_date: date | None = None
     exchange_rate_source: str | None = None
+    accounting_time: AccountingTimeSnapshot | None = None
 
     @field_serializer("exchange_rate_to_cny")
     def _serialize_exchange_rate(self, value: Decimal | None) -> str | None:

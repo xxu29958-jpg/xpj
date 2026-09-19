@@ -16,6 +16,7 @@ from app.schemas import (
     ConfirmedOffsetStreamProjection,
     ExpenseResponse,
 )
+from app.services.accounting_time_service import accounting_time_snapshot
 from app.services.data_quality_service import uncategorized_expense_category_predicate
 from app.services.expense_offset_summary import expense_financial_summary
 from app.services.expense_query import (  # noqa: F401 — re-exported
@@ -369,4 +370,5 @@ def _offset_stream_projection(
         exchange_rate_to_cny=offset.exchange_rate_to_cny,
         exchange_rate_date=offset.exchange_rate_date,
         exchange_rate_source=offset.exchange_rate_source,
+        accounting_time=accounting_time_snapshot(offset),
     )

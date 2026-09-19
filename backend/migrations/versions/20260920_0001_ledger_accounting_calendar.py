@@ -40,6 +40,11 @@ def _create_shape():
         sa.CheckConstraint("char_length(basis) > 0", name="ck_ledger_calendar_basis_present"),
     )
     op.add_column("ledgers", sa.Column("calendar_revision", sa.Integer(), nullable=True))
+    op.add_column("csv_import_batches", sa.Column("calendar_revision", sa.Integer(), nullable=True))
+    op.create_foreign_key("fk_csv_import_batches_calendar_revision", "csv_import_batches", "ledger_calendar_revisions",
+                          ["tenant_id", "calendar_revision"], ["ledger_id", "revision"])
+    op.add_column("csv_import_rows", sa.Column("time_input", JSONB(none_as_null=True), nullable=True))
+    op.add_column("csv_import_rows", sa.Column("expense_time_input", sa.Text(), nullable=True))
     op.create_foreign_key("fk_ledgers_calendar_revision", "ledgers", "ledger_calendar_revisions",
                           ["ledger_id", "calendar_revision"], ["ledger_id", "revision"])
     op.add_column("expenses", sa.Column("accounting_date", sa.Date(), nullable=True))
@@ -210,6 +215,8 @@ def downgrade():
         raise RuntimeError("refusing to discard adopted calendar evidence")
     if bind.scalar(sa.text("SELECT EXISTS (SELECT 1 FROM bill_split_invitations WHERE accounting_time_snapshot IS NOT NULL)")):
         raise RuntimeError("refusing to discard frozen invitation time evidence")
+    if bind.scalar(sa.text("SELECT EXISTS (SELECT 1 FROM csv_import_rows WHERE time_input IS NOT NULL OR expense_time_input IS NOT NULL)")):
+        raise RuntimeError("refusing to discard original CSV time evidence")
     for table in _TABLES:
         columns = _METADATA + (("accounting_date",) if table == "expenses" else ())
         if bind.scalar(sa.text(f"SELECT EXISTS (SELECT 1 FROM {table} WHERE "
@@ -229,6 +236,10 @@ def downgrade():
             op.drop_column(table, column)
     op.drop_column("expenses", "accounting_date")
     op.drop_column("bill_split_invitations", "accounting_time_snapshot")
+    op.drop_constraint("fk_csv_import_batches_calendar_revision", "csv_import_batches", type_="foreignkey")
+    op.drop_column("csv_import_batches", "calendar_revision")
+    op.drop_column("csv_import_rows", "time_input")
+    op.drop_column("csv_import_rows", "expense_time_input")
     op.drop_constraint("fk_ledgers_calendar_revision", "ledgers", type_="foreignkey")
     op.drop_column("ledgers", "calendar_revision")
     op.execute("DROP FUNCTION ticketbox_require_calendar_adoption_row()")
@@ -240,6 +251,7 @@ def downgrade():
 
 def assert_postcondition(bind):
     inspector = sa.inspect(bind)
+    _assert_csv_time_shape(inspector)
     if inspector.get_pk_constraint("ledger_calendar_revisions")["constrained_columns"] != ["ledger_id", "revision"]:
         raise RuntimeError("ledger calendar revision identity is missing")
     for table in _TABLES:
@@ -257,3 +269,14 @@ def assert_postcondition(bind):
     expected_revision = revision if live == down_revision else live
     if bind.scalar(sa.text("SELECT schema_revision FROM dataset_authority WHERE singleton_id = 1")) != expected_revision:
         raise RuntimeError("dataset authority is not aligned with the accounting calendar")
+
+
+def _assert_csv_time_shape(inspector):
+    for table, names in (("csv_import_batches", ("calendar_revision",)),
+                         ("csv_import_rows", ("time_input", "expense_time_input"))):
+        columns = {column["name"]: column for column in inspector.get_columns(table)}
+        if any(name not in columns or not columns[name]["nullable"] for name in names):
+            raise RuntimeError("CSV captured time evidence shape is missing")
+    foreign_keys = {item["name"] for item in inspector.get_foreign_keys("csv_import_batches")}
+    if "fk_csv_import_batches_calendar_revision" not in foreign_keys:
+        raise RuntimeError("CSV captured calendar ledger scope is missing")

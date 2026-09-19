@@ -37,6 +37,7 @@ class _BillSplitCommonPayload(TypedDict):
     merchant_snapshot: str | None
     category_suggestion: str | None
     expense_time_snapshot: datetime | None
+    accounting_time_snapshot: dict | None
     expires_at: datetime
     created_at: datetime
     accepted_at: datetime | None
@@ -106,6 +107,7 @@ def to_sent_response_dict(
         "merchant_snapshot": inv.merchant_snapshot,
         "category_suggestion": inv.category_suggestion,
         "expense_time_snapshot": inv.expense_time_snapshot,
+        "accounting_time_snapshot": inv.accounting_time_snapshot,
         "expires_at": inv.expires_at,
         "created_at": inv.created_at,
         "accepted_at": inv.accepted_at,
@@ -139,6 +141,7 @@ def to_inbox_response_dict(
         "merchant_snapshot": inv.merchant_snapshot,
         "category_suggestion": inv.category_suggestion,
         "expense_time_snapshot": inv.expense_time_snapshot,
+        "accounting_time_snapshot": inv.accounting_time_snapshot,
         "expires_at": inv.expires_at,
         "created_at": inv.created_at,
         "accepted_at": inv.accepted_at,

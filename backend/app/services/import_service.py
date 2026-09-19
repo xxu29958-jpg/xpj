@@ -29,12 +29,13 @@ from __future__ import annotations
 import csv
 import re
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from io import StringIO
 
 from app.config import get_settings
 from app.errors import AppError
+from app.schemas._accounting_time import AccountingTimeInput
 from app.services.category_service import normalize_category
 from app.services.currency_common import supported_currency_codes
 from app.services.exchange_rate_service import (
@@ -43,6 +44,7 @@ from app.services.exchange_rate_service import (
 )
 from app.services.import_financial_events import (
     has_financial_event,
+    native_accounting_time,
     native_money_fields_error,
     parse_financial_event,
 )
@@ -60,7 +62,7 @@ from app.services.import_money import (
 )
 from app.services.spending_contract_service import fx_rate_date_for_expense_time
 from app.services.tag_service import normalize_tags
-from app.services.time_service import ensure_utc_assuming_local
+from app.services.time_service import resolve_local_datetime, strict_zone
 
 MAX_PREVIEW_ROWS = 500
 DEFAULT_SOURCE = "CSV导入"
@@ -93,6 +95,7 @@ class ParsedRow:
     lineage_status: str | None = None
     lineage_home_net_cents: int | None = None
     event_input: dict[str, str] | None = None
+    time_input: dict | None = None
     error_code: str | None = None
     error: str | None = None
 
@@ -129,13 +132,64 @@ def _parse_expense_time(raw: str, timezone_name: str | None = None) -> tuple[dat
     except ValueError:
         return None, text, "expense_time 不是合法的 ISO 时间", None
     resolved_timezone = (timezone_name or "").strip() or get_settings().ocr_default_timezone
-    normalized_time = ensure_utc_assuming_local(parsed, resolved_timezone)
+    try:
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", cleaned):
+            return None, text, None, parsed.date()
+        normalized_time = (parsed.astimezone(UTC) if parsed.utcoffset() is not None
+                           else resolve_local_datetime(parsed, resolved_timezone))
+    except AppError as exc:
+        return None, text, exc.message, None
     return (
         normalized_time,
         text,
         None,
         fx_rate_date_for_expense_time(normalized_time, resolved_timezone),
     )
+
+
+def _captured_time_input(raw: str, *, instant: datetime | None, timezone_name: str,
+                         calendar_revision: int) -> dict | None:
+    value = raw.strip().replace("/", "-")
+    if not value:
+        return None
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        parsed = AccountingTimeInput(precision="date_only", calendar_revision=calendar_revision,
+            user_local_date=date.fromisoformat(value))
+    else:
+        source = datetime.fromisoformat(value)
+        local = source if source.utcoffset() is not None else instant.astimezone(strict_zone(timezone_name))
+        parsed = AccountingTimeInput(precision="instant", calendar_revision=calendar_revision,
+            user_local_date=local.date(), instant_utc=instant,
+            source_timezone=timezone_name if source.utcoffset() is None else None,
+            source_utc_offset_seconds=int(local.utcoffset().total_seconds()))
+    return parsed.model_dump(mode="json")
+
+
+def _csv_time_fields(raw: str, *, native: bool, timezone_name: str | None, calendar_revision: int | None):
+    instant, display, error, rate_date = _parse_expense_time(raw, timezone_name=timezone_name)
+    value = None
+    if not native and calendar_revision is not None and error is None:
+        value = _captured_time_input(raw, instant=instant,
+            timezone_name=timezone_name, calendar_revision=calendar_revision)
+        if value is not None:
+            rate_date = date.fromisoformat(value["user_local_date"])
+    return instant, display, error, rate_date, value
+
+
+def _native_purchase_clock_error(cells, event_fields, instant) -> str | None:
+    if not cells.get("accounting_time", "").strip() or event_fields.get("entry_kind") != "expense":
+        return None
+    source = native_accounting_time(cells)
+    if instant != source.instant_utc:
+        return "expense_time 与 accounting_time 的原始时刻不一致"
+    return None
+
+
+def _parse_native_event(cells, *, amount_cents, expense_time):
+    fields, error = parse_financial_event(cells, amount_cents=amount_cents)
+    if error is None:
+        error = _native_purchase_clock_error(cells, fields, expense_time)
+    return fields, error
 
 
 def _parse_optional_date(raw: str) -> tuple[date | None, str | None]:
@@ -395,6 +449,7 @@ def parse_csv_row(
     line_number: int,
     timezone_name: str | None = None,
     home_currency: str,
+    calendar_revision: int | None = None,
 ) -> ParsedRow:
     cells = dict(zip(headers, row + [""] * max(0, len(headers) - len(row)), strict=False))
     native = has_financial_event(cells)
@@ -407,8 +462,9 @@ def parse_csv_row(
         amount_error_code,
         amount_error,
     ) = _parse_amount(cells, home_currency=home_currency)
-    expense_time, etime_display, etime_error, expense_rate_date = _parse_expense_time(
-        cells.get("expense_time", ""), timezone_name=timezone_name
+    expense_time, etime_display, etime_error, expense_rate_date, time_input = _csv_time_fields(
+        cells.get("expense_time", ""), native=native, timezone_name=timezone_name,
+        calendar_revision=calendar_revision,
     )
     fx = _parse_csv_fx_columns(
         cells,
@@ -424,7 +480,8 @@ def parse_csv_row(
         fx.original_currency_code,
         home_currency=home_currency,
     )
-    event_fields, event_error = parse_financial_event(cells, amount_cents=fx.amount_cents) if native else ({}, None)
+    event_fields, event_error = _parse_native_event(cells, amount_cents=fx.amount_cents,
+        expense_time=expense_time) if native else ({}, None)
     native_money_error = native_money_fields_error(cells) if native else None
     rate_source = cells.get("exchange_rate_source", "").strip() or (None if native else authoritative_rate_source)
     if native and rate_source is not None and len(rate_source) > 32:
@@ -445,6 +502,7 @@ def parse_csv_row(
         note=cells.get("note", "").strip(),
         expense_time=expense_time,
         expense_time_display=etime_display,
+        time_input=time_input,
         tags=normalize_tags(cells.get("tags", "")) or "",
         source=cells.get("source", "").strip() or DEFAULT_SOURCE,
         error_code=error_code,

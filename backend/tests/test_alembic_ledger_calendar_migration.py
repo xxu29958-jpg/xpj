@@ -15,7 +15,15 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from app.database import SessionLocal, engine
-from app.models import BillSplitInvitation, Expense, ExpenseOffsetFact, Ledger, LedgerCalendarRevision
+from app.models import (
+    BillSplitInvitation,
+    CsvImportBatch,
+    CsvImportRow,
+    Expense,
+    ExpenseOffsetFact,
+    Ledger,
+    LedgerCalendarRevision,
+)
 from app.services.ledger_calendar_service import adopt_ledger_calendar, calendar_revision, current_calendar
 from tests._infra.alembic_runtime import reset_public_schema, run_alembic_for_test
 from tests._infra.currency import activate_test_currency_authority
@@ -87,6 +95,19 @@ def _seed():
             VALUES (:id, :owner, 'calendar-live', :member, :root, 'Original owner', :owner,
                 2000, 'CNY', 'CNY', '2026-04-30T16:30:00Z', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         """), {"id": str(uuid4()), "owner": account, "member": member, "root": roots[0]})
+        batch = db.scalar(text("""
+            INSERT INTO csv_import_batches (public_id, tenant_id, file_name, status, total_rows,
+                valid_rows, error_rows, applied_rows, inserted_count, created_at, updated_at)
+            VALUES (:id, 'calendar-live', 'original.csv', 'parsed', 1, 1, 0, 0, 0,
+                CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) RETURNING id
+        """), {"id": str(uuid4())})
+        db.execute(text("""
+            INSERT INTO csv_import_rows (tenant_id, batch_id, line_number, status,
+                original_currency_code, home_currency_code, amount_cents, category, source,
+                expense_time, created_at, updated_at)
+            VALUES ('calendar-live', :batch, 2, 'valid', 'CNY', 'CNY', 100, '其他', 'CSV',
+                '2026-04-30T16:30:00Z', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        """), {"batch": batch})
     return roots
 
 
@@ -94,7 +115,7 @@ def _snapshot():
     with engine.connect() as db:
         return {table: [dict(row) for row in db.execute(text(f"SELECT * FROM {table} ORDER BY id")).mappings()]
                 for table in ("ledgers", "expenses", "expense_offset_facts", "expense_revisions",
-                              "expense_offset_revisions", "bill_split_invitations")}
+                              "expense_offset_revisions", "bill_split_invitations", "csv_import_batches", "csv_import_rows")}
 
 
 @pytest.fixture
@@ -109,6 +130,11 @@ def calendar_edge():
 
 
 def _without_calendar(snapshot):
+    for row in snapshot["csv_import_batches"]:
+        assert row.pop("calendar_revision") is None
+    for row in snapshot["csv_import_rows"]:
+        assert row.pop("time_input") is None
+        assert row.pop("expense_time_input") is None
     for row in snapshot["bill_split_invitations"]:
         assert row.pop("accounting_time_snapshot") is None
     for row in snapshot["ledgers"]:
@@ -142,7 +168,7 @@ def test_calendar_shape_preserves_history_and_empty_edge_round_trips(calendar_ed
     _run(command.upgrade, _HEAD)
     assert _without_calendar(_snapshot()) == original
     inspector = inspect(engine)
-    for model in (Ledger, LedgerCalendarRevision, Expense, ExpenseOffsetFact, BillSplitInvitation):
+    for model in (Ledger, LedgerCalendarRevision, Expense, ExpenseOffsetFact, BillSplitInvitation, CsvImportBatch, CsvImportRow):
         columns = {item["name"]: item for item in inspector.get_columns(model.__tablename__)}
         for column in model.__table__.c:
             assert columns[column.name]["nullable"] == column.nullable
@@ -243,7 +269,7 @@ def test_calendar_fence_refuses_mixed_writes_foreign_ledgers_and_evidence_rewrit
         db.execute(text("UPDATE ledgers SET calendar_revision = 2 WHERE ledger_id = 'calendar-live'"))
     with SessionLocal.begin() as db:
         db.add(LedgerCalendarRevision(ledger_id="calendar-archived", revision=2, timezone_name="UTC", basis="owner_selected"))
-    for table in ("expenses", "expense_offset_facts"):
+    for table in ("expenses", "expense_offset_facts", "csv_import_batches"):
         with pytest.raises(IntegrityError, match=f"fk_{table}_calendar_revision"), SessionLocal.begin() as db:
             activate_test_currency_authority(db, "CNY")
             db.execute(text(f"UPDATE {table} SET calendar_revision = 2"))
@@ -297,4 +323,22 @@ def test_calendar_downgrade_cannot_discard_invitation_only_time_evidence(calenda
         _run(command.downgrade, _PARENT)
     with engine.connect() as db:
         assert db.scalar(text("SELECT accounting_time_snapshot FROM bill_split_invitations")) == snapshot
+        assert db.scalar(text("SELECT schema_revision FROM dataset_authority")) == _HEAD
+
+
+@pytest.mark.parametrize("field,value", [
+    ("time_input", '{"precision":"date_only","calendar_revision":1,"user_local_date":"2026-05-01"}'),
+    ("expense_time_input", "2026-03-08 02:30:00"),
+])
+def test_calendar_downgrade_cannot_discard_csv_original_time(calendar_edge, field, value):
+    _run(command.upgrade, _HEAD)
+    with SessionLocal.begin() as db:
+        activate_test_currency_authority(db, "CNY")
+        assignment = "CAST(:value AS jsonb)" if field == "time_input" else ":value"
+        db.execute(text(f"UPDATE csv_import_rows SET {field} = {assignment}"), {"value": value})
+    with pytest.raises(RuntimeError, match="original CSV time evidence"):
+        _run(command.downgrade, _PARENT)
+    with engine.connect() as db:
+        assert db.scalar(text(f"SELECT {field} FROM csv_import_rows")) == (
+            json.loads(value) if field == "time_input" else value)
         assert db.scalar(text("SELECT schema_revision FROM dataset_authority")) == _HEAD

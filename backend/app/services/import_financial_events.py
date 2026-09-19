@@ -6,7 +6,10 @@ import re
 from datetime import date
 from uuid import UUID
 
+from app.errors import AppError
 from app.money_contract import MONEY_AGGREGATE_MAX
+from app.schemas._accounting_time import AccountingTimeInput, AccountingTimeSnapshot
+from app.services.accounting_time_service import resolve_accounting_time
 
 _EVENT_COLUMNS = (
     "entry_kind", "offset_kind", "root_expense_id", "root_expense_public_id",
@@ -18,7 +21,7 @@ NATIVE_CSV_INPUT_COLUMNS = (
     "id", "public_id", "amount_cents", "amount_yuan", "amount_home_major", "home_currency_code",
     "original_currency_code", "original_amount_minor", "exchange_rate_to_cny", "exchange_rate_date",
     "exchange_rate_source", "merchant", "category", "note", "source", "expense_time", "confirmed_at",
-    "tags", "value_score", "regret_score", *_EVENT_COLUMNS,
+    "tags", "value_score", "regret_score", "accounting_time", *_EVENT_COLUMNS,
 )
 
 
@@ -119,6 +122,9 @@ def parse_financial_event(cells: dict[str, str], *, amount_cents: int | None) ->
         errors.append(shape_error)
     if fields["lineage_status"] == "reversed" and fields["lineage_home_net_cents"] != 0:
         errors.append("reversed 的 lineage_home_net_cents 必须为零")
+    time_error = _native_time_error(cells, fields)
+    if time_error:
+        errors.append(time_error)
     if fields["entry_kind"] not in {"expense", "offset"}:
         fields["entry_kind"] = "invalid"
     if fields["offset_kind"] not in {"refund", "chargeback", "reversal"}:
@@ -127,6 +133,35 @@ def parse_financial_event(cells: dict[str, str], *, amount_cents: int | None) ->
         fields["lineage_status"] = None
     fields["event_input"] = {name: cells[name] for name in NATIVE_CSV_INPUT_COLUMNS if name in cells}
     return fields, errors[0] if errors else None
+
+
+def _native_time_error(cells: dict[str, str], fields: dict[str, object]) -> str | None:
+    try:
+        snapshot = native_accounting_time(cells)
+    except (ValueError, AppError):
+        return "accounting_time 的原始日期、精度或时区证据不一致"
+    if snapshot is None:
+        return None
+    if snapshot.accounting_date != fields["accounting_date"]:
+        return "accounting_time 与 stream_date 不一致"
+    if fields["entry_kind"] == "offset" and snapshot.precision != "date_only":
+        return "offset 必须保留仅日期精度"
+    return None
+
+
+def native_accounting_time(cells: dict[str, str]) -> AccountingTimeSnapshot | None:
+    """Read an explicit source snapshot; its revision is evidence, never a target FK."""
+    raw = cells.get("accounting_time", "").strip()
+    if not raw:
+        return None
+    snapshot = AccountingTimeSnapshot.model_validate_json(raw)
+    if snapshot.precision == "date_only" and (snapshot.instant_utc is not None or snapshot.source_utc_offset_seconds is not None):
+        raise ValueError("date-only source carries an instant")
+    if snapshot.precision == "instant":
+        value = AccountingTimeInput(**snapshot.model_dump(exclude={"basis", "precision"}), precision="instant")
+        resolve_accounting_time(value, ledger_timezone=snapshot.source_timezone or "UTC",
+            calendar_revision=snapshot.calendar_revision)
+    return snapshot
 
 
 def native_money_fields_error(cells: dict[str, str]) -> str | None:

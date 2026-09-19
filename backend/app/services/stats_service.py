@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import json
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from datetime import timedelta
@@ -124,6 +125,7 @@ def export_confirmed_csv(
             "stream_amount_cents",
             "lineage_status",
             "lineage_home_net_cents",
+            "accounting_time",
         ]
     )
     for entry in entries:
@@ -170,6 +172,7 @@ def _confirmed_stream_csv_row(entry) -> list:
             entry.stream_amount_cents,
             entry.lineage_status,
             entry.lineage_home_net_cents,
+            _export_accounting_time(root),
         ]
     offset = entry.offset
     if offset is None:
@@ -208,7 +211,13 @@ def _confirmed_stream_csv_row(entry) -> list:
         entry.stream_amount_cents,
         entry.lineage_status,
         entry.lineage_home_net_cents,
+        _export_accounting_time(offset),
     ]
+
+
+def _export_accounting_time(fact) -> str:
+    snapshot = fact.accounting_time
+    return json.dumps(snapshot.model_dump(mode="json"), ensure_ascii=False) if snapshot is not None else ""
 
 
 def _amount_rows(grouped, key):

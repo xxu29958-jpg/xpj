@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 AccountingDateBasis = Literal[
     "instant_calendar", "user_date", "user_selected", "legacy_expense_time",
-    "legacy_confirmed_at", "legacy_unknown", "legacy_offset_date",
+    "legacy_confirmed_at", "legacy_unknown", "legacy_offset_date", "recorded_date",
 ]
 
 
