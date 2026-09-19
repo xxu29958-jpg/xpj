@@ -40,6 +40,11 @@ def time_evidence_constraints(table: str) -> tuple[CheckConstraint, ...]:
             "time_precision IS DISTINCT FROM 'date_only' OR source_utc_offset_seconds IS NULL",
             name=f"ck_{table}_date_only_offset",
         ),
+        CheckConstraint(
+            "calendar_revision IS NOT NULL OR (user_local_date IS NULL AND time_precision IS NULL "
+            "AND source_timezone IS NULL AND source_utc_offset_seconds IS NULL AND accounting_date_basis IS NULL)",
+            name=f"ck_{table}_time_evidence_scope",
+        ),
     )
 
 

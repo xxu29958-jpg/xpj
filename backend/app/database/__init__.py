@@ -130,6 +130,10 @@ def init_db() -> None:
         note="schema baseline marker",
     )
     seed_identity_data()
+    from app.config import get_settings
+    from app.services.ledger_calendar_service import adopt_all_ledger_calendars
+
+    adopt_all_ledger_calendars(timezone_name=get_settings().ocr_default_timezone)
     # v0.3.1-alpha2: do NOT auto-migrate legacy uploads on startup. Old image
     # paths remain readable through resolve_protected_image() after the route
     # has verified expense ownership. See docs/runbook/ROLLBACK.md.

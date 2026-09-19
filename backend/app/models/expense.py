@@ -49,6 +49,10 @@ class Expense(Base):
             "time_precision IS DISTINCT FROM 'date_only' OR expense_time IS NULL",
             name="ck_expenses_date_only_instant",
         ),
+        CheckConstraint(
+            "accounting_date IS NULL OR calendar_revision IS NOT NULL",
+            name="ck_expenses_accounting_date_scope",
+        ),
         *money_check_constraints_for_table("expenses"),
         UniqueConstraint("id", "tenant_id", name="uq_expenses_id_tenant_id"),
         ForeignKeyConstraint(

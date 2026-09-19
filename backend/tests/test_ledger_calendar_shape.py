@@ -1,8 +1,9 @@
 """Pure metadata checks; these do not connect to a database."""
 
 from sqlalchemy import ForeignKeyConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 
-from app.models import Expense, ExpenseOffsetFact, Ledger, LedgerCalendarRevision
+from app.models import BillSplitInvitation, Expense, ExpenseOffsetFact, Ledger, LedgerCalendarRevision
 
 
 def test_calendar_rules_and_fact_references_are_ledger_scoped():
@@ -27,3 +28,6 @@ def test_calendar_expansion_does_not_invent_historical_evidence():
             assert column.nullable and column.default is None and column.server_default is None
     assert Expense.__table__.c.accounting_date.nullable
     assert not ExpenseOffsetFact.__table__.c.accounting_date.nullable
+    invitation = BillSplitInvitation.__table__.c.accounting_time_snapshot
+    assert invitation.nullable and invitation.default is None and invitation.server_default is None
+    assert isinstance(invitation.type, JSONB)

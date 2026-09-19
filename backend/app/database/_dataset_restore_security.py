@@ -67,6 +67,7 @@ RESTORE_TABLE_SECURITY: Mapping[str, RestoreTableSecurity] = MappingProxyType(
         "installation_currency_audit_log": "preserve",
         "installation_currency_bindings": "preserve",
         "ledger_audit_logs": "preserve",
+        "ledger_calendar_revisions": "preserve",
         "ledger_learning_events": "preserve",
         "ledger_members": "preserve",
         "ledgers": "preserve",

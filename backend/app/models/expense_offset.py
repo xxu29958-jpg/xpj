@@ -38,6 +38,10 @@ class ExpenseOffsetFact(Base):
     __tablename__ = "expense_offset_facts"
     __table_args__ = (
         *time_evidence_constraints("expense_offset_facts"),
+        CheckConstraint(
+            "time_precision IS NULL OR time_precision = 'date_only'",
+            name="ck_expense_offset_facts_date_only_precision",
+        ),
         ForeignKeyConstraint(
             ["tenant_id", "calendar_revision"],
             ["ledger_calendar_revisions.ledger_id", "ledger_calendar_revisions.revision"],
