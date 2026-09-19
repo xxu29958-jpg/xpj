@@ -164,6 +164,7 @@ jobs:
           --attempt "${{ github.run_attempt }}"
           --inner-state started
           --inner-reason "inner Gradle timing not finalized"
+          --allow-partial
           --job-name "Connected execution"
           --outer-step "Run connected test"
 

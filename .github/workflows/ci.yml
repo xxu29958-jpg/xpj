@@ -684,6 +684,7 @@ jobs:
           XPJ_WEIGHT_EVENT: ${{ github.event_name }}
           XPJ_WEIGHT_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           XPJ_WEIGHT_MEASUREMENT_SHA: ${{ github.sha }}
+          XPJ_WEIGHT_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
         run: >-
           python -E -S backend/scripts/ci_run_timing.py
           --from-github
