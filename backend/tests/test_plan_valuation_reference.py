@@ -19,6 +19,8 @@ PUBLISHED = date(2026, 9, 11)
 
 @pytest.fixture
 def latest_quote(monkeypatch):
+    monkeypatch.setattr(recurring_service, "current_calendar",
+        lambda *a, **kw: SimpleNamespace(timezone_name="UTC", revision=1))
     monkeypatch.setattr(rates, "get_exchange_rate", lambda *a, **kw: None)
     monkeypatch.setattr(rates, "get_covered_fx_rate", lambda *a, **kw: None)
     lookups = []
@@ -76,8 +78,8 @@ def test_current_budget_history_limit_is_an_estimate_but_recorded_spending_stays
     monkeypatch.setattr(_history, "_get_budget", lambda *a, **kw: SimpleNamespace(
         home_currency_code="USD", total_amount_cents=1000, rollover_amount_cents=200))
     result = _history._history_row(None, tenant_id="owner", month="2026-09",
-        period=(datetime(2026, 9, 1, tzinfo=UTC), datetime(2026, 10, 1, tzinfo=UTC)),
-        entries=[], home="CNY", zone=UTC, today=TODAY, rate_cache={})
+        period=(date(2026, 9, 1), date(2026, 10, 1)),
+        entries=[], undated=0, home="CNY", zone=UTC, today=TODAY, rate_cache={})
     assert result["budget_cents"] == 8400
     assert result["reference_rates"] == (money.ProjectionReference("USD", "CNY", PUBLISHED),)
     assert latest_quote == [TODAY]

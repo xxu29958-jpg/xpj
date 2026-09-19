@@ -18,6 +18,7 @@ from app.database import SessionLocal
 from app.models import Account, AuthToken, Device, Invitation, Ledger, LedgerMember
 from app.services.identity_service import hash_secret
 from app.services.invitation_service import create_invitation
+from app.services.ledger_calendar_service import adopt_ledger_calendar
 from app.services.time_service import now_utc, to_iso
 from tests._runtime_protocol import current_protocol_headers
 from tests.pairing_test_support import invitation_accept_payload, session_refresh_payload
@@ -251,6 +252,7 @@ def _mint_foreign_ledger_invitation(role: str = "member") -> tuple[str, str]:
         )
         db.add(LedgerMember(ledger_id=ledger_id, account_id=owner.id, role="owner"))
         db.flush()
+        adopt_ledger_calendar(db, ledger_id=ledger_id, timezone_name="Asia/Shanghai")
         invitation = create_invitation(
             db,
             ledger_id=ledger_id,
@@ -539,6 +541,7 @@ def test_session_principal_lists_devices_and_switches_after_default_membership_i
             )
         )
         db.flush()
+        adopt_ledger_calendar(db, ledger_id=target_ledger_id, timezone_name="Asia/Shanghai")
         db.add(
             LedgerMember(
                 ledger_id=target_ledger_id,
@@ -898,6 +901,7 @@ def test_disable_member_blocks_only_that_ledger(client: TestClient, *, identity)
             )
         )
         db.flush()
+        adopt_ledger_calendar(db, ledger_id=private_ledger_id, timezone_name="Asia/Shanghai")
         db.add(
             LedgerMember(
                 ledger_id=private_ledger_id,

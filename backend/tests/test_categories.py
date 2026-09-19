@@ -29,6 +29,7 @@ from app.services.category_service import (
     normalize_existing_expense_categories,
 )
 from app.services.currency_binding_service import authorize_currency_metadata_write
+from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from app.services.merchant_service import display_merchant, normalize_merchant
 from app.services.time_service import now_utc
 from tests._infra.env import BACKEND_ROOT
@@ -160,8 +161,7 @@ def test_category_summary_uses_stat_time_and_normalized_category_aliases(
 ) -> None:
     with SessionLocal() as db:
         now = datetime(2026, 6, 1, 0, 0, tzinfo=UTC)
-        db.add_all(
-            [
+        _calendar_expenses = [
                 Expense(
                     tenant_id="owner",
                     amount_cents=1200,
@@ -185,7 +185,10 @@ def test_category_summary_uses_stat_time_and_normalized_category_aliases(
                     updated_at=now,
                 ),
             ]
-        )
+        for expense in _calendar_expenses:
+            if expense.status == "confirmed":
+                refresh_legacy_expense_time(db, expense)
+        db.add_all(_calendar_expenses)
         db.commit()
         dashboard = list_category_summary(db, tenant_id="owner", month="2026-05")
 
@@ -224,25 +227,25 @@ def test_category_summary_uses_stat_time_and_normalized_category_aliases(
 # ── T13: /web/categories/uncategorized ─────────────────────────────────────
 
 
-def test_category_summary_uses_accounting_timezone_month_bounds(
+def test_category_summary_preserves_adopted_month_across_query_timezones(
     web_client: TestClient,
 ) -> None:
     del web_client
     with SessionLocal() as db:
         now = datetime(2026, 5, 1, 1, 0, tzinfo=UTC)
-        db.add(
-            Expense(
-                tenant_id="owner",
-                amount_cents=990,
-                merchant="Boundary Cafe",
-                category="Boundary",
-                status="confirmed",
-                expense_time=datetime(2026, 4, 30, 16, 30, tzinfo=UTC),
-                confirmed_at=now,
-                created_at=now,
-                updated_at=now,
-            )
+        _calendar_expense = Expense(
+            tenant_id="owner",
+            amount_cents=990,
+            merchant="Boundary Cafe",
+            category="Boundary",
+            status="confirmed",
+            expense_time=datetime(2026, 4, 30, 16, 30, tzinfo=UTC),
+            confirmed_at=now,
+            created_at=now,
+            updated_at=now,
         )
+        refresh_legacy_expense_time(db, _calendar_expense)
+        db.add(_calendar_expense)
         db.commit()
         shanghai = list_category_summary(
             db,
@@ -258,7 +261,7 @@ def test_category_summary_uses_accounting_timezone_month_bounds(
         )
 
     assert any(item.category == "Boundary" for item in shanghai.summaries)
-    assert all(item.category != "Boundary" for item in utc.summaries)
+    assert any(item.category == "Boundary" for item in utc.summaries)
 
 
 def test_custom_category_preference_delete_restore_controls_options(
@@ -313,19 +316,19 @@ def test_deleted_preference_suppresses_historical_fallback_only_for_that_key(
     assert deleted.status_code == 200, deleted.text
     with SessionLocal() as db:
         now = now_utc()
-        db.add(
-            Expense(
-                tenant_id="owner",
-                amount_cents=900,
-                merchant="历史手作",
-                category="手作",
-                status="confirmed",
-                expense_time=now,
-                confirmed_at=now,
-                created_at=now,
-                updated_at=now,
-            )
+        _calendar_expense = Expense(
+            tenant_id="owner",
+            amount_cents=900,
+            merchant="历史手作",
+            category="手作",
+            status="confirmed",
+            expense_time=now,
+            confirmed_at=now,
+            created_at=now,
+            updated_at=now,
         )
+        refresh_legacy_expense_time(db, _calendar_expense)
+        db.add(_calendar_expense)
         db.commit()
 
     categories = client.get("/api/expenses/categories", headers=identity.app_headers)

@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 from app.database import SessionLocal
 from app.models import Expense
 from app.services import web_stats_service
+from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from tests._confirmed_stream_test_support import confirmed_expense_roots
 
 
@@ -260,26 +261,26 @@ def test_unresolved_confirmed_fx_expense_does_not_pollute_stats_or_export_as_zer
         confirmed_at=datetime(2026, 5, 4, 8, 1, tzinfo=UTC),
     )
     with SessionLocal() as db:
-        db.add(
-            Expense(
-                tenant_id="owner",
-                amount_cents=None,
-                original_currency_code="USD",
-                original_amount_minor=999,
-                exchange_rate_to_cny=None,
-                exchange_rate_source=None,
-                fx_status="pending",
-                merchant="待汇率外币账单",
-                category="旅行",
-                note="legacy migrated fx row",
-                source="pytest",
-                status="confirmed",
-                expense_time=datetime(2026, 5, 5, 8, 0, tzinfo=UTC),
-                created_at=datetime(2026, 5, 5, 8, 0, tzinfo=UTC),
-                updated_at=datetime(2026, 5, 5, 8, 0, tzinfo=UTC),
-                confirmed_at=datetime(2026, 5, 5, 8, 1, tzinfo=UTC),
-            )
+        _calendar_expense = Expense(
+            tenant_id="owner",
+            amount_cents=None,
+            original_currency_code="USD",
+            original_amount_minor=999,
+            exchange_rate_to_cny=None,
+            exchange_rate_source=None,
+            fx_status="pending",
+            merchant="待汇率外币账单",
+            category="旅行",
+            note="legacy migrated fx row",
+            source="pytest",
+            status="confirmed",
+            expense_time=datetime(2026, 5, 5, 8, 0, tzinfo=UTC),
+            created_at=datetime(2026, 5, 5, 8, 0, tzinfo=UTC),
+            updated_at=datetime(2026, 5, 5, 8, 0, tzinfo=UTC),
+            confirmed_at=datetime(2026, 5, 5, 8, 1, tzinfo=UTC),
         )
+        refresh_legacy_expense_time(db, _calendar_expense)
+        db.add(_calendar_expense)
         db.commit()
 
     stats = client.get("/api/stats/monthly?month=2026-05", headers=identity.app_headers)
@@ -301,7 +302,7 @@ def test_unresolved_confirmed_fx_expense_does_not_pollute_stats_or_export_as_zer
     assert unresolved["original_amount_minor"] == "999"
 
 
-def test_month_filter_can_follow_client_timezone_query(client: TestClient, *, identity) -> None:
+def test_month_filter_preserves_adopted_date_across_query_timezones(client: TestClient, *, identity) -> None:
     insert_confirmed_expense(
         amount_cents=1851,
         merchant="手机时区边界账单",
@@ -321,13 +322,13 @@ def test_month_filter_can_follow_client_timezone_query(client: TestClient, *, id
         "/api/expenses/confirmed?month=2026-04&timezone=UTC", headers=identity.app_headers
     )
     assert utc_april_page.status_code == 200
-    assert utc_april_page.json()["total"] == 1
+    assert utc_april_page.json()["total"] == 0
 
     utc_may_stats = client.get(
         "/api/stats/monthly?month=2026-05&timezone=UTC", headers=identity.app_headers
     )
     assert utc_may_stats.status_code == 200
-    assert utc_may_stats.json()["total_amount_cents"] == 0
+    assert utc_may_stats.json()["total_amount_cents"] == 1851
 
     shanghai_may_stats = client.get(
         "/api/stats/monthly?month=2026-05&timezone=Asia/Shanghai",
@@ -344,7 +345,7 @@ def test_month_filter_can_follow_client_timezone_query(client: TestClient, *, id
 
     utc_months = client.get("/api/expenses/months?timezone=UTC", headers=identity.app_headers)
     assert utc_months.status_code == 200
-    assert utc_months.json()["items"] == ["2026-04"]
+    assert utc_months.json()["items"] == ["2026-05"]
 
     shanghai_export = client.get(
         "/api/expenses/export.csv?month=2026-05&timezone=Asia/Shanghai",
@@ -357,14 +358,14 @@ def test_month_filter_can_follow_client_timezone_query(client: TestClient, *, id
         "/api/expenses/export.csv?month=2026-05&timezone=UTC", headers=identity.app_headers
     )
     assert utc_may_export.status_code == 200
-    assert "手机时区边界账单" not in utc_may_export.text
+    assert "手机时区边界账单" in utc_may_export.text
 
     invalid_timezone_page = client.get(
         "/api/expenses/confirmed?month=2026-04&timezone=Not/AZone",
         headers=identity.app_headers,
     )
     assert invalid_timezone_page.status_code == 200
-    assert invalid_timezone_page.json()["total"] == 1
+    assert invalid_timezone_page.json()["total"] == 0
 
 
 def test_confirmed_pagination_and_month_filters_are_server_side_contract(

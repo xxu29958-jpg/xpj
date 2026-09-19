@@ -11,6 +11,7 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import Expense, LedgerMember
+from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from app.services.merchant_alias_service import resolve_canonical_merchant
 from tests._infra.assets import PNG_BYTES
 
@@ -273,8 +274,7 @@ def test_lifestyle_stats_collapses_frequent_merchants_with_alias(client: TestCli
     _create_alias(client, identity.app_headers, canonical="Starbucks", alias="SBUX")
     now = datetime(2026, 5, 8, 12, 0, tzinfo=UTC)
     with SessionLocal() as db:
-        db.add_all(
-            [
+        _calendar_expenses = [
                 Expense(
                     tenant_id="owner",
                     amount_cents=1200,
@@ -298,7 +298,10 @@ def test_lifestyle_stats_collapses_frequent_merchants_with_alias(client: TestCli
                     updated_at=now,
                 ),
             ]
-        )
+        for expense in _calendar_expenses:
+            if expense.status == "confirmed":
+                refresh_legacy_expense_time(db, expense)
+        db.add_all(_calendar_expenses)
         db.commit()
 
     response = client.get(

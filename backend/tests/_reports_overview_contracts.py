@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.models import Expense
+from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from app.services.time_service import now_utc
 
 
@@ -44,24 +45,25 @@ def _insert_report_expense(
 ) -> None:
     now = now_utc()
     with SessionLocal() as db:
-        db.add(
-            Expense(
-                tenant_id="owner",
-                amount_cents=amount_cents,
-                home_currency_code="CNY",
-                original_currency_code="CNY",
-                original_amount_minor=amount_cents,
-                merchant=merchant,
-                category=category,
-                note="",
-                source="pytest",
-                status=status,
-                expense_time=expense_time,
-                created_at=confirmed_at or now,
-                updated_at=confirmed_at or now,
-                confirmed_at=confirmed_at,
-            )
+        expense = Expense(
+            tenant_id="owner",
+            amount_cents=amount_cents,
+            home_currency_code="CNY",
+            original_currency_code="CNY",
+            original_amount_minor=amount_cents,
+            merchant=merchant,
+            category=category,
+            note="",
+            source="pytest",
+            status=status,
+            expense_time=expense_time,
+            created_at=confirmed_at or now,
+            updated_at=confirmed_at or now,
+            confirmed_at=confirmed_at,
         )
+        if expense.status == "confirmed":
+            refresh_legacy_expense_time(db, expense)
+        db.add(expense)
         db.commit()
 
 
@@ -161,7 +163,7 @@ def fetch_reports_overview_contract(client: TestClient, *, identity) -> dict:
 
 def assert_reports_overview_period_totals(payload: dict) -> None:
     assert payload["month"] == "2026-05"
-    assert payload["timezone"] == "UTC"
+    assert payload["timezone"] == "Asia/Shanghai"
     assert payload["granularity"] == "day"
     assert payload["total_amount_cents"] == 4200
     assert payload["count"] == 3
@@ -206,6 +208,7 @@ def assert_reports_overview_category_comparison(payload: dict) -> None:
             "year_over_year_count": 1,
             "year_over_year_delta_amount_cents": 400,
             "year_over_year_delta_count": 0,
+            "undated_expense_count": 0,
         },
         {
             "category": "餐饮",
@@ -219,6 +222,7 @@ def assert_reports_overview_category_comparison(payload: dict) -> None:
             "year_over_year_count": 0,
             "year_over_year_delta_amount_cents": 2000,
             "year_over_year_delta_count": 2,
+            "undated_expense_count": 0,
         },
         {
             "category": "日用品",
@@ -232,5 +236,6 @@ def assert_reports_overview_category_comparison(payload: dict) -> None:
             "year_over_year_count": 1,
             "year_over_year_delta_amount_cents": -700,
             "year_over_year_delta_count": -1,
+            "undated_expense_count": 0,
         },
     ]

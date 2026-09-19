@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from app.database import SessionLocal
 from app.models import Expense
+from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 
 
 def test_mixed_period_report_and_csv_recover_after_rate_without_rewriting_history(client, identity):
@@ -13,9 +14,11 @@ def test_mixed_period_report_and_csv_recover_after_rate_without_rewriting_histor
         yen = Expense(tenant_id="owner", status="confirmed", merchant="Yen shop", category="餐饮",
             amount_cents=1000, home_currency_code="JPY", original_currency_code="JPY", original_amount_minor=1000,
             expense_time=when, confirmed_at=when)
+        refresh_legacy_expense_time(db, yen)
         yuan = Expense(tenant_id="owner", status="confirmed", merchant="Yuan shop", category="交通",
             amount_cents=2000, home_currency_code="CNY", original_currency_code="CNY", original_amount_minor=2000,
             expense_time=when, confirmed_at=when)
+        refresh_legacy_expense_time(db, yuan)
         db.add_all([yen, yuan])
         db.commit()
         original_id = yuan.id
