@@ -7,6 +7,7 @@ import com.ticketbox.data.remote.dto.ExpenseRevisionDto
 import com.ticketbox.data.remote.dto.ExpenseRevisionPageDto
 import com.ticketbox.data.remote.dto.CorrectionOptionalInt
 import com.ticketbox.data.remote.dto.CorrectionOptionalString
+import com.ticketbox.data.remote.dto.CorrectionOptionalTimeInput
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseCorrectionDraft
 import com.ticketbox.domain.model.ExpenseRevision
@@ -64,6 +65,8 @@ fun ExpenseCorrectionDraft.toRequest(expectedRowVersion: Long): ExpenseCorrectio
         },
         items = items?.map { it.toRequest() },
         splits = splits?.map { it.toRequest() },
+        timeInput = if (timeInputChanged) CorrectionOptionalTimeInput.changed(timeInput?.toRequest())
+            else CorrectionOptionalTimeInput.unchanged(),
     ).also { request ->
         request.correctionAdmissionError()?.let { throw RepositoryException(it) }
     }
@@ -131,7 +134,7 @@ private fun String.hasOversizedCorrectionTag(): Boolean = split(',', '，', ';',
 
 private fun ExpenseCorrectionRequestDto.correctionValueAdmissionError(): String? {
     val hasMutation = listOf(amountCents, originalCurrencyCode, originalAmountMinor, merchant, category,
-        note, tags, items, splits).any { it != null } || expenseTime.changed || valueScore.changed || regretScore.changed
+        note, tags, items, splits).any { it != null } || expenseTime.changed || timeInput.changed || valueScore.changed || regretScore.changed
     return when {
         listOfNotNull(amountCents, originalAmountMinor).any { it !in 0L..MONEY_MINOR_MAX } ->
             "更正金额超出范围，请核对后再保存。"
@@ -153,5 +156,5 @@ fun ExpenseCorrectionDraft.changesAdvisorPayloadAgainst(baseline: Expense): Bool
         originalAmountMinor != null ||
             originalCurrencyCode != null ||
             category != null ||
-            expenseTimeChanged
+            expenseTimeChanged || timeInputChanged
         )

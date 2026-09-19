@@ -12,6 +12,36 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class ExpenseRepositoryConfirmedStreamSyncTest {
+    @Test fun calendarAdoptionChangesFullSyncFreshnessWithoutInventingFactVersions() = runTest {
+        val dao = FakeExpenseDao()
+        val api = FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0)
+        val repository = confirmedRepository(dao, api)
+        val stamps = mutableListOf<String>()
+        repository.onFullConfirmedSyncSnapshot = stamps::add
+        val original = PaginatedExpensesDto(listOf(confirmedStreamEnvelopeFixture()), 1, 200, 1)
+        for (revision in listOf(null, 1L, 2L)) {
+            api.confirmedResponses[1] = original.copy(calendarRevision = revision)
+            repository.syncConfirmed().getOrThrow()
+        }
+        assertEquals(3, stamps.distinct().size)
+        assertTrue(stamps[1].endsWith(";calendar=1"))
+        assertTrue(stamps[2].endsWith(";calendar=2"))
+        assertEquals(original.items.single().root.rowVersion, dao.getConfirmed("owner").single().rowVersion)
+    }
+
+    @Test fun calendarChangeBetweenPagesDoesNotPublishAMixedSnapshot() = runTest {
+        val dao = FakeExpenseDao()
+        val api = FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0)
+        val repository = confirmedRepository(dao, api)
+        val stamps = mutableListOf<String>()
+        repository.onFullConfirmedSyncSnapshot = stamps::add
+        api.confirmedResponses[1] = PaginatedExpensesDto(listOf(confirmedStreamEnvelopeFixture()), 1, 1, 2, 1)
+        api.confirmedResponses[2] = PaginatedExpensesDto(listOf(confirmedStreamEnvelopeFixture()), 2, 1, 2, 2)
+        assertTrue(repository.syncConfirmed().isFailure)
+        assertTrue(stamps.isEmpty())
+        assertTrue(dao.getConfirmed("owner").isEmpty())
+    }
+
     @Test
     fun typedStreamSyncCachesRootProjectionAndOffsetEvent() = runTest {
         val dao = FakeExpenseDao()

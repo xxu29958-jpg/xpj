@@ -103,4 +103,13 @@ data class ExpenseEntity(
     val streamAmountCents: Long? = null,
     val lineageStatus: String? = null,
     val lineageHomeNetCents: Long? = null,
+    // Optional server evidence; historical receipts and pre-calendar cache rows have none.
+    val timePrecision: String? = null,
+    val timeInstantUtc: String? = null,
+    val userLocalDate: String? = null,
+    val sourceTimezone: String? = null,
+    val sourceUtcOffsetSeconds: Int? = null,
+    val accountingDate: String? = null,
+    val calendarRevision: Long? = null,
+    val accountingDateBasis: String? = null,
 )

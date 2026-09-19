@@ -19,6 +19,25 @@ import org.junit.Test
  * suite (which never opens Room) cannot.
  */
 class AppDatabaseMigrationTest {
+    @Test fun migrate20To21AddsUnknownEvidenceWithoutChangingTheFactVersion() {
+        val name = "migration-20-21-test.db"
+        helper.createDatabase(name, 20).use { db ->
+            db.execSQL("""
+                INSERT INTO expenses (id, ledgerId, serverId, publicId, amountCents, homeCurrencyCode,
+                    originalCurrencyCode, fxStatus, category, source, duplicateStatus, status, createdAt, rowVersion)
+                VALUES (1, 'owner', 9, 'original', 100, 'CNY', 'CNY', 'ready', '其他', '手动记账', 'none',
+                    'confirmed', '2026-05-01T00:00:00Z', 7)
+            """.trimIndent())
+        }
+        helper.runMigrationsAndValidate(name, 21, true, AppDatabase.Migration20To21).use { db ->
+            db.query("SELECT rowVersion, accountingDate, calendarRevision, timePrecision FROM expenses WHERE id = 1").use {
+                assertTrue(it.moveToFirst())
+                assertEquals(7, it.getInt(0))
+                assertTrue(it.isNull(1) && it.isNull(2) && it.isNull(3))
+            }
+        }
+    }
+
     private val dbName = "migration-10-11-test.db"
 
     @get:Rule

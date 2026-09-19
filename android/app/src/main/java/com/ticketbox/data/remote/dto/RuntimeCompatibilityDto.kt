@@ -15,6 +15,8 @@ data class RuntimeProductCapabilitiesDto(
     val currency: RuntimeCurrencyCapabilityDto,
     @param:Json(name = "upload_original_receipt_version")
     val uploadOriginalReceiptVersion: Int? = null,
+    @param:Json(name = "accounting_time_input_version")
+    val accountingTimeInputVersion: Int? = null,
 )
 
 data class RuntimeCurrencyCapabilityDto(
@@ -33,7 +35,10 @@ data class RuntimeWriteCompatibility(
     val apiVersion: String?,
     val requestBinding: String?,
     val uploadOriginalReceiptVersion: Int? = null,
+    val accountingTimeInputVersion: Int? = null,
 ) {
+    val supportsAccountingTimeInput: Boolean get() = accountingTimeInputVersion == 1
+
     val canWrite: Boolean
         get() = conclusion == "compatible" &&
             apiVersion == CURRENT_TICKETBOX_API_VERSION &&
@@ -54,4 +59,5 @@ fun RuntimeCompatibilityDto.toWriteCompatibility(): RuntimeWriteCompatibility =
         apiVersion = apiVersion,
         requestBinding = capabilities.currency.requestBinding,
         uploadOriginalReceiptVersion = capabilities.uploadOriginalReceiptVersion,
+        accountingTimeInputVersion = capabilities.accountingTimeInputVersion,
     )

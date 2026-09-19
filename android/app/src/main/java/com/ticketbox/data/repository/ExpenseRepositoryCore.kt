@@ -5,6 +5,7 @@ import com.squareup.moshi.JsonAdapter
 import com.ticketbox.BuildConfig
 import com.ticketbox.data.local.ConfirmedStreamPruneScope
 import com.ticketbox.data.local.ExpenseDao
+import com.ticketbox.data.local.ExpenseEntity
 import com.ticketbox.data.local.ExpenseOffsetStreamEntity
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.local.TicketboxSettingsStore
@@ -290,14 +291,26 @@ internal class ExpenseRepositoryCore(
         }
     }
 
+    private data class ConfirmedStreamFetch(
+        val items: List<ConfirmedExpenseStreamItemDto>,
+        val calendarRevision: Long?,
+    ) {
+        fun freshnessStamp(roots: List<ExpenseEntity>): String =
+            "entries=${items.size};roots=${roots.size};" +
+                "rv=${roots.maxOfOrNull { it.rowVersion } ?: 0};" +
+                "ua=${roots.maxOfOrNull { it.updatedAt.orEmpty() }.orEmpty()}" +
+                calendarRevision?.let { ";calendar=$it" }.orEmpty()
+    }
+
     private suspend fun fetchConfirmedStream(
         bound: BoundLedgerRequest,
         request: ConfirmedSyncRequest,
-    ): List<ConfirmedExpenseStreamItemDto> {
+    ): ConfirmedStreamFetch {
         val collectedDtos = mutableListOf<ConfirmedExpenseStreamItemDto>()
         var page = 1
         val pageSize = CONFIRMED_SYNC_PAGE_SIZE
         var total = Int.MAX_VALUE
+        var calendarRevision: Long? = null
         do {
             val response = bound.call { service ->
                 service.confirmedExpenses(
@@ -312,6 +325,10 @@ internal class ExpenseRepositoryCore(
                     ).toQueryMap(),
                 )
             }
+            if (page == 1) calendarRevision = response.calendarRevision
+            else if (response.calendarRevision != calendarRevision) {
+                throw RepositoryException("账本同步分页异常，请稍后再试。")
+            }
             total = response.total
             collectedDtos += response.items
             if (response.items.isEmpty() && collectedDtos.size < total) {
@@ -319,7 +336,7 @@ internal class ExpenseRepositoryCore(
             }
             page += 1
         } while (collectedDtos.size < total)
-        return collectedDtos
+        return ConfirmedStreamFetch(collectedDtos, calendarRevision)
     }
 
     suspend fun syncConfirmedFromService(
@@ -331,7 +348,8 @@ internal class ExpenseRepositoryCore(
         // Snapshot prune eligibility before the first page request. Rows cached
         // during pagination must survive until the next reconciliation.
         val pruneScope = confirmedStreamPruneScope(bound, request)
-        val collectedDtos = fetchConfirmedStream(bound, request)
+        val fetched = fetchConfirmedStream(bound, request)
+        val collectedDtos = fetched.items
 
         val cacheItems = collectedDtos.map { it.toConfirmedStreamCacheItem(ledgerIdAtRequest) }
         val roots = cacheItems
@@ -367,11 +385,7 @@ internal class ExpenseRepositoryCore(
             acknowledgeExpenseRefresh(bound, roots.filter { it.streamDate != null && it.serverId in acceptedRootIds }
                 .associate { requireNotNull(it.serverId) to it.rowVersion })
             // The advisor also consumes the complete set; a filtered fingerprint would flap.
-            onFullConfirmedSyncSnapshot(
-                "entries=${collectedDtos.size};roots=${roots.size};" +
-                    "rv=${roots.maxOfOrNull { it.rowVersion } ?: 0};" +
-                    "ua=${roots.maxOfOrNull { it.updatedAt.orEmpty() }.orEmpty()}",
-            )
+            onFullConfirmedSyncSnapshot(fetched.freshnessStamp(roots))
         }
         return collected
     }

@@ -199,7 +199,7 @@ interface ExpenseDao {
             // the source of truth and would self-heal next sync, but the UI
             // shows the stale snapshot until then). Same-version writes are
             // allowed — identical token means identical server payload.
-            update(expense.withPreservedStreamProjection(existing).copy(id = existing.id))
+            update(expense.withPreservedAccountingTime(existing).withPreservedStreamProjection(existing).copy(id = existing.id))
             return true
         }
         return false
@@ -240,7 +240,7 @@ interface ExpenseDao {
                 acceptedServerIds += serverId
             } else if (expense.rowVersion >= existing.rowVersion) {
                 // Same monotonic guard as upsertByServerIdForLedger.
-                updates += expense.withPreservedStreamProjection(existing).copy(id = existing.id)
+                updates += expense.withPreservedAccountingTime(existing).withPreservedStreamProjection(existing).copy(id = existing.id)
                 acceptedServerIds += serverId
             }
         }
@@ -290,7 +290,7 @@ interface ExpenseDao {
         val canonical = when {
             existingServer == null -> serverEntity
             existingServer.rowVersion > serverEntity.rowVersion -> existingServer
-            else -> serverEntity.withPreservedStreamProjection(existingServer)
+            else -> serverEntity.withPreservedAccountingTime(existingServer).withPreservedStreamProjection(existingServer)
         }
         update(canonical.copy(id = existingServer?.id ?: requireNotNull(localId), clientRef = clientRef))
     }
@@ -480,5 +480,19 @@ private fun ExpenseEntity.withPreservedStreamProjection(existing: ExpenseEntity)
         streamAmountCents = streamAmountCents ?: existing.streamAmountCents,
         lineageStatus = lineageStatus ?: existing.lineageStatus,
         lineageHomeNetCents = lineageHomeNetCents ?: existing.lineageHomeNetCents,
+    )
+}
+
+private fun ExpenseEntity.withPreservedAccountingTime(existing: ExpenseEntity): ExpenseEntity {
+    if (rowVersion != existing.rowVersion || timePrecision != null) return this
+    return copy(
+        timePrecision = existing.timePrecision,
+        timeInstantUtc = existing.timeInstantUtc,
+        userLocalDate = existing.userLocalDate,
+        sourceTimezone = existing.sourceTimezone,
+        sourceUtcOffsetSeconds = existing.sourceUtcOffsetSeconds,
+        accountingDate = existing.accountingDate,
+        calendarRevision = existing.calendarRevision,
+        accountingDateBasis = existing.accountingDateBasis,
     )
 }

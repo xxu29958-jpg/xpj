@@ -79,6 +79,7 @@ data class Expense(
      * 金额承载编辑（R7-2 home 侧同构）；mapper 注入（DTO/Entity 原码），手工构造为 null。
      */
     val originalCurrencyCodeRaw: String? = null,
+    val accountingTime: ExpenseAccountingTime? = null,
 )
 
 /**
@@ -141,6 +142,7 @@ data class ExpenseDraft(
     val ledgerHomeCurrency: CurrencyCode? = null,
     /** Existing CreateExpense owner reuses this captured key; it does not mint a second command. */
     val clientRef: String? = null,
+    val timeInput: ExpenseTimeInput? = null,
 )
 
 data class ExpenseItem(

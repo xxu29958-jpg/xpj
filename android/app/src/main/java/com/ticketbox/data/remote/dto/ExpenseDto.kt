@@ -133,6 +133,8 @@ data class ExpenseDto(
     val confirmedAt: String?,
     @param:Json(name = "rejected_at")
     val rejectedAt: String?,
+    @param:Json(name = "accounting_time")
+    val accountingTime: ExpenseAccountingTimeDto? = null,
 )
 
 @JsonClass(generateAdapter = true)
@@ -157,6 +159,8 @@ data class ExpenseUpdateRequest(
     val valueScore: Int?,
     @param:Json(name = "regret_score")
     val regretScore: Int?,
+    @param:Json(name = "time_input")
+    val timeInput: ExpenseTimeInputDto? = null,
 )
 
 /**
@@ -194,6 +198,8 @@ data class ExpenseManualCreateRequestDto(
     val clientRef: String? = null,
     @param:Json(name = "home_currency_code")
     val homeCurrencyCode: String? = null,
+    @param:Json(name = "time_input")
+    val timeInput: ExpenseTimeInputDto? = null,
 )
 
 /**
@@ -289,4 +295,6 @@ data class PaginatedExpensesDto(
     @param:Json(name = "page_size")
     val pageSize: Int,
     val total: Int,
+    @param:Json(name = "calendar_revision")
+    val calendarRevision: Long? = null,
 )

@@ -43,4 +43,6 @@ data class ExpenseCorrectionDraft(
     val regretScoreChanged: Boolean = false,
     val items: List<ExpenseItemDraft>? = null,
     val splits: List<ExpenseSplitDraft>? = null,
+    val timeInput: ExpenseTimeInput? = null,
+    val timeInputChanged: Boolean = false,
 )
