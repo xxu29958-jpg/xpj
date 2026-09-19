@@ -134,6 +134,12 @@ re-encode an already admitted JPEG or reuse the Android screenshot preprocessor.
 A different resulting digest cannot replace a known identity. Legacy verification
 compares the explicitly reviewed observation with the current bytes and reference
 before recording a new baseline and actor; a read never performs that adoption.
+The verification command applies only to an absent/unusable recorded digest;
+a known identity is checked through the read operation, never rebased by this
+command. The reviewed digest and observed row version bind explicit verification.
+Attachment writes use the existing installation metadata-write fence; original
+reads remain available independently. Receipts describe accepted execution at
+that time and do not substitute for a subsequent health observation.
 
 Android will extend the existing UploadIntent/FileStore/Outbox target and receipt
 branches for an existing expense, preserving its staged file, logical binding,
@@ -185,3 +191,12 @@ the actual command owner. Mock Sessions inject the cleanup commit failure; these
 tests do not prove PostgreSQL persistence or concurrency. Cleanup, visible health,
 same-bill mutations and client continuations are still incomplete. No source in
 this preparation is a qualified new main or a completed original-attachment slice.
+
+The next local checkpoint adds a ledger-scoped original observation route and an
+explicit legacy verification command. Fifteen health tests cover actual temporary
+bytes and authenticated HTTP reads; eleven verification tests use real temporary
+files with command/OCC/receipt Session doubles. The latter establish application
+ordering and metadata meaning, not PostgreSQL atomicity. The health/verification
+group passed 26 tests in 1.26 seconds with `--noconftest`; the separate health/read
+group passed 29 in 1.27 seconds. Consumer screens, replenishment, cleanup and
+final exact-source database/client qualification remain open.

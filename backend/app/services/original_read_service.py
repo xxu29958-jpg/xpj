@@ -48,6 +48,12 @@ def _copy_original(source: Path, target: Path) -> tuple[str, int, float]:
     return digest.hexdigest(), size, modified_at
 
 
+def recorded_original_digest(value: str | None) -> str | None:
+    """Recognize recorded SHA-256 identity without adopting legacy metadata."""
+    expected = (value or "").strip().lower()
+    return expected if re.fullmatch(r"[0-9a-f]{64}", expected) is not None else None
+
+
 def read_original_snapshot(
     *,
     relative_path: str | None,
@@ -60,18 +66,17 @@ def read_original_snapshot(
     absent/unusable digests permit an unverified read, never a metadata write.
     """
     source, media_type = resolve_protected_image(relative_path, tenant_id)
-    expected = (expected_sha256 or "").strip().lower()
-    known_digest = re.fullmatch(r"[0-9a-f]{64}", expected) is not None
+    expected = recorded_original_digest(expected_sha256)
     try:
         with ExitStack() as cleanup:
             directory = cleanup.enter_context(TemporaryDirectory(prefix="ticketbox-original-"))
             path = Path(directory) / f"original{source.suffix}"
             digest, size, modified_at = _copy_original(source, path)
-            if known_digest and digest != expected:
+            if expected is not None and digest != expected:
                 raise AppError("image_integrity_mismatch", status_code=409)
             return OriginalSnapshot(
                 path=path, media_type=media_type, sha256=digest, size_bytes=size,
-                verified=known_digest, source_modified_at=modified_at, _cleanup=cleanup.pop_all(),
+                verified=expected is not None, source_modified_at=modified_at, _cleanup=cleanup.pop_all(),
             )
     except OSError as exc:
         # The resolver owns definite missing references. A failed capture can
