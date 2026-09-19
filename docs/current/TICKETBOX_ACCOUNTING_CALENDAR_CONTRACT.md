@@ -105,6 +105,21 @@ ordinary work would regress the product. Missing usable date evidence or an
 actual contradiction remains visible and recoverable at that record, without
 inventing a date or dropping its financial value from an unqualified total.
 
+For an adopted confirmed root with neither purchase nor confirmation time, the
+existing all-record stream and CSV retain a nullable `stream_date`; offsets
+continue to require their recorded day. Provide a ledger-scoped "账务日期待核对"
+filter linked from the existing quality/calendar surfaces and reuse ordinary
+fact correction. An audit timestamp may order the row, never supply its date.
+
+Period projections expose `undated_expense_count`, counting matching confirmed
+roots before a period restriction. While such rows can affect a financial
+answer, totals, remaining balances, comparisons and achievement decisions must
+remain unavailable rather than complete-looking zeroes. Known-date details may
+still be shown with an explicit incomplete-data explanation. This is separate
+from FX gaps. After an explicit correction supplies the date, the existing
+refresh removes the gap and places the same fact in its chosen period. It does
+not create a new expense, rewrite old receipts or require a second review owner.
+
 It is impossible to preserve all former timezone-dependent period answers: the
 current UTC and Shanghai answers already disagree. Preserve and explain one
 compatibility baseline, the original evidence and the ability to correct it.
