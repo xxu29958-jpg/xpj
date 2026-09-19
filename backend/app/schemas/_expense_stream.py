@@ -44,7 +44,7 @@ class ConfirmedExpenseStreamItem(BaseModel):
     """One timeline row with enough root context to open it offline."""
 
     entry_kind: Literal["expense", "offset"]
-    stream_date: date
+    stream_date: date | None
     # Server-owned stable locator. Android persists it only to recover the
     # exact server order after the root/offset tables are observed separately.
     stream_sort_time: datetime
@@ -60,6 +60,8 @@ class ConfirmedExpenseStreamItem(BaseModel):
     def _offset_presence_matches_kind(self) -> ConfirmedExpenseStreamItem:
         if (self.entry_kind == "offset") != (self.offset is not None):
             raise ValueError("offset is required exactly for offset entries")
+        if self.entry_kind == "offset" and self.stream_date is None:
+            raise ValueError("offset entries require an accounting date")
         return self
 
     @field_serializer("stream_sort_time")
@@ -73,6 +75,7 @@ class PaginatedExpensesResponse(BaseModel):
     page_size: int
     total: int
     calendar_revision: int | None = None
+    undated_expense_count: int = 0
 
 
 __all__ = [

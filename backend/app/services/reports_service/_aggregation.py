@@ -80,9 +80,9 @@ def _trend_buckets(
     return buckets
 
 
-def _trend_points(entries, buckets, zone):
+def _trend_points(entries, buckets, zone, *, undated=0):
     points = []
     for bucket in buckets:
         amount, count = _amount_count(_entries_in_range(entries, (bucket.start_date, bucket.end_date), zone))
-        points.append({"bucket": bucket.bucket, "label": bucket.label, "amount_cents": amount, "count": count})
+        points.append({"bucket": bucket.bucket, "label": bucket.label, "amount_cents": None if undated else amount, "count": count})
     return points

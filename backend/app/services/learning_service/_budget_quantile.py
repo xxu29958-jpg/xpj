@@ -33,13 +33,13 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.money_contract import (
     projection_sum_to_int,
     round_minor_ratio_half_up,
 )
+from app.services.category_common import normalize_category
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import normalize_currency_code
 from app.services.learning_service._algorithm_registry import (
@@ -49,16 +49,15 @@ from app.services.ledger_calendar_service import current_calendar
 from app.services.money_projection_service import (
     ProjectionGap,
     ordered_projection_gaps,
-    project_recorded_amount,
     sum_projected_amounts,
 )
 from app.services.spending_contract_service import (
     accounting_timezone_key,
     calendar_month_bounds,
-    confirmed_stream_query,
     month_labels_ending_at,
     shift_month,
 )
+from app.services.spending_projection_service import entry_gaps, read_spending_period
 from app.services.time_service import ensure_utc, local_month_label, now_utc
 
 # Source of truth lives in the algorithm registry.
@@ -76,6 +75,7 @@ class BudgetQuantileSuggestion:
     home_currency_code: str
     algorithm_version: str = ALGORITHM_VERSION
     missing_rates: tuple[ProjectionGap, ...] = ()
+    undated_expense_count: int = 0
 
 
 def _quantile(sorted_values: list[int], numerator: int, denominator: int) -> int:
@@ -129,6 +129,19 @@ def _lookback_months(
     return month_labels_ending_at(last_closed_month, look_back_months)
 
 
+def _monthly_totals(entries, months, include_zero_months):
+    monthly_totals: dict[str, int | None] = defaultdict(int)
+    for entry in entries:
+        key = entry.stream_date.strftime("%Y-%m")
+        monthly_totals[key] = sum_projected_amounts((monthly_totals[key], entry.amount_cents), label="budget_quantile.month_total")
+
+    if include_zero_months:
+        for month in months:
+            monthly_totals.setdefault(month, 0)
+
+    return monthly_totals
+
+
 def compute_budget_quantile_suggestion(
     db: Session,
     *,
@@ -157,35 +170,18 @@ def compute_budget_quantile_suggestion(
     earliest_start, _ = calendar_month_bounds(months[0])
     _, latest_end = calendar_month_bounds(months[-1])
     match_values = set(categories) if categories else {category}
-    stream = confirmed_stream_query(
-        tenant_id=tenant_id,
-        timezone_name=timezone_name,
-        amount_required=True,
-    )
     home = normalize_currency_code(home_currency_code or require_runtime_home_currency_code(db))
-    gaps: set[ProjectionGap] = set()
-    monthly_totals: dict[str, int | None] = defaultdict(int)
-    rows = db.execute(
-        select(stream.c.stream_date, stream.c.stream_amount_cents, stream.c.home_currency_code)
-        .where(stream.c.category.in_(match_values))
-        .where(stream.c.stream_date >= earliest_start)
-        .where(stream.c.stream_date < latest_end)
-    )
-    for stream_date, stream_amount, source_currency in rows:
-        key = stream_date.strftime("%Y-%m")
-        if key not in months:
-            continue
-        amount = project_recorded_amount(db, tenant_id=tenant_id, amount_minor=stream_amount,
-            source_currency=source_currency, home_currency=home, rate_date=stream_date, missing_rates=gaps)
-        monthly_totals[key] = sum_projected_amounts((monthly_totals[key], amount), label="budget_quantile.month_total")
+    projection = read_spending_period(db, tenant_id=tenant_id, ranges=[(earliest_start, latest_end)],
+        timezone_name=timezone_name, home=home)
+    normalized = {normalize_category(value) for value in match_values}
+    entries = [entry for entry in projection.entries if entry.category in normalized]
+    gaps = entry_gaps(entries)
+    monthly_totals = _monthly_totals(entries, months, include_zero_months)
 
-    if include_zero_months:
-        for month in months:
-            monthly_totals.setdefault(month, 0)
-
-    if gaps:
+    undated = sum(projection.undated_by_category.get(name, 0) for name in normalized)
+    if gaps or undated:
         return BudgetQuantileSuggestion(category=category, p50_cents=None, p75_cents=None,
-            sample_months=len(monthly_totals), home_currency_code=home, missing_rates=ordered_projection_gaps(gaps))
+            sample_months=len(monthly_totals), home_currency_code=home, missing_rates=ordered_projection_gaps(gaps), undated_expense_count=undated)
 
     values = sorted(
         max(

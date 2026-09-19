@@ -145,17 +145,22 @@ def list_confirmed(
     tag: str | None = None,
     timezone_name: str | None = None,
     missing_category: bool = False,
+    missing_accounting_date: bool = False,
 ) -> tuple[list[ConfirmedExpenseStreamItem], int]:
     page = max(page, 1)
     page_size = min(max(page_size, 1), 200)
 
     stream = _confirmed_stream_locator_query(
         tenant_id=tenant_id,
-        month=month,
+        month=None if missing_accounting_date else month,
         category=category,
         tag=tag,
         timezone_name=timezone_name,
     )
+    if missing_accounting_date:
+        stream = select(stream).where(
+            stream.c.entry_kind == "expense", stream.c.stream_date.is_(None),
+        ).subquery("undated_confirmed")
     if missing_category:
         stream = select(stream).where(
             stream.c.entry_kind == "expense",
@@ -330,7 +335,7 @@ def _stream_entry(
     active_offsets: list[ExpenseOffsetFact],
     *,
     offset: ExpenseOffsetFact | None,
-    stream_date: date,
+    stream_date: date | None,
     stream_sort_time: datetime,
     stream_sort_id: int,
 ) -> ConfirmedExpenseStreamItem:

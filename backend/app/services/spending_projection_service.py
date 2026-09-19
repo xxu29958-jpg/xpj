@@ -11,9 +11,11 @@ from sqlalchemy.orm import Session
 
 from app.services.category_service import normalize_category
 from app.services.money_projection_service import (
+    CategorySpend,
     ProjectionGap,
     ordered_projection_gaps,
     project_recorded_amount,
+    sum_projected_amounts,
 )
 from app.services.spending_contract_service import confirmed_stream_query
 
@@ -26,12 +28,31 @@ class ProjectedSpendingEntry:
     entry_id: int
     root_expense_id: int
     entry_kind: str
-    stream_date: date
+    stream_date: date | None
     category: str
     merchant: str | None
     home_currency_code: str | None
     amount_cents: int | None
     gap: ProjectionGap | None
+
+
+@dataclass(frozen=True)
+class SpendingPeriodProjection:
+    entries: list[ProjectedSpendingEntry]
+    undated_by_category: dict[str, int]
+
+    @property
+    def undated_expense_count(self) -> int:
+        return sum(self.undated_by_category.values())
+
+
+def projected_category_spend(entries: Iterable[ProjectedSpendingEntry]) -> dict[str, CategorySpend]:
+    spending: dict[str, CategorySpend] = {}
+    for entry in entries:
+        previous = spending.get(entry.category, CategorySpend())
+        spending[entry.category] = CategorySpend(sum_projected_amounts(
+            (previous.amount_cents, entry.amount_cents), label="spending.category"), previous.count + 1)
+    return spending
 
 
 def _project_rows(db, *, tenant_id, home, rows):
@@ -51,12 +72,29 @@ def _project_rows(db, *, tenant_id, home, rows):
 def read_projected_entries(db: Session, *, tenant_id: str, ranges: Sequence[tuple[date, date]],
     timezone_name: str | None, home: str, tag: str | None = None,
 ) -> list[ProjectedSpendingEntry]:
+    return read_spending_period(db, tenant_id=tenant_id, ranges=ranges,
+        timezone_name=timezone_name, home=home, tag=tag).entries
+
+
+def read_spending_period(db: Session, *, tenant_id: str, ranges: Sequence[tuple[date, date]],
+    timezone_name: str | None, home: str, tag: str | None = None,
+) -> SpendingPeriodProjection:
+    """Read date gaps and dated contributions in one PostgreSQL statement snapshot."""
     if not ranges:
-        return []
-    stream = confirmed_stream_query(tenant_id=tenant_id, tag=tag, timezone_name=timezone_name, amount_required=True)
-    statement = select(stream).where(or_(*(
-        (stream.c.stream_date >= start) & (stream.c.stream_date < end) for start, end in ranges)))
-    return _project_rows(db, tenant_id=tenant_id, home=home, rows=db.execute(statement))
+        return SpendingPeriodProjection([], {})
+    stream = confirmed_stream_query(tenant_id=tenant_id, tag=tag, timezone_name=timezone_name)
+    dated = stream.c.stream_amount_cents.is_not(None) & or_(*(
+        (stream.c.stream_date >= start) & (stream.c.stream_date < end) for start, end in ranges))
+    statement = select(stream).where(or_(dated,
+        (stream.c.entry_kind == "expense") & stream.c.stream_date.is_(None)))
+    rows, undated = [], {}
+    for row in db.execute(statement):
+        if row.stream_date is None:
+            category = normalize_category(row.category)
+            undated[category] = undated.get(category, 0) + 1
+        else:
+            rows.append(row)
+    return SpendingPeriodProjection(_project_rows(db, tenant_id=tenant_id, home=home, rows=rows), undated)
 
 
 def project_confirmed_items(db: Session, *, tenant_id: str, home: str,

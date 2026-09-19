@@ -48,7 +48,7 @@ def test_unknown_original_amount_is_not_the_stream_serializer_zero_or_a_fake_fx_
 
 def test_shared_read_retains_tenant_root_tags_soft_deletes_and_timezone_bounds():
     db = StatsRows([entry(1000)])
-    start, end = datetime(2026, 8, 31, 16, tzinfo=UTC), datetime(2026, 9, 30, 16, tzinfo=UTC)
+    start, end = date(2026, 9, 1), date(2026, 10, 1)
     read_projected_entries(db, tenant_id="target-ledger", ranges=[(start, end)], timezone_name="Asia/Shanghai", home="JPY", tag="旅行")
     statement = db.statements[0]
     sql = str(statement)

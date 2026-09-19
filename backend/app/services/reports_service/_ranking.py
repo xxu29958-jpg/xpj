@@ -54,18 +54,22 @@ def _category_totals(entries):
     return {category: _amount_count(rows) for category, rows in grouped.items()}
 
 
-def _category_comparison(current, previous, year_over_year):
+def _category_comparison(current, previous, year_over_year, undated_by_category=None):
+    undated_by_category = undated_by_category or {}
     periods = [_category_totals(entries) for entries in (current, previous, year_over_year)]
     items = []
-    for category in set().union(*periods):
+    for category in set(undated_by_category).union(*periods):
         (amount, count), (prev_amount, prev_count), (yoy_amount, yoy_count) = [
             period.get(category, (0, 0)) for period in periods]
-        items.append({"category": category, "amount_cents": amount, "count": count,
+        undated = undated_by_category.get(category, 0)
+        if undated:
+            amount = prev_amount = yoy_amount = None
+        items.append({"category": category, "undated_expense_count": undated, "amount_cents": amount, "count": count,
             "previous_amount_cents": prev_amount, "previous_count": prev_count,
-            "delta_amount_cents": _amount_delta(amount, prev_amount), "delta_count": count - prev_count,
+            "delta_amount_cents": _amount_delta(amount, prev_amount), "delta_count": None if undated else count - prev_count,
             "year_over_year_amount_cents": yoy_amount, "year_over_year_count": yoy_count,
             "year_over_year_delta_amount_cents": _amount_delta(amount, yoy_amount),
-            "year_over_year_delta_count": count - yoy_count})
+            "year_over_year_delta_count": None if undated else count - yoy_count})
     if any(row["amount_cents"] is None for row in items):
         return sorted(items, key=lambda row: row["category"])
     previous_complete = all(row["previous_amount_cents"] is not None for row in items)

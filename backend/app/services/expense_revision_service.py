@@ -119,6 +119,10 @@ def _device_snapshot(
     return device.public_id, device.device_name
 
 
+def _has_published_fact(expense: Expense) -> bool:
+    return expense.status == "confirmed" or expense.confirmed_at is not None or (expense.fact_revision or 0) > 0
+
+
 def record_confirmation_revision(
     db: Session,
     expense: Expense,
@@ -127,7 +131,7 @@ def record_confirmation_revision(
     actor_device_id: int | None,
     idempotency_key: str | None = None,
 ) -> ExpenseRevision:
-    """Publish revision 1 exactly once for a newly confirmed fact."""
+    """Record revision 1 once, including legacy facts with unknown publication time."""
 
     existing = db.scalar(
         ledger_scoped_select(ExpenseRevision, expense.tenant_id)
@@ -137,7 +141,7 @@ def record_confirmation_revision(
     )
     if existing is not None:
         return existing
-    if expense.confirmed_at is None:
+    if not _has_published_fact(expense):
         raise AppError("state_conflict", status_code=409)
     db.flush()
     if not isinstance(expense.row_version, int):
@@ -215,14 +219,13 @@ def prepare_correction_revision(
 ) -> PreparedCorrectionRevision | None:
     """Capture a published fact before an existing command changes it.
 
-    ``confirmed_at`` is the publication boundary: a legacy row may currently be
-    rejected and still belong to confirmed financial history.  Only rows that
-    have never been published keep pending/rejected draft semantics and return
-    ``None``. Legacy published rows receive revision 1 before the caller's own
-    CAS/write when the migration backfill has not already created it.
+    Confirmed status, a known confirmation time or an existing fact revision
+    proves publication. A legacy fact can lack a usable time or currently be
+    rejected without becoming an unpublished draft. Legacy published rows receive
+    revision 1 before the caller's CAS/write; unknown time stays unknown.
     """
 
-    if expense.confirmed_at is None:
+    if not _has_published_fact(expense):
         return None
     if expense.fact_revision == 0:
         record_confirmation_revision(

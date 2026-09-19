@@ -71,6 +71,7 @@ class BudgetExcludedCategoryResponse(BaseModel):
 
 
 class BudgetMonthlyResponse(BaseModel):
+    undated_expense_count: int = Field(default=0, ge=0)
     ledger_id: str
     home_currency_code: str | None
     month: str

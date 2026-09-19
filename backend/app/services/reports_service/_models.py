@@ -32,3 +32,4 @@ class ExpenseRanking:
     home_currency_code: str
     items: tuple[RankedExpense, ...]
     missing_rates: tuple[ProjectionGap, ...]
+    undated_expense_count: int = 0

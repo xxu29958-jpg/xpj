@@ -37,20 +37,22 @@ class ReportMerchantRankingResponse(BaseModel):
 
 
 class ReportCategoryComparisonResponse(BaseModel):
+    undated_expense_count: int = Field(default=0, ge=0)
     category: str
     amount_cents: SignedMoneyAggregate | None
     count: int
     previous_amount_cents: SignedMoneyAggregate | None
     previous_count: int
     delta_amount_cents: SignedMoneyAggregate | None
-    delta_count: int
+    delta_count: int | None
     year_over_year_amount_cents: SignedMoneyAggregate | None
     year_over_year_count: int
     year_over_year_delta_amount_cents: SignedMoneyAggregate | None
-    year_over_year_delta_count: int
+    year_over_year_delta_count: int | None
 
 
 class ReportsOverviewResponse(BaseModel):
+    undated_expense_count: int = Field(default=0, ge=0)
     month: str
     home_currency_code: str
     missing_rates: list[ProjectionGapDto]
@@ -65,7 +67,7 @@ class ReportsOverviewResponse(BaseModel):
     year_over_year_total_amount_cents: SignedMoneyAggregate | None
     year_over_year_count: int
     year_over_year_delta_amount_cents: SignedMoneyAggregate | None
-    year_over_year_delta_count: int
+    year_over_year_delta_count: int | None
     merchant_category: str | None = None
     ranking_metric: str
     trend: list[ReportTrendPointResponse]
@@ -80,6 +82,7 @@ class LifestyleFrequentMerchantResponse(BaseModel):
 
 
 class LifestyleStatsResponse(BaseModel):
+    undated_expense_count: int = Field(default=0, ge=0)
     month: str
     home_currency_code: str
     missing_rates: list[ProjectionGapDto]

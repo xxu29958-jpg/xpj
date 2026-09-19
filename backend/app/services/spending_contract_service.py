@@ -29,7 +29,7 @@ from sqlalchemy.sql.selectable import Subquery
 from app.config import get_settings
 from app.errors import AppError
 from app.models import Expense, ExpenseOffsetFact, ExpenseTag, RecurringItem, Tag
-from app.services.category_common import category_filter_values
+from app.services.category_common import category_filter_values, normalize_category
 from app.services.merchant_alias_service import (
     canonical_merchant_for,
     enabled_merchant_alias_map,
@@ -166,6 +166,25 @@ def confirmed_query(
         start, end = calendar_month_bounds(month)
         query = query.where(Expense.accounting_date >= start).where(Expense.accounting_date < end)
     return query
+
+
+def undated_expense_counts_by_category(db: Session, *, tenant_id: str, tag: str | None = None,
+    category: str | None = None,
+) -> dict[str, int]:
+    """Count confirmed roots before period filtering; an unknown day belongs to no month."""
+    roots = confirmed_query(tenant_id=tenant_id, tag=tag, category=category).where(Expense.accounting_date.is_(None)).subquery()
+    counts: dict[str, int] = {}
+    for category, count in db.execute(select(roots.c.category, func.count()).group_by(roots.c.category)):
+        key = normalize_category(category)
+        counts[key] = counts.get(key, 0) + int(count)
+    return counts
+
+
+def count_undated_expenses(db: Session, *, tenant_id: str, category: str | None = None,
+    tag: str | None = None,
+) -> int:
+    counts = undated_expense_counts_by_category(db, tenant_id=tenant_id, tag=tag, category=category)
+    return counts.get(normalize_category(category), 0) if category else sum(counts.values())
 
 
 def confirmed_amount_query(
