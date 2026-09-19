@@ -1,7 +1,7 @@
 package com.ticketbox.viewmodel
 
 import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 
 import com.ticketbox.data.local.PersistedLedgerIdentity
 
@@ -28,6 +28,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.job
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -51,7 +52,8 @@ class CategoryRulesViewModelTest {
         try {
             block()
         } finally {
-            models.forEach { it.viewModelScope.cancel() }
+            // IO continuations must return to Main before its test dispatcher is removed.
+            models.forEach { it.viewModelScope.coroutineContext.job.cancelAndJoin() }
             advanceUntilIdle()
             Dispatchers.resetMain()
         }
