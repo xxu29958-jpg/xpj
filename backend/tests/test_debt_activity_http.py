@@ -78,7 +78,8 @@ def test_partial_confirmation_and_forgiveness_preserve_one_payment_and_both_prop
     before = _activity(client, identity.app_headers, debt["public_id"])
     assert {item["kind"] for item in before["items"]} == {"created", "proposal_created"}
     detail = client.get(f"/api/debts/{debt['public_id']}", headers=identity.app_headers).json()
-    assert detail["paid_amount_cents"] == 0 and detail["row_version"] == debt["row_version"]
+    assert detail["paid_amount_cents"] == 0
+    assert detail["row_version"] == debt["row_version"]
 
     confirmation_headers = _idem(identity.app_headers)
     confirmation_body = {"confirmed_amount_cents": 4_000, "expected_row_version": debt["row_version"]}
@@ -95,9 +96,11 @@ def test_partial_confirmation_and_forgiveness_preserve_one_payment_and_both_prop
     assert {(item["kind"], item["public_id"]) for item in proposals} == {
         ("proposal_created", proposal["public_id"]), ("proposal_resolved", proposal["public_id"])}
     payments = [item for item in after["items"] if item["kind"] == "repayment"]
-    assert len(payments) == 1 and payments[0]["repayment"]["amount_cents"] == 4_000
+    assert len(payments) == 1
+    assert payments[0]["repayment"]["amount_cents"] == 4_000
     for item in proposals:
-        assert item["amount_cents"] is None and item["repayment"] is None
+        assert item["amount_cents"] is None
+        assert item["repayment"] is None
         assert item["proposal"]["proposed_amount_cents"] == 10_000
         assert item["proposal"]["confirmed_amount_cents"] == 4_000
         assert item["proposal"]["status"] == "partially_confirmed"
