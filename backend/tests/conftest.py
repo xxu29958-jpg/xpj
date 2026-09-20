@@ -246,6 +246,11 @@ def external_upload_dir(monkeypatch: pytest.MonkeyPatch, tmp_path):
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers",
+        "large_dataset: full large-data journey scheduled early within an ordinary "
+        "PostgreSQL shard; never changes lane membership or test selection",
+    )
+    config.addinivalue_line(
+        "markers",
         "real_db: opt out of the PostgreSQL lane's per-test transaction-rollback "
         "isolation and run against a real committed DB (full reset_db_state). For "
         "tests that need real cross-connection commits — concurrency, true "

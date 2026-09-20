@@ -36,6 +36,7 @@ def _demote_owner_ledger_to_viewer() -> None:
         db.commit()
 
 
+@pytest.mark.large_dataset
 def test_csv_import_batch_handles_more_than_legacy_preview_limit_with_paged_apply(client: TestClient) -> None:
     del client
     with SessionLocal() as db:

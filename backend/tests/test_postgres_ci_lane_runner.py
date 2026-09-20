@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import subprocess
 import sys
+from collections import Counter
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -34,7 +35,7 @@ class _DeselectRecorder:
 
 
 class _ShardConfig:
-    def __init__(self, lane: str, shard_index: int, shard_count: int) -> None:
+    def __init__(self, lane: str | None, shard_index: int, shard_count: int) -> None:
         self.hook = _DeselectRecorder()
         self._options = {
             POSTGRES_PYTEST_LANE_DEST: lane,
@@ -169,7 +170,7 @@ def _assert_nodeid_shards_form_an_exact_partition() -> None:
 
 def _hook_partition(lane: str, shard_index: int, shard_count: int) -> tuple[set[str], set[str]]:
     items = [
-        SimpleNamespace(nodeid=f"tests/test_example.py::test_case[{index}]")
+        SimpleNamespace(nodeid=f"tests/test_example.py::test_case[{index}]", keywords={})
         for index in range(64)
     ]
     config = _ShardConfig(lane, shard_index, shard_count)
@@ -214,6 +215,77 @@ def _assert_collection_contract_is_fail_closed() -> None:
         validate_lane_collection(lane="ordinary", selected_real_db=[False, True])
     with pytest.raises(ValueError, match="selected an ordinary test"):
         validate_lane_collection(lane="real-db", selected_real_db=[True, False])
+
+
+@pytest.mark.parametrize("count", [17, 64, 468])
+def test_real_db_shards_balance_complete_collections_without_reordering(count: int) -> None:
+    items = [
+        SimpleNamespace(nodeid=f"tests/test_example.py::test_case[{index}]", keywords={})
+        for index in range(count)
+    ]
+    # A moved/new test participates without a separate scheduling registry.
+    items[-1].nodeid = "tests/renamed.py::test_added[param-value]"
+    expected = Counter(item.nodeid for item in items)
+    combined: Counter[str] = Counter()
+    sizes = []
+    for shard_index in range(4):
+        selected = list(items)
+        config = _ShardConfig("real-db", shard_index, 4)
+        pytest_collection_modifyitems(config, selected)
+        ids = {item.nodeid for item in selected}
+        assert selected == [item for item in items if item.nodeid in ids]
+        assert Counter(item.nodeid for item in [*selected, *config.hook.items]) == expected
+        reversed_items = list(reversed(items))
+        pytest_collection_modifyitems(_ShardConfig("real-db", shard_index, 4), reversed_items)
+        assert {item.nodeid for item in reversed_items} == ids
+        combined.update(item.nodeid for item in selected)
+        sizes.append(len(selected))
+    assert combined == expected
+    assert max(sizes) - min(sizes) <= 1
+
+
+def test_ordinary_shards_start_large_datasets_early_without_changing_membership() -> None:
+    items = [
+        SimpleNamespace(nodeid=f"tests/test_example.py::test_case[{index}]", keywords={})
+        for index in range(64)
+    ]
+    items[37].keywords["large_dataset"] = True
+    items[55].keywords["large_dataset"] = True
+    for shard_index in range(2):
+        expected = [item for item in items if nodeid_shard(item.nodeid, shard_count=2) == shard_index]
+        selected = list(items)
+        config = _ShardConfig("ordinary", shard_index, 2)
+        pytest_collection_modifyitems(config, selected)
+        assert selected == (
+            [item for item in expected if "large_dataset" in item.keywords]
+            + [item for item in expected if "large_dataset" not in item.keywords]
+        )
+        assert Counter(item.nodeid for item in [*selected, *config.hook.items]) == Counter(
+            item.nodeid for item in items
+        )
+    for lane in (None, "ordinary", "real-db"):
+        selected = list(items)
+        pytest_collection_modifyitems(_ShardConfig(lane, 0, 1), selected)
+        assert selected == items
+
+
+def test_empty_postgres_shard_remains_an_error() -> None:
+    for lane in ("ordinary", "real-db"):
+        with pytest.raises(pytest.UsageError, match="selected no tests"):
+            pytest_collection_modifyitems(_ShardConfig(lane, 0, 4), [])
+
+
+def test_real_db_partition_preserves_duplicate_collection_occurrences() -> None:
+    items = [SimpleNamespace(nodeid="tests/example.py::test_case[param]", keywords={}) for _ in range(5)]
+    combined: Counter[str] = Counter()
+    sizes = []
+    for shard_index in range(4):
+        selected = list(items)
+        pytest_collection_modifyitems(_ShardConfig("real-db", shard_index, 4), selected)
+        combined.update(item.nodeid for item in selected)
+        sizes.append(len(selected))
+    assert combined == Counter(item.nodeid for item in items)
+    assert sorted(sizes) == [1, 1, 1, 2]
 
 
 def _assert_local_verify_uses_postgres_authorities() -> None:

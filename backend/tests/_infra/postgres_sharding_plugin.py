@@ -27,6 +27,7 @@ def pytest_collection_modifyitems(
 
     selected, deselected = partition_shard_items(
         items,
+        lane=lane,
         shard_index=shard_index,
         shard_count=shard_count,
         nodeid_of=lambda item: item.nodeid,
@@ -35,5 +36,9 @@ def pytest_collection_modifyitems(
         raise pytest.UsageError(
             f"{lane} PostgreSQL shard {shard_index}/{shard_count} selected no tests"
         )
+    if lane == "ordinary":
+        # Start measured large-data journeys while the other workers can drain
+        # short cases. This changes order only, never membership or assertions.
+        selected.sort(key=lambda item: "large_dataset" not in item.keywords)
     items[:] = selected
     config.hook.pytest_deselected(items=deselected)

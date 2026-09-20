@@ -82,39 +82,53 @@ def validate_shard_coordinates(
         raise ValueError("only a declared PostgreSQL lane may be sharded")
 
 
-def nodeid_shard(nodeid: str, *, shard_count: int) -> int:
+def _nodeid_digest(nodeid: str) -> bytes:
     if not nodeid:
         raise ValueError("PostgreSQL pytest shard requires a non-empty nodeid")
+    return hashlib.sha256(nodeid.encode("utf-8")).digest()
+
+
+def nodeid_shard(nodeid: str, *, shard_count: int) -> int:
     validate_shard_coordinates(
         lane=PARALLEL_POSTGRES_PYTEST_LANE,
         shard_index=0,
         shard_count=shard_count,
     )
-    digest = hashlib.sha256(nodeid.encode("utf-8")).digest()
+    digest = _nodeid_digest(nodeid)
     return int.from_bytes(digest[:8], byteorder="big") % shard_count
 
 
 def partition_shard_items(
     items: Sequence[_ShardItem],
     *,
+    lane: str,
     shard_index: int,
     shard_count: int,
     nodeid_of: Callable[[_ShardItem], str],
 ) -> tuple[list[_ShardItem], list[_ShardItem]]:
-    """Partition one collection into the selected shard and its complement."""
+    """Balance serial resets; preserve ordinary hash membership and local order."""
     validate_shard_coordinates(
-        lane=PARALLEL_POSTGRES_PYTEST_LANE,
+        lane=lane,
         shard_index=shard_index,
         shard_count=shard_count,
     )
+    if lane == "real-db":
+        # Each serial test pays for full schema reset/migration. Balance that
+        # count from this collection, without a persisted test-name registry.
+        ranked = sorted(
+            range(len(items)),
+            key=lambda index: (_nodeid_digest(nodeid_of(items[index])), nodeid_of(items[index])),
+        )
+        selected_positions = set(ranked[shard_index::shard_count])
+    else:
+        selected_positions = {
+            index for index, item in enumerate(items)
+            if nodeid_shard(nodeid_of(item), shard_count=shard_count) == shard_index
+        }
     selected: list[_ShardItem] = []
     deselected: list[_ShardItem] = []
-    for item in items:
-        target = (
-            selected
-            if nodeid_shard(nodeid_of(item), shard_count=shard_count) == shard_index
-            else deselected
-        )
+    for index, item in enumerate(items):
+        target = selected if index in selected_positions else deselected
         target.append(item)
     return selected, deselected
 
