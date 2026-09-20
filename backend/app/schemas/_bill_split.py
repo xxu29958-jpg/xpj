@@ -25,7 +25,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_valid
 from pydantic_core import PydanticCustomError
 
 from app.schemas._accounting_time import AccountingTimeSnapshot
-from app.schemas._money import PositiveMoneyMinor
+from app.schemas._money import NonNegativeMoneyMinor, PositiveMoneyMinor
 from app.services.time_service import to_iso
 
 __all__ = [
@@ -139,6 +139,7 @@ class BillSplitSentResponse(_BillSplitCommon):
     receiver_account_id: int
     receiver_display_name_snapshot: str | None = None
     sender_expense_id: int
+    current_agreed_share_amount_cents: NonNegativeMoneyMinor
     source_impact_pending: bool = False
 
 

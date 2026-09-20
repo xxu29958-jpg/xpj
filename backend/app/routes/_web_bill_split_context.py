@@ -36,7 +36,11 @@ def _remaining_split_capacity(
 ) -> tuple[str, int]:
     currency_code = expense.get("home_currency_code") or presentation_currency
     active_total = projection_values_sum_to_int(
-        (invitation.amount_cents for invitation in invitations if invitation.status in _INVITE_ACTIVE_STATUSES),
+        (
+            getattr(invitation, "current_agreed_share_amount_cents", invitation.amount_cents)
+            for invitation in invitations
+            if invitation.status in _INVITE_ACTIVE_STATUSES
+        ),
         label="web_bill_split.active_total",
     )
     raw_parent = expense.get("amount_cents")

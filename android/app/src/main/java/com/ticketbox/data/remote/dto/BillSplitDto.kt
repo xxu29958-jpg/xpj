@@ -56,6 +56,8 @@ data class BillSplitSentDto(
     val senderExpenseId: Long,
     @param:Json(name = "home_currency_code")
     val homeCurrencyCode: String,
+    @param:Json(name = "current_agreed_share_amount_cents")
+    val currentAgreedShareAmountCents: Long? = null,
 )
 
 /** Receiver view DTO — sender_ledger_id / sender_expense_id absent. */

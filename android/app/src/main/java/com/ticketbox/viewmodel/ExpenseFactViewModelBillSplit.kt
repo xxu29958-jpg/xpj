@@ -26,7 +26,7 @@ enum class BillSplitSentLoadState {
  */
 internal fun List<BillSplitSent>.factActiveSplitCentsFor(expenseId: Long): Long =
     filter { it.senderExpenseId == expenseId && it.isActiveSplit }
-        .sumOf { it.amountCents }
+        .sumOf { it.currentAgreedShareAmountCents }
 
 private val BillSplitSent.isActiveSplit: Boolean
     get() = status == BillSplitStatusValues.INVITED || status == BillSplitStatusValues.ACCEPTED

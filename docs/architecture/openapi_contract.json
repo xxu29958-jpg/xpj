@@ -1576,6 +1576,13 @@
             ],
             "title": "Created At"
           },
+          "current_agreed_share_amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "Current Agreed Share Amount Cents",
+            "type": "integer"
+          },
           "exchange_rate_date": {
             "anyOf": [
               {
@@ -1735,7 +1742,8 @@
           "expires_at",
           "created_at",
           "receiver_account_id",
-          "sender_expense_id"
+          "sender_expense_id",
+          "current_agreed_share_amount_cents"
         ],
         "title": "BillSplitSentResponse",
         "type": "object"

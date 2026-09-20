@@ -40,6 +40,7 @@ data class BillSplitSent(
     val receiverAccountId: Long,
     val receiverDisplayNameSnapshot: String?,
     val senderExpenseId: Long,
+    val currentAgreedShareAmountCents: Long = amountCents,
 )
 
 data class BillSplitInbox(

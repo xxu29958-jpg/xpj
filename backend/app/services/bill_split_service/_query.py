@@ -30,6 +30,15 @@ def current_agreed_share_expression():
     return func.coalesce(latest, BillSplitInvitation.amount_cents)
 
 
+def _sent_rows_with_current_agreement(db: Session, statement) -> list[BillSplitInvitation]:
+    rows = list(db.execute(statement.add_columns(current_agreed_share_expression())))
+    invitations = []
+    for invitation, current_share in rows:
+        invitation.current_agreed_share_amount_cents = current_share
+        invitations.append(invitation)
+    return invitations
+
+
 def list_accepted_source_relationships(
     db: Session,
     *,
@@ -102,14 +111,14 @@ def list_sent(
 ) -> list[BillSplitInvitation]:
     """Sender view — ledger-scoped (sender_ledger_id is sender's current
     ledger, not invitation.receiver_ledger_id)."""
-    rows = db.scalars(
+    statement = (
         select(BillSplitInvitation)
         .where(BillSplitInvitation.sender_account_id == sender_account_id)
         .where(BillSplitInvitation.sender_ledger_id == sender_ledger_id)
         .order_by(BillSplitInvitation.created_at.desc())
         .limit(limit)
     )
-    return list(rows)
+    return _sent_rows_with_current_agreement(db, statement)
 
 
 def list_sent_for_expense(
@@ -121,14 +130,14 @@ def list_sent_for_expense(
     *from this bill* (``list_sent`` is ledger-scoped over every expense).
     Sender-account-scoped so it cannot surface another account's rows.
     """
-    rows = db.scalars(
+    statement = (
         select(BillSplitInvitation)
         .where(BillSplitInvitation.sender_account_id == sender_account_id)
         .where(BillSplitInvitation.sender_expense_id == expense_id)
         .order_by(BillSplitInvitation.created_at.desc())
         .limit(limit)
     )
-    return list(rows)
+    return _sent_rows_with_current_agreement(db, statement)
 
 
 def list_inbox(

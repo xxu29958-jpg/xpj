@@ -10,6 +10,7 @@ fun BillSplitSentDto.toDomain(): BillSplitSent = BillSplitSent(
     publicId = publicId,
     status = status,
     amountCents = amountCents,
+    currentAgreedShareAmountCents = currentAgreedShareAmountCents ?: amountCents,
     homeCurrencyCode = homeCurrencyCode,
     merchantSnapshot = merchantSnapshot,
     categorySuggestion = categorySuggestion,

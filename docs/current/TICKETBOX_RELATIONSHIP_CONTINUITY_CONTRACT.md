@@ -174,3 +174,11 @@ Web 原腿已清、返还未清时显示整段关系仍待处理；已有待确�
 通过。本地 InternalDebug 生产/测试 Detekt 任务分别报告工程现存 63/20 项，最终报告
 中本次 ViewModel 两文件无 finding；不把任务失败记作全工程通过。最终云端资格仍以
 待合并 HEAD 的现有门禁为准。
+
+随后按 CI 实际 GrayDebug 变体复核，8 项 ViewModel JVM 测试与生产/测试 Detekt 通过，
+0 finding、无新增豁免；生产分析仍带编译分析告警，实际 Kotlin 编译与测试完成。
+
+容量消费者也已接通同一当前约定份额：sent 查询复用现有 agreement SQL 表达式，
+Web 与 Android 可拆金额读取该投影，原邀请金额继续用于历史。减额释放、增额收紧、
+没有新约定时沿用原金额均已验证；10 项后端容量/约定查询测试、三类 Android 定向测试、
+Ruff 与实际生成的 OpenAPI 一致性通过。没有新增财务 writer 或金额存储。
