@@ -102,9 +102,18 @@ class ManagerWindowSession:
         return not still_open
 
     def shutdown(self) -> None:
-        if self.close_all():
-            with contextlib.suppress(OSError):
+        if not self.close_all():
+            return
+        # The browser process may exit before every profile handle is released.
+        deadline = time.monotonic() + 5.0
+        while True:
+            try:
                 shutil.rmtree(self._profile)
+                return
+            except OSError:
+                if not self._profile.exists() or time.monotonic() >= deadline:
+                    return
+            time.sleep(0.05)
 
 
 def _build_runtime(config: ManagerEndpointConfig):

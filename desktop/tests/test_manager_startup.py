@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
@@ -9,6 +10,7 @@ from tempfile import TemporaryDirectory
 
 import pytest
 
+from backend_manager import manager_startup
 from backend_manager.__main__ import main
 from backend_manager.build_identity import FrozenManagerIdentity
 from backend_manager.config import (
@@ -161,6 +163,71 @@ def test_window_session_gives_every_tracked_edge_process_its_own_profile(tmp_pat
     assert all("instance-secret" not in url for url in urls)
     assert all("instance-secret" not in str(profile) for profile in profiles)
     assert windows.close_all() is True
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows file-sharing cleanup boundary")
+def test_shutdown_removes_profile_after_windows_file_handle_is_released(tmp_path, monkeypatch):
+    profile = tmp_path / "edge-session"
+    profile.mkdir()
+    held = (profile / "Cookies").open("wb")
+    remove_tree = manager_startup.shutil.rmtree
+    sharing_errors = []
+
+    def release_after_first_attempt(path):
+        assert path.resolve().is_relative_to(tmp_path.resolve())
+        try:
+            remove_tree(path)
+        except PermissionError as exc:
+            sharing_errors.append(exc.winerror)
+            held.close()
+            raise
+
+    monkeypatch.setattr(manager_startup.shutil, "rmtree", release_after_first_attempt)
+    windows = ManagerWindowSession("http://127.0.0.1/", profile, opener=lambda *_a, **_k: FakeWindow())
+    assert windows.open()
+    try:
+        windows.shutdown()
+    finally:
+        held.close()
+    assert sharing_errors == [32]
+    assert not profile.exists()
+
+
+def test_shutdown_cleanup_has_a_deadline_and_preserves_permanently_locked_profile(tmp_path, monkeypatch):
+    profile = tmp_path / "edge-session"
+    profile.mkdir()
+    clock = [0.0]
+    attempts = []
+
+    def locked(path):
+        assert path == profile
+        attempts.append(clock[0])
+        raise PermissionError("profile still in use")
+
+    def advance(seconds):
+        clock[0] += seconds
+
+    monkeypatch.setattr(manager_startup.shutil, "rmtree", locked)
+    monkeypatch.setattr(manager_startup.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(manager_startup.time, "sleep", advance)
+    ManagerWindowSession("http://127.0.0.1/", profile).shutdown()
+    assert len(attempts) > 1
+    assert 5 <= clock[0] < 5.1
+    assert profile.exists()
+
+
+def test_shutdown_does_not_remove_profile_of_a_window_that_failed_to_close(tmp_path):
+    class StuckWindow(FakeWindow):
+        def close(self, *, timeout=5.0):
+            return False
+
+    profile = tmp_path / "edge-session"
+    profile.mkdir()
+    windows = ManagerWindowSession("http://127.0.0.1/", profile, opener=lambda *_a, **_k: StuckWindow())
+    assert windows.open()
+    windows.shutdown()
+    assert windows.has_open_windows()
+    assert profile.exists()
 
 
 @pytest.mark.parametrize("failure_mode", ["none", "raise"])
