@@ -109,6 +109,15 @@ def _record(collection: str, row: Mapping[str, object]) -> dict[str, object]:
     return result
 
 
+def _receipt_business_body(source: dict[str, object], *, redact_task: bool) -> dict[str, object]:
+    node = dict(source)
+    node.pop("duration_ms", None)
+    node.pop("timing_ms", None)
+    if redact_task:
+        node.pop("enrichment_task_public_id", None)
+    return node
+
+
 def _receipt_record(result: dict[str, object]) -> dict[str, object]:
     body = result.get("response_body")
     resource = result.get("resource_type")
@@ -118,7 +127,8 @@ def _receipt_record(result: dict[str, object]) -> dict[str, object]:
     source = body.get("root") if resource == "expense_offset" else body
     if not isinstance(source, dict):
         return result
-    node = dict(source)
+    node = _receipt_business_body(source,
+        redact_task=result.get("response_body_redaction_reason") == "personal_task_scope")
     is_original_command = (node.get("operation") in {
         "verify_original", "replenish_original", "retry_original_cleanup", "cancel_original_cleanup"
     } and node.get("sha256") is not None)

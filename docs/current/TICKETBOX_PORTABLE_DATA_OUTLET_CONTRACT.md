@@ -242,10 +242,15 @@ than inferring it from its name. Original-command and upload receipts link their
 recorded expense/digest to the originals index; unmatched evidence stays explicitly
 unavailable instead of borrowing a different current original.
 
+Upload task privacy removes only the personal task identifier, preserving the
+shared accepted expense, digest and evidence link for other ledger readers. Runtime
+timing fields are omitted. Sent/inbox invitation names remain stored snapshots;
+those references do not independently grant current account identity expansion.
+
 API/Web observe disconnects between query, record and file units and unwind the
 existing snapshot/archive cleanup. An in-flight SQL statement remains bounded by
 the existing 30-second timeout; a stable file read finishes before the next check.
 This adds neither a job system nor an independent cancellation owner. On this
-revised source, 57 query/archive/route tests and eight service tests (including
+revised source, 61 query/archive/route tests and eight service tests (including
 actual PostgreSQL snapshot, permission and download paths) passed; OpenAPI and
 Ruff passed. The new candidate still requires its own existing cloud gates.
