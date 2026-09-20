@@ -10,6 +10,7 @@ import subprocess
 from collections import Counter
 from contextlib import redirect_stderr
 from html.parser import HTMLParser
+from itertools import chain
 from pathlib import Path
 
 import lizard
@@ -140,6 +141,47 @@ def _functions_for_record(record: dict, text: str) -> list[dict]:
     return []
 
 
+def _function_cache_entry(record: dict, identities, reuse) -> tuple[tuple | None, list[dict] | None]:
+    key = (*identities[record["path"]], _FUNCTION_CONTEXT) if identities is not None else None
+    cached = reuse.load("functions", key) if reuse is not None and key is not None else None
+    return key, cached
+
+
+def _cached_powershell_functions(files: dict[str, str], records: list[dict], identities, reuse):
+    powershell_records = [record for record in records if record["language"] == "PowerShell"]
+    misses: list[dict] = []
+    by_path: dict[str, list[dict]] = {}
+    for record in powershell_records:
+        _, cached = _function_cache_entry(record, identities, reuse)
+        if cached is None:
+            misses.append(record)
+        else:
+            by_path[record["path"]] = cached
+    measured, version = _powershell_functions(misses, files)
+    by_path.update({record["path"]: [] for record in misses})
+    for function in measured:
+        by_path[function["path"]].append(function)
+    if reuse is not None and identities is not None:
+        for record in misses:
+            path = record["path"]
+            reuse.store("functions", (*identities[path], _FUNCTION_CONTEXT), by_path[path])
+    if reuse is not None and reuse.enabled:
+        if version is not None:
+            reuse.powershell_parser = version
+        elif powershell_records:
+            version = reuse.powershell_parser
+    return list(chain.from_iterable(by_path[record["path"]] for record in powershell_records)), version
+
+
+def _cached_record_functions(record: dict, text: str, identities, reuse) -> list[dict]:
+    key, cached = _function_cache_entry(record, identities, reuse)
+    if cached is None:
+        cached = _functions_for_record(record, text)
+        if reuse is not None and key is not None:
+            reuse.store("functions", key, cached)
+    return cached
+
+
 def measure_functions(
     files: dict[str, str],
     records: list[dict],
@@ -147,47 +189,11 @@ def measure_functions(
     identities: dict[str, tuple] | None = None,
     reuse=None,
 ) -> tuple[list[dict], dict[str, int], str | None]:
-    functions: list[dict] = []
-    powershell_records = [record for record in records if record["language"] == "PowerShell"]
-    powershell_misses: list[dict] = []
-    powershell_by_path: dict[str, list[dict]] = {}
-    for record in powershell_records:
-        path = record["path"]
-        key = (*identities[path], _FUNCTION_CONTEXT) if identities is not None else None
-        cached = reuse.load("functions", key) if reuse is not None and key is not None else None
-        if cached is None:
-            powershell_misses.append(record)
-        else:
-            powershell_by_path[path] = cached
-    measured_powershell, measured_version = _powershell_functions(powershell_misses, files)
-    measured_by_path = {record["path"]: [] for record in powershell_misses}
-    for function in measured_powershell:
-        measured_by_path[function["path"]].append(function)
-    for record in powershell_misses:
-        path = record["path"]
-        powershell_by_path[path] = measured_by_path[path]
-        if reuse is not None and identities is not None:
-            reuse.store("functions", (*identities[path], _FUNCTION_CONTEXT), measured_by_path[path])
-    if measured_version is not None and reuse is not None and reuse.enabled:
-        reuse.powershell_parser = measured_version
-    powershell_version = measured_version
-    if powershell_records and powershell_version is None and reuse is not None:
-        powershell_version = reuse.powershell_parser
-    for record in powershell_records:
-        functions.extend(powershell_by_path[record["path"]])
-
+    functions, powershell_version = _cached_powershell_functions(files, records, identities, reuse)
     analyzed_languages = set(LIZARD_SUFFIXES) | {"HTML/Jinja", "Inno Setup"}
     for record in records:
-        if record["language"] not in analyzed_languages:
-            continue
-        path = record["path"]
-        key = (*identities[path], _FUNCTION_CONTEXT) if identities is not None else None
-        cached = reuse.load("functions", key) if reuse is not None and key is not None else None
-        if cached is None:
-            cached = _functions_for_record(record, files[path])
-            if reuse is not None and key is not None:
-                reuse.store("functions", key, cached)
-        functions.extend(cached)
+        if record["language"] in analyzed_languages:
+            functions.extend(_cached_record_functions(record, files[record["path"]], identities, reuse))
     debt: Counter[str] = Counter()
     for function in functions:
         key = f"{function['language']}:{function['module']}:{function['role']}"
