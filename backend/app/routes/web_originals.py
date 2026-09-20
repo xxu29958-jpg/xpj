@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy.orm import Session
 from starlette.responses import Response
 
+from app.config import get_settings
 from app.database import get_db
 from app.routes._upload_request import read_request_upload
 from app.routes._web_attachment_intent import (
@@ -81,6 +82,7 @@ def web_original(request: Request, expense_id: int, ledger_id: str | None = None
                for action in ("verify", "replenish", "cleanup/retry", "cleanup/cancel")}
     ctx.update(original=health, original_expense=expense, original_intents=intents,
                message=request.query_params.get("msg", ""))
+    ctx["max_upload_size_bytes"] = get_settings().max_upload_size_bytes
     return templates.TemplateResponse(request=request, name="original.html", context=ctx)
 
 

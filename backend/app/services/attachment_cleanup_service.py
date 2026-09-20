@@ -131,19 +131,23 @@ def _settle_file(item: CleanupFile, tenant_id: str, *, delete_enabled: bool, can
         return item, 0
     candidate = resolve_upload_path_for_tenant(item.reference, tenant_id)
     if candidate is None:
+        if cancel_remaining:
+            return _file_result(item, outcome="cancelled"), 0
         return _file_result(item, error_code="invalid_reference"), 0
     try:
         if not candidate.exists():
             # The durable request explains this reference; this run removed no bytes.
             return _file_result(item, outcome="deleted"), 0
-        if not candidate.is_file():
-            return _file_result(item, error_code="invalid_reference"), 0
         if cancel_remaining:
             return _file_result(item, outcome="cancelled"), 0
+        if not candidate.is_file():
+            return _file_result(item, error_code="invalid_reference"), 0
         if not delete_enabled:
             return item, 0
         candidate.unlink()
     except OSError:
+        if cancel_remaining:
+            return _file_result(item, outcome="cancelled"), 0
         return _file_result(item, error_code="unlink_failed"), 0
     return _file_result(item, outcome="deleted"), 1
 

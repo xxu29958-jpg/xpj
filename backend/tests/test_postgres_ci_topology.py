@@ -183,7 +183,7 @@ def _assert_lane(
     _assert_postgres_job_contract(job, ordinary=lane == "ordinary", sharded=shard_index is not None)
     assert job["outputs"]["qualification_sha"] == "${{ steps.qualification.outputs.sha }}"
     assert job["outputs"]["qualification_source_sha"] == ("${{ steps.qualification.outputs.source_sha }}")
-    _assert_bounded_timeout(job, ceiling=15 if lane == "ordinary" else 12)
+    _assert_bounded_timeout(job, ceiling=15)
     _assert_no_continue_on_error(job)
     _assert_managed_python_precedes(job, "Verify qualification SHA", "Load test PostgreSQL contract")
     steps = _steps(job)

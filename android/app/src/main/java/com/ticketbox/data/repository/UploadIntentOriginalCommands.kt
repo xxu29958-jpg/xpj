@@ -3,8 +3,11 @@ package com.ticketbox.data.repository
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.OriginalHealthDto
+import com.ticketbox.data.remote.dto.toWriteCompatibility
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -29,27 +32,34 @@ internal suspend fun UploadIntentRepository.acceptOriginalAttachment(request: Or
     require(isUploadIntentFileKey(request.key))
     val bound = guard.bindExact(request.payload.origin)
     requireOriginalWriter()
-    files.acceptBatch(
-        sources = if (request.payload.operation == "replenish_original") listOf(
-            UploadIntentFileSource(request.key, request.payload.file) { request.prepareOriginalSource() },
-        ) else emptyList(),
-        beforePrepare = {
-            outbox.originalUploadRows(bound, listOf(request.key), PendingMutationType.OriginalAttachment).singleOrNull()?.let { row ->
-                val original = requireNotNull(readOriginalPayload(row))
-                check(original.copy(file = null) == request.payload.copy(file = null))
-                outbox.schedulePending()
-                row.id
-            }
-        },
-        persist = { descriptors ->
-            requireOriginalWriter()
-            val payload = request.payload.copy(file = descriptors.singleOrNull())
-            require(payload.supported())
-            val intent = PendingMutationIntent(PendingMutationType.OriginalAttachment, "expense:${payload.expenseId}",
-                originalPayloadAdapter.toJson(payload), payload.expectedRowVersion, request.key)
-            outbox.enqueueUploadBatch(bound, listOf(intent)).single()
-        },
-    )
+    bound.requireOriginalCapability()
+    try {
+        files.acceptBatch(
+            sources = if (request.payload.operation == "replenish_original") listOf(
+                UploadIntentFileSource(request.key, request.payload.file) { request.prepareOriginalSource() },
+            ) else emptyList(),
+            beforePrepare = {
+                outbox.originalUploadRows(bound, listOf(request.key), PendingMutationType.OriginalAttachment).singleOrNull()?.let { row ->
+                    val original = requireNotNull(readOriginalPayload(row))
+                    check(original.copy(file = null) == request.payload.copy(file = null))
+                    outbox.schedulePending()
+                    row.id
+                }
+            },
+            persist = { descriptors ->
+                requireOriginalWriter()
+                val payload = request.payload.copy(file = descriptors.singleOrNull())
+                require(payload.supported())
+                val intent = PendingMutationIntent(PendingMutationType.OriginalAttachment, "expense:${payload.expenseId}",
+                    originalPayloadAdapter.toJson(payload), payload.expectedRowVersion, request.key)
+                outbox.enqueueUploadBatch(bound, listOf(intent)).single()
+            },
+        )
+    } catch (error: Exception) {
+        // Only all-row reference proof can reclaim bytes after an uncertain Room commit.
+        withContext(NonCancellable) { runCatching { collectOrphans() }.onFailure(error::addSuppressed) }
+        throw error
+    }
 }
 
 internal suspend fun UploadIntentRepository.recoverOriginalAttachment(binding: LogicalSessionBinding, rowId: Long,
@@ -64,9 +74,16 @@ internal suspend fun UploadIntentRepository.recoverOriginalAttachment(binding: L
     } else {
         requireOriginalWriter()
         check(pending.canRetry)
+        bound.requireOriginalCapability()
         outbox.resolveFailed(rowId, FailedResolution.Retry(), bound)
     }
     check(changed)
+}
+
+private suspend fun BoundLedgerRequest.requireOriginalCapability() {
+    if (!call { it.runtimeCompatibility().toWriteCompatibility().supportsOriginalAttachment }) {
+        throw RepositoryException("此服务器暂不支持原件管理，请更新为配套版本后继续。", errorCode = "runtime_version_mismatch")
+    }
 }
 
 private fun UploadIntentRepository.requireOriginalWriter() {

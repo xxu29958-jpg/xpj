@@ -303,3 +303,43 @@ the real Chromium continuation exercise passed again on the integrated source.
 The bounded consumer review found no remaining blocker in original entry,
 cleanup feedback, raw editing inputs or accepted-receipt handling. Its source
 review does not substitute for the final PostgreSQL/Connected executions.
+
+### PR #424 merge closeout, 2026-09-20
+
+The nine published review findings on `a2a0e2cabe0b69fd9fb4367c4c61078606d54a12`
+are handled within this original-attachment delivery. Actual counterexamples
+showed Android admission could retain an unreferenced prepared file, Web metadata
+failure could leave a Blob, and definitive Web rejection had no discard path.
+Both clients now reuse their existing intent/reference owners to recover or
+discard safely. An uncertain accepted command still retains its original key
+and bytes. Web discard validates the rejected snapshot before file removal and
+keeps the metadata retryable if that removal fails.
+
+Original snapshots enforce the configured size while streaming, and Web checks
+the same configured limit before buffering. Replenishment refuses an intact
+original unless its current reference is covered by pending cleanup; missing,
+damaged, cleaned or unreadable originals retain the same-bill recovery path.
+Accepted after-confirm cleanup resumes even when admitting new age-based cleanup
+is disabled. Explicit cancellation can release an unexecuted invalid reference
+without deleting anything or falsely marking it deleted.
+
+`original_attachment_version=1` is advertised through the existing runtime
+capabilities. Android health, admission, retry and dispatch negotiate that feature;
+an older backend gives the existing upgrade explanation before exposing an
+operable original command. Other capabilities and ordinary image reads remain.
+The generated OpenAPI schema carries the feature without changing the API date.
+
+That exact prior head passed Connected and CodeQL. Its release compiler exhausted
+the Kotlin heap; debug compilation and real-db shard 2/4 reached their job time
+limits. APK compilation now uses one worker and a 4096 MiB Kotlin heap. The four
+serial PostgreSQL partitions stay intact, with their job cap increased from 12 to
+15 minutes. No test, assertion, required check or result requirement is removed.
+
+Local follow-up passed 146 original/cleanup/read/consumer short tests, 15 Web draft
+contracts and the real Chromium continuation exercise, plus 17 targeted Android
+JVM tests and both correct Detekt variants. PostgreSQL runtime-capability cases
+were collected locally; execution belongs to the next exact cloud candidate.
+Four selected Android Connected cases also passed without skips; that selection
+does not satisfy or replace the existing full 61-case qualification minimum.
+Merge qualification remains CI/CodeQL/Connected on that candidate and independent
+main qualification. Later product deliveries are not prerequisites for this PR.

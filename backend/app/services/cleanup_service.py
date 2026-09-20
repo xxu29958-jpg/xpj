@@ -127,21 +127,20 @@ def cleanup_after_confirm(db: Session, expense: Expense) -> bool:
 def _cleanup_retained_images(db: Session, tenant_id: str, *, status: str) -> CleanupResult:
     settings = get_settings()
     days = settings.delete_image_after_days if status == "confirmed" else settings.delete_rejected_after_days
-    if days <= 0:
-        return CleanupResult(False, days, 0, 0, 0)
     original_time = Expense.confirmed_at if status == "confirmed" else Expense.rejected_at
     cutoff = now_utc() - timedelta(days=days)
     expenses = list(db.scalars(select(Expense).where(
         Expense.tenant_id == tenant_id,
         or_(Expense.attachment_cleanup_request.is_not(None),
-            and_(Expense.status == status, func.greatest(original_time, Expense.image_replenished_at) <= cutoff)),
+            and_(days > 0, Expense.status == status,
+                 func.greatest(original_time, Expense.image_replenished_at) <= cutoff)),
     )))
     deleted_images = deleted_thumbnails = 0
     for expense in expenses:
         result = execute_attachment_cleanup(db, expense, reason=f"{status}_retention", settings_provider=get_settings)
         deleted_images += result.deleted_images
         deleted_thumbnails += result.deleted_thumbnails
-    return CleanupResult(True, days, len(expenses), deleted_images, deleted_thumbnails)
+    return CleanupResult(days > 0, days, len(expenses), deleted_images, deleted_thumbnails)
 
 
 def cleanup_confirmed_images(db: Session, tenant_id: str) -> CleanupResult:

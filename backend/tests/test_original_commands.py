@@ -199,6 +199,19 @@ def test_replenishment_preserves_bill_history_and_available_thumbnail(replenishm
     case.db.commit.assert_called_once_with()
 
 
+def test_intact_original_cannot_be_replenished_to_renew_retention(replenishment_case):
+    case = replenishment_case
+    case.path.write_bytes(case.data)
+    old_path = case.expense.image_path
+    with pytest.raises(AppError) as rejected:
+        _replenish(case)
+    assert rejected.value.error == "original_replenishment_not_needed"
+    assert case.expense.image_path == old_path
+    assert case.expense.image_replenished_at is None
+    assert list(case.path.parent.iterdir()) == [case.path]
+    case.db.commit.assert_not_called()
+
+
 def test_replenishment_detaches_thumbnail_owned_by_old_cleanup(replenishment_case):
     from uuid import uuid4
 
@@ -208,6 +221,7 @@ def test_replenishment_detaches_thumbnail_owned_by_old_cleanup(replenishment_cas
     request = CleanupRequest(request_id=uuid4(), reason="after_confirm", requested_at=datetime.now(UTC),
         image=CleanupFile(reference=case.expense.image_path), thumbnail=CleanupFile(reference=case.expense.thumbnail_path))
     case.expense.attachment_cleanup_request = request.model_dump(mode="json")
+    case.path.write_bytes(case.data)  # A pending cleanup of this original still permits recovery.
     _replenish(case)
     assert case.expense.attachment_cleanup_request == request.model_dump(mode="json")
     assert case.expense.thumbnail_path is None
