@@ -2,15 +2,57 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
+import copy
+from collections import Counter, defaultdict
+from dataclasses import dataclass, field
 from importlib.metadata import version
+from pathlib import PurePosixPath
 
 from repository_weight_debt import android_recorded_debt, new_suppressions, python_complexity
 from repository_weight_functions import measure_functions
-from repository_weight_sources import DETEKT_BASELINES, exclusion, measure_source
+from repository_weight_sources import DETEKT_BASELINES, LANGUAGES, exclusion, measure_source, source_owner
 
 ROLES = ("production", "test", "tooling")
 COMPLEXITY_LIMIT = 15
+_LEXICAL_CONTEXT = "pygments-lines-and-suppressions-v1"
+
+
+@dataclass
+class AnalysisReuse:
+    """Invocation-local successful per-file analyses; never stores a snapshot verdict."""
+
+    enabled: bool = True
+    _values: dict[tuple, object] = field(default_factory=dict)
+    _hits: Counter[str] = field(default_factory=Counter)
+    _misses: Counter[str] = field(default_factory=Counter)
+    powershell_parser: str | None = None
+
+    def load(self, namespace: str, key: tuple):
+        if not self.enabled:
+            return None
+        cache_key = (namespace, *key)
+        if cache_key not in self._values:
+            self._misses[namespace] += 1
+            return None
+        self._hits[namespace] += 1
+        return copy.deepcopy(self._values[cache_key])
+
+    def store(self, namespace: str, key: tuple, value: object) -> None:
+        if self.enabled:
+            self._values[(namespace, *key)] = copy.deepcopy(value)
+
+    def summary(self) -> dict:
+        return {
+            "enabled": self.enabled,
+            "hits": dict(sorted(self._hits.items())),
+            "misses": dict(sorted(self._misses.items())),
+        }
+
+
+def _analysis_identity(path: str, raw_identity: str, context: str) -> tuple:
+    language = LANGUAGES.get(PurePosixPath(path).suffix.lower(), ("Shell", "bash"))[0]
+    module, role = source_owner(path)
+    return raw_identity, path, language, module, role, context
 
 
 def grouped_loc(records: list[dict], field: str) -> dict[str, dict[str, int]]:
@@ -21,23 +63,42 @@ def grouped_loc(records: list[dict], field: str) -> dict[str, dict[str, int]]:
     return dict(sorted(groups.items()))
 
 
-def measure_snapshot(sha: str, files: dict[str, str], excluded: dict[str, int]) -> dict:
+def measure_snapshot(
+    sha: str,
+    files: dict[str, str],
+    raw_identities: dict[str, str],
+    excluded: dict[str, int],
+    *,
+    reuse: AnalysisReuse | None = None,
+    analysis_context: str = "repository-weight-v1",
+) -> dict:
     records: list[dict] = []
     suppressions: list[dict] = []
+    identities: dict[str, tuple] = {}
     for path, text in sorted(files.items()):
         if exclusion(path) is not None:
             continue
-        record, directives = measure_source(path, text)
+        identity = _analysis_identity(path, raw_identities[path], analysis_context)
+        identities[path] = identity
+        cached = reuse.load("lexical", (*identity, _LEXICAL_CONTEXT)) if reuse is not None else None
+        if cached is None:
+            record, directives = measure_source(path, text)
+            if reuse is not None:
+                reuse.store("lexical", (*identity, _LEXICAL_CONTEXT), (record, directives))
+        else:
+            record, directives = cached
         records.append(record)
         suppressions.extend(directives)
     totals = {f"{role}_loc": sum(row["loc"] for row in records if row["role"] == role) for role in ROLES}
     totals["executable_total"] = totals["production_loc"] + totals["test_loc"]
     totals["source_total"] = totals["executable_total"] + totals["tooling_loc"]
     debt = {f"files_over_{limit}": sum(row["loc"] > limit for row in records) for limit in (500, 800, 1000)}
-    python_debt, findings = python_complexity(files, records)
+    python_debt, findings = python_complexity(files, records, identities=identities, reuse=reuse)
     debt.update(python_debt)
     debt.update(android_recorded_debt(files))
-    functions, function_debt, powershell_version = measure_functions(files, records)
+    functions, function_debt, powershell_version = measure_functions(
+        files, records, identities=identities, reuse=reuse,
+    )
     debt.update(function_debt)
     return {
         "sha": sha, "totals": totals, "modules": grouped_loc(records, "module"),

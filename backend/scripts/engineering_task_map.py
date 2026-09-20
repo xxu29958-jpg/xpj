@@ -30,6 +30,50 @@ _SHARED_WEB = (
     ("backend/app/templates/web/base.html", "web_loader", "name_search_clue"),
 )
 
+_QUALIFICATION_TASKS = {
+    "ci-failure": {
+        "title": "Read the original failure before following its qualification owner",
+        "chain": (
+            (".github/workflows/ci.yml", "execution", "test_or_runtime_consumer"),
+            ("backend/scripts/check_api_contract.py", "api_snapshot_check", "declared_anchor"),
+            ("backend/scripts/verify_backend_ci_results.py", "backend_qualification", "declared_anchor"),
+            ("backend/scripts/verify_scoped_ci_results.py", "lane_qualification", "declared_anchor"),
+            ("backend/scripts/ci_run_timing.py", "completed_run_timing", "declared_anchor"),
+            ("backend/tests/test_backend_ci_results.py", "failure_propagation", "test_or_runtime_consumer"),
+        ),
+        "notes": "Keep run/attempt/job/step and the original rule/test error. An anchor is a lead, not a root-cause finding.",
+        "reproduce": "API snapshot drift: python backend/scripts/check_api_contract.py; other failures: use the failed step's exact command.",
+        "qualification": "CI Backend contracts -> Backend; complete affected PostgreSQL, Windows, Android and CodeQL obligations independently.",
+    },
+    "android-qualification": {
+        "title": "Android build, device results and process qualification",
+        "chain": (
+            (".github/workflows/android-connected-test.yml", "device_execution", "test_or_runtime_consumer"),
+            ("android/app/build.gradle.kts", "build_and_evidence_tasks", "declared_anchor"),
+            ("android/scripts/verify_android_test_qualification.py", "result_and_process_qualification", "declared_anchor"),
+            ("backend/tests/test_android_test_qualification.py", "result_counterexamples", "test_or_runtime_consumer"),
+            ("backend/tests/test_android_process_qualification.py", "process_counterexamples", "test_or_runtime_consumer"),
+        ),
+        "notes": "Use the original Gradle task/test ID and XML or process error; device evidence must be captured while its isolated emulator is alive.",
+        "reproduce": "From android/, with ANDROID_SERIAL bound to an isolated emulator: ./gradlew --no-daemon --max-workers=2 :app:connectedGrayDebugAndroidTest",
+        "qualification": "Android fast + debug/release APK + SCA -> Android; Connected execution with live-device finalizer -> Connected (emulator); CodeQL extraction remains separate.",
+    },
+    "postgres-qualification": {
+        "title": "PostgreSQL collection, isolated shards and recovery",
+        "chain": (
+            (".github/workflows/ci.yml", "database_execution", "test_or_runtime_consumer"),
+            ("backend/scripts/run_postgres_pytest_lane.py", "selection_and_shards", "declared_anchor"),
+            ("backend/scripts/test_postgres_contract.py", "cluster_contract", "declared_anchor"),
+            ("backend/tests/conftest.py", "database_and_worker_isolation", "test_or_runtime_consumer"),
+            ("backend/tests/test_postgres_ci_lane_runner.py", "collection_and_failure_contracts", "test_or_runtime_consumer"),
+            ("backend/tests/test_postgres_ci_topology.py", "recovery_and_aggregation_wiring", "test_or_runtime_consumer"),
+        ),
+        "notes": "Read nodeid plus setup/call/teardown duration. Preserve ordinary/real-db/recovery boundaries; counts or map anchors do not prove a test passed.",
+        "reproduce": "From backend/, with the authorized isolated PostgreSQL test environment: python -m scripts.run_postgres_pytest_lane --lane real-db --workers 1",
+        "qualification": "All ordinary and real-db shards + real PostgreSQL smoke and backup/restore drill -> Backend (PostgreSQL).",
+    },
+}
+
 
 def _node(repo: Path, snapshot_sha: str, path: str, role: str, evidence: str) -> dict[str, object]:
     present = git_path_exists(repo, snapshot_sha, path)
@@ -72,6 +116,11 @@ def resolve_task(
                 "classifier prefix rules consume that allowlist."
             ),
         }
+    elif name in _QUALIFICATION_TASKS:
+        definition = _QUALIFICATION_TASKS[name]
+        chain = definition["chain"]
+        title = definition["title"]
+        extra = {key: value for key, value in definition.items() if key not in {"chain", "title"}}
     else:
         raise ValueError(f"unknown task: {name}")
     return {
@@ -102,4 +151,7 @@ def render_task(task: dict[str, object]) -> str:
         lines.append(
             f"  {node['evidence']} {node['role']} {node['path']} present={str(node['present']).lower()}"
         )
+    for key in ("reproduce", "qualification"):
+        if task.get(key):
+            lines.append(f"{key}: {task[key]}")
     return "\n".join(lines) + "\n"

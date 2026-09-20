@@ -10,6 +10,7 @@ import subprocess
 from collections import Counter
 from contextlib import redirect_stderr
 from html.parser import HTMLParser
+from itertools import chain
 from pathlib import Path
 
 import lizard
@@ -17,6 +18,7 @@ from pygments.lexers import get_lexer_by_name
 from pygments.token import Comment, Keyword, Literal, Name
 
 LIZARD_SUFFIXES = {"Python": ".py", "Kotlin": ".kt", "Java": ".java", "JavaScript": ".js", "TypeScript": ".ts"}
+_FUNCTION_CONTEXT = "lizard-html-inno-powershell-functions-v1"
 
 
 def _comments_without_exemptions(tokens, reader):
@@ -123,19 +125,75 @@ def _powershell_functions(records: list[dict], files: dict[str, str]) -> tuple[l
     return functions, measured["version"]
 
 
-def measure_functions(files: dict[str, str], records: list[dict]) -> tuple[list[dict], dict[str, int], str | None]:
-    functions, powershell_version = _powershell_functions(records, files)
+def _functions_for_record(record: dict, text: str) -> list[dict]:
+    language = record["language"]
+    if language in LIZARD_SUFFIXES:
+        return _lizard_functions(record, text, language)
+    if language == "HTML/Jinja":
+        parser = InlineScripts()
+        parser.feed(text)
+        functions: list[dict] = []
+        for offset, script in parser.scripts:
+            functions.extend(_lizard_functions(record, script, "JavaScript", offset))
+        return functions
+    if language == "Inno Setup":
+        return _inno_functions(record, text)
+    return []
+
+
+def _function_cache_entry(record: dict, identities, reuse) -> tuple[tuple | None, list[dict] | None]:
+    key = (*identities[record["path"]], _FUNCTION_CONTEXT) if identities is not None else None
+    cached = reuse.load("functions", key) if reuse is not None and key is not None else None
+    return key, cached
+
+
+def _cached_powershell_functions(files: dict[str, str], records: list[dict], identities, reuse):
+    powershell_records = [record for record in records if record["language"] == "PowerShell"]
+    misses: list[dict] = []
+    by_path: dict[str, list[dict]] = {}
+    for record in powershell_records:
+        _, cached = _function_cache_entry(record, identities, reuse)
+        if cached is None:
+            misses.append(record)
+        else:
+            by_path[record["path"]] = cached
+    measured, version = _powershell_functions(misses, files)
+    by_path.update({record["path"]: [] for record in misses})
+    for function in measured:
+        by_path[function["path"]].append(function)
+    if reuse is not None and identities is not None:
+        for record in misses:
+            path = record["path"]
+            reuse.store("functions", (*identities[path], _FUNCTION_CONTEXT), by_path[path])
+    if reuse is not None and reuse.enabled:
+        if version is not None:
+            reuse.powershell_parser = version
+        elif powershell_records:
+            version = reuse.powershell_parser
+    return list(chain.from_iterable(by_path[record["path"]] for record in powershell_records)), version
+
+
+def _cached_record_functions(record: dict, text: str, identities, reuse) -> list[dict]:
+    key, cached = _function_cache_entry(record, identities, reuse)
+    if cached is None:
+        cached = _functions_for_record(record, text)
+        if reuse is not None and key is not None:
+            reuse.store("functions", key, cached)
+    return cached
+
+
+def measure_functions(
+    files: dict[str, str],
+    records: list[dict],
+    *,
+    identities: dict[str, tuple] | None = None,
+    reuse=None,
+) -> tuple[list[dict], dict[str, int], str | None]:
+    functions, powershell_version = _cached_powershell_functions(files, records, identities, reuse)
+    analyzed_languages = set(LIZARD_SUFFIXES) | {"HTML/Jinja", "Inno Setup"}
     for record in records:
-        language, text = record["language"], files[record["path"]]
-        if language in LIZARD_SUFFIXES:
-            functions.extend(_lizard_functions(record, text, language))
-        elif language == "HTML/Jinja":
-            parser = InlineScripts()
-            parser.feed(text)
-            for offset, script in parser.scripts:
-                functions.extend(_lizard_functions(record, script, "JavaScript", offset))
-        elif language == "Inno Setup":
-            functions.extend(_inno_functions(record, text))
+        if record["language"] in analyzed_languages:
+            functions.extend(_cached_record_functions(record, files[record["path"]], identities, reuse))
     debt: Counter[str] = Counter()
     for function in functions:
         key = f"{function['language']}:{function['module']}:{function['role']}"

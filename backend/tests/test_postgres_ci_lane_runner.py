@@ -55,6 +55,7 @@ def _assert_generated_lane_commands() -> None:
     )
     assert ordinary[:3] == (sys.executable, "-m", "pytest")
     assert ordinary.count("tests") == 1
+    assert ordinary.count("--durations=30") == 1
     assert ordinary[ordinary.index("--xpj-postgres-lane") + 1] == "ordinary"
     assert ordinary[ordinary.index("-m", 3) + 1] == "not real_db"
     assert ordinary[ordinary.index("-n") + 1] == "4"
@@ -77,6 +78,7 @@ def _assert_generated_lane_commands() -> None:
     assert real_db[real_db.index("--xpj-postgres-lane") + 1] == "real-db"
     assert real_db[real_db.index("--xpj-postgres-shard-index") + 1] == "3"
     assert real_db[real_db.index("--xpj-postgres-shard-count") + 1] == "4"
+    assert real_db.count("--durations=30") == 1
     assert "-n" not in real_db
 
 
@@ -96,13 +98,15 @@ def _assert_main_forwards_shard_coordinates(
         assert env == {}
         assert shell is False
         commands.append(command)
-        return subprocess.CompletedProcess(command, 0)
+        returncode = 23 if "real_db" in command else 0
+        return subprocess.CompletedProcess(command, returncode)
 
     with monkeypatch.context() as patch:
         patch.setattr(run_postgres_pytest_lane, "child_environment", lambda source: {})
         patch.setattr(run_postgres_pytest_lane.subprocess, "run", fake_run)
         for lane, workers in (("ordinary", "4"), ("real-db", "1")):
             for shard_index in (0, 1):
+                expected_returncode = 23 if lane == "real-db" else 0
                 assert (
                     run_postgres_pytest_lane.main(
                         (
@@ -116,7 +120,7 @@ def _assert_main_forwards_shard_coordinates(
                             "2",
                         )
                     )
-                    == 0
+                    == expected_returncode
                 )
     assert len(commands) == 4
     for command_index, command in enumerate(commands):

@@ -835,6 +835,48 @@ def test_parse_audit_lane_timing_reads_github_prefixed_bom_crlf() -> None:
     assert run["complete"] is True
 
 
+def test_closed_pr_base_comes_from_verified_checkout_parents_not_current_main() -> None:
+    bundle = _finished_ci(base=None)
+    calls = []
+
+    def opener(request):
+        calls.append(request.full_url)
+        return _FakeResponse({
+            "sha": "c" * 40,
+            "parents": [{"sha": "d" * 40}, {"sha": "a" * 40}],
+        })
+
+    ci_run_timing.attach_checkout_base(bundle, "owner/repo", "t", urlopen=opener)
+    assert ci_run_timing._base_shas([bundle]) == {"d" * 40}
+    assert bundle["base_sha_source"] == "checkout_commit_parents"
+    assert calls == ["https://api.github.com/repos/owner/repo/commits/" + "c" * 40]
+
+    # A branch commit, octopus merge, wrong checkout, or unrelated source is
+    # not evidence of this pull request's base, even if it has a parent.
+    for payload in (
+        {"sha": "c" * 40, "parents": [{"sha": "d" * 40}]},
+        {"sha": "c" * 40, "parents": [{"sha": "d" * 40}, {"sha": "a" * 40}, {"sha": "e" * 40}]},
+        {"sha": "e" * 40, "parents": [{"sha": "d" * 40}, {"sha": "a" * 40}]},
+        {"sha": "c" * 40, "parents": [{"sha": "d" * 40}, {"sha": "e" * 40}]},
+    ):
+        candidate = _finished_ci(base=None)
+        try:
+            ci_run_timing.attach_checkout_base(
+                candidate, "owner/repo", "t", urlopen=lambda request, data=payload: _FakeResponse(data),
+            )
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(payload)
+        assert not ci_run_timing._base_shas([candidate])
+
+    def no_remote_lookup(request):
+        raise AssertionError(request.full_url)
+
+    for candidate in (_finished_ci(), _finished_ci(event="push", base=None, checkout="a" * 40)):
+        ci_run_timing.attach_checkout_base(candidate, "owner/repo", "t", urlopen=no_remote_lookup)
+
+
 def test_partial_audit_log_without_run_marker_is_incomplete() -> None:
     report = ci_run_timing.build_report(
         [_finished_ci(jobs=[_job(name="Backend contracts")], checkout="b" * 40)],
@@ -1233,4 +1275,3 @@ def test_android_phase_evidence_walks_full_attempt_lineage() -> None:
     assert row["attempt"] == 3
     assert row["evidence_attempt"] == 1
     assert row["inherited"] is True
-
