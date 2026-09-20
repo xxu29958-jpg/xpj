@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.models import BillSplitInvitation, Debt, ExpenseOffsetFact
+from app.models import BillSplitAgreementChange, BillSplitInvitation, Debt, ExpenseOffsetFact
 
 _INVITATION_STATUSES = frozenset({"invited", "accepted", "rejected", "cancelled", "expired"})
 
@@ -19,6 +19,15 @@ class AcceptedSourceRelationship:
     receiver_display_name: str | None
     agreed_share_home_minor: int
     debt_public_id: str | None
+    current_agreed_share_home_minor: int | None = None
+
+
+def current_agreed_share_expression():
+    """The latest bilateral acceptance changes current share, never invitation history."""
+    latest = select(BillSplitAgreementChange.new_share_amount_cents).where(
+        BillSplitAgreementChange.invitation_id == BillSplitInvitation.id,
+    ).order_by(BillSplitAgreementChange.id.desc()).limit(1).correlate(BillSplitInvitation).scalar_subquery()
+    return func.coalesce(latest, BillSplitInvitation.amount_cents)
 
 
 def list_accepted_source_relationships(
@@ -27,20 +36,20 @@ def list_accepted_source_relationships(
     sender_ledger_id: str,
     sender_expense_id: int,
 ) -> tuple[AcceptedSourceRelationship, ...]:
-    """Read accepted split snapshots and their canonical Debt links in two queries."""
+    """Read original/current agreement shares and canonical Debt links in two queries."""
 
-    invitations = list(
-        db.scalars(
-            select(BillSplitInvitation)
+    rows = list(
+        db.execute(
+            select(BillSplitInvitation, current_agreed_share_expression())
             .where(BillSplitInvitation.sender_ledger_id == sender_ledger_id)
             .where(BillSplitInvitation.sender_expense_id == sender_expense_id)
             .where(BillSplitInvitation.status == "accepted")
             .order_by(BillSplitInvitation.created_at, BillSplitInvitation.id)
         )
     )
-    if not invitations:
+    if not rows:
         return ()
-    public_ids = [invitation.public_id for invitation in invitations]
+    public_ids = [invitation.public_id for invitation, _current_share in rows]
     debt_by_source = dict(
         db.execute(
             select(Debt.source_id, Debt.public_id)
@@ -53,9 +62,10 @@ def list_accepted_source_relationships(
             invitation_public_id=invitation.public_id,
             receiver_display_name=invitation.receiver_display_name_snapshot,
             agreed_share_home_minor=invitation.amount_cents,
+            current_agreed_share_home_minor=current_share,
             debt_public_id=debt_by_source.get(invitation.public_id),
         )
-        for invitation in invitations
+        for invitation, current_share in rows
     )
 
 

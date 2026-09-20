@@ -19,6 +19,7 @@ from sqlalchemy import select, text
 from sqlalchemy.exc import OperationalError
 
 from app.database import SessionLocal, engine
+from app.errors import AppError
 from app.models import Account, Debt, Repayment
 from app.schemas import DebtCreateRequest, RepaymentCreateRequest
 from app.services import debt_service
@@ -148,3 +149,19 @@ def test_two_sessions_repayment_serializes_then_second_rechecks(*, identity) -> 
         assert len(repayments) == 1
         assert repayments[0].amount_cents == 6000
         assert debt_service.compute_remaining(db, debt) == 4000
+
+
+def test_preloaded_debt_version_is_refreshed_after_another_writer_commits(identity):
+    public_id, version = _seed_committed_debt(principal_amount_cents=10_000)
+    actor = _owner_account_id()
+    with SessionLocal() as reader:
+        cached = reader.scalar(select(Debt).where(Debt.public_id == public_id))
+        assert cached.row_version == version
+        with SessionLocal() as writer:
+            debt_service.record_repayment(writer, tenant_id="owner", public_id=public_id, actor_account_id=actor,
+                payload=_repayment_payload(2_000, version), idempotency_key=str(uuid4()), commit=True)
+        with pytest.raises(AppError) as conflict:
+            debt_service.record_repayment(reader, tenant_id="owner", public_id=public_id, actor_account_id=actor,
+                payload=_repayment_payload(1_000, version), idempotency_key=str(uuid4()), commit=True)
+        assert conflict.value.error == "state_conflict"
+        assert cached.row_version == version + 1

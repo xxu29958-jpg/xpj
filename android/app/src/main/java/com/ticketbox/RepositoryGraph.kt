@@ -128,6 +128,9 @@ internal class RepositoryGraph(
 
     val debtRepository = DebtRepository(
         apiProvider = apiServiceProvider,
+        splitAgreement = com.ticketbox.data.repository.SplitAgreementRepository(
+            apiServiceProvider, outbox, outboxAdapters.splitAgreementAdapter,
+        ),
     )
 
     val debtWriteRepository = com.ticketbox.data.repository.DebtWriteRepository(

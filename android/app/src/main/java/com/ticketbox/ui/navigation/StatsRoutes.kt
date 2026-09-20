@@ -185,10 +185,9 @@ internal fun DebtGoalRoute(
         )
     } else if (openLinkedDebtId != null) {
         DebtDetailHost(
+            splitAgreement = screenFactory.debtRepository.splitAgreement,
             openDebtId = openLinkedDebtId,
-            detailViewModel = routeModels.linkedDetail,
-            proposalViewModel = routeModels.linkedProposal,
-            historyViewModel = routeModels.linkedRepaymentHistory,
+            models = DebtDetailHostModels(routeModels.linkedDetail, routeModels.linkedProposal, routeModels.linkedRepaymentHistory),
             onBack = {
                 linkedDebtId = null
                 routeModels.debtGoal.refresh()
@@ -264,10 +263,9 @@ internal fun DebtRoute(
     val openDebtId = detailDebtId
     if (openDebtId != null) {
         DebtDetailHost(
+            splitAgreement = screenFactory.debtRepository.splitAgreement,
             openDebtId = openDebtId,
-            detailViewModel = detailViewModel,
-            proposalViewModel = proposalViewModel,
-            historyViewModel = repaymentHistoryViewModel,
+            models = DebtDetailHostModels(detailViewModel, proposalViewModel, repaymentHistoryViewModel),
             onBack = {
                 detailDebtId = null
                 debtListViewModel.refresh()
@@ -315,25 +313,45 @@ internal fun rememberDebtBillImageLauncher(
  */
 @Composable
 private fun DebtDetailHost(
+    splitAgreement: com.ticketbox.data.repository.SplitAgreementActions?,
     openDebtId: String,
-    detailViewModel: DebtDetailViewModel,
-    proposalViewModel: MemberRepaymentProposalViewModel,
-    historyViewModel: DebtActivityViewModel,
+    models: DebtDetailHostModels,
     onBack: () -> Unit,
 ) {
-    LaunchedEffect(openDebtId) { detailViewModel.loadDebt(openDebtId) }
+    val detailViewModel = models.detail
+    val proposalViewModel = models.proposal
+    val historyViewModel = models.history
+    var relatedTrail by remember(openDebtId) { mutableStateOf(listOf(openDebtId)) }
+    val displayedDebtId = relatedTrail.last()
+    val returnFromDetail = {
+        if (relatedTrail.size > 1) relatedTrail = relatedTrail.dropLast(1) else onBack()
+    }
+    val splitModel: com.ticketbox.viewmodel.SplitAgreementViewModel? = splitAgreement?.let { repository ->
+        viewModel(key = "split-agreement:$openDebtId", factory = object : androidx.lifecycle.ViewModelProvider.Factory {
+            override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T =
+                modelClass.cast(com.ticketbox.viewmodel.SplitAgreementViewModel(repository))!!
+        })
+    }
+    androidx.activity.compose.BackHandler { returnFromDetail() }
+    LaunchedEffect(displayedDebtId) { detailViewModel.loadDebt(displayedDebtId) }
     val mascot = rememberMascotController()
     val celebration by detailViewModel.celebration.collectAsStateWithLifecycle()
-    DisposableEffect(openDebtId) { onDispose { detailViewModel.consumeCelebration() } }
+    val detailState by detailViewModel.state.collectAsStateWithLifecycle()
+    val splitState = splitModel?.state?.collectAsStateWithLifecycle()?.value
+    val relationSettled = com.ticketbox.ui.screens.splitRelationSettled(detailState.debt, detailState.binding, splitState)
+    DisposableEffect(displayedDebtId) { onDispose { detailViewModel.consumeCelebration() } }
     Box(modifier = Modifier.fillMaxSize()) {
         DebtDetailScreen(
             viewModel = detailViewModel,
             proposalViewModel = proposalViewModel,
             historyViewModel = historyViewModel,
-            onBack = onBack,
+            onBack = returnFromDetail,
+            splitAgreement = splitModel?.let { model -> com.ticketbox.ui.screens.SplitAgreementPanel(model) { id ->
+                if (id != displayedDebtId) relatedTrail = relatedTrail + id
+            } },
         )
         DebtSettleCelebrationOverlay(
-            celebration = celebration,
+            celebration = celebration.takeIf { relationSettled },
             mascot = mascot,
             onConsume = detailViewModel::consumeCelebration,
         )
@@ -378,10 +396,9 @@ internal fun ReceivablesRoute(
     val openDebtId = detailDebtId
     if (openDebtId != null) {
         DebtDetailHost(
+            splitAgreement = screenFactory.debtRepository.splitAgreement,
             openDebtId = openDebtId,
-            detailViewModel = detailViewModel,
-            proposalViewModel = proposalViewModel,
-            historyViewModel = repaymentHistoryViewModel,
+            models = DebtDetailHostModels(detailViewModel, proposalViewModel, repaymentHistoryViewModel),
             onBack = {
                 detailDebtId = null
                 viewModel.refresh()

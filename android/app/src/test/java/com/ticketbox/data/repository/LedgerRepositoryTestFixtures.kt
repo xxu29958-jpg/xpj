@@ -553,6 +553,12 @@ internal class StubApi(
     override suspend fun parseDebtBill(
         file: MultipartBody.Part,
     ): com.ticketbox.data.remote.dto.DebtBillParseResponseDto = ledgerUnsupported()
+    override suspend fun splitAgreement(publicId: String, newShareAmountCents: Long?): com.ticketbox.data.remote.dto.BillSplitAgreementDto = ledgerUnsupported()
+    override suspend fun createSplitChangeProposal(publicId: String, request: com.ticketbox.data.remote.dto.BillSplitChangeCreateRequestDto, idempotencyKey: String?): com.ticketbox.data.remote.dto.BillSplitChangeProposalDto = ledgerUnsupported()
+    override suspend fun acceptSplitChangeProposal(publicId: String, proposalPublicId: String, request: com.ticketbox.data.remote.dto.BillSplitChangeAcceptRequestDto, idempotencyKey: String?): com.ticketbox.data.remote.dto.BillSplitAgreementDto = ledgerUnsupported()
+    override suspend fun rejectSplitChangeProposal(publicId: String, proposalPublicId: String, request: com.ticketbox.data.remote.dto.BillSplitChangeEmptyRequestDto, idempotencyKey: String?): com.ticketbox.data.remote.dto.BillSplitChangeProposalDto = ledgerUnsupported()
+    override suspend fun withdrawSplitChangeProposal(publicId: String, proposalPublicId: String, request: com.ticketbox.data.remote.dto.BillSplitChangeEmptyRequestDto, idempotencyKey: String?): com.ticketbox.data.remote.dto.BillSplitChangeProposalDto = ledgerUnsupported()
+
     override suspend fun debt(publicId: String): com.ticketbox.data.remote.dto.DebtDto = ledgerUnsupported()
     override suspend fun debtActivity(publicId: String, page: Int, focusRepayment: String?): com.ticketbox.data.remote.dto.DebtActivityListDto = ledgerUnsupported()
     override suspend fun debtRepayments(publicId: String, page: Int): com.ticketbox.data.remote.dto.RepaymentFactListDto = ledgerUnsupported()

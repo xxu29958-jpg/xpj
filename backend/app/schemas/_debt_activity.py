@@ -5,6 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, field_serializer
 
+from app.schemas._bill_split_change import BillSplitChangeProposalResponse
 from app.schemas._debts import MemberRepaymentProposalResponse, RepaymentFactResponse
 from app.schemas._money import SignedMoneyMinor
 from app.services.time_service import to_iso
@@ -16,6 +17,7 @@ class DebtActivityResponse(BaseModel):
     kind: Literal[
         "created", "repayment", "repayment_void", "adjustment", "forgiveness",
         "debt_void", "proposal_created", "proposal_resolved",
+        "split_change_proposed", "split_change_resolved", "split_agreement_changed",
     ]
     public_id: str
     recorded_at: datetime
@@ -25,6 +27,7 @@ class DebtActivityResponse(BaseModel):
     reason: str | None = None
     repayment: RepaymentFactResponse | None = None
     proposal: MemberRepaymentProposalResponse | None = None
+    split_change: BillSplitChangeProposalResponse | None = None
 
     @field_serializer("recorded_at")
     def serialize_recorded_at(self, value: datetime) -> str:

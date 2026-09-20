@@ -65,6 +65,7 @@ data class AcceptedInvitationImpact(
     val debtPublicId: String?,
     val originalAgreedShareHomeMinor: Long,
     val suggestedNetShareHomeMinor: Long,
+    val currentAgreedShareHomeMinor: Long? = null,
 )
 
 data class ExpenseRelationshipImpacts(

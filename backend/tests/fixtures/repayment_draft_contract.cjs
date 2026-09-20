@@ -54,26 +54,30 @@ function environment() {
     });
   }};
   function page(options = {}) {
+    const fieldNames = options.fieldNames || names, draftPrefix = options.draftPrefix || prefix;
     const currentScope = options.scope || scope;
     const defaults = {...values, origin_binding:JSON.stringify(currentScope), amount_major:'',
       home_currency_code:'JPY', expected_row_version:'99', paid_at:'2026-09-12', paid_at_timezone:'Asia/Tokyo'};
     const shown = {...defaults, ...(options.values || {})};
-    const fields = Object.fromEntries(names.map(name => [name, element({name, value:shown[name]})]));
+    const fields = Object.fromEntries(fieldNames.map(name => [name, element({name, value:shown[name]})]));
     fields.idempotency_key = element({name:'idempotency_key', value:options.ref ?? fresh});
     fields.csrf_token = element({name:'csrf_token', value:'never-persist-credential'});
     const status = element({hidden:true}), submit = element(), panel = element({hidden:options.canCreate === false});
     const replace = options.replacement ? element({hidden:true}) : null, label = element();
+    const preview = options.splitChange ? element() : null;
     const list = element(), shelf = element({hidden:true, querySelector:() => list});
     const ackStatus = element();
     const ack = options.ack ? element({dataset:{repaymentAck:JSON.stringify(options.ack)},
       getAttribute:() => JSON.stringify(options.ack)}) : null;
-    const form = element({dataset:{repaymentScope:JSON.stringify(currentScope),
+    const form = element({dataset:{repaymentScope:JSON.stringify(currentScope), repaymentKind:options.splitChange ? 'split-change' : '',
+      splitCanDraft:options.splitChange ? 'true' : 'false',
       repaymentResult:options.result || '', repaymentCanCreate:options.canCreate === false ? 'false' : 'true',
       repaymentCanRecover:options.canRecover === false ? 'false' : 'true',
       repaymentTarget:target, repaymentReplacement:options.replacement ? JSON.stringify(options.replacement) : ''},
       elements:{namedItem:name => fields[name]},
       querySelector:selector => ({'[data-repayment-submit]':submit, '[data-repayment-status]':status,
-        '[data-repayment-replace]':replace, 'label[for="debt-repay-amount"]':label})[selector] || null});
+        '[data-repayment-replace]':replace, '[data-repayment-preview]':preview,
+        'label[for="debt-repay-amount"]':label})[selector] || null});
     const selectors = {'[data-repayment-scope]':form, '[data-repayment-panel]':panel,
       '[data-repayment-shelf]':shelf, '[data-repayment-list]':list,
       '[data-repayment-ack]':ack, '[data-repayment-ack-status]':ackStatus};
@@ -84,12 +88,12 @@ function environment() {
       const hash = String(url).indexOf('#'); window.location.hash = hash < 0 ? '' : String(url).slice(hash);
     }};
     vm.runInNewContext(fs.readFileSync(process.argv[2], 'utf8'), {window});
-    const store = window.TicketboxDraftStore.createStore({prefix, fields:names,
+    const store = window.TicketboxDraftStore.createStore({prefix:draftPrefix, fields:fieldNames,
       validRef:/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i});
     const start = () => vm.runInNewContext(fs.readFileSync(process.argv[3], 'utf8'), {window, document});
     windows.push(window);
-    return {window, form, fields, status, submit, panel, shelf, list, ackStatus, store, start, replace, label,
-      snapshot:() => Object.fromEntries(names.map(name => [name, fields[name].value]))};
+    return {window, form, fields, status, submit, panel, shelf, list, ackStatus, store, start, replace, label, preview,
+      snapshot:() => Object.fromEntries(fieldNames.map(name => [name, fields[name].value]))};
   }
   return {entries, faults, requests, occupied, page,
     storageEvent() { windows.forEach(window => window.fire('storage')); }};
@@ -278,5 +282,8 @@ const cases = {
     assert.equal(renewed.submit.disabled, false);
   },
 };
-assert.ok(cases[process.argv[4]], 'unknown browser scenario');
-cases[process.argv[4]]().catch(error => { console.error(error); process.exitCode = 1; });
+module.exports = {environment, scope, original, fresh, target, repaymentId, tick};
+if (require.main === module) {
+  assert.ok(cases[process.argv[4]], 'unknown browser scenario');
+  cases[process.argv[4]]().catch(error => { console.error(error); process.exitCode = 1; });
+}

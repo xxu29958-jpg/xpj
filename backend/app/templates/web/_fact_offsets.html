@@ -86,10 +86,10 @@
   <p class="meta">已同时撤回 {{ offset_relationship_impacts.cancelled_count }} 个待处理拆账邀请。</p>
   {% endif %}
   {% for impact in offset_relationship_impacts.accepted %}
-  <p class="meta offset-impact">{{ impact.receiver_display_name }} 原分摊 {{ impact.original_share_label }}，按当前退款估算约 {{ impact.suggested_share_label }}。{% if impact.debt_href %}<a href="{{ impact.debt_href }}">查看这笔往来</a>{% endif %}</p>
+  <p class="meta offset-impact">{{ impact.receiver_display_name }} 原份额 {{ impact.original_share_label }}{% if impact.current_share_label %}，当前约定 {{ impact.current_share_label }}{% endif %}；按原份额对原单净额计算的参考为 {{ impact.suggested_share_label }}。{% if impact.debt_href %}<a href="{{ impact.debt_href }}">查看这笔往来</a>{% endif %}</p>
   {% endfor %}
   {% if offset_relationship_impacts.accepted %}
-  <p class="meta">估算是按原拆账比例计算，不会自动改账。</p>
+  <p class="meta">这是来源变化提醒；参考金额不是再次减免或新的待结算金额，也不表示双方尚未处理。请以当前约定和实际付返款为准，不会自动改账。</p>
   {% endif %}
 
   {% if offset_recent_history %}

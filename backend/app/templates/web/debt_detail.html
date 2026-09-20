@@ -347,5 +347,6 @@
 </section>
 {% endif %}
 
+{% if split_agreement %}{% with agreement=split_agreement %}{% include '_split_agreement_facts.html' %}{% endwith %}{% endif %}
 {% include '_debt_activity.html' %}
 {% endblock %}

@@ -61,6 +61,7 @@ class AcceptedInvitationImpact(BaseModel):
     receiver_display_name: str | None = None
     debt_public_id: str | None = None
     original_agreed_share_home_minor: NonNegativeMoneyAggregate
+    current_agreed_share_home_minor: NonNegativeMoneyAggregate | None = None
     suggested_net_share_home_minor: NonNegativeMoneyAggregate
     suggested_action: Literal["review_split"] = "review_split"
 

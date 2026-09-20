@@ -49,6 +49,7 @@ internal data class DebtDetailPanels(
     val proposalViewModel: MemberRepaymentProposalViewModel,
     val historyState: DebtActivityUiState,
     val historyCallbacks: DebtActivityCallbacks,
+    val splitAgreement: (@Composable () -> Unit)? = null,
 )
 
 @Composable
@@ -118,6 +119,7 @@ private fun LazyListScope.debtDetailBodyItems(
             )
         }
         DebtDetailBodyState.Content -> state.debt?.let { loaded ->
+            panels.splitAgreement?.let { section -> item { section() } }
             if (loaded.isMember) {
                 debtDetailMemberItems(
                     debt = loaded,

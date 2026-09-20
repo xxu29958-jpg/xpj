@@ -692,6 +692,12 @@ internal class FakeApiService(
     override suspend fun parseDebtBill(
         file: MultipartBody.Part,
     ): com.ticketbox.data.remote.dto.DebtBillParseResponseDto = unsupported()
+    override suspend fun splitAgreement(publicId: String, newShareAmountCents: Long?): com.ticketbox.data.remote.dto.BillSplitAgreementDto = unsupported()
+    override suspend fun createSplitChangeProposal(publicId: String, request: com.ticketbox.data.remote.dto.BillSplitChangeCreateRequestDto, idempotencyKey: String?): com.ticketbox.data.remote.dto.BillSplitChangeProposalDto = unsupported()
+    override suspend fun acceptSplitChangeProposal(publicId: String, proposalPublicId: String, request: com.ticketbox.data.remote.dto.BillSplitChangeAcceptRequestDto, idempotencyKey: String?): com.ticketbox.data.remote.dto.BillSplitAgreementDto = unsupported()
+    override suspend fun rejectSplitChangeProposal(publicId: String, proposalPublicId: String, request: com.ticketbox.data.remote.dto.BillSplitChangeEmptyRequestDto, idempotencyKey: String?): com.ticketbox.data.remote.dto.BillSplitChangeProposalDto = unsupported()
+    override suspend fun withdrawSplitChangeProposal(publicId: String, proposalPublicId: String, request: com.ticketbox.data.remote.dto.BillSplitChangeEmptyRequestDto, idempotencyKey: String?): com.ticketbox.data.remote.dto.BillSplitChangeProposalDto = unsupported()
+
     override suspend fun debt(publicId: String): com.ticketbox.data.remote.dto.DebtDto = unsupported()
     override suspend fun debtActivity(publicId: String, page: Int, focusRepayment: String?): com.ticketbox.data.remote.dto.DebtActivityListDto = unsupported()
     override suspend fun debtRepayments(publicId: String, page: Int): com.ticketbox.data.remote.dto.RepaymentFactListDto = unsupported()

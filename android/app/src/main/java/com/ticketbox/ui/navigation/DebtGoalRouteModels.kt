@@ -49,3 +49,9 @@ internal fun rememberDebtGoalRouteViewModels(screenFactory: MainScreenFactory): 
             factory = debtActivityViewModelFactory(screenFactory.debtActivityRepository),
         ),
     )
+
+internal data class DebtDetailHostModels(
+    val detail: DebtDetailViewModel,
+    val proposal: MemberRepaymentProposalViewModel,
+    val history: DebtActivityViewModel,
+)

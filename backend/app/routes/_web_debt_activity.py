@@ -16,6 +16,8 @@ _TITLES = {
     "created": "建立往来", "repayment": "还款到账", "repayment_void": "撤销还款",
     "adjustment": "调整金额", "forgiveness": "免除余额", "debt_void": "作废整笔往来",
     "proposal_created": "申报还款", "proposal_resolved": "处理还款申报",
+    "split_change_proposed": "提出新约定", "split_change_resolved": "处理约定提议",
+    "split_agreement_changed": "双方接受新约定",
 }
 
 
@@ -62,6 +64,25 @@ def _proposal_view(event: DebtActivityResponse) -> dict:
     return view
 
 
+def _split_view(event: DebtActivityResponse, home: str) -> dict:
+    proposal = event.split_change
+    if proposal is None:
+        return {}
+    net = proposal.settlement_net_amount_cents
+    settlement = ("受邀方待付 " if net > 0 else "发起方待返还 ") + _home_amount_label(abs(net), home)
+    return {
+        "share_label": f"{_home_amount_label(proposal.share_before_amount_cents, home)} → "
+                       f"{_home_amount_label(proposal.new_share_amount_cents, home)}",
+        "settlement_label": settlement if net else "双方暂无待结算",
+        "original_paid_label": _home_amount_label(proposal.original_paid_amount_cents, home),
+        "return_paid_label": _home_amount_label(proposal.return_paid_amount_cents, home),
+        "original_forgiven_label": _home_amount_label(proposal.original_forgiven_amount_cents, home),
+        "return_forgiven_label": _home_amount_label(proposal.return_forgiven_amount_cents, home),
+        "status_label": {"pending": "待对方确认", "accepted": "已接受", "rejected": "已拒绝",
+                         "withdrawn": "已撤回", "superseded": "已被新提议替代", "expired": "已过期"}[proposal.status],
+    }
+
+
 def _activity_row(event: DebtActivityResponse, listing: DebtActivityListResponse, selected_id: str) -> dict:
     repayment = event.repayment
     proposal = event.proposal
@@ -79,6 +100,7 @@ def _activity_row(event: DebtActivityResponse, listing: DebtActivityListResponse
         "reason": event.reason or "",
         "repayment": _repayment_view(repayment, listing.home_currency_code) if repayment else None,
         "proposal": _proposal_view(event),
+        "split_change": _split_view(event, listing.home_currency_code),
         "repayment_href": (
             _activity_href(listing.debt_public_id, selected_id, focus_repayment=linked_repayment)
             + f"#repayment-{linked_repayment}" if linked_repayment else ""

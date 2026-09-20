@@ -9,6 +9,13 @@
         {% if row.amount_label %}<span class="debt-history-amt">{{ row.amount_label }}</span>{% endif %}
         <span class="debt-history-date">记录于 {{ row.recorded_at }} · {{ row.actor_label }}</span>
         {% if row.reason %}<span class="debt-history-note">{{ row.reason }}</span>{% endif %}
+        {% if row.split_change %}
+        <span class="debt-history-amt">份额 {{ row.split_change.share_label }} · {{ row.split_change.settlement_label }}</span>
+        <span class="debt-history-note">当时原付款 {{ row.split_change.original_paid_label }} · 已返还 {{ row.split_change.return_paid_label }}</span>
+        <span class="debt-history-note">原付款已豁免 {{ row.split_change.original_forgiven_label }} · 返还已豁免 {{ row.split_change.return_forgiven_label }}</span>
+        <span class="product-status">{{ row.split_change.status_label }}</span>
+        <span class="hint">约定记录不代表实际转账；收付款仍以确认记录为准。</span>
+        {% endif %}
         {% if row.proposal %}
         <span class="debt-history-amt">申报 {{ row.proposal.amount_label }}{% if row.proposal.confirmed_amount_label %} · 实际确认 {{ row.proposal.confirmed_amount_label }}{% endif %}</span>
         <span class="debt-history-date">付款日期 {{ row.proposal.paid_at }}</span>

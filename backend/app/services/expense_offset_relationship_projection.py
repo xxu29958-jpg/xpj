@@ -69,6 +69,7 @@ def relationship_impacts(
                 "receiver_display_name": relationship.receiver_display_name,
                 "debt_public_id": relationship.debt_public_id,
                 "original_agreed_share_home_minor": relationship.agreed_share_home_minor,
+                "current_agreed_share_home_minor": relationship.current_agreed_share_home_minor,
                 "suggested_net_share_home_minor": _suggested_share(
                     agreed_share=relationship.agreed_share_home_minor,
                     remaining_original=summary.remaining_refundable_original_minor,

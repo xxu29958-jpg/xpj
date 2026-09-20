@@ -147,6 +147,7 @@ private fun AcceptedInvitationImpactDto.toDomain() = AcceptedInvitationImpact(
     receiverDisplayName = receiverDisplayName,
     debtPublicId = debtPublicId,
     originalAgreedShareHomeMinor = originalAgreedShareHomeMinor,
+    currentAgreedShareHomeMinor = currentAgreedShareHomeMinor,
     suggestedNetShareHomeMinor = suggestedNetShareHomeMinor,
 )
 

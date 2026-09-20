@@ -194,4 +194,9 @@
     <string name="error_original_identity_unverified">这笔账单没有可核对的原件标识；现存旧件可先查看并确认，缺失旧件不能直接替换。</string>
     <string name="error_attachment_cleanup_changed">这次清理已经结束或发生了变化，请刷新原件状态后继续。</string>
     <string name="error_attachment_cleanup_invalid">清理记录暂时无法核对，已停止删除原件；账单仍可查看和更正。</string>
+    <string name="debt_activity_split_change_proposed">提出拆账新约定</string>
+    <string name="debt_activity_split_change_resolved">新约定提议已处理</string>
+    <string name="debt_activity_split_agreement_changed">达成拆账新约定</string>
+    <string name="split_agreement_submission">拆账新约定</string>
+    <string name="split_agreement_leg_cleared">本笔已结清，双方整体结算见拆账约定</string>
 </resources>

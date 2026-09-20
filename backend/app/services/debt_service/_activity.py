@@ -14,6 +14,9 @@ from sqlalchemy.sql import ColumnElement, Subquery
 from app.errors import AppError
 from app.models import (
     Account,
+    BillSplitAgreementChange,
+    BillSplitChangeProposal,
+    BillSplitInvitation,
     Debt,
     DebtAdjustment,
     DebtForgiveness,
@@ -29,6 +32,7 @@ from app.schemas import (
     MemberRepaymentProposalResponse,
     RepaymentFactResponse,
 )
+from app.schemas._bill_split_change import BillSplitChangeProposalResponse
 from app.services.debt_service._proposal_response import proposal_responses
 from app.services.debt_service._query import resolve_debt_for_participant
 from app.services.debt_service._repayment_activity import repayment_fact_response
@@ -38,6 +42,7 @@ def _index_select(
     model: type, kind: str, order: int, recorded_at: ColumnElement[datetime], actor_id: ColumnElement[int],
     *, amount: ColumnElement[int] | None = None, reason: ColumnElement[str] | None = None,
     repayment_id: ColumnElement[int] | None = None, proposal_id: ColumnElement[int] | None = None,
+    split_proposal_id: ColumnElement[int] | None = None,
 ) -> Select:
     # SQL casts matter here: PostgreSQL resolves leading NULL-only UNION arms
     # as text before reaching later integer repayment/proposal references.
@@ -49,10 +54,29 @@ def _index_select(
         (reason if reason is not None else cast(null(), Text)).label("reason"),
         (repayment_id if repayment_id is not None else cast(null(), BigInteger)).label("repayment_id"),
         (proposal_id if proposal_id is not None else cast(null(), BigInteger)).label("proposal_id"),
+        (split_proposal_id if split_proposal_id is not None else cast(null(), BigInteger)).label("split_proposal_id"),
     )
 
 
-def _activity_index(debt_id: int) -> Subquery:
+def _split_index(debt: Debt) -> list[Select]:
+    if debt.source_type not in {"bill_split", "bill_split_return"}:
+        return []
+    proposal, change = BillSplitChangeProposal, BillSplitAgreementChange
+    invitation_id = select(BillSplitInvitation.id).where(BillSplitInvitation.public_id == debt.source_id).scalar_subquery()
+    return [
+        _index_select(proposal, "split_change_proposed", 8, proposal.created_at, proposal.proposed_by_account_id,
+                      reason=proposal.reason, split_proposal_id=proposal.id).where(proposal.invitation_id == invitation_id),
+        _index_select(proposal, "split_change_resolved", 9, proposal.resolved_at, proposal.resolved_by_account_id,
+                      reason=proposal.reason, split_proposal_id=proposal.id)
+        .where(proposal.invitation_id == invitation_id, proposal.resolved_at.is_not(None), proposal.status != "accepted"),
+        _index_select(change, "split_agreement_changed", 10, change.created_at, change.accepted_by_account_id,
+                      reason=proposal.reason, split_proposal_id=change.proposal_id)
+        .join(proposal, proposal.id == change.proposal_id).where(change.invitation_id == invitation_id),
+    ]
+
+
+def _activity_index(debt: Debt) -> Subquery:
+    debt_id = debt.id
     proposal = MemberRepaymentProposal
     return union_all(
         _index_select(Debt, "created", 0, Debt.created_at, Debt.created_by_account_id,
@@ -75,6 +99,7 @@ def _activity_index(debt_id: int) -> Subquery:
         _index_select(proposal, "proposal_resolved", 7, proposal.resolved_at, proposal.resolved_by_account_id,
                       proposal_id=proposal.id)
         .where(proposal.debt_id == debt_id, proposal.resolved_at.is_not(None)),
+        *_split_index(debt),
     ).subquery()
 
 
@@ -130,13 +155,29 @@ def _proposals_for_events(db: Session, events: list[Row]) -> dict[int, MemberRep
 def _response(
     event: Row, *, actor_account_id: int, repayments: dict[int, RepaymentFactResponse],
     proposals: dict[int, MemberRepaymentProposalResponse],
+    split_proposals: dict[int, BillSplitChangeProposalResponse],
 ) -> DebtActivityResponse:
     return DebtActivityResponse(
         kind=event.kind, public_id=event.public_id, recorded_at=event.recorded_at,
         actor_display_name=event.actor_display_name, actor_is_you=event.actor_id == actor_account_id,
         amount_cents=(projection_sum_to_int(event.amount, label="debt_activity.amount") if event.amount is not None else None),
         reason=event.reason, repayment=repayments.get(event.repayment_id), proposal=proposals.get(event.proposal_id),
+        split_change=split_proposals.get(event.split_proposal_id),
     )
+
+
+def _split_proposals_for_events(
+    db: Session, events: list[Row], *, tenant_id: str, actor_account_id: int, public_id: str,
+) -> dict[int, BillSplitChangeProposalResponse]:
+    from app.services.bill_split_service._agreement_context import agreement_context
+    from app.services.bill_split_service._agreement_queries import change_proposal_response
+
+    ids = {event.split_proposal_id for event in events if event.split_proposal_id is not None}
+    if not ids:
+        return {}
+    context = agreement_context(db, tenant_id=tenant_id, actor_account_id=actor_account_id, public_id=public_id)
+    proposals = db.scalars(select(BillSplitChangeProposal).where(BillSplitChangeProposal.id.in_(ids)))
+    return {proposal.id: change_proposal_response(context, proposal, actor_account_id) for proposal in proposals}
 
 
 def list_debt_activity(
@@ -146,18 +187,20 @@ def list_debt_activity(
     debt, _ = resolve_debt_for_participant(
         db, public_id=public_id, ledger_id=tenant_id, account_id=actor_account_id,
     )
-    index = _activity_index(debt.id)
+    index = _activity_index(debt)
     events = _activity_page(db, index, page=page, page_size=page_size, focus_repayment=focus_repayment)
     total = int(events[0].total) if events else int(db.scalar(select(func.count()).select_from(index)) or 0)
     if focus_repayment is not None:
         page = (int(events[0].position) - 1) // page_size + 1
     repayments = _repayments_for_events(db, events)
     proposals = _proposals_for_events(db, events)
+    split_proposals = _split_proposals_for_events(db, events, tenant_id=tenant_id,
+        actor_account_id=actor_account_id, public_id=public_id)
     return DebtActivityListResponse(
         debt_public_id=debt.public_id, home_currency_code=debt.home_currency_code,
         page=page, page_size=page_size, total=total,
         items=[_response(
             event, actor_account_id=actor_account_id,
-            repayments=repayments, proposals=proposals,
+            repayments=repayments, proposals=proposals, split_proposals=split_proposals,
         ) for event in events],
     )

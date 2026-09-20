@@ -66,6 +66,9 @@ internal fun DebtActivityRow(state: DebtActivityRowState, callbacks: DebtActivit
             if (event.repayment?.voidFact?.reason != event.reason) event.reason?.let {
                 Text(it, style = MaterialTheme.typography.bodyMedium)
             }
+            event.splitChange?.let { change ->
+                DebtActivitySplitChange(change, state.homeCurrencyCode)
+            }
             event.proposal?.let { proposal ->
                 DebtActivityProposal(proposal, resolved = event.kind == "proposal_resolved", callbacks.onOpenRepayment)
             }
@@ -103,6 +106,9 @@ private fun DebtActivityProposal(proposal: MemberRepaymentProposal, resolved: Bo
 
 @StringRes
 internal fun debtActivityKindLabel(kind: String): Int = when (kind) {
+    "split_change_proposed" -> R.string.debt_activity_split_change_proposed
+    "split_change_resolved" -> R.string.debt_activity_split_change_resolved
+    "split_agreement_changed" -> R.string.debt_activity_split_agreement_changed
     "created" -> R.string.debt_activity_created
     "repayment" -> R.string.debt_activity_repayment
     "repayment_void" -> R.string.debt_activity_repayment_void
@@ -134,4 +140,25 @@ internal fun debtActivityFxSourceLabel(source: String): Int? = when (source) {
     "imported" -> R.string.debt_activity_fx_imported
     "ecb" -> R.string.debt_activity_fx_ecb
     else -> null
+}
+
+@Composable
+private fun DebtActivitySplitChange(change: com.ticketbox.domain.model.DebtSplitChange, currency: String?) {
+    val display = CurrencyDisplay.forRecord(currency)
+    Text("份额 ${formatDisplayAmount(change.shareBeforeAmountCents, display)} → ${formatDisplayAmount(change.newShareAmountCents, display)}")
+    Text(splitSettlementLabel(change.settlementNetAmountCents, display))
+    Text("当时已付 ${formatDisplayAmount(change.originalPaidAmountCents, display)} · 已返 ${formatDisplayAmount(change.returnPaidAmountCents, display)}")
+    Text("原往来免除 ${formatDisplayAmount(change.originalForgivenAmountCents, display)} · 返还免除 ${formatDisplayAmount(change.returnForgivenAmountCents, display)}")
+    Text(splitChangeStatusLabel(change.status))
+    Text(change.reason)
+}
+
+internal fun splitChangeStatusLabel(status: String): String = when (status) {
+    "pending" -> "等待双方确认"
+    "accepted" -> "双方已达成新约定"
+    "rejected" -> "提议已拒绝"
+    "withdrawn" -> "提议已撤回"
+    "superseded" -> "已由后续提议替代"
+    "expired" -> "提议已过期"
+    else -> "请刷新核对状态"
 }

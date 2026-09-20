@@ -392,12 +392,14 @@ data class OutboxStatusUiState(
 }
 
 private fun OutboxRow.refusesKeepMine(): Boolean =
+    type == PendingMutationType.SplitAgreement ||
     type == PendingMutationType.CreateExpense || type == PendingMutationType.UndoExpense ||
         lastError == EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW ||
         type in originalSubmissionTypes || type in DEBT_WRITE_TYPES ||
         type == PendingMutationType.CreateBillSplitInvitation
 
 private fun OutboxRow.refusesRetry(observation: ExpenseCorrectionObservation): Boolean =
+    (type == PendingMutationType.SplitAgreement && lastError in com.ticketbox.data.repository.SPLIT_SHARE_REFUSALS) ||
     lastError == EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW ||
         (type == PendingMutationType.UndoExpense && lastError == "expense_not_found") ||
         (type in writerSubmissionTypes && observation.access?.canModify != true)

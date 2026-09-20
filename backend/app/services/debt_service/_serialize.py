@@ -58,12 +58,14 @@ def _lock_debt(db: Session, *, tenant_id: str, public_id: str, account_id: int |
     """
     if account_id is None:
         debt = db.scalar(
-            ledger_scoped_select(Debt, tenant_id).where(Debt.public_id == public_id).with_for_update().limit(1)
+            ledger_scoped_select(Debt, tenant_id).where(Debt.public_id == public_id)
+            .with_for_update().execution_options(populate_existing=True).limit(1)
         )
         if debt is None:
             raise AppError("debt_not_found", status_code=404)
         return debt
-    debt = db.scalar(select(Debt).where(Debt.public_id == public_id).with_for_update().limit(1))
+    debt = db.scalar(select(Debt).where(Debt.public_id == public_id)
+        .with_for_update().execution_options(populate_existing=True).limit(1))
     if debt is None:
         raise AppError("debt_not_found", status_code=404)
     is_ledger_member, is_counterparty = participant_can_access(debt, ledger_id=tenant_id, account_id=account_id)

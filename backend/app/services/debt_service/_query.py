@@ -309,18 +309,28 @@ def list_payables_for_account(
     tenant_id: str,
     account_id: int,
 ) -> DebtListResponse:
-    """Viewer-personal obligations the current account needs to repay.
+    """Personal payables in the selected ledger plus member-counterparty ones.
 
     Owner-relative ``i_owe`` and member-counterparty-relative ``owed_to_me`` are
-    the same payable fact viewed from opposite sides.  No third-party ledger
-    debt and no receivable can enter this result.
+    the same payable fact viewed from opposite sides. Cross-ledger obligations
+    remain discoverable even when the account also belongs to the other ledger;
+    its current selected ledger is the disclosure boundary. No third-party debt,
+    cross-ledger owner-only debt or receivable can enter this result.
     """
-    return _list_personal_ledger_debts(
+    local = _list_personal_ledger_debts(
         db,
         tenant_id=tenant_id,
         account_id=account_id,
         direction_for_owner="i_owe",
         direction_for_counterparty="owed_to_me",
+    ).items
+    cross_ledger = _cross_ledger_counterparty_debts(
+        db, account_id=account_id, direction="owed_to_me", selected_ledger_id=tenant_id,
+    )
+    # The SELECTs use tenant == selected and tenant != selected respectively.
+    return DebtListResponse(
+        items=[*local, *cross_ledger],
+        home_currency_code=runtime_home_currency_code(db),
     )
 
 
@@ -388,6 +398,20 @@ def list_member_receivables_for_account(db: Session, *, account_id: int) -> Debt
     remaining / paid / status / currency / source) is the obligation shell the
     creditor needs to track the receivable.
     """
+    return DebtListResponse(
+        items=_cross_ledger_counterparty_debts(db, account_id=account_id, direction="i_owe"),
+        home_currency_code=runtime_home_currency_code(db),
+    )
+
+
+def _cross_ledger_counterparty_debts(
+    db: Session, *, account_id: int, direction: str, selected_ledger_id: str | None = None,
+) -> list[DebtResponse]:
+    """Read account-owned member relationships and reuse the canonical shell.
+
+    Payables explicitly exclude only the selected ledger. The existing account
+    receivables owner retains its exclusion of all active ledger memberships.
+    """
     # ACTIVE membership only (disabled_at IS NULL) — must match the auth path
     # (identity_service._auth filters disabled_at IS NULL to build the AuthContext that
     # scopes list_debts). A creditor SOFT-REMOVED from the debtor's ledger has a
@@ -410,21 +434,17 @@ def list_member_receivables_for_account(db: Session, *, account_id: int) -> Debt
         # already restricts to member rows (an external Debt has a NULL counterparty). Kept
         # for explicit intent.
         .where(Debt.counterparty_type == "member")
-        .where(Debt.direction == "i_owe")
+        .where(Debt.direction == direction)
         .where(Debt.counterparty_account_id == account_id)
-        .where(~viewer_is_member)
+        .where(Debt.tenant_id != selected_ledger_id if selected_ledger_id is not None else ~viewer_is_member)
         .order_by(Debt.status.asc(), Debt.created_at.asc(), Debt.id.asc())
     )
     debts = list(db.scalars(statement))
     labels = _member_counterparty_labels(db, debts, account_id)
-    items = [
+    return [
         _debt_response_with_fold(db, debt, account_id, labels).model_copy(update={"ledger_id": None})
         for debt in debts
     ]
-    return DebtListResponse(
-        items=items,
-        home_currency_code=runtime_home_currency_code(db),
-    )
 
 
 def count_open_external_debts(db: Session, tenant_ids: list[str]) -> dict[str, int]:

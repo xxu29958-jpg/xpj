@@ -56,6 +56,12 @@ class OpenApiContractGateTest {
         Pairing(IncomePlanCreateRequestDto::class, "IncomePlanCreateRequest"),
         Pairing(IncomePlanUpdateRequestDto::class, "IncomePlanUpdateRequest"),
         Pairing(IncomePlanTokenRequestDto::class, "IncomePlanTokenRequest"),
+        Pairing(BillSplitChangeCreateRequestDto::class, "BillSplitChangeCreateRequest"),
+        Pairing(BillSplitChangeAcceptRequestDto::class, "BillSplitChangeAcceptRequest"),
+        Pairing(BillSplitChangeProposalDto::class, "BillSplitChangeProposalResponse"),
+        Pairing(BillSplitAgreementDto::class, "BillSplitAgreementResponse"),
+        Pairing(BillSplitSettlementPreviewDto::class, "BillSplitSettlementPreviewResponse"),
+        Pairing(AcceptedInvitationImpactDto::class, "AcceptedInvitationImpact"),
         Pairing(BillSplitInviteRequestDto::class, "BillSplitInviteRequest"),
         Pairing(BillSplitAcceptRequestDto::class, "BillSplitAcceptRequest"),
         Pairing(BillSplitSentDto::class, "BillSplitSentResponse"),
@@ -341,6 +347,7 @@ class OpenApiContractGateTest {
 
     @Suppress("UNCHECKED_CAST")
     private fun synthesizeValue(node: Map<String, Any?>, seen: MutableSet<String>): Any? {
+        (node["enum"] as? List<*>)?.firstOrNull()?.let { return it }
         (node["\$ref"] as? String)?.let { ref ->
             val name = ref.substringAfterLast('/')
             if (!seen.add(name)) return null // cycle guard

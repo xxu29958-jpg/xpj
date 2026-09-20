@@ -64,6 +64,7 @@ internal suspend fun PendingMutationDao.cascadePreservedTokens(
     ledgerId = binding.ledgerId,
     targetId = targetId,
     preservedTokenTypes = listOf(
+        PendingMutationType.SplitAgreement.wireValue,
         PendingMutationType.UndoExpense.wireValue,
         PendingMutationType.VoidExpenseOffset.wireValue,
         PendingMutationType.CreateBillSplitInvitation.wireValue,

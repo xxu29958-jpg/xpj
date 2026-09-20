@@ -81,6 +81,7 @@ interface DebtProposalActions {
 
 class DebtRepository(
     private val apiProvider: ApiServiceProvider,
+    val splitAgreement: SplitAgreementActions? = null,
 ) : DebtActions, ReceivablesActions {
     val activity: DebtActivityQueries = DebtActivityRepository(apiProvider)
     private val ledgerRequestGuard = LedgerRequestGuard(apiProvider)

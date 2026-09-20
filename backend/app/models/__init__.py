@@ -29,6 +29,7 @@ from app.models.auth import (
 )
 from app.models.background_task import BackgroundTask
 from app.models.bill_split import BillSplitInvitation
+from app.models.bill_split_agreement import BillSplitAgreementChange, BillSplitChangeProposal
 from app.models.budget import (
     Budget,
     BudgetCategory,
@@ -106,6 +107,8 @@ __all__ = [
     "AuthToken",
     "BackgroundTask",
     "BillSplitInvitation",
+    "BillSplitAgreementChange",
+    "BillSplitChangeProposal",
     "BootstrapSecretConsumption",
     "Budget",
     "BudgetAdvisorAuditLog",

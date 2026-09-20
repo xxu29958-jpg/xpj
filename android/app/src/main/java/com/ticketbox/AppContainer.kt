@@ -337,6 +337,9 @@ class AppContainer(context: Context) {
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.recurringCreateAdapter,
             ),
+            com.ticketbox.data.repository.SplitAgreementDispatcher(
+                ::outboxApi, outboxAdapters.splitAgreementAdapter, outboxAdapters.splitAgreementReceiptAdapter,
+            ),
             com.ticketbox.data.repository.RecordDebtAdjustmentDispatcher(
                 apiProvider = ::outboxApi,
                 adapter = outboxAdapters.debtAdjustmentAdapter,
