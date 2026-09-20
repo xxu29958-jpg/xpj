@@ -25,7 +25,8 @@ def _rows(snapshot: Session, query: Select) -> Iterator[Mapping[str, object]]:
 def create_portable_ledger_export(db: Session, *, auth: AuthContext) -> PortableArchive:
     """Return a request-owned package; never flush/commit/rollback the caller.
 
-    The existing authentication entry already established this app identity.
+    The existing authentication entry already established this app identity;
+    download routes release their completed request reads before calling here.
     A separate connection makes the data snapshot independent of its activity
     transaction, and a final fresh check discards a package on lost authority.
     File evidence is observed through the existing stable original reader;

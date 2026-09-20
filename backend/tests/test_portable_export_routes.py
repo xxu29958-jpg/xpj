@@ -58,6 +58,41 @@ def test_api_portable_requires_identity_and_allows_viewer_without_filters(monkey
     assert not archive.path.exists()
 
 
+@pytest.mark.parametrize("surface", ["api", "web"])
+def test_download_releases_request_read_before_claiming_snapshot_capacity(monkeypatch, archive, surface):
+    from fastapi import Request
+    from sqlalchemy import create_engine, select
+    from sqlalchemy.orm import Session
+    from sqlalchemy.pool import QueuePool
+
+    from app.routes import exports, web_import_export
+
+    engine = create_engine("sqlite://", poolclass=QueuePool, pool_size=1, max_overflow=0, pool_timeout=0.01)
+
+    def snapshot(db, *, auth):
+        with db.get_bind().connect() as connection:
+            assert connection.scalar(select(1)) == 1
+        return archive
+
+    route = exports if surface == "api" else web_import_export
+    monkeypatch.setattr(route, "create_portable_ledger_export", snapshot)
+    try:
+        with Session(engine) as request_db:
+            # Exercise the real pool and Session lifecycle; no product DB schema
+            # or snapshot claims. Throttled authentication leaves this read open.
+            request_db.execute(select(1))
+            if surface == "api":
+                response = exports.export_portable(auth=AUTH, db=request_db)
+            else:
+                request = Request({"type": "http", "method": "GET", "path": "/web/export/portable"})
+                request.state.web_session_auth = AUTH
+                response = web_import_export.web_export_portable(request, ledger_id=AUTH.ledger_id, db=request_db)
+            response.archive.close()
+            assert engine.pool.checkedout() == 0
+    finally:
+        engine.dispose()
+
+
 @pytest.mark.parametrize("auth,status", [(None, 401), (AUTH, 200)])
 def test_web_portable_uses_actual_selected_session_or_refuses_before_export(monkeypatch, archive, auth, status) -> None:
     from app.routes import web_import_export

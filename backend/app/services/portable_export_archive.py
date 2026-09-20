@@ -11,7 +11,6 @@ from contextlib import ExitStack
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from itertools import chain
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from time import monotonic
@@ -146,6 +145,7 @@ def _write_records(package: ZipFile, name: str, rows: Iterable[Mapping[str, obje
             digest.update(data)
             size += len(data)
             count += 1
+    budget.consume(0)
     return {"name": name, "path": path, "records": count, "size_bytes": size, "sha256": digest.hexdigest()}
 
 
@@ -160,9 +160,12 @@ def _reference_rows(expense: Mapping[str, object]) -> Iterable[dict[str, object]
     for kind in ("image", "thumbnail"):
         item = cleanup.get(kind)
         if isinstance(item, dict):
+            source = item.get("reference")
+            expected = (expense.get("image_hash")
+                if kind == "image" and source == expense.get("image_path") else None)
             yield {"reference_id": f"{root}:cleanup:{cleanup['request_id']}:{kind}",
                 "expense_id": expense["id"], "kind": "original" if kind == "image" else "derived",
-                "source": item.get("reference"), "expected_sha256": None,
+                "source": source, "expected_sha256": expected,
                 "cleaned": item.get("outcome") == "deleted", "slot": f"cleanup-{kind}"}
 
 
@@ -218,17 +221,26 @@ def _write_originals(package: ZipFile, directory: Path, ledger_id: str,
     digest, size, count = hashlib.sha256(), 0, 0
     states: Counter[str] = Counter()
     included: dict[str, str] = {}
-    current = (reference for expense in rows for reference in _reference_rows(expense))
+
+    def write_reference(output, reference: dict[str, object]) -> None:
+        nonlocal size, count
+        observation = _observe_original(package, reference, ledger_id, budget, included)
+        data = _json_bytes(observation)
+        budget.consume(len(data))
+        output.write(data)
+        digest.update(data)
+        states[observation["state"]] += 1
+        size += len(data)
+        count += 1
+
     with index_path.open("xb") as output:
-        for reference in chain(current, (_history_reference(row) for row in historical)):
-            observation = _observe_original(package, reference, ledger_id, budget, included)
-            data = _json_bytes(observation)
-            budget.consume(len(data))
-            output.write(data)
-            digest.update(data)
-            states[observation["state"]] += 1
-            size += len(data)
-            count += 1
+        for expense in rows:
+            for reference in _reference_rows(expense):
+                write_reference(output, reference)
+        budget.consume(0)
+        for row in historical:
+            write_reference(output, _history_reference(row))
+        budget.consume(0)
     package.write(index_path, "originals.jsonl")
     return {"path": "originals.jsonl", "records": count, "size_bytes": size,
             "sha256": digest.hexdigest(), "states": dict(states)}
