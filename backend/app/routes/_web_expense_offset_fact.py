@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.routes._web_money_views import _minor_amount_label
-from app.routes._web_relationship_links import authorized_debt_href
+from app.routes._web_relationship_links import authorized_debt_hrefs
 from app.routes._web_session_common import resolve_web_actor_account_id
 from app.schemas import ExpenseFactBundleResponse
 from app.services.currency_common import currency_input_metadata, minor_amount_value
@@ -196,8 +196,10 @@ def expense_offset_fact_view(
             account_id = resolve_web_actor_account_id(db, request, tenant_id)
         except AppError:
             return view
+        links = authorized_debt_hrefs(
+            db, public_ids={impact["debt_public_id"] for impact in accepted if impact["debt_public_id"]},
+            selected_id=tenant_id, account_id=account_id,
+        )
         for impact in accepted:
-            impact["debt_href"] = authorized_debt_href(
-                db, public_id=impact["debt_public_id"], selected_id=tenant_id, account_id=account_id,
-            )
+            impact["debt_href"] = links.get(impact["debt_public_id"], "")
     return view

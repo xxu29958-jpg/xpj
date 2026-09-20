@@ -4,24 +4,18 @@ from urllib.parse import urlencode
 
 from sqlalchemy.orm import Session
 
-from app.errors import AppError
 from app.services.bill_split_service import list_accepted_source_relationships
-from app.services.debt_service import (
-    get_participant_debt_response,
-    participant_accessible_debt_public_ids,
-)
+from app.services.debt_service import participant_accessible_debt_public_ids
 
 
-def authorized_debt_href(db: Session, *, public_id: str | None, selected_id: str, account_id: int) -> str:
-    if not public_id:
-        return ""
-    try:
-        get_participant_debt_response(db, public_id=public_id, ledger_id=selected_id, account_id=account_id)
-    except AppError as exc:
-        if exc.error == "debt_not_found":
-            return ""
-        raise
-    return f"/web/debts/{public_id}?{urlencode({'ledger_id': selected_id})}"
+def authorized_debt_hrefs(db: Session, *, public_ids: set[str], selected_id: str, account_id: int) -> dict[str, str]:
+    accessible_ids = participant_accessible_debt_public_ids(
+        db, public_ids=public_ids, ledger_id=selected_id, account_id=account_id,
+    )
+    return {
+        public_id: f"/web/debts/{public_id}?{urlencode({'ledger_id': selected_id})}"
+        for public_id in accessible_ids
+    }
 
 
 def accepted_split_debt_links(db: Session, invitations, *, selected_id: str, account_id: int) -> dict[str, str]:
@@ -35,14 +29,11 @@ def accepted_split_debt_links(db: Session, invitations, *, selected_id: str, acc
         for relationship in relationships:
             if relationship.invitation_public_id in visible_ids and relationship.debt_public_id:
                 debt_by_invitation[relationship.invitation_public_id] = relationship.debt_public_id
-    accessible_ids = participant_accessible_debt_public_ids(
-        db,
-        public_ids=set(debt_by_invitation.values()),
-        ledger_id=selected_id,
-        account_id=account_id,
+    links = authorized_debt_hrefs(
+        db, public_ids=set(debt_by_invitation.values()), selected_id=selected_id, account_id=account_id,
     )
     return {
-        invitation_id: f"/web/debts/{debt_public_id}?{urlencode({'ledger_id': selected_id})}"
+        invitation_id: links[debt_public_id]
         for invitation_id, debt_public_id in debt_by_invitation.items()
-        if debt_public_id in accessible_ids
+        if debt_public_id in links
     }
