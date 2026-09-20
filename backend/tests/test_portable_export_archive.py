@@ -229,6 +229,7 @@ def test_accepted_history_keeps_its_own_original_reference_and_business_text(tmp
 
 
 @pytest.mark.parametrize("cleaned_metadata", [{"image_deleted_at": WHEN},
+    {"historical_image_cleaned": True, "current_image_path": "new"},
     {"current_image_path": "old", "current_image_deleted_at": WHEN},
     {"attachment_cleanup_request": {"image": {"reference": "old", "outcome": "deleted"}}}])
 def test_historical_receipt_does_not_revive_a_known_cleaned_reference(tmp_path, monkeypatch, cleaned_metadata):
