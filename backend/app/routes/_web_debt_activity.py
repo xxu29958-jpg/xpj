@@ -138,8 +138,18 @@ def debt_activity_context(
         raise AppError("invalid_request", "请选择正确的历史页码。", status_code=422)
     if account_id is None:
         return {"rows": [], "page": page, "total": 0, "previous_href": "", "next_href": ""}
-    listing = list_debt_activity(
-        db, tenant_id=selected_id, actor_account_id=account_id, public_id=public_id,
-        page=page, page_size=20, focus_repayment=focus_repayment or request.query_params.get("focus_repayment"),
-    )
+    query = {
+        "tenant_id": selected_id, "actor_account_id": account_id, "public_id": public_id,
+        "page": page, "page_size": 20,
+    }
+    try:
+        listing = list_debt_activity(
+            db, **query, focus_repayment=focus_repayment or request.query_params.get("focus_repayment"),
+        )
+    except AppError as exc:
+        if focus_repayment is None or exc.error != "repayment_not_found":
+            raise
+        # A rejected command may name a missing/foreign repayment. Keep the
+        # debt page available for its feedback; direct GET focus stays strict.
+        listing = list_debt_activity(db, **query)
     return activity_view(listing, selected_id=selected_id)

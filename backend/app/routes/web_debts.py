@@ -442,6 +442,12 @@ def _render_debt_detail(
         public_id=public_id,
         focus_repayment=action_target_public_id if action_kind == "repayment_void" else None,
     )
+    if action_kind == "repayment_void" and not any(
+        row["kind"] == "repayment" and row["repayment"]["public_id"] == action_target_public_id
+        for row in ctx["activity"]["rows"]
+    ):
+        ctx["action_form"]["fallback"] = True
+        ctx["action_form"]["attempted_label"] = (action_draft or {}).get("reason", "")
     from app.routes._web_split_agreement import reconcile_member_detail, split_agreement_context
 
     ctx["split_agreement"] = split_agreement_context(
