@@ -25,22 +25,18 @@ DETEKT_LIMITS = {
         "allowedFunctionsPerObject", "allowedFunctionsPerEnum",
     ),
 }
+_RUFF_CONTEXT = "ruff-c901-py311-threshold15-ignore-noqa-v1"
 
 
-def python_complexity(files: dict[str, str], records: list[dict]) -> tuple[dict[str, int], list[dict]]:
-    python = {record["path"]: record for record in records if record["language"] == "Python"}
-    counters: Counter[str] = Counter()
-    findings: list[dict] = []
-    for record in python.values():
-        counters[f"python_c901:{record['module']}:{record['role']}"] += 0
-        counters[f"python_c901_excess:{record['module']}:{record['role']}"] += 0
-    if not python:
-        return dict(counters), findings
+def _scan_python_complexity(files: dict[str, str], records: list[dict]) -> dict[str, list[dict]]:
+    findings = {record["path"]: [] for record in records}
+    if not records:
+        return findings
     with tempfile.TemporaryDirectory(prefix="ticketbox-weight-ruff-") as directory:
         root = Path(directory)
-        for index, path in enumerate(python):
+        for index, record in enumerate(records):
             record_path = root / f"source_{index}.py"
-            record_path.write_text(files[path], encoding="utf-8")
+            record_path.write_text(files[record["path"]], encoding="utf-8")
         result = subprocess.run(
             [
                 sys.executable, "-m", "ruff", "check", "--isolated", "--no-cache", "--ignore-noqa",
@@ -52,24 +48,58 @@ def python_complexity(files: dict[str, str], records: list[dict]) -> tuple[dict[
         if result.returncode not in {0, 1}:
             raise ValueError("native Ruff complexity scan did not complete")
         measured = json.loads(result.stdout)
-        source_paths = list(python)
         for issue in measured:
             if issue["code"] != "C901":
                 raise ValueError("native Ruff reported an unmeasurable source error")
             filename = Path(issue["filename"]).stem
-            path = source_paths[int(filename.removeprefix("source_"))]
-            record = python[path]
+            record = records[int(filename.removeprefix("source_"))]
+            path = record["path"]
             match = re.search(r"\((\d+) > 15\)", issue["message"])
             name_match = re.search(r"`?([^\s`]+)`? is too complex", issue["message"])
             if match is None or name_match is None:
                 raise ValueError("native Ruff C901 format changed; cannot measure debt")
-            key = f"{record['module']}:{record['role']}"
-            counters[f"python_c901:{key}"] += 1
-            counters[f"python_c901_excess:{key}"] += int(match[1]) - 15
-            findings.append({
+            findings[path].append({
                 "path": path, "line": issue["location"]["row"], "function": name_match[1],
                 "complexity": int(match[1]),
             })
+    return findings
+
+
+def python_complexity(
+    files: dict[str, str],
+    records: list[dict],
+    *,
+    identities: dict[str, tuple] | None = None,
+    reuse=None,
+) -> tuple[dict[str, int], list[dict]]:
+    python = [record for record in records if record["language"] == "Python"]
+    counters: Counter[str] = Counter()
+    findings_by_path: dict[str, list[dict]] = {}
+    misses: list[dict] = []
+    for record in python:
+        path = record["path"]
+        key = (*identities[path], _RUFF_CONTEXT) if identities is not None else None
+        cached = reuse.load("ruff", key) if reuse is not None and key is not None else None
+        if cached is None:
+            misses.append(record)
+        else:
+            findings_by_path[path] = cached
+    scanned = _scan_python_complexity(files, misses)
+    for record in misses:
+        path = record["path"]
+        findings_by_path[path] = scanned[path]
+        if reuse is not None and identities is not None:
+            reuse.store("ruff", (*identities[path], _RUFF_CONTEXT), scanned[path])
+
+    findings: list[dict] = []
+    for record in python:
+        key = f"{record['module']}:{record['role']}"
+        counters[f"python_c901:{key}"] += 0
+        counters[f"python_c901_excess:{key}"] += 0
+        for finding in findings_by_path[record["path"]]:
+            counters[f"python_c901:{key}"] += 1
+            counters[f"python_c901_excess:{key}"] += finding["complexity"] - 15
+            findings.append(finding)
     return dict(counters), findings
 
 

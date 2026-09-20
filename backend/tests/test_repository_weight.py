@@ -35,6 +35,16 @@ def commit_files(repo: Path, files: dict[str, str], message: str) -> str:
     return git(repo, "rev-parse", "HEAD")
 
 
+def commit_bytes(repo: Path, files: dict[str, bytes], message: str) -> str:
+    for name, content in files.items():
+        target = repo / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
+    git(repo, "-c", "core.autocrlf=false", "add", ".")
+    git(repo, "commit", "--quiet", "--allow-empty", "-m", message)
+    return git(repo, "rev-parse", "HEAD")
+
+
 @pytest.fixture
 def repo(tmp_path: Path) -> Path:
     root = tmp_path / "repo"
@@ -66,6 +76,13 @@ def run_weight(
     )
     report = json.loads(output.read_text(encoding="utf-8")) if output.exists() else {}
     return result, report
+
+
+def normalized_analysis_report(report: dict) -> dict:
+    normalized = json.loads(json.dumps(report))
+    normalized.pop("timing", None)
+    normalized.pop("analysis_reuse", None)
+    return normalized
 
 
 def test_whole_repository_totals_use_exact_blobs_and_count_each_file_once(repo, tmp_path) -> None:
@@ -350,6 +367,99 @@ def test_powershell_batch_keeps_separate_script_parameter_blocks(repo, tmp_path)
     assert {row["name"] for row in report["current"]["functions"]} == {"<script>", "First", "Second"}
 
 
+def test_analysis_reuse_uses_raw_bytes_and_preserves_the_complete_report(repo, tmp_path) -> None:
+    same = b"def same():\n    return 1\n"
+    normalized = b"def normalized():\n    return 2\n"
+    base = commit_bytes(repo, {
+        "backend/app/same.py": same,
+        "backend/app/newline.py": normalized,
+        "backend/app/bom.py": normalized,
+    }, "raw base")
+    head = commit_bytes(repo, {
+        "backend/app/newline.py": normalized.replace(b"\n", b"\r\n"),
+        "backend/app/bom.py": b"\xef\xbb\xbf" + normalized,
+    }, "raw identity changes")
+
+    off_result, off_report = run_weight(repo, base, head, tmp_path, ["--no-analysis-reuse"])
+    on_result, on_report = run_weight(repo, base, head, tmp_path, ["--analysis-reuse"])
+
+    assert on_result.returncode == off_result.returncode == 0
+    assert normalized_analysis_report(on_report) == normalized_analysis_report(off_report)
+    assert off_report["analysis_reuse"] == {"enabled": False, "hits": {}, "misses": {}}
+    assert on_report["analysis_reuse"]["hits"] == {"functions": 1, "lexical": 1, "ruff": 1}
+    assert on_report["analysis_reuse"]["misses"] == {"functions": 5, "lexical": 5, "ruff": 5}
+
+
+def test_analysis_reuse_context_and_results_are_isolated(repo) -> None:
+    source = "# noqa: C901\ndef answer():\n    return 1\n"
+    head = commit_files(repo, {"backend/app/answer.py": source}, "one source")
+    scripts = str(ENTRY.parent)
+    if scripts not in sys.path:
+        sys.path.insert(0, scripts)
+    from repository_weight_report import AnalysisReuse, measure_snapshot
+    from repository_weight_sources import read_snapshot
+
+    files, raw_identities, excluded = read_snapshot(repo, head)
+    reuse = AnalysisReuse(enabled=True)
+    first = measure_snapshot(
+        head, files, raw_identities, excluded, reuse=reuse, analysis_context="context-a",
+    )
+    second = measure_snapshot(
+        head, files, raw_identities, excluded, reuse=reuse, analysis_context="context-b",
+    )
+    third = measure_snapshot(
+        head, files, raw_identities, excluded, reuse=reuse, analysis_context="context-b",
+    )
+
+    assert reuse.summary()["hits"] == {"functions": 1, "lexical": 1, "ruff": 1}
+    assert reuse.summary()["misses"] == {"functions": 2, "lexical": 2, "ruff": 2}
+    assert first["files"][0] is not second["files"][0]
+    assert second["files"][0] is not third["files"][0]
+    assert first["functions"][0] is not second["functions"][0]
+    assert second["functions"][0] is not third["functions"][0]
+    assert first["suppressions"][0] is not second["suppressions"][0]
+    assert second["suppressions"][0] is not third["suppressions"][0]
+    first["files"][0]["module"] = "polluted"
+    second["functions"][0]["name"] = "polluted"
+    assert third["files"][0]["module"] == "Backend"
+    assert third["functions"][0]["name"] == "answer"
+
+
+def test_analysis_reuse_does_not_cross_path_module_or_role(repo, tmp_path) -> None:
+    source = "def moved():\n    return 1\n"
+    base = commit_files(repo, {"backend/app/moved.py": source}, "production path")
+    (repo / "backend/tests").mkdir(parents=True, exist_ok=True)
+    git(repo, "mv", "backend/app/moved.py", "backend/tests/moved.py")
+    git(repo, "commit", "--quiet", "-m", "test path")
+    head = git(repo, "rev-parse", "HEAD")
+
+    off_result, off_report = run_weight(repo, base, head, tmp_path, ["--no-analysis-reuse"])
+    on_result, on_report = run_weight(repo, base, head, tmp_path, ["--analysis-reuse"])
+
+    assert on_result.returncode == off_result.returncode == 0
+    assert normalized_analysis_report(on_report) == normalized_analysis_report(off_report)
+    assert on_report["analysis_reuse"]["hits"] == {}
+    assert on_report["analysis_reuse"]["misses"] == {"functions": 2, "lexical": 2, "ruff": 2}
+    assert off_report["base"]["files"][0]["role"] == "production"
+    assert off_report["current"]["files"][0]["role"] == "test"
+
+
+@pytest.mark.parametrize("path,base_source,broken_source", [
+    ("backend/app/broken.py", "def valid():\n    return 1\n", "def broken(:\n"),
+    ("scripts/broken.ps1", "function Valid { return 1 }\n", "function Broken {\n"),
+])
+def test_analysis_reuse_does_not_hide_changed_native_parse_failure(
+    repo, tmp_path, path, base_source, broken_source,
+) -> None:
+    base = commit_files(repo, {path: base_source}, "valid source")
+    head = commit_files(repo, {path: broken_source}, "broken source")
+
+    result, _report = run_weight(repo, base, head, tmp_path, ["--analysis-reuse"])
+
+    assert result.returncode == 2
+    assert "CODEBASE WEIGHT INCOMPLETE" in result.stderr
+
+
 def test_real_node_fixture_and_deployed_edge_source_are_counted(repo, tmp_path) -> None:
     base = commit_files(repo, {"backend/app/app.py": "VALUE = 1\n"}, "base")
     head = commit_files(repo, {
@@ -470,6 +580,18 @@ def test_task_navigation_entries_point_at_real_files() -> None:
     assert all(node["present"] for node in ci_task["chain"])
     assert all(node["present"] for node in web_task["chain"])
     assert ci_task["map_is_skip_authority"] is False
+    for name, owner in (
+        ("ci-failure", "backend/scripts/check_api_contract.py"),
+        ("android-qualification", "android/scripts/verify_android_test_qualification.py"),
+        ("postgres-qualification", "backend/scripts/run_postgres_pytest_lane.py"),
+    ):
+        task = resolve_task(name, ROOT, sha)
+        assert task["measurement_sha"] == sha
+        assert all(node["present"] for node in task["chain"])
+        assert owner in [node["path"] for node in task["chain"]]
+        assert task["map_is_skip_authority"] is False
+        assert task["reproduce"]
+        assert task["qualification"]
     result = subprocess.run(
         [sys.executable, str(ENTRY), "--task", "shared-web-theme"],
         capture_output=True, text=True, encoding="utf-8",

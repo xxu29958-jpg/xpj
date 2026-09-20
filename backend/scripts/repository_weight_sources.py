@@ -167,7 +167,7 @@ def source_owner(path: str) -> tuple[str, str]:
     return module, role
 
 
-def read_snapshot(repo: Path, sha: str) -> tuple[dict[str, str], dict[str, int]]:
+def read_snapshot(repo: Path, sha: str) -> tuple[dict[str, str], dict[str, str], dict[str, int]]:
     entries: list[tuple[str, str]] = []
     excluded: Counter[str] = Counter()
     tree = git_bytes(repo, "ls-tree", "-r", "-z", "--full-tree", sha)
@@ -188,10 +188,11 @@ def read_snapshot(repo: Path, sha: str) -> tuple[dict[str, str], dict[str, int]]
         else:
             excluded[reason] += 1
     if not entries:
-        return {}, dict(excluded)
+        return {}, {}, dict(excluded)
     request = "".join(f"{oid}\n" for _, oid in entries).encode("ascii")
     stream = io.BytesIO(git_bytes(repo, "cat-file", "--batch", input_data=request))
     files: dict[str, str] = {}
+    raw_identities: dict[str, str] = {}
     for path, oid in entries:
         actual, kind, raw_size = stream.readline().decode("ascii").split()
         if actual != oid or kind != "blob":
@@ -199,8 +200,9 @@ def read_snapshot(repo: Path, sha: str) -> tuple[dict[str, str], dict[str, int]]
         content = stream.read(int(raw_size))
         if stream.read(1) != b"\n":
             raise ValueError(f"truncated Git blob: {path}")
+        raw_identities[path] = hashlib.sha256(content).hexdigest()
         files[path] = content.decode("utf-8-sig").replace("\r\n", "\n")
-    return files, dict(sorted(excluded.items()))
+    return files, raw_identities, dict(sorted(excluded.items()))
 
 
 def _line_kind(token, value: str) -> str:

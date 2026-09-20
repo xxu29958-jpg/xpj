@@ -930,6 +930,8 @@ def _unique_meta(bundles: list[dict[str, object]], key: str) -> set[object]:
 def _base_shas(bundles: list[dict[str, object]]) -> set[str]:
     bases: set[str] = set()
     for bundle in bundles:
+        if bundle.get("base_sha"):
+            bases.add(str(bundle["base_sha"]))
         for pull in bundle.get("metadata", {}).get("pull_requests") or []:
             if isinstance(pull, dict) and (pull.get("base") or {}).get("sha"):
                 bases.add(str((pull.get("base") or {}).get("sha")))
@@ -1095,6 +1097,7 @@ def _workflow_row(
         "source_sha": _bundle_source(bundle),
         "checkout_sha": _bundle_checkout(bundle),
         "base_sha": next(iter(_base_shas([bundle])), None),
+        "base_sha_source": bundle.get("base_sha_source", "workflow_metadata"),
         "created_at": metadata.get("created_at"),
         "run_started_at": metadata.get("run_started_at"),
         "final_job_completed_at": _final_job_completed_at(bundle),
@@ -1530,6 +1533,28 @@ def _find_named_job(bundle: dict[str, object], name: str) -> dict | None:
     return None
 
 
+def attach_checkout_base(bundle: dict, repository: str, token: str, *, urlopen=None) -> None:
+    """Recover closed-PR metadata from its immutable, verified merge checkout."""
+    metadata = bundle.get("metadata") or {}
+    if metadata.get("event") != "pull_request" or _base_shas([bundle]):
+        return
+    checkout, source = _bundle_checkout(bundle), _bundle_source(bundle)
+    if not checkout or checkout == source:
+        raise ValueError("missing pull request merge checkout for base evidence")
+    commit = _github_json(f"{_GITHUB_API}/repos/{repository}/commits/{checkout}", token, urlopen=urlopen)
+    parents = commit.get("parents") or []
+    if (
+        commit.get("sha") != checkout
+        or len(parents) != 2
+        or any(not isinstance(parent, dict) for parent in parents)
+        or parents[1].get("sha") != source
+        or re.fullmatch(r"[0-9a-f]{40}", str(parents[0].get("sha"))) is None
+    ):
+        raise ValueError("pull request checkout parents do not bind the source and base")
+    bundle["base_sha"] = parents[0]["sha"]
+    bundle["base_sha_source"] = "checkout_commit_parents"
+
+
 def attach_remote_evidence(
     bundles: list[dict[str, object]],
     repository: str,
@@ -1560,6 +1585,10 @@ def attach_remote_evidence(
                 continue
             bundle["checkout_sha"] = parsed[0]
             qualification.append(parsed)
+        try:
+            attach_checkout_base(bundle, repository, token, urlopen=urlopen)
+        except _LOAD_CATCH as exc:
+            errors.append(f"base evidence unavailable for {workflow}: {exc}")
         for job_name in _AUDIT_LOG_JOBS.get(workflow, ()):
             job = _find_named_job(bundle, job_name)
             if job is None:

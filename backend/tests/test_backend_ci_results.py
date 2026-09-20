@@ -45,6 +45,33 @@ def _valid_results(*, frozen_scope: str, windows_scope: str) -> dict[str, str]:
     }
 
 
+def test_cheap_contract_failures_precede_expensive_analysis_without_blocking_heavy_lanes() -> None:
+    jobs = _jobs()
+    contracts = jobs["backend_contracts"]
+    steps = _steps(contracts)
+    order = list(steps)
+    for cheap in ("Compile", "Lint", "API contract", "CI orchestration contracts"):
+        assert order.index("Install dependencies") < order.index(cheap)
+        assert order.index(cheap) < order.index("CI analysis contracts")
+        assert order.index(cheap) < order.index("Audit (release lanes)")
+        assert "continue-on-error" not in steps[cheap]
+        assert "if" not in steps[cheap]
+    assert order.index("API contract") < order.index("CI orchestration contracts")
+    fast = steps["CI orchestration contracts"]["run"]
+    analysis = steps["CI analysis contracts"]["run"]
+    for test in ("test_repository_weight.py", "test_ci_run_timing.py"):
+        assert test not in fast
+        assert f"tests/{test}" in analysis
+    for lane in ("backend_postgres_ordinary", "backend_postgres_real_db", "android_fast", "android_apk_release"):
+        assert jobs[lane]["needs"] == "scope"
+    # A cheap failure must stay the original error, without an artifact error
+    # for a report whose producer never ran. Executed audit failures still upload.
+    assert steps["Audit (release lanes)"]["id"] == "release_audit"
+    assert steps["Upload repository codebase weight"]["if"] == (
+        "${{ always() && steps.release_audit.outcome != 'skipped' && steps.release_audit.outcome != '' }}"
+    )
+
+
 def _assert_windows_build_lane(jobs: dict[str, object]) -> None:
     windows_aggregator = jobs["windows_packaging"]
     assert windows_aggregator["if"] == "${{ always() }}"
@@ -73,6 +100,18 @@ def _assert_windows_build_lane(jobs: dict[str, object]) -> None:
     assert prepared < step_names.index("Windows installer safety behavior")
     assert prepared < step_names.index("Windows installer resource-serial behavior")
     assert prepared < step_names.index("Compile authoritative Inno installer")
+    for cheap in (
+        "Windows database maintenance contract",
+        "Installer source preflight (Windows PowerShell 5.1)",
+        "Installer source preflight (PowerShell 7)",
+    ):
+        assert prepared < step_names.index(cheap)
+        assert step_names.index(cheap) < step_names.index("Start native PostgreSQL for Desktop backend consumers")
+        assert "continue-on-error" not in windows_steps[cheap]
+    assert windows_steps["Real Desktop pairing and backend bridge"]["id"] == "desktop_backend_tests"
+    assert windows_steps["Upload native Desktop backend test results"]["if"] == (
+        "${{ always() && steps.desktop_backend_tests.outcome != 'skipped' && steps.desktop_backend_tests.outcome != '' }}"
+    )
     source = (_ROOT / "backend" / "packaging" / "tests" / "test_local_test_postgres_lifecycle.py").read_text(
         encoding="utf-8-sig"
     )

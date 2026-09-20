@@ -18,6 +18,7 @@ from ci_gap_trigger_scope import classify_ci_decision
 from engineering_task_map import render_task, resolve_task
 from repository_weight_debt import android_policy_failures
 from repository_weight_report import (
+    AnalysisReuse,
     compare_snapshots,
     measure_snapshot,
     query_report,
@@ -112,6 +113,7 @@ def build_report(
     *,
     source_sha: str | None = None,
     event: str | None = None,
+    analysis_reuse: bool = True,
 ) -> dict:
     base_sha, head_sha = exact_commit(repo, base, "base"), exact_commit(repo, head, "head")
     try:
@@ -120,11 +122,17 @@ def build_report(
         raise ValueError("exact base is not an ancestor of the measured head") from exc
     started = time.monotonic()
     started_utc = _utc_now()
-    base_files, base_excluded = read_snapshot(repo, base_sha)
-    head_files, head_excluded = read_snapshot(repo, head_sha)
-    before = measure_snapshot(base_sha, base_files, base_excluded)
-    after = measure_snapshot(head_sha, head_files, head_excluded)
+    base_files, base_raw_identities, base_excluded = read_snapshot(repo, base_sha)
+    head_files, head_raw_identities, head_excluded = read_snapshot(repo, head_sha)
+    reuse = AnalysisReuse(enabled=analysis_reuse)
+    before = measure_snapshot(
+        base_sha, base_files, base_raw_identities, base_excluded, reuse=reuse,
+    )
+    after = measure_snapshot(
+        head_sha, head_files, head_raw_identities, head_excluded, reuse=reuse,
+    )
     report = compare_snapshots(before, after, android_policy_failures(base_files, head_files))
+    report["analysis_reuse"] = reuse.summary()
     git_changes = git_changed_paths(repo, base_sha, head_sha)
     report["git_changes"] = git_changes
     report["git_hunks"] = git_file_hunks(repo, base_sha, head_sha)
@@ -236,6 +244,7 @@ def _run_live(args: argparse.Namespace) -> int:
         args.head,
         source_sha=args.source_sha,
         event=args.event,
+        analysis_reuse=args.analysis_reuse,
     )
     rendered = render_report(report)
     print(rendered, end="")
@@ -270,6 +279,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--limit", type=int, default=50)
     parser.add_argument("--source-sha", default=os.environ.get("XPJ_WEIGHT_SOURCE_SHA"))
     parser.add_argument("--event", default=os.environ.get("XPJ_WEIGHT_EVENT"))
+    parser.add_argument("--analysis-reuse", action=argparse.BooleanOptionalAction, default=True)
     return parser.parse_args()
 
 

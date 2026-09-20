@@ -146,6 +146,11 @@ jobs:
       - name: Lint
         run: ruff check app scripts tests packaging/tests
 
+      # These checks need installed dependencies, not the release audit or its
+      # repository-analysis tests. Failures must be readable before those run.
+      - name: API contract
+        run: python scripts\check_api_contract.py
+
       - name: CI orchestration contracts
         run: >-
           python -m pytest -q
@@ -155,11 +160,17 @@ jobs:
           tests/test_postgres_ci_topology.py
           tests/test_android_process_qualification.py
           tests/test_android_test_qualification.py
+          --noconftest -p no:cacheprovider
+
+      - name: CI analysis contracts
+        run: >-
+          python -m pytest -q
           tests/test_repository_weight.py
           tests/test_ci_run_timing.py
           --noconftest -p no:cacheprovider
 
       - name: Audit (release lanes)
+        id: release_audit
         # Single PR gate for every read-only audit (release_audit.py::LANES):
         # service-graph cycles, CI-gap whitelist, codebase smell report, etc.
         # Any lane returning non-zero fails the PR.
@@ -175,16 +186,13 @@ jobs:
         run: python scripts\release_audit.py
 
       - name: Upload repository codebase weight
-        if: always()
+        if: ${{ always() && steps.release_audit.outcome != 'skipped' && steps.release_audit.outcome != '' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: repository-codebase-weight
           path: ${{ runner.temp }}/codebase-weight.json
           if-no-files-found: error
           retention-days: 30
-
-      - name: API contract
-        run: python scripts\check_api_contract.py
 
       # NOTE: the business pytest suite AND the end-to-end smoke run on PostgreSQL in the
       # backend-postgres job below. SQLite (the old dev dialect) was retired in
@@ -335,6 +343,24 @@ jobs:
           powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\prepare_windows_installer_vendor.ps1 -Force
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Windows database maintenance contract
+        run: >-
+          python -m pytest -q
+          tests/test_database_maintenance_entrypoint.py
+          tests/test_postgres_backup_dialect.py
+          tests/test_dataset_originals_file_identity.py
+          --noconftest --strict-markers -p no:cacheprovider -o addopts=
+
+      - name: Installer source preflight (Windows PowerShell 5.1)
+        shell: powershell
+        working-directory: ${{ github.workspace }}
+        run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File distribution\windows\build\check_source_inputs.ps1
+
+      - name: Installer source preflight (PowerShell 7)
+        shell: pwsh
+        working-directory: ${{ github.workspace }}
+        run: pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File distribution\windows\build\check_source_inputs.ps1
+
       - name: Start native PostgreSQL for Desktop backend consumers
         id: desktop_pg
         shell: powershell
@@ -344,6 +370,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Real Desktop pairing and backend bridge
+        id: desktop_backend_tests
         shell: powershell
         working-directory: desktop
         run: |
@@ -364,7 +391,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Upload native Desktop backend test results
-        if: always()
+        if: ${{ always() && steps.desktop_backend_tests.outcome != 'skipped' && steps.desktop_backend_tests.outcome != '' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: desktop-backend-test-results
@@ -391,24 +418,6 @@ jobs:
           python -m pytest -q packaging/tests -m xdist_group
           --strict-markers -p no:cacheprovider -o addopts=
           -n 0 --dist loadfile --max-worker-restart 0
-
-      - name: Windows database maintenance contract
-        run: >-
-          python -m pytest -q
-          tests/test_database_maintenance_entrypoint.py
-          tests/test_postgres_backup_dialect.py
-          tests/test_dataset_originals_file_identity.py
-          --noconftest --strict-markers -p no:cacheprovider -o addopts=
-
-      - name: Installer source preflight (Windows PowerShell 5.1)
-        shell: powershell
-        working-directory: ${{ github.workspace }}
-        run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File distribution\windows\build\check_source_inputs.ps1
-
-      - name: Installer source preflight (PowerShell 7)
-        shell: pwsh
-        working-directory: ${{ github.workspace }}
-        run: pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File distribution\windows\build\check_source_inputs.ps1
 
       - name: Frozen backend locked release build
         shell: powershell

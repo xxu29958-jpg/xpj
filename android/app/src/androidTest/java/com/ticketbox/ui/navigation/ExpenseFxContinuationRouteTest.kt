@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasSetTextAction
@@ -30,6 +31,7 @@ import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.ExpenseEditViewModel
 import com.ticketbox.viewmodel.expenseEditViewModelFactory
 import java.io.IOException
+import kotlinx.coroutines.CompletableDeferred
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -47,11 +49,13 @@ class ExpenseFxContinuationRouteTest {
     private var missingAmount = false
     private var failRead = false
     private var reads = 0
+    private var reviewReadGate: CompletableDeferred<Unit>? = null
     private val retryVersions = mutableListOf<Long>()
     private var confirmed = 0
     private val harness = FactEntryNavigationHarness(context) { api -> object : ApiService by api {
         override suspend fun expense(id: Long): ExpenseDto {
             reads++
+            reviewReadGate?.await()
             if (failRead) throw IOException("Canonical read unavailable")
             return api.expense(id).copy(id = id, publicId = "expense-$id", status = "pending", category = "餐饮", originalCurrency = "USD", homeCurrency = "CNY",
                 originalAmount = if (missingAmount) null else "10.00", originalAmountMinor = if (missingAmount) null else 1000, amountCents = if (converted) 7000 else null,
@@ -113,10 +117,18 @@ class ExpenseFxContinuationRouteTest {
         compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("12.34")
         assertEquals(1, reads)
         assertEquals(0, confirmed)
+        val pendingReview = CompletableDeferred<Unit>()
+        compose.runOnIdle { reviewReadGate = pendingReview }
         compose.onNodeWithText(load).performScrollTo().performClick()
         compose.onNodeWithText("替换并载入").performClick()
         compose.waitUntil(5_000) { reads == 2 }
-        compose.waitForIdle()
+        // A read count observes request entry, not completion of the async
+        // repository/Room refresh. Keep the loading state deterministic.
+        compose.onAllNodes(hasSetTextAction()).assertCountEquals(0)
+        compose.runOnIdle { pendingReview.complete(Unit) }
+        compose.waitUntil(5_000) {
+            compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isNotEmpty()
+        }
         compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("10.00")
         assertEquals(0, confirmed)
         compose.onNodeWithText("2026-09-11", substring = true).performScrollTo().assertExists()

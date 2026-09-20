@@ -17,6 +17,7 @@ from pygments.lexers import get_lexer_by_name
 from pygments.token import Comment, Keyword, Literal, Name
 
 LIZARD_SUFFIXES = {"Python": ".py", "Kotlin": ".kt", "Java": ".java", "JavaScript": ".js", "TypeScript": ".ts"}
+_FUNCTION_CONTEXT = "lizard-html-inno-powershell-functions-v1"
 
 
 def _comments_without_exemptions(tokens, reader):
@@ -123,19 +124,70 @@ def _powershell_functions(records: list[dict], files: dict[str, str]) -> tuple[l
     return functions, measured["version"]
 
 
-def measure_functions(files: dict[str, str], records: list[dict]) -> tuple[list[dict], dict[str, int], str | None]:
-    functions, powershell_version = _powershell_functions(records, files)
+def _functions_for_record(record: dict, text: str) -> list[dict]:
+    language = record["language"]
+    if language in LIZARD_SUFFIXES:
+        return _lizard_functions(record, text, language)
+    if language == "HTML/Jinja":
+        parser = InlineScripts()
+        parser.feed(text)
+        functions: list[dict] = []
+        for offset, script in parser.scripts:
+            functions.extend(_lizard_functions(record, script, "JavaScript", offset))
+        return functions
+    if language == "Inno Setup":
+        return _inno_functions(record, text)
+    return []
+
+
+def measure_functions(
+    files: dict[str, str],
+    records: list[dict],
+    *,
+    identities: dict[str, tuple] | None = None,
+    reuse=None,
+) -> tuple[list[dict], dict[str, int], str | None]:
+    functions: list[dict] = []
+    powershell_records = [record for record in records if record["language"] == "PowerShell"]
+    powershell_misses: list[dict] = []
+    powershell_by_path: dict[str, list[dict]] = {}
+    for record in powershell_records:
+        path = record["path"]
+        key = (*identities[path], _FUNCTION_CONTEXT) if identities is not None else None
+        cached = reuse.load("functions", key) if reuse is not None and key is not None else None
+        if cached is None:
+            powershell_misses.append(record)
+        else:
+            powershell_by_path[path] = cached
+    measured_powershell, measured_version = _powershell_functions(powershell_misses, files)
+    measured_by_path = {record["path"]: [] for record in powershell_misses}
+    for function in measured_powershell:
+        measured_by_path[function["path"]].append(function)
+    for record in powershell_misses:
+        path = record["path"]
+        powershell_by_path[path] = measured_by_path[path]
+        if reuse is not None and identities is not None:
+            reuse.store("functions", (*identities[path], _FUNCTION_CONTEXT), measured_by_path[path])
+    if measured_version is not None and reuse is not None and reuse.enabled:
+        reuse.powershell_parser = measured_version
+    powershell_version = measured_version
+    if powershell_records and powershell_version is None and reuse is not None:
+        powershell_version = reuse.powershell_parser
+    for record in powershell_records:
+        functions.extend(powershell_by_path[record["path"]])
+
+    analyzed_languages = set(LIZARD_SUFFIXES) | {"HTML/Jinja", "Inno Setup"}
     for record in records:
-        language, text = record["language"], files[record["path"]]
-        if language in LIZARD_SUFFIXES:
-            functions.extend(_lizard_functions(record, text, language))
-        elif language == "HTML/Jinja":
-            parser = InlineScripts()
-            parser.feed(text)
-            for offset, script in parser.scripts:
-                functions.extend(_lizard_functions(record, script, "JavaScript", offset))
-        elif language == "Inno Setup":
-            functions.extend(_inno_functions(record, text))
+        if record["language"] not in analyzed_languages:
+            continue
+        path = record["path"]
+        key = (*identities[path], _FUNCTION_CONTEXT) if identities is not None else None
+        cached = reuse.load("functions", key) if reuse is not None and key is not None else None
+        if cached is None:
+            cached = _functions_for_record(record, files[path])
+            if reuse is not None and key is not None:
+                reuse.store("functions", key, cached)
+        functions.extend(cached)
     debt: Counter[str] = Counter()
     for function in functions:
         key = f"{function['language']}:{function['module']}:{function['role']}"

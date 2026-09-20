@@ -31,6 +31,7 @@ _PYTEST_CONTRACT_ARGS = (
     "-o",
     "addopts=",
 )
+_PYTEST_RUNTIME_DIAGNOSTIC_ARGS = ("--durations=30",)
 POSTGRES_PYTEST_LANE_OPTION = "--xpj-postgres-lane"
 POSTGRES_PYTEST_LANE_DEST = "xpj_postgres_lane"
 POSTGRES_PYTEST_SHARD_INDEX_OPTION = "--xpj-postgres-shard-index"
@@ -143,6 +144,7 @@ def build_pytest_command(
         "pytest",
         "tests",
         *_PYTEST_CONTRACT_ARGS,
+        *_PYTEST_RUNTIME_DIAGNOSTIC_ARGS,
         POSTGRES_PYTEST_LANE_OPTION,
         lane,
         "-m",
