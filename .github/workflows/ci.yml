@@ -304,6 +304,16 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
+      - name: Installer source preflight (Windows PowerShell 5.1)
+        shell: powershell
+        working-directory: ${{ github.workspace }}
+        run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File distribution\windows\build\check_source_inputs.ps1
+
+      - name: Installer source preflight (PowerShell 7)
+        shell: pwsh
+        working-directory: ${{ github.workspace }}
+        run: pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File distribution\windows\build\check_source_inputs.ps1
+
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
@@ -350,16 +360,6 @@ jobs:
           tests/test_postgres_backup_dialect.py
           tests/test_dataset_originals_file_identity.py
           --noconftest --strict-markers -p no:cacheprovider -o addopts=
-
-      - name: Installer source preflight (Windows PowerShell 5.1)
-        shell: powershell
-        working-directory: ${{ github.workspace }}
-        run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File distribution\windows\build\check_source_inputs.ps1
-
-      - name: Installer source preflight (PowerShell 7)
-        shell: pwsh
-        working-directory: ${{ github.workspace }}
-        run: pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File distribution\windows\build\check_source_inputs.ps1
 
       - name: Start native PostgreSQL for Desktop backend consumers
         id: desktop_pg

@@ -101,13 +101,17 @@ def _assert_windows_build_lane(jobs: dict[str, object]) -> None:
     assert prepared < step_names.index("Windows installer resource-serial behavior")
     assert prepared < step_names.index("Compile authoritative Inno installer")
     for cheap in (
-        "Windows database maintenance contract",
         "Installer source preflight (Windows PowerShell 5.1)",
         "Installer source preflight (PowerShell 7)",
     ):
-        assert prepared < step_names.index(cheap)
-        assert step_names.index(cheap) < step_names.index("Start native PostgreSQL for Desktop backend consumers")
+        assert step_names.index("Checkout") < step_names.index(cheap)
+        assert step_names.index(cheap) < step_names.index("Set up Python")
+        assert step_names.index(cheap) < step_names.index("Cache pinned Windows build inputs")
+        assert step_names.index(cheap) < prepared
         assert "continue-on-error" not in windows_steps[cheap]
+    assert step_names.index("Windows database maintenance contract") < step_names.index(
+        "Start native PostgreSQL for Desktop backend consumers"
+    )
     assert windows_steps["Real Desktop pairing and backend bridge"]["id"] == "desktop_backend_tests"
     assert windows_steps["Upload native Desktop backend test results"]["if"] == (
         "${{ always() && steps.desktop_backend_tests.outcome != 'skipped' && steps.desktop_backend_tests.outcome != '' }}"
