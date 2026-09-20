@@ -83,6 +83,27 @@ def test_all_projections_execute_as_mapping_reads_and_identity_refs_stay_authori
     assert {row["public_id"] for row in _rows(records, "accounts")} == {"actor", "historical-member"}
 
 
+def test_third_party_debt_reader_keeps_snapshot_identity_without_expanding_external_accounts(records):
+    for id_, public_id in ((7, "viewer"), (8, "owner"), (9, "external-party")):
+        _seed(records, m.Account, id=id_, public_id=public_id, display_name=public_id)
+    for id_ in (7, 8):
+        _seed(records, m.LedgerMember, id=id_, ledger_id="selected", account_id=id_, role="member")
+    _seed(records, m.Debt, id=1, public_id="shared", tenant_id="selected", owner_account_id=8,
+        counterparty_type="member", counterparty_account_id=9, counterparty_label="Stored name")
+    _seed(records, m.MemberRepaymentProposal, id=1, debt_id=1, debtor_account_id=8,
+        creditor_account_id=9, proposed_by_account_id=9, resolved_by_account_id=9)
+    _seed(records, m.Repayment, id=1, debt_id=1, actor_account_id=9)
+    _seed(records, m.RepaymentVoid, id=1, repayment_id=1, actor_account_id=9)
+    assert {row["public_id"] for row in _rows(records, "accounts")} == {"viewer", "owner"}
+    assert _rows(records, "debts")[0]["counterparty_label"] == "Stored name"
+    assert len(_rows(records, "member_repayment_proposals")) == 1
+    assert len(_rows(records, "repayments")) == len(_rows(records, "repayment_voids")) == 1
+    assert {row["public_id"] for row in _rows(records, "accounts", replace(AUTH, account_id=8))} == {
+        "viewer", "owner", "external-party"}
+    _seed(records, m.LedgerMember, id=9, ledger_id="selected", account_id=9, role="member")
+    assert {row["public_id"] for row in _rows(records, "accounts")} == {"viewer", "owner", "external-party"}
+
+
 def test_no_credentials_machine_settings_or_import_claims_are_selected():
     queries = _queries(replace(AUTH, role="owner"))
     assert not {"auth_tokens", "devices", "app_meta", "upload_links", "invitations",

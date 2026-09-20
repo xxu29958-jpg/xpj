@@ -224,3 +224,10 @@ closed shape; existing direct-SQL migration tests reject malformed objects.
 The tag-receipt claim is also rejected: API/Web tag commands use OCC and write
 `LedgerAuditLog` through `resource_audit`, not `ApiIdempotencyKey`. Their existing
 authorized audit/undo collections remain; no imaginary receipt producer is added.
+
+The final identity counterexample is fixed: third-party ledger readers keep Debt,
+proposal, payment and void records with their stored labels, without expanding
+those references into an external participant's current account identity. Actual
+parties and authorized ledger members retain that identity projection. The new
+counterexample failed first; 18 query tests, Ruff and seven actual PostgreSQL
+snapshot/authorization/download tests then passed on the revised source.
