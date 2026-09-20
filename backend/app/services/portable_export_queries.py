@@ -248,9 +248,9 @@ def _accepted_operations(auth: AuthContext) -> Select:
         select(m.RepaymentDraft.public_id).where(_owned_drafts(auth))))
     splits = and_(receipt.resource_type == "bill_split_invitation", receipt.resource_id.in_(
         select(m.BillSplitInvitation.public_id).where(_sent(auth))))
-    # Upload receipts name a personal enrichment task. Its exact durable source
-    # proves access to the body; other ledger members still retain the accepted
-    # business resource/result reference without the private task identifier.
+    # Keep the frozen shared result for the originals adapter. The archive edge
+    # omits only the personal task field when its durable source does not grant
+    # this actor access; suppressing the whole body would lose shared evidence.
     own_upload_task = select(m.BackgroundTask.id).where(
         m.BackgroundTask.public_id == receipt.response_body["enrichment_task_public_id"].as_string(),
         m.BackgroundTask.tenant_id == auth.ledger_id,
@@ -260,8 +260,8 @@ def _accepted_operations(auth: AuthContext) -> Select:
         "status resource_type resource_id created_at completed_at expires_at",
         and_(receipt.tenant_id == auth.ledger_id, receipt.status == "succeeded",
             or_(shared, debt_relationships, drafts, splits))).add_columns(
-            case((redacted_upload, None), else_=receipt.response_body).label("response_body"),
-            case((redacted_upload, "personal_task_scope"), else_=None).label("response_body_omission_reason"))
+            receipt.response_body,
+            case((redacted_upload, "personal_task_scope"), else_=None).label("response_body_redaction_reason"))
 
 
 def _history_queries(auth: AuthContext) -> tuple[tuple[str, Select], ...]:
@@ -313,7 +313,10 @@ def _identity_queries(auth: AuthContext, business: tuple[tuple[str, Select], ...
             query = query.where(m.RepaymentVoid.repayment_id.in_(
                 select(m.Repayment.id).where(m.Repayment.debt_id.in_(participant_debts))))
         rows = query.order_by(None).subquery()
-        account_ids.extend(select(rows.c[field]) for field in sorted(references.intersection(rows.c.keys())))
+        fields = references.intersection(rows.c.keys())
+        if name in {"account_bill_split_inbox", "bill_split_sent"}:
+            fields.difference_update({"sender_account_id", "receiver_account_id"})
+        account_ids.extend(select(rows.c[field]) for field in sorted(fields))
     accounts = _record(m.Account, "id public_id display_name", m.Account.id.in_(union(*account_ids)))
     devices = _record(m.Device, "id public_id device_name", m.Device.id.in_(select(m.RuleApplicationBatch.actor_device_id)
         .where(m.RuleApplicationBatch.tenant_id == auth.ledger_id)))

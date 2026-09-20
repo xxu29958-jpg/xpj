@@ -110,6 +110,20 @@ def test_third_party_debt_reader_keeps_snapshot_identity_without_expanding_exter
     assert {row["public_id"] for row in _rows(records, "accounts")} == {"viewer", "owner", "external-party"}
 
 
+@pytest.mark.parametrize("inbox", [True, False])
+def test_invitation_snapshot_does_not_expand_current_identity_from_another_ledger(records, inbox):
+    _seed(records, m.Account, id=8, public_id="party-public", display_name="Changed private name")
+    _seed(records, m.BillSplitInvitation, id=1, public_id="invitation", sender_account_id=8 if inbox else 7,
+        sender_ledger_id="former-ledger" if inbox else "selected", sender_display_name="Stored party",
+        receiver_display_name_snapshot="Stored party", receiver_account_id=7 if inbox else 8)
+    collection = "account_bill_split_inbox" if inbox else "bill_split_sent"
+    name = "sender_display_name" if inbox else "receiver_display_name_snapshot"
+    assert _rows(records, collection)[0][name] == "Stored party"
+    assert _rows(records, "accounts") == []
+    _seed(records, m.LedgerMember, id=1, ledger_id="selected", account_id=8, role="member")
+    assert _rows(records, "accounts")[0]["public_id"] == "party-public"
+
+
 def test_no_credentials_machine_settings_or_import_claims_are_selected():
     queries = _queries(replace(AUTH, role="owner"))
     assert not {"auth_tokens", "devices", "app_meta", "upload_links", "invitations",
@@ -233,18 +247,21 @@ def test_received_expense_origin_resolves_only_for_the_actual_inbox_receiver(rec
 
 
 def test_upload_acceptance_survives_lost_ack_without_disclosing_private_task_receipt(records):
+    from app.services.portable_export_archive import _receipt_record
+
     for id_, actor in ((1, 7), (2, 8)):
         _seed(records, m.BackgroundTask, id=id_, public_id=f"task-{id_}", tenant_id="selected",
             initiated_by_account_id=actor)
         _seed(records, m.ApiIdempotencyKey, id=id_, tenant_id="selected", resource_type="upload_receipt",
             resource_id=f"expense-{id_}", status="succeeded",
             response_body=json.dumps({"public_id": f"expense-{id_}", "enrichment_task_public_id": f"task-{id_}"}))
-    results = _rows(records, "accepted_operations")
+    results = [_receipt_record(dict(row)) for row in _rows(records, "accepted_operations")]
     assert results[0]["response_body"]["enrichment_task_public_id"] == "task-1"
-    assert results[0]["response_body_omission_reason"] is None
+    assert results[0]["response_body_redaction_reason"] is None
     assert results[1]["resource_id"] == "expense-2"
-    assert results[1]["response_body"] is None
-    assert results[1]["response_body_omission_reason"] == "personal_task_scope"
+    assert results[1]["response_body"]["public_id"] == "expense-2"
+    assert "enrichment_task_public_id" not in results[1]["response_body"]
+    assert results[1]["response_body_redaction_reason"] == "personal_task_scope"
 
 
 def test_participant_balance_uses_existing_owner_and_preserves_failure(records, monkeypatch):
