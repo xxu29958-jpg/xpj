@@ -44,7 +44,7 @@ def split_page(monkeypatch):
                 "receiver_account_id": 9, "remaining_yuan": "30.00", "requires_review": True,
                 "idempotency_key": "original-key", "expected_row_version": 7,
                 "sent_rows": [{"public_id": "invitation-1", "receiver_display_name": "家人", "amount_label": "¥10.00",
-                    "status": "invited", "expires_at": "2026-05-31", "is_cancellable": True}]}}
+                    "status": "invited", "expires_at": "2026-05-31", "is_cancellable": True, "debt_href": ""}]}}
 
     def command(*_a, **kwargs):
         state.calls.append(kwargs)
