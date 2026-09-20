@@ -70,15 +70,23 @@
     if (replace) replace.hidden = true;
     notice(message, state);
   }
+  function commandControls(editing) {
+    if (!splitChange) {
+      lockInputs(!editing);
+      submit.textContent = editing ? "记一笔还款" : "继续核实这笔还款";
+      return canCreate;
+    }
+    const command = values().command, writable = command === "create";
+    lockInputs(!editing || !writable);
+    if (preview) preview.disabled = !editing || !writable;
+    submit.textContent = editing ? commandLabels[command] : "核实原约定操作";
+    return canCreate || (writable && form.dataset.splitCanDraft === "true");
+  }
   function showPhase() {
     panel.hidden = false;
-    lockInputs(phase !== "editing" || (splitChange && values().command !== "create"));
+    const canEdit = commandControls(phase === "editing");
     const canReplace = replacement && phase === "blocked" && currentRef === nativeRef;
-    const canEdit = canCreate || (splitChange && values().command === "create" && form.dataset.splitCanDraft === "true");
     submit.disabled = phase === "editing" ? !canEdit : !canRecover || !!canReplace;
-    submit.textContent = phase !== "editing" ? "继续核实这笔还款" : "记一笔还款";
-    if (splitChange) submit.textContent = phase === "editing" ? commandLabels[values().command] : "核实原约定操作";
-    if (preview) preview.disabled = phase !== "editing" || values().command !== "create";
     notice(phase === "submitted" ? "结果尚未确认。继续核实会发送原来的金额、日期和提交编号。" :
       phase === "blocked" ? "原提交已保留，请先核对欠款和当前身份。" : "输入会保留在此浏览器，尚未提交。", phase);
     if (replace) replace.hidden = !canReplace;

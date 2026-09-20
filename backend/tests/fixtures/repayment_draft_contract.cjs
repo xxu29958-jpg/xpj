@@ -54,11 +54,11 @@ function environment() {
     });
   }};
   function page(options = {}) {
-    const fieldNames = options.fieldNames || names, draftPrefix = options.draftPrefix || prefix;
-    const currentScope = options.scope || scope;
+    const {fieldNames = names, draftPrefix = prefix, scope:currentScope = scope,
+      values:overrides = {}, result = '', hash = ''} = options;
     const defaults = {...values, origin_binding:JSON.stringify(currentScope), amount_major:'',
       home_currency_code:'JPY', expected_row_version:'99', paid_at:'2026-09-12', paid_at_timezone:'Asia/Tokyo'};
-    const shown = {...defaults, ...(options.values || {})};
+    const shown = {...defaults, ...overrides};
     const fields = Object.fromEntries(fieldNames.map(name => [name, element({name, value:shown[name]})]));
     fields.idempotency_key = element({name:'idempotency_key', value:options.ref ?? fresh});
     fields.csrf_token = element({name:'csrf_token', value:'never-persist-credential'});
@@ -71,7 +71,7 @@ function environment() {
       getAttribute:() => JSON.stringify(options.ack)}) : null;
     const form = element({dataset:{repaymentScope:JSON.stringify(currentScope), repaymentKind:options.splitChange ? 'split-change' : '',
       splitCanDraft:options.splitChange ? 'true' : 'false',
-      repaymentResult:options.result || '', repaymentCanCreate:options.canCreate === false ? 'false' : 'true',
+      repaymentResult:result, repaymentCanCreate:options.canCreate === false ? 'false' : 'true',
       repaymentCanRecover:options.canRecover === false ? 'false' : 'true',
       repaymentTarget:target, repaymentReplacement:options.replacement ? JSON.stringify(options.replacement) : ''},
       elements:{namedItem:name => fields[name]},
@@ -83,7 +83,7 @@ function environment() {
       '[data-repayment-ack]':ack, '[data-repayment-ack-status]':ackStatus};
     const document = {querySelector:selector => selectors[selector] || null, createElement:() => element()};
     const window = element({localStorage:storage, navigator:{locks},
-      location:{hash:options.hash || '', pathname:'/web/debts/' + target, search:'?ledger_id=ledger'}});
+      location:{hash, pathname:'/web/debts/' + target, search:'?ledger_id=ledger'}});
     window.history = {replaceState(_state, _title, url) {
       const hash = String(url).indexOf('#'); window.location.hash = hash < 0 ? '' : String(url).slice(hash);
     }};

@@ -57,6 +57,22 @@ def pending_view(agreement, *, public_id, selected_id) -> dict | None:
                         for action in actions]}
 
 
+def _command_allowed(can_draft, values, pending) -> bool:
+    if values["command"] == "create":
+        return can_draft
+    return bool(can_draft and pending and values["proposal_public_id"] == pending.public_id and
+                (pending.proposed_by_you == (values["command"] == "withdraw")))
+
+
+def _replacement_intent(values, agreement, pending) -> dict:
+    replacement_values = {field: values[field] for field in CHANGE_FIELDS}
+    replacement_values.update(command="create", proposal_public_id="",
+        expected_row_version=str(agreement.original_debt.row_version),
+        expected_return_row_version=str(agreement.return_debt.row_version) if agreement.return_debt else "",
+        supersedes_proposal_public_id=pending.public_id if pending else "")
+    return {"clientRef": str(uuid4()), "values": replacement_values}
+
+
 def render_change_task(request, db, *, options, selected_id, public_id, agreement=None,
                        values=None, error="", result="", ack=None, status_code=200, command="create", supersedes="",
                        rejected=False) -> Response:
@@ -67,20 +83,12 @@ def render_change_task(request, db, *, options, selected_id, public_id, agreemen
         initial.update(values)
     can_write = _debt_write_gate(options, selected_id)
     can_draft = bool(can_write and agreement and agreement.viewer_is_party)
-    can_create = can_draft
     current_command = initial["command"]
     pending = agreement.pending_proposal if agreement else None
-    if current_command != "create":
-        can_create = bool(can_create and pending and initial["proposal_public_id"] == pending.public_id and
-                          (pending.proposed_by_you == (current_command == "withdraw")))
+    can_create = _command_allowed(can_draft, initial, pending)
     replacement = None
-    if rejected and values and can_write and agreement and agreement.viewer_is_party:
-        replacement_values = {field: initial[field] for field in CHANGE_FIELDS}
-        replacement_values.update(command="create", proposal_public_id="",
-            expected_row_version=str(agreement.original_debt.row_version),
-            expected_return_row_version=str(agreement.return_debt.row_version) if agreement.return_debt else "",
-            supersedes_proposal_public_id=pending.public_id if pending else "")
-        replacement = {"clientRef": str(uuid4()), "values": replacement_values}
+    if rejected and values and can_draft:
+        replacement = _replacement_intent(initial, agreement, pending)
     ctx.update(agreement_task=True, agreement=agreement_view(agreement, selected_id=selected_id) if agreement else None,
         agreement_pending=pending_view(agreement, public_id=public_id, selected_id=selected_id) if agreement else None,
         change={"values": initial, "fields": CHANGE_FIELDS, "scope": repayment_scope(request, db), "error": error,

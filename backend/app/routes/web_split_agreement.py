@@ -96,6 +96,19 @@ def _execute(db, *, selected_id, actor, public_id, values, code):
     return commands.withdraw_bill_split_change_idempotently(db, **kwargs)
 
 
+def _submission_failure(exc: AppError | ValidationError | SQLAlchemyError) -> dict:
+    if isinstance(exc, SQLAlchemyError):
+        return {"status_code": 503, "error": "结果暂未确认，请核实原提交。", "result": "submitted", "rejected": False}
+    if isinstance(exc, ValidationError):
+        return {"status_code": 422, "error": "请检查金额、原因和约定版本。", "result": "rejected", "rejected": False}
+    invalid = exc.error in {"amount_invalid", "debt_amount_invalid", "invalid_request"}
+    rejected = exc.error in {
+        "state_conflict", "split_change_repayment_pending", "split_change_pending",
+        "split_change_not_pending", "split_change_expired", "split_total_exceeds_parent", "split_amount_exceeds_parent"}
+    result = "rejected" if invalid else "submitted" if exc.status_code >= 500 else "blocked"
+    return {"status_code": exc.status_code, "error": exc.message, "result": result, "rejected": rejected}
+
+
 async def _submit(request: Request, db: Session, *, public_id: str, command: str,
                   proposal_public_id: str = "") -> Response:
     values = await _form(request)
@@ -115,18 +128,8 @@ async def _submit(request: Request, db: Session, *, public_id: str, command: str
                            values=values, code=debt.home_currency_code)
     except (AppError, ValidationError, SQLAlchemyError) as exc:
         db.rollback()
-        status = exc.status_code if isinstance(exc, AppError) else 503 if isinstance(exc, SQLAlchemyError) else 422
-        message = exc.message if isinstance(exc, AppError) else "结果暂未确认，请核实原提交。" if status == 503 else "请检查金额、原因和约定版本。"
-        invalid = isinstance(exc, ValidationError) or isinstance(exc, AppError) and exc.error in {
-            "amount_invalid", "debt_amount_invalid", "invalid_request"}
-        rejected = isinstance(exc, AppError) and exc.error in {
-            "state_conflict", "split_change_repayment_pending", "split_change_pending",
-            "split_change_not_pending", "split_change_expired"}
-        rejected = rejected or isinstance(exc, AppError) and exc.error in {
-            "split_total_exceeds_parent", "split_amount_exceeds_parent"}
-        result = "rejected" if invalid else "submitted" if status >= 500 else "blocked"
         return _outcome(request, db, options=options, selected_id=selected_id, public_id=public_id,
-            values=values, error=message, result=result, status_code=status, rejected=rejected)
+            values=values, **_submission_failure(exc))
     receipt_id = receipt.invitation_public_id if command == "accept" else receipt.public_id
     ack = {"scope": repayment_scope(request, db), "clientRef": values["idempotency_key"], "resultPublicId": receipt_id,
            "values": {field: values[field] for field in CHANGE_FIELDS}}
