@@ -9,13 +9,15 @@ valid rows as ``pending`` expenses in chunks.
 
 from __future__ import annotations
 
+from functools import partial
+
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
-from app.routes._portable_file_response import PortableFileResponse
+from app.routes._portable_file_response import PortableFileResponse, portable_request_cancelled
 from app.routes._web_money_views import _expense_view, _minor_amount_label
 from app.routes._web_session_common import resolve_web_actor
 from app.routes.web_common import (
@@ -60,7 +62,9 @@ def web_export_portable(request: Request, ledger_id: str = "", _local: None = Lo
     # Scope resolution is complete; don't hold its read connection throughout
     # the independently authorized snapshot and archive build.
     db.close()
-    return PortableFileResponse(create_portable_ledger_export(db, auth=auth))
+    return PortableFileResponse(create_portable_ledger_export(
+        db, auth=auth, cancel_requested=partial(portable_request_cancelled, request),
+    ))
 
 
 @router.get("/export.csv")

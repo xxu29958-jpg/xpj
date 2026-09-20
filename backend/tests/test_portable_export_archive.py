@@ -145,6 +145,24 @@ def test_cleanup_references_keep_their_identity_without_exposing_storage_paths(t
     assert row["attachment_cleanup_request"]["image"]["reference"] == "uploads/owner/old.png"
 
 
+def test_manifest_distinguishes_personal_mixed_and_owner_scopes_from_ledger_records():
+    names = ["expenses", "repayment_drafts", "bill_split_sent", "background_task_observations",
+        "account_resource_actions", "account_bill_split_inbox", "accepted_operations", "accounts", "ledger_audit_logs"]
+    with portable_export_archive.create_portable_archive(
+        ledger_id="owner", snapshot_at=WHEN, account_public_id="actor",
+        sections=[(name, []) for name in names], originals=[],
+    ) as result, ZipFile(result.path) as package:
+        manifest = json.loads(package.read("manifest.json"))
+        scope = manifest["record_scope"]
+        assert scope["ledger_collections"] == ["expenses"]
+        assert scope["account_collections"] == names[1:6]
+        assert scope["mixed_collections"] == ["accepted_operations", "accounts"]
+        assert scope["owner_collections"] == ["ledger_audit_logs"]
+        assert {item["name"]: item["scope"] for item in manifest["collections"]} == {
+            "expenses": "ledger", **dict.fromkeys(names[1:6], "account"),
+            "accepted_operations": "mixed", "accounts": "mixed", "ledger_audit_logs": "owner"}
+
+
 def test_pending_cleanup_of_current_corrupt_original_keeps_the_recorded_identity(tmp_path, monkeypatch):
     _install_files(tmp_path, monkeypatch)
     row = _original(1, "available", "0" * 64)
@@ -195,6 +213,18 @@ def test_time_limit_is_checked_after_an_empty_collection_before_the_next_query(m
             sections=[("empty", []), ("later", must_not_start())], originals=[],
         )
     assert caught.value.error == "portable_export_limit"
+
+
+def test_archive_cancellation_releases_request_temporary_files(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(portable_export_archive, "TemporaryDirectory", partial(TemporaryDirectory, dir=tmp_path))
+
+    with pytest.raises(portable_export_archive.PortableExportCancelledError):
+        portable_export_archive.create_portable_archive(
+            ledger_id="owner", snapshot_at=WHEN, account_public_id="actor",
+            sections=(("expenses", ()),), originals=(), cancel_requested=lambda: True,
+        )
+
+    assert not list(tmp_path.iterdir())
 
 
 def test_time_limit_is_checked_after_an_empty_original_query_before_history(monkeypatch):

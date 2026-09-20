@@ -100,7 +100,7 @@ private fun DebtActivityProposal(proposal: MemberRepaymentProposal, resolved: Bo
     }
     proposal.note?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
     proposal.supersedesProposalPublicId?.let {
-        Text(stringResource(R.string.debt_activity_supersedes, it), style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(R.string.debt_activity_supersedes), style = MaterialTheme.typography.bodySmall)
     }
 }
 

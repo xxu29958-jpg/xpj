@@ -91,7 +91,7 @@ internal fun DebtActivitySection(
                             event = event,
                             homeCurrencyCode = history.homeCurrencyCode,
                             showDivider = index < history.items.lastIndex,
-                            voidAllowed = event.kind == "repayment" && event.repayment?.let {
+                            voidAllowed = history.actionsCurrent && event.kind == "repayment" && event.repayment?.let {
                                 repaymentVoidActionAllowed(debt, canModify, it)
                             } == true,
                             focused = event.kind == "repayment" && event.repayment?.publicId == history.focusedRepaymentId,

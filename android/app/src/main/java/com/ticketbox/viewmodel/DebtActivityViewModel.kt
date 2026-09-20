@@ -24,6 +24,7 @@ data class DebtActivityUiState(
     val isLoading: Boolean = false,
     val error: UiText? = null,
     val focusedRepaymentId: String? = null,
+    val actionsCurrent: Boolean = false,
 ) {
     val hasPrevious: Boolean get() = page > 1
 }
@@ -47,6 +48,7 @@ class DebtActivityViewModel(private val repository: DebtActivityQueries) : ViewM
         val next = task?.let { it to rowVersion }
         if (!forceRefresh && target == next && commandRevision == acknowledgedCommandRevision) return
         val sameTask = task != null && target?.first == task
+        val newerFactsRequired = target != next || commandRevision != acknowledgedCommandRevision
         target = next
         commandRevision = acknowledgedCommandRevision
         generation++
@@ -54,7 +56,11 @@ class DebtActivityViewModel(private val repository: DebtActivityQueries) : ViewM
         requestedRepayment = null
         // A successful command does not erase a readable page if its follow-up query fails.
         // Another relationship or authority must never inherit that page.
-        if (!sameTask) _state.value = DebtActivityUiState(debtPublicId = task?.debtPublicId, binding = task?.binding)
+        if (!sameTask) {
+            _state.value = DebtActivityUiState(debtPublicId = task?.debtPublicId, binding = task?.binding)
+        } else if (newerFactsRequired) {
+            _state.update { it.copy(actionsCurrent = false) }
+        }
         refresh()
     }
 
@@ -94,6 +100,7 @@ class DebtActivityViewModel(private val repository: DebtActivityQueries) : ViewM
                         total = history.total,
                         hasNext = history.page * history.pageSize < history.total,
                         focusedRepaymentId = focus,
+                        actionsCurrent = true,
                     )
                 },
                 onFailure = { error ->
