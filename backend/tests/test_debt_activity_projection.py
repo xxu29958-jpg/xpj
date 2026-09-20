@@ -267,8 +267,20 @@ def test_cross_ledger_participant_projection_has_no_private_identifiers(records)
     for private in ("private-ledger", "idempotency_key", "actor_account_id", "debtor_account_id",
                     "creditor_account_id", "debt_id", "tenant_id", "ledger_id", "image_path", "private-key"):
         assert private not in encoded
-    for tenant, actor in (("unrelated-ledger", 3), ("unrelated-ledger", 1)):
+    for tenant, actor in (("unrelated-ledger", 3), ("unrelated-ledger", 1), ("unrelated-ledger", None)):
         with pytest.raises(AppError) as error:
             list_debt_activity(records, tenant_id=tenant, actor_account_id=actor,
                 public_id=debt.public_id, page=1, page_size=50)
         assert error.value.error == "debt_not_found" and error.value.status_code == 404
+
+
+def test_same_ledger_read_without_viewer_keeps_unattributed_resolution(records):
+    debt = _debt(records, member=True)
+    _proposal(records, debt, status="superseded", resolved_at=WHEN + timedelta(seconds=1))
+    result = list_debt_activity(records, tenant_id=debt.tenant_id, actor_account_id=None,
+        public_id=debt.public_id, page=1, page_size=50)
+    assert result.total == 3
+    assert {item.kind for item in result.items} == {"created", "proposal_created", "proposal_resolved"}
+    resolved = next(item for item in result.items if item.kind == "proposal_resolved")
+    assert resolved.actor_display_name is None
+    assert not any(item.actor_is_you for item in result.items)

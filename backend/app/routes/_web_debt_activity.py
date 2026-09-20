@@ -114,8 +114,6 @@ def debt_activity_context(
         raise AppError("invalid_request", "请选择正确的历史页码。", status_code=422) from exc
     if page < 1:
         raise AppError("invalid_request", "请选择正确的历史页码。", status_code=422)
-    if account_id is None:
-        return {"rows": [], "page": page, "total": 0, "previous_href": "", "next_href": ""}
     query = {
         "tenant_id": selected_id, "actor_account_id": account_id, "public_id": public_id,
         "page": page, "page_size": 20,
