@@ -140,6 +140,7 @@ class DebtActivitySectionRenderTest {
                     ),
                     page = 1,
                     total = 2,
+                    actionsCurrent = true,
                 )
             },
             onVoidRepayment = { voided = it },
@@ -159,6 +160,7 @@ class DebtActivitySectionRenderTest {
             items = listOf(repayment("r1", 6_000)),
             page = 1,
             total = 1,
+            actionsCurrent = true,
         )
         val voidLabel = context.getString(R.string.debt_repayment_void_action)
         val currentDebt = mutableStateOf(debt())
@@ -231,6 +233,7 @@ class DebtActivitySectionRenderTest {
         composeRule.onNodeWithText(context.getString(R.string.common_retry)).assertExists()
         // 已有记录不被错误吞掉（查询失败不阻断读，也不阻断上方命令区）。
         composeRule.onNodeWithText("¥60.00").assertExists()
+        composeRule.onNodeWithText(context.getString(R.string.debt_repayment_void_action)).assertDoesNotExist()
     }
 
     @Test
