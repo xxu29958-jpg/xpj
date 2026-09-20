@@ -39,10 +39,13 @@ data class SplitAgreementUiState(
     val rows: List<OutboxRow> = emptyList(),
     val intents: Map<Long, SplitAgreementPayload> = emptyMap(),
     val acknowledgedRevision: Long = 0,
+    val agreementRevision: Long = 0,
 ) {
     val busy: Boolean get() = submitting || rows.any { it.status != PendingMutationStatus.Done }
+    val agreementCurrent: Boolean get() = agreementRevision == acknowledgedRevision
+    val commandsEnabled: Boolean get() = agreementCurrent && !busy && !loading
     val canPropose: Boolean get() = agreement?.viewerIsParty == true && agreement.pendingProposal == null &&
-        agreement.pendingRepaymentDebtPublicIds.isEmpty() && previewReady && confirmed && !busy && !loading
+        agreement.pendingRepaymentDebtPublicIds.isEmpty() && previewReady && confirmed && commandsEnabled
 }
 
 /** Drafts are scoped to the entire logical task, including origin, principal and binding generation. */
@@ -97,7 +100,8 @@ class SplitAgreementViewModel(private val repository: SplitAgreementActions) : V
                     shareInput = code?.let { c -> formatAmountInput(agreement.preview.newShareAmountCents, c) }.orEmpty(),
                     settlementInput = if (it.settlementEdited) it.settlementInput else
                         code?.let { c -> formatAmountInput(agreement.preview.defaultSettlementNetAmountCents, c) }.orEmpty(),
-                    previewReady = code != null) }
+                    previewReady = code != null,
+                    agreementRevision = it.acknowledgedRevision) }
                 observeOriginal(task.copy(debtPublicId = agreement.originalDebt.publicId))
             }, onFailure = {
                 _state.update { it.copy(loading = false, error = "新约定暂时无法读取，请重试。") }
@@ -142,7 +146,7 @@ class SplitAgreementViewModel(private val repository: SplitAgreementActions) : V
         val state = _state.value
         val agreement = state.agreement ?: return
         val proposal = agreement.pendingProposal ?: return
-        if (!agreement.viewerIsParty || state.busy || state.loading) return
+        if (!agreement.viewerIsParty || !state.commandsEnabled) return
         if (accept && (!state.confirmed || proposal.proposedByYou || !state.previewReady ||
                 agreement.pendingRepaymentDebtPublicIds.isNotEmpty())) return
         val operation = if (accept) SPLIT_ACCEPT else if (proposal.proposedByYou) SPLIT_WITHDRAW else SPLIT_REJECT

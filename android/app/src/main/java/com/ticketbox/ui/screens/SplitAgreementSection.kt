@@ -114,11 +114,11 @@ private fun SplitAgreementProposal(state: SplitAgreementUiState, model: SplitAgr
         if (!proposal.proposedByYou) {
             SplitSettlementConfirmation(state, model)
             QuietOutlinedButton(text = "接受新约定", onClick = { model.resolve(true) },
-                enabled = !state.busy && !state.loading && state.previewReady && state.confirmed &&
+                enabled = state.commandsEnabled && state.previewReady && state.confirmed &&
                     agreement.pendingRepaymentDebtPublicIds.isEmpty())
         }
         QuietOutlinedButton(text = if (proposal.proposedByYou) "撤回提议" else "拒绝提议",
-            onClick = { model.resolve(false) }, enabled = !state.busy && !state.loading)
+            onClick = { model.resolve(false) }, enabled = state.commandsEnabled)
     } ?: SplitAgreementForm(state, model, display)
 }
 

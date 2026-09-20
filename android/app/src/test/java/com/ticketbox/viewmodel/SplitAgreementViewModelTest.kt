@@ -94,12 +94,12 @@ class SplitAgreementViewModelTest {
         assertEquals(8L, repo.commands.single().accept?.expectedReturnRowVersion)
     }
 
-    @Test fun doneReceiptSurvivesRefreshFailureWithoutResubmission() = runTest(dispatcher) {
-        val repo = SplitProbe()
+    @Test fun doneResolutionRefreshFailureBlocksDuplicateUntilCurrentAgreementRecovers() = runTest(dispatcher) {
+        val repo = SplitProbe().apply { value = splitTestAgreement().copy(pendingProposal = splitTestProposal()) }
         val model = SplitAgreementViewModel(repo)
         val task = memberDebtTask("original")
         model.load(task); advanceUntilIdle()
-        model.editReason("新约定"); model.confirm(true); model.propose(); advanceUntilIdle()
+        model.resolve(false); advanceUntilIdle()
         repo.fail = true
         repo.rows.value = listOf(OutboxRow(1, task.binding.serverUrl, task.binding.ledgerId,
             task.binding.ownerKey, PendingMutationType.SplitAgreement, "debt:original", "{}", 7,
@@ -108,9 +108,17 @@ class SplitAgreementViewModelTest {
         assertNotNull(model.state.value.error)
         assertEquals("原提交已由服务端接收。", model.state.value.message)
         assertEquals(1L, model.state.value.acknowledgedRevision)
-        model.propose(); model.refresh(); advanceUntilIdle()
+        assertFalse(model.state.value.agreementCurrent)
+        model.resolve(false); advanceUntilIdle()
         assertEquals(1, repo.commands.size)
         assertNotNull(model.state.value.agreement)
+        repo.fail = false
+        repo.value = repo.value.copy(pendingProposal = splitTestProposal().copy(publicId = "proposal-new"))
+        model.refresh(); advanceUntilIdle()
+        assertTrue(model.state.value.agreementCurrent)
+        model.resolve(false); advanceUntilIdle()
+        assertEquals(2, repo.commands.size)
+        assertEquals("proposal-new", repo.commands.last().proposalPublicId)
     }
 
     @Test fun droppingRestartedCreateRestoresItsDraftWhileUnknownIntentPreservesCurrentDraft() = runTest(dispatcher) {
