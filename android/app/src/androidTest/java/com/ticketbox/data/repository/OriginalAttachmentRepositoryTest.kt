@@ -12,16 +12,27 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.assertFalse
 
 class OriginalAttachmentRepositoryTest {
-    @Test fun missingCapabilityRefusesAdmissionBeforeReadingSourceOrInsertingRoom() = runBlocking<Unit> {
+    @Test fun capturedOriginalAdmitsAndRetriesOfflineWithoutReplacingItsKey() = runBlocking<Unit> {
         UploadIntentRepositoryFixture().use { fixture ->
-            fixture.originalAttachmentVersion = null
+            val key = UUID.randomUUID().toString()
             val payload = OriginalAttachmentPayload(operation = "replenish_original", expenseId = 8, publicId = "expense-8",
                 expectedRowVersion = 4, origin = requireNotNull(fixture.repository.currentOriginalBinding()), sha256 = "a".repeat(64))
-            val result = fixture.repository.submitOriginal(OriginalSubmission(UUID.randomUUID().toString(), payload) {
-                error("Unsupported server must not prepare an original")
-            })
-            assertEquals("runtime_version_mismatch", (result.exceptionOrNull() as RepositoryException).errorCode)
-            assertTrue(fixture.dao.allRows().isEmpty())
+            var reads = 0
+            val request = OriginalSubmission(key, payload) { reads++; fixture.image("captured-original.png") }
+            val id = fixture.repository.submitOriginal(request).getOrThrow()
+            val original = fixture.dao.allRows().single()
+            fixture.reopen()
+            assertEquals(id, fixture.repository.submitOriginal(request).getOrThrow())
+            assertEquals(1, reads)
+            fixture.outbox.markFailed(id, "original_connection_failed")
+            fixture.repository.recoverOriginal(payload.origin, id, drop = false).getOrThrow()
+            val retried = fixture.dao.allRows().single()
+            assertEquals("pending", retried.status)
+            assertEquals(key, retried.idempotencyKey)
+            assertEquals(original.payload, retried.payload)
+            assertEquals(original.expectedRowVersion, retried.expectedRowVersion)
+            assertArrayEquals(fixture.image("captured-original.png").bytes,
+                fixture.fileStore.read(requireNotNull(readOriginalPayload(retried.toDomain())?.file)))
             assertEquals(0, fixture.apiCalls)
         }
     }

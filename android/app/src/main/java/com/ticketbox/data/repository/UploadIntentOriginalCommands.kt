@@ -3,7 +3,6 @@ package com.ticketbox.data.repository
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.OriginalHealthDto
-import com.ticketbox.data.remote.dto.toWriteCompatibility
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
@@ -32,7 +31,6 @@ internal suspend fun UploadIntentRepository.acceptOriginalAttachment(request: Or
     require(isUploadIntentFileKey(request.key))
     val bound = guard.bindExact(request.payload.origin)
     requireOriginalWriter()
-    bound.requireOriginalCapability()
     try {
         files.acceptBatch(
             sources = if (request.payload.operation == "replenish_original") listOf(
@@ -74,16 +72,9 @@ internal suspend fun UploadIntentRepository.recoverOriginalAttachment(binding: L
     } else {
         requireOriginalWriter()
         check(pending.canRetry)
-        bound.requireOriginalCapability()
         outbox.resolveFailed(rowId, FailedResolution.Retry(), bound)
     }
     check(changed)
-}
-
-private suspend fun BoundLedgerRequest.requireOriginalCapability() {
-    if (!call { it.runtimeCompatibility().toWriteCompatibility().supportsOriginalAttachment }) {
-        throw RepositoryException("此服务器暂不支持原件管理，请更新为配套版本后继续。", errorCode = "runtime_version_mismatch")
-    }
 }
 
 private fun UploadIntentRepository.requireOriginalWriter() {

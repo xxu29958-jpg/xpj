@@ -12,10 +12,6 @@ import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.UploadResponseDto
-import com.ticketbox.data.remote.CURRENT_TICKETBOX_API_VERSION
-import com.ticketbox.data.remote.dto.RuntimeCompatibilityDto
-import com.ticketbox.data.remote.dto.RuntimeCurrencyCapabilityDto
-import com.ticketbox.data.remote.dto.RuntimeProductCapabilitiesDto
 import com.ticketbox.security.LocalSessionIdentity
 import com.ticketbox.security.LocalSessionRecord
 import com.ticketbox.security.LocalSessionStore
@@ -53,7 +49,6 @@ internal class UploadIntentRepositoryFixture : Closeable {
     private val timestamps = mutableMapOf<String, String>()
     var loseNextInsertAcknowledgement = false
     var nextInsertFailure: Exception? = null
-    var originalAttachmentVersion: Int? = 1
     var failNextTimestampWrite = false
     var scheduled = 0
     var apiCalls = 0
@@ -97,13 +92,9 @@ internal class UploadIntentRepositoryFixture : Closeable {
             }
             else -> error("Unexpected settings method: $method")
         } }
-        val transport = repositoryUploadProxy<ApiService> { method, _ ->
-            if (method == "runtimeCompatibility") RuntimeCompatibilityDto(CURRENT_TICKETBOX_API_VERSION, "compatible",
-                RuntimeProductCapabilitiesDto(RuntimeCurrencyCapabilityDto("1:1:CNY"), originalAttachmentVersion = originalAttachmentVersion))
-            else {
-                apiCalls++
-                error("The upload repository must never send mutation HTTP")
-            }
+        val transport = repositoryUploadProxy<ApiService> { _, _ ->
+            apiCalls++
+            throw IOException("Runtime and command transport are offline")
         }
         val factory = object : ApiServiceFactory {
             override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = transport

@@ -324,9 +324,10 @@ is disabled. Explicit cancellation can release an unexecuted invalid reference
 without deleting anything or falsely marking it deleted.
 
 `original_attachment_version=1` is advertised through the existing runtime
-capabilities. Android health, admission, retry and dispatch negotiate that feature;
+capabilities. Android health and actual HTTP dispatch negotiate that feature;
 an older backend gives the existing upgrade explanation before exposing an
-operable original command. Other capabilities and ordinary image reads remain.
+operable original command. Local admission and retry retain the captured intent
+without adding an online prerequisite. Other capabilities and ordinary image reads remain.
 The generated OpenAPI schema carries the feature without changing the API date.
 
 That exact prior head passed Connected and CodeQL. Its release compiler exhausted
