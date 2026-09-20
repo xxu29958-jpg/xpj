@@ -6,7 +6,7 @@ import hashlib
 import json
 import re
 from collections import Counter
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from contextlib import ExitStack
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
@@ -20,6 +20,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 from app.errors import AppError
 from app.services.original_read_service import read_original_snapshot, recorded_original_digest
+from app.services.portable_export_queries import PORTABLE_COLLECTION_SCOPES
 
 MAX_EXPORT_BYTES = 2 * 1024 * 1024 * 1024
 MAX_EXPORT_SECONDS = 300
@@ -30,7 +31,8 @@ manifest.json 说明范围、快照时间、记录数量和文件摘要；record
 金额保留整数最小货币单位；十进制汇率保留字符串精度；日期和时间不重新解释。
 expenses.original_reference_id 对应 originals.jsonl；该索引列出每个原件的状态及包内文件。
 缺失、损坏、已清理和旧件未核验分别说明，不用缩略图代替原件。
-account_ 开头的集合是当前账号可见的收件箱和往来快照，不是对方私有账本的副本。
+每个集合的 scope 标明账本、当前账号、混合或 Owner 范围；不凭集合名称推断所有权。
+混合集合含账本事实和当前账号获准的引用/结果；账号集合不是对方私有账本的副本。
 历史回执的原件引用与当前记录分别列出；相同内容只保存一份文件。运行诊断不随回执导出。
 
 本包不包含尚未提交到服务器的手机或浏览器草稿，也不包含有效登录凭据。
@@ -39,12 +41,19 @@ account_ 开头的集合是当前账号可见的收件箱和往来快照，不�
 """
 
 
+class PortableExportCancelledError(Exception):
+    """The requesting client disconnected while its private package was built."""
+
+
 @dataclass
 class _ExportBudget:
     used: int = 0
     started: float = field(default_factory=monotonic)
+    cancel_requested: Callable[[], bool] | None = field(default=None, repr=False)
 
     def consume(self, size: int) -> None:
+        if self.cancel_requested is not None and self.cancel_requested():
+            raise PortableExportCancelledError
         self.used += size
         if self.used > MAX_EXPORT_BYTES or monotonic() - self.started > MAX_EXPORT_SECONDS:
             raise AppError("portable_export_limit", status_code=503)
@@ -110,9 +119,20 @@ def _receipt_record(result: dict[str, object]) -> dict[str, object]:
     if not isinstance(source, dict):
         return result
     node = dict(source)
+    is_original_command = (resource == "expense" and node.get("operation") in {
+        "verify_original", "replenish_original", "retry_original_cleanup", "cancel_original_cleanup"
+    } and node.get("sha256") is not None)
+    expense_id = node.get("id")
+    if is_original_command:
+        expense_id = node.get("expense_id")
     if "image_path" in node:
         node.pop("image_path")
-        node["original_reference_id"] = f"expense:{node['id']}:accepted:{result['id']}"
+        node["original_reference_id"] = f"expense:{expense_id}:accepted:{result['id']}"
+    elif expense_id is not None and (resource == "upload_receipt" or is_original_command):
+        # These accepted producers carry stable identity rather than a storage
+        # path. The originals query resolves that identity without serializing
+        # the current internal reference into this business receipt.
+        node["original_reference_id"] = f"expense:{expense_id}:accepted:{result['id']}"
     if "thumbnail_path" in node:
         node["thumbnail_reference_present"] = bool(node.pop("thumbnail_path"))
     if isinstance(node.get("fx_task"), dict):
@@ -142,7 +162,8 @@ def _write_records(package: ZipFile, name: str, rows: Iterable[Mapping[str, obje
             size += len(data)
             count += 1
     budget.consume(0)
-    return {"name": name, "path": path, "records": count, "size_bytes": size, "sha256": digest.hexdigest()}
+    return {"name": name, "scope": PORTABLE_COLLECTION_SCOPES[name], "path": path,
+        "records": count, "size_bytes": size, "sha256": digest.hexdigest()}
 
 
 def _reference_rows(expense: Mapping[str, object]) -> Iterable[dict[str, object]]:
@@ -174,7 +195,8 @@ def _observe_original(package: ZipFile, reference: dict[str, object], ledger_id:
     if reference["cleaned"]:
         return {**result, "state": "cleaned"}
     if not reference["source"]:
-        return {**result, "state": "none"}
+        result["expected_sha256"] = recorded_original_digest(reference["expected_sha256"])
+        return {**result, "state": "unavailable" if result["expected_sha256"] else "none"}
     result["expected_sha256"] = recorded_original_digest(reference["expected_sha256"])
     try:
         with read_original_snapshot(relative_path=reference["source"], tenant_id=ledger_id,
@@ -245,11 +267,13 @@ def _write_originals(package: ZipFile, directory: Path, ledger_id: str,
 def create_portable_archive(*, ledger_id: str, snapshot_at: datetime, account_public_id: str,
                             sections: Iterable[tuple[str, Iterable[Mapping[str, object]]]],
                             originals: Iterable[Mapping[str, object]],
-                            historical_originals: Iterable[Mapping[str, object]] = ()) -> PortableArchive:
+                            historical_originals: Iterable[Mapping[str, object]] = (),
+                            cancel_requested: Callable[[], bool] | None = None) -> PortableArchive:
     """Consume one authorized DB snapshot; publish only a closed, complete record package."""
-    budget = _ExportBudget()
+    budget = _ExportBudget(cancel_requested=cancel_requested)
     with ExitStack() as cleanup:
         directory = Path(cleanup.enter_context(TemporaryDirectory(prefix="ticketbox-portable-")))
+        budget.consume(0)
         path = directory / "ticketbox-data.zip"
         with ZipFile(path, "w", compression=ZIP_DEFLATED, compresslevel=1, allowZip64=True) as package:
             collections = [_write_records(package, name, rows, budget) for name, rows in sections]
@@ -258,8 +282,8 @@ def create_portable_archive(*, ledger_id: str, snapshot_at: datetime, account_pu
             manifest = {"format": "ticketbox-portable-data", "version": 1, "ledger_id": ledger_id,
                 "snapshot_at": snapshot_at, "records_complete": True, "originals_complete": not incomplete_states,
                 "record_scope": {"account_public_id": account_public_id,
-                    "ledger_collections": [item["name"] for item in collections if not item["name"].startswith("account_")],
-                    "account_collections": [item["name"] for item in collections if item["name"].startswith("account_")],
+                    **{f"{scope}_collections": [item["name"] for item in collections if item["scope"] == scope]
+                        for scope in ("ledger", "account", "mixed", "owner")},
                     "permission_basis": "current_authenticated_read_scope",
                     "excluded": ["other_members_private_records", "owner_console_audit",
                         "credentials", "machine_configuration", "client_unsubmitted_intents"]},

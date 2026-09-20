@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 from zipfile import ZipFile
 
+import anyio
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -53,7 +54,8 @@ def test_api_portable_requires_identity_and_allows_viewer_without_filters(monkey
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["content-disposition"] == 'attachment; filename="ticketbox-portable.zip"'
     assert ZipFile(BytesIO(response.content)).read("README.txt").startswith(b"Persisted authorized")
-    assert owner.call_args.kwargs == {"auth": AUTH}
+    assert owner.call_args.kwargs["auth"] == AUTH
+    assert callable(owner.call_args.kwargs["cancel_requested"])
     archive.close.assert_called_once()
     assert not archive.path.exists()
 
@@ -69,7 +71,8 @@ def test_download_releases_request_read_before_claiming_snapshot_capacity(monkey
 
     engine = create_engine("sqlite://", poolclass=QueuePool, pool_size=1, max_overflow=0, pool_timeout=0.01)
 
-    def snapshot(db, *, auth):
+    def snapshot(db, *, auth, cancel_requested):
+        assert callable(cancel_requested)
         with db.get_bind().connect() as connection:
             assert connection.scalar(select(1)) == 1
         return archive
@@ -81,10 +84,10 @@ def test_download_releases_request_read_before_claiming_snapshot_capacity(monkey
             # Exercise the real pool and Session lifecycle; no product DB schema
             # or snapshot claims. Throttled authentication leaves this read open.
             request_db.execute(select(1))
+            request = Request({"type": "http", "method": "GET", "path": f"/{surface}/export/portable"})
             if surface == "api":
-                response = exports.export_portable(auth=AUTH, db=request_db)
+                response = exports.export_portable(request, auth=AUTH, db=request_db)
             else:
-                request = Request({"type": "http", "method": "GET", "path": "/web/export/portable"})
                 request.state.web_session_auth = AUTH
                 response = web_import_export.web_export_portable(request, ledger_id=AUTH.ledger_id, db=request_db)
             response.archive.close()
@@ -115,7 +118,8 @@ def test_web_portable_uses_actual_selected_session_or_refuses_before_export(monk
         owner.assert_not_called()
         assert archive.path.exists()
     else:
-        assert owner.call_args.kwargs == {"auth": AUTH}
+        assert owner.call_args.kwargs["auth"] == AUTH
+        assert callable(owner.call_args.kwargs["cancel_requested"])
         assert response.headers["cache-control"] == "no-store"
         archive.close.assert_called_once()
 
@@ -168,3 +172,18 @@ def test_portable_response_closes_archive_on_disconnect_and_cancel(archive, fail
         asyncio.run(_deliver(PortableFileResponse(archive), fail_send=failure))
     archive.close.assert_called_once()
     assert not archive.path.exists()
+
+
+def test_portable_request_cancellation_reads_disconnect_from_route_worker() -> None:
+    from fastapi import Request
+
+    from app.routes._portable_file_response import portable_request_cancelled
+
+    async def receive():
+        return {"type": "http.disconnect"}
+
+    async def exercise() -> bool:
+        request = Request({"type": "http", "method": "GET", "path": "/api/exports/portable"}, receive)
+        return await anyio.to_thread.run_sync(portable_request_cancelled, request)
+
+    assert asyncio.run(exercise()) is True
