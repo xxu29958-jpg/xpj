@@ -101,11 +101,12 @@ def test_pr_scan_consumes_trusted_main_artifact_without_a_secret() -> None:
 
     assert workflow["permissions"] == {"contents": "read"}
     assert sca["permissions"] == {"actions": "read", "contents": "read"}
-    for job in (fast, debug_apk, release_apk, sca):
+    apk_scope_condition = expected_scope_condition.replace("outputs.android ", "outputs.android_apk ")
+    for job, expected in (
+        (fast, expected_scope_condition), (sca, expected_scope_condition),
+        (debug_apk, apk_scope_condition), (release_apk, apk_scope_condition),
+    ):
         assert job["needs"] == "scope"
-        expected = expected_scope_condition
-        if job in (debug_apk, release_apk):
-            expected = expected.replace("outputs.android ", "outputs.android_apk ")
         assert job["if"] == expected
         assert all(
             "XPJ_AUDIT_BASE_REF" not in (step.get("env") or {})

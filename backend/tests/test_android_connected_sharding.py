@@ -74,7 +74,7 @@ def test_connected_workflow_runs_two_isolated_qualified_shards() -> None:
         "Qualify connected shard union",
     ):
         step = qualification_steps[name]
-        assert step["if"] == "${{ success() && needs.scope.outputs.android != 'false' }}"
+        assert step["if"] == "${{ success() && needs.scope.outputs.android_connected != 'false' }}"
         assert not step.get("continue-on-error", False)
 
     required = jobs["connected"]
@@ -84,6 +84,7 @@ def test_connected_workflow_runs_two_isolated_qualified_shards() -> None:
     }
     enforce = _steps(required)["Enforce Connected result"]
     assert "--lane EXECUTION" in enforce["run"]
+    assert "--lane-scope EXECUTION=ANDROID_CONNECTED_SCOPE" in enforce["run"]
     assert list(qualification_steps).index("Qualify connected shard union") < list(
         qualification_steps
     ).index("Enforce Connected result")

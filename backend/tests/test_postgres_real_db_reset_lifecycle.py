@@ -44,7 +44,7 @@ def _run_real_db_fixture(
     calls: list[str] = []
     monkeypatch.setattr(suite_conftest, "reset_db_state", lambda: calls.append("reset"))
     monkeypatch.setattr(suite_conftest, "clear_db_state", lambda: calls.append("clear"))
-    fixture = suite_conftest._db_isolation.__wrapped__(  # noqa: SLF001
+    fixture = suite_conftest._db_isolation.__wrapped__(
         _fixture_request(lane=lane, shard_count=shard_count)
     )
     next(fixture)
@@ -103,7 +103,7 @@ def test_optimized_lane_still_rejects_a_mixed_collection() -> None:
 @pytest.mark.real_db
 @pytest.mark.currency_binding_unbound
 def test_clear_then_full_reset_restores_schema_migration_seed_and_files() -> None:
-    runtime_path = test_db._DATA_RUNTIME_ROOT / test_db.TEST_RUN_ID  # noqa: SLF001
+    runtime_path = test_db._DATA_RUNTIME_ROOT / test_db.TEST_RUN_ID
     runtime_path.mkdir(parents=True, exist_ok=True)
     (runtime_path / "sentinel.txt").write_text("owned test data", encoding="utf-8")
     with engine.begin() as connection:
