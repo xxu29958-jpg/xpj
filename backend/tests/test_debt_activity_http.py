@@ -152,7 +152,11 @@ def test_real_cross_ledger_participant_reads_shared_history_without_private_ledg
     for private in ("ledger_id", "tenant_id", "actor_account_id", "debtor_account_id", "creditor_account_id",
                     "idempotency_key", "image_path", "debtor-"):
         assert private not in response_text
-    denied = client.get(f"/api/debts/{public_id}/activity", headers=identity.gray_app_headers)
+    # The gray device belongs to the same creditor Account, so its other
+    # ledger context must preserve the authorized counterparty history.
+    assert _activity(client, identity.gray_app_headers, public_id) == body
+    _, stranger_token = _mint_member_actor()
+    denied = client.get(f"/api/debts/{public_id}/activity", headers=_member_headers(stranger_token))
     assert denied.status_code == 404 and denied.json()["error"] == "debt_not_found"
 
 
