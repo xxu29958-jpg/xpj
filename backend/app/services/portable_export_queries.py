@@ -280,8 +280,21 @@ def _identity_queries(auth: AuthContext, business: tuple[tuple[str, Select], ...
         "target_account_id", "created_actor_account_id", "counterparty_account_id", "sender_account_id",
         "receiver_account_id", "debtor_account_id", "creditor_account_id", "proposed_by_account_id",
         "resolved_by_account_id", "initiated_by_account_id"}
+    participant_debts = select(m.Debt.id).where(or_(
+        m.Debt.owner_account_id == auth.account_id, m.Debt.counterparty_account_id == auth.account_id))
+    debt_children = {model.__tablename__ for model, _ in _DEBT_CHILDREN}
     account_ids = []
-    for _, query in (*business, ("ledger", ledger), ("members", members), ("calendar", calendar)):
+    for name, query in (*business, ("ledger", ledger), ("members", members), ("calendar", calendar)):
+        # Financial rows retain their references and snapshot labels. Only the
+        # actual parties may expand a Debt reference into current account data;
+        # ledger membership independently grants the identities below.
+        if name == "debts":
+            query = query.where(m.Debt.id.in_(participant_debts))
+        elif name in debt_children:
+            query = query.where(query.selected_columns.debt_id.in_(participant_debts))
+        elif name == "repayment_voids":
+            query = query.where(m.RepaymentVoid.repayment_id.in_(
+                select(m.Repayment.id).where(m.Repayment.debt_id.in_(participant_debts))))
         rows = query.order_by(None).subquery()
         account_ids.extend(select(rows.c[field]) for field in sorted(references.intersection(rows.c.keys())))
     accounts = _record(m.Account, "id public_id display_name", m.Account.id.in_(union(*account_ids)))
