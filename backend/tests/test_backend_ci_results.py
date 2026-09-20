@@ -90,15 +90,12 @@ def _assert_windows_build_lane(jobs: dict[str, object]) -> None:
     windows_safety = windows_steps["Windows installer safety behavior"]["run"]
     assert '-m "not xdist_group"' in windows_safety
     assert "-n 4 --dist loadfile --max-worker-restart 0" in windows_safety
-    resource_serial = windows_steps["Windows installer resource-serial behavior"]["run"]
-    assert "packaging/tests -m xdist_group" in resource_serial
-    assert "-n 0 --dist loadfile --max-worker-restart 0" in resource_serial
+    assert "Windows installer resource-serial behavior" not in windows_steps
     assert "Windows local PostgreSQL lifecycle" not in windows_steps
     assert "Database generation projection real PostgreSQL contract" not in windows_steps
     step_names = list(windows_steps)
     prepared = step_names.index("Prepare pinned PostgreSQL and Shawl inputs")
     assert prepared < step_names.index("Windows installer safety behavior")
-    assert prepared < step_names.index("Windows installer resource-serial behavior")
     assert prepared < step_names.index("Compile authoritative Inno installer")
     for cheap in (
         "Installer source preflight (Windows PowerShell 5.1)",
@@ -120,6 +117,42 @@ def _assert_windows_build_lane(jobs: dict[str, object]) -> None:
         encoding="utf-8-sig"
     )
     assert 'pytestmark = pytest.mark.xdist_group(name="windows_postgresql_runtime")' in source
+
+
+def test_serial_windows_contracts_run_in_the_existing_independent_native_lane() -> None:
+    jobs = _jobs()
+    native = jobs["windows_vnext_lifecycle"]
+    build = jobs["windows_packaging_build"]
+    native_steps = _steps(native)
+    build_steps = _steps(build)
+    assert native["needs"] == build["needs"] == "scope"
+    assert native["if"] == build["if"]
+    assert native["runs-on"] == "windows-latest"
+    assert "continue-on-error" not in native
+    serial = native_steps["Windows installer resource-serial behavior"]
+    assert serial["working-directory"] == "backend"
+    assert serial["env"] == {"PYTEST_ADDOPTS": ""}
+    assert serial["run"] == (
+        "python -m pytest -q packaging/tests -m xdist_group "
+        "--strict-markers -p no:cacheprovider -o addopts= "
+        "-n 0 --dist loadfile --max-worker-restart 0"
+    )
+    commands = [step.get("run", "") for job in jobs.values() for step in job.get("steps", [])]
+    assert commands.count(serial["run"]) == 1
+    cache = "Cache pinned Windows build inputs"
+    assert native_steps[cache]["uses"] == build_steps[cache]["uses"]
+    assert native_steps[cache]["with"] == build_steps[cache]["with"]
+    preparation = "Prepare pinned PostgreSQL and Shawl inputs"
+    assert native_steps[preparation]["run"] == build_steps[preparation]["run"]
+    assert native_steps[preparation]["shell"] == "powershell"
+    assert native_steps[preparation]["working-directory"] == "backend"
+    order = list(native_steps)
+    assert order.index("Install test dependencies") < order.index("vNext coordinator contracts")
+    assert order.index("vNext coordinator contracts") < order.index(cache) < order.index(preparation)
+    assert order.index(preparation) < order.index("Windows installer resource-serial behavior")
+    for name in ("vNext coordinator contracts", preparation, "Windows installer resource-serial behavior"):
+        assert "if" not in native_steps[name]
+        assert "continue-on-error" not in native_steps[name]
 
 
 def _assert_backend_required_gate_binds_scope_results_and_exact_checkout_sha() -> None:

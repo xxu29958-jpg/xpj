@@ -60,6 +60,8 @@ pip-audit --strict（OSV 库）
 
 安装器测试数量由 `backend/packaging/audit/test_count_baseline.txt` 归 Windows 域维护；增加 packaging 测试不会反向触发 Android/Desktop。Windows 句柄绑定删除和临时 PostgreSQL 生命周期行为也在该 lane 真正执行，不以 Linux 上的 skip 代替证明。
 
+`Windows native contracts` 复用原有 coordinator job，在独立 Windows runner 上准备同一份钉住版本的 vendor 输入，再串行执行完整 `packaging/tests -m xdist_group` 集合。安装包构建 job 保留互补的 `not xdist_group` 四 worker 测试、真实 Desktop/BFF/配对、构建及原子产物回验；两组由同一 marker 自动选择，新测试不依赖人工名单。现有 `Windows release packaging` 仍要求两个 job 成功并核对各自 checkout/source 身份，测试失败不能借构建成功取得资格。没有新增 job 或改变 timeout；额外 vendor 准备与缓存开销计入完整运行成本。
+
 ### backend-postgres（按域全量测试）
 
 GitHub 是发布验收与合并权威；Gitea 是离线镜像和自检后备，Gitea-only 失败不阻断 GitHub 合并。后端运行时、测试、迁移相关路径变化或全量 fallback 时，ordinary、`real_db`、smoke + recovery 三个独立 job 各自使用隔离的 PostgreSQL service container；三个责任域保持显式 job。当前只支持安装器钉住的单一 PostgreSQL major，matrix 从发布配置和固定 service image 动态生成；未来扩展多个 major 前，必须先为每个 major 提供独立固定镜像。稳定汇总检查 `Backend (PostgreSQL)` 必须核对三个结果和实际 checkout SHA。
