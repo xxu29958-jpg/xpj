@@ -386,6 +386,85 @@ def test_success_receipts_do_not_disclose_another_members_private_draft_or_invit
     assert {row["id"] for row in _rows(records, "accepted_operations")} == {1, 3, 5}
 
 
+def test_split_agreement_records_keep_both_legs_and_permission_boundary_in_zip(records):
+    from datetime import UTC, datetime
+    from zipfile import ZipFile
+
+    from app.services.portable_export_archive import create_portable_archive
+
+    names = {"bill_split_change_proposals", "bill_split_agreement_changes",
+             "account_bill_split_change_proposals", "account_bill_split_agreement_changes"}
+    assert names <= _queries().keys(), "The portable snapshot must retain bilateral agreement history"
+    for index, ledger, counterparty in ((1, "selected", 8), (2, "secret-ledger", 7), (3, "secret-ledger", 9)):
+        _seed(records, m.BillSplitInvitation, id=index, public_id=f"invitation-{index}", status="accepted",
+              home_currency_code="CNY", sender_ledger_id="private-source", sender_expense_id=99)
+        for leg, source in ((index * 10, "bill_split"), (index * 10 + 1, "bill_split_return")):
+            _seed(records, m.Debt, id=leg, public_id=f"debt-{leg}", tenant_id=ledger,
+                  counterparty_account_id=counterparty, source_type=source, source_id=f"invitation-{index}")
+        _seed(records, m.DebtAdjustment, id=index, public_id=f"adjustment-{index}", debt_id=index * 10)
+        _seed(records, m.BillSplitChangeProposal, id=index, public_id=f"proposal-{index}", invitation_id=index,
+              original_debt_id=index * 10, return_debt_id=None, status="accepted", original_debt_row_version=7,
+              share_before_amount_cents=4000, new_share_amount_cents=2000, settlement_net_amount_cents=-1000,
+              original_paid_amount_cents=3000, return_paid_amount_cents=0, reason="共同确认退款后的结算")
+        _seed(records, m.BillSplitAgreementChange, id=index, public_id=f"change-{index}", invitation_id=index,
+              proposal_id=index, original_debt_id=index * 10, return_debt_id=index * 10 + 1,
+              original_adjustment_id=index, new_share_amount_cents=2000, settlement_net_amount_cents=-1000)
+    _seed(records, m.BillSplitChangeProposal, id=4, public_id="old-rejected", invitation_id=1,
+          original_debt_id=10, status="rejected", new_share_amount_cents=2500)
+    queries = _queries()
+    sections = ((name, records[0].execute(queries[name]).mappings()) for name in sorted(names))
+    with create_portable_archive(ledger_id="selected", account_public_id="actor",
+            snapshot_at=datetime(2026, 9, 20, tzinfo=UTC), sections=sections, originals=()) as archive, \
+            ZipFile(archive.path) as package:
+        rows = {name: [json.loads(line) for line in package.read(f"records/{name}.jsonl").splitlines()]
+                for name in names}
+        assert [row["public_id"] for row in rows["bill_split_change_proposals"]] == ["proposal-1", "old-rejected"]
+        assert [row["public_id"] for row in rows["account_bill_split_change_proposals"]] == ["proposal-2"]
+        change = rows["account_bill_split_agreement_changes"][0]
+        assert change["proposal_public_id"] == "proposal-2"
+        assert change["original_debt_public_id"] == "debt-20"
+        assert change["return_debt_public_id"] == "debt-21"
+        assert change["original_adjustment_public_id"] == "adjustment-2"
+        assert change["invitation_public_id"] == "invitation-2"
+        assert change["home_currency_code"] == "CNY"
+        assert change["settlement_net_amount_cents"] == -1000
+        assert rows["account_bill_split_change_proposals"][0]["return_debt_public_id"] is None
+        assert "secret-ledger" not in json.dumps(rows) and "private-source" not in json.dumps(rows)
+        for exported in rows.values():
+            for row in exported:
+                assert not {"id", "invitation_id", "proposal_id", "original_debt_id", "return_debt_id",
+                            "sender_expense_id", "received_expense_id", "idempotency_key"} & row.keys()
+        manifest = json.loads(package.read("manifest.json"))
+        assert set(manifest["record_scope"]["account_collections"]) == {name for name in names if name.startswith("account_")}
+
+
+def test_split_change_receipts_require_actual_debt_visibility(records):
+    for index, ledger, party in ((1, "selected", 8), (2, "private", 7), (3, "private", 8)):
+        _seed(records, m.Debt, id=index, public_id=f"debt-{index}", tenant_id=ledger, counterparty_account_id=party)
+        _seed(records, m.ApiIdempotencyKey, id=index, tenant_id="selected", resource_type="debt",
+              resource_id=f"debt-{index}", target_type="bill_split_change", status="succeeded",
+              response_body=json.dumps({"reason": f"split-{index}"}))
+    assert {row["id"] for row in _rows(records, "accepted_operations")} == {1, 2}
+
+
+def test_split_agreement_actor_identities_follow_the_same_third_party_boundary(records):
+    for id_ in (7, 8, 9):
+        _seed(records, m.Account, id=id_, public_id=f"account-{id_}")
+    _seed(records, m.LedgerMember, id=8, ledger_id="selected", account_id=8)
+    _seed(records, m.Debt, id=1, public_id="shared", tenant_id="selected", owner_account_id=8,
+        counterparty_account_id=9)
+    _seed(records, m.BillSplitChangeProposal, id=1, public_id="proposal", original_debt_id=1,
+        proposed_by_account_id=9, resolved_by_account_id=8)
+    _seed(records, m.BillSplitAgreementChange, id=1, public_id="change", original_debt_id=1,
+        proposed_by_account_id=9, accepted_by_account_id=8)
+    for name in ("bill_split_change_proposals", "bill_split_agreement_changes"):
+        third_party = _rows(records, name)[0]
+        assert third_party["proposed_by_account_public_id"] is None
+        assert _rows(records, name, replace(AUTH, account_id=8))[0]["proposed_by_account_public_id"] == "account-9"
+    assert _rows(records, "bill_split_change_proposals")[0]["resolved_by_account_public_id"] == "account-8"
+    assert _rows(records, "bill_split_agreement_changes")[0]["accepted_by_account_public_id"] == "account-8"
+
+
 def test_debt_receipts_require_access_to_the_parent_relationship(records):
     for id_, public_id, ledger, counterparty in (
         (1, "local-debt", "selected", 8),

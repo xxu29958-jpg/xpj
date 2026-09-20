@@ -24,6 +24,20 @@
     "schemas": {
       "AcceptedInvitationImpact": {
         "properties": {
+          "current_agreed_share_home_minor": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Agreed Share Home Minor"
+          },
           "debt_public_id": {
             "anyOf": [
               {
@@ -795,6 +809,377 @@
         "title": "BillSplitAcceptRequest",
         "type": "object"
       },
+      "BillSplitAgreementResponse": {
+        "properties": {
+          "agreed_share_amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "Agreed Share Amount Cents",
+            "type": "integer"
+          },
+          "home_currency_code": {
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "invitation_public_id": {
+            "title": "Invitation Public Id",
+            "type": "string"
+          },
+          "original_debt": {
+            "$ref": "#/components/schemas/DebtResponse"
+          },
+          "original_forgiven_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
+            "title": "Original Forgiven Amount Cents",
+            "type": "integer"
+          },
+          "original_paid_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
+            "title": "Original Paid Amount Cents",
+            "type": "integer"
+          },
+          "original_share_amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "Original Share Amount Cents",
+            "type": "integer"
+          },
+          "pending_proposal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BillSplitChangeProposalResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pending_repayment_debt_public_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Pending Repayment Debt Public Ids",
+            "type": "array"
+          },
+          "preview": {
+            "$ref": "#/components/schemas/BillSplitSettlementPreviewResponse"
+          },
+          "return_debt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DebtResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "return_forgiven_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
+            "title": "Return Forgiven Amount Cents",
+            "type": "integer"
+          },
+          "return_paid_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
+            "title": "Return Paid Amount Cents",
+            "type": "integer"
+          },
+          "settlement_net_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": -9007199254740991.0,
+            "title": "Settlement Net Amount Cents",
+            "type": "integer"
+          },
+          "viewer_is_party": {
+            "title": "Viewer Is Party",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "invitation_public_id",
+          "home_currency_code",
+          "original_share_amount_cents",
+          "agreed_share_amount_cents",
+          "original_debt",
+          "viewer_is_party",
+          "original_paid_amount_cents",
+          "return_paid_amount_cents",
+          "original_forgiven_amount_cents",
+          "return_forgiven_amount_cents",
+          "settlement_net_amount_cents",
+          "preview"
+        ],
+        "title": "BillSplitAgreementResponse",
+        "type": "object"
+      },
+      "BillSplitChangeAcceptRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_return_row_version": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Return Row Version"
+          },
+          "expected_row_version": {
+            "minimum": 1.0,
+            "title": "Expected Row Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_row_version"
+        ],
+        "title": "BillSplitChangeAcceptRequest",
+        "type": "object"
+      },
+      "BillSplitChangeCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_return_row_version": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Return Row Version"
+          },
+          "expected_row_version": {
+            "minimum": 1.0,
+            "title": "Expected Row Version",
+            "type": "integer"
+          },
+          "new_share_amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "New Share Amount Cents",
+            "type": "integer"
+          },
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "settlement_net_amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": -9000000000000.0,
+            "title": "Settlement Net Amount Cents",
+            "type": "integer"
+          },
+          "supersedes_proposal_public_id": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Proposal Public Id"
+          }
+        },
+        "required": [
+          "new_share_amount_cents",
+          "settlement_net_amount_cents",
+          "reason",
+          "expected_row_version"
+        ],
+        "title": "BillSplitChangeCreateRequest",
+        "type": "object"
+      },
+      "BillSplitChangeProposalResponse": {
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "new_share_amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "New Share Amount Cents",
+            "type": "integer"
+          },
+          "original_debt_public_id": {
+            "title": "Original Debt Public Id",
+            "type": "string"
+          },
+          "original_debt_row_version": {
+            "title": "Original Debt Row Version",
+            "type": "integer"
+          },
+          "original_forgiven_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
+            "title": "Original Forgiven Amount Cents",
+            "type": "integer"
+          },
+          "original_paid_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
+            "title": "Original Paid Amount Cents",
+            "type": "integer"
+          },
+          "proposed_by_you": {
+            "title": "Proposed By You",
+            "type": "boolean"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "return_debt_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return Debt Public Id"
+          },
+          "return_debt_row_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return Debt Row Version"
+          },
+          "return_forgiven_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
+            "title": "Return Forgiven Amount Cents",
+            "type": "integer"
+          },
+          "return_paid_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
+            "title": "Return Paid Amount Cents",
+            "type": "integer"
+          },
+          "settlement_before_net_amount_cents": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": -9007199254740991.0,
+            "title": "Settlement Before Net Amount Cents",
+            "type": "integer"
+          },
+          "settlement_net_amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": -9000000000000.0,
+            "title": "Settlement Net Amount Cents",
+            "type": "integer"
+          },
+          "share_before_amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "Share Before Amount Cents",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "accepted",
+              "rejected",
+              "withdrawn",
+              "superseded",
+              "expired"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "public_id",
+          "original_debt_public_id",
+          "status",
+          "proposed_by_you",
+          "share_before_amount_cents",
+          "new_share_amount_cents",
+          "settlement_before_net_amount_cents",
+          "settlement_net_amount_cents",
+          "original_paid_amount_cents",
+          "return_paid_amount_cents",
+          "original_forgiven_amount_cents",
+          "return_forgiven_amount_cents",
+          "original_debt_row_version",
+          "reason",
+          "created_at",
+          "expires_at"
+        ],
+        "title": "BillSplitChangeProposalResponse",
+        "type": "object"
+      },
       "BillSplitInboxListResponse": {
         "properties": {
           "items": {
@@ -1191,6 +1576,13 @@
             ],
             "title": "Created At"
           },
+          "current_agreed_share_amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "Current Agreed Share Amount Cents",
+            "type": "integer"
+          },
           "exchange_rate_date": {
             "anyOf": [
               {
@@ -1350,9 +1742,54 @@
           "expires_at",
           "created_at",
           "receiver_account_id",
-          "sender_expense_id"
+          "sender_expense_id",
+          "current_agreed_share_amount_cents"
         ],
         "title": "BillSplitSentResponse",
+        "type": "object"
+      },
+      "BillSplitSettlementPreviewResponse": {
+        "properties": {
+          "cash_based_settlement_net_amount_cents": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cash Based Settlement Net Amount Cents"
+          },
+          "default_settlement_net_amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": -9000000000000.0,
+            "title": "Default Settlement Net Amount Cents",
+            "type": "integer"
+          },
+          "new_share_amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "New Share Amount Cents",
+            "type": "integer"
+          },
+          "requires_explicit_settlement": {
+            "title": "Requires Explicit Settlement",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "new_share_amount_cents",
+          "default_settlement_net_amount_cents",
+          "cash_based_settlement_net_amount_cents",
+          "requires_explicit_settlement"
+        ],
+        "title": "BillSplitSettlementPreviewResponse",
         "type": "object"
       },
       "Body_owner_ai_advisor_confirmation_post_owner_ai_advisor_confirmation_post": {
@@ -8918,7 +9355,10 @@
               "forgiveness",
               "debt_void",
               "proposal_created",
-              "proposal_resolved"
+              "proposal_resolved",
+              "split_change_proposed",
+              "split_change_resolved",
+              "split_agreement_changed"
             ],
             "title": "Kind",
             "type": "string"
@@ -8956,6 +9396,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/RepaymentFactResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "split_change": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BillSplitChangeProposalResponse"
               },
               {
                 "type": "null"
@@ -24939,6 +25389,639 @@
           }
         },
         "summary": "Post Repayment",
+        "tags": [
+          "debts"
+        ]
+      }
+    },
+    "/api/debts/{public_id}/split-agreement": {
+      "get": {
+        "operationId": "get_split_agreement_api_debts__public_id__split_agreement_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "new_share_amount_cents",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 9000000000000,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "New Share Amount Cents"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillSplitAgreementResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Get Split Agreement",
+        "tags": [
+          "debts"
+        ]
+      }
+    },
+    "/api/debts/{public_id}/split-change-proposals": {
+      "post": {
+        "operationId": "post_split_change_api_debts__public_id__split_change_proposals_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "description": "Required API contract version from the runtime compatibility handshake.",
+            "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required API contract version from the runtime compatibility handshake.",
+              "title": "Ticketbox-Api-Version"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BillSplitChangeCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillSplitChangeProposalResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Split Change",
+        "tags": [
+          "debts"
+        ]
+      }
+    },
+    "/api/debts/{public_id}/split-change-proposals/{proposal_public_id}/accept": {
+      "post": {
+        "operationId": "post_accept_split_change_api_debts__public_id__split_change_proposals__proposal_public_id__accept_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_public_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "description": "Required API contract version from the runtime compatibility handshake.",
+            "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required API contract version from the runtime compatibility handshake.",
+              "title": "Ticketbox-Api-Version"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BillSplitChangeAcceptRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillSplitAgreementResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Accept Split Change",
+        "tags": [
+          "debts"
+        ]
+      }
+    },
+    "/api/debts/{public_id}/split-change-proposals/{proposal_public_id}/reject": {
+      "post": {
+        "operationId": "post_reject_split_change_api_debts__public_id__split_change_proposals__proposal_public_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_public_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "description": "Required API contract version from the runtime compatibility handshake.",
+            "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required API contract version from the runtime compatibility handshake.",
+              "title": "Ticketbox-Api-Version"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillSplitChangeProposalResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Reject Split Change",
+        "tags": [
+          "debts"
+        ]
+      }
+    },
+    "/api/debts/{public_id}/split-change-proposals/{proposal_public_id}/withdraw": {
+      "post": {
+        "operationId": "post_withdraw_split_change_api_debts__public_id__split_change_proposals__proposal_public_id__withdraw_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_public_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "description": "Required API contract version from the runtime compatibility handshake.",
+            "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required API contract version from the runtime compatibility handshake.",
+              "title": "Ticketbox-Api-Version"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillSplitChangeProposalResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Withdraw Split Change",
         "tags": [
           "debts"
         ]
@@ -44110,6 +45193,431 @@
           }
         },
         "summary": "Web Record Repayment",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/debts/{public_id}/split-agreement": {
+      "get": {
+        "operationId": "web_split_agreement_web_debts__public_id__split_agreement_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Ledger Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "command",
+            "required": false,
+            "schema": {
+              "default": "create",
+              "title": "Command",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "supersedes",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Supersedes",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Split Agreement",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/debts/{public_id}/split-agreement/preview": {
+      "post": {
+        "operationId": "web_preview_split_change_web_debts__public_id__split_agreement_preview_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Preview Split Change",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/debts/{public_id}/split-changes": {
+      "post": {
+        "operationId": "web_create_split_change_web_debts__public_id__split_changes_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "properties": {
+                  "command": {
+                    "type": "string"
+                  },
+                  "csrf_token": {
+                    "type": "string"
+                  },
+                  "debt_public_id": {
+                    "type": "string"
+                  },
+                  "expected_return_row_version": {
+                    "type": "string"
+                  },
+                  "expected_row_version": {
+                    "type": "string"
+                  },
+                  "home_currency_code": {
+                    "type": "string"
+                  },
+                  "idempotency_key": {
+                    "type": "string"
+                  },
+                  "ledger_id": {
+                    "type": "string"
+                  },
+                  "new_share_amount_major": {
+                    "type": "string"
+                  },
+                  "origin_binding": {
+                    "type": "string"
+                  },
+                  "proposal_public_id": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "settlement_net_amount_major": {
+                    "type": "string"
+                  },
+                  "supersedes_proposal_public_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "debt_public_id",
+                  "ledger_id",
+                  "origin_binding",
+                  "home_currency_code",
+                  "command",
+                  "expected_row_version",
+                  "idempotency_key",
+                  "csrf_token"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Create Split Change",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/debts/{public_id}/split-changes/{proposal_public_id}/accept": {
+      "post": {
+        "operationId": "web_accept_split_change_web_debts__public_id__split_changes__proposal_public_id__accept_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_public_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "properties": {
+                  "command": {
+                    "type": "string"
+                  },
+                  "csrf_token": {
+                    "type": "string"
+                  },
+                  "debt_public_id": {
+                    "type": "string"
+                  },
+                  "expected_return_row_version": {
+                    "type": "string"
+                  },
+                  "expected_row_version": {
+                    "type": "string"
+                  },
+                  "home_currency_code": {
+                    "type": "string"
+                  },
+                  "idempotency_key": {
+                    "type": "string"
+                  },
+                  "ledger_id": {
+                    "type": "string"
+                  },
+                  "new_share_amount_major": {
+                    "type": "string"
+                  },
+                  "origin_binding": {
+                    "type": "string"
+                  },
+                  "proposal_public_id": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "settlement_net_amount_major": {
+                    "type": "string"
+                  },
+                  "supersedes_proposal_public_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "debt_public_id",
+                  "ledger_id",
+                  "origin_binding",
+                  "home_currency_code",
+                  "command",
+                  "expected_row_version",
+                  "idempotency_key",
+                  "csrf_token"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Accept Split Change",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/debts/{public_id}/split-changes/{proposal_public_id}/reject": {
+      "post": {
+        "operationId": "web_reject_split_change_web_debts__public_id__split_changes__proposal_public_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_public_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Reject Split Change",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/debts/{public_id}/split-changes/{proposal_public_id}/withdraw": {
+      "post": {
+        "operationId": "web_withdraw_split_change_web_debts__public_id__split_changes__proposal_public_id__withdraw_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_public_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Withdraw Split Change",
         "tags": [
           "web"
         ]

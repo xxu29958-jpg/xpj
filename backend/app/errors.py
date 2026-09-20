@@ -13,6 +13,15 @@ class Utf8JSONResponse(JSONResponse):
 
 
 ERROR_MESSAGES = {
+    "split_change_unavailable": "这笔往来没有可调整的已接受分账约定。",
+    "split_change_party_only": "只有这笔分账的双方可以提出或处理新约定。",
+    "split_change_not_found": "没有找到这份分账变更提议。",
+    "split_change_not_pending": "这份提议已经处理，请查看当前约定。",
+    "split_change_other_party_only": "请由对方确认或拒绝你提出的新约定。",
+    "split_change_proposer_only": "只有发起方可以撤回这份提议。",
+    "split_change_repayment_pending": "还有待核对的还款，请先处理，再确认新的结算金额。",
+    "split_change_pending": "已有待处理的新约定，请核对后明确替换或先处理。",
+    "split_change_expired": "这份提议已过期，请按当前金额重新核对并发起。",
     "split_amount_invalid": "请填写大于 0 的拆账金额。",
     "split_receiver_invalid": "对方现在不能接收拆账邀请。",
     "split_parent_amount_missing": "原账单金额未确定，无法发起拆账。",

@@ -66,6 +66,9 @@ internal fun DebtActivityRow(state: DebtActivityRowState, callbacks: DebtActivit
             if (event.repayment?.voidFact?.reason != event.reason) event.reason?.let {
                 Text(it, style = MaterialTheme.typography.bodyMedium)
             }
+            event.splitChange?.let { change ->
+                DebtActivitySplitChange(change, state.homeCurrencyCode)
+            }
             event.proposal?.let { proposal ->
                 DebtActivityProposal(proposal, resolved = event.kind == "proposal_resolved", callbacks.onOpenRepayment)
             }
@@ -103,6 +106,9 @@ private fun DebtActivityProposal(proposal: MemberRepaymentProposal, resolved: Bo
 
 @StringRes
 internal fun debtActivityKindLabel(kind: String): Int = when (kind) {
+    "split_change_proposed" -> R.string.debt_activity_split_change_proposed
+    "split_change_resolved" -> R.string.debt_activity_split_change_resolved
+    "split_agreement_changed" -> R.string.debt_activity_split_agreement_changed
     "created" -> R.string.debt_activity_created
     "repayment" -> R.string.debt_activity_repayment
     "repayment_void" -> R.string.debt_activity_repayment_void
@@ -134,4 +140,32 @@ internal fun debtActivityFxSourceLabel(source: String): Int? = when (source) {
     "imported" -> R.string.debt_activity_fx_imported
     "ecb" -> R.string.debt_activity_fx_ecb
     else -> null
+}
+
+@Composable
+private fun DebtActivitySplitChange(change: com.ticketbox.domain.model.DebtSplitChange, currency: String?) {
+    val display = CurrencyDisplay.forRecord(currency)
+    Text(stringResource(R.string.debt_activity_split_share_change,
+        formatDisplayAmount(change.shareBeforeAmountCents, display),
+        formatDisplayAmount(change.newShareAmountCents, display)))
+    Text(splitSettlementLabel(change.settlementNetAmountCents, display))
+    Text(stringResource(R.string.debt_activity_split_payments,
+        formatDisplayAmount(change.originalPaidAmountCents, display),
+        formatDisplayAmount(change.returnPaidAmountCents, display)))
+    Text(stringResource(R.string.debt_activity_split_forgiveness,
+        formatDisplayAmount(change.originalForgivenAmountCents, display),
+        formatDisplayAmount(change.returnForgivenAmountCents, display)))
+    Text(stringResource(splitChangeStatusLabel(change.status)))
+    Text(change.reason)
+}
+
+@StringRes
+internal fun splitChangeStatusLabel(status: String): Int = when (status) {
+    "pending" -> R.string.debt_activity_split_status_pending
+    "accepted" -> R.string.debt_activity_split_status_accepted
+    "rejected" -> R.string.debt_activity_split_status_rejected
+    "withdrawn" -> R.string.debt_activity_split_status_withdrawn
+    "superseded" -> R.string.debt_activity_split_status_superseded
+    "expired" -> R.string.debt_activity_split_status_expired
+    else -> R.string.debt_activity_split_status_unknown
 }

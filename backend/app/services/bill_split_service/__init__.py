@@ -28,6 +28,7 @@ constants + member-load + audit helpers (``_common``).
 
 from __future__ import annotations
 
+from app.services.bill_split_service._agreement_queries import get_bill_split_agreement
 from app.services.bill_split_service._backfill import (
     backfill_bill_split_debts,
     reconcile_bill_split_debts_if_enabled,
@@ -82,6 +83,7 @@ __all__ = [
     "create_invitation",
     "expire_invitations",
     "get_invitation",
+    "get_bill_split_agreement",
     "list_accepted_source_relationships",
     "list_inbox",
     "list_sent",

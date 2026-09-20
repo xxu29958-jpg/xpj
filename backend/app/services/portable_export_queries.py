@@ -130,6 +130,8 @@ PORTABLE_COLLECTION_SCOPES = {
         "account_debt_relationships", "account_repayments", "account_repayment_voids", "account_repayment_proposals",
         "account_debt_balances", "background_task_observations", "account_resource_actions"), "account"),
     "accounts": "mixed", "accepted_operations": "mixed", "ledger_audit_logs": "owner",
+    "bill_split_change_proposals": "ledger", "bill_split_agreement_changes": "ledger",
+    "account_bill_split_change_proposals": "account", "account_bill_split_agreement_changes": "account",
 }
 
 
@@ -222,6 +224,53 @@ def _participant_queries(auth: AuthContext) -> tuple[tuple[str, Select], ...]:
 
 def _cross_ledger_participant(auth: AuthContext) -> ColumnElement[bool]:
     return and_(m.Debt.tenant_id != auth.ledger_id, m.Debt.counterparty_account_id == auth.account_id)
+
+
+def _split_agreement_queries(auth: AuthContext) -> tuple[tuple[str, Select], ...]:
+    """Shared agreement history follows the original Debt's read boundary.
+
+    Public links join the selected ledger's facts or its participant shells;
+    they never authorize a private expense, ledger or adjustment-row export.
+    """
+    proposal = m.BillSplitChangeProposal
+    change = m.BillSplitAgreementChange
+    proposal_fields = ("public_id status original_debt_row_version return_debt_row_version "
+        "share_before_amount_cents new_share_amount_cents settlement_before_net_amount_cents "
+        "settlement_net_amount_cents original_paid_amount_cents return_paid_amount_cents "
+        "original_forgiven_amount_cents return_forgiven_amount_cents reason created_at expires_at resolved_at")
+    change_fields = "public_id share_before_amount_cents new_share_amount_cents settlement_net_amount_cents created_at"
+
+    def reference(model, foreign_key, label):
+        return select(model.public_id).where(model.id == foreign_key).scalar_subquery().label(label)
+
+    def account_reference(account_id, debt_id, label):
+        members = select(m.LedgerMember.account_id).where(m.LedgerMember.ledger_id == auth.ledger_id)
+        participant_debts = select(m.Debt.id).where(or_(
+            m.Debt.owner_account_id == auth.account_id, m.Debt.counterparty_account_id == auth.account_id))
+        return select(m.Account.public_id).where(m.Account.id == account_id,
+            or_(account_id.in_(members), debt_id.in_(participant_debts))).scalar_subquery().label(label)
+
+    result = []
+    for prefix, visible in (("", m.Debt.tenant_id == auth.ledger_id), ("account_", _cross_ledger_participant(auth))):
+        debts = select(m.Debt.id).where(visible)
+        for model, fields in ((proposal, proposal_fields), (change, change_fields)):
+            query = _record(model, fields, model.original_debt_id.in_(debts)).add_columns(
+                reference(m.BillSplitInvitation, model.invitation_id, "invitation_public_id"),
+                select(m.BillSplitInvitation.home_currency_code).where(m.BillSplitInvitation.id == model.invitation_id)
+                    .scalar_subquery().label("home_currency_code"),
+                reference(m.Debt, model.original_debt_id, "original_debt_public_id"),
+                reference(m.Debt, model.return_debt_id, "return_debt_public_id"),
+                account_reference(model.proposed_by_account_id, model.original_debt_id, "proposed_by_account_public_id"))
+            if model is proposal:
+                query = query.add_columns(account_reference(proposal.resolved_by_account_id, proposal.original_debt_id,
+                                                    "resolved_by_account_public_id"))
+            else:
+                query = query.add_columns(reference(proposal, change.proposal_id, "proposal_public_id"),
+                    account_reference(change.accepted_by_account_id, change.original_debt_id, "accepted_by_account_public_id"),
+                    reference(m.DebtAdjustment, change.original_adjustment_id, "original_adjustment_public_id"),
+                    reference(m.DebtAdjustment, change.return_adjustment_id, "return_adjustment_public_id"))
+            result.append((prefix + model.__tablename__, query))
+    return tuple(result)
 
 
 def _authorized_debt_receipts(auth: AuthContext) -> ColumnElement[bool]:
@@ -361,7 +410,8 @@ def portable_queries(auth: AuthContext) -> tuple[tuple[str, Select], ...]:
         records.append((model.__tablename__, query))
     business = (
         *records,
-        *_ledger_relationships(auth), *_split_queries(auth), *_participant_queries(auth), *_history_queries(auth),
+        *_ledger_relationships(auth), *_split_queries(auth), *_split_agreement_queries(auth),
+        *_participant_queries(auth), *_history_queries(auth),
     )
     return (*_identity_queries(auth, business), *business)
 

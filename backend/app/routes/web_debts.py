@@ -257,8 +257,8 @@ def web_debts(
     # loopback owner) may not be a member Debt's debtor or creditor, so the communal row frames
     # the relationship from this viewer's side, not the stored owner-relative direction (§3.2).
     account_id = _web_viewer_account_id(request, db, selected_id)
-    listing = list_debts(db, tenant_id=selected_id, viewer_account_id=account_id)
-    member_debts, external_debts = _split_debt_views(listing.items)
+    items = _visible_debts(db, selected_id=selected_id, account_id=account_id)
+    member_debts, external_debts = _split_debt_views(items)
     ctx = _base_ctx(
         request,
         db=db,
@@ -271,6 +271,17 @@ def web_debts(
     ctx["member_debts"] = member_debts
     ctx["external_debts"] = external_debts
     return templates.TemplateResponse(request=request, name="debts.html", context=ctx)
+
+
+def _visible_debts(db: Session, *, selected_id: str, account_id: int | None) -> list:
+    from app.services.debt_service import list_payables_for_account
+
+    items = list(list_debts(db, tenant_id=selected_id, viewer_account_id=account_id).items)
+    if account_id is None:
+        return items
+    payables = list_payables_for_account(db, account_id=account_id, tenant_id=selected_id)
+    existing = {item.public_id for item in items}
+    return [*items, *(item for item in payables.items if item.public_id not in existing)]
 
 
 @router.get("/debts/new", response_class=HTMLResponse)
@@ -437,6 +448,12 @@ def _render_debt_detail(
     ):
         ctx["action_form"]["fallback"] = True
         ctx["action_form"]["attempted_label"] = (action_draft or {}).get("reason", "")
+    from app.routes._web_split_agreement import reconcile_member_detail, split_agreement_context
+
+    ctx["split_agreement"] = split_agreement_context(
+        request, db, debt=debt, selected_id=selected_id, account_id=account_id,
+    )
+    reconcile_member_detail(ctx["debt"], ctx["split_agreement"])
     return templates.TemplateResponse(
         request=request,
         name="debt_detail.html",

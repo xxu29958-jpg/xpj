@@ -69,7 +69,7 @@ class Debt(Base):
             name="ck_debts_status_valid",
         ),
         CheckConstraint(
-            "source_type IN ('manual', 'bill_split')",
+            "source_type IN ('manual', 'bill_split', 'bill_split_return')",
             name="ck_debts_source_type_valid",
         ),
         # ADR-0049 §7.0 / 8e-6e: classifies an EXTERNAL debt's repayment rhythm so the
@@ -107,7 +107,7 @@ class Debt(Base):
         # to the DB so a future writer can't store a structurally-malformed obligation:
         #  - a MEMBER counterparty is identified by an internal account; an EXTERNAL
         #    counterparty has no internal account (counterparty_account_id is the party id).
-        #  - a bill_split-sourced Debt always names its source invitation; a manual
+        #  - bill_split and bill_split_return name the same source invitation; a manual
         #    Debt never carries a source_id (the uq_debts_source NULL-distinct relies on it).
         # (counterparty_label presence is left to the service: it is display
         # provenance, not a structural identity field — the account above is.)
@@ -118,7 +118,7 @@ class Debt(Base):
             name="ck_debts_member_has_account",
         ),
         CheckConstraint(
-            "(source_type = 'bill_split') = (source_id IS NOT NULL)",
+            "(source_type IN ('bill_split', 'bill_split_return')) = (source_id IS NOT NULL)",
             name="ck_debts_bill_split_has_source_id",
         ),
         # §10 hard constraint: a bill-split-sourced Debt is unique per
@@ -179,7 +179,7 @@ class Debt(Base):
     # paid-period progress is derived from repayment-fact count (never stored). See ck_debts_installment_valid.
     installment_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     installment_period_months: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    source_type: Mapped[str] = mapped_column(String(16), default="manual", nullable=False)
+    source_type: Mapped[str] = mapped_column(String(32), default="manual", nullable=False)
     source_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)

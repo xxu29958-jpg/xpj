@@ -19,6 +19,7 @@ from app.services.bill_split_service._common import (
     _display_name,
     _load_writer_member,
 )
+from app.services.bill_split_service._query import current_agreed_share_expression
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.currency_common import normalize_currency_code
 from app.services.idempotency import (
@@ -193,6 +194,28 @@ def _load_invitation_parties(
     return sender, receiver
 
 
+def _active_split_total(db: Session, expense_id: int) -> int:
+    return fold_sum_to_int(db.scalar(
+        select(func.coalesce(func.sum(current_agreed_share_expression()), 0))
+        .where(BillSplitInvitation.sender_expense_id == expense_id)
+        .where(BillSplitInvitation.status.in_(("invited", "accepted")))
+    ), label="bill_split.active_split_total")
+
+
+def ensure_changed_share_capacity(
+    db: Session, *, invitation: BillSplitInvitation, previous_share: int, new_share: int,
+) -> None:
+    # The same source lock serializes changes with newly reserved invitations.
+    expense = _load_split_parent_expense(db, sender_ledger_id=invitation.sender_ledger_id,
+        expense_id=invitation.sender_expense_id)
+    if new_share <= previous_share:
+        return  # A decrease must still help resolve an already-corrected source.
+    _ensure_parent_can_be_split(expense, amount_cents=new_share)
+    total = _active_split_total(db, expense.id) - previous_share + new_share
+    if total > expense.amount_cents:
+        raise AppError("split_total_exceeds_parent", "调整后的分摊总额不能超过原账单金额。", status_code=422)
+
+
 def _ensure_invitation_capacity(
     db: Session,
     *,
@@ -201,14 +224,7 @@ def _ensure_invitation_capacity(
     amount_cents: int,
 ) -> None:
     assert expense.amount_cents is not None
-    active_split_total = fold_sum_to_int(
-        db.scalar(
-            select(func.coalesce(func.sum(BillSplitInvitation.amount_cents), 0))
-            .where(BillSplitInvitation.sender_expense_id == expense.id)
-            .where(BillSplitInvitation.status.in_(("invited", "accepted")))
-        ),
-        label="bill_split.active_split_total",
-    )
+    active_split_total = _active_split_total(db, expense.id)
     requested_total = fold_sum_to_int(
         active_split_total + amount_cents,
         label="bill_split.requested_total",

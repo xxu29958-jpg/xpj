@@ -225,6 +225,7 @@ def test_refund_keeps_accepted_split_fact_and_publishes_review_suggestion(
                 "receiver_display_name": "已接受退款关系收件人",
                 "debt_public_id": impacts["accepted_impacts"][0]["debt_public_id"],
                 "original_agreed_share_home_minor": 500,
+                "current_agreed_share_home_minor": 500,
                 "suggested_net_share_home_minor": 375,
                 "suggested_action": "review_split",
             }

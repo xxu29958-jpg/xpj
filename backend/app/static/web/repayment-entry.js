@@ -3,8 +3,14 @@
   "use strict";
   const form = document.querySelector("[data-repayment-scope]");
   if (!form) return;
-  const names = ["debt_public_id", "ledger_id", "origin_binding", "home_currency_code",
-    "expected_row_version", "amount_major", "paid_at", "paid_at_timezone"];
+  const splitChange = form.dataset.repaymentKind === "split-change";
+  const names = splitChange ? ["debt_public_id", "ledger_id", "origin_binding", "home_currency_code", "command",
+    "proposal_public_id", "expected_row_version", "expected_return_row_version", "new_share_amount_major",
+    "settlement_net_amount_major", "reason", "supersedes_proposal_public_id"] :
+    ["debt_public_id", "ledger_id", "origin_binding", "home_currency_code",
+      "expected_row_version", "amount_major", "paid_at", "paid_at_timezone"];
+  const namespace = splitChange ? "split-change" : "repayment";
+  const commandLabels = {create:"发送新约定", accept:"接受这份约定", reject:"拒绝这份约定", withdraw:"撤回我的约定"};
   const axes = ["datasetId", "clientGeneration", "accountId", "ledgerId", "deviceId"];
   const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
   const panel = document.querySelector("[data-repayment-panel]");
@@ -12,11 +18,13 @@
   const status = form.querySelector("[data-repayment-status]");
   const submit = form.querySelector("[data-repayment-submit]");
   const replace = form.querySelector("[data-repayment-replace]");
+  const preview = form.querySelector("[data-repayment-preview]");
   const controls = names.map(name => form.elements.namedItem(name));
   const refInput = form.elements.namedItem("idempotency_key");
   const nativeRef = refInput.value, target = form.dataset.repaymentTarget;
   const nativeValues = values(), canCreate = form.dataset.repaymentCanCreate === "true";
   const canRecover = form.dataset.repaymentCanRecover === "true";
+  let allowedCommand = canCreate ? nativeValues : null;
   let nativeResult = form.dataset.repaymentResult;
   let scope, drafts, leaseKey, replacement, acknowledged = "";
   let currentRef = "", phase = "blocked", held = false, retained = false, posting = false;
@@ -34,7 +42,7 @@
   }
   function notice(message, state) {
     status.hidden = false;
-    status.textContent = message;
+    status.textContent = splitChange ? message.replaceAll("还款", "约定操作") : message;
     form.dataset.repaymentState = state;
   }
   function lockInputs(locked) {
@@ -42,6 +50,17 @@
   }
   function showValues(saved) {
     controls.forEach(control => { control.value = saved[control.name]; });
+    if (splitChange) {
+      if (!commandLabels[saved.command]) throw Error("invalid_original_command");
+      const base = "/web/debts/" + encodeURIComponent(saved.debt_public_id) + "/split-changes";
+      form.action = saved.command === "create" ? base :
+        base + "/" + encodeURIComponent(saved.proposal_public_id) + "/" + saved.command;
+      const heading = document.querySelector("[data-split-command-title]");
+      const originalCommand = form.querySelector("[data-split-original-command]");
+      if (heading) heading.textContent = commandLabels[saved.command];
+      if (originalCommand) originalCommand.hidden = saved.command === "create";
+      if (preview) preview.hidden = saved.command !== "create";
+    }
     const label = form.querySelector('label[for="debt-repay-amount"]');
     if (label) label.textContent = "本次还款（" + (saved.home_currency_code || "原币种") + "）";
   }
@@ -52,12 +71,24 @@
     if (replace) replace.hidden = true;
     notice(message, state);
   }
+  function commandControls(editing) {
+    if (!splitChange) {
+      lockInputs(!editing);
+      submit.textContent = editing ? "记一笔还款" : "继续核实这笔还款";
+      return canCreate;
+    }
+    const command = values().command, writable = command === "create";
+    lockInputs(!editing || !writable);
+    if (preview) preview.disabled = !editing || !writable;
+    submit.textContent = editing ? commandLabels[command] : "核实原约定操作";
+    return allowedCommand && ["command", "proposal_public_id", "supersedes_proposal_public_id"]
+      .every(name => values()[name] === allowedCommand[name]);
+  }
   function showPhase() {
     panel.hidden = false;
-    lockInputs(phase !== "editing");
+    const canEdit = commandControls(phase === "editing");
     const canReplace = replacement && phase === "blocked" && currentRef === nativeRef;
-    submit.disabled = phase === "editing" ? !canCreate : !canRecover || !!canReplace;
-    submit.textContent = phase !== "editing" ? "继续核实这笔还款" : "记一笔还款";
+    submit.disabled = phase === "editing" ? !canEdit : !canRecover || !!canReplace;
     notice(phase === "submitted" ? "结果尚未确认。继续核实会发送原来的金额、日期和提交编号。" :
       phase === "blocked" ? "原提交已保留，请先核对欠款和当前身份。" : "输入会保留在此浏览器，尚未提交。", phase);
     if (replace) replace.hidden = !canReplace;
@@ -70,9 +101,10 @@
     list.replaceChildren();
     items.forEach(record => {
       const item = document.createElement("li"), link = document.createElement("a");
-      link.href = window.location.pathname + window.location.search + "#repayment-" + record.clientRef;
-      link.textContent = [record.values.home_currency_code, record.values.amount_major || "未填金额",
-        record.values.paid_at, !drafts.matches(record.scope, scope) ? "旧身份，待核对" :
+      link.href = window.location.pathname + window.location.search + "#" + namespace + "-" + record.clientRef;
+      link.textContent = [record.values.home_currency_code,
+        splitChange ? commandLabels[record.values.command] : record.values.amount_major || "未填金额",
+        splitChange ? record.values.new_share_amount_major : record.values.paid_at, !drafts.matches(record.scope, scope) ? "旧身份，待核对" :
           record.phase === "submitted" ? "结果待确认" : record.phase === "blocked" ? "待核对" : "未提交"].join(" · ");
       item.append(link);
       list.appendChild(item);
@@ -81,18 +113,19 @@
     return items;
   }
   function fragmentRef() {
-    const ref = window.location.hash.replace(/^#repayment-/, "");
-    return window.location.hash.startsWith("#repayment-") && uuid.test(ref) ? ref : "";
+    const prefix = "#" + namespace + "-", ref = window.location.hash.slice(prefix.length);
+    return window.location.hash.startsWith(prefix) && uuid.test(ref) ? ref : "";
   }
   function pointTo(ref) {
     window.history.replaceState(null, "", window.location.pathname + window.location.search +
-      (ref ? "#repayment-" + ref : ""));
+      (ref ? "#" + namespace + "-" + ref : ""));
   }
   function persist(nextPhase) {
     const original = drafts.read(currentRef);
     if (retained && !original) throw Error("original_removed");
     const creating = !original || original.phase === "editing";
-    if (!bound(values()) || (creating && records().some(record => record.clientRef !== currentRef))) {
+    if (!bound(values()) || (creating && records().some(record => record.clientRef !== currentRef &&
+        (!splitChange || record.phase !== "editing")))) {
       throw Error("another_original_submission");
     }
     drafts.save(scope, currentRef, nextPhase, values());
@@ -106,12 +139,15 @@
     const nativePending = nativeResult && nativeRef !== acknowledged;
     if (nativePending) return {ref:nativeRef, requested, nativePending};
     if (requested) return {ref:requested, requested};
-    const preferred = items.find(record => record.phase !== "editing") || items[0];
+    const preferred = items.find(record => record.phase !== "editing") || (splitChange ?
+      items.find(record => record.values.command === nativeValues.command &&
+        record.values.proposal_public_id === nativeValues.proposal_public_id &&
+        record.values.supersedes_proposal_public_id === nativeValues.supersedes_proposal_public_id) : items[0]);
     const freshRef = canCreate && nativeRef !== acknowledged ? nativeRef : "";
     return {ref:preferred ? preferred.clientRef : freshRef, requested:""};
   }
   function admitSubmission(record, selection, count) {
-    if (count > 1 && (record ? record.phase === "editing" : !selection.nativePending)) {
+    if (!splitChange && count > 1 && (record ? record.phase === "editing" : !selection.nativePending)) {
       blocked("此欠款还有原提交待核对。请从下方打开原提交继续核实，当前不会发送新的还款。");
       return false;
     }
@@ -130,12 +166,17 @@
     return false;
   }
   function applyNativeResult(record) {
-    if (record && !sameValues(record.values, nativeValues)) {
+    const previewResult = splitChange && nativeResult === "preview";
+    if (previewResult && record && record.phase !== "editing") {
+      blocked("原提交结果尚未核实，不能用预览改写。请从保留任务继续核实。");
+      return;
+    }
+    if (!previewResult && record && !sameValues(record.values, nativeValues)) {
       blocked("返回结果与保留的原提交不一致，请先核对，原输入未被改写。");
       return;
     }
     const rejected = nativeResult === "rejected";
-    phase = rejected ? "editing" : nativeResult;
+    phase = rejected || previewResult ? "editing" : nativeResult;
     showValues(nativeValues);
     drafts.save(scope, currentRef, phase, nativeValues, rejected ? "rejected" : "");
     retained = true;
@@ -191,7 +232,7 @@
     const ackStatus = document.querySelector("[data-repayment-ack-status]");
     try {
       const ack = JSON.parse(marker.getAttribute("data-repayment-ack"));
-      if (!uuid.test(ack.clientRef) || !uuid.test(ack.repaymentPublicId) ||
+      if (!uuid.test(ack.clientRef) || !uuid.test(splitChange ? ack.resultPublicId : ack.repaymentPublicId) ||
           !drafts.matches(ack.scope, scope) || !bound(ack.values)) throw Error("ack_mismatch");
       await window.navigator.locks.request(leaseKey, {ifAvailable:true}, function (lock) {
         if (!lock) throw Error("ack_lease_unavailable");
@@ -214,8 +255,14 @@
     catch (_) { notice("最新输入未能保留。请勿关闭本页，恢复存储后再提交。", "storage-error"); }
   });
   form.addEventListener("submit", function (event) {
-    if (!held || submit.disabled || posting) { event.preventDefault(); return; }
+    const previewing = preview && event.submitter === preview;
+    if (!held || posting || (previewing ? preview.disabled : submit.disabled)) { event.preventDefault(); return; }
     try {
+      if (previewing) {
+        if (phase !== "editing") throw Error("original_is_submitted");
+        persist("editing");
+        return;
+      }
       if (phase !== "editing") {
         const record = drafts.read(currentRef);
         if (!record || record.phase === "editing" || !drafts.matches(record.scope, scope)) throw Error("original_missing");
@@ -237,8 +284,11 @@
     if (!matchingDraft(previous, "blocked", nativeValues)) throw Error("replacement_mismatch");
     const candidate = records().find(record => matchingDraft(record, "editing", replacement.values));
     const next = candidate || replacement;
+    const comparison = {...next.values, expected_row_version:previous.values.expected_row_version};
+    if (splitChange) ["expected_return_row_version", "command", "proposal_public_id", "supersedes_proposal_public_id"]
+      .forEach(name => { comparison[name] = previous.values[name]; });
     if (!uuid.test(next.clientRef) || next.clientRef === currentRef || !bound(next.values) ||
-        !sameValues({...next.values, expected_row_version:previous.values.expected_row_version}, previous.values)) {
+        !sameValues(comparison, previous.values)) {
       throw Error("replacement_mismatch");
     }
     const existing = drafts.read(next.clientRef);
@@ -255,6 +305,9 @@
       if (!drafts.discardRejected({scope, clientRef:currentRef, values:previous.values,
           serverResult:"rejected"})) throw Error("refusal_not_retired");
       currentRef = next.clientRef; refInput.value = currentRef; phase = "editing";
+      // Only the server's explicit rejected-intent correction grants this new
+      // command context; general draft permission never does.
+      if (splitChange) allowedCommand = next.values;
       retained = true; replacement = null; showValues(next.values); pointTo(currentRef); showPhase(); renderShelf();
     } catch (_) {
       blocked("纠正后的输入尚未完整保留，当前没有发送。请恢复浏览器存储后再点击纠正。", "storage-error");
@@ -283,8 +336,8 @@
     scope = JSON.parse(form.dataset.repaymentScope);
     if (!axes.every(axis => typeof scope[axis] === "string" && scope[axis] && scope[axis].length <= 256) ||
         !window.navigator.locks) throw Error("binding_or_locking_unavailable");
-    drafts = window.TicketboxDraftStore.createStore({prefix:"ticketbox:repayment-draft:v1:", fields:names, validRef:uuid});
-    leaseKey = "ticketbox:repayment-lease:v1:" + JSON.stringify([...axes.map(axis => scope[axis]), target]);
+    drafts = window.TicketboxDraftStore.createStore({prefix:"ticketbox:" + namespace + "-draft:v1:", fields:names, validRef:uuid});
+    leaseKey = "ticketbox:" + namespace + "-lease:v1:" + JSON.stringify([...axes.map(axis => scope[axis]), target]);
     replacement = form.dataset.repaymentReplacement ? JSON.parse(form.dataset.repaymentReplacement) : null;
     ready = acknowledge();
     resume();

@@ -52,6 +52,7 @@ class BillSplitSentPayload(_BillSplitCommonPayload):
     receiver_display_name_snapshot: str | None
     sender_expense_id: int
     source_impact_pending: bool
+    current_agreed_share_amount_cents: int
 
 
 class BillSplitInboxPayload(_BillSplitCommonPayload):
@@ -119,6 +120,9 @@ def to_sent_response_dict(
         "receiver_display_name_snapshot": inv.receiver_display_name_snapshot,
         "sender_expense_id": inv.sender_expense_id,
         "source_impact_pending": source_impact_pending,
+        "current_agreed_share_amount_cents": getattr(
+            inv, "current_agreed_share_amount_cents", inv.amount_cents,
+        ),
     }
 
 

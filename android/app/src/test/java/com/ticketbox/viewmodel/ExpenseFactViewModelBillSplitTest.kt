@@ -23,6 +23,24 @@ import kotlinx.coroutines.test.TestScope
 @OptIn(ExperimentalCoroutinesApi::class)
 internal class ExpenseFactViewModelBillSplitTest : ExpenseFactViewModelTestBase() {
     @Test
+    fun `active split capacity uses current agreements and keeps invitation history`() = edit { fake ->
+        val decreased = fake.sentInvite(
+            publicId = "decreased",
+            status = BillSplitStatusValues.ACCEPTED,
+            amountCents = 400L,
+        ).copy(currentAgreedShareAmountCents = 200L)
+        val increased = fake.sentInvite(
+            publicId = "increased",
+            status = BillSplitStatusValues.ACCEPTED,
+            amountCents = 400L,
+        ).copy(currentAgreedShareAmountCents = 700L)
+        val legacy = fake.sentInvite(publicId = "legacy", amountCents = 300L)
+
+        assertEquals(1_200L, listOf(decreased, increased, legacy).factActiveSplitCentsFor(7L))
+        assertEquals(listOf(400L, 400L, 300L), listOf(decreased, increased, legacy).map { it.amountCents })
+    }
+
+    @Test
     fun `sent invitations are filtered to this fact`() = edit { fake ->
         fake.billSplitSentResult = {
             Result.success(

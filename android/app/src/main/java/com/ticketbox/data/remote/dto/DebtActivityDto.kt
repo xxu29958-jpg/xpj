@@ -13,6 +13,7 @@ data class DebtActivityDto(
     val reason: String? = null,
     val repayment: RepaymentFactDto? = null,
     val proposal: MemberRepaymentProposalDto? = null,
+    @param:Json(name = "split_change") val splitChange: BillSplitChangeProposalDto? = null,
 )
 
 data class DebtActivityListDto(

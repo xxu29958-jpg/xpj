@@ -13,6 +13,8 @@ CURRENCY_BINDING_ADOPTION_REQUIRED = "ADOPTION_REQUIRED"
 CURRENCY_BINDING_ACTIVE = "ACTIVE"
 
 CURRENCY_EVIDENCE_TABLES = (
+    "bill_split_agreement_changes",
+    "bill_split_change_proposals",
     "bill_split_invitations",
     "budget_categories",
     "budgets",

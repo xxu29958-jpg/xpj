@@ -38,6 +38,7 @@ from app.routes import (
     currency_system,
     dashboard,
     debt_bills,
+    debt_split_changes,
     debts,
     desktop,
     devices,
@@ -107,6 +108,7 @@ from app.routes import (
     web_reports,
     web_rule_edit,
     web_search,
+    web_split_agreement,
     web_tags,
 )
 from app.routes import web_rules as web_rules_routes
@@ -355,6 +357,7 @@ app.include_router(income_plans.router)
 app.include_router(goals.router)
 app.include_router(debts.router)
 app.include_router(debt_bills.router)
+app.include_router(debt_split_changes.router)
 app.include_router(repayment_drafts.router)
 app.include_router(dashboard.router)
 app.include_router(rules.router)
@@ -409,6 +412,7 @@ app.include_router(web_debts.router)
 app.include_router(web_debt_create.router)
 app.include_router(web_debt_actions.router)
 app.include_router(web_debt_proposal_actions.router)
+app.include_router(web_split_agreement.router)
 app.include_router(web_debt_goals.router)
 app.include_router(web_repayment_drafts.router)
 app.include_router(web_recycle_bin.router)

@@ -77,6 +77,7 @@ fun DebtDetailScreen(
     proposalViewModel: MemberRepaymentProposalViewModel,
     historyViewModel: DebtActivityViewModel,
     onBack: () -> Unit,
+    splitAgreement: SplitAgreementPanel? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val observedProposalState by proposalViewModel.state.collectAsStateWithLifecycle()
@@ -84,9 +85,7 @@ fun DebtDetailScreen(
         it.task?.binding == state.binding && it.task?.debtPublicId == state.debt?.publicId
     } ?: MemberProposalUiState()
     val observedHistoryState by historyViewModel.state.collectAsStateWithLifecycle()
-    val historyState = observedHistoryState.takeIf {
-        it.binding == state.binding && it.debtPublicId == state.debt?.publicId
-    } ?: DebtActivityUiState()
+    val historyState = boundDebtHistory(state, observedHistoryState)
     val debt = state.debt
 
     DebtDetailEffects(
@@ -103,6 +102,7 @@ fun DebtDetailScreen(
             viewModel.refresh()
             if (debt?.isMember == true) proposalViewModel.refresh()
             historyViewModel.refresh()
+            splitAgreement?.model?.refresh()
         },
         onSelectKind = viewModel::selectKind,
         onOpenAction = viewModel::openAction,
@@ -113,6 +113,9 @@ fun DebtDetailScreen(
         panels = DebtDetailPanels(
             proposalState = proposalState,
             proposalViewModel = proposalViewModel,
+            splitAgreement = splitAgreement?.let { panel ->
+                { SplitAgreementDetailPanel(state, proposalState, panel) { viewModel.refresh(); historyViewModel.refresh() } }
+            },
             historyState = historyState,
             historyCallbacks = DebtActivityCallbacks(
                 onVoidRepayment = { viewModel.openAction(DebtAction.RepaymentVoid, it) },
@@ -130,14 +133,7 @@ fun DebtDetailScreen(
             onClose = viewModel::dismissAction,
         )
     }
-    if (debt?.isMember == true && proposalState.activeForm != null) {
-        ProposalFormSheet(
-            state = proposalState,
-            viewModel = proposalViewModel,
-            debt = debt,
-            onClose = { proposalState.task?.let(proposalViewModel::dismissForm) },
-        )
-    }
+    DebtMemberProposalForm(state, proposalState, proposalViewModel)
 }
 @Composable
 internal fun DebtDetailEffects(

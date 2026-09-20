@@ -211,6 +211,15 @@ private fun FactOffsetImpacts(bundle: ExpenseFactBundle, homeDisplay: CurrencyDi
             )
         }
         impacts.acceptedImpacts.forEach { impact ->
+            impact.currentAgreedShareHomeMinor?.let { current ->
+                Text(
+                    text = stringResource(
+                        R.string.expense_offset_impact_current_agreed_share,
+                        formatDisplayAmount(current, homeDisplay),
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
             Text(
                 text = stringResource(
                     R.string.expense_offset_impact_accepted_line,

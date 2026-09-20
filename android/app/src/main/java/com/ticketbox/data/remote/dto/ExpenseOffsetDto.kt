@@ -104,6 +104,8 @@ data class AcceptedInvitationImpactDto(
     val suggestedNetShareHomeMinor: Long,
     @param:Json(name = "suggested_action")
     val suggestedAction: String,
+    @param:Json(name = "current_agreed_share_home_minor")
+    val currentAgreedShareHomeMinor: Long? = null,
 )
 
 data class ExpenseRelationshipImpactsDto(

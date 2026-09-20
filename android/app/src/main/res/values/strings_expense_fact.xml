@@ -186,8 +186,8 @@
 
     <!-- 关系影响：pending 邀请撤回回执 + accepted 估算建议（永不自动改账） -->
     <string name="expense_offset_impact_cancelled">已撤回 %1$d 个待接受的拆账邀请。</string>
-    <string name="expense_offset_impact_accepted_line">%1$s 原分摊 %2$s，按当前剩余建议 %3$s</string>
-    <string name="expense_offset_impact_disclaimer">按原拆账比例估算，不会自动改账。</string>
+    <string name="expense_offset_impact_accepted_line">%1$s 原份额 %2$s；按原份额对原单净额计算的参考为 %3$s</string>
+    <string name="expense_offset_impact_disclaimer">这是来源变化提醒；参考金额不是再次减免或新的待结算金额，也不表示双方尚未处理。请以当前约定和实际付返款为准，不会自动改账。</string>
 
     <!-- offset 历史（append-only；change kind 人话标签） -->
     <string name="expense_offset_history_created">已登记</string>

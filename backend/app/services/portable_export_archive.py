@@ -33,6 +33,10 @@ expenses.original_reference_id 对应 originals.jsonl；该索引列出每个原
 缺失、损坏、已清理和旧件未核验分别说明，不用缩略图代替原件。
 每个集合的 scope 标明账本、当前账号、混合或 Owner 范围；不凭集合名称推断所有权。
 混合集合含账本事实和当前账号获准的引用/结果；账号集合不是对方私有账本的副本。
+bill_split_change_proposals 保留各状态提议；bill_split_agreement_changes 保留双方已接受的约定变更。
+同名 account_ 集合只含获准读取的跨账本关系。invitation_public_id、proposal_public_id 和
+original_debt_public_id / return_debt_public_id 关联原约定、提议与两笔往来；调整使用 public_id 关联。
+提议的返还往来可为空，而接受结果已建立返还往来；原邀请金额和已付款、已返还、免除仍是各自的历史事实。
 历史回执的原件引用与当前记录分别列出；相同内容只保存一份文件。运行诊断不随回执导出。
 
 本包不包含尚未提交到服务器的手机或浏览器草稿，也不包含有效登录凭据。

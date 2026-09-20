@@ -11,6 +11,7 @@ data class DebtActivity(
     val reason: String? = null,
     val repayment: DebtRepayment? = null,
     val proposal: MemberRepaymentProposal? = null,
+    val splitChange: DebtSplitChange? = null,
 ) {
     val key: String get() = "$kind:$publicId"
 }
@@ -22,4 +23,17 @@ data class DebtActivityPage(
     val page: Int,
     val pageSize: Int,
     val total: Int,
+)
+
+/** Immutable agreement-time facts; no client balance calculation. */
+data class DebtSplitChange(
+    val status: String,
+    val shareBeforeAmountCents: Long,
+    val newShareAmountCents: Long,
+    val settlementNetAmountCents: Long,
+    val originalPaidAmountCents: Long,
+    val returnPaidAmountCents: Long,
+    val originalForgivenAmountCents: Long,
+    val returnForgivenAmountCents: Long,
+    val reason: String,
 )

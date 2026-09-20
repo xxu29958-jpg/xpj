@@ -1,0 +1,22 @@
+<section class="product-panel product-panel--padded" aria-labelledby="split-agreement-title">
+  <h2 class="product-panel-title" id="split-agreement-title">整段拆账约定</h2>
+  {% if agreement.error %}
+  <p class="product-feedback" role="status">{{ agreement.error }}</p>
+  {% else %}
+  <p class="debt-summary-headline">{{ agreement.settlement_label }}</p>
+  <p class="hint">待付款：原承担方向原垫付方付款；待返还：原垫付方向原承担方返还。</p>
+  <dl class="debt-look-rows">
+    <div class="debt-look-row"><dt>原接受份额</dt><dd>{{ agreement.original_share_label }}</dd></div>
+    <div class="debt-look-row"><dt>当前约定份额</dt><dd>{{ agreement.agreed_share_label }}</dd></div>
+    <div class="debt-look-row"><dt>实际已付款</dt><dd>{{ agreement.original_paid_label }}</dd></div>
+    <div class="debt-look-row"><dt>实际已返还</dt><dd>{{ agreement.return_paid_label }}</dd></div>
+    <div class="debt-look-row"><dt>原付款已免除</dt><dd>{{ agreement.original_forgiven_label }}</dd></div>
+    <div class="debt-look-row"><dt>返还款已免除</dt><dd>{{ agreement.return_forgiven_label }}</dd></div>
+  </dl>
+  <div class="debt-form-actions">
+    {% for leg in agreement.legs %}<a class="product-button product-button--quiet" href="{{ leg.href }}">{{ leg.label }} · 剩余 {{ leg.remaining_label }}</a>{% endfor %}
+  </div>
+  <p class="hint">新份额是双方的承担约定；商家退款、各自账本的退款记录与实际付返款分别保留。新约定不会自动修改任何一方的私有流水，原付款往来已结清也不表示返还已完成。</p>
+  {% endif %}
+  {% if not agreement_task %}<a class="product-button product-button--quiet" href="{{ agreement.href }}">{{ '重试查看拆账约定' if agreement.error else '查看或提出新约定' }}</a>{% endif %}
+</section>

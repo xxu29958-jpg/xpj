@@ -231,6 +231,23 @@ def test_pr_delta_a3_exception_requires_exact_base_commit(monkeypatch) -> None:
         assert "base=128, current=130" in violations[0]
 
 
+def test_pr_delta_split_change_admission_is_one_exact_topology_hop(monkeypatch) -> None:
+    mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
+    split_base = "2d9ffd655ad9a6612049c0324ea7af6a4b0008a3"
+    for commit, before, after, expected_violations in (
+        (split_base, 124, 129, 0),
+        (None, 124, 129, 1),
+        ("ffffffffffffffffffffffffffffffffffffffff", 124, 129, 1),
+        (split_base, 124, 130, 1),
+        (split_base, 125, 129, 1),
+    ):
+        monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", {"mutate_token_exempted": after})
+        _bootstrapped, violations, _removed = mod._compute_ratchet_findings(
+            {"mutate_token_exempted": before}, base_commit=commit,
+        )
+        assert len(violations) == expected_violations
+
+
 def test_pr_delta_flags_missing_extra_and_unreadable_base_in_pr_ci(
     monkeypatch,
     capsys,

@@ -4,12 +4,16 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import Column, MetaData, Table, create_engine, event, insert
+from sqlalchemy import JSON, Column, MetaData, Table, create_engine, event, insert
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.models import (
     Account,
+    BillSplitAgreementChange,
+    BillSplitChangeProposal,
+    BillSplitInvitation,
     Debt,
     DebtAdjustment,
     DebtForgiveness,
@@ -30,9 +34,10 @@ def records():
     engine = create_engine("sqlite://")
     metadata = MetaData()
     for model in (Account, Debt, DebtAdjustment, DebtForgiveness, DebtVoid,
+                  BillSplitInvitation, BillSplitChangeProposal, BillSplitAgreementChange,
                   MemberRepaymentProposal, Repayment, RepaymentVoid):
         Table(model.__tablename__, metadata, *(
-            Column(column.name, column.type, primary_key=column.primary_key)
+            Column(column.name, JSON() if isinstance(column.type, JSONB) else column.type, primary_key=column.primary_key)
             for column in model.__table__.columns))
     metadata.create_all(engine)
     with Session(engine) as db:

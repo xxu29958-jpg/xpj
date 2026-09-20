@@ -9,6 +9,20 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 
 class ExpenseOffsetMappersTest {
+    @Test fun acceptedShareAndOriginalRefundReferenceRemainSeparateFacts() {
+        val impact = com.ticketbox.data.remote.dto.AcceptedInvitationImpactDto(
+            invitationPublicId = "invitation", sourceReasonCode = com.ticketbox.data.remote.dto.ExpenseRelationshipReasonDto.SourceRefunded,
+            originalAgreedShareHomeMinor = 4000, suggestedNetShareHomeMinor = 2000,
+            suggestedAction = "review", currentAgreedShareHomeMinor = 1500,
+        )
+        val bundle = expenseFactBundleDtoFixture().copy(relationshipImpacts =
+            com.ticketbox.data.remote.dto.ExpenseRelationshipImpactsDto(acceptedImpacts = listOf(impact)))
+        val mapped = bundle.toDomain().relationshipImpacts.acceptedImpacts.single()
+        assertEquals(4000L, mapped.originalAgreedShareHomeMinor)
+        assertEquals(1500L, mapped.currentAgreedShareHomeMinor)
+        assertEquals(2000L, mapped.suggestedNetShareHomeMinor)
+    }
+
     @Test
     fun bundleUsesServerPublishedStreamProjectionWithoutRecomputingIt() {
         val dto = expenseFactBundleDtoFixture()

@@ -187,7 +187,7 @@ def test_source_refund_links_only_to_a_readable_relationship(web_client: TestCli
         "idempotency_key": str(uuid4()),
     })
     assert saved.status_code == 200, saved.text
-    assert "按当前退款估算" in saved.text
+    assert "按原份额对原单净额计算的参考" in saved.text
     expected_href = f"/web/debts/{debt_id}?ledger_id=owner"
     assert expected_href in saved.text
     assert web_client.get(expected_href).status_code == 200
@@ -200,7 +200,7 @@ def test_source_refund_links_only_to_a_readable_relationship(web_client: TestCli
     headers = {"Cookie": f"{SESSION_COOKIE_NAME}={token}"}
     other_page = public_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner", headers=headers)
     assert other_page.status_code == 200, other_page.text
-    assert "按当前退款估算" in other_page.text
+    assert "按原份额对原单净额计算的参考" in other_page.text
     assert expected_href not in other_page.text
     assert public_client.get(expected_href, headers=headers).status_code == 404
     assert f"/web/expenses/{received_id}/edit" not in other_page.text

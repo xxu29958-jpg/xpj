@@ -127,6 +127,8 @@ def _relationship_view(bundle: ExpenseFactBundleResponse) -> dict[str, object]:
                     impact.original_agreed_share_home_minor,
                     home_code,
                 ),
+                "current_share_label": _minor_amount_label(impact.current_agreed_share_home_minor, home_code)
+                    if impact.current_agreed_share_home_minor is not None else "",
                 "suggested_share_label": _minor_amount_label(
                     impact.suggested_net_share_home_minor,
                     home_code,

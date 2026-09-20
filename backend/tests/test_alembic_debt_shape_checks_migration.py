@@ -86,17 +86,22 @@ def test_debt_shape_checks_round_trip_on_postgres() -> None:
     try:
         Base.metadata.create_all(bind=engine)
         expected = _capture_orm_checks()
+        assert "bill_split_return" in expected["ck_debts_bill_split_has_source_id"]
 
         _reset_empty_database()
         _run_alembic(command.upgrade, _REVISION)
+        historical = _capture_orm_checks()
+        assert historical["ck_debts_member_has_account"] == expected["ck_debts_member_has_account"]
+        source_shape = historical["ck_debts_bill_split_has_source_id"]
+        assert "'bill_split'" in source_shape and "source_id IS NOT NULL" in source_shape
+        assert "bill_split_return" not in source_shape
         _run_alembic(command.downgrade, _PRIOR_HEAD)
         _assert_absent()  # downgrade drops both by name
 
         _run_alembic(command.upgrade, _REVISION)
-        # Re-added via the migration's guarded ADD bodies — assert each CHECK is back AND its
-        # predicate is structurally identical to the ORM (not just the name), so a same-name
-        # divergence (tautology / wrong column) fails here.
-        _assert_matches(expected)
+        # This frozen edge predates the later return-debt kind. Restore its
+        # historical checks, rather than requiring the later ORM predicate here.
+        _assert_matches(historical)
     finally:
         _reset_empty_database()
         _drop_alembic_version()

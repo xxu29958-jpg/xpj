@@ -24,6 +24,11 @@ class DebtActivityRepository(apiProvider: ApiServiceProvider) : DebtActivityQuer
 internal fun DebtActivityListDto.toDomain() = DebtActivityPage(
     debtPublicId, homeCurrencyCode,
     items.map { DebtActivity(it.kind, it.publicId, it.recordedAt, it.actorDisplayName, it.actorIsYou,
-        it.amountCents, it.reason, it.repayment?.toDomain(), it.proposal?.toDomain()) },
+        it.amountCents, it.reason, it.repayment?.toDomain(), it.proposal?.toDomain(), it.splitChange?.let { change ->
+            com.ticketbox.domain.model.DebtSplitChange(change.status, change.shareBeforeAmountCents,
+                change.newShareAmountCents, change.settlementNetAmountCents, change.originalPaidAmountCents,
+                change.returnPaidAmountCents, change.originalForgivenAmountCents, change.returnForgivenAmountCents,
+                change.reason)
+        }) },
     page, pageSize, total,
 )
