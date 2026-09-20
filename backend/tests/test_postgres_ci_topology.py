@@ -390,7 +390,7 @@ def test_github_postgres_jobs_bind_scope_resources_commands_auth_and_sha() -> No
         assert job["outputs"]["qualification_source_sha"] == ("${{ steps.qualification.outputs.source_sha }}")
         expected_sha = (
             "${{ github.event.pull_request.head.sha || github.sha }}"
-            if name == "windows_packaging_build"
+            if name in {"windows_vnext_lifecycle", "windows_packaging_build"}
             else "${{ github.sha }}"
         )
         _assert_qualification_step(

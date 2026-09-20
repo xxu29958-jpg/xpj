@@ -249,7 +249,7 @@ jobs:
         run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts\build_backend_exe.ps1 -Clean
 
   windows_vnext_lifecycle:
-    name: Windows vNext coordinator contracts
+    name: Windows native contracts
     needs: scope
     if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.windows != 'false') }}
     runs-on: windows-latest
@@ -260,6 +260,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
@@ -272,7 +274,7 @@ jobs:
         id: qualification
         shell: bash
         env:
-          EXPECTED_SHA: ${{ github.sha }}
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: python -E -S backend/scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
 
@@ -285,6 +287,35 @@ jobs:
         run: >-
           python -m pytest -q distribution/windows/tests
           --strict-markers -p no:cacheprovider -o addopts=
+
+      # The build job remains the only writer of the complete toolchain cache.
+      - name: Restore pinned Windows build inputs
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            backend/build/windows-toolchain/archives
+            backend/packaging/vendor/archives
+            backend/packaging/vendor/pg
+            backend/packaging/vendor/shawl
+          key: windows-installer-vendor-${{ hashFiles('backend/packaging/windows-build-toolchain.json', 'backend/packaging/build_pg_bundle.ps1', 'backend/packaging/prepare_windows_installer_vendor.ps1') }}
+
+      - name: Prepare pinned PostgreSQL and Shawl inputs
+        shell: powershell
+        working-directory: backend
+        run: |
+          powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File packaging\prepare_windows_installer_vendor.ps1 -Force
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # Keep shared-resource tests serial on this independent Windows host.
+      # The existing Windows aggregator requires both native and build lanes.
+      - name: Windows installer resource-serial behavior
+        working-directory: backend
+        env:
+          PYTEST_ADDOPTS: ""
+        run: >-
+          python -m pytest -q packaging/tests -m xdist_group
+          --strict-markers -p no:cacheprovider -o addopts=
+          -n 0 --dist loadfile --max-worker-restart 0
 
   windows_packaging_build:
     name: Windows installer build
@@ -410,14 +441,6 @@ jobs:
           python -m pytest -q packaging/tests -m "not xdist_group"
           --strict-markers -p no:cacheprovider -o addopts=
           -n 4 --dist loadfile --max-worker-restart 0
-
-      - name: Windows installer resource-serial behavior
-        env:
-          PYTEST_ADDOPTS: ""
-        run: >-
-          python -m pytest -q packaging/tests -m xdist_group
-          --strict-markers -p no:cacheprovider -o addopts=
-          -n 0 --dist loadfile --max-worker-restart 0
 
       - name: Frozen backend locked release build
         shell: powershell
@@ -585,6 +608,7 @@ jobs:
           --scope-key WINDOWS_SCOPE
           --lane VNEXT
           --lane BUILD
+          --source-lane VNEXT
           --source-lane BUILD
 
   backend:
