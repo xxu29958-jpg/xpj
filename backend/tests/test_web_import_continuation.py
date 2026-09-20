@@ -91,6 +91,7 @@ def test_batch_actions_follow_effective_remainder_and_actual_applied_rows(
         "batch": batch, "progress": CsvImportBatchProgress(batch, CsvImportRowCounts(0, applied, errors)),
         "created_label": "2026-06-01", "updated_label": "2026-06-01",
         "q": "?ledger_id=family", "selected_ledger_id": "family", "can_write": True, "csrf_token": "fixture",
+        "selected_ledger_name": "Family", "portable_export_available": False,
         "flash_message": "Import result", "flash_type": flash_type,
         "rows": [], "page": 1, "page_size": 100, "total": 0, "total_pages": 1,
         "status": "", "home_currency_symbol": "¥", "home_currency_code": "CNY",

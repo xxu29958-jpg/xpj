@@ -57,6 +57,9 @@ def web_export_portable(request: Request, ledger_id: str = "", _local: None = Lo
     auth = request.state.web_session_auth
     if auth.ledger_id != selected:
         raise AppError("permission_denied", status_code=403)
+    # Scope resolution is complete; don't hold its read connection throughout
+    # the independently authorized snapshot and archive build.
+    db.close()
     return PortableFileResponse(create_portable_ledger_export(db, auth=auth))
 
 

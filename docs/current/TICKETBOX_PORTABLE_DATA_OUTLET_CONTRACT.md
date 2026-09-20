@@ -184,3 +184,20 @@ route inventory; Ruff and OpenAPI generation. Eight PostgreSQL/real-browser-sess
 tests were collected, not executed locally. PostgreSQL is still required to prove
 the snapshot, independent-session interleaving and real authorized download.
 This checkpoint is an implementation candidate, not main or Internal Beta RC.
+
+## Current-head closeout
+
+The first main-based CI exposed incomplete test fixtures: old import-template
+contexts lacked the new export fields, and two real-database setup writers had
+not acquired the existing currency write proof. Those inputs are corrected;
+financial assertions and production write fences remain intact.
+
+The three bounded review findings are fixed: cleanup references to the current
+original retain its recorded digest; empty query results still check the shared
+time budget; API/Web release their completed request read before the independent
+export snapshot claims a connection. The reusable export service still does not
+commit or roll back caller business work. Five new counterexamples failed before
+the fixes; 45 targeted archive, pool-lifecycle, route and import-render tests now
+pass, as does Ruff. Real PostgreSQL snapshot and download qualification remains
+with the current candidate's cloud gate. A local PostgreSQL startup probe refused
+an old test-runtime binary path, so it supplied no database execution evidence.

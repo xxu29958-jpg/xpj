@@ -133,12 +133,60 @@ def test_cleanup_references_keep_their_identity_without_exposing_storage_paths(t
         assert [row["state"] for row in observations] == ["verified", "unverified", "derived_not_included"]
         assert observations[0]["reference_id"] != observations[1]["reference_id"]
         assert observations[0]["path"] == observations[1]["path"]
+        assert observations[1]["expected_sha256"] is None
         assert "uploads/owner/" not in package.read("originals.jsonl").decode()
         scope = json.loads(package.read("manifest.json"))["record_scope"]
         assert scope["account_public_id"] == "actor"
         assert scope["account_collections"] == ["account_bill_split_inbox"]
         assert scope["ledger_collections"] == ["expenses"]
     assert row["attachment_cleanup_request"]["image"]["reference"] == "uploads/owner/old.png"
+
+
+def test_pending_cleanup_of_current_corrupt_original_keeps_the_recorded_identity(tmp_path, monkeypatch):
+    _install_files(tmp_path, monkeypatch)
+    row = _original(1, "available", "0" * 64)
+    row["attachment_cleanup_request"] = {
+        "request_id": "cleanup-current",
+        "image": {"reference": "available", "outcome": "pending"},
+    }
+    with portable_export_archive.create_portable_archive(
+        ledger_id="owner", snapshot_at=WHEN, account_public_id="actor",
+        sections=[], originals=[row],
+    ) as result, ZipFile(result.path) as package:
+        observations = [json.loads(line) for line in package.read("originals.jsonl").splitlines()]
+        assert [item["state"] for item in observations] == ["corrupt", "corrupt"]
+        assert [item["expected_sha256"] for item in observations] == ["0" * 64, "0" * 64]
+        assert not any(name.startswith("originals/") for name in package.namelist())
+
+
+def test_time_limit_is_checked_after_an_empty_collection_before_the_next_query(monkeypatch):
+    monkeypatch.setattr(portable_export_archive, "MAX_EXPORT_SECONDS", -1)
+
+    def must_not_start():
+        raise AssertionError("the next query started after the export deadline")
+        yield
+
+    with pytest.raises(AppError) as caught:
+        portable_export_archive.create_portable_archive(
+            ledger_id="owner", snapshot_at=WHEN, account_public_id="actor",
+            sections=[("empty", []), ("later", must_not_start())], originals=[],
+        )
+    assert caught.value.error == "portable_export_limit"
+
+
+def test_time_limit_is_checked_after_an_empty_original_query_before_history(monkeypatch):
+    monkeypatch.setattr(portable_export_archive, "MAX_EXPORT_SECONDS", -1)
+
+    def must_not_start():
+        raise AssertionError("history started after the export deadline")
+        yield
+
+    with pytest.raises(AppError) as caught:
+        portable_export_archive.create_portable_archive(
+            ledger_id="owner", snapshot_at=WHEN, account_public_id="actor",
+            sections=[], originals=[], historical_originals=must_not_start(),
+        )
+    assert caught.value.error == "portable_export_limit"
 
 
 def test_original_byte_limit_does_not_masquerade_as_an_unreadable_optional_file(tmp_path, monkeypatch):
