@@ -18,6 +18,7 @@ CURRENT_API_VERSION = "2026-09-13"
 # Optional keyed app uploads can replay their complete original committed receipt.
 UPLOAD_ORIGINAL_RECEIPT_VERSION = 1
 ACCOUNTING_TIME_INPUT_VERSION = 1
+DEBT_ACTIVITY_READ_VERSION = 1
 
 # RFC 6648 discourages new ``X-`` names.  The application prefix keeps these
 # limited-use fields unambiguous, as recommended for new HTTP fields by RFC
@@ -85,6 +86,7 @@ def format_currency_binding(
 
 __all__ = [
     "CURRENT_API_VERSION",
+    "DEBT_ACTIVITY_READ_VERSION",
     "RUNTIME_COMPATIBILITY_CONTRACT",
     "RUNTIME_COMPATIBILITY_SESSION_KEY",
     "RuntimeCompatibilityRequest",

@@ -35,15 +35,24 @@ internal class RuntimeNegotiationInterceptor : Interceptor {
             request.url.encodedPath.endsWith("/api/app/upload-screenshot") && request.header("Idempotency-Key") != null
         val accountingTimeInput = request.hasAccountingTimeInput()
         val originalAttachment = Regex("/api/expenses/[^/]+/original(?:/.*)?$").containsMatchIn(request.url.encodedPath)
+        val debtActivityRead = request.isDebtActivityRead()
         // An API date, including one already attached to this request, does not prove receipt replay support.
-        if (!request.requiresRuntimeNegotiation(incomeForecastRead, keyedUpload || accountingTimeInput || originalAttachment)) {
+        if (!request.requiresRuntimeNegotiation(
+                incomeForecastRead,
+                keyedUpload || accountingTimeInput || originalAttachment || debtActivityRead,
+            )) {
             return chain.proceed(request)
         }
         val compatibility = readCompatibility(chain, request)
         if (compatibility != null && compatibility.apiVersion != CURRENT_TICKETBOX_API_VERSION) {
             return incompatibleProtocolResponse(request)
         }
-        if (!compatibility.supportsRequiredCapabilities(keyedUpload, accountingTimeInput, originalAttachment)) {
+        if (!compatibility.supportsRequiredCapabilities(
+                keyedUpload,
+                accountingTimeInput,
+                originalAttachment,
+                debtActivityRead,
+            )) {
             return incompatibleProtocolResponse(request)
         }
         // A readable forecast does not require writer permission or an activated currency binding.
@@ -88,10 +97,11 @@ internal class RuntimeNegotiationInterceptor : Interceptor {
 }
 
 private fun RuntimeWriteCompatibility?.supportsRequiredCapabilities(uploadReceipt: Boolean, accountingTime: Boolean,
-    originalAttachment: Boolean): Boolean =
+    originalAttachment: Boolean, debtActivityRead: Boolean): Boolean =
     (!uploadReceipt || this?.uploadOriginalReceiptVersion == UPLOAD_ORIGINAL_RECEIPT_VERSION) &&
         (!accountingTime || this?.supportsAccountingTimeInput == true) &&
-        (!originalAttachment || this?.supportsOriginalAttachment == true)
+        (!originalAttachment || this?.supportsOriginalAttachment == true) &&
+        (!debtActivityRead || this?.debtActivityReadVersion == DEBT_ACTIVITY_READ_VERSION)
 
 /** Inspect Retrofit's typed command, never consume or regenerate the original HTTP body. */
 private fun Request.hasAccountingTimeInput(): Boolean = tag(Invocation::class.java)?.arguments()?.any { argument ->
@@ -102,6 +112,9 @@ private fun Request.hasAccountingTimeInput(): Boolean = tag(Invocation::class.ja
         else -> false
     }
 } == true
+
+private fun Request.isDebtActivityRead(): Boolean =
+    method == "GET" && Regex("^/api/debts/[^/]+/activity$").matches(url.encodedPath)
 
 private fun incompatibleProtocolResponse(request: Request): Response =
     Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(409)
