@@ -305,12 +305,24 @@ def _accepted_operations(auth: AuthContext) -> Select:
         m.BackgroundTask.tenant_id == auth.ledger_id,
         m.BackgroundTask.initiated_by_account_id == auth.account_id).exists()
     redacted_upload = and_(receipt.resource_type == "upload_receipt", ~own_upload_task)
+    fx_task_public_id = case(
+        (receipt.resource_type == "expense_offset",
+            receipt.response_body["root"]["fx_task"]["public_id"].as_string()),
+        else_=receipt.response_body["fx_task"]["public_id"].as_string(),
+    )
+    own_fx_task = select(m.BackgroundTask.id).where(
+        m.BackgroundTask.public_id == fx_task_public_id,
+        m.BackgroundTask.tenant_id == auth.ledger_id,
+        m.BackgroundTask.initiated_by_account_id == auth.account_id).exists()
+    redacted_fx_task = and_(receipt.resource_type.in_(("expense", "expense_offset")),
+        fx_task_public_id.is_not(None), ~own_fx_task)
     return _record(receipt, "id tenant_id idempotency_key operation target_type target_id request_fingerprint "
         "status resource_type resource_id created_at completed_at expires_at",
         and_(receipt.tenant_id == auth.ledger_id, receipt.status == "succeeded",
             or_(shared, debt_relationships, drafts, splits))).add_columns(
             receipt.response_body,
-            case((redacted_upload, "personal_task_scope"), else_=None).label("response_body_redaction_reason"))
+            case((or_(redacted_upload, redacted_fx_task), "personal_task_scope"),
+                else_=None).label("response_body_redaction_reason"))
 
 
 def _history_queries(auth: AuthContext) -> tuple[tuple[str, Select], ...]:
