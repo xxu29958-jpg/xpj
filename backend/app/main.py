@@ -46,6 +46,7 @@ from app.routes import (
     expense_corrections,
     expense_originals,
     expenses,
+    exports,
     goals,
     imports,
     income_plans,
@@ -338,6 +339,7 @@ app.include_router(bootstrap.router)
 app.include_router(uploads.router)
 app.include_router(uploads.upload_link_router)
 app.include_router(expenses.router)
+app.include_router(exports.router)
 app.include_router(expense_corrections.router)
 app.include_router(expense_originals.router)
 app.include_router(exchange_rates.router)

@@ -151,14 +151,15 @@ def _reload_session_principal(
     )
 
 
-def lock_and_revalidate_credential_mint_context(
+def revalidate_session_context(
     db: Session,
-    auth: AuthContext | None,
-) -> AuthContext | None:
-    """Acquire the bootstrap lock and revalidate the exact authenticated row."""
-    lock_bootstrap_owner_transaction(db)
-    if auth is None:
-        return None
+    auth: AuthContext,
+) -> AuthContext:
+    """Read the exact credential and binding without locks, activity writes or commit.
+
+    Mutations acquire the lifecycle lock before using this shared validation.
+    Long read exports use it in their snapshot and again before handing out data.
+    """
     if auth.credential_id is None or not auth.credential_hash:
         raise AppError("invalid_token", status_code=401)
     token = db.scalar(
@@ -180,6 +181,15 @@ def lock_and_revalidate_credential_mint_context(
     if refreshed.role != auth.role:
         raise AppError("permission_denied", status_code=403)
     return refreshed
+
+
+def lock_and_revalidate_credential_mint_context(
+    db: Session,
+    auth: AuthContext | None,
+) -> AuthContext | None:
+    """Acquire the bootstrap lock and revalidate the exact authenticated row."""
+    lock_bootstrap_owner_transaction(db)
+    return None if auth is None else revalidate_session_context(db, auth)
 
 
 def lock_and_revalidate_session_principal(

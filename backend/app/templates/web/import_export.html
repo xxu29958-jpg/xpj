@@ -13,7 +13,7 @@
   <div class="product-page-heading">
     <span class="product-eyebrow">流水 / 导入导出</span>
     <h1 class="page-title page-title--compact">导入 / 导出</h1>
-    <p class="product-page-summary">把账单放进小票夹，或导出流水用于分析、核对和再次导入。</p>
+    <p class="product-page-summary">带走当前账本已保存的数据与可用原件，或用 CSV 导入、分析和核对流水。</p>
   </div>
 </header>
 
@@ -96,6 +96,25 @@
     </form>
   </section>
 </div>
+
+<section class="product-panel product-panel--padded import-export-panel" aria-label="带走账本数据">
+  <div class="product-panel-header">
+    <div>
+      <h2 class="product-panel-title">带走账本数据</h2>
+      <p class="product-panel-subtitle">下载「{{ selected_ledger_name }}」服务端已保存的各状态记录、历史、计划、关联关系与可用原件，不受上方 CSV 筛选条件影响。</p>
+    </div>
+  </div>
+  <p>账号、成员与关联关系按本次授权保存快照；你的收件箱和跨账本往来另行标明范围，不带走对方账本的私有记录。只读成员也可以下载。</p>
+  <p>缺失、损坏、已清理和历史未核验的原件，会在包内逐条说明；缩略图不能补足原件。可用业务记录仍可带走。</p>
+  <p>手机或浏览器中尚未提交的离线草稿不在包内，请继续各端原任务。服务端已接受、客户端尚未收到回执的结果属于已保存数据。</p>
+  <p>ZIP 中含敏感财务资料，请保存在你控制的位置。可直接阅读包内说明与记录；这不是安装恢复包，也不能通过上方 CSV 表单还原安装。</p>
+  {% if portable_export_available %}
+  <a class="product-button product-button--primary" href="/web/export/portable{{ q }}">下载账本数据包（ZIP）</a>
+  {% else %}
+  <p class="import-export-note">下载完整数据包需要确认当前浏览器身份；现有 CSV 导出仍可使用。</p>
+  <a class="product-button" href="/web/auth/local?next={{ ('/web/import' ~ q) | urlencode }}">确认本机浏览器身份后继续</a>
+  {% endif %}
+</section>
 
 <section class="product-panel product-panel--padded import-batch-rows" aria-label="导入记录">
   <div class="product-panel-header">
