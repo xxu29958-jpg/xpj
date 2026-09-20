@@ -139,9 +139,10 @@ def test_serial_windows_contracts_run_in_the_existing_independent_native_lane() 
     )
     commands = [step.get("run", "") for job in jobs.values() for step in job.get("steps", [])]
     assert commands.count(serial["run"]) == 1
-    cache = "Cache pinned Windows build inputs"
-    assert native_steps[cache]["uses"] == build_steps[cache]["uses"]
-    assert native_steps[cache]["with"] == build_steps[cache]["with"]
+    cache = "Restore pinned Windows build inputs"
+    build_cache = build_steps["Cache pinned Windows build inputs"]
+    assert native_steps[cache]["uses"] == build_cache["uses"].replace("actions/cache@", "actions/cache/restore@")
+    assert native_steps[cache]["with"] == build_cache["with"]
     preparation = "Prepare pinned PostgreSQL and Shawl inputs"
     assert native_steps[preparation]["run"] == build_steps[preparation]["run"]
     assert native_steps[preparation]["shell"] == "powershell"

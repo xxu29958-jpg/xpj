@@ -286,8 +286,9 @@ jobs:
           python -m pytest -q distribution/windows/tests
           --strict-markers -p no:cacheprovider -o addopts=
 
-      - name: Cache pinned Windows build inputs
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      # The build job remains the only writer of the complete toolchain cache.
+      - name: Restore pinned Windows build inputs
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             backend/build/windows-toolchain/archives
