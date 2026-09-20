@@ -11,6 +11,7 @@ from app.database import SessionLocal
 from app.errors import AppError
 from app.models import AuthToken, Expense, LedgerMember
 from app.services import portable_export_service as service
+from app.services.currency_binding_service import authorize_currency_metadata_write
 from app.services.identity_service import authenticate_session_token
 from app.services.time_service import now_utc
 
@@ -28,6 +29,7 @@ def _records(package, name):
 
 def _expense(auth, **values):
     with SessionLocal() as db:
+        authorize_currency_metadata_write(db)
         expense = Expense(tenant_id=auth.ledger_id, amount_cents=1200, merchant="Before", **values)
         db.add(expense)
         db.commit()
@@ -51,6 +53,7 @@ def test_export_reads_one_snapshot_and_does_not_commit_its_callers_work(identity
         # before any record collection is consumed. Both expense SELECTs must
         # still see the original row (one for records, one for original index).
         with SessionLocal() as writer:
+            authorize_currency_metadata_write(writer)
             row = writer.get(Expense, expense_id)
             row.merchant = "Concurrent change"
             writer.add(Expense(tenant_id=auth.ledger_id, amount_cents=999, merchant="Later"))

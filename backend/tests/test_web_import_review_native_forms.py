@@ -378,6 +378,7 @@ def test_native_csv_rendered_counts_preserve_each_financial_result_kind(monkeypa
         applied_rows=5, error_rows=13, matched_rows=7, review_rows=11, confirmed_offset_rows=2))
     context = {"batch": batch, "progress": progress, "created_label": "2026-09-20", "updated_label": "2026-09-20",
         "q": "?ledger_id=family", "selected_ledger_id": "family", "can_write": True, "csrf_token": "fixture",
+        "selected_ledger_name": "Family", "portable_export_available": False,
         "flash_message": "", "flash_type": "success", "rows": [], "page": 1, "page_size": 100,
         "total": 0, "total_pages": 1, "status": "", "home_currency_code": "CNY", "max_rows": 1000,
         "export_categories": [], "export_tags": [], "batch_created_labels": {7: "2026-09-20"},

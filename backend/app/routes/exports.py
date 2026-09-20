@@ -19,4 +19,7 @@ router = APIRouter(prefix="/api/exports", tags=["exports"])
 }})
 def export_portable(auth: AuthContext = Depends(get_current_app_context),
                     db: Session = Depends(get_db)) -> PortableFileResponse:
+    # This read-only route has finished authentication. Return its connection
+    # before the export acquires its independently revalidated snapshot.
+    db.close()
     return PortableFileResponse(create_portable_ledger_export(db, auth=auth))
