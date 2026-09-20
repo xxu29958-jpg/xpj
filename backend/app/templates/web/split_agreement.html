@@ -27,7 +27,7 @@
   <p>新份额 {{ agreement_pending.share }} {{ agreement.facts.home_currency_code }} · {{ agreement_pending.settlement }}</p>
   <p>{{ agreement_pending.proposal.reason }}</p>
   <p class="hint">双方接受前不会改动财务事实；接受后原付款、返还和免除仍保留。</p>
-  {% if change.can_create %}<div class="debt-form-actions">
+  {% if change.can_draft %}<div class="debt-form-actions">
     {% for action in agreement_pending.actions %}<a class="product-button product-button--quiet" href="{{ action.href }}">{{ action.label }}</a>{% endfor %}
     <a class="product-button product-button--quiet" href="{{ change.href }}&amp;supersedes={{ agreement_pending.proposal.public_id }}">另拟一份并替代此提议</a>
   </div>{% endif %}

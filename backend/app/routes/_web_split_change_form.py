@@ -59,7 +59,9 @@ def pending_view(agreement, *, public_id, selected_id) -> dict | None:
 
 def _command_allowed(can_draft, values, pending) -> bool:
     if values["command"] == "create":
-        return can_draft
+        return bool(can_draft and (
+            pending is None or values["supersedes_proposal_public_id"] == pending.public_id
+        ))
     return bool(can_draft and pending and values["proposal_public_id"] == pending.public_id and
                 (pending.proposed_by_you == (values["command"] == "withdraw")))
 

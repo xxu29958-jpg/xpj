@@ -3,11 +3,13 @@ package com.ticketbox.viewmodel
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.BillSplitAgreementDto
+import com.ticketbox.data.remote.dto.BillSplitChangeCreateRequestDto
 import com.ticketbox.data.repository.DebtTask
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.SplitAgreementActions
 import com.ticketbox.data.repository.SplitAgreementPayload
 import com.ticketbox.data.repository.SPLIT_ACCEPT
+import com.ticketbox.data.repository.SPLIT_CREATE
 import com.ticketbox.data.repository.splitTestAgreement
 import com.ticketbox.data.repository.splitTestProposal
 import com.ticketbox.domain.model.CurrencyCode
@@ -111,6 +113,38 @@ class SplitAgreementViewModelTest {
         assertNotNull(model.state.value.agreement)
     }
 
+    @Test fun droppingRestartedCreateRestoresItsDraftWhileUnknownIntentPreservesCurrentDraft() = runTest(dispatcher) {
+        val repo = SplitProbe()
+        val task = memberDebtTask("original")
+        val row = OutboxRow(1, task.binding.serverUrl, task.binding.ledgerId,
+            task.binding.ownerKey, PendingMutationType.SplitAgreement, "debt:original", "{}", 7,
+            PendingMutationStatus.Conflict, 0, "state_conflict", "2026-09-20", null, "2026-09-20", "key", null)
+        repo.intents[row.id] = SplitAgreementPayload(operation = SPLIT_CREATE,
+            originalDebtPublicId = "original", returnDebtPublicId = "return",
+            create = BillSplitChangeCreateRequestDto(1200, -300, "保留重启前草稿", 7, 8))
+        repo.rows.value = listOf(row)
+        val model = SplitAgreementViewModel(repo)
+        model.load(task); advanceUntilIdle()
+        assertEquals("20.00", model.state.value.shareInput)
+        assertEquals("-10.00", model.state.value.settlementInput)
+        assertEquals("", model.state.value.reason)
+
+        model.recover(row, drop = true); advanceUntilIdle()
+        assertEquals("12.00", model.state.value.shareInput)
+        assertEquals("-3.00", model.state.value.settlementInput)
+        assertEquals("保留重启前草稿", model.state.value.reason)
+        assertEquals(listOf(row.id to true), repo.recoveries)
+
+        val unknown = row.copy(id = 2, payloadJson = "unknown")
+        repo.rows.value = listOf(unknown); advanceUntilIdle()
+        model.editShare("15.00"); model.editSettlement("-4.00"); model.editReason("当前另拟草稿")
+        model.recover(unknown, drop = true); advanceUntilIdle()
+        assertEquals(listOf(row.id to true, unknown.id to true), repo.recoveries)
+        assertEquals("15.00", model.state.value.shareInput)
+        assertEquals("-4.00", model.state.value.settlementInput)
+        assertEquals("当前另拟草稿", model.state.value.reason)
+    }
+
     @Test fun previousBindingDelayedReadCannotReplaceCurrentTask() = runTest(dispatcher) {
         val repo = SplitProbe()
         val model = SplitAgreementViewModel(repo)
@@ -143,6 +177,8 @@ private class SplitProbe : SplitAgreementActions {
     var fail = false
     var gate: CompletableDeferred<Unit>? = null
     val rows = MutableStateFlow<List<OutboxRow>>(emptyList())
+    val intents = mutableMapOf<Long, SplitAgreementPayload>()
+    val recoveries = mutableListOf<Pair<Long, Boolean>>()
     val commands = mutableListOf<SplitAgreementPayload>()
     var submittedTask: DebtTask? = null
     override suspend fun load(task: DebtTask, share: Long?): Result<BillSplitAgreementDto> {
@@ -154,7 +190,11 @@ private class SplitProbe : SplitAgreementActions {
         submittedTask = task; commands += intent
         return Result.success(1)
     }
-    override fun describe(row: OutboxRow): SplitAgreementPayload? = null
+    override fun describe(row: OutboxRow): SplitAgreementPayload? = intents[row.id]
     override fun observe(task: DebtTask) = rows
-    override suspend fun recover(task: DebtTask, row: OutboxRow, drop: Boolean) = Result.success(Unit)
+    override suspend fun recover(task: DebtTask, row: OutboxRow, drop: Boolean): Result<Unit> {
+        recoveries += row.id to drop
+        if (drop) rows.value = rows.value.filterNot { it.id == row.id }
+        return Result.success(Unit)
+    }
 }

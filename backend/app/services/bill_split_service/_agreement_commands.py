@@ -37,8 +37,9 @@ def _validate_basis(db: Session, context: AgreementContext, original_version: in
 
 def _latch(db: Session, proposal: BillSplitChangeProposal, status: str, actor_account_id: int) -> None:
     result = db.execute(update(BillSplitChangeProposal).where(BillSplitChangeProposal.id == proposal.id,
-        BillSplitChangeProposal.status == "pending").values(status=status, resolved_at=now_utc(),
-        resolved_by_account_id=actor_account_id))
+        BillSplitChangeProposal.status == "pending").values(status=status,
+        resolved_at=proposal.expires_at if status == "expired" else now_utc(),
+        resolved_by_account_id=None if status == "expired" else actor_account_id))
     if result.rowcount != 1:
         raise AppError("split_change_not_pending", status_code=409)
     db.expire(proposal)

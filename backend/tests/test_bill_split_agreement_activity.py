@@ -1,8 +1,11 @@
 """New agreements remain discoverable in the existing, paginated fact history."""
 
+from datetime import timedelta
+
 from app.models import Debt
 from app.services.debt_service._activity import list_debt_activity
-from tests.test_bill_split_agreement_commands import _accept, _paid, _request
+from app.services.time_service import ensure_utc
+from tests.test_bill_split_agreement_commands import WHEN, _accept, _paid, _request
 from tests.test_bill_split_agreement_commands import agreement_db as agreement_db
 
 
@@ -41,6 +44,25 @@ def test_replacement_history_pages_every_intent_once_without_creating_fake_payme
     assert not any(item.kind in {"repayment", "split_agreement_changed"} for item in all_items)
     paged = [item for page in range(1, (len(all_items) + 1) // 2 + 1) for item in history(db, page=page, page_size=2).items]
     assert [(item.kind, item.public_id) for item in paged] == [(item.kind, item.public_id) for item in all_items]
+
+
+def test_expiry_discovered_by_a_new_proposal_keeps_expiry_time_and_no_participant(agreement_db, monkeypatch):
+    from app.services.bill_split_service import _agreement_commands
+
+    db = agreement_db
+    monkeypatch.setattr(_agreement_commands, "now_utc", lambda: WHEN)
+    first = _request(db, share=2_000, net=2_000)
+    expires_at = ensure_utc(first.expires_at)
+    discovered_at = expires_at + timedelta(days=2)
+    monkeypatch.setattr(_agreement_commands, "now_utc", lambda: discovered_at)
+    second = _request(db, share=3_000, net=3_000, actor=2)
+    assert first.status == "expired" and second.status == "pending"
+    assert ensure_utc(first.resolved_at) == expires_at
+    assert first.resolved_by_account_id is None
+    resolved = next(item for item in history(db).items if item.kind == "split_change_resolved")
+    assert ensure_utc(resolved.recorded_at) == expires_at
+    assert not resolved.actor_is_you
+    assert resolved.actor_display_name is None
 
 
 def test_actual_timeline_template_explains_terms_separately_from_payment(agreement_db):

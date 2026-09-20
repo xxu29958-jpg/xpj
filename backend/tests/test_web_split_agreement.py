@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 from starlette.requests import Request
 
-from app.schemas._bill_split_change import BillSplitAgreementResponse
+from app.schemas._bill_split_change import BillSplitAgreementResponse, BillSplitChangeProposalResponse
 from app.schemas._debts import DebtResponse
 from tests._web_debt_test_support import stub_debt
 
@@ -32,8 +32,21 @@ def agreement(**updates):
     return BillSplitAgreementResponse(**{**values, **updates})
 
 
+def pending_proposal(*, proposed_by_you=False):
+    stamp = datetime(2026, 9, 20, tzinfo=UTC)
+    return BillSplitChangeProposalResponse(
+        public_id="pending-proposal", original_debt_public_id="original", return_debt_public_id="return",
+        status="pending", proposed_by_you=proposed_by_you, share_before_amount_cents=4000,
+        new_share_amount_cents=2000, settlement_before_net_amount_cents=0,
+        settlement_net_amount_cents=-1000, original_paid_amount_cents=3000,
+        return_paid_amount_cents=0, original_forgiven_amount_cents=0,
+        return_forgiven_amount_cents=0, original_debt_row_version=1, return_debt_row_version=1,
+        reason="商家退款后重新分担", created_at=stamp, expires_at=stamp,
+    )
+
+
 def test_cleared_original_does_not_hide_return_obligation_or_rewrite_private_records():
-    from app.routes._web_split_agreement import agreement_view
+    from app.routes._web_split_agreement import agreement_view, reconcile_member_detail
     from app.routes.web_common import templates
 
     view = agreement_view(agreement(), selected_id="my-ledger")
@@ -43,6 +56,27 @@ def test_cleared_original_does_not_hide_return_obligation_or_rewrite_private_rec
     assert "实际已付款" in html and "¥30.00" in html
     assert "/web/debts/return?ledger_id=my-ledger" in html
     assert "商家退款" in html and "不会自动修改" in html
+    debt_view = {"public_id": "original", "is_member": True, "headline": "这件事，我们已经两清啦",
+                 "remaining_label": "¥0.00", "member_status_label": "已两清", "member_status_tone": "ok",
+                 "show_progress": False}
+    reconcile_member_detail(debt_view, view)
+    assert debt_view["headline"] == "这件事还有返还待处理"
+    assert debt_view["remaining_label"] == "¥10.00"
+    assert debt_view["member_status_label"] == "待返还"
+    assert debt_view["member_status_tone"] == ""
+    assert debt_view["show_progress"] is False
+
+    open_leg_view = {"public_id": "return", "is_member": True, "headline": "我帮你垫的，慢慢来",
+                     "remaining_label": "¥10.00", "member_status_label": "进行中"}
+    reconcile_member_detail(open_leg_view, view)
+    assert open_leg_view["headline"] == "我帮你垫的，慢慢来"
+
+    settled = agreement(return_debt=agreement().return_debt.model_copy(
+        update={"status": "cleared", "remaining_amount_cents": 0}), settlement_net_amount_cents=0)
+    settled_view = agreement_view(settled, selected_id="my-ledger")
+    cleared_view = {"public_id": "original", "is_member": True, "headline": "这件事，我们已经两清啦"}
+    reconcile_member_detail(cleared_view, settled_view)
+    assert cleared_view["headline"] == "这件事，我们已经两清啦"
 
 
 def test_default_debt_page_preserves_ledger_records_and_adds_cross_ledger_payables(monkeypatch):
@@ -99,6 +133,22 @@ def test_real_template_keeps_immutable_form_and_viewer_read_only(native_task):
     assert 'name="origin_binding"' in html
     assert "待返还 ¥10.00" in html
     assert html.count('data-repayment-scope=') == 1
+
+
+def test_pending_change_blocks_plain_create_but_keeps_replacement_entry(native_task):
+    request, db, form, _route = native_task
+    facts = agreement(pending_proposal=pending_proposal())
+    plain = form.render_change_task(request, db, options=[], selected_id="my-ledger",
+                                    public_id="original", agreement=facts)
+    plain_html = plain.body.decode()
+    assert 'data-repayment-can-create="false"' in plain_html
+    assert 'data-split-can-draft="true"' in plain_html
+    assert 'href="/web/debts/original/split-agreement?ledger_id=my-ledger&amp;supersedes=pending-proposal"' in plain_html
+
+    replacement = form.render_change_task(request, db, options=[], selected_id="my-ledger",
+                                          public_id="original", agreement=facts,
+                                          supersedes="pending-proposal")
+    assert 'data-repayment-can-create="true"' in replacement.body.decode()
 
 
 def test_accept_form_can_be_reused_for_explicit_redraft(native_task):

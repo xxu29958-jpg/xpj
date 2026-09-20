@@ -168,16 +168,40 @@ class SplitAgreementViewModel(private val repository: SplitAgreementActions) : V
 
     fun recover(row: OutboxRow, drop: Boolean) {
         val state = _state.value
-        val original = row.targetId.removePrefix("debt:")
         val task = state.task ?: return
+        if (state.submitting || state.rows.none { it == row }) return
+        val intent = state.intents[row.id]
+        val draft = if (drop) restorableCreateDraft(state, intent) else null
+        if (drop && intent?.operation == SPLIT_CREATE && draft == null) {
+            _state.update { it.copy(error = "原提交内容无法确认，请保留记录并重新核对。") }
+            return
+        }
+        val original = intent?.originalDebtPublicId ?: row.targetId.removePrefix("debt:")
+        _state.update { it.copy(submitting = true, error = null) }
         viewModelScope.launch {
             val result = repository.recover(task.copy(debtPublicId = original), row, drop)
             if (_state.value.task != task) return@launch
-            result.fold(onSuccess = { if (drop) refresh() }, onFailure = {
-                _state.update { it.copy(error = "原提交状态已变化，请重新核对。") }
+            result.fold(onSuccess = {
+                _state.update { current -> draft?.let { (share, settlement, reason) ->
+                    current.copy(shareInput = share, settlementInput = settlement, reason = reason,
+                        settlementEdited = true, confirmed = false, submitting = false)
+                } ?: current.copy(submitting = false) }
+                if (drop) refresh()
+            }, onFailure = {
+                _state.update { it.copy(submitting = false, error = "原提交状态已变化，请重新核对。") }
             })
         }
     }
+}
+
+private fun restorableCreateDraft(
+    state: SplitAgreementUiState,
+    intent: SplitAgreementPayload?,
+): Triple<String, String, String>? {
+    val create = intent?.takeIf { it.operation == SPLIT_CREATE }?.create ?: return null
+    val currency = state.agreement?.homeCurrencyCode?.let(CurrencyCode::fromStorageKeyOrNull) ?: return null
+    return Triple(formatAmountInput(create.newShareAmountCents, currency),
+        formatAmountInput(create.settlementNetAmountCents, currency), create.reason)
 }
 
 internal fun parseSplitSettlement(value: String, currency: CurrencyCode): Long? {

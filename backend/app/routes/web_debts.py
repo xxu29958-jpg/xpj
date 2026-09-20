@@ -442,11 +442,12 @@ def _render_debt_detail(
         public_id=public_id,
         focus_repayment=action_target_public_id if action_kind == "repayment_void" else None,
     )
-    from app.routes._web_split_agreement import split_agreement_context
+    from app.routes._web_split_agreement import reconcile_member_detail, split_agreement_context
 
     ctx["split_agreement"] = split_agreement_context(
         request, db, debt=debt, selected_id=selected_id, account_id=account_id,
     )
+    reconcile_member_detail(ctx["debt"], ctx["split_agreement"])
     return templates.TemplateResponse(
         request=request,
         name="debt_detail.html",
