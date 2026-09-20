@@ -229,6 +229,13 @@ def _split_agreement_queries(auth: AuthContext) -> tuple[tuple[str, Select], ...
     def reference(model, foreign_key, label):
         return select(model.public_id).where(model.id == foreign_key).scalar_subquery().label(label)
 
+    def account_reference(account_id, debt_id, label):
+        members = select(m.LedgerMember.account_id).where(m.LedgerMember.ledger_id == auth.ledger_id)
+        participant_debts = select(m.Debt.id).where(or_(
+            m.Debt.owner_account_id == auth.account_id, m.Debt.counterparty_account_id == auth.account_id))
+        return select(m.Account.public_id).where(m.Account.id == account_id,
+            or_(account_id.in_(members), debt_id.in_(participant_debts))).scalar_subquery().label(label)
+
     result = []
     for prefix, visible in (("", m.Debt.tenant_id == auth.ledger_id), ("account_", _cross_ledger_participant(auth))):
         debts = select(m.Debt.id).where(visible)
@@ -239,13 +246,13 @@ def _split_agreement_queries(auth: AuthContext) -> tuple[tuple[str, Select], ...
                     .scalar_subquery().label("home_currency_code"),
                 reference(m.Debt, model.original_debt_id, "original_debt_public_id"),
                 reference(m.Debt, model.return_debt_id, "return_debt_public_id"),
-                reference(m.Account, model.proposed_by_account_id, "proposed_by_account_public_id"))
+                account_reference(model.proposed_by_account_id, model.original_debt_id, "proposed_by_account_public_id"))
             if model is proposal:
-                query = query.add_columns(reference(m.Account, proposal.resolved_by_account_id,
+                query = query.add_columns(account_reference(proposal.resolved_by_account_id, proposal.original_debt_id,
                                                     "resolved_by_account_public_id"))
             else:
                 query = query.add_columns(reference(proposal, change.proposal_id, "proposal_public_id"),
-                    reference(m.Account, change.accepted_by_account_id, "accepted_by_account_public_id"),
+                    account_reference(change.accepted_by_account_id, change.original_debt_id, "accepted_by_account_public_id"),
                     reference(m.DebtAdjustment, change.original_adjustment_id, "original_adjustment_public_id"),
                     reference(m.DebtAdjustment, change.return_adjustment_id, "return_adjustment_public_id"))
             result.append((prefix + model.__tablename__, query))

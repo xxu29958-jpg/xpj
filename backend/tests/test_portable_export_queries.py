@@ -363,6 +363,24 @@ def test_split_change_receipts_require_actual_debt_visibility(records):
     assert {row["id"] for row in _rows(records, "accepted_operations")} == {1, 2}
 
 
+def test_split_agreement_actor_identities_follow_the_same_third_party_boundary(records):
+    for id_ in (7, 8, 9):
+        _seed(records, m.Account, id=id_, public_id=f"account-{id_}")
+    _seed(records, m.LedgerMember, id=8, ledger_id="selected", account_id=8)
+    _seed(records, m.Debt, id=1, public_id="shared", tenant_id="selected", owner_account_id=8,
+        counterparty_account_id=9)
+    _seed(records, m.BillSplitChangeProposal, id=1, public_id="proposal", original_debt_id=1,
+        proposed_by_account_id=9, resolved_by_account_id=8)
+    _seed(records, m.BillSplitAgreementChange, id=1, public_id="change", original_debt_id=1,
+        proposed_by_account_id=9, accepted_by_account_id=8)
+    for name in ("bill_split_change_proposals", "bill_split_agreement_changes"):
+        third_party = _rows(records, name)[0]
+        assert third_party["proposed_by_account_public_id"] is None
+        assert _rows(records, name, replace(AUTH, account_id=8))[0]["proposed_by_account_public_id"] == "account-9"
+    assert _rows(records, "bill_split_change_proposals")[0]["resolved_by_account_public_id"] == "account-8"
+    assert _rows(records, "bill_split_agreement_changes")[0]["accepted_by_account_public_id"] == "account-8"
+
+
 def test_debt_receipts_require_access_to_the_parent_relationship(records):
     for id_, public_id, ledger, counterparty in (
         (1, "local-debt", "selected", 8),
