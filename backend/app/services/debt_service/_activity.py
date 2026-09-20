@@ -153,13 +153,14 @@ def _proposals_for_events(db: Session, events: list[Row]) -> dict[int, MemberRep
 
 
 def _response(
-    event: Row, *, actor_account_id: int, repayments: dict[int, RepaymentFactResponse],
+    event: Row, *, actor_account_id: int | None, repayments: dict[int, RepaymentFactResponse],
     proposals: dict[int, MemberRepaymentProposalResponse],
     split_proposals: dict[int, BillSplitChangeProposalResponse],
 ) -> DebtActivityResponse:
     return DebtActivityResponse(
         kind=event.kind, public_id=event.public_id, recorded_at=event.recorded_at,
-        actor_display_name=event.actor_display_name, actor_is_you=event.actor_id == actor_account_id,
+        actor_display_name=event.actor_display_name,
+        actor_is_you=actor_account_id is not None and event.actor_id == actor_account_id,
         amount_cents=(projection_sum_to_int(event.amount, label="debt_activity.amount") if event.amount is not None else None),
         reason=event.reason, repayment=repayments.get(event.repayment_id), proposal=proposals.get(event.proposal_id),
         split_change=split_proposals.get(event.split_proposal_id),
@@ -181,7 +182,7 @@ def _split_proposals_for_events(
 
 
 def list_debt_activity(
-    db: Session, *, tenant_id: str, actor_account_id: int, public_id: str,
+    db: Session, *, tenant_id: str, actor_account_id: int | None, public_id: str,
     page: int, page_size: int, focus_repayment: str | None = None,
 ) -> DebtActivityListResponse:
     debt, _ = resolve_debt_for_participant(

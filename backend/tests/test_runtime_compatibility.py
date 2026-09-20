@@ -105,6 +105,7 @@ def test_runtime_snapshot_is_authenticated_private_and_product_facing(
             "upload_original_receipt_version": 1,
             "accounting_time_input_version": 1,
             "original_attachment_version": 1,
+            "debt_activity_read_version": 1,
             "currency": {
                 "home_currency_code": None,
                 "minor_unit_exponent": None,

@@ -20442,6 +20442,11 @@
           "currency": {
             "$ref": "#/components/schemas/RuntimeCurrencyCapabilityResponse"
           },
+          "debt_activity_read_version": {
+            "minimum": 1.0,
+            "title": "Debt Activity Read Version",
+            "type": "integer"
+          },
           "original_attachment_version": {
             "minimum": 1.0,
             "title": "Original Attachment Version",
@@ -20457,6 +20462,7 @@
           "upload_original_receipt_version",
           "accounting_time_input_version",
           "original_attachment_version",
+          "debt_activity_read_version",
           "currency"
         ],
         "title": "RuntimeProductCapabilitiesResponse",

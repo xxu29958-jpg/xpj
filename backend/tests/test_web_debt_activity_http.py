@@ -1,9 +1,38 @@
 """Real PostgreSQL/HTTP continuation through older relationship facts."""
 
 import pytest
+from sqlalchemy import select
 
+from app.database import SessionLocal
+from app.models import LedgerMember
+from app.services.ledger_service import find_owner_account_id_for_ledger
 from tests._web_native_form_support import hidden_post_forms
-from tests.test_web_debt_actions import _create_debt, _headers
+from tests.test_web_debt_actions import _create_debt, _form, _headers
+
+
+@pytest.mark.parametrize("role", ["member", "viewer"])
+def test_visible_ledger_without_active_owner_keeps_relationship_history(web_client, identity, role):
+    debt = _create_debt(web_client, identity=identity)
+    public_id = debt["public_id"]
+    adjusted = web_client.post(
+        f"/web/debts/{public_id}/adjustments",
+        data=_form(debt, idempotency_key="no-owner-history-adjustment",
+                   amount_major="-50.00", reason="历史手续费更正"),
+    )
+    assert adjusted.status_code == 200, adjusted.text
+    with SessionLocal() as db:
+        membership = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "owner"))
+        membership.role = role
+        db.commit()
+        assert find_owner_account_id_for_ledger(db, ledger_id="owner") is None
+
+    page = web_client.get(f"/web/debts/{public_id}?ledger_id=owner")
+    assert page.status_code == 200, page.text
+    assert "共 2 条" in page.text
+    assert "建立往来" in page.text and "历史手续费更正" in page.text
+    # Missing attribution cannot authorize another ledger's obligation.
+    hidden = web_client.get(f"/web/debts/{public_id}?ledger_id=tester_1")
+    assert hidden.status_code == 404
 
 
 def test_older_repayment_page_can_be_reopened_voided_and_replayed(web_client, identity):
