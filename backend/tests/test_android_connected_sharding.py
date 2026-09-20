@@ -30,7 +30,9 @@ def test_connected_workflow_runs_two_isolated_qualified_shards() -> None:
         },
     }
     assert execution["timeout-minutes"] == 45
-    assert "outputs" not in execution
+    assert set(execution["outputs"]) == {
+        "qualification_sha", "qualification_source_sha",
+    }
     steps = _steps(execution)
     run = steps["Run connected test"]
     assert run["timeout-minutes"] == 35
@@ -58,23 +60,33 @@ def test_connected_workflow_runs_two_isolated_qualified_shards() -> None:
     ]
     assert len(set(expanded_names)) == len(expanded_names)
 
-    qualification = jobs["connected_qualification"]
+    assert set(jobs) == {"scope", "connected_execution", "connected"}
+    qualification = jobs["connected"]
     assert qualification["needs"] == ["scope", "connected_execution"]
     qualification_steps = _steps(qualification)
     assert qualification_steps["Download connected shard evidence"]["with"]["pattern"] == "connected-shard-*"
     verify = qualification_steps["Qualify connected shard union"]
     assert " connected-shards " in f" {verify['run']} "
     assert verify["env"]["EXPECTED_SHARD_COUNT"] == "2"
+    for name in (
+        "Require all connected shards",
+        "Download connected shard evidence",
+        "Qualify connected shard union",
+    ):
+        step = qualification_steps[name]
+        assert step["if"] == "${{ success() && needs.scope.outputs.android != 'false' }}"
+        assert not step.get("continue-on-error", False)
 
     required = jobs["connected"]
     assert set(required["needs"]) == {
         "scope",
         "connected_execution",
-        "connected_qualification",
     }
     enforce = _steps(required)["Enforce Connected result"]
-    assert "--lane QUALIFICATION" in enforce["run"]
-    assert "EXECUTION_SHA" not in enforce["env"]
+    assert "--lane EXECUTION" in enforce["run"]
+    assert list(qualification_steps).index("Qualify connected shard union") < list(
+        qualification_steps
+    ).index("Enforce Connected result")
 
 
 def test_gradle_keeps_connected_timeout_and_shard_evidence_hooks() -> None:

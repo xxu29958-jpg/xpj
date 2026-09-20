@@ -12,8 +12,8 @@ import re
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
-from pathlib import Path
 from collections.abc import Iterable, Mapping
+from pathlib import Path
 
 ANDROID_PROCESS_ATTRIBUTE = "{http://schemas.android.com/apk/res/android}process"
 EXIT_INFO_HEADER = "ACTIVITY MANAGER PROCESS EXIT INFO"
