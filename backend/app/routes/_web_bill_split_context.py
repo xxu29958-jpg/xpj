@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.money_contract import projection_sum_to_int, projection_values_sum_to_int
+from app.routes._web_relationship_links import accepted_split_debt_links
 from app.routes._web_session_common import resolve_web_actor_account_id
 from app.services import bill_split_service as bsplit
 from app.services.currency_binding_service import require_runtime_home_currency_code
@@ -95,6 +96,7 @@ def build_split_invite_context(
     ]
 
     invitations = bsplit.list_sent_for_expense(db, sender_account_id=sender_account_id, expense_id=expense["id"])
+    debt_links = accepted_split_debt_links(db, invitations, selected_id=selected_ledger_id, account_id=sender_account_id)
     expense_currency, remaining_cents = _remaining_split_capacity(
         expense,
         invitations,
@@ -112,6 +114,7 @@ def build_split_invite_context(
                 "receiver_display_name": inv.receiver_display_name_snapshot or "",
                 "expires_at": _fmt_local(inv.expires_at),
                 "is_cancellable": inv.status == "invited" and not is_expired,
+                "debt_href": debt_links.get(inv.public_id, ""),
             }
         )
 

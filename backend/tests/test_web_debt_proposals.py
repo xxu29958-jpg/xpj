@@ -248,6 +248,8 @@ def test_web_creditor_can_partially_confirm_pending_proposal(
 
     assert confirmed.status_code == 200
     assert "收到啦，谢谢 TA" in confirmed.text
+    assert "申报 ¥80.00 · 实际确认 ¥50.00" in confirmed.text
+    assert "focus_repayment=" in confirmed.text
     assert f'action="/web/debts/{public_id}/repayment-voids"' not in confirmed.text
     with SessionLocal() as db:
         proposal = db.scalar(
@@ -358,7 +360,7 @@ def test_web_debt_detail_resolved_history_is_sunk_and_neutral(web_client: TestCl
     )
     resp = web_client.get(f"/web/debts/{public_id}")
     assert resp.status_code == 200
-    assert "过往" in resp.text  # history block title
+    assert "往来历史" in resp.text  # unified retained activity
     assert "已确认" in resp.text  # Only this repayment was confirmed.
     assert "已两清" not in resp.text  # The parent debt remains open.
     assert "对上" in resp.text  # confirmed date prefix
@@ -374,7 +376,7 @@ def test_web_debt_detail_resolved_history_is_sunk_and_neutral(web_client: TestCl
     assert "product-status--success" not in resp.text
 
 
-def test_web_debt_detail_resolved_history_collapses_over_three(web_client: TestClient) -> None:
+def test_web_debt_detail_resolved_history_uses_complete_activity(web_client: TestClient) -> None:
     public_id, debt_id, owner_id, member_id = _seed_member_debt_for_proposals(direction="i_owe")
     for i in range(5):
         _seed_proposal(
@@ -387,32 +389,35 @@ def test_web_debt_detail_resolved_history_collapses_over_three(web_client: TestC
         )
     resp = web_client.get(f"/web/debts/{public_id}")
     assert resp.status_code == 200
-    # First 3 shown inline, the rest behind a no-JS <details> "查看全部 5 条过往".
-    assert "查看全部 5 条过往" in resp.text
-    assert '<details class="debt-history-more">' in resp.text
+    # Every proposal has creation and resolution events, plus the original debt.
+    assert "共 11 条" in resp.text
+    assert resp.text.count("处理还款申报</strong>") == 5
+    assert resp.text.count("申报还款</strong>") == 5
+    assert '<details class="debt-history-more">' not in resp.text
 
 
 def test_web_debt_detail_member_no_proposals_renders_debtor_action(web_client: TestClient) -> None:
-    # A debtor with no pending proposal gets the real create form; history stays absent.
+    # The creation fact remains visible; a debtor without a proposal can still submit one.
     public_id, _debt_id, _owner_id, _member_id = _seed_member_debt_for_proposals(direction="i_owe")
     resp = web_client.get(f"/web/debts/{public_id}")
     assert resp.status_code == 200
-    assert "过往" not in resp.text
+    assert "建立往来" in resp.text
+    assert "处理还款申报" not in resp.text
     assert f'action="/web/debts/{public_id}/repayment-proposals"' in resp.text
     assert "提交还款确认" in resp.text
 
 
 def test_web_debt_detail_external_has_no_proposal_section(web_client: TestClient) -> None:
-    # External debt → businesslike card, no proposal flow — even with a proposal row attached to it
-    # (the is_member route gate skips the query AND the template renders the proposal block only in
-    # the {% if debt.is_member %} branch). Pins that external never surfaces the proposal section.
+    # An anomalous historical proposal remains explainable on an external debt.
+    # This fixture does not authorize creating one: member write controls stay absent.
     public_id, debt_id, owner_id, other_id = _seed_external_debt()
     _seed_proposal(debt_id=debt_id, debtor_id=owner_id, creditor_id=other_id, status="rejected", amount_cents=3000)
     resp = web_client.get(f"/web/debts/{public_id}")
     assert resp.status_code == 200
-    assert "过往" not in resp.text
+    assert "往来历史" in resp.text
     assert "debt-proposal-status" not in resp.text
-    assert "在对账" not in resp.text  # the attached proposal's status never leaks onto an external card
+    assert "在对账" in resp.text  # anomalous retained facts stay traceable; no new write permission
+    assert 'aria-labelledby="debt-proposal-actions-title"' not in resp.text
 
 
 def _stub_proposal(**overrides) -> SimpleNamespace:
@@ -449,21 +454,21 @@ def test_resolved_proposal_row_date_prefix_and_neutral_status() -> None:
     assert "对上" not in rejected["date_text"]  # no positive prefix for a non-settled close
 
 
-def test_proposal_section_splits_pending_and_collapses_resolved() -> None:
+def test_proposal_section_retains_controls_and_defers_history_to_activity() -> None:
     empty = _proposal_section([], True)
     assert empty["can_propose"] is True
     assert empty["pending"] is None
-    # One pending + 4 resolved → pending line + first-3 visible / rest hidden, total label.
+    # Pending controls stay separate; the activity owner supplies all settled history.
     pending = _stub_proposal(status="pending")
     resolved = [_stub_proposal(status="confirmed") for _ in range(4)]
     section = _proposal_section([pending, *resolved], True, )
     assert section["pending_line"] == "你说你还了这一份，等家人确认一下"
     assert section["can_withdraw"] is True
     assert section["pending"]["public_id"] == pending.public_id
-    assert len(section["resolved_visible"]) == 3
-    assert len(section["resolved_hidden"]) == 1
-    assert section["history_expand_label"] == "查看全部 4 条过往"
-    # Resolved-only (no pending) still renders history; pending_line is None.
+    assert section["has_resolved"] is True
+    assert "resolved_visible" not in section
+    assert "resolved_hidden" not in section
+    # Existing confirmation error anchoring still knows a resolved proposal exists.
     resolved_only = _proposal_section(resolved, None, )
     assert resolved_only["pending_line"] is None
     assert resolved_only["has_resolved"] is True

@@ -693,6 +693,7 @@ internal class FakeApiService(
         file: MultipartBody.Part,
     ): com.ticketbox.data.remote.dto.DebtBillParseResponseDto = unsupported()
     override suspend fun debt(publicId: String): com.ticketbox.data.remote.dto.DebtDto = unsupported()
+    override suspend fun debtActivity(publicId: String, page: Int, focusRepayment: String?): com.ticketbox.data.remote.dto.DebtActivityListDto = unsupported()
     override suspend fun debtRepayments(publicId: String, page: Int): com.ticketbox.data.remote.dto.RepaymentFactListDto = unsupported()
     override suspend fun voidDebtRepayment(
         publicId: String,

@@ -17,6 +17,7 @@ from app.routes._web_expense_return_context import (
     resolve_return_to,
     return_context_params,
 )
+from app.routes._web_relationship_links import accepted_split_debt_links
 from app.routes._web_session_common import (
     resolve_web_actor,
     resolve_web_actor_account_id,
@@ -68,11 +69,15 @@ def _accepted_receipt(
     )
     if received is None:
         return None
+    debt_links = accepted_split_debt_links(
+        db, [inv], selected_id=received["ledger_id"], account_id=receiver_account_id,
+    )
     return {
         "amount_label": (
             f"{currency_symbol(inv.home_currency_code)}{_cents_to_yuan(inv.amount_cents, inv.home_currency_code)}"
         ),
         "ledger_name": received["ledger_name"],
+        "debt_href": debt_links.get(inv.public_id, ""),
         "fact_href": flow_href(
             f"/web/expenses/{received['expense_id']}/edit",
             ledger_id=received["ledger_id"],
@@ -179,6 +184,7 @@ def web_bill_split_sent(
     account_id = resolve_web_actor_account_id(db, request, selected_id)
 
     invitations = bsplit.list_sent(db, sender_account_id=account_id, sender_ledger_id=selected_id)
+    debt_links = accepted_split_debt_links(db, invitations, selected_id=selected_id, account_id=account_id)
     presented_at = now_utc()
     rows = []
     for inv in invitations:
@@ -194,6 +200,7 @@ def web_bill_split_sent(
                 "expires_at": _fmt_local(inv.expires_at),
                 "is_expired": is_expired,
                 "is_cancellable": inv.status == "invited" and not is_expired,
+                "debt_href": debt_links.get(inv.public_id, ""),
                 "source_href": flow_href(
                     f"/web/expenses/{inv.sender_expense_id}/edit",
                     ledger_id=selected_id,

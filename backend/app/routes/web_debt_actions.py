@@ -341,7 +341,7 @@ def web_void_repayment(
             public_id=public_id,
             kind="repayment_void",
             message=message,
-            draft={"reason": reason},
+            draft={"reason": reason, "idempotency_key": idempotency_key},
             target_public_id=repayment_public_id,
             status_code=exc.status_code if isinstance(exc, AppError) else 422,
         )

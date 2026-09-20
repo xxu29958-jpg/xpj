@@ -51,8 +51,8 @@ import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.DebtAction
 import com.ticketbox.viewmodel.DebtDetailUiState
 import com.ticketbox.viewmodel.DebtDetailViewModel
-import com.ticketbox.viewmodel.DebtRepaymentHistoryUiState
-import com.ticketbox.viewmodel.DebtRepaymentHistoryViewModel
+import com.ticketbox.viewmodel.DebtActivityUiState
+import com.ticketbox.viewmodel.DebtActivityViewModel
 import com.ticketbox.viewmodel.MemberProposalUiState
 import com.ticketbox.viewmodel.MemberRepaymentProposalViewModel
 import kotlinx.coroutines.delay
@@ -75,7 +75,7 @@ private const val DebtDetailFlashDismissMillis = 4000L
 fun DebtDetailScreen(
     viewModel: DebtDetailViewModel,
     proposalViewModel: MemberRepaymentProposalViewModel,
-    historyViewModel: DebtRepaymentHistoryViewModel,
+    historyViewModel: DebtActivityViewModel,
     onBack: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -86,7 +86,7 @@ fun DebtDetailScreen(
     val observedHistoryState by historyViewModel.state.collectAsStateWithLifecycle()
     val historyState = observedHistoryState.takeIf {
         it.binding == state.binding && it.debtPublicId == state.debt?.publicId
-    } ?: DebtRepaymentHistoryUiState()
+    } ?: DebtActivityUiState()
     val debt = state.debt
 
     DebtDetailEffects(
@@ -114,10 +114,11 @@ fun DebtDetailScreen(
             proposalState = proposalState,
             proposalViewModel = proposalViewModel,
             historyState = historyState,
-            historyCallbacks = DebtRepaymentHistoryCallbacks(
+            historyCallbacks = DebtActivityCallbacks(
                 onVoidRepayment = { viewModel.openAction(DebtAction.RepaymentVoid, it) },
                 onLoadPage = historyViewModel::loadPage,
                 onRetry = historyViewModel::refresh,
+                onOpenRepayment = historyViewModel::openRepayment,
             ),
         ),
         callbacks = callbacks,
@@ -139,12 +140,12 @@ fun DebtDetailScreen(
     }
 }
 @Composable
-private fun DebtDetailEffects(
+internal fun DebtDetailEffects(
     state: DebtDetailUiState,
     proposalState: MemberProposalUiState,
     viewModel: DebtDetailViewModel,
     proposalViewModel: MemberRepaymentProposalViewModel,
-    historyViewModel: DebtRepaymentHistoryViewModel,
+    historyViewModel: DebtActivityViewModel,
 ) {
     val debt = state.debt
     LaunchedEffect(state.binding, debt?.publicId, debt?.isMember) {
@@ -152,10 +153,12 @@ private fun DebtDetailEffects(
             proposalViewModel.load(DebtTask(binding, debt.publicId))
         }
     }
-    // canonical 版本变化（还款/调整/作废/单笔还款作废成功后折叠换入）使旧记录失效，重读历史。
-    LaunchedEffect(state.binding, debt?.publicId, debt?.rowVersion) {
+    // 此 effect 仅在进入页面或 key 变化时运行；重入也读取不改变父版本的远端申报变化。
+    LaunchedEffect(state.binding, debt?.publicId, debt?.rowVersion, proposalState.acknowledgedCommandRevision) {
         val task = state.binding?.let { binding -> debt?.let { DebtTask(binding, it.publicId) } }
-        historyViewModel.loadDebt(task, debt?.rowVersion ?: 0)
+        historyViewModel.loadDebt(
+            task, debt?.rowVersion ?: 0, proposalState.acknowledgedCommandRevision, forceRefresh = true,
+        )
     }
     LaunchedEffect(proposalState.task, proposalState.committedDebt) {
         val task = proposalState.task ?: return@LaunchedEffect

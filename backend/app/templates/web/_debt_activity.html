@@ -1,0 +1,66 @@
+<section class="product-panel product-panel--padded debt-activity" id="debt-activity" aria-labelledby="debt-facts-title">
+  <h2 class="product-panel-title" id="debt-facts-title">往来历史</h2>
+  <p class="hint">余额以页面概况为准；这里保留每次记录和处理经过。</p>
+  <div class="debt-history">
+    {% for row in activity.rows %}
+    <div class="debt-history-row" id="{{ row.anchor }}">
+      <div class="debt-history-main">
+        <strong class="debt-activity-title">{{ row.title }}</strong>
+        {% if row.amount_label %}<span class="debt-history-amt">{{ row.amount_label }}</span>{% endif %}
+        <span class="debt-history-date">记录于 {{ row.recorded_at }} · {{ row.actor_label }}</span>
+        {% if row.reason %}<span class="debt-history-note">{{ row.reason }}</span>{% endif %}
+        {% if row.proposal %}
+        <span class="debt-history-amt">申报 {{ row.proposal.amount_label }}{% if row.proposal.confirmed_amount_label %} · 实际确认 {{ row.proposal.confirmed_amount_label }}{% endif %}</span>
+        <span class="debt-history-date">付款日期 {{ row.proposal.paid_at }}</span>
+        {% if row.kind == 'proposal_resolved' %}<span class="product-status">{{ row.proposal.status_label }}</span>{% endif %}
+        {% if row.proposal.original_label %}<span class="debt-history-note">申报原币 {{ row.proposal.original_label }}</span>{% endif %}
+        {% if row.proposal.note %}<span class="debt-history-note">{{ row.proposal.note }}</span>{% endif %}
+        <span class="hint">申报本身不计入已偿还金额；确认后以关联还款为准。</span>
+        {% endif %}
+        {% if row.repayment %}
+        {% set fact = row.repayment %}
+        <span class="debt-history-amt{% if fact.is_voided %} debt-history-amt--voided{% endif %}">{{ fact.amount_label }}</span>
+        <span class="debt-history-date">付款日期 {{ fact.date_text }}</span>
+        {% if fact.original_label %}<span class="debt-history-note">原币 {{ fact.original_label }}</span>{% endif %}
+        {% if fact.exchange_rate %}<span class="debt-history-note">冻结汇率 {{ fact.exchange_rate }}{% if fact.exchange_rate_date %} · {{ fact.exchange_rate_date }}{% endif %}{% if fact.exchange_rate_source %} · {{ fact.exchange_rate_source }}{% endif %}</span>{% endif %}
+        {% if fact.is_voided %}<span class="debt-history-note">已作废{% if fact.void_reason %}：{{ fact.void_reason }}{% endif %}{% if fact.void_date_text %}（{{ fact.void_date_text }}）{% endif %}</span>{% endif %}
+        {% endif %}
+        {% if row.repayment_href %}<a class="product-button product-button--quiet product-button--small" href="{{ row.repayment_href }}">查看关联还款</a>{% endif %}
+      </div>
+      {% if row.kind == 'repayment' %}
+      {% set fact = row.repayment %}
+      <div class="debt-history-side">
+        <span class="product-status">{{ '已作废' if fact.is_voided else '已生效' }}</span>
+        {% set void_draft = action_form.kind == 'repayment_void' and action_form.target_public_id == fact.public_id %}
+        {% if void_draft and fact.is_voided and not action_form.fallback %}
+        <p id="debt-action-error-repayment_void-{{ fact.public_id }}" class="product-feedback product-feedback--danger" role="alert">{{ action_form.error }}{% if action_form.draft.reason %} · 你刚才填写：{{ action_form.draft.reason }}{% endif %}</p>
+        {% endif %}
+        {% if can_write and not debt.is_member and not debt.is_voided and not fact.is_voided %}
+        <details class="debt-action-panel debt-fact-void" id="debt-action-panel-repayment_void-{{ fact.public_id }}"{% if void_draft %} open{% endif %}>
+          <summary>撤销</summary>
+          <form class="debt-action-form" method="post" action="/web/debts/{{ debt.public_id }}/repayment-voids{% if activity.page > 1 %}?activity_page={{ activity.page }}{% endif %}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+            <input type="hidden" name="repayment_public_id" value="{{ fact.public_id }}">
+            <input type="hidden" name="idempotency_key" value="{{ action_form.draft.idempotency_key if void_draft and action_form.draft.idempotency_key else fact.void_key }}">
+            <input type="hidden" name="expected_row_version" value="{{ expected_row_version }}">
+            {% if void_draft %}<div id="debt-action-error-repayment_void-{{ fact.public_id }}" class="product-feedback product-feedback--danger debt-action-error" role="alert">{{ action_form.error }}</div>{% endif %}
+            <div class="product-field">
+              <label for="debt-fact-void-reason-{{ fact.public_id }}">原因（可选）</label>
+              <input id="debt-fact-void-reason-{{ fact.public_id }}" class="product-input" name="reason" type="text" maxlength="80" placeholder="比如：记错金额" value="{{ action_form.draft.reason if void_draft else '' }}"{% if void_draft %} aria-describedby="debt-action-error-repayment_void-{{ fact.public_id }}"{% endif %}>
+            </div>
+            <div class="debt-form-actions"><button class="product-button product-button--quiet" type="submit">撤销这笔误记</button></div>
+          </form>
+        </details>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+    {% else %}<p class="hint">本页没有历史记录。</p>{% endfor %}
+  </div>
+  <nav class="product-form-actions" aria-label="往来历史分页">
+    {% if activity.previous_href %}<a class="product-button product-button--quiet" href="{{ activity.previous_href }}">上一页</a>{% endif %}
+    <span class="hint">第 {{ activity.page }} 页 · 共 {{ activity.total }} 条</span>
+    {% if activity.next_href %}<a class="product-button product-button--quiet" href="{{ activity.next_href }}">下一页</a>{% endif %}
+  </nav>
+</section>

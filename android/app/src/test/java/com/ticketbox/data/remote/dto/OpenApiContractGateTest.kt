@@ -176,6 +176,8 @@ class OpenApiContractGateTest {
         Pairing(RepaymentCreateRequestDto::class, "RepaymentCreateRequest"),
         Pairing(RepaymentFactDto::class, "RepaymentFactResponse"),
         Pairing(RepaymentFactListDto::class, "RepaymentFactListResponse"),
+        Pairing(DebtActivityDto::class, "DebtActivityResponse"),
+        Pairing(DebtActivityListDto::class, "DebtActivityListResponse"),
         Pairing(RepaymentVoidFactDto::class, "RepaymentVoidFactResponse"),
         Pairing(RepaymentVoidCreateRequestDto::class, "RepaymentVoidCreateRequest"),
         Pairing(DebtAdjustmentCreateRequestDto::class, "DebtAdjustmentCreateRequest"),

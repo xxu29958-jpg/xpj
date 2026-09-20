@@ -17,7 +17,7 @@ import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.ui.screens.DebtDetailScreen
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.DebtDetailViewModel
-import com.ticketbox.viewmodel.DebtRepaymentHistoryViewModel
+import com.ticketbox.viewmodel.DebtActivityViewModel
 import com.ticketbox.viewmodel.MemberRepaymentProposalViewModel
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
@@ -33,7 +33,7 @@ class MemberSettlementConnectedTest {
     private val fixture = DebtAdjustmentConnectedFixture(InstrumentationRegistry.getInstrumentation().targetContext, network.service)
     private val detail = mutableStateOf<DebtDetailViewModel?>(null)
     private lateinit var proposals: MemberRepaymentProposalViewModel
-    private lateinit var history: DebtRepaymentHistoryViewModel
+    private lateinit var history: DebtActivityViewModel
 
     @After fun close() { stopModels(); fixture.close() }
 
@@ -56,18 +56,18 @@ class MemberSettlementConnectedTest {
         assertEquals("450", proposals.state.value.amountInput)
         assertNull(proposals.state.value.flashMessage)
         compose.onNodeWithText("保存").performScrollTo().performTouchInput { click() }
-        compose.waitUntil(10_000) { detail.value?.state?.value?.debt?.rowVersion == 2L && history.state.value.total == 1 }
+        compose.waitUntil(10_000) { detail.value?.state?.value?.debt?.rowVersion == 2L && history.state.value.total == 3 }
         assertEquals(2, network.confirms.size)
         assertEquals(network.confirms.first(), network.confirms.last())
         assertEquals(1, network.accepted.size)
-        assertEquals(450L, history.state.value.items.single().amountCents)
-        compose.onNodeWithText("¥750", substring = true).performScrollTo().assertIsDisplayed()
+        assertEquals(450L, history.state.value.items.single { it.kind == "repayment" }.repayment?.amountCents)
+        compose.onNodeWithText("实际确认：¥450").performScrollTo().assertIsDisplayed()
         assertEquals(retained, fixture.stored())
 
         stopModels()
         network.failReads = false
         installModels()
-        compose.waitUntil(10_000) { detail.value?.state?.value?.debt?.rowVersion == 2L && history.state.value.total == 1 }
+        compose.waitUntil(10_000) { detail.value?.state?.value?.debt?.rowVersion == 2L && history.state.value.total == 3 }
         assertEquals(2, network.confirms.size)
         assertEquals(retained, fixture.stored())
         compose.onNodeWithText("算了，不用还了").performScrollTo().performClick()
@@ -100,7 +100,7 @@ class MemberSettlementConnectedTest {
         val graph = fixture.reopen()
         compose.runOnIdle {
             proposals = MemberRepaymentProposalViewModel(graph.debtRepository.proposals)
-            history = DebtRepaymentHistoryViewModel(graph.debtRepository.repayments)
+            history = DebtActivityViewModel(graph.debtRepository.activity)
             detail.value = DebtDetailViewModel(graph.debtRepository, graph.debtWriteRepository).also { it.loadDebt(network.current.publicId) }
         }
     }

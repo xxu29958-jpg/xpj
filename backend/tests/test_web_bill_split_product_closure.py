@@ -12,7 +12,7 @@ from test_web_bill_split import _make_owner_expense, _owner_account_id, _seed_re
 
 from app.database import SessionLocal
 from app.main import app
-from app.models import AuthToken, BillSplitInvitation, Device, LedgerMember
+from app.models import Account, AuthToken, BillSplitInvitation, Device, Expense, LedgerMember
 from app.routes.web_auth import SESSION_COOKIE_NAME
 from app.services import bill_split_service as bsplit
 from app.services.identity_service import hash_secret, new_session_token
@@ -156,3 +156,51 @@ def test_web_sent_expired_row_shows_actual_expiry_boundary(web_client: TestClien
     assert response.status_code == 200
     assert f"已于 {boundary} 过期" in response.text
     assert "/cancel" not in response.text
+
+
+def test_source_refund_links_only_to_a_readable_relationship(web_client: TestClient) -> None:
+    receiver_id, receiver_ledger = _seed_receiver(ledger_id="relationship_receiver")
+    expense_id = _make_owner_expense()
+    with SessionLocal() as db:
+        invitation = bsplit.create_invitation(
+            db, sender_account_id=_owner_account_id(), sender_ledger_id="owner", expense_id=expense_id,
+            receiver_account_id=receiver_id, amount_cents=1500, idempotency_key=str(uuid4()), expected_row_version=1,
+        )
+        _, received = bsplit.accept_invitation(
+            db, public_id=invitation.public_id, accepting_account_id=receiver_id, target_ledger_id=receiver_ledger,
+        )
+        received_id = received.id
+        debt_id = bsplit.list_accepted_source_relationships(
+            db, sender_ledger_id="owner", sender_expense_id=expense_id,
+        )[0].debt_public_id
+        version = db.get(Expense, expense_id).row_version
+        other = Account(display_name="同源账本的另一位成员")
+        db.add(other)
+        db.flush()
+        other_id = other.id
+        db.add(LedgerMember(ledger_id="owner", account_id=other_id, role="viewer"))
+        db.commit()
+
+    saved = web_client.post(f"/web/expenses/{expense_id}/offsets", data={
+        "ledger_id": "owner", "kind": "refund", "original_amount": "4.00",
+        "accounting_date": "2026-09-20", "reason": "一部分商品退回", "expected_row_version": str(version),
+        "idempotency_key": str(uuid4()),
+    })
+    assert saved.status_code == 200, saved.text
+    assert "按当前退款估算" in saved.text
+    expected_href = f"/web/debts/{debt_id}?ledger_id=owner"
+    assert expected_href in saved.text
+    assert web_client.get(expected_href).status_code == 200
+    sent = web_client.get("/web/bill-splits/sent?ledger_id=owner")
+    assert expected_href in sent.text
+    assert f"/web/expenses/{received_id}/edit" not in sent.text
+
+    token = _mint_receiver_web_session(account_id=other_id, ledger_id="owner")
+    public_client = TestClient(app, base_url="https://api.example.com", client=("203.0.113.20", 50002))
+    headers = {"Cookie": f"{SESSION_COOKIE_NAME}={token}"}
+    other_page = public_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner", headers=headers)
+    assert other_page.status_code == 200, other_page.text
+    assert "按当前退款估算" in other_page.text
+    assert expected_href not in other_page.text
+    assert public_client.get(expected_href, headers=headers).status_code == 404
+    assert f"/web/expenses/{received_id}/edit" not in other_page.text

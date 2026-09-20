@@ -46,6 +46,7 @@ from sqlalchemy.orm import Session
 from app.auth import get_current_app_context, get_current_protocol_writer_context, get_current_writer_context
 from app.database import get_db
 from app.schemas import (
+    DebtActivityListResponse,
     DebtAdjustmentCreateRequest,
     DebtCreateRequest,
     DebtForgiveCreateRequest,
@@ -81,6 +82,7 @@ from app.services.debt_proposal_command_service import (
 )
 from app.services.debt_service import (
     get_participant_debt_response,
+    list_debt_activity,
     list_debts,
     list_payables_for_account,
     list_receivables_for_account,
@@ -130,6 +132,21 @@ def get_debt_detail(
     # the obligation they must confirm; a non-member participant gets the Debt
     # shell only (ledger id redacted), and a non-participant gets debt_not_found.
     return get_participant_debt_response(db, public_id=public_id, ledger_id=auth.tenant_id, account_id=auth.account_id)
+
+
+@router.get("/{public_id}/activity", response_model=DebtActivityListResponse)
+def get_debt_activity(
+    public_id: str,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=100),
+    focus_repayment: str | None = Query(default=None, min_length=1, max_length=36),
+    auth: AuthContext = Depends(get_current_app_context),
+    db: Session = Depends(get_db),
+) -> DebtActivityListResponse:
+    return list_debt_activity(
+        db, tenant_id=auth.tenant_id, actor_account_id=auth.account_id, public_id=public_id,
+        page=page, page_size=page_size, focus_repayment=focus_repayment,
+    )
 
 
 @router.get(

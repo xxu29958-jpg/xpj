@@ -28,6 +28,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class MemberProposalUiState(
+    /** Accepted proposal changes also invalidate history when the Debt rowVersion is unchanged. */
+    val acknowledgedCommandRevision: Long = 0,
     val task: DebtTask? = null,
     val isLoading: Boolean = false,
     val canModify: Boolean = false,
@@ -215,7 +217,8 @@ private fun MemberProposalUiState.withMemberResult(
             proposals.filterNot { it.publicId == command.proposalPublicId }
         } else proposals
     }
-    return copy(isSubmitting = false, activeForm = null, targetProposalPublicId = null, amountInput = "", noteInput = "",
+    return copy(acknowledgedCommandRevision = acknowledgedCommandRevision + 1,
+        isSubmitting = false, activeForm = null, targetProposalPublicId = null, amountInput = "", noteInput = "",
         validationError = null, error = null, proposals = nextProposals,
         committedDebt = (outcome as? MemberSettlementResult.DebtChanged)?.value ?: committedDebt,
         flashMessage = UiText.res(memberCommandDoneRes(command)))

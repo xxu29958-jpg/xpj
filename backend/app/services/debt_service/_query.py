@@ -60,7 +60,7 @@ def participant_can_access(debt: Debt, *, ledger_id: str, account_id: int | None
     return is_ledger_member, is_cross_ledger_counterparty
 
 
-def resolve_debt_for_participant(db: Session, *, public_id: str, ledger_id: str, account_id: int) -> tuple[Debt, bool]:
+def resolve_debt_for_participant(db: Session, *, public_id: str, ledger_id: str, account_id: int | None) -> tuple[Debt, bool]:
     """Load a Debt visible to the actor as a ledger member OR the cross-ledger
     member counterparty.
 
@@ -72,6 +72,9 @@ def resolve_debt_for_participant(db: Session, *, public_id: str, ledger_id: str,
     ``debt_not_found`` (same 404 as a missing id — cross-ledger existence hiding,
     no enumeration leak; an owner reading from an unrelated ledger context still
     gets the ledger-scoped 404).
+
+    Loopback Web may have no attributable account in an already authorized
+    ledger scope. That scope permits its own facts, never cross-ledger access.
     """
     debt = db.scalar(select(Debt).where(Debt.public_id == public_id).limit(1))
     if debt is None:
@@ -82,7 +85,32 @@ def resolve_debt_for_participant(db: Session, *, public_id: str, ledger_id: str,
     return debt, is_ledger_member
 
 
-def get_participant_debt_response(db: Session, *, public_id: str, ledger_id: str, account_id: int) -> DebtResponse:
+def participant_accessible_debt_public_ids(
+    db: Session,
+    *,
+    public_ids: set[str],
+    ledger_id: str,
+    account_id: int,
+) -> frozenset[str]:
+    """Return known Debt ids visible through the canonical participant fence.
+
+    Link presentation needs only an existence-safe authorization decision, not
+    the Debt response's payment fold or participant labels. Load all known
+    candidates once, then reuse :func:`participant_can_access` so the batch path
+    has exactly the same ledger-member/cross-ledger-counterparty boundary as the
+    detail resolver. Missing and forbidden ids are both omitted.
+    """
+    if not public_ids:
+        return frozenset()
+    debts = db.scalars(select(Debt).where(Debt.public_id.in_(public_ids)))
+    return frozenset(
+        debt.public_id
+        for debt in debts
+        if any(participant_can_access(debt, ledger_id=ledger_id, account_id=account_id))
+    )
+
+
+def get_participant_debt_response(db: Session, *, public_id: str, ledger_id: str, account_id: int | None) -> DebtResponse:
     """Debt response for a participant; redacts the ledger id for cross-ledger access.
 
     Same-ledger members get the full response. A participant who is NOT a member

@@ -25,7 +25,7 @@ import com.ticketbox.viewmodel.DebtGoalViewModel
 import com.ticketbox.viewmodel.DebtListViewModel
 import com.ticketbox.viewmodel.CreateDebtGoalViewModel
 import com.ticketbox.viewmodel.RepaymentDraftInboxViewModel
-import com.ticketbox.viewmodel.DebtRepaymentHistoryViewModel
+import com.ticketbox.viewmodel.DebtActivityViewModel
 import com.ticketbox.viewmodel.MemberRepaymentProposalViewModel
 import com.ticketbox.viewmodel.OutboxRecoveryRepositories
 import com.ticketbox.viewmodel.OutboxStatusViewModel
@@ -45,7 +45,7 @@ class DebtAdjustmentRoomContinuityTest {
     private val fixture = DebtAdjustmentConnectedFixture(InstrumentationRegistry.getInstrumentation().targetContext)
     private val detail = mutableStateOf<DebtDetailViewModel?>(null)
     private lateinit var proposals: MemberRepaymentProposalViewModel
-    private lateinit var history: DebtRepaymentHistoryViewModel
+    private lateinit var history: DebtActivityViewModel
 
     @After
     fun close() { stopModels(); fixture.close() }
@@ -262,7 +262,7 @@ class DebtAdjustmentRoomContinuityTest {
         val graph = fixture.reopen()
         compose.runOnIdle {
             proposals = MemberRepaymentProposalViewModel(graph.debtRepository.proposals)
-            history = DebtRepaymentHistoryViewModel(graph.debtRepository.repayments)
+            history = DebtActivityViewModel(graph.debtRepository.activity)
             detail.value = DebtDetailViewModel(graph.debtRepository, graph.debtWriteRepository)
                 .also { it.loadDebt(fixture.network.current.publicId) }
         }

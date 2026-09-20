@@ -428,7 +428,7 @@ def test_web_debt_kind_and_repayment_void_restore_canonical_fold(
     cleared = repayment.json()
     page = web_client.get(f"/web/debts/{debt['public_id']}?ledger_id=owner")
     assert page.status_code == 200
-    assert "还款记录" in page.text
+    assert "往来历史" in page.text
     assert "已生效" in page.text
     assert "撤销这笔误记" in page.text
 

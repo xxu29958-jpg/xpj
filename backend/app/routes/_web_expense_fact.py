@@ -394,7 +394,7 @@ def web_fact_context(
         expense=ctx["expense"],
         can_write=ctx["can_write"],
     )
-    ctx.update(expense_offset_fact_view(db, selected_id, expense_id, ctx["can_write"]))
+    ctx.update(expense_offset_fact_view(db, selected_id, expense_id, ctx["can_write"], request))
     member_names = {
         member.member_id: member.account_name
         for member in invitation_members.list_members(

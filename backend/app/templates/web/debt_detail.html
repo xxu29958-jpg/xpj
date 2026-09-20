@@ -132,41 +132,11 @@
   {% endif %}
 </div>
 {% endif %}
+{% if proposals.pending_line %}
 <section class="product-panel product-panel--padded debt-proposal-flow" aria-label="还款确认状态">
-  {% if proposals.pending_line %}
   <div class="debt-proposal-status">{{ proposals.pending_line }}</div>
-  {% endif %}
-  {% if proposals.has_resolved %}
-  <div class="debt-history">
-    <div class="debt-history-title">{{ proposals.history_title }}</div>
-    {% for row in proposals.resolved_visible %}
-    <div class="debt-history-row">
-      <div class="debt-history-main">
-        <span class="debt-history-amt">{{ row.amount_label }}</span>
-        {% if row.note %}<span class="debt-history-note">{{ row.note }}</span>{% endif %}
-        <span class="debt-history-date">{{ row.date_text }}</span>
-      </div>
-      <span class="product-status">{{ row.status_label }}</span>
-    </div>
-    {% endfor %}
-    {% if proposals.resolved_hidden %}
-    <details class="debt-history-more">
-      <summary>{{ proposals.history_expand_label }}</summary>
-      {% for row in proposals.resolved_hidden %}
-      <div class="debt-history-row">
-        <div class="debt-history-main">
-          <span class="debt-history-amt">{{ row.amount_label }}</span>
-          {% if row.note %}<span class="debt-history-note">{{ row.note }}</span>{% endif %}
-          <span class="debt-history-date">{{ row.date_text }}</span>
-        </div>
-        <span class="product-status">{{ row.status_label }}</span>
-      </div>
-      {% endfor %}
-    </details>
-    {% endif %}
-  </div>
-  {% endif %}
 </section>
+{% endif %}
 {% endif %}
 {% else %}
 {# 外部债 businesslike 会计卡: 剩余英雄 + 中性已偿还进度 + 事实行。 #}
@@ -377,47 +347,5 @@
 </section>
 {% endif %}
 
-{% if repayment_facts %}
-<section class="product-panel product-panel--padded" aria-labelledby="debt-facts-title">
-  <h2 class="product-panel-title" id="debt-facts-title">还款记录</h2>
-  <div class="debt-history">
-    {% for fact in repayment_facts %}
-    <div class="debt-history-row">
-      <div class="debt-history-main">
-        <span class="debt-history-amt{% if fact.is_voided %} debt-history-amt--voided{% endif %}">{{ fact.amount_label }}</span>
-        <span class="debt-history-date">{{ fact.date_text }}</span>
-        {% if fact.is_voided %}
-        <span class="debt-history-note">已作废{% if fact.void_reason %}：{{ fact.void_reason }}{% endif %}{% if fact.void_date_text %}（{{ fact.void_date_text }}）{% endif %}</span>
-        {% endif %}
-      </div>
-      <div class="debt-history-side">
-        <span class="product-status">{{ '已作废' if fact.is_voided else '已生效' }}</span>
-        {% if can_write and not debt.is_member and not fact.is_voided %}
-        <details class="debt-action-panel debt-fact-void" id="debt-action-panel-repayment_void-{{ fact.public_id }}"{% if action_form.kind == 'repayment_void' and action_form.target_public_id == fact.public_id %} open{% endif %}>
-          <summary>撤销</summary>
-          <form class="debt-action-form" method="post" action="/web/debts/{{ debt.public_id }}/repayment-voids">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-            <input type="hidden" name="repayment_public_id" value="{{ fact.public_id }}">
-            <input type="hidden" name="idempotency_key" value="{{ fact.void_key }}">
-            <input type="hidden" name="expected_row_version" value="{{ expected_row_version }}">
-            {% if action_form.kind == 'repayment_void' and action_form.target_public_id == fact.public_id %}
-            <div id="debt-action-error-repayment_void-{{ fact.public_id }}" class="product-feedback product-feedback--danger debt-action-error" role="alert">{{ action_form.error }}</div>
-            {% endif %}
-            <div class="product-field">
-              <label for="debt-fact-void-reason-{{ fact.public_id }}">原因（可选）</label>
-              <input id="debt-fact-void-reason-{{ fact.public_id }}" class="product-input" name="reason" type="text" maxlength="80" placeholder="比如：记错金额" value="{{ action_form.draft.reason if action_form.kind == 'repayment_void' and action_form.target_public_id == fact.public_id else '' }}"{% if action_form.kind == 'repayment_void' and action_form.target_public_id == fact.public_id %} aria-describedby="debt-action-error-repayment_void-{{ fact.public_id }}"{% endif %}>
-            </div>
-            <div class="debt-form-actions">
-              <button class="product-button product-button--quiet" type="submit">撤销这笔误记</button>
-            </div>
-          </form>
-        </details>
-        {% endif %}
-      </div>
-    </div>
-    {% endfor %}
-  </div>
-</section>
-{% endif %}
+{% include '_debt_activity.html' %}
 {% endblock %}

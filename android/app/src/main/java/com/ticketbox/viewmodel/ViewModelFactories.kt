@@ -9,7 +9,7 @@ import com.ticketbox.data.repository.BudgetActions
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtCreationActions
 import com.ticketbox.data.repository.DebtProposalActions
-import com.ticketbox.data.repository.DebtRepaymentQueries
+import com.ticketbox.data.repository.DebtActivityQueries
 import com.ticketbox.data.repository.ExpenseRepositoryBackgroundTaskActions
 import com.ticketbox.data.repository.ExpenseFactActions
 import com.ticketbox.data.repository.ExpenseRepository
@@ -163,11 +163,11 @@ fun debtDetailViewModelFactory(
 }
 
 @Suppress("UNCHECKED_CAST")
-fun debtRepaymentHistoryViewModelFactory(
-    repository: DebtRepaymentQueries,
+fun debtActivityViewModelFactory(
+    repository: DebtActivityQueries,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return DebtRepaymentHistoryViewModel(repository) as T
+        return DebtActivityViewModel(repository) as T
     }
 }
 

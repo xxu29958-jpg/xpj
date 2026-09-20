@@ -23,7 +23,7 @@ import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.DebtAction
 import com.ticketbox.viewmodel.DebtDetailUiState
-import com.ticketbox.viewmodel.DebtRepaymentHistoryUiState
+import com.ticketbox.viewmodel.DebtActivityUiState
 import com.ticketbox.viewmodel.MemberProposalUiState
 import com.ticketbox.viewmodel.MemberRepaymentProposalViewModel
 
@@ -35,19 +35,20 @@ internal data class DebtDetailScreenCallbacks(
     val onRecoverDebtWrite: (com.ticketbox.data.repository.PendingDebtWrite, Boolean) -> Unit,
 )
 
-/** 还款记录段的回调组：作废入口走详情 VM 的统一动作面板，分页/重试走只读 history VM。 */
-internal data class DebtRepaymentHistoryCallbacks(
+/** 历史中的还款作废仍走详情命令；翻页、定位关联还款、重试由只读 activity VM 承接。 */
+internal data class DebtActivityCallbacks(
     val onVoidRepayment: (DebtRepayment) -> Unit,
     val onLoadPage: (Int) -> Unit,
     val onRetry: () -> Unit,
+    val onOpenRepayment: (String) -> Unit = {},
 )
 
-/** 详情屏的两块附属面板（成员还款 proposal 收发箱 + 还款记录段），成组传递控制参数个数。 */
+/** 详情屏的成员还款操作区与统一往来历史。 */
 internal data class DebtDetailPanels(
     val proposalState: MemberProposalUiState,
     val proposalViewModel: MemberRepaymentProposalViewModel,
-    val historyState: DebtRepaymentHistoryUiState,
-    val historyCallbacks: DebtRepaymentHistoryCallbacks,
+    val historyState: DebtActivityUiState,
+    val historyCallbacks: DebtActivityCallbacks,
 )
 
 @Composable
@@ -130,10 +131,10 @@ private fun LazyListScope.debtDetailBodyItems(
                     callbacks = callbacks,
                 )
             }
-            // 还款记录段对 member/external 同源呈现：member 只读历史，external/manual
+            // 完整历史对 member/external 同源呈现：member 只读历史，external/manual
             // 的 active 还款另有单笔作废入口（repaymentVoidActionAllowed 门内）。
             item {
-                DebtRepaymentHistorySection(
+                DebtActivitySection(
                     debt = loaded,
                     canModify = state.canWriteActions,
                     history = panels.historyState,

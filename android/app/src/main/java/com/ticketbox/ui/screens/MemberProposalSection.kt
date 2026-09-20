@@ -57,7 +57,7 @@ import com.ticketbox.viewmodel.ProposalForm
  * 动作面板（替换 slice8c 留的「走对方确认流程」占位提示）。角色由**服务端权威字段** [Debt.viewerIsDebtor]
  * 给出（客户端不推导——详见 [Debt] 的 KDoc）：债务人发起「我已还款」/ 撤回，
  * 债权人确认（全额/部分）/ 拒绝。已结清/作废/只读各显示对应说明。**在途 pending** 由债务人/债权人卡承载，
- * **已解决** proposal 沉降到 [ResolvedHistoryCard]「过往」(8e ③，§3.2 pending 不进历史避免一件事出现两次)。
+ * 已解决 proposal 由完整往来时间线承接；这里仅保留当前申报的处理动作。
  * 这些 composable 独立成文件而非堆进 DebtDetailScreen.kt，避免顶破后者的文件级 TooManyFunctions 门
  * （[[project_android_compose_detekt_limits]]）。复用 DebtDetailScreen 的 internal [DebtNoteCard] /
  * [DebtActionFormButtons] 与 DebtGoalLabels 的 [DebtStatusBadge]。
@@ -81,11 +81,6 @@ internal fun MemberProposalSection(
             }
             debt.viewerIsDebtor == true -> DebtorProposalCard(state = state, viewModel = viewModel)
             else -> CreditorProposalCard(debt = debt, state = state, viewModel = viewModel)
-        }
-        // ③ 沉降：只已解决进历史 (空集时整卡不渲染，§3.2/3.6)；在途 pending 在上面的动作卡里。
-        val resolved = state.proposals.filter { !it.isPending }
-        if (resolved.isNotEmpty()) {
-            ResolvedHistoryCard(resolved = resolved)
         }
     }
 }
