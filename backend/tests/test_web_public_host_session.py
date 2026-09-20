@@ -187,9 +187,12 @@ def test_public_pending_upload_multipart_enforces_csrf_before_creating_expense(
     )
     assert csrf is not None, upload_form.group(0)
 
+    from html import unescape
+    action = unescape(re.search(r'action="([^"]+)"', upload_form.group(0)).group(1))
+    assert "idempotency_key=" in action and "draft_scope=" in action
     before_files = set(_stored_upload_files())
     denied = pub.post(
-        "/web/pending/upload?ledger_id=owner&timezone=Asia%2FShanghai",
+        action + "&timezone=Asia%2FShanghai",
         headers={"Origin": f"https://{PUBLIC_HOST}"},
         files={"file": ("denied.png", PNG_BYTES, "image/png")},
         follow_redirects=False,
@@ -201,7 +204,7 @@ def test_public_pending_upload_multipart_enforces_csrf_before_creating_expense(
         assert db.scalar(select(Expense.id).where(Expense.source == "网页上传").limit(1)) is None
 
     accepted = pub.post(
-        "/web/pending/upload?ledger_id=owner&timezone=Asia%2FShanghai",
+        action + "&timezone=Asia%2FShanghai",
         headers={"Origin": f"https://{PUBLIC_HOST}"},
         data={
             "csrf_token": csrf.group(1),

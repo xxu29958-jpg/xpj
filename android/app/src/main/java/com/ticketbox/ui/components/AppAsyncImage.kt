@@ -76,6 +76,7 @@ fun AppAsyncImage(
         contentDescription = stringResource(R.string.components_async_image_content_description),
     ),
     layout: AppAsyncImageLayout = AppAsyncImageLayout(),
+    onDisplayed: ((ProtectedImage) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val request = remember(image) {
@@ -120,6 +121,10 @@ fun AppAsyncImage(
                 contentDescription = presentation.contentDescription,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = presentation.contentScale,
+                onSuccess = { success ->
+                    image?.takeIf { displayed -> success.result.request.data === displayed.bytes }
+                        ?.let { displayed -> onDisplayed?.invoke(displayed) }
+                },
             )
         }
     }

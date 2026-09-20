@@ -14,8 +14,10 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.database import get_db
 from app.errors import AppError
+from app.routes._web_attachment_intent import attachment_form_context
 from app.routes._web_bulk_snapshot import parse_bulk_snapshot
 from app.routes._web_pending_bulk_response import (
     REMOVAL_ACTIONS,
@@ -179,6 +181,7 @@ def web_pending(
         sidebar_counts=(pending_total, suspected_total),
     )
     ctx["expenses"] = items
+    ctx["upload_intent"] = attachment_form_context(db, request, action="/web/pending/upload", ledger_id=selected_id)
     ctx["pending_count"] = pending_total
     ctx["filtered_count"] = len(items)
     ctx["filter"] = filter_key
@@ -221,6 +224,7 @@ def web_pending(
         and ctx["selected_ledger_role"] == "owner"
         and ctx["selected_ledger_is_default"]
     )
+    ctx["max_upload_size_bytes"] = get_settings().max_upload_size_bytes
     return templates.TemplateResponse(request=request, name="pending.html", context=ctx)
 
 

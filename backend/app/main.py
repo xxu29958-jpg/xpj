@@ -44,6 +44,7 @@ from app.routes import (
     duplicates,
     exchange_rates,
     expense_corrections,
+    expense_originals,
     expenses,
     goals,
     imports,
@@ -96,6 +97,7 @@ from app.routes import (
     web_income_plans,
     web_media,
     web_merchants,
+    web_originals,
     web_pending,
     web_receivables,
     web_recurring,
@@ -337,6 +339,7 @@ app.include_router(uploads.router)
 app.include_router(uploads.upload_link_router)
 app.include_router(expenses.router)
 app.include_router(expense_corrections.router)
+app.include_router(expense_originals.router)
 app.include_router(exchange_rates.router)
 app.include_router(duplicates.router)
 app.include_router(ledgers.router)
@@ -385,6 +388,7 @@ app.include_router(web_expense_items.router)
 app.include_router(web_expense_splits.router)
 app.include_router(web_family.router)
 app.include_router(web_media.router)
+app.include_router(web_originals.router)
 app.include_router(web_pending.router)
 app.include_router(web_inbox_capture.router)
 app.include_router(web_rules_routes.router)

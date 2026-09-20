@@ -82,6 +82,29 @@ class ExpenseEditScreenContractTest {
     }
 
     @Test
+    fun originalReceiptAndExplicitAttachmentBaselineReviewKeepTypedFormValues() {
+        val original = expense()
+        val state = androidx.compose.runtime.mutableStateOf(ExpenseEditUiState(expense = original, expenseLoading = false))
+        var submitted: ExpenseDraft? = null
+        composeRule.setContent {
+            TicketboxTheme(skin = AppSkin.Default) {
+                ExpenseEditScreen(screenState = expenseEditScreenState(editState = state.value),
+                    actions = ExpenseEditScreenActions(primary = ExpenseEditPrimaryActions(onSave = { submitted = it })))
+            }
+        }
+        composeRule.onNodeWithText("展开").performScrollTo().performClick()
+        composeRule.onNodeWithTag(TAG_TAGS_FIELD).performScrollTo().performTextReplacement("原件任务期间的输入")
+        composeRule.runOnIdle { state.value = state.value.copy(originalBaselineRequired = true) }
+        composeRule.runOnIdle {
+            state.value = state.value.copy(expense = original.copy(rowVersion = original.rowVersion + 1,
+                updatedAt = "2026-09-20T00:00:00Z", imageHash = "a".repeat(64)),
+                originalBaselineRequired = false, preservedFormTimestamp = original.updatedAt)
+        }
+        composeRule.onNodeWithText("保存").performClick()
+        composeRule.runOnIdle { assertEquals("原件任务期间的输入", requireNotNull(submitted).tags) }
+    }
+
+    @Test
     fun pendingActionBarShowsConfirmRejectWithoutScrolling() {
         composeRule.setContent {
             TicketboxTheme(skin = AppSkin.Default) {

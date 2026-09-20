@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import hashlib
-import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from sqlalchemy import and_, delete, or_, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -20,6 +18,7 @@ from app.models import (
     TagMutationUndoGroup,
     TagMutationUndoItem,
 )
+from app.services.attachment_cleanup_service import execute_attachment_cleanup, pending_cleanup_references
 from app.services.currency_binding_service import (
     authorize_currency_metadata_write,
 )
@@ -28,12 +27,9 @@ from app.services.file_service import (
     resolve_upload_path_for_tenant,
     upload_reference_for_path,
 )
-from app.services.optimistic_concurrency import bump_row_version
 from app.services.soft_delete_policy import recycle_bin_retention_days
 from app.services.time_service import now_utc
 from app.tenants import DEFAULT_TENANT_ID
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -56,60 +52,8 @@ class OrphanCleanupResult:
     deleted_bytes: int
 
 
-def _delete_relative_file_for_db_mark(relative_path: str | None, tenant_id: str) -> tuple[bool, bool]:
-    """Return ``(can_mark_deleted, physical_file_deleted)`` for a DB file reference."""
-
-    candidate = _resolve_relative_file(relative_path, tenant_id)
-    if candidate is None:
-        return False, False
-    if not candidate.exists():
-        _log_missing_upload_integrity(relative_path, tenant_id)
-        return False, False
-    if not candidate.is_file():
-        return False, False
-    try:
-        candidate.unlink()
-    except OSError:
-        return False, False
-    return True, True
-
-
 def _resolve_relative_file(relative_path: str | None, tenant_id: str) -> Path | None:
     return resolve_upload_path_for_tenant(relative_path, tenant_id)
-
-
-def _log_missing_upload_integrity(relative_path: str, tenant_id: str) -> None:
-    reference_digest = hashlib.sha256(f"{tenant_id}\0{relative_path}".encode()).hexdigest()[:16]
-    logger.error(
-        "event=upload_integrity_missing reference_digest=%s "
-        "referenced upload is missing; database deletion marker remains unset",
-        reference_digest,
-        extra={
-            "event": "upload_integrity_missing",
-            "reference_digest": reference_digest,
-        },
-    )
-
-
-def _cleanup_files_ready(expense: Expense) -> bool:
-    """Preflight every live reference before deleting any bytes for one row."""
-
-    references = (
-        (expense.image_path, expense.image_deleted_at),
-        (expense.thumbnail_path, expense.thumbnail_deleted_at),
-    )
-    for relative_path, deleted_at in references:
-        if relative_path is None or deleted_at is not None:
-            continue
-        candidate = _resolve_relative_file(relative_path, expense.tenant_id)
-        if candidate is None:
-            return False
-        if not candidate.exists():
-            _log_missing_upload_integrity(relative_path, expense.tenant_id)
-            return False
-        if not candidate.is_file():
-            return False
-    return True
 
 
 def _relative_upload_path(path: Path) -> str | None:
@@ -135,17 +79,19 @@ def _referenced_upload_paths(db: Session, tenant_id: str) -> set[str]:
             Expense.thumbnail_path,
             Expense.image_deleted_at,
             Expense.thumbnail_deleted_at,
+            Expense.attachment_cleanup_request,
         )
         .where(Expense.tenant_id == tenant_id)
         .where(
             or_(
                 and_(Expense.image_path.is_not(None), Expense.image_deleted_at.is_(None)),
                 and_(Expense.thumbnail_path.is_not(None), Expense.thumbnail_deleted_at.is_(None)),
+                Expense.attachment_cleanup_request.is_not(None),
             )
         )
     )
     referenced: set[str] = set()
-    for image_path, thumbnail_path, image_deleted_at, thumbnail_deleted_at in rows:
+    for image_path, thumbnail_path, image_deleted_at, thumbnail_deleted_at, cleanup_request in rows:
         if image_deleted_at is None:
             normalized_image = _normalize_upload_reference(image_path, tenant_id)
             if normalized_image:
@@ -154,6 +100,10 @@ def _referenced_upload_paths(db: Session, tenant_id: str) -> set[str]:
             normalized_thumbnail = _normalize_upload_reference(thumbnail_path, tenant_id)
             if normalized_thumbnail:
                 referenced.add(normalized_thumbnail)
+        for reference in pending_cleanup_references(cleanup_request):
+            normalized = _normalize_upload_reference(reference, tenant_id)
+            if normalized:
+                referenced.add(normalized)
     return referenced
 
 
@@ -163,166 +113,42 @@ def _is_supported_upload_file(path: Path) -> bool:
 
 
 def cleanup_after_confirm(db: Session, expense: Expense) -> bool:
+    """Own GC commits after the caller has committed this confirmed Expense.
+
+    The return value reports cleanup metadata change; callers must not add a
+    second cleanup commit or refresh after this owner's completed transactions.
+    """
     settings = get_settings()
     if not settings.delete_image_after_confirm:
         return False
+    return execute_attachment_cleanup(db, expense, reason="after_confirm", settings_provider=get_settings).changed
 
-    # Confirmation is committed before file GC so an unknown commit outcome
-    # can never delete the only bytes for an uncommitted fact.  That also means
-    # this marker update runs in a new transaction and must acquire a fresh
-    # currency-writer proof before any irreversible file deletion begins.
-    authorize_currency_metadata_write(db)
-    db.refresh(expense, with_for_update=True)
-    if not _cleanup_files_ready(expense):
-        return False
 
-    now = now_utc()
-    changed = False
-    if expense.image_deleted_at is None:
-        can_mark_image, _deleted_image = _delete_relative_file_for_db_mark(expense.image_path, expense.tenant_id)
-        if can_mark_image:
-            expense.image_deleted_at = now
-            changed = True
-    if expense.thumbnail_deleted_at is None:
-        can_mark_thumbnail, _deleted_thumbnail = _delete_relative_file_for_db_mark(
-            expense.thumbnail_path, expense.tenant_id
-        )
-        if can_mark_thumbnail:
-            expense.thumbnail_deleted_at = now
-            changed = True
-    if changed:
-        expense.updated_at = now
-    return changed
+def _cleanup_retained_images(db: Session, tenant_id: str, *, status: str) -> CleanupResult:
+    settings = get_settings()
+    days = settings.delete_image_after_days if status == "confirmed" else settings.delete_rejected_after_days
+    original_time = Expense.confirmed_at if status == "confirmed" else Expense.rejected_at
+    cutoff = now_utc() - timedelta(days=days)
+    expenses = list(db.scalars(select(Expense).where(
+        Expense.tenant_id == tenant_id,
+        or_(Expense.attachment_cleanup_request.is_not(None),
+            and_(days > 0, Expense.status == status,
+                 func.greatest(original_time, Expense.image_replenished_at) <= cutoff)),
+    )))
+    deleted_images = deleted_thumbnails = 0
+    for expense in expenses:
+        result = execute_attachment_cleanup(db, expense, reason=f"{status}_retention", settings_provider=get_settings)
+        deleted_images += result.deleted_images
+        deleted_thumbnails += result.deleted_thumbnails
+    return CleanupResult(days > 0, days, len(expenses), deleted_images, deleted_thumbnails)
 
 
 def cleanup_confirmed_images(db: Session, tenant_id: str) -> CleanupResult:
-    settings = get_settings()
-    if settings.delete_image_after_days <= 0:
-        return CleanupResult(
-            enabled=False,
-            delete_after_days=settings.delete_image_after_days,
-            scanned=0,
-            deleted_images=0,
-            deleted_thumbnails=0,
-        )
-    authorize_currency_metadata_write(db)
-
-    cutoff = now_utc() - timedelta(days=settings.delete_image_after_days)
-    expenses = list(
-        db.scalars(
-            select(Expense)
-            .where(
-                Expense.tenant_id == tenant_id,
-                Expense.status == "confirmed",
-                Expense.confirmed_at.is_not(None),
-                Expense.confirmed_at <= cutoff,
-            )
-            .with_for_update(),
-        ),
-    )
-
-    now = now_utc()
-    changed = False
-    deleted_images = 0
-    deleted_thumbnails = 0
-    for expense in expenses:
-        if not _cleanup_files_ready(expense):
-            continue
-        expense_changed = False
-        if expense.image_deleted_at is None:
-            can_mark_image, deleted_image = _delete_relative_file_for_db_mark(expense.image_path, expense.tenant_id)
-            if can_mark_image:
-                expense.image_deleted_at = now
-                deleted_images += int(deleted_image)
-                expense_changed = True
-        if expense.thumbnail_deleted_at is None:
-            can_mark_thumbnail, deleted_thumbnail = _delete_relative_file_for_db_mark(
-                expense.thumbnail_path, expense.tenant_id
-            )
-            if can_mark_thumbnail:
-                expense.thumbnail_deleted_at = now
-                deleted_thumbnails += int(deleted_thumbnail)
-                expense_changed = True
-        if expense_changed:
-            expense.updated_at = now
-            bump_row_version(expense)
-            changed = True
-
-    if changed:
-        db.commit()
-
-    return CleanupResult(
-        enabled=True,
-        delete_after_days=settings.delete_image_after_days,
-        scanned=len(expenses),
-        deleted_images=deleted_images,
-        deleted_thumbnails=deleted_thumbnails,
-    )
+    return _cleanup_retained_images(db, tenant_id, status="confirmed")
 
 
 def cleanup_rejected_images(db: Session, tenant_id: str) -> CleanupResult:
-    settings = get_settings()
-    if settings.delete_rejected_after_days <= 0:
-        return CleanupResult(
-            enabled=False,
-            delete_after_days=settings.delete_rejected_after_days,
-            scanned=0,
-            deleted_images=0,
-            deleted_thumbnails=0,
-        )
-    authorize_currency_metadata_write(db)
-
-    cutoff = now_utc() - timedelta(days=settings.delete_rejected_after_days)
-    expenses = list(
-        db.scalars(
-            select(Expense)
-            .where(
-                Expense.tenant_id == tenant_id,
-                Expense.status == "rejected",
-                Expense.rejected_at.is_not(None),
-                Expense.rejected_at <= cutoff,
-            )
-            .with_for_update(),
-        ),
-    )
-
-    now = now_utc()
-    changed = False
-    deleted_images = 0
-    deleted_thumbnails = 0
-    for expense in expenses:
-        if not _cleanup_files_ready(expense):
-            continue
-        expense_changed = False
-        if expense.image_deleted_at is None:
-            can_mark_image, deleted_image = _delete_relative_file_for_db_mark(expense.image_path, expense.tenant_id)
-            if can_mark_image:
-                expense.image_deleted_at = now
-                deleted_images += int(deleted_image)
-                expense_changed = True
-        if expense.thumbnail_deleted_at is None:
-            can_mark_thumbnail, deleted_thumbnail = _delete_relative_file_for_db_mark(
-                expense.thumbnail_path, expense.tenant_id
-            )
-            if can_mark_thumbnail:
-                expense.thumbnail_deleted_at = now
-                deleted_thumbnails += int(deleted_thumbnail)
-                expense_changed = True
-        if expense_changed:
-            expense.updated_at = now
-            bump_row_version(expense)
-            changed = True
-
-    if changed:
-        db.commit()
-
-    return CleanupResult(
-        enabled=True,
-        delete_after_days=settings.delete_rejected_after_days,
-        scanned=len(expenses),
-        deleted_images=deleted_images,
-        deleted_thumbnails=deleted_thumbnails,
-    )
+    return _cleanup_retained_images(db, tenant_id, status="rejected")
 
 
 def cleanup_orphan_uploads(db: Session, tenant_id: str, *, dry_run: bool = True) -> OrphanCleanupResult:

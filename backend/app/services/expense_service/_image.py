@@ -14,7 +14,7 @@ from app.services.expense_service._thumbnail_publication import (
     claim_staged_thumbnail,
     publish_claimed_thumbnail,
 )
-from app.services.file_service import resolve_protected_image
+from app.services.original_read_service import OriginalSnapshot, read_original_snapshot
 
 __all__ = ["ensure_image_file", "ensure_thumbnail_file"]
 
@@ -31,7 +31,10 @@ def ensure_thumbnail_file(db: Session, expense_id: int, tenant_id: str) -> tuple
 
     authorize_currency_metadata_write(db)
     thumbnail_source_path = expense.image_path
-    staged = thumb_service.stage_thumbnail(thumbnail_source_path, tenant_id=tenant_id)
+    thumbnail_source_hash = expense.image_hash
+    staged = thumb_service.stage_thumbnail(
+        thumbnail_source_path, tenant_id=tenant_id, expected_sha256=thumbnail_source_hash,
+    )
     if staged is not None:
         try:
             # Rendering is deliberately outside the row lock. Before this
@@ -40,6 +43,7 @@ def ensure_thumbnail_file(db: Session, expense_id: int, tenant_id: str) -> tuple
             db.refresh(expense, with_for_update=True)
             if (
                 expense.image_path != thumbnail_source_path
+                or expense.image_hash != thumbnail_source_hash
                 or expense.image_deleted_at is not None
                 or expense.thumbnail_deleted_at is not None
             ):
@@ -65,8 +69,10 @@ def ensure_thumbnail_file(db: Session, expense_id: int, tenant_id: str) -> tuple
     return resolved
 
 
-def ensure_image_file(db: Session, expense_id: int, tenant_id: str) -> tuple[Path, str]:
+def ensure_image_file(db: Session, expense_id: int, tenant_id: str) -> OriginalSnapshot:
     expense = get_expense(db, expense_id, tenant_id)
     if expense.image_deleted_at is not None:
         raise AppError("image_not_found", status_code=404)
-    return resolve_protected_image(expense.image_path, tenant_id)
+    return read_original_snapshot(
+        relative_path=expense.image_path, tenant_id=tenant_id, expected_sha256=expense.image_hash,
+    )

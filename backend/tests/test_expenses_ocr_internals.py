@@ -236,7 +236,8 @@ def test_rapidocr_result_shape_drift_maps_to_app_error(monkeypatch: pytest.Monke
     monkeypatch.setitem(__import__("sys").modules, "rapidocr", SimpleNamespace(RapidOCR=lambda: FakeRapidOCR()))
     image_path = tmp_path / "ticket.png"
     image_path.write_bytes(b"fake image bytes")
-    monkeypatch.setattr(ocr_providers, "resolve_protected_image", lambda *_args: (image_path, "image/png"))
+    from contextlib import nullcontext
+    monkeypatch.setattr(ocr_providers, "_original_snapshot", lambda *_args: nullcontext(SimpleNamespace(path=image_path)))
 
     with pytest.raises(AppError) as exc_info:
         ocr_providers.RapidOcrProvider().extract(

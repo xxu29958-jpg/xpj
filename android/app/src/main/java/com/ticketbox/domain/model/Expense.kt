@@ -469,6 +469,7 @@ data class RuleApplyConfirmedResult(
 class ProtectedImage(
     val bytes: ByteArray,
     val contentType: String?,
+    val originalSha256: String? = null,
 )
 
 data class ServerSettings(

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.auth import get_current_app_context, get_current_protocol_writer_context, get_current_writer_context
 from app.database import get_db
 from app.errors import AppError
+from app.routes._original_file_response import OriginalFileResponse
 from app.schemas import (
     BackgroundTaskResponse,
     CategoriesResponse,
@@ -491,8 +492,7 @@ def get_expense_image(
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> FileResponse:
-    path, media_type = ensure_image_file(db, expense_id, auth.tenant_id)
-    return FileResponse(path=path, media_type=media_type)
+    return OriginalFileResponse(ensure_image_file(db, expense_id, auth.tenant_id))
 
 
 @router.get("/{expense_id}/thumbnail")

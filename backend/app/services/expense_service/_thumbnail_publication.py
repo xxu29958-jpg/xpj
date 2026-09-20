@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
+from app.errors import AppError
 from app.models import Expense
 from app.services import thumb_service
+from app.services.attachment_cleanup_service import cleanup_request_covers_source
 
 
 def claim_staged_thumbnail(
@@ -25,6 +27,7 @@ def claim_staged_thumbnail(
         expense.image_path != staged.source_reference
         or expense.image_deleted_at is not None
         or expense.thumbnail_deleted_at is not None
+        or cleanup_request_covers_source(expense, staged.source_reference)
     ):
         return False
     if expense.thumbnail_path:
@@ -58,11 +61,17 @@ def publish_claimed_thumbnail(
 
     thumb_service.publish_staged_thumbnail_attempt(staged)
     db.refresh(expense, with_for_update=True)
+    try:
+        cleanup_pending = cleanup_request_covers_source(expense, staged.source_reference)
+    except AppError:
+        thumb_service.discard_published_thumbnail_attempt(staged)
+        raise
     owns_live_reference = (
         expense.image_path == staged.source_reference
         and expense.thumbnail_path == staged.final_reference
         and expense.image_deleted_at is None
         and expense.thumbnail_deleted_at is None
+        and not cleanup_pending
     )
     if owns_live_reference:
         return True

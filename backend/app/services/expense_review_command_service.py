@@ -99,13 +99,11 @@ def submit_expense_rejection(
 
 
 def _commit_confirmation_and_cleanup(db: Session, expense: Expense) -> None:
-    """Commit the financial state before the independently retryable file GC."""
+    """Publish the financial state, then delegate GC transactions to its owner."""
 
     db.commit()
     db.refresh(expense)
-    if cleanup_after_confirm(db, expense):
-        db.commit()
-        db.refresh(expense)
+    cleanup_after_confirm(db, expense)
 
 
 def _save_then_confirm(

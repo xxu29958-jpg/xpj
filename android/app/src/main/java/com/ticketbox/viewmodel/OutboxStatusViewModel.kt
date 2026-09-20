@@ -143,7 +143,7 @@ class OutboxStatusViewModel(
         if (row.refusesKeepMine()) return
         val binding = expenseRepository.captureDeferredLedgerBinding()
         if (!_uiState.value.accepts(row, binding)) return
-        if (row.type in setOf(PendingMutationType.CorrectExpense, PendingMutationType.UploadScreenshot)) return
+        if (row.type in setOf(PendingMutationType.CorrectExpense, PendingMutationType.UploadScreenshot, PendingMutationType.OriginalAttachment)) return
         if (row.type == PendingMutationType.CreateExpenseOffset) {
             explainOffsetReview()
             return
@@ -173,7 +173,7 @@ class OutboxStatusViewModel(
     fun dropMine(row: OutboxRow) {
         if (!_uiState.value.accepts(row, expenseRepository.captureDeferredLedgerBinding())) return
         if (row.type == PendingMutationType.CreateExpense) { recoverSubmission(row, true); return }
-        if (row.type == PendingMutationType.UploadScreenshot) return
+        if (row.type in setOf(PendingMutationType.UploadScreenshot, PendingMutationType.OriginalAttachment)) return
         if (row.type in originalSubmissionTypes) recoverSubmission(row, true)
         else if (row.type in DEBT_WRITE_TYPES) recoverDebtWrite(row, true)
         else resolve(row) { outbox.resolveConflict(row.id, ConflictResolution.DropMine) }
@@ -183,7 +183,7 @@ class OutboxStatusViewModel(
     fun retry(row: OutboxRow) {
         if (row.type == PendingMutationType.CreateBillSplitInvitation) { recoverSubmission(row, false); return }
         if (!_uiState.value.accepts(row, expenseRepository.captureDeferredLedgerBinding())) return
-        if (row.type == PendingMutationType.UploadScreenshot) {
+        if (row.type in setOf(PendingMutationType.UploadScreenshot, PendingMutationType.OriginalAttachment)) {
             _uiState.update { it.copy(message = UiText.res(R.string.sync_status_upload_recovery_body), messageTone = MessageTone.Info) }
             return
         }
@@ -219,7 +219,7 @@ class OutboxStatusViewModel(
         if (row.type == PendingMutationType.CreateBillSplitInvitation) { recoverSubmission(row, true); return }
         if (!_uiState.value.accepts(row, expenseRepository.captureDeferredLedgerBinding())) return
         if (row.type == PendingMutationType.CreateExpense) { recoverSubmission(row, true); return }
-        if (row.type == PendingMutationType.UploadScreenshot) return
+        if (row.type in setOf(PendingMutationType.UploadScreenshot, PendingMutationType.OriginalAttachment)) return
         if (row.type in originalSubmissionTypes) recoverSubmission(row, true)
         else if (row.type in DEBT_WRITE_TYPES) recoverDebtWrite(row, true)
         else resolve(row) { outbox.resolveFailed(row.id, FailedResolution.Drop) }

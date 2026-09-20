@@ -120,6 +120,8 @@ private suspend fun ExpenseEditViewModel.applyFxReview(binding: LogicalSessionBi
             it.copy(
                 expense = fresh,
                 formRevision = it.formRevision + 1,
+                preservedFormTimestamp = null,
+                originalBaselineRequired = false,
                 commandRowIds = emptyList(),
                 commandsCompleted = false,
                 expenseLoading = false,

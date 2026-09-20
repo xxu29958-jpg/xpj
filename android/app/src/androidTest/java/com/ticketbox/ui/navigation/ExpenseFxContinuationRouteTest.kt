@@ -1,6 +1,7 @@
 package com.ticketbox.ui.navigation
 
 import android.content.Context
+import androidx.activity.ComponentActivity
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsEnabled
@@ -8,7 +9,7 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isEnabled
-import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -36,7 +37,7 @@ import org.junit.Test
 
 /** Real Route + VM + binding-aware repository; task observations cannot replace the local editor. */
 class ExpenseFxContinuationRouteTest {
-    @get:Rule val compose = createComposeRule()
+    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val mounted = mutableStateOf(true)
     private var currentTask = BackgroundTaskDto("fx-1", "expense_fx", "failed",
@@ -82,14 +83,14 @@ class ExpenseFxContinuationRouteTest {
     } }
 
     @After fun close() {
-        compose.runOnIdle { mounted.value = false; harness.models.viewModelStore.clear() }
+        compose.runOnIdle { mounted.value = false; compose.activity.viewModelStore.clear() }
         compose.waitForIdle()
         harness.close()
     }
 
     @Test fun retryThenCompletedObservationPreservesDraftUntilExplicitReviewConsent() {
         compose.setContent {
-            CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models) {
+            CompositionLocalProvider(LocalViewModelStoreOwner provides compose.activity) {
                 TicketboxTheme(skin = AppSkin.Default) {
                     if (mounted.value) ExpenseEditRoute(9, harness.screenFactory, ExpenseEditExitActions({}, {}), ExpenseFactNavigation({}, { _, _ -> }))
                 }
@@ -124,7 +125,7 @@ class ExpenseFxContinuationRouteTest {
     @Test fun missingAmountOpensTheEditorWithoutOfferingAnImpossibleFxRetry() {
         missingAmount = true
         compose.setContent {
-            CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models) {
+            CompositionLocalProvider(LocalViewModelStoreOwner provides compose.activity) {
                 TicketboxTheme(skin = AppSkin.Default) {
                     if (mounted.value) ExpenseEditRoute(9, harness.screenFactory, ExpenseEditExitActions({}, {}), ExpenseFactNavigation({}, { _, _ -> }))
                 }
@@ -139,7 +140,7 @@ class ExpenseFxContinuationRouteTest {
 
     @Test fun explicitReplacementOfTheSameRevisionKeepsTheDraftOnFailureAndResetsItOnlyAfterSuccess() {
         compose.setContent {
-            CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models) {
+            CompositionLocalProvider(LocalViewModelStoreOwner provides compose.activity) {
                 TicketboxTheme(skin = AppSkin.Default) {
                     if (mounted.value) ExpenseEditRoute(9, harness.screenFactory, ExpenseEditExitActions({}, {}), ExpenseFactNavigation({}, { _, _ -> }))
                 }
@@ -148,7 +149,7 @@ class ExpenseFxContinuationRouteTest {
         val load = context.getString(R.string.expense_fx_load_review)
         compose.waitUntil(5_000) { compose.onAllNodes(hasText(load) and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
         val vm = compose.runOnIdle {
-            ViewModelProvider(harness.models, expenseEditViewModelFactory(9, harness.screenFactory.repository))
+            ViewModelProvider(compose.activity, expenseEditViewModelFactory(9, harness.screenFactory.repository))
                 .get("expense-edit-9", ExpenseEditViewModel::class.java)
         }
         val original = vm.uiState.value.expense
@@ -179,7 +180,7 @@ class ExpenseFxContinuationRouteTest {
 
     @Test fun missingCurrentTaskStillOffersExplicitReviewAfterAnotherClientSuppliesTheRate() {
         compose.setContent {
-            CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models) {
+            CompositionLocalProvider(LocalViewModelStoreOwner provides compose.activity) {
                 TicketboxTheme(skin = AppSkin.Default) {
                     if (mounted.value) ExpenseEditRoute(9, harness.screenFactory, ExpenseEditExitActions({}, {}), ExpenseFactNavigation({}, { _, _ -> }))
                 }
@@ -188,7 +189,7 @@ class ExpenseFxContinuationRouteTest {
         val refresh = context.getString(R.string.expense_fx_refresh)
         compose.waitUntil(5_000) { compose.onAllNodes(hasText(refresh)).fetchSemanticsNodes().isNotEmpty() }
         val vm = compose.runOnIdle {
-            ViewModelProvider(harness.models, expenseEditViewModelFactory(9, harness.screenFactory.repository))
+            ViewModelProvider(compose.activity, expenseEditViewModelFactory(9, harness.screenFactory.repository))
                 .get("expense-edit-9", ExpenseEditViewModel::class.java)
         }
         val original = vm.uiState.value.expense

@@ -132,6 +132,11 @@ _RELEVANT_MEDIA = ("json", "x-www-form-urlencoded", "form-data")
 
 
 def _operation_carries_token(spec: dict, operation: dict) -> bool:
+    # Binary uploads keep their file body intact and bind the reviewed row in a
+    # required query parameter. Count that actual schema carrier, not an exemption.
+    if any(parameter.get("in") == "query" and parameter.get("required") is True
+           and parameter.get("name") in TOKEN_FIELD_NAMES for parameter in operation.get("parameters", [])):
+        return True
     body = operation.get("requestBody")
     if not body:
         return False

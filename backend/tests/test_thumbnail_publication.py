@@ -14,7 +14,7 @@ import app.services.expense_service._enrich as enrich_service
 from app.database import SessionLocal
 from app.errors import AppError
 from app.models import BackgroundTask, Expense
-from app.services import background_task_worker, cleanup_service, thumb_service
+from app.services import attachment_cleanup_service, background_task_worker, cleanup_service, thumb_service
 from app.services.currency_binding_service import authorize_currency_metadata_write
 from app.services.expense_service import stage_pending_expense
 from app.services.expense_service._image import ensure_thumbnail_file
@@ -447,10 +447,10 @@ def test_cleanup_locks_expense_before_file_deletion(
 ) -> None:
     _enable_delete_after_confirm(monkeypatch)
     expense_id, _row_version = _seed_pending_expense()
-    real_delete = cleanup_service._delete_relative_file_for_db_mark
+    real_delete = attachment_cleanup_service._settle_file
     lock_observed = False
 
-    def observe_expense_lock(relative_path: str | None, tenant_id: str):
+    def observe_expense_lock(item, tenant_id: str, **kwargs):
         nonlocal lock_observed
         with SessionLocal() as probe_db:
             try:
@@ -464,11 +464,11 @@ def test_cleanup_locks_expense_before_file_deletion(
                 lock_observed = True
             else:
                 probe_db.rollback()
-        return real_delete(relative_path, tenant_id)
+        return real_delete(item, tenant_id, **kwargs)
 
     monkeypatch.setattr(
-        cleanup_service,
-        "_delete_relative_file_for_db_mark",
+        attachment_cleanup_service,
+        "_settle_file",
         observe_expense_lock,
     )
 
@@ -479,3 +479,56 @@ def test_cleanup_locks_expense_before_file_deletion(
         db.commit()
 
     assert lock_observed is True
+
+
+@pytest.mark.real_db
+@pytest.mark.parametrize("failure_phase", ["request_ack", "settlement_commit"])
+def test_durable_cleanup_survives_commit_failure_and_restarts_from_saved_request(
+    monkeypatch, failure_phase, *, identity,
+) -> None:
+    _enable_delete_after_confirm(monkeypatch)
+    expense_id, row_version = _seed_pending_expense()
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        source = resolve_upload_path_for_tenant(expense.image_path, "owner")
+        assert source is not None and source.is_file()
+        original = (expense.status, expense.amount_cents, expense.confirmed_at,
+                    expense.expense_time, expense.fact_revision, expense.image_path)
+        real_commit = db.commit
+        commits = 0
+
+        def fail_commit():
+            nonlocal commits
+            commits += 1
+            if commits == 2:
+                raise SQLAlchemyError("settlement commit rejected")
+            assert source.is_file()  # Actual bytes still exist at durable request admission.
+            real_commit()
+            if failure_phase == "request_ack":
+                raise SQLAlchemyError("request commit acknowledgement lost")
+
+        with monkeypatch.context() as fault:
+            fault.setattr(db, "commit", fail_commit)
+            with pytest.raises(SQLAlchemyError):
+                cleanup_service.cleanup_after_confirm(db, expense)
+        db.rollback()
+
+    with SessionLocal() as restarted:
+        expense = restarted.get(Expense, expense_id)
+        assert expense.attachment_cleanup_request is not None
+        assert expense.image_deleted_at is None
+        assert expense.row_version == row_version + 1
+        assert source.is_file() == (failure_phase == "request_ack")
+        result = attachment_cleanup_service.execute_attachment_cleanup(
+            restarted, expense, reason="after_confirm", settings_provider=cleanup_service.get_settings,
+        )
+        assert result.deleted_images == (1 if failure_phase == "request_ack" else 0)
+        assert result.deleted_thumbnails == 0 and not result.pending
+
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense.attachment_cleanup_request is None and expense.image_deleted_at is not None
+        assert expense.row_version == row_version + 2
+        assert (expense.status, expense.amount_cents, expense.confirmed_at,
+                expense.expense_time, expense.fact_revision, expense.image_path) == original
+        assert not source.exists()

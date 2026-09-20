@@ -2,10 +2,13 @@
    Authorize ledger in the query before multipart parsing; CSRF stays in the body.
    JS may add timezone to the action; no-JS retains the backend default.
    Native file input owns selection and visible filename. Never auto-submit. #}
-<form class="inbox-upload-form" id="capture" method="post" action="/web/pending/upload{{ _q }}" data-inbox-capture enctype="multipart/form-data">
+<form class="inbox-upload-form" id="capture" method="post" action="{{ upload_intent.action }}" data-inbox-capture enctype="multipart/form-data"
+      {% if upload_intent.scope %}data-attachment-scope="{{ upload_intent.scope | tojson | forceescape }}" data-attachment-ref="{{ upload_intent.client_ref }}"{% endif %}>
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <span class="file-picker">
     <input class="file-picker-input" id="inbox-upload-file" type="file" name="file" accept="image/*" required aria-label="选择小票图片">
   </span>
   <button class="product-button product-button--primary" type="submit">上传小票</button>
+  <p data-attachment-status role="status">{% if upload_intent.scope %}正在准备文件续办。脚本不可用时仍可在线上传，但离开后不能恢复所选文件。{% else %}可直接上传；此页没有设备身份，离开后不能恢复所选文件。<a href="/web/auth/local?next=/web/pending">建立浏览器身份后保留文件任务</a>。{% endif %}</p>
 </form>
+{% if upload_intent.scope %}<section data-attachment-shelf aria-label="尚未完成的图片任务"></section>{% endif %}

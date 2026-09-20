@@ -77,6 +77,8 @@ data class ExpenseEditUiState(
     val fx: ExpenseFxUiState = ExpenseFxUiState(),
     /** Explicit successful form adoption, independent of the server's financial revision. */
     val formRevision: Int = 0,
+    val preservedFormTimestamp: String? = null,
+    val originalBaselineRequired: Boolean = false,
     val commandRowIds: List<Long> = emptyList(),
     val commandsCompleted: Boolean = false,
     val thumbnail: ProtectedImage? = null,

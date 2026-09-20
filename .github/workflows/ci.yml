@@ -729,7 +729,9 @@ jobs:
     needs: scope
     if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.postgres != 'false') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    # A real-db shard exceeded 12m on #424 without a test failure. Keep all four
+    # serial partitions and allow the same bounded headroom as the ordinary lane.
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -1107,7 +1109,7 @@ jobs:
       - *android_local_properties
 
       - name: Build debug APKs
-        run: ./gradlew --no-daemon --max-workers=2 :app:assembleGrayDebug :app:assembleInternalDebug :app:writeTicketboxBuildToolsVersion
+        run: ./gradlew --no-daemon --max-workers=1 -Pkotlin.daemon.jvmargs=-Xmx4096m :app:assembleGrayDebug :app:assembleInternalDebug :app:writeTicketboxBuildToolsVersion
 
       - name: Verify debug APK signing certificate
         run: |
@@ -1181,7 +1183,8 @@ jobs:
       - *android_local_properties
 
       - name: Build release APKs
-        run: ./gradlew --no-daemon --max-workers=2 :app:assembleGrayRelease :app:assembleInternalRelease
+        # Two concurrent flavor compilers exhausted the shared 2560m Kotlin heap.
+        run: ./gradlew --no-daemon --max-workers=1 -Pkotlin.daemon.jvmargs=-Xmx4096m :app:assembleGrayRelease :app:assembleInternalRelease
 
   android_sca:
     name: Android SCA

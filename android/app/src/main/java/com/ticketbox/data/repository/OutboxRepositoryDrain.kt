@@ -70,6 +70,7 @@ internal suspend fun PendingMutationDao.cascadePreservedTokens(
         PendingMutationType.CorrectExpense.wireValue,
         PendingMutationType.CreateExpenseOffset.wireValue,
         PendingMutationType.UploadScreenshot.wireValue,
+        PendingMutationType.OriginalAttachment.wireValue,
     ),
     freshToken = newToken,
 )

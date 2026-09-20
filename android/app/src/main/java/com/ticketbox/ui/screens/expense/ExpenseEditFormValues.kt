@@ -27,6 +27,10 @@ internal data class ExpenseEditFormValues(
     }
 
     companion object {
+        /** Every raw field and date picker shares one adoption identity, including attachment-only review. */
+        fun identity(expense: Expense, formRevision: Int, preservedTimestamp: String?): String =
+            "${expense.id}:${preservedTimestamp ?: expense.updatedAt}:$formRevision"
+
         fun fromExpense(expense: Expense): ExpenseEditFormValues = ExpenseEditFormValues(
             currency = expense.originalCurrencyCode,
             amountText = formatMinorAmountInput(initialExpenseAmountInputMinor(expense), expense.originalCurrencyCode),

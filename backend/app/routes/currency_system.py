@@ -40,6 +40,7 @@ def get_runtime_compatibility(
         capabilities=RuntimeProductCapabilitiesResponse(
             upload_original_receipt_version=snapshot.upload_original_receipt_version,
             accounting_time_input_version=snapshot.accounting_time_input_version,
+            original_attachment_version=snapshot.original_attachment_version,
             currency=RuntimeCurrencyCapabilityResponse(**snapshot.currency.__dict__),
         ),
     )

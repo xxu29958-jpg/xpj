@@ -154,6 +154,7 @@ private fun noopSplitsEditorSheetActions(): SplitsEditorSheetActions = SplitsEdi
 fun ExpenseEditScreen(
     screenState: ExpenseEditScreenState,
     actions: ExpenseEditScreenActions,
+    originalContent: (@Composable () -> Unit)? = null,
 ) {
     val expense = screenState.expense
     val state = screenState.editState
@@ -203,7 +204,8 @@ fun ExpenseEditScreen(
     }
 
     val currentExpense = state.expense ?: expense
-    val initialFormValues = remember(currentExpense.id, currentExpense.updatedAt, state.formRevision) {
+    val formIdentity = ExpenseEditFormValues.identity(currentExpense, state.formRevision, state.preservedFormTimestamp)
+    val initialFormValues = remember(formIdentity) {
         ExpenseEditFormValues.fromExpense(currentExpense)
     }
     // rememberSaveable (not remember): without Manifest configChanges, a
@@ -211,7 +213,7 @@ fun ExpenseEditScreen(
     // plain remember silently resets every unsaved field back to server values
     // — saving then writes stale data. Same fields in ManualExpenseSheet are
     // already saveable; CurrencyCode is an enum (Bundle-safe, proven there).
-    var currency by rememberSaveable(currentExpense.id, currentExpense.updatedAt, state.formRevision) {
+    var currency by rememberSaveable(formIdentity) {
         mutableStateOf(initialFormValues.currency)
     }
     // R13-4：original 原码严格解析 —— record 原码在支持集外时，按 lossy 枚举（CNY）改金额
@@ -220,27 +222,27 @@ fun ExpenseEditScreen(
     val originalUnsupported = !originalRawCode.isNullOrBlank() &&
         CurrencyCode.fromStorageKeyOrNull(originalRawCode) == null
     val initialAmountText = initialFormValues.amountText
-    var amountText by rememberSaveable(currentExpense.id, currentExpense.updatedAt, state.formRevision) {
+    var amountText by rememberSaveable(formIdentity) {
         mutableStateOf(initialAmountText)
     }
     val savedManualExchangeRate = currentExpense.fxRate
         ?.takeIf { currentExpense.fxSource == FxContract.SourceManual }
-    var manualExchangeRateText by rememberSaveable(currentExpense.id, currentExpense.updatedAt, state.formRevision) {
+    var manualExchangeRateText by rememberSaveable(formIdentity) {
         mutableStateOf(initialFormValues.manualExchangeRateText)
     }
-    var manualExchangeRateIsError by rememberSaveable(currentExpense.id, currentExpense.updatedAt, state.formRevision) {
+    var manualExchangeRateIsError by rememberSaveable(formIdentity) {
         mutableStateOf(false)
     }
-    var merchant by rememberSaveable(currentExpense.id, currentExpense.updatedAt, state.formRevision) { mutableStateOf(initialFormValues.merchant) }
-    var category by rememberSaveable(currentExpense.id, currentExpense.updatedAt, state.formRevision) {
+    var merchant by rememberSaveable(formIdentity) { mutableStateOf(initialFormValues.merchant) }
+    var category by rememberSaveable(formIdentity) {
         mutableStateOf(initialFormValues.category)
     }
-    var note by rememberSaveable(currentExpense.id, currentExpense.updatedAt, state.formRevision) { mutableStateOf(initialFormValues.note) }
+    var note by rememberSaveable(formIdentity) { mutableStateOf(initialFormValues.note) }
     val (timeForm, setTimeForm) = com.ticketbox.ui.screens.expense.rememberExpenseTimeForm(
-        "${currentExpense.id}:${currentExpense.updatedAt}:${state.formRevision}",
+        formIdentity,
         currentExpense.expenseTime, currentExpense.accountingTime,
     )
-    val baselineTimeFormJson = rememberSaveable(currentExpense.id, currentExpense.updatedAt, state.formRevision) {
+    val baselineTimeFormJson = rememberSaveable(formIdentity) {
         com.ticketbox.ui.screens.expense.ExpenseTimeForm.initial(
             currentExpense.expenseTime, currentExpense.accountingTime, null, java.time.ZoneId.of(timeForm.sourceZone),
         ).toSavedJson()
@@ -249,11 +251,11 @@ fun ExpenseEditScreen(
         timeForm.resolveEdit(initialFormValues.expenseTime.ifBlank { null })
     }
     val expenseTime = time.instant.orEmpty()
-    var tags by rememberSaveable(currentExpense.id, currentExpense.updatedAt, state.formRevision) { mutableStateOf(initialFormValues.tags) }
-    var valueScoreText by rememberSaveable(currentExpense.id, currentExpense.updatedAt, state.formRevision) {
+    var tags by rememberSaveable(formIdentity) { mutableStateOf(initialFormValues.tags) }
+    var valueScoreText by rememberSaveable(formIdentity) {
         mutableStateOf(initialFormValues.valueScoreText)
     }
-    var regretScoreText by rememberSaveable(currentExpense.id, currentExpense.updatedAt, state.formRevision) {
+    var regretScoreText by rememberSaveable(formIdentity) {
         mutableStateOf(initialFormValues.regretScoreText)
     }
     var message by rememberSaveable { mutableStateOf<String?>(null) }
@@ -422,6 +424,7 @@ fun ExpenseEditScreen(
                     ocrRunning = state.ocrRunning,
                     readOnly = readOnly,
                     showLargeImage = showLargeImage,
+                    originalTaskAvailable = originalContent != null,
                 ),
                 actions = ExpenseEditEvidenceActions(
                     onToggleLargeImage = {
@@ -434,6 +437,7 @@ fun ExpenseEditScreen(
                 ),
             )
         }
+        originalContent?.invoke()
     }
 
     val hasDraftChanges = formValues != initialFormValues || timeForm.changed

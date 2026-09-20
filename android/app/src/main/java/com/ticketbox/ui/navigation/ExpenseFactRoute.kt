@@ -8,6 +8,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.ui.screens.expense.fact.ExpenseFactScreen
 import com.ticketbox.viewmodel.ExpenseFactUiState
 import com.ticketbox.viewmodel.ExpenseFactViewModel
+import com.ticketbox.viewmodel.refreshOriginalFact
 import com.ticketbox.viewmodel.loadExpenseFactBundle
 import com.ticketbox.viewmodel.loadExpenseRevisions
 import com.ticketbox.viewmodel.consumeOpenRepaymentDraftPublicId
@@ -50,6 +51,7 @@ internal fun ExpenseFactRoute(
     ExpenseFactScreen(
         state = factState,
         viewModel = factViewModel,
+        originalContent = { OriginalAttachmentRoute(expenseId, screenFactory, factViewModel::refreshOriginalFact) },
         onRepairCorrectionRate = related.onRepairRate,
         onBack = {
             // 更正改变了金额/分类/时间等建议输入时，返回路径同步失效建议缓存

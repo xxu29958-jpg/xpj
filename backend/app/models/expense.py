@@ -20,8 +20,10 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Mapped, mapped_column, validates
 
+from app.attachment_cleanup_contract import ATTACHMENT_CLEANUP_REQUEST_CHECK_SQL, CleanupRequest
 from app.database_model_registry import Base
 from app.fx_constants import (
     DEFAULT_HOME_CURRENCY_CODE,
@@ -39,6 +41,7 @@ from app.tenant_contract import DEFAULT_TENANT_ID
 class Expense(Base):
     __tablename__ = "expenses"
     __table_args__ = (
+        CheckConstraint(ATTACHMENT_CLEANUP_REQUEST_CHECK_SQL, name="ck_expenses_attachment_cleanup_request"),
         *time_evidence_constraints("expenses"),
         ForeignKeyConstraint(
             ["tenant_id", "calendar_revision"],
@@ -182,6 +185,8 @@ class Expense(Base):
     rejected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     image_deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     thumbnail_deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    attachment_cleanup_request: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
+    image_replenished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     items_sum_status: Mapped[str] = mapped_column(
         String(32), default="no_items", server_default="no_items", nullable=False
     )
@@ -193,6 +198,12 @@ class Expense(Base):
     # (not column-level) so create_all and the startup migrator declare the
     # same index set — the DB backstop against a concurrent-accept double-create.
     split_origin_invitation_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
+    @validates("attachment_cleanup_request")
+    def validate_attachment_cleanup_request(self, _key: str, value: dict | None) -> dict | None:
+        if value is None:
+            return None
+        return CleanupRequest.model_validate(value).model_dump(mode="json")
 
     @property
     def home_amount_cents(self) -> int | None:

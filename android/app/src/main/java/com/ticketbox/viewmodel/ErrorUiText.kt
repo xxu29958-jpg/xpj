@@ -37,6 +37,8 @@ private fun localFailureText(reason: LocalRepositoryFailure): UiText = UiText.re
     LocalRepositoryFailure.ManualRateChanged -> R.string.advice_rate_changed
     LocalRepositoryFailure.BudgetInputsUnverified -> R.string.advice_inputs_load_failed
     LocalRepositoryFailure.StatsProjectionUnverified -> R.string.stats_projection_unverified
+    LocalRepositoryFailure.OriginalSourceUnavailable -> R.string.original_source_unavailable
+    LocalRepositoryFailure.OriginalWriterRequired -> R.string.original_writer_required
 })
 
 @StringRes
@@ -65,6 +67,12 @@ private val errorCodeStringResByCode = mapOf(
     "exchange_rate_invalid" to R.string.error_exchange_rate_invalid,
     "exchange_rate_base_currency" to R.string.error_exchange_rate_base_currency,
     "image_not_found" to R.string.error_image_not_found,
+    "image_replenishment_mismatch" to R.string.error_image_replenishment_mismatch,
+    "original_review_conflict" to R.string.error_original_review_conflict,
+    "original_already_verified" to R.string.error_original_already_verified,
+    "original_identity_unverified" to R.string.error_original_identity_unverified,
+    "attachment_cleanup_changed" to R.string.error_attachment_cleanup_changed,
+    "attachment_cleanup_invalid" to R.string.error_attachment_cleanup_invalid,
     "rule_not_found" to R.string.error_rule_not_found,
     "rule_in_use" to R.string.error_rule_in_use,
     "permission_denied" to R.string.error_permission_denied,

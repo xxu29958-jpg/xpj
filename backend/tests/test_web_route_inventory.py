@@ -233,6 +233,13 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     # Pending
     ("GET", "/web/pending"): "local-only-rendering",
     ("POST", "/web/pending/upload"): "writer-only",
+    ("GET", "/web/originals"): "local-only-rendering",
+    ("GET", "/web/expenses/{expense_id}/original"): "local-only-rendering",
+    ("GET", "/web/expenses/{expense_id}/original/health"): "local-only-rendering",
+    ("POST", "/web/expenses/{expense_id}/original/verify"): "writer-only",
+    ("POST", "/web/expenses/{expense_id}/original/replenish"): "writer-only",
+    ("POST", "/web/expenses/{expense_id}/original/cleanup/retry"): "writer-only",
+    ("POST", "/web/expenses/{expense_id}/original/cleanup/cancel"): "writer-only",
     ("POST", "/web/pending/batch-reject"): "writer-only",
     ("POST", "/web/pending/batch-undo"): "writer-only",
     ("POST", "/web/review/bulk"): "writer-only",

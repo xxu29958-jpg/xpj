@@ -394,13 +394,15 @@ class OutboxRepository private constructor(
         intents: List<PendingMutationIntent>,
     ): List<Long> {
         require(intents.size in 1..100)
-        require(intents.all { it.type == PendingMutationType.UploadScreenshot && it.expectedRowVersion == 0L })
+        require(intents.map { it.type }.distinct().size == 1)
+        require(intents.all { (it.type == PendingMutationType.UploadScreenshot && it.expectedRowVersion == 0L) ||
+            (it.type == PendingMutationType.OriginalAttachment && it.expectedRowVersion > 0L) })
         val keys = intents.map { requireNotNull(it.idempotencyKey) }
         require(keys.distinct().size == keys.size && keys.all(::isUploadIntentFileKey))
         val ids = withActiveBinding(boundRequest) { binding ->
             binding.requireReadyForEnqueue()
             val existing = dao.findByIdempotencyKeys(binding.ownerStorageKey, binding.ledgerId,
-                PendingMutationType.UploadScreenshot.wireValue, keys)
+                intents.first().type.wireValue, keys)
             if (existing.isNotEmpty()) {
                 check(existing.size == intents.size) { "Incomplete original upload acceptance" }
                 val byKey = existing.associateBy { it.idempotencyKey }
@@ -420,10 +422,11 @@ class OutboxRepository private constructor(
     }
 
     /** Includes delivered and expired originals, so an uncertain acceptance cannot allocate another command. */
-    internal suspend fun originalUploadRows(boundRequest: BoundLedgerRequest, keys: List<String>): List<OutboxRow> =
+    internal suspend fun originalUploadRows(boundRequest: BoundLedgerRequest, keys: List<String>,
+        type: PendingMutationType = PendingMutationType.UploadScreenshot): List<OutboxRow> =
         withActiveBinding(boundRequest) { binding ->
             dao.findByIdempotencyKeys(binding.ownerStorageKey, binding.ledgerId,
-                PendingMutationType.UploadScreenshot.wireValue, keys).map { it.toDomain() }
+                type.wireValue, keys).map { it.toDomain() }
         }
 
     /** Raw types stay visible: an unknown future kind makes file ownership unprovable. */

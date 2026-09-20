@@ -134,20 +134,6 @@
     });
   };
 
-  // 收件页原生上传表单的渐进增强：权限所需 ledger 已在 action query，
-  // 这里只补浏览器时区；不触碰 multipart body，也绝不自动提交。
-  app.initInboxCapture = function initInboxCapture() {
-    const form = document.querySelector("[data-inbox-capture]");
-    if (!form) return;
-    try {
-      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      if (typeof tz !== "string" || !tz) return;
-      const action = new URL(form.action, window.location.href);
-      action.searchParams.set("timezone", tz);
-      form.action = action.pathname + action.search;
-    } catch (_) {}
-  };
-
   app.initInboxEnrichmentWatch = function initInboxEnrichmentWatch() {
     const marker = document.querySelector("[data-inbox-enrichment-watch]");
     if (!marker) return;

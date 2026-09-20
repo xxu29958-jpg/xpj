@@ -355,3 +355,26 @@ enrichment inline, restores normal execution mode, and only then opens the same
 two competing Sessions. All 20 original assertions and session close calls remain;
 production concurrency and shared database cleanup are unchanged. The affected
 file collected six tests; actual PostgreSQL execution awaits the final source.
+
+Final qualification, 2026-09-20: candidate `e5add04901343dd57f130e9c66ef8e67f780ee88`
+passed [CI 35467312474, attempt 2](https://github.com/xxu29958-jpg/xpj/actions/runs/35467312474),
+[CodeQL 35467312489](https://github.com/xxu29958-jpg/xpj/actions/runs/35467312489)
+and [Connected 35467312494](https://github.com/xxu29958-jpg/xpj/actions/runs/35467312494).
+The first CI attempt had one Desktop fixture-process startup timeout; its 17
+setup errors did not reproduce in the same-head failed-job rerun. No source or
+test assertion was changed for that rerun. The bounded review retained the
+existing OCC and historical migration assertions and found no remaining blocker
+for this slice. CodeQL alert 14 remains visible; its redirect uses the fixed
+same-origin `/owner/ledgers/` destination, and the adversarial redirect probes
+did not establish an exploitable destination in this change.
+
+[PR #423](https://github.com/xxu29958-jpg/xpj/pull/423) was protected-squash merged
+as `446a3c54ff69ba70f1fe003985954fbdef20aef8`. Candidate and merge share source tree
+`f1021fc2a9808014c8c1b0ffd027cfa1ae5b8326`. That main independently passed
+[CI 35469067536](https://github.com/xxu29958-jpg/xpj/actions/runs/35469067536),
+[CodeQL 35469067419](https://github.com/xxu29958-jpg/xpj/actions/runs/35469067419)
+and [Connected 35469067463](https://github.com/xxu29958-jpg/xpj/actions/runs/35469067463).
+This closes the calendar slice's source/client/cloud qualification. The daily
+installation remains `0ac27032`; final artifact/device RC and the remaining full
+product work stay in the product atlas. The historical failed and pending
+checkpoints above describe their own sources, not the qualified final main.
