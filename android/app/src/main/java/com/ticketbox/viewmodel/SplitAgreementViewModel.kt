@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.remote.dto.BillSplitAgreementDto
 import com.ticketbox.data.remote.dto.BillSplitChangeAcceptRequestDto
@@ -15,6 +16,7 @@ import com.ticketbox.data.repository.SPLIT_CREATE
 import com.ticketbox.data.repository.SPLIT_REJECT
 import com.ticketbox.data.repository.SPLIT_WITHDRAW
 import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.formatAmountInput
 import com.ticketbox.ui.components.parseAmountCents
 import kotlinx.coroutines.Job
@@ -32,10 +34,11 @@ data class SplitAgreementUiState(
     val settlementEdited: Boolean = false,
     val confirmed: Boolean = false,
     val previewReady: Boolean = false,
+    val replacingProposalPublicId: String? = null,
     val loading: Boolean = false,
     val submitting: Boolean = false,
-    val error: String? = null,
-    val message: String? = null,
+    val error: UiText? = null,
+    val message: UiText? = null,
     val rows: List<OutboxRow> = emptyList(),
     val intents: Map<Long, SplitAgreementPayload> = emptyMap(),
     val acknowledgedRevision: Long = 0,
@@ -44,7 +47,8 @@ data class SplitAgreementUiState(
     val busy: Boolean get() = submitting || rows.any { it.status != PendingMutationStatus.Done }
     val agreementCurrent: Boolean get() = agreementRevision == acknowledgedRevision
     val commandsEnabled: Boolean get() = agreementCurrent && !busy && !loading
-    val canPropose: Boolean get() = agreement?.viewerIsParty == true && agreement.pendingProposal == null &&
+    val canPropose: Boolean get() = agreement?.viewerIsParty == true &&
+        (agreement.pendingProposal == null || agreement.pendingProposal.publicId == replacingProposalPublicId) &&
         agreement.pendingRepaymentDebtPublicIds.isEmpty() && previewReady && confirmed && commandsEnabled
 }
 
@@ -72,13 +76,38 @@ class SplitAgreementViewModel(private val repository: SplitAgreementActions) : V
         }
     }
 
-    fun editShare(value: String) {
-        queryGeneration++
-        _state.update { it.copy(shareInput = value, settlementEdited = false, previewReady = false, confirmed = false, loading = false) }
+    fun editDraft(share: String? = null, settlement: String? = null, reason: String? = null) {
+        if (share != null) queryGeneration++
+        _state.update {
+            it.copy(
+                shareInput = share ?: it.shareInput,
+                settlementInput = settlement ?: it.settlementInput,
+                reason = reason ?: it.reason,
+                settlementEdited = when {
+                    settlement != null -> true
+                    share != null -> false
+                    else -> it.settlementEdited
+                },
+                previewReady = if (share != null) false else it.previewReady,
+                confirmed = false,
+                loading = if (share != null) false else it.loading,
+            )
+        }
     }
-    fun editSettlement(value: String) = _state.update { it.copy(settlementInput = value, settlementEdited = true, confirmed = false) }
-    fun editReason(value: String) = _state.update { it.copy(reason = value, confirmed = false) }
     fun confirm(value: Boolean) = _state.update { it.copy(confirmed = value) }
+
+    fun beginReplacement() {
+        _state.update { state ->
+            val agreement = state.agreement
+            val proposal = agreement?.pendingProposal
+            if (proposal == null || !agreement.viewerIsParty || !state.commandsEnabled) state
+            else state.copy(replacingProposalPublicId = proposal.publicId, confirmed = false)
+        }
+    }
+
+    fun cancelReplacement() {
+        _state.update { it.copy(replacingProposalPublicId = null, confirmed = false) }
+    }
 
     fun refresh() {
         val current = _state.value
@@ -86,7 +115,7 @@ class SplitAgreementViewModel(private val repository: SplitAgreementActions) : V
         val currency = current.agreement?.homeCurrencyCode?.let(CurrencyCode::fromStorageKeyOrNull)
         val share = if (current.shareInput.isBlank()) null else currency?.let { parseAmountCents(current.shareInput, it) }
         if (current.shareInput.isNotBlank() && share == null) {
-            _state.update { it.copy(error = "请填写有效的新份额。", previewReady = false) }
+            _state.update { it.copy(error = UiText.res(R.string.split_agreement_error_invalid_share), previewReady = false) }
             return
         }
         val request = ++queryGeneration
@@ -101,10 +130,12 @@ class SplitAgreementViewModel(private val repository: SplitAgreementActions) : V
                     settlementInput = if (it.settlementEdited) it.settlementInput else
                         code?.let { c -> formatAmountInput(agreement.preview.defaultSettlementNetAmountCents, c) }.orEmpty(),
                     previewReady = code != null,
+                    replacingProposalPublicId = it.replacingProposalPublicId
+                        ?.takeIf { proposalId -> agreement.pendingProposal?.publicId == proposalId },
                     agreementRevision = it.acknowledgedRevision) }
                 observeOriginal(task.copy(debtPublicId = agreement.originalDebt.publicId))
             }, onFailure = {
-                _state.update { it.copy(loading = false, error = "新约定暂时无法读取，请重试。") }
+                _state.update { it.copy(loading = false, error = UiText.res(R.string.split_agreement_error_load_failed)) }
             })
         }
     }
@@ -134,12 +165,12 @@ class SplitAgreementViewModel(private val repository: SplitAgreementActions) : V
         val settlement = parseSplitSettlement(state.settlementInput, currency)
         val reason = state.reason.trim()
         if (settlement == null || reason.isBlank() || reason.codePointCount(0, reason.length) > 500) {
-            _state.update { it.copy(error = "请填写有效结算金额和不超过 500 字的原因。") }
+            _state.update { it.copy(error = UiText.res(R.string.split_agreement_error_invalid_settlement)) }
             return
         }
         submit(SplitAgreementPayload(operation = SPLIT_CREATE, originalDebtPublicId = agreement.originalDebt.publicId,
             returnDebtPublicId = agreement.returnDebt?.publicId, create = BillSplitChangeCreateRequestDto(share, settlement, reason,
-                agreement.originalDebt.rowVersion, agreement.returnDebt?.rowVersion)))
+                agreement.originalDebt.rowVersion, agreement.returnDebt?.rowVersion, state.replacingProposalPublicId)))
     }
 
     fun resolve(accept: Boolean) {
@@ -163,9 +194,11 @@ class SplitAgreementViewModel(private val repository: SplitAgreementActions) : V
             val result = repository.submit(task.copy(debtPublicId = intent.originalDebtPublicId), intent)
             if (_state.value.task != task) return@launch
             result.fold(onSuccess = {
-                _state.update { it.copy(submitting = false, confirmed = false, message = "原提交已保存，等待同步。") }
+                _state.update { it.copy(submitting = false, confirmed = false,
+                    message = UiText.res(R.string.split_agreement_submission_saved)) }
             }, onFailure = {
-                _state.update { it.copy(submitting = false, error = "原提交未保存，请核对连接与待处理提交后重试。") }
+                _state.update { it.copy(submitting = false,
+                    error = UiText.res(R.string.split_agreement_submission_save_failed)) }
             })
         }
     }
@@ -177,7 +210,7 @@ class SplitAgreementViewModel(private val repository: SplitAgreementActions) : V
         val intent = state.intents[row.id]
         val draft = if (drop) restorableCreateDraft(state, intent) else null
         if (drop && intent?.operation == SPLIT_CREATE && draft == null) {
-            _state.update { it.copy(error = "原提交内容无法确认，请保留记录并重新核对。") }
+            _state.update { it.copy(error = UiText.res(R.string.split_agreement_submission_unreadable)) }
             return
         }
         val original = intent?.originalDebtPublicId ?: row.targetId.removePrefix("debt:")
@@ -192,7 +225,8 @@ class SplitAgreementViewModel(private val repository: SplitAgreementActions) : V
                 } ?: current.copy(submitting = false) }
                 if (drop) refresh()
             }, onFailure = {
-                _state.update { it.copy(submitting = false, error = "原提交状态已变化，请重新核对。") }
+                _state.update { it.copy(submitting = false,
+                    error = UiText.res(R.string.split_agreement_submission_state_changed)) }
             })
         }
     }
@@ -215,8 +249,10 @@ internal fun parseSplitSettlement(value: String, currency: CurrencyCode): Long? 
     return if (negative) -magnitude else magnitude
 }
 
-private fun splitSubmissionMessage(rows: List<OutboxRow>): String? = when {
-    rows.any { it.status != PendingMutationStatus.Done } -> "原提交已保存，等待同步或核对。"
-    rows.any { it.status == PendingMutationStatus.Done } -> "原提交已由服务端接收。"
+private fun splitSubmissionMessage(rows: List<OutboxRow>): UiText? = when {
+    rows.any { it.status != PendingMutationStatus.Done } ->
+        UiText.res(R.string.split_agreement_submission_pending_review)
+    rows.any { it.status == PendingMutationStatus.Done } ->
+        UiText.res(R.string.split_agreement_submission_received)
     else -> null
 }

@@ -145,20 +145,27 @@ internal fun debtActivityFxSourceLabel(source: String): Int? = when (source) {
 @Composable
 private fun DebtActivitySplitChange(change: com.ticketbox.domain.model.DebtSplitChange, currency: String?) {
     val display = CurrencyDisplay.forRecord(currency)
-    Text("份额 ${formatDisplayAmount(change.shareBeforeAmountCents, display)} → ${formatDisplayAmount(change.newShareAmountCents, display)}")
+    Text(stringResource(R.string.debt_activity_split_share_change,
+        formatDisplayAmount(change.shareBeforeAmountCents, display),
+        formatDisplayAmount(change.newShareAmountCents, display)))
     Text(splitSettlementLabel(change.settlementNetAmountCents, display))
-    Text("当时已付 ${formatDisplayAmount(change.originalPaidAmountCents, display)} · 已返 ${formatDisplayAmount(change.returnPaidAmountCents, display)}")
-    Text("原往来免除 ${formatDisplayAmount(change.originalForgivenAmountCents, display)} · 返还免除 ${formatDisplayAmount(change.returnForgivenAmountCents, display)}")
-    Text(splitChangeStatusLabel(change.status))
+    Text(stringResource(R.string.debt_activity_split_payments,
+        formatDisplayAmount(change.originalPaidAmountCents, display),
+        formatDisplayAmount(change.returnPaidAmountCents, display)))
+    Text(stringResource(R.string.debt_activity_split_forgiveness,
+        formatDisplayAmount(change.originalForgivenAmountCents, display),
+        formatDisplayAmount(change.returnForgivenAmountCents, display)))
+    Text(stringResource(splitChangeStatusLabel(change.status)))
     Text(change.reason)
 }
 
-internal fun splitChangeStatusLabel(status: String): String = when (status) {
-    "pending" -> "等待双方确认"
-    "accepted" -> "双方已达成新约定"
-    "rejected" -> "提议已拒绝"
-    "withdrawn" -> "提议已撤回"
-    "superseded" -> "已由后续提议替代"
-    "expired" -> "提议已过期"
-    else -> "请刷新核对状态"
+@StringRes
+internal fun splitChangeStatusLabel(status: String): Int = when (status) {
+    "pending" -> R.string.debt_activity_split_status_pending
+    "accepted" -> R.string.debt_activity_split_status_accepted
+    "rejected" -> R.string.debt_activity_split_status_rejected
+    "withdrawn" -> R.string.debt_activity_split_status_withdrawn
+    "superseded" -> R.string.debt_activity_split_status_superseded
+    "expired" -> R.string.debt_activity_split_status_expired
+    else -> R.string.debt_activity_split_status_unknown
 }

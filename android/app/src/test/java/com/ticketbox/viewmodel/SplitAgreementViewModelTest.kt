@@ -1,5 +1,6 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.BillSplitAgreementDto
@@ -13,6 +14,7 @@ import com.ticketbox.data.repository.SPLIT_CREATE
 import com.ticketbox.data.repository.splitTestAgreement
 import com.ticketbox.data.repository.splitTestProposal
 import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.UiText
 import java.io.IOException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -43,8 +45,8 @@ class SplitAgreementViewModelTest {
         val model = SplitAgreementViewModel(repo)
         val task = memberDebtTask("original")
         model.load(task); advanceUntilIdle()
-        model.editShare("12.00"); model.refresh(); advanceUntilIdle()
-        model.editSettlement("-3.00"); model.editReason("先处理返还申报")
+        model.editDraft(share = "12.00"); model.refresh(); advanceUntilIdle()
+        model.editDraft(settlement = "-3.00"); model.editDraft(reason = "先处理返还申报")
         model.load(task.copy(debtPublicId = "return")); advanceUntilIdle()
         model.load(task); advanceUntilIdle()
         assertEquals("12.00", model.state.value.shareInput)
@@ -61,7 +63,7 @@ class SplitAgreementViewModelTest {
         val model = SplitAgreementViewModel(repo)
         model.load(memberDebtTask("original")); advanceUntilIdle()
         assertEquals("0.00", model.state.value.settlementInput)
-        model.editReason("保留原免除"); model.propose(); advanceUntilIdle()
+        model.editDraft(reason = "保留原免除"); model.propose(); advanceUntilIdle()
         assertTrue(repo.commands.isEmpty())
         model.confirm(true); model.propose(); advanceUntilIdle()
         val create = requireNotNull(repo.commands.single().create)
@@ -74,7 +76,7 @@ class SplitAgreementViewModelTest {
         val repo = SplitProbe().apply { value = splitTestAgreement().copy(pendingRepaymentDebtPublicIds = listOf("return")) }
         val model = SplitAgreementViewModel(repo)
         model.load(memberDebtTask("original")); advanceUntilIdle()
-        model.editReason("保留原因"); model.confirm(true); model.propose(); advanceUntilIdle()
+        model.editDraft(reason = "保留原因"); model.confirm(true); model.propose(); advanceUntilIdle()
         assertTrue(repo.commands.isEmpty())
         repo.value = repo.value.copy(pendingProposal = splitTestProposal())
         model.refresh(); advanceUntilIdle(); model.confirm(true)
@@ -94,6 +96,53 @@ class SplitAgreementViewModelTest {
         assertEquals(8L, repo.commands.single().accept?.expectedReturnRowVersion)
     }
 
+    @Test fun pendingProposalCanBeExplicitlyReplacedWithoutDroppingOfflineIntent() = runTest(dispatcher) {
+        val proposal = splitTestProposal().copy(publicId = "proposal-to-replace")
+        val repo = SplitProbe().apply { value = splitTestAgreement().copy(pendingProposal = proposal) }
+        val model = SplitAgreementViewModel(repo)
+        model.load(memberDebtTask("original")); advanceUntilIdle()
+
+        model.editDraft(reason = "保留已付、返还和免除后重新约定")
+        model.confirm(true)
+        model.propose(); advanceUntilIdle()
+        assertTrue(repo.commands.isEmpty(), "ordinary create remains blocked while a proposal is pending")
+
+        model.beginReplacement()
+        assertFalse(model.state.value.confirmed, "replacement selection requires a fresh settlement confirmation")
+        model.confirm(true)
+        assertTrue(model.state.value.canPropose)
+        model.propose(); advanceUntilIdle()
+
+        val create = requireNotNull(repo.commands.single().create)
+        assertEquals("proposal-to-replace", create.supersedesProposalPublicId)
+        assertEquals(2000L, create.newShareAmountCents)
+        assertEquals(-1000L, create.settlementNetAmountCents)
+        assertEquals(7L, create.expectedRowVersion)
+        assertEquals(8L, create.expectedReturnRowVersion)
+    }
+
+    @Test fun changedPendingProposalInvalidatesReplacementChoiceButKeepsDraft() = runTest(dispatcher) {
+        val repo = SplitProbe().apply { value = splitTestAgreement().copy(
+            pendingProposal = splitTestProposal().copy(publicId = "proposal-old")) }
+        val model = SplitAgreementViewModel(repo)
+        model.load(memberDebtTask("original")); advanceUntilIdle()
+        model.beginReplacement()
+        model.editDraft(share = "12.00")
+        model.editDraft(settlement = "-3.00")
+        model.editDraft(reason = "保留这份替代草稿")
+
+        repo.value = repo.value.copy(pendingProposal = splitTestProposal().copy(publicId = "proposal-new"))
+        model.refresh(); advanceUntilIdle()
+
+        assertEquals(null, model.state.value.replacingProposalPublicId)
+        assertEquals("12.00", model.state.value.shareInput)
+        assertEquals("-3.00", model.state.value.settlementInput)
+        assertEquals("保留这份替代草稿", model.state.value.reason)
+        model.confirm(true)
+        model.propose(); advanceUntilIdle()
+        assertTrue(repo.commands.isEmpty(), "the old replacement choice cannot target a different pending proposal")
+    }
+
     @Test fun doneResolutionRefreshFailureBlocksDuplicateUntilCurrentAgreementRecovers() = runTest(dispatcher) {
         val repo = SplitProbe().apply { value = splitTestAgreement().copy(pendingProposal = splitTestProposal()) }
         val model = SplitAgreementViewModel(repo)
@@ -106,7 +155,7 @@ class SplitAgreementViewModelTest {
             PendingMutationStatus.Done, 0, null, "2026-09-20", null, "2026-09-20", "key", "{}"))
         advanceUntilIdle()
         assertNotNull(model.state.value.error)
-        assertEquals("原提交已由服务端接收。", model.state.value.message)
+        assertEquals(UiText.res(R.string.split_agreement_submission_received), model.state.value.message)
         assertEquals(1L, model.state.value.acknowledgedRevision)
         assertFalse(model.state.value.agreementCurrent)
         model.resolve(false); advanceUntilIdle()
@@ -122,14 +171,15 @@ class SplitAgreementViewModelTest {
     }
 
     @Test fun droppingRestartedCreateRestoresItsDraftWhileUnknownIntentPreservesCurrentDraft() = runTest(dispatcher) {
-        val repo = SplitProbe()
+        val repo = SplitProbe().apply { value = splitTestAgreement().copy(
+            pendingProposal = splitTestProposal().copy(publicId = "proposal-new")) }
         val task = memberDebtTask("original")
         val row = OutboxRow(1, task.binding.serverUrl, task.binding.ledgerId,
             task.binding.ownerKey, PendingMutationType.SplitAgreement, "debt:original", "{}", 7,
             PendingMutationStatus.Conflict, 0, "state_conflict", "2026-09-20", null, "2026-09-20", "key", null)
         repo.intents[row.id] = SplitAgreementPayload(operation = SPLIT_CREATE,
             originalDebtPublicId = "original", returnDebtPublicId = "return",
-            create = BillSplitChangeCreateRequestDto(1200, -300, "保留重启前草稿", 7, 8))
+            create = BillSplitChangeCreateRequestDto(1200, -300, "保留重启前草稿", 7, 8, "proposal-old"))
         repo.rows.value = listOf(row)
         val model = SplitAgreementViewModel(repo)
         model.load(task); advanceUntilIdle()
@@ -141,11 +191,14 @@ class SplitAgreementViewModelTest {
         assertEquals("12.00", model.state.value.shareInput)
         assertEquals("-3.00", model.state.value.settlementInput)
         assertEquals("保留重启前草稿", model.state.value.reason)
+        assertEquals(null, model.state.value.replacingProposalPublicId)
         assertEquals(listOf(row.id to true), repo.recoveries)
+        model.confirm(true); model.propose(); advanceUntilIdle()
+        assertTrue(repo.commands.isEmpty(), "a restored old replacement draft cannot silently target the new proposal")
 
         val unknown = row.copy(id = 2, payloadJson = "unknown")
         repo.rows.value = listOf(unknown); advanceUntilIdle()
-        model.editShare("15.00"); model.editSettlement("-4.00"); model.editReason("当前另拟草稿")
+        model.editDraft(share = "15.00"); model.editDraft(settlement = "-4.00"); model.editDraft(reason = "当前另拟草稿")
         model.recover(unknown, drop = true); advanceUntilIdle()
         assertEquals(listOf(row.id to true, unknown.id to true), repo.recoveries)
         assertEquals("15.00", model.state.value.shareInput)

@@ -7,8 +7,11 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.domain.model.CurrencyDisplay
+import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppSectionGroup
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
@@ -27,11 +30,12 @@ internal fun SplitAgreementSection(
 ) {
     AppSectionGroup {
         Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap)) {
-            Text("拆账约定与结算", style = MaterialTheme.typography.titleMedium)
-            state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            state.message?.let { Text(it) }
-            if (state.loading) Text("正在核对双方约定…")
-            QuietOutlinedButton(text = "重新核对约定", onClick = model::refresh, enabled = !state.loading)
+            Text(stringResource(R.string.split_agreement_title), style = MaterialTheme.typography.titleMedium)
+            state.error?.let { Text(it.asString(), color = MaterialTheme.colorScheme.error) }
+            state.message?.let { Text(it.asString()) }
+            if (state.loading) Text(stringResource(R.string.split_agreement_loading))
+            QuietOutlinedButton(text = stringResource(R.string.split_agreement_refresh),
+                onClick = model::refresh, enabled = !state.loading)
             state.agreement?.let { agreement ->
                 val display = CurrencyDisplay.forRecord(agreement.homeCurrencyCode)
                 SplitAgreementFacts(state, display, onOpenDebt)
@@ -47,22 +51,30 @@ internal fun SplitAgreementSection(
 @Composable
 private fun SplitAgreementForm(state: SplitAgreementUiState, model: SplitAgreementViewModel, display: CurrencyDisplay) {
     val agreement = state.agreement ?: return
-    AppTextInput(AppTextInputState("新约定份额（${agreement.homeCurrencyCode}）", state.shareInput, enabled = !state.busy),
-        AppTextInputActions(model::editShare))
-    QuietOutlinedButton(text = "预览新份额的结算", onClick = model::refresh, enabled = !state.busy && !state.loading)
+    AppTextInput(AppTextInputState(stringResource(R.string.split_agreement_share_input, agreement.homeCurrencyCode),
+        state.shareInput, enabled = !state.busy),
+        AppTextInputActions(onValueChange = { model.editDraft(share = it) }))
+    QuietOutlinedButton(text = stringResource(R.string.split_agreement_preview),
+        onClick = model::refresh, enabled = !state.busy && !state.loading)
     if (state.previewReady) {
         if (agreement.preview.requiresExplicitSettlement) {
-            Text("已有免除或特别结算约定：默认保留当前待结算，请双方明确确认。参考值不自动恢复已免除金额。")
+            Text(stringResource(R.string.split_agreement_explicit_settlement_warning))
         }
         agreement.preview.cashBasedSettlementNetAmountCents?.let {
-            Text("按实际付款计算的参考：${splitSettlementLabel(it, display)}")
+            Text(stringResource(R.string.split_agreement_cash_reference, splitSettlementLabel(it, display)))
         }
-        AppTextInput(AppTextInputState("最终待结算（正数由原接收方付，负数由原发送方返）", state.settlementInput,
-            enabled = !state.busy), AppTextInputActions(model::editSettlement))
-        AppTextInput(AppTextInputState("原因", state.reason, enabled = !state.busy, singleLine = false),
-            AppTextInputActions(model::editReason))
+        AppTextInput(AppTextInputState(stringResource(R.string.split_agreement_settlement_input), state.settlementInput,
+            enabled = !state.busy), AppTextInputActions(onValueChange = { model.editDraft(settlement = it) }))
+        AppTextInput(AppTextInputState(stringResource(R.string.split_agreement_reason_input), state.reason,
+            enabled = !state.busy, singleLine = false),
+            AppTextInputActions(onValueChange = { model.editDraft(reason = it) }))
         SplitSettlementConfirmation(state, model)
-        QuietOutlinedButton(text = "提出新约定", onClick = model::propose, enabled = state.canPropose)
+        QuietOutlinedButton(text = stringResource(if (state.replacingProposalPublicId == null) {
+            R.string.split_agreement_propose
+        } else {
+            R.string.split_agreement_submit_replacement
+        }),
+            onClick = model::propose, enabled = state.canPropose)
     }
 }
 
@@ -70,35 +82,52 @@ private fun SplitAgreementForm(state: SplitAgreementUiState, model: SplitAgreeme
 private fun SplitSettlementConfirmation(state: SplitAgreementUiState, model: SplitAgreementViewModel) {
     Row {
         Checkbox(checked = state.confirmed, onCheckedChange = model::confirm, enabled = !state.busy && !state.loading)
-        Text("我已核对份额、已付／已返与免除，并确认本次结算方向和金额。")
+        Text(stringResource(R.string.split_agreement_confirmation))
     }
 }
 
+@Composable
 internal fun splitSettlementLabel(amount: Long, display: CurrencyDisplay): String = when {
-    amount > 0 -> "原接收方仍需付 ${formatDisplayAmount(amount, display)}"
-    amount < 0 -> "原发送方需返 ${formatDisplayAmount(-amount, display)}"
-    else -> "无需再付或返"
+    amount > 0 -> stringResource(R.string.split_agreement_settlement_receiver_pays,
+        formatDisplayAmount(amount, display))
+    amount < 0 -> stringResource(R.string.split_agreement_settlement_sender_returns,
+        formatDisplayAmount(-amount, display))
+    else -> stringResource(R.string.split_agreement_settlement_clear)
 }
 
 @Composable
 private fun SplitAgreementFacts(state: SplitAgreementUiState, display: CurrencyDisplay, onOpenDebt: (String) -> Unit) {
     val agreement = state.agreement ?: return
-    Text("原份额 ${formatDisplayAmount(agreement.originalShareAmountCents, display)} · 当前约定 ${formatDisplayAmount(agreement.agreedShareAmountCents, display)}")
-    Text("原接收方已付 ${formatDisplayAmount(agreement.originalPaidAmountCents, display)} · 原发送方已返 ${formatDisplayAmount(agreement.returnPaidAmountCents, display)}")
-    Text("原往来已免除 ${formatDisplayAmount(agreement.originalForgivenAmountCents, display)} · 返还已免除 ${formatDisplayAmount(agreement.returnForgivenAmountCents, display)}")
-    Text("当前结算：${splitSettlementLabel(agreement.settlementNetAmountCents, display)}")
-    Text("新约定不修改双方私有流水；商家退款与双方实际返款分别核对。")
+    Text(stringResource(R.string.split_agreement_share_facts,
+        formatDisplayAmount(agreement.originalShareAmountCents, display),
+        formatDisplayAmount(agreement.agreedShareAmountCents, display)))
+    Text(stringResource(R.string.split_agreement_payment_facts,
+        formatDisplayAmount(agreement.originalPaidAmountCents, display),
+        formatDisplayAmount(agreement.returnPaidAmountCents, display)))
+    Text(stringResource(R.string.split_agreement_forgiveness_facts,
+        formatDisplayAmount(agreement.originalForgivenAmountCents, display),
+        formatDisplayAmount(agreement.returnForgivenAmountCents, display)))
+    Text(stringResource(R.string.split_agreement_current_settlement,
+        splitSettlementLabel(agreement.settlementNetAmountCents, display)))
+    Text(stringResource(R.string.split_agreement_private_records_notice))
     if (agreement.originalDebt.publicId != state.task?.debtPublicId) {
-        QuietOutlinedButton(text = "查看原往来与还款", onClick = { onOpenDebt(agreement.originalDebt.publicId) })
+        QuietOutlinedButton(text = stringResource(R.string.split_agreement_open_original_debt),
+            onClick = { onOpenDebt(agreement.originalDebt.publicId) })
     }
     agreement.returnDebt?.takeIf { it.publicId != state.task?.debtPublicId }?.let { debt ->
-        QuietOutlinedButton(text = "查看返还、还款与免除", onClick = { onOpenDebt(debt.publicId) })
+        QuietOutlinedButton(text = stringResource(R.string.split_agreement_open_return_debt),
+            onClick = { onOpenDebt(debt.publicId) })
     }
     if (agreement.pendingRepaymentDebtPublicIds.isNotEmpty()) {
-        Text("双方还有待核对的还款。请先处理申报，再核对本次结算；输入会保留。")
+        Text(stringResource(R.string.split_agreement_pending_repayments))
         agreement.pendingRepaymentDebtPublicIds.forEach { id ->
-            if (id == state.task?.debtPublicId) Text("本笔待核对申报见下方还款区。")
-            else QuietOutlinedButton(text = "处理${if (id == agreement.originalDebt.publicId) "原往来" else "返还往来"}的申报",
+            if (id == state.task?.debtPublicId) Text(stringResource(R.string.split_agreement_current_debt_pending))
+            else QuietOutlinedButton(text = stringResource(R.string.split_agreement_process_declaration,
+                stringResource(if (id == agreement.originalDebt.publicId) {
+                    R.string.split_agreement_original_debt
+                } else {
+                    R.string.split_agreement_return_debt
+                })),
                 onClick = { onOpenDebt(id) })
         }
     }
@@ -108,17 +137,35 @@ private fun SplitAgreementFacts(state: SplitAgreementUiState, display: CurrencyD
 private fun SplitAgreementProposal(state: SplitAgreementUiState, model: SplitAgreementViewModel, display: CurrencyDisplay) {
     val agreement = state.agreement ?: return
     agreement.pendingProposal?.let { proposal ->
-        Text("${if (proposal.proposedByYou) "你提出的" else "对方提出的"}新约定：${formatDisplayAmount(proposal.newShareAmountCents, display)}")
-        Text("约定后结算：${splitSettlementLabel(proposal.settlementNetAmountCents, display)}")
+        Text(stringResource(R.string.split_agreement_proposal_summary,
+            stringResource(if (proposal.proposedByYou) R.string.split_agreement_proposer_you
+                else R.string.split_agreement_proposer_other),
+            formatDisplayAmount(proposal.newShareAmountCents, display)))
+        Text(stringResource(R.string.split_agreement_proposal_settlement,
+            splitSettlementLabel(proposal.settlementNetAmountCents, display)))
         Text(proposal.reason)
-        if (!proposal.proposedByYou) {
-            SplitSettlementConfirmation(state, model)
-            QuietOutlinedButton(text = "接受新约定", onClick = { model.resolve(true) },
-                enabled = state.commandsEnabled && state.previewReady && state.confirmed &&
-                    agreement.pendingRepaymentDebtPublicIds.isEmpty())
+        if (state.replacingProposalPublicId == proposal.publicId) {
+            Text(stringResource(R.string.split_agreement_replacement_notice))
+            SplitAgreementForm(state, model, display)
+            QuietOutlinedButton(text = stringResource(R.string.split_agreement_cancel_replacement),
+                onClick = model::cancelReplacement, enabled = !state.busy)
+        } else {
+            if (!proposal.proposedByYou) {
+                SplitSettlementConfirmation(state, model)
+                QuietOutlinedButton(text = stringResource(R.string.split_agreement_accept),
+                    onClick = { model.resolve(true) },
+                    enabled = state.commandsEnabled && state.previewReady && state.confirmed &&
+                        agreement.pendingRepaymentDebtPublicIds.isEmpty())
+            }
+            QuietOutlinedButton(text = stringResource(if (proposal.proposedByYou) {
+                R.string.split_agreement_withdraw
+            } else {
+                R.string.split_agreement_reject
+            }),
+                onClick = { model.resolve(false) }, enabled = state.commandsEnabled)
+            QuietOutlinedButton(text = stringResource(R.string.split_agreement_replace),
+                onClick = model::beginReplacement, enabled = state.commandsEnabled && agreement.viewerIsParty)
         }
-        QuietOutlinedButton(text = if (proposal.proposedByYou) "撤回提议" else "拒绝提议",
-            onClick = { model.resolve(false) }, enabled = state.commandsEnabled)
     } ?: SplitAgreementForm(state, model, display)
 }
 
@@ -126,25 +173,29 @@ private fun SplitAgreementProposal(state: SplitAgreementUiState, model: SplitAgr
 private fun SplitAgreementSubmissions(state: SplitAgreementUiState, model: SplitAgreementViewModel) {
     state.rows.filter { it.status != PendingMutationStatus.Done }.forEach { row ->
         state.intents[row.id]?.create?.let { submitted ->
-            Text("原提交原因：${submitted.reason}")
+            Text(stringResource(R.string.split_agreement_submitted_reason, submitted.reason))
             state.agreement?.homeCurrencyCode?.let { currency ->
                 val display = CurrencyDisplay.forRecord(currency)
-                Text("原提交份额 ${formatDisplayAmount(submitted.newShareAmountCents, display)} · ${splitSettlementLabel(submitted.settlementNetAmountCents, display)}")
+                Text(stringResource(R.string.split_agreement_submitted_share,
+                    formatDisplayAmount(submitted.newShareAmountCents, display),
+                    splitSettlementLabel(submitted.settlementNetAmountCents, display)))
             }
         }
         if (row.lastError in com.ticketbox.data.repository.SPLIT_SHARE_REFUSALS) {
-            Text("新份额超出原单可分摊金额。结束本地提交后重新拟定份额；对方提议可拒绝后再商议。")
+            Text(stringResource(R.string.split_agreement_share_refused))
         }
-        Text(when (row.status) {
-            PendingMutationStatus.Conflict -> "原提交与最新事实冲突。结束这次本地提交后，可保留草稿重新核对。"
-            PendingMutationStatus.Failed -> "原提交需要核对。结束本地提交会保留当前草稿。"
-            else -> "原提交等待同步，请勿重复发起。"
-        })
+        Text(stringResource(when (row.status) {
+            PendingMutationStatus.Conflict -> R.string.split_agreement_submission_conflict
+            PendingMutationStatus.Failed -> R.string.split_agreement_submission_failed
+            else -> R.string.split_agreement_submission_waiting
+        }))
         if (row.status == PendingMutationStatus.Failed && row.lastError !in com.ticketbox.data.repository.SPLIT_SHARE_REFUSALS) {
-            QuietOutlinedButton(text = "重试原提交", onClick = { model.recover(row, false) })
+            QuietOutlinedButton(text = stringResource(R.string.split_agreement_retry_submission),
+                onClick = { model.recover(row, false) })
         }
         if (row.status in setOf(PendingMutationStatus.Failed, PendingMutationStatus.Conflict)) {
-            QuietOutlinedButton(text = "结束这次本地提交", onClick = { model.recover(row, true) })
+            QuietOutlinedButton(text = stringResource(R.string.split_agreement_end_submission),
+                onClick = { model.recover(row, true) })
         }
     }
 }
