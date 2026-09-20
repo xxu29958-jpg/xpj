@@ -20,7 +20,7 @@
     <string name="debt_activity_proposal_expires">申报有效期至：%1$s</string>
     <string name="debt_activity_open_repayment">查看关联还款</string>
     <string name="debt_activity_linked_payment">已定位关联还款</string>
-    <string name="debt_activity_supersedes">替代申报：%1$s</string>
+    <string name="debt_activity_supersedes">替代了先前申报</string>
     <string name="debt_activity_fx">冻结汇率：%1$s</string>
     <string name="debt_activity_fx_manual">手动汇率</string>
     <string name="debt_activity_fx_base">同币种，无需换算</string>

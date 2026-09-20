@@ -44,6 +44,19 @@ class DebtActivityRowRenderTest {
     }
 
     @Test
+    fun supersededProposalExplainsTheRelationshipWithoutShowingPublicId() {
+        val publicId = "65a0a833-941a-4dc5-a907-df67a41b8de0"
+        render(listOf(activity("proposal_created", "proposal-2").copy(
+            proposal = partialProposal().copy(
+                publicId = "proposal-2",
+                supersedesProposalPublicId = publicId,
+            ),
+        )))
+        compose.onNodeWithText(context.getString(R.string.debt_activity_supersedes)).performScrollTo().assertExists()
+        compose.onNodeWithText(publicId, substring = true).assertDoesNotExist()
+    }
+
+    @Test
     fun originalPaymentAndVoidKeepForeignAmountFrozenFxAndReason() {
         val payment = DebtRepayment("payment-1", 700, "2026-09-01T00:00:00Z", "2026-09-02T00:00:00Z", "voided",
             DebtRepaymentVoid("void-1", "重复收款", "2026-09-03T00:00:00Z"), "USD", 100, "7.0", "2026-09-01", "manual")

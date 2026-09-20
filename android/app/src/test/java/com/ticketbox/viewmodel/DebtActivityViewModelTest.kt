@@ -76,7 +76,7 @@ class DebtActivityViewModelTest {
     }
 
     @Test
-    fun acceptedCommandRefreshFailureKeepsThePreviouslyReadPage() = runTest(dispatcher) {
+    fun acceptedCommandRefreshFailureMakesRetainedPageReadOnlyUntilRecovery() = runTest(dispatcher) {
         var fail = false
         val model = DebtActivityViewModel(DebtActivityQueries { task, page, _ ->
             if (fail) Result.failure(IOException("offline")) else Result.success(historyPage(task.debtPublicId, page))
@@ -86,12 +86,20 @@ class DebtActivityViewModelTest {
         advanceUntilIdle()
         model.loadPage(2)
         advanceUntilIdle()
+        assertTrue(model.state.value.actionsCurrent)
         fail = true
         model.loadDebt(task, 1, acknowledgedCommandRevision = 1)
         advanceUntilIdle()
         assertEquals("payment-2", model.state.value.items.single().publicId)
         assertEquals(2, model.state.value.page)
         assertNotNull(model.state.value.error)
+        assertFalse(model.state.value.actionsCurrent)
+        fail = false
+        model.refresh()
+        advanceUntilIdle()
+        assertTrue(model.state.value.actionsCurrent)
+        assertEquals("payment-1", model.state.value.items.single().publicId)
+        assertEquals(null, model.state.value.error)
     }
 
     @Test
