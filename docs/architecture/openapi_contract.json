@@ -19992,6 +19992,11 @@
           "currency": {
             "$ref": "#/components/schemas/RuntimeCurrencyCapabilityResponse"
           },
+          "original_attachment_version": {
+            "minimum": 1.0,
+            "title": "Original Attachment Version",
+            "type": "integer"
+          },
           "upload_original_receipt_version": {
             "minimum": 1.0,
             "title": "Upload Original Receipt Version",
@@ -20001,6 +20006,7 @@
         "required": [
           "upload_original_receipt_version",
           "accounting_time_input_version",
+          "original_attachment_version",
           "currency"
         ],
         "title": "RuntimeProductCapabilitiesResponse",

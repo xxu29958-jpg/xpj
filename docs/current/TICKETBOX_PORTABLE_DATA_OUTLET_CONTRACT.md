@@ -7,10 +7,11 @@ The existing product atlas remains the complete delivery plan. This document
 defines the next portable-export task; it does not replace either architecture
 contract or open Windows lifecycle actions.
 
-Preparation starts from `6c4a8adf41f6c051ea288d64fda6e67550a0423e`, the isolated
-original-integrity candidate. That candidate still requires cloud qualification,
-protected merge and independent main qualification. Its verified original reader
-is a dependency, not an already qualified new baseline.
+Preparation started from the isolated original-integrity candidate. PR #424 is
+now protected-squash merged at `50a128d185dbcf92689736cfd51e3eef25599dac`, with a
+source tree identical to its fully qualified final candidate `019711bc`. This
+outlet integrates that main baseline, including the reviewed original-read and
+offline-continuation fixes; its own final candidate still requires qualification.
 
 ## User result and retained capabilities
 

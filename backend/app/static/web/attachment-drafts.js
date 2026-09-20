@@ -20,7 +20,14 @@
       throw Error("submitted_snapshot_is_immutable");
     }
     const meta = file ? await window.TicketboxDraftFiles.put(store.key(ref), scope, file) : {};
-    return store.save(scope, ref, "editing", {...values, ...meta});
+    try {
+      return store.save(scope, ref, "editing", {...values, ...meta});
+    } catch (error) {
+      if (file && meta.file_sha256 !== previous?.values.file_sha256) {
+        await window.TicketboxDraftFiles.remove(store.key(ref), meta.file_sha256);
+      }
+      throw error;
+    }
   }
   async function submitted(scope, ref) {
     const record = store.read(ref);
@@ -36,5 +43,11 @@
     await window.TicketboxDraftFiles.remove(store.key(ack.clientRef));
     return true;
   }
-  window.TicketboxAttachmentDrafts = {store, retain, submitted, acknowledge};
+  async function discardRejected(proof) {
+    if (!store.canDiscardRejected(proof)) return false;
+    // Keep the rejected intent discoverable if Blob cleanup fails; callers hold its lock.
+    await window.TicketboxDraftFiles.remove(store.key(proof.clientRef));
+    return store.discardRejected(proof);
+  }
+  window.TicketboxAttachmentDrafts = {store, retain, submitted, acknowledge, discardRejected};
 })(window);
