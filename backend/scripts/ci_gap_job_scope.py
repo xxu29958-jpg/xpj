@@ -6,7 +6,7 @@ import pathlib
 import re
 
 from ci_gap_shell import shell_tokens
-from ci_gap_trigger_scope import CI_HEAVY_SCOPES
+from ci_gap_trigger_scope import CI_ANDROID_CAPABILITIES, CI_HEAVY_SCOPES
 from ci_gap_workflow_conditions import (
     GITHUB_TERMINAL_JOBS,
     GithubTerminalContract,
@@ -14,8 +14,14 @@ from ci_gap_workflow_conditions import (
 )
 
 HEAVY_JOB_SCOPES = frozenset(CI_HEAVY_SCOPES)
+_GITHUB_JOB_SCOPES = HEAVY_JOB_SCOPES | frozenset(CI_ANDROID_CAPABILITIES)
+_ANDROID_CAPABILITY_JOBS = {
+    ("ci.yml", "android_apk_debug"): "android_apk",
+    ("ci.yml", "android_apk_release"): "android_apk",
+    ("android-connected-test.yml", "connected_execution"): "android_connected",
+}
 _GITHUB_SCOPE_OUTPUTS = {
-    scope: f"${{{{ steps.scope.outputs.{scope} }}}}" for scope in HEAVY_JOB_SCOPES
+    scope: f"${{{{ steps.scope.outputs.{scope} }}}}" for scope in _GITHUB_JOB_SCOPES
 }
 _GITHUB_SCOPE_OUTPUTS["postgres_matrix"] = "${{ steps.scope.outputs.postgres_matrix }}"
 _GITHUB_SCOPE_OUTPUTS["qualification_sha"] = "${{ steps.qualification.outputs.sha }}"
@@ -35,7 +41,7 @@ _GITHUB_SCOPE_CONTRACTS = {
     "codeql.yml": ("CodeQL scope", _GITHUB_ANDROID_SCOPE_OUTPUTS, False),
     "android-connected-test.yml": (
         "Connected scope",
-        _GITHUB_ANDROID_SCOPE_OUTPUTS,
+        {**_GITHUB_ANDROID_SCOPE_OUTPUTS, "android_connected": "${{ steps.scope.outputs.android_connected }}"},
         False,
     ),
 }
@@ -328,7 +334,7 @@ def _scoped_job_name(raw_job: dict[object, object]) -> str | None:
     ):
         return None
     match = _FAIL_CLOSED_CONDITION.fullmatch(_expression_text(raw_job.get("if")))
-    if match is None or match.group(2) not in HEAVY_JOB_SCOPES:
+    if match is None or match.group(2) not in _GITHUB_JOB_SCOPES:
         return None
     return match.group(2)
 
@@ -441,14 +447,17 @@ def scoped_job_protection_scope(
     scope = _scoped_job_name(raw_job)
     if scope is None:
         return None
+    protection_scope = "android" if scope in CI_ANDROID_CAPABILITIES else scope
+    if scope != _ANDROID_CAPABILITY_JOBS.get((path.name, str(job_name)), protection_scope):
+        return None
     if ".github" in path.parts and not _terminal_gate_protects_job(
         path,
-        scope,
+        protection_scope,
         str(job_name),
         jobs,
     ):
         return None
-    return scope
+    return protection_scope
 
 
 def scoped_step_protection_scope(

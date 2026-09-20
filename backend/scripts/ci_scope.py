@@ -15,10 +15,10 @@ import sys
 from pathlib import Path
 
 if __package__:
-    from .ci_gap_trigger_scope import CI_HEAVY_SCOPES, classify_ci_decision
+    from .ci_gap_trigger_scope import CI_ANDROID_CAPABILITIES, CI_HEAVY_SCOPES, classify_ci_decision
     from .postgres_release_policy import POSTGRES_RELEASE_POLICY
 else:
-    from ci_gap_trigger_scope import CI_HEAVY_SCOPES, classify_ci_decision
+    from ci_gap_trigger_scope import CI_ANDROID_CAPABILITIES, CI_HEAVY_SCOPES, classify_ci_decision
     from postgres_release_policy import POSTGRES_RELEASE_POLICY
 
 
@@ -35,10 +35,14 @@ def changed_paths(base: str, head: str) -> list[str]:
     ]
 
 
-def write_outputs(path: Path, scopes: dict[str, bool]) -> None:
+def write_outputs(
+    path: Path, scopes: dict[str, bool], android_capabilities: dict[str, bool],
+) -> None:
     with path.open("a", encoding="utf-8", newline="\n") as output:
         for scope in CI_HEAVY_SCOPES:
             output.write(f"{scope}={'true' if scopes[scope] else 'false'}\n")
+        for capability in CI_ANDROID_CAPABILITIES:
+            output.write(f"{capability}={'true' if android_capabilities[capability] else 'false'}\n")
         output.write(f"postgres_matrix={POSTGRES_RELEASE_POLICY.matrix_json()}\n")
 
 
@@ -72,7 +76,7 @@ def resolve_ci_scope(event: str, base: str, head: str) -> dict[str, object]:
         "diff_head": head or None,
         "source_kind": "event_diff",
     }
-    if event not in {"pull_request", "push"} or not base or not head:
+    if event != "pull_request" or not base or not head:
         return _forced_full(
             identity,
             "event has no trusted incremental diff base; running all heavy jobs",
@@ -117,6 +121,15 @@ def _scope_lane_lines(decision: dict[str, object]) -> list[str]:
     return lines
 
 
+def _android_capability_lines(decision: dict[str, object]) -> list[str]:
+    capabilities = decision["android_capabilities"]
+    assert isinstance(capabilities, dict)
+    selected = ", ".join(
+        f"{name}={'true' if capabilities[name] else 'false'}" for name in CI_ANDROID_CAPABILITIES
+    )
+    return [f"Android capabilities: {selected} ({decision['android_reason']})"]
+
+
 def _hit_line(hit: dict) -> str:
     consumer = f" consumer={hit['consumer']}" if hit.get("consumer") else ""
     return (
@@ -150,6 +163,7 @@ def _scope_path_lines(decision: dict[str, object]) -> list[str]:
 def render_scope_explanation(decision: dict[str, object]) -> str:
     lines = _scope_header(decision)
     lines.extend(_scope_lane_lines(decision))
+    lines.extend(_android_capability_lines(decision))
     lines.extend(_scope_hit_lines(decision))
     lines.extend(_scope_path_lines(decision))
     return "\n".join(lines) + "\n"
@@ -192,7 +206,9 @@ def main() -> int:
     decision = resolve_ci_scope(args.event, args.base, args.head)
     scopes = decision["scopes"]
     assert isinstance(scopes, dict)
-    write_outputs(args.output, {name: bool(scopes[name]) for name in CI_HEAVY_SCOPES})
+    capabilities = decision["android_capabilities"]
+    assert isinstance(capabilities, dict)
+    write_outputs(args.output, scopes, capabilities)
     try:
         _write_explanation(args, decision)
     except (OSError, TypeError, ValueError, KeyError) as exc:

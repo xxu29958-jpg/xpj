@@ -17,9 +17,9 @@ _MISSING_WORKFLOW_VIOLATION = "required workflow missing from CI gap scan"
 _SCOPE_POLICY_VIOLATION = "Android release APK builds must be path-gated for non-Android changes"
 _EXPECTED_WORKFLOWS = ((".github", "ci.yml", True), (".gitea", "windows-ci.yml", False))
 _RELEASE_IF = "steps.release-apk-scope.outputs.release_apk_required == 'true'"
-_CENTRAL_ANDROID_IF = (
+_CENTRAL_ANDROID_APK_IF = (
     "${{ always() && !cancelled() && "
-    "(needs.scope.result != 'success' || needs.scope.outputs.android != 'false') }}"
+    "(needs.scope.result != 'success' || needs.scope.outputs.android_apk != 'false') }}"
 )
 _RELEASE_TASKS = (":app:assembleGrayRelease", ":app:assembleInternalRelease")
 
@@ -408,7 +408,7 @@ def _github_central_scope_valid(path: pathlib.Path) -> bool:
             normalized_needs = set(needs)
         else:
             normalized_needs = set()
-        if "scope" not in normalized_needs or job.get("if") != _CENTRAL_ANDROID_IF:
+        if "scope" not in normalized_needs or job.get("if") != _CENTRAL_ANDROID_APK_IF:
             return False
     return True
 

@@ -43,6 +43,7 @@ from tests._infra.db import (
     cleanup_orphan_test_runtimes,
     cleanup_runtime,
     cleanup_test_runtime,
+    clear_db_state,
     host_runtime_lease,
     reset_db_state,
     transactional_isolation,
@@ -141,14 +142,24 @@ def _db_isolation(request: pytest.FixtureRequest):
     by ``_isolation_schema``). ``@pytest.mark.real_db`` opts out for tests needing
     real cross-connection commits (concurrency, ``engine.begin()`` migrations);
     they get a full reset + a teardown reset so their committed rows don't leak
-    into the next transaction-isolated test's baseline.
+    into the next transaction-isolated test's baseline.  An explicitly sharded,
+    pure real-db lane may leave the schema empty at teardown because the next
+    test always performs its own full rebuild; single-lane and mixed invocations
+    retain the fully rebuilt teardown baseline.
     """
     if "real_db" in request.keywords:
+        clear_only_teardown = (
+            request.config.getoption(POSTGRES_PYTEST_LANE_DEST) == "real-db"
+            and request.config.getoption(POSTGRES_PYTEST_SHARD_COUNT_DEST) > 1
+        )
         reset_db_state()
         try:
             yield
         finally:
-            reset_db_state()
+            if clear_only_teardown:
+                clear_db_state()
+            else:
+                reset_db_state()
         return
     with transactional_isolation():
         yield

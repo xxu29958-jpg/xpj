@@ -13,6 +13,7 @@ def _scoped_verifier_command(
     scope_key: str,
     *lanes: str,
     source_lanes: tuple[str, ...] = (),
+    lane_scopes: tuple[tuple[str, str], ...] = (),
     executable: str = "python",
     script: str = _SCOPED_VERIFIER,
 ) -> tuple[str, ...]:
@@ -21,6 +22,8 @@ def _scoped_verifier_command(
         command.extend(("--lane", lane))
     for lane in source_lanes:
         command.extend(("--source-lane", lane))
+    for lane, key in lane_scopes:
+        command.extend(("--lane-scope", f"{lane}={key}"))
     return tuple(command)
 
 
@@ -137,10 +140,11 @@ GITHUB_TERMINAL_JOBS = {
     ("ci.yml", "android"): GithubTerminalContract(
         job="android",
         command=_scoped_verifier_command(
-            "Android", "ANDROID_SCOPE", "FAST", "DEBUG_APK", "RELEASE_APK", "SCA"
+            "Android", "ANDROID_SCOPE", "FAST", "DEBUG_APK", "RELEASE_APK", "SCA",
+            lane_scopes=(("DEBUG_APK", "ANDROID_APK_SCOPE"), ("RELEASE_APK", "ANDROID_APK_SCOPE")),
         ),
         shell=None,
-        scope_bindings=(("ANDROID_SCOPE", "android"),),
+        scope_bindings=(("ANDROID_SCOPE", "android"), ("ANDROID_APK_SCOPE", "android_apk")),
         lane_bindings=(
             ("android_fast", "FAST"),
             ("android_apk_debug", "DEBUG_APK"),
@@ -161,9 +165,12 @@ GITHUB_TERMINAL_JOBS = {
     ),
     ("android-connected-test.yml", "android"): GithubTerminalContract(
         job="connected",
-        command=_scoped_verifier_command("Connected", "ANDROID_SCOPE", "EXECUTION"),
+        command=_scoped_verifier_command(
+            "Connected", "ANDROID_SCOPE", "EXECUTION",
+            lane_scopes=(("EXECUTION", "ANDROID_CONNECTED_SCOPE"),),
+        ),
         shell=None,
-        scope_bindings=(("ANDROID_SCOPE", "android"),),
+        scope_bindings=(("ANDROID_SCOPE", "android"), ("ANDROID_CONNECTED_SCOPE", "android_connected")),
         lane_bindings=(("connected_execution", "EXECUTION"),),
     ),
 }

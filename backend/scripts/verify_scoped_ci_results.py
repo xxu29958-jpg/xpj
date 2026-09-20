@@ -21,12 +21,12 @@ class Verification:
 def _missing_fields(
     values: Mapping[str, str],
     *,
-    scope_key: str,
+    scope_keys: Sequence[str],
     lanes: Sequence[str],
 ) -> list[str]:
     required = {
         "SCOPE_RESULT",
-        scope_key,
+        *scope_keys,
         "EXPECTED_SHA",
         "EXPECTED_SOURCE_SHA",
         "AGGREGATOR_SHA",
@@ -138,6 +138,37 @@ def _verify_required_lanes(
     return Verification(True, f"Required {label} lanes are valid.")
 
 
+def _scope_failure(
+    values: Mapping[str, str],
+    label: str,
+    scope_key: str,
+    lane_scopes: Mapping[str, str],
+) -> Verification | None:
+    for key in {scope_key, *lane_scopes.values()}:
+        if values[key] not in {"true", "false"}:
+            return Verification(False, f"invalid {label} scope output: {key}={values[key]}")
+    if values[scope_key] == "false" and any(values[key] == "true" for key in lane_scopes.values()):
+        return Verification(False, f"{label} capability selected outside parent scope")
+    return None
+
+
+def _verify_scoped_lanes(
+    values: Mapping[str, str],
+    label: str,
+    lane_scopes: Mapping[str, str],
+    source_lanes: Sequence[str],
+) -> Verification:
+    required = [lane for lane, key in lane_scopes.items() if values[key] == "true"]
+    skipped = [lane for lane, key in lane_scopes.items() if values[key] == "false"]
+    result = _verify_required_lanes(values, label, required, source_lanes)
+    if not result.ok:
+        return result
+    result = _verify_skipped_lanes(values, label, skipped)
+    if not result.ok:
+        return result
+    return Verification(True, f"{label} lanes valid: required={','.join(required) or '(none)'}; not affected={','.join(skipped) or '(none)'}")
+
+
 def verify(
     values: Mapping[str, str],
     *,
@@ -145,10 +176,15 @@ def verify(
     scope_key: str,
     lanes: Sequence[str],
     source_lanes: Sequence[str],
+    lane_scopes: Mapping[str, str] | None = None,
 ) -> Verification:
     if not set(source_lanes).issubset(lanes):
         return Verification(False, "source lanes must also be required lanes")
-    missing = _missing_fields(values, scope_key=scope_key, lanes=lanes)
+    overrides = lane_scopes or {}
+    if not set(overrides).issubset(lanes):
+        return Verification(False, "scope overrides must name declared lanes")
+    resolved = {lane: overrides.get(lane, scope_key) for lane in lanes}
+    missing = _missing_fields(values, scope_keys=(scope_key, *resolved.values()), lanes=lanes)
     if missing:
         return Verification(
             False,
@@ -158,12 +194,10 @@ def verify(
     if identity_failure is not None:
         return identity_failure
 
-    scope = values[scope_key]
-    if scope == "false":
-        return _verify_skipped_lanes(values, label, lanes)
-    if scope != "true":
-        return Verification(False, f"invalid {label} scope output: {scope}")
-    return _verify_required_lanes(values, label, lanes, source_lanes)
+    scope_failure = _scope_failure(values, label, scope_key, resolved)
+    if scope_failure is not None:
+        return scope_failure
+    return _verify_scoped_lanes(values, label, resolved, source_lanes)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -172,7 +206,20 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--scope-key", required=True)
     parser.add_argument("--lane", action="append", default=[])
     parser.add_argument("--source-lane", action="append", default=[])
+    parser.add_argument("--lane-scope", action="append", default=[], metavar="LANE=SCOPE_KEY")
     return parser
+
+
+def _parse_lane_scopes(
+    parser: argparse.ArgumentParser, bindings: Sequence[str], lanes: Sequence[str],
+) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for binding in bindings:
+        lane, separator, key = binding.partition("=")
+        if not separator or lane not in lanes or lane in result or not _ENV_KEY.fullmatch(key):
+            parser.error("lane scope must uniquely bind a declared lane to an uppercase environment key")
+        result[lane] = key
+    return result
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -198,6 +245,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         scope_key=args.scope_key,
         lanes=lanes,
         source_lanes=source_lanes,
+        lane_scopes=_parse_lane_scopes(parser, args.lane_scope, lanes),
     )
     print(result.message, file=sys.stdout if result.ok else sys.stderr)
     return 0 if result.ok else 1

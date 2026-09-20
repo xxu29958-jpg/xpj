@@ -101,9 +101,13 @@ def test_pr_scan_consumes_trusted_main_artifact_without_a_secret() -> None:
 
     assert workflow["permissions"] == {"contents": "read"}
     assert sca["permissions"] == {"actions": "read", "contents": "read"}
-    for job in (fast, debug_apk, release_apk, sca):
+    apk_scope_condition = expected_scope_condition.replace("outputs.android ", "outputs.android_apk ")
+    for job, expected in (
+        (fast, expected_scope_condition), (sca, expected_scope_condition),
+        (debug_apk, apk_scope_condition), (release_apk, apk_scope_condition),
+    ):
         assert job["needs"] == "scope"
-        assert job["if"] == expected_scope_condition
+        assert job["if"] == expected
         assert all(
             "XPJ_AUDIT_BASE_REF" not in (step.get("env") or {})
             for step in job["steps"]
@@ -154,6 +158,20 @@ def test_pr_scan_consumes_trusted_main_artifact_without_a_secret() -> None:
         "android_apk_release",
         "android_sca",
     }
+
+
+def test_connected_capability_keeps_prebuild_evidence_and_terminal_in_one_selection() -> None:
+    jobs = yaml.safe_load((_ROOT / ".github/workflows/android-connected-test.yml").read_text(encoding="utf-8"))["jobs"]
+    execution = jobs["connected_execution"]
+    assert "outputs.android_connected != 'false'" in execution["if"]
+    prebuild = next(step for step in execution["steps"] if "Precompile" in step.get("name", ""))
+    assert ":app:assembleGrayDebug :app:assembleGrayDebugAndroidTest" in prebuild["run"]
+    terminal = {step["name"]: step for step in jobs["connected"]["steps"]}
+    for name in ("Require all connected shards", "Download connected shard evidence", "Qualify connected shard union"):
+        assert terminal[name]["if"] == "${{ success() && needs.scope.outputs.android_connected != 'false' }}"
+    enforce = next(step for step in terminal.values() if "--scope-key" in step.get("run", ""))
+    assert "--lane-scope EXECUTION=ANDROID_CONNECTED_SCOPE" in enforce["run"]
+    assert enforce["env"]["ANDROID_CONNECTED_SCOPE"] == "${{ needs.scope.outputs.android_connected }}"
 
 
 def test_android_cloud_builds_share_one_java_and_sdk_contract() -> None:

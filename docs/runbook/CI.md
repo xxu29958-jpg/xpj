@@ -41,7 +41,7 @@ GitHub hosted runner 并行执行，是主要合并依据。本地 Gitea runner 
 
 ### ci-scope + backend-contracts + Backend（常驻快速合同）
 
-`ci-scope` 用精确 PR base/head 做 NUL 分隔、禁 rename 推断的路径分类，输出 `postgres / desktop / android / windows` 四个资源域、由发布策略生成的 PostgreSQL matrix 和实际 checkout SHA。路径分类只有 `ci_gap_trigger_scope.py` 一份真源；job 仅在分类器成功且明确输出 `false` 时跳过。分类器无法比较时输出全量；scope job 本身失败时不得静默跳过或汇总为绿色，必需检查直接失败。
+`ci-scope` 用精确 PR base/head 做 NUL 分隔、禁 rename 推断的路径分类，保留 `postgres / backend_frozen / desktop / android / windows` 五个上层 scope，并运输 Android 的 `android_apk / android_connected` 两个能力标志、由发布策略生成的 PostgreSQL matrix 和实际 checkout/source SHA。路径分类只有 `ci_gap_trigger_scope.py` 一份真源；job 仅在分类器成功且明确输出 `false` 时跳过。分类器无法比较时输出全量；scope job 本身失败时不得静默跳过或汇总为绿色，必需检查直接失败。非 PR 事件（包括 main push、手动资格、release/未知事件）即使携带 base 也全量执行。
 
 ```powershell
 scripts\check_text_encoding.ps1 + check_dependency_versions.ps1 + 全部 .ps1 的 BOM/语法检查
@@ -69,6 +69,8 @@ GitHub 是发布验收与合并权威；Gitea 是离线镜像和自检后备，G
 ordinary lane 以两个同构 GitHub matrix 分片执行完整测试树中所有未标记 `real_db` 的用例，每个分片再为四个 xdist worker 动态创建独立数据库、文件根和租约。`real_db` 分成四个 GitHub matrix job，但每个 job 使用独立 PostgreSQL service cluster 且 shard 内保持单进程串行，固定 restore database、cluster-global role、DDL 与 migration 测试不会在同一 cluster 内并发；本地与 Gitea 仍完整串行。ordinary 保持完整 pytest nodeid 的稳定哈希归属；real-db 从本次完整 collection 的 nodeid 哈希排序后轮转分配，使四片承担的逐项 reset/migration 数量相差至多一项，片内保留原 collection 顺序。两者都不维护 nodeid、文件名、目录或字符串名单；新增、移动、重命名、参数化及删除测试自动参与完整分配。smoke + recovery lane 继续执行真实 `pg_dump` / restore drill。ordinary / real-db 的责任分类权威仍只有测试源码 marker。
 
 ordinary 分片内将 `large_dataset` marker 标注的完整大数据旅程提前，其余测试保持相对顺序，让既有 worksteal worker 尽早处理已测得的长任务。当前用于 10,000 行 CSV 分页导入；行数、逐行持久化、分页、重放和最终数据比较不变。marker 只影响执行顺序，缺少它仍完整执行；不改变分片归属，也不改变未分片的本地/Gitea 顺序，不引入历史耗时服务或手工测试名权重表。数量平衡和提前开始不等于已证明墙钟提速，收益与总 runner 成本以实际完整资格为准。
+
+纯 `real-db` 且 `shard_count > 1` 的串行分片，每测前仍完整执行 `DROP/CREATE public`、清理测试文件、真实迁移、head 校验与 seed；每测后同样执行 `DROP/CREATE public` 和文件清理，仅省掉随后会被下一测再次删除的重复初始化。session 首次完整初始化保留。旧执行为 `完整重建 → 测试 → 完整重建 → 下一测完整重建`，当前为 `完整重建 → 测试 → 清空 → 下一测完整重建`，没有保留测试的已提交数据或削减数据库重置。集合门禁拒绝普通测试混入纯 real-db lane；无 lane、混合集合及单分片（含 Gitea）继续完整重建 teardown，以保留后续普通事务测试的基线。回退只需恢复该分片 teardown 的 `reset_db_state()`，不改变测试或调度集合。
 
 后端测试数量只在 `backend/audit/test_count_baseline.txt` 维护。它是严格对账信号，不是覆盖率或分类权威：新增测试与源码同 commit 提高基线；base ratchet 同时阻止一个 PR 删除测试并下调自己的可编辑基线。测试整合必须先保留或补上独立风险证明，不能为了变绿改小数字。总数仍不能证明语义质量，因为“删除高价值测试、补同数量低价值参数化用例”也能骗过它，所以机器计数与代码审计缺一不可。该文件与测试源码同属 PostgreSQL 域；`codebase_audit_gate.py` 只保留政策，不再因正常增测把 PR 放大成全端构建。
 
@@ -101,7 +103,19 @@ GitHub 云端 Android 资格链按责任并行：`Android fast` 跑编译、单�
 
 ### android-connected（模拟器，scope-aware）
 
-云端 connected workflow `.github/workflows/android-connected-test.yml` 保留稳定 required 检查 `Connected (emulator)` 和共享 scope。明确无关时由聚合器核对跳过语义；Android、CI、未知范围或分类失败时，完整 instrumentation suite 交给 AndroidX runner 的 `numShards=2` / `shardIndex`，在两个独立的 API 36 emulator job 执行。各片分别构建并安装本提交的 app/test APK，不继承其他提交的构建或测试 PASS，`fail-fast: false` 保留其他片的独立诊断。普通本地与 Gitea 未分片入口继续执行全套及原有全局计数门禁。
+B3 仅缩减已证明无关的执行，混合业务变更仍执行完整 Android 资格。分类器检查整个 diff（包含重命名的旧、新路径以及常驻合同文件），仅以下两种纯测试源码集合可以减少执行：
+
+| 完整输入集合 | fast、schema、静态与数量门禁 | 独立 Gray/Internal debug/release APK | Connected、app/test APK、XML 与进程资格 | SCA / CodeQL |
+| --- | --- | --- | --- | --- |
+| 仅 `android/app/src/test/java/` 的 `.kt/.java` 或 `test/kotlin/` 的 `.kt` | 保留 | 可跳过 | 可跳过 | 保留 |
+| 仅 `android/app/src/androidTest/java/` 的 `.kt/.java` 或 `androidTest/kotlin/` 的 `.kt` | 保留 | 可跳过 | 保留 | 保留 |
+| 两类混合、生产、Gradle、依赖、manifest、schema、计数基线、公共 fixture、策略、资源或其他未证明输入 | 保留 | 保留 | 保留 | 保留 |
+
+当前 Gradle 没有把两类测试互接为共享 sourceSet；同源集 Kotlin/Java fixture 由对应编译与真实测试消费。`app/schemas` 是设备测试 assets，不能按测试文件处理。fast 保留现有全部任务；它不编译 instrumentation 源码，不能代替 Connected。设备测试候选的 Connected 仍先构建本提交的 `assembleGrayDebug` 与 `assembleGrayDebugAndroidTest`，再执行真实两片设备测试与完整证据汇总。更名跨入生产目录、CI 规则改动或同步修改数量基线均恢复全量；本次策略 PR 自身不会用新规则减跑。
+
+现有 `verify_scoped_ci_results.py` 用 `--lane-scope` 逐项核对能力标志：被选中的 lane 必须成功且 checkout/source 身份正确；明确无关的 lane 必须为没有 SHA 的 `skipped`。缺标志、非法值、父 scope 与子能力矛盾、失败、取消、错误跳过及错 SHA 均拒绝。CI-gap 同时检查 scope 输出、任务条件和汇总器绑定；解释来自同一次分类结果。回退时将分类器两标志恢复为上层 Android scope 即可保留全量资格，不必重建工作流。
+
+云端 connected workflow `.github/workflows/android-connected-test.yml` 保留稳定 required 检查 `Connected (emulator)` 和共享 scope。`android_connected` 明确无关时由聚合器核对跳过语义；其余情况完整 instrumentation suite 交给 AndroidX runner 的 `numShards=2` / `shardIndex`，在两个独立的 API 36 emulator job 执行。各片分别构建并安装本提交的 app/test APK，不继承其他提交的构建或测试 PASS，`fail-fast: false` 保留其他片的独立诊断。普通本地与 Gitea 未分片入口继续执行全套及原有全局计数门禁。
 
 每片仍由 `prepareGrayConnectedTestEvidence` / `guardConnectedAndroidTestEmulatorOnly` / `qualifyGrayConnectedTestEvidence` 完成真实测试与进程资格：测试前后采集 `ApplicationExitInfo`，从实际 APK manifest 取得目标包、测试包及其进程，保留原有终态判断和缺证据即失败语义。先固定真实测试的 after/crash 证据，再以同一 APK 的 runner `log=true` 发现完整测试 ID；这个枚举过程不充当测试执行或进程健康证据。每片 XML 必须无失败、跳过或空片；独立汇总将各片完整 ID（包括参数化后缀）的多重集合并集与 runtime discovery 对账，拒绝漏项、重复、发现集合不一致和错 checkout/source/run。全局 instrumentation 基线在并集上检查，不能除以片数。JVM 计数仍消费真实 Gradle JUnit XML。
 
