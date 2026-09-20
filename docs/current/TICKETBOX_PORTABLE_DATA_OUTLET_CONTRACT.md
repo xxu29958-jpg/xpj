@@ -210,3 +210,17 @@ cannot revive a retired file through an earlier receipt. Three counterexamples
 failed before these fixes; the 31 query/archive tests and Ruff pass afterward.
 The preceding `e0cc4ff` candidate passed every PostgreSQL shard in CI; the revised
 candidate still needs its own exact-head gate before merge.
+
+Final review dispositions: retain the admitted digest for cleanup image paths
+after replenishment (the original command changes the path, never that identity),
+and include ledger-shared merchant-alias idempotency receipts even after the alias
+is deleted. Three assertions failed before repair; all 33 query/archive tests and
+Ruff pass afterward. The earlier `f0be7844` passed CI, CodeQL and Connected.
+
+The malformed-request finding is rejected for the current supported database:
+the `20260920_0002` migration adds the nullable column together with a validated
+`ck_expenses_attachment_cleanup_request`, which requires `request_id` and the
+closed shape; existing direct-SQL migration tests reject malformed objects.
+The tag-receipt claim is also rejected: API/Web tag commands use OCC and write
+`LedgerAuditLog` through `resource_audit`, not `ApiIdempotencyKey`. Their existing
+authorized audit/undo collections remain; no imaginary receipt producer is added.
