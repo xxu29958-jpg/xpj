@@ -65,22 +65,35 @@ jobs:
             --output "$GITHUB_OUTPUT"
 
   connected_execution:
-    name: Connected execution
+    name: Connected execution (${{ matrix.shard.label }})
     needs: scope
     if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.android != 'false') }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard:
+          - index: 0
+            count: 2
+            label: 1/2
+          - index: 1
+            count: 2
+            label: 2/2
     # First-round measured budget: precompile, 24m test task, 30m Gradle
     # command, bounded after/crash finalizer, then diagnostic upload.
     timeout-minutes: 45
-    outputs:
-      qualification_sha: ${{ steps.qualification.outputs.sha }}
-      qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
 
     env:
       # Same canonical owner URL the regular android job injects, so
       # BuildConfig.DEFAULT_SERVER_URL is populated. From the repo Actions variable
       # (keeps the origin host out of the public workflow file).
       TICKETBOX_SERVER_URL: ${{ vars.TICKETBOX_SERVER_URL }}
+      TICKETBOX_CONNECTED_CHECKOUT_SHA: ${{ github.sha }}
+      TICKETBOX_CONNECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      TICKETBOX_CONNECTED_RUN_ID: ${{ github.run_id }}
+      TICKETBOX_CONNECTED_RUN_ATTEMPT: ${{ github.run_attempt }}
+      TICKETBOX_CONNECTED_SHARD_INDEX: ${{ matrix.shard.index }}
+      TICKETBOX_CONNECTED_SHARD_COUNT: ${{ matrix.shard.count }}
 
     steps:
       - name: Checkout
@@ -146,36 +159,99 @@ jobs:
           # The 24m test task owns the suite. The bounded after/crash
           # finalizer still runs inside this command after task failure or
           # timeout, while the emulator is up. Do not move it after this step.
-          script: timeout --signal=INT --kill-after=30s 30m ./gradlew --no-daemon --max-workers=2 -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true :app:connectedGrayDebugAndroidTest
+          script: timeout --signal=INT --kill-after=30s 30m ./gradlew --no-daemon --max-workers=2 -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true "-Pandroid.testInstrumentationRunnerArguments.numShards=${{ matrix.shard.count }}" "-Pandroid.testInstrumentationRunnerArguments.shardIndex=${{ matrix.shard.index }}" :app:connectedGrayDebugAndroidTest
 
       - name: Upload real consumer art previews
         if: ${{ always() && !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: consumer-art-previews
+          name: consumer-art-previews-${{ matrix.shard.index }}-attempt-${{ github.run_attempt }}
           path: android/app/build/**/ticketbox-art-*.png
           if-no-files-found: warn
           retention-days: 7
 
-      - name: Upload androidTest reports on failure
-        if: failure()
+      - name: Upload connected shard evidence
+        if: ${{ always() && !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: connected-test-reports
+          name: connected-shard-${{ matrix.shard.index }}-attempt-${{ github.run_attempt }}
           path: |
             android/app/build/reports/androidTests/**
             android/app/build/outputs/androidTest-results/**
             ${{ runner.temp }}/ticketbox-connected-crash.log
             ${{ runner.temp }}/ticketbox-connected-exit-info-before.txt
             ${{ runner.temp }}/ticketbox-connected-exit-info-after.txt
-          if-no-files-found: ignore
+            ${{ runner.temp }}/ticketbox-connected-discovery.txt
+            ${{ runner.temp }}/ticketbox-connected-discovery-exit-code.txt
+            ${{ runner.temp }}/ticketbox-connected-shard-evidence.json
+          if-no-files-found: error
           retention-days: 7
+
+  connected_qualification:
+    name: Connected shard qualification
+    needs:
+      - scope
+      - connected_execution
+    if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.android != 'false') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      qualification_sha: ${{ steps.qualification.outputs.sha }}
+      qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+
+      - name: Verify qualification SHA
+        id: qualification
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python -E -S backend/scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
+
+      - name: Require all connected shards
+        env:
+          EXECUTION_RESULT: ${{ needs.connected_execution.result }}
+        run: test "$EXECUTION_RESULT" = success
+
+      - name: Download connected shard evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: connected-shard-*
+          path: connected-shards
+          merge-multiple: false
+
+      - name: Qualify connected shard union
+        env:
+          EXPECTED_SHARD_COUNT: "2"
+          EXPECTED_CHECKOUT_SHA: ${{ github.sha }}
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          EXPECTED_RUN_ID: ${{ github.run_id }}
+          EXPECTED_RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: >-
+          python -E -S android/scripts/verify_android_test_qualification.py connected-shards
+          --evidence-root connected-shards
+          --baseline android/audit/test_count_baseline.txt
+          --expected-shard-count "$EXPECTED_SHARD_COUNT"
+          --expected-checkout-sha "$EXPECTED_CHECKOUT_SHA"
+          --expected-source-sha "$EXPECTED_SOURCE_SHA"
+          --expected-run-id "$EXPECTED_RUN_ID"
+          --expected-run-attempt "$EXPECTED_RUN_ATTEMPT"
 
   connected:
     name: Connected (emulator)
     needs:
       - scope
       - connected_execution
+      - connected_qualification
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -201,13 +277,13 @@ jobs:
           ENV: ""
           SCOPE_RESULT: ${{ needs.scope.result }}
           ANDROID_SCOPE: ${{ needs.scope.outputs.android }}
-          EXECUTION_RESULT: ${{ needs.connected_execution.result }}
+          QUALIFICATION_RESULT: ${{ needs.connected_qualification.result }}
           EXPECTED_SHA: ${{ github.sha }}
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           SCOPE_SHA: ${{ needs.scope.outputs.qualification_sha }}
           SCOPE_SOURCE_SHA: ${{ needs.scope.outputs.qualification_source_sha }}
-          EXECUTION_SHA: ${{ needs.connected_execution.outputs.qualification_sha }}
-          EXECUTION_SOURCE_SHA: ${{ needs.connected_execution.outputs.qualification_source_sha }}
+          QUALIFICATION_SHA: ${{ needs.connected_qualification.outputs.qualification_sha }}
+          QUALIFICATION_SOURCE_SHA: ${{ needs.connected_qualification.outputs.qualification_source_sha }}
           AGGREGATOR_SHA: ${{ steps.qualification.outputs.sha }}
           AGGREGATOR_SOURCE_SHA: ${{ steps.qualification.outputs.source_sha }}
-        run: python -E -S backend/scripts/verify_scoped_ci_results.py --label Connected --scope-key ANDROID_SCOPE --lane EXECUTION
+        run: python -E -S backend/scripts/verify_scoped_ci_results.py --label Connected --scope-key ANDROID_SCOPE --lane QUALIFICATION

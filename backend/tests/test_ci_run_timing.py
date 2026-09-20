@@ -497,6 +497,102 @@ def test_android_phases_are_direct_combined_or_unknown() -> None:
     assert phases["cache_state"]["measurement_kind"] == "unknown"
 
 
+def test_android_parallel_shards_report_the_wall_clock_span() -> None:
+    first = _job(
+        name="Connected execution (1/2)",
+        workflow_name="Android Connected Test",
+        steps=[
+            {
+                "name": "Precompile connected APKs",
+                "conclusion": "success",
+                "started_at": "2026-09-18T02:10:00Z",
+                "completed_at": "2026-09-18T02:14:00Z",
+            },
+            {
+                "name": "Run connected test",
+                "conclusion": "success",
+                "started_at": "2026-09-18T02:14:00Z",
+                "completed_at": "2026-09-18T02:24:00Z",
+            },
+        ],
+    )
+    second = _job(
+        id=2,
+        name="Connected execution (2/2)",
+        workflow_name="Android Connected Test",
+        steps=[
+            {
+                "name": "Precompile connected APKs",
+                "conclusion": "success",
+                "started_at": "2026-09-18T02:10:30Z",
+                "completed_at": "2026-09-18T02:15:00Z",
+            },
+            {
+                "name": "Run connected test",
+                "conclusion": "success",
+                "started_at": "2026-09-18T02:15:00Z",
+                "completed_at": "2026-09-18T02:27:00Z",
+            },
+        ],
+    )
+
+    phases = {
+        row["name"]: row
+        for row in ci_run_timing.android_phases_from_jobs([first, second])
+    }
+
+    assert phases["compile"]["elapsed_s"] == 300.0
+    assert phases["compile"]["parallel_jobs"] == 2
+    assert phases["emulator_prepare_install_test_exit"]["elapsed_s"] == 780.0
+    assert phases["emulator_prepare_install_test_exit"]["parallel_jobs"] == 2
+
+
+def test_android_parallel_span_keeps_each_shards_real_attempt_source() -> None:
+    first = _job(
+        name="Connected execution (1/2)",
+        workflow_name="Android Connected Test",
+        steps=_connected_steps(
+            run_started="2026-09-18T02:15:00Z",
+            run_ended="2026-09-18T02:35:00Z",
+        ),
+    )
+    inherited = {
+        **first,
+        "id": 99,
+        "run_attempt": 2,
+        "created_at": "2026-09-18T03:35:00Z",
+    }
+    rerun = _job(
+        id=2,
+        name="Connected execution (2/2)",
+        workflow_name="Android Connected Test",
+        run_attempt=2,
+        steps=_connected_steps(
+            run_started="2026-09-18T03:40:00Z",
+            run_ended="2026-09-18T03:55:00Z",
+        ),
+    )
+
+    phases = {
+        row["name"]: row
+        for row in ci_run_timing.android_phases_from_attempts(
+            [
+                {"attempt": 1, "jobs": [first]},
+                {"attempt": 2, "jobs": [inherited, rerun]},
+            ]
+        )
+    }
+    row = phases["emulator_prepare_install_test_exit"]
+    assert row["evidence_attempt"] is None
+    assert row["evidence_attempts"] == [1, 2]
+    assert row["inherited"] is True
+    assert [source["job_name"] for source in row["source_jobs"]] == [
+        "Connected execution (1/2)",
+        "Connected execution (2/2)",
+    ]
+    assert [source["evidence_attempt"] for source in row["source_jobs"]] == [1, 2]
+
+
 def test_cancelled_run_cause_is_unknown_without_platform_evidence() -> None:
     bundle = {
         "metadata": {
