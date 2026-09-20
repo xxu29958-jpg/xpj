@@ -262,7 +262,8 @@ def test_mismatched_command_is_retained_without_error_page_crash(native_task, mo
     assert 'name="command" value="unknown-command"' in response.body.decode()
 
 
-@pytest.mark.parametrize("scenario", ["preview", "command_replacement", "ack_and_repayment"])
+@pytest.mark.parametrize("scenario", ["preview", "command_replacement", "ack_and_repayment",
+                                      "pending_retained_draft", "replacement_context"])
 def test_split_original_browser_submission(scenario):
     import shutil
     import subprocess

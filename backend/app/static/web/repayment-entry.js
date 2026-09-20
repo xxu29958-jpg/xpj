@@ -24,6 +24,7 @@
   const nativeRef = refInput.value, target = form.dataset.repaymentTarget;
   const nativeValues = values(), canCreate = form.dataset.repaymentCanCreate === "true";
   const canRecover = form.dataset.repaymentCanRecover === "true";
+  let allowedCommand = canCreate ? nativeValues : null;
   let nativeResult = form.dataset.repaymentResult;
   let scope, drafts, leaseKey, replacement, acknowledged = "";
   let currentRef = "", phase = "blocked", held = false, retained = false, posting = false;
@@ -80,7 +81,8 @@
     lockInputs(!editing || !writable);
     if (preview) preview.disabled = !editing || !writable;
     submit.textContent = editing ? commandLabels[command] : "核实原约定操作";
-    return canCreate || (writable && form.dataset.splitCanDraft === "true");
+    return allowedCommand && ["command", "proposal_public_id", "supersedes_proposal_public_id"]
+      .every(name => values()[name] === allowedCommand[name]);
   }
   function showPhase() {
     panel.hidden = false;
@@ -139,7 +141,8 @@
     if (requested) return {ref:requested, requested};
     const preferred = items.find(record => record.phase !== "editing") || (splitChange ?
       items.find(record => record.values.command === nativeValues.command &&
-        record.values.proposal_public_id === nativeValues.proposal_public_id) : items[0]);
+        record.values.proposal_public_id === nativeValues.proposal_public_id &&
+        record.values.supersedes_proposal_public_id === nativeValues.supersedes_proposal_public_id) : items[0]);
     const freshRef = canCreate && nativeRef !== acknowledged ? nativeRef : "";
     return {ref:preferred ? preferred.clientRef : freshRef, requested:""};
   }
@@ -252,9 +255,10 @@
     catch (_) { notice("最新输入未能保留。请勿关闭本页，恢复存储后再提交。", "storage-error"); }
   });
   form.addEventListener("submit", function (event) {
-    if (!held || submit.disabled || posting) { event.preventDefault(); return; }
+    const previewing = preview && event.submitter === preview;
+    if (!held || posting || (previewing ? preview.disabled : submit.disabled)) { event.preventDefault(); return; }
     try {
-      if (preview && event.submitter === preview) {
+      if (previewing) {
         if (phase !== "editing") throw Error("original_is_submitted");
         persist("editing");
         return;
@@ -301,6 +305,9 @@
       if (!drafts.discardRejected({scope, clientRef:currentRef, values:previous.values,
           serverResult:"rejected"})) throw Error("refusal_not_retired");
       currentRef = next.clientRef; refInput.value = currentRef; phase = "editing";
+      // Only the server's explicit rejected-intent correction grants this new
+      // command context; general draft permission never does.
+      if (splitChange) allowedCommand = next.values;
       retained = true; replacement = null; showValues(next.values); pointTo(currentRef); showPhase(); renderShelf();
     } catch (_) {
       blocked("纠正后的输入尚未完整保留，当前没有发送。请恢复浏览器存储后再点击纠正。", "storage-error");

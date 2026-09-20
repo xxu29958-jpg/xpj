@@ -7,6 +7,32 @@ const values = {debt_public_id:target, ledger_id:'ledger', origin_binding:JSON.s
   reason:'商家部分退款，双方重新约定', supersedes_proposal_public_id:''};
 const options = {splitChange:true, fieldNames:Object.keys(values), draftPrefix:'ticketbox:split-change-draft:v1:', values};
 const cases = {
+  async pending_retained_draft() {
+    const env = environment(), page = env.page({...options, canCreate:false});
+    page.store.save(scope, original, 'editing', values); page.start(); await tick();
+    assert.equal(page.fields.reason.value, values.reason);
+    assert.equal(page.fields.reason.readOnly, false);
+    assert.equal(page.submit.disabled, true, 'editing does not authorize a new command while a proposal is pending');
+    assert.equal(page.form.fire('submit').defaultPrevented, true);
+    assert.equal(page.preview.disabled, false);
+    assert.equal(page.form.fire('submit', {submitter:page.preview}).defaultPrevented, false);
+    assert.equal(page.store.read(original).phase, 'editing');
+  },
+  async replacement_context() {
+    const env = environment(), nextValues = {...values, supersedes_proposal_public_id:repaymentId};
+    const page = env.page({...options, values:nextValues});
+    page.store.save(scope, original, 'editing', values); page.start(); await tick();
+    assert.equal(page.fields.idempotency_key.value, fresh);
+    assert.equal(page.fields.supersedes_proposal_public_id.value, repaymentId);
+    assert.equal(page.store.read(original).values.supersedes_proposal_public_id, '');
+    assert.equal(page.submit.disabled, false);
+    page.window.fire('pagehide'); await tick();
+    const old = env.page({...options, values:nextValues, hash:'#split-change-' + original});
+    old.start(); await tick();
+    assert.equal(old.fields.supersedes_proposal_public_id.value, '');
+    assert.equal(old.submit.disabled, true, 'opening an old draft does not borrow the replacement authority');
+    assert.equal(old.fields.reason.readOnly, false);
+  },
   async preview() {
     const env = environment(), page = env.page(options);
     page.start(); await tick();
