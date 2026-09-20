@@ -35,3 +35,70 @@ def test_authorization_failure_is_not_hidden_as_missing_relationship(monkeypatch
     with pytest.raises(AppError) as caught:
         links.authorized_debt_href(object(), public_id="shared-debt", selected_id="mine", account_id=2)
     assert caught.value.error == "permission_denied"
+
+
+def test_accepted_split_links_authorize_all_candidates_in_one_batch(monkeypatch):
+    from app.routes import _web_relationship_links as links
+
+    invitations = [
+        SimpleNamespace(
+            public_id=f"invite-{index}",
+            status="accepted",
+            sender_ledger_id="source",
+            sender_expense_id=index,
+        )
+        for index in range(50)
+    ]
+    monkeypatch.setattr(
+        links,
+        "list_accepted_source_relationships",
+        lambda _db, *, sender_ledger_id, sender_expense_id: (
+            SimpleNamespace(
+                invitation_public_id=f"invite-{sender_expense_id}",
+                debt_public_id=f"debt-{sender_expense_id}",
+            ),
+        ),
+    )
+    seen = []
+
+    def authorize(_db, *, public_ids, ledger_id, account_id):
+        seen.append((public_ids, ledger_id, account_id))
+        return frozenset(public_ids)
+
+    monkeypatch.setattr(links, "participant_accessible_debt_public_ids", authorize)
+
+    result = links.accepted_split_debt_links(
+        object(), invitations, selected_id="source", account_id=3,
+    )
+
+    assert len(result) == 50
+    assert seen == [({f"debt-{index}" for index in range(50)}, "source", 3)]
+
+
+def test_offset_fact_keeps_fact_when_optional_actor_cannot_be_resolved(monkeypatch):
+    from app.routes import _web_expense_offset_fact as offset_fact
+
+    accepted = [{"debt_public_id": "shared-debt"}]
+    monkeypatch.setattr(offset_fact, "expense_fact_bundle", lambda *_a, **_kw: object())
+    monkeypatch.setattr(
+        offset_fact,
+        "offset_fact_view",
+        lambda *_a, **_kw: {"offset_relationship_impacts": {"accepted": accepted}},
+    )
+
+    def unresolved(*_a, **_kw):
+        raise AppError("ledger_forbidden", status_code=403)
+
+    monkeypatch.setattr(offset_fact, "resolve_web_actor_account_id", unresolved)
+    monkeypatch.setattr(
+        offset_fact,
+        "authorized_debt_href",
+        lambda *_a, **_kw: pytest.fail("optional links must be skipped without an actor"),
+    )
+
+    view = offset_fact.expense_offset_fact_view(
+        object(), "loopback-visible", 7, False, object(),
+    )
+
+    assert view["offset_relationship_impacts"]["accepted"] == accepted
+    assert "debt_href" not in accepted[0]

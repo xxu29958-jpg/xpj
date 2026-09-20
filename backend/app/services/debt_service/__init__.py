@@ -72,6 +72,7 @@ from app.services.debt_service._query import (
     list_member_receivables_for_account,
     list_payables_for_account,
     list_receivables_for_account,
+    participant_accessible_debt_public_ids,
 )
 from app.services.debt_service._repayment import (
     get_repayment_public_id_for_idempotency,
@@ -123,6 +124,7 @@ __all__ = [
     "list_member_receivables_for_account",
     "list_payables_for_account",
     "list_receivables_for_account",
+    "participant_accessible_debt_public_ids",
     "list_repayment_draft_audit_for_account",
     "list_repayment_drafts",
     "list_repayment_facts",

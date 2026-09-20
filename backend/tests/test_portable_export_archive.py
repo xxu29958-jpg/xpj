@@ -10,6 +10,7 @@ from zipfile import ZipFile
 
 import pytest
 
+from app.attachment_cleanup_contract import CleanupFile, CleanupRequest
 from app.errors import AppError
 from app.services import original_read_service, portable_export_archive
 
@@ -119,21 +120,23 @@ def test_export_limit_fails_without_dropping_rows_or_leaving_an_archive(tmp_path
 def test_cleanup_references_keep_their_identity_without_exposing_storage_paths(tmp_path, monkeypatch):
     source = _install_files(tmp_path, monkeypatch)
     row = _original(1, "uploads/owner/new.png", hashlib.sha256(source.read_bytes()).hexdigest())
-    row["attachment_cleanup_request"] = {"request_id": "old-request", "state": "incomplete",
-        "image": {"reference": "uploads/owner/old.png", "outcome": "failed", "attempts": 2},
-        "thumbnail": {"reference": "uploads/owner/old-thumb.png", "outcome": "deleted", "attempts": 1}}
+    row["attachment_cleanup_request"] = CleanupRequest(
+        request_id="424cd9c9-2c4a-4000-8d84-a6470e80b34d", reason="after_confirm", requested_at=WHEN,
+        image=CleanupFile(reference="uploads/owner/old.png", error_code="unlink_failed"),
+        thumbnail=CleanupFile(reference="uploads/owner/old-thumb.png", outcome="deleted", completed_at=WHEN),
+    ).model_dump(mode="json")
     with portable_export_archive.create_portable_archive(ledger_id="owner", snapshot_at=WHEN, account_public_id="actor",
             sections=[("expenses", [row]), ("account_bill_split_inbox", [{"public_id": "inbox"}])],
             originals=[row]) as result, ZipFile(result.path) as package:
         expense = json.loads(package.read("records/expenses.jsonl"))
         cleanup = expense["attachment_cleanup_request"]
-        assert cleanup["image"] == {"outcome": "failed", "attempts": 2,
-            "reference_id": "expense:1:cleanup:old-request:image"}
+        assert cleanup["image"] == {"outcome": "pending", "completed_at": None, "error_code": "unlink_failed",
+            "reference_id": "expense:1:cleanup:424cd9c9-2c4a-4000-8d84-a6470e80b34d:image"}
         observations = [json.loads(line) for line in package.read("originals.jsonl").splitlines()]
-        assert [row["state"] for row in observations] == ["verified", "unverified", "derived_not_included"]
+        assert [row["state"] for row in observations] == ["verified", "verified", "derived_not_included"]
         assert observations[0]["reference_id"] != observations[1]["reference_id"]
         assert observations[0]["path"] == observations[1]["path"]
-        assert observations[1]["expected_sha256"] is None
+        assert observations[1]["expected_sha256"] == row["image_hash"]
         assert "uploads/owner/" not in package.read("originals.jsonl").decode()
         scope = json.loads(package.read("manifest.json"))["record_scope"]
         assert scope["account_public_id"] == "actor"
@@ -157,6 +160,26 @@ def test_pending_cleanup_of_current_corrupt_original_keeps_the_recorded_identity
         assert [item["state"] for item in observations] == ["corrupt", "corrupt"]
         assert [item["expected_sha256"] for item in observations] == ["0" * 64, "0" * 64]
         assert not any(name.startswith("originals/") for name in package.namelist())
+
+
+def test_replenished_original_does_not_admit_corrupt_bytes_from_its_retained_cleanup_path(tmp_path, monkeypatch):
+    current, retired = tmp_path / "current.png", tmp_path / "retired.png"
+    current.write_bytes(b"the admitted original")
+    retired.write_bytes(b"corrupt retired bytes")
+    digest = hashlib.sha256(current.read_bytes()).hexdigest()
+    monkeypatch.setattr(original_read_service, "resolve_protected_image",
+        lambda reference, _ledger: (current if reference == "new" else retired, "image/png"))
+    row = _original(1, "new", digest)
+    row["attachment_cleanup_request"] = CleanupRequest(
+        request_id="424cd9c9-2c4a-4000-8d84-a6470e80b34d", reason="after_confirm", requested_at=WHEN,
+        image=CleanupFile(reference="old", error_code="unlink_failed"),
+    ).model_dump(mode="json")
+    with portable_export_archive.create_portable_archive(ledger_id="owner", snapshot_at=WHEN, account_public_id="actor",
+            sections=[], originals=[row]) as result, ZipFile(result.path) as package:
+        observations = [json.loads(line) for line in package.read("originals.jsonl").splitlines()]
+        assert [item["state"] for item in observations] == ["verified", "corrupt"]
+        assert observations[1]["expected_sha256"] == digest and observations[1]["path"] is None
+        assert [package.read(name) for name in package.namelist() if name.startswith("originals/")] == [current.read_bytes()]
 
 
 def test_time_limit_is_checked_after_an_empty_collection_before_the_next_query(monkeypatch):
