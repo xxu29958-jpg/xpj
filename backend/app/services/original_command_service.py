@@ -133,6 +133,29 @@ def _retain_usable_thumbnail(expense: Expense) -> None:
         expense.thumbnail_deleted_at = None
 
 
+def _require_original_replenishment(expense: Expense) -> None:
+    if expense.image_deleted_at is not None:
+        return
+    try:
+        request = read_cleanup_request(expense)
+    except AppError as exc:
+        if exc.error != "attachment_cleanup_invalid":
+            raise
+        request = None
+    if (request and request.image and request.image.outcome == "pending"
+            and request.image.reference == expense.image_path):
+        return
+    try:
+        with read_original_snapshot(relative_path=expense.image_path, tenant_id=expense.tenant_id,
+                                    expected_sha256=expense.image_hash):
+            pass
+    except AppError as exc:
+        if exc.error in {"image_not_found", "image_integrity_mismatch", "image_read_failed"}:
+            return
+        raise
+    raise AppError("original_replenishment_not_needed", status_code=409)
+
+
 def replenish_original(db: Session, *, expense_id: int, auth: AuthContext,
                        payload: OriginalReplenishmentRequest, data: bytes,
                        filename: str | None, content_type: str | None,
@@ -153,6 +176,7 @@ def replenish_original(db: Session, *, expense_id: int, auth: AuthContext,
             raise AppError("original_identity_unverified", status_code=409)
         if expected != payload.expected_sha256:
             raise AppError("original_review_conflict", status_code=409)
+        _require_original_replenishment(expense)
         saved = save_original_replenishment_bytes(data, tenant_id=auth.tenant_id, expected_sha256=expected,
             filename=filename, content_type=content_type)
         _retain_usable_thumbnail(expense)

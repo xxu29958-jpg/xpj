@@ -34,15 +34,16 @@ internal class RuntimeNegotiationInterceptor : Interceptor {
         val keyedUpload = request.method == "POST" &&
             request.url.encodedPath.endsWith("/api/app/upload-screenshot") && request.header("Idempotency-Key") != null
         val accountingTimeInput = request.hasAccountingTimeInput()
+        val originalAttachment = Regex("/api/expenses/[^/]+/original(?:/.*)?$").containsMatchIn(request.url.encodedPath)
         // An API date, including one already attached to this request, does not prove receipt replay support.
-        if (!request.requiresRuntimeNegotiation(incomeForecastRead, keyedUpload || accountingTimeInput)) {
+        if (!request.requiresRuntimeNegotiation(incomeForecastRead, keyedUpload || accountingTimeInput || originalAttachment)) {
             return chain.proceed(request)
         }
         val compatibility = readCompatibility(chain, request)
         if (compatibility != null && compatibility.apiVersion != CURRENT_TICKETBOX_API_VERSION) {
             return incompatibleProtocolResponse(request)
         }
-        if (!compatibility.supportsRequiredCapabilities(keyedUpload, accountingTimeInput)) {
+        if (!compatibility.supportsRequiredCapabilities(keyedUpload, accountingTimeInput, originalAttachment)) {
             return incompatibleProtocolResponse(request)
         }
         // A readable forecast does not require writer permission or an activated currency binding.
@@ -86,9 +87,11 @@ internal class RuntimeNegotiationInterceptor : Interceptor {
     }
 }
 
-private fun RuntimeWriteCompatibility?.supportsRequiredCapabilities(uploadReceipt: Boolean, accountingTime: Boolean): Boolean =
+private fun RuntimeWriteCompatibility?.supportsRequiredCapabilities(uploadReceipt: Boolean, accountingTime: Boolean,
+    originalAttachment: Boolean): Boolean =
     (!uploadReceipt || this?.uploadOriginalReceiptVersion == UPLOAD_ORIGINAL_RECEIPT_VERSION) &&
-        (!accountingTime || this?.supportsAccountingTimeInput == true)
+        (!accountingTime || this?.supportsAccountingTimeInput == true) &&
+        (!originalAttachment || this?.supportsOriginalAttachment == true)
 
 /** Inspect Retrofit's typed command, never consume or regenerate the original HTTP body. */
 private fun Request.hasAccountingTimeInput(): Boolean = tag(Invocation::class.java)?.arguments()?.any { argument ->
@@ -107,4 +110,3 @@ private fun incompatibleProtocolResponse(request: Request): Response =
             error = "runtime_version_mismatch",
             message = "客户端与此服务器的协议版本不匹配，请更新为配套版本后继续。",
         )).toResponseBody("application/json".toMediaType())).build()
-

@@ -12,8 +12,35 @@ import java.io.IOException
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.ResponseBody.Companion.toResponseBody
+import retrofit2.HttpException
+import retrofit2.Response
 
 class OriginalAttachmentDispatcherTest {
+    @Test fun unnecessaryReplenishmentStopsDeliveryAndOffersExplicitDiscard() = runTest {
+        val outbox = testOutboxRepository(FakePendingMutationDao())
+        val payload = payload()
+        outbox.enqueue(PendingMutationType.OriginalAttachment, "expense:8", originalPayloadAdapter.toJson(payload),
+            4, payload.file!!.key)
+        val api = object : ApiService by FakeApiService(mutableListOf(), 0) {
+            override suspend fun replenishOriginal(id: Long, file: MultipartBody.Part, expectedRowVersion: Long,
+                expectedSha256: String, idempotencyKey: String): OriginalCommandReceiptDto {
+                throw HttpException(Response.error<Any>(409,
+                    """{"error":"original_replenishment_not_needed","message":"原件完整"}""".toResponseBody("application/json".toMediaType())))
+            }
+        }
+        val engine = OutboxDrainEngine(outbox, listOf(OriginalAttachmentDispatcher({ api }) { "admitted original".encodeToByteArray() }))
+        engine.drainOnce()
+        val pending = PendingOriginalCommand(outbox.activeForTarget("expense:8").single(), payload, null)
+        assertEquals("original_replenishment_not_needed", pending.row.lastError)
+        assertFalse(pending.canRetry)
+        assertTrue(pending.canDiscard)
+        assertEquals(0, engine.drainOnce().attempted)
+    }
+
     @Test fun lostAckReplaysSameBillBytesKeyAndOccWithoutCreatingPendingExpense() = runTest {
         val dao = FakePendingMutationDao()
         val outbox = testOutboxRepository(dao)

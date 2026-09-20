@@ -61,6 +61,7 @@ class RuntimeCompatibilitySnapshot:
     legacy_write_compatibility: Literal["compatible", "client_upgrade_required"]
     upload_original_receipt_version: int
     accounting_time_input_version: int
+    original_attachment_version: int
     currency: RuntimeCurrencyCapability
 
 
@@ -101,6 +102,7 @@ def runtime_compatibility_snapshot(db: Session) -> RuntimeCompatibilitySnapshot:
         legacy_write_compatibility="client_upgrade_required",
         upload_original_receipt_version=UPLOAD_ORIGINAL_RECEIPT_VERSION,
         accounting_time_input_version=ACCOUNTING_TIME_INPUT_VERSION,
+        original_attachment_version=1,
         currency=RuntimeCurrencyCapability(
             home_currency_code=product_home_currency,
             minor_unit_exponent=capability.minor_unit_exponent,

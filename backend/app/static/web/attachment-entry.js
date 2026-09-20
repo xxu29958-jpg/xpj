@@ -38,6 +38,28 @@
     let captureError = false;
     let onlineOnly = false;
     let retained = false;
+    let rejection = null;
+    const discard = document.createElement("button");
+    discard.type = "button";
+    discard.textContent = "丢弃已拒绝任务";
+    discard.hidden = true;
+    discard.dataset.attachmentDiscard = "";
+    status.after(discard);
+    discard.addEventListener("click", async () => {
+      if (!held || busy || accepted || !rejection ||
+          !window.confirm("服务器已拒绝此任务。确定丢弃浏览器内的原请求和所选文件？此操作无法恢复。")) return;
+      busy = true;
+      discard.disabled = true;
+      button.disabled = true;
+      try {
+        if (!await drafts.discardRejected(rejection)) throw Error("draft_binding_changed");
+        accepted = true;
+        discard.hidden = true;
+        notice("已丢弃此任务和本地文件；请重新打开表单选择文件。");
+        shelf(scope);
+      } catch (_) { notice("任务未能完整清理，请保留页面并检查浏览器存储。"); }
+      finally { busy = false; discard.disabled = false; }
+    });
     function notice(text) { status.textContent = text; }
     function allowOnlineOnly() {
       if (wanted || retained || accepted) return false;
@@ -88,12 +110,19 @@
         window.history.replaceState(null, "", "#attachment-" + ref);
         notice((saved.values.file_name || "原件任务") + " 已保留在此浏览器，尚未提交。");
         shelf(scope);
-      } catch (_) {
+      } catch (error) {
         captureError = true;
+        if (error.message === "upload_too_large") {
+          onlineOnly = false;
+          notice("所选文件超过服务器上传上限，请选择较小文件；本次不会读取或发送该文件。");
+          return;
+        }
         if (!allowOnlineOnly()) notice("最新文件未能保留，本次不会发送。原任务仍在；请保留页面，或重新检查后另开表单选择。");
       } finally { busy = false; if (!onlineOnly) button.disabled = !held || captureError; }
     }
     async function send() {
+      rejection = null;
+      discard.hidden = true;
       const {record, file: savedFile} = await drafts.submitted(scope, ref);
       controls(record);
       const body = new window.FormData();
@@ -107,6 +136,10 @@
       const result = await response.json();
       if (!response.ok) {
         store.save(scope, ref, "blocked", record.values);
+        if (["state_conflict", "image_replenishment_mismatch", "original_replenishment_not_needed"].includes(result.error)) {
+          rejection = {scope, clientRef: ref, values: record.values, serverResult: "rejected"};
+          discard.hidden = false;
+        }
         notice((result.message || "提交未完成。") + " 原文件与原请求保留；可重试原任务，或先核对当前账单。");
         return;
       }

@@ -281,6 +281,8 @@ def test_inbox_pending_header_has_native_upload_form_and_flat_queue_summary(
     assert 'searchParams.set("timezone", Intl.DateTimeFormat()' in capture_js
     assert ".submit(" not in capture_js
     assert "attachment-entry.js" in body
+    from app.config import get_settings
+    assert f'data-upload-max-bytes="{get_settings().max_upload_size_bytes}"' in body
     desktop_js = (static_root / "desktop.js").read_text(encoding="utf-8")
     assert 'call("initInboxCapture");' not in desktop_js
 
