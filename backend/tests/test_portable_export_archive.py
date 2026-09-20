@@ -281,6 +281,20 @@ def test_accepted_history_keeps_its_own_original_reference_and_business_text(tmp
     assert receipt["response_body"]["root"]["image_path"] == "uploads/owner/historical.png"
 
 
+def test_shared_receipt_redacts_another_actors_fx_task_without_losing_business_or_original_reference():
+    receipt = {"id": 4, "resource_type": "expense_offset", "response_body_redaction_reason": "personal_task_scope",
+        "response_body": {"root": {"id": 1, "image_path": "uploads/owner/historical.png",
+            "note": "shared business fact", "fx_task": {"public_id": "other-task", "status": "failed"}},
+            "financial_summary": {"net_amount_cents": 1200}}}
+
+    exported = portable_export_archive._receipt_record(receipt)["response_body"]
+
+    assert exported["root"]["id"] == 1 and exported["root"]["note"] == "shared business fact"
+    assert exported["root"]["original_reference_id"] == "expense:1:accepted:4"
+    assert "fx_task" not in exported["root"]
+    assert exported["financial_summary"] == {"net_amount_cents": 1200}
+
+
 @pytest.mark.parametrize("cleaned_metadata", [{"image_deleted_at": WHEN},
     {"historical_image_cleaned": True, "current_image_path": "new"},
     {"current_image_path": "old", "current_image_deleted_at": WHEN},

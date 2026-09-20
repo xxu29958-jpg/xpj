@@ -58,6 +58,14 @@ entitled to see, without following them into another ledger's private records.
 Read authorization follows the current identity/membership owner. The new outlet
 does not confer write permission or replace existing local CSV access.
 
+Archive visibility above refers to retained records inside the selected,
+currently authorized ledger. Archiving the entire ledger suspends normal app/Web
+read authority under the existing identity contract, including at the export's
+fresh authority checks. This outlet does not add an exception to that boundary.
+The existing ledger Owner can restore access through unarchive; taking data away
+without that state change remains an explicit usability gap on the product atlas,
+not a prerequisite to merging this currently authorized outlet.
+
 The package distinguishes ledger records from explicitly named `account_*`
 relationship snapshots. The latter retain the exporter's account-wide split inbox
 and authorized cross-ledger debt/repayment/proposal views without revealing the
@@ -79,7 +87,8 @@ state/result, never execution input or raw exception text that may contain host
 paths. Accepted operations are historical records, restricted by resource
 visibility. An upload receipt whose personal task access cannot be established
 retains its accepted business resource reference with an explicit
-`response_body_omission_reason`; its private task-bearing response body is omitted.
+`response_body_redaction_reason`; its private task identifier is removed while
+the shared accepted business body and original evidence reference remain.
 Runtime import claims, credential material, machine settings and AI anonymization
 maps are not business record collections. Authorized account/device references
 carry only the identities needed to interpret exported records.
@@ -246,6 +255,11 @@ Upload task privacy removes only the personal task identifier, preserving the
 shared accepted expense, digest and evidence link for other ledger readers. Runtime
 timing fields are omitted. Sent/inbox invitation names remain stored snapshots;
 those references do not independently grant current account identity expansion.
+Historical FX tasks in expense/offset receipts follow their actual initiating
+account's task authority; other ledger readers keep the shared financial result
+and original reference, without that personal task object. Three counterexamples
+failed first; 50 targeted tests, one actual PostgreSQL snapshot export and Ruff
+passed after this final privacy correction.
 
 API/Web observe disconnects between query, record and file units and unwind the
 existing snapshot/archive cleanup. An in-flight SQL statement remains bounded by

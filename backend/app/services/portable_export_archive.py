@@ -115,6 +115,7 @@ def _receipt_business_body(source: dict[str, object], *, redact_task: bool) -> d
     node.pop("timing_ms", None)
     if redact_task:
         node.pop("enrichment_task_public_id", None)
+        node.pop("fx_task", None)
     return node
 
 

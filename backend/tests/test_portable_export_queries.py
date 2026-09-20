@@ -264,6 +264,34 @@ def test_upload_acceptance_survives_lost_ack_without_disclosing_private_task_rec
     assert results[1]["response_body_redaction_reason"] == "personal_task_scope"
 
 
+@pytest.mark.parametrize("resource_type", ["expense", "expense_offset"])
+def test_shared_expense_receipt_keeps_business_result_but_only_owners_fx_task(records, resource_type):
+    from app.services.portable_export_archive import _receipt_record
+
+    for id_, actor in ((1, 7), (2, 8)):
+        task = {"public_id": f"task-{id_}", "status": "failed", "error_code": "fx_failed"}
+        root = {"id": id_, "public_id": f"expense-{id_}", "note": "shared business fact", "fx_task": task}
+        body = {"root": root, "financial_summary": {"net_amount_cents": 1200}} \
+            if resource_type == "expense_offset" else root
+        _seed(records, m.BackgroundTask, id=id_, public_id=f"task-{id_}", tenant_id="selected",
+            initiated_by_account_id=actor)
+        _seed(records, m.ApiIdempotencyKey, id=id_, tenant_id="selected", resource_type=resource_type,
+            resource_id=f"expense-{id_}", status="succeeded", response_body=json.dumps(body))
+
+    results = [_receipt_record(dict(row)) for row in _rows(records, "accepted_operations")]
+    own = results[0]["response_body"]
+    other = results[1]["response_body"]
+    own_root = own["root"] if resource_type == "expense_offset" else own
+    other_root = other["root"] if resource_type == "expense_offset" else other
+    assert own_root["fx_task"]["public_id"] == "task-1"
+    assert results[0]["response_body_redaction_reason"] is None
+    assert other_root["id"] == 2 and other_root["note"] == "shared business fact"
+    assert "fx_task" not in other_root
+    assert results[1]["response_body_redaction_reason"] == "personal_task_scope"
+    if resource_type == "expense_offset":
+        assert other["financial_summary"] == {"net_amount_cents": 1200}
+
+
 def test_participant_balance_uses_existing_owner_and_preserves_failure(records, monkeypatch):
     from app.services import debt_service
 
