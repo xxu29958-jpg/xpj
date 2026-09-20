@@ -88,6 +88,9 @@ WEB_ONLY_ROUTES: dict[str, str] = {
     "POST /web/categories/uncategorized/bulk-set": "bulk classify uncategorized — no /api equivalent",
     "POST /web/review/bulk": "web-only pending bulk-review action",
     "POST /web/import/confirm": "web-only preview→confirm step; the apply step has the /api pair",
+    "POST /web/debts/{public_id}/split-agreement/preview": (
+        "native form preview preserves input; uses the same read owner as GET /api/debts/{public_id}/split-agreement"
+    ),
     "POST /web/pending/batch-reject": "web-only pending bulk-reject action",
     "POST /web/duplicates/{expense_id}/reject-original": (
         "web-only atomic keep-current/reject-original decision; API exposes separate primitives"

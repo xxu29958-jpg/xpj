@@ -20,11 +20,33 @@ from app.routes.web_common import (
     parse_form_row_version_token,
 )
 from app.schemas._bill_split_change import BillSplitChangeAcceptRequest, BillSplitChangeCreateRequest
+from app.services import bill_split_change_command_service as commands
 from app.services import bill_split_service
 from app.services.currency_common import major_amount_to_minor
 from app.services.debt_service import get_participant_debt_response
 
 router = APIRouter(prefix="/web/debts", tags=["web"])
+
+# Raw form parsing retains invalid input for recovery. Publish the same native
+# form contract, including both OCC tokens consumed by create and accept.
+_CHANGE_FORM_OPENAPI = {
+    "requestBody": {
+        "required": True,
+        "content": {
+            "application/x-www-form-urlencoded": {
+                "schema": {
+                    "type": "object",
+                    "required": ["debt_public_id", "ledger_id", "origin_binding", "home_currency_code",
+                                 "command", "expected_row_version", "idempotency_key", "csrf_token"],
+                    "properties": {
+                        field: {"type": "string"}
+                        for field in (*CHANGE_FIELDS, "idempotency_key", "csrf_token")
+                    },
+                }
+            }
+        },
+    }
+}
 
 
 def _read(db, *, selected_id, actor, public_id, new_share=None):
@@ -81,8 +103,6 @@ def _command_payload(values, code):
 
 
 def _execute(db, *, selected_id, actor, public_id, values, code):
-    from app.services import bill_split_change_command_service as commands
-
     kwargs = {"tenant_id": selected_id, "actor_account_id": actor, "public_id": public_id,
               "idempotency_key": values["idempotency_key"]}
     command = values["command"]
@@ -123,7 +143,7 @@ async def _submit(request: Request, db: Session, *, public_id: str, command: str
         actor = resolve_web_actor_account_id(db, request, selected_id)
         debt = get_participant_debt_response(db, public_id=public_id, ledger_id=selected_id, account_id=actor)
         if values["home_currency_code"] != debt.home_currency_code:
-            raise AppError("debt_currency_changed", status_code=409)
+            raise AppError("debt_currency_changed", "原约定币种与这笔欠款不一致，请核对原提交。", status_code=409)
         receipt = _execute(db, selected_id=selected_id, actor=actor, public_id=public_id,
                            values=values, code=debt.home_currency_code)
     except (AppError, ValidationError, SQLAlchemyError) as exc:
@@ -136,12 +156,12 @@ async def _submit(request: Request, db: Session, *, public_id: str, command: str
     return _outcome(request, db, options=options, selected_id=selected_id, public_id=public_id, ack=ack)
 
 
-@router.post("/{public_id}/split-changes")
+@router.post("/{public_id}/split-changes", openapi_extra=_CHANGE_FORM_OPENAPI)
 async def web_create_split_change(request: Request, public_id: str, _local: None = LocalOnly, db: Session = Depends(get_db)):
     return await _submit(request, db, public_id=public_id, command="create")
 
 
-@router.post("/{public_id}/split-changes/{proposal_public_id}/accept")
+@router.post("/{public_id}/split-changes/{proposal_public_id}/accept", openapi_extra=_CHANGE_FORM_OPENAPI)
 async def web_accept_split_change(request: Request, public_id: str, proposal_public_id: str,
                                  _local: None = LocalOnly, db: Session = Depends(get_db)):
     return await _submit(request, db, public_id=public_id, command="accept", proposal_public_id=proposal_public_id)

@@ -150,6 +150,7 @@ _INCOME_PLAN = ("monthly_income_plans",)
 _RECURRING = ("recurring_items",)
 _MERCHANT_CATALOG = ("merchant_catalog",)
 _BILL_SPLIT = ("bill_split_invitations",)
+_SPLIT_CHANGE_RESOLUTION = ("bill_split_change_proposals", "api_idempotency_keys")
 _DASHBOARD = ("dashboard_card_preferences",)
 _DEBTS = ("debts",)
 _MEMBER_REPAYMENT_PROPOSAL = ("member_repayment_proposals",)
@@ -262,6 +263,25 @@ ALLOWLIST: dict[str, Exempt] = {
     ),
     "POST /api/debts/{public_id}/repayment-proposals/{proposal_public_id}/reject": Exempt(
         "terminal_flag_flip", "debts", _MEMBER_REPAYMENT_PROPOSAL
+    ),
+    # Shared split-change resolutions lock the agreement, check the party and
+    # latch pending -> terminal. They preserve both debt balances and versions;
+    # only the proposal state and the original idempotent receipt are written.
+    "POST /api/debts/{public_id}/split-change-proposals/{proposal_public_id}/reject": Exempt(
+        "terminal_flag_flip", "bill_split", _SPLIT_CHANGE_RESOLUTION
+    ),
+    "POST /api/debts/{public_id}/split-change-proposals/{proposal_public_id}/withdraw": Exempt(
+        "terminal_flag_flip", "bill_split", _SPLIT_CHANGE_RESOLUTION
+    ),
+    "POST /web/debts/{public_id}/split-changes/{proposal_public_id}/reject": Exempt(
+        "terminal_flag_flip", "bill_split", _SPLIT_CHANGE_RESOLUTION
+    ),
+    "POST /web/debts/{public_id}/split-changes/{proposal_public_id}/withdraw": Exempt(
+        "terminal_flag_flip", "bill_split", _SPLIT_CHANGE_RESOLUTION
+    ),
+    # Same read owner as GET split-agreement; only the retained form is rendered.
+    "POST /web/debts/{public_id}/split-agreement/preview": Exempt(
+        "read_only_compute", "bill_split", ()
     ),
     # Web form twins of the API entries above (same shared command service;
     # the Idempotency-Key travels as a hidden per-render form field).

@@ -45322,6 +45322,70 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "properties": {
+                  "command": {
+                    "type": "string"
+                  },
+                  "csrf_token": {
+                    "type": "string"
+                  },
+                  "debt_public_id": {
+                    "type": "string"
+                  },
+                  "expected_return_row_version": {
+                    "type": "string"
+                  },
+                  "expected_row_version": {
+                    "type": "string"
+                  },
+                  "home_currency_code": {
+                    "type": "string"
+                  },
+                  "idempotency_key": {
+                    "type": "string"
+                  },
+                  "ledger_id": {
+                    "type": "string"
+                  },
+                  "new_share_amount_major": {
+                    "type": "string"
+                  },
+                  "origin_binding": {
+                    "type": "string"
+                  },
+                  "proposal_public_id": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "settlement_net_amount_major": {
+                    "type": "string"
+                  },
+                  "supersedes_proposal_public_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "debt_public_id",
+                  "ledger_id",
+                  "origin_binding",
+                  "home_currency_code",
+                  "command",
+                  "expected_row_version",
+                  "idempotency_key",
+                  "csrf_token"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
@@ -45371,6 +45435,70 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "properties": {
+                  "command": {
+                    "type": "string"
+                  },
+                  "csrf_token": {
+                    "type": "string"
+                  },
+                  "debt_public_id": {
+                    "type": "string"
+                  },
+                  "expected_return_row_version": {
+                    "type": "string"
+                  },
+                  "expected_row_version": {
+                    "type": "string"
+                  },
+                  "home_currency_code": {
+                    "type": "string"
+                  },
+                  "idempotency_key": {
+                    "type": "string"
+                  },
+                  "ledger_id": {
+                    "type": "string"
+                  },
+                  "new_share_amount_major": {
+                    "type": "string"
+                  },
+                  "origin_binding": {
+                    "type": "string"
+                  },
+                  "proposal_public_id": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "settlement_net_amount_major": {
+                    "type": "string"
+                  },
+                  "supersedes_proposal_public_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "debt_public_id",
+                  "ledger_id",
+                  "origin_binding",
+                  "home_currency_code",
+                  "command",
+                  "expected_row_version",
+                  "idempotency_key",
+                  "csrf_token"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {

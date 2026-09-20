@@ -262,6 +262,31 @@ def test_mismatched_command_is_retained_without_error_page_crash(native_task, mo
     assert 'name="command" value="unknown-command"' in response.body.decode()
 
 
+def test_currency_mismatch_explains_refusal_and_keeps_original_submission(native_task, monkeypatch):
+    import asyncio
+
+    request, db, form, route = native_task
+    values = form.initial_values(request, db, selected_id="my-ledger", public_id="original", agreement=agreement())
+    values.update(home_currency_code="USD", reason="保留原约定")
+
+    async def retained_form(_request):
+        return values
+
+    def must_not_execute(*_args, **_kwargs):
+        pytest.fail("A different currency must not reach the financial command")
+
+    monkeypatch.setattr(route, "_form", retained_form)
+    monkeypatch.setattr(route, "_execute", must_not_execute)
+    response = asyncio.run(route._submit(request, db, public_id="original", command="create"))
+    rendered = response.body.decode()
+    assert response.status_code == 409
+    assert "原约定币种与这笔欠款不一致，请核对原提交。" in rendered
+    assert 'name="home_currency_code" value="USD"' in rendered
+    assert f'name="idempotency_key" value="{values["idempotency_key"]}"' in rendered
+    assert "保留原约定" in rendered
+    assert 'data-repayment-ack=' not in rendered
+
+
 @pytest.mark.parametrize("scenario", ["preview", "command_replacement", "ack_and_repayment",
                                       "pending_retained_draft", "replacement_context"])
 def test_split_original_browser_submission(scenario):

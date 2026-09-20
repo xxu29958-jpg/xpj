@@ -36,6 +36,8 @@ RESTORE_TABLE_SECURITY: Mapping[str, RestoreTableSecurity] = MappingProxyType(
         "algorithm_decisions": "preserve",
         "api_idempotency_keys": "preserve",
         "background_tasks": "preserve",
+        "bill_split_agreement_changes": "preserve",
+        "bill_split_change_proposals": "preserve",
         "bill_split_invitations": "preserve",
         "budget_advisor_audit_logs": "preserve",
         "budget_categories": "preserve",

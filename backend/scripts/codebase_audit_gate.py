@@ -139,8 +139,8 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # main. See ``_audit_pr_delta_metrics.py`` docstring for what each
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
-    "mutate_token_carriers": 128,
-    "mutate_token_exempted": 124,
+    "mutate_token_carriers": 132,
+    "mutate_token_exempted": 129,
     "mutate_token_reason_admin_single_writer": 10,
     "mutate_token_reason_append_only_fact": 4,
     "mutate_token_reason_batch_db_write": 17,
@@ -148,9 +148,9 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_reason_enqueue_task": 0,
     "mutate_token_reason_external_side_effect": 3,
     "mutate_token_reason_governance_action": 8,
-    "mutate_token_reason_read_only_compute": 4,
+    "mutate_token_reason_read_only_compute": 5,
     "mutate_token_reason_session_rotation": 8,
-    "mutate_token_reason_terminal_flag_flip": 30,
+    "mutate_token_reason_terminal_flag_flip": 34,
     "mutate_token_reason_upsert_bucket": 4,
 }
 STRICT_EQUALITY_BASELINE.update(load_current_test_count_baselines())
@@ -180,11 +180,15 @@ BASELINE_RATCHET_DOWN: frozenset[str] = frozenset(
         "mutate_token_exempted",
     }
 )
-_A3_MUTATE_TOKEN_EXEMPTION_GRANDFATHER = (
-    "0a0d2be96e5786ffcaa65588f960dea291098abd",
-    128,
-    130,
-)  # A3 adds the API/Web twins of one manual fixed-expense create capability. Both insert a new recurring_items row and require one durable Idempotency-Key; neither has a predecessor row_version to carry. The exact base binding makes this single topology hop non-replayable.
+_MUTATE_TOKEN_EXEMPTION_ADMISSIONS = (
+    # A3: API/Web manual fixed-expense creates have no predecessor row version.
+    ("0a0d2be96e5786ffcaa65588f960dea291098abd", 128, 130),
+    # PR #427 follows ADR-0038's guarded terminal/read-only classification:
+    # API/Web reject + withdraw latch proposal state and keep a durable receipt;
+    # native preview reads only. Create/accept carry both real debt OCC tokens.
+    # Only this exact base/count hop is admitted; future growth still fails.
+    ("2d9ffd655ad9a6612049c0324ea7af6a4b0008a3", 124, 129),
+)
 
 # ``mutate_token_reason_<code>`` counters are NOT in either ratchet set:
 # they're distribution-shift indicators (PR-D's ``terminal_flag_flip``
@@ -292,17 +296,15 @@ def _compute_ratchet_findings(
     walking STRICT_EQUALITY_BASELINE keys against the base baseline dict."""
     bootstrapped: list[str] = []
     movement_violations: list[str] = []
-    a3_base_commit, a3_base_count, a3_current_count = _A3_MUTATE_TOKEN_EXEMPTION_GRANDFATHER
     for key in sorted(STRICT_EQUALITY_BASELINE):
         current_val = STRICT_EQUALITY_BASELINE[key]
         if key not in base_baseline:
             bootstrapped.append(key)
             continue  # bootstrap: skip ratchet, strict equality already covered
         base_val = base_baseline[key]
-        a3_exempt = (
+        admitted = (
             key == "mutate_token_exempted"
-            and base_commit == a3_base_commit
-            and (base_val, current_val) == (a3_base_count, a3_current_count)
+            and (base_commit, base_val, current_val) in _MUTATE_TOKEN_EXEMPTION_ADMISSIONS
         )
         retirement = baseline_retirement_allowed(key, base_commit, base_val, current_val)
         if key in BASELINE_RATCHET_UP and current_val < base_val and not retirement:
@@ -312,7 +314,7 @@ def _compute_ratchet_findings(
                 f"accumulate, not vanish. Strict equality alone misses this when "
                 f"actuals dropped in lockstep — this layer catches it."
             )
-        elif key in BASELINE_RATCHET_DOWN and current_val > base_val and not a3_exempt:
+        elif key in BASELINE_RATCHET_DOWN and current_val > base_val and not admitted:
             movement_violations.append(
                 f"  - {key} (DOWN-only): base={base_val}, current={current_val} "
                 f"(rose by {current_val - base_val}). Exemptions should drain as "
