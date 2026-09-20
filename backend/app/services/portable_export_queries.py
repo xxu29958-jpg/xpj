@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-from sqlalchemy import Select, and_, case, or_, select, union
+from sqlalchemy import Select, and_, case, func, or_, select, union
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -252,13 +252,26 @@ def _split_agreement_queries(auth: AuthContext) -> tuple[tuple[str, Select], ...
     return tuple(result)
 
 
+def _authorized_debt_receipts(auth: AuthContext) -> ColumnElement[bool]:
+    receipt = m.ApiIdempotencyKey
+    debts = select(m.Debt.id).where(or_(m.Debt.tenant_id == auth.ledger_id, _cross_ledger_participant(auth)))
+    debt = and_(receipt.resource_type == "debt", receipt.resource_id.in_(
+        select(m.Debt.public_id).where(m.Debt.id.in_(debts))))
+    repayment = and_(receipt.resource_type == "repayment", receipt.resource_id.in_(
+        select(m.Repayment.public_id).where(m.Repayment.debt_id.in_(debts))))
+    proposal = and_(receipt.resource_type == "debt_repayment_proposal", receipt.resource_id.in_(
+        select(m.MemberRepaymentProposal.public_id).where(m.MemberRepaymentProposal.debt_id.in_(debts))))
+    return or_(debt, repayment, proposal)
+
+
 def _accepted_operations(auth: AuthContext) -> Select:
     receipt = m.ApiIdempotencyKey
     # Every listed resource kind is a ledger-shared business result. Private
     # resource results require the same actor predicates as their read owner.
     shared = receipt.resource_type.in_(("expense", "expense_batch", "expense_offset", "monthly_budget", "goal",
         "income_plan", "recurring_item", "recurring_occurrence", "category_rule", "exchange_rate",
-        "ledger_calendar_revision", "upload_receipt", "debt", "repayment", "debt_repayment_proposal"))
+        "ledger_calendar_revision", "upload_receipt"))
+    debt_relationships = _authorized_debt_receipts(auth)
     drafts = and_(receipt.resource_type == "repayment_draft", receipt.resource_id.in_(
         select(m.RepaymentDraft.public_id).where(_owned_drafts(auth))))
     splits = and_(receipt.resource_type == "bill_split_invitation", receipt.resource_id.in_(
@@ -271,15 +284,10 @@ def _accepted_operations(auth: AuthContext) -> Select:
         m.BackgroundTask.tenant_id == auth.ledger_id,
         m.BackgroundTask.initiated_by_account_id == auth.account_id).exists()
     redacted_upload = and_(receipt.resource_type == "upload_receipt", ~own_upload_task)
-    # A cross-ledger split command is stored in its actor's current ledger. Its
-    # receipt does not grant the actor's fellow members access to that relation.
-    split_change_visible = or_(receipt.target_type.is_(None), receipt.target_type != "bill_split_change",
-        receipt.resource_id.in_(select(m.Debt.public_id).where(
-            or_(m.Debt.tenant_id == auth.ledger_id, _cross_ledger_participant(auth)))))
     return _record(receipt, "id tenant_id idempotency_key operation target_type target_id request_fingerprint "
         "status resource_type resource_id created_at completed_at expires_at",
         and_(receipt.tenant_id == auth.ledger_id, receipt.status == "succeeded",
-             or_(shared, drafts, splits), split_change_visible)).add_columns(
+            or_(shared, debt_relationships, drafts, splits))).add_columns(
             case((redacted_upload, None), else_=receipt.response_body).label("response_body"),
             case((redacted_upload, "personal_task_scope"), else_=None).label("response_body_omission_reason"))
 
@@ -378,11 +386,17 @@ def portable_original_history_query(auth: AuthContext) -> Select:
         else_=receipt.c.response_body)
     expense_id = body["id"].as_integer()
     expense_public_id = body["public_id"].as_string()
+    image_path = body["image_path"].as_string()
+    image_deleted_at = body["image_deleted_at"].as_string()
+    # Later retained receipts can prove an earlier reference was cleaned, even
+    # after replenishment moved the current attachment to another path.
+    historical_image_cleaned = func.max(case((image_deleted_at.is_not(None), 1), else_=0)).over(
+        partition_by=(expense_id, expense_public_id, image_path))
     return select(
         receipt.c.id.label("accepted_operation_id"), receipt.c.completed_at.label("accepted_at"),
         expense_id.label("expense_id"), expense_public_id.label("expense_public_id"),
-        body["image_path"].as_string().label("image_path"), body["image_hash"].as_string().label("image_hash"),
-        body["image_deleted_at"].as_string().label("image_deleted_at"),
+        image_path.label("image_path"), body["image_hash"].as_string().label("image_hash"),
+        image_deleted_at.label("image_deleted_at"), historical_image_cleaned.label("historical_image_cleaned"),
         body["thumbnail_path"].as_string().label("thumbnail_path"),
         body["thumbnail_deleted_at"].as_string().label("thumbnail_deleted_at"),
         m.Expense.image_path.label("current_image_path"), m.Expense.thumbnail_path.label("current_thumbnail_path"),

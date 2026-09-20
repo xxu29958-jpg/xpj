@@ -250,6 +250,20 @@ def test_history_keeps_explicit_no_attachment_without_treating_original_command_
     assert results[0]["thumbnail_path"] is None
 
 
+def test_history_shares_cleanup_evidence_only_for_the_same_expense_and_path(records):
+    _seed(records, m.Expense, id=1, public_id="expense", tenant_id="selected", image_path="new.png")
+    old = {"id": 1, "public_id": "expense", "image_path": "old.png", "image_deleted_at": None}
+    bodies = [old, {"root": {**old, "image_deleted_at": "2026-09-19T00:00:00Z"}},
+        {**old, "image_path": "new.png"}, {**old, "id": 2, "public_id": "unrelated"}]
+    for id_, body in enumerate(bodies, 1):
+        _seed(records, m.ApiIdempotencyKey, id=id_, tenant_id="selected", status="succeeded",
+            resource_type="expense_offset" if "root" in body else "expense", response_body=json.dumps(body))
+    results = records[0].execute(portable_original_history_query(AUTH)).mappings().all()
+    assert [bool(row["historical_image_cleaned"]) for row in results] == [True, True, False, False]
+    assert results[0]["image_deleted_at"] is None
+    assert results[0]["current_image_path"] == "new.png"
+
+
 def test_success_receipts_do_not_disclose_another_members_private_draft_or_invitation(records):
     _seed(records, m.RepaymentDraft, id=1, public_id="own-draft", tenant_id="selected", created_by_account_id=7)
     _seed(records, m.RepaymentDraft, id=2, public_id="private-draft", tenant_id="selected", created_by_account_id=8)
@@ -326,3 +340,35 @@ def test_split_change_receipts_require_actual_debt_visibility(records):
               resource_id=f"debt-{index}", target_type="bill_split_change", status="succeeded",
               response_body=json.dumps({"reason": f"split-{index}"}))
     assert {row["id"] for row in _rows(records, "accepted_operations")} == {1, 2}
+
+
+def test_debt_receipts_require_access_to_the_parent_relationship(records):
+    for id_, public_id, ledger, counterparty in (
+        (1, "local-debt", "selected", 8),
+        (2, "shared-debt", "other", 7),
+        (3, "private-debt", "other", 8),
+    ):
+        _seed(records, m.Debt, id=id_, public_id=public_id, tenant_id=ledger,
+            counterparty_account_id=counterparty)
+        _seed(records, m.Repayment, id=id_, public_id=f"{public_id}-repayment", debt_id=id_)
+        _seed(records, m.MemberRepaymentProposal, id=id_, public_id=f"{public_id}-proposal", debt_id=id_)
+    receipt_id = 0
+    for resource_type, suffix in (
+        ("debt", ""),
+        ("repayment", "-repayment"),
+        ("debt_repayment_proposal", "-proposal"),
+    ):
+        for debt_public_id in ("local-debt", "shared-debt", "private-debt"):
+            receipt_id += 1
+            _seed(records, m.ApiIdempotencyKey, id=receipt_id, tenant_id="selected", status="succeeded",
+                resource_type=resource_type, resource_id=f"{debt_public_id}{suffix}")
+
+    results = _rows(records, "accepted_operations")
+    assert {(row["resource_type"], row["resource_id"]) for row in results} == {
+        ("debt", "local-debt"),
+        ("debt", "shared-debt"),
+        ("repayment", "local-debt-repayment"),
+        ("repayment", "shared-debt-repayment"),
+        ("debt_repayment_proposal", "local-debt-proposal"),
+        ("debt_repayment_proposal", "shared-debt-proposal"),
+    }
