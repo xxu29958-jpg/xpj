@@ -311,3 +311,12 @@ def test_debt_receipts_require_access_to_the_parent_relationship(records):
         ("debt_repayment_proposal", "local-debt-proposal"),
         ("debt_repayment_proposal", "shared-debt-proposal"),
     }
+
+
+def test_merchant_alias_receipts_remain_exportable_after_the_catalog_row_is_deleted(records):
+    for id_, operation, ledger in ((1, "update_merchant_alias", "selected"),
+        (2, "delete_merchant_alias", "selected"), (3, "delete_merchant_alias", "other")):
+        _seed(records, m.ApiIdempotencyKey, id=id_, tenant_id=ledger, status="succeeded",
+            resource_type="merchant_alias", resource_id="deleted-alias", operation=operation)
+    assert [(row["id"], row["operation"]) for row in _rows(records, "accepted_operations")] == [
+        (1, "update_merchant_alias"), (2, "delete_merchant_alias")]

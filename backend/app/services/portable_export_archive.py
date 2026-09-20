@@ -157,8 +157,8 @@ def _reference_rows(expense: Mapping[str, object]) -> Iterable[dict[str, object]
         item = cleanup.get(kind)
         if isinstance(item, dict):
             source = item.get("reference")
-            expected = (expense.get("image_hash")
-                if kind == "image" and source == expense.get("image_path") else None)
+            # Replenishment changes the path, never the admitted original's digest.
+            expected = expense.get("image_hash") if kind == "image" else None
             yield {"reference_id": f"{root}:cleanup:{cleanup['request_id']}:{kind}",
                 "expense_id": expense["id"], "kind": "original" if kind == "image" else "derived",
                 "source": source, "expected_sha256": expected,

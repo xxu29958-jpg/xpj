@@ -230,7 +230,7 @@ def _accepted_operations(auth: AuthContext) -> Select:
     # resource results require the same actor predicates as their read owner.
     shared = receipt.resource_type.in_(("expense", "expense_batch", "expense_offset", "monthly_budget", "goal",
         "income_plan", "recurring_item", "recurring_occurrence", "category_rule", "exchange_rate",
-        "ledger_calendar_revision", "upload_receipt"))
+        "ledger_calendar_revision", "upload_receipt", "merchant_alias"))
     debt_relationships = _authorized_debt_receipts(auth)
     drafts = and_(receipt.resource_type == "repayment_draft", receipt.resource_id.in_(
         select(m.RepaymentDraft.public_id).where(_owned_drafts(auth))))
