@@ -201,3 +201,12 @@ the fixes; 45 targeted archive, pool-lifecycle, route and import-render tests no
 pass, as does Ruff. Real PostgreSQL snapshot and download qualification remains
 with the current candidate's cloud gate. A local PostgreSQL startup probe refused
 an old test-runtime binary path, so it supplied no database execution evidence.
+
+The next bounded review pass found two concrete export errors. Debt, repayment
+and repayment-proposal receipts now inherit the parent relationship's actual
+ledger/participant authorization. Historical original references share retained
+deletion evidence only within the same expense identity and path, so replenishment
+cannot revive a retired file through an earlier receipt. Three counterexamples
+failed before these fixes; the 31 query/archive tests and Ruff pass afterward.
+The preceding `e0cc4ff` candidate passed every PostgreSQL shard in CI; the revised
+candidate still needs its own exact-head gate before merge.

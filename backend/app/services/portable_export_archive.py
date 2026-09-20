@@ -197,7 +197,7 @@ def _observe_original(package: ZipFile, reference: dict[str, object], ledger_id:
 
 def _history_reference(row: Mapping[str, object]) -> dict[str, object]:
     source = row.get("image_path")
-    cleaned = row.get("image_deleted_at") is not None
+    cleaned = row.get("image_deleted_at") is not None or bool(row.get("historical_image_cleaned"))
     if source and source == row.get("current_image_path") and row.get("current_image_deleted_at") is not None:
         cleaned = True
     cleanup = row.get("attachment_cleanup_request")
