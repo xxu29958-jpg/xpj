@@ -56,7 +56,7 @@ pip-audit --strict（OSV 库）
 
 ### windows-packaging（按域）
 
-仅 Windows 宿主、安装器、冻结构建依赖、发布版本、migration 或 Desktop 产物合同变化时运行 packaging tests、PS5.1/PS7 preflight、冻结 Backend/Desktop 构建、Inno 编译和上传后字节回验。普通 Backend `app/` 与测试变更只进入 PostgreSQL/快速合同；`requirements-dev.txt`、测试 PostgreSQL 跨运行时合同和 Windows runtime-tree helper 同时触发其真实消费者。共享的 `windows-release-config.json` 同时触发 PostgreSQL、Desktop 与 Windows 三个消费者域。`main`、手动运行和未知影响仍 fail closed 到包含 Windows 产物的全量。整个 provenance 链必须位于同一 scoped job，不能把上传后字节回验拆成另一份权威；GitHub 重型发布 job 的硬上限为 20 分钟，是否达标仍以 exact-head 实际耗时为准。
+仅 Windows 宿主、安装器、冻结构建依赖、发布版本、migration 或 Desktop 产物合同变化时运行 packaging tests、PS5.1/PS7 preflight、冻结 Backend/Desktop 构建、Inno 编译和上传后字节回验。普通 Backend `app/` 与测试变更只进入 PostgreSQL/快速合同；`requirements-dev.txt`、测试 PostgreSQL 跨运行时合同和 Windows runtime-tree helper 同时触发其真实消费者。共享的 `windows-release-config.json` 同时触发 PostgreSQL、Desktop 与 Windows 三个消费者域。`main`、手动运行和未知影响仍 fail closed 到包含 Windows 产物的全量。整个 provenance 链必须位于同一 scoped job，不能把上传后字节回验拆成另一份权威；GitHub 重型发布 job 的硬上限为 30 分钟，是否达标仍以 exact-head 实际耗时为准。
 
 安装器测试数量由 `backend/packaging/audit/test_count_baseline.txt` 归 Windows 域维护；增加 packaging 测试不会反向触发 Android/Desktop。Windows 句柄绑定删除和临时 PostgreSQL 生命周期行为也在该 lane 真正执行，不以 Linux 上的 skip 代替证明。
 
@@ -64,7 +64,7 @@ pip-audit --strict（OSV 库）
 
 GitHub 是发布验收与合并权威；Gitea 是离线镜像和自检后备，Gitea-only 失败不阻断 GitHub 合并。后端运行时、测试、迁移相关路径变化或全量 fallback 时，ordinary、`real_db`、smoke + recovery 三个独立 job 各自使用隔离的 PostgreSQL service container；三个责任域保持显式 job。当前只支持安装器钉住的单一 PostgreSQL major，matrix 从发布配置和固定 service image 动态生成；未来扩展多个 major 前，必须先为每个 major 提供独立固定镜像。稳定汇总检查 `Backend (PostgreSQL)` 必须核对三个结果和实际 checkout SHA。
 
-ordinary lane 以两个同构 GitHub matrix 分片执行完整测试树中所有未标记 `real_db` 的用例，每个分片再为四个 xdist worker 动态创建独立数据库、文件根和租约。`real_db` 同样分成两个 GitHub matrix job，但每个 job 使用独立 PostgreSQL service cluster 且 shard 内保持单进程串行，固定 restore database、cluster-global role、DDL 与 migration 测试不会在同一 cluster 内并发；本地与 Gitea 仍完整串行。分片只按完整 pytest nodeid 的稳定哈希决定唯一归属，不维护 nodeid、文件名、目录或字符串名单；新增、移动、重命名、参数化及删除测试会自动进入且只进入一个分片。smoke + recovery lane 继续执行真实 `pg_dump` / restore drill。ordinary / real-db 的责任分类权威仍只有测试源码 marker。
+ordinary lane 以两个同构 GitHub matrix 分片执行完整测试树中所有未标记 `real_db` 的用例，每个分片再为四个 xdist worker 动态创建独立数据库、文件根和租约。`real_db` 分成四个 GitHub matrix job，但每个 job 使用独立 PostgreSQL service cluster 且 shard 内保持单进程串行，固定 restore database、cluster-global role、DDL 与 migration 测试不会在同一 cluster 内并发；本地与 Gitea 仍完整串行。分片只按完整 pytest nodeid 的稳定哈希决定唯一归属，不维护 nodeid、文件名、目录或字符串名单；新增、移动、重命名、参数化及删除测试会自动进入且只进入一个分片。smoke + recovery lane 继续执行真实 `pg_dump` / restore drill。ordinary / real-db 的责任分类权威仍只有测试源码 marker。
 
 后端测试数量只在 `backend/audit/test_count_baseline.txt` 维护。它是严格对账信号，不是覆盖率或分类权威：新增测试与源码同 commit 提高基线；base ratchet 同时阻止一个 PR 删除测试并下调自己的可编辑基线。测试整合必须先保留或补上独立风险证明，不能为了变绿改小数字。总数仍不能证明语义质量，因为“删除高价值测试、补同数量低价值参数化用例”也能骗过它，所以机器计数与代码审计缺一不可。该文件与测试源码同属 PostgreSQL 域；`codebase_audit_gate.py` 只保留政策，不再因正常增测把 PR 放大成全端构建。
 
@@ -97,13 +97,31 @@ GitHub 云端 Android 资格链按责任并行：`Android fast` 跑编译、单�
 
 ### android-connected（模拟器，scope-aware）
 
-云端 connected workflow `.github/workflows/android-connected-test.yml` 对所有 `main` PR 保持稳定检查名，先用共享 scope job 判断影响；明确无关时跳过 emulator execution，由聚合 job 验证跳过语义和实际 checkout SHA。Android、CI、未知或分类失败时运行单个 API 36 emulator 的完整 instrumentation suite，规避 GitHub workflow path filter 的文件数盲区，同时让 backend/docs PR 不付模拟器成本。test APK 排除只服务发布安装的 ProfileInstaller，避免其 Startup provider 在独立测试进程中形成绿色崩溃和逐项超时。emulator action 只执行一条 timeout 包裹的 Gradle 命令：3 分钟 boot 上限、14 分钟 Gradle watchdog、20 分钟 action 上限和 30 分钟 job cap 逐层给环境准备、验证与失败报告留出余量；connected Gradle task 自身仍以 10 分钟为内层上限。
+云端 connected workflow `.github/workflows/android-connected-test.yml` 保留稳定 required 检查 `Connected (emulator)` 和共享 scope。明确无关时由聚合器核对跳过语义；Android、CI、未知范围或分类失败时，完整 instrumentation suite 交给 AndroidX runner 的 `numShards=2` / `shardIndex`，在两个独立的 API 36 emulator job 执行。各片分别构建并安装本提交的 app/test APK，不继承其他提交的构建或测试 PASS，`fail-fast: false` 保留其他片的独立诊断。普通本地与 Gitea 未分片入口继续执行全套及原有全局计数门禁。
 
-Gradle 在测试前后各采集一次 `ApplicationExitInfo`，并在 action teardown 前保留 APK，避免 UTP 卸载清除退出历史；每次 adb 取证各有 30 秒上限。`connectedGrayDebugAndroidTest` 在同一任务内读取 AGP 生成的 connected JUnit XML、对账 instrumentation 基线，再从实际 APK manifest 动态读取目标包、测试包及其进程名，要求本轮至少产生一条目标进程退出记录；仅接受状态为 0 的正常退出、受控停止或包更新终态，其余已知、未知及未来新增原因一律 fail closed。logcat 只作为诊断附件。JVM 计数同样读取 Gradle `Test` 任务的真实 JUnit XML；`android/audit/test_count_baseline.txt` 分别锁住两条 lane，源码注解、注释、字符串和文件布局不再充当执行事实。
+每片仍由 `prepareGrayConnectedTestEvidence` / `guardConnectedAndroidTestEmulatorOnly` / `qualifyGrayConnectedTestEvidence` 完成真实测试与进程资格：测试前后采集 `ApplicationExitInfo`，从实际 APK manifest 取得目标包、测试包及其进程，保留原有终态判断和缺证据即失败语义。先固定真实测试的 after/crash 证据，再以同一 APK 的 runner `log=true` 发现完整测试 ID；这个枚举过程不充当测试执行或进程健康证据。每片 XML 必须无失败、跳过或空片；独立汇总将各片完整 ID（包括参数化后缀）的多重集合并集与 runtime discovery 对账，拒绝漏项、重复、发现集合不一致和错 checkout/source/run。全局 instrumentation 基线在并集上检查，不能除以片数。JVM 计数仍消费真实 Gradle JUnit XML。
+
+每片 job/action/shell/test task/finalizer 上限依次为 **45/35/30/24/5 分钟**，boot 上限 3 分钟。它们是失败控制预算，不是日常耗时目标；不能通过提前杀掉验证宣布提速。每片 APK、XML、崩溃和退出证据独立保存，artifact 名包含片号与 attempt。同一 SHA/run 只重跑失败 Job 时，汇总保留平台继承的成功片真实 attempt，并选各片最新有效证据；不会把 matrix 最后一片输出当作全套资格，也不接受跨 run 或跨 SHA 的旧结果。
 
 local-Gitea 的 `.gitea/workflows/android-connected.yml` 是同一门禁的本机降级版，用 runner 主机用户级 Android Studio SDK 的 AVD `ticketbox_api36_host`（headless，`-no-window`），单 step try/finally 内：清残留 → 起模拟器 → 等 boot（5 分钟上限）→ `ANDROID_SERIAL` 钉住本 lane 的设备 → `connectedGrayDebugAndroidTest` → 两段式拆除（`adb emu kill` + launcher PID taskkill 兜底）。它保持单设备串行执行，不作为 GitHub 合并阻断项。
 
 `release_audit.py` 的 ci-gap lane 静态扫两套 workflow，钉住 Gradle、后端、Desktop 与安装器数据流。scoped job 只有在完整 checkout、唯一分类输出、fail-closed 条件和无软失败均成立时才被计入；任意普通 `if` 不能冒充覆盖。安装器哈希、上传、下载和回验仍作为同一 Windows job 的有序原子链检查。
+
+## 耗时与失败定位
+
+廉价错误目标为触发后 1–3 分钟内给出可定位反馈，混合业务变更完整资格第一阶段不超过 15 分钟，稳定后通常 10–12 分钟；这些是性能目标，并非已达成事实或新的超时门槛。成功样本的 TTFF 是 N/A。保留冷缓存、排队、失败、取消及所有 attempts；同一 subject 重跑的 TTQ 从原触发时刻计算。只有完整 required contexts 与生产者全部成立，才取得该 subject 的 TTQ；main 合并后另行验证。
+
+用既有 `backend/scripts/ci_run_timing.py` 采集结束的运行并比较原始 runner 分钟；分片阶段报告各片来源及实际墙钟跨度，不把旧单片时长直接除二。PostgreSQL 的 `--durations=30` 用于定位真实 setup/call/teardown 长尾，不改变 collection、分片或数据库隔离。
+
+先读取失败 Job 的原始错误和 SHA，再查询已有报告，无须为了查责任入口重跑全仓分析：
+
+```powershell
+python backend/scripts/_audit_repository_weight.py --from-json codebase-weight.json --task ci-failure
+python backend/scripts/_audit_repository_weight.py --from-json codebase-weight.json --task android-qualification
+python backend/scripts/_audit_repository_weight.py --from-json codebase-weight.json --task postgres-qualification
+```
+
+历史报告会显示 measurement/source 身份与历史属性。地图入口只是定位线索，不是根因结论、减跑规则或旧 PASS。完整报告的一次调用内纯分析复用可用 `--no-analysis-reuse` 关闭；两份快照的身份、债务、coverage 与最终 verdict 始终重新生成。
 
 ## 安全边界
 
@@ -112,7 +130,7 @@ CI 不需要真实 Token。`backend/.env`、`backend/data/`、`backend/uploads/`
 ## 常见失败点
 
 - run 一直排队：Gitea / runner 没起，先把它们启动。
-- pip-audit SSL EOF：网络 flake，rerun 整个 run 即绿。
+- 网络或下载失败：先保留原始错误、run/attempt/job 和受验 SHA，确认具体原因后只重跑必要失败 Job 及其聚合；保留既有成功片，不把重跑成功改写成首轮成功。未知原因、真实漏洞和产品失败不能归为环境抖动。
 - Android SCA 找不到新鲜可信 NVD 产物：不要反复重跑 PR；执行 `gh api --method POST "repos/{owner}/{repo}/dispatches" -f event_type=nvd_database_refresh`，等 producer 成功上传产物后再重跑 PR。调用者需有仓库写权限；摘要不符、产物损坏、真实 CVE 或离线扫描失败都必须保持红灯，不能旁路。
 - `assertAndroidTestCountEqualsBaseline` 红：要么分支基于旧 main（baseline 随 main 演进），rebase 到当前 main；要么本 diff 增删了 Android JVM / instrumentation 测试而没同步 bump `android/audit/test_count_baseline.txt`。
 - `backend_pytest_count` / `installer_pytest_count` 红：分别更新 `backend/audit/test_count_baseline.txt` / `backend/packaging/audit/test_count_baseline.txt`；不要改 gate 代码里的数字。

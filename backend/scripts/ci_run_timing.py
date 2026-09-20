@@ -664,12 +664,32 @@ def _named_step(jobs: list[dict], name: str) -> dict | None:
     return None
 
 
+def _named_steps(jobs: list[dict], name: str) -> list[dict]:
+    return [
+        step
+        for job in jobs
+        for step in (job.get("steps") or [])
+        if isinstance(step, dict) and step.get("name") == name
+    ]
+
+
 def _job_with_step(jobs: list[dict], name: str) -> dict | None:
     for job in jobs:
         for step in job.get("steps") or []:
             if isinstance(step, dict) and step.get("name") == name:
                 return job
     return None
+
+
+def _jobs_with_step(jobs: list[dict], name: str) -> list[dict]:
+    return [
+        job
+        for job in jobs
+        if any(
+            isinstance(step, dict) and step.get("name") == name
+            for step in (job.get("steps") or [])
+        )
+    ]
 
 
 def _matching_prior_job(job: dict | None, previous_jobs: list[dict]) -> dict | None:
@@ -697,6 +717,30 @@ def _phase_row(name: str, phase: str, kind: str, step: dict | None) -> dict[str,
     }
 
 
+def _parallel_phase_row(
+    jobs: list[dict],
+    *,
+    name: str,
+    phase: str,
+    step_name: str,
+    single_kind: str,
+) -> dict[str, object]:
+    steps = _named_steps(jobs, step_name)
+    elapsed = _parallel_step_window(steps, steps)
+    return {
+        "name": name,
+        "phase": phase,
+        "measurement_kind": (
+            (single_kind if len(steps) == 1 else "parallel_span")
+            if elapsed is not None
+            else "unknown"
+        ),
+        "elapsed_s": elapsed,
+        "source_step": step_name if steps else None,
+        "parallel_jobs": len(steps),
+    }
+
+
 def _derived_span(jobs: list[dict], start_name: str, end_name: str) -> dict[str, object]:
     start = _named_step(jobs, start_name)
     end = _named_step(jobs, end_name)
@@ -714,6 +758,35 @@ def _derived_span(jobs: list[dict], start_name: str, end_name: str) -> dict[str,
         "elapsed_s": elapsed,
         "source_step": f"{start_name} -> {end_name}",
     }
+
+
+def _parallel_derived_span(
+    jobs: list[dict], start_name: str, end_name: str
+) -> dict[str, object]:
+    starts = _named_steps(jobs, start_name)
+    ends = _named_steps(jobs, end_name)
+    elapsed = _parallel_step_window(starts, ends)
+    return {
+        "measurement_kind": (
+            ("derived" if len(starts) == 1 else "parallel_span")
+            if elapsed is not None
+            else "unknown"
+        ),
+        "elapsed_s": elapsed,
+        "source_step": f"{start_name} -> {end_name}" if starts else None,
+        "parallel_jobs": len(starts),
+    }
+
+
+def _parallel_step_window(starts: list[dict], ends: list[dict]) -> float | None:
+    if not starts or len(starts) != len(ends):
+        return None
+    start_times = [parse_utc(step.get("started_at")) for step in starts]
+    end_times = [parse_utc(step.get("completed_at")) for step in ends]
+    if any(value is None for value in start_times + end_times):
+        return None
+    elapsed = _seconds(min(start_times), max(end_times))
+    return elapsed if elapsed is not None and elapsed >= 0 else None
 
 
 def _origin_job(job: dict | None, attempts: list[dict[str, object]]) -> dict | None:
@@ -746,6 +819,43 @@ def _phase_attempt_fields(
     }
 
 
+def _parallel_phase_attempt_fields(
+    jobs: list[dict],
+    attempts: list[dict[str, object]],
+    target_attempt: int,
+    step_name: str,
+) -> dict[str, object]:
+    sources: list[dict[str, object]] = []
+    for job in _jobs_with_step(jobs, step_name):
+        origin = _origin_job(job, attempts)
+        evidence_job = origin or job
+        evidence_attempt = (
+            _attempt_number(evidence_job.get("run_attempt")) or target_attempt
+        )
+        sources.append(
+            {
+                "job_id": evidence_job.get("id"),
+                "job_name": evidence_job.get("name"),
+                "evidence_attempt": evidence_attempt,
+                "inherited": evidence_attempt != target_attempt,
+            }
+        )
+    if not sources:
+        return _phase_attempt_fields(jobs, attempts, target_attempt, step_name)
+    evidence_attempts = sorted(
+        {int(source["evidence_attempt"]) for source in sources}
+    )
+    return {
+        "attempt": target_attempt,
+        "evidence_attempt": (
+            evidence_attempts[0] if len(evidence_attempts) == 1 else None
+        ),
+        "evidence_attempts": evidence_attempts,
+        "inherited": any(bool(source["inherited"]) for source in sources),
+        "source_jobs": sources,
+    }
+
+
 def _annotate_phase(
     row: dict[str, object],
     jobs: list[dict],
@@ -753,7 +863,13 @@ def _annotate_phase(
     target_attempt: int,
     step_name: str,
 ) -> dict[str, object]:
-    row.update(_phase_attempt_fields(jobs, attempts, target_attempt, step_name))
+    if int(row.get("parallel_jobs") or 0) > 1:
+        fields = _parallel_phase_attempt_fields(
+            jobs, attempts, target_attempt, step_name
+        )
+    else:
+        fields = _phase_attempt_fields(jobs, attempts, target_attempt, step_name)
+    row.update(fields)
     return row
 
 
@@ -762,13 +878,25 @@ def android_phases_from_attempts(attempts: list[dict[str, object]]) -> list[dict
     jobs = [job for job in (latest.get("jobs") or []) if isinstance(job, dict)]
     target = _attempt_number(latest.get("attempt")) or 1
     configuration = _annotate_phase(
-        {"name": "configuration", "phase": "configuration", **_derived_span(jobs, "Set up Java", "Accept Android SDK licenses")},
+        {
+            "name": "configuration",
+            "phase": "configuration",
+            **_parallel_derived_span(
+                jobs, "Set up Java", "Accept Android SDK licenses"
+            ),
+        },
         jobs, attempts, target, "Set up Java",
     )
     return [
         configuration,
         _annotate_phase(
-            _phase_row("compile", "compile", "direct", _named_step(jobs, "Precompile connected APKs")),
+            _parallel_phase_row(
+                jobs,
+                name="compile",
+                phase="compile",
+                step_name="Precompile connected APKs",
+                single_kind="direct",
+            ),
             jobs, attempts, target, "Precompile connected APKs",
         ),
         _annotate_phase(
@@ -782,11 +910,12 @@ def android_phases_from_attempts(attempts: list[dict[str, object]]) -> list[dict
             jobs, attempts, target, "Set up Gradle",
         ),
         _annotate_phase(
-            _phase_row(
-                "emulator_prepare_install_test_exit",
-                "emulator_prepare + install + test + exit",
-                "combined",
-                _named_step(jobs, "Run connected test"),
+            _parallel_phase_row(
+                jobs,
+                name="emulator_prepare_install_test_exit",
+                phase="emulator_prepare + install + test + exit",
+                step_name="Run connected test",
+                single_kind="combined",
             ),
             jobs, attempts, target, "Run connected test",
         ),

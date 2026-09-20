@@ -695,6 +695,35 @@ fun ticketboxConnectedEvidenceFile(fileName: String): File =
             .get()
             .asFile
 
+val ticketboxConnectedShardEnvironmentNames = listOf(
+    "TICKETBOX_CONNECTED_CHECKOUT_SHA",
+    "TICKETBOX_CONNECTED_SOURCE_SHA",
+    "TICKETBOX_CONNECTED_RUN_ID",
+    "TICKETBOX_CONNECTED_RUN_ATTEMPT",
+    "TICKETBOX_CONNECTED_SHARD_INDEX",
+    "TICKETBOX_CONNECTED_SHARD_COUNT",
+)
+
+fun ticketboxConnectedShardEnvironment(): Map<String, String>? {
+    val values = ticketboxConnectedShardEnvironmentNames.associateWith { name ->
+        System.getenv(name)?.trim().orEmpty()
+    }
+    val supplied = values.filterValues { it.isNotEmpty() }
+    if (supplied.isEmpty()) {
+        return null
+    }
+    if (!System.getenv("CI").equals("true", ignoreCase = true)) {
+        throw GradleException("Connected shard identity is only valid in explicit CI mode.")
+    }
+    val missing = values.filterValues { it.isEmpty() }.keys
+    if (missing.isNotEmpty()) {
+        throw GradleException(
+            "Connected shard identity is incomplete: ${missing.sorted().joinToString()}"
+        )
+    }
+    return values
+}
+
 fun prepareTicketboxConnectedEvidenceFile(evidenceFile: File) {
     val evidenceDirectory = evidenceFile.parentFile
         ?: throw GradleException("Connected-test evidence file has no parent directory.")
@@ -752,6 +781,57 @@ fun captureTicketboxConnectedAdbEvidence(
     }
 }
 
+fun captureTicketboxConnectedDiscovery(
+    adb: File,
+    serials: List<String>,
+    outputFile: File,
+    exitCodeFile: File,
+) {
+    prepareTicketboxConnectedEvidenceFile(outputFile)
+    prepareTicketboxConnectedEvidenceFile(exitCodeFile)
+    outputFile.writeText("")
+    val serial = serials.singleOrNull()
+    if (serial == null) {
+        outputFile.writeText(
+            "ERROR: Runtime discovery requires exactly one selected emulator; " +
+                "found ${serials.size}.\n"
+        )
+        exitCodeFile.writeText("2\n")
+        return
+    }
+    val command = listOf(
+        adb.absolutePath,
+        "-s",
+        serial,
+        "shell",
+        "am",
+        "instrument",
+        "-w",
+        "-r",
+        "-e",
+        "log",
+        "true",
+        "com.ticketbox.test/androidx.test.runner.AndroidJUnitRunner",
+    )
+    val exitCode = try {
+        val process = ProcessBuilder(command)
+            .directory(rootProject.rootDir)
+            .redirectErrorStream(true)
+            .redirectOutput(outputFile)
+            .start()
+        if (process.waitFor(2, TimeUnit.MINUTES)) {
+            process.exitValue()
+        } else {
+            process.destroyForcibly()
+            124
+        }
+    } catch (exc: Exception) {
+        outputFile.appendText("ERROR: Could not start runtime discovery: ${exc.message}\n")
+        127
+    }
+    exitCodeFile.writeText("$exitCode\n")
+}
+
 val grayConnectedTestResultsDirectory =
     layout.buildDirectory.dir("outputs/androidTest-results/connected")
 val grayDebugApkOutputDirectory =
@@ -765,6 +845,7 @@ val prepareGrayConnectedTestEvidence by tasks.registering {
     dependsOn(guardConnectedAndroidTestEmulatorOnly)
 
     doLast {
+        ticketboxConnectedShardEnvironment()
         val adb = ticketboxAdbExecutable()
             ?: throw GradleException("Android adb is unavailable; cannot capture exit evidence.")
         val crashLog = ticketboxConnectedEvidenceFile("ticketbox-connected-crash.log")
@@ -774,10 +855,24 @@ val prepareGrayConnectedTestEvidence by tasks.registering {
         val afterExitInfo = ticketboxConnectedEvidenceFile(
             "ticketbox-connected-exit-info-after.txt"
         )
+        val discoveryOutput = ticketboxConnectedEvidenceFile(
+            "ticketbox-connected-discovery.txt"
+        )
+        val discoveryExitCode = ticketboxConnectedEvidenceFile(
+            "ticketbox-connected-discovery-exit-code.txt"
+        )
+        val shardEvidence = ticketboxConnectedEvidenceFile(
+            "ticketbox-connected-shard-evidence.json"
+        )
         prepareTicketboxConnectedEvidenceFile(crashLog)
         crashLog.writeText("")
         beforeExitInfo.writeText("")
         afterExitInfo.writeText("")
+        discoveryOutput.writeText("")
+        discoveryExitCode.writeText("")
+        if (shardEvidence.exists() && !shardEvidence.delete()) {
+            throw GradleException("Cannot clear stale connected shard evidence.")
+        }
         project.delete(grayConnectedTestResultsDirectory)
         captureTicketboxConnectedAdbEvidence(
             adb,
@@ -813,6 +908,15 @@ val qualifyGrayConnectedTestEvidence by tasks.registering {
         val crashLog = ticketboxConnectedEvidenceFile(
             "ticketbox-connected-crash.log"
         )
+        val discoveryOutput = ticketboxConnectedEvidenceFile(
+            "ticketbox-connected-discovery.txt"
+        )
+        val discoveryExitCode = ticketboxConnectedEvidenceFile(
+            "ticketbox-connected-discovery-exit-code.txt"
+        )
+        val shardEvidence = ticketboxConnectedEvidenceFile(
+            "ticketbox-connected-shard-evidence.json"
+        )
         captureTicketboxConnectedAdbEvidence(
             adb,
             captureSerials,
@@ -827,8 +931,8 @@ val qualifyGrayConnectedTestEvidence by tasks.registering {
             "the connected-test crash buffer",
             listOf("logcat", "-b", "crash", "-d"),
         )
-        runTicketboxAndroidQualification(
-            "GrayDebug connected-test qualification",
+        val shardEnvironment = ticketboxConnectedShardEnvironment()
+        val qualificationArguments = if (shardEnvironment == null) {
             listOf(
                 "connected",
                 "--baseline",
@@ -845,7 +949,53 @@ val qualifyGrayConnectedTestEvidence by tasks.registering {
                 grayDebugApkOutputDirectory.get().asFile.absolutePath,
                 "--instrumentation-apk-output-dir",
                 grayDebugAndroidTestApkOutputDirectory.get().asFile.absolutePath,
-            ),
+            )
+        } else {
+            // Capture real shard terminal evidence before discovery so the
+            // log-only runner cannot satisfy the shard process requirement.
+            captureTicketboxConnectedDiscovery(
+                adb,
+                captureSerials,
+                discoveryOutput,
+                discoveryExitCode,
+            )
+            listOf(
+                "connected-shard",
+                "--results-dir",
+                grayConnectedTestResultsDirectory.get().asFile.absolutePath,
+                "--before",
+                beforeExitInfo.absolutePath,
+                "--after",
+                afterExitInfo.absolutePath,
+                "--apkanalyzer",
+                apkanalyzer.absolutePath,
+                "--target-apk-output-dir",
+                grayDebugApkOutputDirectory.get().asFile.absolutePath,
+                "--instrumentation-apk-output-dir",
+                grayDebugAndroidTestApkOutputDirectory.get().asFile.absolutePath,
+                "--discovery-output",
+                discoveryOutput.absolutePath,
+                "--discovery-exit-code-file",
+                discoveryExitCode.absolutePath,
+                "--output-evidence",
+                shardEvidence.absolutePath,
+                "--checkout-sha",
+                shardEnvironment.getValue("TICKETBOX_CONNECTED_CHECKOUT_SHA"),
+                "--source-sha",
+                shardEnvironment.getValue("TICKETBOX_CONNECTED_SOURCE_SHA"),
+                "--run-id",
+                shardEnvironment.getValue("TICKETBOX_CONNECTED_RUN_ID"),
+                "--run-attempt",
+                shardEnvironment.getValue("TICKETBOX_CONNECTED_RUN_ATTEMPT"),
+                "--shard-index",
+                shardEnvironment.getValue("TICKETBOX_CONNECTED_SHARD_INDEX"),
+                "--shard-count",
+                shardEnvironment.getValue("TICKETBOX_CONNECTED_SHARD_COUNT"),
+            )
+        }
+        runTicketboxAndroidQualification(
+            "GrayDebug connected-test qualification",
+            qualificationArguments,
         )
     }
 }

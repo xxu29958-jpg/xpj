@@ -6,13 +6,14 @@ from __future__ import annotations
 import argparse
 import collections
 import dataclasses
+import json
 import os
 import re
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
-from pathlib import Path
 from collections.abc import Iterable, Mapping
+from pathlib import Path
 
 ANDROID_PROCESS_ATTRIBUTE = "{http://schemas.android.com/apk/res/android}process"
 EXIT_INFO_HEADER = "ACTIVITY MANAGER PROCESS EXIT INFO"
@@ -37,6 +38,29 @@ class TestResultSummary:
     tests: int
     skipped: int
     files: int
+
+
+TestIdentity = tuple[str, str]
+
+
+@dataclasses.dataclass(frozen=True)
+class TestResultEvidence:
+    summary: TestResultSummary
+    identities: tuple[TestIdentity, ...]
+
+
+@dataclasses.dataclass(frozen=True)
+class RuntimeDiscovery:
+    identities: tuple[TestIdentity, ...]
+    reported_tests: int
+
+
+@dataclasses.dataclass(frozen=True)
+class ConnectedShardEvidence:
+    attempt: int
+    index: int
+    inventory: collections.Counter[TestIdentity]
+    executed: tuple[TestIdentity, ...]
 
 
 TEST_LANES = ("jvm", "instrumentation")
@@ -138,7 +162,7 @@ def _suite_count(suite: ET.Element, name: str, result_file: Path) -> int:
     return value
 
 
-def read_test_results(results_dir: Path) -> TestResultSummary:
+def read_test_result_evidence(results_dir: Path) -> TestResultEvidence:
     if not results_dir.is_dir():
         raise EvidenceError(f"Android test result directory is missing: {results_dir}")
     result_files = sorted(
@@ -235,10 +259,425 @@ def read_test_results(results_dir: Path) -> TestResultSummary:
                     f"{class_name}.{test_name}."
                 )
             identities.add(identity)
+    return TestResultEvidence(
+        summary=TestResultSummary(
+            tests=len(identities),
+            skipped=skipped,
+            files=len(result_files),
+        ),
+        identities=tuple(sorted(identities)),
+    )
+
+
+def read_test_results(results_dir: Path) -> TestResultSummary:
+    return read_test_result_evidence(results_dir).summary
+
+
+def _discovery_status_event(
+    status: dict[str, str],
+    raw_code: str,
+) -> tuple[int, TestIdentity, int, int]:
+    try:
+        code = int(raw_code)
+    except ValueError as exc:
+        raise EvidenceError("Runtime discovery status code is malformed.") from exc
+    if code < 0:
+        raise EvidenceError(f"Runtime discovery reported status code {code}.")
+    if code not in {0, 1}:
+        raise EvidenceError(f"Runtime discovery reported unsupported status code {code}.")
+    missing = sorted({"class", "test", "current", "numtests"} - status.keys())
+    if missing:
+        raise EvidenceError(
+            "Runtime discovery status block is missing " + ", ".join(missing) + "."
+        )
+    identity = (status["class"].strip(), status["test"].strip())
+    if not all(identity):
+        raise EvidenceError("Runtime discovery contains an empty test identity.")
+    try:
+        current = int(status["current"])
+        total = int(status["numtests"])
+    except ValueError as exc:
+        raise EvidenceError("Runtime discovery counters are malformed.") from exc
+    if total <= 0 or current <= 0 or current > total:
+        raise EvidenceError("Runtime discovery counters are outside their valid range.")
+    return code, identity, current, total
+
+
+def _record_discovery_event(
+    *,
+    code: int,
+    identity: TestIdentity,
+    current: int,
+    total: int,
+    starts: list[TestIdentity],
+    active: collections.Counter[TestIdentity],
+    reported_total: int | None,
+) -> int:
+    if reported_total is not None and reported_total != total:
+        raise EvidenceError("Runtime discovery changed numtests during enumeration.")
+    if code == 1:
+        if current != len(starts) + 1:
+            raise EvidenceError("Runtime discovery current counters are not contiguous.")
+        starts.append(identity)
+        active[identity] += 1
+    else:
+        if active[identity] != 1:
+            raise EvidenceError("Runtime discovery finish event has no unique start event.")
+        active[identity] -= 1
+    return total
+
+
+def _validate_discovery_terminal(
+    text: str,
+    starts: list[TestIdentity],
+    active: collections.Counter[TestIdentity],
+    reported_total: int | None,
+) -> None:
+    if not starts:
+        raise EvidenceError("Android runtime discovery reported no tests.")
+    if any(active.values()):
+        raise EvidenceError("Runtime discovery has unfinished test identities.")
+    if len(set(starts)) != len(starts):
+        raise EvidenceError("Runtime discovery contains duplicate test identities.")
+    if reported_total != len(starts):
+        raise EvidenceError(
+            "Runtime discovery count mismatch: "
+            f"reported={reported_total}, observed={len(starts)}."
+        )
+    ok_counts = [
+        int(match.group(1))
+        for line in text.splitlines()
+        if (match := re.fullmatch(r"OK \((\d+) tests?\)", line.strip()))
+    ]
+    if ok_counts != [len(starts)]:
+        raise EvidenceError("Runtime discovery is missing its exact terminal OK count.")
+    terminal_codes = [line.strip() for line in text.splitlines()].count(
+        "INSTRUMENTATION_CODE: -1"
+    )
+    if terminal_codes != 1:
+        raise EvidenceError(
+            "Runtime discovery terminal instrumentation code is missing or ambiguous."
+        )
+
+
+def parse_runtime_discovery(
+    text: str,
+    *,
+    process_exit_code: int,
+) -> RuntimeDiscovery:
+    if process_exit_code != 0:
+        raise EvidenceError(
+            f"Android runtime discovery exited with process exit code {process_exit_code}."
+        )
+
+    status: dict[str, str] = {}
+    starts: list[TestIdentity] = []
+    active: collections.Counter[TestIdentity] = collections.Counter()
+    reported_total: int | None = None
+    for raw_line in text.splitlines():
+        if raw_line.startswith("INSTRUMENTATION_STATUS: "):
+            key, separator, value = raw_line.removeprefix(
+                "INSTRUMENTATION_STATUS: "
+            ).partition("=")
+            if separator:
+                status[key] = value
+            continue
+        if not raw_line.startswith("INSTRUMENTATION_STATUS_CODE: "):
+            continue
+        event = _discovery_status_event(
+            status,
+            raw_line.removeprefix("INSTRUMENTATION_STATUS_CODE: ").strip(),
+        )
+        reported_total = _record_discovery_event(
+            code=event[0],
+            identity=event[1],
+            current=event[2],
+            total=event[3],
+            starts=starts,
+            active=active,
+            reported_total=reported_total,
+        )
+        status = {}
+
+    _validate_discovery_terminal(text, starts, active, reported_total)
+    return RuntimeDiscovery(tuple(starts), len(starts))
+
+
+def _read_discovery_exit_code(path: Path) -> int:
+    try:
+        text = path.read_text(encoding="utf-8").strip()
+        return int(text)
+    except (OSError, ValueError) as exc:
+        raise EvidenceError("Runtime discovery process exit evidence is unreadable.") from exc
+
+
+def _validated_sha(value: str, label: str) -> str:
+    normalized = value.strip().lower()
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", normalized) is None
+        or normalized == "0" * 40
+    ):
+        raise EvidenceError(f"Connected shard {label} is not a full Git SHA.")
+    return normalized
+
+
+def _json_identities(value: object, label: str) -> tuple[TestIdentity, ...]:
+    if not isinstance(value, list):
+        raise EvidenceError(f"Connected shard {label} must be a list.")
+    identities: list[TestIdentity] = []
+    for raw_identity in value:
+        if (
+            not isinstance(raw_identity, list)
+            or len(raw_identity) != 2
+            or not all(isinstance(item, str) and item.strip() for item in raw_identity)
+        ):
+            raise EvidenceError(f"Connected shard {label} contains a malformed identity.")
+        identities.append((raw_identity[0], raw_identity[1]))
+    return tuple(identities)
+
+
+def write_connected_shard_evidence(
+    *,
+    results_dir: Path,
+    discovery_output: Path,
+    discovery_exit_code_file: Path,
+    process_exit_records: int,
+    output_path: Path,
+    checkout_sha: str,
+    source_sha: str,
+    run_id: str,
+    run_attempt: int,
+    shard_index: int,
+    shard_count: int,
+) -> TestResultSummary:
+    results = read_test_result_evidence(results_dir)
+    if results.summary.skipped:
+        raise EvidenceError(
+            f"Android instrumentation results contain skipped tests: {results.summary.skipped}."
+        )
+    try:
+        discovery_text = discovery_output.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise EvidenceError("Runtime discovery output is unreadable.") from exc
+    discovery = parse_runtime_discovery(
+        discovery_text,
+        process_exit_code=_read_discovery_exit_code(discovery_exit_code_file),
+    )
+    if not results.identities:
+        raise EvidenceError("Connected shard executed no tests.")
+    unknown = collections.Counter(results.identities) - collections.Counter(
+        discovery.identities
+    )
+    if unknown:
+        raise EvidenceError("Connected shard XML contains identities absent from discovery.")
+    if process_exit_records <= 0:
+        raise EvidenceError("Connected shard has no expected process exit evidence.")
+    if shard_count <= 0 or shard_index < 0 or shard_index >= shard_count:
+        raise EvidenceError("Connected shard coordinates are invalid.")
+    if not run_id.strip() or run_attempt <= 0:
+        raise EvidenceError("Connected shard run identity is invalid.")
+    payload = {
+        "schema": "ticketbox-connected-shard-evidence/v1",
+        "checkout_sha": _validated_sha(checkout_sha, "checkout SHA"),
+        "source_sha": _validated_sha(source_sha, "source SHA"),
+        "run_id": run_id.strip(),
+        "run_attempt": run_attempt,
+        "shard_index": shard_index,
+        "shard_count": shard_count,
+        "discovery_ids": [list(identity) for identity in discovery.identities],
+        "executed_ids": [list(identity) for identity in results.identities],
+        "process_exit_records": process_exit_records,
+    }
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return results.summary
+
+
+def _load_connected_shard_payload(evidence_file: Path) -> dict[str, object]:
+    try:
+        payload = json.loads(evidence_file.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise EvidenceError(
+            f"Connected shard evidence is unreadable: {evidence_file}"
+        ) from exc
+    if (
+        not isinstance(payload, dict)
+        or payload.get("schema") != "ticketbox-connected-shard-evidence/v1"
+    ):
+        raise EvidenceError("Connected shard evidence schema is invalid.")
+    return payload
+
+
+def _connected_shard_coordinates(
+    payload: dict[str, object],
+    *,
+    expected_shard_count: int,
+    expected_checkout: str,
+    expected_source: str,
+    expected_run_id: str,
+    expected_run_attempt: int,
+) -> tuple[int, int]:
+    if payload.get("checkout_sha") != expected_checkout:
+        raise EvidenceError("Connected shard checkout SHA mismatch.")
+    if payload.get("source_sha") != expected_source:
+        raise EvidenceError("Connected shard source SHA mismatch.")
+    if payload.get("run_id") != expected_run_id:
+        raise EvidenceError("Connected shard run identity mismatch.")
+    run_attempt = payload.get("run_attempt")
+    if (
+        not isinstance(run_attempt, int)
+        or run_attempt <= 0
+        or run_attempt > expected_run_attempt
+    ):
+        raise EvidenceError("Connected shard run attempt is invalid or from the future.")
+    shard_count = payload.get("shard_count")
+    shard_index = payload.get("shard_index")
+    if shard_count != expected_shard_count or not isinstance(shard_index, int):
+        raise EvidenceError("Connected shard coordinates do not match the expected matrix.")
+    if shard_index < 0 or shard_index >= expected_shard_count:
+        raise EvidenceError("Connected shard index is outside the matrix.")
+    return run_attempt, shard_index
+
+
+def _connected_shard_test_evidence(
+    payload: dict[str, object],
+) -> tuple[collections.Counter[TestIdentity], tuple[TestIdentity, ...]]:
+    discovery = _json_identities(payload.get("discovery_ids"), "discovery IDs")
+    shard_results = _json_identities(payload.get("executed_ids"), "executed IDs")
+    if not discovery or len(set(discovery)) != len(discovery):
+        raise EvidenceError("Connected shard discovery is empty or contains duplicates.")
+    if not shard_results or len(set(shard_results)) != len(shard_results):
+        raise EvidenceError(
+            "Connected shard execution is empty or contains local duplicates."
+        )
+    process_records = payload.get("process_exit_records")
+    if not isinstance(process_records, int) or process_records <= 0:
+        raise EvidenceError("Connected shard process evidence is missing.")
+    inventory = collections.Counter(discovery)
+    if collections.Counter(shard_results) - inventory:
+        raise EvidenceError("Connected shard executed an identity absent from discovery.")
+    return inventory, shard_results
+
+
+def _read_connected_shard_evidence(
+    evidence_file: Path,
+    *,
+    expected_shard_count: int,
+    expected_checkout: str,
+    expected_source: str,
+    expected_run_id: str,
+    expected_run_attempt: int,
+) -> ConnectedShardEvidence:
+    payload = _load_connected_shard_payload(evidence_file)
+    run_attempt, shard_index = _connected_shard_coordinates(
+        payload,
+        expected_shard_count=expected_shard_count,
+        expected_checkout=expected_checkout,
+        expected_source=expected_source,
+        expected_run_id=expected_run_id,
+        expected_run_attempt=expected_run_attempt,
+    )
+    inventory, shard_results = _connected_shard_test_evidence(payload)
+    return ConnectedShardEvidence(
+        attempt=run_attempt,
+        index=shard_index,
+        inventory=inventory,
+        executed=shard_results,
+    )
+
+
+def _select_latest_connected_shards(
+    evidence_files: list[Path],
+    *,
+    expected_shard_count: int,
+    expected_checkout: str,
+    expected_source: str,
+    expected_run_id: str,
+    expected_run_attempt: int,
+) -> dict[int, ConnectedShardEvidence]:
+    selected: dict[int, ConnectedShardEvidence] = {}
+    for evidence_file in evidence_files:
+        candidate = _read_connected_shard_evidence(
+            evidence_file,
+            expected_shard_count=expected_shard_count,
+            expected_checkout=expected_checkout,
+            expected_source=expected_source,
+            expected_run_id=expected_run_id,
+            expected_run_attempt=expected_run_attempt,
+        )
+        previous = selected.get(candidate.index)
+        if previous is not None and previous.attempt == candidate.attempt:
+            raise EvidenceError("Connected shard coordinate and attempt are duplicated.")
+        if previous is None or candidate.attempt > previous.attempt:
+            selected[candidate.index] = candidate
+    return selected
+
+
+def verify_connected_shards(
+    *,
+    evidence_root: Path,
+    baseline_path: Path,
+    expected_shard_count: int,
+    expected_checkout_sha: str,
+    expected_source_sha: str,
+    expected_run_id: str,
+    expected_run_attempt: int,
+) -> TestResultSummary:
+    if expected_shard_count <= 0:
+        raise EvidenceError("Expected connected shard count must be positive.")
+    if expected_run_attempt <= 0:
+        raise EvidenceError("Expected connected run attempt must be positive.")
+    expected_checkout = _validated_sha(expected_checkout_sha, "expected checkout SHA")
+    expected_source = _validated_sha(expected_source_sha, "expected source SHA")
+    evidence_files = sorted(
+        evidence_root.rglob("ticketbox-connected-shard-evidence.json")
+        if evidence_root.is_dir()
+        else ()
+    )
+    if len(evidence_files) < expected_shard_count:
+        raise EvidenceError(
+            "Connected shard evidence count mismatch: "
+            f"minimum={expected_shard_count}, actual={len(evidence_files)}."
+        )
+
+    selected = _select_latest_connected_shards(
+        evidence_files,
+        expected_shard_count=expected_shard_count,
+        expected_checkout=expected_checkout,
+        expected_source=expected_source,
+        expected_run_id=expected_run_id,
+        expected_run_attempt=expected_run_attempt,
+    )
+
+    if set(selected) != set(range(expected_shard_count)):
+        raise EvidenceError("Connected shard coordinate set is incomplete.")
+    shards = [selected[index] for index in range(expected_shard_count)]
+    expected_inventory = shards[0].inventory
+    if any(shard.inventory != expected_inventory for shard in shards[1:]):
+        raise EvidenceError("Connected shard runtime discovery inventories differ.")
+    executed = collections.Counter[TestIdentity]()
+    for shard in shards:
+        executed.update(shard.executed)
+    if executed != expected_inventory:
+        missing = expected_inventory - executed
+        duplicate = executed - expected_inventory
+        raise EvidenceError(
+            "Connected shard XML union does not equal runtime discovery: "
+            f"missing={sum(missing.values())}, duplicate={sum(duplicate.values())}."
+        )
+    baseline = read_test_baseline(baseline_path)["instrumentation"]
+    if sum(executed.values()) < baseline:
+        raise EvidenceError(
+            "Android instrumentation executed-result count fell below the ratchet: "
+            f"actual={sum(executed.values())}, minimum={baseline}."
+        )
     return TestResultSummary(
-        tests=len(identities),
-        skipped=skipped,
-        files=len(result_files),
+        tests=sum(executed.values()),
+        skipped=0,
+        files=len(shards),
     )
 
 
@@ -740,6 +1179,36 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         required=True,
         type=Path,
     )
+
+    connected_shard = subparsers.add_parser("connected-shard")
+    connected_shard.add_argument("--results-dir", required=True, type=Path)
+    connected_shard.add_argument("--before", required=True, type=Path)
+    connected_shard.add_argument("--after", required=True, type=Path)
+    connected_shard.add_argument("--apkanalyzer", required=True, type=Path)
+    connected_shard.add_argument("--target-apk-output-dir", required=True, type=Path)
+    connected_shard.add_argument(
+        "--instrumentation-apk-output-dir", required=True, type=Path
+    )
+    connected_shard.add_argument("--discovery-output", required=True, type=Path)
+    connected_shard.add_argument(
+        "--discovery-exit-code-file", required=True, type=Path
+    )
+    connected_shard.add_argument("--output-evidence", required=True, type=Path)
+    connected_shard.add_argument("--checkout-sha", required=True)
+    connected_shard.add_argument("--source-sha", required=True)
+    connected_shard.add_argument("--run-id", required=True)
+    connected_shard.add_argument("--run-attempt", required=True, type=int)
+    connected_shard.add_argument("--shard-index", required=True, type=int)
+    connected_shard.add_argument("--shard-count", required=True, type=int)
+
+    connected_shards = subparsers.add_parser("connected-shards")
+    connected_shards.add_argument("--evidence-root", required=True, type=Path)
+    connected_shards.add_argument("--baseline", required=True, type=Path)
+    connected_shards.add_argument("--expected-shard-count", required=True, type=int)
+    connected_shards.add_argument("--expected-checkout-sha", required=True)
+    connected_shards.add_argument("--expected-source-sha", required=True)
+    connected_shards.add_argument("--expected-run-id", required=True)
+    connected_shards.add_argument("--expected-run-attempt", required=True, type=int)
     return parser.parse_args(argv)
 
 
@@ -772,6 +1241,49 @@ def main(argv: list[str] | None = None) -> int:
                 f"Android {args.lane} executed-result count is healthy "
                 f"({summary.tests} tests, {summary.skipped} skipped, "
                 f"{summary.files} XML files)."
+            )
+            return 0
+
+        if args.command == "connected-shards":
+            summary = verify_connected_shards(
+                evidence_root=args.evidence_root,
+                baseline_path=args.baseline,
+                expected_shard_count=args.expected_shard_count,
+                expected_checkout_sha=args.expected_checkout_sha,
+                expected_source_sha=args.expected_source_sha,
+                expected_run_id=args.expected_run_id,
+                expected_run_attempt=args.expected_run_attempt,
+            )
+            print(
+                "Android connected shard union is healthy "
+                f"({summary.tests} tests across {summary.files} shards)."
+            )
+            return 0
+
+        if args.command == "connected-shard":
+            expected_record_count = verify_process_health(
+                before_path=args.before,
+                after_path=args.after,
+                apkanalyzer=args.apkanalyzer,
+                target_apk_output_dir=args.target_apk_output_dir,
+                instrumentation_apk_output_dir=args.instrumentation_apk_output_dir,
+            )
+            summary = write_connected_shard_evidence(
+                results_dir=args.results_dir,
+                discovery_output=args.discovery_output,
+                discovery_exit_code_file=args.discovery_exit_code_file,
+                process_exit_records=expected_record_count,
+                output_path=args.output_evidence,
+                checkout_sha=args.checkout_sha,
+                source_sha=args.source_sha,
+                run_id=args.run_id,
+                run_attempt=args.run_attempt,
+                shard_index=args.shard_index,
+                shard_count=args.shard_count,
+            )
+            print(
+                "Android connected shard qualification is healthy "
+                f"({summary.tests} tests, shard {args.shard_index}/{args.shard_count})."
             )
             return 0
 

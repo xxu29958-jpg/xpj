@@ -56,7 +56,7 @@ _QUALIFICATION_TASKS = {
         ),
         "notes": "Use the original Gradle task/test ID and XML or process error; device evidence must be captured while its isolated emulator is alive.",
         "reproduce": "From android/, with ANDROID_SERIAL bound to an isolated emulator: ./gradlew --no-daemon --max-workers=2 :app:connectedGrayDebugAndroidTest",
-        "qualification": "Android fast + debug/release APK + SCA -> Android; Connected execution with live-device finalizer -> Connected (emulator); CodeQL extraction remains separate.",
+        "qualification": "Android fast + debug/release APK + SCA -> Android; isolated Connected shards with live-device finalizers -> exact test-ID union in Connected (emulator); CodeQL extraction remains separate.",
     },
     "postgres-qualification": {
         "title": "PostgreSQL collection, isolated shards and recovery",
