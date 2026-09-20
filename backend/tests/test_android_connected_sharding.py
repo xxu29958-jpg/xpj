@@ -12,7 +12,7 @@ def _steps(job: dict[str, object]) -> dict[str, dict[str, object]]:
     return {str(step["name"]): step for step in job["steps"]}
 
 
-def test_connected_workflow_runs_two_isolated_qualified_shards() -> None:
+def test_connected_workflow_runs_three_isolated_qualified_shards() -> None:
     workflow = yaml.safe_load(
         (ROOT / ".github" / "workflows" / "android-connected-test.yml").read_text(
             encoding="utf-8"
@@ -24,8 +24,9 @@ def test_connected_workflow_runs_two_isolated_qualified_shards() -> None:
         "fail-fast": False,
         "matrix": {
             "shard": [
-                {"index": 0, "count": 2, "label": "1/2"},
-                {"index": 1, "count": 2, "label": "2/2"},
+                {"index": 0, "count": 3, "label": "1/3"},
+                {"index": 1, "count": 3, "label": "2/3"},
+                {"index": 2, "count": 3, "label": "3/3"},
             ]
         },
     }
@@ -55,7 +56,7 @@ def test_connected_workflow_runs_two_isolated_qualified_shards() -> None:
             "${{ github.run_attempt }}", str(attempt)
         )
         for template in artifact_names
-        for index in range(2)
+        for index in range(3)
         for attempt in (1, 2)
     ]
     assert len(set(expanded_names)) == len(expanded_names)
@@ -67,7 +68,7 @@ def test_connected_workflow_runs_two_isolated_qualified_shards() -> None:
     assert qualification_steps["Download connected shard evidence"]["with"]["pattern"] == "connected-shard-*"
     verify = qualification_steps["Qualify connected shard union"]
     assert " connected-shards " in f" {verify['run']} "
-    assert verify["env"]["EXPECTED_SHARD_COUNT"] == "2"
+    assert verify["env"]["EXPECTED_SHARD_COUNT"] == "3"
     for name in (
         "Require all connected shards",
         "Download connected shard evidence",

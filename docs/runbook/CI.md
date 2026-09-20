@@ -111,11 +111,13 @@ B3 仅缩减已证明无关的执行，混合业务变更仍执行完整 Android
 | 仅 `android/app/src/androidTest/java/` 的 `.kt/.java` 或 `androidTest/kotlin/` 的 `.kt` | 保留 | 可跳过 | 保留 | 保留 |
 | 两类混合、生产、Gradle、依赖、manifest、schema、计数基线、公共 fixture、策略、资源或其他未证明输入 | 保留 | 保留 | 保留 | 保留 |
 
-当前 Gradle 没有把两类测试互接为共享 sourceSet；同源集 Kotlin/Java fixture 由对应编译与真实测试消费。`app/schemas` 是设备测试 assets，不能按测试文件处理。fast 保留现有全部任务；它不编译 instrumentation 源码，不能代替 Connected。设备测试候选的 Connected 仍先构建本提交的 `assembleGrayDebug` 与 `assembleGrayDebugAndroidTest`，再执行真实两片设备测试与完整证据汇总。更名跨入生产目录、CI 规则改动或同步修改数量基线均恢复全量；本次策略 PR 自身不会用新规则减跑。
+当前 Gradle 没有把两类测试互接为共享 sourceSet；同源集 Kotlin/Java fixture 由对应编译与真实测试消费。`app/schemas` 是设备测试 assets，不能按测试文件处理。fast 保留现有全部任务；它不编译 instrumentation 源码，不能代替 Connected。设备测试候选的 Connected 仍先构建本提交的 `assembleGrayDebug` 与 `assembleGrayDebugAndroidTest`，再执行真实分片设备测试与完整证据汇总。更名跨入生产目录、CI 规则改动或同步修改数量基线均恢复全量；本次策略 PR 自身不会用新规则减跑。
 
 现有 `verify_scoped_ci_results.py` 用 `--lane-scope` 逐项核对能力标志：被选中的 lane 必须成功且 checkout/source 身份正确；明确无关的 lane 必须为没有 SHA 的 `skipped`。缺标志、非法值、父 scope 与子能力矛盾、失败、取消、错误跳过及错 SHA 均拒绝。CI-gap 同时检查 scope 输出、任务条件和汇总器绑定；解释来自同一次分类结果。回退时将分类器两标志恢复为上层 Android scope 即可保留全量资格，不必重建工作流。
 
-云端 connected workflow `.github/workflows/android-connected-test.yml` 保留稳定 required 检查 `Connected (emulator)` 和共享 scope。`android_connected` 明确无关时由聚合器核对跳过语义；其余情况完整 instrumentation suite 交给 AndroidX runner 的 `numShards=2` / `shardIndex`，在两个独立的 API 36 emulator job 执行。各片分别构建并安装本提交的 app/test APK，不继承其他提交的构建或测试 PASS，`fail-fast: false` 保留其他片的独立诊断。普通本地与 Gitea 未分片入口继续执行全套及原有全局计数门禁。
+云端 connected workflow `.github/workflows/android-connected-test.yml` 保留稳定 required 检查 `Connected (emulator)` 和共享 scope。`android_connected` 明确无关时由聚合器核对跳过语义；其余情况完整 instrumentation suite 交给 AndroidX runner 的 `numShards=3` / `shardIndex`，在三个独立的 API 36 emulator job 执行。各片分别构建并安装本提交的 app/test APK，不继承其他提交的构建或测试 PASS，`fail-fast: false` 保留其他片的独立诊断。普通本地与 Gitea 未分片入口继续执行全套及原有全局计数门禁。
+
+两片方案实际保留完整 347 项后，设备执行仍接近 12 分钟；真实 XML 中两片测试时间约 463/448 秒，已经较均衡。三片只调整现有 matrix 和汇总的预期片数，继续按最终完整运行验收 TTQ 与原始 runner 成本，不能把测试时间估算当提速实证。需要回退时通过同一提交将 matrix、汇总预期和直接契约恢复为两片，保留完整测试集合、逐片进程资格与全量发现；不操作业务数据。
 
 每片仍由 `prepareGrayConnectedTestEvidence` / `guardConnectedAndroidTestEmulatorOnly` / `qualifyGrayConnectedTestEvidence` 完成真实测试与进程资格：测试前后采集 `ApplicationExitInfo`，从实际 APK manifest 取得目标包、测试包及其进程，保留原有终态判断和缺证据即失败语义。先固定真实测试的 after/crash 证据，再以同一 APK 的 runner `log=true` 发现完整测试 ID；这个枚举过程不充当测试执行或进程健康证据。每片 XML 必须无失败、跳过或空片；独立汇总将各片完整 ID（包括参数化后缀）的多重集合并集与 runtime discovery 对账，拒绝漏项、重复、发现集合不一致和错 checkout/source/run。全局 instrumentation 基线在并集上检查，不能除以片数。JVM 计数仍消费真实 Gradle JUnit XML。
 
