@@ -119,12 +119,10 @@ def _receipt_record(result: dict[str, object]) -> dict[str, object]:
     if not isinstance(source, dict):
         return result
     node = dict(source)
-    is_original_command = (resource == "expense" and node.get("operation") in {
+    is_original_command = (node.get("operation") in {
         "verify_original", "replenish_original", "retry_original_cleanup", "cancel_original_cleanup"
     } and node.get("sha256") is not None)
-    expense_id = node.get("id")
-    if is_original_command:
-        expense_id = node.get("expense_id")
+    expense_id = node.get("id", node.get("expense_id"))
     if "image_path" in node:
         node.pop("image_path")
         node["original_reference_id"] = f"expense:{expense_id}:accepted:{result['id']}"
