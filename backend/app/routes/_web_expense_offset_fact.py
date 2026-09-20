@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
+from app.errors import AppError
 from app.routes._web_money_views import _minor_amount_label
 from app.routes._web_relationship_links import authorized_debt_href
 from app.routes._web_session_common import resolve_web_actor_account_id
@@ -189,7 +190,10 @@ def expense_offset_fact_view(
     view = offset_fact_view(bundle, can_write=can_write)
     accepted = view["offset_relationship_impacts"]["accepted"]
     if accepted:
-        account_id = resolve_web_actor_account_id(db, request, tenant_id)
+        try:
+            account_id = resolve_web_actor_account_id(db, request, tenant_id)
+        except AppError:
+            return view
         for impact in accepted:
             impact["debt_href"] = authorized_debt_href(
                 db, public_id=impact["debt_public_id"], selected_id=tenant_id, account_id=account_id,

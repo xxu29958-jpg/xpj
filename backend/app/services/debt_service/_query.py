@@ -82,6 +82,31 @@ def resolve_debt_for_participant(db: Session, *, public_id: str, ledger_id: str,
     return debt, is_ledger_member
 
 
+def participant_accessible_debt_public_ids(
+    db: Session,
+    *,
+    public_ids: set[str],
+    ledger_id: str,
+    account_id: int,
+) -> frozenset[str]:
+    """Return known Debt ids visible through the canonical participant fence.
+
+    Link presentation needs only an existence-safe authorization decision, not
+    the Debt response's payment fold or participant labels. Load all known
+    candidates once, then reuse :func:`participant_can_access` so the batch path
+    has exactly the same ledger-member/cross-ledger-counterparty boundary as the
+    detail resolver. Missing and forbidden ids are both omitted.
+    """
+    if not public_ids:
+        return frozenset()
+    debts = db.scalars(select(Debt).where(Debt.public_id.in_(public_ids)))
+    return frozenset(
+        debt.public_id
+        for debt in debts
+        if any(participant_can_access(debt, ledger_id=ledger_id, account_id=account_id))
+    )
+
+
 def get_participant_debt_response(db: Session, *, public_id: str, ledger_id: str, account_id: int) -> DebtResponse:
     """Debt response for a participant; redacts the ledger id for cross-ledger access.
 
