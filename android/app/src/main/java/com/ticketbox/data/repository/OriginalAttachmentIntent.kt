@@ -48,7 +48,8 @@ interface OriginalAttachmentActions {
 internal val ORIGINAL_REVIEW_ERRORS = setOf("image_replenishment_mismatch", "original_identity_unverified",
     "original_review_conflict", "original_already_verified", "attachment_cleanup_changed", "attachment_cleanup_invalid",
     "state_conflict", "idempotency_key_reused", "original_intent_unsupported",
-    "original_receipt_invalid", "upload_original_unavailable", "expense_not_found", "image_not_found")
+    "original_receipt_invalid", "upload_original_unavailable", "expense_not_found", "image_not_found",
+    "original_replenishment_not_needed")
 internal val originalPayloadAdapter = Moshi.Builder().build().adapter(OriginalAttachmentPayload::class.java)
 internal val originalReceiptAdapter = Moshi.Builder().build().adapter(OriginalCommandReceiptDto::class.java)
 internal val originalHealthAdapter = Moshi.Builder().build().adapter(OriginalHealthDto::class.java)

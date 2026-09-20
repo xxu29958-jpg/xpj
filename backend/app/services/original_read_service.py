@@ -11,6 +11,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Self
 
+from app.config import get_settings
 from app.errors import AppError
 from app.services.file_service import resolve_protected_image
 from app.services.stable_file_reader import hold_stable_file_for_read
@@ -39,12 +40,15 @@ class OriginalSnapshot:
 def _copy_original(source: Path, target: Path) -> tuple[str, int, float]:
     digest = hashlib.sha256()
     size = 0
+    limit = get_settings().max_upload_size_bytes
     with hold_stable_file_for_read(source) as original, target.open("xb") as snapshot:
         modified_at = os.fstat(original.fileno()).st_mtime
-        while chunk := original.read(1024 * 1024):
+        while chunk := original.read(min(1024 * 1024, limit - size + 1)):
+            size += len(chunk)
+            if size > limit:
+                raise AppError("image_read_failed", status_code=503)
             snapshot.write(chunk)
             digest.update(chunk)
-            size += len(chunk)
     return digest.hexdigest(), size, modified_at
 
 

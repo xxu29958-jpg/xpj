@@ -201,6 +201,34 @@ def test_stale_request_id_cannot_consume_new_request(cleanup_case):
     case.db.commit.assert_not_called()
 
 
+@pytest.mark.parametrize("damage", ["directory", "unresolvable"])
+def test_cancel_unexecuted_invalid_reference_releases_the_request(cleanup_case, monkeypatch, damage):
+    case = cleanup_case
+    request = _accept_only(case)
+    if damage == "directory":
+        case.original.unlink()
+        case.original.mkdir()
+    else:
+        monkeypatch.setattr(cleanup, "resolve_upload_path_for_tenant", lambda *args: None)
+    result = cleanup.settle_cleanup_request(case.db, case.expense, expected_request_id=request.request_id,
+        cancel_remaining=True)
+    assert result.changed and not result.pending
+    assert case.expense.attachment_cleanup_request is None
+    assert case.expense.image_deleted_at is None and case.expense.thumbnail_deleted_at is None
+    assert case.original.exists() and case.thumbnail.exists()
+    assert result.deleted_images == result.deleted_thumbnails == 0
+
+
+def test_zero_retention_days_still_resumes_accepted_after_confirm_cleanup(cleanup_case):
+    case = cleanup_case
+    _accept_only(case)
+    case.settings.delete_image_after_days = 0
+    result = cleanup_service.cleanup_confirmed_images(case.db, "owner")
+    assert result.deleted_images == result.deleted_thumbnails == 1
+    assert case.expense.attachment_cleanup_request is None
+    assert not case.original.exists() and not case.thumbnail.exists()
+
+
 def test_automatic_continuation_does_not_consume_replacement_request_after_relock(cleanup_case):
     case = cleanup_case
     real_refresh = case.db.refresh.side_effect

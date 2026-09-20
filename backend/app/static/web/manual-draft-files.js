@@ -1,7 +1,8 @@
 /* Blob accompaniment to TicketboxDraftStore keys, never a command queue.
  * Publish the string intent only after the IndexedDB transaction completes. */
-(function (window) {
+(function (window, document) {
   "use strict";
+  const maxBytes = Number(document.currentScript.dataset.uploadMaxBytes);
   function open() {
     return new Promise((resolve, reject) => {
       const request = window.indexedDB.open("ticketbox-draft-files", 1);
@@ -24,6 +25,8 @@
     });
   }
   async function put(key, scope, file) {
+    if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) throw Error("upload_limit_unavailable");
+    if (file.size > maxBytes) throw Error("upload_too_large");
     const bytes = await file.arrayBuffer();
     const digest = await window.crypto.subtle.digest("SHA-256", bytes);
     const sha256 = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
@@ -41,8 +44,9 @@
     return new window.File([item.blob], values.file_name,
       {type: values.file_type, lastModified: Number(values.file_last_modified)});
   }
-  function remove(key) {
+  function remove(key, sha256) {
     return transact("readwrite", store => {
+      if (sha256) { store.delete(key + ":" + sha256); return; }
       const request = store.openCursor(window.IDBKeyRange.bound(key + ":", key + ":\uffff"));
       request.onsuccess = () => {
         const cursor = request.result;
@@ -51,4 +55,4 @@
     });
   }
   window.TicketboxDraftFiles = {put, get, remove};
-})(window);
+})(window, document);
