@@ -50,6 +50,52 @@ def _verify(values: dict[str, str]) -> Verification:
     )
 
 
+@pytest.mark.parametrize("parent,apk", [("true", "true"), ("true", "false"), ("false", "false")])
+def test_per_lane_scope_preserves_status_and_both_sha_obligations(parent, apk) -> None:
+    values = _valid_results(scope=parent)
+    values["APK_SCOPE"] = apk
+    for key, value in _valid_results(scope=apk).items():
+        if key.startswith("RECOVERY_"):
+            values[key] = value
+    kwargs = {"label": "Scoped capabilities", "scope_key": "POSTGRES_SCOPE",
+              "lanes": ("ORDINARY", "REAL_DB", "RECOVERY"), "source_lanes": (),
+              "lane_scopes": {"RECOVERY": "APK_SCOPE"}}
+    assert verify(values, **kwargs).ok
+    for key in values:
+        candidate = dict(values)
+        del candidate[key]
+        assert not verify(candidate, **kwargs).ok, key
+    for lane in kwargs["lanes"]:
+        for status in ("failure", "cancelled", "skipped", "success"):
+            if status != values[f"{lane}_RESULT"]:
+                assert not verify({**values, f"{lane}_RESULT": status}, **kwargs).ok
+        for suffix in ("SHA", "SOURCE_SHA"):
+            assert not verify({**values, f"{lane}_{suffix}": "wrong-head"}, **kwargs).ok
+    for key in ("POSTGRES_SCOPE", "APK_SCOPE"):
+        assert not verify({**values, key: "unknown"}, **kwargs).ok
+
+
+def test_per_lane_scope_cannot_enable_a_child_of_an_unselected_parent() -> None:
+    values = {**_valid_results(scope="false"), "APK_SCOPE": "true"}
+    assert not verify(values, label="Android", scope_key="POSTGRES_SCOPE",
+                      lanes=("ORDINARY", "REAL_DB", "RECOVERY"), source_lanes=(),
+                      lane_scopes={"RECOVERY": "APK_SCOPE"}).ok
+
+
+def test_per_lane_scope_rejects_unknown_lane_and_malformed_cli(monkeypatch) -> None:
+    from scripts import verify_scoped_ci_results as scoped
+
+    assert not scoped.verify(_valid_results(), label="Android", scope_key="POSTGRES_SCOPE",
+                             lanes=("ORDINARY",), source_lanes=(),
+                             lane_scopes={"TYPO": "APK_SCOPE"}).ok
+    base = ["--label", "Android", "--scope-key", "ANDROID_SCOPE", "--lane", "APK"]
+    for bindings in (["APK"], ["TYPO=APK_SCOPE"], ["APK=bad"], ["APK=APK_SCOPE", "APK=APK_SCOPE"]):
+        argv = base + [arg for binding in bindings for arg in ("--lane-scope", binding)]
+        with pytest.raises(SystemExit) as error:
+            scoped.main(argv)
+        assert error.value.code == 2
+
+
 def test_release_policy_covers_the_pinned_windows_postgres_artifact() -> None:
     toolchain = json.loads(
         (_ROOT / "backend" / "packaging" / "windows-build-toolchain.json").read_text(

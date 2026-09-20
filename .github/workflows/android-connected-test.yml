@@ -34,6 +34,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       android: ${{ steps.scope.outputs.android }}
+      android_connected: ${{ steps.scope.outputs.android_connected }}
       qualification_sha: ${{ steps.qualification.outputs.sha }}
       qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
     steps:
@@ -67,7 +68,7 @@ jobs:
   connected_execution:
     name: Connected execution (${{ matrix.shard.label }})
     needs: scope
-    if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.android != 'false') }}
+    if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.android_connected != 'false') }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -220,13 +221,13 @@ jobs:
         run: python -E -S backend/scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
 
       - name: Require all connected shards
-        if: ${{ success() && needs.scope.outputs.android != 'false' }}
+        if: ${{ success() && needs.scope.outputs.android_connected != 'false' }}
         env:
           EXECUTION_RESULT: ${{ needs.connected_execution.result }}
         run: test "$EXECUTION_RESULT" = success
 
       - name: Download connected shard evidence
-        if: ${{ success() && needs.scope.outputs.android != 'false' }}
+        if: ${{ success() && needs.scope.outputs.android_connected != 'false' }}
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           pattern: connected-shard-*
@@ -234,7 +235,7 @@ jobs:
           merge-multiple: false
 
       - name: Qualify connected shard union
-        if: ${{ success() && needs.scope.outputs.android != 'false' }}
+        if: ${{ success() && needs.scope.outputs.android_connected != 'false' }}
         env:
           EXPECTED_SHARD_COUNT: "2"
           EXPECTED_CHECKOUT_SHA: ${{ github.sha }}
@@ -257,6 +258,7 @@ jobs:
           ENV: ""
           SCOPE_RESULT: ${{ needs.scope.result }}
           ANDROID_SCOPE: ${{ needs.scope.outputs.android }}
+          ANDROID_CONNECTED_SCOPE: ${{ needs.scope.outputs.android_connected }}
           EXECUTION_RESULT: ${{ needs.connected_execution.result }}
           EXPECTED_SHA: ${{ github.sha }}
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -266,4 +268,4 @@ jobs:
           EXECUTION_SOURCE_SHA: ${{ needs.connected_execution.outputs.qualification_source_sha }}
           AGGREGATOR_SHA: ${{ steps.qualification.outputs.sha }}
           AGGREGATOR_SOURCE_SHA: ${{ steps.qualification.outputs.source_sha }}
-        run: python -E -S backend/scripts/verify_scoped_ci_results.py --label Connected --scope-key ANDROID_SCOPE --lane EXECUTION
+        run: python -E -S backend/scripts/verify_scoped_ci_results.py --label Connected --scope-key ANDROID_SCOPE --lane EXECUTION --lane-scope EXECUTION=ANDROID_CONNECTED_SCOPE

@@ -49,7 +49,7 @@ jobs:
       - run: python backend/scripts/ci_scope.py
   android_apk:
     needs: scope
-    if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.android != 'false') }}
+    if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.android_apk != 'false') }}
     steps:
       - name: Build debug and release APKs
         run: ./gradlew --no-daemon --max-workers=2 :app:assembleGrayRelease :app:assembleInternalRelease

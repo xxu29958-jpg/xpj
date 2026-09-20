@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from types import ModuleType
 
+import pytest
+
 from tests._infra.ci_gap import load_ci_gap_audit
 
 _ANDROID_PATHS = """
@@ -34,6 +36,8 @@ jobs:
       backend_frozen: ${{ steps.scope.outputs.backend_frozen }}
       desktop: ${{ steps.scope.outputs.desktop }}
       android: ${{ steps.scope.outputs.android }}
+      android_apk: ${{ steps.scope.outputs.android_apk }}
+      android_connected: ${{ steps.scope.outputs.android_connected }}
       windows: ${{ steps.scope.outputs.windows }}
       postgres_matrix: ${{ steps.scope.outputs.postgres_matrix }}
       qualification_sha: ${{ steps.qualification.outputs.sha }}
@@ -337,6 +341,34 @@ def test_fail_closed_scope_job_can_protect_a_heavy_lane(tmp_path: Path) -> None:
         ), index
 
     _assert_codeql_terminal_mutations_are_rejected(mod, workflows)
+
+
+@pytest.mark.parametrize("filename,job,output,binding", [
+    ("ci.yml", "android_apk_release", "android_apk", "RELEASE_APK=ANDROID_APK_SCOPE"),
+    ("android-connected-test.yml", "connected_execution", "android_connected", "EXECUTION=ANDROID_CONNECTED_SCOPE"),
+])
+def test_android_capability_wiring_rejects_partial_or_crossed_connections(
+    tmp_path: Path, filename: str, job: str, output: str, binding: str,
+) -> None:
+    mod = load_ci_gap_audit()
+    workflows = tmp_path / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    source = (Path(__file__).resolve().parents[2] / ".github" / "workflows" / filename).read_text(encoding="utf-8")
+    target = workflows / filename
+    target.write_text(source, encoding="utf-8")
+    commands = mod._iter_workflow_run_commands(workflows, protected_only=True)
+    assert any(command.job == job and command.protection_scope == "android" for command in commands)
+    mutations = [
+        source.replace(f"      {output}: ${{{{ steps.scope.outputs.{output} }}}}\n", ""),
+        source.replace(f"outputs.{output} != 'false'", "outputs.android != 'false'"),
+        source.replace(f"--lane-scope {binding}", ""),
+        source.replace(f"outputs.{output} }}}}", "outputs.typo }}"),
+    ]
+    for candidate in mutations:
+        assert candidate != source
+        target.write_text(candidate, encoding="utf-8")
+        commands = mod._iter_workflow_run_commands(workflows, protected_only=True)
+        assert all(command.job != job for command in commands)
 
 
 def test_windows_scope_protects_real_installer_provenance(tmp_path: Path) -> None:

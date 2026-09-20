@@ -209,10 +209,15 @@ def _cleanup_test_files() -> None:
     cleanup_test_runtime(TEST_RUN_ID)
 
 
-def reset_db_state() -> None:
-    """Drop & recreate schema, run init_db (migrations + seed)."""
+def clear_db_state() -> None:
+    """Leave the throwaway schema and owned files empty without rebuilding them."""
     reset_public_schema(engine)
     _cleanup_test_files()
+
+
+def reset_db_state() -> None:
+    """Drop & recreate schema, run init_db (migrations + seed)."""
+    clear_db_state()
     init_db()
 
 

@@ -4,6 +4,8 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from scripts import ci_gap_trigger_scope, ci_scope
 from scripts.ci_gap_trigger_scope import all_ci_scopes, classify_ci_decision, classify_ci_paths
 from scripts.postgres_release_policy import POSTGRES_RELEASE_POLICY
@@ -411,7 +413,7 @@ def test_required_codeql_context_needs_every_analysis_lane() -> None:
 def test_scope_output_derives_postgres_matrix_from_release_policy(tmp_path) -> None:
     output = tmp_path / "github-output"
 
-    ci_scope.write_outputs(output, all_ci_scopes())
+    ci_scope.write_outputs(output, all_ci_scopes(), {"android_apk": True, "android_connected": True})
 
     values = dict(line.split("=", 1) for line in output.read_text(encoding="utf-8").splitlines())
     assert json.loads(values["postgres_matrix"]) == json.loads(POSTGRES_RELEASE_POLICY.matrix_json())
@@ -550,3 +552,62 @@ def test_mixed_policy_known_and_unknown_paths_keep_all_hit_explanations() -> Non
     assert kinds["docs/runbook/CI.md"] == "prefix"
     assert {hit["path"] for hit in decision["hits"]} == set(kinds)
 
+
+@pytest.mark.parametrize("root,connected", [("test", False), ("androidTest", True)])
+def test_android_pure_test_sources_keep_only_proven_capabilities(root, connected, tmp_path) -> None:
+    paths = [f"android/app/src/{root}/java/com/ticketbox/ExampleTest.kt",
+             f"android/app/src/{root}/kotlin/com/ticketbox/Fixture.kt"]
+    decision = classify_ci_decision(paths)
+    assert decision["scopes"] == {name: name == "android" for name in all_ci_scopes()}
+    assert decision["android_capabilities"] == {"android_apk": False, "android_connected": connected}
+    output = tmp_path / "outputs"
+    ci_scope.write_outputs(output, decision["scopes"], decision["android_capabilities"])
+    values = dict(line.split("=", 1) for line in output.read_text().splitlines())
+    assert values["android"] == "true"  # Fast, schema/count/static and security stay required.
+    assert values["android_apk"] == "false"
+    assert values["android_connected"] == str(connected).lower()
+    assert "android_apk=false" in ci_scope.render_scope_explanation(decision)
+
+
+@pytest.mark.parametrize("other", [
+    "android/app/src/androidTest/java/com/ticketbox/DeviceTest.kt",
+    "android/app/src/main/java/com/ticketbox/Example.kt",
+    "android/app/src/test/AndroidManifest.xml",
+    "android/app/src/test/java/build.gradle.kts",
+    "android/app/src/test/resources/unknown.bin",
+    "android/app/src/testFixtures/java/Fixture.kt",
+    "android/app/schemas/com.ticketbox.Database/1.json",
+    "android/audit/test_count_baseline.txt",
+    "android/gradle/libs.versions.toml",
+    "android/app/build.gradle.kts",
+    "backend/app/main.py",
+    "backend/tests/test_android_test_qualification.py",
+    "backend/scripts/verify_scoped_ci_results.py",
+    ".github/workflows/ci.yml",
+    "docs/runbook/CI.md",
+    "unknown/path.kt",
+])
+def test_android_mixed_or_unproven_inputs_keep_all_capabilities(other) -> None:
+    decision = classify_ci_decision(["android/app/src/test/java/ExampleTest.kt", other])
+    assert decision["android_capabilities"] == {"android_apk": True, "android_connected": True}
+
+
+def test_android_renames_union_old_and_new_paths_and_do_not_infer_from_test_names() -> None:
+    assert classify_ci_decision([
+        "android/app/src/main/java/ExampleTest.kt", "android/app/src/test/java/ExampleTest.kt",
+    ])["android_capabilities"]["android_apk"]
+    assert classify_ci_decision([r"android\app\src\test\java\ExampleTest.kt"])["android_capabilities"] == {
+        "android_apk": False, "android_connected": False,
+    }
+    assert classify_ci_decision(["android/app/src/test/java/../AndroidManifest.xml"])["android_capabilities"]["android_apk"]
+    assert classify_ci_decision(["docs/README.md"])["android_capabilities"] == {
+        "android_apk": False, "android_connected": False,
+    }
+
+
+@pytest.mark.parametrize("event", ["push", "workflow_dispatch", "repository_dispatch", "schedule", "unknown"])
+def test_non_pr_qualification_always_requires_full_capabilities(event, monkeypatch) -> None:
+    monkeypatch.setattr(ci_scope, "changed_paths", lambda *args: ["android/app/src/test/java/Test.kt"])
+    decision = ci_scope.resolve_ci_scope(event, "base", "head")
+    assert decision["scopes"] == all_ci_scopes()
+    assert all(decision["android_capabilities"].values())

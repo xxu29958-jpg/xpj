@@ -27,6 +27,7 @@ CI_HEAVY_SCOPES = (
     "android",
     "windows",
 )
+CI_ANDROID_CAPABILITIES = ("android_apk", "android_connected")
 _FULL_PATHS = {
     "backend/scripts/_audit_codebase.py",
     "backend/scripts/ci_scope.py",
@@ -42,6 +43,7 @@ _FULL_PATHS = {
     "backend/scripts/report_qualification_sha.py",
     "backend/scripts/verify_backend_ci_results.py",
     "backend/scripts/verify_codeql_required_context.py",
+    "backend/scripts/verify_scoped_ci_results.py",
 }
 _ALWAYS_ON_CONTRACT_PATHS = {
     "backend/tests/_infra/android_test_qualification.py",
@@ -425,6 +427,38 @@ def _lane_map(
     return lanes
 
 
+def _android_test_source_kind(path: str) -> str | None:
+    # Only the two existing default test source sets have a proven narrower
+    # consumer set. Resources, manifests, schemas and new source sets stay full.
+    parts = path.split("/")
+    if any(part in {"", ".", ".."} for part in parts):
+        return None
+    for source_set in ("test", "androidTest"):
+        root = f"android/app/src/{source_set}/"
+        if path.startswith(root + "java/") and path.endswith((".kt", ".java")):
+            return source_set
+        if path.startswith(root + "kotlin/") and path.endswith(".kt"):
+            return source_set
+    return None
+
+
+def _android_selection(
+    selected: bool,
+    status: str,
+    paths: list[str],
+) -> tuple[dict[str, bool], str]:
+    if not selected:
+        return dict.fromkeys(CI_ANDROID_CAPABILITIES, False), "Android not affected"
+    kinds = {_android_test_source_kind(path) for path in paths}
+    if status == "REQUIRED" and kinds in ({"test"}, {"androidTest"}):
+        kind = next(iter(kinds))
+        return {
+            "android_apk": False,
+            "android_connected": kind == "androidTest",
+        }, f"pure {kind} sources; fast, schema/static/count and security remain required"
+    return dict.fromkeys(CI_ANDROID_CAPABILITIES, True), "full Android inputs or unproven/mixed input set"
+
+
 def _decision(
     scopes: dict[str, bool],
     status: str,
@@ -432,8 +466,13 @@ def _decision(
     hits: list[dict[str, object]],
     ignored: tuple[str, ...],
 ) -> dict[str, object]:
+    capabilities, android_reason = _android_selection(
+        scopes["android"], status, [str(hit["path"]) for hit in hits] + list(ignored),
+    )
     return {
         "scopes": scopes,
+        "android_capabilities": capabilities,
+        "android_reason": android_reason,
         "status": status,
         "reason": reason,
         "hits": hits,
