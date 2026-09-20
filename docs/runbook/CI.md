@@ -60,7 +60,7 @@ pip-audit --strict（OSV 库）
 
 安装器测试数量由 `backend/packaging/audit/test_count_baseline.txt` 归 Windows 域维护；增加 packaging 测试不会反向触发 Android/Desktop。Windows 句柄绑定删除和临时 PostgreSQL 生命周期行为也在该 lane 真正执行，不以 Linux 上的 skip 代替证明。
 
-`Windows native contracts` 复用原有 coordinator job，在独立 Windows runner 上准备同一份钉住版本的 vendor 输入，再串行执行完整 `packaging/tests -m xdist_group` 集合。该 job 只恢复共享缓存，完整工具链缓存仍由 build job 单独保存，避免仅准备 vendor 的较快 job 抢先保存不含 Inno 等构建工具的缓存。安装包构建 job 保留互补的 `not xdist_group` 四 worker 测试、真实 Desktop/BFF/配对、构建及原子产物回验；两组由同一 marker 自动选择，新测试不依赖人工名单。现有 `Windows release packaging` 仍要求两个 job 成功并核对各自 checkout/source 身份，测试失败不能借构建成功取得资格。没有新增 job 或改变 timeout；额外 vendor 准备与缓存开销计入完整运行成本。
+`Windows native contracts` 复用原有 coordinator job，在独立 Windows runner 上准备同一份钉住版本的 vendor 输入，再串行执行完整 `packaging/tests -m xdist_group` 集合。该 job 只恢复共享缓存，完整工具链缓存仍由 build job 单独保存，避免仅准备 vendor 的较快 job 抢先保存不含 Inno 等构建工具的缓存。安装包构建 job 保留互补的 `not xdist_group` 四 worker 测试、真实 Desktop/BFF/配对、构建及原子产物回验；两组由同一 marker 自动选择，新测试不依赖人工名单。两执行 job 均 checkout 实际安装包的 source SHA；现有 `Windows release packaging` 用两个 `--source-lane` 同时要求它们成功且 checkout/source 身份一致，scope/聚合器自身仍验证 PR merge SHA，避免用不同代码上的测试为安装包背书。测试失败不能借构建成功取得资格。没有新增 job 或改变 timeout；额外 vendor 准备与缓存开销计入完整运行成本。
 
 ### backend-postgres（按域全量测试）
 

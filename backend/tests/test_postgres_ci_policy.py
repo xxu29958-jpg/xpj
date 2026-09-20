@@ -173,7 +173,8 @@ def test_postgres_result_verifier_rejects_every_single_field_mutation(scope: str
         assert not _verify(candidate).ok, field
 
 
-def test_scoped_verifier_binds_artifact_lane_to_exact_source_head() -> None:
+@pytest.mark.parametrize("lane", ("VNEXT", "BUILD"))
+def test_scoped_verifier_binds_artifact_lane_to_exact_source_head(lane: str) -> None:
     merge_sha = "a" * 40
     source_sha = "b" * 40
     values = {
@@ -185,6 +186,9 @@ def test_scoped_verifier_binds_artifact_lane_to_exact_source_head() -> None:
         "AGGREGATOR_SOURCE_SHA": source_sha,
         "SCOPE_SHA": merge_sha,
         "SCOPE_SOURCE_SHA": source_sha,
+        "VNEXT_RESULT": "success",
+        "VNEXT_SHA": source_sha,
+        "VNEXT_SOURCE_SHA": source_sha,
         "BUILD_RESULT": "success",
         "BUILD_SHA": source_sha,
         "BUILD_SOURCE_SHA": source_sha,
@@ -194,13 +198,13 @@ def test_scoped_verifier_binds_artifact_lane_to_exact_source_head() -> None:
         values,
         label="Windows",
         scope_key="WINDOWS_SCOPE",
-        lanes=("BUILD",),
-        source_lanes=("BUILD",),
+        lanes=("VNEXT", "BUILD"),
+        source_lanes=("VNEXT", "BUILD"),
     ).ok
     assert not verify(
-        {**values, "BUILD_SHA": merge_sha},
+        {**values, f"{lane}_SHA": merge_sha},
         label="Windows",
         scope_key="WINDOWS_SCOPE",
-        lanes=("BUILD",),
-        source_lanes=("BUILD",),
+        lanes=("VNEXT", "BUILD"),
+        source_lanes=("VNEXT", "BUILD"),
     ).ok

@@ -260,6 +260,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
@@ -272,7 +274,7 @@ jobs:
         id: qualification
         shell: bash
         env:
-          EXPECTED_SHA: ${{ github.sha }}
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: python -E -S backend/scripts/report_qualification_sha.py --expected "$EXPECTED_SHA" --source "$SOURCE_SHA" --output "$GITHUB_OUTPUT"
 
@@ -606,6 +608,7 @@ jobs:
           --scope-key WINDOWS_SCOPE
           --lane VNEXT
           --lane BUILD
+          --source-lane VNEXT
           --source-lane BUILD
 
   backend:

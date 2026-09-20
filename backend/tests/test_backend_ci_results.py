@@ -78,7 +78,7 @@ def _assert_windows_build_lane(jobs: dict[str, object]) -> None:
     assert _steps(windows_aggregator)["Enforce Windows release lane results"]["run"] == (
         "python -E -S backend/scripts/verify_scoped_ci_results.py "
         '--label "Windows release packaging" --scope-key WINDOWS_SCOPE '
-        "--lane VNEXT --lane BUILD --source-lane BUILD"
+        "--lane VNEXT --lane BUILD --source-lane VNEXT --source-lane BUILD"
     )
     windows_steps = _steps(jobs["windows_packaging_build"])
     exact_source = "${{ github.event.pull_request.head.sha || github.sha }}"
@@ -129,6 +129,8 @@ def test_serial_windows_contracts_run_in_the_existing_independent_native_lane() 
     assert native["if"] == build["if"]
     assert native["runs-on"] == "windows-latest"
     assert "continue-on-error" not in native
+    assert native_steps["Checkout"]["with"]["ref"] == build_steps["Checkout"]["with"]["ref"]
+    assert native_steps["Verify qualification SHA"]["env"] == build_steps["Verify qualification SHA"]["env"]
     serial = native_steps["Windows installer resource-serial behavior"]
     assert serial["working-directory"] == "backend"
     assert serial["env"] == {"PYTEST_ADDOPTS": ""}

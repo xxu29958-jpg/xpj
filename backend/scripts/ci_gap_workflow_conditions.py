@@ -91,7 +91,7 @@ _WINDOWS_TERMINAL = GithubTerminalContract(
         "WINDOWS_SCOPE",
         "VNEXT",
         "BUILD",
-        source_lanes=("BUILD",),
+        source_lanes=("VNEXT", "BUILD"),
     ),
     shell=None,
     scope_bindings=(("WINDOWS_SCOPE", "windows"),),
