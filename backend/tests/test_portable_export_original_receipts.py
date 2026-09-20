@@ -37,12 +37,13 @@ def _seed(records, model, **values):
     records[0].execute(records[1][model.__tablename__].insert().values(**values))
 
 
-def test_upload_and_original_command_receipts_use_the_matching_current_original(records):
+@pytest.mark.parametrize("upload_actor", [7, 8])
+def test_upload_and_original_command_receipts_use_the_matching_current_original(records, upload_actor):
     digest = "a" * 64
     _seed(records, m.Expense, id=1, public_id="bill", tenant_id="selected",
         image_path="current.png", image_hash=digest)
     _seed(records, m.BackgroundTask, id=1, public_id="task", tenant_id="selected",
-        initiated_by_account_id=7)
+        initiated_by_account_id=upload_actor)
     receipts = (
         (1, "upload_receipt", "bill", {"id": 1, "public_id": "bill",
             "enrichment_task_public_id": "task", "image_hash": digest}),
@@ -83,6 +84,21 @@ def test_accepted_producer_receipt_points_to_its_original_index_row(resource_typ
 
     assert receipt["response_body"]["original_reference_id"] == f"expense:{expense_id}:accepted:9"
     assert "image_path" not in receipt["response_body"]
+
+
+def test_upload_receipt_keeps_shared_evidence_without_private_task_or_runtime_diagnostics():
+    body = {"id": 1, "public_id": "bill", "image_hash": "a" * 64, "upload_size_bytes": 123,
+        "status": "pending", "enrichment_task_public_id": "private-task", "duration_ms": 500,
+        "timing_ms": {"hash": 40, "database": 80}}
+    for omission, expected_task in ((None, "private-task"), ("personal_task_scope", None)):
+        receipt = _receipt_record({"id": 9, "resource_type": "upload_receipt", "response_body": body,
+            "response_body_redaction_reason": omission})["response_body"]
+        assert receipt["original_reference_id"] == "expense:1:accepted:9"
+        assert receipt["image_hash"] == "a" * 64 and receipt["upload_size_bytes"] == 123
+        assert receipt["status"] == "pending"
+        assert receipt.get("enrichment_task_public_id") == expected_task
+        assert not {"duration_ms", "timing_ms"} & receipt.keys()
+    assert body["enrichment_task_public_id"] == "private-task"
 
 
 def test_digest_only_receipt_is_unavailable_instead_of_claiming_no_original():
