@@ -1,9 +1,16 @@
 """Sensitive request-owned archive delivery, using the original response lifecycle."""
 
+from anyio import from_thread
+from fastapi import Request
 from starlette.responses import FileResponse
 from starlette.types import Receive, Scope, Send
 
 from app.services.portable_export_archive import PortableArchive
+
+
+def portable_request_cancelled(request: Request) -> bool:
+    """Poll the route's ASGI receive channel from its AnyIO worker thread."""
+    return from_thread.run(request.is_disconnected)
 
 
 class PortableFileResponse(FileResponse):

@@ -10,7 +10,12 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.sql import visitors
 
 from app import models as m
-from app.services.portable_export_queries import portable_original_history_query, portable_projections, portable_queries
+from app.services.portable_export_queries import (
+    PORTABLE_COLLECTION_SCOPES,
+    portable_original_history_query,
+    portable_projections,
+    portable_queries,
+)
 from app.tenants import AuthContext
 
 AUTH = AuthContext(account_id=7, account_public_id="actor", account_name="Actor",
@@ -50,6 +55,7 @@ def _rows(records, name, auth=AUTH):
 
 def test_export_covers_retained_domains_without_screen_limits_or_orm_entities():
     queries = _queries()
+    assert queries.keys() <= PORTABLE_COLLECTION_SCOPES.keys()
     assert {"expenses", "expense_items", "expense_splits", "expense_tags", "expense_revisions",
         "expense_offset_facts", "expense_offset_revisions", "csv_import_batches", "csv_import_rows",
         "csv_import_events", "budgets", "budget_categories", "goals", "debt_goal_links",
@@ -198,6 +204,34 @@ def test_governance_audit_keeps_existing_owner_permission():
     assert "budget_advisor_audit_logs" not in _queries(replace(AUTH, role="owner"))
 
 
+def test_own_resource_history_survives_undo_without_exposing_governance_or_other_actors(records):
+    for id_, actor, ledger, resource, action in (
+        (1, 7, "selected", "tag", "merge"), (2, 7, "selected", "tag", "undo"),
+        (3, 8, "selected", "tag", "delete"), (4, 7, "other", "tag", "delete"),
+        (5, 7, "selected", None, "member_role_changed"),
+    ):
+        _seed(records, m.LedgerAuditLog, id=id_, public_id=str(id_), ledger_id=ledger,
+            actor_account_id=actor, resource_type=resource, resource_public_id="tag-1", action=action)
+    for role in ("viewer", "member", "owner"):
+        rows = _rows(records, "account_resource_actions", replace(AUTH, role=role))
+        assert [(row["id"], row["action"]) for row in rows] == [(1, "merge"), (2, "undo")]
+        assert not {"target_member_id", "target_account_id", "detail", "previous_role", "new_role"} & rows[0].keys()
+
+
+def test_received_expense_origin_resolves_only_for_the_actual_inbox_receiver(records):
+    _seed(records, m.Expense, id=5, public_id="received-bill", tenant_id="selected",
+        split_origin_invitation_id="invitation-public")
+    _seed(records, m.BillSplitInvitation, id=30, public_id="invitation-public", receiver_account_id=7,
+        receiver_ledger_id="selected", received_expense_id=5, status="accepted")
+    mine = _rows(records, "expenses")[0]
+    assert "split_origin_invitation_id" not in mine
+    assert mine["split_origin_invitation_public_id"] == "invitation-public"
+    assert _rows(records, "account_bill_split_inbox")[0]["local_received_expense_id"] == mine["id"]
+    other = _rows(records, "expenses", replace(AUTH, account_id=8))[0]
+    assert other["split_origin_invitation_public_id"] is None
+    assert not _rows(records, "account_bill_split_inbox", replace(AUTH, account_id=8))
+
+
 def test_upload_acceptance_survives_lost_ack_without_disclosing_private_task_receipt(records):
     for id_, actor in ((1, 7), (2, 8)):
         _seed(records, m.BackgroundTask, id=id_, public_id=f"task-{id_}", tenant_id="selected",
@@ -258,17 +292,22 @@ def test_old_receipt_original_is_not_replaced_with_current_file(records):
     assert all(row["current_image_path"] == "new-image.png" for row in results)
 
 
-def test_history_keeps_explicit_no_attachment_without_treating_original_command_as_expense_snapshot(records):
+def test_history_keeps_no_attachment_and_links_digest_only_original_command(records):
     _seed(records, m.ApiIdempotencyKey, id=1, tenant_id="selected", resource_type="expense", status="succeeded",
         response_body=json.dumps({"id": 1, "public_id": "manual", "image_path": None, "thumbnail_path": None}))
     _seed(records, m.ApiIdempotencyKey, id=2, tenant_id="selected", resource_type="expense", status="succeeded",
-        response_body=json.dumps({"expense_id": 1, "public_id": "manual", "operation": "verify_original"}))
+        response_body=json.dumps({"expense_id": 1, "public_id": "manual", "operation": "verify_original",
+            "sha256": "a" * 64}))
     results = records[0].execute(portable_original_history_query(AUTH)).mappings().all()
-    assert len(results) == 1
+    assert len(results) == 2
     assert results[0]["accepted_operation_id"] == 1
     assert results[0]["expense_id"] == 1
     assert results[0]["image_path"] is None
     assert results[0]["thumbnail_path"] is None
+    assert results[1]["accepted_operation_id"] == 2
+    assert results[1]["expense_id"] == 1
+    assert results[1]["image_path"] is None
+    assert results[1]["image_hash"] == "a" * 64
 
 
 def test_history_shares_cleanup_evidence_only_for_the_same_expense_and_path(records):

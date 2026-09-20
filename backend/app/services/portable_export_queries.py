@@ -31,7 +31,7 @@ _LEDGER_RECORDS = (
         "calendar_revision user_local_date time_precision source_timezone source_utc_offset_seconds "
         "accounting_date_basis created_at updated_at row_version fact_revision confirmed_at rejected_at "
         "image_deleted_at thumbnail_deleted_at attachment_cleanup_request image_replenished_at "
-        "items_sum_status split_origin_invitation_id"),
+        "items_sum_status"),
     (m.ExpenseItem, "id public_id tenant_id expense_id position kind name quantity_text unit_price_cents "
         "amount_cents category raw_text confidence is_ocr_draft created_at updated_at"),
     (m.ExpenseSplit, "id public_id tenant_id expense_id member_id position amount_cents note created_at updated_at"),
@@ -119,6 +119,18 @@ _SPLIT_SNAPSHOT_FIELDS = (
     "exchange_rate_date exchange_rate_source merchant_snapshot category_suggestion expense_time_snapshot "
     "accounting_time_snapshot expires_at created_at accepted_at rejected_at cancelled_at cancellation_reason_code expired_at"
 )
+
+# Explicit query ownership: collection names are labels, not permission rules.
+# Mixed projections combine authorized ledger facts with personal references.
+PORTABLE_COLLECTION_SCOPES = {
+    **dict.fromkeys((model.__tablename__ for model, _ in (*_LEDGER_RECORDS, *_DEBT_CHILDREN)), "ledger"),
+    **dict.fromkeys(("ledgers", "ledger_members", "device_references", "ledger_calendar_revisions",
+        "currency_interpretation", "repayment_voids", "debt_goal_links", "bill_split_source_relationships"), "ledger"),
+    **dict.fromkeys(("repayment_drafts", "bill_split_sent", "account_bill_split_inbox",
+        "account_debt_relationships", "account_repayments", "account_repayment_voids", "account_repayment_proposals",
+        "account_debt_balances", "background_task_observations", "account_resource_actions"), "account"),
+    "accounts": "mixed", "accepted_operations": "mixed", "ledger_audit_logs": "owner",
+}
 
 
 def _record(model: type[Base], fields: str, predicate: ColumnElement[bool]) -> Select:
@@ -257,7 +269,12 @@ def _history_queries(auth: AuthContext) -> tuple[tuple[str, Select], ...]:
         "status progress_current progress_total progress_message error_code result_summary_json "
         "created_at started_at completed_at last_progress_at cancellation_requested_at",
         and_(m.BackgroundTask.tenant_id == auth.ledger_id, m.BackgroundTask.initiated_by_account_id == auth.account_id))
-    queries = (("accepted_operations", _accepted_operations(auth)), ("background_task_observations", tasks))
+    own_actions = _record(m.LedgerAuditLog, "id public_id ledger_id action actor_account_id "
+        "resource_type resource_public_id result created_at", and_(
+            m.LedgerAuditLog.ledger_id == auth.ledger_id, m.LedgerAuditLog.actor_account_id == auth.account_id,
+            m.LedgerAuditLog.resource_type.in_(("tag", "merchant_alias", "expense", "category_rule"))))
+    queries = (("accepted_operations", _accepted_operations(auth)), ("background_task_observations", tasks),
+        ("account_resource_actions", own_actions))
     if not can_manage_members(auth):
         return queries
     return (*queries,
@@ -315,9 +332,20 @@ def portable_queries(auth: AuthContext) -> tuple[tuple[str, Select], ...]:
     Original storage references are internal input to the package owner, which
     substitutes package reference IDs before serializing any user-facing record.
     """
+    records = []
+    for model, fields in _LEDGER_RECORDS:
+        query = _record(model, fields, model.tenant_id == auth.ledger_id)
+        if model is m.Expense:
+            invitation = m.BillSplitInvitation
+            query = query.add_columns(select(invitation.public_id).where(
+                invitation.public_id == m.Expense.split_origin_invitation_id,
+                invitation.receiver_account_id == auth.account_id,
+                invitation.receiver_ledger_id == auth.ledger_id,
+                invitation.received_expense_id == m.Expense.id,
+            ).scalar_subquery().label("split_origin_invitation_public_id"))
+        records.append((model.__tablename__, query))
     business = (
-        *((model.__tablename__, _record(model, fields, model.tenant_id == auth.ledger_id))
-            for model, fields in _LEDGER_RECORDS),
+        *records,
         *_ledger_relationships(auth), *_split_queries(auth), *_participant_queries(auth), *_history_queries(auth),
     )
     return (*_identity_queries(auth, business), *business)
@@ -356,9 +384,23 @@ def portable_original_history_query(auth: AuthContext) -> Select:
     receipt = _accepted_operations(auth).order_by(None).subquery("accepted_original_receipts")
     body = case((receipt.c.resource_type == "expense_offset", receipt.c.response_body["root"]),
         else_=receipt.c.response_body)
-    expense_id = body["id"].as_integer()
+    original_operations = ("verify_original", "replenish_original",
+        "retry_original_cleanup", "cancel_original_cleanup")
+    original_command = and_(receipt.c.resource_type == "expense",
+        body["operation"].as_string().in_(original_operations),
+        body["sha256"].as_string().is_not(None))
+    upload_receipt = receipt.c.resource_type == "upload_receipt"
+    producer_receipt = or_(upload_receipt, original_command)
+    expense_id = case((original_command, body["expense_id"].as_integer()),
+        else_=body["id"].as_integer())
     expense_public_id = body["public_id"].as_string()
-    image_path = body["image_path"].as_string()
+    image_hash = case((original_command, body["sha256"].as_string()),
+        else_=body["image_hash"].as_string())
+    # Upload and original-command receipts deliberately persist identity rather
+    # than a storage path. Replenishment preserves that admitted digest, so the
+    # current reference is usable only while it still proves the same identity.
+    image_path = case((and_(producer_receipt, image_hash == m.Expense.image_hash), m.Expense.image_path),
+        (producer_receipt, None), else_=body["image_path"].as_string())
     image_deleted_at = body["image_deleted_at"].as_string()
     # Later retained receipts can prove an earlier reference was cleaned, even
     # after replenishment moved the current attachment to another path.
@@ -367,7 +409,7 @@ def portable_original_history_query(auth: AuthContext) -> Select:
     return select(
         receipt.c.id.label("accepted_operation_id"), receipt.c.completed_at.label("accepted_at"),
         expense_id.label("expense_id"), expense_public_id.label("expense_public_id"),
-        image_path.label("image_path"), body["image_hash"].as_string().label("image_hash"),
+        image_path.label("image_path"), image_hash.label("image_hash"),
         image_deleted_at.label("image_deleted_at"), historical_image_cleaned.label("historical_image_cleaned"),
         body["thumbnail_path"].as_string().label("thumbnail_path"),
         body["thumbnail_deleted_at"].as_string().label("thumbnail_deleted_at"),
@@ -377,6 +419,6 @@ def portable_original_history_query(auth: AuthContext) -> Select:
         m.Expense.attachment_cleanup_request, m.Expense.image_replenished_at,
     ).select_from(receipt).outerjoin(m.Expense, and_(m.Expense.tenant_id == auth.ledger_id,
         m.Expense.id == expense_id, m.Expense.public_id == expense_public_id)).where(
-            receipt.c.resource_type.in_(("expense", "expense_offset")),
+            receipt.c.resource_type.in_(("expense", "expense_offset", "upload_receipt")),
             expense_id.is_not(None),
         ).order_by(receipt.c.id)

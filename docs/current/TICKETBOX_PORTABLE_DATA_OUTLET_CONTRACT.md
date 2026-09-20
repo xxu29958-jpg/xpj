@@ -221,9 +221,9 @@ The malformed-request finding is rejected for the current supported database:
 the `20260920_0002` migration adds the nullable column together with a validated
 `ck_expenses_attachment_cleanup_request`, which requires `request_id` and the
 closed shape; existing direct-SQL migration tests reject malformed objects.
-The tag-receipt claim is also rejected: API/Web tag commands use OCC and write
-`LedgerAuditLog` through `resource_audit`, not `ApiIdempotencyKey`. Their existing
-authorized audit/undo collections remain; no imaginary receipt producer is added.
+The tag-receipt producer claim is rejected: API/Web tag commands use OCC and write
+`LedgerAuditLog` through `resource_audit`, not `ApiIdempotencyKey`. The later concrete
+scope finding is fixed below; no imaginary receipt producer is added.
 
 The final identity counterexample is fixed: third-party ledger readers keep Debt,
 proposal, payment and void records with their stored labels, without expanding
@@ -231,3 +231,21 @@ those references into an external participant's current account identity. Actual
 parties and authorized ledger members retain that identity projection. The new
 counterexample failed first; 18 query tests, Ruff and seven actual PostgreSQL
 snapshot/authorization/download tests then passed on the revised source.
+
+The current closeout retains each actor's resource-action audit history even
+after undo removes transient undo groups, while governance rows remain owner-only.
+Received expense origins now resolve to the public invitation only for its actual
+inbox recipient. The prior field already stored a public UUID, so the review's
+internal-ID premise was incorrect; the unauthorized disclosure was real. Every
+collection explicitly identifies ledger, account, mixed or owner scope rather
+than inferring it from its name. Original-command and upload receipts link their
+recorded expense/digest to the originals index; unmatched evidence stays explicitly
+unavailable instead of borrowing a different current original.
+
+API/Web observe disconnects between query, record and file units and unwind the
+existing snapshot/archive cleanup. An in-flight SQL statement remains bounded by
+the existing 30-second timeout; a stable file read finishes before the next check.
+This adds neither a job system nor an independent cancellation owner. On this
+revised source, 57 query/archive/route tests and eight service tests (including
+actual PostgreSQL snapshot, permission and download paths) passed; OpenAPI and
+Ruff passed. The new candidate still requires its own existing cloud gates.

@@ -2,6 +2,7 @@
 
 import json
 from dataclasses import replace
+from unittest.mock import Mock
 from zipfile import ZipFile
 
 import pytest
@@ -16,6 +17,16 @@ from app.services.identity_service import authenticate_session_token
 from app.services.time_service import now_utc
 
 pytestmark = pytest.mark.real_db
+
+
+def test_cancelled_export_does_not_start_the_next_query() -> None:
+    snapshot = Mock()
+    rows = service._rows(snapshot, Mock(), lambda: True)
+
+    with pytest.raises(service.PortableExportCancelledError):
+        next(rows)
+
+    snapshot.execute.assert_not_called()
 
 
 def _auth(identity):
