@@ -129,6 +129,9 @@ internal class BoundLedgerRequest(
     private val snapshot: BoundSessionSnapshot,
     private val currentSnapshot: () -> BoundSessionSnapshot?,
 ) {
+    internal val logicalBinding: LogicalSessionBinding
+        get() = snapshot.logicalBinding
+
     val ledgerId: String
         get() = snapshot.ledgerId
 

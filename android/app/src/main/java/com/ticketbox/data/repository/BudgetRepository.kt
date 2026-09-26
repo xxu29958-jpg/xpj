@@ -53,14 +53,15 @@ class BudgetRepository internal constructor(
     outbox: OutboxRepository,
     adapters: OutboxAdapterGraph,
     arrangementDao: MonthlyArrangementCacheDao,
-    private val errorHandler: NetworkErrorHandler = budgetNetworkErrors(apiProvider),
-    internal val adviceCallStore: BudgetAdviceCallStore = BudgetAdviceCallStore(LedgerRequestGuard(apiProvider), errorHandler),
+    sessionCoordinator: LocalLedgerSessionCoordinator,
+    internal val adviceCallStore: BudgetAdviceCallStore = BudgetAdviceCallStore(LedgerRequestGuard(apiProvider), budgetNetworkErrors(apiProvider)),
 ) : BudgetActions, BudgetHistoryReader,
     BudgetSaveActions by BudgetSaveRepository(apiProvider, outbox, adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter),
     ManualRateActions by ManualExchangeRateRepository(apiProvider, outbox, adapters.manualRateAdapter, adapters.manualRateReceiptAdapter),
     MonthlyArrangementActions by MonthlyArrangementRepository(apiProvider, outbox, arrangementDao,
-        adapters.arrangementSaveAdapter, adapters.arrangementReceiptAdapter, adviceCallStore::noteAdviceInputSnapshot),
-    BudgetAdviceInputsActions by BudgetAdviceInputsRepository(apiProvider, adviceCallStore, errorHandler) {
+        adapters, adviceCallStore::noteAdviceInputSnapshot, sessionCoordinator),
+    BudgetAdviceInputsActions by BudgetAdviceInputsRepository(apiProvider, adviceCallStore, budgetNetworkErrors(apiProvider)) {
+    private val errorHandler = budgetNetworkErrors(apiProvider)
     private val ledgerRequestGuard = LedgerRequestGuard(apiProvider)
 
     override fun canModifyLedger(): Boolean = ledgerRoleCanModify(apiProvider.currentLedgerRole())

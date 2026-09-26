@@ -107,6 +107,7 @@ class LocalLedgerSessionCoordinator(
             if (!bound.isStillActive()) return@withLock
             invalidateSnapshotReads(failure)
             expenseDao.clearReadSnapshotsForBinding(bindingKey)
+            expenseDao.clearMonthlyReadSnapshotsForBinding(monthlyArrangementPersistentBindingKey(bound.logicalBinding))
         }
     }
 

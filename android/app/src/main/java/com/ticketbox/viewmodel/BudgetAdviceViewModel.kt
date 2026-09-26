@@ -150,10 +150,11 @@ class BudgetAdviceViewModel(
         // screen is still Idle (a concurrent request/ledger switch wins).
         viewModelScope.launch {
             val snapshot = _state.value
+            val generation = requestGeneration
             if (snapshot.trialRequest != null || snapshot.arrangementDraft?.edited == true) return@launch
             val cached = repository.cachedBudgetAdvice(snapshot.month, snapshot.reportingHomeCurrencyCode) ?: return@launch
             _state.update { current ->
-                if (current.loadState != BudgetAdviceLoadState.Idle || current.month != snapshot.month ||
+                if (generation != requestGeneration || current.loadState != BudgetAdviceLoadState.Idle || current.month != snapshot.month ||
                     current.binding != snapshot.binding || current.reportingHomeCurrencyCode != snapshot.reportingHomeCurrencyCode) return@update current
                 current.adviceLoaded(cached)
             }

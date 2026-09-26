@@ -10,7 +10,11 @@ import kotlinx.coroutines.flow.map
 
 internal class FakeExpenseDao(
     private val events: MutableList<String> = mutableListOf(),
+    private val monthlyCache: FakeMonthlyArrangementCacheDao = FakeMonthlyArrangementCacheDao(),
 ) : ExpenseDao {
+    override suspend fun clearMonthlyReadSnapshots() = monthlyCache.clearReadSnapshots()
+    override suspend fun clearMonthlyReadSnapshotsForBinding(bindingKey: String) = monthlyCache.clearReadSnapshots(bindingKey)
+    override suspend fun monthlyReadSnapshotBindings() = monthlyCache.readSnapshotBindings()
     private val statsCache = com.ticketbox.data.local.StatsProjectionCacheFake()
     private val goalCache = com.ticketbox.data.local.GoalQueryCacheFake()
     override suspend fun saveGoalSnapshots(snapshots: List<com.ticketbox.data.local.GoalQueryCacheEntity>) = goalCache.save(snapshots)

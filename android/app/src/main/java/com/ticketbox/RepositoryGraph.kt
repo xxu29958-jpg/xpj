@@ -114,6 +114,7 @@ internal class RepositoryGraph(
         outbox = outbox,
         adapters = outboxAdapters,
         arrangementDao = database.monthlyArrangementCacheDao(),
+        sessionCoordinator = ledgerSessionCoordinator,
     )
 
     val incomePlanRepository = IncomePlanRepository(

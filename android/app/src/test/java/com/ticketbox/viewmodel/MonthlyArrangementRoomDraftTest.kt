@@ -135,7 +135,8 @@ private class RoomDraftFixture {
             return db.monthlyArrangementCacheDao().read(bindingKey, month, kind)
         }
     }
-    val repository = MonthlyArrangementRepository(provider, outbox, dao, adapters.arrangementSaveAdapter, adapters.arrangementReceiptAdapter, { _, _ -> })
+    val repository = MonthlyArrangementRepository(provider, outbox, dao, adapters, { _, _ -> },
+        com.ticketbox.data.repository.testSnapshotCoordinator(provider, outbox, db.expenseDao()))
     fun binding(): LogicalSessionBinding = requireNotNull(LedgerRequestGuard(provider).captureLogicalBinding())
     fun confirmed(): PendingMonthlyArrangement {
         val intent = MonthlyArrangementPayload(1, receipt.month, MonthlyArrangementSaveRequest("JPY", 1200, 300))

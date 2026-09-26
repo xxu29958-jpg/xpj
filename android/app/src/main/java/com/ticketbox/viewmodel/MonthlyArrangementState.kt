@@ -23,3 +23,12 @@ internal fun BudgetAdviceUiState.arrangementRefreshed(read: Result<MonthlyArrang
         loadState = if (retireTrial) BudgetAdviceLoadState.Idle else loadState,
         arrangementMessage = read.exceptionOrNull()?.toUiText(R.string.arrangement_load_failed))
 }
+
+internal fun BudgetAdviceUiState.arrangementReadRefused(error: Throwable): BudgetAdviceUiState = copy(
+    arrangementRead = null, arrangementHistory = emptyList(), arrangementHistoryNext = null,
+    arrangementHistoryLoaded = false, arrangementHistoryCached = false,
+    arrangementLoading = false, arrangementBusy = false, trialRequest = null,
+    inputs = null, inputsLoading = false, result = null, rates = emptyList(),
+    loadState = BudgetAdviceLoadState.Idle,
+    arrangementMessage = error.toUiText(R.string.arrangement_load_failed),
+)

@@ -1,8 +1,8 @@
 package com.ticketbox.data.repository
 
-import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
+import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.local.*
 import com.ticketbox.data.remote.dto.*
 import com.ticketbox.domain.model.CurrencyCode
@@ -10,7 +10,7 @@ import com.ticketbox.domain.model.ledgerRoleCanModify
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.first
-import java.io.IOException
+import retrofit2.HttpException
 import java.util.UUID
 
 @JsonClass(generateAdapter = true)
@@ -39,42 +39,50 @@ interface MonthlyArrangementActions {
 }
 
 class MonthlyArrangementRepository(private val apiProvider: ApiServiceProvider, private val outbox: OutboxRepository,
-    private val dao: MonthlyArrangementCacheDao, private val payloadAdapter: JsonAdapter<MonthlyArrangementPayload>,
-    private val receiptAdapter: JsonAdapter<MonthlyArrangementDto>,
-    private val onSnapshot: (String, String) -> Unit) : MonthlyArrangementActions {
+    private val dao: MonthlyArrangementCacheDao, adapters: OutboxAdapterGraph,
+    private val onSnapshot: (String, String) -> Unit,
+    private val coordinator: LocalLedgerSessionCoordinator) : MonthlyArrangementActions {
+    private val payloadAdapter = adapters.arrangementSaveAdapter
+    private val receiptAdapter = adapters.arrangementReceiptAdapter
     private val guard = LedgerRequestGuard(apiProvider)
     private val errors = NetworkErrorHandler({ apiProvider.currentSession()?.serverUrl }, "MonthlyArrangement")
     private val moshi = Moshi.Builder().build()
-    private val bindings = moshi.adapter(LogicalSessionBinding::class.java)
     private val saved = moshi.adapter(MonthlyArrangementResponseDto::class.java).serializeNulls()
     private val history = moshi.adapter(MonthlyArrangementHistoryDto::class.java)
     private val drafts = moshi.adapter(MonthlyArrangementDraft::class.java).serializeNulls()
-    // Durable ownership follows the existing outbox identity; selection revisions only guard requests.
-    private fun persistentBindingKey(binding: LogicalSessionBinding) = bindings.toJson(binding.copy(
-        serverUrl = requireNotNull(canonicalServerOriginOrNull(binding.serverUrl)),
-        ledgerId = binding.ledgerId.trim(), sessionGeneration = "", bindingRevision = ""))
     override suspend fun arrangement(binding: LogicalSessionBinding, month: String) = errors.safeCall {
         val clean = validatedBudgetMonth(month).getOrThrow()
         val bound = guard.bindExact(binding)
-        val key = persistentBindingKey(binding)
-        var cached = false
+        val key = monthlyArrangementPersistentBindingKey(binding)
+        val ticket = coordinator.beginSnapshotRead()
         val response = try { bound.call { it.monthlyArrangement(clean) } }
-        catch (error: IOException) {
-            bound.requireStillActive()
-            cached = true
-            val local = dao.read(key, clean, "saved")?.let { saved.fromJson(it.json) }
+        catch (error: HttpException) {
+            val failure = errors.httpFailure(error)
+            coordinator.rejectSnapshotAccess(bound, logicalBindingAdapter.toJson(binding), failure)
+            throw failure
+        } catch (error: Exception) {
+            if (!error.isReadTransportUnavailable()) throw error
             val receipt = observeArrangements(binding).first().filter { it.isConfirmed && it.receipt?.month == clean }
                 .maxByOrNull { it.receipt?.rowVersion ?: 0 }?.receipt
-            if (receipt != null && receipt.rowVersion > (local?.arrangement?.rowVersion ?: 0)) {
-                val projection = MonthlyArrangementResponseDto(binding.ledgerId, clean, receipt)
+            return@safeCall coordinator.acceptSnapshotRead(ticket, bound) {
+                // A receipt can update an existing query, but cannot recreate a withdrawn query.
+                val local = dao.read(key, clean, "saved")?.let { saved.fromJson(it.json) } ?: throw error
+                verifyArrangementResponse(local, binding, clean)
+                val projection = if (receipt != null && receipt.rowVersion > (local.arrangement?.rowVersion ?: 0)) {
+                    MonthlyArrangementResponseDto(binding.ledgerId, clean, receipt)
+                } else local
+                verifyArrangementResponse(projection, binding, clean)
                 dao.write(MonthlyArrangementCacheEntity(key, clean, "saved", saved.toJson(projection)))
-                projection
-            } else local ?: throw error
+                MonthlyArrangementRead(projection, fromCache = true)
+            }
         }
         verifyArrangementResponse(response, binding, clean)
         val json = saved.toJson(response)
-        if (!cached) { dao.write(MonthlyArrangementCacheEntity(key, clean, "saved", json)); onSnapshot("arrangement:$key:$clean", json) }
-        MonthlyArrangementRead(response, cached)
+        coordinator.acceptSnapshotRead(ticket, bound) {
+            dao.write(MonthlyArrangementCacheEntity(key, clean, "saved", json))
+            onSnapshot("arrangement:$key:$clean", json)
+            MonthlyArrangementRead(response)
+        }
     }
     private fun verifyArrangementResponse(response: MonthlyArrangementResponseDto, binding: LogicalSessionBinding, month: String) {
         require(response.ledgerId == binding.ledgerId && response.month == month)
@@ -85,29 +93,41 @@ class MonthlyArrangementRepository(private val apiProvider: ApiServiceProvider, 
     override suspend fun arrangementHistory(binding: LogicalSessionBinding, month: String, beforeVersion: Long?) = errors.safeCall {
         val clean = validatedBudgetMonth(month).getOrThrow()
         val bound = guard.bindExact(binding)
-        val key = persistentBindingKey(binding)
+        val key = monthlyArrangementPersistentBindingKey(binding)
         val kind = "history:${beforeVersion ?: 0}"
-        var cached = false
+        val ticket = coordinator.beginSnapshotRead()
         val response = try { bound.call { it.monthlyArrangementHistory(clean, beforeVersion) } }
-        catch (error: IOException) {
-            bound.requireStillActive()
-            cached = true
-            dao.read(key, clean, kind)?.let { history.fromJson(it.json) } ?: throw error
+        catch (error: HttpException) {
+            val failure = errors.httpFailure(error)
+            coordinator.rejectSnapshotAccess(bound, logicalBindingAdapter.toJson(binding), failure)
+            throw failure
+        } catch (error: Exception) {
+            if (!error.isReadTransportUnavailable()) throw error
+            return@safeCall coordinator.acceptSnapshotRead(ticket, bound) {
+                val local = dao.read(key, clean, kind)?.let { history.fromJson(it.json) } ?: throw error
+                verifyArrangementHistory(local, binding, clean)
+                MonthlyArrangementHistoryRead(local, fromCache = true)
+            }
         }
+        verifyArrangementHistory(response, binding, clean)
+        coordinator.acceptSnapshotRead(ticket, bound) {
+            dao.write(MonthlyArrangementCacheEntity(key, clean, kind, history.toJson(response)))
+            MonthlyArrangementHistoryRead(response)
+        }
+    }
+    private fun verifyArrangementHistory(response: MonthlyArrangementHistoryDto, binding: LogicalSessionBinding, clean: String) {
         require(response.ledgerId == binding.ledgerId && response.month == clean)
         require(response.items.all { it.rowVersion > 0 && it.savingsTargetCents in 0..com.ticketbox.domain.model.MONEY_MINOR_MAX && it.reservedBufferCents in 0..com.ticketbox.domain.model.MONEY_MINOR_MAX &&
             CurrencyCode.fromStorageKeyOrNull(it.homeCurrencyCode)?.storageKey == it.homeCurrencyCode })
-        if (!cached) dao.write(MonthlyArrangementCacheEntity(key, clean, kind, history.toJson(response)))
-        MonthlyArrangementHistoryRead(response, cached)
     }
     override suspend fun arrangementDraft(binding: LogicalSessionBinding, month: String) =
-        dao.read(persistentBindingKey(binding), month, "draft")?.let { drafts.fromJson(it.json) }
+        dao.read(monthlyArrangementPersistentBindingKey(binding), month, "draft")?.let { drafts.fromJson(it.json) }
     override suspend fun storeArrangementDraft(binding: LogicalSessionBinding, month: String, draft: MonthlyArrangementDraft) {
-        val key = persistentBindingKey(binding)
+        val key = monthlyArrangementPersistentBindingKey(binding)
         dao.write(MonthlyArrangementCacheEntity(key, month, "draft", drafts.toJson(draft)))
     }
     override suspend fun consumeArrangementDraft(binding: LogicalSessionBinding, month: String, queuedDraft: MonthlyArrangementDraft) =
-        dao.consumeDraft(persistentBindingKey(binding), month, drafts.toJson(queuedDraft))
+        dao.consumeDraft(monthlyArrangementPersistentBindingKey(binding), month, drafts.toJson(queuedDraft))
     override fun observeArrangements(binding: LogicalSessionBinding): Flow<List<PendingMonthlyArrangement>> =
         outbox.observeActiveByTypes(setOf(PendingMutationType.SaveMonthlyArrangement), includeCompleted = true).map { rows ->
             if (guard.captureLogicalBinding() != binding) emptyList() else rows.mapNotNull(::describeArrangement)
@@ -149,3 +169,11 @@ class MonthlyArrangementRepository(private val apiProvider: ApiServiceProvider, 
         Unit
     }
 }
+
+private val logicalBindingAdapter = Moshi.Builder().build().adapter(LogicalSessionBinding::class.java)
+
+// Durable ownership follows the existing outbox identity; selection revisions only guard requests.
+internal fun monthlyArrangementPersistentBindingKey(binding: LogicalSessionBinding): String =
+    logicalBindingAdapter.toJson(binding.copy(
+        serverUrl = requireNotNull(canonicalServerOriginOrNull(binding.serverUrl)),
+        ledgerId = binding.ledgerId.trim(), sessionGeneration = "", bindingRevision = ""))

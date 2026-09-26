@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.local.AppDatabase
+import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.*
@@ -14,6 +15,11 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import java.io.IOException
+import java.net.ConnectException
+import javax.net.ssl.SSLHandshakeException
+import com.squareup.moshi.JsonEncodingException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import java.lang.reflect.Proxy
 import java.time.Clock
 import java.time.Duration
@@ -45,6 +51,9 @@ class MonthlyArrangementRoomContinuityTest {
         else -> error("Unexpected session method $method")
     } }
     private var offline = false
+    private var readFailure: Exception? = null
+    private var delayedRead: CompletableDeferred<Unit>? = null
+    private val readStarted = CompletableDeferred<Unit>()
     private var loseAck = true
     private var conflict = false
     private var fact: MonthlyArrangementDto? = null
@@ -53,8 +62,18 @@ class MonthlyArrangementRoomContinuityTest {
     private val calls = mutableListOf<Pair<MonthlyArrangementSaveRequest, String>>()
     private val api = object : ApiService by arrangementProxy<ApiService>({ error("Unexpected API method $it") }) {
         override suspend fun monthlyArrangement(month: String): MonthlyArrangementResponseDto {
-            if (offline) throw IOException("offline")
+            val response = MonthlyArrangementResponseDto(session.value.identity.ledgerId, month, fact)
+            delayedRead?.let { readStarted.complete(Unit); it.await(); return response }
+            readFailure?.let { throw it }
+            if (offline) throw ConnectException("offline")
             return MonthlyArrangementResponseDto(session.value.identity.ledgerId, month, fact)
+        }
+        override suspend fun monthlyArrangementHistory(month: String, beforeVersion: Long?): MonthlyArrangementHistoryDto {
+            readFailure?.let { throw it }
+            if (offline) throw ConnectException("offline")
+            val items = fact?.let { listOf(MonthlyArrangementHistoryItemDto(it.rowVersion, it.updatedAt,
+                it.homeCurrencyCode, it.savingsTargetCents, it.reservedBufferCents)) } ?: emptyList()
+            return MonthlyArrangementHistoryDto(session.value.identity.ledgerId, month, items, null)
         }
         override suspend fun saveMonthlyArrangement(month: String, request: MonthlyArrangementSaveRequest, idempotencyKey: String): MonthlyArrangementDto {
             calls += request to idempotencyKey
@@ -72,16 +91,148 @@ class MonthlyArrangementRoomContinuityTest {
         override fun create(baseUrl: String, tokenProvider: () -> String?) = api
     }, sessions, SessionCredentialAdapter(sessions))
     private lateinit var outbox: OutboxRepository
+    private lateinit var coordinator: LocalLedgerSessionCoordinator
     private fun reopen(): MonthlyArrangementRepository {
         db?.close()
         val opened = Room.databaseBuilder(context, AppDatabase::class.java, name).build().also { db = it }
         outbox = OutboxRepository(opened.pendingMutationDao(), clock, onRowsDeleted = {}, bindingProvider = { session.value.toOutboxBinding() })
-        return MonthlyArrangementRepository(provider, outbox, opened.monthlyArrangementCacheDao(), adapters.arrangementSaveAdapter, adapters.arrangementReceiptAdapter, { key, stamp -> snapshots[key] = stamp })
+        val settings = arrangementProxy<TicketboxSettingsStore> { error("Unexpected settings method $it") }
+        coordinator = LocalLedgerSessionCoordinator(settings, sessions, opened.expenseDao(), outbox)
+        return MonthlyArrangementRepository(provider, outbox, opened.monthlyArrangementCacheDao(), adapters,
+            { key, stamp -> snapshots[key] = stamp }, coordinator)
     }
     private fun binding() = requireNotNull(LedgerRequestGuard(provider).captureLogicalBinding())
     private suspend fun drain() = OutboxDrainEngine(outbox, listOf(SaveMonthlyArrangementDispatcher({ api },
         adapters.arrangementSaveAdapter, adapters.arrangementReceiptAdapter)), now = clock::millis).drainOnce()
     @After fun close() { db?.close(); context.deleteDatabase(name) }
+    @Test fun malformedJsonAndTlsFailureCannotBecomeCachedSuccess() = runBlocking {
+        loseAck = false
+        val original = binding()
+        val repository = reopen()
+        val draft = MonthlyArrangementDraft("JPY", "1200", "300", null, true)
+        repository.storeArrangementDraft(original, "2026-09", draft)
+        repository.arrangement(original, "2026-09").getOrThrow()
+        repository.enqueueArrangement(original, "2026-09", draft.request()).getOrThrow()
+        assertEquals(1, drain().done)
+        repository.arrangementHistory(original, "2026-09").getOrThrow()
+        val before = requireNotNull(db).pendingMutationDao().allRows()
+        val draftBefore = requireNotNull(db).monthlyArrangementCacheDao().read(monthlyArrangementPersistentBindingKey(original), "2026-09", "draft")
+        for (failure in listOf(JsonEncodingException("malformed JSON"), SSLHandshakeException("TLS rejected"))) {
+            readFailure = failure
+            assertTrue(repository.arrangement(original, "2026-09").isFailure)
+            assertTrue(repository.arrangementHistory(original, "2026-09").isFailure)
+        }
+        assertEquals(draft, repository.arrangementDraft(original, "2026-09"))
+        assertEquals(draftBefore, requireNotNull(db).monthlyArrangementCacheDao().read(monthlyArrangementPersistentBindingKey(original), "2026-09", "draft"))
+        assertEquals(before, requireNotNull(db).pendingMutationDao().allRows())
+    }
+    @Test fun accessRefusalSurvivesRoomReopenWithoutLosingOriginalIntentOrReceipt() = runBlocking {
+        loseAck = false
+        val original = binding()
+        var repository = reopen()
+        val draft = MonthlyArrangementDraft("JPY", "1200", "300", null, true)
+        repository.storeArrangementDraft(original, "2026-09", draft)
+        repository.arrangement(original, "2026-09").getOrThrow()
+        repository.enqueueArrangement(original, "2026-09", draft.request()).getOrThrow()
+        assertEquals(1, drain().done)
+        repository.arrangementHistory(original, "2026-09").getOrThrow()
+        val before = requireNotNull(db).pendingMutationDao().allRows()
+        val draftBefore = requireNotNull(db).monthlyArrangementCacheDao().read(monthlyArrangementPersistentBindingKey(original), "2026-09", "draft")
+        readFailure = HttpException(Response.error<MonthlyArrangementResponseDto>(403,
+            """{"error":"forbidden","message":"无权读取账本。"}""".toResponseBody()))
+        assertEquals(403, (repository.arrangement(original, "2026-09").exceptionOrNull() as RepositoryException).httpStatusCode)
+        readFailure = null
+        offline = true
+        repository = reopen()
+        assertTrue(repository.arrangement(original, "2026-09").isFailure)
+        assertTrue(repository.arrangementHistory(original, "2026-09").isFailure)
+        assertEquals(draft, repository.arrangementDraft(original, "2026-09"))
+        assertEquals(draftBefore, requireNotNull(db).monthlyArrangementCacheDao().read(monthlyArrangementPersistentBindingKey(original), "2026-09", "draft"))
+        assertEquals(before, requireNotNull(db).pendingMutationDao().allRows())
+        assertTrue(repository.observeArrangements(original).first().single().isConfirmed)
+    }
+    @Test fun refusedAccessPreventsAnEarlierSuccessfulGetFromRepublishing() = runBlocking {
+        val original = binding()
+        val repository = reopen()
+        repository.arrangement(original, "2026-09").getOrThrow()
+        val release = CompletableDeferred<Unit>()
+        delayedRead = release
+        val oldRead = async { repository.arrangement(original, "2026-09") }
+        readStarted.await()
+        delayedRead = null
+        readFailure = HttpException(Response.error<MonthlyArrangementHistoryDto>(403,
+            """{"error":"forbidden"}""".toResponseBody()))
+        assertTrue(repository.arrangementHistory(original, "2026-09").isFailure)
+        val stampsAtRefusal = snapshots.toMap()
+        release.complete(Unit)
+        assertTrue(oldRead.await().isFailure)
+        assertEquals(stampsAtRefusal, snapshots)
+        readFailure = null
+        offline = true
+        assertTrue(reopen().arrangement(original, "2026-09").isFailure)
+    }
+    @Test fun receiptAloneCannotCreateAnOfflineQuery() = runBlocking {
+        loseAck = false
+        val original = binding()
+        var repository = reopen()
+        repository.enqueueArrangement(original, "2026-09", MonthlyArrangementSaveRequest("JPY", 1200, 300)).getOrThrow()
+        assertEquals(1, drain().done)
+        offline = true
+        repository = reopen()
+        assertTrue(repository.arrangement(original, "2026-09").isFailure)
+        assertTrue(repository.observeArrangements(original).first().single().isConfirmed)
+    }
+    @Test fun explicitCacheClearingRetiresQueriesAndKeepsDraftAndReceiptBytes() = runBlocking {
+        loseAck = false
+        val original = binding()
+        var repository = reopen()
+        val draft = MonthlyArrangementDraft("JPY", "1200", "300", null, true)
+        repository.storeArrangementDraft(original, "2026-09", draft)
+        repository.enqueueArrangement(original, "2026-09", draft.request()).getOrThrow()
+        assertEquals(1, drain().done)
+        val before = requireNotNull(db).pendingMutationDao().allRows()
+        val key = monthlyArrangementPersistentBindingKey(original)
+        val draftBefore = requireNotNull(db).monthlyArrangementCacheDao().read(key, "2026-09", "draft")
+        val otherKey = monthlyArrangementPersistentBindingKey(original.copy(ledgerId = "owner-other"))
+        val otherDraft = requireNotNull(draftBefore).copy(bindingKey = otherKey)
+        requireNotNull(db).monthlyArrangementCacheDao().write(otherDraft)
+        for (allLedgers in listOf(false, true)) {
+            offline = false
+            repository.arrangement(original, "2026-09").getOrThrow()
+            repository.arrangementHistory(original, "2026-09").getOrThrow()
+            val otherSaved = requireNotNull(requireNotNull(db).monthlyArrangementCacheDao().read(key, "2026-09", "saved"))
+                .copy(bindingKey = otherKey)
+            requireNotNull(db).monthlyArrangementCacheDao().write(otherSaved)
+            if (allLedgers) coordinator.clearLocalCache()
+            else requireNotNull(db).expenseDao().clearAllExpenseCachesForLedger(original.ledgerId)
+            assertEquals(if (allLedgers) null else otherSaved,
+                requireNotNull(db).monthlyArrangementCacheDao().read(otherKey, "2026-09", "saved"))
+            offline = true
+            repository = reopen()
+            assertTrue(repository.arrangement(original, "2026-09").isFailure)
+            assertTrue(repository.arrangementHistory(original, "2026-09").isFailure)
+            assertEquals(draftBefore, requireNotNull(db).monthlyArrangementCacheDao().read(key, "2026-09", "draft"))
+            assertEquals(otherDraft, requireNotNull(db).monthlyArrangementCacheDao().read(otherKey, "2026-09", "draft"))
+            assertEquals(before, requireNotNull(db).pendingMutationDao().allRows())
+        }
+    }
+    @Test fun explicitCacheClearingPreventsAnEarlierGetFromRepublishing() = runBlocking {
+        val original = binding()
+        val repository = reopen()
+        repository.arrangement(original, "2026-09").getOrThrow()
+        val release = CompletableDeferred<Unit>()
+        delayedRead = release
+        val oldRead = async { repository.arrangement(original, "2026-09") }
+        readStarted.await()
+        coordinator.clearLocalCache()
+        val stampsAtClear = snapshots.toMap()
+        release.complete(Unit)
+        assertTrue(oldRead.await().isFailure)
+        assertEquals(stampsAtClear, snapshots)
+        delayedRead = null
+        offline = true
+        assertTrue(reopen().arrangement(original, "2026-09").isFailure)
+    }
     @Test fun confirmedSaveRetainsItsReceiptWithoutBlockingTheNextVersion() = runBlocking {
         loseAck = false
         val original = binding()

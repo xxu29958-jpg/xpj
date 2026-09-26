@@ -141,5 +141,5 @@ private class CorrectionBindingFixture(private val delayedType: PendingMutationT
         incomePlans = IncomePlanRepository(binding.apiProvider, outbox, adapters.incomePlanSubmissionAdapter, adapters.incomePlanReceiptAdapter),
         debtWrites = DebtWriteRepository(binding.apiProvider, outbox, adapters.debtAdjustmentAdapter, adapters.debtRepaymentAdapter),
         goalEdits = GoalEditRepository(binding.apiProvider, outbox, adapters.goalUpdateAdapter, adapters.goalReceiptAdapter, adapters.goalCreateAdapter),
-            budgetSaves = BudgetRepository(binding.apiProvider, outbox, adapters, FakeMonthlyArrangementCacheDao())))
+            budgetSaves = testBudgetRepository(binding.apiProvider, outbox)))
 }

@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
+import com.ticketbox.data.remote.dto.BudgetAdviceInputsDto
 import com.ticketbox.data.remote.dto.ExchangeRateDto
 import com.ticketbox.data.repository.LogicalSessionBinding
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -74,21 +75,31 @@ fun BudgetAdviceViewModel.refreshInputs() {
             ?: repository.adviceInputs(binding, snapshot.month, snapshot.reportingHomeCurrencyCode)
         val rates = repository.exchangeRates(binding)
         if (_state.value.binding != binding || _state.value.month != snapshot.month || generation != inputGeneration) return@launch
-        val freshInputs = inputs.getOrNull()
-        val current = _state.value
-        val adviceBasisChanged = current.result?.inputs?.let { it != freshInputs }
-            ?: (current.loadState == BudgetAdviceLoadState.Loading && snapshot.inputs != freshInputs)
-        if (adviceBasisChanged) requestGeneration += 1
-        _state.update { it.inputsRefreshed(inputs, rates, adviceBasisChanged) }
-        inputs.getOrNull()?.homeCurrencyCode?.let(::seedArrangementDraft)
-        if (inputs.getOrNull()?.readyForAdvice == false) {
-            _state.update { it.copy(result = null, loadState = BudgetAdviceLoadState.Idle) }
-        } else if (_state.value.loadState == BudgetAdviceLoadState.Idle) restoreCachedAdvice()
+        acceptAdviceInputs(inputs, rates, snapshot.inputs)
     }
 }
 
+private fun BudgetAdviceViewModel.acceptAdviceInputs(
+    inputs: Result<BudgetAdviceInputsDto>,
+    rates: Result<List<ExchangeRateDto>>,
+    requestedInputs: BudgetAdviceInputsDto?,
+) {
+    val denied = listOfNotNull(inputs.exceptionOrNull(), rates.exceptionOrNull()).firstOrNull { it.isReadAccessDenied() }
+    if (denied != null) { rejectArrangementRead(denied); return }
+    val freshInputs = inputs.getOrNull()
+    val current = _state.value
+    val adviceBasisChanged = current.result?.inputs?.let { it != freshInputs }
+        ?: (current.loadState == BudgetAdviceLoadState.Loading && requestedInputs != freshInputs)
+    if (adviceBasisChanged) requestGeneration += 1
+    _state.update { it.inputsRefreshed(inputs, rates, adviceBasisChanged) }
+    freshInputs?.homeCurrencyCode?.let(::seedArrangementDraft)
+    if (freshInputs?.readyForAdvice == false) {
+        _state.update { it.copy(result = null, loadState = BudgetAdviceLoadState.Idle) }
+    } else if (_state.value.loadState == BudgetAdviceLoadState.Idle) restoreCachedAdvice()
+}
+
 private fun BudgetAdviceUiState.inputsRefreshed(
-    read: Result<com.ticketbox.data.remote.dto.BudgetAdviceInputsDto>,
+    read: Result<BudgetAdviceInputsDto>,
     rateRead: Result<List<ExchangeRateDto>>,
     adviceBasisChanged: Boolean,
 ): BudgetAdviceUiState = copy(inputsLoading = false,

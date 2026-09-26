@@ -142,7 +142,12 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
         database?.close()
         val db = Room.databaseBuilder(context, AppDatabase::class.java, name).build().also { database = it }
         outbox = OutboxRepository(dao = db.pendingMutationDao(), onRowsDeleted = {}, bindingProvider = { session.value.toOutboxBinding() })
-        repository = BudgetRepository(provider, outbox, adapters, db.monthlyArrangementCacheDao())
+        val settings = Proxy.newProxyInstance(com.ticketbox.data.local.TicketboxSettingsStore::class.java.classLoader,
+            arrayOf(com.ticketbox.data.local.TicketboxSettingsStore::class.java)) { _, method, _ ->
+            error("Unexpected settings method ${method.name}")
+        } as com.ticketbox.data.local.TicketboxSettingsStore
+        val coordinator = com.ticketbox.data.repository.LocalLedgerSessionCoordinator(settings, sessions, db.expenseDao(), outbox)
+        repository = BudgetRepository(provider, outbox, adapters, db.monthlyArrangementCacheDao(), coordinator)
     }
 
     fun switchBinding() {

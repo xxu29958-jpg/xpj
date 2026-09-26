@@ -32,6 +32,8 @@ fun BudgetAdviceViewModel.refreshArrangement() {
     viewModelScope.launch {
         val read = repository.arrangement(binding, snapshot.month)
         if (_state.value.binding != binding || _state.value.month != snapshot.month || generation != arrangementLoadGeneration) return@launch
+        val denied = read.exceptionOrNull()?.takeIf { it.isReadAccessDenied() }
+        if (denied != null) { rejectArrangementRead(denied); return@launch }
         if (_state.value.arrangementDraft?.edited != true && _state.value.trialRequest != null) requestGeneration += 1
         _state.update { it.arrangementRefreshed(read) }
         refreshInputs()
@@ -120,6 +122,8 @@ fun BudgetAdviceViewModel.loadArrangementHistory(more: Boolean = false) {
     viewModelScope.launch {
         val read = repository.arrangementHistory(binding, snapshot.month, if (more) snapshot.arrangementHistoryNext else null)
         if (_state.value.binding != binding || _state.value.month != snapshot.month) return@launch
+        val denied = read.exceptionOrNull()?.takeIf { it.isReadAccessDenied() }
+        if (denied != null) { rejectArrangementRead(denied); return@launch }
         _state.update { it.copy(arrangementBusy = false, arrangementHistoryLoaded = read.isSuccess,
             arrangementHistory = read.getOrNull()?.response?.items?.let { items ->
                 (if (more) it.arrangementHistory + items else items).distinctBy { item -> item.rowVersion }
@@ -140,6 +144,8 @@ fun BudgetAdviceViewModel.reviewArrangement(pending: PendingMonthlyArrangement) 
     viewModelScope.launch {
         val read = repository.arrangement(binding, original.month)
         if (_state.value.binding != binding) return@launch
+        val denied = read.exceptionOrNull()?.takeIf { it.isReadAccessDenied() }
+        if (denied != null) { rejectArrangementRead(denied); return@launch }
         val verified = read.getOrNull()?.takeUnless { it.fromCache }
         val record = verified?.response?.arrangement
         val error = read.exceptionOrNull()?.toUiText(R.string.arrangement_load_failed)
@@ -160,6 +166,15 @@ fun BudgetAdviceViewModel.reviewArrangement(pending: PendingMonthlyArrangement) 
         arrangementDraftWrites.withLock { repository.storeArrangementDraft(binding, original.month, draft) }
         refreshInputs()
     }
+}
+
+/** Withdraw query displays, while the original draft and command receipts remain recoverable. */
+internal fun BudgetAdviceViewModel.rejectArrangementRead(error: Throwable) {
+    arrangementLoadGeneration += 1
+    inputGeneration += 1
+    requestGeneration += 1
+    repository.invalidateBudgetAdvice()
+    _state.update { it.arrangementReadRefused(error) }
 }
 fun BudgetAdviceViewModel.recoverArrangement(pending: PendingMonthlyArrangement, drop: Boolean) {
     val snapshot = _state.value
