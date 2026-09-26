@@ -10,8 +10,8 @@
     <string name="plan_budget_progress_meta">已用 %1$s / %2$s · %3$d%%</string>
     <string name="plan_budget_loading">正在读取本月预算</string>
     <string name="plan_budget_empty">还没有本月预算，先定一个可用范围</string>
-    <string name="plan_budget_advice_title">预算建议</string>
-    <string name="plan_budget_advice_subtitle">根据本月收支结构，生成可审阅的分类额度</string>
+    <string name="plan_budget_advice_title">本月储蓄与备用金</string>
+    <string name="plan_budget_advice_subtitle">试算还能花多少，明确保存安排并查看历史</string>
     <string name="plan_section_goals">目标</string>
     <string name="plan_spending_goal_title">消费目标</string>
     <string name="plan_spending_goal_subtitle">给总支出或某个分类设一个上限</string>
@@ -33,8 +33,8 @@
     <string name="plan_income_empty">还没有收入安排</string>
     <string name="plan_income_summary">本月 %1$d 项有效 · 预计 %2$s</string>
     <!-- W2-C：入口行动词统一为 chevron（旧 设置/调整/查看/管理/打开/读取中 动词族退役）。 -->
-    <string name="budget_advice_page_title">预算建议</string>
-    <string name="budget_advice_page_subtitle">%1$s · 收支结构与分类额度</string>
+    <string name="budget_advice_page_title">月度安排与试算</string>
+    <string name="budget_advice_page_subtitle">%1$s · 储蓄目标、备用金与可支配金额</string>
     <string name="budget_advice_back_to_plan">返回计划</string>
     <string name="budget_advice_start_title">生成本月建议</string>
     <string name="budget_advice_start_body">根据收入计划、固定支出和已入账消费的汇总结构，给出可逐项审阅的分类额度建议。建议不会自动修改预算。</string>

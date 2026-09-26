@@ -1,0 +1,192 @@
+package com.ticketbox.viewmodel
+
+import androidx.lifecycle.viewModelScope
+import com.ticketbox.R
+import com.ticketbox.data.repository.*
+import com.ticketbox.data.remote.dto.MonthlyArrangementDto
+import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.UiText
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
+import java.math.BigDecimal
+
+private fun MonthlyArrangementDto.draft() = MonthlyArrangementDraft(homeCurrencyCode,
+    BigDecimal.valueOf(savingsTargetCents, requireNotNull(CurrencyCode.fromStorageKeyOrNull(homeCurrencyCode)).minorUnitDigits).toPlainString(),
+    BigDecimal.valueOf(reservedBufferCents, requireNotNull(CurrencyCode.fromStorageKeyOrNull(homeCurrencyCode)).minorUnitDigits).toPlainString(), rowVersion)
+
+/** Reopening reads the raw original draft and the independently cached server projection. */
+internal fun BudgetAdviceViewModel.openArrangementMonth() {
+    val snapshot = _state.value
+    val binding = snapshot.binding ?: return
+    val generation = ++arrangementLoadGeneration
+    _state.update { it.copy(arrangementLoading = true) }
+    arrangementDraftLoad = viewModelScope.launch {
+        val draft = repository.arrangementDraft(binding, snapshot.month)
+        if (_state.value.binding != binding || _state.value.month != snapshot.month || generation != arrangementLoadGeneration) return@launch
+        _state.update { it.copy(arrangementDraft = draft) }
+        refreshArrangement()
+    }
+}
+
+fun BudgetAdviceViewModel.refreshArrangement() {
+    val snapshot = _state.value
+    val binding = snapshot.binding ?: return
+    val generation = ++arrangementLoadGeneration
+    _state.update { it.copy(arrangementLoading = true) }
+    viewModelScope.launch {
+        val read = repository.arrangement(binding, snapshot.month)
+        if (_state.value.binding != binding || _state.value.month != snapshot.month || generation != arrangementLoadGeneration) return@launch
+        if (_state.value.arrangementDraft?.edited != true && _state.value.trialRequest != null) requestGeneration += 1
+        _state.update { current ->
+            val record = read.getOrNull()?.response?.arrangement
+            current.copy(arrangementLoading = false, arrangementRead = read.getOrNull() ?: current.arrangementRead,
+                arrangementDraft = if (current.arrangementDraft?.edited == true) current.arrangementDraft else record?.draft() ?: current.arrangementDraft,
+                trialRequest = if (current.arrangementDraft?.edited == true) current.trialRequest else null,
+                result = if (current.arrangementDraft?.edited != true && current.trialRequest != null) null else current.result,
+                loadState = if (current.arrangementDraft?.edited != true && current.trialRequest != null) BudgetAdviceLoadState.Idle else current.loadState,
+                arrangementMessage = read.exceptionOrNull()?.toUiText(R.string.arrangement_load_failed))
+        }
+        refreshInputs()
+        if (_state.value.arrangementDraft == null && _state.value.arrangementRead != null) {
+            // The input projection chooses the initial currency; saved records always keep theirs.
+            val home = _state.value.inputs?.homeCurrencyCode
+            if (home != null) _state.update { it.copy(arrangementDraft = MonthlyArrangementDraft(home, "0", "0", null)) }
+        }
+    }
+}
+
+internal fun BudgetAdviceViewModel.seedArrangementDraft(home: String) {
+    if (_state.value.arrangementRead != null && _state.value.arrangementDraft == null)
+        _state.update { it.copy(arrangementDraft = MonthlyArrangementDraft(home, "0", "0", null)) }
+}
+
+fun BudgetAdviceViewModel.editArrangement(savings: Boolean, value: String) {
+    val snapshot = _state.value
+    val binding = snapshot.binding ?: return
+    val draft = snapshot.arrangementDraft ?: return
+    if (snapshot.arrangementBusy) return
+    val changed = if (savings) draft.copy(savings = value, edited = true) else draft.copy(buffer = value, edited = true)
+    requestGeneration += 1
+    inputGeneration += 1
+    _state.update { it.copy(arrangementDraft = changed, trialRequest = null, inputs = null, inputsLoading = false,
+        result = null, loadState = BudgetAdviceLoadState.Idle, arrangementMessage = UiText.res(R.string.arrangement_edited)) }
+    viewModelScope.launch { arrangementDraftWrites.withLock { repository.storeArrangementDraft(binding, snapshot.month, changed) } }
+}
+
+fun BudgetAdviceViewModel.trialArrangement() {
+    val request = runCatching { requireNotNull(_state.value.arrangementDraft).request() }
+        .getOrElse { error -> _state.update { it.copy(arrangementMessage = error.toUiText(R.string.arrangement_invalid_amount)) }; return }
+    requestGeneration += 1
+    _state.update { it.copy(trialRequest = request, inputs = null, result = null,
+        loadState = BudgetAdviceLoadState.Idle, arrangementMessage = UiText.res(R.string.arrangement_trial_basis)) }
+    refreshInputs()
+}
+
+fun BudgetAdviceViewModel.saveArrangement() {
+    val snapshot = _state.value
+    val binding = snapshot.binding ?: return
+    val draft = snapshot.arrangementDraft ?: return
+    if (snapshot.arrangementBusy || !snapshot.canRequest || snapshot.arrangementRead == null ||
+        snapshot.arrangementPending.any { it.intent?.month == snapshot.month && !it.isConfirmed }) return
+    val request = runCatching { draft.request() }.getOrElse { error ->
+        _state.update { it.copy(arrangementMessage = error.toUiText(R.string.arrangement_invalid_amount)) }; return }
+    _state.update { it.copy(arrangementBusy = true, arrangementDraft = draft.copy(edited = false)) }
+    viewModelScope.launch {
+        val saved = repository.enqueueArrangement(binding, snapshot.month, request)
+        // Only the queue now owns this exact draft. A binding switch never removes another draft.
+        if (saved.isSuccess) arrangementDraftWrites.withLock { repository.storeArrangementDraft(binding, snapshot.month, null) }
+        if (_state.value.binding != binding || _state.value.month != snapshot.month) return@launch
+        _state.update { it.copy(arrangementBusy = false, arrangementMessage = saved.exceptionOrNull()?.toUiText(R.string.arrangement_save_failed) ?: UiText.res(R.string.arrangement_queued),
+            arrangementDraft = if (saved.isFailure) draft else it.arrangementDraft) }
+    }
+}
+
+internal fun BudgetAdviceViewModel.observeArrangementSubmissions(binding: LogicalSessionBinding) {
+    arrangementObservation = viewModelScope.launch {
+        var seen: Set<Long>? = null
+        repository.observeArrangements(binding).collect { rows ->
+            if (_state.value.binding != binding) return@collect
+            val confirmed = rows.filter { it.isConfirmed }.map { it.row.id }.toSet()
+            val fresh = seen?.let { confirmed - it }.orEmpty()
+            seen = confirmed
+            _state.update { it.copy(arrangementPending = rows) }
+            if (fresh.isNotEmpty()) {
+                // A real ACK also waits for the unsent original before projecting a saved value.
+                arrangementDraftLoad?.join()
+                if (_state.value.binding != binding) return@collect
+                val receipt = rows.filter { it.row.id in fresh && it.intent?.month == _state.value.month }
+                    .maxByOrNull { it.receipt?.rowVersion ?: 0 }?.receipt
+                if (receipt != null) {
+                    requestGeneration += 1
+                    _state.update { it.copy(trialRequest = null, inputs = null, result = null, loadState = BudgetAdviceLoadState.Idle,
+                        arrangementDraft = if (it.arrangementDraft?.edited == true) it.arrangementDraft else receipt.draft(),
+                        arrangementMessage = UiText.res(R.string.arrangement_save_confirmed), arrangementHistoryLoaded = false) }
+                    refreshArrangement()
+                }
+            }
+        }
+    }
+}
+
+fun BudgetAdviceViewModel.loadArrangementHistory(more: Boolean = false) {
+    val snapshot = _state.value
+    val binding = snapshot.binding ?: return
+    if (snapshot.arrangementBusy || (more && snapshot.arrangementHistoryNext == null)) return
+    _state.update { it.copy(arrangementBusy = true) }
+    viewModelScope.launch {
+        val read = repository.arrangementHistory(binding, snapshot.month, if (more) snapshot.arrangementHistoryNext else null)
+        if (_state.value.binding != binding || _state.value.month != snapshot.month) return@launch
+        _state.update { it.copy(arrangementBusy = false, arrangementHistoryLoaded = read.isSuccess,
+            arrangementHistory = read.getOrNull()?.response?.items?.let { items ->
+                (if (more) it.arrangementHistory + items else items).distinctBy { item -> item.rowVersion }
+            } ?: it.arrangementHistory,
+            arrangementHistoryNext = read.getOrNull()?.response?.nextBeforeVersion,
+            arrangementHistoryCached = read.getOrNull()?.fromCache == true,
+            arrangementMessage = read.exceptionOrNull()?.toUiText(R.string.arrangement_load_failed)) }
+    }
+}
+
+/** Conflict review captures fresh OCC explicitly; retry always uses the old command unchanged. */
+fun BudgetAdviceViewModel.reviewArrangement(pending: PendingMonthlyArrangement) {
+    val snapshot = _state.value
+    val binding = snapshot.binding ?: return
+    val original = pending.intent ?: return
+    if (snapshot.arrangementBusy) return
+    _state.update { it.copy(arrangementBusy = true) }
+    viewModelScope.launch {
+        val read = repository.arrangement(binding, original.month)
+        if (_state.value.binding != binding) return@launch
+        val verified = read.getOrNull()?.takeUnless { it.fromCache }
+        val record = verified?.response?.arrangement
+        val error = read.exceptionOrNull()?.toUiText(R.string.arrangement_load_failed)
+            ?: if (verified == null) UiText.res(R.string.arrangement_review_offline) else null
+        _state.update { it.copy(arrangementBusy = false, arrangementMessage = error) }
+        if (verified == null) return@launch
+        val request = original.request
+        val currency = requireNotNull(CurrencyCode.fromStorageKeyOrNull(request.homeCurrencyCode))
+        val draft = MonthlyArrangementDraft(request.homeCurrencyCode,
+            BigDecimal.valueOf(request.savingsTargetCents, currency.minorUnitDigits).toPlainString(),
+            BigDecimal.valueOf(request.reservedBufferCents, currency.minorUnitDigits).toPlainString(), record?.rowVersion, true)
+        // Original stays in queue until the user explicitly stops it; reviewed draft cannot bypass it.
+        requestGeneration += 1
+        _state.update { it.copy(month = original.month, arrangementRead = verified, arrangementDraft = draft, trialRequest = null,
+            inputs = null, result = null, loadState = BudgetAdviceLoadState.Idle,
+            arrangementHistory = emptyList(), arrangementHistoryLoaded = false,
+            arrangementMessage = UiText.res(R.string.arrangement_reviewed)) }
+        arrangementDraftWrites.withLock { repository.storeArrangementDraft(binding, original.month, draft) }
+        refreshInputs()
+    }
+}
+fun BudgetAdviceViewModel.recoverArrangement(pending: PendingMonthlyArrangement, drop: Boolean) {
+    val snapshot = _state.value
+    val binding = snapshot.binding ?: return
+    if (snapshot.arrangementBusy) return
+    _state.update { it.copy(arrangementBusy = true) }
+    viewModelScope.launch {
+        val recovered = repository.recoverArrangement(binding, pending, drop)
+        if (_state.value.binding == binding) _state.update { it.copy(arrangementBusy = false,
+            arrangementMessage = recovered.exceptionOrNull()?.toUiText(R.string.arrangement_save_failed)
+                ?: UiText.res(if (drop) R.string.arrangement_stopped else R.string.arrangement_retrying)) }
+    }
+}

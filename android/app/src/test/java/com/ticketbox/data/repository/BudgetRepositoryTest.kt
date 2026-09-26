@@ -640,7 +640,7 @@ private class BudgetApiHandler : InvocationHandler {
                 // and post-write responses even when the repository is correct.
                 adviceEntered?.countDown()
                 adviceRelease?.await(10, TimeUnit.SECONDS)
-                queuedResponse ?: adviceResponse ?: BudgetAdviseResponseDto(
+                (queuedResponse ?: adviceResponse ?: BudgetAdviseResponseDto(
                     advice = BudgetAdviceDto(
                         summary = "为弹性支出留出余量。",
                         suggestions = listOf(
@@ -655,7 +655,9 @@ private class BudgetApiHandler : InvocationHandler {
                     homeCurrencyCode = "CNY",
                     providerName = "mock",
                     reasonCode = "advisor_ready",
-                )
+                )).let { response -> response.copy(inputs = response.inputs ?: com.ticketbox.data.remote.dto.BudgetAdviceInputsDto(
+                    request.month, response.homeCurrencyCode ?: "CNY", com.ticketbox.data.remote.dto.DiscretionaryResponseDto(
+                        10000, 1000, 2000, 0, 0, 7000), emptyList())) }
             }
             else -> error("Unexpected API call: ${method.name}")
         }

@@ -1,6 +1,6 @@
 """The read-only input view and generation share complete projection admission."""
 
-from datetime import date
+from datetime import UTC, date, datetime
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -28,6 +28,7 @@ def seed_reads(monkeypatch, *, gap=None, references=()):
     monkeypatch.setattr(builder, "_active_recurring_items", lambda *args, **kwargs: [])
     monkeypatch.setattr(builder, "recurring_monthly_total", lambda *args, **kwargs: 500)
     monkeypatch.setattr(builder, "total_outstanding_recurring_cents", lambda *args, **kwargs: 100, raising=False)
+    monkeypatch.setattr(builder, "read_monthly_arrangement", lambda *args, **kwargs: None, raising=False)
 
 
 def test_read_model_keeps_discretionary_known_when_only_history_has_gap(monkeypatch):
@@ -54,6 +55,26 @@ def test_complete_projection_preserves_outbound_privacy_and_paid_reservation(mon
     assert "private employer" not in repr(payload)
 
 
+def test_reserve_trial_changes_the_advice_basis_and_exposes_the_shortfall(monkeypatch):
+    seed_reads(monkeypatch)
+    modest = builder.read_budget_inputs(object(), tenant_id="owner", month="2026-08",
+        home_currency_code="JPY", savings_target_cents=20, reserved_buffer_cents=30)
+    ambitious = builder.read_budget_inputs(object(), tenant_id="owner", month="2026-08",
+        home_currency_code="JPY", savings_target_cents=1800, reserved_buffer_cents=30)
+
+    assert modest.breakdown.discretionary_cents == 1550
+    assert ambitious.breakdown.discretionary_cents == 0
+    assert modest.inputs_fingerprint != ambitious.inputs_fingerprint
+    for projection, savings, available, shortfall in ((modest, 20, 1550, 0), (ambitious, 1800, 0, 230)):
+        payload = to_outbound_dict(projection.provider_inputs)
+        assert payload["savings_target_cents"] == savings
+        assert payload["reserved_buffer_cents"] == 30
+        assert payload["outstanding_fixed_cents"] == 100
+        assert payload["discretionary_cents"] == available
+        assert payload["shortfall_cents"] == shortfall == projection.breakdown.shortfall_cents
+        assert "private employer" not in repr(payload)
+
+
 def test_budget_input_response_preserves_the_actual_reference_dates(monkeypatch):
     from app.schemas._budget_advisor import BudgetInputsResponse
 
@@ -64,6 +85,61 @@ def test_budget_input_response_preserves_the_actual_reference_dates(monkeypatch)
         "rate_date": "2026-08-28"}]
     assert response["missing_rates"] == []
     assert "reference_rates" not in to_outbound_dict(projection.provider_inputs)
+
+
+def test_saved_arrangement_is_used_across_reads_but_trial_does_not_replace_it(monkeypatch):
+    seed_reads(monkeypatch)
+    saved = SimpleNamespace(home_currency_code="JPY", savings_target_cents=500, reserved_buffer_cents=100)
+    monkeypatch.setattr(builder, "read_monthly_arrangement", lambda *a, **kw: saved)
+    initial = builder.read_budget_inputs(object(), tenant_id="owner", month="2026-08", home_currency_code="JPY")
+    assert initial.breakdown.discretionary_cents == 1000
+    assert initial.saved_arrangement is saved and not initial.is_trial
+    trial = builder.read_budget_inputs(object(), tenant_id="owner", month="2026-08", home_currency_code="JPY",
+        savings_target_cents=1800, reserved_buffer_cents=100)
+    assert trial.breakdown.shortfall_cents == 300 and trial.is_trial
+    assert trial.saved_arrangement is saved
+    reopened = builder.read_budget_inputs(object(), tenant_id="owner", month="2026-08", home_currency_code="JPY")
+    assert reopened.breakdown.discretionary_cents == 1000
+    assert reopened.inputs_fingerprint == initial.inputs_fingerprint != trial.inputs_fingerprint
+
+
+def test_saved_original_currency_is_not_relabelled_or_zeroed_when_conversion_is_missing(monkeypatch):
+    seed_reads(monkeypatch)
+    saved = SimpleNamespace(home_currency_code="USD", savings_target_cents=500, reserved_buffer_cents=100)
+    monkeypatch.setattr(builder, "read_monthly_arrangement", lambda *a, **kw: saved)
+    monkeypatch.setattr(builder, "current_calendar", lambda *a, **kw: SimpleNamespace(timezone_name="Asia/Shanghai"))
+    monkeypatch.setattr(builder, "now_utc", lambda: datetime(2026, 9, 27, tzinfo=UTC))
+
+    def missing_projection(db, **kwargs):
+        assert kwargs["source_currency"] == "USD" and kwargs["rate_date"] == date(2026, 8, 31)
+        kwargs["missing_rates"].add(ProjectionGap("USD", "JPY", date(2026, 8, 31)))
+        return None
+
+    monkeypatch.setattr(builder, "project_recorded_amount", missing_projection)
+    incomplete = builder.read_budget_inputs(object(), tenant_id="owner", month="2026-08", home_currency_code="JPY")
+    assert incomplete.breakdown.savings_target_cents is incomplete.breakdown.reserved_buffer_cents is None
+    assert incomplete.breakdown.discretionary_cents is incomplete.breakdown.shortfall_cents is None
+    assert incomplete.provider_inputs is None and incomplete.inputs_fingerprint is None
+    assert incomplete.saved_arrangement.home_currency_code == "USD"
+    assert incomplete.saved_arrangement.savings_target_cents == 500
+    monkeypatch.setattr(builder, "project_recorded_amount", lambda db, **kw: kw["amount_minor"] * 2)
+    recovered = builder.read_budget_inputs(object(), tenant_id="owner", month="2026-08", home_currency_code="JPY")
+    assert recovered.breakdown.savings_target_cents == 1000 and recovered.breakdown.discretionary_cents == 400
+    assert recovered.saved_arrangement is saved and saved.savings_target_cents == 500
+
+
+def test_generation_returns_the_same_trial_basis_that_reaches_the_provider(monkeypatch):
+    seed_reads(monkeypatch)
+    monkeypatch.setattr(_runner, "get_advisor_readiness", lambda: SimpleNamespace(
+        provider="empty", is_live=False, blocked_reason=lambda _: None))
+    captured = []
+    monkeypatch.setattr(_runner, "get_budget_advisor", lambda: SimpleNamespace(advise=lambda inputs: captured.append(inputs)))
+    result = _runner.run_budget_advisor(object(), tenant_id="owner", actor_account_id=1, actor_role="owner",
+        month="2026-08", timezone_name="UTC", home_currency_code="JPY", savings_target_cents=1800, reserved_buffer_cents=100)
+    assert result.inputs.breakdown.shortfall_cents == 300
+    assert result.inputs.provider_inputs is captured[0]
+    assert to_outbound_dict(captured[0])["savings_target_cents"] == 1800
+    assert to_outbound_dict(captured[0])["shortfall_cents"] == 300
 
 
 def test_hidden_historical_rate_change_invalidates_advice_without_changing_month_totals(monkeypatch):

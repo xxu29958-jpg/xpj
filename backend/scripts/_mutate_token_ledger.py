@@ -348,7 +348,6 @@ ALLOWLIST: dict[str, Exempt] = {
     "PUT /api/dashboard/cards": Exempt("upsert_bucket", "budget", _DASHBOARD),
 
     # --- /web mutate forms / create / batch / terminal ---
-    "POST /web/budget-advise": Exempt("append_only_fact", "budget", _ADVISOR_WRITE, "high"),
     "POST /web/bill-splits/{public_id}/accept": Exempt("terminal_flag_flip", "bill_split", _BILL_SPLIT, "medium"),
     "POST /web/bill-splits/{public_id}/cancel": Exempt("terminal_flag_flip", "bill_split", _BILL_SPLIT),
     "POST /web/bill-splits/{public_id}/reject": Exempt("terminal_flag_flip", "bill_split", _BILL_SPLIT),

@@ -44,6 +44,20 @@ def test_unknown_historical_currency_is_reviewable_without_a_guessed_rate_pair()
     assert 'name="run_advise"' not in html
 
 
+def test_repair_link_carries_editor_currency_separately_from_display_currency():
+    from html import unescape
+    from urllib.parse import parse_qs, urlsplit
+
+    html = _budget_page(home_currency_code="USD", currency_input=currency_input_metadata("USD"),
+        arrangement_currency_input=currency_input_metadata("JPY"), savings_target_yuan="1200",
+        expected_row_version="3", idempotency_key="original-save-key")
+    link = unescape(html.split('href="/web/budget-advise/rates?', 1)[1].split('"', 1)[0])
+    params = parse_qs(urlsplit("/web/budget-advise/rates?" + link).query)
+    assert params["home_currency_code"] == ["USD"]
+    assert params["arrangement_currency_code"] == ["JPY"]
+    assert params["savings_target_yuan"] == ["1200"]
+
+
 def _render_task(monkeypatch, *, home="JPY", savings="150", gaps=()):
     from starlette.requests import Request
 
@@ -60,7 +74,7 @@ def _render_task(monkeypatch, *, home="JPY", savings="150", gaps=()):
     breakdown = compute_monthly_discretionary(monthly_income_cents=1000, fixed_expenses_cents=0,
         spent_amount_cents=0, savings_target_cents=0, reserved_buffer_cents=0)
     read = Mock(return_value=BudgetInputProjection("2026-08", home or "CNY", breakdown, gaps, None))
-    outbound = Mock(return_value=(None, None, "live"))
+    outbound = Mock(return_value=(None, None, "live", None))
     monkeypatch.setattr(web, "read_budget_inputs", read)
     monkeypatch.setattr(web, "_budget_advice_response", outbound)
     monkeypatch.setattr(web, "templates", SimpleNamespace(TemplateResponse=lambda **k: k))

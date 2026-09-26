@@ -235,6 +235,8 @@ def test_advise_sends_only_allowed_top_level_keys() -> None:
         "income_plan",
         "recurring_total_monthly_cents",
         "recurring_active_count",
+        "savings_target_cents", "reserved_buffer_cents", "outstanding_fixed_cents",
+        "discretionary_cents", "shortfall_cents",
     }
     # Verify no real PII fields leaked.
     for cat in payload["category_breakdown"]:

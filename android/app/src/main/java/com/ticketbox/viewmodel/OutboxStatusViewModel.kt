@@ -42,7 +42,7 @@ internal val categoryRuleSubmissionTypes = setOf(
 internal val incomePlanSubmissionTypes = setOf(PendingMutationType.CreateIncomePlan, PendingMutationType.UpdateIncomePlan)
 private val writerSubmissionTypes = setOf(
     PendingMutationType.UpdateGoal, PendingMutationType.CreateGoal, PendingMutationType.SaveMonthlyBudget,
-    PendingMutationType.SaveManualExchangeRate,
+    PendingMutationType.SaveManualExchangeRate, PendingMutationType.SaveMonthlyArrangement,
 ) + recurringSubmissionTypes + categoryRuleSubmissionTypes + incomePlanSubmissionTypes
 private val originalSubmissionTypes = writerSubmissionTypes + PendingMutationType.CorrectExpense
 
@@ -52,6 +52,7 @@ private val submissionFailureResources = mapOf(
     PendingMutationType.UpdateGoal to R.string.spending_goal_recovery_unavailable,
     PendingMutationType.CreateGoal to R.string.spending_goal_recovery_unavailable,
     PendingMutationType.SaveMonthlyBudget to R.string.budget_save_attention,
+    PendingMutationType.SaveMonthlyArrangement to R.string.arrangement_attention,
     PendingMutationType.SaveManualExchangeRate to R.string.advice_rate_submission_review,
     PendingMutationType.CreateRecurringItem to R.string.recurring_original_attention,
     PendingMutationType.UpdateRecurringItem to R.string.recurring_original_attention,
@@ -133,6 +134,7 @@ class OutboxStatusViewModel(
                     categoryRules = (status.failed + status.conflicts).mapNotNull { row ->
                         recoveries.rules.describeSubmission(row)?.let { row.id to it }
                     }.toMap(),
+                    arrangements = (status.failed + status.conflicts).mapNotNull { row -> recoveries.budgetSaves.describeArrangement(row)?.let { row.id to it } }.toMap(),
                     budgetSaves = (status.failed + status.conflicts).mapNotNull { row -> recoveries.budgetSaves.describeSave(row)?.let { row.id to it } }.toMap()) }
             }
         }
@@ -360,6 +362,7 @@ data class OutboxStatusUiState(
     val manualCreations: Map<Long, com.ticketbox.data.repository.ManualExpenseCreationProjection> = emptyMap(),
     val goalEdits: Map<Long, com.ticketbox.data.repository.PendingGoalEdit> = emptyMap(),
     val goalCreations: Map<Long, com.ticketbox.data.repository.PendingGoalCreation> = emptyMap(),
+    val arrangements: Map<Long, com.ticketbox.data.repository.PendingMonthlyArrangement> = emptyMap(),
     val budgetSaves: Map<Long, com.ticketbox.data.repository.PendingBudgetSave> = emptyMap(),
     val recurringItems: Map<Long, com.ticketbox.data.repository.RecurringPendingIntent> = emptyMap(),
     val categoryRules: Map<Long, com.ticketbox.data.repository.PendingCategoryRuleSubmission> = emptyMap(),
@@ -379,6 +382,7 @@ data class OutboxStatusUiState(
                 recurringItems[row.id]?.canRetry == true
             PendingMutationType.SetRecurringOccurrencePayment ->
                 recurringOccurrences[row.id]?.canRetry == true
+            PendingMutationType.SaveMonthlyArrangement -> arrangements[row.id]?.canRetry == true
             PendingMutationType.SaveMonthlyBudget -> budgetSaves[row.id]?.canRetry == true
             PendingMutationType.SaveManualExchangeRate -> manualRates[row.id]?.canRetry == true
             in incomePlanSubmissionTypes -> incomeSubmissions[row.id]?.canRetry == true
@@ -434,6 +438,8 @@ private suspend fun OutboxRecoveryRepositories.recoverPlanningSubmission(
         rules.recoverSubmission(binding, it, drop)
     } ?: Result.failure(IllegalStateException())
     PendingMutationType.CreateGoal, PendingMutationType.UpdateGoal -> recoverGoalSubmission(binding, row, drop)
+    PendingMutationType.SaveMonthlyArrangement -> budgetSaves.describeArrangement(row)?.let { budgetSaves.recoverArrangement(binding, it, drop) }
+        ?: Result.failure(IllegalStateException())
     PendingMutationType.SaveMonthlyBudget, PendingMutationType.SaveManualExchangeRate -> recoverBudgetSubmission(binding, row, drop)
     PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem ->
         recurringItems.recoverManualIntent(binding, row, drop)

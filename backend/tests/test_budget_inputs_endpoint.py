@@ -46,7 +46,10 @@ def test_viewer_can_read_original_month_currency_and_nullable_inputs(monkeypatch
 
 
 def test_generation_http_carries_the_input_currency_to_the_same_owner(monkeypatch):
-    run = Mock(return_value=SimpleNamespace(advice=None, home_currency_code="JPY", provider_name="empty", reason_code=None))
+    projection = BudgetInputProjection("2026-08", "JPY", compute_monthly_discretionary(
+        monthly_income_cents=2000, savings_target_cents=2100, reserved_buffer_cents=30), (), None, is_trial=True)
+    run = Mock(return_value=SimpleNamespace(advice=None, home_currency_code="JPY", provider_name="empty", reason_code=None,
+        inputs=projection))
     monkeypatch.setattr(budget_advisor, "run_budget_advisor", run)
     app = FastAPI()
     app.include_router(budget_advisor.router)
@@ -54,8 +57,12 @@ def test_generation_http_carries_the_input_currency_to_the_same_owner(monkeypatc
     app.dependency_overrides[get_db] = lambda: None
     response = TestClient(app).post("/api/budget/advise", json={
         "month": "2026-08", "timezone": "UTC", "home_currency_code": "JPY",
+        "savings_target_cents": 2100, "reserved_buffer_cents": 30,
     })
     assert response.status_code == 200, response.text
     assert response.json()["home_currency_code"] == "JPY"
+    assert response.json()["inputs"]["breakdown"]["shortfall_cents"] == 130
+    assert response.json()["inputs"]["is_trial"] is True
     assert run.call_args.kwargs == {"tenant_id": "ledger-a", "actor_role": "owner", "actor_account_id": 1,
-        "month": "2026-08", "timezone_name": "UTC", "home_currency_code": "JPY"}
+        "month": "2026-08", "timezone_name": "UTC", "home_currency_code": "JPY",
+        "savings_target_cents": 2100, "reserved_buffer_cents": 30}

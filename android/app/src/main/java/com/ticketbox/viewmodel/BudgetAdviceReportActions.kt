@@ -19,7 +19,9 @@ fun BudgetAdviceViewModel.openReportRate(binding: LogicalSessionBinding, month: 
         CurrencyCode.fromStorageKeyOrNull(homeCurrencyCode) == null) return
     requestGeneration += 1
     _state.update { it.copy(month = month, reportingHomeCurrencyCode = homeCurrencyCode, inputs = null, result = null,
-        loadState = BudgetAdviceLoadState.Idle, rateEditor = null, selectedRateSubmissionId = null) }
-    refreshInputs()
+        loadState = BudgetAdviceLoadState.Idle, rateEditor = null, selectedRateSubmissionId = null,
+        arrangementRead = null, arrangementDraft = null, trialRequest = null, arrangementHistory = emptyList(),
+        arrangementHistoryLoaded = false, arrangementHistoryNext = null) }
+    openArrangementMonth()
     if (sourceCurrencyCode != null && rateDate != null) openRate(MissingExchangeRateDto(sourceCurrencyCode, homeCurrencyCode, rateDate))
 }

@@ -75,7 +75,8 @@ internal fun BudgetAdviceScreen(
             return@AppSecondaryScrollableColumn
         }
         BudgetAdviceInputsContent(state, actions)
-        if (state.inputsLoading || state.inputs?.readyForAdvice != true) return@AppSecondaryScrollableColumn
+        if (state.inputsLoading || state.inputs?.readyForAdvice != true ||
+            (state.arrangementDraft?.edited == true && state.trialRequest == null)) return@AppSecondaryScrollableColumn
         BudgetAdviceBody(
             state = state,
             onRequestAdvice = actions.onGenerate,

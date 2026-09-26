@@ -18,12 +18,16 @@ import com.ticketbox.data.remote.dto.ExchangeRateDto
 import com.ticketbox.data.remote.dto.ExchangeRateListDto
 import com.ticketbox.data.remote.dto.ExchangeRateRequestDto
 import com.ticketbox.data.remote.dto.MissingExchangeRateDto
+import com.ticketbox.data.remote.dto.MonthlyArrangementDto
+import com.ticketbox.data.remote.dto.MonthlyArrangementResponseDto
+import com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest
 import com.ticketbox.data.repository.ApiServiceProvider
 import com.ticketbox.data.repository.BudgetRepository
 import com.ticketbox.data.repository.LedgerRequestGuard
 import com.ticketbox.data.repository.ManualExchangeRateDispatcher
 import com.ticketbox.data.repository.OutboxDrainEngine
 import com.ticketbox.data.repository.OutboxRepository
+import com.ticketbox.data.repository.SaveMonthlyArrangementDispatcher
 import com.ticketbox.data.repository.toOutboxBinding
 import com.ticketbox.security.LocalSessionIdentity
 import com.ticketbox.security.LocalSessionRecord
@@ -52,6 +56,9 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
     val inputReads = CopyOnWriteArrayList<Pair<String, String?>>()
     val writes = CopyOnWriteArrayList<Pair<ExchangeRateRequestDto, String>>()
     val adviceCalls = CopyOnWriteArrayList<BudgetAdviseRequestDto>()
+    val arrangementWrites = CopyOnWriteArrayList<Pair<MonthlyArrangementSaveRequest, String>>()
+    private val arrangementReceipts = ConcurrentHashMap<String, MonthlyArrangementDto>()
+    @Volatile var arrangement: MonthlyArrangementDto? = null
     private val receipts = ConcurrentHashMap<String, ExchangeRateDto>()
     @Volatile var latest: ExchangeRateDto? = null
     @Volatile var loseAck = false
@@ -71,11 +78,24 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
     private val api = object : ApiService by rateProxy<ApiService>({ error("Unexpected API call: $it") }) {
         override suspend fun budgetAdviceInputs(month: String, timezone: String?, homeCurrencyCode: String?): BudgetAdviceInputsDto {
             inputReads += month to homeCurrencyCode
-            val home = homeCurrencyCode ?: runtimeHome
-            val missing = latest == null && home == "JPY"
-            return BudgetAdviceInputsDto(month, home,
-                DiscretionaryResponseDto(10000, 1000, if (missing) null else 2000, 0, 0, if (missing) null else 7000),
-                if (missing) listOf(MissingExchangeRateDto("CNY", "JPY", rateDate)) else emptyList())
+            val saved = arrangement?.takeIf { it.month == month }
+            return inputs(month, homeCurrencyCode ?: saved?.homeCurrencyCode ?: runtimeHome,
+                saved?.savingsTargetCents ?: 0, saved?.reservedBufferCents ?: 0, false)
+        }
+        override suspend fun trialBudgetAdviceInputs(month: String, timezone: String?, homeCurrencyCode: String,
+            savingsTargetCents: Long, reservedBufferCents: Long) = inputs(month, homeCurrencyCode,
+                savingsTargetCents, reservedBufferCents, true)
+        override suspend fun monthlyArrangement(month: String) = MonthlyArrangementResponseDto(
+            session.value.identity.ledgerId, month, arrangement?.takeIf { it.month == month })
+        override suspend fun saveMonthlyArrangement(month: String, request: MonthlyArrangementSaveRequest,
+            idempotencyKey: String): MonthlyArrangementDto {
+            arrangementWrites += request to idempotencyKey
+            return arrangementReceipts.getOrPut(idempotencyKey) {
+                check(request.expectedRowVersion == arrangement?.takeIf { it.month == month }?.rowVersion)
+                MonthlyArrangementDto(session.value.identity.ledgerId, month, request.homeCurrencyCode,
+                    request.savingsTargetCents, request.reservedBufferCents, (request.expectedRowVersion ?: 0) + 1,
+                    "2026-09-27T00:00:00Z").also { arrangement = it }
+            }
         }
         override suspend fun exchangeRates(currencyCode: String?, homeCurrencyCode: String?, rateDate: String?, limit: Int) =
             ExchangeRateListDto(listOfNotNull(latest).filter { (currencyCode == null || it.currencyCode == currencyCode) &&
@@ -94,7 +114,7 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
         }
         override suspend fun budgetAdvise(request: BudgetAdviseRequestDto): BudgetAdviseResponseDto {
             adviceCalls += request
-            return BudgetAdviseResponseDto(null, request.homeCurrencyCode, "empty", "ai_advisor_provider_empty")
+            return BudgetAdviseResponseDto(null, request.homeCurrencyCode, "empty", "ai_advisor_provider_empty", inputs = budgetAdviceInputs(request.month, request.timezone, request.homeCurrencyCode))
         }
     }
     private val provider = ApiServiceProvider(object : ApiServiceFactory {
@@ -108,12 +128,22 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
 
     init { reopen() }
 
+    private fun inputs(month: String, home: String, savings: Long, buffer: Long, trial: Boolean): BudgetAdviceInputsDto {
+        val missing = latest == null && home == "JPY"
+        val remaining = 7000 - savings - buffer
+        return BudgetAdviceInputsDto(month, home,
+            DiscretionaryResponseDto(10000, 1000, if (missing) null else 2000, savings, buffer,
+                if (missing) null else remaining.coerceAtLeast(0), if (missing) null else (-remaining).coerceAtLeast(0)),
+            if (missing) listOf(MissingExchangeRateDto("CNY", "JPY", rateDate)) else emptyList(),
+            savedArrangement = arrangement?.takeIf { it.month == month }, isTrial = trial)
+    }
+
     fun reopen() {
         database?.close()
         val db = Room.databaseBuilder(context, AppDatabase::class.java, name).build().also { database = it }
         outbox = OutboxRepository(dao = db.pendingMutationDao(), onRowsDeleted = {}, bindingProvider = { session.value.toOutboxBinding() })
         repository = BudgetRepository(provider, outbox, adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter,
-            adapters.manualRateAdapter, adapters.manualRateReceiptAdapter)
+            adapters.manualRateAdapter, adapters.manualRateReceiptAdapter, db.monthlyArrangementCacheDao(), adapters.arrangementSaveAdapter, adapters.arrangementReceiptAdapter)
     }
 
     fun switchBinding() {
@@ -133,7 +163,8 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
     }
     suspend fun pending(id: Long) = repository.observeRates(binding).first().single { it.row.id == id }
     suspend fun drain() = OutboxDrainEngine(outbox, listOf(ManualExchangeRateDispatcher(
-        { api }, adapters.manualRateAdapter, adapters.manualRateReceiptAdapter)), maxAttempts = 1).drainOnce()
+        { api }, adapters.manualRateAdapter, adapters.manualRateReceiptAdapter), SaveMonthlyArrangementDispatcher(
+        { api }, adapters.arrangementSaveAdapter, adapters.arrangementReceiptAdapter)), maxAttempts = 1).drainOnce()
 
     override fun close() { database?.close(); context.deleteDatabase(name); base.close() }
 }

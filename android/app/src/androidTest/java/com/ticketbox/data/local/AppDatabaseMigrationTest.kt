@@ -19,6 +19,34 @@ import org.junit.Test
  * suite (which never opens Room) cannot.
  */
 class AppDatabaseMigrationTest {
+    @Test fun migrate21To22PreservesFinancialFactsAndAddsIsolatedArrangementCache() {
+        val name = "migration-21-22-arrangement.db"
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        helper.createDatabase(name, 21).use { db ->
+            db.execSQL("""
+                INSERT INTO expenses (id, ledgerId, serverId, publicId, amountCents, homeCurrencyCode,
+                    originalCurrencyCode, fxStatus, category, source, duplicateStatus, status, createdAt, rowVersion)
+                VALUES (1, 'owner', 9, 'original-arrangement-neighbor', 100, 'JPY', 'JPY', 'ready', '其他', '手动记账', 'none',
+                    'confirmed', '2026-09-27T00:00:00Z', 7)
+            """.trimIndent())
+        }
+        androidx.room.Room.databaseBuilder(context, AppDatabase::class.java, name)
+            .addMigrations(AppDatabase.Migration21To22).build().use { room ->
+                room.openHelper.readableDatabase.query("SELECT amountCents, homeCurrencyCode, rowVersion FROM expenses WHERE id = 1").use {
+                    assertTrue(it.moveToFirst()); assertEquals(100, it.getInt(0)); assertEquals("JPY", it.getString(1)); assertEquals(7, it.getInt(2))
+                }
+                kotlinx.coroutines.runBlocking {
+                    val dao = room.monthlyArrangementCacheDao()
+                    dao.write(MonthlyArrangementCacheEntity("household-a", "2026-09", "draft", "raw-input"))
+                    dao.write(MonthlyArrangementCacheEntity("household-a", "2026-09", "saved", "confirmed-projection"))
+                    assertEquals("raw-input", dao.read("household-a", "2026-09", "draft")?.json)
+                    assertEquals("confirmed-projection", dao.read("household-a", "2026-09", "saved")?.json)
+                    assertEquals(null, dao.read("household-b", "2026-09", "draft"))
+                }
+        }
+        context.deleteDatabase(name)
+    }
+
     @Test fun migrate20To21AddsUnknownEvidenceWithoutChangingTheFactVersion() {
         val name = "migration-20-21-test.db"
         helper.createDatabase(name, 20).use { db ->

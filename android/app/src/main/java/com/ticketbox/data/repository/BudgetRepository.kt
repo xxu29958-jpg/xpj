@@ -14,7 +14,9 @@ import kotlinx.coroutines.flow.map
 import java.time.YearMonth
 import java.util.TimeZone
 
-interface BudgetActions : BudgetSaveActions, ManualRateActions {
+interface BudgetActions : BudgetSaveActions, ManualRateActions, MonthlyArrangementActions {
+    suspend fun trialAdviceInputs(binding: LogicalSessionBinding, month: String, request: com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest): Result<com.ticketbox.data.remote.dto.BudgetAdviceInputsDto>
+    suspend fun requestTrialAdvice(binding: LogicalSessionBinding, month: String, request: com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest): Result<BudgetAdviceResult>
     fun canModifyLedger(): Boolean
     fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?>
 
@@ -57,6 +59,9 @@ class BudgetRepository(
     receiptAdapter: JsonAdapter<BudgetMonthlyDto>,
     rateAdapter: JsonAdapter<ManualRatePayload>,
     rateReceiptAdapter: JsonAdapter<com.ticketbox.data.remote.dto.ExchangeRateDto>,
+    arrangementDao: com.ticketbox.data.local.MonthlyArrangementCacheDao,
+    arrangementSaveAdapter: JsonAdapter<MonthlyArrangementPayload>,
+    arrangementReceiptAdapter: JsonAdapter<com.ticketbox.data.remote.dto.MonthlyArrangementDto>,
 ) : BudgetActions, BudgetHistoryReader, BudgetSaveActions by BudgetSaveRepository(apiProvider, outbox, saveAdapter, receiptAdapter),
     ManualRateActions by ManualExchangeRateRepository(apiProvider, outbox, rateAdapter, rateReceiptAdapter) {
     private val ledgerRequestGuard = LedgerRequestGuard(apiProvider)
@@ -70,6 +75,33 @@ class BudgetRepository(
      *  extracted to [BudgetAdviceCallStore] (per-class function cap). internal
      *  so AppContainer can wire the refresh seams straight to the store. */
     internal val adviceCallStore = BudgetAdviceCallStore(ledgerRequestGuard, errorHandler)
+
+    private val arrangements = MonthlyArrangementRepository(apiProvider, outbox, arrangementDao,
+        arrangementSaveAdapter, arrangementReceiptAdapter, adviceCallStore::noteAdviceInputSnapshot)
+    override suspend fun arrangement(binding: LogicalSessionBinding, month: String) = arrangements.arrangement(binding, month)
+    override suspend fun arrangementHistory(binding: LogicalSessionBinding, month: String, beforeVersion: Long?) = arrangements.arrangementHistory(binding, month, beforeVersion)
+    override suspend fun arrangementDraft(binding: LogicalSessionBinding, month: String) = arrangements.arrangementDraft(binding, month)
+    override suspend fun storeArrangementDraft(binding: LogicalSessionBinding, month: String, draft: MonthlyArrangementDraft?) = arrangements.storeArrangementDraft(binding, month, draft)
+    override fun observeArrangements(binding: LogicalSessionBinding) = arrangements.observeArrangements(binding)
+    override fun describeArrangement(row: OutboxRow) = arrangements.describeArrangement(row)
+    override suspend fun enqueueArrangement(binding: LogicalSessionBinding, month: String, request: com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest) = arrangements.enqueueArrangement(binding, month, request)
+    override suspend fun recoverArrangement(binding: LogicalSessionBinding, pending: PendingMonthlyArrangement, drop: Boolean) = arrangements.recoverArrangement(binding, pending, drop)
+
+    override suspend fun trialAdviceInputs(binding: LogicalSessionBinding, month: String,
+        request: com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest) = errorHandler.safeCall {
+        val clean = validatedBudgetMonth(month).getOrThrow()
+        ledgerRequestGuard.bindExact(binding).call { it.trialBudgetAdviceInputs(clean, currentBudgetTimezoneId(),
+            request.homeCurrencyCode, request.savingsTargetCents, request.reservedBufferCents) }.also {
+            require(it.month == clean && it.homeCurrencyCode == request.homeCurrencyCode && it.isTrial &&
+                it.breakdown.savingsTargetCents == request.savingsTargetCents && it.breakdown.reservedBufferCents == request.reservedBufferCents)
+        }
+    }
+    override suspend fun requestTrialAdvice(binding: LogicalSessionBinding, month: String,
+        request: com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest): Result<BudgetAdviceResult> {
+        if (!canModifyLedger()) return Result.failure(RepositoryException("当前角色为只读。"))
+        return adviceCallStore.attachOrRequest(binding, validatedBudgetMonth(month).getOrElse { return Result.failure(it) },
+            request.homeCurrencyCode, request)
+    }
 
     override fun canModifyLedger(): Boolean = ledgerRoleCanModify(apiProvider.currentLedgerRole())
 
@@ -92,7 +124,7 @@ class BudgetRepository(
                 result.missingRates.any { it.homeCurrencyCode != result.homeCurrencyCode }) {
                 throw RepositoryException("budget_advice_inputs_unverified", localFailure = LocalRepositoryFailure.BudgetInputsUnverified)
             }
-            adviceCallStore.noteAdviceInputSnapshot("budget_inputs:$expectedBinding:$cleanMonth:${result.homeCurrencyCode}", result.toString())
+            adviceCallStore.noteAdviceInputSnapshot("budget_inputs:$expectedBinding:$cleanMonth:${result.homeCurrencyCode}:saved", result.toString())
         }
     }
 

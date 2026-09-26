@@ -15,7 +15,7 @@ from app.services.budget_advisor_service._audit import (
     compute_input_hash,
     reserve_live_call_budget,
 )
-from app.services.budget_advisor_service._inputs_builder import read_budget_inputs
+from app.services.budget_advisor_service._inputs_builder import BudgetInputProjection, read_budget_inputs
 from app.services.budget_advisor_service._models import BudgetAdvice, BudgetInputs
 from app.services.budget_advisor_service._outbound_guard import to_outbound_dict
 from app.services.budget_advisor_service._providers import get_budget_advisor
@@ -29,6 +29,7 @@ class AdvisorRunResult:
     provider_name: str
     home_currency_code: str
     advice: BudgetAdvice | None
+    inputs: BudgetInputProjection
     reason_code: str | None = None
 
 
@@ -41,6 +42,8 @@ def run_budget_advisor(
     month: str,
     timezone_name: str,
     home_currency_code: str | None = None,
+    savings_target_cents: int | None = None,
+    reserved_buffer_cents: int | None = None,
 ) -> AdvisorRunResult:
     """Run the configured provider with identical gates for API and /web."""
 
@@ -58,6 +61,8 @@ def run_budget_advisor(
         month=month,
         timezone_name=timezone_name,
         home_currency_code=home_currency_code,
+        savings_target_cents=savings_target_cents,
+        reserved_buffer_cents=reserved_buffer_cents,
     )
     if projection.undated_expense_count:
         raise AppError("accounting_date_required", "存在账务日期待确认的账单，请核对原记录后再生成建议。", status_code=409)
@@ -81,6 +86,7 @@ def run_budget_advisor(
                 provider_name=provider_name,
                 home_currency_code=home,
                 advice=None,
+                inputs=projection,
                 reason_code="ai_advisor_payload_invalid",
             )
         audit_log_id = _reserve_live_call(
@@ -100,6 +106,7 @@ def run_budget_advisor(
         home_currency_code=home,
         provider_is_live=provider_is_live,
         audit_log_id=audit_log_id,
+        projection=projection,
     )
 
 
@@ -112,6 +119,7 @@ def _invoke_and_record(
     home_currency_code: str,
     provider_is_live: bool,
     audit_log_id: int | None,
+    projection: BudgetInputProjection,
 ) -> AdvisorRunResult:
     """Call the provider, map no-advice to a reason code, and always close the
     live-call audit row. Split out of [run_budget_advisor] so each stays focused
@@ -150,6 +158,7 @@ def _invoke_and_record(
         provider_name=provider_name,
         home_currency_code=home_currency_code,
         advice=advice,
+        inputs=projection,
         reason_code=reason_code,
     )
 

@@ -45,3 +45,7 @@ def captured_currency_evidence_rows(connection: Connection) -> Iterator[dict[str
     if inspect(connection).has_table("income_plan_revisions", schema="public"):
         for row in connection.execute(text("SELECT to_jsonb(income_plan_revisions)::text FROM income_plan_revisions ORDER BY id")):
             yield {"income_revision": row[0]}
+    for table in ("monthly_arrangements", "monthly_arrangement_revisions"):
+        if inspect(connection).has_table(table, schema="public"):
+            for row in connection.execute(text(f"SELECT to_jsonb({table})::text FROM {table} ORDER BY id")):
+                yield {table: row[0]}

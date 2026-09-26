@@ -1055,7 +1055,7 @@ internal class FakeBudgetActions(
     private val activeAccessFlow: Flow<LedgerAccessContext?> = flowOf(planAccess(canModify = canModify)),
     val commands: FakeBudgetSaveActions = FakeBudgetSaveActions(),
     val rates: FakeManualRateActions = FakeManualRateActions(),
-) : BudgetActions, BudgetSaveActions by commands, com.ticketbox.data.repository.ManualRateActions by rates {
+) : BudgetActions, com.ticketbox.data.repository.MonthlyArrangementActions by FakeMonthlyArrangementActions(), BudgetSaveActions by commands, com.ticketbox.data.repository.ManualRateActions by rates {
     val loadedMonths = mutableListOf<String>()
     val adviceMonths = mutableListOf<String>()
     val cachedAdviceMonths = mutableListOf<String>()
@@ -1066,6 +1066,8 @@ internal class FakeBudgetActions(
 
     val inputMonths = mutableListOf<String>()
     var inputResponse: com.ticketbox.data.remote.dto.BudgetAdviceInputsDto? = null
+    override suspend fun trialAdviceInputs(binding: LogicalSessionBinding, month: String, request: com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest): Result<com.ticketbox.data.remote.dto.BudgetAdviceInputsDto> = error("Unexpected trial read")
+    override suspend fun requestTrialAdvice(binding: LogicalSessionBinding, month: String, request: com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest): Result<BudgetAdviceResult> = error("Unexpected trial AI call")
     override suspend fun adviceInputs(expectedBinding: LogicalSessionBinding, month: String, homeCurrencyCode: String?): Result<com.ticketbox.data.remote.dto.BudgetAdviceInputsDto> {
         inputMonths += month
         return Result.success(inputResponse ?: com.ticketbox.data.remote.dto.BudgetAdviceInputsDto(month, homeCurrencyCode ?: "CNY",

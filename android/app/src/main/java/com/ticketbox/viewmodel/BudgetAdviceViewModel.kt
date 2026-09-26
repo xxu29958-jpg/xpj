@@ -56,6 +56,18 @@ data class BudgetAdviceUiState(
     val selectedRateSubmissionId: Long? = null,
     val rateBusy: Boolean = false,
     val rateMessage: UiText? = null,
+    val arrangementRead: com.ticketbox.data.repository.MonthlyArrangementRead? = null,
+    val arrangementDraft: com.ticketbox.data.repository.MonthlyArrangementDraft? = null,
+    val trialRequest: com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest? = null,
+    val arrangementPending: List<com.ticketbox.data.repository.PendingMonthlyArrangement> = emptyList(),
+    val arrangementHistory: List<com.ticketbox.data.remote.dto.MonthlyArrangementHistoryItemDto> = emptyList(),
+    val arrangementHistoryNext: Long? = null,
+    val arrangementHistoryLoaded: Boolean = false,
+    val arrangementHistoryCached: Boolean = false,
+    val arrangementBusy: Boolean = false,
+    val arrangementLoading: Boolean = false,
+    val arrangementMessage: UiText? = null,
+
 )
 
 class BudgetAdviceViewModel(
@@ -76,6 +88,10 @@ class BudgetAdviceViewModel(
     internal var requestGeneration = 0
     internal var inputGeneration = 0
     internal var rateObservation: kotlinx.coroutines.Job? = null
+    internal var arrangementObservation: kotlinx.coroutines.Job? = null
+    internal var arrangementDraftLoad: kotlinx.coroutines.Job? = null
+    internal val arrangementDraftWrites = kotlinx.coroutines.sync.Mutex()
+    internal var arrangementLoadGeneration = 0
     internal var observedInputBinding: Boolean = false
 
     /** Advice data generation the displayed Ready result was produced under
@@ -134,6 +150,7 @@ class BudgetAdviceViewModel(
         // screen is still Idle (a concurrent request/ledger switch wins).
         viewModelScope.launch {
             val snapshot = _state.value
+            if (snapshot.trialRequest != null || snapshot.arrangementDraft?.edited == true) return@launch
             val cached = repository.cachedBudgetAdvice(snapshot.month, snapshot.reportingHomeCurrencyCode) ?: return@launch
             _state.update { current ->
                 if (current.loadState != BudgetAdviceLoadState.Idle || current.month != snapshot.month ||
@@ -183,6 +200,10 @@ class BudgetAdviceViewModel(
             }
             return
         }
+        if (_state.value.arrangementDraft?.edited == true && _state.value.trialRequest == null) {
+            trialArrangement()
+            return
+        }
         // The displayed month owns this task, including rate repair across calendar rollover.
         if (_state.value.inputsLoading || _state.value.inputs?.readyForAdvice != true) { refreshInputs(); return }
         val month = _state.value.month
@@ -201,7 +222,9 @@ class BudgetAdviceViewModel(
                     terminalErrorCode = null,
                 )
             }
-            repository.requestBudgetAdvice(month, home, binding)
+            val trial = _state.value.trialRequest
+            (if (trial != null) repository.requestTrialAdvice(binding, month, trial)
+             else repository.requestBudgetAdvice(month, home, binding))
                 .onSuccess { result ->
                     _state.update {
                         if (!ownsAdviceRequest(generation, month, binding)) return@update it
@@ -264,6 +287,7 @@ class BudgetAdviceViewModel(
             },
             canRequest = repository.canModifyLedger(),
             result = result,
+            inputs = result.inputs ?: inputs,
             error = when {
                 terminal -> terminalBody
                 transientCallFailure -> UiText.res(R.string.budget_advice_load_failed)

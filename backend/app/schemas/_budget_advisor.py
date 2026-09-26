@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas._exchange import ProjectionReferenceDto
 from app.schemas._money import (
@@ -12,6 +12,7 @@ from app.schemas._money import (
     NonNegativeMoneyMinor,
     SignedMoneyAggregate,
 )
+from app.schemas._monthly_arrangement import MonthlyArrangementDto
 
 __all__ = [
     "BudgetAdviceDto",
@@ -37,9 +38,10 @@ class DiscretionaryResponse(BaseModel):
     monthly_income_cents: NonNegativeMoneyAggregate | None
     fixed_expenses_cents: NonNegativeMoneyAggregate | None
     spent_amount_cents: SignedMoneyAggregate | None
-    savings_target_cents: NonNegativeMoneyMinor
-    reserved_buffer_cents: NonNegativeMoneyMinor
+    savings_target_cents: NonNegativeMoneyAggregate | None
+    reserved_buffer_cents: NonNegativeMoneyAggregate | None
     discretionary_cents: NonNegativeMoneyAggregate | None
+    shortfall_cents: NonNegativeMoneyAggregate | None
 
 
 class ProjectionGapDto(BaseModel):
@@ -60,6 +62,8 @@ class BudgetInputsResponse(BaseModel):
     missing_rates: list[ProjectionGapDto]
     inputs_fingerprint: str | None
     reference_rates: list[ProjectionReferenceDto] = Field(default_factory=list)
+    saved_arrangement: MonthlyArrangementDto | None = None
+    is_trial: bool = False
 
 
 class BudgetAdviseRequest(BaseModel):
@@ -72,6 +76,15 @@ class BudgetAdviseRequest(BaseModel):
     month: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
     timezone: str | None = None
     home_currency_code: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
+    savings_target_cents: NonNegativeMoneyMinor | None = None
+    reserved_buffer_cents: NonNegativeMoneyMinor | None = None
+
+    @model_validator(mode="after")
+    def require_captured_trial(self):
+        trial = self.savings_target_cents is not None or self.reserved_buffer_cents is not None
+        if trial and (self.savings_target_cents is None or self.reserved_buffer_cents is None or not self.home_currency_code):
+            raise ValueError("trial requires both reserve amounts and their captured currency")
+        return self
 
 
 class BudgetSuggestionDto(BaseModel):
@@ -93,6 +106,7 @@ class BudgetAdviseResponse(BaseModel):
     advice: BudgetAdviceDto | None
     home_currency_code: str
     provider_name: str
+    inputs: BudgetInputsResponse
     reason_code: str | None = None
 
 

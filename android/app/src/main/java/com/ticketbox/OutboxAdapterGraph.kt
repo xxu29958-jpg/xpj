@@ -170,6 +170,12 @@ internal class OutboxAdapterGraph {
         moshi.adapter(com.ticketbox.data.repository.IncomePlanSubmissionPayload::class.java)
     }
 
+    val arrangementSaveAdapter: JsonAdapter<com.ticketbox.data.repository.MonthlyArrangementPayload> = lazyJsonAdapter {
+        moshi.adapter(com.ticketbox.data.repository.MonthlyArrangementPayload::class.java)
+    }
+    val arrangementReceiptAdapter: JsonAdapter<com.ticketbox.data.remote.dto.MonthlyArrangementDto> = lazyJsonAdapter {
+        moshi.adapter(com.ticketbox.data.remote.dto.MonthlyArrangementDto::class.java)
+    }
     val budgetSaveAdapter: JsonAdapter<com.ticketbox.data.repository.BudgetSavePayload> = lazyJsonAdapter {
         moshi.adapter(com.ticketbox.data.repository.BudgetSavePayload::class.java)
     }

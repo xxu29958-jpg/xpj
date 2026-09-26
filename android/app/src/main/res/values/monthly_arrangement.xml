@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="arrangement_title">本月储蓄与备用金安排</string>
+    <string name="arrangement_explanation">先留出想存下来的钱和备用金，再看本月还能花多少。试算不会保存；AI 建议可选，需主动生成。</string>
+    <string name="arrangement_savings">储蓄目标</string>
+    <string name="arrangement_buffer">备用金</string>
+    <string name="arrangement_currency">输入币种：%1$s（按原币精度保存）</string>
+    <string name="arrangement_trial">试算，不保存</string>
+    <string name="arrangement_save">明确保存本月安排</string>
+    <string name="arrangement_attention">本月安排提交需要核对</string>
+    <string name="arrangement_load_failed">暂时无法读取月度安排，请稍后重试。</string>
+    <string name="arrangement_save_failed">暂时无法处理安排提交，原草稿和提交仍保留。</string>
+    <string name="arrangement_invalid_amount">请输入符合币种精度的非负金额。</string>
+    <string name="arrangement_edited">输入已修改，请先试算或明确保存。</string>
+    <string name="arrangement_queued">原安排提交已保留，等待服务器确认；尚不代表已保存。</string>
+    <string name="arrangement_save_confirmed">服务器已确认保存，可换端刷新核对。</string>
+    <string name="arrangement_review_offline">离线时无法核对最新版本，请联网重读。</string>
+    <string name="arrangement_reviewed">已读取当前版本。核对原提交与当前安排后，可停止原提交，再明确保存新草稿。</string>
+    <string name="arrangement_stopped">已停止原提交；草稿保留，尚未保存。</string>
+    <string name="arrangement_retrying">按原键、原币和原版本继续重试。</string>
+    <string name="arrangement_refresh">重读已保存安排 / 换端核对</string>
+    <string name="arrangement_cached">离线缓存，尚未核对服务器最新版本</string>
+    <string name="arrangement_not_saved">这月尚未保存安排</string>
+    <string name="arrangement_record">已保存 v%1$d · 储蓄 %2$s · 备用金 %3$s</string>
+    <string name="arrangement_trial_basis">本次试算：尚未保存</string>
+    <string name="arrangement_saved_basis">根据已保存安排计算</string>
+    <string name="arrangement_shortfall">安排超出本月可留出的金额 %1$s。可调低储蓄或备用金；金额未知时请先补齐汇率。</string>
+    <string name="arrangement_history">查看修改历史</string>
+    <string name="arrangement_history_empty">暂无已保存修改历史</string>
+    <string name="arrangement_history_item">v%1$d · %2$s · 储蓄 %3$s · 备用金 %4$s</string>
+    <string name="arrangement_more">更早的修改</string>
+    <string name="arrangement_original">原提交 %1$s · 基于 v%2$d · 储蓄 %3$s · 备用金 %4$s</string>
+    <string name="arrangement_pending">等待确认：保留原提交，不能当作已保存</string>
+    <string name="arrangement_confirmed">服务器已确认原提交</string>
+    <string name="arrangement_retry">按原键继续重试</string>
+    <string name="arrangement_review">读取最新安排并核对原提交</string>
+    <string name="arrangement_stop">停止原提交</string>
+    <string name="arrangement_stop_body">停止这条提交不会撤销服务器可能已接受的安排。请先重读核对；未提交草稿会保留。</string>
+</resources>

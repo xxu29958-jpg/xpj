@@ -103,6 +103,9 @@ private fun dropConfirmationText(selection: SyncStatusDropSelection): DropConfir
             stringResource(R.string.recurring_original_drop), stringResource(R.string.recurring_original_drop_explanation),
             stringResource(R.string.recurring_original_drop),
         )
+        row.type == PendingMutationType.SaveMonthlyArrangement -> DropConfirmationText(
+            stringResource(R.string.arrangement_stop), stringResource(R.string.arrangement_stop_body), stringResource(R.string.arrangement_stop),
+        )
         row.type == PendingMutationType.SaveMonthlyBudget -> DropConfirmationText(
             stringResource(R.string.budget_save_drop), stringResource(R.string.budget_save_drop_explanation),
             stringResource(R.string.budget_save_drop),

@@ -116,6 +116,9 @@ internal class RepositoryGraph(
         receiptAdapter = outboxAdapters.budgetReceiptAdapter,
         rateAdapter = outboxAdapters.manualRateAdapter,
         rateReceiptAdapter = outboxAdapters.manualRateReceiptAdapter,
+        arrangementDao = database.monthlyArrangementCacheDao(),
+        arrangementSaveAdapter = outboxAdapters.arrangementSaveAdapter,
+        arrangementReceiptAdapter = outboxAdapters.arrangementReceiptAdapter,
     )
 
     val incomePlanRepository = IncomePlanRepository(
