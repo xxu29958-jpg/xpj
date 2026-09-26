@@ -2,6 +2,7 @@ package com.ticketbox.data.repository
 
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -14,6 +15,7 @@ import androidx.compose.ui.test.click
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.ViewModel
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.espresso.Espresso.closeSoftKeyboard
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.RepositoryGraph
 import com.ticketbox.viewmodel.DebtAction
@@ -62,7 +64,11 @@ class DebtAdjustmentRoomContinuityTest {
         compose.onAllNodes(hasSetTextAction()).assertCountEquals(2)
         compose.onAllNodes(hasSetTextAction())[0].performTextReplacement("30.00")
         compose.onAllNodes(hasSetTextAction())[1].performTextReplacement("补记原借款")
-        compose.onNodeWithText("保存").performScrollTo().assertIsDisplayed().performTouchInput { click() }
+        // Finish text entry before hit-testing a button that moves with the IME insets.
+        closeSoftKeyboard()
+        compose.waitForIdle()
+        compose.onNodeWithText("保存").performScrollTo().assertIsDisplayed().assertIsEnabled()
+            .performTouchInput { click() }
         compose.waitUntil(10_000) { fixture.stored().size == 1 && detail.value?.state?.value?.activeAction == null }
         val original = fixture.stored().single()
         assertEquals(0, fixture.network.calls.size)
