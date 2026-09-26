@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% set page_title = '预算修改记录' %}
+{% set product_body_domain = 'plans' %}
+{% block title %}预算修改记录 · 小票夹{% endblock %}
+{% block content %}
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <h1 class="page-title">预算修改记录</h1>
+    <p class="product-page-summary">{{ month }} · 回看每次保存的安排；这里的金额不是当时的实际支出。</p>
+  </div>
+  <a class="btn-secondary" href="/web/budgets?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ month }}">回到本月预算</a>
+</header>
+{% set labels = {'baseline': '开始保留记录', 'create': '建立预算', 'edit': '修改预算', 'archive': '移入回收站', 'restore': '恢复预算'} %}
+{% for entry in history.items %}
+{% set snapshot = entry.snapshot %}
+<section class="product-panel product-panel--padded" aria-label="{{ labels[entry.change_kind] }}">
+  <h2>{{ labels[entry.change_kind] }}</h2>
+  <p class="text-muted"><time datetime="{{ entry.recorded_at | to_iso }}">{{ entry.recorded_at | to_iso }}</time>{% if snapshot.archived %} · 已归档{% endif %}</p>
+  {% if entry.change_kind == 'baseline' %}<p>这是开始保留修改记录时的已有安排，更早的修改没有记录。</p>{% endif %}
+  <dl>
+    <dt>总预算</dt><dd>{{ history_money(snapshot.total_amount_cents, snapshot.home_currency_code) }}</dd>
+    <dt>结转</dt><dd>{{ history_money(snapshot.rollover_amount_cents, snapshot.home_currency_code) }}</dd>
+    <dt>非月度预留</dt><dd>{{ history_money(snapshot.non_monthly_amount_cents, snapshot.home_currency_code) }}</dd>
+    <dt>不计入预算的分类</dt><dd>{{ snapshot.excluded_categories | join('、') or '无' }}</dd>
+  </dl>
+  {% if snapshot.category_budgets %}
+  <ul>{% for category in snapshot.category_budgets %}<li>{{ category.category }} · {{ history_money(category.amount_cents, snapshot.home_currency_code) }}</li>{% endfor %}</ul>
+  {% else %}<p class="text-muted">未单独设置分类额度。</p>{% endif %}
+</section>
+{% else %}<section class="product-panel product-panel--padded"><p>这个月还没有保存过预算记录。</p></section>{% endfor %}
+{% if history.next_before_version %}
+<a class="btn-secondary" href="/web/budgets/history?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ month }}&amp;before_version={{ history.next_before_version }}">更早的记录</a>
+{% endif %}
+{% if before_version %}<a class="btn-secondary" href="/web/budgets/history?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ month }}">最近的记录</a>{% endif %}
+{% endblock %}

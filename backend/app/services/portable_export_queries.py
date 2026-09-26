@@ -58,6 +58,7 @@ _LEDGER_RECORDS = (
     (m.Budget, "id public_id tenant_id month home_currency_code total_amount_cents non_monthly_amount_cents "
         "rollover_amount_cents excluded_categories created_at updated_at row_version archived_at"),
     (m.BudgetCategory, "id public_id tenant_id month category amount_cents created_at updated_at"),
+    (m.BudgetRevision, "id tenant_id budget_id row_version change_kind snapshot actor_account_id recorded_at"),
     (m.Goal, "id public_id tenant_id name goal_type period month category target_amount_cents home_currency_code "
         "status created_at updated_at row_version archived_at goal_version achieved_at achieved_version "
         "integrity_reviewed_version target_date"),

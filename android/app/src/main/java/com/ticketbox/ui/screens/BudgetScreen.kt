@@ -49,9 +49,10 @@ data class BudgetScreenActions(
 fun BudgetScreen(
     state: BudgetUiState,
     actions: BudgetScreenActions,
+    onHistory: () -> Unit,
     onBack: (() -> Unit)? = null,
 ) {
-    BudgetScreenContent(state = state, actions = actions, onBack = onBack)
+    BudgetScreenContent(state = state, actions = actions, onBack = onBack, onHistory = onHistory)
 }
 
 @Composable
@@ -59,6 +60,7 @@ private fun BudgetScreenContent(
     state: BudgetUiState,
     actions: BudgetScreenActions,
     onBack: (() -> Unit)?,
+    onHistory: () -> Unit,
 ) {
     val currencyDisplay = CurrencyDisplay.forRecord(state.budget?.homeCurrencyCode ?: "UNKNOWN")
     val decision = budgetPageDecision(state)
@@ -114,6 +116,11 @@ private fun BudgetScreenContent(
                 state = state,
                 actions = actions.toBudgetEditorActions(),
             )
+        }
+        item {
+            androidx.compose.material3.TextButton(onClick = onHistory) {
+                androidx.compose.material3.Text(stringResource(R.string.budget_history_title))
+            }
         }
         budgetExecutionSections(decision, currencyDisplay)
     }

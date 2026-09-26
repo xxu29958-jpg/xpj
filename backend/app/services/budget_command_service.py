@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.models import ApiIdempotencyKey, Budget, BudgetCategory
 from app.schemas import BudgetMonthlyResponse, BudgetMonthlyUpdateRequest
+from app.services.budget_history_service import record_budget_revision
 from app.services.budget_money import validated_monthly_budget_amounts
 from app.services.budget_service import (
     _budget_response,
@@ -84,7 +85,8 @@ def _save_categories(db: Session, *, tenant_id: str, month: str, categories: lis
 
 
 def _apply_budget_save(db: Session, *, tenant_id: str, month: str,
-    payload: BudgetMonthlyUpdateRequest, timezone_name: str | None) -> BudgetMonthlyResponse:
+    payload: BudgetMonthlyUpdateRequest, timezone_name: str | None,
+    actor_account_id: int | None = None) -> BudgetMonthlyResponse:
     amounts = validated_monthly_budget_amounts(payload)
     excluded = _clean_excluded_categories(payload.excluded_categories)
     categories = _clean_category_budget_rows(payload.category_budgets)
@@ -96,6 +98,8 @@ def _apply_budget_save(db: Session, *, tenant_id: str, month: str,
     budget.updated_at = now
     _save_categories(db, tenant_id=tenant_id, month=month, categories=categories, now=now)
     db.flush()
+    record_budget_revision(db, budget, change_kind="create" if payload.expected_row_version is None else "edit",
+        actor_account_id=actor_account_id)
     return _budget_response(db, tenant_id=tenant_id, month=month, timezone_name=timezone_name)
 
 
@@ -117,7 +121,8 @@ def save_monthly_budget(db: Session, *, tenant_id: str, month: str,
             raise AppError("idempotency_key_reused", status_code=422)
         if claim.kind is IdempotencyOutcomeKind.HIT:
             return BudgetMonthlyResponse.model_validate(claim.row.response_body)
-        response = _apply_budget_save(db, tenant_id=tenant_id, month=month, payload=payload, timezone_name=timezone_name)
+        response = _apply_budget_save(db, tenant_id=tenant_id, month=month, payload=payload,
+            timezone_name=timezone_name, actor_account_id=actor_account_id)
         mark_idempotency_succeeded(db, claim.row, resource_type="monthly_budget", resource_id=month,
             response_body=response.model_dump(mode="json"))
         db.commit()

@@ -112,6 +112,20 @@ class BudgetFirstUseRouteTest {
         assertTrue(transport.writes.isEmpty())
     }
 
+    @Test fun historyOpensFromTheRealBudgetAndKeepsTheOriginalYenAndCategoriesAcrossPages() {
+        show()
+        compose.onNodeWithText(text(R.string.budget_history_title)).performScrollTo().performClick()
+        compose.waitUntil(5_000) { transport.historyCursors.size == 1 }
+        compose.onNodeWithText(text(R.string.budget_history_edit)).assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.budget_history_more)).performScrollTo().performClick()
+        compose.waitUntil(5_000) { transport.historyCursors.size == 2 }
+        compose.onNodeWithText(text(R.string.budget_history_create)).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("餐饮 · ¥300").performScrollTo().assertIsDisplayed()
+        assertEquals(listOf(null, 2L), transport.historyCursors.toList())
+        assertTrue(transport.writes.isEmpty())
+        assertTrue(runBlocking { harness.fixture.pendingDao.allRows().isEmpty() })
+    }
+
     private fun show() {
         compose.setContent {
             if (mounted.value) TicketboxTheme(skin = AppSkin.Default) {
@@ -151,6 +165,7 @@ class BudgetFirstUseRouteTest {
 }
 
 private class FirstBudgetTransport {
+    val historyCursors = CopyOnWriteArrayList<Long?>()
     val reads = CopyOnWriteArrayList<String>()
     val readLedgers = CopyOnWriteArrayList<String>()
     val writes = CopyOnWriteArrayList<Pair<BudgetMonthlyUpdateRequestDto, String?>>()
@@ -159,6 +174,18 @@ private class FirstBudgetTransport {
     lateinit var service: ApiService
 
     fun wrap(delegate: ApiService): ApiService = object : ApiService by delegate {
+        override suspend fun budgetHistory(month: String, beforeVersion: Long?): com.ticketbox.data.remote.dto.BudgetHistoryDto {
+            historyCursors += beforeVersion
+            val initial = beforeVersion != null
+            return com.ticketbox.data.remote.dto.BudgetHistoryDto(ledgerId, month,
+                listOf(com.ticketbox.data.remote.dto.BudgetRevisionDto(if (initial) 1 else 2,
+                    if (initial) "create" else "edit", "2026-09-26T00:00:00Z",
+                    com.ticketbox.data.remote.dto.BudgetArrangementDto("JPY", if (initial) 1200 else 1500,
+                        100, -20, listOf("旅行"), if (initial) listOf(
+                            com.ticketbox.data.remote.dto.BudgetCategoryRequestDto("餐饮", 300)) else emptyList(), false))),
+                if (initial) null else 2)
+        }
+
         override suspend fun monthlyBudget(month: String, timezone: String?): BudgetMonthlyDto {
             val result = accepted ?: firstBudget(ledgerId, month)
             reads += month

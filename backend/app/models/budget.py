@@ -34,6 +34,7 @@ class Budget(Base):
         CheckConstraint("length(month) = 7", name="ck_budgets_month_format"),
         CheckConstraint("home_currency_code IN ('CNY', 'USD', 'EUR', 'GBP', 'JPY', 'HKD', 'KRW')", name="ck_budget_currency"),
         UniqueConstraint("tenant_id", "month", name="uq_budgets_tenant_month"),
+        UniqueConstraint("id", "tenant_id", name="uq_budgets_id_tenant"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

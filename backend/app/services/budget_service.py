@@ -18,6 +18,7 @@ from app.schemas import (
     BudgetExcludedCategoryResponse,
     BudgetMonthlyResponse,
 )
+from app.services.budget_history_service import record_budget_revision
 from app.services.budget_money import (
     budget_amount_breakdown as _budget_amount_breakdown,
 )
@@ -347,6 +348,8 @@ def archive_monthly_budget(
         if current.archived_at is not None:
             return current
         raise AppError("state_conflict", status_code=409)
+    db.refresh(budget)
+    record_budget_revision(db, budget, change_kind="archive")
     db.commit()
     db.expire_all()
     return _require_budget(db, tenant_id=tenant_id, month=clean_month)
@@ -381,6 +384,8 @@ def restore_monthly_budget(
         if current.archived_at is None:
             return current
         raise AppError("state_conflict", status_code=409)
+    db.refresh(budget)
+    record_budget_revision(db, budget, change_kind="restore")
     db.commit()
     db.expire_all()
     return _require_budget(db, tenant_id=tenant_id, month=clean_month)

@@ -57,7 +57,7 @@ class BudgetRepository(
     receiptAdapter: JsonAdapter<BudgetMonthlyDto>,
     rateAdapter: JsonAdapter<ManualRatePayload>,
     rateReceiptAdapter: JsonAdapter<com.ticketbox.data.remote.dto.ExchangeRateDto>,
-) : BudgetActions, BudgetSaveActions by BudgetSaveRepository(apiProvider, outbox, saveAdapter, receiptAdapter),
+) : BudgetActions, BudgetHistoryReader, BudgetSaveActions by BudgetSaveRepository(apiProvider, outbox, saveAdapter, receiptAdapter),
     ManualRateActions by ManualExchangeRateRepository(apiProvider, outbox, rateAdapter, rateReceiptAdapter) {
     private val ledgerRequestGuard = LedgerRequestGuard(apiProvider)
     private val errorHandler = NetworkErrorHandler(
@@ -72,6 +72,14 @@ class BudgetRepository(
     internal val adviceCallStore = BudgetAdviceCallStore(ledgerRequestGuard, errorHandler)
 
     override fun canModifyLedger(): Boolean = ledgerRoleCanModify(apiProvider.currentLedgerRole())
+
+    override suspend fun history(binding: LogicalSessionBinding, month: String, beforeVersion: Long?) =
+        errorHandler.safeCall {
+            val cleanMonth = validatedBudgetMonth(month).getOrThrow()
+            ledgerRequestGuard.bindExact(binding).call { it.budgetHistory(cleanMonth, beforeVersion) }
+                .also { require(it.ledgerId == binding.ledgerId && it.month == cleanMonth) }
+                .toDomain()
+        }
 
     override suspend fun adviceInputs(expectedBinding: LogicalSessionBinding, month: String,
         homeCurrencyCode: String?): Result<com.ticketbox.data.remote.dto.BudgetAdviceInputsDto> = errorHandler.safeCall {

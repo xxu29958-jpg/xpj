@@ -37,6 +37,7 @@ from app.models.budget import (
     DebtGoalLink,
     Goal,
 )
+from app.models.budget_revision import BudgetRevision
 from app.models.catalog import (
     CategoryPreference,
     DuplicateIgnore,
@@ -97,6 +98,7 @@ from app.models.system import (
 )
 
 __all__ = [
+    "BudgetRevision",
     "Account",
     "AiMemberAnonMap",
     "AiMerchantAnonMap",
