@@ -93,7 +93,7 @@ class BudgetHistoryViewModelTest {
         vm.retry()
         advanceUntilIdle()
         assertEquals(listOf(3L), vm.state.value.items.map { it.rowVersion })
-        assertEquals(listOf(null, null, null), reader.cursors)
+        assertEquals(listOf<Long?>(null, null, null), reader.cursors)
         reader.result = Result.failure(IOException("offline"))
         vm.open("2026-10")
         assertTrue(vm.state.value.items.isEmpty())
