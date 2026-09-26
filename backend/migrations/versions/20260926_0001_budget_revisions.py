@@ -108,8 +108,7 @@ def downgrade() -> None:
     _set_authority_revision(bind, revision, down_revision)
 
 
-def assert_postcondition(bind):
-    inspector = sa.inspect(bind)
+def _assert_snapshot_shape(inspector):
     columns = {column["name"]: column for column in inspector.get_columns("budget_revisions")}
     required = {"id", "tenant_id", "budget_id", "row_version", "change_kind", "snapshot", "recorded_at"}
     if not required <= columns.keys() or any(columns[name]["nullable"] for name in required):
@@ -119,6 +118,12 @@ def assert_postcondition(bind):
     timestamp = columns["recorded_at"]["type"]
     if not isinstance(timestamp, sa.DateTime) or not timestamp.timezone:
         raise RuntimeError("budget history recording time must include timezone")
+    checks = {item["name"] for item in inspector.get_check_constraints("budget_revisions")}
+    if not {"ck_budget_revision_version", "ck_budget_revision_kind"} <= checks:
+        raise RuntimeError("budget history version and change guards are missing")
+
+
+def _assert_history_identity(inspector):
     unique_keys = {tuple(item["column_names"]) for item in inspector.get_unique_constraints("budget_revisions")}
     if ("tenant_id", "budget_id", "row_version") not in unique_keys:
         raise RuntimeError("budget history must record each saved version once")
@@ -130,9 +135,12 @@ def assert_postcondition(bind):
                and item["referred_table"] == "budgets" and item["referred_columns"] == ["id", "tenant_id"]
                and item["options"].get("ondelete") == "RESTRICT" for item in foreign_keys):
         raise RuntimeError("budget history must retain its original ledger and budget")
-    checks = {item["name"] for item in inspector.get_check_constraints("budget_revisions")}
-    if not {"ck_budget_revision_version", "ck_budget_revision_kind"} <= checks:
-        raise RuntimeError("budget history version and change guards are missing")
+
+
+def assert_postcondition(bind):
+    inspector = sa.inspect(bind)
+    _assert_snapshot_shape(inspector)
+    _assert_history_identity(inspector)
     triggers = set(bind.scalars(sa.text(
         "SELECT tgname FROM pg_trigger WHERE tgrelid = 'budget_revisions'::regclass "
         "AND NOT tgisinternal AND tgenabled = 'O'"
