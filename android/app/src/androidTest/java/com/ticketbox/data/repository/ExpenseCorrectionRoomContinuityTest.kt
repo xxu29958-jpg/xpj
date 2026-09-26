@@ -339,7 +339,7 @@ class ExpenseCorrectionRoomContinuityTest {
         compose.waitUntil(10_000) { model.value?.uiState?.value?.expense?.amountCents == 1_200L &&
             model.value?.uiState?.value?.revisions?.singleOrNull()?.revisionNumber == 4L }
         compose.waitUntil(10_000) {
-            compose.onAllNodesWithText("更正已送达，当前事实已刷新。").fetchSemanticsNodes().size == 1
+            compose.onAllNodes(hasText("更正已送达，当前事实已刷新。")).fetchSemanticsNodes().size == 1
         }
         compose.onNodeWithText("更正已送达，当前事实已刷新。").performScrollTo().assertIsDisplayed()
         assertEquals(2, fixture.network.calls.size)

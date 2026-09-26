@@ -68,7 +68,7 @@ class MonthlyArrangementRoomContinuityTest {
             if (offline) throw ConnectException("offline")
             return MonthlyArrangementResponseDto(session.value.identity.ledgerId, month, fact)
         }
-        override suspend fun monthlyArrangementHistory(month: String, beforeVersion: Long?): MonthlyArrangementHistoryDto {
+        override suspend fun monthlyArrangementHistory(month: String, beforeVersion: Long?, limit: Int): MonthlyArrangementHistoryDto {
             readFailure?.let { throw it }
             if (offline) throw ConnectException("offline")
             val items = fact?.let { listOf(MonthlyArrangementHistoryItemDto(it.rowVersion, it.updatedAt,
