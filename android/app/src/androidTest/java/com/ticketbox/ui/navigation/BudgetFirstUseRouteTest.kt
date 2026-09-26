@@ -2,14 +2,17 @@ package com.ticketbox.ui.navigation
 
 import android.content.Context
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -32,6 +35,7 @@ import com.ticketbox.data.remote.dto.BudgetMonthlyUpdateRequestDto
 import com.ticketbox.data.repository.OutboxDrainEngine
 import com.ticketbox.data.repository.SaveMonthlyBudgetDispatcher
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.ui.theme.TicketboxTheme
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.runBlocking
@@ -95,7 +99,9 @@ class BudgetFirstUseRouteTest {
         input("budget_total_amount", "1200")
         input("budget_category_name", "餐饮")
         save()
-        compose.onNodeWithText(text(R.string.budget_validation_category_amount_required)).performScrollTo().assertIsDisplayed()
+        val error = text(R.string.budget_validation_category_amount_required)
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(error))
+        compose.onNodeWithText(error).assertIsDisplayed()
         field("budget_category_name").performScrollTo().assertTextEquals("餐饮")
         assertTrue(runBlocking { harness.fixture.pendingDao.allRows().isEmpty() })
 
@@ -121,6 +127,7 @@ class BudgetFirstUseRouteTest {
         compose.waitUntil(5_000) { transport.historyCursors.size == 2 }
         compose.onNodeWithText(text(R.string.budget_history_create)).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("餐饮 · ¥300").performScrollTo().assertIsDisplayed()
+        saveConsumerArtPreview("budget-history-jpy", compose.onAllNodes(isRoot()).onLast().captureToImage().asAndroidBitmap())
         assertEquals(listOf(null, 2L), transport.historyCursors.toList())
         assertTrue(transport.writes.isEmpty())
         assertTrue(runBlocking { harness.fixture.pendingDao.allRows().isEmpty() })

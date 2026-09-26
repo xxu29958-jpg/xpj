@@ -20,7 +20,7 @@ import com.ticketbox.viewmodel.BudgetHistoryState
 
 @Composable
 fun BudgetHistorySheet(state: BudgetHistoryState, onRetry: () -> Unit, onMore: () -> Unit, onDismiss: () -> Unit) {
-    AppBusyGuardedSheet(isSubmitting = false, onDismiss = onDismiss) {
+    AppBusyGuardedSheet(isSubmitting = false, onDismiss = onDismiss, skipPartiallyExpanded = true) {
         AppSheetScaffold(title = stringResource(R.string.budget_history_title), subtitle = state.month) {
             Text(stringResource(R.string.budget_history_explanation))
             state.items.forEach { entry -> BudgetHistoryEntry(entry) }
