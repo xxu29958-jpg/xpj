@@ -74,6 +74,15 @@ class MonthlyArrangementRouteTest {
         input("arrangement_savings").performScrollTo().assertTextEquals("8000")
         assertEquals(3000L, fixture.arrangement?.savingsTargetCents)
         assertEquals(1, fixture.arrangementWrites.size)
+        tap("arrangement_save")
+        compose.waitUntil(5_000) { runBlocking { fixture.rows().size == 2 } }
+        val next = runBlocking { fixture.rows().single { it.id != row.id } }
+        assertEquals(1L, next.expectedRowVersion)
+        assertNotEquals(row.idempotencyKey, next.idempotencyKey)
+        assertEquals(1, runBlocking { fixture.drain().done })
+        assertEquals(8000L, fixture.arrangement?.savingsTargetCents)
+        assertEquals(2L, fixture.arrangement?.rowVersion)
+        assertEquals(2, fixture.arrangementWrites.size)
         assertTrue(fixture.adviceCalls.isEmpty())
     }
 

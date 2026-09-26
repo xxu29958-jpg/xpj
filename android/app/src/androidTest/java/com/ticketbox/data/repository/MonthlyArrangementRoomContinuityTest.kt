@@ -82,6 +82,34 @@ class MonthlyArrangementRoomContinuityTest {
     private suspend fun drain() = OutboxDrainEngine(outbox, listOf(SaveMonthlyArrangementDispatcher({ api },
         adapters.arrangementSaveAdapter, adapters.arrangementReceiptAdapter)), now = clock::millis).drainOnce()
     @After fun close() { db?.close(); context.deleteDatabase(name) }
+    @Test fun confirmedSaveRetainsItsReceiptWithoutBlockingTheNextVersion() = runBlocking {
+        loseAck = false
+        val original = binding()
+        var repository = reopen()
+        val first = repository.enqueueArrangement(original, "2026-09",
+            MonthlyArrangementSaveRequest("JPY", 1200, 300)).getOrThrow()
+        assertEquals(1, drain().done)
+        val accepted = repository.observeArrangements(original).first().single { it.row.id == first }
+        assertTrue(accepted.isConfirmed)
+        repository = reopen()
+        val second = repository.enqueueArrangement(original, "2026-09",
+            MonthlyArrangementSaveRequest("JPY", 1800, 300, 1)).getOrThrow()
+        assertNotEquals(first, second)
+        // The retained Done row permits a new version; its unresolved successor still blocks a third.
+        assertTrue(repository.enqueueArrangement(original, "2026-09",
+            MonthlyArrangementSaveRequest("JPY", 2000, 300, 1)).isFailure)
+        assertEquals(1, drain().done)
+        assertEquals(2L, fact?.rowVersion)
+        assertEquals(1800L, fact?.savingsTargetCents)
+        val rows = repository.observeArrangements(original).first()
+        assertEquals(2, rows.size)
+        assertTrue(rows.all { it.isConfirmed })
+        assertEquals(accepted, rows.single { it.row.id == first })
+        assertNotEquals(calls[0].second, calls[1].second)
+        assertNull(calls[0].first.expectedRowVersion)
+        assertEquals(1L, calls[1].first.expectedRowVersion)
+        assertEquals(2, receipts.size)
+    }
     @Test fun originalDraftSavedProjectionAndAckUnknownSurviveRoomReopenWithSameKey() = runBlocking {
         val original = binding()
         var repository = reopen()

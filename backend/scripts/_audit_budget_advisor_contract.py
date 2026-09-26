@@ -4,7 +4,7 @@ This lane keeps three things in sync:
 
 * ``BudgetInputs`` dataclass fields;
 * outbound guard allowlists;
-* ADR-0036's current implementation note.
+* ADR-0036's frozen note and its ADR-0077 monthly-arrangement amendment.
 
 If a future change adds a provider-visible field, release_audit must fail until
 the code guard and ADR are deliberately updated in the same review.
@@ -23,6 +23,7 @@ REPO_ROOT = BACKEND_ROOT.parent
 sys.path.insert(0, str(BACKEND_ROOT))
 
 ADR_PATH = REPO_ROOT / "docs" / "DECISIONS" / "0036-v1.1-ai-budget-provider-privacy-boundary.md"
+AMENDMENT_PATH = REPO_ROOT / "docs" / "DECISIONS" / "0077-monthly-arrangement-advice-basis.md"
 
 
 def _field_names(cls: type[object]) -> set[str]:
@@ -51,9 +52,9 @@ def _check_key_sync(
 
 def _check_adr_tokens(allowed_top_level_keys: Sequence[str]) -> bool:
     try:
-        adr_text = ADR_PATH.read_text(encoding="utf-8")
+        adr_text = "\n".join(path.read_text(encoding="utf-8") for path in (ADR_PATH, AMENDMENT_PATH))
     except OSError as exc:
-        _fail(f"cannot read {ADR_PATH}: {exc}")
+        _fail(f"cannot read the budget advisor ADR contract: {exc}")
         return False
 
     required_adr_tokens = set(allowed_top_level_keys) | {
@@ -65,7 +66,7 @@ def _check_adr_tokens(allowed_top_level_keys: Sequence[str]) -> bool:
     if not missing:
         return True
     print(
-        "FAIL: ADR-0036 current implementation note is missing token(s): "
+        "FAIL: ADR-0036 / ADR-0077 provider contract is missing token(s): "
         + ", ".join(missing)
     )
     return False
@@ -140,7 +141,7 @@ def main() -> int:
     )
 
     if ok:
-        print("PASS: budget advisor outbound contract and ADR-0036 are in sync")
+        print("PASS: budget advisor outbound contract and ADR-0036 / ADR-0077 are in sync")
         return 0
     return 1
 

@@ -62,7 +62,7 @@ fun BudgetAdviceViewModel.trialArrangement() {
         .getOrElse { error -> _state.update { it.copy(arrangementMessage = error.toUiText(R.string.arrangement_invalid_amount)) }; return }
     requestGeneration += 1
     _state.update { it.copy(trialRequest = request, inputs = null, result = null,
-        loadState = BudgetAdviceLoadState.Idle, arrangementMessage = UiText.res(R.string.arrangement_trial_basis)) }
+        loadState = BudgetAdviceLoadState.Idle, arrangementMessage = null) }
     refreshInputs()
 }
 

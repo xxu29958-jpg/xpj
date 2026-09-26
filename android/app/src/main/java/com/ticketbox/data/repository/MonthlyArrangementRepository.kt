@@ -133,7 +133,7 @@ class MonthlyArrangementRepository(private val apiProvider: ApiServiceProvider, 
         outbox.enqueue(boundRequest = bound, intent = PendingMutationIntent(PendingMutationType.SaveMonthlyArrangement,
             "monthly_arrangement:$clean", payloadAdapter.toJson(MonthlyArrangementPayload(1, clean, request.copy(expectedRowVersion = null))),
             request.expectedRowVersion ?: 0, UUID.randomUUID().toString()), validateTargetRows = { rows ->
-            check(rows.isEmpty()) { "这月安排有待处理的保存，请先核对原提交。" }
+            check(rows.all { it.status == PendingMutationStatus.Done }) { "这月安排有待处理的保存，请先核对原提交。" }
         })
     }
     override suspend fun recoverArrangement(binding: LogicalSessionBinding, pending: PendingMonthlyArrangement, drop: Boolean) = errors.safeCall {

@@ -80,13 +80,16 @@ class MonthlyArrangementRoomDraftTest {
             val releaseDraft = CompletableDeferred<Unit>()
             fixture.beforeDraftRead = { draftReadStarted.complete(Unit); releaseDraft.await() }
             val releaseInitialDone = CompletableDeferred<Unit>()
+            val editedDraftStored = CompletableDeferred<Unit>()
             val base = FakeBudgetActions(budget())
             val repository = object : BudgetActions by base {
                 override fun observeLedgerAccessState() = flow { emit(LedgerAccessState(binding, "owner")); awaitCancellation() }
                 override suspend fun arrangement(binding: LogicalSessionBinding, month: String) = fixture.repository.arrangement(binding, month)
                 override suspend fun arrangementDraft(binding: LogicalSessionBinding, month: String) = fixture.repository.arrangementDraft(binding, month)
-                override suspend fun storeArrangementDraft(binding: LogicalSessionBinding, month: String, draft: MonthlyArrangementDraft) =
+                override suspend fun storeArrangementDraft(binding: LogicalSessionBinding, month: String, draft: MonthlyArrangementDraft) {
                     fixture.repository.storeArrangementDraft(binding, month, draft)
+                    editedDraftStored.complete(Unit)
+                }
                 override fun observeArrangements(binding: LogicalSessionBinding) = flow {
                     releaseInitialDone.await(); emit(listOf(fixture.confirmed())); awaitCancellation()
                 }
@@ -98,13 +101,14 @@ class MonthlyArrangementRoomDraftTest {
             runCurrent()
             assertTrue(vm.uiState.value.arrangementLoading)
             releaseDraft.complete(Unit)
-            runCurrent()
+            // runCurrent drains the test scheduler, but Room may finish its saved-cache write later.
+            vm.uiState.first { !it.arrangementLoading }
             assertEquals(draft, vm.uiState.value.arrangementDraft)
             assertTrue(vm.uiState.value.arrangementPending.single().isConfirmed)
             assertEquals(1200L, vm.uiState.value.arrangementRead?.response?.arrangement?.savingsTargetCents)
             assertFalse(vm.uiState.value.arrangementLoading)
             vm.editArrangement(false, "800")
-            runCurrent()
+            editedDraftStored.await()
             assertEquals("2400", vm.uiState.value.arrangementDraft?.savings)
             assertEquals(draft.copy(buffer = "800"), fixture.repository.arrangementDraft(binding, "2026-09"))
         } finally { fixture.db.close() }
