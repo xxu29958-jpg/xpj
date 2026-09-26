@@ -32,6 +32,7 @@
     <h1 class="page-title">月度预算</h1>
     <p class="product-page-summary">{{ month }} · 本月预算与执行。</p>
   </div>
+  <a class="btn-secondary" href="/web/budgets/history?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ month }}">修改记录</a>
 </header>
 
 {% if message %}<div class="product-feedback" role="status">{{ message }}</div>{% endif %}

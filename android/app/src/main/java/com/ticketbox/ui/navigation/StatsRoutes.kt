@@ -99,11 +99,24 @@ internal fun BudgetRoute(
         ),
     )
     val state by budgetViewModel.uiState.collectAsStateWithLifecycle()
+    val historyViewModel: com.ticketbox.viewmodel.BudgetHistoryViewModel = viewModel(
+        factory = com.ticketbox.viewmodel.budgetHistoryViewModelFactory(screenFactory.budgetRepository),
+    )
+    val historyState by historyViewModel.state.collectAsStateWithLifecycle()
+    val historyVisible = androidx.compose.runtime.remember(state.month, state.binding) {
+        androidx.compose.runtime.mutableStateOf(false)
+    }
+    if (historyVisible.value) {
+        com.ticketbox.ui.screens.budget.BudgetHistorySheet(historyState,
+            onRetry = historyViewModel::retry, onMore = historyViewModel::next,
+            onDismiss = { historyVisible.value = false })
+    }
     LaunchedEffect(financialDataRevision, state.saving) {
         if (financialDataRevision > 0 && !state.saving) budgetViewModel.refresh()
     }
     BudgetScreen(
         state = state,
+        onHistory = { historyViewModel.open(state.month); historyVisible.value = true },
         actions = BudgetScreenActions(
             onRefresh = budgetViewModel::refresh,
             onPreviousMonth = budgetViewModel::previousMonth,

@@ -7195,6 +7195,44 @@
         "title": "BudgetExcludedCategoryResponse",
         "type": "object"
       },
+      "BudgetHistoryResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BudgetRevisionResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "ledger_id": {
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "month": {
+            "title": "Month",
+            "type": "string"
+          },
+          "next_before_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Before Version"
+          }
+        },
+        "required": [
+          "ledger_id",
+          "month",
+          "items",
+          "next_before_version"
+        ],
+        "title": "BudgetHistoryResponse",
+        "type": "object"
+      },
       "BudgetInputsResponse": {
         "properties": {
           "breakdown": {
@@ -7654,6 +7692,106 @@
           }
         },
         "title": "BudgetRateForm",
+        "type": "object"
+      },
+      "BudgetRevisionResponse": {
+        "properties": {
+          "change_kind": {
+            "enum": [
+              "baseline",
+              "create",
+              "edit",
+              "archive",
+              "restore"
+            ],
+            "title": "Change Kind",
+            "type": "string"
+          },
+          "recorded_at": {
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "row_version": {
+            "minimum": 1.0,
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/BudgetSnapshot"
+          }
+        },
+        "required": [
+          "row_version",
+          "change_kind",
+          "recorded_at",
+          "snapshot"
+        ],
+        "title": "BudgetRevisionResponse",
+        "type": "object"
+      },
+      "BudgetSnapshot": {
+        "properties": {
+          "archived": {
+            "title": "Archived",
+            "type": "boolean"
+          },
+          "category_budgets": {
+            "items": {
+              "$ref": "#/components/schemas/BudgetCategoryRequest"
+            },
+            "title": "Category Budgets",
+            "type": "array"
+          },
+          "excluded_categories": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Excluded Categories",
+            "type": "array"
+          },
+          "home_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Currency Code"
+          },
+          "non_monthly_amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "Non Monthly Amount Cents",
+            "type": "integer"
+          },
+          "rollover_amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": -9000000000000.0,
+            "title": "Rollover Amount Cents",
+            "type": "integer"
+          },
+          "total_amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "Total Amount Cents",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "home_currency_code",
+          "total_amount_cents",
+          "non_monthly_amount_cents",
+          "rollover_amount_cents",
+          "excluded_categories",
+          "category_budgets",
+          "archived"
+        ],
+        "title": "BudgetSnapshot",
         "type": "object"
       },
       "BudgetSuggestionDto": {
@@ -23362,6 +23500,119 @@
           }
         },
         "summary": "Put Budget Monthly",
+        "tags": [
+          "budgets"
+        ]
+      }
+    },
+    "/api/budgets/monthly/{month}/history": {
+      "get": {
+        "operationId": "get_budget_history_api_budgets_monthly__month__history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "month",
+            "required": true,
+            "schema": {
+              "title": "Month",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before_version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Version"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetHistoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Get Budget History",
         "tags": [
           "budgets"
         ]
@@ -43442,6 +43693,81 @@
           }
         },
         "summary": "Web Budgets",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/budgets/history": {
+      "get": {
+        "operationId": "web_budget_history_web_budgets_history_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "month",
+            "required": true,
+            "schema": {
+              "title": "Month",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ledger Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before_version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Budget History",
         "tags": [
           "web"
         ]

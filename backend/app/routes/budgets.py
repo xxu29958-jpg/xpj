@@ -11,7 +11,9 @@ from app.schemas import (
     BudgetMonthlyResponse,
     BudgetMonthlyUpdateRequest,
 )
+from app.schemas._budget_history import BudgetHistoryResponse
 from app.services.budget_command_service import save_monthly_budget
+from app.services.budget_history_service import budget_history
 from app.services.budget_service import (
     archive_monthly_budget,
     get_monthly_budget,
@@ -59,6 +61,17 @@ def put_budget_monthly(
     )
 
 
+@router.get("/monthly/{month}/history", response_model=BudgetHistoryResponse)
+def get_budget_history(
+    month: str,
+    before_version: int | None = Query(default=None, ge=1),
+    limit: int = Query(default=20, ge=1, le=50),
+    auth: AuthContext = Depends(get_current_app_context),
+    db: Session = Depends(get_db),
+) -> BudgetHistoryResponse:
+    return budget_history(db, tenant_id=auth.tenant_id, month=month, before_version=before_version, limit=limit)
+
+
 @router.delete("/monthly/{month}", response_model=BudgetMonthlyArchiveResponse)
 def delete_budget_monthly(
     month: str,
@@ -71,5 +84,6 @@ def delete_budget_monthly(
         tenant_id=auth.tenant_id,
         month=month,
         expected_row_version=payload.expected_row_version,
+        actor_account_id=auth.account_id,
     )
     return BudgetMonthlyArchiveResponse(message="月度预算已移入回收站。")

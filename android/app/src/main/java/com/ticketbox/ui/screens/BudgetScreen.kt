@@ -1,8 +1,12 @@
 package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.data.repository.PendingBudgetSave
@@ -49,9 +53,10 @@ data class BudgetScreenActions(
 fun BudgetScreen(
     state: BudgetUiState,
     actions: BudgetScreenActions,
+    onHistory: () -> Unit,
     onBack: (() -> Unit)? = null,
 ) {
-    BudgetScreenContent(state = state, actions = actions, onBack = onBack)
+    BudgetScreenContent(state = state, actions = actions, onBack = onBack, onHistory = onHistory)
 }
 
 @Composable
@@ -59,6 +64,7 @@ private fun BudgetScreenContent(
     state: BudgetUiState,
     actions: BudgetScreenActions,
     onBack: (() -> Unit)?,
+    onHistory: () -> Unit,
 ) {
     val currencyDisplay = CurrencyDisplay.forRecord(state.budget?.homeCurrencyCode ?: "UNKNOWN")
     val decision = budgetPageDecision(state)
@@ -81,7 +87,7 @@ private fun BudgetScreenContent(
             onRefresh = actions.onRefresh,
         ),
         slots = AppSecondaryPageSlots(
-            actions = { BudgetStatusBadge(decision) },
+            actions = { BudgetPageActions(decision, onHistory) },
         ),
     ) {
         item {
@@ -116,6 +122,14 @@ private fun BudgetScreenContent(
             )
         }
         budgetExecutionSections(decision, currencyDisplay)
+    }
+}
+
+@Composable
+private fun BudgetPageActions(decision: BudgetPageDecision, onHistory: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        BudgetStatusBadge(decision)
+        TextButton(onClick = onHistory) { Text(stringResource(R.string.budget_history_title)) }
     }
 }
 

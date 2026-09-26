@@ -1,0 +1,24 @@
+<resources>
+    <string name="budget_history_title">预算修改记录</string>
+    <string name="budget_history_explanation">回看每次保存的安排；这里的金额不是当时的实际支出。</string>
+    <string name="budget_history_loading">正在读取记录…</string>
+    <string name="budget_history_failed">暂时无法读取记录。请确认已联网且仍可访问这个账本，再重试。</string>
+    <string name="budget_history_retry">重新读取</string>
+    <string name="budget_history_empty">这个月还没有保存过预算记录。</string>
+    <string name="budget_history_more">更早的记录</string>
+    <string name="budget_history_baseline">开始保留记录</string>
+    <string name="budget_history_baseline_note">这是开始保留修改记录时的已有安排，更早的修改没有记录。</string>
+    <string name="budget_history_create">建立预算</string>
+    <string name="budget_history_edit">修改预算</string>
+    <string name="budget_history_archive">移入回收站</string>
+    <string name="budget_history_restore">恢复预算</string>
+    <string name="budget_history_archived">已归档</string>
+    <string name="budget_history_total">总预算 · %1$s</string>
+    <string name="budget_history_rollover">结转 · %1$s</string>
+    <string name="budget_history_reserved">非月度预留 · %1$s</string>
+    <string name="budget_history_excluded">不计入预算的分类 · %1$s</string>
+    <string name="budget_history_none">无</string>
+    <string name="budget_history_no_categories">未单独设置分类额度。</string>
+    <string name="budget_history_category">%1$s · %2$s</string>
+    <string name="budget_history_unknown_money">%1$s 最小单位（原币种未记录）</string>
+</resources>

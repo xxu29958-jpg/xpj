@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
@@ -27,9 +27,10 @@ from app.routes.web_common import (
 )
 from app.schemas import BudgetCategoryRequest, BudgetMonthlyResponse, BudgetMonthlyUpdateRequest
 from app.services.budget_command_service import review_monthly_budget_save, save_monthly_budget
+from app.services.budget_history_service import budget_history
 from app.services.budget_service import get_monthly_budget
 from app.services.category_service import list_ledger_category_options
-from app.services.currency_common import major_amount_to_minor, normalize_currency_code
+from app.services.currency_common import major_amount_to_minor, minor_amount_label, normalize_currency_code
 from app.services.ledger_calendar_service import current_ledger_month
 from app.services.spending_contract_service import (
     clean_month,
@@ -335,6 +336,29 @@ def web_budgets(
         month=target_month,
         message=msg,
     )
+
+
+@router.get("/history", response_class=HTMLResponse)
+def web_budget_history(
+    request: Request,
+    month: str,
+    ledger_id: str | None = None,
+    before_version: int | None = Query(default=None, ge=1),
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    options = _list_ledger_options(db)
+    selected = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
+    history = budget_history(db, tenant_id=selected, month=month, before_version=before_version)
+    ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected,
+        show_month_picker=False, selected_month=history.month)
+    ctx.update(month=history.month, history=history, before_version=before_version,
+        history_money=_history_money)
+    return templates.TemplateResponse(request=request, name="budget_history.html", context=ctx)
+
+
+def _history_money(amount: int, currency: str | None) -> str:
+    return minor_amount_label(amount, currency) if currency else f"{amount} 最小单位（原币种未记录）"
 
 
 def _budget_payload_from_draft(draft: dict) -> BudgetMonthlyUpdateRequest:

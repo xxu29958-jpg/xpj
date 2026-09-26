@@ -89,6 +89,17 @@ def test_all_projections_execute_as_mapping_reads_and_identity_refs_stay_authori
     assert {row["public_id"] for row in _rows(records, "accounts")} == {"actor", "historical-member"}
 
 
+def test_budget_history_export_keeps_saved_snapshots_and_excludes_another_ledger(records):
+    snapshot = {"home_currency_code": "JPY", "total_amount_cents": 1200,
+        "category_budgets": [{"category": "餐饮", "amount_cents": 300}], "archived": True}
+    for id_, ledger in ((1, "selected"), (2, "other")):
+        _seed(records, m.BudgetRevision, id=id_, tenant_id=ledger, budget_id=id_, row_version=4,
+            change_kind="archive", snapshot=json.dumps(snapshot), recorded_at="2026-09-26 00:00:00")
+    rows = _rows(records, "budget_revisions")
+    assert len(rows) == 1
+    assert (rows[0]["budget_id"], rows[0]["row_version"], rows[0]["snapshot"]) == (1, 4, snapshot)
+
+
 def test_third_party_debt_reader_keeps_snapshot_identity_without_expanding_external_accounts(records):
     for id_, public_id in ((7, "viewer"), (8, "owner"), (9, "external-party")):
         _seed(records, m.Account, id=id_, public_id=public_id, display_name=public_id)
