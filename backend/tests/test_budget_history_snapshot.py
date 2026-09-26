@@ -1,8 +1,11 @@
 """Small real serializer probes; these do not stand in for PG transaction tests."""
 
 from datetime import UTC, datetime
+from importlib import import_module
 from types import SimpleNamespace
 from unittest.mock import Mock
+
+import pytest
 
 from app.models import Budget, BudgetCategory
 from app.routes.web_budgets import _history_money
@@ -27,6 +30,23 @@ def test_snapshot_keeps_original_money_and_categories_after_current_rows_change(
         "category_budgets": [{"category": "餐饮", "amount_cents": 300}]}
     assert (recorded.row_version, recorded.tenant_id, recorded.budget_id, recorded.actor_account_id) == (4, "owner", 7, 3)
     db.commit.assert_not_called()
+
+
+@pytest.mark.parametrize(("raw", "expected"), [
+    ("not json", []), ("{}", []), ("[1]", []), ("null", []), ("", []),
+    ('[" 吃饭 ", "餐饮", 1, null, "", "交通", "交通"]', ["餐饮", "交通"]),
+])
+def test_existing_readable_exclusions_remain_readable_when_capturing_history(raw, expected):
+    budget = Budget(id=7, tenant_id="owner", month="2026-09", home_currency_code=None,
+        total_amount_cents=1200, non_monthly_amount_cents=100, rollover_amount_cents=0,
+        excluded_categories=raw, row_version=4, archived_at=datetime.now(UTC))
+    db = Mock()
+    db.scalars.return_value.all.return_value = []
+    record_budget_revision(db, budget, change_kind="archive")
+    assert db.add.call_args.args[0].snapshot["excluded_categories"] == expected
+    migration = import_module("migrations.versions.20260926_0001_budget_revisions")
+    assert migration._baseline_exclusions(raw) == expected
+    assert budget.excluded_categories == raw
 
 
 def test_recorded_money_never_uses_the_current_ledger_currency_or_guesses_unknown_units():

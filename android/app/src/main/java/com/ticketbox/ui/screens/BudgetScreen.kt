@@ -1,8 +1,12 @@
 package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.data.repository.PendingBudgetSave
@@ -83,7 +87,7 @@ private fun BudgetScreenContent(
             onRefresh = actions.onRefresh,
         ),
         slots = AppSecondaryPageSlots(
-            actions = { BudgetStatusBadge(decision) },
+            actions = { BudgetPageActions(decision, onHistory) },
         ),
     ) {
         item {
@@ -117,12 +121,15 @@ private fun BudgetScreenContent(
                 actions = actions.toBudgetEditorActions(),
             )
         }
-        item {
-            androidx.compose.material3.TextButton(onClick = onHistory) {
-                androidx.compose.material3.Text(stringResource(R.string.budget_history_title))
-            }
-        }
         budgetExecutionSections(decision, currencyDisplay)
+    }
+}
+
+@Composable
+private fun BudgetPageActions(decision: BudgetPageDecision, onHistory: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        BudgetStatusBadge(decision)
+        TextButton(onClick = onHistory) { Text(stringResource(R.string.budget_history_title)) }
     }
 }
 

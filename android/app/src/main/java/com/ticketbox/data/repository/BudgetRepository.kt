@@ -114,16 +114,12 @@ class BudgetRepository(
         expectedBinding: LogicalSessionBinding,
         month: String,
     ): Result<BudgetMonthly> =
-        monthlyBudget(expectedBinding, month, currentBudgetTimezoneId())
+        monthlyBudget(month, currentBudgetTimezoneId(), expectedBinding)
 
-    suspend fun monthlyBudget(month: String, timezone: String): Result<BudgetMonthly> {
-        return monthlyBudget(expectedBinding = null, month = month, timezone = timezone)
-    }
-
-    private suspend fun monthlyBudget(
-        expectedBinding: LogicalSessionBinding?,
+    suspend fun monthlyBudget(
         month: String,
         timezone: String,
+        expectedBinding: LogicalSessionBinding? = null,
     ): Result<BudgetMonthly> {
         val cleanMonth = validatedBudgetMonth(month)
             .getOrElse { return Result.failure(it) }

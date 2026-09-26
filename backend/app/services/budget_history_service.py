@@ -1,12 +1,11 @@
 """Record within the existing budget transaction; read by ledger/month and version."""
 
-import json
-
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Budget, BudgetCategory, BudgetRevision
 from app.schemas._budget_history import BudgetHistoryResponse, BudgetRevisionResponse, BudgetSnapshot
+from app.services.budget_categories import parse_budget_exclusions
 from app.services.spending_contract_service import clean_month
 from app.services.time_service import now_utc
 
@@ -20,7 +19,7 @@ def record_budget_revision(db: Session, budget: Budget, *, change_kind: str, act
         total_amount_cents=budget.total_amount_cents,
         non_monthly_amount_cents=budget.non_monthly_amount_cents,
         rollover_amount_cents=budget.rollover_amount_cents,
-        excluded_categories=json.loads(budget.excluded_categories),
+        excluded_categories=parse_budget_exclusions(budget.excluded_categories),
         category_budgets=[{"category": row.category, "amount_cents": row.amount_cents} for row in categories],
         archived=budget.archived_at is not None,
     )

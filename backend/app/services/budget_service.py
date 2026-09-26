@@ -18,11 +18,13 @@ from app.schemas import (
     BudgetExcludedCategoryResponse,
     BudgetMonthlyResponse,
 )
+from app.services.budget_categories import clean_budget_category as _clean_category
+from app.services.budget_categories import parse_budget_exclusions as _parse_excluded_categories
 from app.services.budget_history_service import record_budget_revision
 from app.services.budget_money import (
     budget_amount_breakdown as _budget_amount_breakdown,
 )
-from app.services.category_service import normalize_category
+from app.services.category_common import normalize_category
 from app.services.currency_binding_service import (
     require_runtime_home_currency_code,
     resolve_write_capability,
@@ -48,39 +50,8 @@ def _clean_month(month: str) -> str:
     return clean_month(month)
 
 
-def _clean_category(value: str) -> str:
-    raw = (value or "").strip()
-    if not raw or len(raw) > 64:
-        raise AppError("invalid_request", status_code=422)
-    return normalize_category(raw)
-
-
 def _serialize_excluded_categories(categories: list[str]) -> str:
     return json.dumps(categories, ensure_ascii=False, separators=(",", ":"))
-
-
-def _parse_excluded_categories(value: str | None) -> list[str]:
-    if not value:
-        return []
-    try:
-        parsed = json.loads(value)
-    except json.JSONDecodeError:
-        return []
-    if not isinstance(parsed, list):
-        return []
-    normalized: list[str] = []
-    seen: set[str] = set()
-    for item in parsed:
-        if not isinstance(item, str):
-            continue
-        try:
-            category = _clean_category(item)
-        except AppError:
-            continue
-        if category not in seen:
-            normalized.append(category)
-            seen.add(category)
-    return normalized
 
 
 def _clean_excluded_categories(categories: list[str]) -> list[str]:
