@@ -99,37 +99,61 @@ def downgrade():
     _set_authority_revision(bind, revision, down_revision)
 
 
-def assert_postcondition(bind):
-    inspector = sa.inspect(bind)
-    for table, prefix in zip(_TABLES, ("monthly_arrangement", "monthly_arrangement_rev"), strict=True):
-        columns = {column["name"]: column for column in inspector.get_columns(table)}
-        for column in ("tenant_id", "home_currency_code", "savings_target_cents", "reserved_buffer_cents", "row_version"):
-            if column not in columns or columns[column]["nullable"]:
-                raise RuntimeError("monthly arrangement is missing captured facts")
-        for column in ("savings_target_cents", "reserved_buffer_cents"):
-            if not isinstance(columns[column]["type"], sa.BigInteger):
-                raise RuntimeError("monthly arrangement money requires bigint")
-        checks = {item["name"] for item in inspector.get_check_constraints(table)}
-        required = {f"ck_{prefix}_{column}_money_bounds" for column in ("savings_target_cents", "reserved_buffer_cents")}
-        if not required <= checks:
-            raise RuntimeError("monthly arrangement money bounds are missing")
-        triggers = set(bind.scalars(sa.text("SELECT tgname FROM pg_trigger WHERE tgrelid = CAST(:table AS regclass) "
-            "AND NOT tgisinternal AND tgenabled = 'O'"), {"table": table}))
-        required_triggers = {f"trg_currency_writer_{table}"}
-        required_triggers |= ({"trg_monthly_arrangement_currency_guard"} if table == "monthly_arrangements"
-            else {"trg_monthly_arrangement_revision_immutable", "trg_monthly_arrangement_revision_no_truncate"})
-        if not required_triggers <= triggers:
-            raise RuntimeError("monthly arrangement guards are missing")
+def _assert_captured_columns(inspector, table):
+    columns = {column["name"]: column for column in inspector.get_columns(table)}
+    for column in ("tenant_id", "home_currency_code", "savings_target_cents", "reserved_buffer_cents", "row_version"):
+        if column not in columns or columns[column]["nullable"]:
+            raise RuntimeError("monthly arrangement is missing captured facts")
+    for column in ("savings_target_cents", "reserved_buffer_cents"):
+        if not isinstance(columns[column]["type"], sa.BigInteger):
+            raise RuntimeError("monthly arrangement money requires bigint")
+
+
+def _assert_money_bounds(inspector, table, prefix):
+    checks = {item["name"] for item in inspector.get_check_constraints(table)}
+    required = {f"ck_{prefix}_{column}_money_bounds" for column in ("savings_target_cents", "reserved_buffer_cents")}
+    if not required <= checks:
+        raise RuntimeError("monthly arrangement money bounds are missing")
+
+
+def _assert_table_guards(bind, table):
+    triggers = set(bind.scalars(sa.text("SELECT tgname FROM pg_trigger WHERE tgrelid = CAST(:table AS regclass) "
+        "AND NOT tgisinternal AND tgenabled = 'O'"), {"table": table}))
+    required = {f"trg_currency_writer_{table}"}
+    required |= ({"trg_monthly_arrangement_currency_guard"} if table == "monthly_arrangements"
+        else {"trg_monthly_arrangement_revision_immutable", "trg_monthly_arrangement_revision_no_truncate"})
+    if not required <= triggers:
+        raise RuntimeError("monthly arrangement guards are missing")
+
+
+def _assert_arrangement_identity(inspector):
     for table, key in (("monthly_arrangements", ("tenant_id", "month")),
         ("monthly_arrangement_revisions", ("tenant_id", "arrangement_id", "row_version"))):
         if key not in {tuple(item["column_names"]) for item in inspector.get_unique_constraints(table)}:
             raise RuntimeError("monthly arrangement identity is missing")
+
+
+def _assert_history_parent(inspector):
     foreign_keys = inspector.get_foreign_keys("monthly_arrangement_revisions")
     if not any(item["constrained_columns"] == ["arrangement_id", "tenant_id"]
         and item["referred_table"] == "monthly_arrangements" and item["referred_columns"] == ["id", "tenant_id"]
         and item["options"].get("ondelete") == "RESTRICT" for item in foreign_keys):
         raise RuntimeError("monthly arrangement history must retain its ledger and parent")
+
+
+def _assert_authority_revision(bind):
     live = bind.scalar(sa.text("SELECT version_num FROM alembic_version"))
     expected = revision if live == down_revision else live
     if bind.scalar(sa.text("SELECT schema_revision FROM dataset_authority WHERE singleton_id = 1")) != expected:
         raise RuntimeError("dataset authority is not aligned with monthly arrangements")
+
+
+def assert_postcondition(bind):
+    inspector = sa.inspect(bind)
+    for table, prefix in zip(_TABLES, ("monthly_arrangement", "monthly_arrangement_rev"), strict=True):
+        _assert_captured_columns(inspector, table)
+        _assert_money_bounds(inspector, table, prefix)
+        _assert_table_guards(bind, table)
+    _assert_arrangement_identity(inspector)
+    _assert_history_parent(inspector)
+    _assert_authority_revision(bind)

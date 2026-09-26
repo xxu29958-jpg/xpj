@@ -30,7 +30,8 @@ interface MonthlyArrangementActions {
     suspend fun arrangement(binding: LogicalSessionBinding, month: String): Result<MonthlyArrangementRead>
     suspend fun arrangementHistory(binding: LogicalSessionBinding, month: String, beforeVersion: Long? = null): Result<MonthlyArrangementHistoryRead>
     suspend fun arrangementDraft(binding: LogicalSessionBinding, month: String): MonthlyArrangementDraft?
-    suspend fun storeArrangementDraft(binding: LogicalSessionBinding, month: String, draft: MonthlyArrangementDraft?)
+    suspend fun storeArrangementDraft(binding: LogicalSessionBinding, month: String, draft: MonthlyArrangementDraft)
+    suspend fun consumeArrangementDraft(binding: LogicalSessionBinding, month: String, queuedDraft: MonthlyArrangementDraft)
     fun observeArrangements(binding: LogicalSessionBinding): Flow<List<PendingMonthlyArrangement>>
     fun describeArrangement(row: OutboxRow): PendingMonthlyArrangement?
     suspend fun enqueueArrangement(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementSaveRequest): Result<Long>
@@ -70,13 +71,16 @@ class MonthlyArrangementRepository(private val apiProvider: ApiServiceProvider, 
                 projection
             } else local ?: throw error
         }
-        require(response.ledgerId == binding.ledgerId && response.month == clean)
-        response.arrangement?.let { require(it.ledgerId == binding.ledgerId && it.month == clean && it.rowVersion > 0 &&
-            CurrencyCode.fromStorageKeyOrNull(it.homeCurrencyCode)?.storageKey == it.homeCurrencyCode &&
-            it.savingsTargetCents in 0..com.ticketbox.domain.model.MONEY_MINOR_MAX && it.reservedBufferCents in 0..com.ticketbox.domain.model.MONEY_MINOR_MAX) }
+        verifyArrangementResponse(response, binding, clean)
         val json = saved.toJson(response)
         if (!cached) { dao.write(MonthlyArrangementCacheEntity(key, clean, "saved", json)); onSnapshot("arrangement:$key:$clean", json) }
         MonthlyArrangementRead(response, cached)
+    }
+    private fun verifyArrangementResponse(response: MonthlyArrangementResponseDto, binding: LogicalSessionBinding, month: String) {
+        require(response.ledgerId == binding.ledgerId && response.month == month)
+        response.arrangement?.let { require(it.ledgerId == binding.ledgerId && it.month == month && it.rowVersion > 0 &&
+            CurrencyCode.fromStorageKeyOrNull(it.homeCurrencyCode)?.storageKey == it.homeCurrencyCode &&
+            it.savingsTargetCents in 0..com.ticketbox.domain.model.MONEY_MINOR_MAX && it.reservedBufferCents in 0..com.ticketbox.domain.model.MONEY_MINOR_MAX) }
     }
     override suspend fun arrangementHistory(binding: LogicalSessionBinding, month: String, beforeVersion: Long?) = errors.safeCall {
         val clean = validatedBudgetMonth(month).getOrThrow()
@@ -98,11 +102,12 @@ class MonthlyArrangementRepository(private val apiProvider: ApiServiceProvider, 
     }
     override suspend fun arrangementDraft(binding: LogicalSessionBinding, month: String) =
         dao.read(persistentBindingKey(binding), month, "draft")?.let { drafts.fromJson(it.json) }
-    override suspend fun storeArrangementDraft(binding: LogicalSessionBinding, month: String, draft: MonthlyArrangementDraft?) {
+    override suspend fun storeArrangementDraft(binding: LogicalSessionBinding, month: String, draft: MonthlyArrangementDraft) {
         val key = persistentBindingKey(binding)
-        if (draft == null) dao.removeDraft(key, month)
-        else dao.write(MonthlyArrangementCacheEntity(key, month, "draft", drafts.toJson(draft)))
+        dao.write(MonthlyArrangementCacheEntity(key, month, "draft", drafts.toJson(draft)))
     }
+    override suspend fun consumeArrangementDraft(binding: LogicalSessionBinding, month: String, queuedDraft: MonthlyArrangementDraft) =
+        dao.consumeDraft(persistentBindingKey(binding), month, drafts.toJson(queuedDraft))
     override fun observeArrangements(binding: LogicalSessionBinding): Flow<List<PendingMonthlyArrangement>> =
         outbox.observeActiveByTypes(setOf(PendingMutationType.SaveMonthlyArrangement), includeCompleted = true).map { rows ->
             if (guard.captureLogicalBinding() != binding) emptyList() else rows.mapNotNull(::describeArrangement)

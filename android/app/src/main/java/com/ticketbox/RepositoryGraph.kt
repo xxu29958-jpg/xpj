@@ -112,13 +112,8 @@ internal class RepositoryGraph(
     val budgetRepository = BudgetRepository(
         apiProvider = apiServiceProvider,
         outbox = outbox,
-        saveAdapter = outboxAdapters.budgetSaveAdapter,
-        receiptAdapter = outboxAdapters.budgetReceiptAdapter,
-        rateAdapter = outboxAdapters.manualRateAdapter,
-        rateReceiptAdapter = outboxAdapters.manualRateReceiptAdapter,
+        adapters = outboxAdapters,
         arrangementDao = database.monthlyArrangementCacheDao(),
-        arrangementSaveAdapter = outboxAdapters.arrangementSaveAdapter,
-        arrangementReceiptAdapter = outboxAdapters.arrangementReceiptAdapter,
     )
 
     val incomePlanRepository = IncomePlanRepository(

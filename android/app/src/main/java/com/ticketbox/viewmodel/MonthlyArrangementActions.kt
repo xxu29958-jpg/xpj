@@ -3,17 +3,12 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.*
-import com.ticketbox.data.remote.dto.MonthlyArrangementDto
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
 import java.math.BigDecimal
-
-private fun MonthlyArrangementDto.draft() = MonthlyArrangementDraft(homeCurrencyCode,
-    BigDecimal.valueOf(savingsTargetCents, requireNotNull(CurrencyCode.fromStorageKeyOrNull(homeCurrencyCode)).minorUnitDigits).toPlainString(),
-    BigDecimal.valueOf(reservedBufferCents, requireNotNull(CurrencyCode.fromStorageKeyOrNull(homeCurrencyCode)).minorUnitDigits).toPlainString(), rowVersion)
 
 /** Reopening reads the raw original draft and the independently cached server projection. */
 internal fun BudgetAdviceViewModel.openArrangementMonth() {
@@ -38,21 +33,9 @@ fun BudgetAdviceViewModel.refreshArrangement() {
         val read = repository.arrangement(binding, snapshot.month)
         if (_state.value.binding != binding || _state.value.month != snapshot.month || generation != arrangementLoadGeneration) return@launch
         if (_state.value.arrangementDraft?.edited != true && _state.value.trialRequest != null) requestGeneration += 1
-        _state.update { current ->
-            val record = read.getOrNull()?.response?.arrangement
-            current.copy(arrangementLoading = false, arrangementRead = read.getOrNull() ?: current.arrangementRead,
-                arrangementDraft = if (current.arrangementDraft?.edited == true) current.arrangementDraft else record?.draft() ?: current.arrangementDraft,
-                trialRequest = if (current.arrangementDraft?.edited == true) current.trialRequest else null,
-                result = if (current.arrangementDraft?.edited != true && current.trialRequest != null) null else current.result,
-                loadState = if (current.arrangementDraft?.edited != true && current.trialRequest != null) BudgetAdviceLoadState.Idle else current.loadState,
-                arrangementMessage = read.exceptionOrNull()?.toUiText(R.string.arrangement_load_failed))
-        }
+        _state.update { it.arrangementRefreshed(read) }
         refreshInputs()
-        if (_state.value.arrangementDraft == null && _state.value.arrangementRead != null) {
-            // The input projection chooses the initial currency; saved records always keep theirs.
-            val home = _state.value.inputs?.homeCurrencyCode
-            if (home != null) _state.update { it.copy(arrangementDraft = MonthlyArrangementDraft(home, "0", "0", null)) }
-        }
+        _state.value.inputs?.homeCurrencyCode?.let(::seedArrangementDraft)
     }
 }
 
@@ -95,7 +78,7 @@ fun BudgetAdviceViewModel.saveArrangement() {
     viewModelScope.launch {
         val saved = repository.enqueueArrangement(binding, snapshot.month, request)
         // Only the queue now owns this exact draft. A binding switch never removes another draft.
-        if (saved.isSuccess) arrangementDraftWrites.withLock { repository.storeArrangementDraft(binding, snapshot.month, null) }
+        if (saved.isSuccess) arrangementDraftWrites.withLock { repository.consumeArrangementDraft(binding, snapshot.month, draft) }
         if (_state.value.binding != binding || _state.value.month != snapshot.month) return@launch
         _state.update { it.copy(arrangementBusy = false, arrangementMessage = saved.exceptionOrNull()?.toUiText(R.string.arrangement_save_failed) ?: UiText.res(R.string.arrangement_queued),
             arrangementDraft = if (saved.isFailure) draft else it.arrangementDraft) }

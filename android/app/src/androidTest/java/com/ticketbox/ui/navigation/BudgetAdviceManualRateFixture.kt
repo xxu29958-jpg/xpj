@@ -142,8 +142,7 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
         database?.close()
         val db = Room.databaseBuilder(context, AppDatabase::class.java, name).build().also { database = it }
         outbox = OutboxRepository(dao = db.pendingMutationDao(), onRowsDeleted = {}, bindingProvider = { session.value.toOutboxBinding() })
-        repository = BudgetRepository(provider, outbox, adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter,
-            adapters.manualRateAdapter, adapters.manualRateReceiptAdapter, db.monthlyArrangementCacheDao(), adapters.arrangementSaveAdapter, adapters.arrangementReceiptAdapter)
+        repository = BudgetRepository(provider, outbox, adapters, db.monthlyArrangementCacheDao())
     }
 
     fun switchBinding() {

@@ -11,6 +11,6 @@ interface MonthlyArrangementCacheDao {
     suspend fun read(bindingKey: String, month: String, kind: String): MonthlyArrangementCacheEntity?
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun write(row: MonthlyArrangementCacheEntity)
-    @Query("DELETE FROM monthly_arrangement_cache WHERE bindingKey = :bindingKey AND month = :month AND kind = 'draft'")
-    suspend fun removeDraft(bindingKey: String, month: String)
+    @Query("DELETE FROM monthly_arrangement_cache WHERE bindingKey = :bindingKey AND month = :month AND kind = 'draft' AND json = :expectedJson")
+    suspend fun consumeDraft(bindingKey: String, month: String, expectedJson: String)
 }

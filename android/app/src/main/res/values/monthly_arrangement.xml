@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="arrangement_title">本月储蓄与备用金安排</string>
-    <string name="arrangement_explanation">先留出想存下来的钱和备用金，再看本月还能花多少。试算不会保存；AI 建议可选，需主动生成。</string>
+    <string name="arrangement_explanation">按计划收入、待履约预留和已花金额，估算本月还能安排多少。计划留出不代表已经存入或账户余额；试算不会保存，AI 建议由你主动生成。</string>
     <string name="arrangement_savings">储蓄目标</string>
     <string name="arrangement_buffer">备用金</string>
     <string name="arrangement_currency">输入币种：%1$s（按原币精度保存）</string>
@@ -24,7 +24,7 @@
     <string name="arrangement_record">已保存 v%1$d · 储蓄 %2$s · 备用金 %3$s</string>
     <string name="arrangement_trial_basis">本次试算：尚未保存</string>
     <string name="arrangement_saved_basis">根据已保存安排计算</string>
-    <string name="arrangement_shortfall">安排超出本月可留出的金额 %1$s。可调低储蓄或备用金；金额未知时请先补齐汇率。</string>
+    <string name="arrangement_shortfall">当前安排超出计划收入 %1$s。可以调整储蓄、备用金，或核对收入与待履约支出；这不是实际欠款或账户亏损。</string>
     <string name="arrangement_history">查看修改历史</string>
     <string name="arrangement_history_empty">暂无已保存修改历史</string>
     <string name="arrangement_history_item">v%1$d · %2$s · 储蓄 %3$s · 备用金 %4$s</string>

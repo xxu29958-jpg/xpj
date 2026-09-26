@@ -37,7 +37,7 @@ def test_repository_contract_registry_is_current() -> None:
         legacy_baseline_path=LEGACY_BASELINE_PATH,
     )
 
-    assert len(registry.entries) == 73
+    assert len(registry.entries) == 74
     assert stale_view_errors(registry) == []
     entries = {entry.adr_id: entry for entry in registry.entries}
     amendments = {
@@ -58,6 +58,7 @@ def test_repository_contract_registry_is_current() -> None:
     assert projected["0062"]["verification_status"] == "failed"
     assert projected["0063"]["implementation_status"] == "partial"
     assert projected["0063"]["verification_status"] == "failed"
+    assert projected["0036"]["effective_amendments"][0]["source"] == "0077"
 
 
 def test_legacy_hash_ratchet_rejects_mutation(tmp_path: Path) -> None:

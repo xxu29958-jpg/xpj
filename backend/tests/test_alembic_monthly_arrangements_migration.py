@@ -39,10 +39,14 @@ def test_empty_upgrade_downgrade_and_saved_fact_history_guards():
                 SELECT tenant_id, id, row_version, home_currency_code, savings_target_cents, reserved_buffer_cents,
                 updated_at FROM monthly_arrangements"""))
         for statement in ("UPDATE monthly_arrangement_revisions SET savings_target_cents = 1",
-            "DELETE FROM monthly_arrangement_revisions", "TRUNCATE monthly_arrangement_revisions"):
+            "DELETE FROM monthly_arrangement_revisions"):
             with SessionLocal.begin() as db, pytest.raises(DBAPIError, match="immutable"):
                 activate_test_currency_authority(db, "JPY")
                 db.execute(text(statement))
+        with SessionLocal.begin() as db, pytest.raises(DBAPIError,
+            match="XPJ_CURRENCY_FENCE: truncate is forbidden for monthly_arrangement_revisions"):
+            activate_test_currency_authority(db, "JPY")
+            db.execute(text("TRUNCATE monthly_arrangement_revisions"))
         for statement in ("UPDATE monthly_arrangements SET home_currency_code = 'CNY'",
             "UPDATE monthly_arrangements SET savings_target_cents = -1",
             "UPDATE monthly_arrangements SET reserved_buffer_cents = 9000000000001",
@@ -57,5 +61,7 @@ def test_empty_upgrade_downgrade_and_saved_fact_history_guards():
         with engine.connect() as db:
             assert db.scalar(text("SELECT schema_revision FROM dataset_authority WHERE singleton_id = 1")) == _HEAD
             assert db.execute(text("SELECT home_currency_code, savings_target_cents, reserved_buffer_cents FROM monthly_arrangements")).one() == ("JPY", 0, 300)
+            assert db.execute(text("SELECT row_version, home_currency_code, savings_target_cents, reserved_buffer_cents "
+                "FROM monthly_arrangement_revisions")).all() == [(1, "JPY", 0, 300)]
     finally:
         reset_schema()

@@ -46,7 +46,7 @@ class MonthlyArrangementRouteTest {
         edit("arrangement_savings", "3000")
         edit("arrangement_buffer", "500")
         tap("arrangement_trial")
-        compose.onNodeWithText(context.getString(R.string.arrangement_trial_basis)).performScrollTo().assertIsDisplayed()
+        assertTextDisplayed(context.getString(R.string.arrangement_trial_basis))
         assertNull(fixture.arrangement)
         assertTrue(runBlocking { fixture.rows().isEmpty() })
         tap("arrangement_save")
@@ -64,7 +64,7 @@ class MonthlyArrangementRouteTest {
         tap("arrangement_trial")
         val shortfall = context.getString(R.string.arrangement_shortfall,
             formatDisplayAmount(1500L, CurrencyDisplay.forRecord("JPY")))
-        compose.onNodeWithText(shortfall).performScrollTo().assertIsDisplayed()
+        assertTextDisplayed(shortfall)
         assertEquals(3000L, fixture.arrangement?.savingsTargetCents)
         compose.runOnIdle { mounted.value = false; models.viewModelStore.clear() }
         compose.waitForIdle()
@@ -91,6 +91,10 @@ class MonthlyArrangementRouteTest {
         compose.waitForIdle()
     }
     private fun input(tag: String) = compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag(tag)), useUnmergedTree = true)
+    private fun assertTextDisplayed(text: String) {
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText(text)).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText(text).performScrollTo().assertIsDisplayed()
+    }
     private fun edit(tag: String, value: String) {
         waitForInput()
         input(tag).performScrollTo().performTextReplacement(value)

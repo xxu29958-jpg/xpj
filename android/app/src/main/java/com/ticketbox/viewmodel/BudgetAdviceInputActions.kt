@@ -79,19 +79,25 @@ fun BudgetAdviceViewModel.refreshInputs() {
         val adviceBasisChanged = current.result?.inputs?.let { it != freshInputs }
             ?: (current.loadState == BudgetAdviceLoadState.Loading && snapshot.inputs != freshInputs)
         if (adviceBasisChanged) requestGeneration += 1
-        _state.update { current -> current.copy(inputsLoading = false,
-            inputs = freshInputs, rates = rates.getOrNull() ?: current.rates,
-            result = if (adviceBasisChanged) null else current.result,
-            loadState = if (adviceBasisChanged) BudgetAdviceLoadState.Idle else current.loadState,
-            reportingHomeCurrencyCode = inputs.getOrNull()?.homeCurrencyCode ?: current.reportingHomeCurrencyCode,
-            inputsError = inputs.exceptionOrNull()?.toUiText(R.string.advice_inputs_load_failed)
-                ?: rates.exceptionOrNull()?.toUiText(R.string.advice_rates_load_failed)) }
+        _state.update { it.inputsRefreshed(inputs, rates, adviceBasisChanged) }
         inputs.getOrNull()?.homeCurrencyCode?.let(::seedArrangementDraft)
         if (inputs.getOrNull()?.readyForAdvice == false) {
             _state.update { it.copy(result = null, loadState = BudgetAdviceLoadState.Idle) }
         } else if (_state.value.loadState == BudgetAdviceLoadState.Idle) restoreCachedAdvice()
     }
 }
+
+private fun BudgetAdviceUiState.inputsRefreshed(
+    read: Result<com.ticketbox.data.remote.dto.BudgetAdviceInputsDto>,
+    rateRead: Result<List<ExchangeRateDto>>,
+    adviceBasisChanged: Boolean,
+): BudgetAdviceUiState = copy(inputsLoading = false,
+    inputs = read.getOrNull(), rates = rateRead.getOrNull() ?: rates,
+    result = if (adviceBasisChanged) null else result,
+    loadState = if (adviceBasisChanged) BudgetAdviceLoadState.Idle else loadState,
+    reportingHomeCurrencyCode = read.getOrNull()?.homeCurrencyCode ?: reportingHomeCurrencyCode,
+    inputsError = read.exceptionOrNull()?.toUiText(R.string.advice_inputs_load_failed)
+        ?: rateRead.exceptionOrNull()?.toUiText(R.string.advice_rates_load_failed))
 
 fun BudgetAdviceViewModel.shiftMonth(delta: Long) {
     if (_state.value.arrangementBusy || _state.value.rateBusy || _state.value.loadState == BudgetAdviceLoadState.Loading) return

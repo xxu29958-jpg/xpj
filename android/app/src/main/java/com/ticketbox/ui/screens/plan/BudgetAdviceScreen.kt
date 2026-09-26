@@ -59,13 +59,7 @@ internal fun BudgetAdviceScreen(
         ),
         slots = AppSecondaryPageSlots(
             status = {
-                val authorityTone = when {
-                    !state.canRequest -> DataAuthorityTone.ReadOnly
-                    state.inputsLoading || state.loadState == BudgetAdviceLoadState.Loading -> DataAuthorityTone.Refreshing
-                    state.inputs != null || state.result != null -> DataAuthorityTone.Backend
-                    else -> null
-                }
-                authorityTone?.let { AppDataAuthorityStrip(tone = it) }
+                state.authorityTone?.let { AppDataAuthorityStrip(tone = it) }
             },
         ),
     ) {
@@ -83,6 +77,14 @@ internal fun BudgetAdviceScreen(
         )
     }
 }
+
+private val BudgetAdviceUiState.authorityTone: DataAuthorityTone?
+    get() = when {
+        !canRequest -> DataAuthorityTone.ReadOnly
+        inputsLoading || loadState == BudgetAdviceLoadState.Loading -> DataAuthorityTone.Refreshing
+        inputs != null || result != null -> DataAuthorityTone.Backend
+        else -> null
+    }
 
 @Composable
 private fun BudgetAdviceBody(

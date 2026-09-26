@@ -109,8 +109,11 @@ class MonthlyArrangementViewModelTest {
             override suspend fun arrangement(binding: LogicalSessionBinding, month: String) = Result.success(MonthlyArrangementRead(
                 MonthlyArrangementResponseDto(binding.ledgerId, month, MonthlyArrangementDto(binding.ledgerId, month, "JPY", 1000, 300, 4, "now"))))
             override suspend fun arrangementDraft(binding: LogicalSessionBinding, month: String) = drafts[binding to month]
-            override suspend fun storeArrangementDraft(binding: LogicalSessionBinding, month: String, draft: MonthlyArrangementDraft?) {
-                if (draft == null) drafts.remove(binding to month) else drafts[binding to month] = draft
+            override suspend fun storeArrangementDraft(binding: LogicalSessionBinding, month: String, draft: MonthlyArrangementDraft) {
+                drafts[binding to month] = draft
+            }
+            override suspend fun consumeArrangementDraft(binding: LogicalSessionBinding, month: String, queuedDraft: MonthlyArrangementDraft) {
+                if (drafts[binding to month] == queuedDraft) drafts.remove(binding to month)
             }
             override suspend fun enqueueArrangement(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementSaveRequest): Result<Long> {
                 queued += request; return Result.success(1L)

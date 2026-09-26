@@ -46,9 +46,9 @@ def test_ack_replay_keeps_accepted_receipt_after_replacement_and_history_pages(c
     replay = _put(client, identity, key=key)
     assert replay.status_code == 200 and replay.json() == first.json()
     assert _read(client, identity)["arrangement"] == second.json()
-    page = client.get(_PATH + "/history", params={"limit": 1}, headers=identity.app_headers).json()
+    page = client.get("/api/budget/arrangements/2026-09/history", params={"limit": 1}, headers=identity.app_headers).json()
     assert page["items"][0]["row_version"] == 2 and page["items"][0]["savings_target_cents"] == 300
-    earlier = client.get(_PATH + "/history", params={"before_version": page["next_before_version"]}, headers=identity.app_headers).json()
+    earlier = client.get("/api/budget/arrangements/2026-09/history", params={"before_version": page["next_before_version"]}, headers=identity.app_headers).json()
     assert len(earlier["items"]) == 1 and earlier["items"][0]["savings_target_cents"] == 0
     assert earlier["items"][0]["home_currency_code"] == "JPY"
 
@@ -82,7 +82,7 @@ def test_readers_and_other_ledgers_cannot_change_or_see_selected_fact(client, id
     assert _put(client, identity).status_code == 200
     other = client.get(_PATH, headers=identity.gray_app_headers)
     assert other.status_code == 200 and other.json()["arrangement"] is None
-    assert client.get(_PATH + "/history", headers=identity.gray_app_headers).json()["items"] == []
+    assert client.get("/api/budget/arrangements/2026-09/history", headers=identity.gray_app_headers).json()["items"] == []
     with SessionLocal.begin() as db:
         member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "owner"))
         member.role = "viewer"
@@ -113,5 +113,19 @@ def test_invalid_month_money_and_history_cursor_do_not_create_facts(client, iden
     assert client.put("/api/budget/arrangements/2026-13", json=_body(),
         headers={**identity.app_headers, "Idempotency-Key": str(uuid4())}).status_code == 422
     assert _put(client, identity, _body(savings_target_cents=-1)).status_code == 422
-    assert client.get(_PATH + "/history", params={"before_version": 0}, headers=identity.app_headers).status_code == 422
+    assert client.get("/api/budget/arrangements/2026-09/history", params={"before_version": 0}, headers=identity.app_headers).status_code == 422
     assert _read(client, identity)["arrangement"] is None
+
+
+def test_unauthenticated_save_is_rejected_before_claiming_or_changing_facts(client, identity):
+    first = _put(client, identity)
+    assert first.status_code == 200, first.text
+    history = client.get("/api/budget/arrangements/2026-09/history", headers=identity.app_headers).json()
+    key = str(uuid4())
+    refused = client.put("/api/budget/arrangements/2026-09", json=_body(expected_row_version=1, savings_target_cents=999),
+        headers={"Idempotency-Key": key})
+    assert refused.status_code == 401, refused.text
+    assert _read(client, identity)["arrangement"] == first.json()
+    assert client.get("/api/budget/arrangements/2026-09/history", headers=identity.app_headers).json() == history
+    with SessionLocal() as db:
+        assert db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == key)) is None

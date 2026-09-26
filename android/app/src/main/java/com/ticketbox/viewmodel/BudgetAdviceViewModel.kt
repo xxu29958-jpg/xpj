@@ -186,8 +186,8 @@ class BudgetAdviceViewModel(
         }
     }
 
-    fun requestAdvice() {
-        if (_state.value.loadState == BudgetAdviceLoadState.Loading) return
+    private fun prepareAdviceRequest(): Boolean {
+        if (_state.value.loadState == BudgetAdviceLoadState.Loading) return false
         if (!repository.canModifyLedger()) {
             _state.update {
                 it.copy(
@@ -198,14 +198,19 @@ class BudgetAdviceViewModel(
                     terminalErrorCode = null,
                 )
             }
-            return
+            return false
         }
         if (_state.value.arrangementDraft?.edited == true && _state.value.trialRequest == null) {
             trialArrangement()
-            return
+            return false
         }
         // The displayed month owns this task, including rate repair across calendar rollover.
-        if (_state.value.inputsLoading || _state.value.inputs?.readyForAdvice != true) { refreshInputs(); return }
+        if (_state.value.inputsLoading || _state.value.inputs?.readyForAdvice != true) { refreshInputs(); return false }
+        return true
+    }
+
+    fun requestAdvice() {
+        if (!prepareAdviceRequest()) return
         val month = _state.value.month
         val home = _state.value.inputs?.homeCurrencyCode ?: return
         val binding = _state.value.binding ?: return

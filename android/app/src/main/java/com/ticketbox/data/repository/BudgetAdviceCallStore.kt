@@ -113,16 +113,7 @@ internal class BudgetAdviceCallStore(
                         savingsTargetCents = key.trial?.savingsTargetCents,
                         reservedBufferCents = key.trial?.reservedBufferCents,
                     ),
-                ).toDomain().also { result ->
-                    val basis = result.inputs
-                    if (basis == null || basis.month != key.month || basis.homeCurrencyCode != result.homeCurrencyCode ||
-                        (basis.savedArrangement != null && (basis.savedArrangement.ledgerId != key.binding.ledgerId || basis.savedArrangement.month != key.month)) ||
-                        basis.isTrial != (key.trial != null) || (key.trial != null &&
-                            (basis.breakdown.savingsTargetCents != key.trial.savingsTargetCents || basis.breakdown.reservedBufferCents != key.trial.reservedBufferCents)) ||
-                        (key.homeCurrencyCode != null && result.homeCurrencyCode != key.homeCurrencyCode)) {
-                        throw RepositoryException("budget_advice_inputs_unverified", localFailure = LocalRepositoryFailure.BudgetInputsUnverified)
-                    }
-                }
+                ).toDomain().also { verifyAdviceBasis(it, key) }
             }
         }
         synchronized(lock) {
@@ -206,4 +197,22 @@ private data class AdviceRequestKey(
     val timezone: String,
     val dataGeneration: Int,
     val trial: com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest? = null,
+)
+
+private fun verifyAdviceBasis(result: BudgetAdviceResult, key: AdviceRequestKey) {
+    val basis = result.inputs ?: throw unverifiedAdviceBasis()
+    if (basis.month != key.month || basis.homeCurrencyCode != result.homeCurrencyCode ||
+        (key.homeCurrencyCode != null && result.homeCurrencyCode != key.homeCurrencyCode)) throw unverifiedAdviceBasis()
+    basis.savedArrangement?.let { saved ->
+        if (saved.ledgerId != key.binding.ledgerId || saved.month != key.month) throw unverifiedAdviceBasis()
+    }
+    if (basis.isTrial != (key.trial != null)) throw unverifiedAdviceBasis()
+    key.trial?.let { trial ->
+        if (basis.breakdown.savingsTargetCents != trial.savingsTargetCents ||
+            basis.breakdown.reservedBufferCents != trial.reservedBufferCents) throw unverifiedAdviceBasis()
+    }
+}
+
+private fun unverifiedAdviceBasis() = RepositoryException(
+    "budget_advice_inputs_unverified", localFailure = LocalRepositoryFailure.BudgetInputsUnverified,
 )

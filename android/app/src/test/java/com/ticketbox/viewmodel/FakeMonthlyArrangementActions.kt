@@ -13,8 +13,11 @@ internal class FakeMonthlyArrangementActions : MonthlyArrangementActions {
     override suspend fun arrangementHistory(binding: LogicalSessionBinding, month: String, beforeVersion: Long?) = Result.success(
         MonthlyArrangementHistoryRead(MonthlyArrangementHistoryDto(binding.ledgerId, month, emptyList(), null)))
     override suspend fun arrangementDraft(binding: LogicalSessionBinding, month: String) = drafts[binding to month]
-    override suspend fun storeArrangementDraft(binding: LogicalSessionBinding, month: String, draft: MonthlyArrangementDraft?) {
-        if (draft == null) drafts.remove(binding to month) else drafts[binding to month] = draft
+    override suspend fun storeArrangementDraft(binding: LogicalSessionBinding, month: String, draft: MonthlyArrangementDraft) {
+        drafts[binding to month] = draft
+    }
+    override suspend fun consumeArrangementDraft(binding: LogicalSessionBinding, month: String, queuedDraft: MonthlyArrangementDraft) {
+        if (drafts[binding to month] == queuedDraft) drafts.remove(binding to month)
     }
     override fun observeArrangements(binding: LogicalSessionBinding): Flow<List<PendingMonthlyArrangement>> = flowOf(emptyList())
     override fun describeArrangement(row: OutboxRow): PendingMonthlyArrangement? = error("Unexpected arrangement description")

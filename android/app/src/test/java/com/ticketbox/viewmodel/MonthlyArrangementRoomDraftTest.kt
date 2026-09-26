@@ -11,6 +11,7 @@ import com.ticketbox.data.repository.*
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runCurrent
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -25,6 +26,28 @@ import kotlin.test.*
 @Config(application = Application::class, sdk = [35])
 @SQLiteMode(SQLiteMode.Mode.NATIVE)
 class MonthlyArrangementRoomDraftTest {
+    @Test fun lateQueueCleanupCannotEraseANewerDraftAfterReturningToTheLedger() = budgetTest {
+        val fixture = RoomDraftFixture()
+        try {
+            val original = fixture.binding()
+            val queued = MonthlyArrangementDraft("JPY", "1200", "300", 1, true)
+            fixture.repository.storeArrangementDraft(original, "2026-09", queued)
+            val id = fixture.repository.enqueueArrangement(original, "2026-09", queued.request()).getOrThrow()
+            fixture.session.switchLedgerForFixture("other", "Other")
+            fixture.session.switchLedgerForFixture(original.ledgerId, "Original")
+            val returned = fixture.binding()
+            val newer = queued.copy(savings = "2400")
+            fixture.repository.storeArrangementDraft(returned, "2026-09", newer)
+            // The old enqueue completion is allowed to retire only the draft it actually queued.
+            fixture.repository.consumeArrangementDraft(original, "2026-09", queued)
+            assertEquals(newer, fixture.repository.arrangementDraft(returned, "2026-09"))
+            val pending = fixture.repository.observeArrangements(returned).first().single { it.row.id == id }
+            assertEquals(1200L, pending.intent?.request?.savingsTargetCents)
+            assertEquals(1L, pending.row.expectedRowVersion)
+            assertEquals(PendingMutationStatus.Pending, pending.row.status)
+        } finally { fixture.db.close() }
+    }
+
     @Test fun realSelectionRevisionsRecoverTheOriginalDraftWithoutCrossingOwnersOrLedgers() = budgetTest {
         val fixture = RoomDraftFixture()
         try {
@@ -62,7 +85,7 @@ class MonthlyArrangementRoomDraftTest {
                 override fun observeLedgerAccessState() = flow { emit(LedgerAccessState(binding, "owner")); awaitCancellation() }
                 override suspend fun arrangement(binding: LogicalSessionBinding, month: String) = fixture.repository.arrangement(binding, month)
                 override suspend fun arrangementDraft(binding: LogicalSessionBinding, month: String) = fixture.repository.arrangementDraft(binding, month)
-                override suspend fun storeArrangementDraft(binding: LogicalSessionBinding, month: String, draft: MonthlyArrangementDraft?) =
+                override suspend fun storeArrangementDraft(binding: LogicalSessionBinding, month: String, draft: MonthlyArrangementDraft) =
                     fixture.repository.storeArrangementDraft(binding, month, draft)
                 override fun observeArrangements(binding: LogicalSessionBinding) = flow {
                     releaseInitialDone.await(); emit(listOf(fixture.confirmed())); awaitCancellation()
@@ -94,7 +117,7 @@ private class RoomDraftFixture {
     val session = TestSessionFixture().apply { saveToken("synthetic-arrangement-session") }
     val adapters = OutboxAdapterGraph()
     private val receipt = MonthlyArrangementDto("owner", "2026-09", "JPY", 1200, 300, 1, "2026-09-27T00:00:00Z")
-    private val api = object : ApiService by FakeApiService(mutableListOf(), 0) {
+    private val api: ApiService = object : ApiService by FakeApiService(mutableListOf(), 0) {
         override suspend fun monthlyArrangement(month: String) = MonthlyArrangementResponseDto(binding().ledgerId, month, receipt)
     }
     private val provider = testApiServiceProvider(object : ApiServiceFactory {
@@ -109,7 +132,7 @@ private class RoomDraftFixture {
         }
     }
     val repository = MonthlyArrangementRepository(provider, outbox, dao, adapters.arrangementSaveAdapter, adapters.arrangementReceiptAdapter, { _, _ -> })
-    fun binding() = requireNotNull(LedgerRequestGuard(provider).captureLogicalBinding())
+    fun binding(): LogicalSessionBinding = requireNotNull(LedgerRequestGuard(provider).captureLogicalBinding())
     fun confirmed(): PendingMonthlyArrangement {
         val intent = MonthlyArrangementPayload(1, receipt.month, MonthlyArrangementSaveRequest("JPY", 1200, 300))
         val row = OutboxRow(1, binding().serverUrl, "owner", binding().ownerKey, PendingMutationType.SaveMonthlyArrangement,

@@ -8,8 +8,7 @@ internal fun testBudgetRepository(provider: ApiServiceProvider,
     outbox: OutboxRepository = testOutboxRepository(FakePendingMutationDao(),
         bindingProvider = { provider.currentSession().toOutboxBinding() })): BudgetRepository {
     val adapters = com.ticketbox.OutboxAdapterGraph()
-    return BudgetRepository(provider, outbox, adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter,
-        adapters.manualRateAdapter, adapters.manualRateReceiptAdapter, com.ticketbox.data.repository.FakeMonthlyArrangementCacheDao(), adapters.arrangementSaveAdapter, adapters.arrangementReceiptAdapter)
+    return BudgetRepository(provider, outbox, adapters, FakeMonthlyArrangementCacheDao())
 }
 
 internal fun testOutboxBinding(

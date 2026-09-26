@@ -108,6 +108,7 @@ flowchart LR
   A0076["0076"] -->|depends on| A0062["0062"]
   A0076["0076"] -->|depends on| A0065["0065"]
   A0076["0076"] -->|refines| A0068["0068"]
+  A0077["0077"] -->|amends| A0036["0036"]
 ```
 
 ## 未迁移 legacy ADR
@@ -222,3 +223,4 @@ flowchart LR
 | 0076 | depends-on | 0062 | 机器生命周期锁、安装回执、失败补偿与 exact operation 事务边界 |
 | 0076 | depends-on | 0065 | 旧 ADR 不改写、后继修订、clause 证据与 exact-head 发布门 |
 | 0076 | refines | 0068 | 安装机器身份、家庭 owner、短期 pairing child 与用户桌面 session 的信任边界 |
+| 0077 | amends | 0036 | Current implementation note 的 provider 字段白名单，仅增加五个无个人信息的月度金额聚合 |

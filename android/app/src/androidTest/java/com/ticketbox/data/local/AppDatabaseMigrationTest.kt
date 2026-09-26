@@ -30,8 +30,9 @@ class AppDatabaseMigrationTest {
                     'confirmed', '2026-09-27T00:00:00Z', 7)
             """.trimIndent())
         }
-        androidx.room.Room.databaseBuilder(context, AppDatabase::class.java, name)
-            .addMigrations(AppDatabase.Migration21To22).build().use { room ->
+        val room = androidx.room.Room.databaseBuilder(context, AppDatabase::class.java, name)
+            .addMigrations(AppDatabase.Migration21To22).build()
+        try {
                 room.openHelper.readableDatabase.query("SELECT amountCents, homeCurrencyCode, rowVersion FROM expenses WHERE id = 1").use {
                     assertTrue(it.moveToFirst()); assertEquals(100, it.getInt(0)); assertEquals("JPY", it.getString(1)); assertEquals(7, it.getInt(2))
                 }
@@ -43,8 +44,10 @@ class AppDatabaseMigrationTest {
                     assertEquals("confirmed-projection", dao.read("household-a", "2026-09", "saved")?.json)
                     assertEquals(null, dao.read("household-b", "2026-09", "draft"))
                 }
+        } finally {
+            room.close()
+            context.deleteDatabase(name)
         }
-        context.deleteDatabase(name)
     }
 
     @Test fun migrate20To21AddsUnknownEvidenceWithoutChangingTheFactVersion() {

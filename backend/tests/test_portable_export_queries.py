@@ -100,6 +100,30 @@ def test_budget_history_export_keeps_saved_snapshots_and_excludes_another_ledger
     assert (rows[0]["budget_id"], rows[0]["row_version"], rows[0]["snapshot"]) == (1, 4, snapshot)
 
 
+def test_arrangement_export_retains_explicit_zero_history_and_accepted_receipt_in_ledger_scope(records):
+    for id_, ledger in ((1, "selected"), (2, "other")):
+        _seed(records, m.MonthlyArrangement, id=id_, tenant_id=ledger, month="2026-09", home_currency_code="JPY",
+            savings_target_cents=1200, reserved_buffer_cents=300, row_version=2)
+        for version, savings in ((1, 0), (2, 1200)):
+            _seed(records, m.MonthlyArrangementRevision, id=id_ * 10 + version, tenant_id=ledger,
+                arrangement_id=id_, row_version=version, home_currency_code="JPY", savings_target_cents=savings,
+                reserved_buffer_cents=300, actor_account_id=7, recorded_at="2026-09-27 00:00:00")
+        _seed(records, m.ApiIdempotencyKey, id=id_, tenant_id=ledger, resource_type="monthly_arrangement",
+            resource_id="2026-09", status="succeeded", response_body=json.dumps({"ledger_id": ledger,
+                "month": "2026-09", "home_currency_code": "JPY", "savings_target_cents": 0,
+                "reserved_buffer_cents": 300, "row_version": 1}))
+    current = _rows(records, "monthly_arrangements")
+    assert [(row["tenant_id"], row["savings_target_cents"], row["row_version"]) for row in current] == [("selected", 1200, 2)]
+    revisions = _rows(records, "monthly_arrangement_revisions")
+    assert [(row["home_currency_code"], row["savings_target_cents"], row["row_version"]) for row in revisions] == [
+        ("JPY", 0, 1), ("JPY", 1200, 2)]
+    accepted = _rows(records, "accepted_operations")
+    assert len(accepted) == 1
+    assert accepted[0]["response_body"]["ledger_id"] == "selected"
+    assert accepted[0]["response_body"]["savings_target_cents"] == 0
+    assert accepted[0]["response_body"]["row_version"] == 1
+
+
 def test_third_party_debt_reader_keeps_snapshot_identity_without_expanding_external_accounts(records):
     for id_, public_id in ((7, "viewer"), (8, "owner"), (9, "external-party")):
         _seed(records, m.Account, id=id_, public_id=public_id, display_name=public_id)

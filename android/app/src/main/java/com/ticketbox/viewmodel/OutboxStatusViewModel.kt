@@ -438,9 +438,8 @@ private suspend fun OutboxRecoveryRepositories.recoverPlanningSubmission(
         rules.recoverSubmission(binding, it, drop)
     } ?: Result.failure(IllegalStateException())
     PendingMutationType.CreateGoal, PendingMutationType.UpdateGoal -> recoverGoalSubmission(binding, row, drop)
-    PendingMutationType.SaveMonthlyArrangement -> budgetSaves.describeArrangement(row)?.let { budgetSaves.recoverArrangement(binding, it, drop) }
-        ?: Result.failure(IllegalStateException())
-    PendingMutationType.SaveMonthlyBudget, PendingMutationType.SaveManualExchangeRate -> recoverBudgetSubmission(binding, row, drop)
+    PendingMutationType.SaveMonthlyArrangement, PendingMutationType.SaveMonthlyBudget,
+    PendingMutationType.SaveManualExchangeRate -> recoverBudgetSubmission(binding, row, drop)
     PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem ->
         recurringItems.recoverManualIntent(binding, row, drop)
     PendingMutationType.SetRecurringOccurrencePayment ->
@@ -453,7 +452,10 @@ private suspend fun OutboxRecoveryRepositories.recoverGoalSubmission(binding: Lo
         ?: Result.failure(IllegalStateException())
     else goalEdits.describeEdit(row)?.let { goalEdits.recover(binding, it, drop) } ?: Result.failure(IllegalStateException())
 
-private suspend fun OutboxRecoveryRepositories.recoverBudgetSubmission(binding: LogicalSessionBinding, row: OutboxRow, drop: Boolean): Result<Unit> =
-    if (row.type == PendingMutationType.SaveMonthlyBudget) budgetSaves.describeSave(row)?.let { budgetSaves.recoverSave(binding, it, drop) }
+private suspend fun OutboxRecoveryRepositories.recoverBudgetSubmission(binding: LogicalSessionBinding, row: OutboxRow, drop: Boolean): Result<Unit> = when (row.type) {
+    PendingMutationType.SaveMonthlyArrangement -> budgetSaves.describeArrangement(row)?.let { budgetSaves.recoverArrangement(binding, it, drop) }
         ?: Result.failure(IllegalStateException())
-    else budgetSaves.describeRate(row)?.let { budgetSaves.recoverRate(binding, it, drop) } ?: Result.failure(IllegalStateException())
+    PendingMutationType.SaveMonthlyBudget -> budgetSaves.describeSave(row)?.let { budgetSaves.recoverSave(binding, it, drop) }
+        ?: Result.failure(IllegalStateException())
+    else -> budgetSaves.describeRate(row)?.let { budgetSaves.recoverRate(binding, it, drop) } ?: Result.failure(IllegalStateException())
+}
