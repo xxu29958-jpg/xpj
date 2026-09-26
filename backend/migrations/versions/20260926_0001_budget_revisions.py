@@ -15,6 +15,11 @@ branch_labels = None
 depends_on = None
 
 
+def _baseline_category(value):
+    cleaned = (value or "其他").strip() or "其他"
+    return {"吃饭": "餐饮"}.get(cleaned, cleaned)
+
+
 def _baseline_exclusions(value):
     """Freeze the parent reader's tolerant semantics; do not rewrite its raw TEXT."""
     try:
@@ -27,7 +32,7 @@ def _baseline_exclusions(value):
     for item in parsed:
         if not isinstance(item, str) or not 1 <= len(item.strip()) <= 64:
             continue
-        category = {"吃饭": "餐饮"}.get(item.strip(), item.strip())
+        category = _baseline_category(item)
         if category not in normalized:
             normalized.append(category)
     return normalized
@@ -54,6 +59,8 @@ def _capture_baselines(bind):
         for row in batch:
             snapshot = row["snapshot"]
             snapshot["excluded_categories"] = _baseline_exclusions(row["excluded_categories"])
+            snapshot["category_budgets"] = [{**item, "category": _baseline_category(item["category"])}
+                for item in snapshot["category_budgets"]]
             payloads.append({"tenant_id": row["tenant_id"], "budget_id": row["budget_id"],
                 "row_version": row["row_version"], "snapshot": snapshot})
         bind.execute(insert, payloads)

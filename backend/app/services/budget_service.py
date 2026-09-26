@@ -296,6 +296,7 @@ def archive_monthly_budget(
     tenant_id: str,
     month: str,
     expected_row_version: int,
+    actor_account_id: int | None = None,
 ) -> Budget:
     clean_month = _clean_month(month)
     budget = _require_budget(db, tenant_id=tenant_id, month=clean_month)
@@ -320,7 +321,7 @@ def archive_monthly_budget(
             return current
         raise AppError("state_conflict", status_code=409)
     db.refresh(budget)
-    record_budget_revision(db, budget, change_kind="archive")
+    record_budget_revision(db, budget, change_kind="archive", actor_account_id=actor_account_id)
     db.commit()
     db.expire_all()
     return _require_budget(db, tenant_id=tenant_id, month=clean_month)
@@ -332,6 +333,7 @@ def restore_monthly_budget(
     tenant_id: str,
     month: str,
     expected_row_version: int,
+    actor_account_id: int | None = None,
 ) -> Budget:
     clean_month = _clean_month(month)
     budget = _require_budget(db, tenant_id=tenant_id, month=clean_month)
@@ -356,7 +358,7 @@ def restore_monthly_budget(
             return current
         raise AppError("state_conflict", status_code=409)
     db.refresh(budget)
-    record_budget_revision(db, budget, change_kind="restore")
+    record_budget_revision(db, budget, change_kind="restore", actor_account_id=actor_account_id)
     db.commit()
     db.expire_all()
     return _require_budget(db, tenant_id=tenant_id, month=clean_month)

@@ -30,11 +30,12 @@ def test_budget_baseline_keeps_saved_currency_categories_and_archive_without_inv
                 VALUES (:key, 'owner', '2026-09', 'JPY', 1200, 100, -20, '["旅行"]', 4,
                     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"""), {"key": str(uuid4())})
             db.execute(text("""INSERT INTO budget_categories (public_id, tenant_id, month, category,
-                amount_cents, created_at, updated_at) VALUES (:key, 'owner', '2026-09', '餐饮', 300,
+                amount_cents, created_at, updated_at) VALUES (:key, 'owner', '2026-09', '吃饭', 300,
                 CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"""), {"key": str(uuid4())})
         run_alembic(command.upgrade, _HEAD)
         with engine.connect() as db:
             assert db.scalar(text("SELECT schema_revision FROM dataset_authority WHERE singleton_id = 1")) == _HEAD
+            assert db.scalar(text("SELECT category FROM budget_categories")) == "吃饭"
             version, kind, snapshot = db.execute(text("SELECT row_version, change_kind, snapshot FROM budget_revisions")).one()
             assert (version, kind) == (4, "baseline")
             assert snapshot == {"home_currency_code": "JPY", "total_amount_cents": 1200,

@@ -75,6 +75,32 @@ class BudgetHistoryViewModelTest {
         advanceUntilIdle()
         assertTrue(vm.state.value.items.isEmpty())
     }
+
+    @Test fun reopeningTheSameMonthRetainsReadPagesUntilARefreshSucceeds() = historyTest {
+        val reader = HistoryReader()
+        val vm = BudgetHistoryViewModel(reader)
+        runCurrent()
+        vm.open("2026-09")
+        advanceUntilIdle()
+        reader.result = Result.failure(IOException("offline"))
+        vm.open("2026-09")
+        assertEquals(listOf(2L), vm.state.value.items.map { it.rowVersion })
+        advanceUntilIdle()
+        assertTrue(vm.state.value.failed)
+        assertEquals(listOf(2L), vm.state.value.items.map { it.rowVersion })
+        assertEquals(2L, vm.state.value.nextBeforeVersion)
+        reader.result = Result.success(historyPage(3, 3))
+        vm.retry()
+        advanceUntilIdle()
+        assertEquals(listOf(3L), vm.state.value.items.map { it.rowVersion })
+        assertEquals(listOf(null, null, null), reader.cursors)
+        reader.result = Result.failure(IOException("offline"))
+        vm.open("2026-10")
+        assertTrue(vm.state.value.items.isEmpty())
+        advanceUntilIdle()
+        assertEquals("2026-10", vm.state.value.month)
+        assertTrue(vm.state.value.items.isEmpty())
+    }
 }
 
 private class HistoryReader : BudgetHistoryReader {

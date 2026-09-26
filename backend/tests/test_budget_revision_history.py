@@ -5,8 +5,7 @@ from uuid import uuid4
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import Budget
-from app.services.budget_service import restore_monthly_budget
+from app.models import Budget, BudgetRevision
 
 
 def _save(client, identity, **changes):
@@ -55,9 +54,10 @@ def test_archive_and_restore_are_history_without_replacing_the_saved_arrangement
         json={"expected_row_version": 1}, headers=identity.app_headers)
     assert archived.status_code == 200, archived.text
     assert _history(client, identity)["items"][0]["snapshot"]["archived"] is True
-    with SessionLocal() as db:
-        restore_monthly_budget(db, tenant_id="owner", month="2026-09", expected_row_version=2)
-        restore_monthly_budget(db, tenant_id="owner", month="2026-09", expected_row_version=2)
+    for _ in range(2):
+        restored = client.post("/api/recycle-bin/restore", json={"kind": "monthly_budget",
+            "resource_id": "2026-09", "expected_row_version": 2}, headers=identity.app_headers)
+        assert restored.status_code == 200, restored.text
     history = _history(client, identity)
     assert [item["change_kind"] for item in history["items"]] == ["restore", "archive", "create"]
     assert {item["snapshot"]["total_amount_cents"] for item in history["items"]} == {1200}
@@ -65,6 +65,10 @@ def test_archive_and_restore_are_history_without_replacing_the_saved_arrangement
     with SessionLocal() as db:
         budget = db.scalar(select(Budget).where(Budget.tenant_id == "owner", Budget.month == "2026-09"))
         assert budget.row_version == 3
+        actors = list(db.scalars(select(BudgetRevision.actor_account_id).where(
+            BudgetRevision.budget_id == budget.id).order_by(BudgetRevision.row_version)))
+        assert actors[0] is not None
+        assert actors == [actors[0]] * 3
 
 
 def test_missing_month_has_an_honest_empty_history_and_rejects_invalid_cursor(client, identity):

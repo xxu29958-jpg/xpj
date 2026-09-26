@@ -131,7 +131,7 @@ def restore_recycle_bin_item(
         )
     if clean_kind == "monthly_budget":
         return _restore_monthly_budget_item(
-            db, tenant_id, clean_resource_id, expected_row_version
+            db, tenant_id, clean_resource_id, expected_row_version, actor_account_id
         )
     if clean_kind == "category_rule":
         undo_delete_rule(
@@ -195,12 +195,14 @@ def _restore_monthly_budget_item(
     tenant_id: str,
     month: str,
     expected_row_version: int | None,
+    actor_account_id: int | None,
 ) -> str:
     restore_monthly_budget(
         db,
         tenant_id=tenant_id,
         month=month,
         expected_row_version=_require_token(expected_row_version),
+        actor_account_id=actor_account_id,
     )
     return "月度预算已恢复。"
 

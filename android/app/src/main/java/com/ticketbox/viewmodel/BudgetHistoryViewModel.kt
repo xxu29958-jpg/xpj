@@ -40,8 +40,11 @@ class BudgetHistoryViewModel(private val repository: BudgetHistoryReader) : View
     }
 
     fun open(month: String) {
-        ++sequence
-        mutableState.value = BudgetHistoryState(month = month)
+        if (mutableState.value.month != month) {
+            ++sequence
+            failedCursor = null
+            mutableState.value = BudgetHistoryState(month = month)
+        }
         load(null)
     }
 
@@ -74,7 +77,9 @@ class BudgetHistoryViewModel(private val repository: BudgetHistoryReader) : View
                 val refused = (error as? RepositoryException)?.httpStatusCode?.let { it in 400..499 } == true
                 if (refused) failedCursor = null
                 mutableState.value = mutableState.value.copy(
-                    items = if (refused) emptyList() else mutableState.value.items, loading = false, failed = true)
+                    items = if (refused) emptyList() else mutableState.value.items,
+                    nextBeforeVersion = if (refused) null else mutableState.value.nextBeforeVersion,
+                    loading = false, failed = true)
             }
         }
     }

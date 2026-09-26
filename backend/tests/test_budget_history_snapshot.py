@@ -16,7 +16,7 @@ def test_snapshot_keeps_original_money_and_categories_after_current_rows_change(
     budget = Budget(id=7, tenant_id="owner", month="2026-09", home_currency_code="JPY",
         total_amount_cents=1200, non_monthly_amount_cents=100, rollover_amount_cents=-20,
         excluded_categories='["旅行"]', row_version=4, archived_at=None)
-    category = BudgetCategory(category="餐饮", amount_cents=300)
+    category = BudgetCategory(category="吃饭", amount_cents=300)
     db = Mock()
     db.scalars.return_value.all.return_value = [category]
     record_budget_revision(db, budget, change_kind="edit", actor_account_id=3)
@@ -29,6 +29,7 @@ def test_snapshot_keeps_original_money_and_categories_after_current_rows_change(
         "excluded_categories": ["旅行"], "archived": False,
         "category_budgets": [{"category": "餐饮", "amount_cents": 300}]}
     assert (recorded.row_version, recorded.tenant_id, recorded.budget_id, recorded.actor_account_id) == (4, "owner", 7, 3)
+    assert category.category == "吃饭"
     db.commit.assert_not_called()
 
 

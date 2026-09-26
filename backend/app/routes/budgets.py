@@ -84,5 +84,6 @@ def delete_budget_monthly(
         tenant_id=auth.tenant_id,
         month=month,
         expected_row_version=payload.expected_row_version,
+        actor_account_id=auth.account_id,
     )
     return BudgetMonthlyArchiveResponse(message="月度预算已移入回收站。")

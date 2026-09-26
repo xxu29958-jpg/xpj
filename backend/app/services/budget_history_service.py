@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.models import Budget, BudgetCategory, BudgetRevision
 from app.schemas._budget_history import BudgetHistoryResponse, BudgetRevisionResponse, BudgetSnapshot
 from app.services.budget_categories import parse_budget_exclusions
+from app.services.category_common import normalize_category
 from app.services.spending_contract_service import clean_month
 from app.services.time_service import now_utc
 
@@ -20,7 +21,7 @@ def record_budget_revision(db: Session, budget: Budget, *, change_kind: str, act
         non_monthly_amount_cents=budget.non_monthly_amount_cents,
         rollover_amount_cents=budget.rollover_amount_cents,
         excluded_categories=parse_budget_exclusions(budget.excluded_categories),
-        category_budgets=[{"category": row.category, "amount_cents": row.amount_cents} for row in categories],
+        category_budgets=[{"category": normalize_category(row.category), "amount_cents": row.amount_cents} for row in categories],
         archived=budget.archived_at is not None,
     )
     db.add(BudgetRevision(tenant_id=budget.tenant_id, budget_id=budget.id, row_version=budget.row_version,
