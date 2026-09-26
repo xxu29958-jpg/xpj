@@ -38,7 +38,7 @@ interface MonthlyArrangementActions {
     suspend fun recoverArrangement(binding: LogicalSessionBinding, pending: PendingMonthlyArrangement, drop: Boolean): Result<Unit>
 }
 
-class MonthlyArrangementRepository(private val apiProvider: ApiServiceProvider, private val outbox: OutboxRepository,
+class MonthlyArrangementRepository internal constructor(private val apiProvider: ApiServiceProvider, private val outbox: OutboxRepository,
     private val dao: MonthlyArrangementCacheDao, adapters: OutboxAdapterGraph,
     private val onSnapshot: (String, String) -> Unit,
     private val coordinator: LocalLedgerSessionCoordinator) : MonthlyArrangementActions {
