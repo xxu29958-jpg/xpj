@@ -8,13 +8,13 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.v2.createComposeRule
-import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -128,7 +128,8 @@ class BudgetFirstUseRouteTest {
         compose.waitUntil(5_000) { transport.historyCursors.size == 2 }
         compose.onNodeWithText(text(R.string.budget_history_create)).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("餐饮 · ¥300").performScrollTo().assertIsDisplayed()
-        saveConsumerArtPreview("budget-history-jpy", compose.onAllNodes(isRoot()).onLast().captureToImage().asAndroidBitmap())
+        val historyRoot = compose.onNode(isRoot() and hasAnyDescendant(hasText("餐饮 · ¥300")))
+        saveConsumerArtPreview("budget-history-jpy", historyRoot.captureToImage().asAndroidBitmap())
         assertEquals(listOf(null, 2L), transport.historyCursors.toList())
         assertTrue(transport.writes.isEmpty())
         assertTrue(runBlocking { harness.fixture.pendingDao.allRows().isEmpty() })
