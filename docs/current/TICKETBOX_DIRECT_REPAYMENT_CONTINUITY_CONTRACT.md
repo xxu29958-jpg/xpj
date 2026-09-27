@@ -127,3 +127,9 @@ existing Room update compares the observed status atomically, so an InFlight
 claim cannot be overwritten. Stopping retains original bytes and creates no
 financial fact. Same-binding Pending and InFlight rows retain their previous
 behavior; no network attempt is required just to stop the changed-binding row.
+
+The sync overview uses that same eligibility. These Pending originals count as
+requiring local action, not automatic upload or attempted failures; ordinary work
+keeps its existing queue count. After dispatch refusal or explicit local stop, the
+same row is counted once in its new state. The overview explains that the original
+record remains and does not promise automatic delivery under a replacement binding.
