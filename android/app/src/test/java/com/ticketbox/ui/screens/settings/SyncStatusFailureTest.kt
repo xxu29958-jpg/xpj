@@ -22,6 +22,34 @@ import kotlin.test.assertTrue
  */
 class SyncStatusFailureTest {
 
+    @Test fun `changed binding needs local action before delivery and is counted once after failure`() {
+        val waiting = com.ticketbox.data.repository.PendingDebtWrite(
+            row(id = 81).copy(type = PendingMutationType.RecordDebtRepayment, status = PendingMutationStatus.Pending), null)
+        val automatic = syncStatusOverview(OutboxStatus(1, emptyList(), emptyList()), emptyList(), listOf(waiting))
+        assertEquals(1, automatic.queuedCount)
+        assertEquals(0, automatic.needsActionCount)
+
+        val blocked = waiting.copy(originalBindingChanged = true)
+        // One ordinary change can still synchronize; this original debt write cannot.
+        val beforeDelivery = syncStatusOverview(OutboxStatus(2, emptyList(), emptyList()), emptyList(), listOf(blocked))
+        assertEquals(1, beforeDelivery.needsActionCount)
+        assertEquals(1, beforeDelivery.queuedCount)
+        assertEquals(0, beforeDelivery.failedCount)
+        assertEquals(0, beforeDelivery.reviewRequiredCount)
+        assertFalse(beforeDelivery.isSettled)
+
+        val refused = blocked.copy(row = blocked.row.copy(status = PendingMutationStatus.Failed))
+        val afterDeliveryAttempt = syncStatusOverview(OutboxStatus(1, emptyList(), listOf(refused.row)), emptyList(), listOf(refused))
+        assertEquals(1, afterDeliveryAttempt.needsActionCount)
+        assertEquals(1, afterDeliveryAttempt.queuedCount)
+        assertEquals(1, afterDeliveryAttempt.failedCount)
+        val stopped = blocked.copy(row = blocked.row.copy(status = PendingMutationStatus.Abandoned))
+        val afterStop = syncStatusOverview(OutboxStatus(1, emptyList(), emptyList()), emptyList(), listOf(stopped))
+        assertEquals(0, afterStop.needsActionCount)
+        assertEquals(1, afterStop.queuedCount)
+        assertEquals(1, afterStop.stoppedCount)
+    }
+
     @Test fun `unverified completed income prevents the all-settled caption`() {
         val pending = com.ticketbox.data.repository.PendingIncomePlanSubmission(
             row(id = 44).copy(type = PendingMutationType.UpdateIncomePlan, status = PendingMutationStatus.Done), null)

@@ -204,7 +204,7 @@ private fun SyncStatusPageBody(
         onClear = actions.onClearQuarantined,
     )
 
-    SyncStatusDebtSections(state)
+    SyncStatusDebtSections(state, actions)
 
     val conflicts = status.conflicts.filter { it.type !in SEPARATE_RECOVERY_TYPES }
     if (conflicts.isNotEmpty()) {

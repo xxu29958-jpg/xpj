@@ -93,3 +93,43 @@ is migrated to the actual queued repayment plus its original binding/OCC. All re
 audit lanes passed; the native form's four added fields required regenerating the
 OpenAPI snapshot with the real app schema generator. Final-head cloud gates remain
 required after these test/snapshot-only corrections.
+
+## Original logical binding follow-up — 2026-09-27
+
+The final Product contract 9.1/9.2 distinguishes credential refresh from replacing
+the logical session. The current amount payloads already retain both origin axes,
+but their dispatch and recovery projection checked only persistent ownership.
+The #440 candidate closes that specific gap for repayment and adjustment; it does
+not change amounts, currency, payment dates, reasons, command keys, OCC or receipts.
+
+All four existing DebtWrite intents use the same BoundLedgerRequest snapshot to
+check origin session/revision and persistent row ownership before delivery. The
+old void-only helper and amount API callbacks retire. Detail and global recovery
+keep the typed original visible, explain a changed connection, refuse retry and
+allow the same owner to explicitly stop local tracking. Normal credential refresh
+can continue the original command. Existing query consumers, void receipt checks,
+Outbox storage and server fact owners remain in place.
+
+Frozen test-only source 3bc70ca55d787b0e85ac4462089a07d91f1d788c contains the existing
+owner/drain and Room/UI counterexamples for both amount types and both binding axes,
+including lost ACK, reopen, explicit stop and credential refresh. Production and
+direct constructor/resource consumers have been migrated locally. Source checks
+are separate from actual cloud RED, candidate GREEN and final main qualification;
+those runtime outcomes are not claimed here.
+
+The current review also identified a concrete offline dead end: a binding-changed
+command still Pending could not be stopped until a connected worker first made
+it Failed. Frozen source 649a7dd1fd90620d00cf7dadeacecb49feffa069 adds direct
+owner and real Room/detail/global-screen cases before the fix. Both existing
+surfaces now use the same stop eligibility: failed/conflict rows, or an original
+Pending row whose logical binding changed. The command owner rechecks it and the
+existing Room update compares the observed status atomically, so an InFlight
+claim cannot be overwritten. Stopping retains original bytes and creates no
+financial fact. Same-binding Pending and InFlight rows retain their previous
+behavior; no network attempt is required just to stop the changed-binding row.
+
+The sync overview uses that same eligibility. These Pending originals count as
+requiring local action, not automatic upload or attempted failures; ordinary work
+keeps its existing queue count. After dispatch refusal or explicit local stop, the
+same row is counted once in its new state. The overview explains that the original
+record remains and does not promise automatic delivery under a replacement binding.

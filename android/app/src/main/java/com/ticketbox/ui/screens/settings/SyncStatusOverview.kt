@@ -94,9 +94,10 @@ internal data class SyncStatusOverview(
     val reviewRequiredCount: Int,
     val refreshRequiredCount: Int,
     val stoppedCount: Int,
+    val blockedPendingCount: Int,
     val writeBlock: OutboxWriteBlock?,
 ) {
-    val needsActionCount: Int = conflictCount + failedCount + quarantinedCount + reviewRequiredCount + refreshRequiredCount
+    val needsActionCount: Int = conflictCount + failedCount + quarantinedCount + reviewRequiredCount + refreshRequiredCount + blockedPendingCount
     val isSettled: Boolean = queuedCount == 0 && needsActionCount == 0 && stoppedCount == 0
 }
 
@@ -106,18 +107,21 @@ internal fun syncStatusOverview(
     writes: List<PendingDebtWrite>,
     incomeSubmissions: List<PendingIncomePlanSubmission> = emptyList(),
     manualRates: List<com.ticketbox.data.repository.PendingManualRateSubmission> = emptyList(),
-): SyncStatusOverview =
-    SyncStatusOverview(
-        queuedCount = status.queueDepth.coerceAtLeast(0),
+): SyncStatusOverview {
+    val blockedPending = writes.filter { it.row.status == PendingMutationStatus.Pending && it.canStop }
+    return SyncStatusOverview(
+        queuedCount = (status.queueDepth - blockedPending.size).coerceAtLeast(0),
         conflictCount = status.conflicts.size,
         failedCount = status.failed.count { failed -> writes.none { it.row.id == failed.id && it.requiresReview } },
         quarantinedCount = status.quarantinedCount.coerceAtLeast(0),
-        reviewRequiredCount = writes.count { it.requiresReview } + corrections.count { !it.delivered && it.row.status == PendingMutationStatus.Done } +
+        reviewRequiredCount = writes.count { it.requiresReview && it !in blockedPending } + corrections.count { !it.delivered && it.row.status == PendingMutationStatus.Done } +
             incomeSubmissions.count { it.requiresReview } + manualRates.count { it.row.status == PendingMutationStatus.Done && !it.isConfirmed },
         refreshRequiredCount = status.refreshRequired.size,
         stoppedCount = writes.count { it.row.status == PendingMutationStatus.Abandoned },
+        blockedPendingCount = blockedPending.size,
         writeBlock = status.writeBlock,
     )
+}
 
 @Composable
 internal fun SyncStatusOverviewSection(status: OutboxStatus, corrections: List<PendingExpenseCorrection>,
@@ -202,6 +206,10 @@ private fun overviewCaption(overview: SyncStatusOverview): String = when {
         R.string.sync_status_overview_caption_quarantined,
         overview.quarantinedCount,
     )
+    overview.blockedPendingCount > 0 -> stringResource(
+        R.string.sync_status_overview_caption_binding_changed,
+        overview.blockedPendingCount,
+    )
     overview.needsActionCount > 0 -> stringResource(
         R.string.sync_status_overview_caption_needs_action,
         overview.needsActionCount,
@@ -213,10 +221,16 @@ private fun overviewCaption(overview: SyncStatusOverview): String = when {
 
 /** Both Sync entrances share the pending and explicit local-stop descriptions. */
 @Composable
-internal fun SyncStatusDebtSections(state: OutboxStatusUiState) {
+internal fun SyncStatusDebtSections(state: OutboxStatusUiState, actions: SyncStatusActions) {
     if (state.waitingDebtWrites.isNotEmpty()) {
-        SettingsSection(title = stringResource(R.string.debt_write_waiting), icon = Icons.Filled.CloudUpload) {
-            state.waitingDebtWrites.forEach { com.ticketbox.ui.screens.DebtWriteIntentSummary(it) }
+        val title = if (state.waitingDebtWrites.any { it.canStop }) R.string.sync_status_section_needs_action else R.string.debt_write_waiting
+        SettingsSection(title = stringResource(title), icon = Icons.Filled.CloudUpload) {
+            state.waitingDebtWrites.forEach { pending ->
+                com.ticketbox.ui.screens.DebtWriteIntentSummary(pending)
+                if (pending.canStop) TextButton(enabled = state.busyRowId == null, onClick = { actions.onDropFailed(pending.row) }) {
+                    Text(stringResource(R.string.debt_write_drop))
+                }
+            }
         }
     }
     val stopped = state.debtWrites.values.filter { it.row.status == PendingMutationStatus.Abandoned }

@@ -2,13 +2,12 @@ package com.ticketbox.data.repository
 
 import com.squareup.moshi.JsonAdapter
 import com.ticketbox.data.local.PendingMutationType
-import com.ticketbox.data.remote.ApiService
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import retrofit2.HttpException
 
-class RecordDebtAdjustmentDispatcher(
-    private val apiProvider: (OutboxRow) -> ApiService,
+class RecordDebtAdjustmentDispatcher internal constructor(
+    private val guard: LedgerRequestGuard,
     private val adapter: JsonAdapter<DebtAdjustmentPayload>,
 ) : OutboxMutationDispatcher {
     override val type = PendingMutationType.RecordDebtAdjustment
@@ -17,7 +16,7 @@ class RecordDebtAdjustmentDispatcher(
         val intent = row.describeDebtAdjustment(adapter).adjustment
             ?: return DispatchResult.Failure("debt_adjustment_payload_unsupported")
         return try {
-            apiProvider(row).recordDebtAdjustment(intent.subject.publicId, intent.request, row.idempotencyKey)
+            guard.bind(expectedLedgerId = row.ledgerId).serviceForOriginalDebtWrite(row, intent).recordDebtAdjustment(intent.subject.publicId, intent.request, row.idempotencyKey)
             // Do not cascade a new OCC: an adjustment's original command is immutable.
             DispatchResult.Success()
         } catch (error: CancellationException) {

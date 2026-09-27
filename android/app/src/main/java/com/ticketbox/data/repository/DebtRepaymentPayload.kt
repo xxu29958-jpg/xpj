@@ -14,8 +14,8 @@ import java.time.format.DateTimeParseException
 data class DebtRepaymentPayload(
     val revision: Int,
     override val subject: DebtWriteSubject,
-    val originSessionGeneration: String,
-    val originBindingRevision: String,
+    override val originSessionGeneration: String,
+    override val originBindingRevision: String,
     val request: RepaymentCreateRequestDto,
 ) : DebtAmountIntent {
     override val amountCents: Long get() = request.amountCents
