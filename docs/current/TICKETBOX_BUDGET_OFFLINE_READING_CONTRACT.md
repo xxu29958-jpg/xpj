@@ -112,3 +112,5 @@ The implementation also keeps Done persistence through cancellation after receip
 verification. 59ee047eb's actual unit and native failures exposed the nullable
 generation comparison using an Int fallback; the fix uses Long zero throughout
 and retains the original unconfigured-month and first-use assertions.
+
+2026-09-27 最后定向修正：d704bd3ab 的 CI、CodeQL、Connected 均实际通过，Plans/Budget/Insights 三张离线预览已查看。后续直接审查发现 fresh-only 并发成功请求被错判为缓存、Done 先于 enqueue 返回导致保存后空白、撤权后未修改的查询表单未清理。test-only d76dc5ac4 的 Android fast108540816253 实际重现后两条（2654 tests，仅新增2失败）；Connected108540803108 实际重现第一条，成功 GET 被“预算已有更新的读取”拒绝。最小修复保持原接受版本和 Room 的更新顺序：fresh-only 返回自己的合法网络结果；保存结束后补读已观察到的 Done；撤权清除仅来自查询的表单，真实 dirty 草稿和未完成原提交仍保留。三生产文件 source-only 0，最终源仍须独立 CI/CodeQL/Connected 与合入后 main 验证；不继承 d704 的绿灯。

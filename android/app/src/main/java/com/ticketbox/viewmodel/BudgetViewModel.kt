@@ -233,6 +233,7 @@ class BudgetViewModel(
             _uiState.update { it.copy(saving = false, formDirty = false,
                 message = UiText.res(if (confirmed) R.string.budget_message_saved else R.string.budget_message_queued),
                 messageTone = if (confirmed) MessageTone.Success else MessageTone.Info) }
+            if (confirmed) refresh()
         }, onFailure = { error ->
             _uiState.update { it.copy(saving = false, message = error.toUiText(R.string.budget_message_save_failed), messageTone = MessageTone.Danger) }
         })
@@ -299,7 +300,7 @@ private fun PendingBudgetSave.matches(form: BudgetFormState): Boolean {
         payload.request == request.copy(expectedRowVersion = null)
 }
 
-private fun PendingBudgetSave.originalForm(): BudgetFormState? {
+internal fun PendingBudgetSave.originalForm(): BudgetFormState? {
     if (!hasSupportedIntent) return null
     val request = intent?.request ?: return null
     val currency = CurrencyCode.fromStorageKeyOrNull(request.homeCurrencyCode) ?: return null

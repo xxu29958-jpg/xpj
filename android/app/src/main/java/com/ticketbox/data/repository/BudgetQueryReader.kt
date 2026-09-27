@@ -83,9 +83,11 @@ internal class BudgetQueryReader(
         validate(wire, binding, cleanMonth)
         coordinator.acceptSnapshotRead(ticket, bound) {
             mutex.withLock {
-                acceptWire(wire, binding, timezone, ticket, saveGeneration).also {
-                    check(!freshOnly || !it.fromCache) { "预算已有更新的读取，请重新读取。" }
-                }
+                val snapshot = acceptWire(wire, binding, timezone, ticket, saveGeneration)
+                if (freshOnly && snapshot.fromCache) {
+                    // Room keeps its newer query; this independent GET still supplies a fresh result.
+                    ReadSnapshot(wire.toDomain(), Instant.now().toString(), fromCache = false)
+                } else snapshot
             }
         }
     }

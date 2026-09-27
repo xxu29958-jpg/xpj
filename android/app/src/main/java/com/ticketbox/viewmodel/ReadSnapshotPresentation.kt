@@ -1,6 +1,7 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.RepositoryException
+import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.domain.model.BudgetMonthly
 
 /** A recovered command receipt retires older queries, never a query already at that revision. */
@@ -15,6 +16,9 @@ internal fun BudgetUiState.withReadFailure(error: Throwable): BudgetUiState {
     val visible = budget.takeUnless { denied }
     return copy(loading = false, budget = visible, fetchedAt = fetchedAt.takeUnless { denied },
         fromCache = !denied && fromCache,
+        form = if (!denied || formDirty) form else saves.firstOrNull {
+            it.row.status != PendingMutationStatus.Done
+        }?.originalForm() ?: BudgetFormState(),
         loadError = error.toUiText(if (visible == null) com.ticketbox.R.string.budget_message_load_failed
             else com.ticketbox.R.string.budget_message_refresh_failed_with_data))
 }
