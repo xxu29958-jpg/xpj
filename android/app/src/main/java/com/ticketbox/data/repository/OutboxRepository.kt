@@ -518,7 +518,9 @@ class OutboxRepository private constructor(
         val refreshError = if (budgetReadRefreshRequired) BUDGET_READ_REFRESH_REQUIRED
             else cacheRefreshVersion?.let { "$EXPENSE_REFRESH_PREFIX$it" }
         val recurringAccepted = acceptedRow?.type in setOf(PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem,
-            PendingMutationType.SetRecurringOccurrencePayment)
+            PendingMutationType.SetRecurringOccurrencePayment, PendingMutationType.PatchExpense, PendingMutationType.CorrectExpense,
+            PendingMutationType.ConfirmExpense, PendingMutationType.UndoExpense,
+            PendingMutationType.CreateExpenseOffset, PendingMutationType.VoidExpenseOffset)
         try {
             dao.publishDelivery {
                 dao.markDone(id, PendingMutationStatus.Done.wireValue, nowIso(), refreshError, receiptJson)

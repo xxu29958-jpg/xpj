@@ -106,7 +106,8 @@ internal class RecurringQueryReader(
     }
 
     suspend fun <T> directMutation(binding: LogicalSessionBinding, send: suspend () -> T): T {
-        guard.bindExact(binding).requireStillActive()
+        val bound = guard.bindExact(binding)
+        bound.requireStillActive()
         val key = logicalBindingAdapter.toJson(binding)
         val token = UUID.randomUUID().toString()
         activeDirectTokens.add(token)
@@ -120,6 +121,11 @@ internal class RecurringQueryReader(
                 if (error.code() in setOf(400, 401, 403, 404, 405, 409, 410, 412, 422)) {
                     try { dao.settleRecurringDirectBarrier(key, binding.ledgerId, token, accepted = false) }
                     catch (_: SQLiteException) { /* Keep the durable barrier until a fresh read can reconcile it. */ }
+                }
+                if (error.code() == 401) {
+                    val failure = errors.httpFailure(error)
+                    coordinator.rejectSnapshotAccess(bound, key, failure)
+                    throw failure
                 }
                 throw error
             }

@@ -3,6 +3,7 @@ package com.ticketbox.data.repository
 import android.database.sqlite.SQLiteException
 import com.ticketbox.data.local.ExpenseDao
 import com.ticketbox.data.local.StatsProjectionCacheEntity
+import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.RecurringDefinitionDto
 import com.ticketbox.data.remote.dto.RecurringHistoryPageDto
@@ -24,6 +25,102 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class RecurringQueryReadTest {
+    @Test fun directCredentialRevocationPersistsReadDenialButWriteOnlyForbiddenKeepsReadFacts() = runTest {
+        for (status in listOf(401, 403)) {
+            lateinit var api: RecurringReadProbe
+            val settings = boundSettingsStore()
+            val saved = FakeExpenseDao()
+            val dao = object : ExpenseDao by saved {
+                override suspend fun clearReadSnapshotsForBinding(bindingKey: String) {
+                    throw SQLiteException("denied read cleanup unavailable")
+                }
+            }
+            val fixture = GoalReadFixture(decorateDao = { dao }, decorate = { delegate ->
+                api = RecurringReadProbe(delegate)
+                object : ApiService by api {
+                    override suspend fun pauseRecurringItem(publicId: String,
+                        request: com.ticketbox.data.remote.dto.RecurringItemTokenRequest): RecurringItemDto =
+                        throw HttpException(Response.error<Any>(status, "".toResponseBody()))
+                }
+            })
+            val coordinator = LocalLedgerSessionCoordinator(settings, fixture.session.sessionStore, dao)
+            val reader = RecurringQueryReader(fixture.provider, dao, coordinator)
+            val original = reader.items(fixture.binding, null, true, null).getOrThrow()
+            assertTrue(RecurringRepository(fixture.provider, queryReader = reader).pause(fixture.binding, "recurring", 9).isFailure)
+            api.failure = ConnectException("offline after direct refusal")
+            val cold = RecurringQueryReader(fixture.provider, dao,
+                LocalLedgerSessionCoordinator(settings, fixture.session.sessionStore, dao))
+            val reopened = cold.items(fixture.binding, null, true, null)
+            if (status == 401) {
+                assertEquals(401, coordinator.snapshotAccessDenials.value?.failure?.httpStatusCode)
+                assertEquals(401, (reopened.exceptionOrNull() as RepositoryException).httpStatusCode,
+                    "The retained payload cannot resurrect after owner reconstruction and credential revocation")
+            } else {
+                assertEquals(null, coordinator.snapshotAccessDenials.value)
+                assertEquals(original.copy(fromCache = true), reopened.getOrThrow(), "A write-only 403 is not read revocation")
+            }
+        }
+    }
+
+    @Test fun acceptedLinkedExpenseChangesRetireListAndOccurrenceUntilTheirActualGet() = runTest {
+        val types = listOf(PendingMutationType.PatchExpense, PendingMutationType.CorrectExpense,
+            PendingMutationType.ConfirmExpense, PendingMutationType.UndoExpense,
+            PendingMutationType.CreateExpenseOffset, PendingMutationType.VoidExpenseOffset)
+        for (mutationType in types) {
+            lateinit var api: RecurringReadProbe
+            val initiallyInvalid = mutationType in setOf(PendingMutationType.ConfirmExpense, PendingMutationType.UndoExpense,
+                PendingMutationType.VoidExpenseOffset)
+            var period = RecurringOccurrenceDto("recurring", "2026-09", 9, 1,
+                if (initiallyInvalid) "needs_review" else "fulfilled", 2400, if (initiallyInvalid) 2400 else 0,
+                "payment-original", if (initiallyInvalid) null else 2400,
+                if (initiallyInvalid) "2026-09-09" else "2026-10-09", expenseId = 1, homeCurrencyCode = "JPY", paidHomeCurrencyCode = if (initiallyInvalid) null else "JPY")
+            val fixture = GoalReadFixture(decorate = { delegate ->
+                api = RecurringReadProbe(delegate)
+                object : ApiService by api {
+                    override suspend fun recurringOccurrence(publicId: String, month: String): RecurringOccurrenceDto {
+                        api.failure?.let { throw it }
+                        return period
+                    }
+                }
+            })
+            val reader = RecurringQueryReader(fixture.provider, fixture.dao, fixture.coordinator)
+            reader.items(fixture.binding, null, true, null).getOrThrow()
+            reader.occurrence(fixture.binding, "recurring", "current").getOrThrow()
+            reader.occurrence(fixture.binding, "recurring", "2026-09").getOrThrow()
+            val pending = FakePendingMutationDao()
+            val outbox = testOutboxRepository(pending, bindingProvider = { fixture.provider.currentSession().toOutboxBinding() })
+            outbox.onRecurringAccepted = reader::invalidateAccepted
+            val id = outbox.enqueue(mutationType, "expense:1", "{}", 3, idempotencyKey = "original-key")
+            // Dispatcher acceptance is the boundary; drain settlement and both GET/cache consumers are real.
+            val dispatcher = object : OutboxMutationDispatcher {
+                override val type = mutationType
+                override suspend fun dispatch(row: OutboxRow): DispatchResult {
+                    assertEquals("original-key", row.idempotencyKey)
+                    assertEquals("{}", row.payloadJson)
+                    assertEquals(3L, row.expectedRowVersion)
+                    period = if (mutationType == PendingMutationType.CreateExpenseOffset) period.copy(state = "needs_review",
+                        reservedAmountCents = 2400, paidAmountCents = null, paidHomeCurrencyCode = null, nextDueDate = "2026-09-09")
+                    else period.copy(state = "fulfilled", reservedAmountCents = 0, paidAmountCents = 3600, paidHomeCurrencyCode = "JPY", nextDueDate = "2026-10-09")
+                    api.item = api.item.copy(nextDueDate = period.nextDueDate)
+                    return DispatchResult.Success(newRowVersion = 4)
+                }
+            }
+            assertEquals(1, OutboxDrainEngine(outbox, listOf(dispatcher)).drainOnce().done)
+            assertEquals("done", pending.allRows().single { it.id == id }.status)
+            api.failure = ConnectException("cold offline after accepted $mutationType")
+            val cold = RecurringQueryReader(fixture.provider, fixture.dao,
+                LocalLedgerSessionCoordinator(boundSettingsStore(), fixture.session.sessionStore, fixture.dao))
+            assertTrue(cold.items(fixture.binding, null, true, null).isFailure, "$mutationType must retire the old next-due projection")
+            assertTrue(cold.occurrence(fixture.binding, "recurring", "current").isFailure)
+            assertTrue(cold.occurrence(fixture.binding, "recurring", "2026-09").isFailure)
+            api.failure = null
+            val verified = cold.occurrence(fixture.binding, "recurring", "current").getOrThrow()
+            assertEquals(period, verified.value, "The new period is read from GET, not seeded by a command receipt")
+            api.failure = ConnectException("offline after verified period")
+            assertEquals(verified.copy(fromCache = true), cold.occurrence(fixture.binding, "recurring", "current").getOrThrow())
+        }
+    }
+
     @Test fun recreatedReadersKeepOriginalReadTimeCurrencyAndPeriodWithoutMakingRemindersOrAdviceFresh() = runTest {
         lateinit var api: RecurringReadProbe
         val fixture = GoalReadFixture(decorate = { RecurringReadProbe(it).also { probe -> api = probe } })

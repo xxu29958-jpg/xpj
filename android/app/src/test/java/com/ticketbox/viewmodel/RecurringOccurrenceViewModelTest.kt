@@ -79,9 +79,12 @@ class RecurringOccurrenceViewModelTest {
     }
 
     @Test
-    fun refreshUpdatesFactsButSubmissionKeepsOriginalPaymentChoiceAndVersions() = runTest {
+    fun refreshCurrentAfterCachedMonthKeepsOriginalPaymentChoiceAndVersions() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
-        val actions = OccurrenceChoiceActions()
+        val actions = OccurrenceChoiceActions().apply {
+            occurrence = occurrence.copy(period = "2026-08")
+            fromCache = true
+        }
         val payment = confirmedExpenseDtoFixture().toDomain().copy(rowVersion = 11L)
         val ledger = OccurrenceChoiceLedger(payment)
         val model = occurrenceModel(actions, ledger)
@@ -89,20 +92,26 @@ class RecurringOccurrenceViewModelTest {
             model.open(recurringItem { rowVersion = 7L })
             advanceUntilIdle()
             assertTrue(model.uiState.value.canWrite)
+            assertEquals("2026-08", model.uiState.value.occurrence?.period)
+            assertTrue(model.uiState.value.fromCache)
             model.choose(model.uiState.value.payments.single() as ConfirmedStreamItem.ExpenseRow)
             val original = assertNotNull(model.uiState.value.choice)
             assertEquals(3L, original.request.expectedRowVersion)
             assertEquals(7L, original.request.expectedSeriesRowVersion)
             assertEquals(11L, original.request.expectedExpenseRowVersion)
 
-            actions.occurrence = actions.occurrence.copy(rowVersion = 4L, seriesRowVersion = 8L)
+            actions.occurrence = actions.occurrence.copy(period = "2026-09", rowVersion = 4L, seriesRowVersion = 8L)
+            actions.fromCache = false
             ledger.payment = payment.copy(rowVersion = 12L, merchant = "Updated payment")
             model.refresh()
             advanceUntilIdle()
 
             assertEquals(actions.occurrence, model.uiState.value.occurrence)
+            assertEquals("current", model.uiState.value.requestedPeriod)
+            assertEquals(false, model.uiState.value.fromCache)
             assertEquals(12L, model.uiState.value.payments.single().root.rowVersion)
             assertEquals(original, model.uiState.value.choice)
+            assertEquals("2026-08", original.occurrence.period)
             model.submit()
             advanceUntilIdle()
 

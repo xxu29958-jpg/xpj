@@ -57,8 +57,13 @@ interface ExpenseDao {
 
     @Transaction
     suspend fun clearReadSnapshotsForBinding(bindingKey: String) {
+        // Refusal retires read payloads, not an executing command's proof or its durable read epoch.
+        val directBarrier = recurringDirectBarrier(bindingKey)
+        val recurringEpoch = statsProjections(bindingKey, "recurring_read_epoch", "", "", "UTC").singleOrNull()
         clearGoalSnapshotsForBinding(bindingKey)
         clearStatsProjectionsForBinding(bindingKey)
+        directBarrier?.let { saveStatsProjection(it) }
+        recurringEpoch?.let { saveStatsProjection(it) }
     }
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)

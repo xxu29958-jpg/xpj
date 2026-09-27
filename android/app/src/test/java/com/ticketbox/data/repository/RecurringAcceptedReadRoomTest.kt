@@ -12,6 +12,9 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import okhttp3.ResponseBody.Companion.toResponseBody
+import retrofit2.HttpException
+import retrofit2.Response
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -25,6 +28,58 @@ import kotlin.test.assertTrue
 @Config(application = Application::class, sdk = [35])
 @SQLiteMode(SQLiteMode.Mode.NATIVE)
 class RecurringAcceptedReadRoomTest {
+    @Test fun lateReadRefusalDuringDirectPausePreservesItsBarrierAndTrueAcceptance() = runBlocking {
+        for (status in listOf(401, 403)) {
+            val db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), AppDatabase::class.java).build()
+            try {
+                lateinit var api: RecurringReadProbe
+                val readStarted = CompletableDeferred<Unit>()
+                val readRelease = CompletableDeferred<Unit>()
+                val sendStarted = CompletableDeferred<Unit>()
+                val sendRelease = CompletableDeferred<Unit>()
+                var refusingRead = false
+                val fixture = GoalReadFixture(decorateDao = { db.expenseDao() }, decorate = { delegate ->
+                    api = RecurringReadProbe(delegate)
+                    object : ApiService by api {
+                        override suspend fun recurringItems(state: String?, includeArchived: Boolean, month: String?, timezone: String?) =
+                            if (!refusingRead) api.recurringItems(state, includeArchived, month, timezone) else {
+                                readStarted.complete(Unit)
+                                readRelease.await()
+                                throw HttpException(Response.error<Any>(status, "".toResponseBody()))
+                            }
+                        override suspend fun pauseRecurringItem(publicId: String, request: RecurringItemTokenRequest) =
+                            api.item.copy(status = "paused", rowVersion = 10).also {
+                                sendStarted.complete(Unit)
+                                sendRelease.await()
+                            }
+                    }
+                })
+                val reader = RecurringQueryReader(fixture.provider, db.expenseDao(), fixture.coordinator)
+                val repository = RecurringRepository(fixture.provider, queryReader = reader)
+                reader.items(fixture.binding, null, true, null).getOrThrow()
+                refusingRead = true
+                val late = async(Dispatchers.IO) { reader.items(fixture.binding, null, true, null) }
+                readStarted.await()
+                val dispatch = async(Dispatchers.IO) { repository.pause(fixture.binding, "recurring", 9) }
+                sendStarted.await()
+                val bindingKey = logicalBindingAdapter.toJson(fixture.binding)
+                val token = requireNotNull(db.expenseDao().recurringDirectBarrier(bindingKey))
+                readRelease.complete(Unit)
+                assertTrue(late.await().isFailure)
+                assertEquals(token, db.expenseDao().recurringDirectBarrier(bindingKey),
+                    "Shared refusal deletes read payloads, not an executing mutation's persistent proof")
+                sendRelease.complete(Unit)
+                assertEquals("paused", dispatch.await().getOrThrow().status, "A read refusal cannot turn a real mutation ACK into failure")
+                refusingRead = false
+                api.failure = ConnectException("cold offline after ACK")
+                val cold = RecurringQueryReader(fixture.provider, db.expenseDao(),
+                    LocalLedgerSessionCoordinator(boundSettingsStore(), fixture.session.sessionStore, db.expenseDao()))
+                assertTrue(cold.items(fixture.binding, null, true, null).isFailure)
+                assertEquals("1", db.expenseDao().recurringReadEpoch(bindingKey))
+            } finally { db.close() }
+        }
+    }
+
     @Test fun acceptedDirectPauseWithFailedCleanupCannotResurrectOldSnapshotsInRebuiltOwner() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), AppDatabase::class.java).build()
         try {

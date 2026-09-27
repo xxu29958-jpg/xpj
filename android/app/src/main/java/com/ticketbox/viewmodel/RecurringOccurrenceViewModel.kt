@@ -118,7 +118,7 @@ class RecurringOccurrenceViewModel(
     }
 
     fun refresh() {
-        load(mutableState.value.occurrence?.period ?: mutableState.value.requestedPeriod)
+        load(mutableState.value.requestedPeriod)
     }
 
     fun choose(payment: ConfirmedStreamItem.ExpenseRow?) {
