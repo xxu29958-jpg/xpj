@@ -1,0 +1,28 @@
+{% set product_body_domain = 'inbox' %}
+{% set page_surface = 'tertiary' %}
+{% extends "base.html" %}
+{% block title %}继续识别 · 小票夹{% endblock %}
+{% block content %}
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <h1 class="page-title">暂未取得本次识别结果</h1>
+    <p class="product-page-summary">原窗口的填写仍保留；识别不会替你确认入账。</p>
+  </div>
+</header>
+<section class="product-panel product-panel--padded" aria-label="继续原识别请求">
+  <p class="product-feedback product-feedback--error" role="alert">{{ error }}</p>
+  {% if can_retry %}
+  <form method="post" action="{{ request.url.path }}">
+    {{ csrf_field|safe }}
+    {% for field_name, field_value in original_fields.items() %}<input type="hidden" name="{{ field_name }}" value="{{ field_value }}">{% endfor %}
+    <button class="product-button product-button--primary" type="submit">重试原识别请求</button>
+  </form>
+  {% else %}
+  <p>请先查看当前账单或检查原件，再决定下一步；本页不会自动重新提交。</p>
+  {% endif %}
+  <div class="product-page-actions">
+    <a class="product-button" href="{{ current_href }}">查看当前账单</a>
+    <a class="product-button" href="{{ original_href }}">检查原件</a>
+  </div>
+</section>
+{% endblock %}
