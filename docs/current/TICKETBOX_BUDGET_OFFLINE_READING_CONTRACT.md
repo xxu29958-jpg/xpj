@@ -103,6 +103,11 @@ verified save as unverified. Test-only db8049627 adds dispatcher, real Room fail
 restart and both recovery-entrance counterexamples. A real SQLite DELETE trigger
 keeps the old query present while cleanup fails; assertions require accepted Done,
 durable receipt/marker, no offline resurrection, and recovery without another PUT.
+CI 36289507084 actually failed the dispatcher case (expected Success, got Failure)
+and the ViewModel recovery case (expected the recovered budget, got null). That
+source's native attempt failed a missing import for the existing pruning helper;
+it is not native business RED. The import is corrected without changing the
+pruning or recovery assertions, and final native execution remains required.
 The implementation also keeps Done persistence through cancellation after receipt
 verification. 59ee047eb's actual unit and native failures exposed the nullable
 generation comparison using an Int fallback; the fix uses Long zero throughout
