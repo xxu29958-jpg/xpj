@@ -732,3 +732,66 @@ class BudgetOfflineSnapshotConnectedTest {
         } finally { instrumentation.runOnMainSync { models.clear() } }
     }
 }
+
+/** Same disk Room producer; these races exercise accepted network queries before cache publication. */
+@RunWith(AndroidJUnit4::class)
+class BudgetQueryAcceptanceConnectedTest {
+    private val context = ApplicationProvider.getApplicationContext<Context>()
+    private val transport = OfflineBudgetTransport()
+    private val fixture = ExpenseCorrectionConnectedFixture(context, transport::wrap)
+
+    @After fun close() = fixture.close()
+
+    @Test fun acceptedHigherRevisionSurvivesAFailedCacheWriteAndALateOlderSuccessfulGet() = runBlocking {
+        lateGetCannotUndoAnAcceptedQueryWhenItsWriteFailed(9)
+    }
+
+    @Test fun acceptedSameRevisionProjectionSurvivesAFailedCacheWriteAndALateOlderSuccessfulGet() = runBlocking {
+        lateGetCannotUndoAnAcceptedQueryWhenItsWriteFailed(8)
+    }
+
+    private suspend fun lateGetCannotUndoAnAcceptedQueryWhenItsWriteFailed(laterRevision: Long) = kotlinx.coroutines.coroutineScope {
+        val repository = fixture.reopen().budgetRepository
+        val baseline = repository.monthlyBudget("2026-09").getOrThrow()
+        val binding = requireNotNull(fixture.graph.expenseRepository.captureDeferredLedgerBinding())
+        repository.enqueueSave(binding, "2026-09", BudgetMonthlyUpdate("JPY", 7, 1200)).getOrThrow()
+        val originalIntent = fixture.stored()
+        val started = CompletableDeferred<Unit>()
+        val resume = CompletableDeferred<Unit>()
+        val olderWire = offlineBudget().copy(rowVersion = 8, spentAmountCents = 600, remainingAmountCents = 600)
+        transport.original = olderWire
+        transport.beforeNextRead = { started.complete(Unit); resume.await() }
+        val older = async { repository.monthlyBudget("2026-09") }
+        started.await()
+        val newerWire = olderWire.copy(rowVersion = laterRevision, spentAmountCents = 900, remainingAmountCents = 300)
+        transport.original = newerWire
+        fixture.blockBudgetReadDeletion(true)
+        val accepted = try {
+            val read = repository.monthlyBudget("2026-09").getOrThrow()
+            val moshi = com.squareup.moshi.Moshi.Builder().add(com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory()).build()
+            val key = moshi.adapter(com.ticketbox.data.repository.LogicalSessionBinding::class.java).toJson(binding)
+            val stored = fixture.expenseDao.budgetSnapshotsForMonth(key, "2026-09").single()
+            assertEquals("The actual SQLite replacement failure must leave the baseline query unchanged", baseline.value,
+                requireNotNull(moshi.adapter(BudgetMonthlyDto::class.java).fromJson(stored.responseJson)).toDomain())
+            assertEquals(baseline.fetchedAt, stored.fetchedAt)
+            read
+        } finally {
+            fixture.blockBudgetReadDeletion(false)
+            resume.complete(Unit)
+        }
+        assertEquals("A failed Room replacement cannot hide the independently successful newer GET", newerWire.toDomain(), accepted.value)
+        assertTrue(!accepted.fromCache)
+        val late = older.await().getOrThrow()
+        assertEquals("The old GET must not replace the newer network result already accepted by this reader", accepted.value, late.value)
+        assertEquals("Reusing the accepted query must retain its actual network read time", accepted.fetchedAt, late.fetchedAt)
+        assertEquals(originalIntent, fixture.stored())
+        transport.offline = true
+        val disk = fixture.reopen().budgetRepository.monthlyBudget("2026-09").getOrThrow()
+        assertTrue("A late old v8 query cannot become the offline authority after the newer write failed",
+            disk.value == baseline.value || disk.value == accepted.value)
+        assertEquals("Room retains the actual time of the query it contains", if (disk.value == baseline.value) baseline.fetchedAt else accepted.fetchedAt,
+            disk.fetchedAt)
+        assertTrue(disk.fromCache)
+        assertEquals(originalIntent, fixture.stored())
+    }
+}
