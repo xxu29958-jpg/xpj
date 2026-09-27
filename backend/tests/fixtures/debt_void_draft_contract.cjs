@@ -33,6 +33,8 @@ const options = {kind, fieldNames:Object.keys(values), draftPrefix:'ticketbox:' 
   reopened.start(); await tick();
   assert.equal(reopened.fields.idempotency_key.value, original);
   assert.deepEqual(reopened.snapshot(), values, 'terminal debt/fact cannot erase original target, reason or OCC');
+  assert.equal(reopened.store.read(original).serverResult, undefined, 'unknown result must not acquire definite rejection');
+  assert.equal(reopened.finishRejected.hidden, true, 'unknown result cannot offer rejected-intent discard');
   reopened.fields.reason.value = 'silently changed';
   assert.equal(reopened.form.fire('submit').defaultPrevented, false);
   assert.deepEqual(reopened.snapshot(), values, 'retry sends immutable original');
@@ -59,5 +61,39 @@ const options = {kind, fieldNames:Object.keys(values), draftPrefix:'ticketbox:' 
   legacy.finishReview.fire('click');
   assert.equal(legacy.store.read(original), null, 'explicit review can end this exact local recovery');
   assert.equal(legacy.store.read(fresh), null);
+  legacy.window.fire('pagehide'); await tick();
+  const refused = env.page({...options, ref:original, result:'blocked', rejected:true});
+  refused.store.save(scope, original, 'submitted', values);
+  refused.start(); await tick();
+  assert.equal(refused.fields.idempotency_key.value, original);
+  assert.deepEqual(refused.snapshot(), values);
+  assert.equal(refused.submit.disabled, true, 'definite OCC refusal requires explicit review, not repeated stale OCC');
+  const next = env.page({values:{amount_major:'12.34'}});
+  next.start(); await tick();
+  assert.equal(next.form.fire('submit').defaultPrevented, true, 'new command remains blocked before explicit review');
+  assert.equal(refused.store.read(original).serverResult, 'rejected', 'definite rejection is durable');
+  refused.window.fire('pagehide'); next.window.fire('pagehide'); await tick();
+  const reopenedRefusal = env.page({...options, canCreate:false, ref:''});
+  reopenedRefusal.start(); await tick();
+  assert.equal(reopenedRefusal.fields.idempotency_key.value, original);
+  assert.deepEqual(reopenedRefusal.snapshot(), values);
+  assert.equal(reopenedRefusal.submit.disabled, true, 'reopen cannot lose the definite refusal');
+  assert.equal(reopenedRefusal.finishRejected.hidden, false);
+  reopenedRefusal.finishRejected.fire('click');
+  next.window.fire('pageshow', {persisted:true}); await tick();
+  assert.equal(refused.store.read(original), null, 'explicit review ends only the known rejected original');
+  assert.equal(next.form.fire('submit').defaultPrevented, false, 'new command is possible after explicit end');
+  const switchEnv = environment(), switching = switchEnv.page({...options, ref:original, result:'blocked', rejected:true});
+  switching.store.save(scope, original, 'submitted', values);
+  switching.store.save(scope, fresh, 'blocked', {...values, reason:'another original with unknown result'});
+  switching.start(); await tick();
+  switching.window.location.hash = '#'+kind+'-'+fresh;
+  switching.window.fire('hashchange'); await tick();
+  assert.equal(switching.fields.idempotency_key.value, fresh);
+  assert.equal(switching.finishRejected.hidden, true, 'switching originals cannot transfer refusal evidence');
+  switching.finishRejected.fire('click');
+  assert.notEqual(switching.store.read(fresh), null, 'a different unknown original cannot be retired by this refusal');
+
+
 
 })().catch(error => { console.error(error); process.exitCode = 1; });

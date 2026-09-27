@@ -85,10 +85,16 @@ def render_repayment_recovery(
 ):
     # The identity/installation scope is still authoritative. No Debt fold,
     # history, side counts or inferred latest OCC is needed to retain a command.
-    ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id, page_title="核对还款")
+    ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id, page_title="核对原提交")
     ctx["repayment_form"] = repayment_context(
         request, db, selected_id=selected_id, public_id=public_id,
         values=values, error=error, result=result, ack=ack,
         can_recover=_web_debt_write._debt_write_gate(options, selected_id),
     )
+    from app.routes._web_debt_void import void_context
+
+    ctx["void_recovery_forms"] = [void_context(
+        request, db, selected_id=selected_id, public_id=public_id, kind=kind,
+        can_recover=ctx["repayment_form"]["can_recover"],
+    ) for kind in ("debt-void", "repayment-void")]
     return templates.TemplateResponse(request=request, name="debt_repayment_recovery.html", context=ctx, status_code=status_code)

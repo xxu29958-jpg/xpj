@@ -380,6 +380,7 @@ def _render_debt_detail(
     status_code: int = 200,
     void_ack: dict | None = None,
     void_result: str = "",
+    void_rejected: bool = False,
     repayment_ack: dict | None = None,
     repayment_result: str = "",
     repayment_rejected: bool = False,
@@ -448,7 +449,7 @@ def _render_debt_detail(
 
     add_void_detail_context(request, db, ctx=ctx, debt=debt, selected_id=selected_id, public_id=public_id,
         kind=action_kind, values=action_draft, error=action_error, result=void_result,
-        ack=void_ack, target=action_target_public_id)
+        ack=void_ack, target=action_target_public_id, rejected=void_rejected)
     from app.routes._web_split_agreement import reconcile_member_detail, split_agreement_context
 
     ctx["split_agreement"] = split_agreement_context(

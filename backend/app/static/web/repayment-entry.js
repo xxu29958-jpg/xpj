@@ -24,6 +24,10 @@
   const replace = form.querySelector("[data-repayment-replace]");
   const preview = form.querySelector("[data-repayment-preview]");
   const finishReview = form.querySelector("[data-void-finish-review]");
+  const finishRejected = form.querySelector("[data-void-finish-rejected]");
+  const rejectionReview = form.querySelector("[data-void-rejection-review]");
+  const nativeRejected = form.dataset.voidRejected === "true";
+  let knownRejected = false;
   const controls = names.map(name => form.elements.namedItem(name));
   const refInput = form.elements.namedItem("idempotency_key");
   const nativeRef = refInput.value, target = form.dataset.repaymentTarget;
@@ -94,8 +98,10 @@
     if (voidCommand && retained) panel.open = true;
     const canEdit = commandControls(phase === "editing");
     const canReplace = replacement && phase === "blocked" && currentRef === nativeRef;
-    submit.disabled = phase === "editing" ? !canEdit : !canRecover || !!canReplace || !!finishReview;
-    notice(phase === "submitted" ? "结果尚未确认。继续核实会发送原来的金额、日期和提交编号。" :
+    submit.disabled = phase === "editing" ? !canEdit : !canRecover || !!canReplace || !!finishReview || knownRejected;
+    if (finishRejected) finishRejected.hidden = !knownRejected;
+    if (rejectionReview) rejectionReview.hidden = !knownRejected;
+    notice(phase === "submitted" ? "结果尚未确认。继续核实会沿用原提交内容和编号。" :
       phase === "blocked" ? "原提交已保留，请先核对欠款和当前身份。" : "输入会保留在此浏览器，尚未提交。", phase);
     if (replace) replace.hidden = !canReplace;
   }
@@ -189,13 +195,14 @@
       return;
     }
     if (!previewResult && record && !sameValues(record.values, nativeValues)) {
+      knownRejected = record.serverResult === "rejected";
       blocked("返回结果与保留的原提交不一致，请先核对，原输入未被改写。");
       return;
     }
     const rejected = nativeResult === "rejected";
     phase = rejected || previewResult ? "editing" : nativeResult === "accepted-review" ? "blocked" : nativeResult;
     showValues(nativeValues);
-    drafts.save(scope, currentRef, phase, nativeValues, rejected ? "rejected" : "");
+    drafts.save(scope, currentRef, phase, nativeValues, rejected || knownRejected ? "rejected" : "");
     retained = true;
     pointTo(currentRef);
     showPhase();
@@ -212,6 +219,8 @@
     held = true; panel.hidden = false;
     if (admitSubmission(record, selection, items.length)) {
       phase = record ? record.phase : "editing";
+      knownRejected = voidCommand && (!!record && record.serverResult === "rejected" ||
+        selection.nativePending && nativeRejected);
       if (record) { showValues(record.values); pointTo(currentRef); }
       if (selection.nativePending) applyNativeResult(record);
       else showPhase();
@@ -281,18 +290,26 @@
     try { persist("editing"); notice("输入已保留，尚未提交。", "editing"); }
     catch (_) { notice("最新输入未能保留。请勿关闭本页，恢复存储后再提交。", "storage-error"); }
   });
-  if (finishReview) finishReview.addEventListener("click", function () {
-    if (!held || phase !== "blocked" || currentRef !== nativeRef) return;
-    try {
-      if (!drafts.discardReviewed({scope, clientRef:currentRef, values:nativeValues,
-          serverResult:"accepted-review"})) throw Error("review_original_mismatch");
-      retained = false;
-      pointTo("");
-      blocked("已结束本地恢复。原作废事实仍保留，可在原记录与往来历史核对。");
-      finishReview.disabled = true;
-      renderShelf();
-    } catch (_) { blocked("原提交尚未收起，请保留并核对浏览器存储。"); }
-  });
+  function finishOriginal(button, serverResult) {
+    if (!button) return;
+    button.addEventListener("click", function () {
+      if (!held || phase !== "blocked" || (serverResult === "accepted-review" && currentRef !== nativeRef)) return;
+      try {
+        const discard = serverResult === "rejected" ? drafts.discardRejected : drafts.discardReviewed;
+        if (serverResult === "rejected" && (!knownRejected || drafts.read(currentRef)?.serverResult !== "rejected")) return;
+        if (!discard({scope, clientRef:currentRef,
+            values:serverResult === "rejected" ? values() : nativeValues, serverResult})) throw Error("review_original_mismatch");
+        retained = false;
+        pointTo("");
+        blocked(serverResult === "rejected" ? "已结束这次未接受的本地提交。核对当前记录后可重新填写。" :
+          "已结束本地恢复。原作废事实仍保留，可在原记录与往来历史核对。");
+        button.disabled = true;
+        renderShelf();
+      } catch (_) { blocked("原提交尚未收起，请保留并核对浏览器存储。"); }
+    });
+  }
+  finishOriginal(finishReview, "accepted-review");
+  finishOriginal(finishRejected, "rejected");
   form.addEventListener("submit", function (event) {
     const previewing = preview && event.submitter === preview;
     if (!held || posting || (previewing ? preview.disabled : submit.disabled)) { event.preventDefault(); return; }

@@ -74,6 +74,8 @@ def test_older_repayment_page_can_be_reopened_voided_and_replayed(web_client, id
     assert retained["repayment_public_id"] == first_fact_id
     assert "第 2 页" in rejected.text
     valid = {**retained, "reason": "重复记了这一笔"}
+    assert valid["idempotency_key"] == original_key
+    assert valid["expected_row_version"] == form["expected_row_version"] == str(debt["row_version"])
     saved = web_client.post(action, data=valid)
     replay = web_client.post(action, data=valid)
     assert saved.status_code == replay.status_code == 200

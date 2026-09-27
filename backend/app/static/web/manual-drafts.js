@@ -63,6 +63,9 @@
         values: fieldValues(values), updatedAt: Date.now()};
       if (!["editing", "submitted", "blocked"].includes(phase)) throw Error("invalid_draft_phase");
       const previous = read(ref);
+      if (phase === "blocked" && (serverResult === "rejected" || previous && previous.serverResult === "rejected")) {
+        next.serverResult = "rejected";
+      }
       if (previous && !matches(previous.scope, next.scope)) throw Error("draft_binding_changed");
       if (previous && previous.phase !== "editing" && serverResult !== "rejected") {
         if (phase === "editing" || JSON.stringify(fieldValues(previous.values)) !== JSON.stringify(next.values)) {

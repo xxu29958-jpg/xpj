@@ -187,14 +187,13 @@ def test_web_void_appends_fact_and_closes_direct_actions(
     identity,
 ) -> None:
     debt = _create_debt(web_client, identity=identity)
-    response = web_client.post(
-        f"/web/debts/{debt['public_id']}/void",
-        data=_form(
-            debt,
-            idempotency_key=str(uuid4()),
-            reason="重复建账",
-        ),
-    )
+    action = f"/web/debts/{debt['public_id']}/void"
+    page = web_client.get(f"/web/debts/{debt['public_id']}?ledger_id=owner")
+    assert page.status_code == 200
+    original = hidden_post_forms(page.text)[action]
+    assert original["expected_row_version"] == str(debt["row_version"])
+    assert original["idempotency_key"]
+    response = web_client.post(action, data={**original, "reason": "重复建账"})
 
     assert response.status_code == 200
     assert "原始事实仍保留" in response.text
@@ -432,15 +431,12 @@ def test_web_debt_kind_and_repayment_void_restore_canonical_fold(
     assert "已生效" in page.text
     assert "撤销这笔误记" in page.text
 
-    undone = web_client.post(
-        f"/web/debts/{debt['public_id']}/repayment-voids",
-        data=_form(
-            cleared,
-            idempotency_key=str(uuid4()),
-            repayment_public_id=cleared["repayment_public_id"],
-            reason="重复记了一次",
-        ),
-    )
+    action = f"/web/debts/{debt['public_id']}/repayment-voids"
+    original = hidden_post_forms(page.text)[action]
+    assert original["expected_row_version"] == str(cleared["row_version"])
+    assert original["repayment_public_id"] == cleared["repayment_public_id"]
+    assert original["idempotency_key"]
+    undone = web_client.post(action, data={**original, "reason": "重复记了一次"})
     assert undone.status_code == 200
     assert "误记还款已撤销" in undone.text
     assert "已撤销" in undone.text

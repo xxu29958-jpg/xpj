@@ -4,6 +4,7 @@
   <summary>{{ '撤销这笔误记' if void_form.kind == 'repayment-void' else '作废这笔欠款' }}</summary>
   <form class="debt-action-form" method="post" action="/web/debts/{{ void_form.public_id }}/{{ 'repayment-voids' if void_form.kind == 'repayment-void' else 'void' }}{% if activity is defined and activity.page > 1 %}?activity_page={{ activity.page }}{% endif %}"
         data-repayment-kind="{{ void_form.kind }}" data-repayment-scope="{{ void_form.scope | tojson | forceescape }}"
+        data-void-rejected="{{ 'true' if void_form.rejected else 'false' }}"
         data-repayment-result="{{ void_form.result }}" data-repayment-can-create="{{ 'true' if void_form.can_create else 'false' }}"
         data-repayment-can-recover="{{ 'true' if void_form.can_recover else 'false' }}" data-repayment-target="{{ void_form.public_id }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -14,7 +15,12 @@
     <p class="product-page-summary">作废会保留原始事实。结果未确认时请继续核实原提交。</p>
     <label>作废原因（必填）<input class="product-input" type="text" name="reason" maxlength="500" required value="{{ void_form['values']['reason'] }}"{% if void_form.error %} aria-describedby="{{ void_error_id }}"{% endif %}{% if void_form.result in ['submitted', 'blocked', 'accepted-review'] %} readonly{% endif %}></label>
     <p data-repayment-status role="status" hidden></p>
-    <button class="product-button product-button--danger" type="submit" data-repayment-submit{% if not void_form.can_recover or void_form.result == 'accepted-review' %} disabled{% endif %}>{{ '继续核实原作废' if void_form.result else '确认作废' }}</button>
+    <button class="product-button product-button--danger" type="submit" data-repayment-submit{% if not void_form.can_recover or void_form.result == 'accepted-review' or void_form.rejected %} disabled{% endif %}>{{ '继续核实原作废' if void_form.result else '确认作废' }}</button>
+    <div data-void-rejection-review{% if not void_form.rejected %} hidden{% endif %}>
+    <a href="/web/debts/{{ void_form.public_id }}?ledger_id={{ selected_ledger_id }}">核对原记录与往来历史</a>
+    <button class="product-button product-button--quiet" type="button" data-void-finish-rejected>已核对，结束这次未接受的提交</button>
+    <noscript><p>本次提交没有被接受。<a href="/web/debts/{{ void_form.public_id }}?ledger_id={{ selected_ledger_id }}">核对后打开当前表单</a>；原提交内容仍保留在本页。</p></noscript>
+    </div>
     {% if void_form.result == 'accepted-review' %}
     <a href="/web/debts/{{ void_form.public_id }}?ledger_id={{ selected_ledger_id }}">核对原记录与往来历史</a>
     <button class="product-button product-button--quiet" type="button" data-void-finish-review>已核对原记录，结束本地恢复</button>

@@ -74,6 +74,7 @@ def test_void_failure_preserves_the_original_command_for_explicit_recovery(monke
     assert retry['idempotency_key'] == original['idempotency_key'], 'Recovery must not silently replace the original command key'
     assert retry['expected_row_version'] == original['expected_row_version'], 'Only explicit review may adopt newer OCC'
     assert original['reason'] in response.body.decode()
+    assert ('data-void-rejected="true"' in response.body.decode()) is (outcome == 'conflict')
 
 
 def _void_setup(monkeypatch, kind):
@@ -172,3 +173,29 @@ def test_void_write_permission_refusal_never_enters_writer(monkeypatch, kind):
     assert response.status_code == 403
     assert values['idempotency_key'] in response.body.decode()
     assert values['reason'] in response.body.decode()
+
+
+@pytest.mark.parametrize('fault_owner', ['detail', 'activity'])
+def test_get_read_failure_mounts_all_original_debt_write_recovery_forms(monkeypatch, fault_owner):
+    request, db, _, _ = _void_setup(monkeypatch, 'debt-void')
+    context, _, _, _ = queries._load_debt_detail_state(None, None)
+    monkeypatch.setattr(repayment, '_base_ctx', lambda *a, **kw: dict(context))
+    import app.routes._web_debt_write as writes
+    monkeypatch.setattr(writes, '_require_selected_ledger_write', lambda *_: None)
+    monkeypatch.setattr(queries, '_list_ledger_options', lambda *_: [])
+    monkeypatch.setattr(queries, '_resolve_selected_ledger_id', lambda *a, **kw: 'my-ledger')
+    def unreadable(*a, **kw):
+        raise AppError('dependency_unavailable', status_code=503)
+    monkeypatch.setattr(queries, '_load_debt_detail_state' if fault_owner == 'detail' else 'debt_activity_context', unreadable)
+    response = queries.web_debt_detail(request, public_id='debt-one', ledger_id='my-ledger', db=db, _local=None)
+    assert response.status_code == 503
+    body = response.body.decode()
+    assert 'data-repayment-kind="debt-void"' in body, 'GET failure must reopen the actual stored debt void'
+    assert 'data-repayment-kind="repayment-void"' in body, 'GET failure must reopen the actual stored repayment void'
+    forms = {action.split("?")[0]: fields for action, fields in hidden_post_forms(body).items()}
+    for action in ['/web/debts/debt-one/void', '/web/debts/debt-one/repayment-voids']:
+        assert forms[action]['idempotency_key'] == ''
+        assert forms[action]['expected_row_version'] == ''
+        assert forms[action]['debt_public_id'] == 'debt-one'
+    assert body.count('data-repayment-container') == 3
+    assert body.count('data-repayment-can-recover="true"') == 3

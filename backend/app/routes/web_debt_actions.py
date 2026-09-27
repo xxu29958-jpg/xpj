@@ -290,20 +290,20 @@ def web_record_adjustment(
 
 
 def _void_outcome(request, db, *, options, selected_id, public_id, kind,
-                  values=None, error="", result="", status_code=200, ack=None):
+                  values=None, error="", result="", status_code=200, ack=None, rejected=False):
     try:
         return _render_debt_detail(request, db, options=options, selected_id=selected_id,
             public_id=public_id, action_kind=kind, action_draft=values, action_error=error,
             action_target_public_id=(values or {}).get("repayment_public_id", ""),
-            void_result=result, void_ack=ack, status_code=status_code)
+            void_result=result, void_ack=ack, void_rejected=rejected, status_code=status_code)
     except (AppError, SQLAlchemyError):
         db.rollback()
         return render_void_recovery(request, db, options=options, selected_id=selected_id,
             public_id=public_id, kind="repayment-void" if kind == "repayment_void" else "debt-void",
-            values=values, error=error, result=result, status_code=status_code, ack=ack)
+            values=values, error=error, result=result, status_code=status_code, ack=ack, rejected=rejected)
 
 
-def _submit_void(request, db, *, public_id, kind, values):
+def _submit_void(request, db, *, public_id, kind, values, writer):
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, values["ledger_id"], options, request=request)
     attempted = False
@@ -316,17 +316,14 @@ def _submit_void(request, db, *, public_id, kind, values):
         payload_values = {"expected_row_version": expected, "reason": values["reason"].strip()}
         if kind == "repayment_void":
             payload = RepaymentVoidCreateRequest(**payload_values, repayment_public_id=values["repayment_public_id"].strip())
-            writer = void_repayment_idempotently
         else:
             payload = DebtVoidCreateRequest(**payload_values)
-            writer = void_debt_idempotently
         attempted = True
         receipt = writer(db, tenant_id=selected_id, actor_account_id=_actor_account_id(request, db, selected_id),
             public_id=public_id, payload=payload, idempotency_key=values["idempotency_key"].strip() or None)
     except (AppError, ValidationError, SQLAlchemyError) as exc:
         db.rollback()
         outcome = _repayment_error(exc, attempted=attempted)
-        outcome.pop("rejected")
         outcome["error"] = outcome["error"].replace("还款", "作废提交")
         if isinstance(exc, AppError) and exc.error == "debt_void_original_requires_review":
             outcome["result"] = "accepted-review"
@@ -348,7 +345,7 @@ def web_void_repayment(
     expected_row_version: str = Form(default=""), idempotency_key: str = Form(default=""),
     csrf_token: str = Form(default=""), _local: None = LocalOnly, db: Session = Depends(get_db),
 ) -> Response:
-    return _submit_void(request, db, public_id=public_id, kind="repayment_void", values={
+    return _submit_void(request, db, public_id=public_id, kind="repayment_void", writer=void_repayment_idempotently, values={
         "ledger_id": ledger_id, "debt_public_id": debt_public_id, "origin_binding": origin_binding,
         "repayment_public_id": repayment_public_id, "reason": reason,
         "expected_row_version": expected_row_version, "idempotency_key": idempotency_key})
@@ -362,7 +359,7 @@ def web_void_debt(
     expected_row_version: str = Form(default=""), idempotency_key: str = Form(default=""),
     csrf_token: str = Form(default=""), _local: None = LocalOnly, db: Session = Depends(get_db),
 ) -> Response:
-    return _submit_void(request, db, public_id=public_id, kind="void", values={
+    return _submit_void(request, db, public_id=public_id, kind="void", writer=void_debt_idempotently, values={
         "ledger_id": ledger_id, "debt_public_id": debt_public_id, "origin_binding": origin_binding,
         "repayment_public_id": repayment_public_id, "reason": reason,
         "expected_row_version": expected_row_version, "idempotency_key": idempotency_key})
