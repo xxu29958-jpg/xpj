@@ -8,7 +8,7 @@ import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import retrofit2.HttpException
 
-class VoidDebtDispatcher(private val guard: LedgerRequestGuard,
+class VoidDebtDispatcher internal constructor(private val guard: LedgerRequestGuard,
     private val adapter: JsonAdapter<DebtVoidPayload>, private val receiptAdapter: JsonAdapter<DebtDto>) : OutboxMutationDispatcher {
     override val type = PendingMutationType.VoidDebt
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
@@ -19,7 +19,7 @@ class VoidDebtDispatcher(private val guard: LedgerRequestGuard,
     }
 }
 
-class VoidDebtRepaymentDispatcher(private val guard: LedgerRequestGuard,
+class VoidDebtRepaymentDispatcher internal constructor(private val guard: LedgerRequestGuard,
     private val adapter: JsonAdapter<DebtRepaymentVoidPayload>, private val receiptAdapter: JsonAdapter<DebtDto>) : OutboxMutationDispatcher {
     override val type = PendingMutationType.VoidDebtRepayment
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
