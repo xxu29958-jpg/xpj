@@ -141,6 +141,33 @@ class BudgetDraftQueueTransferTest {
         }
     }
 
+    @Test fun acceptedSaveReadRecoveryUpdatesTheBudgetWithoutResendingOrReplacingANewerDraft() = budgetTest {
+        val owner = FakeBudgetActions(budget = budget().copy(homeCurrencyCode = "JPY"))
+        val editor = BudgetViewModel(owner, "2026-05")
+        advanceUntilIdle()
+        editor.updateTotalAmount(" 1500 ")
+        val draft = editor.uiState.value.form
+        val accepted = budget(totalAmountCents = 1200).copy(homeCurrencyCode = "JPY", rowVersion = 2)
+        val original = pendingBudget().let { it.copy(row = it.row.copy(status = PendingMutationStatus.Done,
+            lastError = "budget_read_refresh_required"), receipt = accepted) }
+        owner.monthlyBudgetResponder = { Result.failure(java.io.IOException("Local read recovery unavailable")) }
+        owner.commands.saves.value = listOf(original)
+        advanceUntilIdle()
+        assertNull(editor.uiState.value.budget)
+        assertFalse(editor.uiState.value.hasPendingSave)
+
+        owner.monthlyBudgetResponder = { Result.success(accepted) }
+        editor.recoverSave(original, false)
+        advanceUntilIdle()
+
+        assertEquals(accepted, editor.uiState.value.budget)
+        assertNull(editor.uiState.value.loadError)
+        assertEquals(draft, editor.uiState.value.form)
+        assertTrue(editor.uiState.value.formDirty)
+        assertEquals(listOf(original), owner.commands.saves.value)
+        assertEquals(0, owner.commands.savedRequests.size)
+    }
+
     private fun pendingBudget() = PendingBudgetSave(
         row = OutboxRow(id = 1, serverUrl = "https://api.example.com", ledgerId = "owner",
             type = PendingMutationType.SaveMonthlyBudget, targetId = "monthly_budget:2026-05", payloadJson = "{}",
