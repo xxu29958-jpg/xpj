@@ -15,6 +15,7 @@ from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
     _list_ledger_options,
+    _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _web_redirect,
     parse_form_row_version_token,
@@ -96,6 +97,7 @@ def _save_view(request, db, *, fields, public_id="") -> Response:
     definition = {key: fields[key] for key in (
         "name", "month_mode", "month", "filter", "tag_public_id", "home_currency_code")}
     try:
+        _require_selected_ledger_write(options, selected)
         if public_id:
             token = parse_form_row_version_token(fields["expected_row_version"])
             if token is None:
@@ -149,6 +151,7 @@ def web_saved_view_delete(request: Request, public_id: str, ledger_id: str = For
         return retained
     actor = resolve_web_actor_account_id(db, request, selected)
     try:
+        _require_selected_ledger_write(options, selected)
         token = parse_form_row_version_token(expected_row_version)
         if token is None:
             raise AppError("state_conflict", status_code=409)

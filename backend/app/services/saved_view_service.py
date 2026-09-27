@@ -100,6 +100,24 @@ def list_views(db: Session, *, tenant_id: str, actor_account_id: int) -> list[Sa
     return [_detail(db, row) for row in rows]
 
 
+def _query_month(month_mode: str, month: str | None, filter: str) -> tuple[str, str | None]:
+    """Health queries span periods; ordinary queries retain an explicit month policy."""
+    if month_mode not in {"fixed", "current"}:
+        raise AppError("invalid_request", "请选择固定月份或账本当前月。", status_code=422)
+    if filter not in _FILTERS:
+        raise AppError("invalid_request", "已确认流水筛选条件无效。", status_code=422)
+    if filter:
+        # Existing health filters span all accounting months. Carry no latent
+        # month even when the source page submitted its displayed mode.
+        return "current", None
+    if month_mode == "fixed":
+        saved_month = normalize_month_label(month)
+        if saved_month is None:
+            raise AppError("invalid_request", "请选择有效的固定账务月。", status_code=422)
+        return "fixed", saved_month
+    return "current", None
+
+
 def _validated_definition(
     db: Session, *, tenant_id: str, name: str, month_mode: str, month: str | None,
     filter: str, tag_public_id: str | None, home_currency_code: str, check_tag: bool = True,
@@ -108,23 +126,7 @@ def _validated_definition(
     name_key = clean_name.casefold()
     if not clean_name or len(clean_name) > 120 or len(name_key) > 120:
         raise AppError("invalid_request", "视图名称需为 1 至 120 个字符。", status_code=422)
-    if month_mode not in {"fixed", "current"}:
-        raise AppError("invalid_request", "请选择固定月份或账本当前月。", status_code=422)
-    if filter not in _FILTERS:
-        raise AppError("invalid_request", "已确认流水筛选条件无效。", status_code=422)
-    if filter:
-        # Existing health filters span all accounting months. Carry no latent
-        # month even when the source page submitted its displayed mode.
-        saved_mode = "current"
-        saved_month = None
-    elif month_mode == "fixed":
-        saved_month = normalize_month_label(month)
-        if saved_month is None:
-            raise AppError("invalid_request", "请选择有效的固定账务月。", status_code=422)
-        saved_mode = "fixed"
-    else:
-        saved_mode = "current"
-        saved_month = None
+    saved_mode, saved_month = _query_month(month_mode, month, filter)
     tag = _tag(db, tenant_id, tag_public_id) if check_tag and tag_public_id else None
     if check_tag and tag_public_id and (tag is None or tag.deleted_at is not None):
         raise AppError("saved_view_tag_repair_required", status_code=409)

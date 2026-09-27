@@ -1,5 +1,6 @@
 """Native saved-view forms preserve the original query through refusals and repair."""
 
+import re
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -25,6 +26,13 @@ def browser(client, identity):
 def _post(browser, action, fields):
     return browser.post(action, data=fields, headers={"Origin": f"https://{PUBLIC_HOST}"},
                         follow_redirects=False)
+
+
+def _tag_fields(html, action):
+    # Existing csrf.js attaches this rendered token to legacy tag forms.
+    token = re.search(r'<meta name="csrf-token" content="([^"]+)"', html)
+    assert token is not None
+    return {**hidden_post_forms(html)[action], "csrf_token": token.group(1)}
 
 
 def _create(browser, client, identity):
@@ -108,7 +116,7 @@ def test_real_tag_rename_follows_identity_but_merge_requires_explicit_view_repai
     source_id = original["tag_public_id"]
     tag_page = browser.get("/web/tags?ledger_id=owner")
     rename = f"/web/tags/{source_id}/rename"
-    renamed = _post(browser, rename, {**hidden_post_forms(tag_page.text)[rename], "name": "假期"})
+    renamed = _post(browser, rename, {**_tag_fields(tag_page.text, rename), "name": "假期"})
     assert renamed.status_code == 303, renamed.text
     opened = browser.get(f"/web/saved-views/{public_id}/open?ledger_id=owner", follow_redirects=False)
     assert opened.status_code == 303 and parse_qs(urlsplit(opened.headers["location"]).query)["tag"] == ["假期"]
@@ -120,7 +128,7 @@ def test_real_tag_rename_follows_identity_but_merge_requires_explicit_view_repai
         target_id, target_version = target.public_id, target.row_version
     tag_page = browser.get("/web/tags?ledger_id=owner")
     merge = f"/web/tags/{source_id}/merge"
-    merged = _post(browser, merge, {**hidden_post_forms(tag_page.text)[merge], "target": f"{target_id}:{target_version}"})
+    merged = _post(browser, merge, {**_tag_fields(tag_page.text, merge), "target": f"{target_id}:{target_version}"})
     assert merged.status_code == 303, merged.text
     unavailable = browser.get(f"/web/saved-views/{public_id}/open?ledger_id=owner", follow_redirects=False)
     assert unavailable.status_code == 409 and "原标签已被删除或合并" in unavailable.text
