@@ -44208,6 +44208,22 @@
           },
           {
             "in": "query",
+            "name": "arrangement_currency_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Arrangement Currency Code"
+            }
+          },
+          {
+            "in": "query",
             "name": "run_advise",
             "required": false,
             "schema": {
