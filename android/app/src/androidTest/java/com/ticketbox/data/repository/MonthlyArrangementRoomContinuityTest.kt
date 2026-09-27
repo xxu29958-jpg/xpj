@@ -139,8 +139,8 @@ class MonthlyArrangementRoomContinuityTest {
         repository = reopen()
         val current = repository.arrangement(original, "2026-09")
         val history = repository.arrangementHistory(original, "2026-09")
-        assertEquals(listOf(false, false), listOf(current.isSuccess, history.isSuccess),
-            "Recreating Room and the coordinator cannot authorize old rows whose denied cleanup failed")
+        assertEquals("Recreating Room and the coordinator cannot authorize old rows whose denied cleanup failed",
+            listOf(false, false), listOf(current.isSuccess, history.isSuccess))
         assertEquals(403, (current.exceptionOrNull() as RepositoryException).httpStatusCode)
         assertEquals(403, (history.exceptionOrNull() as RepositoryException).httpStatusCode)
         assertEquals(draftBefore, requireNotNull(db).monthlyArrangementCacheDao().read(monthlyArrangementPersistentBindingKey(original), "2026-09", "draft"))
@@ -187,8 +187,8 @@ class MonthlyArrangementRoomContinuityTest {
         revisions += requireNotNull(fact)
         val current = repository.arrangement(original, "2026-09")
         val history = repository.arrangementHistory(original, "2026-09")
-        assertEquals(listOf(true, true), listOf(current.isSuccess, history.isSuccess),
-            "Current and history GETs are usable even when the denied cache cannot be cleared or replaced")
+        assertEquals("Current and history GETs are usable even when the denied cache cannot be cleared or replaced",
+            listOf(true, true), listOf(current.isSuccess, history.isSuccess))
         assertEquals(2600L, current.getOrThrow().response.arrangement?.savingsTargetCents)
         assertEquals(listOf(2L, 1L), history.getOrThrow().response.items.map { it.rowVersion })
         assertFalse(current.getOrThrow().fromCache)
