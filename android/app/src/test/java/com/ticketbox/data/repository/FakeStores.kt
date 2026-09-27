@@ -205,6 +205,15 @@ internal class FakeTicketboxSettingsStore(
 
     fun isBound(): Boolean = !serverUrl.isNullOrBlank()
 
+    private val readAccessDenials = mutableMapOf<String, Int>()
+    override fun snapshotReadAccessDenial(bindingKey: String, monthlyBindingKey: String): Int? =
+        readAccessDenials[bindingKey] ?: readAccessDenials[monthlyBindingKey]
+    override fun saveSnapshotReadAccessDenial(bindingKey: String, monthlyBindingKey: String, statusCode: Int?) {
+        for (key in listOf(bindingKey, monthlyBindingKey)) {
+            if (statusCode == null) readAccessDenials.remove(key) else readAccessDenials[key] = statusCode
+        }
+    }
+
     override fun markUnlocked() = Unit
 
     override fun markBackgrounded() = Unit
@@ -212,6 +221,7 @@ internal class FakeTicketboxSettingsStore(
     override fun requiresUnlock(): Boolean = false
 
     override fun clear() {
+        readAccessDenials.clear()
         serverUrl = null
         accountName = null
         ledgerIdFlow.value = null

@@ -7,6 +7,7 @@ import com.ticketbox.domain.model.MonthlyStats
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import com.squareup.moshi.Moshi
@@ -33,6 +34,8 @@ internal class ExpenseStatsRepositoryActions(
     private val bindingAdapter = moshi.adapter(LogicalSessionBinding::class.java)
     private val cacheMutex = Mutex()
     private val latestReads = mutableMapOf<StatsProjectionKind, Any>()
+
+    override val readAccessDenials: Flow<SnapshotAccessDenial> = core.sessionCoordinator.snapshotAccessDenials.filterNotNull()
 
     override fun observeStatsBinding(): Flow<LogicalSessionBinding?> =
         core.apiProvider.observeActiveLedgerAccess().map { it?.binding }.distinctUntilChanged()
@@ -79,7 +82,7 @@ internal class ExpenseStatsRepositoryActions(
             throw failure
         } catch (error: Exception) {
             if (!error.isReadTransportUnavailable()) throw error
-            return@safeCall core.sessionCoordinator.acceptSnapshotRead(ticket, bound) {
+            return@safeCall core.sessionCoordinator.acceptSnapshotRead(ticket, bound, fromCache = true) {
                 val cached = core.expenseDao.statsProjections(bindingKey, kind.storageKey, query.month, query.tag.trim(), query.timezone)
                     .firstOrNull { query.homeCurrencyCode == null || it.homeCurrencyCode == query.homeCurrencyCode } ?: throw error
                 val restored = requireNotNull(adapter.fromJson(cached.responseJson))
@@ -94,9 +97,9 @@ internal class ExpenseStatsRepositoryActions(
             kind = kind.storageKey, month = query.month, tag = query.tag.trim(), homeCurrencyCode = wire.homeCurrencyCode,
             timezone = query.timezone, responseJson = adapter.toJson(wire), fetchedAt = Instant.now().toString(),
         )
-        core.sessionCoordinator.acceptSnapshotRead(ticket, bound) {
+        core.sessionCoordinator.acceptSnapshotRead(ticket, bound, fromCache = false) { cacheAllowed ->
             cacheMutex.withLock {
-                if (latestReads[kind] === token) core.expenseDao.saveStatsProjection(row)
+                if (cacheAllowed && latestReads[kind] === token) core.expenseDao.saveStatsProjection(row)
             }
             ReadSnapshot(value, row.fetchedAt, fromCache = false)
         }

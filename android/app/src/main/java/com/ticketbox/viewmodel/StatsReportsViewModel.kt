@@ -29,6 +29,15 @@ class StatsReportsViewModel(internal val reportsRepository: ReportsActions? = nu
     private var selection = ReportsOverviewQuery(timezone = timezone)
 
     init {
+        viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            reportsRepository?.readAccessDenials?.collect { denial ->
+                if (denial.binding != _uiState.value.binding || reportsRepository?.dashboardAccess()?.binding != denial.binding) return@collect
+                requestGeneration += 1
+                inFlightRefreshKey = null
+                _uiState.update { it.withGoalRead(Result.failure(denial.failure)).copy(reportsOverview = null,
+                    reportsLoading = false, reportsMessage = denial.failure.toUiText(R.string.stats_message_reports_failed)) }
+            }
+        }
         viewModelScope.launch {
             reportsRepository?.observeReportsAccess()?.distinctUntilChanged()?.collect { access ->
                 if (_uiState.value.binding == access?.binding) return@collect

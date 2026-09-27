@@ -32,8 +32,10 @@ internal class GoalReadApi : ApiService by FakeApiService(mutableListOf(), confi
     }
 }
 
-internal class GoalReadFixture(decorate: (ApiService) -> ApiService = { it }) {
+internal class GoalReadFixture(decorateDao: (com.ticketbox.data.local.ExpenseDao) -> com.ticketbox.data.local.ExpenseDao = { it },
+    decorate: (ApiService) -> ApiService = { it }) {
     val dao = FakeExpenseDao()
+    private val queryDao = decorateDao(dao)
     val api = GoalReadApi()
     val session = TestSessionFixture().apply { saveToken("session-token") }
     private val settings = boundSettingsStore()
@@ -42,9 +44,9 @@ internal class GoalReadFixture(decorate: (ApiService) -> ApiService = { it }) {
         override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = service
     }
     val provider = testApiServiceProvider(factory, session)
-    val coordinator = LocalLedgerSessionCoordinator(settings, session.sessionStore, dao)
-    val repository get() = ReportsRepository(provider, dao, coordinator)
-    val stats = expenseRepositoryFixture(dao, testServerSessionBinding(factory, settings, session), coordinator)
+    val coordinator = LocalLedgerSessionCoordinator(settings, session.sessionStore, queryDao)
+    val repository get() = ReportsRepository(provider, queryDao, coordinator)
+    val stats = expenseRepositoryFixture(queryDao, testServerSessionBinding(factory, settings, session), coordinator)
     val binding get() = requireNotNull(repository.dashboardAccess()).binding
 }
 

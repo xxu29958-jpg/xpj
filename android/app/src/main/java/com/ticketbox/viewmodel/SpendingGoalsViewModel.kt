@@ -48,6 +48,15 @@ class SpendingGoalsViewModel(
 
     private var binding: com.ticketbox.data.repository.LogicalSessionBinding? = null
     init {
+        viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            reports.readAccessDenials.collect { denial ->
+                if (denial.binding != binding || edits.currentAccess()?.binding != denial.binding) return@collect
+                loadGeneration += 1
+                loadJob?.cancel()
+                _state.update { it.copy(goals = emptyList(), fetchedAt = null, fromCache = false, isLoading = false,
+                    loadError = denial.failure.toUiText(R.string.spending_goals_load_failed)) }
+            }
+        }
         viewModelScope.launch {
             edits.observeAccess().collect { access ->
                 if (binding != access?.binding) {

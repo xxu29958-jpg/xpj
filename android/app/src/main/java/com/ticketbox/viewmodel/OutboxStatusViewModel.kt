@@ -135,7 +135,9 @@ class OutboxStatusViewModel(
                         recoveries.rules.describeSubmission(row)?.let { row.id to it }
                     }.toMap(),
                     arrangements = (status.failed + status.conflicts).mapNotNull { row -> recoveries.budgetSaves.describeArrangement(row)?.let { row.id to it } }.toMap(),
-                    budgetSaves = (status.failed + status.conflicts).mapNotNull { row -> recoveries.budgetSaves.describeSave(row)?.let { row.id to it } }.toMap()) }
+                    budgetSaves = (status.failed + status.conflicts + status.refreshRequired).mapNotNull { row ->
+                        recoveries.budgetSaves.describeSave(row)?.let { row.id to it }
+                    }.toMap()) }
             }
         }
     }
@@ -307,18 +309,26 @@ class OutboxStatusViewModel(
     }
 
     /** The command is already delivered; recovery only reads its authoritative result. */
-    fun refreshExpense(row: OutboxRow) {
+    fun refreshAcceptedResult(row: OutboxRow) {
         if (_uiState.value.status.refreshRequired.none { it.id == row.id }) return
         val binding = expenseRepository.captureDeferredLedgerBinding() ?: return
         resolve(row) {
-            val id = expenseRefreshTargetId(row.targetId, row.receiptJson)
-            if (id == null) {
-                _uiState.update { it.copy(message = UiText.res(R.string.sync_status_refresh_failed), messageTone = MessageTone.Danger) }
-                return@resolve
+            val result = if (row.type == PendingMutationType.SaveMonthlyBudget) {
+                val pending = _uiState.value.budgetSaves[row.id] ?: return@resolve
+                recoveries.budgetSaves.recoverSave(binding, pending, false)
+            } else {
+                val id = expenseRefreshTargetId(row.targetId, row.receiptJson)
+                if (id == null) {
+                    _uiState.update { it.copy(message = UiText.res(R.string.sync_status_refresh_failed), messageTone = MessageTone.Danger) }
+                    return@resolve
+                }
+                expenseRepository.fetchExpense(id)
             }
-            expenseRepository.fetchExpense(id).onFailure { error ->
+            result.onFailure { error ->
                 if (expenseRepository.captureDeferredLedgerBinding() == binding) {
-                    _uiState.update { it.copy(message = error.toUiText(R.string.sync_status_refresh_failed),
+                    val fallback = if (row.type == PendingMutationType.SaveMonthlyBudget) R.string.budget_read_recovery_failed
+                        else R.string.sync_status_refresh_failed
+                    _uiState.update { it.copy(message = error.toUiText(fallback),
                         messageTone = MessageTone.Danger) }
                 }
             }

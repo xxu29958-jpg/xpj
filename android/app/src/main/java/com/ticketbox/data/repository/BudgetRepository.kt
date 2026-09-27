@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
 import java.time.YearMonth
 import java.util.TimeZone
@@ -17,14 +18,15 @@ import java.util.TimeZone
 interface BudgetActions : BudgetSaveActions, ManualRateActions, MonthlyArrangementActions, BudgetAdviceInputsActions {
     fun canModifyLedger(): Boolean
     fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?>
+    fun observeReadAccessDenials(): Flow<SnapshotAccessDenial> = emptyFlow()
 
     /** One full binding/role projection for the advisor, including member-to-owner changes. */
     fun observeLedgerAccessState(): Flow<LedgerAccessState?> = emptyFlow()
-    suspend fun monthlyBudget(month: String): Result<BudgetMonthly>
+    suspend fun monthlyBudget(month: String): Result<ReadSnapshot<BudgetMonthly>>
     suspend fun monthlyBudget(
         expectedBinding: LogicalSessionBinding,
         month: String,
-    ): Result<BudgetMonthly>
+    ): Result<ReadSnapshot<BudgetMonthly>>
     suspend fun requestBudgetAdvice(month: String, homeCurrencyCode: String? = null,
         expectedBinding: LogicalSessionBinding? = null): Result<BudgetAdviceResult>
 
@@ -48,21 +50,27 @@ data class LedgerAccessState(
     val canModify: Boolean get() = ledgerRoleCanModify(role)
 }
 
+internal data class BudgetLocalStorage(val arrangementDao: MonthlyArrangementCacheDao, val queries: BudgetQueryReader)
+
 class BudgetRepository internal constructor(
     private val apiProvider: ApiServiceProvider,
     outbox: OutboxRepository,
     adapters: OutboxAdapterGraph,
-    arrangementDao: MonthlyArrangementCacheDao,
+    localStorage: BudgetLocalStorage,
     sessionCoordinator: LocalLedgerSessionCoordinator,
     internal val adviceCallStore: BudgetAdviceCallStore = BudgetAdviceCallStore(LedgerRequestGuard(apiProvider), budgetNetworkErrors(apiProvider)),
 ) : BudgetActions, BudgetHistoryReader,
-    BudgetSaveActions by BudgetSaveRepository(apiProvider, outbox, adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter),
+    BudgetSaveActions by BudgetSaveRepository(apiProvider, outbox, adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter,
+        localStorage.queries::read),
     ManualRateActions by ManualExchangeRateRepository(apiProvider, outbox, adapters.manualRateAdapter, adapters.manualRateReceiptAdapter),
-    MonthlyArrangementActions by MonthlyArrangementRepository(apiProvider, outbox, arrangementDao,
+    MonthlyArrangementActions by MonthlyArrangementRepository(apiProvider, outbox, localStorage.arrangementDao,
         adapters, adviceCallStore::noteAdviceInputSnapshot, sessionCoordinator),
     BudgetAdviceInputsActions by BudgetAdviceInputsRepository(apiProvider, adviceCallStore, budgetNetworkErrors(apiProvider)) {
     private val errorHandler = budgetNetworkErrors(apiProvider)
     private val ledgerRequestGuard = LedgerRequestGuard(apiProvider)
+    private val budgetQueries = localStorage.queries
+    private val readAccessDenials = sessionCoordinator.snapshotAccessDenials.filterNotNull()
+    internal val invalidateBudgetReadsAfterDelivery: suspend (OutboxRow, Long) -> Unit = budgetQueries::invalidate
 
     override fun canModifyLedger(): Boolean = ledgerRoleCanModify(apiProvider.currentLedgerRole())
 
@@ -78,6 +86,8 @@ class BudgetRepository internal constructor(
     override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> =
         apiProvider.observeActiveLedgerAccess()
 
+    override fun observeReadAccessDenials(): Flow<SnapshotAccessDenial> = readAccessDenials
+
     override fun observeLedgerAccessState(): Flow<LedgerAccessState?> =
         apiProvider.observeSession()
             .map { session ->
@@ -86,33 +96,21 @@ class BudgetRepository internal constructor(
             }
             .distinctUntilChanged()
 
-    override suspend fun monthlyBudget(month: String): Result<BudgetMonthly> =
+    override suspend fun monthlyBudget(month: String): Result<ReadSnapshot<BudgetMonthly>> =
         monthlyBudget(month = month, timezone = currentBudgetTimezoneId())
 
     override suspend fun monthlyBudget(
         expectedBinding: LogicalSessionBinding,
         month: String,
-    ): Result<BudgetMonthly> =
+    ): Result<ReadSnapshot<BudgetMonthly>> =
         monthlyBudget(month, currentBudgetTimezoneId(), expectedBinding)
 
     suspend fun monthlyBudget(
         month: String,
         timezone: String,
         expectedBinding: LogicalSessionBinding? = null,
-    ): Result<BudgetMonthly> {
-        val cleanMonth = validatedBudgetMonth(month)
-            .getOrElse { return Result.failure(it) }
-        return errorHandler.safeCall {
-            val request = expectedBinding?.let(ledgerRequestGuard::bindExact)
-                ?: ledgerRequestGuard.bind()
-            request.call { api ->
-                api.monthlyBudget(
-                    month = cleanMonth,
-                    timezone = timezone,
-                ).toDomain()
-            }
-        }
-    }
+        freshOnly: Boolean = false,
+    ): Result<ReadSnapshot<BudgetMonthly>> = budgetQueries.read(month, timezone, expectedBinding, freshOnly)
 
     override suspend fun requestBudgetAdvice(month: String, homeCurrencyCode: String?, expectedBinding: LogicalSessionBinding?): Result<BudgetAdviceResult> {
         if (!canModifyLedger()) {

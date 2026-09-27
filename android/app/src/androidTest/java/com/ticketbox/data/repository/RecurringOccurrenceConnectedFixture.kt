@@ -75,7 +75,7 @@ internal class RecurringOccurrenceConnectedFixture(private val context: Context)
             override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = network.service
         }
         return RepositoryGraph(RepositoryGraphDependencies(db, ApiClient(),
-            occurrenceProxy<TicketboxSettingsStore> { method, _ -> error("Unexpected settings: $method") },
+            occurrenceProxy<TicketboxSettingsStore> { method, _ -> if (method == "snapshotReadAccessDenial") null else error("Unexpected settings: $method") },
             sessions, credentials, ApiServiceProvider(factory, sessions, credentials), RepositoryGraphOutbox(outbox, adapters)))
     }
 

@@ -32,6 +32,7 @@ import com.ticketbox.viewmodel.RecurringListLoadState
 import com.ticketbox.viewmodel.RecurringUiState
 import com.ticketbox.viewmodel.ReportGoalsLoadState
 import com.ticketbox.viewmodel.StatsUiState
+import com.ticketbox.ui.screens.budget.BudgetReadSource
 
 data class OverviewModulesState(val layout: DashboardLayoutUiState, val recurring: RecurringUiState)
 
@@ -64,6 +65,7 @@ internal fun LazyListScope.overviewModuleItems(
                 DASHBOARD_CARD_REPORTS -> OverviewReportsModule(state, onTrend)
                 DASHBOARD_CARD_BUDGET -> {
                     if (state.selectedTag.isNotBlank()) Text(stringResource(R.string.dashboard_ledger_scope))
+                    BudgetReadSource(state.budgetFetchedAt, state.budgetFromCache)
                     StatsMetricGrid(state.budgetProgress, state.budgetProgressStatus, actions.onBudget)
                 }
                 DASHBOARD_CARD_RECENT_UPLOADS -> StatsInsightSurface {

@@ -20,6 +20,7 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.parseExactMoneyMinor
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -56,6 +57,8 @@ data class BudgetUiState(
     val formDirty: Boolean = false,
     val saves: List<PendingBudgetSave> = emptyList(),
     val binding: LogicalSessionBinding? = null,
+    val fetchedAt: String? = null,
+    val fromCache: Boolean = false,
 ) {
     val formCurrency: CurrencyCode? get() = CurrencyCode.fromStorageKeyOrNull(form.homeCurrencyCode)
     val hasPendingSave: Boolean get() = saves.any { it.row.status != PendingMutationStatus.Done }
@@ -74,7 +77,7 @@ class BudgetViewModel(
     private var requestGeneration = 0
     private var refreshGeneration = 0
     private var activeBinding: LogicalSessionBinding? = null
-    private var savesJob: Job? = null
+    private var observationsJob: Job? = null
     private var observedSaves: List<PendingBudgetSave> = emptyList()
 
     private var monthSelected = initialMonth != null || savedStateHandle.get<String>("month") != null
@@ -88,13 +91,13 @@ class BudgetViewModel(
                 } else {
                     activeBinding = access?.binding
                     requestGeneration += 1
-                    savesJob?.cancel()
+                    observationsJob?.cancel()
                     observedSaves = emptyList()
                     _uiState.value = BudgetUiState(month = _uiState.value.month, canModify = access?.canModify == true,
                         binding = access?.binding)
                     restoreDraft()
                     access?.let {
-                        observeSaves(it.binding)
+                        observeBudgetChanges(it.binding)
                         resolvingMonth = !monthSelected && !uiState.value.formDirty && calendars != null
                         viewModelScope.launch {
                             val month = if (resolvingMonth) calendars.newTaskMonth(it.binding) else uiState.value.month
@@ -112,14 +115,22 @@ class BudgetViewModel(
         }
     }
 
-    private fun observeSaves(binding: LogicalSessionBinding) {
-        savesJob = viewModelScope.launch {
-            var previousDone: Set<Long>? = null
+    private fun observeBudgetChanges(binding: LogicalSessionBinding) {
+        observationsJob = viewModelScope.launch {
+            launch(start = CoroutineStart.UNDISPATCHED) {
+                repository.observeReadAccessDenials().collect { denial ->
+                    if (activeBinding == binding && denial.binding == binding) {
+                        refreshGeneration += 1
+                        _uiState.update { it.withReadFailure(denial.failure) }
+                    }
+                }
+            }
+            var previousDone: Set<Long> = emptySet()
             repository.observeSaves(binding).collect { saves ->
                 if (activeBinding != binding) return@collect
                 observedSaves = saves
                 val done = saves.filter { it.row.status == PendingMutationStatus.Done }
-                val newlyDone = done.filter { previousDone != null && it.row.id !in previousDone.orEmpty() &&
+                val newlyDone = done.filter { it.row.id !in previousDone &&
                     it.intent?.month == _uiState.value.month }.maxByOrNull { it.row.id }
                 previousDone = done.map { it.row.id }.toSet()
                 updateObservedSaves(binding, newlyDone)
@@ -136,8 +147,12 @@ class BudgetViewModel(
         val dirty = state.formDirty && transferred == null
         val receipt = (newlyDone ?: transferred)?.receipt?.takeUnless { dirty }
         val pending = rows.firstOrNull { it.row.status != PendingMutationStatus.Done }
+        val visible = state.budget.takeUnless { newlyDone != null && it.isOlderThanAccepted(newlyDone.receipt) }
         _uiState.value = state.copy(saves = rows,
-            form = receipt?.toFormState() ?: pending?.originalForm()?.takeUnless { dirty } ?: state.form,
+            budget = visible,
+            fetchedAt = state.fetchedAt.takeIf { visible != null },
+            fromCache = visible != null && state.fromCache,
+            form = receipt?.let { (visible ?: it).toFormState() } ?: pending?.originalForm()?.takeUnless { dirty } ?: state.form,
             formDirty = dirty,
             message = if (receipt != null) UiText.res(R.string.budget_message_saved) else state.message,
             messageTone = if (receipt != null) MessageTone.Success else state.messageTone)
@@ -151,17 +166,17 @@ class BudgetViewModel(
         val month = _uiState.value.month
         _uiState.update { it.copy(loading = true, loadError = null) }
         viewModelScope.launch {
-            repository.monthlyBudget(binding, month).fold(onSuccess = { budget ->
+            repository.monthlyBudget(binding, month).fold(onSuccess = { read ->
+                val budget = read.value
                 _uiState.update { state ->
                     if (!isCurrent(generation, month) || refresh != refreshGeneration) state else state.copy(
                         loading = false, budget = budget, loadError = null,
+                        fetchedAt = read.fetchedAt, fromCache = read.fromCache,
                         form = if (!state.formDirty && !state.hasPendingSave) budget.toFormState() else state.form)
                 }
             }, onFailure = { error ->
                 _uiState.update { state ->
-                    if (!isCurrent(generation, month) || refresh != refreshGeneration) state else state.copy(
-                        loading = false, loadError = error.toUiText(if (state.budget == null)
-                            R.string.budget_message_load_failed else R.string.budget_message_refresh_failed_with_data))
+                    if (!isCurrent(generation, month) || refresh != refreshGeneration) state else state.withReadFailure(error)
                 }
             })
         }
@@ -218,12 +233,17 @@ class BudgetViewModel(
             _uiState.update { it.copy(saving = false, formDirty = false,
                 message = UiText.res(if (confirmed) R.string.budget_message_saved else R.string.budget_message_queued),
                 messageTone = if (confirmed) MessageTone.Success else MessageTone.Info) }
+            if (confirmed) refresh()
         }, onFailure = { error ->
             _uiState.update { it.copy(saving = false, message = error.toUiText(R.string.budget_message_save_failed), messageTone = MessageTone.Danger) }
         })
     }
 
     fun recoverSave(pending: PendingBudgetSave, drop: Boolean) {
+        if (pending.requiresReadRefresh) {
+            if (!drop && _uiState.value.saves.any { it.row.id == pending.row.id }) refresh()
+            return
+        }
         val binding = activeBinding ?: return
         val generation = requestGeneration
         val month = _uiState.value.month
@@ -280,7 +300,7 @@ private fun PendingBudgetSave.matches(form: BudgetFormState): Boolean {
         payload.request == request.copy(expectedRowVersion = null)
 }
 
-private fun PendingBudgetSave.originalForm(): BudgetFormState? {
+internal fun PendingBudgetSave.originalForm(): BudgetFormState? {
     if (!hasSupportedIntent) return null
     val request = intent?.request ?: return null
     val currency = CurrencyCode.fromStorageKeyOrNull(request.homeCurrencyCode) ?: return null

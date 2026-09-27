@@ -2,6 +2,7 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.PendingMutationDao
 import com.ticketbox.data.local.PendingMutationStatus
+import com.ticketbox.data.local.PendingMutationType
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -56,7 +57,9 @@ internal fun observeBoundOutboxStatus(
             failedStatus = PendingMutationStatus.Failed.wireValue,
         ),
         dao.observeQuarantinedCount(binding.owner?.storageKey),
-        dao.observeExpenseRefreshRows(binding),
+        dao.observeActiveByTypes(binding.ownerStorageKey, binding.ledgerId,
+            (EXPENSE_REFRESH_TYPES + PendingMutationType.SaveMonthlyBudget).map { it.wireValue },
+            listOf(PendingMutationStatus.Done.wireValue)),
     ) { queueDepth, conflicts, failed, quarantinedCount, completed ->
         OutboxStatus(
             binding = binding,
@@ -64,7 +67,7 @@ internal fun observeBoundOutboxStatus(
             conflicts = conflicts.map { it.toDomain() },
             failed = failed.map { it.toDomain() },
             quarantinedCount = quarantinedCount,
-            refreshRequired = completed.map { it.toDomain() }.filter { it.requiresExpenseRefresh() },
+            refreshRequired = completed.map { it.toDomain() }.filter { it.requiresExpenseRefresh() || it.requiresBudgetReadRefresh() },
         )
     }.combine(writeBlock) { status, block -> status.copy(writeBlock = block) }
 }

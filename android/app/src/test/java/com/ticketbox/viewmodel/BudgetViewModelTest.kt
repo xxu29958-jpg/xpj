@@ -6,6 +6,7 @@ import com.ticketbox.data.repository.BudgetSaveActions
 import com.ticketbox.data.repository.PendingBudgetSave
 import com.ticketbox.data.repository.LedgerAccessState
 import com.ticketbox.data.repository.RepositoryException
+import com.ticketbox.data.repository.ReadSnapshot
 import com.ticketbox.domain.model.BudgetAdvice
 import com.ticketbox.domain.model.BudgetAdviceResult
 import com.ticketbox.data.repository.LedgerAccessContext
@@ -1094,10 +1095,12 @@ internal class FakeBudgetActions(
         access?.let { LedgerAccessState(it.binding, if (it.canModify) "owner" else "viewer") }
     }
 
-    override suspend fun monthlyBudget(month: String): Result<BudgetMonthly> {
+    var readFetchedAt = "2026-09-27T00:00:00Z"
+    var readFromCache = false
+    override suspend fun monthlyBudget(month: String): Result<ReadSnapshot<BudgetMonthly>> {
         loadedMonths += month
-        monthlyBudgetResponder?.let { return it(month) }
-        return Result.success(budget.copy(month = month))
+        val result = monthlyBudgetResponder?.invoke(month) ?: Result.success(budget.copy(month = month))
+        return result.map { ReadSnapshot(it, readFetchedAt, readFromCache) }
     }
 
     override suspend fun requestBudgetAdvice(month: String, homeCurrencyCode: String?, expectedBinding: LogicalSessionBinding?): Result<BudgetAdviceResult> {
@@ -1125,7 +1128,7 @@ internal class FakeBudgetActions(
     override suspend fun monthlyBudget(
         expectedBinding: LogicalSessionBinding,
         month: String,
-    ): Result<BudgetMonthly> = monthlyBudget(month)
+    ): Result<ReadSnapshot<BudgetMonthly>> = monthlyBudget(month)
 
 }
 

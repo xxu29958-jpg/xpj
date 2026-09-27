@@ -70,7 +70,8 @@ sealed interface DispatchResult {
      * Corrections additionally retain their receipt version when cache publication
      * fails; this is a local refresh requirement, never permission to resend.
      */
-    data class Success(val newRowVersion: Long? = null, val cacheRefreshVersion: Long? = null, val receiptJson: String? = null) : DispatchResult
+    data class Success(val newRowVersion: Long? = null, val cacheRefreshVersion: Long? = null, val receiptJson: String? = null,
+        val budgetReadRefreshRequired: Boolean = false) : DispatchResult
 
     /**
      * Server returned 409 ``state_conflict``. The row goes to

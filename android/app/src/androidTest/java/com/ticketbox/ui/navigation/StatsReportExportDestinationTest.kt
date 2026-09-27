@@ -81,7 +81,8 @@ class StatsReportExportDestinationTest {
 
 private fun exportActions(response: CompletableDeferred<Result<CsvExport>>): ReportsActions {
     val unused = Proxy.newProxyInstance(ReportsActions::class.java.classLoader, arrayOf(ReportsActions::class.java)) {
-        _, method, _ -> error("Unexpected reports action: ${method.name}")
+        _, method, _ -> if (method.name == "getReadAccessDenials") kotlinx.coroutines.flow.emptyFlow<com.ticketbox.data.repository.SnapshotAccessDenial>()
+        else error("Unexpected reports action: ${method.name}")
     } as ReportsActions
     val access = LedgerAccessContext(LogicalSessionBinding("https://reports.test", "ledger", "owner", "session", "revision"), true)
     val report = ReportsOverview("2026-09", "UTC", ReportGranularity.Day, 1200, 1, "2026-08", 0, 0,

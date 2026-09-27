@@ -168,4 +168,51 @@ class GoalQueryReadTest {
             assertTrue(f.repository.goals("2026-09").isFailure)
         }
     }
+    @Test fun freshGoalsDetailsAndStatsRemainAvailableWhileDeniedCacheCleanupAndWritesFail() = runTest {
+        var cacheUnavailable = false
+        val f = GoalReadFixture(decorateDao = { original -> object : com.ticketbox.data.local.ExpenseDao by original {
+            override suspend fun clearReadSnapshotsForBinding(bindingKey: String) {
+                if (cacheUnavailable) throw java.io.IOException("Denied read cleanup unavailable")
+                original.clearReadSnapshotsForBinding(bindingKey)
+            }
+            override suspend fun saveGoalSnapshots(snapshots: List<com.ticketbox.data.local.GoalQueryCacheEntity>) {
+                if (cacheUnavailable) throw java.io.IOException("Goal replacement unavailable")
+                original.saveGoalSnapshots(snapshots)
+            }
+            override suspend fun saveStatsProjection(snapshot: com.ticketbox.data.local.StatsProjectionCacheEntity) {
+                if (cacheUnavailable) throw java.io.IOException("Stats replacement unavailable")
+                original.saveStatsProjection(snapshot)
+            }
+        } })
+        val query = StatsQuery(f.binding, "2026-09")
+        f.repository.goals("2026-09").getOrThrow()
+        f.stats.monthlyStats(query).getOrThrow()
+        cacheUnavailable = true
+        f.api.failure = HttpException(Response.error<Any>(403, "".toResponseBody()))
+        assertEquals(403, (f.repository.goal("goal-jpy").exceptionOrNull() as RepositoryException).httpStatusCode)
+        f.api.failure = null
+        f.api.goals = listOf(readGoalDto().copy(name = "重新授权后的目标", rowVersion = 3))
+        f.api.statsResponder = { MonthlyStatsDto("JPY", month = "2026-09", totalAmountCents = 24, count = 1,
+            byCategory = listOf(com.ticketbox.data.remote.dto.CategoryStatsDto("购物", 24, 1))) }
+        val goals = f.repository.goals("2026-09")
+        val detail = f.repository.goal("goal-jpy")
+        val stats = f.stats.monthlyStats(query)
+        assertEquals(listOf(true, true, true), listOf(goals.isSuccess, detail.isSuccess, stats.isSuccess),
+            "Independent authorized GETs must not become cache write failures while old-query cleanup is unavailable")
+        assertEquals("重新授权后的目标", goals.getOrThrow().value.single().name)
+        assertEquals(goals.getOrThrow().value.single(), detail.getOrThrow().value)
+        assertEquals(24L, stats.getOrThrow().value.totalAmountCents)
+        assertTrue(listOf(goals.getOrThrow().fromCache, detail.getOrThrow().fromCache, stats.getOrThrow().fromCache).none { it })
+        f.api.offline = true
+        assertEquals(403, (f.repository.goals("2026-09").exceptionOrNull() as RepositoryException).httpStatusCode)
+        assertEquals(403, (f.stats.monthlyStats(query).exceptionOrNull() as RepositoryException).httpStatusCode)
+        cacheUnavailable = false
+        f.api.offline = false
+        val repaired = f.repository.goals("2026-09").getOrThrow()
+        f.stats.monthlyStats(query).getOrThrow()
+        f.api.offline = true
+        assertEquals(repaired.value, f.repository.goals("2026-09").getOrThrow().value)
+        assertEquals(24L, f.stats.monthlyStats(query).getOrThrow().value.totalAmountCents)
+    }
+
 }

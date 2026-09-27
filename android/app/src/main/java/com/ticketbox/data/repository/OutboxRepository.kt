@@ -508,8 +508,21 @@ class OutboxRepository private constructor(
     suspend fun tryClaim(id: Long): Boolean =
         dao.markInFlightIfPending(id, PendingMutationStatus.Pending.wireValue, PendingMutationStatus.InFlight.wireValue, nowIso()) > 0
 
-    suspend fun markDone(id: Long, cacheRefreshVersion: Long? = null, receiptJson: String? = null) {
-        dao.markDone(id, PendingMutationStatus.Done.wireValue, nowIso(), cacheRefreshVersion?.let { "$EXPENSE_REFRESH_PREFIX$it" }, receiptJson)
+    suspend fun markDone(id: Long, cacheRefreshVersion: Long? = null, receiptJson: String? = null,
+        budgetReadRefreshRequired: Boolean = false) {
+        val refreshError = if (budgetReadRefreshRequired) BUDGET_READ_REFRESH_REQUIRED
+            else cacheRefreshVersion?.let { "$EXPENSE_REFRESH_PREFIX$it" }
+        dao.markDone(id, PendingMutationStatus.Done.wireValue, nowIso(), refreshError, receiptJson)
+    }
+
+    internal suspend fun recoverBudgetReadRefresh(bound: BoundLedgerRequest, month: String,
+        cleanup: suspend (OutboxRow) -> Unit) = withActiveBinding(bound) { binding ->
+        val rows = dao.activeRowsForTarget(binding, monthlyBudgetTarget(month), listOf(PendingMutationStatus.Done.wireValue))
+            .filter { it.requiresBudgetReadRefresh() }
+        for (row in rows) {
+            cleanup(row)
+            dao.clearBudgetReadRefresh(row.id, requireNotNull(row.receiptJson))
+        }
     }
 
     internal suspend fun acknowledgeExpenseRefresh(boundRequest: BoundLedgerRequest, versions: Map<Long, Long>) =

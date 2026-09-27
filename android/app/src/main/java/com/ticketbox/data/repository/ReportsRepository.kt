@@ -21,6 +21,7 @@ import retrofit2.Response
 import java.time.YearMonth
 import java.util.TimeZone
 import java.util.UUID
+import kotlinx.coroutines.flow.filterNotNull
 
 interface DashboardCardsActions {
     fun canModifyLedger(): Boolean
@@ -37,6 +38,7 @@ interface DashboardCardsActions {
 }
 
 interface ReportsActions : DashboardCardsActions {
+    val readAccessDenials: kotlinx.coroutines.flow.Flow<SnapshotAccessDenial> get() = kotlinx.coroutines.flow.emptyFlow()
     fun observeReportsAccess(): kotlinx.coroutines.flow.Flow<LedgerAccessContext?> = kotlinx.coroutines.flow.flowOf(dashboardAccess())
     suspend fun reportsOverview(query: ReportsOverviewQuery = ReportsOverviewQuery(), expectedBinding: LogicalSessionBinding? = null): Result<ReportsOverview>
     suspend fun exportReportsOverviewCsv(query: ReportsOverviewQuery = ReportsOverviewQuery(), expectedBinding: LogicalSessionBinding? = null): Result<CsvExport>
@@ -98,6 +100,7 @@ class ReportsRepository(
     expenseDao: com.ticketbox.data.local.ExpenseDao,
     sessionCoordinator: LocalLedgerSessionCoordinator,
 ) : ReportsActions {
+    override val readAccessDenials = sessionCoordinator.snapshotAccessDenials.filterNotNull()
     private val goalQueries = GoalQueryReader(apiProvider, expenseDao, sessionCoordinator)
     private val ledgerRequestGuard = LedgerRequestGuard(apiProvider)
     private val errorHandler = NetworkErrorHandler(

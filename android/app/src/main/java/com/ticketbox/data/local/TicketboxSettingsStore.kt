@@ -107,6 +107,11 @@ interface TicketboxSettingsStore {
 
     fun saveRecentSearches(queries: List<String>) = Unit
 
+    /** Full logical binding key; only a proven removal of old queries clears this refusal. */
+    fun snapshotReadAccessDenial(bindingKey: String, monthlyBindingKey: String): Int? = null
+
+    fun saveSnapshotReadAccessDenial(bindingKey: String, monthlyBindingKey: String, statusCode: Int?) = Unit
+
     fun markUnlocked()
 
     fun markBackgrounded()
