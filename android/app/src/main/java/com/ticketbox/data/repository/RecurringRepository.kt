@@ -151,12 +151,14 @@ class RecurringRepository internal constructor(
         nextExpectedDate: String?,
     ): Result<RecurringItem> =
         errorHandler.safeCall {
-            ledgerRequestGuard.bindExact(expectedBinding).also { queryReader.invalidateDirect(expectedBinding) }.call { api ->
-                api.confirmRecurringCandidate(
-                    request = candidate.toConfirmRequest(nextExpectedDate = nextExpectedDate?.trim()?.ifBlank { null }),
-                    timezone = recurringTimezoneId(),
-                ).toDomain()
-            }.also { queryReader.invalidateDirect(expectedBinding) }
+            queryReader.directMutation(expectedBinding) {
+                ledgerRequestGuard.bindExact(expectedBinding).call { api ->
+                    api.confirmRecurringCandidate(
+                        request = candidate.toConfirmRequest(nextExpectedDate = nextExpectedDate?.trim()?.ifBlank { null }),
+                        timezone = recurringTimezoneId(),
+                    ).toDomain()
+                }
+            }
         }
 
     override suspend fun pause(
@@ -166,12 +168,14 @@ class RecurringRepository internal constructor(
     ): Result<RecurringItem> =
         errorHandler.safeCall {
             require(publicId.isNotBlank()) { "固定支出不存在。" }
-            ledgerRequestGuard.bindExact(expectedBinding).also { queryReader.invalidateDirect(expectedBinding) }.call { api ->
-                api.pauseRecurringItem(
-                    publicId.trim(),
-                    com.ticketbox.data.remote.dto.RecurringItemTokenRequest(expectedRowVersion),
-                ).toDomain()
-            }.also { queryReader.invalidateDirect(expectedBinding) }
+            queryReader.directMutation(expectedBinding) {
+                ledgerRequestGuard.bindExact(expectedBinding).call { api ->
+                    api.pauseRecurringItem(
+                        publicId.trim(),
+                        com.ticketbox.data.remote.dto.RecurringItemTokenRequest(expectedRowVersion),
+                    ).toDomain()
+                }
+            }
         }
 
     override suspend fun resume(
@@ -181,12 +185,14 @@ class RecurringRepository internal constructor(
     ): Result<RecurringItem> =
         errorHandler.safeCall {
             require(publicId.isNotBlank()) { "固定支出不存在。" }
-            ledgerRequestGuard.bindExact(expectedBinding).also { queryReader.invalidateDirect(expectedBinding) }.call { api ->
-                api.resumeRecurringItem(
-                    publicId.trim(),
-                    com.ticketbox.data.remote.dto.RecurringItemTokenRequest(expectedRowVersion),
-                ).toDomain()
-            }.also { queryReader.invalidateDirect(expectedBinding) }
+            queryReader.directMutation(expectedBinding) {
+                ledgerRequestGuard.bindExact(expectedBinding).call { api ->
+                    api.resumeRecurringItem(
+                        publicId.trim(),
+                        com.ticketbox.data.remote.dto.RecurringItemTokenRequest(expectedRowVersion),
+                    ).toDomain()
+                }
+            }
         }
 
     override suspend fun archive(
@@ -195,9 +201,11 @@ class RecurringRepository internal constructor(
     ): Result<RecurringItem> =
         errorHandler.safeCall {
             require(publicId.isNotBlank()) { "固定支出不存在。" }
-            ledgerRequestGuard.bindExact(expectedBinding).also { queryReader.invalidateDirect(expectedBinding) }.call { api ->
-                api.archiveRecurringItem(publicId.trim()).toDomain()
-            }.also { queryReader.invalidateDirect(expectedBinding) }
+            queryReader.directMutation(expectedBinding) {
+                ledgerRequestGuard.bindExact(expectedBinding).call { api ->
+                    api.archiveRecurringItem(publicId.trim()).toDomain()
+                }
+            }
         }
 
     override suspend fun restore(
@@ -207,12 +215,14 @@ class RecurringRepository internal constructor(
     ): Result<RecurringItem> =
         errorHandler.safeCall {
             require(publicId.isNotBlank()) { "固定支出不存在。" }
-            ledgerRequestGuard.bindExact(expectedBinding).also { queryReader.invalidateDirect(expectedBinding) }.call { api ->
-                api.restoreRecurringItem(
-                    publicId.trim(),
-                    com.ticketbox.data.remote.dto.RecurringItemTokenRequest(expectedRowVersion),
-                ).toDomain()
-            }.also { queryReader.invalidateDirect(expectedBinding) }
+            queryReader.directMutation(expectedBinding) {
+                ledgerRequestGuard.bindExact(expectedBinding).call { api ->
+                    api.restoreRecurringItem(
+                        publicId.trim(),
+                        com.ticketbox.data.remote.dto.RecurringItemTokenRequest(expectedRowVersion),
+                    ).toDomain()
+                }
+            }
         }
 }
 

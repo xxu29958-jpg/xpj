@@ -14,6 +14,7 @@ import com.ticketbox.domain.model.RecurringItem
 import java.time.Instant
 import java.time.YearMonth
 import java.util.TimeZone
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.flow.filterNotNull
@@ -37,6 +38,35 @@ internal class RecurringQueryReader(
     private val latestRequests = mutableMapOf<String, Long>()
     private val localInvalidation = AtomicLong()
     private val retiredBindings = ConcurrentHashMap.newKeySet<String>()
+
+    companion object {
+        // Only executing calls are tracked in memory; the Room token survives process reconstruction.
+        private val activeDirectTokens = ConcurrentHashMap.newKeySet<String>()
+        private fun requireInactiveDirect(token: String?) {
+            check(token == null || token !in activeDirectTokens) { "固定支出操作正在提交，请稍后重新读取。" }
+        }
+
+        private suspend fun requireBarrierUnchanged(dao: ExpenseDao, key: String, token: String?) {
+            check(dao.recurringDirectBarrier(key)?.responseJson == token) { "固定支出操作已改变，请重新读取。" }
+            requireInactiveDirect(token)
+        }
+
+        private suspend fun publishSnapshot(dao: ExpenseDao, retiredBindings: MutableSet<String>,
+            snapshot: StatsProjectionCacheEntity, epoch: Long, barrier: String?) {
+            try {
+                if (barrier != null) dao.settleRecurringDirectBarrier(snapshot.bindingKey, snapshot.ledgerId, barrier,
+                    accepted = true, expectedEpoch = epoch)
+                if (snapshot.bindingKey in retiredBindings) {
+                    dao.clearRecurringSnapshots(snapshot.bindingKey)
+                    retiredBindings.remove(snapshot.bindingKey)
+                }
+                dao.saveRecurringSnapshotIfCurrent(snapshot, if (barrier == null) epoch else Math.addExact(epoch, 1L))
+            } catch (_: SQLiteException) {
+                // The authorized GET remains usable; failed settlement keeps its durable retirement barrier.
+            }
+        }
+    }
+
     val readAccessDenials = coordinator.snapshotAccessDenials.filterNotNull()
 
     /** Reminder and candidate reads share refusal coordination without consuming or publishing a UI cache. */
@@ -47,6 +77,8 @@ internal class RecurringQueryReader(
             val generation = localInvalidation.get()
             val key = logicalBindingAdapter.toJson(binding)
             val epoch = dao.recurringReadEpoch(key)?.toLong() ?: 0L
+            val barrier = dao.recurringDirectBarrier(key)?.responseJson
+            requireInactiveDirect(barrier)
             val page = try {
                 bound.call { fetch(it) }
             } catch (error: HttpException) {
@@ -59,6 +91,7 @@ internal class RecurringQueryReader(
                 check(localInvalidation.get() == generation && (dao.recurringReadEpoch(key)?.toLong() ?: 0L) == epoch) {
                     "固定支出已接受修改，请重新读取。"
                 }
+                requireBarrierUnchanged(dao, key, barrier)
                 page
             }
         }
@@ -72,12 +105,28 @@ internal class RecurringQueryReader(
         retiredBindings.remove(key)
     }
 
-    suspend fun invalidateDirect(binding: LogicalSessionBinding) {
+    suspend fun <T> directMutation(binding: LogicalSessionBinding, send: suspend () -> T): T {
+        guard.bindExact(binding).requireStillActive()
+        val key = logicalBindingAdapter.toJson(binding)
+        val token = UUID.randomUUID().toString()
+        activeDirectTokens.add(token)
         try {
-            invalidate(binding)
-        } catch (_: SQLiteException) {
-            // Rebuildable storage cannot turn a direct command into a failure or block its existing writer.
-        }
+            try { dao.beginRecurringDirectBarrier(key, binding.ledgerId, token) }
+            catch (error: SQLiteException) {
+                throw RepositoryException("固定支出操作尚未发送：本地读取保护无法保存，请稍后再试。", cause = error)
+            }
+            localInvalidation.incrementAndGet()
+            val accepted = try { send() } catch (error: HttpException) {
+                if (error.code() in setOf(400, 401, 403, 404, 405, 409, 410, 412, 422)) {
+                    try { dao.settleRecurringDirectBarrier(key, binding.ledgerId, token, accepted = false) }
+                    catch (_: SQLiteException) { /* Keep the durable barrier until a fresh read can reconcile it. */ }
+                }
+                throw error
+            }
+            try { dao.settleRecurringDirectBarrier(key, binding.ledgerId, token, accepted = true) }
+            catch (_: SQLiteException) { /* Acceptance remains real; the persisted barrier protects old reads. */ }
+            return accepted
+        } finally { activeDirectTokens.remove(token) }
     }
 
     suspend fun invalidateAccepted(row: OutboxRow) {
@@ -127,6 +176,8 @@ internal class RecurringQueryReader(
         val ticket = coordinator.beginSnapshotRead()
         val generation = localInvalidation.get()
         val epoch = dao.recurringReadEpoch(query.bindingKey)?.toLong() ?: 0L
+        val barrier = dao.recurringDirectBarrier(query.bindingKey)?.responseJson
+        requireInactiveDirect(barrier)
         val key = "${query.bindingKey}|${query.kind}|${query.month}|${query.tag}|${query.timezone}"
         mutex.withLock { latestRequests[key] = ticket.sequence }
         val wire = try {
@@ -142,6 +193,9 @@ internal class RecurringQueryReader(
                     requireLatest(key, ticket)
                     check(localInvalidation.get() == generation) { "固定支出已接受修改，请重新读取。" }
                     check(query.bindingKey !in retiredBindings) { "固定支出读取已失效，请联网重新读取。" }
+                    check(barrier == null && dao.recurringDirectBarrier(query.bindingKey) == null) {
+                        "原固定支出操作结果尚需联网核对，请重新读取。"
+                    }
                     val saved = cachedQuery(query, epoch) ?: throw error
                     val value = requireNotNull(adapter.fromJson(saved.responseJson))
                     validate(value)
@@ -156,17 +210,9 @@ internal class RecurringQueryReader(
                 check(localInvalidation.get() == generation && (dao.recurringReadEpoch(query.bindingKey)?.toLong() ?: 0L) == epoch) {
                     "固定支出已接受修改，请重新读取。"
                 }
+                requireBarrierUnchanged(dao, query.bindingKey, barrier)
                 val fetchedAt = Instant.now().toString()
-                if (cacheAllowed) try {
-                    if (query.bindingKey in retiredBindings) {
-                        dao.clearRecurringSnapshots(query.bindingKey)
-                        retiredBindings.remove(query.bindingKey)
-                    }
-                    dao.saveRecurringSnapshotIfCurrent(query.copy(responseJson = adapter.toJson(wire), fetchedAt = fetchedAt),
-                        epoch)
-                } catch (_: SQLiteException) {
-                    // The authorized GET remains usable even when rebuildable storage cannot publish it.
-                }
+                if (cacheAllowed) publishSnapshot(dao, retiredBindings, query.copy(responseJson = adapter.toJson(wire), fetchedAt = fetchedAt), epoch, barrier)
                 ReadSnapshot(wire, fetchedAt, fromCache = false)
             }
         }

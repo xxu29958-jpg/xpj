@@ -99,9 +99,10 @@ class RecurringQueryReadTest {
         var failInvalidation = false
         val saved = FakeExpenseDao()
         val dao = object : ExpenseDao by saved {
-            override suspend fun invalidateRecurringSnapshots(bindingKey: String, ledgerId: String) {
+            override suspend fun settleRecurringDirectBarrier(bindingKey: String, ledgerId: String, token: String,
+                accepted: Boolean, expectedEpoch: Long?) {
                 if (failInvalidation) throw SQLiteException("storage temporarily unavailable")
-                saved.invalidateRecurringSnapshots(bindingKey, ledgerId)
+                saved.settleRecurringDirectBarrier(bindingKey, ledgerId, token, accepted, expectedEpoch)
             }
         }
         val fixture = GoalReadFixture(decorateDao = { dao }, decorate = { delegate ->
@@ -128,6 +129,10 @@ class RecurringQueryReadTest {
         assertTrue(older.await().isFailure, "The accepted pause cannot be undone by a late active read, even when Room invalidation failed")
         api.failure = ConnectException("offline after accepted pause")
         assertTrue(repository.items(fixture.binding, includeArchived = true).isFailure)
+        val cold = RecurringQueryReader(fixture.provider, dao,
+            LocalLedgerSessionCoordinator(boundSettingsStore(), fixture.session.sessionStore, dao))
+        assertTrue(cold.items(fixture.binding, null, true, null).isFailure,
+            "Rebuilding the owner cannot resurrect the active RV9 after an accepted pause and failed Room cleanup")
         failInvalidation = false
         api.failure = null
         api.item = api.item.copy(status = "paused", rowVersion = 10)
@@ -135,6 +140,76 @@ class RecurringQueryReadTest {
         assertEquals("paused", repaired.value.single().status)
         api.failure = ConnectException("offline after verified read")
         assertEquals(repaired.copy(fromCache = true), repository.items(fixture.binding, includeArchived = true).getOrThrow())
+    }
+
+    @Test fun definitivelyRejectedPauseKeepsAlreadyReadListHistoryAndOccurrenceAfterReentry() = runTest {
+        lateinit var api: RecurringReadProbe
+        val fixture = GoalReadFixture(decorate = { delegate ->
+            api = RecurringReadProbe(delegate)
+            object : ApiService by api {
+                override suspend fun pauseRecurringItem(publicId: String,
+                    request: com.ticketbox.data.remote.dto.RecurringItemTokenRequest): RecurringItemDto =
+                    throw HttpException(Response.error<Any>(409, "".toResponseBody()))
+            }
+        })
+        val reader = RecurringQueryReader(fixture.provider, fixture.dao, fixture.coordinator)
+        val repository = RecurringRepository(fixture.provider, queryReader = reader)
+        val list = reader.items(fixture.binding, null, true, null).getOrThrow()
+        val history = reader.history(fixture.binding, "recurring", null).getOrThrow()
+        val occurrence = reader.occurrence(fixture.binding, "recurring", "current").getOrThrow()
+        assertTrue(repository.pause(fixture.binding, "recurring", 9).isFailure)
+        api.failure = ConnectException("offline after definite rejection")
+        val cold = RecurringQueryReader(fixture.provider, fixture.dao,
+            LocalLedgerSessionCoordinator(boundSettingsStore(), fixture.session.sessionStore, fixture.dao))
+        assertEquals(list.copy(fromCache = true), cold.items(fixture.binding, null, true, null).getOrThrow())
+        assertEquals(history.copy(fromCache = true), cold.history(fixture.binding, "recurring", null).getOrThrow())
+        assertEquals(occurrence.copy(fromCache = true), cold.occurrence(fixture.binding, "recurring", "current").getOrThrow())
+        assertEquals(null, fixture.dao.recurringReadEpoch(logicalBindingAdapter.toJson(fixture.binding)))
+    }
+
+    @Test fun unresolvedDirectDispatchBlocksAnotherWriterAndOldReadsUntilActualFreshGet() = runTest {
+        lateinit var api: RecurringReadProbe
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        var calls = 0
+        val fixture = GoalReadFixture(decorate = { delegate ->
+            api = RecurringReadProbe(delegate)
+            object : ApiService by api {
+                override suspend fun pauseRecurringItem(publicId: String,
+                    request: com.ticketbox.data.remote.dto.RecurringItemTokenRequest): RecurringItemDto {
+                    calls++
+                    started.complete(Unit)
+                    release.await()
+                    throw ConnectException("response lost after dispatch")
+                }
+            }
+        })
+        fun reader() = RecurringQueryReader(fixture.provider, fixture.dao,
+            LocalLedgerSessionCoordinator(boundSettingsStore(), fixture.session.sessionStore, fixture.dao))
+        fun repository() = RecurringRepository(fixture.provider, queryReader = reader())
+        val original = repository()
+        original.items(fixture.binding, includeArchived = true).getOrThrow()
+        val dispatch = async { original.pause(fixture.binding, "recurring", 9) }
+        started.await()
+        val token = fixture.dao.recurringDirectBarrier(logicalBindingAdapter.toJson(fixture.binding))
+        assertTrue(reader().items(fixture.binding, null, true, null).isFailure, "A GET during dispatch cannot consume its barrier")
+        assertTrue(repository().pause(fixture.binding, "recurring", 9).isFailure)
+        assertEquals(token, fixture.dao.recurringDirectBarrier(logicalBindingAdapter.toJson(fixture.binding)))
+        reader().invalidate(fixture.binding)
+        assertEquals(token, fixture.dao.recurringDirectBarrier(logicalBindingAdapter.toJson(fixture.binding)),
+            "An accepted Outbox invalidation must not remove another executing direct command's barrier")
+        release.complete(Unit)
+        assertTrue(dispatch.await().isFailure)
+        assertEquals(1, calls, "Unresolved non-idempotent commands must never be resent by cache recovery")
+        api.failure = ConnectException("offline after unknown result")
+        assertTrue(reader().items(fixture.binding, null, true, null).isFailure)
+        api.failure = null
+        api.item = api.item.copy(status = "paused", rowVersion = 10)
+        val verified = reader().items(fixture.binding, null, true, null).getOrThrow()
+        assertEquals("paused", verified.value.single().status)
+        api.failure = ConnectException("offline after reconciliation")
+        assertEquals(verified.copy(fromCache = true), reader().items(fixture.binding, null, true, null).getOrThrow())
+        assertEquals(1, calls)
     }
 
     @Test fun candidateRefusalRevokesCachedPagesAndLateItemsBeforeColdOfflineReentry() = runTest {

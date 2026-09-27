@@ -5,6 +5,7 @@ import androidx.room.Room
 import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.local.AppDatabase
 import com.ticketbox.data.remote.ApiService
+import com.ticketbox.data.remote.dto.RecurringItemTokenRequest
 import com.ticketbox.data.remote.dto.RecurringItemUpdateRequestDto
 import java.net.ConnectException
 import kotlinx.coroutines.CompletableDeferred
@@ -24,6 +25,71 @@ import kotlin.test.assertTrue
 @Config(application = Application::class, sdk = [35])
 @SQLiteMode(SQLiteMode.Mode.NATIVE)
 class RecurringAcceptedReadRoomTest {
+    @Test fun acceptedDirectPauseWithFailedCleanupCannotResurrectOldSnapshotsInRebuiltOwner() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), AppDatabase::class.java).build()
+        try {
+            lateinit var api: RecurringReadProbe
+            var calls = 0
+            val fixture = GoalReadFixture(decorateDao = { db.expenseDao() }, decorate = { delegate ->
+                api = RecurringReadProbe(delegate)
+                object : ApiService by api {
+                    override suspend fun pauseRecurringItem(publicId: String, request: RecurringItemTokenRequest) =
+                        api.item.copy(status = "paused", rowVersion = 10).also { calls++ }
+                }
+            })
+            fun reader() = RecurringQueryReader(fixture.provider, db.expenseDao(),
+                LocalLedgerSessionCoordinator(boundSettingsStore(), fixture.session.sessionStore, db.expenseDao()))
+            val old = reader()
+            old.items(fixture.binding, null, true, null).getOrThrow()
+            old.history(fixture.binding, "recurring", null).getOrThrow()
+            old.occurrence(fixture.binding, "recurring", "current").getOrThrow()
+            db.openHelper.writableDatabase.execSQL("CREATE TRIGGER fail_direct_cleanup BEFORE DELETE ON stats_projection_cache " +
+                "WHEN OLD.kind = 'recurring_items' BEGIN SELECT RAISE(ABORT, 'Read cleanup unavailable'); END")
+            val repository = RecurringRepository(fixture.provider, queryReader = old)
+            assertEquals("paused", repository.pause(fixture.binding, "recurring", 9).getOrThrow().status)
+            val bindingKey = logicalBindingAdapter.toJson(fixture.binding)
+            assertTrue(db.expenseDao().recurringDirectBarrier(bindingKey) != null, "Cleanup rollback preserves the dispatch token")
+            api.failure = ConnectException("offline after acceptance")
+            assertTrue(reader().items(fixture.binding, null, true, null).isFailure)
+            assertTrue(reader().history(fixture.binding, "recurring", null).isFailure)
+            assertTrue(reader().occurrence(fixture.binding, "recurring", "current").isFailure)
+            db.openHelper.writableDatabase.execSQL("DROP TRIGGER fail_direct_cleanup")
+            api.failure = null
+            api.item = api.item.copy(status = "paused", rowVersion = 10)
+            val current = reader().items(fixture.binding, null, true, null).getOrThrow()
+            api.failure = ConnectException("offline after verified GET")
+            assertEquals(current.copy(fromCache = true), reader().items(fixture.binding, null, true, null).getOrThrow())
+            assertEquals(null, db.expenseDao().recurringDirectBarrier(bindingKey))
+            assertTrue(reader().history(fixture.binding, "recurring", null).isFailure, "Only the actual GET was republished")
+            assertEquals(1, calls)
+        } finally { db.close() }
+    }
+
+    @Test fun failedDurableBarrierDoesNotDispatchOrEraseAlreadyReadList() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), AppDatabase::class.java).build()
+        try {
+            lateinit var api: RecurringReadProbe
+            var calls = 0
+            val fixture = GoalReadFixture(decorateDao = { db.expenseDao() }, decorate = { delegate ->
+                api = RecurringReadProbe(delegate)
+                object : ApiService by api {
+                    override suspend fun pauseRecurringItem(publicId: String, request: RecurringItemTokenRequest) =
+                        api.item.copy(status = "paused", rowVersion = 10).also { calls++ }
+                }
+            })
+            val reader = RecurringQueryReader(fixture.provider, db.expenseDao(), fixture.coordinator)
+            val original = reader.items(fixture.binding, null, true, null).getOrThrow()
+            db.openHelper.writableDatabase.execSQL("CREATE TRIGGER fail_direct_barrier BEFORE INSERT ON stats_projection_cache " +
+                "WHEN NEW.kind = 'recurring_direct_barrier' BEGIN SELECT RAISE(ABORT, 'Barrier unavailable'); END")
+            val unsent = RecurringRepository(fixture.provider, queryReader = reader).pause(fixture.binding, "recurring", 9)
+            assertTrue(unsent.isFailure)
+            assertTrue(unsent.exceptionOrNull()?.message.orEmpty().contains("尚未发送"))
+            assertEquals(0, calls)
+            api.failure = ConnectException("offline after unsent request")
+            assertEquals(original.copy(fromCache = true), reader.items(fixture.binding, null, true, null).getOrThrow())
+        } finally { db.close() }
+    }
+
     @Test fun acceptedOriginalCannotSettleDoneWithOldReadCacheAndReentryKeepsItsKeyBodyAndOcc() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), AppDatabase::class.java).build()
         try {

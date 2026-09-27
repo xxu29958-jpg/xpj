@@ -69,6 +69,30 @@ interface ExpenseDao {
         "AND kind = 'recurring_read_epoch' AND month = '' AND tag = '' AND homeCurrencyCode = '' AND timezone = 'UTC'")
     suspend fun recurringReadEpoch(bindingKey: String): String?
 
+    suspend fun recurringDirectBarrier(bindingKey: String): StatsProjectionCacheEntity? =
+        statsProjections(bindingKey, "recurring_direct_barrier", "", "", "UTC").singleOrNull()
+
+    /** Persist before dispatch; this reversible barrier does not discard any already-read fact. */
+    @Transaction
+    suspend fun beginRecurringDirectBarrier(bindingKey: String, ledgerId: String, token: String) {
+        check(recurringDirectBarrier(bindingKey) == null) { "原固定支出操作结果尚需联网核对，请先重新读取。" }
+        saveStatsProjection(StatsProjectionCacheEntity(bindingKey, ledgerId, "recurring_direct_barrier", "", "", "", "UTC",
+            token, java.time.Instant.now().toString()))
+    }
+
+    /** A cleanup failure rolls back settlement, leaving the pre-dispatch barrier durable. */
+    @Transaction
+    suspend fun settleRecurringDirectBarrier(bindingKey: String, ledgerId: String, token: String,
+        accepted: Boolean, expectedEpoch: Long? = null) {
+        check(expectedEpoch == null || (recurringReadEpoch(bindingKey)?.toLong() ?: 0L) == expectedEpoch) {
+            "固定支出已接受修改，请重新读取。"
+        }
+        val barrier = recurringDirectBarrier(bindingKey)
+        check(barrier?.responseJson == token) { "固定支出读取屏障已改变，请重新读取。" }
+        if (accepted) invalidateRecurringSnapshots(bindingKey, ledgerId)
+        deleteStatsProjection(requireNotNull(barrier))
+    }
+
     @Transaction
     suspend fun invalidateRecurringSnapshots(bindingKey: String, ledgerId: String) {
         val next = Math.addExact(recurringReadEpoch(bindingKey)?.toLong() ?: 0L, 1L)
@@ -85,12 +109,14 @@ interface ExpenseDao {
     @Transaction
     suspend fun saveRecurringSnapshotIfCurrent(snapshot: StatsProjectionCacheEntity, expectedEpoch: Long) {
         check((recurringReadEpoch(snapshot.bindingKey)?.toLong() ?: 0L) == expectedEpoch) { "固定支出已接受修改，请重新读取。" }
+        check(recurringDirectBarrier(snapshot.bindingKey) == null) { "固定支出操作尚需核对，请重新读取。" }
         saveStatsProjection(snapshot)
     }
 
     @Transaction
     suspend fun recurringSnapshotIfCurrent(query: StatsProjectionCacheEntity, expectedEpoch: Long): StatsProjectionCacheEntity? {
         check((recurringReadEpoch(query.bindingKey)?.toLong() ?: 0L) == expectedEpoch) { "固定支出已接受修改，请重新读取。" }
+        check(recurringDirectBarrier(query.bindingKey) == null) { "固定支出操作尚需联网核对，请重新读取。" }
         return statsProjections(query.bindingKey, query.kind, query.month, query.tag, query.timezone).singleOrNull()
     }
 
