@@ -395,6 +395,86 @@ class BudgetOfflineSnapshotConnectedTest {
         assertEquals("Read recovery must never resend an accepted command", 1, writes)
     }
 
+    @Test fun damagedAcceptedReceiptStillAllowsLocalReadRepairWithoutResendingOrRewritingTheOriginal() = runBlocking {
+        var repository = fixture.reopen().budgetRepository
+        repository.monthlyBudget("2026-09").getOrThrow()
+        val binding = requireNotNull(fixture.graph.expenseRepository.captureDeferredLedgerBinding())
+        val id = repository.enqueueSave(binding, "2026-09", BudgetMonthlyUpdate("JPY", 7, 2400)).getOrThrow()
+        val receipt = offlineBudget().copy(rowVersion = 8, totalAmountCents = 2400, remainingAmountCents = 1989,
+            excludedCategories = emptyList(), categoryBudgets = emptyList())
+        var writes = 0
+        val api = object : ApiService by transport.service {
+            override suspend fun updateMonthlyBudget(month: String, request: BudgetMonthlyUpdateRequestDto,
+                timezone: String?, idempotencyKey: String?): BudgetMonthlyDto { writes++; return receipt }
+        }
+        val adapters = OutboxAdapterGraph()
+        fixture.blockBudgetReadDeletion(true)
+        val engine = OutboxDrainEngine(fixture.outbox, listOf(SaveMonthlyBudgetDispatcher({ api },
+            adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter, repository.invalidateBudgetReadsAfterDelivery)),
+            now = fixture.clock::millis)
+        assertEquals(1, engine.drainOnce().done)
+        val accepted = fixture.stored().single()
+        assertEquals("budget_read_refresh_required", accepted["lastError"])
+        fixture.blockBudgetReadDeletion(false)
+        for (broken in listOf("{", "{}")) {
+            fixture.pendingDao.markDone(id, PendingMutationStatus.Done.wireValue, requireNotNull(accepted["completedAt"]),
+                "budget_read_refresh_required", broken)
+            val damaged = fixture.stored().single()
+            transport.offline = true
+            repository = fixture.reopen().budgetRepository
+            fixture.role("viewer")
+            val original = repository.observeSaves(binding).first().single()
+            assertTrue("A damaged receipt cannot hide the read-repair action", original.requiresReadRefresh)
+            assertTrue("Local repair cannot fabricate a successful query from the accepted marker",
+                repository.recoverSave(binding, original, false).isFailure)
+            val repaired = fixture.stored().single()
+            assertNull(repaired["lastError"])
+            assertEquals("Only the repair marker changes; original intent and damaged receipt remain inspectable",
+                damaged - "lastError", repaired - "lastError")
+            assertTrue("Offline reads cannot resurrect the retired projection", repository.monthlyBudget("2026-09").isFailure)
+            transport.offline = false
+            transport.original = receipt
+            val fresh = repository.monthlyBudget("2026-09").getOrThrow()
+            assertEquals(receipt.toDomain(), fresh.value)
+            assertTrue(!fresh.fromCache)
+            transport.offline = true
+            val reopened = fixture.reopen().budgetRepository.monthlyBudget("2026-09").getOrThrow()
+            assertEquals(fresh.value, reopened.value)
+            assertEquals(fresh.fetchedAt, reopened.fetchedAt)
+            assertTrue(reopened.fromCache)
+        }
+        assertEquals("Repair does not resend an already accepted financial command", 1, writes)
+    }
+
+    @Test fun freshBudgetAndNotificationReadsSurviveRoomWriteFailureWithoutChangingStoredTimeOrIntent() = runBlocking {
+        val repository = fixture.reopen().budgetRepository
+        val saved = repository.monthlyBudget("2026-09").getOrThrow()
+        val binding = requireNotNull(fixture.graph.expenseRepository.captureDeferredLedgerBinding())
+        repository.enqueueSave(binding, "2026-09", BudgetMonthlyUpdate("JPY", 7, 1200)).getOrThrow()
+        val original = fixture.stored()
+        transport.original = offlineBudget().copy(rowVersion = 8, totalAmountCents = 2600, remainingAmountCents = 2189)
+        fixture.blockBudgetReadDeletion(true)
+        for (freshOnly in listOf(false, true)) {
+            val fresh = repository.monthlyBudget("2026-09", TimeZone.getDefault().id, freshOnly = freshOnly).getOrThrow()
+            assertEquals("An authorized GET remains usable even if Room cannot replace its projection", transport.original.toDomain(), fresh.value)
+            assertTrue(!fresh.fromCache)
+        }
+        transport.offline = true
+        val offline = fixture.reopen().budgetRepository.monthlyBudget("2026-09").getOrThrow()
+        assertEquals("The failed cache write cannot relabel old data as the new query", saved.value, offline.value)
+        assertEquals(saved.fetchedAt, offline.fetchedAt)
+        assertTrue(offline.fromCache)
+        assertEquals(original, fixture.stored())
+        fixture.blockBudgetReadDeletion(false)
+        transport.offline = false
+        val recovered = fixture.graph.budgetRepository.monthlyBudget("2026-09").getOrThrow()
+        transport.offline = true
+        val reopened = fixture.reopen().budgetRepository.monthlyBudget("2026-09").getOrThrow()
+        assertEquals(recovered.value, reopened.value)
+        assertEquals(recovered.fetchedAt, reopened.fetchedAt)
+        assertEquals(original, fixture.stored())
+    }
+
     @Test fun cancellationAfterVerifiedAcceptanceKeepsDoneAndTheOriginalReceipt() = runBlocking {
         val repository = fixture.reopen().budgetRepository
         val binding = requireNotNull(fixture.graph.expenseRepository.captureDeferredLedgerBinding())

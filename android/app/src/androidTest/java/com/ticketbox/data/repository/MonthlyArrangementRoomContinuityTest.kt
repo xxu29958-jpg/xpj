@@ -1,12 +1,13 @@
 package com.ticketbox.data.repository
 
 import android.content.Context
+import android.content.ContextWrapper
+import com.ticketbox.data.local.LocalSettingsStore
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.local.AppDatabase
-import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.*
@@ -37,6 +38,11 @@ import retrofit2.Response
 class MonthlyArrangementRoomContinuityTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
     private val name = "monthly-arrangement-continuity.db"
+    private val settingsContext = object : ContextWrapper(context) {
+        override fun getApplicationContext(): Context = this
+        override fun getSharedPreferences(preferenceName: String, mode: Int) =
+            context.getSharedPreferences("$name.$preferenceName", mode)
+    }
     private var db: AppDatabase? = null
     private val adapters = OutboxAdapterGraph()
     private var clock = Clock.fixed(Instant.parse("2026-09-27T00:00:00Z"), ZoneOffset.UTC)
@@ -101,7 +107,7 @@ class MonthlyArrangementRoomContinuityTest {
         db?.close()
         val opened = Room.databaseBuilder(context, AppDatabase::class.java, name).build().also { db = it }
         outbox = OutboxRepository(opened.pendingMutationDao(), clock, onRowsDeleted = {}, bindingProvider = { session.value.toOutboxBinding() })
-        val settings = arrangementProxy<TicketboxSettingsStore> { error("Unexpected settings method $it") }
+        val settings = LocalSettingsStore(settingsContext)
         coordinator = LocalLedgerSessionCoordinator(settings, sessions, opened.expenseDao(), outbox)
         return MonthlyArrangementRepository(provider, outbox, opened.monthlyArrangementCacheDao(), adapters,
             { key, stamp -> snapshots[key] = stamp }, coordinator)
@@ -109,7 +115,91 @@ class MonthlyArrangementRoomContinuityTest {
     private fun binding() = requireNotNull(LedgerRequestGuard(provider).captureLogicalBinding())
     private suspend fun drain() = OutboxDrainEngine(outbox, listOf(SaveMonthlyArrangementDispatcher({ api },
         adapters.arrangementSaveAdapter, adapters.arrangementReceiptAdapter)), now = clock::millis).drainOnce()
-    @After fun close() { db?.close(); context.deleteDatabase(name) }
+    @After fun close() { db?.close(); context.deleteDatabase(name); LocalSettingsStore(settingsContext).clear() }
+    @Test fun deniedCleanupSurvivesOwnerRecreationUntilOldQueriesAreRetiredWithoutChangingDraftOrReceipt() = runBlocking {
+        loseAck = false
+        val original = binding()
+        var repository = reopen()
+        repository.enqueueArrangement(original, "2026-09", MonthlyArrangementSaveRequest("JPY", 1200, 300)).getOrThrow()
+        assertEquals(1, drain().done)
+        repository.arrangement(original, "2026-09").getOrThrow()
+        repository.arrangementHistory(original, "2026-09").getOrThrow()
+        val draft = MonthlyArrangementDraft("JPY", " 1700 ", " 400 ", 1, edited = true)
+        repository.storeArrangementDraft(original, "2026-09", draft)
+        val receiptBefore = requireNotNull(db).pendingMutationDao().allRows()
+        val draftBefore = requireNotNull(db).monthlyArrangementCacheDao().read(monthlyArrangementPersistentBindingKey(original), "2026-09", "draft")
+        requireNotNull(db).openHelper.writableDatabase.execSQL("""
+            CREATE TRIGGER fail_monthly_snapshot_delete BEFORE DELETE ON monthly_arrangement_cache
+            WHEN OLD.kind != 'draft' BEGIN SELECT RAISE(ABORT, 'Query cleanup unavailable'); END
+        """)
+        readFailure = HttpException(Response.error<Any>(403, "{}".toResponseBody()))
+        assertEquals(403, (repository.arrangement(original, "2026-09").exceptionOrNull() as RepositoryException).httpStatusCode)
+        readFailure = null
+        offline = true
+        repository = reopen()
+        val current = repository.arrangement(original, "2026-09")
+        val history = repository.arrangementHistory(original, "2026-09")
+        assertEquals(listOf(false, false), listOf(current.isSuccess, history.isSuccess),
+            "Recreating Room and the coordinator cannot authorize old rows whose denied cleanup failed")
+        assertEquals(403, (current.exceptionOrNull() as RepositoryException).httpStatusCode)
+        assertEquals(403, (history.exceptionOrNull() as RepositoryException).httpStatusCode)
+        assertEquals(draftBefore, requireNotNull(db).monthlyArrangementCacheDao().read(monthlyArrangementPersistentBindingKey(original), "2026-09", "draft"))
+        assertEquals(receiptBefore, requireNotNull(db).pendingMutationDao().allRows())
+        requireNotNull(db).openHelper.writableDatabase.execSQL("DROP TRIGGER fail_monthly_snapshot_delete")
+        offline = false
+        fact = requireNotNull(fact).copy(rowVersion = 2, savingsTargetCents = 2600)
+        revisions += requireNotNull(fact)
+        val authorized = repository.arrangement(original, "2026-09").getOrThrow()
+        val authorizedHistory = repository.arrangementHistory(original, "2026-09").getOrThrow()
+        assertFalse(authorized.fromCache)
+        assertEquals(2600L, authorized.response.arrangement?.savingsTargetCents)
+        assertEquals(listOf(2L, 1L), authorizedHistory.response.items.map { it.rowVersion })
+        offline = true
+        repository = reopen()
+        assertEquals(authorized.response, repository.arrangement(original, "2026-09").getOrThrow().response)
+        assertEquals(authorizedHistory.response, repository.arrangementHistory(original, "2026-09").getOrThrow().response)
+        assertEquals(draft, repository.arrangementDraft(original, "2026-09"))
+        assertEquals(receiptBefore, requireNotNull(db).pendingMutationDao().allRows())
+        assertEquals(1, calls.size)
+    }
+
+    @Test fun authorizedArrangementAndHistoryReturnFreshWithoutWritingWhileDeniedCleanupIsUnavailable() = runBlocking {
+        loseAck = false
+        val original = binding()
+        val repository = reopen()
+        repository.enqueueArrangement(original, "2026-09", MonthlyArrangementSaveRequest("JPY", 1200, 300)).getOrThrow()
+        assertEquals(1, drain().done)
+        repository.arrangement(original, "2026-09").getOrThrow()
+        repository.arrangementHistory(original, "2026-09").getOrThrow()
+        val before = requireNotNull(db).pendingMutationDao().allRows()
+        requireNotNull(db).openHelper.writableDatabase.execSQL("""
+            CREATE TRIGGER fail_monthly_snapshot_delete BEFORE DELETE ON monthly_arrangement_cache
+            WHEN OLD.kind != 'draft' BEGIN SELECT RAISE(ABORT, 'Query cleanup unavailable'); END
+        """)
+        requireNotNull(db).openHelper.writableDatabase.execSQL("""
+            CREATE TRIGGER fail_monthly_snapshot_write BEFORE INSERT ON monthly_arrangement_cache
+            WHEN NEW.kind != 'draft' BEGIN SELECT RAISE(ABORT, 'Query replacement unavailable'); END
+        """)
+        readFailure = HttpException(Response.error<Any>(403, "{}".toResponseBody()))
+        assertEquals(403, (repository.arrangement(original, "2026-09").exceptionOrNull() as RepositoryException).httpStatusCode)
+        readFailure = null
+        fact = requireNotNull(fact).copy(rowVersion = 2, savingsTargetCents = 2600)
+        revisions += requireNotNull(fact)
+        val current = repository.arrangement(original, "2026-09")
+        val history = repository.arrangementHistory(original, "2026-09")
+        assertEquals(listOf(true, true), listOf(current.isSuccess, history.isSuccess),
+            "Current and history GETs are usable even when the denied cache cannot be cleared or replaced")
+        assertEquals(2600L, current.getOrThrow().response.arrangement?.savingsTargetCents)
+        assertEquals(listOf(2L, 1L), history.getOrThrow().response.items.map { it.rowVersion })
+        assertFalse(current.getOrThrow().fromCache)
+        assertFalse(history.getOrThrow().fromCache)
+        offline = true
+        assertEquals(403, (repository.arrangement(original, "2026-09").exceptionOrNull() as RepositoryException).httpStatusCode)
+        assertEquals(403, (repository.arrangementHistory(original, "2026-09").exceptionOrNull() as RepositoryException).httpStatusCode)
+        assertEquals(before, requireNotNull(db).pendingMutationDao().allRows())
+        assertEquals(1, calls.size)
+    }
+
     @Test fun malformedJsonAndTlsFailureCannotBecomeCachedSuccess() = runBlocking {
         loseAck = false
         val original = binding()
