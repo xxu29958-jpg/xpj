@@ -107,6 +107,12 @@ internal class ExpenseCorrectionConnectedFixture(
             readSettings.snapshotReadAccessDenial(bindingKey, monthlyBindingKey)
         override fun saveSnapshotReadAccessDenial(bindingKey: String, monthlyBindingKey: String, statusCode: Int?) =
             readSettings.saveSnapshotReadAccessDenial(bindingKey, monthlyBindingKey, statusCode)
+        override fun debtResourceCacheRetirements(bindingKey: String): Map<String, String> =
+            readSettings.debtResourceCacheRetirements(bindingKey)
+        override fun markDebtResourceCacheRetirement(bindingKey: String, publicId: String, token: String) =
+            readSettings.markDebtResourceCacheRetirement(bindingKey, publicId, token)
+        override fun finishDebtResourceCacheRetirement(bindingKey: String, publicId: String, expectedToken: String) =
+            readSettings.finishDebtResourceCacheRetirement(bindingKey, publicId, expectedToken)
         override fun saveAvailableLedgersJson(json: String?) { availableLedgers = json }
         override fun clearLastConfirmedSyncAtForLedger(ledgerId: String) { lastSyncAt = null }
         override fun saveLastConfirmedSyncAtForLedger(ledgerId: String, value: String) {
