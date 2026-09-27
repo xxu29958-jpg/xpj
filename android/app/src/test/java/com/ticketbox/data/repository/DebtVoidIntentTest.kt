@@ -121,6 +121,63 @@ class DebtVoidIntentTest {
         assertEquals(original.payload, fixture.dao.rows.values.single().payload)
     }
 
+    @Test fun newCurrentBindingCannotRecoverEitherVoidFromPreviousSessionOrBindingRevision() = runTest {
+        for (payment in listOf(false, true)) for (axis in listOf("session", "revision")) {
+            val fixture = DirectRepaymentTestFixture()
+            save(fixture, payment).getOrThrow()
+            assertEquals(1, fixture.engine().drainOnce().failures)
+            val original = fixture.dao.rows.values.single()
+            val session = requireNotNull(fixture.session.sessionStore.currentSession())
+            fixture.session.sessionStore.replaceForFixture(if (axis == "session") session.copy(sessionGeneration = "new-session")
+                else session.copy(bindingRevision = "new-revision"))
+            val outbox = fixture.newOutbox(fixture.clock)
+            val writes = fixture.newRepository(outbox, fixture.clock)
+            val binding = requireNotNull(writes.currentAccess()).binding
+            assertEquals(fixture.binding.ownerKey, binding.ownerKey)
+            val pending = writes.observeWrites(binding, fixture.debt.publicId).first().single()
+            assertNotNull(pending.intent)
+            val refused = writes.recover(binding, pending, false)
+            assertTrue(refused.isFailure, axis)
+            assertFalse(pending.canRetry, axis)
+            assertFalse(refused.exceptionOrNull()?.message.isNullOrBlank(), axis)
+            assertEquals(original, fixture.dao.rows.values.single(), axis)
+            assertEquals(0, fixture.engine(outbox).drainOnce().attempted)
+            assertEquals(1, fixture.api.voidCalls.size)
+            writes.recover(binding, pending, true).getOrThrow()
+            val stopped = fixture.dao.rows.values.single()
+            assertEquals(original.payload, stopped.payload)
+            assertEquals(original.idempotencyKey, stopped.idempotencyKey)
+            assertEquals(original.expectedRowVersion, stopped.expectedRowVersion)
+            assertEquals(PendingMutationStatus.Abandoned.wireValue, stopped.status)
+            assertEquals(1, fixture.api.voidFacts.size)
+        }
+    }
+
+    @Test fun automaticDrainUnderNewCurrentBindingCannotSendEitherOriginalVoid() = runTest {
+        for (payment in listOf(false, true)) for (axis in listOf("session", "revision")) {
+            val fixture = DirectRepaymentTestFixture()
+            save(fixture, payment).getOrThrow()
+            val original = fixture.dao.rows.values.single()
+            val session = requireNotNull(fixture.session.sessionStore.currentSession())
+            fixture.session.sessionStore.replaceForFixture(if (axis == "session") session.copy(sessionGeneration = "new-session")
+                else session.copy(bindingRevision = "new-revision"))
+            val outbox = fixture.newOutbox(fixture.clock)
+            val writes = fixture.newRepository(outbox, fixture.clock)
+            fixture.engine(outbox).drainOnce()
+            assertTrue(fixture.api.voidCalls.isEmpty(), axis)
+            assertTrue(fixture.api.voidFacts.isEmpty(), axis)
+            val pending = writes.observeWrites(requireNotNull(writes.currentAccess()).binding, fixture.debt.publicId).first().single()
+            assertNotNull(pending.intent)
+            assertFalse(pending.canRetry, axis)
+            val retained = fixture.dao.rows.values.single()
+            assertEquals(original.payload, retained.payload)
+            assertEquals(original.idempotencyKey, retained.idempotencyKey)
+            assertEquals(original.expectedRowVersion, retained.expectedRowVersion)
+            assertEquals(null, retained.receiptJson)
+            assertTrue(pending.isUnresolved)
+        }
+    }
+
     @Test fun acceptedLegacyVoidCannotRetryRebaseOrLoseOriginalWhenLocallyStopped() = runTest {
         val fixture = DirectRepaymentTestFixture()
         save(fixture, true).getOrThrow()

@@ -55,6 +55,7 @@ internal class DebtAdjustmentConnectedFixture(private val context: Context, priv
     private val adapters = OutboxAdapterGraph()
     var session = debtAdjustmentConnectedSession()
     var scheduleCalls = 0
+    private lateinit var apiProvider: ApiServiceProvider
     lateinit var outbox: OutboxRepository
     lateinit var graph: RepositoryGraph
         private set
@@ -75,9 +76,10 @@ internal class DebtAdjustmentConnectedFixture(private val context: Context, priv
         val factory = object : ApiServiceFactory {
             override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = remote ?: network.service
         }
+        apiProvider = ApiServiceProvider(factory, sessions, credentials)
         return RepositoryGraph(RepositoryGraphDependencies(db, ApiClient(),
             debtAdjustmentProxy<TicketboxSettingsStore> { error("Unexpected settings: $it") },
-            sessions, credentials, ApiServiceProvider(factory, sessions, credentials), RepositoryGraphOutbox(outbox, adapters)))
+            sessions, credentials, apiProvider, RepositoryGraphOutbox(outbox, adapters)))
             .also { graph = it }
     }
 
@@ -89,9 +91,12 @@ internal class DebtAdjustmentConnectedFixture(private val context: Context, priv
     suspend fun drain(maxAttempts: Int = 10) = OutboxDrainEngine(outbox,
         listOf(RecordDebtAdjustmentDispatcher({ remote ?: network.service }, adapters.debtAdjustmentAdapter),
             RecordDebtRepaymentDispatcher({ remote ?: network.service }, adapters.debtRepaymentAdapter, adapters.debtRepaymentReceiptAdapter),
-            VoidDebtDispatcher({ remote ?: network.service }, adapters.debtVoidAdapter, adapters.debtVoidReceiptAdapter),
-            VoidDebtRepaymentDispatcher({ remote ?: network.service }, adapters.debtRepaymentVoidAdapter, adapters.debtVoidReceiptAdapter)),
+            VoidDebtDispatcher(::outboxApi, adapters.debtVoidAdapter, adapters.debtVoidReceiptAdapter),
+            VoidDebtRepaymentDispatcher(::outboxApi, adapters.debtRepaymentVoidAdapter, adapters.debtVoidReceiptAdapter)),
         maxAttempts = maxAttempts, now = clock::millis).drainOnce()
+
+    private fun outboxApi(row: OutboxRow) = LedgerRequestGuard(apiProvider).bind(expectedLedgerId = row.ledgerId)
+        .serviceFor(requireNotNull(row.bindingOrNull()))
 
     fun close() { database?.close(); context.deleteDatabase(name) }
 }

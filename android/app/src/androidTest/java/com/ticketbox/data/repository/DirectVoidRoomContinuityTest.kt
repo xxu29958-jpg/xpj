@@ -209,6 +209,54 @@ class DirectVoidRoomContinuityTest {
         } finally { compose.runOnIdle { sync.viewModelScope.cancel() } }
     }
 
+    @Test fun debtVoidFromPreviousSessionStaysReadableButCannotResumeWithNewCurrentBinding() {
+        assertChangedOriginCannotResume(DebtAction.Void, changeSession = true)
+    }
+
+    @Test fun repaymentVoidFromPreviousBindingRevisionStaysReadableButCannotResumeWithNewCurrentBinding() {
+        assertChangedOriginCannotResume(DebtAction.RepaymentVoid, changeSession = false)
+    }
+
+    private fun assertChangedOriginCannotResume(action: DebtAction, changeSession: Boolean) {
+        showDetail()
+        saveFromForm(action)
+        assertEquals(1, runBlocking { fixture.drain(maxAttempts = 1) }.failures)
+        val original = fixture.stored().single()
+        stopDetail()
+        fixture.session = if (changeSession) fixture.session.copy(sessionGeneration = "new-session")
+            else fixture.session.copy(bindingRevision = "new-binding-revision")
+        installDetail()
+        compose.waitUntil(10_000) { detail.value?.state?.value?.pendingWrites?.singleOrNull() != null }
+        val state = requireNotNull(detail.value).state.value
+        val binding = requireNotNull(state.binding)
+        val pending = state.pendingWrites.single()
+        assertNotNull(pending.intent)
+        compose.onNodeWithText("原记录重复").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.debt_write_retry)).assertDoesNotExist()
+        compose.onNodeWithText("原绑定", substring = true).assertExists()
+        assertFalse(pending.canRetry)
+        assertTrue(runBlocking { fixture.graph.debtWriteRepository.recover(binding, pending, drop = false) }.isFailure)
+        assertEquals(0, runBlocking { fixture.drain() }.attempted)
+        assertEquals(original, fixture.stored().single())
+        assertEquals(1, remote.calls.size)
+        assertEquals(1, remote.facts.size)
+        lateinit var sync: OutboxStatusViewModel
+        compose.runOnIdle { sync = globalSync() }
+        try {
+            compose.waitUntil(10_000) { sync.uiState.value.status.failed.size == 1 }
+            val failed = sync.uiState.value.status.failed.single()
+            assertFalse(sync.uiState.value.offersRetry(failed))
+            compose.runOnIdle { sync.retry(failed) }
+            compose.waitUntil(10_000) { sync.uiState.value.message != null }
+            assertEquals(original, fixture.stored().single())
+            assertEquals(1, remote.calls.size)
+            compose.runOnIdle { sync.dropFailed(failed) }
+            compose.waitUntil(10_000) { fixture.stored().single()["status"] == "abandoned" }
+            assertOriginalColumns(original)
+            assertEquals(0, runBlocking { fixture.drain() }.attempted)
+        } finally { compose.runOnIdle { sync.viewModelScope.cancel() } }
+    }
+
     @Test fun foreignBindingCannotAdoptRoomOriginalOrStopIt() = runBlocking {
         val graph = fixture.reopen()
         val binding = requireNotNull(graph.debtWriteRepository.currentAccess()).binding
