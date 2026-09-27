@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import androidx.room.Room
 import com.ticketbox.OutboxAdapterGraph
+import com.ticketbox.NotificationRuntimeDependencies
 import com.ticketbox.RepositoryGraph
 import com.ticketbox.RepositoryGraphDependencies
 import com.ticketbox.RepositoryGraphOutbox
@@ -72,6 +73,7 @@ internal class ExpenseCorrectionConnectedFixture(
     private val adapters = OutboxAdapterGraph()
     lateinit var outbox: OutboxRepository
     lateinit var graph: RepositoryGraph
+    lateinit var notificationDependencies: NotificationRuntimeDependencies
     lateinit var uploadIntents: UploadIntentRepository
     val expenseDao get() = requireNotNull(database).expenseDao()
     val pendingDao get() = requireNotNull(database).pendingMutationDao()
@@ -132,6 +134,8 @@ internal class ExpenseCorrectionConnectedFixture(
         val provider = ApiServiceProvider(factory, sessions, credentials)
         graph = RepositoryGraph(RepositoryGraphDependencies(db, ApiClient(), settingsStore, sessions, credentials,
             provider, RepositoryGraphOutbox(outbox, adapters)))
+        notificationDependencies = NotificationRuntimeDependencies(context, settingsStore, sessions, provider,
+            graph.recurringRepository, graph.budgetRepository, graph.ledgerCalendarRepository)
         uploadIntents = UploadIntentRepository(provider, outbox, UploadIntentFileStore(context),
             adapters.uploadPayloadAdapter, adapters.uploadReceiptAdapter, settingsStore)
         graph.expenseRepository.onConfirmedCommitted = { confirmedCallbacks++ }
