@@ -122,7 +122,9 @@ test-only fc8931182 随后取得两个真实 Room 业务 RED：Connected 1085452
 十个 fresh/cache 接纳入口均显式迁移。清理未完成时保留拒绝，合法 GET 可显示自己的
 结果，但不能借旧查询或重新开启离线回退；后续 GET 完成清理后恢复缓存读取。
 预算查询坏 JSON 可由合法 GET 替换，已接受保存的本地恢复也能退役坏查询行；
-原 command receipt 解析仍严格，恢复不重发保存、不拿 receipt 伪造查询。
+接受 command 时仍严格验证原 receipt；已经验证并持久化 Done 的本地读取修复，
+即使 receipt 随后损坏，也可保守退役原月份的查询，保留 receipt 原字节和原提交。
+恢复不重发保存、不拿 receipt 伪造查询。
 既有原生测试覆盖在线/离线恢复交叉、Done marker、Room 重开与原意图不变。
 本段记录反例和实现，不替代修复后 exact source 的原生、CI、CodeQL 与 main 资格。
 
@@ -130,3 +132,16 @@ db33a1e12 的 CI 和 CodeQL 通过，Connected 108548722094 的原撤权恢复�
 清理被 SQLite DELETE trigger 拒绝时，fresh 结果的 INSERT OR REPLACE 同样触发
 旧行删除。修复保持原断言：未完成清理时，合法 GET 只显示自己的已校验结果，
 不写缓存；原离线拒绝保持，后续清理成功后再恢复持久读取。
+
+最新修复使首次观察到的 Done 同样退役较旧的可见查询，保留同版或较新读取及
+正在编辑的原草稿。预算 GET 已校验成功时，本地 SQLite 读写失败不再吞掉网络
+结果；未写入缓存则保留旧缓存的原值和原读取时间，不把它标成新鲜。
+撤权清理失败的记录复用 settings 持久化，覆盖完整逻辑绑定和月度安排已有的
+持久绑定；Room 和协调器重建后不能复活被拒绝的旧查询。Goal、Stats、月度安排
+current/history 共用同一接纳条件，合法 fresh 结果仍可用，月度建议输入失效回调
+仍执行；只有旧查询清理和拒绝记录清除均成功后才恢复缓存写入。
+
+test-only c5f751d9e 的 Android fast 108552890433 实际复现首次 Done 后仍显示旧预算，
+以及 Goal/Stats 在拒绝清理失败时丢失 fresh 结果。该源的 Connected 停在两处新增
+JUnit 断言参数顺序错误，不能当作业务 RED；2636dd214 仅纠正参数顺序，保留全部
+业务断言。修复后的 exact source 仍需独立 CI、CodeQL、Connected 和 main 验证。

@@ -86,7 +86,7 @@ internal class DataQualityConnectedHarness : AutoCloseable {
         }
         val settingsStore = interfaceProxy<TicketboxSettingsStore> { name ->
             when (name) {
-                "lastUploadAtForLedger" -> null
+                "lastUploadAtForLedger", "snapshotReadAccessDenial" -> null
                 else -> Unhandled
             }
         }

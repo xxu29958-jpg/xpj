@@ -145,7 +145,7 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
         outbox = OutboxRepository(dao = db.pendingMutationDao(), onRowsDeleted = {}, bindingProvider = { session.value.toOutboxBinding() })
         val settings = Proxy.newProxyInstance(com.ticketbox.data.local.TicketboxSettingsStore::class.java.classLoader,
             arrayOf(com.ticketbox.data.local.TicketboxSettingsStore::class.java)) { _, method, _ ->
-            error("Unexpected settings method ${method.name}")
+            if (method.name == "snapshotReadAccessDenial") null else error("Unexpected settings method ${method.name}")
         } as com.ticketbox.data.local.TicketboxSettingsStore
         val coordinator = com.ticketbox.data.repository.LocalLedgerSessionCoordinator(settings, sessions, db.expenseDao(), outbox)
         repository = BudgetRepository(provider, outbox, adapters, com.ticketbox.data.repository.BudgetLocalStorage(

@@ -94,9 +94,9 @@ internal class ExpenseStatsRepositoryActions(
             kind = kind.storageKey, month = query.month, tag = query.tag.trim(), homeCurrencyCode = wire.homeCurrencyCode,
             timezone = query.timezone, responseJson = adapter.toJson(wire), fetchedAt = Instant.now().toString(),
         )
-        core.sessionCoordinator.acceptSnapshotRead(ticket, bound, fromCache = false) {
+        core.sessionCoordinator.acceptSnapshotRead(ticket, bound, fromCache = false) { cacheAllowed ->
             cacheMutex.withLock {
-                if (latestReads[kind] === token) core.expenseDao.saveStatsProjection(row)
+                if (cacheAllowed && latestReads[kind] === token) core.expenseDao.saveStatsProjection(row)
             }
             ReadSnapshot(value, row.fetchedAt, fromCache = false)
         }

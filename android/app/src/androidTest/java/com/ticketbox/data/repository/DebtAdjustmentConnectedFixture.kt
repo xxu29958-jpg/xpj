@@ -76,7 +76,7 @@ internal class DebtAdjustmentConnectedFixture(private val context: Context, priv
             override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = remote ?: network.service
         }
         return RepositoryGraph(RepositoryGraphDependencies(db, ApiClient(),
-            debtAdjustmentProxy<TicketboxSettingsStore> { error("Unexpected settings: $it") },
+            debtAdjustmentProxy<TicketboxSettingsStore> { if (it == "snapshotReadAccessDenial") null else error("Unexpected settings: $it") },
             sessions, credentials, ApiServiceProvider(factory, sessions, credentials), RepositoryGraphOutbox(outbox, adapters)))
             .also { graph = it }
     }

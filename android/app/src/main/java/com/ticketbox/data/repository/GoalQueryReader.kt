@@ -88,7 +88,7 @@ internal class GoalQueryReader(
         }
         validateGoals(wire, query, binding)
         val values = wire.map { it.toDomain() }
-        coordinator.acceptSnapshotRead(ticket, bound, fromCache = false) {
+        coordinator.acceptSnapshotRead(ticket, bound, fromCache = false) { cacheAllowed ->
             mutex.withLock {
                 requireLatest(cacheKey, ticket)
                 val detailKeys = wire.map { "$bindingKey|$timezone|detail:${it.publicId}" }
@@ -101,7 +101,7 @@ internal class GoalQueryReader(
                 val details = if (query.publicId != null) emptyList() else wire.map { goal ->
                     snapshot.copy(queryKey = "detail:${goal.publicId}", responseJson = goalsAdapter.toJson(listOf(goal)))
                 }
-                dao.saveGoalSnapshots(listOf(snapshot) + details)
+                if (cacheAllowed) dao.saveGoalSnapshots(listOf(snapshot) + details)
                 detailKeys.forEach { latestDetails[it] = ticket.sequence }
                 ReadSnapshot(values, fetchedAt, fromCache = false)
             }

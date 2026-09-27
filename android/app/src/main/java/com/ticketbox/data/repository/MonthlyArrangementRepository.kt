@@ -78,8 +78,10 @@ class MonthlyArrangementRepository internal constructor(private val apiProvider:
         }
         verifyArrangementResponse(response, binding, clean)
         val json = saved.toJson(response)
-        coordinator.acceptSnapshotRead(ticket, bound, fromCache = false) {
-            dao.write(MonthlyArrangementCacheEntity(key, clean, "saved", json))
+        coordinator.acceptSnapshotRead(ticket, bound, fromCache = false) { cacheAllowed ->
+            if (cacheAllowed) {
+                dao.write(MonthlyArrangementCacheEntity(key, clean, "saved", json))
+            }
             onSnapshot("arrangement:$key:$clean", json)
             MonthlyArrangementRead(response)
         }
@@ -115,8 +117,8 @@ class MonthlyArrangementRepository internal constructor(private val apiProvider:
             }
         }
         verifyArrangementHistory(response, binding, clean)
-        coordinator.acceptSnapshotRead(ticket, bound, fromCache = false) {
-            dao.write(MonthlyArrangementCacheEntity(key, clean, kind, history.toJson(response)))
+        coordinator.acceptSnapshotRead(ticket, bound, fromCache = false) { cacheAllowed ->
+            if (cacheAllowed) dao.write(MonthlyArrangementCacheEntity(key, clean, kind, history.toJson(response)))
             MonthlyArrangementHistoryRead(response)
         }
     }
@@ -175,7 +177,7 @@ class MonthlyArrangementRepository internal constructor(private val apiProvider:
     }
 }
 
-private val logicalBindingAdapter = Moshi.Builder().build().adapter(LogicalSessionBinding::class.java)
+internal val logicalBindingAdapter = Moshi.Builder().build().adapter(LogicalSessionBinding::class.java)
 
 private fun MonthlyArrangementHistoryDto.withNewerReceipts(receipts: List<MonthlyArrangementDto>, beforeVersion: Long?): MonthlyArrangementHistoryDto {
     val latest = items.maxOfOrNull { it.rowVersion } ?: 0

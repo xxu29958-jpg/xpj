@@ -149,7 +149,7 @@ class DebtCreationRoomContinuityTest {
             RepositoryGraphDependencies(
                 database = database,
                 apiClient = ApiClient(),
-                settingsStore = fixtureProxy<TicketboxSettingsStore> { method, _ -> error("Unexpected settings call: $method") },
+                settingsStore = fixtureProxy<TicketboxSettingsStore> { method, _ -> if (method == "snapshotReadAccessDenial") null else error("Unexpected settings call: $method") },
                 sessionStore = sessions,
                 credentials = credentials,
                 apiServiceProvider = ApiServiceProvider(factory, sessions, credentials),

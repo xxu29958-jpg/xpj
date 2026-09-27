@@ -18,12 +18,6 @@ import java.util.UUID
 
 internal data class SnapshotReadTicket(val generation: Long, val sequence: Long)
 
-data class SnapshotAccessDenial(
-    val binding: LogicalSessionBinding,
-    val failure: RepositoryException,
-    val generation: Long,
-)
-
 data class LedgerSessionIdentity(
     val accountPublicId: String? = null,
     val devicePublicId: String? = null,
@@ -95,11 +89,16 @@ class LocalLedgerSessionCoordinator(
     private var readGeneration = 0L
     private var readSequence = 0L
     private var readInvalidation = RepositoryException("读取结果已失效，请重新读取。")
-    private var pendingAccessCleanupBindingKey: String? = null
-    private val accessDenials = MutableStateFlow<SnapshotAccessDenial?>(null)
+    private val accessDenials = MutableStateFlow(settingsStore.restoreSnapshotAccessDenial(sessionStore))
+    private var pendingAccessCleanupBindingKey: String? = accessDenials.value?.let { logicalBindingAdapter.toJson(it.binding) }
     val snapshotAccessDenials: StateFlow<SnapshotAccessDenial?> = accessDenials.asStateFlow()
 
     internal suspend fun beginSnapshotRead(): SnapshotReadTicket = mutex.withLock {
+        val restored = settingsStore.restoreSnapshotAccessDenial(sessionStore)
+        if (restored != null && (accessDenials.value?.binding != restored.binding || pendingAccessCleanupBindingKey == null)) {
+            accessDenials.value = restored.copy(generation = readGeneration)
+            pendingAccessCleanupBindingKey = logicalBindingAdapter.toJson(restored.binding)
+        }
         SnapshotReadTicket(readGeneration, ++readSequence)
     }
 
@@ -115,7 +114,9 @@ class LocalLedgerSessionCoordinator(
             it.binding == bound.logicalBinding && pendingAccessCleanupBindingKey != null
         }
         if (fromCache && pending != null) throw pending.failure
-        val cacheAllowed = pending == null || expenseDao.clearDeniedSnapshotCaches(bound.logicalBinding, requireNotNull(pendingAccessCleanupBindingKey))
+        val cacheAllowed = pending == null || (expenseDao.clearDeniedSnapshotCaches(bound.logicalBinding,
+            requireNotNull(pendingAccessCleanupBindingKey)) &&
+            settingsStore.persistSnapshotAccessDenial(bound.logicalBinding, requireNotNull(pendingAccessCleanupBindingKey), null))
         if (cacheAllowed && pending != null) pendingAccessCleanupBindingKey = null
         val outboxRef = outbox
         if (outboxRef == null) block(cacheAllowed) else outboxRef.withActiveBinding(bound) { block(cacheAllowed) }
@@ -129,7 +130,9 @@ class LocalLedgerSessionCoordinator(
             val denial = SnapshotAccessDenial(bound.logicalBinding, failure, readGeneration)
             pendingAccessCleanupBindingKey = bindingKey
             accessDenials.value = denial
-            if (expenseDao.clearDeniedSnapshotCaches(bound.logicalBinding, bindingKey)) pendingAccessCleanupBindingKey = null
+            settingsStore.persistSnapshotAccessDenial(bound.logicalBinding, bindingKey, failure.httpStatusCode)
+            if (expenseDao.clearDeniedSnapshotCaches(bound.logicalBinding, bindingKey) &&
+                settingsStore.persistSnapshotAccessDenial(bound.logicalBinding, bindingKey, null)) pendingAccessCleanupBindingKey = null
         }
     }
 

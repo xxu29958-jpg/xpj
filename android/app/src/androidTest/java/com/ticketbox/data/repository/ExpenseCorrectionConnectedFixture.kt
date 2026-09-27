@@ -1,6 +1,8 @@
 package com.ticketbox.data.repository
 
 import android.content.Context
+import android.content.ContextWrapper
+import com.ticketbox.data.local.LocalSettingsStore
 import android.graphics.Bitmap
 import androidx.room.Room
 import com.ticketbox.OutboxAdapterGraph
@@ -66,6 +68,12 @@ internal class ExpenseCorrectionConnectedFixture(
     private val wrapApi: (ApiService) -> ApiService = { it },
 ) {
     private val name = "expense-correction-continuity.db"
+    private val readSettingsContext = object : ContextWrapper(context) {
+        override fun getApplicationContext(): Context = this
+        override fun getSharedPreferences(preferenceName: String, mode: Int) =
+            context.getSharedPreferences("$name.$preferenceName", mode)
+    }
+    private val readSettings = LocalSettingsStore(readSettingsContext)
     private val calendarPreferences = context.getSharedPreferences("$name.calendar", Context.MODE_PRIVATE)
     private var database: AppDatabase? = null
     val clock = Clock.fixed(Instant.parse("2026-09-06T00:00:00Z"), ZoneOffset.UTC)
@@ -95,6 +103,10 @@ internal class ExpenseCorrectionConnectedFixture(
             else -> error("Unexpected settings: $method")
         }
     }) {
+        override fun snapshotReadAccessDenial(bindingKey: String, monthlyBindingKey: String): Int? =
+            readSettings.snapshotReadAccessDenial(bindingKey, monthlyBindingKey)
+        override fun saveSnapshotReadAccessDenial(bindingKey: String, monthlyBindingKey: String, statusCode: Int?) =
+            readSettings.saveSnapshotReadAccessDenial(bindingKey, monthlyBindingKey, statusCode)
         override fun saveAvailableLedgersJson(json: String?) { availableLedgers = json }
         override fun clearLastConfirmedSyncAtForLedger(ledgerId: String) { lastSyncAt = null }
         override fun saveLastConfirmedSyncAtForLedger(ledgerId: String, value: String) {
@@ -190,7 +202,7 @@ internal class ExpenseCorrectionConnectedFixture(
         identity = session.value.identity.copy(accountPublicId = "40000000-0000-4000-8000-000000000003")) }
     fun switchDevice() { session.value = session.value.copy(bindingRevision = "another-device-binding",
         identity = session.value.identity.copy(devicePublicId = "40000000-0000-4000-8000-000000000004")) }
-    fun close() { database?.close(); context.deleteDatabase(name); calendarPreferences.edit().clear().commit() }
+    fun close() { database?.close(); context.deleteDatabase(name); calendarPreferences.edit().clear().commit(); readSettings.clear() }
 }
 
 /** Response-loss model deduplicates by the actual original key and full request; not a PostgreSQL substitute. */
