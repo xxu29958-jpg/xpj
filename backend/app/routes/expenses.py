@@ -49,6 +49,7 @@ from app.services.category_preference_service import (
 )
 from app.services.debt_service import repayment_draft_response
 from app.services.expense_edit_command_service import edit_expense_submission
+from app.services.expense_ocr_command_service import submit_expense_ocr_retry
 from app.services.expense_response_service import (
     expense_fx_tasks_by_id,
     expense_raw_text_by_id,
@@ -67,7 +68,6 @@ from app.services.expense_service import (
     mark_expense_not_duplicate,
     recognize_expense_text,
     resolve_expense_for_mutation,
-    retry_expense_ocr,
 )
 from app.services.expense_split_service import list_expense_splits, replace_expense_splits
 from app.services.idempotency import (
@@ -652,33 +652,16 @@ def post_retry_ocr(
         device_id=auth.device_id,
         expected_row_version=payload.expected_row_version,
     )
-    claim = claim_idempotent_request(
+    expense = submit_expense_ocr_retry(
         db,
-        idempotency_key=idempotency_key,
+        expense_id=expense_pk,
         tenant_id=auth.tenant_id,
-        operation="retry_ocr",
-        target_id=str(expense_pk),
-        body=payload.model_dump(mode="json", exclude_unset=True, exclude={"expected_row_version"}),
-        expected_row_version=payload.expected_row_version,
-    )
-    if claim is None:
-        expense = get_expense(db, expense_pk, auth.tenant_id)
-        return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
-
-    expense = retry_expense_ocr(
-        db,
-        expense_pk,
-        auth.tenant_id,
+        initiator_account_id=auth.account_id,
+        initiator_device_id=auth.device_id,
         expected_row_version=effective_row_version,
-        commit=False,
+        request_expected_row_version=payload.expected_row_version,
+        idempotency_key=idempotency_key,
     )
-    fx_task = prepare_pending_expense_fx(db, expense=expense,
-        initiator_account_id=auth.account_id, initiator_device_id=auth.device_id)
-    mark_idempotency_succeeded(db, claim, resource_type="expense", resource_id=str(expense_pk))
-    db.commit()
-    if fx_task is not None:
-        submit_pending_expense_fx(db, fx_task)
-    db.refresh(expense)
     return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
 
 
