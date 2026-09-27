@@ -4,6 +4,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -14,6 +18,8 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.ui.screens.DebtDetailScreen
+import com.ticketbox.ui.screens.settings.SyncStatusNavigation
+import com.ticketbox.ui.screens.settings.SyncStatusScreen
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.DebtDetailViewModel
 import com.ticketbox.viewmodel.DebtActivityViewModel
@@ -40,6 +46,56 @@ class DirectRepaymentRoomContinuityTest {
     private lateinit var history: DebtActivityViewModel
 
     @After fun close() { stopModels(); fixture.close() }
+
+    @Test fun changedBindingUnsentRepaymentCanBeStoppedOfflineFromDetail() {
+        assertUnsentOriginalCanBeStopped(global = false)
+    }
+
+    @Test fun changedBindingUnsentRepaymentCanBeStoppedOfflineFromGlobalSync() {
+        assertUnsentOriginalCanBeStopped(global = true)
+    }
+
+    private fun assertUnsentOriginalCanBeStopped(global: Boolean) {
+        val graph = fixture.reopen()
+        val binding = requireNotNull(graph.debtWriteRepository.currentAccess()).binding
+        runBlocking { graph.debtWriteRepository.saveRepayment(binding, fixture.network.current.toDomain(), 10_000).getOrThrow() }
+        val original = fixture.stored().single()
+        assertEquals("pending", original["status"])
+        fixture.session = fixture.session.copy(bindingRevision = "new-revision")
+        fixture.network.failReads = true
+        installModels()
+        lateinit var sync: OutboxStatusViewModel
+        compose.runOnIdle { sync = outboxStatusViewModelFactory(fixture.outbox, fixture.graph.expenseRepository,
+            OutboxRecoveryRepositories(fixture.graph.debtCreationRepository, fixture.graph.recurringRepository.occurrences,
+                fixture.graph.incomePlanRepository, fixture.graph.debtWriteRepository, fixture.graph.goalEditRepository,
+                fixture.graph.budgetRepository, fixture.graph.recurringRepository, fixture.graph.ruleRepository))
+            .create(OutboxStatusViewModel::class.java) }
+        try {
+            compose.setContent {
+                TicketboxTheme(skin = AppSkin.Paper) {
+                    if (global) SyncStatusScreen(sync, {}, SyncStatusNavigation(
+                        onOpenExpense = {}, onOpenInbox = {}, onOpenBudget = {}, onOpenRecurring = {},
+                        onOpenGoalCreation = {}, onOpenGoalEdit = {}, onOpenRuleSubmission = {},
+                        onOpenIncomeSubmission = {}, onOpenRateSubmission = {}, onRepairCorrectionRate = { _, _ -> }))
+                    else detail.value?.let { DebtDetailScreen(it, proposals, history, {}) }
+                }
+            }
+            compose.waitUntil(10_000) { detail.value?.state?.value?.pendingWrites?.singleOrNull()?.originalBindingChanged == true &&
+                sync.uiState.value.waitingDebtWrites.size == 1 }
+            compose.onNodeWithText("原还款金额：", substring = true).performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText("原还款时间：", substring = true).performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText("重试原提交").assertDoesNotExist()
+            val stop = context.getString(R.string.debt_write_drop)
+            compose.onNodeWithText(stop).performScrollTo().performClick()
+            assertEquals(original, fixture.stored().single())
+            compose.onNode(hasText(stop) and hasClickAction() and hasAnyAncestor(isDialog())).performClick()
+            compose.waitUntil(10_000) { fixture.stored().single()["status"] == "abandoned" }
+            assertOriginalColumns(original)
+            assertEquals(0, fixture.network.repaymentCalls.size)
+            assertEquals(0, fixture.network.repaymentResults.size)
+            assertEquals(0, runBlocking { fixture.drain() }.attempted)
+        } finally { compose.runOnIdle { sync.viewModelScope.cancel() } }
+    }
 
     @Test fun actualSaveLostAckRoomReopenAndOriginalRetryKeepOneRepaymentWhileCanonicalReadFails() {
         installModels()

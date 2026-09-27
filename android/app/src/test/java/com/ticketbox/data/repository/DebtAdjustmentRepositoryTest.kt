@@ -32,6 +32,37 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class DebtAdjustmentRepositoryTest {
+    @Test fun changedBindingPendingAdjustmentCanBeStoppedOfflineBeforeAnyDelivery() = runTest {
+        for (axis in listOf("session", "revision")) {
+            val fixture = DebtAdjustmentFixture()
+            fixture.save().getOrThrow()
+            val original = fixture.dao.rows.values.single()
+            assertEquals(PendingMutationStatus.Pending.wireValue, original.status)
+            assertTrue(fixture.repository.recover(fixture.binding, fixture.pending(), drop = true).isFailure)
+            assertEquals(original, fixture.dao.rows.values.single())
+            val session = requireNotNull(fixture.session.sessionStore.currentSession())
+            fixture.session.sessionStore.replaceForFixture(if (axis == "session") session.copy(sessionGeneration = "new-session")
+                else session.copy(bindingRevision = "new-revision"))
+            val outbox = fixture.newOutbox(fixture.clock)
+            val writes = fixture.newRepository(outbox)
+            val binding = requireNotNull(writes.currentAccess()).binding
+            val pending = writes.observeWrites(binding, fixture.debt.publicId).first().single()
+            assertTrue(pending.originalBindingChanged, axis)
+            assertFalse(pending.canRetry)
+            assertTrue(writes.recover(binding, pending, drop = true).isSuccess, axis)
+            val stopped = fixture.dao.rows.values.single()
+            assertEquals(original.copy(status = PendingMutationStatus.Abandoned.wireValue,
+                completedAt = stopped.completedAt), stopped)
+            assertNotNull(stopped.completedAt)
+            assertTrue(fixture.api.calls.isEmpty())
+            assertTrue(fixture.api.facts.isEmpty())
+            assertEquals(0, fixture.engine(outbox, maxAttempts = 1).drainOnce().attempted)
+            writes.save(binding, fixture.debt, 3_000L, "补记借款").getOrThrow()
+            assertEquals(2, fixture.dao.rows.size)
+            assertEquals(stopped, fixture.dao.rows.getValue(stopped.id))
+        }
+    }
+
     @Test fun newCurrentSessionOrRevisionCannotRecoverOriginalAdjustmentButCanExplicitlyStopIt() = runTest {
         for (axis in listOf("session", "revision")) {
             val fixture = DebtAdjustmentFixture()
