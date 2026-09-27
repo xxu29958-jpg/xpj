@@ -46,16 +46,28 @@ internal class RecurringQueryReader(
             check(token == null || token !in activeDirectTokens) { "固定支出操作正在提交，请稍后重新读取。" }
         }
 
-        private suspend fun requireBarrierUnchanged(dao: ExpenseDao, key: String, token: String?) {
-            check(dao.recurringDirectBarrier(key)?.responseJson == token) { "固定支出操作已改变，请重新读取。" }
+        private suspend fun requireBarrierUnchanged(dao: ExpenseDao, binding: LogicalSessionBinding,
+            token: String?, publicationPendingAtStart: Boolean, epoch: Long): Boolean {
+            val key = logicalBindingAdapter.toJson(binding)
+            check((dao.recurringReadEpoch(key)?.toLong() ?: 0L) == epoch) { "固定支出已接受修改，请重新读取。" }
+            check(dao.recurringDirectBarrier(key)?.responseJson == token) {
+                "固定支出操作已改变，请重新读取。"
+            }
             requireInactiveDirect(token)
+            val pendingNow = dao.hasPendingRecurringReadPublication(binding.ownerKey, binding.ledgerId)
+            check(publicationPendingAtStart || !pendingNow) { "固定支出已接受修改，请重新读取。" }
+            return !publicationPendingAtStart && !pendingNow
         }
 
         private suspend fun publishSnapshot(dao: ExpenseDao, retiredBindings: MutableSet<String>,
             snapshot: StatsProjectionCacheEntity, epoch: Long, barrier: String?) {
             try {
-                if (barrier != null) dao.settleRecurringDirectBarrier(snapshot.bindingKey, snapshot.ledgerId, barrier,
-                    accepted = true, expectedEpoch = epoch)
+                if (barrier != null) {
+                    // Only a complete current definition list can reconcile an unknown lifecycle/candidate result.
+                    if (snapshot.kind != "recurring_items" || snapshot.tag != ":true" || snapshot.month.isNotEmpty()) return
+                    dao.settleRecurringDirectBarrier(snapshot.bindingKey, snapshot.ledgerId, barrier,
+                        accepted = true, expectedEpoch = epoch)
+                }
                 if (snapshot.bindingKey in retiredBindings) {
                     dao.clearRecurringSnapshots(snapshot.bindingKey)
                     retiredBindings.remove(snapshot.bindingKey)
@@ -78,6 +90,7 @@ internal class RecurringQueryReader(
             val key = logicalBindingAdapter.toJson(binding)
             val epoch = dao.recurringReadEpoch(key)?.toLong() ?: 0L
             val barrier = dao.recurringDirectBarrier(key)?.responseJson
+            val publicationPending = dao.hasPendingRecurringReadPublication(binding.ownerKey, binding.ledgerId)
             requireInactiveDirect(barrier)
             val page = try {
                 bound.call { fetch(it) }
@@ -88,10 +101,10 @@ internal class RecurringQueryReader(
             }
             validate(page)
             coordinator.acceptSnapshotRead(ticket, bound, fromCache = false) {
-                check(localInvalidation.get() == generation && (dao.recurringReadEpoch(key)?.toLong() ?: 0L) == epoch) {
+                check(localInvalidation.get() == generation) {
                     "固定支出已接受修改，请重新读取。"
                 }
-                requireBarrierUnchanged(dao, key, barrier)
+                requireBarrierUnchanged(dao, binding, barrier, publicationPending, epoch)
                 page
             }
         }
@@ -183,6 +196,7 @@ internal class RecurringQueryReader(
         val generation = localInvalidation.get()
         val epoch = dao.recurringReadEpoch(query.bindingKey)?.toLong() ?: 0L
         val barrier = dao.recurringDirectBarrier(query.bindingKey)?.responseJson
+        val publicationPending = dao.hasPendingRecurringReadPublication(binding.ownerKey, binding.ledgerId)
         requireInactiveDirect(barrier)
         val key = "${query.bindingKey}|${query.kind}|${query.month}|${query.tag}|${query.timezone}"
         mutex.withLock { latestRequests[key] = ticket.sequence }
@@ -197,7 +211,6 @@ internal class RecurringQueryReader(
             return@safeCall coordinator.acceptSnapshotRead(ticket, bound, fromCache = true) {
                 mutex.withLock {
                     requireLatest(key, ticket)
-                    check(localInvalidation.get() == generation) { "固定支出已接受修改，请重新读取。" }
                     check(query.bindingKey !in retiredBindings) { "固定支出读取已失效，请联网重新读取。" }
                     check(barrier == null && dao.recurringDirectBarrier(query.bindingKey) == null) {
                         "原固定支出操作结果尚需联网核对，请重新读取。"
@@ -205,6 +218,10 @@ internal class RecurringQueryReader(
                     val saved = cachedQuery(query, epoch) ?: throw error
                     val value = requireNotNull(adapter.fromJson(saved.responseJson))
                     validate(value)
+                    check(localInvalidation.get() == generation) { "固定支出已接受修改，请重新读取。" }
+                    check(requireBarrierUnchanged(dao, binding, barrier, publicationPending, epoch)) {
+                        "已接受的固定支出提交尚待本地发布，请联网重新读取。"
+                    }
                     ReadSnapshot(value, saved.fetchedAt, fromCache = true)
                 }
             }
@@ -213,12 +230,12 @@ internal class RecurringQueryReader(
         coordinator.acceptSnapshotRead(ticket, bound, fromCache = false) { cacheAllowed ->
             mutex.withLock {
                 requireLatest(key, ticket)
-                check(localInvalidation.get() == generation && (dao.recurringReadEpoch(query.bindingKey)?.toLong() ?: 0L) == epoch) {
+                check(localInvalidation.get() == generation) {
                     "固定支出已接受修改，请重新读取。"
                 }
-                requireBarrierUnchanged(dao, query.bindingKey, barrier)
+                val settled = requireBarrierUnchanged(dao, binding, barrier, publicationPending, epoch)
                 val fetchedAt = Instant.now().toString()
-                if (cacheAllowed) publishSnapshot(dao, retiredBindings, query.copy(responseJson = adapter.toJson(wire), fetchedAt = fetchedAt), epoch, barrier)
+                if (cacheAllowed && settled) publishSnapshot(dao, retiredBindings, query.copy(responseJson = adapter.toJson(wire), fetchedAt = fetchedAt), epoch, barrier)
                 ReadSnapshot(wire, fetchedAt, fromCache = false)
             }
         }

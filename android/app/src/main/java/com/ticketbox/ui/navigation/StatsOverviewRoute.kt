@@ -47,7 +47,7 @@ internal fun StatsRoute(shellState: MainShellState, screenFactory: MainScreenFac
     LaunchedEffect(shellState.financialDataRevision, monthlyState.ledgerReady) {
         if (shellState.financialDataRevision > 0 && monthlyState.ledgerReady) {
             reloadAllStats(monthly, reports)
-            recurring.refresh()
+            recurring.refresh(retireCurrent = true)
         }
     }
     LaunchedEffect(monthlyState.ledgerReady, monthlyState.binding) {

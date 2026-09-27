@@ -52,6 +52,15 @@ internal class RecurringHistoryTask(
     fun more() { if (!state.loading && state.error == null) state.nextBeforeVersion?.let(::read) }
     fun retry() { if (!state.loading && state.error != null) read(failedBefore) }
 
+    fun invalidate() {
+        generation += 1
+        job?.cancel()
+        state = state.copy(items = emptyList(), nextBeforeVersion = null, fetchedAt = null, fromCache = false,
+            loading = false, error = null)
+        publish(state)
+        if (state.publicId != null) read(null)
+    }
+
     private fun read(before: Long?) {
         val binding = currentBinding() ?: return
         val id = state.publicId ?: return

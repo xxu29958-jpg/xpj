@@ -238,7 +238,7 @@ private data class RecurringPaymentCanonicalize(
         recordPayment: () -> Unit,
     ) = OccurrenceSheetActions(
         onDismiss = dismiss,
-        onRefresh = model::refresh,
+        onRefresh = { model.refresh() },
         onPeriod = model::changePeriod,
         onChoose = model::choose,
         onSubmit = model::submit,

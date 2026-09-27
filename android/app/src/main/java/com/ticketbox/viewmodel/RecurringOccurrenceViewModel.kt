@@ -32,6 +32,7 @@ data class RecurringOccurrenceUiState(
     val fetchedAt: String? = null,
     val fromCache: Boolean = false,
     val readDenied: Boolean = false,
+    val readInvalidated: Boolean = false,
     val payments: List<ConfirmedStreamItem> = emptyList(),
     val queue: List<PendingOccurrencePayment> = emptyList(),
     val choice: OccurrencePaymentDraft? = null,
@@ -49,7 +50,7 @@ data class RecurringOccurrenceUiState(
         it.row.status != PendingMutationStatus.Done &&
             it.row.targetId == occurrenceTarget(item?.publicId.orEmpty(), occurrence?.period ?: requestedPeriod)
     }
-    val canWrite: Boolean get() = access?.canModify == true && !readDenied && item?.status != "archived" &&
+    val canWrite: Boolean get() = access?.canModify == true && !readDenied && !readInvalidated && item?.status != "archived" &&
         occurrence?.state in setOf("unfulfilled", "fulfilled", "needs_review") && !loading && !saving &&
         pending.isEmpty() && (acceptedId == null || queue.any { it.row.id == acceptedId && it.row.status == PendingMutationStatus.Done })
 }
@@ -80,7 +81,7 @@ class RecurringOccurrenceViewModel(
                 } else mutableState.update { it.copy(access = access) }
                 if (access != null) coroutineScope {
                     launch { ledger.observeConfirmedStream().collect { rows ->
-                        mutableState.update { if (it.readDenied) it else it.copy(payments = rows) }
+                        mutableState.update { if (it.readDenied || it.readInvalidated) it else it.copy(payments = rows) }
                     } }
                     repository.observeQueue(access.binding).collect(::acceptQueue)
                 }
@@ -117,7 +118,13 @@ class RecurringOccurrenceViewModel(
         } else mutableState.update { it.copy(message = UiText.res(R.string.occurrence_invalid_month)) }
     }
 
-    fun refresh() {
+    /** Retire known-invalid payment reads while keeping the original unsubmitted choice and its OCC. */
+    fun refresh(retireCurrent: Boolean = false) {
+        if (retireCurrent && mutableState.value.item != null) {
+            epoch++
+            mutableState.update { it.copy(occurrence = null, payments = emptyList(), fetchedAt = null,
+                fromCache = false, readInvalidated = true, loading = false) }
+        }
         load(mutableState.value.requestedPeriod)
     }
 
@@ -207,6 +214,7 @@ class RecurringOccurrenceViewModel(
             fetchedAt = read?.fetchedAt ?: it.fetchedAt,
             fromCache = read?.fromCache ?: it.fromCache,
             readDenied = if (read != null) false else it.readDenied,
+            readInvalidated = if (read != null) false else it.readInvalidated,
             message = if (result.isFailure) UiText.res(R.string.occurrence_refresh_failed) else null,
         ) }
     }

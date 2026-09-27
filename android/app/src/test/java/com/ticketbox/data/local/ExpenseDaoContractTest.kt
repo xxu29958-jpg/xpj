@@ -453,6 +453,7 @@ class ExpenseDaoContractTest {
 private class FakeExpenseDao : ExpenseDao {
     private val statsCache = com.ticketbox.data.local.StatsProjectionCacheFake()
     private val goalCache = com.ticketbox.data.local.GoalQueryCacheFake()
+    override suspend fun hasPendingRecurringReadPublication(ownerKey: String, ledgerId: String) = false
     override suspend fun recurringReadEpoch(bindingKey: String) =
         statsCache.find(bindingKey, "recurring_read_epoch", "", "", "UTC").singleOrNull()?.responseJson
     override suspend fun clearRecurringSnapshots(bindingKey: String) = statsCache.clearRecurring(bindingKey)

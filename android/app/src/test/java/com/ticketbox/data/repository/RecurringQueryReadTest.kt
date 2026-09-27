@@ -25,6 +25,28 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class RecurringQueryReadTest {
+    @Test fun cachedPayloadCannotReturnAfterAnotherOwnerRetiresItBetweenReadAndDecode() = runTest {
+        lateinit var api: RecurringReadProbe
+        var afterCacheRead: (suspend () -> Unit)? = null
+        val saved = FakeExpenseDao()
+        val dao = object : ExpenseDao by saved {
+            override suspend fun recurringSnapshotIfCurrent(query: StatsProjectionCacheEntity, expectedEpoch: Long): StatsProjectionCacheEntity? {
+                val payload = saved.recurringSnapshotIfCurrent(query, expectedEpoch)
+                val after = afterCacheRead
+                afterCacheRead = null
+                after?.invoke()
+                return payload
+            }
+        }
+        val fixture = GoalReadFixture(decorateDao = { dao }, decorate = { RecurringReadProbe(it).also { probe -> api = probe } })
+        val reader = RecurringQueryReader(fixture.provider, dao, fixture.coordinator)
+        reader.history(fixture.binding, "recurring", null).getOrThrow()
+        api.failure = ConnectException("offline cache read")
+        afterCacheRead = { RecurringQueryReader(fixture.provider, dao, fixture.coordinator).invalidate(fixture.binding) }
+        assertTrue(reader.history(fixture.binding, "recurring", null).isFailure,
+            "A payload already fetched from Room cannot escape after a different owner's accepted mutation retired its epoch")
+    }
+
     @Test fun directCredentialRevocationPersistsReadDenialButWriteOnlyForbiddenKeepsReadFacts() = runTest {
         for (status in listOf(401, 403)) {
             lateinit var api: RecurringReadProbe
@@ -300,6 +322,15 @@ class RecurringQueryReadTest {
         assertEquals(1, calls, "Unresolved non-idempotent commands must never be resent by cache recovery")
         api.failure = ConnectException("offline after unknown result")
         assertTrue(reader().items(fixture.binding, null, true, null).isFailure)
+        api.failure = null
+        reader().history(fixture.binding, "recurring", null).getOrThrow()
+        reader().occurrence(fixture.binding, "another-series", "current").getOrThrow()
+        reader().occurrence(fixture.binding, "recurring", "current").getOrThrow()
+        reader().occurrence(fixture.binding, "recurring", "2026-09").getOrThrow()
+        assertEquals(token, fixture.dao.recurringDirectBarrier(logicalBindingAdapter.toJson(fixture.binding)),
+            "Neither history nor any occurrence projection can establish the unknown lifecycle result")
+        api.failure = ConnectException("offline after unrelated GETs")
+        assertTrue(reader().history(fixture.binding, "recurring", null).isFailure, "Unrelated GETs cannot seed reusable caches across the original barrier")
         api.failure = null
         api.item = api.item.copy(status = "paused", rowVersion = 10)
         val verified = reader().items(fixture.binding, null, true, null).getOrThrow()

@@ -173,14 +173,48 @@ class RecurringAcceptedReadRoomTest {
             }, adapters.recurringUpdateAdapter)))
             db.openHelper.writableDatabase.execSQL("CREATE TRIGGER fail_recurring_cleanup BEFORE DELETE ON stats_projection_cache " +
                 "WHEN OLD.kind = 'recurring_items' BEGIN SELECT RAISE(ABORT, 'Read cleanup unavailable'); END")
-            assertEquals(OutboxDrainWorker.DrainOutcome.RETRY, OutboxDrainWorker.runDrain { engine.drainOnce() })
-            val retry = db.pendingMutationDao().allRows().single()
-            assertEquals("pending", retry.status, "Local publication failure must automatically release the original claim for worker retry")
-            assertEquals(original.retryCount + 1, retry.retryCount, "A real accepted send is not refunded")
-            assertEquals(original.payload, retry.payload)
-            assertEquals(original.expectedRowVersion, retry.expectedRowVersion)
-            assertEquals(original.idempotencyKey, retry.idempotencyKey)
-            assertEquals(listOf(original.idempotencyKey), calls.map { it.first })
+            val bindingKey = logicalBindingAdapter.toJson(fixture.binding)
+            val oldCache = db.expenseDao().statsProjections(bindingKey, "recurring_items", "", ":true", java.util.TimeZone.getDefault().id)
+            assertEquals(1, oldCache.size)
+            api.started = CompletableDeferred()
+            api.release = CompletableDeferred()
+            val beforeAcceptance = async(Dispatchers.IO) {
+                RecurringQueryReader(fixture.provider, db.expenseDao(), fixture.coordinator).items(fixture.binding, null, true, null)
+            }
+            requireNotNull(api.started).await()
+            api.started = CompletableDeferred()
+            val freshBeforeAcceptance = async(Dispatchers.IO) {
+                RecurringQueryReader(fixture.provider, db.expenseDao(), fixture.coordinator)
+                    .freshQuery(fixture.binding, { recurringItems(null, true, null, java.util.TimeZone.getDefault().id) }, {})
+            }
+            requireNotNull(api.started).await()
+            try {
+                assertEquals(OutboxDrainWorker.DrainOutcome.RETRY, OutboxDrainWorker.runDrain { engine.drainOnce() })
+                val retry = db.pendingMutationDao().allRows().single()
+                assertEquals("pending", retry.status, "Local publication failure must automatically release the original claim for worker retry")
+                assertEquals(original.retryCount + 1, retry.retryCount, "A real accepted send is not refunded")
+                assertEquals(original.payload, retry.payload)
+                assertEquals(original.expectedRowVersion, retry.expectedRowVersion)
+                assertEquals(original.idempotencyKey, retry.idempotencyKey)
+                assertEquals(listOf(original.idempotencyKey), calls.map { it.first })
+                assertEquals("accepted_recurring_read_publication_pending", retry.lastError)
+            } finally { requireNotNull(api.release).complete(Unit) }
+            assertTrue(beforeAcceptance.await().isFailure, "Another owner's GET begun before known acceptance cannot publish after failed settlement")
+            assertTrue(freshBeforeAcceptance.await().isFailure, "Fresh-only reminder reads obey the same accepted-pending race barrier")
+            api.started = null
+            api.release = null
+            api.failure = ConnectException("cold offline while accepted cleanup is still Pending")
+            val cold = RecurringQueryReader(fixture.provider, db.expenseDao(),
+                LocalLedgerSessionCoordinator(boundSettingsStore(), fixture.session.sessionStore, db.expenseDao()))
+            assertTrue(cold.items(fixture.binding, null, true, null).isFailure,
+                "An accepted original waiting for Room publication cannot resurrect its pre-acceptance cache")
+            api.failure = null
+            api.item = api.item.copy(merchant = "已接受的原修改", rowVersion = 10)
+            val pendingFresh = cold.items(fixture.binding, null, true, null).getOrThrow()
+            assertEquals("已接受的原修改", pendingFresh.value.single().merchant)
+            assertTrue(!pendingFresh.fromCache)
+            assertEquals(oldCache, db.expenseDao().statsProjections(bindingKey, "recurring_items", "", ":true", java.util.TimeZone.getDefault().id),
+                "A GET started with known accepted-pending state may display its actual result but cannot publish a cache")
             db.openHelper.writableDatabase.execSQL("DROP TRIGGER fail_recurring_cleanup")
             api.started = CompletableDeferred()
             api.release = CompletableDeferred()
@@ -197,7 +231,6 @@ class RecurringAcceptedReadRoomTest {
                 assertEquals(original.idempotencyKey, done.idempotencyKey)
                 assertEquals("done", done.status)
                 assertEquals(original.retryCount + 2, done.retryCount)
-                val bindingKey = logicalBindingAdapter.toJson(fixture.binding)
                 assertEquals("1", db.expenseDao().recurringReadEpoch(bindingKey))
                 assertEquals(1, db.pendingMutationDao().deleteResolvedBefore("done", "2099-01-01T00:00:00Z"))
                 assertEquals("1", db.expenseDao().recurringReadEpoch(bindingKey), "Ordinary Done cleanup cannot reset the query epoch")

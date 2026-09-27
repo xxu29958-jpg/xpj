@@ -74,6 +74,11 @@ interface ExpenseDao {
         "AND kind = 'recurring_read_epoch' AND month = '' AND tag = '' AND homeCurrencyCode = '' AND timezone = 'UTC'")
     suspend fun recurringReadEpoch(bindingKey: String): String?
 
+    /** Existing accepted Outbox originals are the proof while read-publication settlement is pending. */
+    @Query("SELECT EXISTS(SELECT 1 FROM pending_mutations WHERE ownerKey = :ownerKey AND ledgerId = :ledgerId " +
+        "AND status != 'done' AND lastError = 'accepted_recurring_read_publication_pending')")
+    suspend fun hasPendingRecurringReadPublication(ownerKey: String, ledgerId: String): Boolean
+
     suspend fun recurringDirectBarrier(bindingKey: String): StatsProjectionCacheEntity? =
         statsProjections(bindingKey, "recurring_direct_barrier", "", "", "UTC").singleOrNull()
 

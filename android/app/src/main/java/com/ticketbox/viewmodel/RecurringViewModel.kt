@@ -143,8 +143,15 @@ class RecurringViewModel(
         }
     }
 
-    fun refresh() {
-        refreshInternal(preserveMutationFeedback = false)
+    /** Shell financial changes retire old projections; an ordinary retry keeps its last readable page. */
+    fun refresh(retireCurrent: Boolean = false) {
+        if (retireCurrent) {
+            refreshGeneration += 1
+            _uiState.update { it.copy(items = emptyList(), itemsFetchedAt = null, itemsFromCache = false,
+                candidates = emptyList()) }
+            historyTask.invalidate()
+        }
+        refreshInternal(preserveMutationFeedback = retireCurrent)
     }
 
     private fun refreshInternal(preserveMutationFeedback: Boolean) {
