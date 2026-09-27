@@ -63,7 +63,17 @@ class DebtAcceptedReadRoomTest {
             db.openHelper.writableDatabase.execSQL("CREATE TRIGGER fail_debt_cleanup BEFORE DELETE ON stats_projection_cache " +
                 "WHEN OLD.kind = 'debt_detail' BEGIN SELECT RAISE(ABORT, 'Debt read cleanup unavailable'); END")
 
-            assertEquals(OutboxDrainWorker.DrainOutcome.RETRY, OutboxDrainWorker.runDrain { engine.drainOnce() })
+            started = CompletableDeferred()
+            release = CompletableDeferred()
+            val beforeAcceptance = async(Dispatchers.IO) { reader().detail(fixture.binding, "d1") }
+            requireNotNull(started).await()
+            try {
+                assertEquals(OutboxDrainWorker.DrainOutcome.RETRY, OutboxDrainWorker.runDrain { engine.drainOnce() })
+            } finally { requireNotNull(release).complete(Unit) }
+            assertTrue(beforeAcceptance.await().isFailure,
+                "An older GET cannot become fresh after a known acceptance whose local publication rolled back")
+            started = null
+            release = null
             val retry = db.pendingMutationDao().allRows().single()
             assertEquals("pending", retry.status)
             assertEquals("accepted_debt_read_publication_pending", retry.lastError)
