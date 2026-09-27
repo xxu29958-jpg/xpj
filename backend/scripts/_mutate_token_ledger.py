@@ -71,6 +71,7 @@ OWNERS: frozenset[str] = frozenset(
         "maintenance",
         "owner_console",
         "exchange_rates",
+        "saved_views",
         "tasks",
     }
 )
@@ -378,6 +379,10 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /web/import/confirm": Exempt("batch_db_write", "imports", _IMPORT_APPLY, "medium"),
     "POST /web/import/{public_id}/apply": Exempt("batch_db_write", "imports", _IMPORT_APPLY, "medium"),
     "POST /web/income-plans/create": Exempt("create_row", "budget", _INCOME_PLAN),
+    # ADR-0038 create_row: this creates a named query with no predecessor token.
+    # Name uniqueness and the original actor/key receipt prevent replacement;
+    # subsequent edits/deletes carry the existing SavedView row_version.
+    "POST /web/saved-views": Exempt("create_row", "saved_views", ("saved_views", "api_idempotency_keys")),
     "POST /web/merchants/catalog/create": Exempt("create_row", "merchants", _MERCHANT_CATALOG),
     "POST /web/merchants/aliases/create": Exempt("create_row", "merchants", ("merchant_aliases",)),
     "POST /web/merchants/aliases/{public_id}/undo": Exempt(

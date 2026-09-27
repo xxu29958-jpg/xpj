@@ -83,6 +83,8 @@ _LEDGER_RECORDS = (
         "updated_at row_version deleted_at"),
     (m.CategoryPreference, "id public_id tenant_id name key kind created_at updated_at row_version deleted_at"),
     (m.Tag, "id public_id tenant_id name key created_at updated_at row_version deleted_at"),
+    (m.SavedView, "id public_id tenant_id name name_key month_mode month filter tag_public_id "
+        "home_currency_code created_by_account_id created_at updated_at row_version"),
     (m.TagMutationUndoGroup, "id mutation_public_id tenant_id op source_tag_public_id source_tag_name "
         "target_tag_public_id target_tag_name created_at consumed_at"),
     (m.TagMutationUndoItem, "id tenant_id group_id expense_public_id original_tags original_tag_ids original_row_version created_at"),
@@ -297,7 +299,7 @@ def _accepted_operations(auth: AuthContext) -> Select:
     # resource results require the same actor predicates as their read owner.
     shared = receipt.resource_type.in_(("expense", "expense_batch", "expense_offset", "monthly_budget", "monthly_arrangement", "goal",
         "income_plan", "recurring_item", "recurring_occurrence", "category_rule", "exchange_rate",
-        "ledger_calendar_revision", "upload_receipt", "merchant_alias"))
+        "ledger_calendar_revision", "upload_receipt", "merchant_alias", "saved_view"))
     debt_relationships = _authorized_debt_receipts(auth)
     drafts = and_(receipt.resource_type == "repayment_draft", receipt.resource_id.in_(
         select(m.RepaymentDraft.public_id).where(_owned_drafts(auth))))

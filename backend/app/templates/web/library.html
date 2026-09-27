@@ -12,14 +12,28 @@
 <header class="product-page-header">
   <div class="product-page-heading">
     <span class="product-eyebrow">流水 / 资料库</span>
-    <h1 class="page-title page-title--compact">交易词汇与自动化</h1>
+    <h1 class="page-title page-title--compact">常用视图与交易资料</h1>
     <p class="product-page-summary">
-      这里维护系统以后如何称呼和自动整理你的交易：分类、商家、标签与规则，以及整个账本的已移除内容。
+      从常用视图继续查看账单，维护分类、商家、标签与规则，或找回整个账本的已移除内容。
     </p>
   </div>
 </header>
 
 <div class="library-groups">
+  <section class="library-group" aria-labelledby="library-group-views">
+    <h2 class="library-group-title" id="library-group-views">常用查询</h2>
+    <p class="library-group-desc">保存常用条件，打开时查看最新账单。</p>
+    <div class="library-directory">
+      <a class="library-row" href="/web/saved-views{{ q }}">
+        <div class="library-row-copy">
+          <h3 class="library-row-title">保存的视图</h3>
+          <span class="library-row-count">{{ library_counts.saved_views }} 个共享视图</span>
+        </div>
+        <p>当前账本的参与者都能查看。月份、标签和金额呈现条件可重复使用，账单仍来自原流水。</p>
+        <span class="library-row-action">打开</span>
+      </a>
+    </div>
+  </section>
   <section class="library-group" aria-labelledby="library-group-dictionary">
     <h2 class="library-group-title" id="library-group-dictionary">交易字典</h2>
     <p class="library-group-desc">系统用来称呼每笔交易的词汇。</p>

@@ -1,0 +1,51 @@
+{% macro editor(fields, public_id, selected_ledger_id, tag_options, currency_codes, csrf_field, can_write) %}
+<form method="post" action="/web/saved-views{% if public_id %}/{{ public_id }}/rename{% endif %}">
+  {{ csrf_field|safe }}
+  <input type="hidden" name="ledger_id" value="{{ fields.ledger_id|default(selected_ledger_id) }}">
+  {% if public_id %}
+  <input type="hidden" name="expected_row_version" value="{{ fields.expected_row_version|default(fields.row_version) }}">
+  {% else %}
+  <input type="hidden" name="idempotency_key" value="{{ fields.idempotency_key }}">
+  {% endif %}
+  <div class="product-form-grid">
+    <label class="product-field"><span>视图名称</span>
+      <input class="input" name="name" maxlength="120" required value="{{ fields.name }}">
+    </label>
+    <label class="product-field"><span>月份方式</span>
+      <select class="select" name="month_mode">
+        {% if fields.month_mode not in ['fixed', 'current'] %}<option value="{{ fields.month_mode }}" selected>原月份方式无效，请重新选择</option>{% endif %}
+        <option value="fixed"{% if fields.month_mode == 'fixed' %} selected{% endif %}>固定账务月</option>
+        <option value="current"{% if fields.month_mode == 'current' %} selected{% endif %}>每次打开时的账本当前月</option>
+      </select>
+    </label>
+    <label class="product-field"><span>固定月份（仅固定账务月使用）</span>
+      <input class="input" name="month" type="month" value="{{ fields.month or '' }}">
+    </label>
+    <label class="product-field"><span>账单范围</span>
+      <select class="select" name="filter">
+        {% if fields.filter not in ['', 'missing_category', 'missing_accounting_date'] %}<option value="{{ fields.filter }}" selected>原筛选无效，请重新选择</option>{% endif %}
+        <option value=""{% if not fields.filter %} selected{% endif %}>已确认流水 · 使用上述月份</option>
+        <option value="missing_category"{% if fields.filter == 'missing_category' %} selected{% endif %}>待补分类 · 全部月份</option>
+        <option value="missing_accounting_date"{% if fields.filter == 'missing_accounting_date' %} selected{% endif %}>账务日期待核对 · 全部月份</option>
+      </select>
+    </label>
+    <label class="product-field"><span>标签</span>
+      <select class="select" name="tag_public_id">
+        {% if fields.tag_public_id and fields.tag_public_id not in (tag_options|map(attribute='public_id')|list) %}
+        <option value="{{ fields.tag_public_id }}" selected>已失效：{{ fields.tag_name or '原标签' }} · 请明确选择替代条件</option>
+        {% endif %}
+        <option value=""{% if not fields.tag_public_id %} selected{% endif %}>不限标签</option>
+        {% for tag in tag_options %}<option value="{{ tag.public_id }}"{% if fields.tag_public_id == tag.public_id %} selected{% endif %}>{{ tag.name }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="product-field"><span>金额呈现币种</span>
+      <select class="select" name="home_currency_code">
+        {% if fields.home_currency_code not in currency_codes %}<option value="{{ fields.home_currency_code }}" selected>{{ fields.home_currency_code }}</option>{% endif %}
+        {% for code in currency_codes %}<option value="{{ code }}"{% if fields.home_currency_code == code %} selected{% endif %}>{{ code }}</option>{% endfor %}
+      </select>
+    </label>
+  </div>
+  <p class="hint">待补分类和账务日期待核对始终查询全部月份。币种只影响金额呈现，不改变原账单；缺少汇率时仍会提示。</p>
+  <button class="product-button product-button--primary" type="submit">{% if not can_write %}权限恢复后重试原提交{% elif public_id %}保存更改{% else %}保存视图{% endif %}</button>
+</form>
+{% endmacro %}

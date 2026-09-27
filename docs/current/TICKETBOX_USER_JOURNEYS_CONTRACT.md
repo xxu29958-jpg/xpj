@@ -292,7 +292,7 @@ Neither finding opens Windows lifecycle work or blocks an unrelated current
 consumer slice by itself. The historical review subjects remain in the evidence
 archive. Fresh G2 stays CLOSED and the Goal's Windows HOLD boundary is unchanged.
 
-## Saved financial views (next implementation)
+## Saved financial views (#449 candidate)
 
 Under the Goal's delegated product-design scope and product contract 6.9, saved
 views are named, ledger-shared query configurations. The UI states this sharing
@@ -317,6 +317,17 @@ following a broader replacement; same-identity undo may restore the reference.
 Names cannot silently overwrite another view. Original retry identity, actor,
 OCC conflicts and the existing complete portable outlet are part of delivery.
 
-This is the chosen behavior for the next vertical slice, not an implementation or
-runtime qualification claim. It does not gate unrelated Income or Library work,
-replace the full product Goal, or reopen Windows lifecycle work.
+The frozen `38175eb` browser journey ran against PostgreSQL and failed because
+the confirmed stream had no save entry (CI 36354760118, job 108720371992).
+The candidate adds one SavedView persistence/query owner, its schema migration,
+native confirmed/Library forms and the existing portable outlet. Invalid or
+refused forms retain original inputs and key/OCC; switching the current ledger
+cannot retarget an old form. An unavailable tag remains selected until explicitly
+repaired. The shared product shell covers both desktop and narrow Web navigation.
+
+Direct regressions cover current/fixed months, new facts after reopening,
+cross-ledger and revoked membership, Viewer write refusal/recovery, stable retry
+receipts after rename/delete, OCC and name conflicts, real tag rename/merge,
+schema preservation and export scope. This is candidate behavior pending exact
+runtime qualification, not delivered capability. It does not gate unrelated
+Income/Library work, replace the full Goal or reopen Windows lifecycle work.

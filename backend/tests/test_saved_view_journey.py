@@ -66,6 +66,6 @@ def test_saved_view_reopens_the_same_query_and_reads_new_facts_without_changing_
 
     after = client.get(f"/api/expenses/{original['id']}", headers=identity.app_headers)
     assert after.status_code == 200, after.text
-    for field in ("amount_cents", "home_currency", "original_currency", "expense_time",
+    for field in ("amount_cents", "home_currency", "original_currency", "original_amount_minor", "expense_time",
                   "accounting_time", "row_version", "fact_revision", "tags"):
-        assert after.json().get(field) == before.json().get(field), field
+        assert after.json()[field] == before.json()[field], field

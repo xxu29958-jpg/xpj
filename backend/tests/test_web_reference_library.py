@@ -57,9 +57,10 @@ def test_reference_library_hub_groups_existing_owner_surfaces(
 
     assert response.status_code == 200
     body = response.text
-    for group in ("交易字典", "自动化", "数据生命周期"):
+    for group in ("常用查询", "交易字典", "自动化", "数据生命周期"):
         assert group in body
     for href in (
+        "/web/saved-views?ledger_id=owner",
         "/web/categories?ledger_id=owner",
         "/web/merchants?ledger_id=owner",
         "/web/tags?ledger_id=owner",
@@ -78,6 +79,7 @@ def test_reference_library_hub_groups_existing_owner_surfaces(
 @pytest.mark.parametrize(
     ("path", "heading"),
     [
+        ("/web/saved-views", "保存的视图"),
         ("/web/categories", "分类"),
         ("/web/merchants", "商家"),
         ("/web/tags", "标签"),
