@@ -33,6 +33,90 @@ class IncomePlanEditViewModelGuardsTest {
     @AfterTest fun tearDown() { Dispatchers.resetMain() }
 
     @Test
+    fun sameLedgerReadOnlyRoundTripKeepsTheOriginalDraftAndSubmitsItsCurrencyMonthAndVersion() = runTest(dispatcher) {
+        val original = editPlan("salary-jpy", 12_300, rowVersion = 7L).copy(homeCurrencyCode = "JPY")
+        val repo = FakeIncomePlanEditRepository()
+        val viewModel = IncomePlanEditViewModel(repo)
+        advanceUntilIdle()
+        viewModel.openEdit(original, "2026-09")
+        viewModel.updateDraftField(IncomePlanDraftField.Label, "原收入草稿")
+        viewModel.updateDraftField(IncomePlanDraftField.Amount, "9000")
+        viewModel.updateDraftField(IncomePlanDraftField.PayDay, "09")
+        val frozen = assertNotNull(viewModel.state.value.session)
+
+        repo.activeAccessFlow.value = editAccess(canModify = false)
+        advanceUntilIdle()
+        val readOnly = assertNotNull(viewModel.state.value.session,
+            "A permission change on the same binding must not discard the user's original edit")
+        assertEquals(frozen.baseline, readOnly.baseline)
+        assertEquals(frozen.binding, readOnly.binding)
+        assertEquals("原收入草稿", readOnly.draft.label)
+        assertEquals("9000", readOnly.draft.amountYuanInput)
+        assertEquals("09", readOnly.draft.payDayInput)
+        assertEquals("2026-09", readOnly.draft.intentMonth)
+        assertEquals(CurrencyCode.JPY, readOnly.draft.homeCurrency)
+        viewModel.submit()
+        viewModel.archiveFromEdit()
+        advanceUntilIdle()
+        assertTrue(repo.updateCalls.isEmpty(), "Retaining the draft does not grant a write during read-only access")
+        assertTrue(repo.archiveCalls.isEmpty())
+        assertFalse(viewModel.state.value.succeeded)
+        assertFalse(viewModel.state.value.isSubmitting)
+
+        repo.active = repo.active.copy(month = "2026-10", plans = listOf(original.copy(rowVersion = 8, amountCents = 15_000)))
+        repo.activeAccessFlow.value = editAccess(canModify = true)
+        advanceUntilIdle()
+        viewModel.submit()
+        advanceUntilIdle()
+        val submitted = repo.updateCalls.single()
+        assertEquals(original, submitted.baseline, "Permission recovery cannot silently adopt a newer plan")
+        assertEquals(frozen.binding, submitted.binding)
+        assertEquals(CurrencyCode.JPY, submitted.currency)
+        assertEquals(7L, submitted.patch.expectedRowVersion)
+        assertEquals("2026-09", submitted.patch.intentMonth)
+        assertEquals("原收入草稿", submitted.patch.label)
+        assertEquals(9_000L, submitted.patch.amountCents)
+        assertEquals(9, submitted.patch.payDay)
+        assertTrue(viewModel.state.value.succeeded)
+    }
+
+    @Test
+    fun sameBindingPermissionChangeCannotEraseAnInFlightOriginalOrItsLocalAcceptance() = runTest(dispatcher) {
+        val original = editPlan("salary-jpy", 12_300, rowVersion = 7L).copy(homeCurrencyCode = "JPY")
+        val repo = FakeIncomePlanEditRepository()
+        val release = CompletableDeferred<Unit>()
+        repo.updateGate = { release.await() }
+        var acceptedNotices = 0
+        val viewModel = IncomePlanEditViewModel(repo, onDataChanged = { acceptedNotices++ })
+        advanceUntilIdle()
+        viewModel.openEdit(original, "2026-09")
+        viewModel.updateDraftField(IncomePlanDraftField.Amount, "9000")
+        viewModel.submit()
+        advanceUntilIdle()
+        assertTrue(viewModel.state.value.isSubmitting)
+        try {
+            repo.activeAccessFlow.value = editAccess(canModify = false)
+            advanceUntilIdle()
+            val retained = assertNotNull(viewModel.state.value.session,
+                "A role refresh cannot orphan the original publication already in progress")
+            assertEquals(original, retained.baseline)
+            assertEquals("9000", retained.draft.amountYuanInput)
+            assertTrue(viewModel.state.value.isSubmitting)
+            viewModel.submit()
+            viewModel.archiveFromEdit()
+            assertEquals(1, repo.updateCalls.size)
+            assertTrue(repo.archiveCalls.isEmpty())
+        } finally { release.complete(Unit) }
+        advanceUntilIdle()
+        assertTrue(viewModel.state.value.succeeded, "A known local publication must remain visible after the permission refresh")
+        assertFalse(viewModel.state.value.isSubmitting)
+        assertEquals(1, acceptedNotices)
+        assertEquals(original, repo.updateCalls.single().baseline)
+        assertEquals("2026-09", repo.updateCalls.single().patch.intentMonth)
+        assertEquals(CurrencyCode.JPY, repo.updateCalls.single().currency)
+    }
+
+    @Test
     fun editUsesThePlansRecordedCurrencyImmediately() = runTest(dispatcher) {
         val plan = editPlan("p1", 12_300, rowVersion = 7L).copy(homeCurrencyCode = "JPY")
         val repo = FakeIncomePlanEditRepository()
