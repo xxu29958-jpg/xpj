@@ -261,6 +261,31 @@ class MonthlyArrangementRoomContinuityTest {
         assertEquals(1L, calls[1].first.expectedRowVersion)
         assertEquals(2, receipts.size)
     }
+    @Test fun confirmedSecondSaveRemainsVisibleInOfflineHistoryWithoutChangingTheOriginalReceipts() = runBlocking {
+        loseAck = false
+        val original = binding()
+        var repository = reopen()
+        repository.enqueueArrangement(original, "2026-09", MonthlyArrangementSaveRequest("JPY", 1200, 300)).getOrThrow()
+        assertEquals(1, drain().done)
+        repository.arrangement(original, "2026-09").getOrThrow()
+        assertEquals(listOf(1L), repository.arrangementHistory(original, "2026-09").getOrThrow().response.items.map { it.rowVersion })
+        repository.arrangementHistory(original, "2026-09", beforeVersion = 2).getOrThrow()
+        repository.enqueueArrangement(original, "2026-09", MonthlyArrangementSaveRequest("JPY", 1800, 400, 1)).getOrThrow()
+        assertEquals(1, drain().done)
+        val originalReceipts = requireNotNull(db).pendingMutationDao().allRows()
+
+        offline = true
+        repository = reopen()
+        assertEquals(2L, repository.arrangement(original, "2026-09").getOrThrow().response.arrangement?.rowVersion)
+        val history = repository.arrangementHistory(original, "2026-09").getOrThrow()
+        assertTrue(history.fromCache)
+        assertEquals(listOf(2L, 1L), history.response.items.map { it.rowVersion })
+        assertEquals(listOf(1800L, 1200L), history.response.items.map { it.savingsTargetCents })
+        assertTrue(history.response.items.all { it.homeCurrencyCode == "JPY" })
+        assertEquals(listOf(1L), repository.arrangementHistory(original, "2026-09", beforeVersion = 2)
+            .getOrThrow().response.items.map { it.rowVersion })
+        assertEquals(originalReceipts, requireNotNull(db).pendingMutationDao().allRows())
+    }
     @Test fun originalDraftSavedProjectionAndAckUnknownSurviveRoomReopenWithSameKey() = runBlocking {
         val original = binding()
         var repository = reopen()
