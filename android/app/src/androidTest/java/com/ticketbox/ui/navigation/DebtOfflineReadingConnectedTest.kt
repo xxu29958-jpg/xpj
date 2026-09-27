@@ -115,7 +115,8 @@ class DebtOfflineReadingConnectedTest {
         offline = true
         compose.runOnIdle { harness.reopen(); mounted.value = true }
         compose.waitForIdle()
-        // This must fail on the old guarded-GET-only owner, rather than on a new test API.
+        // A new graph starts at Inbox: enter the same production list before checking its cold data.
+        compose.runOnIdle { harness.shell.openSecondaryPage(ProductSecondaryPage.AllDebts) }
         openDebt()
         assertActivity("已记录日元还款", PAYMENT_TIME)
         olderPage()

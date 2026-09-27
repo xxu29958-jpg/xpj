@@ -80,9 +80,11 @@ class CreateDebtGoalViewModel(
         viewModelScope.launch {
             debts.observeResourceDenials().collect { denial ->
                 if (denial.binding != writes.currentAccess()?.binding) return@collect
+                val wasLoading = _state.value.isLoadingDebts
                 loadGeneration++
                 _state.update { it.copy(isLoadingDebts = false,
                     candidates = it.candidates.filterNot { debt -> debt.publicId == denial.debtPublicId }) }
+                if (wasLoading) refreshCandidates()
             }
         }
         viewModelScope.launch {

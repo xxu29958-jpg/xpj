@@ -64,9 +64,12 @@ class DebtListViewModel(
         viewModelScope.launch {
             repository.observeResourceDenials().collect { denial ->
                 if (denial.binding != creation.currentAccess()?.binding) return@collect
+                val replaceInFlightRead = _state.value.isLoading
                 loadGeneration++
                 _state.update { it.copy(debts = it.debts.filterNot { debt -> debt.publicId == denial.debtPublicId },
                     isLoading = false, error = denial.failure.toUiText(R.string.debt_list_load_failed)) }
+                // The old response must stay retired, but unrelated debts still need their current read.
+                if (replaceInFlightRead) refresh()
             }
         }
         viewModelScope.launch {

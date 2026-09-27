@@ -22,6 +22,8 @@ import com.ticketbox.domain.model.GoalUpdate
 import com.ticketbox.domain.model.ReportsOverview
 import com.ticketbox.domain.model.ReportsOverviewQuery
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
+import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.test.runCurrent
@@ -50,6 +52,48 @@ class CreateDebtGoalViewModelTest {
     @AfterTest
     fun tearDown() {
         Dispatchers.resetMain()
+    }
+
+    @Test fun resourceRefusalDuringColdOrRefreshReadRecoversOtherCandidatesWithoutReplacingTheForm() = runTest(dispatcher) {
+        for (cold in listOf(true, false)) {
+            val other = debt("kept", "open").copy(homeCurrencyCode = "JPY", originalCurrencyCode = "JPY")
+            val actions = FakeCreateDebtActions(listResult = Result.success(listOf(other.copy(publicId = "gone"), other)))
+            val reports = FakeCreateReportsActions()
+            val gate = CompletableDeferred<Unit>()
+            if (cold) actions.listGate = gate
+            val vm = CreateDebtGoalViewModel(reports, actions, FakeDebtWriteActions())
+            vm.reload()
+            advanceUntilIdle()
+            vm.updateName("保留日元还债计划")
+            if (!cold) {
+                vm.toggleDebt("gone")
+                actions.listGate = gate
+                vm.refreshCandidates()
+                runCurrent()
+            }
+            val selection = vm.state.value.selectedDebtIds
+            assertTrue(vm.state.value.isLoadingDebts)
+            val current = other.copy(rowVersion = 9, remainingAmountCents = 30_000)
+            actions.listResult = Result.success(listOf(current))
+            actions.listGate = null
+            try {
+                actions.resourceDenials.emit(DebtReadResourceDenial(adjustmentBinding(), "gone",
+                    RepositoryException("记录不存在", httpStatusCode = 404, errorCode = "debt_not_found"), 1))
+                advanceUntilIdle()
+                assertEquals(listOf(current), vm.state.value.candidates)
+                assertFalse(vm.state.value.isLoadingDebts)
+                assertEquals(actions.fetchedAt, vm.state.value.fetchedAt)
+                assertEquals("保留日元还债计划", vm.state.value.name)
+                assertEquals(selection, vm.state.value.selectedDebtIds)
+                assertEquals(selection, vm.state.value.unavailableSelectedDebtIds)
+                assertFalse(vm.state.value.canSubmit)
+            } finally { gate.complete(Unit) }
+            advanceUntilIdle()
+            assertEquals(listOf(current), vm.state.value.candidates, "The superseded list cannot revive the refused resource or old balances")
+            assertEquals("JPY", vm.state.value.candidates.single().homeCurrencyCode)
+            assertTrue(reports.createDebtGoalCalls.isEmpty())
+            vm.viewModelScope.cancel()
+        }
     }
 
     @Test

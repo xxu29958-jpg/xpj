@@ -53,6 +53,52 @@ class RepaymentDraftInboxViewModelTest {
         Dispatchers.resetMain()
     }
 
+    @Test fun resourceRefusalDuringColdOrRefreshReadRecoversOtherTargetsAndKeepsTheOriginalCaptureAndFocus() = runTest(dispatcher) {
+        for (cold in listOf(true, false)) {
+            val other = debt("kept").copy(homeCurrencyCode = "JPY", originalCurrencyCode = "JPY")
+            val captured = draft("capture", suggestedDebtPublicId = "gone").copy(homeCurrencyCode = "JPY")
+            val draftActions = FakeRepaymentDraftActions(listResult = Result.success(listOf(captured)))
+            val actions = FakeRepayableDebtActions(listResult = Result.success(listOf(other.copy(publicId = "gone"), other)))
+            val gate = CompletableDeferred<Unit>()
+            if (cold) actions.listGate = gate
+            val vm = RepaymentDraftInboxViewModel(draftActions, actions, FakeDebtWriteActions())
+            vm.reload(captured.publicId)
+            advanceUntilIdle()
+            if (!cold) {
+                actions.listGate = gate
+                vm.refresh()
+                runCurrent()
+            }
+            assertTrue(vm.state.value.isLoading)
+            val current = other.copy(rowVersion = 9)
+            actions.listResult = Result.success(listOf(current))
+            actions.listGate = null
+            try {
+                actions.resourceDenials.emit(DebtReadResourceDenial(adjustmentBinding(), "gone",
+                    RepositoryException("记录不存在", httpStatusCode = 404, errorCode = "debt_not_found"), 1))
+                advanceUntilIdle()
+                assertEquals(listOf(captured), vm.state.value.drafts)
+                assertEquals(captured.publicId, vm.state.value.focusedDraftPublicId)
+                assertEquals(listOf(current), vm.state.value.targetDebts)
+                assertTrue(vm.state.value.suggestedDebtByDraftId.isEmpty())
+                assertEquals(false, vm.state.value.isLoading)
+                assertEquals(actions.fetchedAt, vm.state.value.targetsFetchedAt)
+            } finally { gate.complete(Unit) }
+            advanceUntilIdle()
+            assertEquals(listOf(current), vm.state.value.targetDebts, "The late target list cannot revive the refused suggestion or old OCC")
+            assertEquals(listOf(captured), vm.state.value.drafts)
+            vm.confirm(captured.publicId, other.copy(publicId = "gone"))
+            advanceUntilIdle()
+            assertTrue(draftActions.confirmCalls.isEmpty())
+            assertTrue(draftActions.dismissCalls.isEmpty())
+            vm.confirm(captured.publicId, current)
+            advanceUntilIdle()
+            assertEquals(ConfirmCall(captured.publicId, current.publicId, current.rowVersion), draftActions.confirmCalls.single())
+            assertEquals(adjustmentBinding(), draftActions.confirmBindings.single())
+            vm.viewModelScope.cancel()
+        }
+    }
+
     @Test
     fun cachedTargetKeepsItsOriginalOccAndReadDenialPreservesTheCapturedDraft() = runTest(dispatcher) {
         val original = debt("card", rowVersion = 7)

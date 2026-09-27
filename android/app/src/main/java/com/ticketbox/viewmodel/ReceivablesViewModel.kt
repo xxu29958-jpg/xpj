@@ -60,9 +60,11 @@ class ReceivablesViewModel(
         viewModelScope.launch {
             repository.observeResourceDenials().collect { denial ->
                 if (denial.binding != writes.currentAccess()?.binding) return@collect
+                val wasLoading = _state.value.isLoading
                 loadGeneration++
                 _state.update { it.copy(receivables = it.receivables.filterNot { debt -> debt.publicId == denial.debtPublicId },
                     isLoading = false, error = denial.failure.toUiText(R.string.receivables_load_failed)) }
+                if (wasLoading) refresh()
             }
         }
         viewModelScope.launch {

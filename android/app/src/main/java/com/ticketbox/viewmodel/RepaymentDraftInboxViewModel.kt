@@ -80,12 +80,14 @@ class RepaymentDraftInboxViewModel(
         viewModelScope.launch {
             debts.observeResourceDenials().collect { denial ->
                 if (denial.binding != writes.currentAccess()?.binding) return@collect
+                val wasLoading = _state.value.isLoading
                 loadGeneration++
                 _state.update { current ->
                     val targets = current.targetDebts.filterNot { it.publicId == denial.debtPublicId }
                     current.copy(isLoading = false, targetDebts = targets,
                         suggestedDebtByDraftId = resolveSuggestions(current.drafts, targets))
                 }
+                if (wasLoading) refresh()
             }
         }
         viewModelScope.launch {

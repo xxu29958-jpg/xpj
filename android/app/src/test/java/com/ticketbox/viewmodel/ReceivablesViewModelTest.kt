@@ -3,6 +3,8 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.ReceivablesActions
+import com.ticketbox.data.repository.DebtReadResourceDenial
+import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtDirections
@@ -12,6 +14,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.job
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -39,6 +42,40 @@ class ReceivablesViewModelTest {
     @AfterTest
     fun tearDown() {
         Dispatchers.resetMain()
+    }
+
+    @Test fun resourceRefusalDuringColdOrRefreshReadContinuesOtherPersonalReceivablesAndRejectsLateRows() = runTest(dispatcher) {
+        for (cold in listOf(true, false)) {
+            val other = sampleReceivable("kept").copy(homeCurrencyCode = "JPY", originalCurrencyCode = "JPY")
+            val actions = FakeReceivablesActions(Result.success(listOf(other.copy(publicId = "gone"), other)))
+            val gate = CompletableDeferred<Unit>()
+            if (cold) actions.gate = gate
+            val vm = ReceivablesViewModel(actions, FakeDebtWriteActions())
+            advanceUntilIdle()
+            if (!cold) {
+                actions.gate = gate
+                vm.refresh()
+                runCurrent()
+            }
+            assertTrue(vm.state.value.isLoading)
+            val current = other.copy(rowVersion = 9, remainingAmountCents = 7_000)
+            actions.result = Result.success(listOf(current))
+            actions.gate = null
+            try {
+                actions.resourceDenials.emit(DebtReadResourceDenial(adjustmentBinding(), "gone",
+                    RepositoryException("记录不存在", httpStatusCode = 404, errorCode = "debt_not_found"), 1))
+                advanceUntilIdle()
+                assertEquals(listOf(current), vm.state.value.receivables)
+                assertEquals(false, vm.state.value.isLoading)
+                assertNull(vm.state.value.error)
+            } finally { gate.complete(Unit) }
+            advanceUntilIdle()
+            assertEquals(listOf(current), vm.state.value.receivables, "The late personal list cannot revive the refused resource or its old balance")
+            assertEquals("JPY", vm.state.value.receivables.single().homeCurrencyCode)
+            assertEquals(false, vm.state.value.receivables.single().viewerIsDebtor)
+            assertNull(vm.state.value.receivables.single().ledgerId)
+            vm.viewModelScope.cancel()
+        }
     }
 
     @Test

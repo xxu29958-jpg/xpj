@@ -80,6 +80,44 @@ class DebtReadViewModelTest {
         assertEquals("2026-09-27T01:00:00Z", model.state.value.fetchedAt)
     }
 
+    @Test fun missingResourceDuringColdOrRefreshReadStillShowsOtherCurrentDebtsAndRetiresLateRows() = runTest(dispatcher) {
+        for (cold in listOf(true, false)) {
+            val other = sampleDebt("kept").copy(homeCurrencyCode = "JPY", originalCurrencyCode = "JPY")
+            val actions = FakeDebtActions(listResult = Result.success(listOf(
+                other.copy(publicId = "gone"), other,
+            )))
+            val gate = CompletableDeferred<Unit>()
+            if (cold) actions.listGate = gate
+            val model = DebtListViewModel(actions, actions.creation, actions.writes)
+            advanceUntilIdle()
+            if (!cold) {
+                model.updateDraftField(DebtDraftField.Amount, "1200")
+                model.updateDraftField(DebtDraftField.Counterparty, "原对象")
+                actions.listGate = gate
+                model.refresh()
+                runCurrent()
+            }
+            val draft = model.state.value.addDraft
+            assertTrue(model.state.value.isLoading)
+            val current = other.copy(rowVersion = other.rowVersion + 1, remainingAmountCents = 7_000)
+            actions.listResult = Result.success(listOf(current))
+            actions.listGate = null
+            try {
+                actions.resourceDenials.emit(DebtReadResourceDenial(requireNotNull(actions.creation.currentAccess()).binding,
+                    "gone", RepositoryException("记录不存在", httpStatusCode = 404), 1))
+                advanceUntilIdle()
+                assertEquals(listOf(current), model.state.value.debts)
+                assertFalse(model.state.value.isLoading)
+                assertEquals("2026-09-27T01:00:00Z", model.state.value.fetchedAt)
+                if (!cold) assertEquals(draft, model.state.value.addDraft)
+            } finally { gate.complete(Unit) }
+            advanceUntilIdle()
+            assertEquals(listOf(current), model.state.value.debts, "Late rows cannot restore the denied resource or its old balance")
+            assertEquals("JPY", model.state.value.debts.single().homeCurrencyCode)
+            assertTrue(actions.writes.saveCalls.isEmpty())
+        }
+    }
+
     @Test fun actionKeepsOriginalTargetOccAndTextUntilExplicitReviewOrCancel() = runTest(dispatcher) {
         val actions = FakeDebtActions().apply {
             detailResult = Result.success(sampleDebt().copy(homeCurrencyCode = "JPY", originalCurrencyCode = "JPY"))
