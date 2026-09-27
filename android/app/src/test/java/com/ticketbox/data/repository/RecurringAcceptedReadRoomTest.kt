@@ -324,14 +324,16 @@ class RecurringAcceptedReadRoomTest {
             api.failure = ConnectException("offline after an unsent refusal")
             assertEquals(original.copy(fromCache = true), reader.items(fixture.binding, null, true, null).getOrThrow())
             assertTrue(outbox.resolveFailed(invalidId, FailedResolution.Drop))
-            repository.updateAllowingOffline(fixture.binding, original.value.single(), RecurringItemPatch(merchant = "保留的编辑")).getOrThrow()
+            repository.updateAllowingOffline(fixture.binding, original.value.single(), RecurringItemPatch(merchant = "保留的编辑",
+                homeCurrencyCode = requireNotNull(original.value.single().homeCurrencyCode))).getOrThrow()
             assertEquals(1, engine.drainOnce().conflicts)
             val bindingKey = logicalBindingAdapter.toJson(fixture.binding)
             assertEquals(null, db.expenseDao().recurringOutboxReadBarrier(bindingKey))
             api.failure = ConnectException("offline after a definite refusal")
             assertEquals(original.copy(fromCache = true), reader.items(fixture.binding, null, true, null).getOrThrow())
             assertTrue(outbox.resolveConflict(db.pendingMutationDao().allRows().single().id, ConflictResolution.DropMine))
-            repository.updateAllowingOffline(fixture.binding, original.value.single(), RecurringItemPatch(merchant = "未知原提交")).getOrThrow()
+            repository.updateAllowingOffline(fixture.binding, original.value.single(), RecurringItemPatch(merchant = "未知原提交",
+                homeCurrencyCode = requireNotNull(original.value.single().homeCurrencyCode))).getOrThrow()
             failure = ConnectException("unknown dispatch result")
             sendStarted = CompletableDeferred()
             sendRelease = CompletableDeferred()
