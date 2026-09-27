@@ -13,7 +13,7 @@ from app.models import Expense, LedgerMember, OcrFact
 from app.routes.web_auth import SESSION_COOKIE_NAME
 from app.services.ocr_service import OcrResult
 from tests._web_native_form_support import hidden_post_forms
-from tests._web_public_session_support import mint_session
+from tests._web_public_session_support import PUBLIC_HOST, mint_session, public_client
 
 pytestmark = pytest.mark.real_db
 
@@ -59,6 +59,19 @@ def _accepted_current_page(web_client, response, expense_id, merchant):
     current = web_client.get(response.headers["location"])
     assert current.status_code == 200, current.text
     assert "已接受" in current.text and merchant in current.text
+
+
+def _post_different_ledger_with_session(web_client, identity, expense_id, action, fields):
+    session = mint_session(web_client, identity=identity)
+    with public_client() as browser:
+        browser.cookies.set(SESSION_COOKIE_NAME, session, path="/")
+        page = browser.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
+        assert page.status_code == 200, page.text
+        csrf = hidden_post_forms(page.text)[action]["csrf_token"]
+        fields = {**fields, "ledger_id": "tester_1", "csrf_token": csrf}
+        response = browser.post(action, data=fields, follow_redirects=False,
+            headers={"Origin": f"https://{PUBLIC_HOST}"})
+    return response, fields
 
 
 def test_failed_original_retry_can_resume_same_key_and_occ_then_replay_one_suggestion(
@@ -123,11 +136,7 @@ def test_original_retry_rejects_permission_binding_or_newer_facts_without_writes
         page = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
         assert page.status_code == 200, page.text
         assert action not in hidden_post_forms(page.text)
-    elif change == "other_ledger":
-        session = mint_session(web_client, identity=identity)
-        web_client.cookies.set(SESSION_COOKIE_NAME, session, path="/")
-        fields = {**fields, "ledger_id": "tester_1"}
-    else:
+    elif change != "other_ledger":
         edited = patch_expense(web_client, expense_id, headers=identity.app_headers, fields={
             "amount_cents": 2345, "merchant": "另一端人工核对", "category": "餐饮",
             "expense_time": datetime(2026, 9, 27, 2, tzinfo=UTC).isoformat(),
@@ -137,7 +146,10 @@ def test_original_retry_rejects_permission_binding_or_newer_facts_without_writes
             confirmed = confirm_expense_api(web_client, expense_id, headers=identity.app_headers)
             assert confirmed.status_code == 200, confirmed.text
     before = _record(expense_id)
-    response = web_client.post(action, data=fields, follow_redirects=False)
+    if change == "other_ledger":
+        response, fields = _post_different_ledger_with_session(web_client, identity, expense_id, action, fields)
+    else:
+        response = web_client.post(action, data=fields, follow_redirects=False)
     expected = {"viewer": {403}, "other_ledger": {409}, "manual_edit": {409}, "confirmed": {404}}
     assert response.status_code in expected[change], response.text
     if change == "other_ledger":
