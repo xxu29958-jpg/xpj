@@ -84,7 +84,7 @@ class GoalOfflineReadingConnectedTest {
             override suspend fun goal(publicId: String, timezone: String?): GoalDto {
                 detailCalls.incrementAndGet()
                 checkTransport()
-                return if (publicId == debtGoal.publicId) debtGoal else original.also { assertEquals(it.publicId, publicId) }
+                return if (publicId == debtGoal.publicId) debtGoal.copy(rowVersion = 5) else original.also { assertEquals(it.publicId, publicId) }
             }
             override suspend fun monthlyBudget(month: String, timezone: String?): BudgetMonthlyDto {
                 checkTransport()
@@ -217,7 +217,7 @@ class GoalOfflineReadingConnectedTest {
             dirtyDetail.beginEdit()
             dirtyDetail.updateField(SpendingGoalEditField.Amount, "2345")
         }
-        compose.waitUntil(5_000) { debt.state.value.selectedFetchedAt != null }
+        compose.waitUntil(5_000) { debt.state.value.selectedGoal?.rowVersion == 5L }
         val dirty = dirtyDetail.state.value
         val detailReads = detailCalls.get()
         denied = true
