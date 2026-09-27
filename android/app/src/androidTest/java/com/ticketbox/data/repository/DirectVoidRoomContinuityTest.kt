@@ -18,6 +18,8 @@ import com.ticketbox.data.remote.dto.RepaymentVoidCreateRequestDto
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.DebtRepayment
 import com.ticketbox.ui.screens.DebtDetailScreen
+import com.ticketbox.ui.screens.settings.syncStatusOverview
+import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.DebtAction
 import com.ticketbox.viewmodel.DebtDetailViewModel
@@ -180,6 +182,27 @@ class DirectVoidRoomContinuityTest {
             assertEquals(1, remote.calls.size)
             compose.runOnIdle { sync.dropFailed(failed) }
             compose.waitUntil(10_000) { fixture.stored().single()["status"] == "abandoned" }
+            compose.waitUntil(10_000) {
+                detail.value?.state?.value?.pendingWrites?.singleOrNull()?.row?.status == PendingMutationStatus.Abandoned &&
+                    sync.uiState.value.debtWrites.values.singleOrNull()?.row?.status == PendingMutationStatus.Abandoned &&
+                    sync.uiState.value.status.failed.isEmpty()
+            }
+            compose.onNodeWithText("原作废已被接受", substring = true).performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText("原记录重复").assertExists()
+            compose.onNodeWithText(context.getString(R.string.debt_void_original_repayment, remote.payment.publicId)).assertExists()
+            compose.onNodeWithText(context.getString(R.string.debt_void_review_title)).assertDoesNotExist()
+            compose.onNodeWithText(context.getString(R.string.debt_void_original_requires_review)).assertDoesNotExist()
+            compose.onNodeWithText(context.getString(R.string.debt_write_stopped_body)).assertDoesNotExist()
+            compose.onNodeWithText(context.getString(R.string.debt_write_retry)).assertDoesNotExist()
+            val stoppedIntent = requireNotNull(detail.value).state.value.pendingWrites.single()
+            assertFalse(stoppedIntent.requiresReview)
+            assertFalse(stoppedIntent.canRetry)
+            val state = sync.uiState.value
+            val overview = syncStatusOverview(state.status, emptyList(), state.debtWrites.values.toList())
+            assertEquals(0, overview.reviewRequiredCount)
+            assertEquals(0, overview.needsActionCount)
+            assertEquals(1, overview.stoppedCount)
+            assertEquals(DEBT_VOID_ORIGINAL_REQUIRES_REVIEW, stoppedIntent.row.lastError)
             assertOriginalColumns(original)
             assertEquals(1, remote.facts.size)
             assertEquals(0, runBlocking { fixture.drain() }.attempted)

@@ -2,6 +2,7 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.security.LocalSessionRecord
+import com.ticketbox.ui.screens.settings.syncStatusOverview
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -44,6 +45,35 @@ class DebtVoidIntentTest {
             assertTrue(fixture.api.voidCalls.all { it == fixture.api.voidCalls.first() })
             assertNotNull(stored.receiptJson)
         }
+    }
+
+    @Test fun repaymentVoidRejectsClearedUnknownOrNonPositiveOriginalReceiptWithoutReplacingOriginal() = runTest {
+        val fixture = DirectRepaymentTestFixture()
+        save(fixture, true).getOrThrow()
+        val original = fixture.dao.rows.values.single()
+        assertEquals(1, fixture.engine().drainOnce().failures)
+        fixture.api.loseResponse = false
+        for (case in listOf("cleared", "unknown", "zero_remaining", "negative_remaining")) {
+            fixture.repository.recover(fixture.binding, fixture.pending(), false).getOrThrow()
+            fixture.api.voidReceiptTransform = { when (case) {
+                "cleared" -> it.copy(status = "cleared")
+                "unknown" -> it.copy(status = "unknown")
+                "zero_remaining" -> it.copy(remainingAmountCents = 0)
+                else -> it.copy(remainingAmountCents = -1)
+            } }
+            assertEquals(0, fixture.engine().drainOnce().done, case)
+            val unverified = fixture.dao.rows.values.single()
+            assertEquals(null, unverified.receiptJson, case)
+            assertEquals(original.payload, unverified.payload, case)
+            assertEquals(original.idempotencyKey, unverified.idempotencyKey, case)
+            assertEquals(original.expectedRowVersion, unverified.expectedRowVersion, case)
+            assertEquals(1, fixture.api.voidFacts.size, case)
+        }
+        fixture.repository.recover(fixture.binding, fixture.pending(), false).getOrThrow()
+        fixture.api.voidReceiptTransform = { it }
+        assertEquals(1, fixture.engine().drainOnce().done)
+        assertTrue(fixture.api.voidCalls.all { it == fixture.api.voidCalls.first() })
+        assertNotNull(fixture.dao.rows.values.single().receiptJson)
     }
 
     @Test fun nonMoneyVoidsKeepUnknownCurrencyButRejectInvalidReasonTargetAndMemberDebtBeforePublication() = runTest {
@@ -108,6 +138,15 @@ class DebtVoidIntentTest {
         assertEquals(original.idempotencyKey, stopped.idempotencyKey)
         assertEquals(original.expectedRowVersion, stopped.expectedRowVersion)
         assertEquals(DEBT_VOID_ORIGINAL_REQUIRES_REVIEW, stopped.lastError)
+        assertEquals(pending.row.receiptJson, stopped.receiptJson)
+        val stoppedIntent = fixture.pending()
+        assertEquals(PendingMutationStatus.Abandoned, stoppedIntent.row.status)
+        assertFalse(stoppedIntent.requiresReview)
+        assertFalse(stoppedIntent.canRetry)
+        val overview = syncStatusOverview(OutboxStatus(0, emptyList(), emptyList()), emptyList(), listOf(stoppedIntent))
+        assertEquals(0, overview.reviewRequiredCount)
+        assertEquals(0, overview.needsActionCount)
+        assertEquals(1, overview.stoppedCount)
         assertEquals(0, fixture.engine().drainOnce().attempted)
     }
 
