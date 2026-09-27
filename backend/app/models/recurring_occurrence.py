@@ -34,6 +34,11 @@ class RecurringOccurrence(Base):
             name="fk_recurring_occurrences_expense_tenant", ondelete="RESTRICT",
         ),
         UniqueConstraint("tenant_id", "expense_id", name="uq_recurring_occurrences_payment"),
+        ForeignKeyConstraint(["series_id", "tenant_id", "recorded_definition_row_version"],
+            ["recurring_item_revisions.series_id", "recurring_item_revisions.tenant_id", "recurring_item_revisions.row_version"],
+            name="fk_recurring_occurrence_recorded_definition", ondelete="RESTRICT"),
+        CheckConstraint("(recorded_definition_row_version IS NULL) = (definition_recorded_at IS NULL)",
+            name="ck_recurring_occurrence_recorded_definition"),
         CheckConstraint("EXTRACT(DAY FROM period_start) = 1", name="ck_recurring_occurrences_month"),
         CheckConstraint("row_version >= 1", name="ck_recurring_occurrences_version"),
     )
@@ -44,6 +49,22 @@ class RecurringOccurrence(Base):
     expense_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     row_version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    recorded_definition_row_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    definition_recorded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+event.listen(RecurringOccurrence.__table__, "after_create", DDL("""
+    CREATE OR REPLACE FUNCTION ticketbox_recurring_occurrence_definition_immutable()
+    RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+        IF NEW.recorded_definition_row_version IS DISTINCT FROM OLD.recorded_definition_row_version
+           OR NEW.definition_recorded_at IS DISTINCT FROM OLD.definition_recorded_at THEN
+            RAISE EXCEPTION 'recorded recurring definitions are immutable' USING ERRCODE = '55000';
+        END IF;
+        RETURN NEW;
+    END $$;
+    CREATE TRIGGER trg_recurring_occurrence_definition_immutable BEFORE UPDATE ON recurring_occurrences
+    FOR EACH ROW EXECUTE FUNCTION ticketbox_recurring_occurrence_definition_immutable();
+""").execute_if(dialect="postgresql"))
 
 
 class RecurringOccurrenceRevision(Base):

@@ -145,7 +145,7 @@ def _patch_terminal_retry_dependencies(
     )
     monkeypatch.setattr(
         recurring_service,
-        "get_recurring_item",
+        "lock_recurring_item",
         lambda _db, *, tenant_id, public_id: archived if public_id == "archived" else active,
     )
     monkeypatch.setattr(

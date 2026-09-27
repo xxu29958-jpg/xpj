@@ -18302,6 +18302,29 @@
         "title": "ProjectionReferenceDto",
         "type": "object"
       },
+      "RecordedRecurringDefinition": {
+        "properties": {
+          "recorded_at": {
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "series_row_version": {
+            "minimum": 1.0,
+            "title": "Series Row Version",
+            "type": "integer"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/RecurringItemSnapshot"
+          }
+        },
+        "required": [
+          "series_row_version",
+          "recorded_at",
+          "snapshot"
+        ],
+        "title": "RecordedRecurringDefinition",
+        "type": "object"
+      },
       "RecurringCandidateConfirmRequest": {
         "additionalProperties": false,
         "properties": {
@@ -18497,6 +18520,44 @@
           "baseline_amount_cents"
         ],
         "title": "RecurringItemCreateRequest",
+        "type": "object"
+      },
+      "RecurringItemHistoryResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RecurringItemRevisionResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "ledger_id": {
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "next_before_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Before Version"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ledger_id",
+          "public_id",
+          "items",
+          "next_before_version"
+        ],
+        "title": "RecurringItemHistoryResponse",
         "type": "object"
       },
       "RecurringItemListResponse": {
@@ -18731,6 +18792,127 @@
         "title": "RecurringItemResponse",
         "type": "object"
       },
+      "RecurringItemRevisionResponse": {
+        "properties": {
+          "actor_account_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Account Id"
+          },
+          "change_kind": {
+            "enum": [
+              "baseline",
+              "create",
+              "edit",
+              "pause",
+              "resume",
+              "archive",
+              "restore"
+            ],
+            "title": "Change Kind",
+            "type": "string"
+          },
+          "recorded_at": {
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "row_version": {
+            "minimum": 1.0,
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/RecurringItemSnapshot"
+          }
+        },
+        "required": [
+          "row_version",
+          "change_kind",
+          "recorded_at",
+          "actor_account_id",
+          "snapshot"
+        ],
+        "title": "RecurringItemRevisionResponse",
+        "type": "object"
+      },
+      "RecurringItemSnapshot": {
+        "properties": {
+          "baseline_amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "Baseline Amount Cents",
+            "type": "integer"
+          },
+          "frequency": {
+            "const": "monthly",
+            "title": "Frequency",
+            "type": "string"
+          },
+          "home_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Currency Code"
+          },
+          "merchant": {
+            "title": "Merchant",
+            "type": "string"
+          },
+          "merchant_key": {
+            "title": "Merchant Key",
+            "type": "string"
+          },
+          "next_expected_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Expected Date"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "paused",
+              "archived"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "merchant",
+          "merchant_key",
+          "frequency",
+          "home_currency_code",
+          "baseline_amount_cents",
+          "next_expected_date",
+          "status",
+          "source"
+        ],
+        "title": "RecurringItemSnapshot",
+        "type": "object"
+      },
       "RecurringItemTokenRequest": {
         "additionalProperties": false,
         "description": "ADR-0038 PR-A: ``POST /api/recurring/items/{public_id}/{pause,resume}``\nbody. The OCC token rejects stale toggle requests across the\npause↔active state-machine pair — without it, a stale pause arriving\nafter a user-intentional resume would silently re-pause (atomic\nUPDATE WHERE status!='archived' matches either state).",
@@ -18900,6 +19082,16 @@
             "minimum": 1.0,
             "title": "Planned Amount Cents",
             "type": "integer"
+          },
+          "recorded_definition": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecordedRecurringDefinition"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "reserved_amount_cents": {
             "format": "int64",
@@ -38896,6 +39088,119 @@
         ]
       }
     },
+    "/api/recurring/items/{public_id}/history": {
+      "get": {
+        "operationId": "get_recurring_item_history_api_recurring_items__public_id__history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before_version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Version"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecurringItemHistoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Get Recurring Item History",
+        "tags": [
+          "recurring"
+        ]
+      }
+    },
     "/api/recurring/items/{public_id}/occurrences/{month}": {
       "get": {
         "operationId": "get_recurring_occurrence_api_recurring_items__public_id__occurrences__month__get",
@@ -51735,6 +52040,130 @@
           }
         },
         "summary": "Web Recurring Edit",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/recurring/{public_id}/history": {
+      "get": {
+        "operationId": "web_recurring_history_web_recurring__public_id__history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ledger Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "month",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Month"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "",
+              "pattern": "^(active|paused|archived)?$",
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_occurrence",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Return Occurrence",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before_version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Recurring History",
         "tags": [
           "web"
         ]

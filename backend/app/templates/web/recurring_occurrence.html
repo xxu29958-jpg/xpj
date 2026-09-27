@@ -20,10 +20,25 @@
   <div class="product-page-heading">
     <a href="/web/recurring?ledger_id={{ selected_ledger_id }}">固定支出</a>
     <h1 class="page-title">{{ item.merchant_name }}</h1>
-    <p class="product-page-summary">{{ occurrence.period }} · 每月计划 {{ occurrence.home_currency_code or '' }} {{ planned_amount }}</p>
+    <p class="product-page-summary">{{ occurrence.period }} · 当前预计 {{ occurrence.home_currency_code or '' }} {{ planned_amount }} · 当前预留 {{ occurrence.home_currency_code or '' }} {{ reserved_amount }}</p>
   </div>
+  <a class="product-button product-button--quiet" href="/web/recurring/{{ item.public_id }}/history?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ occurrence.period|urlencode }}&amp;return_occurrence=true">修改记录</a>
 </header>
 <div class="plan-flow">
+<section class="product-panel product-panel--padded" aria-label="本期首次关联所据定义">
+  <h2 class="product-panel-title">本期首次关联所据定义</h2>
+  {% if occurrence.recorded_definition %}
+  {% set definition = occurrence.recorded_definition %}{% set snapshot = definition.snapshot %}
+  <p>版本 {{ definition.series_row_version }} · 记录保存时间 <time datetime="{{ definition.recorded_at|to_iso }}">{{ definition.recorded_at|to_iso }}</time></p>
+  <p><strong>{{ snapshot.merchant }}</strong> · {{ snapshot.home_currency_code or '' }} {{ recorded_definition_amount }} · {{ '月度' if snapshot.frequency == 'monthly' else snapshot.frequency }}</p>
+  <p>计划日期 {{ snapshot.next_expected_date or '未设置' }} · {{ {'active':'活跃', 'paused':'暂停', 'archived':'已归档'}[snapshot.status] }}</p>
+  <p class="hint">这是首次记录本期付款关联时所据的定义，不代表该账务月生效的计划。解除或重新关联付款后，这份依据仍保留。</p>
+  {% elif occurrence.row_version == 0 %}
+  <p>尚未建立本期关联记录，首次关联所据定义尚未记录。</p>
+  {% else %}
+  <p>首次关联所据定义未记录，原定义与发生时间未知；不能用当前定义补作旧计划。</p>
+  {% endif %}
+</section>
 {% if flash_message or undo_expense_id %}
 <div class="product-feedback{% if flash_type == 'success' %} product-feedback--success{% elif flash_type == 'error' %} product-feedback--error{% endif %}{% if undo_expense_id %} undo-banner{% endif %}"
      role="{% if flash_type == 'error' %}alert{% else %}status{% endif %}">

@@ -265,6 +265,7 @@ private fun recurringEditorCallbacks(
         },
         onCancel = environment.onDismiss,
         onCurrency = if (session.editing == null) session::selectCurrency else null,
+        onHistory = session.editing?.let { item -> actions.onOpenHistory?.let { open -> { open(item) } } },
     )
 }
 

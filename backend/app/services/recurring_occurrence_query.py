@@ -13,6 +13,7 @@ from app.money_contract import projection_sum_to_int
 from app.schemas._recurring_occurrence import RecurringOccurrenceResponse
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.money_projection_service import ProjectionGap, ProjectionReference
+from app.services.recurring_history_service import recorded_occurrence_definition
 from app.services.recurring_service import recurring_monthly_total
 from app.services.spending_contract_service import (
     calendar_month_bounds,
@@ -130,6 +131,7 @@ def occurrence_response(
     state = "fulfilled" if valid else "needs_review" if row and row.expense_id else "unfulfilled"
     baseline = projection_sum_to_int(item.baseline_amount_cents, label="recurring.occurrence_baseline")
     return RecurringOccurrenceResponse(
+        recorded_definition=recorded_occurrence_definition(db, row),
         series_public_id=item.public_id,
         period=period.strftime("%Y-%m"),
         series_row_version=item.row_version,

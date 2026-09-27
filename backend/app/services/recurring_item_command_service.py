@@ -23,6 +23,11 @@ from app.services.idempotency import (
     mark_idempotency_succeeded,
 )
 from app.services.merchant_service import normalize_merchant
+from app.services.recurring_history_service import (
+    ensure_recurring_history_baseline,
+    lock_recurring_item,
+    record_recurring_item_revision,
+)
 from app.services.recurring_merchant_capacity import ensure_recurring_merchant_storage_shape
 from app.services.recurring_occurrence_query import next_due_dates
 from app.services.recurring_service import recurring_item_response
@@ -191,6 +196,7 @@ def create_manual_recurring_item(
     home_currency_code: str,
     baseline_amount_cents: int,
     next_expected_date: date | None,
+    actor_account_id: int | None = None,
 ) -> RecurringItemResponse:
     """Create one manual monthly commitment and durably replay the same intent."""
     home = normalize_currency_code(home_currency_code)
@@ -216,6 +222,7 @@ def create_manual_recurring_item(
     )
     resolve_write_capability(db)
     _insert_manual_item(db, tenant_id=tenant_id, item=item)
+    record_recurring_item_revision(db, item, change_kind="create", actor_account_id=actor_account_id)
     return _publish_receipt(db, outcome.row, item)
 
 
@@ -383,9 +390,10 @@ def _apply_recurring_item_update(
     baseline_provided: bool,
     next_expected_date: date | None,
     next_expected_date_provided: bool,
+    actor_account_id: int | None = None,
 ) -> RecurringItem:
     """Apply one already-admitted OCC update without committing it."""
-    current = _get_item(db, tenant_id=tenant_id, public_id=public_id)
+    current = lock_recurring_item(db, tenant_id=tenant_id, public_id=public_id)
     _ensure_editable_revision(current, expected_row_version=expected_row_version)
     if current.home_currency_code != home_currency_code:
         raise AppError("recurring_currency_conflict", "输入币种与这项固定支出不同，请保留原金额并核对。", status_code=409)
@@ -402,6 +410,7 @@ def _apply_recurring_item_update(
         next_expected_date_provided=next_expected_date_provided,
     )
     resolve_write_capability(db)
+    ensure_recurring_history_baseline(db, current)
     try:
         rowcount = _execute_update(
             db,
@@ -422,7 +431,9 @@ def _apply_recurring_item_update(
     if not rowcount:
         _raise_update_race(db, tenant_id=tenant_id, public_id=public_id)
     db.expire_all()
-    return _get_item(db, tenant_id=tenant_id, public_id=public_id)
+    item = _get_item(db, tenant_id=tenant_id, public_id=public_id)
+    record_recurring_item_revision(db, item, change_kind="edit", actor_account_id=actor_account_id)
+    return item
 
 
 def _recurring_update_body(
@@ -460,6 +471,7 @@ def update_recurring_item(
     baseline_provided: bool,
     next_expected_date: date | None,
     next_expected_date_provided: bool,
+    actor_account_id: int | None = None,
 ) -> RecurringItemResponse:
     """Own claim-before-OCC, mutation publication, and commit for one edit."""
     if not idempotency_key:
@@ -496,5 +508,6 @@ def update_recurring_item(
         baseline_provided=baseline_provided,
         next_expected_date=next_expected_date,
         next_expected_date_provided=next_expected_date_provided,
+        actor_account_id=actor_account_id,
     )
     return _publish_receipt(db, claim.row, item)

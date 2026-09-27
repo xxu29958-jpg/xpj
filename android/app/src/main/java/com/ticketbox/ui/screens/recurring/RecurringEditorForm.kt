@@ -73,6 +73,7 @@ internal data class RecurringEditorFormCallbacks(
     val onSubmit: () -> Unit,
     val onCancel: () -> Unit,
     val onCurrency: ((CurrencyCode) -> Unit)? = null,
+    val onHistory: (() -> Unit)? = null,
 )
 
 internal data class RecurringEditorFeedback(
@@ -100,6 +101,11 @@ internal fun RecurringEditorForm(
         title = title,
         subtitle = stringResource(R.string.recurring_form_subtitle),
     ) {
+        callbacks.onHistory?.let { open ->
+            androidx.compose.material3.TextButton(onClick = open, enabled = !state.awaiting) {
+                Text(stringResource(R.string.recurring_history_title))
+            }
+        }
         if (state.merchantEditable) {
             AppTextInput(
                 state = AppTextInputState(

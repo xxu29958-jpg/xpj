@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% set page_title = '固定支出修改记录' %}
+{% set product_body_domain = 'plans' %}
+{% block title %}固定支出修改记录 · 小票夹{% endblock %}
+{% block content %}
+{% set history_params = '?ledger_id=' ~ (selected_ledger_id|urlencode) ~ '&limit=' ~ limit ~ '&status=' ~ (status_filter|urlencode) ~ ('&month=' ~ (return_month|urlencode) if return_month else '') ~ '&return_occurrence=' ~ ('true' if return_occurrence else 'false') %}
+<header class="product-page-header">
+  <div class="product-page-heading"><h1 class="page-title">固定支出修改记录</h1><p class="product-page-summary">保存的定义与生命周期记录，不代表某个账务月生效的计划，也不展示当时的支出或预留。</p></div>
+  {% if return_occurrence %}
+  <a class="product-button product-button--quiet" href="/web/recurring/{{ history.public_id }}/occurrence?ledger_id={{ selected_ledger_id|urlencode }}{% if return_month %}&amp;month={{ return_month|urlencode }}{% endif %}">回到原期间</a>
+  {% else %}
+  <a class="product-button product-button--quiet" href="/web/recurring?ledger_id={{ selected_ledger_id|urlencode }}&amp;status={{ status_filter|urlencode }}{% if return_month %}&amp;month={{ return_month|urlencode }}{% endif %}#item-{{ history.public_id }}">回到原固定支出</a>
+  {% endif %}
+</header>
+<div class="plan-flow">
+{% set labels = {'baseline':'开始保留记录', 'create':'建立固定支出', 'edit':'修改固定支出', 'pause':'暂停', 'resume':'恢复活跃', 'archive':'移入回收站', 'restore':'恢复固定支出'} %}
+{% for entry in history.items %}
+{% set snapshot = entry.snapshot %}
+<section class="product-panel product-panel--padded" aria-label="{{ labels[entry.change_kind] }} · 版本 {{ entry.row_version }}">
+  <div class="product-panel-header"><h2 class="product-panel-title">{{ labels[entry.change_kind] }}</h2><span class="product-status">版本 {{ entry.row_version }}</span></div>
+  <p class="text-muted">记录保存时间 <time datetime="{{ entry.recorded_at|to_iso }}">{{ entry.recorded_at|to_iso }}</time></p>
+  {% if entry.change_kind == 'baseline' %}<p class="product-feedback">这是开始保留记录时的已有定义，更早的修改及发生时间未知；上方时间是保存这份记录的时间。</p>{% endif %}
+  <dl>
+    <dt>名称</dt><dd>{{ snapshot.merchant }}</dd>
+    <dt>金额</dt><dd>{{ history_money(snapshot.baseline_amount_cents, snapshot.home_currency_code) }}</dd>
+    <dt>频率</dt><dd>{{ '月度' if snapshot.frequency == 'monthly' else snapshot.frequency }}</dd>
+    <dt>计划日期</dt><dd>{{ snapshot.next_expected_date or '未设置日期' }}</dd>
+    <dt>状态</dt><dd>{{ {'active':'活跃', 'paused':'暂停', 'archived':'已归档'}[snapshot.status] }}</dd>
+    <dt>来源</dt><dd>{{ {'manual':'手动记录', 'candidate':'采用建议'}.get(snapshot.source, snapshot.source) }}</dd>
+  </dl>
+</section>
+{% else %}<p class="product-state-body">尚未保留修改记录，更早的定义及发生时间未知。</p>{% endfor %}
+{% if history.next_before_version %}<a class="product-button product-button--quiet" href="/web/recurring/{{ history.public_id }}/history{{ history_params }}&amp;before_version={{ history.next_before_version }}">更早的记录</a>{% endif %}
+{% if before_version %}<a class="product-button product-button--quiet" href="/web/recurring/{{ history.public_id }}/history{{ history_params }}">最近的记录</a>{% endif %}
+</div>
+{% endblock %}

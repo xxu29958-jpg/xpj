@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
@@ -26,8 +26,10 @@ from app.routes._web_recurring_presenter import (
     parse_optional_date,
     suggest_next_expected_date,
 )
+from app.routes._web_session_common import resolve_web_actor_account_id
 from app.routes.web_common import (
     LocalOnly,
+    _amount_yuan,
     _base_ctx,
     _list_ledger_options,
     _require_selected_ledger_write,
@@ -43,6 +45,7 @@ from app.services.currency_common import normalize_currency_code, supported_curr
 from app.services.insights_service import recurring_candidates
 from app.services.ledger_calendar_service import current_ledger_month
 from app.services.recurring_candidate_confirmation_service import confirm_recurring_candidate
+from app.services.recurring_history_service import recurring_item_history
 from app.services.recurring_item_command_service import (
     create_manual_recurring_item,
     update_recurring_item,
@@ -247,6 +250,7 @@ def web_recurring_create(
         create_manual_recurring_item(
             db,
             tenant_id=selected_id,
+            actor_account_id=resolve_web_actor_account_id(db, request, selected_id),
             idempotency_key=(idempotency_key or "").strip() or None,
             merchant=merchant,
             home_currency_code=currency_code,
@@ -302,7 +306,8 @@ def web_recurring_confirm_candidate(
             frequency="monthly",
             next_expected_date=parse_optional_date(next_expected_date),
         )
-        confirm_recurring_candidate(db, tenant_id=selected_id, payload=payload)
+        confirm_recurring_candidate(db, tenant_id=selected_id, payload=payload,
+            actor_account_id=resolve_web_actor_account_id(db, request, selected_id))
     except AppError as exc:
         db.rollback()
         return _render_recurring(
@@ -358,6 +363,7 @@ def web_recurring_edit(
             db,
             tenant_id=selected_id,
             public_id=public_id,
+            actor_account_id=resolve_web_actor_account_id(db, request, selected_id),
             idempotency_key=(idempotency_key or "").strip() or None,
             expected_row_version=parsed,
             home_currency_code=currency_code,
@@ -399,7 +405,8 @@ def web_recurring_pause(
     if parsed is None:
         return _web_redirect("/web/recurring", selected_id, flash=_STALE_PAGE_FLASH)
     try:
-        pause_recurring_item(db, tenant_id=selected_id, public_id=public_id, expected_row_version=parsed)
+        pause_recurring_item(db, tenant_id=selected_id, public_id=public_id, expected_row_version=parsed,
+            actor_account_id=resolve_web_actor_account_id(db, request, selected_id))
     except AppError as exc:
         if exc.error == "state_conflict":
             return _web_redirect("/web/recurring", selected_id, flash=_STALE_PAGE_FLASH)
@@ -423,7 +430,8 @@ def web_recurring_resume(
     if parsed is None:
         return _web_redirect("/web/recurring", selected_id, flash=_STALE_PAGE_FLASH)
     try:
-        resume_recurring_item(db, tenant_id=selected_id, public_id=public_id, expected_row_version=parsed)
+        resume_recurring_item(db, tenant_id=selected_id, public_id=public_id, expected_row_version=parsed,
+            actor_account_id=resolve_web_actor_account_id(db, request, selected_id))
     except AppError as exc:
         if exc.error == "state_conflict":
             return _web_redirect("/web/recurring", selected_id, flash=_STALE_PAGE_FLASH)
@@ -442,7 +450,8 @@ def web_recurring_archive(
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
-    archive_recurring_item(db, tenant_id=selected_id, public_id=public_id)
+    archive_recurring_item(db, tenant_id=selected_id, public_id=public_id,
+        actor_account_id=resolve_web_actor_account_id(db, request, selected_id))
     return _web_redirect("/web/recurring", selected_id)
 
 
@@ -463,9 +472,32 @@ def web_recurring_restore(
     if parsed is None:
         return _web_redirect("/web/recurring", selected_id, flash=_STALE_PAGE_FLASH)
     try:
-        restore_recurring_item(db, tenant_id=selected_id, public_id=public_id, expected_row_version=parsed)
+        restore_recurring_item(db, tenant_id=selected_id, public_id=public_id, expected_row_version=parsed,
+            actor_account_id=resolve_web_actor_account_id(db, request, selected_id))
     except AppError as exc:
         if exc.error == "state_conflict":
             return _web_redirect("/web/recurring", selected_id, flash=_STALE_PAGE_FLASH)
         raise
     return _web_redirect("/web/recurring", selected_id, flash="已恢复为活跃。")
+
+
+@router.get("/{public_id}/history", response_class=HTMLResponse)
+def web_recurring_history(
+    request: Request, public_id: str, ledger_id: str | None = None, month: str | None = None,
+    status: str = Query(default="", pattern="^(active|paused|archived)?$"), return_occurrence: bool = False,
+    limit: int = Query(default=20, ge=1, le=100), before_version: int | None = Query(default=None, ge=1),
+    _local: None = LocalOnly, db: Session = Depends(get_db),
+) -> HTMLResponse:
+    options = _list_ledger_options(db)
+    selected = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
+    history = recurring_item_history(db, tenant_id=selected, public_id=public_id,
+        limit=limit, before_version=before_version)
+    ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected,
+        show_month_picker=False, selected_month=month)
+    ctx.update(history=history, return_month=month, status_filter=status, return_occurrence=return_occurrence,
+        limit=limit, before_version=before_version, history_money=_recurring_history_money)
+    return templates.TemplateResponse(request=request, name="recurring_history.html", context=ctx)
+
+
+def _recurring_history_money(amount: int, currency: str | None) -> str:
+    return f"{currency} {_amount_yuan(amount, currency)}" if currency else f"{amount} 最小单位（原币种未记录）"

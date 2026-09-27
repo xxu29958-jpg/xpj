@@ -72,7 +72,9 @@ _LEDGER_RECORDS = (
     (m.RecurringItem, "id public_id tenant_id merchant_key merchant_name frequency home_currency_code baseline_amount_cents "
         "last_amount_cents occurrence_count last_seen_at next_expected_date status confidence source created_at updated_at "
         "row_version paused_at archived_at"),
-    (m.RecurringOccurrence, "tenant_id series_id period_start expense_id row_version updated_at"),
+    (m.RecurringItemRevision, "id tenant_id series_id row_version change_kind snapshot actor_account_id recorded_at"),
+    (m.RecurringOccurrence, "tenant_id series_id period_start expense_id row_version updated_at "
+        "recorded_definition_row_version definition_recorded_at"),
     (m.RecurringOccurrenceRevision, "id tenant_id series_id period_start revision_number previous_expense_id "
         "expense_id actor_account_id idempotency_key created_at"),
     (m.MerchantAlias, "id public_id tenant_id canonical_merchant canonical_key alias alias_key enabled created_at "

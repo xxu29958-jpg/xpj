@@ -16,6 +16,13 @@ import retrofit2.http.Path
 import retrofit2.http.Query
 
 interface RecurringApi : RecurringOccurrenceApi {
+    @GET("api/recurring/items/{publicId}/history")
+    suspend fun recurringHistory(
+        @Path("publicId") publicId: String,
+        @Query("limit") limit: Int,
+        @Query("before_version") beforeVersion: Long?,
+    ): com.ticketbox.data.remote.dto.RecurringHistoryPageDto
+
     @GET("api/insights/recurring-candidates")
     suspend fun recurringCandidates(
         @Query("timezone") timezone: String? = null,

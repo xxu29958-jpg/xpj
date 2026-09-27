@@ -21,6 +21,7 @@ from app.services.currency_binding_service import resolve_write_capability
 from app.services.currency_common import normalize_currency_code
 from app.services.insights_service import recurring_candidates
 from app.services.merchant_service import normalize_merchant
+from app.services.recurring_history_service import record_recurring_item_revision
 from app.services.recurring_item_command_service import raise_recurring_item_conflict
 from app.services.recurring_merchant_capacity import ensure_recurring_merchant_storage_shape
 from app.services.time_service import ensure_utc, now_utc, safe_zone
@@ -82,6 +83,7 @@ def confirm_recurring_candidate(
     tenant_id: str,
     payload: RecurringCandidateConfirmRequest,
     timezone_name: str | None = None,
+    actor_account_id: int | None = None,
 ) -> RecurringItem:
     # PR #253 R4: 候选装配已过滤 active/paused formal — 确认成功后候选自然消失,
     # 重试同一确认时走既有幂等返回 (不 404/409)。
@@ -149,6 +151,7 @@ def confirm_recurring_candidate(
         match=match,
         payload=payload,
         timezone_name=timezone_name,
+        actor_account_id=actor_account_id,
     )
 
 
@@ -210,6 +213,7 @@ def _create_recurring_item_from_candidate(
     match: _RecurringCandidateMatch,
     payload: RecurringCandidateConfirmRequest,
     timezone_name: str | None,
+    actor_account_id: int | None = None,
 ) -> RecurringItem:
     # Observation provenance belongs to the server-side candidate scan. The
     # request still carries legacy fields for wire compatibility, but a Web or
@@ -244,6 +248,8 @@ def _create_recurring_item_from_candidate(
     )
     db.add(item)
     try:
+        db.flush()
+        record_recurring_item_revision(db, item, change_kind="create", actor_account_id=actor_account_id)
         db.commit()
     except IntegrityError:
         db.rollback()

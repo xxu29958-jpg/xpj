@@ -8,6 +8,7 @@ from app.database import get_db
 from app.schemas import (
     RecurringCandidateConfirmRequest,
     RecurringItemCreateRequest,
+    RecurringItemHistoryResponse,
     RecurringItemListResponse,
     RecurringItemResponse,
     RecurringItemTokenRequest,
@@ -16,6 +17,7 @@ from app.schemas import (
 from app.schemas._recurring_occurrence import RecurringOccurrenceResponse, RecurringOccurrenceWriteRequest
 from app.services.ledger_calendar_service import current_ledger_month
 from app.services.recurring_candidate_confirmation_service import confirm_recurring_candidate
+from app.services.recurring_history_service import recurring_item_history
 from app.services.recurring_item_command_service import (
     create_manual_recurring_item,
     update_recurring_item,
@@ -115,6 +117,7 @@ def post_recurring_item(
         home_currency_code=payload.home_currency_code,
         baseline_amount_cents=payload.baseline_amount_cents,
         next_expected_date=payload.next_expected_date,
+        actor_account_id=auth.account_id,
     )
 
 
@@ -130,6 +133,7 @@ def post_recurring_from_candidate(
         tenant_id=auth.tenant_id,
         payload=payload,
         timezone_name=timezone,
+        actor_account_id=auth.account_id,
     )
     return _response(db, item)
 
@@ -174,6 +178,7 @@ def patch_recurring_item(
         baseline_provided="baseline_amount_cents" in payload.model_fields_set,
         next_expected_date=payload.next_expected_date,
         next_expected_date_provided="next_expected_date" in payload.model_fields_set,
+        actor_account_id=auth.account_id,
     )
 
 
@@ -189,6 +194,7 @@ def post_recurring_pause(
         tenant_id=auth.tenant_id,
         public_id=public_id,
         expected_row_version=payload.expected_row_version,
+        actor_account_id=auth.account_id,
     ))
 
 
@@ -204,6 +210,7 @@ def post_recurring_resume(
         tenant_id=auth.tenant_id,
         public_id=public_id,
         expected_row_version=payload.expected_row_version,
+        actor_account_id=auth.account_id,
     ))
 
 
@@ -213,7 +220,8 @@ def post_recurring_archive(
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> RecurringItemResponse:
-    return _response(db, archive_recurring_item(db, tenant_id=auth.tenant_id, public_id=public_id))
+    return _response(db, archive_recurring_item(db, tenant_id=auth.tenant_id, public_id=public_id,
+        actor_account_id=auth.account_id))
 
 
 @router.post("/items/{public_id}/restore", response_model=RecurringItemResponse)
@@ -230,4 +238,17 @@ def post_recurring_restore(
         tenant_id=auth.tenant_id,
         public_id=public_id,
         expected_row_version=payload.expected_row_version,
+        actor_account_id=auth.account_id,
     ))
+
+
+@router.get("/items/{public_id}/history", response_model=RecurringItemHistoryResponse)
+def get_recurring_item_history(
+    public_id: str,
+    before_version: int | None = Query(default=None, ge=1),
+    limit: int = Query(default=20, ge=1, le=50),
+    auth: AuthContext = Depends(get_current_app_context),
+    db: Session = Depends(get_db),
+) -> RecurringItemHistoryResponse:
+    return recurring_item_history(db, tenant_id=auth.tenant_id, public_id=public_id,
+        before_version=before_version, limit=limit)

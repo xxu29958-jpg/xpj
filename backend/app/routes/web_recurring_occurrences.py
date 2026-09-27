@@ -110,6 +110,15 @@ def _focused_payment(db, *, ledger_id, payment_id, item, occurrence) -> dict[str
     }
 
 
+def _recorded_definition_amount(occurrence) -> str | None:
+    if occurrence.recorded_definition is None:
+        return None
+    snapshot = occurrence.recorded_definition.snapshot
+    if snapshot.home_currency_code:
+        return _amount_yuan(snapshot.baseline_amount_cents, snapshot.home_currency_code)
+    return f"{snapshot.baseline_amount_cents} 最小单位（原币种未记录）"
+
+
 def _occurrence_page_projection(*, item, occurrence, payments, focused, selected, can_write) -> dict:
     can_associate = can_write and item.status != "archived"
     return {
@@ -119,6 +128,11 @@ def _occurrence_page_projection(*, item, occurrence, payments, focused, selected
             _amount_yuan(occurrence.planned_amount_cents, occurrence.home_currency_code)
             if occurrence.home_currency_code else "币种待确认"
         ),
+        "reserved_amount": (
+            _amount_yuan(occurrence.reserved_amount_cents, occurrence.home_currency_code)
+            if occurrence.home_currency_code else "币种待确认"
+        ),
+        "recorded_definition_amount": _recorded_definition_amount(occurrence),
         "paid_amount": (
             _amount_yuan(occurrence.paid_amount_cents, occurrence.paid_home_currency_code)
             if occurrence.paid_home_currency_code else "币种待确认"
