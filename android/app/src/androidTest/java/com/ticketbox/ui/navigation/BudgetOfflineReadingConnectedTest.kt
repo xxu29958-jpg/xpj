@@ -64,7 +64,7 @@ class BudgetOfflineReadingConnectedTest {
 
     @Test fun aPreviouslyReadBudgetIsReachableFromPlansAfterRoomAndViewModelsReopenOffline() {
         // The entry uses the current month; fixed September and unvisited October are tested separately.
-        val calendars = harness.fixture.graph.ledgerCalendarRepository
+        val calendars = harness.fixture.ledgerCalendarRepository
         val month = runBlocking {
             calendars.refresh(requireNotNull(calendars.currentBinding())).getOrThrow()
             calendars.newTaskMonth()
@@ -148,7 +148,7 @@ class BudgetOfflineReadingConnectedTest {
             debtCreationRepository = graph.debtCreationRepository, debtWriteRepository = graph.debtWriteRepository,
             repaymentDraftRepository = graph.repaymentDraftRepository, outboxRepository = harness.fixture.outbox,
             tagRepository = graph.tagRepository, categoryPreferenceRepository = graph.categoryPreferenceRepository,
-            ledgerCalendarRepository = graph.ledgerCalendarRepository,
+            ledgerCalendarRepository = harness.fixture.ledgerCalendarRepository,
         ), harness.screenFactory.viewModelFactories)
     }
 

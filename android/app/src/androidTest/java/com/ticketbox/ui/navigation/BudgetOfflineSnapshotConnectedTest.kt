@@ -112,7 +112,7 @@ class BudgetOfflineSnapshotConnectedTest {
 
     @Test fun anOfflineOverspendSnapshotCannotConsumeANewNotificationSentKey() = runBlocking {
         val graph = fixture.reopen()
-        val calendars = graph.ledgerCalendarRepository
+        val calendars = fixture.ledgerCalendarRepository
         calendars.refresh(requireNotNull(calendars.currentBinding())).getOrThrow()
         val month = calendars.newTaskMonth()
         val queryTimezone = TimeZone.getDefault().id

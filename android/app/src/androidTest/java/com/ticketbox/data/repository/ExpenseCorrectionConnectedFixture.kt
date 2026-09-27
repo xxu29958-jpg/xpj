@@ -66,6 +66,7 @@ internal class ExpenseCorrectionConnectedFixture(
     private val wrapApi: (ApiService) -> ApiService = { it },
 ) {
     private val name = "expense-correction-continuity.db"
+    private val calendarPreferences = context.getSharedPreferences("$name.calendar", Context.MODE_PRIVATE)
     private var database: AppDatabase? = null
     val clock = Clock.fixed(Instant.parse("2026-09-06T00:00:00Z"), ZoneOffset.UTC)
     private val session = MutableStateFlow(correctionSession())
@@ -73,6 +74,7 @@ internal class ExpenseCorrectionConnectedFixture(
     private val adapters = OutboxAdapterGraph()
     lateinit var outbox: OutboxRepository
     lateinit var graph: RepositoryGraph
+    lateinit var ledgerCalendarRepository: LedgerCalendarRepository
     lateinit var notificationDependencies: NotificationRuntimeDependencies
     lateinit var uploadIntents: UploadIntentRepository
     val expenseDao get() = requireNotNull(database).expenseDao()
@@ -132,10 +134,11 @@ internal class ExpenseCorrectionConnectedFixture(
             override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = service
         }
         val provider = ApiServiceProvider(factory, sessions, credentials)
+        ledgerCalendarRepository = LedgerCalendarRepository(LedgerRequestGuard(provider), calendarPreferences)
         graph = RepositoryGraph(RepositoryGraphDependencies(db, ApiClient(), settingsStore, sessions, credentials,
             provider, RepositoryGraphOutbox(outbox, adapters)))
         notificationDependencies = NotificationRuntimeDependencies(context, settingsStore, sessions, provider,
-            graph.recurringRepository, graph.budgetRepository, graph.ledgerCalendarRepository)
+            graph.recurringRepository, graph.budgetRepository, ledgerCalendarRepository)
         uploadIntents = UploadIntentRepository(provider, outbox, UploadIntentFileStore(context),
             adapters.uploadPayloadAdapter, adapters.uploadReceiptAdapter, settingsStore)
         graph.expenseRepository.onConfirmedCommitted = { confirmedCallbacks++ }
@@ -180,7 +183,7 @@ internal class ExpenseCorrectionConnectedFixture(
         identity = session.value.identity.copy(accountPublicId = "40000000-0000-4000-8000-000000000003")) }
     fun switchDevice() { session.value = session.value.copy(bindingRevision = "another-device-binding",
         identity = session.value.identity.copy(devicePublicId = "40000000-0000-4000-8000-000000000004")) }
-    fun close() { database?.close(); context.deleteDatabase(name) }
+    fun close() { database?.close(); context.deleteDatabase(name); calendarPreferences.edit().clear().commit() }
 }
 
 /** Response-loss model deduplicates by the actual original key and full request; not a PostgreSQL substitute. */
