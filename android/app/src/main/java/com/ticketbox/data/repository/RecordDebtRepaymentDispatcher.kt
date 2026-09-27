@@ -2,14 +2,13 @@ package com.ticketbox.data.repository
 
 import com.squareup.moshi.JsonAdapter
 import com.ticketbox.data.local.PendingMutationType
-import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.DebtRepaymentReceiptDto
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import retrofit2.HttpException
 
-class RecordDebtRepaymentDispatcher(
-    private val apiProvider: (OutboxRow) -> ApiService,
+class RecordDebtRepaymentDispatcher internal constructor(
+    private val guard: LedgerRequestGuard,
     private val adapter: JsonAdapter<DebtRepaymentPayload>,
     private val receiptAdapter: JsonAdapter<DebtRepaymentReceiptDto>,
 ) : OutboxMutationDispatcher {
@@ -19,7 +18,7 @@ class RecordDebtRepaymentDispatcher(
         val intent = row.describeDebtRepayment(adapter).repayment
             ?: return DispatchResult.Failure("debt_repayment_payload_unsupported")
         return try {
-            val result = apiProvider(row).recordDebtRepayment(intent.subject.publicId, intent.request, row.idempotencyKey)
+            val result = guard.bind(expectedLedgerId = row.ledgerId).serviceForOriginalDebtWrite(row, intent).recordDebtRepayment(intent.subject.publicId, intent.request, row.idempotencyKey)
             val repaymentId = result.repaymentPublicId
             if (result.debtPublicId != intent.subject.publicId || repaymentId.isNullOrBlank() ||
                 result.rowVersion <= intent.expectedRowVersion || result.homeCurrencyCode != intent.subject.homeCurrencyCode) {

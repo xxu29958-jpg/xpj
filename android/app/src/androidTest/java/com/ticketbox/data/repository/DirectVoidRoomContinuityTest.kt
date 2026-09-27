@@ -233,7 +233,7 @@ class DirectVoidRoomContinuityTest {
         assertNotNull(pending.intent)
         compose.onNodeWithText("原记录重复").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText(context.getString(R.string.debt_write_retry)).assertDoesNotExist()
-        compose.onNodeWithText(context.getString(R.string.debt_void_original_binding_changed)).assertExists()
+        compose.onNodeWithText(context.getString(R.string.debt_write_original_binding_changed)).assertExists()
         assertFalse(pending.canRetry)
         assertTrue(runBlocking { fixture.graph.debtWriteRepository.recover(binding, pending, drop = false) }.isFailure)
         assertEquals(0, runBlocking { fixture.drain() }.attempted)

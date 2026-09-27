@@ -55,7 +55,7 @@ private fun DebtWriteRecoveryContext(pending: PendingDebtWrite) {
         Text(stringResource(if (pending.legacyVoidAccepted) R.string.debt_void_accepted_locally_stopped
             else R.string.debt_write_stopped_body))
     }
-    if (pending.originalBindingChanged && !pending.isTerminal) Text(stringResource(R.string.debt_void_original_binding_changed))
+    if (pending.originalBindingChanged && !pending.isTerminal) Text(stringResource(R.string.debt_write_original_binding_changed))
 }
 
 /** Original commands remain readable even when the canonical detail cannot be fetched. */
@@ -70,7 +70,6 @@ internal fun DebtPendingWrites(pending: List<PendingDebtWrite>, canModify: Boole
 private fun DebtPendingWrite(pending: PendingDebtWrite, canModify: Boolean, recover: (PendingDebtWrite, Boolean) -> Unit) {
     var confirmDrop by rememberSaveable(pending.row.id) { mutableStateOf(false) }
     val status = pending.row.status
-    val needsAttention = status in setOf(PendingMutationStatus.Conflict, PendingMutationStatus.Failed)
     HorizontalDivider()
     Text(stringResource(debtPendingWriteTitle(pending)))
     DebtWriteIntentSummary(pending)
@@ -85,7 +84,7 @@ private fun DebtPendingWrite(pending: PendingDebtWrite, canModify: Boolean, reco
     if (pending.canRetry) {
         TextButton(enabled = canModify, onClick = { recover(pending, false) }) { Text(stringResource(R.string.debt_write_retry)) }
     }
-    if (needsAttention) {
+    if (pending.canStop) {
         TextButton(onClick = { confirmDrop = true }) { Text(stringResource(R.string.debt_write_drop)) }
     }
     if (confirmDrop) AlertDialog(
@@ -105,6 +104,6 @@ private fun debtPendingWriteTitle(pending: PendingDebtWrite): Int = when {
     pending.requiresReview -> R.string.debt_void_review_title
     pending.row.status == PendingMutationStatus.Done -> if (pending.isVoid) R.string.debt_void_confirmed else R.string.debt_repayment_confirmed
     pending.row.status == PendingMutationStatus.Abandoned -> R.string.debt_write_stopped
-    pending.row.status in setOf(PendingMutationStatus.Conflict, PendingMutationStatus.Failed) -> R.string.debt_write_attention
+    pending.canStop -> R.string.debt_write_attention
     else -> R.string.debt_write_waiting
 }

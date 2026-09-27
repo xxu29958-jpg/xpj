@@ -42,7 +42,7 @@ internal class DirectRepaymentTestFixture(role: String = "owner") {
         adapters, at)
 
     fun engine(outbox: OutboxRepository = this.outbox, at: Clock = clock) = OutboxDrainEngine(outbox,
-        listOf(RecordDebtRepaymentDispatcher({ api }, adapters.debtRepaymentAdapter, adapters.debtRepaymentReceiptAdapter),
+        listOf(RecordDebtRepaymentDispatcher(LedgerRequestGuard(provider), adapters.debtRepaymentAdapter, adapters.debtRepaymentReceiptAdapter),
             VoidDebtDispatcher(LedgerRequestGuard(provider), adapters.debtVoidAdapter, adapters.debtVoidReceiptAdapter),
             VoidDebtRepaymentDispatcher(LedgerRequestGuard(provider), adapters.debtRepaymentVoidAdapter, adapters.debtVoidReceiptAdapter)),
         maxAttempts = 1, now = at::millis)

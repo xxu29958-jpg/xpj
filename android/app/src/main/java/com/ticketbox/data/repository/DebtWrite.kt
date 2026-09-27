@@ -15,6 +15,8 @@ data class DebtWriteSubject(val publicId: String, val label: String?, val homeCu
 /** Direct Debt commands share recovery, never their financial meaning. */
 sealed interface DebtWriteIntent {
     val subject: DebtWriteSubject
+    val originSessionGeneration: String
+    val originBindingRevision: String
     val expectedRowVersion: Long
 }
 
@@ -37,6 +39,9 @@ data class PendingDebtWrite(val row: OutboxRow, val intent: DebtWriteIntent?, va
     val canRetry: Boolean
         get() = row.status == PendingMutationStatus.Failed && hasSupportedIntent && !originalBindingChanged && !reductionRejected && !requiresReview &&
             row.lastError?.startsWith("outbox_row_expired") != true
+    val canStop: Boolean
+        get() = row.status in setOf(PendingMutationStatus.Failed, PendingMutationStatus.Conflict) ||
+            row.status == PendingMutationStatus.Pending && originalBindingChanged
 }
 
 internal fun debtWriteTarget(publicId: String): String = "debt:$publicId"

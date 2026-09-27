@@ -155,7 +155,11 @@ class DebtAdjustmentRefreshTest {
         val bound = LedgerRequestGuard(fixture.provider).bindExact(fixture.binding)
         fixture.repository.recover(fixture.binding, original, false).getOrThrow()
         assertFalse(fixture.outbox.abandonDebtWrite(bound, original.row))
-        for (status in listOf("pending", "in_flight", "done")) {
+        // Eligibility belongs to the command owner; persistence still compares the exact observed state.
+        val pending = fixture.dao.rows.getValue(id)
+        assertTrue(fixture.repository.recover(fixture.binding, fixture.pending(), drop = true).isFailure)
+        assertEquals(pending, fixture.dao.rows.getValue(id))
+        for (status in listOf("in_flight", "done")) {
             val current = fixture.dao.rows.getValue(id).copy(status = status)
             fixture.dao.rows[id] = current
             assertEquals(0, fixture.dao.abandonDebtWrite(id, requireNotNull(current.ownerKey), current.ledgerId, status, "stop"))
