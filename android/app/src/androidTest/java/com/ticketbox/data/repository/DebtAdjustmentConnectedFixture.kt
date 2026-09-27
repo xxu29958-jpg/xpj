@@ -78,7 +78,12 @@ internal class DebtAdjustmentConnectedFixture(private val context: Context, priv
         }
         apiProvider = ApiServiceProvider(factory, sessions, credentials)
         return RepositoryGraph(RepositoryGraphDependencies(db, ApiClient(),
-            debtAdjustmentProxy<TicketboxSettingsStore> { if (it == "snapshotReadAccessDenial") null else error("Unexpected settings: $it") },
+            debtAdjustmentProxy<TicketboxSettingsStore> { when (it) {
+                "snapshotReadAccessDenial" -> null
+                "debtResourceCacheRetirements" -> emptyMap<String, String>()
+                "markDebtResourceCacheRetirement", "finishDebtResourceCacheRetirement" -> Unit
+                else -> error("Unexpected settings: $it")
+            } },
             sessions, credentials, apiProvider, RepositoryGraphOutbox(outbox, adapters)))
             .also { graph = it }
     }

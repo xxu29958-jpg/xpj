@@ -190,9 +190,8 @@ class RepaymentDraftRepositoryTest {
             ),
         ).apply { saveToken("session-token") }
         val apiClient = RepaymentDraftApiFactory(handler)
-        return RepaymentDraftRepository(
-            apiProvider = testApiServiceProvider(apiClient, tokenStore),
-        )
+        val provider = testApiServiceProvider(apiClient, tokenStore)
+        return RepaymentDraftRepository(provider, debtReaderFixture(provider, tokenStore))
     }
 }
 

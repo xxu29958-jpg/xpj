@@ -47,7 +47,8 @@ interface ExpenseDao {
     suspend fun clearGoalSnapshotsForBinding(bindingKey: String)
 
     @Query("DELETE FROM stats_projection_cache WHERE bindingKey = :bindingKey " +
-        "AND kind NOT IN ('recurring_direct_barrier', 'recurring_outbox_read_barrier', 'recurring_read_epoch')")
+        "AND kind NOT IN ('recurring_direct_barrier', 'recurring_outbox_read_barrier', 'recurring_read_epoch', " +
+        "'debt_direct_barrier', 'debt_outbox_read_barrier', 'debt_read_epoch')")
     suspend fun clearStatsProjectionsForBinding(bindingKey: String)
 
     @Query("SELECT * FROM stats_projection_cache WHERE bindingKey = :bindingKey AND kind = 'budget' AND month = :month")
@@ -65,6 +66,117 @@ interface ExpenseDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun saveStatsProjection(snapshot: StatsProjectionCacheEntity)
+
+    @Query("SELECT responseJson FROM stats_projection_cache WHERE bindingKey = :bindingKey " +
+        "AND kind = 'debt_read_epoch' AND month = '' AND tag = '' AND homeCurrencyCode = '' AND timezone = 'UTC'")
+    suspend fun debtReadEpoch(bindingKey: String): String?
+
+    /** Durable projection protection; retry diagnostics and business receipts are separate. */
+    suspend fun debtOutboxReadBarrier(bindingKey: String): StatsProjectionCacheEntity? =
+        statsProjections(bindingKey, "debt_outbox_read_barrier", "", "", "UTC").singleOrNull()
+
+    @Query("DELETE FROM stats_projection_cache WHERE bindingKey = :bindingKey " +
+        "AND kind IN ('debt_list', 'debt_detail', 'debt_activity')")
+    suspend fun clearDebtSnapshots(bindingKey: String)
+
+    @Transaction
+    suspend fun invalidateDebtSnapshots(bindingKey: String, ledgerId: String) {
+        advanceDebtReadEpoch(bindingKey, ledgerId)
+        clearDebtSnapshots(bindingKey)
+    }
+
+    @Transaction
+    suspend fun settleDebtOutboxReadBarrier(bindingKey: String, ledgerId: String, token: String, retire: Boolean) {
+        val barrier = debtOutboxReadBarrier(bindingKey)
+        if (retire) invalidateDebtSnapshots(bindingKey, ledgerId)
+        if (barrier?.responseJson == token) deleteStatsProjection(barrier)
+    }
+
+    @Transaction
+    suspend fun reconcileDebtReadBarriers(bindingKey: String, ledgerId: String, expectedEpoch: Long,
+        directTokens: Set<String>, outboxToken: String?) {
+        check((debtReadEpoch(bindingKey)?.toLong() ?: 0L) == expectedEpoch &&
+            debtDirectBarriers(bindingKey).map { it.tag }.toSet() == directTokens &&
+            debtOutboxReadBarrier(bindingKey)?.responseJson == outboxToken) { "原往来提交状态已变化，请重新读取。" }
+        invalidateDebtSnapshots(bindingKey, ledgerId)
+        clearDebtDirectBarriers(bindingKey, directTokens.toList())
+        debtOutboxReadBarrier(bindingKey)?.let { deleteStatsProjection(it) }
+    }
+
+    @Transaction
+    suspend fun advanceDebtReadEpoch(bindingKey: String, ledgerId: String): Long {
+        val next = Math.addExact(debtReadEpoch(bindingKey)?.toLong() ?: 0L, 1L)
+        saveStatsProjection(StatsProjectionCacheEntity(bindingKey, ledgerId, "debt_read_epoch", "", "", "", "UTC",
+            next.toString(), java.time.Instant.now().toString()))
+        return next
+    }
+
+    @Transaction
+    suspend fun saveDebtSnapshotIfCurrent(snapshot: StatsProjectionCacheEntity, epoch: Long,
+        restoredResourceFences: Map<String, String> = emptyMap()): Set<String> {
+        check((debtReadEpoch(snapshot.bindingKey)?.toLong() ?: 0L) == epoch) { "往来已接受修改，请重新读取。" }
+        check(debtOutboxReadBarrier(snapshot.bindingKey) == null) { "原往来提交结果仍待核对，请重新读取。" }
+        val denied = debtResourceDenials(snapshot.bindingKey).associate { it.tag to it.responseJson }
+        val restored = restoredResourceFences.filter { denied[it.key] == null || denied[it.key] == it.value }.keys
+        if (restored.isNotEmpty()) {
+            for (publicId in restored) {
+                clearDebtResourceSnapshots(snapshot.bindingKey, publicId)
+                clearDebtResourceDenial(snapshot.bindingKey, publicId)
+            }
+            clearDebtListSnapshots(snapshot.bindingKey)
+        }
+        saveStatsProjection(snapshot)
+        return restored
+    }
+
+    @Transaction
+    suspend fun debtSnapshotIfCurrent(query: StatsProjectionCacheEntity, epoch: Long): StatsProjectionCacheEntity? {
+        check((debtReadEpoch(query.bindingKey)?.toLong() ?: 0L) == epoch) { "往来已接受修改，请重新读取。" }
+        check(debtOutboxReadBarrier(query.bindingKey) == null) { "原往来提交结果仍待核对，请重新读取。" }
+        return statsProjections(query.bindingKey, query.kind, query.month, query.tag, query.timezone).singleOrNull()
+    }
+
+    @Query("SELECT * FROM stats_projection_cache WHERE bindingKey = :bindingKey AND kind = 'debt_resource_denial'")
+    suspend fun debtResourceDenials(bindingKey: String): List<StatsProjectionCacheEntity>
+
+    @Transaction
+    suspend fun retireDebtResourceCache(denial: StatsProjectionCacheEntity) {
+        saveStatsProjection(denial)
+        clearDebtResourceSnapshots(denial.bindingKey, denial.tag)
+    }
+
+    @Transaction
+    suspend fun retireDeferredDebtResourceCache(denial: StatsProjectionCacheEntity, expectedStoredToken: String?): Boolean {
+        if (debtResourceDenials(denial.bindingKey).find { it.tag == denial.tag }?.responseJson != expectedStoredToken) return false
+        retireDebtResourceCache(denial)
+        return true
+    }
+
+    @Query("DELETE FROM stats_projection_cache WHERE bindingKey = :bindingKey AND kind = 'debt_resource_denial' AND tag = :publicId")
+    suspend fun clearDebtResourceDenial(bindingKey: String, publicId: String)
+
+    @Query("DELETE FROM stats_projection_cache WHERE bindingKey = :bindingKey AND " +
+        "((kind = 'debt_detail' AND tag = :publicId) OR (kind = 'debt_activity' AND substr(tag, 1, length(:publicId) + 1) = :publicId || ':'))")
+    suspend fun clearDebtResourceSnapshots(bindingKey: String, publicId: String)
+
+    @Query("DELETE FROM stats_projection_cache WHERE bindingKey = :bindingKey AND kind = 'debt_list'")
+    suspend fun clearDebtListSnapshots(bindingKey: String)
+
+    @Query("SELECT * FROM stats_projection_cache WHERE bindingKey = :bindingKey AND kind = 'debt_direct_barrier'")
+    suspend fun debtDirectBarriers(bindingKey: String): List<StatsProjectionCacheEntity>
+
+    @Query("DELETE FROM stats_projection_cache WHERE bindingKey = :bindingKey AND kind = 'debt_direct_barrier' AND tag IN (:tokens)")
+    suspend fun clearDebtDirectBarriers(bindingKey: String, tokens: List<String>)
+
+    @Transaction
+    suspend fun settleDebtDirectReads(bindingKey: String, ledgerId: String, tokens: List<String>, expectedEpoch: Long? = null) {
+        check(expectedEpoch == null || (debtReadEpoch(bindingKey)?.toLong() ?: 0L) == expectedEpoch) {
+            "往来已接受修改，请重新读取。"
+        }
+        check(tokens.all { token -> debtDirectBarriers(bindingKey).any { it.tag == token } })
+        invalidateDebtSnapshots(bindingKey, ledgerId)
+        clearDebtDirectBarriers(bindingKey, tokens)
+    }
 
     /** Local invalidation metadata only; never a business snapshot, currency or receipt. */
     @Query("SELECT responseJson FROM stats_projection_cache WHERE bindingKey = :bindingKey " +
@@ -158,11 +270,13 @@ interface ExpenseDao {
     ): List<StatsProjectionCacheEntity>
 
     @Query("DELETE FROM stats_projection_cache " +
-        "WHERE kind NOT IN ('recurring_direct_barrier', 'recurring_outbox_read_barrier', 'recurring_read_epoch')")
+        "WHERE kind NOT IN ('recurring_direct_barrier', 'recurring_outbox_read_barrier', 'recurring_read_epoch', " +
+        "'debt_direct_barrier', 'debt_outbox_read_barrier', 'debt_read_epoch')")
     suspend fun clearStatsProjections()
 
     @Query("DELETE FROM stats_projection_cache WHERE ledgerId = :ledgerId " +
-        "AND kind NOT IN ('recurring_direct_barrier', 'recurring_outbox_read_barrier', 'recurring_read_epoch')")
+        "AND kind NOT IN ('recurring_direct_barrier', 'recurring_outbox_read_barrier', 'recurring_read_epoch', " +
+        "'debt_direct_barrier', 'debt_outbox_read_barrier', 'debt_read_epoch')")
     suspend fun clearStatsProjectionsForLedger(ledgerId: String)
 
     @Query(

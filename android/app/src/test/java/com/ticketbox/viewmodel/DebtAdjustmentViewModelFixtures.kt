@@ -155,10 +155,10 @@ internal class AdjustmentDetailActions : DebtActions by FakeDebtActions() {
     var getGate: CompletableDeferred<Unit>? = null
     val getCalls = mutableListOf<String>()
 
-    override suspend fun getDebt(publicId: String): Result<Debt> {
+    override suspend fun getDebt(publicId: String): Result<com.ticketbox.data.repository.ReadSnapshot<Debt>> {
         getCalls += publicId
         val captured = getResult
         getGate?.await()
-        return captured
+        return captured.map { debtReadSnapshot(it) }
     }
 }

@@ -209,6 +209,7 @@ class GoalQueryReadTest {
         cacheUnavailable = false
         f.api.offline = false
         val repaired = f.repository.goals("2026-09").getOrThrow()
+        assertNull(f.coordinator.snapshotAccessDenials.value, "Successful shared read recovery must not replay the previous denial to recreated consumers")
         f.stats.monthlyStats(query).getOrThrow()
         f.api.offline = true
         assertEquals(repaired.value, f.repository.goals("2026-09").getOrThrow().value)

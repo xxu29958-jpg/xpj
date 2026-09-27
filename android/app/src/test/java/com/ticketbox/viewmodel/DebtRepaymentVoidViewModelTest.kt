@@ -129,7 +129,7 @@ class DebtRepaymentVoidViewModelTest {
 
 private class RecordingVoidActions(canModify: Boolean = true) : DebtActions by FakeDebtActions(canModify) {
     var debt = sampleDebt().copy(rowVersion = 4, remainingAmountCents = 0, paidAmountCents = 50_000, status = "cleared")
-    override suspend fun getDebt(publicId: String): Result<Debt> = Result.success(debt.copy(publicId = publicId))
+    override suspend fun getDebt(publicId: String): Result<com.ticketbox.data.repository.ReadSnapshot<Debt>> = Result.success(debtReadSnapshot(debt.copy(publicId = publicId)))
 
 
 }

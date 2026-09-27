@@ -88,6 +88,7 @@ internal fun DebtDetailContent(
             proposalState = readableProposalState,
             bodyState = bodyState,
         )
+        item { DebtReadSource(state.fetchedAt, state.fromCache, state.isLoading) }
         if (state.pendingWrites.isNotEmpty()) item {
             DebtPendingWrites(state.pendingWrites.filter {
                 it.isVoid || it.row.status != com.ticketbox.data.local.PendingMutationStatus.Done ||

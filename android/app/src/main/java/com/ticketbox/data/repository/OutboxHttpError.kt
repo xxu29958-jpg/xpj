@@ -20,6 +20,16 @@ internal fun mapOutboxHttpException(error: HttpException): DispatchResult {
     return mapOutboxHttpError(error.code(), parsed)
 }
 
+/** A missing Debt withdraws that query, while its original command remains available for review. */
+internal fun mapDebtWriteHttpException(error: HttpException, publicId: String): DispatchResult {
+    val parsed = outboxHttpErrors.parseHttpError(error)
+    return when (val result = mapOutboxHttpError(error.code(), parsed)) {
+        is DispatchResult.Discarded -> DispatchResult.Failure(result.reason, definitelyRejected = true,
+            missingDebtPublicId = publicId.takeIf { error.code() == 404 && parsed.errorCode == "debt_not_found" })
+        else -> result
+    }
+}
+
 internal fun mapOutboxHttpError(statusCode: Int, parsed: NetworkErrorHandler.ParsedError): DispatchResult {
     val message = parsed.message
     return when (statusCode) {

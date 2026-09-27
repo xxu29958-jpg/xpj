@@ -1,5 +1,9 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.repository.ReadSnapshot
+import com.ticketbox.data.repository.SnapshotAccessDenial
+import com.ticketbox.data.repository.DebtReadResourceDenial
+import kotlinx.coroutines.flow.MutableSharedFlow
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtCreationActions
 import com.ticketbox.data.repository.DebtCreationQueueSnapshot
@@ -30,6 +34,13 @@ internal class FakeDebtActions(
     createResult: Result<Unit> = Result.success(Unit),
     var parseBillResult: Result<DebtBillSuggestion> = Result.success(blankBillSuggestion()),
 ) : DebtActions {
+    val readDenials = MutableSharedFlow<SnapshotAccessDenial>()
+    val resourceDenials = MutableSharedFlow<DebtReadResourceDenial>()
+    override fun observeReadAccessDenials() = readDenials
+    override fun observeResourceDenials() = resourceDenials
+    var fromCache = false
+    var detailResult = Result.success(sampleDebt())
+    var detailGate: CompletableDeferred<Unit>? = null
     val creation = FakeDebtCreationActions(canModify, createResult)
     val writes = FakeDebtWriteActions(creation.access)
     val parseBillCalls = mutableListOf<String>()
@@ -45,17 +56,21 @@ internal class FakeDebtActions(
 
     override fun canModifyLedger(): Boolean = canModify
 
-    override suspend fun listDebts(lens: DebtListLens): Result<DebtListPage> {
+    override suspend fun listDebts(lens: DebtListLens): Result<ReadSnapshot<DebtListPage>> {
         listCalls++
         listLenses += lens
         // Capture the result at entry so a stalled load returns the snapshot it started with, even
         // if a newer load swaps listResult in the meantime.
         val captured = listResult
         listGate?.await()
-        return captured.map { DebtListPage(debts = it, ledgerHomeCurrencyCode = listCapability) }
+        return captured.map { ReadSnapshot(DebtListPage(debts = it, ledgerHomeCurrencyCode = listCapability), "2026-09-27T01:00:00Z", fromCache) }
     }
 
-    override suspend fun getDebt(publicId: String): Result<Debt> = Result.success(sampleDebt(publicId))
+    override suspend fun getDebt(publicId: String): Result<ReadSnapshot<Debt>> {
+        val captured = detailResult
+        detailGate?.await()
+        return captured.map { debtReadSnapshot(it.copy(publicId = publicId), fromCache) }
+    }
 
     override suspend fun parseDebtBillImage(
         expectedBinding: LogicalSessionBinding,
@@ -140,3 +155,5 @@ internal fun sampleDebt(publicId: String = "debt-1"): Debt = Debt(
     updatedAt = "2026-06-15T00:00:00Z",
     rowVersion = 1,
 )
+
+internal fun <T> debtReadSnapshot(value: T, fromCache: Boolean = false) = ReadSnapshot(value, "2026-09-27T01:00:00Z", fromCache)

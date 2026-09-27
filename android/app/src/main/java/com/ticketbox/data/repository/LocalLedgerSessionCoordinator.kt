@@ -80,7 +80,7 @@ enum class LedgerCacheInvalidation {
 
 /** Linearization point for local session establishment and ledger selection. */
 class LocalLedgerSessionCoordinator(
-    private val settingsStore: TicketboxSettingsStore,
+    internal val settingsStore: TicketboxSettingsStore,
     private val sessionStore: LocalSessionStore,
     private val expenseDao: ExpenseDao,
     private val outbox: OutboxRepository? = null,
@@ -119,7 +119,9 @@ class LocalLedgerSessionCoordinator(
             settingsStore.persistSnapshotAccessDenial(bound.logicalBinding, requireNotNull(pendingAccessCleanupBindingKey), null))
         if (cacheAllowed && pending != null) pendingAccessCleanupBindingKey = null
         val outboxRef = outbox
-        if (outboxRef == null) block(cacheAllowed) else outboxRef.withActiveBinding(bound) { block(cacheAllowed) }
+        val result = if (outboxRef == null) block(cacheAllowed) else outboxRef.withActiveBinding(bound) { block(cacheAllowed) }
+        if (!fromCache && cacheAllowed && accessDenials.value?.binding == bound.logicalBinding) accessDenials.value = null
+        result
     }
 
     internal suspend fun rejectSnapshotAccess(bound: BoundLedgerRequest, bindingKey: String, failure: RepositoryException) {

@@ -165,7 +165,11 @@ class DebtAdjustmentRoomContinuityTest {
             fixture.network.failReads = false
             fixture.network.readGate = null
             compose.runOnIdle { consumers.refresh() }
-            compose.waitUntil(10_000) { consumers.balances() == List(5) { 53_000L } }
+            try {
+                compose.waitUntil(10_000) { consumers.balances() == List(5) { 53_000L } }
+            } catch (failure: androidx.compose.ui.test.ComposeTimeoutException) {
+                throw AssertionError("Recovered balances (list, receivables, goal, create goal, inbox): ${consumers.balances()}", failure)
+            }
             assertRetainedAdjustmentSelection(consumers.createGoal, fixture.network.current.publicId)
             assertRetainedAdjustmentSelection(consumers.inbox, fixture.network.current.publicId)
             assertTrue(consumers.createGoal.state.value.canSubmit)

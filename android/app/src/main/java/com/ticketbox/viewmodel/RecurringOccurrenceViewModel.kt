@@ -197,8 +197,8 @@ class RecurringOccurrenceViewModel(
             publishRead(result)
             val listed = debts.listDebts()
             if (requestEpoch == epoch && mutableState.value.access?.binding == binding) {
-                listed.onSuccess { page ->
-                    mutableState.update { it.copy(ledgerHomeCurrencyCode = resolveLedgerCurrency(page)?.storageKey) }
+                listed.onSuccess { snapshot ->
+                    mutableState.update { it.copy(ledgerHomeCurrencyCode = resolveLedgerCurrency(snapshot.value)?.storageKey) }
                 }
             }
             if (result.isSuccess) ledger.syncConfirmed().onFailure {

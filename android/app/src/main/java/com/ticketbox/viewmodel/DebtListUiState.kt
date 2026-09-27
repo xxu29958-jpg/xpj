@@ -19,6 +19,8 @@ import com.ticketbox.ui.components.parseAmountCents
  */
 data class DebtListUiState(
     val isLoading: Boolean = false,
+    val fetchedAt: String? = null,
+    val fromCache: Boolean = false,
     val canModify: Boolean = true,
     val debts: List<Debt> = emptyList(),
     val error: UiText? = null,

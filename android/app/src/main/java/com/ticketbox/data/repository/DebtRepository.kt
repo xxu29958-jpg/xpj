@@ -16,15 +16,18 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 
 /**
  * Canonical Debt queries and existing online fact/proposal operations.
  * External creation and adjustment belong to [DebtCreationActions] and [DebtWriteActions].
  */
 interface DebtActions {
+    fun observeReadAccessDenials(): Flow<SnapshotAccessDenial> = emptyFlow()
+    fun observeResourceDenials(): Flow<DebtReadResourceDenial> = emptyFlow()
     fun canModifyLedger(): Boolean
-    suspend fun listDebts(lens: DebtListLens = DebtListLens.Ledger): Result<DebtListPage>
-    suspend fun getDebt(publicId: String): Result<Debt>
+    suspend fun listDebts(lens: DebtListLens = DebtListLens.Ledger): Result<ReadSnapshot<DebtListPage>>
+    suspend fun getDebt(publicId: String): Result<ReadSnapshot<Debt>>
     suspend fun parseDebtBillImage(expectedBinding: LogicalSessionBinding, fileName: String,
         contentType: String?, bytes: ByteArray): Result<DebtBillSuggestion>
     // ADR-0049 §7.0 / 8e-6e: set / correct this external Debt's repayment-rhythm classification
@@ -50,7 +53,9 @@ data class DebtListPage(
  * receivables. The server selects participants and redacts cross-ledger identity. Read-only.
  */
 interface ReceivablesActions {
-    suspend fun listReceivables(): Result<List<Debt>>
+    fun observeReadAccessDenials(): Flow<SnapshotAccessDenial> = emptyFlow()
+    fun observeResourceDenials(): Flow<DebtReadResourceDenial> = emptyFlow()
+    suspend fun listReceivables(): Result<ReadSnapshot<List<Debt>>>
 }
 
 /** Participant commands reuse the canonical server owners and the original displayed task. */
@@ -65,11 +70,17 @@ interface DebtProposalActions {
     ): Result<MemberSettlementResult>
 }
 
-class DebtRepository(
+class DebtRepository internal constructor(
     private val apiProvider: ApiServiceProvider,
+    private val queryReader: DebtQueryReader,
     val splitAgreement: SplitAgreementActions? = null,
 ) : DebtActions, ReceivablesActions {
-    val activity: DebtActivityQueries = DebtActivityRepository(apiProvider)
+    val activity: DebtActivityQueries = DebtActivityRepository(queryReader)
+    override fun observeReadAccessDenials(): Flow<SnapshotAccessDenial> = queryReader.readAccessDenials
+    override fun observeResourceDenials(): Flow<DebtReadResourceDenial> = queryReader.readResourceDenials
+    suspend fun prepareReadsBeforeDispatch(row: OutboxRow) = queryReader.prepareDebtDispatch(row)
+    suspend fun finishReadDispatch(row: OutboxRow, result: DispatchResult?) = queryReader.finishDebtDispatch(row, result)
+    suspend fun invalidateReadsAfterAccepted(row: OutboxRow) = queryReader.invalidateDebtAccepted(row)
     private val ledgerRequestGuard = LedgerRequestGuard(apiProvider)
     private val errorHandler = NetworkErrorHandler(
         serverUrlProvider = { apiProvider.currentSession()?.serverUrl },
@@ -86,35 +97,20 @@ class DebtRepository(
 
     override fun canModifyLedger(): Boolean = ledgerRoleCanModify(apiProvider.currentLedgerRole())
 
-    override suspend fun listDebts(lens: DebtListLens): Result<DebtListPage> =
-        errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
-                val response = api.debts(
-                    lens = when (lens) {
-                        DebtListLens.Ledger -> null
-                        DebtListLens.Payables -> "payables"
-                    },
-                )
-                DebtListPage(
-                    debts = response.items.map { it.toDomain() },
-                    ledgerHomeCurrencyCode = response.homeCurrencyCode,
-                )
-            }
-        }
+    override suspend fun listDebts(lens: DebtListLens): Result<ReadSnapshot<DebtListPage>> {
+        val binding = ledgerRequestGuard.captureLogicalBinding() ?: return Result.failure(RepositoryException("请重新绑定账本。"))
+        return queryReader.list(binding, lens)
+    }
 
-    override suspend fun getDebt(publicId: String): Result<Debt> =
-        errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api -> api.debt(publicId).toDomain() }
-        }
+    override suspend fun getDebt(publicId: String): Result<ReadSnapshot<Debt>> {
+        val binding = ledgerRequestGuard.captureLogicalBinding() ?: return Result.failure(RepositoryException("请重新绑定账本。"))
+        return queryReader.detail(binding, publicId)
+    }
 
-    // Local and cross-ledger receivables share the same session/ledger response guard.
-    override suspend fun listReceivables(): Result<List<Debt>> =
-        errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
-                api.debtReceivables().items.map { it.toDomain() }
-            }
-        }
-
+    override suspend fun listReceivables(): Result<ReadSnapshot<List<Debt>>> {
+        val binding = ledgerRequestGuard.captureLogicalBinding() ?: return Result.failure(RepositoryException("请重新绑定账本。"))
+        return queryReader.receivables(binding)
+    }
     override suspend fun parseDebtBillImage(
         expectedBinding: LogicalSessionBinding,
         fileName: String,
@@ -145,7 +141,7 @@ class DebtRepository(
         if (!canModifyLedger()) return Result.failure(RepositoryException(DEBT_VIEWER_READONLY))
         return errorHandler.safeCall {
             ledgerRequestGuard.guardedCall { api ->
-                api.setDebtKind(
+                queryReader.direct(logicalBinding, publicId) { api.setDebtKind(
                     publicId = publicId,
                     request = DebtKindSetRequestDto(
                         debtKind = debtKind,
@@ -153,7 +149,7 @@ class DebtRepository(
                     ),
                     // ADR-0042: single-use key — direct-only path, no offline replay.
                     idempotencyKey = UUID.randomUUID().toString(),
-                ).toDomain()
+                ).toDomain() }
             }
         }
     }
@@ -170,11 +166,7 @@ class DebtRepository(
         override fun observeAccess(): Flow<LedgerAccessContext?> = apiProvider.observeActiveLedgerAccess()
 
         override suspend fun listRepaymentProposals(task: DebtTask): Result<List<MemberRepaymentProposal>> =
-            errorHandler.safeCall {
-                ledgerRequestGuard.bindExact(task.binding).call { api ->
-                    api.repaymentProposals(task.debtPublicId).items.map { it.toDomain() }
-                }
-            }
+            queryReader.freshQuery(task) { repaymentProposals(task.debtPublicId).items.map { it.toDomain() } }
 
         override suspend fun submit(
             task: DebtTask,
@@ -190,7 +182,7 @@ class DebtRepository(
                 throw RepositoryException("确认金额必须大于 0。")
             }
             ledgerRequestGuard.bindExact(task.binding).call { api ->
-                when (command) {
+                queryReader.direct(task.binding, task.debtPublicId) { when (command) {
                     is MemberSettlementCommand.Propose -> MemberSettlementResult.Proposal(
                         api.createRepaymentProposal(task.debtPublicId, MemberRepaymentProposalCreateRequestDto(
                             proposedAmountCents = command.amountCents, note = command.note,
@@ -208,7 +200,7 @@ class DebtRepository(
                     is MemberSettlementCommand.Forgive -> MemberSettlementResult.DebtChanged(
                         api.forgiveDebt(task.debtPublicId, DebtForgiveCreateRequestDto(command.expectedRowVersion),
                             idempotencyKey).toDomain())
-                }
+                } }
             }
         }
     }

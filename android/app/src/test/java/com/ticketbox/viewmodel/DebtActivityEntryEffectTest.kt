@@ -42,10 +42,10 @@ class DebtActivityEntryEffectTest {
         var remoteProposal = sampleMemberProposal()
         val activity = DebtActivityViewModel(DebtActivityQueries { task, _, _ ->
             reads++
-            Result.success(DebtActivityPage(task.debtPublicId, "CNY", listOf(
+            Result.success(debtReadSnapshot(DebtActivityPage(task.debtPublicId, "CNY", listOf(
                 DebtActivity("proposal_created", remoteProposal.publicId, remoteProposal.createdAt,
                     actorDisplayName = null, actorIsYou = false, proposal = remoteProposal),
-            ), page = 1, pageSize = 20, total = 1))
+            ), page = 1, pageSize = 20, total = 1)))
         })
         val proposalActions = ProposalTestActions(listResult = Result.success(listOf(remoteProposal)))
         val proposals = MemberRepaymentProposalViewModel(proposalActions)

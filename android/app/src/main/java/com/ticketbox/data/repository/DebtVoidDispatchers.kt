@@ -11,7 +11,7 @@ class VoidDebtDispatcher internal constructor(private val guard: LedgerRequestGu
     private val adapter: JsonAdapter<DebtVoidPayload>, private val receiptAdapter: JsonAdapter<DebtDto>) : OutboxMutationDispatcher {
     override val type = PendingMutationType.VoidDebt
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
-        val intent = row.describeDebtVoid(adapter).debtVoid ?: return DispatchResult.Failure("debt_void_payload_unsupported")
+        val intent = row.describeDebtVoid(adapter).debtVoid ?: return DispatchResult.Failure("debt_void_payload_unsupported", definitelyRejected = true)
         return dispatchVoid(intent, row, receiptAdapter, requireVoided = true) {
             guard.bind(expectedLedgerId = row.ledgerId).serviceForOriginalDebtWrite(row, intent).voidDebt(intent.subject.publicId, intent.request, row.idempotencyKey)
         }
@@ -22,7 +22,7 @@ class VoidDebtRepaymentDispatcher internal constructor(private val guard: Ledger
     private val adapter: JsonAdapter<DebtRepaymentVoidPayload>, private val receiptAdapter: JsonAdapter<DebtDto>) : OutboxMutationDispatcher {
     override val type = PendingMutationType.VoidDebtRepayment
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
-        val intent = row.describeRepaymentVoid(adapter).repaymentVoid ?: return DispatchResult.Failure("debt_void_payload_unsupported")
+        val intent = row.describeRepaymentVoid(adapter).repaymentVoid ?: return DispatchResult.Failure("debt_void_payload_unsupported", definitelyRejected = true)
         return dispatchVoid(intent, row, receiptAdapter, requireVoided = false) {
             guard.bind(expectedLedgerId = row.ledgerId).serviceForOriginalDebtWrite(row, intent).voidDebtRepayment(intent.subject.publicId, intent.request, row.idempotencyKey)
         }
@@ -39,14 +39,11 @@ private suspend fun dispatchVoid(intent: DebtWriteIntent, row: OutboxRow, adapte
 } catch (error: CancellationException) {
     throw error
 } catch (error: HttpException) {
-    when (val result = mapOutboxHttpException(error)) {
-        is DispatchResult.Discarded -> DispatchResult.Failure(result.reason)
-        else -> result
-    }
+    mapDebtWriteHttpException(error, intent.subject.publicId)
 } catch (_: IOException) {
     DispatchResult.RetryableFailure("debt_void_connection_interrupted")
 } catch (_: RepositoryException) {
-    DispatchResult.Failure("debt_void_binding_changed")
+    DispatchResult.Failure("debt_void_binding_changed", definitelyRejected = true)
 } catch (_: Exception) {
     DispatchResult.Failure("debt_void_response_unverified")
 }

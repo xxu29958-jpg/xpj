@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="debt_read_title">最近在线读取</string>
+    <string name="debt_read_body">读取时间：%1$s。金额与状态按本次已读结果展示。</string>
+    <string name="debt_read_cached_title">本地已读记录</string>
+    <string name="debt_read_cached_body">上次读取：%1$s。仅展示已读范围，之后的金额、状态和权限尚未重新核实。</string>
+    <string name="debt_action_review_latest_body">最新余额为 %1$s。原输入已保留；核对后可按最新记录继续。</string>
+    <string name="debt_action_review_latest">已核对，保留输入并继续</string>
+</resources>
