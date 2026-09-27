@@ -293,7 +293,7 @@ class DebtAdjustmentRoomContinuityTest {
         assertNotNull(pending.intent)
         compose.onNodeWithText("原调整金额：", substring = true).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("补记原借款").assertExists()
-        compose.onNodeWithText(InstrumentationRegistry.getInstrumentation().targetContext.getString(R.string.debt_void_original_binding_changed).substringBefore('，'),
+        compose.onNodeWithText(InstrumentationRegistry.getInstrumentation().targetContext.getString(R.string.debt_write_original_binding_changed).substringBefore('，'),
             substring = true).assertExists()
         compose.onNodeWithText("重试原提交").assertDoesNotExist()
         assertFalse(pending.canRetry)

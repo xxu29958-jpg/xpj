@@ -480,12 +480,10 @@ internal class DebtAdjustmentFixture(role: String = "owner") {
 
     fun engine(outbox: OutboxRepository = this.outbox, clock: Clock = this.clock, maxAttempts: Int = 10) = OutboxDrainEngine(
         outbox = outbox,
-        dispatchers = listOf(RecordDebtAdjustmentDispatcher(::outboxApi, adapters.debtAdjustmentAdapter)),
+        dispatchers = listOf(RecordDebtAdjustmentDispatcher(LedgerRequestGuard(provider), adapters.debtAdjustmentAdapter)),
         maxAttempts = maxAttempts, now = clock::millis,
     )
 
-    private fun outboxApi(row: OutboxRow) = LedgerRequestGuard(provider).bind(expectedLedgerId = row.ledgerId)
-        .serviceFor(requireNotNull(row.bindingOrNull()))
 }
 
 internal data class AdjustmentCall(val publicId: String, val request: DebtAdjustmentCreateRequestDto, val idempotencyKey: String?)

@@ -2,7 +2,6 @@ package com.ticketbox.data.repository
 
 import com.squareup.moshi.JsonAdapter
 import com.ticketbox.data.local.PendingMutationType
-import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.DebtDto
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
@@ -14,7 +13,7 @@ class VoidDebtDispatcher internal constructor(private val guard: LedgerRequestGu
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
         val intent = row.describeDebtVoid(adapter).debtVoid ?: return DispatchResult.Failure("debt_void_payload_unsupported")
         return dispatchVoid(intent, row, receiptAdapter, requireVoided = true) {
-            guard.bind(expectedLedgerId = row.ledgerId).serviceForOriginalVoid(row, intent).voidDebt(intent.subject.publicId, intent.request, row.idempotencyKey)
+            guard.bind(expectedLedgerId = row.ledgerId).serviceForOriginalDebtWrite(row, intent).voidDebt(intent.subject.publicId, intent.request, row.idempotencyKey)
         }
     }
 }
@@ -25,7 +24,7 @@ class VoidDebtRepaymentDispatcher internal constructor(private val guard: Ledger
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
         val intent = row.describeRepaymentVoid(adapter).repaymentVoid ?: return DispatchResult.Failure("debt_void_payload_unsupported")
         return dispatchVoid(intent, row, receiptAdapter, requireVoided = false) {
-            guard.bind(expectedLedgerId = row.ledgerId).serviceForOriginalVoid(row, intent).voidDebtRepayment(intent.subject.publicId, intent.request, row.idempotencyKey)
+            guard.bind(expectedLedgerId = row.ledgerId).serviceForOriginalDebtWrite(row, intent).voidDebtRepayment(intent.subject.publicId, intent.request, row.idempotencyKey)
         }
     }
 }
@@ -57,9 +56,4 @@ private fun DebtDto.matchesOriginalVoid(intent: DebtWriteIntent, row: OutboxRow,
         else status == "open" && remainingAmountCents > 0L
     return publicId == intent.subject.publicId && ledgerId == row.ledgerId &&
         homeCurrencyCode == intent.subject.homeCurrencyCode && rowVersion == intent.expectedRowVersion + 1 && matchesVoidResult
-}
-
-private fun BoundLedgerRequest.serviceForOriginalVoid(row: OutboxRow, intent: DebtWriteIntent): ApiService {
-    if (!intent.matchesVoidOrigin(logicalBinding)) throw RepositoryException("连接信息已变化，无法继续这次作废。")
-    return serviceFor(requireNotNull(row.bindingOrNull()))
 }

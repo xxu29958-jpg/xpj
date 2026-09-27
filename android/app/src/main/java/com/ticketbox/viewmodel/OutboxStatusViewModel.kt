@@ -237,7 +237,7 @@ class OutboxStatusViewModel(
         if (!drop && !pending.canRetry) {
             val message = when {
                 pending.requiresReview -> R.string.debt_void_original_requires_review
-                pending.originalBindingChanged -> R.string.debt_void_original_binding_changed
+                pending.originalBindingChanged -> R.string.debt_write_original_binding_changed
                 pending.reductionRejected -> R.string.debt_adjustment_reduction_rejected
                 else -> R.string.debt_write_attention
             }

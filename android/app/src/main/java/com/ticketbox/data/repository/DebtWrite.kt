@@ -15,6 +15,8 @@ data class DebtWriteSubject(val publicId: String, val label: String?, val homeCu
 /** Direct Debt commands share recovery, never their financial meaning. */
 sealed interface DebtWriteIntent {
     val subject: DebtWriteSubject
+    val originSessionGeneration: String
+    val originBindingRevision: String
     val expectedRowVersion: Long
 }
 

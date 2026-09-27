@@ -15,8 +15,8 @@ internal const val DEBT_ADJUSTMENT_NEGATIVE_REMAINING = "debt_adjustment_negativ
 data class DebtAdjustmentPayload(
     val revision: Int,
     override val subject: DebtWriteSubject,
-    val originSessionGeneration: String,
-    val originBindingRevision: String,
+    override val originSessionGeneration: String,
+    override val originBindingRevision: String,
     val request: DebtAdjustmentCreateRequestDto,
 ) : DebtAmountIntent {
     override val amountCents: Long get() = request.amountCents

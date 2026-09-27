@@ -180,7 +180,7 @@ class DirectRepaymentRoomContinuityTest {
         assertNotNull(pending.intent)
         compose.onNodeWithText("原还款金额：", substring = true).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("原还款时间：", substring = true).performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText(context.getString(R.string.debt_void_original_binding_changed).substringBefore('，'),
+        compose.onNodeWithText(context.getString(R.string.debt_write_original_binding_changed).substringBefore('，'),
             substring = true).assertExists()
         compose.onNodeWithText("重试原提交").assertDoesNotExist()
         assertFalse(pending.canRetry)

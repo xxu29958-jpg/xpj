@@ -55,7 +55,7 @@ private fun DebtWriteRecoveryContext(pending: PendingDebtWrite) {
         Text(stringResource(if (pending.legacyVoidAccepted) R.string.debt_void_accepted_locally_stopped
             else R.string.debt_write_stopped_body))
     }
-    if (pending.originalBindingChanged && !pending.isTerminal) Text(stringResource(R.string.debt_void_original_binding_changed))
+    if (pending.originalBindingChanged && !pending.isTerminal) Text(stringResource(R.string.debt_write_original_binding_changed))
 }
 
 /** Original commands remain readable even when the canonical detail cannot be fetched. */

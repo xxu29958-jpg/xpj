@@ -343,11 +343,11 @@ class AppContainer(context: Context) {
                 ::outboxApi, outboxAdapters.splitAgreementAdapter, outboxAdapters.splitAgreementReceiptAdapter,
             ),
             com.ticketbox.data.repository.RecordDebtAdjustmentDispatcher(
-                apiProvider = ::outboxApi,
+                guard = outboxRequestGuard,
                 adapter = outboxAdapters.debtAdjustmentAdapter,
             ),
             com.ticketbox.data.repository.RecordDebtRepaymentDispatcher(
-                apiProvider = ::outboxApi, adapter = outboxAdapters.debtRepaymentAdapter,
+                guard = outboxRequestGuard, adapter = outboxAdapters.debtRepaymentAdapter,
                 receiptAdapter = outboxAdapters.debtRepaymentReceiptAdapter,
             ),
             com.ticketbox.data.repository.VoidDebtDispatcher(
