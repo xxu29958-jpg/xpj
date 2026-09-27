@@ -71,6 +71,10 @@ fun RecurringOccurrenceSheet(
     ModalBottomSheet(onDismissRequest = actions.onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         AppSheetScaffold(title = item.merchant, subtitle = stringResource(R.string.occurrence_subtitle)) {
             OccurrencePeriodControls(state, actions)
+            RecurringReadSource(state.fetchedAt, state.fromCache, state.loading)
+            if (state.fromCache && state.requestedPeriod == "current") {
+                Text(stringResource(R.string.occurrence_cached_period, state.occurrence?.period.orEmpty()))
+            }
             state.message?.let { Text(it.asString(), modifier = Modifier.testTag("occurrence-message")) }
             OccurrencePaymentConflict(origin, actions)
             state.seriesPending.forEach { OccurrencePending(it, state.access?.canModify == true, actions.onRecover) }

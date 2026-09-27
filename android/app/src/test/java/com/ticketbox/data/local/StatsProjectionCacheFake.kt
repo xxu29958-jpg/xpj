@@ -16,4 +16,7 @@ internal class StatsProjectionCacheFake {
         rows.filter { it.bindingKey == bindingKey && it.kind == "budget" && it.month == month }
     fun delete(row: StatsProjectionCacheEntity) { rows.remove(row) }
     fun clearBinding(bindingKey: String) { rows.removeAll { it.bindingKey == bindingKey } }
+    fun clearRecurring(bindingKey: String) {
+        rows.removeAll { it.bindingKey == bindingKey && it.kind in setOf("recurring_items", "recurring_history", "recurring_occurrence") }
+    }
 }

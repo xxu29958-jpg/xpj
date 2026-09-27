@@ -508,11 +508,17 @@ class OutboxRepository private constructor(
     suspend fun tryClaim(id: Long): Boolean =
         dao.markInFlightIfPending(id, PendingMutationStatus.Pending.wireValue, PendingMutationStatus.InFlight.wireValue, nowIso()) > 0
 
+    internal var onRecurringAccepted: suspend (OutboxRow) -> Unit = {}
+
     suspend fun markDone(id: Long, cacheRefreshVersion: Long? = null, receiptJson: String? = null,
-        budgetReadRefreshRequired: Boolean = false) {
+        budgetReadRefreshRequired: Boolean = false, acceptedRow: OutboxRow? = null) {
         val refreshError = if (budgetReadRefreshRequired) BUDGET_READ_REFRESH_REQUIRED
             else cacheRefreshVersion?.let { "$EXPENSE_REFRESH_PREFIX$it" }
-        dao.markDone(id, PendingMutationStatus.Done.wireValue, nowIso(), refreshError, receiptJson)
+        dao.publishDelivery {
+            dao.markDone(id, PendingMutationStatus.Done.wireValue, nowIso(), refreshError, receiptJson)
+            if (acceptedRow?.type in setOf(PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem,
+                PendingMutationType.SetRecurringOccurrencePayment)) onRecurringAccepted(requireNotNull(acceptedRow))
+        }
     }
 
     internal suspend fun recoverBudgetReadRefresh(bound: BoundLedgerRequest, month: String,

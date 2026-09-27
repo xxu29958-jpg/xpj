@@ -27,23 +27,27 @@ data class PendingOccurrencePayment(val row: OutboxRow, val intent: RecurringOcc
 }
 
 interface RecurringOccurrenceActions {
+    val readAccessDenials: Flow<SnapshotAccessDenial>
     fun currentAccess(): LedgerAccessContext?
     fun observeAccess(): Flow<LedgerAccessContext?>
     fun describe(row: OutboxRow): PendingOccurrencePayment?
     fun observeQueue(binding: LogicalSessionBinding): Flow<List<PendingOccurrencePayment>>
-    suspend fun fetch(binding: LogicalSessionBinding, seriesId: String, period: String): Result<RecurringOccurrenceDto>
+    suspend fun fetch(binding: LogicalSessionBinding, seriesId: String, period: String): Result<ReadSnapshot<RecurringOccurrenceDto>>
     suspend fun enqueue(binding: LogicalSessionBinding, draft: OccurrencePaymentDraft): Result<Long>
     suspend fun recover(binding: LogicalSessionBinding, row: OutboxRow, drop: Boolean): Result<Unit>
 }
 
 /** The outbox dispatcher is the sole network writer. This owner publishes original user intent first. */
-class RecurringOccurrenceRepository(
+class RecurringOccurrenceRepository internal constructor(
     private val apiProvider: ApiServiceProvider,
     private val outbox: OutboxRepository,
     private val adapter: JsonAdapter<RecurringOccurrencePayload>,
+    private val queryReader: RecurringQueryReader,
 ) : RecurringOccurrenceActions {
     private val guard = LedgerRequestGuard(apiProvider)
     private val errors = NetworkErrorHandler(serverUrlProvider = { null }, context = "Recurring occurrence")
+
+    override val readAccessDenials = queryReader.readAccessDenials
 
     override fun currentAccess(): LedgerAccessContext? = guard.captureLogicalBinding()?.let {
         LedgerAccessContext(it, ledgerRoleCanModify(apiProvider.currentLedgerRole()))
@@ -85,16 +89,7 @@ class RecurringOccurrenceRepository(
         binding: LogicalSessionBinding,
         seriesId: String,
         period: String,
-    ): Result<RecurringOccurrenceDto> = errors.safeCall {
-        guard.bindExact(binding).call { it.recurringOccurrence(seriesId, period) }.also { occurrence ->
-            occurrence.recordedDefinition?.let { original ->
-                require(occurrence.rowVersion > 0 && original.seriesRowVersion > 0 &&
-                    original.seriesRowVersion <= occurrence.seriesRowVersion) { "本期原定义不正确，请重新读取。" }
-                java.time.Instant.parse(original.recordedAt)
-                original.snapshot.validateDefinition()
-            }
-        }
-    }
+    ): Result<ReadSnapshot<RecurringOccurrenceDto>> = queryReader.occurrence(binding, seriesId, period)
 
     override suspend fun enqueue(binding: LogicalSessionBinding, draft: OccurrencePaymentDraft): Result<Long> = try {
         val bound = guard.bindExact(binding)

@@ -332,7 +332,7 @@ private class CorrectionRecoveryHarness : ExpensePendingRepositoryOutboxTestBase
             debtCreation = DebtCreationRepository(binding.apiProvider, outbox, adapters.debtCreateAdapter),
             recurringOccurrences = null,
             recurringItems = RecurringRepository(binding.apiProvider, outbox, adapters.recurringCreateAdapter, adapters.recurringUpdateAdapter,
-                sessionCoordinator = LocalLedgerSessionCoordinator(binding.settingsStore, binding.sessionStore, cache, outbox)),
+                queryReader = RecurringQueryReader(binding.apiProvider, cache, LocalLedgerSessionCoordinator(binding.settingsStore, binding.sessionStore, cache, outbox))),
             rules = RuleRepository(binding, offlineMutations = CategoryRuleOfflineMutationWiring(
                 outbox, adapters.categoryRuleUpdateAdapter, adapters.categoryRuleDeleteAdapter,
                 adapters.categoryRuleSubmissionAdapter, adapters.categoryRuleReceiptAdapter)),

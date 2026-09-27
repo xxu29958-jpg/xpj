@@ -22,6 +22,8 @@ internal fun outboxStatusHarness(onEnqueued: () -> Unit = {}): OutboxStatusHarne
     val binding = testServerSessionBinding(apiClient = api, settingsStore = boundSettingsStore(), tokenStore = tokenStore)
     val expenseRepository = com.ticketbox.data.repository.expenseRepositoryFixture(expenseDao = FakeExpenseDao(), binding = binding)
     val outbox = testOutboxRepository(dao = FakePendingMutationDao(), onEnqueued = onEnqueued)
+    val recurringProvider = testApiServiceProvider(api, tokenStore)
+    val recurringCache = FakeExpenseDao()
     return OutboxStatusHarness(
         outbox = outbox,
         expenseRepository = expenseRepository,
@@ -35,9 +37,10 @@ internal fun outboxStatusHarness(onEnqueued: () -> Unit = {}): OutboxStatusHarne
         goalEdits = com.ticketbox.data.repository.GoalEditRepository(testApiServiceProvider(api, tokenStore), outbox,
             OutboxAdapterGraph().goalUpdateAdapter, OutboxAdapterGraph().goalReceiptAdapter, OutboxAdapterGraph().goalCreateAdapter),
         budgetSaves = com.ticketbox.data.repository.testBudgetRepository(testApiServiceProvider(api, tokenStore), outbox),
-        recurringItems = com.ticketbox.data.repository.RecurringRepository(testApiServiceProvider(api, tokenStore), outbox,
+        recurringItems = com.ticketbox.data.repository.RecurringRepository(recurringProvider, outbox,
             OutboxAdapterGraph().recurringCreateAdapter, OutboxAdapterGraph().recurringUpdateAdapter,
-            sessionCoordinator = com.ticketbox.data.repository.testSnapshotCoordinator(binding.apiProvider, outbox)),
+            queryReader = com.ticketbox.data.repository.RecurringQueryReader(recurringProvider, recurringCache,
+                com.ticketbox.data.repository.testSnapshotCoordinator(recurringProvider, outbox, recurringCache))),
         rules = com.ticketbox.data.repository.RuleRepository(binding, offlineMutations = OutboxAdapterGraph().let { adapters ->
             com.ticketbox.data.repository.CategoryRuleOfflineMutationWiring(outbox, adapters.categoryRuleUpdateAdapter,
                 adapters.categoryRuleDeleteAdapter, adapters.categoryRuleSubmissionAdapter, adapters.categoryRuleReceiptAdapter)

@@ -42,6 +42,7 @@ import com.ticketbox.ui.screens.recurring.RecurringHeroSection
 import com.ticketbox.ui.screens.recurring.RecurringItemsCard
 import com.ticketbox.ui.screens.recurring.RecurringItemsCardState
 import com.ticketbox.ui.screens.recurring.RecurringPendingSection
+import com.ticketbox.ui.screens.recurring.RecurringReadSource
 import com.ticketbox.ui.screens.recurring.RecurringTab
 import com.ticketbox.ui.screens.recurring.RecurringTabCounts
 import com.ticketbox.ui.screens.recurring.recurringDefaultTab
@@ -177,6 +178,7 @@ private fun LazyListScope.recurringOverviewSection(
     derived: RecurringDerivedModel,
     callbacks: RecurringScreenCallbacks,
 ) {
+    item { RecurringReadSource(state.itemsFetchedAt, state.itemsFromCache, state.loading) }
     state.message?.takeIf {
         state.duplicateConflict == null &&
             derived.itemSection.bodyState != ReadableListBodyState.LoadFailed &&

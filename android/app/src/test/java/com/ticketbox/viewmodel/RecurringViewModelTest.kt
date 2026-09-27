@@ -788,9 +788,11 @@ private class FakeRecurringQueryActions(
         status: String?,
         includeArchived: Boolean,
         month: String?,
-    ): Result<List<RecurringItem>> = items(status, includeArchived, month)
+    ): Result<com.ticketbox.data.repository.ReadSnapshot<List<RecurringItem>>> = items(status, includeArchived, month)
+        .map { com.ticketbox.data.repository.ReadSnapshot(it, "2026-09-27T10:00:00Z", false) }
     override suspend fun history(binding: LogicalSessionBinding, publicId: String, beforeVersion: Long?):
-        Result<com.ticketbox.data.remote.dto.RecurringHistoryPageDto> = error("Unused recurring definition history")
+        Result<com.ticketbox.data.repository.ReadSnapshot<com.ticketbox.data.remote.dto.RecurringHistoryPageDto>> =
+            error("Unused recurring definition history")
     override suspend fun candidates(
         expectedBinding: LogicalSessionBinding,
     ): Result<List<RecurringCandidate>> = candidatesResult

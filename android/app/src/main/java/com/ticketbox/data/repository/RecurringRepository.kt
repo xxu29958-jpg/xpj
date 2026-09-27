@@ -8,14 +8,12 @@ import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.filterNotNull
-import retrofit2.HttpException
 import java.util.TimeZone
 
 interface RecurringQueryActions {
     val readAccessDenials: Flow<SnapshotAccessDenial>
     suspend fun history(binding: LogicalSessionBinding, publicId: String, beforeVersion: Long?):
-        Result<com.ticketbox.data.remote.dto.RecurringHistoryPageDto>
+        Result<ReadSnapshot<com.ticketbox.data.remote.dto.RecurringHistoryPageDto>>
     fun canModifyLedger(): Boolean
     fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?>
     suspend fun items(
@@ -28,7 +26,7 @@ interface RecurringQueryActions {
         status: String? = null,
         includeArchived: Boolean = false,
         month: String? = null,
-    ): Result<List<RecurringItem>>
+    ): Result<ReadSnapshot<List<RecurringItem>>>
     suspend fun candidates(expectedBinding: LogicalSessionBinding): Result<List<RecurringCandidate>>
 }
 
@@ -76,13 +74,13 @@ interface RecurringActions :
     RecurringManualMutationActions,
     RecurringLifecycleActions
 
-class RecurringRepository(
+class RecurringRepository internal constructor(
     private val apiProvider: ApiServiceProvider,
     outbox: OutboxRepository? = null,
     createAdapter: JsonAdapter<RecurringItemCreateRequestDto>? = null,
     updateAdapter: JsonAdapter<RecurringItemUpdateRequestDto>? = null,
     occurrenceAdapter: JsonAdapter<RecurringOccurrencePayload>? = null,
-    private val sessionCoordinator: LocalLedgerSessionCoordinator,
+    private val queryReader: RecurringQueryReader,
 ) : RecurringActions,
     RecurringManualMutationActions by RecurringMutationClient(
         requestGuard = LedgerRequestGuard(apiProvider),
@@ -94,24 +92,11 @@ class RecurringRepository(
     ) {
     private val ledgerRequestGuard = LedgerRequestGuard(apiProvider)
     private val errorHandler = recurringErrorHandler(apiProvider)
-    override val readAccessDenials = sessionCoordinator.snapshotAccessDenials.filterNotNull()
+    override val readAccessDenials = queryReader.readAccessDenials
     override suspend fun history(binding: LogicalSessionBinding, publicId: String, beforeVersion: Long?) =
-        errorHandler.safeCall {
-            require(publicId.isNotBlank() && (beforeVersion == null || beforeVersion > 0)) { "固定支出历史范围不正确。" }
-            val bound = ledgerRequestGuard.bindExact(binding)
-            val ticket = sessionCoordinator.beginSnapshotRead()
-            val page = try {
-                bound.call { it.recurringHistory(publicId, 50, beforeVersion) }
-            } catch (error: HttpException) {
-                val failure = errorHandler.httpFailure(error)
-                sessionCoordinator.rejectSnapshotAccess(bound, logicalBindingAdapter.toJson(binding), failure)
-                throw failure
-            }
-            page.validateHistory(binding, publicId, beforeVersion)
-            sessionCoordinator.acceptSnapshotRead(ticket, bound, fromCache = false) { page }
-        }
+        queryReader.history(binding, publicId, beforeVersion)
     val occurrences: RecurringOccurrenceActions by lazy {
-        RecurringOccurrenceRepository(apiProvider, requireNotNull(outbox), requireNotNull(occurrenceAdapter))
+        RecurringOccurrenceRepository(apiProvider, requireNotNull(outbox), requireNotNull(occurrenceAdapter), queryReader)
     }
 
     override fun canModifyLedger(): Boolean = ledgerRoleCanModify(apiProvider.currentLedgerRole())
@@ -125,14 +110,9 @@ class RecurringRepository(
         month: String?,
     ): Result<List<RecurringItem>> =
         errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
-                api.recurringItems(
-                    status = status?.trim()?.ifBlank { null },
-                    includeArchived = includeArchived,
-                    month = month?.trim()?.ifBlank { null },
-                    timezone = recurringTimezoneId(),
-                ).items.map { it.toDomain() }
-            }
+            val binding = requireNotNull(ledgerRequestGuard.captureLogicalBinding()) { "请重新绑定账本。" }
+            queryReader.freshItems(binding, status?.trim()?.ifBlank { null }, includeArchived,
+                month?.trim()?.ifBlank { null }).getOrThrow()
         }
 
     override suspend fun items(
@@ -140,29 +120,16 @@ class RecurringRepository(
         status: String?,
         includeArchived: Boolean,
         month: String?,
-    ): Result<List<RecurringItem>> =
-        errorHandler.safeCall {
-            ledgerRequestGuard.bindExact(expectedBinding).call { api ->
-                api.recurringItems(
-                    status = status?.trim()?.ifBlank { null },
-                    includeArchived = includeArchived,
-                    month = month?.trim()?.ifBlank { null },
-                    timezone = recurringTimezoneId(),
-                ).items.map { it.toDomain() }
-            }
-        }.onSuccess { items ->
-            // Only the unfiltered full-ledger refresh (the Plan overview's)
-            // delivers the set the advisor consumes; filtered fetches would
-            // fingerprint a different set and flap. Fire-and-forget seam, var
-            // per the onConfirmedCommitted precedent (constructor baseline).
-            if (status == null && month == null && includeArchived) {
-                onFullItemsSnapshot(
-                    "n=${items.size};" +
+    ): Result<ReadSnapshot<List<RecurringItem>>> =
+        queryReader.items(expectedBinding, status?.trim()?.ifBlank { null }, includeArchived, month?.trim()?.ifBlank { null })
+            .onSuccess { snapshot ->
+                if (!snapshot.fromCache && status == null && month == null && includeArchived) {
+                    val items = snapshot.value
+                    onFullItemsSnapshot("n=${items.size};" +
                         "rv=${items.maxOfOrNull(RecurringItem::rowVersion) ?: 0};" +
-                        "ua=${items.maxOfOrNull(RecurringItem::updatedAt).orEmpty()}",
-                )
+                        "ua=${items.maxOfOrNull(RecurringItem::updatedAt).orEmpty()}")
+                }
             }
-        }
 
     /** Fired with a cheap stable stamp after each unfiltered full-ledger items
      *  refresh. Wired in AppContainer to the budget-advice freshness sink. */
@@ -183,12 +150,12 @@ class RecurringRepository(
         nextExpectedDate: String?,
     ): Result<RecurringItem> =
         errorHandler.safeCall {
-            ledgerRequestGuard.bindExact(expectedBinding).call { api ->
+            ledgerRequestGuard.bindExact(expectedBinding).also { queryReader.invalidateDirect(expectedBinding) }.call { api ->
                 api.confirmRecurringCandidate(
                     request = candidate.toConfirmRequest(nextExpectedDate = nextExpectedDate?.trim()?.ifBlank { null }),
                     timezone = recurringTimezoneId(),
                 ).toDomain()
-            }
+            }.also { queryReader.invalidateDirect(expectedBinding) }
         }
 
     override suspend fun pause(
@@ -198,12 +165,12 @@ class RecurringRepository(
     ): Result<RecurringItem> =
         errorHandler.safeCall {
             require(publicId.isNotBlank()) { "固定支出不存在。" }
-            ledgerRequestGuard.bindExact(expectedBinding).call { api ->
+            ledgerRequestGuard.bindExact(expectedBinding).also { queryReader.invalidateDirect(expectedBinding) }.call { api ->
                 api.pauseRecurringItem(
                     publicId.trim(),
                     com.ticketbox.data.remote.dto.RecurringItemTokenRequest(expectedRowVersion),
                 ).toDomain()
-            }
+            }.also { queryReader.invalidateDirect(expectedBinding) }
         }
 
     override suspend fun resume(
@@ -213,12 +180,12 @@ class RecurringRepository(
     ): Result<RecurringItem> =
         errorHandler.safeCall {
             require(publicId.isNotBlank()) { "固定支出不存在。" }
-            ledgerRequestGuard.bindExact(expectedBinding).call { api ->
+            ledgerRequestGuard.bindExact(expectedBinding).also { queryReader.invalidateDirect(expectedBinding) }.call { api ->
                 api.resumeRecurringItem(
                     publicId.trim(),
                     com.ticketbox.data.remote.dto.RecurringItemTokenRequest(expectedRowVersion),
                 ).toDomain()
-            }
+            }.also { queryReader.invalidateDirect(expectedBinding) }
         }
 
     override suspend fun archive(
@@ -227,9 +194,9 @@ class RecurringRepository(
     ): Result<RecurringItem> =
         errorHandler.safeCall {
             require(publicId.isNotBlank()) { "固定支出不存在。" }
-            ledgerRequestGuard.bindExact(expectedBinding).call { api ->
+            ledgerRequestGuard.bindExact(expectedBinding).also { queryReader.invalidateDirect(expectedBinding) }.call { api ->
                 api.archiveRecurringItem(publicId.trim()).toDomain()
-            }
+            }.also { queryReader.invalidateDirect(expectedBinding) }
         }
 
     override suspend fun restore(
@@ -239,12 +206,12 @@ class RecurringRepository(
     ): Result<RecurringItem> =
         errorHandler.safeCall {
             require(publicId.isNotBlank()) { "固定支出不存在。" }
-            ledgerRequestGuard.bindExact(expectedBinding).call { api ->
+            ledgerRequestGuard.bindExact(expectedBinding).also { queryReader.invalidateDirect(expectedBinding) }.call { api ->
                 api.restoreRecurringItem(
                     publicId.trim(),
                     com.ticketbox.data.remote.dto.RecurringItemTokenRequest(expectedRowVersion),
                 ).toDomain()
-            }
+            }.also { queryReader.invalidateDirect(expectedBinding) }
         }
 }
 

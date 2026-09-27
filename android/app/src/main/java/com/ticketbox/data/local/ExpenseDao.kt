@@ -64,6 +64,36 @@ interface ExpenseDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun saveStatsProjection(snapshot: StatsProjectionCacheEntity)
 
+    /** Local invalidation metadata only; never a business snapshot, currency or receipt. */
+    @Query("SELECT responseJson FROM stats_projection_cache WHERE bindingKey = :bindingKey " +
+        "AND kind = 'recurring_read_epoch' AND month = '' AND tag = '' AND homeCurrencyCode = '' AND timezone = 'UTC'")
+    suspend fun recurringReadEpoch(bindingKey: String): String?
+
+    @Transaction
+    suspend fun invalidateRecurringSnapshots(bindingKey: String, ledgerId: String) {
+        val next = Math.addExact(recurringReadEpoch(bindingKey)?.toLong() ?: 0L, 1L)
+        clearRecurringSnapshots(bindingKey)
+        saveStatsProjection(StatsProjectionCacheEntity(bindingKey, ledgerId, "recurring_read_epoch", "", "", "", "UTC",
+            next.toString(), java.time.Instant.now().toString()))
+    }
+
+    @Query("DELETE FROM stats_projection_cache WHERE bindingKey = :bindingKey " +
+        "AND kind IN ('recurring_items', 'recurring_history', 'recurring_occurrence')")
+    suspend fun clearRecurringSnapshots(bindingKey: String)
+
+    /** The same Room database serializes this proof with accepted command settlement. */
+    @Transaction
+    suspend fun saveRecurringSnapshotIfCurrent(snapshot: StatsProjectionCacheEntity, expectedEpoch: Long) {
+        check((recurringReadEpoch(snapshot.bindingKey)?.toLong() ?: 0L) == expectedEpoch) { "固定支出已接受修改，请重新读取。" }
+        saveStatsProjection(snapshot)
+    }
+
+    @Transaction
+    suspend fun recurringSnapshotIfCurrent(query: StatsProjectionCacheEntity, expectedEpoch: Long): StatsProjectionCacheEntity? {
+        check((recurringReadEpoch(query.bindingKey)?.toLong() ?: 0L) == expectedEpoch) { "固定支出已接受修改，请重新读取。" }
+        return statsProjections(query.bindingKey, query.kind, query.month, query.tag, query.timezone).singleOrNull()
+    }
+
     @Query("""
         SELECT * FROM stats_projection_cache
         WHERE bindingKey = :bindingKey AND kind = :kind AND month = :month AND tag = :tag

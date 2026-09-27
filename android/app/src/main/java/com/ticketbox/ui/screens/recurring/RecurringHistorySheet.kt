@@ -22,6 +22,8 @@ internal fun RecurringHistorySheet(state: RecurringHistoryState, retry: () -> Un
     AppBusyGuardedSheet(isSubmitting = false, onDismiss = dismiss, skipPartiallyExpanded = true) {
         AppSheetScaffold(title = stringResource(R.string.recurring_history_title), subtitle = state.merchant) {
             Text(stringResource(R.string.recurring_history_explanation))
+            if (state.fromCache) Text(stringResource(R.string.recurring_history_read_cached,
+                displayDateTime(state.fetchedAt)))
             state.items.forEach { entry ->
                 Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
                     HorizontalDivider()

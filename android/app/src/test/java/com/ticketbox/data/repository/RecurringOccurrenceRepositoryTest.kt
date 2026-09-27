@@ -169,7 +169,9 @@ private class OccurrenceFixture(role: String = "owner") {
     val scheduledDepths = mutableListOf<Int>()
     val outbox = newOutbox(clock)
     val adapter = OutboxAdapterGraph().recurringOccurrenceAdapter
-    val repository = RecurringOccurrenceRepository(provider, outbox, adapter)
+    private val readCache = FakeExpenseDao()
+    val repository = RecurringOccurrenceRepository(provider, outbox, adapter,
+        RecurringQueryReader(provider, readCache, testSnapshotCoordinator(provider, outbox, readCache)))
     val draft = OccurrencePaymentDraft(occurrenceFixture(), "房租",
         RecurringOccurrencePaymentRequestDto("link", 0, 7, "payment-1", 3), "房租付款", 10_000, "CNY")
 

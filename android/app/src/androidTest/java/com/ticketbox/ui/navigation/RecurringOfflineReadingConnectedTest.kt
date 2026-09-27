@@ -81,7 +81,6 @@ class RecurringOfflineReadingConnectedTest {
         val repository = harness.screenFactory.recurringRepository
         val binding = runBlocking { requireNotNull(repository.observeActiveLedgerAccess().first()).binding }
         val originalPeriod = runBlocking { repository.occurrences.fetch(binding, "offline-active", "2026-09").getOrThrow() }
-        val originalHistory = runBlocking { repository.history(binding, "offline-active", null).getOrThrow() }
         openHistory()
         waitForText("原日元安排")
         Espresso.pressBack()
@@ -90,10 +89,13 @@ class RecurringOfflineReadingConnectedTest {
         waitForText("原美元归档安排")
         Espresso.pressBack()
         selectTab(R.string.recurring_tab_active)
+        val originalList = runBlocking { repository.items(binding, includeArchived = true).getOrThrow() }
+        val originalHistory = runBlocking { repository.history(binding, "offline-active", null).getOrThrow() }
         offline = true
         restart()
         // This is the first missing business postcondition on the frozen production source.
         waitForText("原日元固定支出")
+        waitForText(context.getString(R.string.recurring_read_cached_title))
         compose.onNodeWithTag("recurring-item-offline-active").assertExists()
         openHistory()
         waitForText("原日元安排")
@@ -104,10 +106,19 @@ class RecurringOfflineReadingConnectedTest {
         Espresso.pressBack()
         val reopened = harness.screenFactory.recurringRepository
         runBlocking {
-            assertEquals(originalHistory, reopened.history(binding, "offline-active", null).getOrThrow())
-            assertEquals(originalPeriod, reopened.occurrences.fetch(binding, "offline-active", "2026-09").getOrThrow())
+            val history = reopened.history(binding, "offline-active", null).getOrThrow()
+            assertEquals(originalHistory.value, history.value)
+            assertEquals(originalHistory.fetchedAt, history.fetchedAt)
+            assertTrue(history.fromCache)
+            val period = reopened.occurrences.fetch(binding, "offline-active", "2026-09").getOrThrow()
+            assertEquals(originalPeriod.value, period.value)
+            assertEquals(originalPeriod.fetchedAt, period.fetchedAt)
+            assertTrue(period.fromCache)
             assertTrue(reopened.occurrences.fetch(binding, "offline-active", "2026-08").isFailure)
-            val rows = reopened.items(binding, includeArchived = true).getOrThrow()
+            val listing = reopened.items(binding, includeArchived = true).getOrThrow()
+            assertEquals(originalList.fetchedAt, listing.fetchedAt)
+            assertTrue(listing.fromCache)
+            val rows = listing.value
             assertEquals(mapOf("offline-active" to "JPY", "offline-archived" to "USD"), rows.associate { it.publicId to it.homeCurrencyCode })
             assertEquals(2400L, rows.single { it.publicId == "offline-active" }.baselineAmountCents)
         }
@@ -129,7 +140,7 @@ class RecurringOfflineReadingConnectedTest {
         compose.onNode(hasSetTextAction() and hasText("2400")).performTextReplacement("1250")
         Espresso.closeSoftKeyboard()
         runBlocking {
-            val baseline = repository.items(binding, includeArchived = true).getOrThrow().single { it.publicId == "offline-active" }
+            val baseline = repository.items(binding, includeArchived = true).getOrThrow().value.single { it.publicId == "offline-active" }
             repository.updateAllowingOffline(binding, baseline, RecurringItemPatch(merchant = "已入队的原修改",
                 baselineAmountCents = 1300, homeCurrencyCode = "JPY")).getOrThrow()
         }

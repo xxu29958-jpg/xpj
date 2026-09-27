@@ -25,6 +25,8 @@ data class RecurringUiState(
     val message: UiText? = null,
     val messageTone: MessageTone = MessageTone.Neutral,
     val items: List<RecurringItem> = emptyList(),
+    val itemsFetchedAt: String? = null,
+    val itemsFromCache: Boolean = false,
     val candidates: List<RecurringCandidate> = emptyList(),
     val pendingIntents: List<RecurringPendingIntent> = emptyList(),
     val duplicateConflict: RecurringDuplicateConflict? = null,
@@ -72,7 +74,8 @@ class RecurringViewModel(
     private val retireDeniedReads: (Throwable) -> Unit = { error ->
         historyTask.dismiss()
         refreshGeneration += 1
-        _uiState.update { it.copy(items = emptyList(), candidates = emptyList(), loading = false,
+        _uiState.update { it.copy(items = emptyList(), itemsFetchedAt = null, itemsFromCache = false,
+            candidates = emptyList(), loading = false,
             itemsLoadState = RecurringListLoadState.Failed, candidatesLoadState = RecurringListLoadState.Failed,
             message = error.toUiText(R.string.recurring_history_failed), messageTone = MessageTone.Danger) }
     }
@@ -167,6 +170,9 @@ class RecurringViewModel(
             val itemsResult = repository.items(binding, includeArchived = true)
             val candidatesResult = repository.candidates(binding)
             if (requestGeneration != generation || refreshGeneration != refresh) return@launch
+            val denied = listOf(itemsResult.exceptionOrNull(), candidatesResult.exceptionOrNull())
+                .firstOrNull { it?.isReadAccessDenied() == true }
+            if (denied != null) { retireDeniedReads(denied); return@launch }
             val message = listOf(itemsResult, candidatesResult)
                 .firstOrNull { it.isFailure }
                 ?.exceptionOrNull()
@@ -183,7 +189,9 @@ class RecurringViewModel(
                     } else {
                         MessageTone.Danger
                     },
-                    items = itemsResult.getOrElse { state.items },
+                    items = itemsResult.getOrNull()?.value ?: state.items,
+                    itemsFetchedAt = itemsResult.getOrNull()?.fetchedAt ?: state.itemsFetchedAt,
+                    itemsFromCache = itemsResult.getOrNull()?.fromCache ?: state.itemsFromCache,
                     candidates = candidatesResult.getOrElse { state.candidates },
                     itemsLoadState = itemsResult.toRecurringListLoadState(),
                     candidatesLoadState = candidatesResult.toRecurringListLoadState(),
@@ -343,6 +351,8 @@ class RecurringViewModel(
                                 message = UiText.res(R.string.recurring_message_updated),
                                 messageTone = MessageTone.Success,
                                 duplicateConflict = null,
+                                itemsFetchedAt = null,
+                                itemsFromCache = false,
                                 canModify = activeCanModify,
                             ),
                             item,
