@@ -8,10 +8,114 @@ real carrier the browser submits), not read from the DB.
 from __future__ import annotations
 
 import re as _re
+from urllib.parse import parse_qs, urlsplit
+from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
-from tests._infra.tag_helpers import manual_expense, tag_index
+from tests._infra.tag_helpers import demote_owner_to_viewer, expense_row, manual_expense, tag_index, tag_links
+
+
+def _unused_tag(client: TestClient, headers: dict[str, str]) -> dict:
+    expense = manual_expense(client, headers, tags="出差, 工作", merchant="原标签")
+    corrected = client.post(
+        f"/api/expenses/{expense['id']}/corrections",
+        headers={**headers, "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": expense["row_version"], "reason": "移除误加标签", "tags": "出差"},
+    )
+    assert corrected.status_code == 201, corrected.text
+    return tag_index(client, headers)["工作"]
+
+
+def test_unused_tags_show_only_unused_rows_but_keep_live_merge_destinations(web_client: TestClient, *, identity) -> None:
+    unused = _unused_tag(web_client, identity.app_headers)
+    used = tag_index(web_client, identity.app_headers)["出差"]
+    other = _unused_tag(web_client, identity.gray_app_headers)
+    page = web_client.get("/web/tags?ledger_id=owner&unused=1")
+    assert page.status_code == 200
+    assert f'data-tag-key="{unused["public_id"]}"' in page.text
+    assert f'data-tag-key="{used["public_id"]}"' not in page.text
+    assert other["public_id"] not in page.text
+    assert f'value="{used["public_id"]}:{used["row_version"]}"' in page.text
+    assert 'href="/web/tags?ledger_id=owner"' in page.text
+
+
+def test_unused_cleanup_does_not_remove_a_tag_reused_after_the_page_was_opened(web_client: TestClient, *, identity) -> None:
+    unused = _unused_tag(web_client, identity.app_headers)
+    public_id = unused["public_id"]
+    page = web_client.get("/web/tags?ledger_id=owner&unused=1")
+    token = _row_version_for(page.text, public_id, "delete")
+    manual_expense(web_client, identity.app_headers, tags="工作", merchant="新使用者")
+    reused = tag_index(web_client, identity.app_headers)["工作"]
+    assert str(reused["row_version"]) == token, "Reusing a live tag does not change its OCC token"
+    rejected = web_client.post(
+        f"/web/tags/{public_id}/delete",
+        data={"ledger_id": "owner", "expected_row_version": token, "unused": "1"},
+        follow_redirects=False,
+    )
+    assert rejected.status_code == 303
+    assert tag_index(web_client, identity.app_headers)["工作"] == reused
+    returned = web_client.get(rejected.headers["location"])
+    assert "已被使用" in returned.text
+    assert parse_qs(urlsplit(rejected.headers["location"]).query)["unused"] == ["1"]
+
+
+@pytest.mark.parametrize("action", ["rename", "merge"])
+def test_unused_tag_actions_cannot_rewrite_a_bill_that_reused_the_source_after_render(
+    web_client: TestClient, identity, action: str,
+) -> None:
+    source = _unused_tag(web_client, identity.app_headers)
+    target = tag_index(web_client, identity.app_headers)["出差"]
+    page = web_client.get("/web/tags?ledger_id=owner&unused=1")
+    token = _row_version_for(page.text, source["public_id"], action)
+    accepted = manual_expense(web_client, identity.app_headers, tags="工作", merchant="随后使用标签的账单")
+    reused = tag_index(web_client, identity.app_headers)["工作"]
+    assert str(reused["row_version"]) == token
+    response = web_client.post(
+        f"/web/tags/{source['public_id']}/{action}",
+        data={"ledger_id": "owner", "unused": "1", "expected_row_version": token,
+              "name": "办公", "target": f"{target['public_id']}:{target['row_version']}"},
+        follow_redirects=False,
+    )
+    if action == "rename":
+        assert response.status_code == 422
+        returned = response
+    else:
+        assert response.status_code == 303
+        assert parse_qs(urlsplit(response.headers["location"]).query)["unused"] == ["1"]
+        returned = web_client.get(response.headers["location"])
+    assert "已被使用" in returned.text and 'role="alert"' in returned.text
+    assert expense_row("随后使用标签的账单") == (accepted["id"], accepted["row_version"], "工作")
+    assert tag_links(accepted["id"]) == ["工作"]
+    current = tag_index(web_client, identity.app_headers)
+    assert current["工作"] == reused and current["出差"] == target
+    history = web_client.get(f"/api/expenses/{accepted['id']}/revisions", headers=identity.app_headers)
+    assert history.status_code == 200 and history.json()["total"] == 1
+
+
+def test_unused_cleanup_native_form_and_undo_preserve_the_same_view(web_client: TestClient, *, identity) -> None:
+    unused = _unused_tag(web_client, identity.app_headers)
+    public_id = unused["public_id"]
+    page = web_client.get("/web/tags?ledger_id=owner&unused=1")
+    form = _re.search(rf'<form[^>]*action="/web/tags/{public_id}/delete"[^>]*>(.*?)</form>', page.text, _re.DOTALL)
+    assert form is not None
+    fields = dict(_re.findall(r'name="([^"]+)" value="([^"]*)"', form.group(1)))
+    assert fields["unused"] == "1"
+    deleted = web_client.post(f"/web/tags/{public_id}/delete", data=fields, follow_redirects=False)
+    assert deleted.status_code == 303
+    assert "工作" not in tag_index(web_client, identity.app_headers)
+    assert parse_qs(urlsplit(deleted.headers["location"]).query)["unused"] == ["1"]
+    undo_page = web_client.get(deleted.headers["location"])
+    undo = _re.search(r'<form[^>]*action="(/web/tags/mutations/[^/]+/undo)"[^>]*>(.*?)</form>', undo_page.text, _re.DOTALL)
+    assert undo is not None
+    undo_fields = dict(_re.findall(r'name="([^"]+)" value="([^"]*)"', undo.group(2)))
+    undone = web_client.post(undo.group(1), data=undo_fields, follow_redirects=False)
+    assert undone.status_code == 303
+    assert parse_qs(urlsplit(undone.headers["location"]).query)["unused"] == ["1"]
+    restored = tag_index(web_client, identity.app_headers)["工作"]
+    assert restored["public_id"] == public_id and restored["usage_count"] == 0
+    assert f'data-tag-key="{public_id}"' in web_client.get(undone.headers["location"]).text
 
 
 def _row_version_for(page_text: str, public_id: str, action: str) -> str:
@@ -176,3 +280,114 @@ def test_web_tag_undo_remote_returns_403(client: TestClient, *, identity) -> Non
         data={"ledger_id": "owner", "expected_row_version": "1"},
     )
     assert resp.status_code == 403
+
+
+@pytest.mark.parametrize("token_kind", ["current", "blank", "stale", "conflict"])
+def test_unused_tag_rename_keeps_filter_and_inline_retry(
+    web_client: TestClient, identity, token_kind: str
+) -> None:
+    unused = _unused_tag(web_client, identity.app_headers)
+    public_id = unused["public_id"]
+    page = web_client.get("/web/tags?ledger_id=owner&unused=1")
+    token = _row_version_for(page.text, public_id, "rename")
+    submitted_token = {"blank": "", "stale": "999999"}.get(token_kind, token)
+    name = "出差" if token_kind == "conflict" else "闲置工作"
+    response = web_client.post(
+        f"/web/tags/{public_id}/rename",
+        data={"ledger_id": "owner", "unused": "1", "expected_row_version": submitted_token, "name": name},
+        follow_redirects=False,
+    )
+    if token_kind == "current":
+        assert response.status_code == 303
+        assert parse_qs(urlsplit(response.headers["location"]).query)["unused"] == ["1"]
+        returned = web_client.get(response.headers["location"])
+        assert "闲置工作" in tag_index(web_client, identity.app_headers)
+    else:
+        assert response.status_code == 422
+        returned = response
+        assert 'role="alert"' in returned.text
+        assert f'name="name" value="{name}"' in returned.text
+        assert _row_version_for(returned.text, public_id, "rename") == token
+    assert 'name="unused" value="1"' in returned.text
+    used = tag_index(web_client, identity.app_headers)["出差"]
+    assert f'data-tag-key="{used["public_id"]}"' not in returned.text
+
+
+def test_unused_tag_merge_to_used_target_keeps_filter_and_undo(
+    web_client: TestClient, identity
+) -> None:
+    unused = _unused_tag(web_client, identity.app_headers)
+    used = tag_index(web_client, identity.app_headers)["出差"]
+    page = web_client.get("/web/tags?ledger_id=owner&unused=1")
+    form = _re.search(
+        rf'<form[^>]*action="/web/tags/{unused["public_id"]}/merge"[^>]*>(.*?)</form>',
+        page.text, _re.DOTALL,
+    )
+    assert form is not None
+    fields = dict(_re.findall(r'name="([^"]+)" value="([^"]*)"', form.group(1)))
+    assert fields["unused"] == "1"
+    fields["target"] = f'{used["public_id"]}:{used["row_version"]}'
+    merged = web_client.post(f'/web/tags/{unused["public_id"]}/merge', data=fields, follow_redirects=False)
+    assert merged.status_code == 303
+    assert parse_qs(urlsplit(merged.headers["location"]).query)["unused"] == ["1"]
+    assert "工作" not in tag_index(web_client, identity.app_headers)
+    assert tag_index(web_client, identity.app_headers)["出差"]["usage_count"] == 1
+    returned = web_client.get(merged.headers["location"])
+    assert "当前没有未使用的标签" in returned.text
+    assert 'name="unused" value="1"' in returned.text  # undo retains the filter
+
+
+@pytest.mark.parametrize("action", ["delete", "merge", "undo"])
+@pytest.mark.parametrize("token", ["", "999999"])
+def test_unused_tag_failed_mutation_keeps_filter(
+    web_client: TestClient, identity, action: str, token: str
+) -> None:
+    unused = _unused_tag(web_client, identity.app_headers)
+    used = tag_index(web_client, identity.app_headers)["出差"]
+    path = (
+        "/web/tags/mutations/missing/undo" if action == "undo"
+        else f'/web/tags/{unused["public_id"]}/{action}'
+    )
+    response = web_client.post(
+        path,
+        data={"ledger_id": "owner", "unused": "1", "expected_row_version": token,
+              "target": f'{used["public_id"]}:{used["row_version"]}'},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert parse_qs(urlsplit(response.headers["location"]).query)["unused"] == ["1"]
+    assert tag_index(web_client, identity.app_headers)["工作"] == unused
+    returned = web_client.get(response.headers["location"])
+    assert f'data-tag-key="{unused["public_id"]}"' in returned.text
+    assert 'product-feedback--error' in returned.text and 'role="alert"' in returned.text
+
+
+def test_unused_tags_viewer_reads_but_cannot_cleanup(web_client: TestClient, identity) -> None:
+    unused = _unused_tag(web_client, identity.app_headers)
+    demote_owner_to_viewer()
+    page = web_client.get("/web/tags?ledger_id=owner&unused=1")
+    assert page.status_code == 200
+    assert f'data-tag-key="{unused["public_id"]}"' in page.text
+    assert "只读角色" in page.text
+    assert f'action="/web/tags/{unused["public_id"]}/delete"' not in page.text
+    rejected = web_client.post(
+        f'/web/tags/{unused["public_id"]}/delete',
+        data={"ledger_id": "owner", "unused": "1", "expected_row_version": str(unused["row_version"])},
+    )
+    assert rejected.status_code == 403
+    assert tag_index(web_client, identity.app_headers)["工作"] == unused
+
+
+def test_unused_cleanup_cannot_delete_another_ledgers_tag(web_client: TestClient, identity) -> None:
+    unused = _unused_tag(web_client, identity.app_headers)
+    other = _unused_tag(web_client, identity.gray_app_headers)
+    rejected = web_client.post(
+        f'/web/tags/{other["public_id"]}/delete',
+        data={"ledger_id": "owner", "unused": "1", "expected_row_version": str(other["row_version"])},
+        follow_redirects=False,
+    )
+    assert rejected.status_code == 303
+    query = parse_qs(urlsplit(rejected.headers["location"]).query)
+    assert query["ledger_id"] == ["owner"] and query["unused"] == ["1"]
+    assert tag_index(web_client, identity.gray_app_headers)["工作"] == other
+    assert tag_index(web_client, identity.app_headers)["工作"] == unused

@@ -43,12 +43,14 @@ from app.services.tag_undo_service import undo_tag_mutation
 router = APIRouter(prefix="/web", tags=["web"])
 
 
-def _stale_redirect(selected_id: str) -> RedirectResponse:
-    return _web_redirect("/web/tags", selected_id, msg="页面已过期，请刷新后重试。")
+def _stale_redirect(selected_id: str, unused: str = "") -> RedirectResponse:
+    return _web_redirect("/web/tags", selected_id, unused=unused, msg="页面已过期，请刷新后重试。", flash_type="error")
 
 
-def _conflict_message(exc: AppError) -> str:
+def _conflict_message(exc: AppError, unused: str = "") -> str:
     """Map a tag service error code to a 生活化 Chinese flash message."""
+    if unused == "1" and exc.error in {"state_conflict", "tag_not_found"}:
+        return "标签可能已被使用或状态已变化，请刷新后重试。"
     if exc.error == "state_conflict":
         return "标签已在其它端被修改，请刷新后重试。"
     if exc.error == "tag_not_found":
@@ -62,7 +64,9 @@ def _conflict_message(exc: AppError) -> str:
     return exc.message
 
 
-def _rename_error_message(exc: AppError) -> str:
+def _rename_error_message(exc: AppError, unused: str = "") -> str:
+    if unused == "1":
+        return _conflict_message(exc, unused)
     if exc.error == "state_conflict":
         return "标签状态已变化，请根据当前状态重试。"
     return _conflict_message(exc)
@@ -74,7 +78,9 @@ def _render_tags(
     *,
     options,
     selected_id: str,
+    unused: str = "",
     msg: str = "",
+    flash_type: str = "",
     undo: str = "",
     undo_rv: str = "",
     rename_error: str = "",
@@ -88,9 +94,13 @@ def _render_tags(
         options=options,
         selected_ledger_id=selected_id,
     )
+    all_tags = list_tags_with_usage(db, selected_id)
     ctx.update(
-        tags=list_tags_with_usage(db, selected_id),
+        tags=[tag for tag in all_tags if tag.usage_count == 0] if unused == "1" else all_tags,
+        merge_targets=all_tags,
+        unused=unused == "1",
         flash_message=msg,
+        flash_type=flash_type if flash_type in {"success", "error"} else "",
         undo_mutation_public_id=undo,
         undo_row_version=undo_rv,
         rename_error=rename_error,
@@ -109,7 +119,9 @@ def _render_tags(
 def web_tags(
     request: Request,
     ledger_id: str = "",
+    unused: str = "",
     msg: str = "",
+    flash_type: str = "",
     undo: str = "",
     undo_rv: str = "",
     _local: None = LocalOnly,
@@ -122,7 +134,9 @@ def web_tags(
         db,
         options=options,
         selected_id=selected_id,
+        unused=unused,
         msg=msg,
+        flash_type=flash_type,
         undo=undo,
         undo_rv=undo_rv,
     )
@@ -135,6 +149,7 @@ def web_tag_rename(
     name: str = Form(""),
     ledger_id: str = Form(""),
     expected_row_version: str = Form(""),
+    unused: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> Response:
@@ -149,6 +164,7 @@ def web_tag_rename(
             db,
             options=options,
             selected_id=selected_id,
+            unused=unused,
             rename_error="页面已过期，请使用当前标签状态重试。",
             rename_error_public_id=public_id,
             rename_error_value=name,
@@ -164,6 +180,7 @@ def web_tag_rename(
             name=name,
             actor_account_id=actor_account_id,
             actor_device_id=actor_device_id,
+            require_orphan=unused == "1",
         )
         msg = f"标签已重命名为 「{tag.name}」。"
     except AppError as exc:
@@ -173,12 +190,13 @@ def web_tag_rename(
             db,
             options=options,
             selected_id=selected_id,
-            rename_error=_rename_error_message(exc),
+            unused=unused,
+            rename_error=_rename_error_message(exc, unused),
             rename_error_public_id=public_id,
             rename_error_value=name,
             status_code=422,
         )
-    return _web_redirect("/web/tags", selected_id, msg=msg)
+    return _web_redirect("/web/tags", selected_id, unused=unused, msg=msg, flash_type="success")
 
 
 @router.post("/tags/{public_id}/delete", response_class=HTMLResponse)
@@ -187,6 +205,7 @@ def web_tag_delete(
     public_id: str,
     ledger_id: str = Form(""),
     expected_row_version: str = Form(""),
+    unused: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
@@ -195,7 +214,7 @@ def web_tag_delete(
     _require_selected_ledger_write(options, selected_id)
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
-        return _stale_redirect(selected_id)
+        return _stale_redirect(selected_id, unused)
     actor_account_id, actor_device_id = resolve_web_actor(db, request, selected_id)
     try:
         result = delete_tag(
@@ -205,15 +224,19 @@ def web_tag_delete(
             expected_row_version=parsed,
             actor_account_id=actor_account_id,
             actor_device_id=actor_device_id,
+            require_orphan=unused == "1",
         )
     except AppError as exc:
-        return _web_redirect("/web/tags", selected_id, msg=_conflict_message(exc))
+        msg = _conflict_message(exc, unused)
+        return _web_redirect("/web/tags", selected_id, unused=unused, msg=msg, flash_type="error")
     # ADR-0043 undo: pass the mutation handle + the soft-deleted tag's undo token
     # so the page renders a 5s 撤销 banner; recoverable until cleanup purges it.
     return _web_redirect(
         "/web/tags",
         selected_id,
+        unused=unused,
         msg=f"标签已删除（影响 {result.affected_expense_count} 笔账单）。",
+        flash_type="success",
         undo=result.mutation_public_id,
         undo_rv=str(result.source_tag_row_version),
     )
@@ -226,6 +249,7 @@ def web_tag_merge(
     target: str = Form(""),
     ledger_id: str = Form(""),
     expected_row_version: str = Form(""),
+    unused: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
@@ -239,7 +263,7 @@ def web_tag_merge(
     target_public_id, _, target_rv_raw = target.rpartition(":")
     target_rv = parse_form_row_version_token(target_rv_raw)
     if source_rv is None or not target_public_id or target_rv is None:
-        return _stale_redirect(selected_id)
+        return _stale_redirect(selected_id, unused)
     actor_account_id, actor_device_id = resolve_web_actor(db, request, selected_id)
     try:
         result = merge_tags(
@@ -251,13 +275,16 @@ def web_tag_merge(
             target_row_version=target_rv,
             actor_account_id=actor_account_id,
             actor_device_id=actor_device_id,
+            require_orphan=unused == "1",
         )
     except AppError as exc:
-        return _web_redirect("/web/tags", selected_id, msg=_conflict_message(exc))
+        return _web_redirect("/web/tags", selected_id, unused=unused, msg=_conflict_message(exc, unused), flash_type="error")
     return _web_redirect(
         "/web/tags",
         selected_id,
+        unused=unused,
         msg=f"标签已合并（影响 {result.affected_expense_count} 笔账单）。",
+        flash_type="success",
         undo=result.mutation_public_id,
         undo_rv=str(result.source_tag_row_version),
     )
@@ -269,6 +296,7 @@ def web_tag_undo(
     mutation_public_id: str,
     ledger_id: str = Form(""),
     expected_row_version: str = Form(""),
+    unused: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
@@ -281,7 +309,7 @@ def web_tag_undo(
     _require_selected_ledger_write(options, selected_id)
     parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
-        return _stale_redirect(selected_id)
+        return _stale_redirect(selected_id, unused)
     actor_account_id, actor_device_id = resolve_web_actor(db, request, selected_id)
     try:
         result = undo_tag_mutation(
@@ -297,5 +325,5 @@ def web_tag_undo(
         else:
             msg = f"已撤销标签操作（恢复 {result.applied} 笔账单）。"
     except AppError as exc:
-        msg = _conflict_message(exc)
-    return _web_redirect("/web/tags", selected_id, msg=msg)
+        return _web_redirect("/web/tags", selected_id, unused=unused, msg=_conflict_message(exc), flash_type="error")
+    return _web_redirect("/web/tags", selected_id, unused=unused, msg=msg, flash_type="success")

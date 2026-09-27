@@ -185,6 +185,23 @@ distinct from an OS process-kill qualification. Unsubmitted income-creation and
 goal drafts, Web refresh/session draft durability and other cross-client return
 paths remain in the atlas; this edit slice does not declare them complete.
 
+## Unused tag cleanup
+
+The Library tag page offers all/unused views within the selected ledger. The
+unused view hides used rows but keeps every live same-ledger merge destination.
+Rename, merge, delete, validation recovery and undo retain the selected view;
+readonly viewers can inspect it without acquiring write authority.
+
+Rename, merge and delete from the unused view reuse their existing commands and
+require that the source tag is still unused when accepted. The merge target may
+already be used. A stale page must not remove a tag reused by a financial writer,
+rewrite that new bill, or hide its live tag. Normal explicit tag deletion keeps
+its existing affected-bill behavior, as do rename and merge from the all view.
+Refusal is visible as an error; original OCC,
+actor, ledger isolation and undo identity remain owned by the existing services.
+The duplicate Owner cleanup page, handler and navigation retire only with this
+capability present in the Web consumer. Exact candidate status stays in the atlas.
+
 ## Recycle recovery
 
 Owner Console enters the canonical Web business recycle journey with the actual

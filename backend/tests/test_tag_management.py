@@ -251,6 +251,7 @@ def test_merge_pair_claim_on_vanished_tag_surfaces_state_conflict(client: TestCl
             target=target,
             source_row_version=tags["来源"]["row_version"],  # stale (pre-bump)
             target_row_version=tags["目标"]["row_version"],
+            require_orphan=False,
         )
     assert exc.value.error == "state_conflict"
     assert exc.value.status_code == 409

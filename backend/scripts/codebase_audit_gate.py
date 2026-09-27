@@ -139,7 +139,7 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # main. See ``_audit_pr_delta_metrics.py`` docstring for what each
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
-    "mutate_token_carriers": 138,
+    "mutate_token_carriers": 137,  # Main's 135 + saved-view edit/delete; retired Owner route stays retired.
     "mutate_token_exempted": 129,
     "mutate_token_reason_admin_single_writer": 10,
     "mutate_token_reason_append_only_fact": 3,
@@ -183,7 +183,7 @@ BASELINE_RATCHET_DOWN: frozenset[str] = frozenset(
 _MUTATE_TOKEN_EXEMPTION_ADMISSIONS = (
     # ADR-0038 create_row: one new ledger-shared saved-query creation. The
     # service enforces unique names + actor/key receipts; edit/delete keep OCC.
-    ("45ebec82a701f94107cd2d63b4749548298e3433", 128, 129),
+    ("8e5529e49434c7d0650172cf7fc40668446627e2", 128, 129),
     # A3: API/Web manual fixed-expense creates have no predecessor row version.
     ("0a0d2be96e5786ffcaa65588f960dea291098abd", 128, 130),
     # PR #427 follows ADR-0038's guarded terminal/read-only classification:
