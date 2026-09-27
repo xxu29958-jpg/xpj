@@ -21,6 +21,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.navigation.compose.rememberNavController
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.BudgetCategoryDto
 import com.ticketbox.data.remote.dto.BudgetMonthlyDto
@@ -35,6 +36,7 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.BudgetMonthlyUpdate
 import com.ticketbox.domain.model.DASHBOARD_CARD_BUDGET
 import com.ticketbox.ui.theme.TicketboxTheme
+import com.ticketbox.ui.saveConsumerArtPreview
 import java.net.ConnectException
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.runBlocking
@@ -97,6 +99,7 @@ class BudgetOfflineReadingConnectedTest {
 
         // Existing production loses this amount on reopen; no new model API is required to expose the gap.
         compose.onNodeWithText("¥789").assertIsDisplayed()
+        preview("budget-offline-plans")
         compose.onNodeWithTag("plan_destination_budget").performScrollTo().performClick()
         compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("budget_total_amount"))
             .fetchSemanticsNodes().isNotEmpty() }
@@ -108,6 +111,7 @@ class BudgetOfflineReadingConnectedTest {
         assertNotNull("The online read must expose its actual read time", originalReadTime)
         assertEquals("Reopening must not manufacture a new fetch time", originalReadTime, readTime())
         assertTrue(sourceText().contains("离线"))
+        preview("budget-offline-editor")
 
         compose.runOnIdle { harness.shell.selectPrimaryDomain(PrimaryDomain.Insights.key) }
         compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("overview-module-budget"))
@@ -118,6 +122,12 @@ class BudgetOfflineReadingConnectedTest {
         assertEquals("Insights must identify the same saved query", originalReadTime, readTime())
         assertTrue(sourceText().contains("离线"))
         assertEquals(originalIntent, harness.fixture.stored())
+        preview("budget-offline-insights")
+    }
+
+    private fun preview(name: String) {
+        compose.waitForIdle()
+        saveConsumerArtPreview(name, requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
     }
 
     private fun showPlans() {
