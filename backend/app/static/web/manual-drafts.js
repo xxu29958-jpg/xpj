@@ -108,7 +108,16 @@
       return true;
     }
 
-    return {fields, optionalFields, key, matches, read, save, list, acknowledge, canDiscardRejected, discardRejected};
+    function discardReviewed(proof) {
+      const record = read(proof.clientRef);
+      if (!record || record.phase !== "blocked" || proof.serverResult !== "accepted-review" ||
+          !matches(record.scope, scopeValue(proof.scope)) ||
+          JSON.stringify(fieldValues(record.values)) !== JSON.stringify(fieldValues(proof.values))) return false;
+      window.localStorage.removeItem(key(proof.clientRef));
+      return true;
+    }
+
+    return {fields, optionalFields, key, matches, read, save, list, acknowledge, canDiscardRejected, discardRejected, discardReviewed};
   }
 
   window.TicketboxDraftStore = {createStore};

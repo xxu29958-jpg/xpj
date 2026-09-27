@@ -15,12 +15,21 @@ from tests._web_native_form_support import hidden_post_forms
 from tests.test_web_debt_activity_view import representative_response
 
 
+@pytest.mark.parametrize('kind', ['debt', 'repayment'])
 @pytest.mark.parametrize('outcome', ['conflict', 'accepted_then_read_unavailable'])
-def test_void_failure_preserves_the_original_command_for_explicit_recovery(monkeypatch, outcome):
+def test_void_failure_preserves_the_original_command_for_explicit_recovery(monkeypatch, outcome, kind):
     representative_response(monkeypatch)
     monkeypatch.setattr(repayment, 'repayment_context', actual_repayment_context)
     context, _, actor, _ = queries._load_debt_detail_state(None, None)
+    import app.services.debt_service as service
+    listing = service.list_debt_activity(None)
     current = {'debt': stub_debt(public_id='debt-one', row_version=7)}
+    def activity(*args, **kwargs):
+        items = [item.model_copy(update={"repayment": item.repayment.model_copy(update={
+            "status":"active" if current['debt'].row_version == 7 else "voided"})})
+            if item.repayment is not None else item for item in listing.items]
+        return listing.model_copy(update={"items":items})
+    monkeypatch.setattr(service, 'list_debt_activity', activity)
     def load(*args, **kwargs):
         debt = current['debt']
         ctx = dict(context, debt=queries._detail_view(debt), can_write=True,
@@ -36,7 +45,7 @@ def test_void_failure_preserves_the_original_command_for_explicit_recovery(monke
                        'path': '/web/debts/debt-one/void', 'query_string': b'ledger_id=my-ledger', 'headers': []})
     db = SimpleNamespace(rollback=lambda: None)
     first = queries._render_debt_detail(request, db, options=[], selected_id='my-ledger', public_id='debt-one')
-    action = '/web/debts/debt-one/void'
+    action = '/web/debts/debt-one/' + ('void' if kind == 'debt' else 'repayment-voids') + '?activity_page=2'
     original = hidden_post_forms(first.body.decode())[action]
     assert original['ledger_id'] == 'my-ledger'
     assert original['expected_row_version'] == '7'
@@ -51,10 +60,13 @@ def test_void_failure_preserves_the_original_command_for_explicit_recovery(monke
         if outcome == 'conflict':
             raise AppError('state_conflict', status_code=409)
         raise AppError('dependency_unavailable', 'The command result cannot currently be read.', status_code=503)
-    monkeypatch.setattr(commands, 'void_debt_idempotently', fault)
-    response = commands.web_void_debt(request, public_id='debt-one', db=db, _local=None, **original)
+    monkeypatch.setattr(commands, 'void_debt_idempotently' if kind == 'debt' else 'void_repayment_idempotently', fault)
+    response = (commands.web_void_debt if kind == 'debt' else commands.web_void_repayment)(request, public_id='debt-one', db=db, _local=None, **original)
     assert len(calls) == 1
-    assert calls[0] == (original['idempotency_key'], {'expected_row_version': 7, 'reason': original['reason']})
+    payload = {'expected_row_version': 7, 'reason': original['reason']}
+    if kind == 'repayment':
+        payload['repayment_public_id'] = original['repayment_public_id']
+    assert calls[0] == (original['idempotency_key'], payload)
     assert response.status_code == (409 if outcome == 'conflict' else 503)
     returned = hidden_post_forms(response.body.decode())
     assert action in returned, 'Unknown/old command must remain recoverable when the current debt is terminal'
@@ -62,3 +74,101 @@ def test_void_failure_preserves_the_original_command_for_explicit_recovery(monke
     assert retry['idempotency_key'] == original['idempotency_key'], 'Recovery must not silently replace the original command key'
     assert retry['expected_row_version'] == original['expected_row_version'], 'Only explicit review may adopt newer OCC'
     assert original['reason'] in response.body.decode()
+
+
+def _void_setup(monkeypatch, kind):
+    import app.routes._web_debt_void as void_forms
+    import app.routes.web_common as common
+    representative_response(monkeypatch)
+    monkeypatch.setattr(repayment, "repayment_context", actual_repayment_context)
+    context, _, actor, _ = queries._load_debt_detail_state(None, None)
+    debt = stub_debt(public_id='debt-one', row_version=7)
+    monkeypatch.setattr(queries, '_load_debt_detail_state', lambda *a, **kw:
+        (dict(context, debt=queries._detail_view(debt), can_write=True, debt_open=True,
+            expected_row_version=7, action_keys=_debt_action_keys()), debt, actor, []))
+    for module in (commands, common):
+        monkeypatch.setattr(module, '_require_selected_ledger_write', lambda *_: None)
+    monkeypatch.setattr(commands, '_list_ledger_options', lambda *_: [])
+    monkeypatch.setattr(commands, '_resolve_selected_ledger_id', lambda *a, **kw: 'my-ledger')
+    monkeypatch.setattr(commands, '_actor_account_id', lambda *_: 3)
+    monkeypatch.setattr(void_forms, '_base_ctx', lambda *a, **kw: dict(context))
+    request = Request({'type':'http', 'headers':[], 'method':'POST', 'scheme':'http',
+        'server':('testserver',80), 'path':'/web/debts/debt-one/void', 'query_string':b''})
+    db = SimpleNamespace(rollback=lambda: None)
+    values = void_forms.void_context(request, db, selected_id='my-ledger', public_id='debt-one',
+        kind=kind, expected='7', target='repay-one' if kind == 'repayment-void' else '', can_create=True)['values']
+    values['reason'] = '原作废原因'
+    action = commands.web_void_repayment if kind == 'repayment-void' else commands.web_void_debt
+    return request, db, values, action
+
+
+@pytest.mark.parametrize('kind', ['debt-void', 'repayment-void'])
+def test_void_receipt_remains_accepted_when_independent_detail_read_fails(monkeypatch, kind):
+    import html
+    import json
+    import re
+    request, db, values, action = _void_setup(monkeypatch, kind)
+    monkeypatch.setattr(commands, 'void_repayment_idempotently' if kind == 'repayment-void' else 'void_debt_idempotently',
+        lambda *a, **kw: stub_debt(public_id='debt-one', row_version=8, status='voided'))
+    def unreadable(*a, **kw):
+        raise AppError('dependency_unavailable', status_code=503)
+    monkeypatch.setattr(queries, '_load_debt_detail_state', unreadable)
+    response = action(request, public_id='debt-one', db=db, _local=None, **values)
+    assert response.status_code == 200
+    body = response.body.decode()
+    ack = json.loads(html.unescape(re.search(r'data-repayment-ack="([^"]+)"', body).group(1)))
+    assert ack['clientRef'] == values['idempotency_key']
+    assert ack['resultPublicId'] == 'debt-one'
+    assert ack['values'] == {name: value for name, value in values.items() if name != 'idempotency_key'}
+    assert '原作废提交已接受' in body
+
+
+@pytest.mark.parametrize('axis', ['datasetId', 'clientGeneration', 'accountId', 'ledgerId', 'deviceId'])
+def test_void_original_binding_change_refuses_write_and_keeps_input(monkeypatch, axis):
+    import json
+
+    import app.routes._web_debt_void as void_forms
+    request, db, values, action = _void_setup(monkeypatch, 'debt-void')
+    scope = {'datasetId': 'dataset', 'clientGeneration': 'generation', 'accountId': 'account', 'ledgerId': 'my-ledger', 'deviceId': 'device'}
+    monkeypatch.setattr(repayment, 'repayment_scope', lambda *a: scope)
+    monkeypatch.setattr(void_forms, 'repayment_scope', lambda *a: scope)
+    original_scope = dict(scope, **{axis:'original'})
+    values['origin_binding'] = json.dumps(original_scope)
+    monkeypatch.setattr(commands, 'void_debt_idempotently', lambda *a, **kw: pytest.fail('binding refusal must not write'))
+    response = action(request, public_id='debt-one', db=db, _local=None, **values)
+    assert response.status_code == 409
+    forms = hidden_post_forms(response.body.decode())
+    returned = next(form for url, form in forms.items() if url.split('?')[0].endswith('/void'))
+    assert returned['origin_binding'] == values['origin_binding']
+    assert returned['idempotency_key'] == values['idempotency_key']
+    assert values['reason'] in response.body.decode()
+
+
+@pytest.mark.parametrize('kind', ['debt-void', 'repayment-void'])
+def test_legacy_accepted_void_requires_review_without_replacement_writer(monkeypatch, kind):
+    request, db, values, action = _void_setup(monkeypatch, kind)
+    def accepted_legacy(*a, **kw):
+        raise AppError('debt_void_original_requires_review', '原作废已被接受，请核对原记录。', status_code=409)
+    monkeypatch.setattr(commands, 'void_repayment_idempotently' if kind == 'repayment-void' else 'void_debt_idempotently', accepted_legacy)
+    response = action(request, public_id='debt-one', db=db, _local=None, **values)
+    assert response.status_code == 409
+    body = response.body.decode()
+    assert 'data-repayment-result="accepted-review"' in body
+    assert '已核对原记录，结束本地恢复' in body
+    assert '核对原记录与往来历史' in body
+    assert 'data-repayment-replacement' not in body
+    assert values['idempotency_key'] in body
+
+
+@pytest.mark.parametrize('kind', ['debt-void', 'repayment-void'])
+def test_void_write_permission_refusal_never_enters_writer(monkeypatch, kind):
+    request, db, values, action = _void_setup(monkeypatch, kind)
+    def refused(*args):
+        raise AppError('permission_denied', '当前身份没有记录权限。', status_code=403)
+    monkeypatch.setattr(commands, '_require_selected_ledger_write', refused)
+    monkeypatch.setattr(commands, 'void_repayment_idempotently' if kind == 'repayment-void' else 'void_debt_idempotently',
+        lambda *a, **kw: pytest.fail('permission refusal must not write'))
+    response = action(request, public_id='debt-one', db=db, _local=None, **values)
+    assert response.status_code == 403
+    assert values['idempotency_key'] in response.body.decode()
+    assert values['reason'] in response.body.decode()

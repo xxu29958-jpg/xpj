@@ -18,6 +18,7 @@ from app.routes._web_debt_repayment import (
     repayment_scope,
     require_repayment_binding,
 )
+from app.routes._web_debt_void import VOID_FIELDS, render_void_recovery
 from app.routes._web_debt_write import _parse_paid_at
 from app.routes.web_common import (
     LocalOnly,
@@ -288,131 +289,83 @@ def web_record_adjustment(
     )
 
 
+def _void_outcome(request, db, *, options, selected_id, public_id, kind,
+                  values=None, error="", result="", status_code=200, ack=None):
+    try:
+        return _render_debt_detail(request, db, options=options, selected_id=selected_id,
+            public_id=public_id, action_kind=kind, action_draft=values, action_error=error,
+            action_target_public_id=(values or {}).get("repayment_public_id", ""),
+            void_result=result, void_ack=ack, status_code=status_code)
+    except (AppError, SQLAlchemyError):
+        db.rollback()
+        return render_void_recovery(request, db, options=options, selected_id=selected_id,
+            public_id=public_id, kind="repayment-void" if kind == "repayment_void" else "debt-void",
+            values=values, error=error, result=result, status_code=status_code, ack=ack)
+
+
+def _submit_void(request, db, *, public_id, kind, values):
+    options = _list_ledger_options(db)
+    selected_id = _resolve_selected_ledger_id(db, values["ledger_id"], options, request=request)
+    attempted = False
+    try:
+        require_repayment_binding(request, db, values=values, public_id=public_id)
+        _require_selected_ledger_write(options, selected_id)
+        expected = parse_form_row_version_token(values["expected_row_version"])
+        if expected is None:
+            raise AppError("state_conflict", "原提交缺少有效版本，请保留输入并核对原欠款。", status_code=409)
+        payload_values = {"expected_row_version": expected, "reason": values["reason"].strip()}
+        if kind == "repayment_void":
+            payload = RepaymentVoidCreateRequest(**payload_values, repayment_public_id=values["repayment_public_id"].strip())
+            writer = void_repayment_idempotently
+        else:
+            payload = DebtVoidCreateRequest(**payload_values)
+            writer = void_debt_idempotently
+        attempted = True
+        receipt = writer(db, tenant_id=selected_id, actor_account_id=_actor_account_id(request, db, selected_id),
+            public_id=public_id, payload=payload, idempotency_key=values["idempotency_key"].strip() or None)
+    except (AppError, ValidationError, SQLAlchemyError) as exc:
+        db.rollback()
+        outcome = _repayment_error(exc, attempted=attempted)
+        outcome.pop("rejected")
+        outcome["error"] = outcome["error"].replace("还款", "作废提交")
+        if isinstance(exc, AppError) and exc.error == "debt_void_original_requires_review":
+            outcome["result"] = "accepted-review"
+        if isinstance(exc, ValidationError):
+            outcome["error"] = "作废信息不完整，请检查原提交。"
+        return _void_outcome(request, db, options=options, selected_id=selected_id,
+            public_id=public_id, kind=kind, values=values, **outcome)
+    ack = {"scope": repayment_scope(request, db), "clientRef": values["idempotency_key"],
+               "resultPublicId": receipt.public_id, "values": {name: values[name] for name in VOID_FIELDS}}
+    return _void_outcome(request, db, options=options, selected_id=selected_id,
+        public_id=public_id, kind=kind, ack=ack)
+
+
 @router.post("/{public_id}/repayment-voids")
 def web_void_repayment(
-    request: Request,
-    public_id: str,
-    ledger_id: str = Form(default=""),
-    repayment_public_id: str = Form(default=""),
-    reason: str = Form(default=""),
-    expected_row_version: str = Form(default=""),
-    idempotency_key: str = Form(default=""),
-    csrf_token: str = Form(default=""),
-    _local: None = LocalOnly,
-    db: Session = Depends(get_db),
+    request: Request, public_id: str, ledger_id: str = Form(default=""),
+    debt_public_id: str = Form(default=""), origin_binding: str = Form(default=""),
+    repayment_public_id: str = Form(default=""), reason: str = Form(default=""),
+    expected_row_version: str = Form(default=""), idempotency_key: str = Form(default=""),
+    csrf_token: str = Form(default=""), _local: None = LocalOnly, db: Session = Depends(get_db),
 ) -> Response:
-    options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(
-        db,
-        ledger_id,
-        options,
-        request=request,
-    )
-    _require_selected_ledger_write(options, selected_id)
-    expected = parse_form_row_version_token(expected_row_version)
-    if expected is None:
-        return _action_redirect(
-            public_id,
-            selected_id,
-            message=_STALE_MESSAGE,
-            success=False,
-        )
-    try:
-        payload = RepaymentVoidCreateRequest(
-            repayment_public_id=(repayment_public_id or "").strip(),
-            reason=(reason or "").strip(),
-            expected_row_version=expected,
-        )
-        void_repayment_idempotently(
-            db,
-            tenant_id=selected_id,
-            actor_account_id=_actor_account_id(request, db, selected_id),
-            public_id=public_id,
-            payload=payload,
-            idempotency_key=(idempotency_key or "").strip() or None,
-        )
-    except (AppError, ValidationError) as exc:
-        message = _error_message(exc) if isinstance(exc, AppError) else "请填写撤销原因。"
-        return _render_action_error(
-            request,
-            db,
-            options=options,
-            selected_id=selected_id,
-            public_id=public_id,
-            kind="repayment_void",
-            message=message,
-            draft={"reason": reason, "idempotency_key": idempotency_key},
-            target_public_id=repayment_public_id,
-            status_code=exc.status_code if isinstance(exc, AppError) else 422,
-        )
-    return _action_redirect(
-        public_id,
-        selected_id,
-        message="误记还款已撤销，原始记录仍保留。",
-        success=True,
-    )
+    return _submit_void(request, db, public_id=public_id, kind="repayment_void", values={
+        "ledger_id": ledger_id, "debt_public_id": debt_public_id, "origin_binding": origin_binding,
+        "repayment_public_id": repayment_public_id, "reason": reason,
+        "expected_row_version": expected_row_version, "idempotency_key": idempotency_key})
 
 
 @router.post("/{public_id}/void")
 def web_void_debt(
-    request: Request,
-    public_id: str,
-    ledger_id: str = Form(default=""),
-    reason: str = Form(default=""),
-    expected_row_version: str = Form(default=""),
-    idempotency_key: str = Form(default=""),
-    csrf_token: str = Form(default=""),
-    _local: None = LocalOnly,
-    db: Session = Depends(get_db),
+    request: Request, public_id: str, ledger_id: str = Form(default=""),
+    debt_public_id: str = Form(default=""), origin_binding: str = Form(default=""),
+    repayment_public_id: str = Form(default=""), reason: str = Form(default=""),
+    expected_row_version: str = Form(default=""), idempotency_key: str = Form(default=""),
+    csrf_token: str = Form(default=""), _local: None = LocalOnly, db: Session = Depends(get_db),
 ) -> Response:
-    options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(
-        db,
-        ledger_id,
-        options,
-        request=request,
-    )
-    _require_selected_ledger_write(options, selected_id)
-    expected = parse_form_row_version_token(expected_row_version)
-    if expected is None:
-        return _action_redirect(
-            public_id,
-            selected_id,
-            message=_STALE_MESSAGE,
-            success=False,
-        )
-    try:
-        payload = DebtVoidCreateRequest(
-            reason=(reason or "").strip(),
-            expected_row_version=expected,
-        )
-        void_debt_idempotently(
-            db,
-            tenant_id=selected_id,
-            actor_account_id=_actor_account_id(request, db, selected_id),
-            public_id=public_id,
-            payload=payload,
-            idempotency_key=(idempotency_key or "").strip() or None,
-        )
-    except (AppError, ValidationError) as exc:
-        message = _error_message(exc) if isinstance(exc, AppError) else "请填写作废原因。"
-        return _render_action_error(
-            request,
-            db,
-            options=options,
-            selected_id=selected_id,
-            public_id=public_id,
-            kind="void",
-            message=message,
-            draft={"reason": reason},
-            status_code=exc.status_code if isinstance(exc, AppError) else 422,
-        )
-    return _action_redirect(
-        public_id,
-        selected_id,
-        message="欠款已作废，原始事实仍保留。",
-        success=True,
-    )
+    return _submit_void(request, db, public_id=public_id, kind="void", values={
+        "ledger_id": ledger_id, "debt_public_id": debt_public_id, "origin_binding": origin_binding,
+        "repayment_public_id": repayment_public_id, "reason": reason,
+        "expected_row_version": expected_row_version, "idempotency_key": idempotency_key})
 
 
 @router.post("/{public_id}/kind")

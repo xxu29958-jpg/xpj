@@ -1,24 +1,29 @@
 /* Native repayment form: retain one bound submission; only the server accepts it. */
 (function (window, document) {
   "use strict";
-  const form = document.querySelector("[data-repayment-scope]");
-  if (!form) return;
+  const repaymentNames = ["debt_public_id", "ledger_id", "origin_binding", "home_currency_code",
+    "expected_row_version", "amount_major", "paid_at", "paid_at_timezone"];
+  const voidNames = ["debt_public_id", "ledger_id", "origin_binding", "expected_row_version", "reason", "repayment_public_id"];
+  function initialize(form) {
+  const surface = form.closest("[data-repayment-container]");
+  if (!surface) return;
+  const voidCommand = ["debt-void", "repayment-void"].includes(form.dataset.repaymentKind);
   const splitChange = form.dataset.repaymentKind === "split-change";
-  const names = splitChange ? ["debt_public_id", "ledger_id", "origin_binding", "home_currency_code", "command",
+  const names = voidCommand ? voidNames : splitChange ? ["debt_public_id", "ledger_id", "origin_binding", "home_currency_code", "command",
     "proposal_public_id", "expected_row_version", "expected_return_row_version", "new_share_amount_major",
     "settlement_net_amount_major", "reason", "supersedes_proposal_public_id"] :
-    ["debt_public_id", "ledger_id", "origin_binding", "home_currency_code",
-      "expected_row_version", "amount_major", "paid_at", "paid_at_timezone"];
-  const namespace = splitChange ? "split-change" : "repayment";
+    repaymentNames;
+  const namespace = voidCommand ? form.dataset.repaymentKind : splitChange ? "split-change" : "repayment";
   const commandLabels = {create:"发送新约定", accept:"接受这份约定", reject:"拒绝这份约定", withdraw:"撤回我的约定"};
   const axes = ["datasetId", "clientGeneration", "accountId", "ledgerId", "deviceId"];
   const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
-  const panel = document.querySelector("[data-repayment-panel]");
-  const shelf = document.querySelector("[data-repayment-shelf]");
+  const panel = surface.querySelector("[data-repayment-panel]");
+  const shelf = surface.querySelector("[data-repayment-shelf]");
   const status = form.querySelector("[data-repayment-status]");
   const submit = form.querySelector("[data-repayment-submit]");
   const replace = form.querySelector("[data-repayment-replace]");
   const preview = form.querySelector("[data-repayment-preview]");
+  const finishReview = form.querySelector("[data-void-finish-review]");
   const controls = names.map(name => form.elements.namedItem(name));
   const refInput = form.elements.namedItem("idempotency_key");
   const nativeRef = refInput.value, target = form.dataset.repaymentTarget;
@@ -42,7 +47,7 @@
   }
   function notice(message, state) {
     status.hidden = false;
-    status.textContent = splitChange ? message.replaceAll("还款", "约定操作") : message;
+    status.textContent = voidCommand ? message.replaceAll("还款", "作废提交").replaceAll("金额、日期", "对象、原因") : splitChange ? message.replaceAll("还款", "约定操作") : message;
     form.dataset.repaymentState = state;
   }
   function lockInputs(locked) {
@@ -74,7 +79,7 @@
   function commandControls(editing) {
     if (!splitChange) {
       lockInputs(!editing);
-      submit.textContent = editing ? "记一笔还款" : "继续核实这笔还款";
+      submit.textContent = voidCommand ? (editing ? "确认作废" : "继续核实原作废") : editing ? "记一笔还款" : "继续核实这笔还款";
       return canCreate;
     }
     const command = values().command, writable = command === "create";
@@ -86,15 +91,18 @@
   }
   function showPhase() {
     panel.hidden = false;
+    if (voidCommand && retained) panel.open = true;
     const canEdit = commandControls(phase === "editing");
     const canReplace = replacement && phase === "blocked" && currentRef === nativeRef;
-    submit.disabled = phase === "editing" ? !canEdit : !canRecover || !!canReplace;
+    submit.disabled = phase === "editing" ? !canEdit : !canRecover || !!canReplace || !!finishReview;
     notice(phase === "submitted" ? "结果尚未确认。继续核实会发送原来的金额、日期和提交编号。" :
       phase === "blocked" ? "原提交已保留，请先核对欠款和当前身份。" : "输入会保留在此浏览器，尚未提交。", phase);
     if (replace) replace.hidden = !canReplace;
   }
   function records() {
-    return drafts.list(scope).filter(record => record.values.debt_public_id === target);
+    return drafts.list(scope).filter(record => record.values.debt_public_id === target &&
+      (!voidCommand || namespace !== "repayment-void" || !nativeValues.repayment_public_id ||
+        record.values.repayment_public_id === nativeValues.repayment_public_id));
   }
   function renderShelf() {
     const items = records(), list = shelf.querySelector("[data-repayment-list]");
@@ -103,8 +111,8 @@
       const item = document.createElement("li"), link = document.createElement("a");
       link.href = window.location.pathname + window.location.search + "#" + namespace + "-" + record.clientRef;
       link.textContent = [record.values.home_currency_code,
-        splitChange ? commandLabels[record.values.command] : record.values.amount_major || "未填金额",
-        splitChange ? record.values.new_share_amount_major : record.values.paid_at, !drafts.matches(record.scope, scope) ? "旧身份，待核对" :
+        voidCommand ? record.values.reason || "未填原因" : splitChange ? commandLabels[record.values.command] : record.values.amount_major || "未填金额",
+        voidCommand ? record.values.repayment_public_id || record.values.debt_public_id : splitChange ? record.values.new_share_amount_major : record.values.paid_at, !drafts.matches(record.scope, scope) ? "旧身份，待核对" :
           record.phase === "submitted" ? "结果待确认" : record.phase === "blocked" ? "待核对" : "未提交"].join(" · ");
       item.append(link);
       list.appendChild(item);
@@ -124,6 +132,7 @@
     const original = drafts.read(currentRef);
     if (retained && !original) throw Error("original_removed");
     const creating = !original || original.phase === "editing";
+    if (!splitChange && creating && anotherDebtSubmission()) throw Error("another_original_submission");
     if (!bound(values()) || (creating && records().some(record => record.clientRef !== currentRef &&
         (!splitChange || record.phase !== "editing")))) {
       throw Error("another_original_submission");
@@ -131,6 +140,14 @@
     drafts.save(scope, currentRef, nextPhase, values());
     retained = true;
     pointTo(currentRef);
+  }
+  function anotherDebtSubmission() {
+    return ["repayment", "debt-void", "repayment-void"].some(kind => {
+      const store = window.TicketboxDraftStore.createStore({prefix:"ticketbox:" + kind + "-draft:v1:",
+        fields:kind === "repayment" ? repaymentNames : voidNames, validRef:uuid});
+      return store.list(scope).some(record => record.values.debt_public_id === target &&
+        (kind !== namespace || record.clientRef !== currentRef) && record.phase !== "editing");
+    });
   }
 
   function selectSubmission(items) {
@@ -176,7 +193,7 @@
       return;
     }
     const rejected = nativeResult === "rejected";
-    phase = rejected || previewResult ? "editing" : nativeResult;
+    phase = rejected || previewResult ? "editing" : nativeResult === "accepted-review" ? "blocked" : nativeResult;
     showValues(nativeValues);
     drafts.save(scope, currentRef, phase, nativeValues, rejected ? "rejected" : "");
     retained = true;
@@ -210,6 +227,13 @@
     lockInputs(true); submit.disabled = true;
     leaseFinished = previousLease.then(function () {
       if (turn !== epoch) return;
+      if (voidCommand) {
+        const selection = selectSubmission(records());
+        if (!selection.ref) { panel.hidden = true; return; }
+        const record = drafts.read(selection.ref);
+        const repaymentTarget = (record ? record.values : nativeValues).repayment_public_id;
+        leaseKey = "ticketbox:" + namespace + "-lease:v1:" + JSON.stringify([...axes.map(axis => scope[axis]), target, repaymentTarget]);
+      }
       return window.navigator.locks.request(leaseKey, {ifAvailable:true}, function (lock) {
         if (turn !== epoch) return;
         if (!lock) {
@@ -227,13 +251,16 @@
   }
 
   async function acknowledge() {
-    const marker = document.querySelector("[data-repayment-ack]");
+    const marker = surface.querySelector("[data-repayment-ack]");
     if (!marker) return;
-    const ackStatus = document.querySelector("[data-repayment-ack-status]");
+    const ackStatus = surface.querySelector("[data-repayment-ack-status]");
     try {
       const ack = JSON.parse(marker.getAttribute("data-repayment-ack"));
-      if (!uuid.test(ack.clientRef) || !uuid.test(splitChange ? ack.resultPublicId : ack.repaymentPublicId) ||
+      if (!uuid.test(ack.clientRef) || !uuid.test(splitChange || voidCommand ? ack.resultPublicId : ack.repaymentPublicId) ||
+          (voidCommand && ack.resultPublicId !== target) ||
           !drafts.matches(ack.scope, scope) || !bound(ack.values)) throw Error("ack_mismatch");
+      if (voidCommand) leaseKey = "ticketbox:" + namespace + "-lease:v1:" +
+        JSON.stringify([...axes.map(axis => scope[axis]), target, ack.values.repayment_public_id]);
       await window.navigator.locks.request(leaseKey, {ifAvailable:true}, function (lock) {
         if (!lock) throw Error("ack_lease_unavailable");
         const record = drafts.read(ack.clientRef);
@@ -254,6 +281,18 @@
     try { persist("editing"); notice("输入已保留，尚未提交。", "editing"); }
     catch (_) { notice("最新输入未能保留。请勿关闭本页，恢复存储后再提交。", "storage-error"); }
   });
+  if (finishReview) finishReview.addEventListener("click", function () {
+    if (!held || phase !== "blocked" || currentRef !== nativeRef) return;
+    try {
+      if (!drafts.discardReviewed({scope, clientRef:currentRef, values:nativeValues,
+          serverResult:"accepted-review"})) throw Error("review_original_mismatch");
+      retained = false;
+      pointTo("");
+      blocked("已结束本地恢复。原作废事实仍保留，可在原记录与往来历史核对。");
+      finishReview.disabled = true;
+      renderShelf();
+    } catch (_) { blocked("原提交尚未收起，请保留并核对浏览器存储。"); }
+  });
   form.addEventListener("submit", function (event) {
     const previewing = preview && event.submitter === preview;
     if (!held || posting || (previewing ? preview.disabled : submit.disabled)) { event.preventDefault(); return; }
@@ -271,9 +310,11 @@
       persist("submitted");
       phase = "submitted"; posting = true; lockInputs(true); submit.disabled = true;
       notice("正在提交原来的这笔还款…", "submitting");
-    } catch (_) {
+    } catch (error) {
       event.preventDefault();
-      notice("原提交未能安全保留，这次没有发送。请保留本页并检查浏览器存储。", "storage-error");
+      notice(error.message === "another_original_submission" ?
+        "这笔欠款还有原提交待核对。这次没有发送，请先打开原提交继续核实。" :
+        "原提交未能安全保留，这次没有发送。请保留本页并检查浏览器存储。", "storage-error");
     }
   });
   function matchingDraft(record, expectedPhase, saved) {
@@ -342,4 +383,6 @@
     ready = acknowledge();
     resume();
   } catch (_) { blocked("当前无法安全保留还款原提交。请保留输入，检查身份和浏览器存储后再试。"); }
+  }
+  document.querySelectorAll("[data-repayment-scope]").forEach(initialize);
 })(window, document);

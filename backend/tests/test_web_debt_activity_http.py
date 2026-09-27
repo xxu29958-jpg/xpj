@@ -1,5 +1,7 @@
 """Real PostgreSQL/HTTP continuation through older relationship facts."""
 
+import re
+
 import pytest
 from sqlalchemy import select
 
@@ -113,11 +115,15 @@ def test_invalid_void_target_keeps_debt_error_page_and_original_form(web_client,
     assert rejected.status_code == (422 if target_kind == "blank" else 404)
     assert "往来历史" in rejected.text
     assert "保留我的撤销说明" in rejected.text
-    assert 'id="debt-action-error-repayment_void"' in rejected.text
-    retained = hidden_post_forms(rejected.text)[action]
-    # The rejected target is retained as feedback, never reassigned to an
-    # unrelated repayment. The user can still select the actual history row.
-    assert retained["repayment_public_id"] == debt["repayment_public_id"]
+    assert 'id="debt-action-error-repayment_void' in rejected.text
+    # Read the returned original form, rather than merging the independent
+    # native history-row forms that happen to POST to the same adapter.
+    retained = next(fields[action] for markup in re.findall(r"<form\b.*?</form>", rejected.text, re.DOTALL)
+        if action in (fields := hidden_post_forms(markup)) and
+        fields[action].get("idempotency_key") == form["idempotency_key"])
+    assert retained["repayment_public_id"] == target
+    assert retained["expected_row_version"] == str(debt["row_version"])
+    assert retained["idempotency_key"] == form["idempotency_key"]
     current = web_client.get(f"/api/debts/{public_id}", headers=identity.app_headers).json()
     assert current["row_version"] == debt["row_version"]
     assert current["paid_amount_cents"] == 100

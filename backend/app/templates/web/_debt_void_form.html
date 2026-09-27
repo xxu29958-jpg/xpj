@@ -1,0 +1,27 @@
+<div data-repayment-container>
+{% set void_error_id = 'debt-action-error-' ~ ('repayment_void' if void_form.kind == 'repayment-void' else 'void') ~ ('-' ~ void_form['values']['repayment_public_id'] if void_form.visible and void_form['values']['repayment_public_id'] else '') %}
+<details class="debt-action-panel debt-action-panel--danger" data-repayment-panel{% if not void_form.visible %} hidden{% endif %}{% if void_form.result %} open{% endif %}>
+  <summary>{{ '撤销这笔误记' if void_form.kind == 'repayment-void' else '作废这笔欠款' }}</summary>
+  <form class="debt-action-form" method="post" action="/web/debts/{{ void_form.public_id }}/{{ 'repayment-voids' if void_form.kind == 'repayment-void' else 'void' }}{% if activity is defined and activity.page > 1 %}?activity_page={{ activity.page }}{% endif %}"
+        data-repayment-kind="{{ void_form.kind }}" data-repayment-scope="{{ void_form.scope | tojson | forceescape }}"
+        data-repayment-result="{{ void_form.result }}" data-repayment-can-create="{{ 'true' if void_form.can_create else 'false' }}"
+        data-repayment-can-recover="{{ 'true' if void_form.can_recover else 'false' }}" data-repayment-target="{{ void_form.public_id }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    {% for name in ['debt_public_id', 'ledger_id', 'origin_binding', 'expected_row_version', 'repayment_public_id', 'idempotency_key'] %}
+    <input type="hidden" name="{{ name }}" value="{{ void_form['values'][name] }}">
+    {% endfor %}
+    {% if void_form.error %}<p id="{{ void_error_id }}" class="product-feedback product-feedback--danger" role="alert">{{ void_form.error }}</p>{% endif %}
+    <p class="product-page-summary">作废会保留原始事实。结果未确认时请继续核实原提交。</p>
+    <label>作废原因（必填）<input class="product-input" type="text" name="reason" maxlength="500" required value="{{ void_form['values']['reason'] }}"{% if void_form.error %} aria-describedby="{{ void_error_id }}"{% endif %}{% if void_form.result in ['submitted', 'blocked', 'accepted-review'] %} readonly{% endif %}></label>
+    <p data-repayment-status role="status" hidden></p>
+    <button class="product-button product-button--danger" type="submit" data-repayment-submit{% if not void_form.can_recover or void_form.result == 'accepted-review' %} disabled{% endif %}>{{ '继续核实原作废' if void_form.result else '确认作废' }}</button>
+    {% if void_form.result == 'accepted-review' %}
+    <a href="/web/debts/{{ void_form.public_id }}?ledger_id={{ selected_ledger_id }}">核对原记录与往来历史</a>
+    <button class="product-button product-button--quiet" type="button" data-void-finish-review>已核对原记录，结束本地恢复</button>
+    <noscript><p>原作废已被接受。本页没有浏览器持久恢复任务；核对原记录后可关闭本页。</p></noscript>
+    {% endif %}
+  </form>
+</details>
+<section class="product-panel product-panel--padded" data-repayment-shelf hidden><h2 class="product-panel-title">此浏览器保留的作废提交</h2><ul data-repayment-list></ul></section>
+{% if void_form.ack %}<p class="product-feedback" role="status" data-repayment-ack="{{ void_form.ack | tojson | forceescape }}">原作废提交已接受。{{ '误记还款已撤销，原始记录仍保留。' if void_form.kind == 'repayment-void' else '欠款已作废，原始事实仍保留。' }}<span data-repayment-ack-status></span></p>{% endif %}
+</div>

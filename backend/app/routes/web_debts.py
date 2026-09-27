@@ -378,6 +378,8 @@ def _render_debt_detail(
     flash_message: str = "",
     flash_type: str = "",
     status_code: int = 200,
+    void_ack: dict | None = None,
+    void_result: str = "",
     repayment_ack: dict | None = None,
     repayment_result: str = "",
     repayment_rejected: bool = False,
@@ -442,12 +444,11 @@ def _render_debt_detail(
         public_id=public_id,
         focus_repayment=action_target_public_id if action_kind == "repayment_void" else None,
     )
-    if action_kind == "repayment_void" and not any(
-        row["kind"] == "repayment" and row["repayment"]["public_id"] == action_target_public_id
-        for row in ctx["activity"]["rows"]
-    ):
-        ctx["action_form"]["fallback"] = True
-        ctx["action_form"]["attempted_label"] = (action_draft or {}).get("reason", "")
+    from app.routes._web_debt_void import add_void_detail_context
+
+    add_void_detail_context(request, db, ctx=ctx, debt=debt, selected_id=selected_id, public_id=public_id,
+        kind=action_kind, values=action_draft, error=action_error, result=void_result,
+        ack=void_ack, target=action_target_public_id)
     from app.routes._web_split_agreement import reconcile_member_detail, split_agreement_context
 
     ctx["split_agreement"] = split_agreement_context(

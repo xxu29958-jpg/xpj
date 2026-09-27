@@ -65,23 +65,24 @@ function environment() {
     const status = element({hidden:true}), submit = element(), panel = element({hidden:options.canCreate === false});
     const replace = options.replacement ? element({hidden:true}) : null, label = element();
     const preview = options.splitChange ? element() : null;
+    const finishReview = options.result === "accepted-review" ? element() : null;
     const list = element(), shelf = element({hidden:true, querySelector:() => list});
     const ackStatus = element();
     const ack = options.ack ? element({dataset:{repaymentAck:JSON.stringify(options.ack)},
       getAttribute:() => JSON.stringify(options.ack)}) : null;
-    const form = element({dataset:{repaymentScope:JSON.stringify(currentScope), repaymentKind:options.splitChange ? 'split-change' : '',
+    const form = element({closest:() => document, dataset:{repaymentScope:JSON.stringify(currentScope), repaymentKind:options.kind || (options.splitChange ? 'split-change' : ''),
       splitCanDraft:options.splitChange ? 'true' : 'false',
       repaymentResult:result, repaymentCanCreate:options.canCreate === false ? 'false' : 'true',
       repaymentCanRecover:options.canRecover === false ? 'false' : 'true',
       repaymentTarget:target, repaymentReplacement:options.replacement ? JSON.stringify(options.replacement) : ''},
       elements:{namedItem:name => fields[name]},
       querySelector:selector => ({'[data-repayment-submit]':submit, '[data-repayment-status]':status,
-        '[data-repayment-replace]':replace, '[data-repayment-preview]':preview,
+        '[data-void-finish-review]':finishReview, '[data-repayment-replace]':replace, '[data-repayment-preview]':preview,
         'label[for="debt-repay-amount"]':label})[selector] || null});
     const selectors = {'[data-repayment-scope]':form, '[data-repayment-panel]':panel,
       '[data-repayment-shelf]':shelf, '[data-repayment-list]':list,
       '[data-repayment-ack]':ack, '[data-repayment-ack-status]':ackStatus};
-    const document = {querySelector:selector => selectors[selector] || null, createElement:() => element()};
+    const document = {querySelectorAll:() => [form], querySelector:selector => selectors[selector] || null, createElement:() => element()};
     const window = element({localStorage:storage, navigator:{locks},
       location:{hash, pathname:'/web/debts/' + target, search:'?ledger_id=ledger'}});
     window.history = {replaceState(_state, _title, url) {
@@ -92,8 +93,8 @@ function environment() {
       validRef:/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i});
     const start = () => vm.runInNewContext(fs.readFileSync(process.argv[3], 'utf8'), {window, document});
     windows.push(window);
-    return {window, form, fields, status, submit, panel, shelf, list, ackStatus, store, start, replace, label, preview,
-      snapshot:() => Object.fromEntries(fieldNames.map(name => [name, fields[name].value]))};
+    return {window, form, fields, status, submit, panel, shelf, list, ackStatus, store, start, replace, label, preview, finishReview,
+      document, snapshot:() => Object.fromEntries(fieldNames.map(name => [name, fields[name].value]))};
   }
   return {entries, faults, requests, occupied, page,
     storageEvent() { windows.forEach(window => window.fire('storage')); }};
