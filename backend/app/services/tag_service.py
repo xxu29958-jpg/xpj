@@ -42,7 +42,7 @@ def list_tags(db: Session, tenant_id: str) -> list[str]:
     return [str(row[0]) for row in rows]
 
 
-def _ensure_tag(db: Session, *, tenant_id: str, name: str) -> Tag:
+def _ensure_tag(db: Session, *, tenant_id: str, name: str, retained_tag_ids: set[int]) -> Tag:
     validated = _validated_tag_names(name)
     if not validated:
         raise AppError("invalid_request", "标签名不能为空。", status_code=422)
@@ -50,7 +50,16 @@ def _ensure_tag(db: Session, *, tenant_id: str, name: str) -> Tag:
     key = tag_key(name)
     # The (tenant_id, key) unique constraint spans soft-deleted rows, so this
     # returns at most one tag for the key — live OR soft-deleted.
-    existing = db.scalar(ledger_scoped_select(Tag, tenant_id).where(Tag.key == key).limit(1))
+    lookup = ledger_scoped_select(Tag, tenant_id).where(Tag.key == key).limit(1)
+    existing = db.scalar(lookup)
+    if existing is not None and (existing.id not in retained_tag_ids or existing.deleted_at is not None):
+        # Only a new link needs to share the tag through publication. Waiting
+        # behind unused cleanup must refresh its committed state before revival.
+        # A retained live link already prevents unused cleanup; locking its Tag
+        # here would invert rename's Tag -> Expense lock order.
+        existing = db.scalar(
+            lookup.with_for_update(read=True, key_share=True).execution_options(populate_existing=True)
+        )
     if existing is not None:
         # ADR-0043 契约 4: implicit re-creation colliding with a soft-deleted key
         # REVIVES that tag (so the unique key isn't violated and no duplicate is
@@ -90,9 +99,10 @@ def set_expense_tags(db: Session, expense: Expense, value: str | None) -> None:
         db.scalars(ledger_scoped_select(ExpenseTag, expense.tenant_id).where(ExpenseTag.expense_id == expense.id))
     )
     existing_by_tag_id = {link.tag_id: link for link in existing_links}
+    retained_tag_ids = set(existing_by_tag_id)
     target_tag_ids: set[int] = set()
     for name in names:
-        tag = _ensure_tag(db, tenant_id=expense.tenant_id, name=name)
+        tag = _ensure_tag(db, tenant_id=expense.tenant_id, name=name, retained_tag_ids=retained_tag_ids)
         target_tag_ids.add(tag.id)
         if tag.id not in existing_by_tag_id:
             db.add(
@@ -187,7 +197,10 @@ def _tags_by_key_for_names(db: Session, tenant_id: str, names: list[str]) -> dic
         return {}
 
     tags_by_key = {
-        tag.key: tag for tag in db.scalars(ledger_scoped_select(Tag, tenant_id).where(Tag.key.in_(set(names_by_key))))
+        tag.key: tag for tag in db.scalars(
+            ledger_scoped_select(Tag, tenant_id).where(Tag.key.in_(set(names_by_key)))
+            .with_for_update(read=True, key_share=True).execution_options(populate_existing=True)
+        )
     }
     now = now_utc()
     created = False

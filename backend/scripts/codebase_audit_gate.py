@@ -139,7 +139,7 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # main. See ``_audit_pr_delta_metrics.py`` docstring for what each
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
-    "mutate_token_carriers": 136,
+    "mutate_token_carriers": 135,  # Owner tag-cleanup carrier retired; Web retains the original OCC commands.
     "mutate_token_exempted": 128,
     "mutate_token_reason_admin_single_writer": 10,
     "mutate_token_reason_append_only_fact": 3,

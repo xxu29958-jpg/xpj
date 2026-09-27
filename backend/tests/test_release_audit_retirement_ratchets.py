@@ -146,3 +146,12 @@ def test_owner_recycle_route_retirement_allows_only_its_exact_count_hop(monkeypa
     assert _violations_for(mod, monkeypatch, "mutate_token_carriers", 106, 105, base_commit) == []
     for before, after, source in ((106, 104, base_commit), (107, 105, base_commit), (105, 104, base_commit), (106, 105, "f" * 40)):
         assert len(_violations_for(mod, monkeypatch, "mutate_token_carriers", before, after, source)) == 1
+
+
+def test_owner_tag_route_retirement_does_not_waive_other_occ_losses(monkeypatch: pytest.MonkeyPatch) -> None:
+    mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
+    base_commit = "45ebec82a701f94107cd2d63b4749548298e3433"
+    assert _violations_for(mod, monkeypatch, "mutate_token_carriers", 136, 135, base_commit) == []
+    for before, after, source in ((136, 134, base_commit), (137, 135, base_commit),
+                                  (135, 134, base_commit), (136, 135, "f" * 40)):
+        assert len(_violations_for(mod, monkeypatch, "mutate_token_carriers", before, after, source)) == 1

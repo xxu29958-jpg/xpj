@@ -42,7 +42,6 @@ from app.routes.owner_console import (
     _learning_maintenance,
     _pairing,
     _settings,
-    _tag_cleanup,
     _upload_links,
 )
 from app.routes.owner_console._shared import (
@@ -59,7 +58,6 @@ router.include_router(_index.router)
 router.include_router(_ai_advisor.router)
 router.include_router(_algorithm_versions.router)
 router.include_router(_learning_maintenance.router)
-router.include_router(_tag_cleanup.router)
 router.include_router(_devices.router)
 router.include_router(_pairing.router)
 router.include_router(_upload_links.router)

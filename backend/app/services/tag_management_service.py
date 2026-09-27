@@ -86,6 +86,15 @@ def _disambiguate_tag_claim(db: Session, tenant_id: str, public_id: str) -> AppE
     return AppError("state_conflict", status_code=409)
 
 
+def _unused_tag_claim_conditions(db: Session, *, tenant_id: str, tag_id: int) -> tuple:
+    # New financial links share the Tag until publication. Acquire this lock in
+    # a separate statement so the following claim sees their committed links.
+    db.execute(
+        select(Tag.id).where(Tag.id == tag_id, Tag.tenant_id == tenant_id).with_for_update()
+    ).scalar_one_or_none()
+    return (Tag.deleted_at.is_(None), ~exists().where(ExpenseTag.tag_id == tag_id, ExpenseTag.tenant_id == tenant_id))
+
+
 def _claim_merge_pair(
     db: Session,
     *,
@@ -94,6 +103,7 @@ def _claim_merge_pair(
     target: Tag,
     source_row_version: int,
     target_row_version: int,
+    require_orphan: bool,
 ) -> None:
     """Atomically soft-delete source A (keeps its tag_id; revivable via undo) and
     bump target B (stays live; its link set changed so a stale B PATCH must 409).
@@ -116,6 +126,10 @@ def _claim_merge_pair(
         key=lambda claim: claim[0],
     )
     for pk_id, expected_row_version, set_values in claims:
+        extra_where = (
+            _unused_tag_claim_conditions(db, tenant_id=tenant_id, tag_id=pk_id)
+            if require_orphan and pk_id == source.id else ()
+        )
         if (
             claim_row_with_token(
                 db,
@@ -124,6 +138,7 @@ def _claim_merge_pair(
                 tenant_id=tenant_id,
                 expected_row_version=expected_row_version,
                 set_values=set_values,
+                extra_where=extra_where,
                 synchronize_session=False,
             )
             != 1
@@ -155,6 +170,7 @@ def rename_tag(
     name: str,
     actor_account_id: int | None = None,
     actor_device_id: int | None = None,
+    require_orphan: bool = False,
 ) -> Tag:
     """Self-inverse rename (no snapshot — undo by renaming back). Rewrites the
     denormalised string on every linked expense (the string carries the NAME)
@@ -175,6 +191,7 @@ def rename_tag(
             raise _tag_conflict_error(clash, tag)
 
     try:
+        extra_where = _unused_tag_claim_conditions(db, tenant_id=tenant_id, tag_id=tag.id) if require_orphan else ()
         rowcount = claim_row_with_token(
             db,
             Tag,
@@ -182,6 +199,7 @@ def rename_tag(
             tenant_id=tenant_id,
             expected_row_version=expected_row_version,
             set_values={"name": new_name, "key": new_key, "updated_at": now_utc()},
+            extra_where=extra_where,
             synchronize_session=False,
         )
     except IntegrityError as exc:
@@ -227,15 +245,11 @@ def _claim_tag_soft_delete(
     it) is rejected rather than clobbered. Returns rowcount (0 → stale token, or —
     for require_orphan — a link appeared).
 
-    Residual READ-COMMITTED skew (documented + accepted, NOT auto-healed): a re-tag
-    whose link INSERT commits *after* this UPDATE's snapshot is invisible to the
-    ``NOT EXISTS``, so the tag ends up soft-deleted beside a still-live link — never
-    dropped, just invisible in management (reads filter ``deleted_at``) while still
-    functional on its expense. ``reconcile_expense_tag_mirror`` sees NO drift (string
-    key == link key), so the cure is the next same-key ``_ensure_tag`` (revive, 契约 4)
-    or undoing the delete in its window. Fully closing it needs SERIALIZABLE / a tag
-    lock on the re-tag hot path — disproportionate for this loopback single-owner
-    cleanup surface (one human can't click cleanup and tag-save the same instant)."""
+    Financial tag writers share the row until commit. Lock it exclusively in a
+    separate statement before checking usage, so READ COMMITTED sees links from
+    an earlier writer after the wait. A later writer waits for cleanup and then
+    uses the existing same-identity revival path. Ordinary explicit deletion
+    retains its affected-expense behavior."""
     if not require_orphan:
         return claim_row_with_token(
             db,
@@ -246,14 +260,14 @@ def _claim_tag_soft_delete(
             set_values={"deleted_at": now_utc(), "updated_at": now_utc()},
             synchronize_session=False,
         )
+    extra_where = _unused_tag_claim_conditions(db, tenant_id=tenant_id, tag_id=tag.id)
     now = now_utc()
     return db.execute(
         sa_update(Tag)
         .where(Tag.id == tag.id)
         .where(Tag.tenant_id == tenant_id)
         .where(Tag.row_version == expected_row_version)
-        .where(Tag.deleted_at.is_(None))
-        .where(~exists().where(ExpenseTag.tag_id == tag.id, ExpenseTag.tenant_id == tenant_id))
+        .where(*extra_where)
         .values(deleted_at=now, updated_at=now, row_version=Tag.row_version + 1)
         .execution_options(synchronize_session=False)
     ).rowcount
@@ -273,7 +287,7 @@ def delete_tag(
     and write the undo snapshot — one transaction (契约 1). An orphan tag (no
     links) still writes a group row (undo anchor) with zero items.
 
-    ``require_orphan`` (owner-console cleanup): make the soft-delete atomic on the
+    ``require_orphan`` (unused-tag cleanup): make the soft-delete atomic on the
     tag having NO live links, so a concurrent re-tag landing between the caller's
     orphan-check and this claim can't be silently clobbered. Re-tagging a live tag
     does not bump its ``row_version``, so the OCC token alone can't catch it — the
@@ -345,6 +359,7 @@ def merge_tags(
     target_row_version: int,
     actor_account_id: int | None = None,
     actor_device_id: int | None = None,
+    require_orphan: bool = False,
 ) -> TagMutationResult:
     """Merge source A into target B: soft-delete A (keep its tag_id stable),
     move A's links to B (dedup), rebuild + bump each affected expense, write the
@@ -364,6 +379,7 @@ def merge_tags(
         target=target,
         source_row_version=source_row_version,
         target_row_version=target_row_version,
+        require_orphan=require_orphan,
     )
 
     group = TagMutationUndoGroup(
