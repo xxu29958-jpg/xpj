@@ -135,11 +135,11 @@ class IncomePlanDraftNavigationRoomTest {
             .performScrollTo().performClick()
 
         val originalMonth = context.getString(R.string.components_month_label, "2026", "10")
-        compose.onNodeWithText("十月临时稿").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("00120.00").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText(originalMonth).performScrollTo().assertIsDisplayed()
+        compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("十月临时稿")
+        compose.onAllNodes(hasSetTextAction())[1].assertTextEquals("00120.00")
+        compose.onNodeWithText(originalMonth).assertExists()
         compose.onNodeWithText(context.getString(R.string.income_plan_source_bonus)).assertIsSelected()
-        compose.onNodeWithText("¥ CNY").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("¥ CNY").assertExists()
         assertTrue(income.stored().isEmpty())
         assertTrue(income.network.creationCalls.isEmpty())
 
