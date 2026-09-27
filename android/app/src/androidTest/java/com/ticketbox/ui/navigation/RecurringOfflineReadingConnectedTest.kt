@@ -89,6 +89,7 @@ class RecurringOfflineReadingConnectedTest {
         openHistory()
         waitForText("原美元归档安排")
         Espresso.pressBack()
+        selectTab(R.string.recurring_tab_active)
         offline = true
         restart()
         // This is the first missing business postcondition on the frozen production source.
@@ -193,8 +194,13 @@ class RecurringOfflineReadingConnectedTest {
     }
 
     private fun showArchived() {
-        compose.onNodeWithText(context.getString(R.string.recurring_tab_archived)).performScrollTo().performClick()
+        selectTab(R.string.recurring_tab_archived)
         waitForText("原美元归档固定支出")
+    }
+
+    private fun selectTab(label: Int) {
+        val title = context.getString(R.string.recurring_tab_label_count, context.getString(label), 1)
+        compose.onNodeWithText(title).performScrollTo().performClick()
     }
 
     private fun waitForText(text: String) {
