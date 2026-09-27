@@ -28,8 +28,9 @@ def test_web_pending_filter_missing_amount(web_client: TestClient, *, identity) 
     pending_with_amount = _seed_pending_with_amount(web_client, "5.00", "A", identity=identity)
     resp = web_client.get("/web/pending?ledger_id=owner&filter=missing_amount")
     assert resp.status_code == 200
+    assert f'data-expense-id="{pending_no_amount}"' in resp.text
     assert f"/web/expenses/{pending_no_amount}/edit" in resp.text
-    assert f"/web/expenses/{pending_with_amount}/edit" not in resp.text
+    assert f'data-expense-id="{pending_with_amount}"' not in resp.text
 
 
 def test_web_pending_filter_ready_excludes_missing_amount(web_client: TestClient, *, identity) -> None:
@@ -39,8 +40,11 @@ def test_web_pending_filter_ready_excludes_missing_amount(web_client: TestClient
     pending_no_amount = _create_pending(web_client, identity=identity)
     resp = web_client.get("/web/pending?ledger_id=owner&filter=ready")
     assert resp.status_code == 200
+    # Filters govern selectable bill rows; recent task links retain their separate read-only history.
+    assert f'data-expense-id="{pending_ready}"' in resp.text
     assert f"/web/expenses/{pending_ready}/edit" in resp.text
-    assert f"/web/expenses/{pending_no_amount}/edit" not in resp.text
+    assert f'data-expense-id="{pending_no_amount}"' not in resp.text
+    assert f'data-id="{pending_no_amount}"' not in resp.text
 
 
 def test_web_pending_merchant_caliber_matches_data_quality(web_client: TestClient, *, identity) -> None:
@@ -72,12 +76,14 @@ def test_web_pending_merchant_caliber_matches_data_quality(web_client: TestClien
 
     resp = web_client.get("/web/pending?ledger_id=owner&filter=missing_merchant")
     assert resp.status_code == 200
+    assert f'data-expense-id="{noise_id}"' in resp.text
     assert f"/web/expenses/{noise_id}/edit" in resp.text
-    assert f"/web/expenses/{usable_id}/edit" not in resp.text
+    assert f'data-expense-id="{usable_id}"' not in resp.text
 
     resp = web_client.get("/web/pending?ledger_id=owner&filter=ready")
     assert resp.status_code == 200
-    assert f"/web/expenses/{noise_id}/edit" not in resp.text
+    assert f'data-expense-id="{noise_id}"' not in resp.text
+    assert f'data-expense-id="{usable_id}"' in resp.text
     assert f"/web/expenses/{usable_id}/edit" in resp.text
 
 
@@ -119,14 +125,17 @@ def test_web_pending_category_caliber_matches_data_quality(web_client: TestClien
 
     resp = web_client.get("/web/pending?ledger_id=owner&filter=missing_category")
     assert resp.status_code == 200
+    assert f'data-expense-id="{none_id}"' in resp.text
     assert f"/web/expenses/{none_id}/edit" in resp.text
+    assert f'data-expense-id="{null_id}"' in resp.text
     assert f"/web/expenses/{null_id}/edit" in resp.text
-    assert f"/web/expenses/{other_id}/edit" not in resp.text
+    assert f'data-expense-id="{other_id}"' not in resp.text
 
     resp = web_client.get("/web/pending?ledger_id=owner&filter=ready")
     assert resp.status_code == 200
-    assert f"/web/expenses/{none_id}/edit" not in resp.text
-    assert f"/web/expenses/{null_id}/edit" not in resp.text
+    assert f'data-expense-id="{none_id}"' not in resp.text
+    assert f'data-expense-id="{null_id}"' not in resp.text
+    assert f'data-expense-id="{other_id}"' in resp.text
     assert f"/web/expenses/{other_id}/edit" in resp.text
 
 
@@ -347,8 +356,9 @@ def test_web_bulk_confirm_ready_skips_missing_amount(web_client: TestClient, *, 
     assert resp.status_code in {303, 307}
     # The ready one should now be confirmed (not in pending listing).
     pending = web_client.get("/web/pending?ledger_id=owner")
-    assert f"/web/expenses/{ready}/edit" not in pending.text
+    assert f'data-expense-id="{ready}"' not in pending.text
     # The no-amount one stays pending.
+    assert f'data-expense-id="{no_amount}"' in pending.text
     assert f"/web/expenses/{no_amount}/edit" in pending.text
 
 
@@ -366,7 +376,7 @@ def test_web_bulk_reject_removes_from_pending(web_client: TestClient, *, identit
     )
     assert resp.status_code in {303, 307}
     pending = web_client.get("/web/pending?ledger_id=owner")
-    assert f"/web/expenses/{eid}/edit" not in pending.text
+    assert f'data-expense-id="{eid}"' not in pending.text
 
 
 def test_web_bulk_keep_duplicate_persists_flag_clear(web_client: TestClient, *, identity) -> None:
@@ -417,8 +427,8 @@ def test_web_pending_batch_reject_removes_multiple_pending(web_client: TestClien
     )
     assert resp.status_code in {303, 307}
     pending = web_client.get("/web/pending?ledger_id=owner")
-    assert f"/web/expenses/{first}/edit" not in pending.text
-    assert f"/web/expenses/{second}/edit" not in pending.text
+    assert f'data-expense-id="{first}"' not in pending.text
+    assert f'data-expense-id="{second}"' not in pending.text
 
 
 def test_web_pending_batch_reject_requires_selection(web_client: TestClient) -> None:
@@ -466,4 +476,5 @@ def test_web_bulk_cross_ledger_id_is_ignored(web_client: TestClient, *, identity
     assert resp.status_code in {303, 307}
     # Owner ledger still has its expense.
     pending = web_client.get("/web/pending?ledger_id=owner")
+    assert f'data-expense-id="{eid_owner}"' in pending.text
     assert f"/web/expenses/{eid_owner}/edit" in pending.text
