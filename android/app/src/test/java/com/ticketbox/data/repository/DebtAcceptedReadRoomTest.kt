@@ -36,7 +36,7 @@ import kotlin.test.assertTrue
 @SQLiteMode(SQLiteMode.Mode.NATIVE)
 class DebtAcceptedReadRoomTest {
     @Test fun missingDebtSurvivesRoomWriteFailureAndDatabaseReopenWhileOtherFactsRemainReadable() = runBlocking {
-        val app = RuntimeEnvironment.getApplication<Application>()
+        val app = RuntimeEnvironment.getApplication()
         val name = "debt-missing-${java.util.UUID.randomUUID()}.db"
         var db = Room.databaseBuilder(app, AppDatabase::class.java, name).build()
         val settings = LocalSettingsStore(app)

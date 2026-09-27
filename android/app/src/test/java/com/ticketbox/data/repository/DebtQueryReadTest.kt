@@ -62,7 +62,7 @@ class DebtQueryReadTest {
         val recovered = queries.list(fixture.binding, DebtListLens.Ledger).getOrThrow()
         assertEquals(listOf("jpy-debt", "other-debt"), recovered.value.debts.map { it.publicId })
         assertEquals(500L, recovered.value.debts.first().remainingAmountCents)
-        assertEquals("JPY", recovered.value.homeCurrencyCode)
+        assertEquals("JPY", recovered.value.ledgerHomeCurrencyCode)
         api.offline = true
         assertEquals(recovered.copy(fromCache = true), reader().list(fixture.binding, DebtListLens.Ledger).getOrThrow())
         assertTrue(reader().detail(fixture.binding, "jpy-debt").isFailure, "List recovery cannot recreate a detail snapshot")
