@@ -58,11 +58,13 @@ interface ExpenseDao {
     @Transaction
     suspend fun clearReadSnapshotsForBinding(bindingKey: String) {
         // Refusal retires read payloads, not an executing command's proof or its durable read epoch.
+        val outboxBarrier = recurringOutboxReadBarrier(bindingKey)
         val directBarrier = recurringDirectBarrier(bindingKey)
         val recurringEpoch = statsProjections(bindingKey, "recurring_read_epoch", "", "", "UTC").singleOrNull()
         clearGoalSnapshotsForBinding(bindingKey)
         clearStatsProjectionsForBinding(bindingKey)
         directBarrier?.let { saveStatsProjection(it) }
+        outboxBarrier?.let { saveStatsProjection(it) }
         recurringEpoch?.let { saveStatsProjection(it) }
     }
 
@@ -74,10 +76,9 @@ interface ExpenseDao {
         "AND kind = 'recurring_read_epoch' AND month = '' AND tag = '' AND homeCurrencyCode = '' AND timezone = 'UTC'")
     suspend fun recurringReadEpoch(bindingKey: String): String?
 
-    /** Existing accepted Outbox originals are the proof while read-publication settlement is pending. */
-    @Query("SELECT EXISTS(SELECT 1 FROM pending_mutations WHERE ownerKey = :ownerKey AND ledgerId = :ledgerId " +
-        "AND status != 'done' AND lastError = 'accepted_recurring_read_publication_pending')")
-    suspend fun hasPendingRecurringReadPublication(ownerKey: String, ledgerId: String): Boolean
+    /** Dispatch protection belongs to the projection store, not a retry diagnostic or receipt. */
+    suspend fun recurringOutboxReadBarrier(bindingKey: String): StatsProjectionCacheEntity? =
+        statsProjections(bindingKey, "recurring_outbox_read_barrier", "", "", "UTC").singleOrNull()
 
     suspend fun recurringDirectBarrier(bindingKey: String): StatsProjectionCacheEntity? =
         statsProjections(bindingKey, "recurring_direct_barrier", "", "", "UTC").singleOrNull()
@@ -111,6 +112,25 @@ interface ExpenseDao {
             next.toString(), java.time.Instant.now().toString()))
     }
 
+    /** Only its original owner may finish an Outbox barrier; a parallel direct ACK cannot consume it. */
+    @Transaction
+    suspend fun settleRecurringOutboxReadBarrier(bindingKey: String, ledgerId: String, token: String, retire: Boolean) {
+        val barrier = recurringOutboxReadBarrier(bindingKey)
+        if (retire) invalidateRecurringSnapshots(bindingKey, ledgerId)
+        if (barrier?.responseJson == token) deleteStatsProjection(barrier)
+    }
+
+    @Transaction
+    suspend fun reconcileRecurringReadBarriers(bindingKey: String, ledgerId: String, expectedEpoch: Long,
+        directToken: String?, outboxToken: String?) {
+        check((recurringReadEpoch(bindingKey)?.toLong() ?: 0L) == expectedEpoch &&
+            recurringDirectBarrier(bindingKey)?.responseJson == directToken &&
+            recurringOutboxReadBarrier(bindingKey)?.responseJson == outboxToken) { "固定支出读取屏障已改变，请重新读取。" }
+        invalidateRecurringSnapshots(bindingKey, ledgerId)
+        recurringDirectBarrier(bindingKey)?.let { deleteStatsProjection(it) }
+        recurringOutboxReadBarrier(bindingKey)?.let { deleteStatsProjection(it) }
+    }
+
     @Query("DELETE FROM stats_projection_cache WHERE bindingKey = :bindingKey " +
         "AND kind IN ('recurring_items', 'recurring_history', 'recurring_occurrence')")
     suspend fun clearRecurringSnapshots(bindingKey: String)
@@ -119,6 +139,7 @@ interface ExpenseDao {
     @Transaction
     suspend fun saveRecurringSnapshotIfCurrent(snapshot: StatsProjectionCacheEntity, expectedEpoch: Long) {
         check((recurringReadEpoch(snapshot.bindingKey)?.toLong() ?: 0L) == expectedEpoch) { "固定支出已接受修改，请重新读取。" }
+        check(recurringOutboxReadBarrier(snapshot.bindingKey) == null) { "原固定支出提交尚需核对，请重新读取。" }
         check(recurringDirectBarrier(snapshot.bindingKey) == null) { "固定支出操作尚需核对，请重新读取。" }
         saveStatsProjection(snapshot)
     }
@@ -126,6 +147,7 @@ interface ExpenseDao {
     @Transaction
     suspend fun recurringSnapshotIfCurrent(query: StatsProjectionCacheEntity, expectedEpoch: Long): StatsProjectionCacheEntity? {
         check((recurringReadEpoch(query.bindingKey)?.toLong() ?: 0L) == expectedEpoch) { "固定支出已接受修改，请重新读取。" }
+        check(recurringOutboxReadBarrier(query.bindingKey) == null) { "原固定支出提交尚需核对，请重新读取。" }
         check(recurringDirectBarrier(query.bindingKey) == null) { "固定支出操作尚需联网核对，请重新读取。" }
         return statsProjections(query.bindingKey, query.kind, query.month, query.tag, query.timezone).singleOrNull()
     }

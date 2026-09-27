@@ -116,6 +116,8 @@ internal class RepositoryGraph(
     )
 
     init {
+        outbox.onRecurringDispatchPreparing = recurringQueries::prepareDispatch
+        outbox.onRecurringDispatchFinished = recurringQueries::finishDispatch
         outbox.onRecurringAccepted = recurringQueries::invalidateAccepted
     }
 

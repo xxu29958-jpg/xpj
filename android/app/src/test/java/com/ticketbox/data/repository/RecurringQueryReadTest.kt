@@ -111,6 +111,8 @@ class RecurringQueryReadTest {
             reader.occurrence(fixture.binding, "recurring", "2026-09").getOrThrow()
             val pending = FakePendingMutationDao()
             val outbox = testOutboxRepository(pending, bindingProvider = { fixture.provider.currentSession().toOutboxBinding() })
+            outbox.onRecurringDispatchPreparing = reader::prepareDispatch
+            outbox.onRecurringDispatchFinished = reader::finishDispatch
             outbox.onRecurringAccepted = reader::invalidateAccepted
             val id = outbox.enqueue(mutationType, "expense:1", "{}", 3, idempotencyKey = "original-key")
             // Dispatcher acceptance is the boundary; drain settlement and both GET/cache consumers are real.

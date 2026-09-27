@@ -511,21 +511,26 @@ class OutboxRepository private constructor(
     suspend fun tryClaim(id: Long): Boolean =
         dao.markInFlightIfPending(id, PendingMutationStatus.Pending.wireValue, PendingMutationStatus.InFlight.wireValue, nowIso()) > 0
 
+    internal var onRecurringDispatchPreparing: suspend (OutboxRow) -> Unit = {}
+    internal var onRecurringDispatchFinished: suspend (OutboxRow, Boolean) -> Unit = { _, _ -> }
     internal var onRecurringAccepted: suspend (OutboxRow) -> Unit = {}
+
+    internal fun affectsRecurringReads(row: OutboxRow) = row.type in setOf(
+        PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem,
+        PendingMutationType.SetRecurringOccurrencePayment, PendingMutationType.PatchExpense, PendingMutationType.CorrectExpense,
+        PendingMutationType.ConfirmExpense, PendingMutationType.UndoExpense,
+        PendingMutationType.CreateExpenseOffset, PendingMutationType.VoidExpenseOffset)
+
 
     suspend fun markDone(id: Long, cacheRefreshVersion: Long? = null, receiptJson: String? = null,
         budgetReadRefreshRequired: Boolean = false, acceptedRow: OutboxRow? = null) {
         val refreshError = if (budgetReadRefreshRequired) BUDGET_READ_REFRESH_REQUIRED
             else cacheRefreshVersion?.let { "$EXPENSE_REFRESH_PREFIX$it" }
-        val recurringAccepted = acceptedRow?.type in setOf(PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem,
-            PendingMutationType.SetRecurringOccurrencePayment, PendingMutationType.PatchExpense, PendingMutationType.CorrectExpense,
-            PendingMutationType.ConfirmExpense, PendingMutationType.UndoExpense,
-            PendingMutationType.CreateExpenseOffset, PendingMutationType.VoidExpenseOffset)
+        val recurringAccepted = acceptedRow?.let(::affectsRecurringReads) == true
         try {
-            dao.publishDelivery {
-                dao.markDone(id, PendingMutationStatus.Done.wireValue, nowIso(), refreshError, receiptJson)
-                if (recurringAccepted) onRecurringAccepted(requireNotNull(acceptedRow))
-            }
+            // Retirement commits first; a later Done failure cannot roll back its read proof.
+            if (recurringAccepted) onRecurringAccepted(requireNotNull(acceptedRow))
+            dao.markDone(id, PendingMutationStatus.Done.wireValue, nowIso(), refreshError, receiptJson)
         } catch (error: SQLiteException) {
             // The server has accepted this attempt. Reentry repeats the original key; it never refunds the send.
             if (recurringAccepted) withContext(NonCancellable) { markRetryable(id, "accepted_recurring_read_publication_pending") }

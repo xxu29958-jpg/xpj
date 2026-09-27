@@ -88,7 +88,8 @@ sealed interface DispatchResult {
      * the drain engine will NOT auto-retry — the user has to
      * fix the input or dismiss the row.
      */
-    data class Failure(val message: String, val blocksFollowing: Boolean = true) : DispatchResult
+    // True only for an unsent original or a proven HTTP refusal, never an unverified 2xx receipt.
+    data class Failure(val message: String, val blocksFollowing: Boolean = true, val definitelyRejected: Boolean = false) : DispatchResult
 
     /**
      * Transient failure that the drain engine should retry on a

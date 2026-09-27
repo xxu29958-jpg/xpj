@@ -16,10 +16,10 @@ class CreateRecurringItemDispatcher(
 
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
         val key = row.idempotencyKey?.takeIf(String::isNotBlank)
-            ?: return DispatchResult.Failure(RECURRING_ORIGINAL_UNSUPPORTED)
+            ?: return DispatchResult.Failure(RECURRING_ORIGINAL_UNSUPPORTED, definitelyRejected = true)
         val request = runCatching { payloadAdapter.fromJson(row.payloadJson) }.getOrNull()
             ?.takeIf { it.matchesOriginal(row) }
-            ?: return DispatchResult.Failure(RECURRING_ORIGINAL_UNSUPPORTED)
+            ?: return DispatchResult.Failure(RECURRING_ORIGINAL_UNSUPPORTED, definitelyRejected = true)
         return try {
             val receipt = apiProvider(row).createRecurringItem(request, key)
             if (receipt.confirms(row, request)) DispatchResult.Success()
@@ -40,7 +40,7 @@ internal fun mapRecurringHttpException(
     error: HttpException,
     stateConflictIsResolvable: Boolean,
 ): DispatchResult = when (val result = mapOutboxHttpException(error)) {
-    is DispatchResult.Discarded -> DispatchResult.Failure(RECURRING_RECEIPT_UNVERIFIED)
-    is DispatchResult.Conflict -> if (stateConflictIsResolvable) result else DispatchResult.Failure(result.serverMessage)
+    is DispatchResult.Discarded -> DispatchResult.Failure(RECURRING_RECEIPT_UNVERIFIED, definitelyRejected = true)
+    is DispatchResult.Conflict -> if (stateConflictIsResolvable) result else DispatchResult.Failure(result.serverMessage, definitelyRejected = true)
     else -> result
 }

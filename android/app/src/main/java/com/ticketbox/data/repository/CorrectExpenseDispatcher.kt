@@ -20,7 +20,7 @@ class CorrectExpenseDispatcher(
 
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
         val intent = payloadAdapter.readSupportedCorrection(row)
-            ?: return DispatchResult.Failure("correction_requires_review")
+            ?: return DispatchResult.Failure("correction_requires_review", definitelyRejected = true)
         val response = try {
             apiProvider(row).correctExpense(intent.expenseId.toString(), intent.request, requireNotNull(row.idempotencyKey))
         } catch (e: HttpException) {
@@ -57,12 +57,12 @@ class CorrectExpenseDispatcher(
     }
 
     private fun refusal(error: HttpException): DispatchResult {
-        if (error.code() == 422) return DispatchResult.Failure("correction_requires_review")
+        if (error.code() == 422) return DispatchResult.Failure("correction_requires_review", definitelyRejected = true)
         val parsed = errors.parseHttpError(error)
         if (error.code() == 409 && parsed.errorCode == CORRECTION_RATE_PENDING) {
             return DispatchResult.Failure(parsed.correctionRateFailure())
         }
         val result = mapOutboxHttpError(error.code(), parsed)
-        return if (result is DispatchResult.Discarded) DispatchResult.Failure("correction_target_unavailable") else result
+        return if (result is DispatchResult.Discarded) DispatchResult.Failure("correction_target_unavailable", definitelyRejected = true) else result
     }
 }

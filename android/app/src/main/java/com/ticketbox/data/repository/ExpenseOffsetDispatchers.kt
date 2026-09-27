@@ -21,16 +21,16 @@ class CreateExpenseOffsetDispatcher(
 
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
         val expenseRef = parseExpenseTargetRef(row.targetId)
-            ?: return DispatchResult.Failure("offset_create_requires_review")
+            ?: return DispatchResult.Failure("offset_create_requires_review", definitelyRejected = true)
         val request = payloadAdapter.readSupportedOffsetCreate(row)
-            ?: return DispatchResult.Failure("offset_create_requires_review")
+            ?: return DispatchResult.Failure("offset_create_requires_review", definitelyRejected = true)
         val key = row.idempotencyKey
-            ?: return DispatchResult.Failure("CreateExpenseOffset row missing idempotency key")
+            ?: return DispatchResult.Failure("CreateExpenseOffset row missing idempotency key", definitelyRejected = true)
         val result = dispatchOffsetCommand {
             val bundle = apiProvider(row).createExpenseOffset(expenseRef, request, key)
             publishAcceptedExpense(bundle.root.id, bundle.root.rowVersion) { publishBundle(row.ledgerId, bundle) }
         }
-        return if (result is DispatchResult.Discarded) DispatchResult.Failure("offset_create_requires_review") else result
+        return if (result is DispatchResult.Discarded) DispatchResult.Failure("offset_create_requires_review", definitelyRejected = true) else result
     }
 }
 
@@ -45,10 +45,10 @@ class VoidExpenseOffsetDispatcher(
         val expenseRef = parseExpenseTargetRef(row.targetId)
             ?: return DispatchResult.Discarded("invalid target id: ${row.targetId}")
         val payload = decode(payloadAdapter, row) { it }
-            ?: return DispatchResult.Failure("offset void payload is invalid")
+            ?: return DispatchResult.Failure("offset void payload is invalid", definitelyRejected = true)
         val request = ExpenseOffsetVoidRequestDto(payload.voidReason, row.expectedRowVersion)
         val key = row.idempotencyKey
-            ?: return DispatchResult.Failure("VoidExpenseOffset row missing idempotency key")
+            ?: return DispatchResult.Failure("VoidExpenseOffset row missing idempotency key", definitelyRejected = true)
         return dispatchOffsetCommand {
             val bundle = apiProvider(row).voidExpenseOffset(
                 expenseRef,
@@ -97,7 +97,8 @@ private fun mapOffsetHttpException(error: HttpException): DispatchResult {
         }
         404 -> DispatchResult.Discarded(message)
         408, 429, in 500..599 -> DispatchResult.RetryableFailure(message)
-        else -> DispatchResult.Failure(message.ifEmpty { "HTTP ${error.code()}" })
+        else -> DispatchResult.Failure(message.ifEmpty { "HTTP ${error.code()}" },
+            definitelyRejected = error.code() in setOf(400, 401, 403, 405, 410, 412, 422))
     }
 }
 

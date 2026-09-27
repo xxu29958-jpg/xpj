@@ -38,6 +38,8 @@ internal class RecurringQueryReader(
     private val latestRequests = mutableMapOf<String, Long>()
     private val localInvalidation = AtomicLong()
     private val retiredBindings = ConcurrentHashMap.newKeySet<String>()
+    private data class DispatchReadProtection(val binding: LogicalSessionBinding, val token: String, val hadUnresolved: Boolean)
+    private val dispatchProtections = ConcurrentHashMap<Long, DispatchReadProtection>()
 
     companion object {
         // Only executing calls are tracked in memory; the Room token survives process reconstruction.
@@ -47,32 +49,33 @@ internal class RecurringQueryReader(
         }
 
         private suspend fun requireBarrierUnchanged(dao: ExpenseDao, binding: LogicalSessionBinding,
-            token: String?, publicationPendingAtStart: Boolean, epoch: Long): Boolean {
+            token: String?, publicationPendingAtStart: String?, epoch: Long): Boolean {
             val key = logicalBindingAdapter.toJson(binding)
             check((dao.recurringReadEpoch(key)?.toLong() ?: 0L) == epoch) { "固定支出已接受修改，请重新读取。" }
             check(dao.recurringDirectBarrier(key)?.responseJson == token) {
                 "固定支出操作已改变，请重新读取。"
             }
             requireInactiveDirect(token)
-            val pendingNow = dao.hasPendingRecurringReadPublication(binding.ownerKey, binding.ledgerId)
-            check(publicationPendingAtStart || !pendingNow) { "固定支出已接受修改，请重新读取。" }
-            return !publicationPendingAtStart && !pendingNow
+            val pendingNow = dao.recurringOutboxReadBarrier(key)?.responseJson
+            requireInactiveDirect(pendingNow)
+            check(publicationPendingAtStart == pendingNow) { "固定支出已接受修改，请重新读取。" }
+            return pendingNow == null
         }
 
         private suspend fun publishSnapshot(dao: ExpenseDao, retiredBindings: MutableSet<String>,
-            snapshot: StatsProjectionCacheEntity, epoch: Long, barrier: String?) {
+            snapshot: StatsProjectionCacheEntity, epoch: Long, barriers: Pair<String?, String?>) {
+            val (barrier, publicationBarrier) = barriers
             try {
-                if (barrier != null) {
+                if (barrier != null || publicationBarrier != null) {
                     // Only a complete current definition list can reconcile an unknown lifecycle/candidate result.
                     if (snapshot.kind != "recurring_items" || snapshot.tag != ":true" || snapshot.month.isNotEmpty()) return
-                    dao.settleRecurringDirectBarrier(snapshot.bindingKey, snapshot.ledgerId, barrier,
-                        accepted = true, expectedEpoch = epoch)
+                    dao.reconcileRecurringReadBarriers(snapshot.bindingKey, snapshot.ledgerId, epoch, barrier, publicationBarrier)
                 }
                 if (snapshot.bindingKey in retiredBindings) {
                     dao.clearRecurringSnapshots(snapshot.bindingKey)
                     retiredBindings.remove(snapshot.bindingKey)
                 }
-                dao.saveRecurringSnapshotIfCurrent(snapshot, if (barrier == null) epoch else Math.addExact(epoch, 1L))
+                dao.saveRecurringSnapshotIfCurrent(snapshot, if (barrier == null && publicationBarrier == null) epoch else Math.addExact(epoch, 1L))
             } catch (_: SQLiteException) {
                 // The authorized GET remains usable; failed settlement keeps its durable retirement barrier.
             }
@@ -90,8 +93,9 @@ internal class RecurringQueryReader(
             val key = logicalBindingAdapter.toJson(binding)
             val epoch = dao.recurringReadEpoch(key)?.toLong() ?: 0L
             val barrier = dao.recurringDirectBarrier(key)?.responseJson
-            val publicationPending = dao.hasPendingRecurringReadPublication(binding.ownerKey, binding.ledgerId)
+            val publicationPending = dao.recurringOutboxReadBarrier(key)?.responseJson
             requireInactiveDirect(barrier)
+            requireInactiveDirect(publicationPending)
             val page = try {
                 bound.call { fetch(it) }
             } catch (error: HttpException) {
@@ -148,19 +152,47 @@ internal class RecurringQueryReader(
         } finally { activeDirectTokens.remove(token) }
     }
 
-    suspend fun invalidateAccepted(row: OutboxRow) {
-        val binding = requireNotNull(guard.captureLogicalBinding())
-        require(row.ownerKey == binding.ownerKey && row.ledgerId == binding.ledgerId &&
-            canonicalServerOriginOrNull(row.serverUrl) == canonicalServerOriginOrNull(binding.serverUrl)) {
-            "原固定支出提交不属于当前连接。"
+    suspend fun prepareDispatch(row: OutboxRow) {
+        val binding = originalRecurringBinding(guard, row)
+        val key = logicalBindingAdapter.toJson(binding)
+        val token = "${row.idempotencyKey ?: row.id}:${UUID.randomUUID()}"
+        activeDirectTokens.add(token)
+        try {
+            val protection = DispatchReadProtection(binding, token, dao.recurringOutboxReadBarrier(key) != null)
+            dao.saveStatsProjection(recurringScope(binding, "recurring_outbox_read_barrier", "", "", "UTC")
+                .copy(responseJson = token, fetchedAt = Instant.now().toString()))
+            dispatchProtections[row.id] = protection
+        } catch (error: Exception) {
+            activeDirectTokens.remove(token)
+            throw error // No command is sent without durable read protection.
         }
-        invalidate(binding)
+    }
+
+    suspend fun finishDispatch(row: OutboxRow, rejected: Boolean) {
+        val protection = dispatchProtections.remove(row.id) ?: return
+        try {
+            if (rejected && !protection.hadUnresolved) {
+                dao.settleRecurringOutboxReadBarrier(logicalBindingAdapter.toJson(protection.binding),
+                    protection.binding.ledgerId, protection.token, retire = false)
+            }
+        } catch (_: SQLiteException) { /* Keep protection until a complete current read reconciles it. */ }
+        finally { activeDirectTokens.remove(protection.token) }
+    }
+
+    suspend fun invalidateAccepted(row: OutboxRow) {
+        val binding = originalRecurringBinding(guard, row)
+        val key = logicalBindingAdapter.toJson(binding)
+        localInvalidation.incrementAndGet()
+        retiredBindings.add(key)
+        val token = requireNotNull(dispatchProtections[row.id]).token
+        dao.settleRecurringOutboxReadBarrier(key, binding.ledgerId, token, retire = true)
+        retiredBindings.remove(key)
     }
 
     suspend fun items(binding: LogicalSessionBinding, status: String?, archived: Boolean, month: String?):
         Result<ReadSnapshot<List<RecurringItem>>> = errors.safeCall {
         month?.let { require(YearMonth.parse(it).toString() == it) { "固定支出月份范围不正确。" } }
-        val scope = scope(binding, "recurring_items", month.orEmpty(), "${status.orEmpty()}:$archived", TimeZone.getDefault().id)
+        val scope = recurringScope(binding, "recurring_items", month.orEmpty(), "${status.orEmpty()}:$archived", TimeZone.getDefault().id)
         read(binding, scope, itemsAdapter, { recurringItems(status, archived, month, scope.timezone) }) { page ->
             require(page.items.map { it.publicId }.distinct().size == page.items.size) { "固定支出列表包含重复记录。" }
             page.items.forEach { item ->
@@ -175,7 +207,7 @@ internal class RecurringQueryReader(
     suspend fun history(binding: LogicalSessionBinding, publicId: String, before: Long?): Result<ReadSnapshot<RecurringHistoryPageDto>> =
         errors.safeCall {
             require(publicId.isNotBlank() && (before == null || before > 0)) { "固定支出历史范围不正确。" }
-            read(binding, scope(binding, "recurring_history", "", "$publicId:50:$before", "UTC"), historyAdapter,
+            read(binding, recurringScope(binding, "recurring_history", "", "$publicId:50:$before", "UTC"), historyAdapter,
                 { recurringHistory(publicId, 50, before) }) { it.validateHistory(binding, publicId, before) }.getOrThrow()
         }
 
@@ -185,7 +217,7 @@ internal class RecurringQueryReader(
                 "固定支出期次范围不正确。"
             }
             // A current read retains the server's actual period, never a locally guessed month.
-            read(binding, scope(binding, "recurring_occurrence", period, publicId, "UTC"), occurrenceAdapter,
+            read(binding, recurringScope(binding, "recurring_occurrence", period, publicId, "UTC"), occurrenceAdapter,
                 { recurringOccurrence(publicId, period) }) { it.validateOccurrence(publicId, period) }.getOrThrow()
         }
 
@@ -196,8 +228,9 @@ internal class RecurringQueryReader(
         val generation = localInvalidation.get()
         val epoch = dao.recurringReadEpoch(query.bindingKey)?.toLong() ?: 0L
         val barrier = dao.recurringDirectBarrier(query.bindingKey)?.responseJson
-        val publicationPending = dao.hasPendingRecurringReadPublication(binding.ownerKey, binding.ledgerId)
+        val publicationPending = dao.recurringOutboxReadBarrier(query.bindingKey)?.responseJson
         requireInactiveDirect(barrier)
+        requireInactiveDirect(publicationPending)
         val key = "${query.bindingKey}|${query.kind}|${query.month}|${query.tag}|${query.timezone}"
         mutex.withLock { latestRequests[key] = ticket.sequence }
         val wire = try {
@@ -210,7 +243,7 @@ internal class RecurringQueryReader(
             if (!error.isReadTransportUnavailable()) throw error
             return@safeCall coordinator.acceptSnapshotRead(ticket, bound, fromCache = true) {
                 mutex.withLock {
-                    requireLatest(key, ticket)
+                    requireLatest(latestRequests, key, ticket)
                     check(query.bindingKey !in retiredBindings) { "固定支出读取已失效，请联网重新读取。" }
                     check(barrier == null && dao.recurringDirectBarrier(query.bindingKey) == null) {
                         "原固定支出操作结果尚需联网核对，请重新读取。"
@@ -229,20 +262,16 @@ internal class RecurringQueryReader(
         validate(wire)
         coordinator.acceptSnapshotRead(ticket, bound, fromCache = false) { cacheAllowed ->
             mutex.withLock {
-                requireLatest(key, ticket)
+                requireLatest(latestRequests, key, ticket)
                 check(localInvalidation.get() == generation) {
                     "固定支出已接受修改，请重新读取。"
                 }
                 val settled = requireBarrierUnchanged(dao, binding, barrier, publicationPending, epoch)
                 val fetchedAt = Instant.now().toString()
-                if (cacheAllowed && settled) publishSnapshot(dao, retiredBindings, query.copy(responseJson = adapter.toJson(wire), fetchedAt = fetchedAt), epoch, barrier)
+                if (cacheAllowed && (settled || publicationPending != null)) publishSnapshot(dao, retiredBindings, query.copy(responseJson = adapter.toJson(wire), fetchedAt = fetchedAt), epoch, barrier to publicationPending)
                 ReadSnapshot(wire, fetchedAt, fromCache = false)
             }
         }
-    }
-
-    private fun requireLatest(key: String, ticket: SnapshotReadTicket) {
-        check(latestRequests[key] == ticket.sequence) { "固定支出已有更新的读取，请重新读取。" }
     }
 
     private suspend fun cachedQuery(query: StatsProjectionCacheEntity, epoch: Long): StatsProjectionCacheEntity? {
@@ -266,10 +295,23 @@ internal class RecurringQueryReader(
             else -> exact
         }
     }
-
-    private fun scope(binding: LogicalSessionBinding, kind: String, month: String, tag: String, timezone: String) =
-        StatsProjectionCacheEntity(logicalBindingAdapter.toJson(binding), binding.ledgerId, kind, month, tag, "", timezone, "", "")
 }
+
+private fun originalRecurringBinding(guard: LedgerRequestGuard, row: OutboxRow): LogicalSessionBinding {
+    val binding = requireNotNull(guard.captureLogicalBinding())
+    require(row.ownerKey == binding.ownerKey && row.ledgerId == binding.ledgerId &&
+        canonicalServerOriginOrNull(row.serverUrl) == canonicalServerOriginOrNull(binding.serverUrl)) {
+        "原固定支出提交不属于当前连接。"
+    }
+    return binding
+}
+
+private fun requireLatest(latestRequests: Map<String, Long>, key: String, ticket: SnapshotReadTicket) {
+    check(latestRequests[key] == ticket.sequence) { "固定支出已有更新的读取，请重新读取。" }
+}
+
+private fun recurringScope(binding: LogicalSessionBinding, kind: String, month: String, tag: String, timezone: String) =
+    StatsProjectionCacheEntity(logicalBindingAdapter.toJson(binding), binding.ledgerId, kind, month, tag, "", timezone, "", "")
 
 private fun RecurringOccurrenceDto.validateOccurrence(id: String, requested: String) {
     require(seriesPublicId == id && seriesRowVersion > 0 && rowVersion >= 0 &&

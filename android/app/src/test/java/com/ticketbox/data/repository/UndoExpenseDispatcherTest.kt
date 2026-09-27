@@ -95,7 +95,7 @@ internal class UndoExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestBas
                 override suspend fun undoExpense(id: Long, request: ExpenseStateTokenRequest, idempotencyKey: String): ExpenseDto =
                     throw failure
             }
-            assertEquals(DispatchResult.Failure(message), dispatcher(api).dispatch(row()))
+            assertEquals(DispatchResult.Failure(message, definitelyRejected = failure.code() == 404), dispatcher(api).dispatch(row()))
         }
     }
 
