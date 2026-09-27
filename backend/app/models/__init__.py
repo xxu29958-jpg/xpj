@@ -91,6 +91,7 @@ from app.models.ledger_calendar import LedgerCalendarRevision
 from app.models.monthly_arrangement import MonthlyArrangement, MonthlyArrangementRevision
 from app.models.ocr_facts import OcrFact
 from app.models.recurring import RecurringItem
+from app.models.recurring_item_revision import RecurringItemRevision
 from app.models.recurring_occurrence import RecurringOccurrence, RecurringOccurrenceRevision
 from app.models.system import (
     BootstrapSecretConsumption,
@@ -166,6 +167,7 @@ __all__ = [
     "DeviceEnrollmentAttempt",
     "PairingCode",
     "RecurringItem",
+    "RecurringItemRevision",
     "RecurringOccurrence",
     "RecurringOccurrenceRevision",
     "Repayment",

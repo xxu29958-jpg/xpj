@@ -45,6 +45,7 @@ internal fun RecurringRoute(
             onRefresh = recurringViewModel::refresh,
             items = RecurringItemActions(
                 onOpenOccurrence = { occurrenceModel.open(it) },
+                onOpenHistory = recurringViewModel.historyTask::open,
                 onPause = recurringViewModel::pause,
                 onResume = recurringViewModel::resume,
                 onArchive = recurringViewModel::archive,
@@ -70,5 +71,9 @@ internal fun RecurringRoute(
             items = state.items,
             drafts = rememberRecurringPaymentDraftStore(),
         ),
+    )
+    if (state.history.publicId != null) com.ticketbox.ui.screens.recurring.RecurringHistorySheet(
+        state.history, recurringViewModel.historyTask::retry, recurringViewModel.historyTask::more,
+        recurringViewModel.historyTask::dismiss,
     )
 }

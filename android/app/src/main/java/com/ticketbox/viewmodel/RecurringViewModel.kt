@@ -34,6 +34,7 @@ data class RecurringUiState(
     val manualSaveFeedback: RecurringManualSaveFeedback? = null,
     val editorEpoch: Long = 0,
     val editorRuntimeId: String = "",
+    val history: RecurringHistoryState = RecurringHistoryState(),
 ) {
     val manualSaveInFlight: Boolean
         get() = manualSaveFeedback?.settlement == RecurringManualSaveSettlement.InFlight
@@ -68,8 +69,22 @@ class RecurringViewModel(
     private var manualSaveSequence = 0L
     private var activeManualAttemptId: Long? = null
     private var editorEpoch = 0L
+    private val retireDeniedReads: (Throwable) -> Unit = { error ->
+        historyTask.dismiss()
+        refreshGeneration += 1
+        _uiState.update { it.copy(items = emptyList(), candidates = emptyList(), loading = false,
+            itemsLoadState = RecurringListLoadState.Failed, candidatesLoadState = RecurringListLoadState.Failed,
+            message = error.toUiText(R.string.recurring_history_failed), messageTone = MessageTone.Danger) }
+    }
+    internal val historyTask: RecurringHistoryTask = RecurringHistoryTask(repository, viewModelScope, { activeBinding },
+        { history -> _uiState.update { it.copy(history = history) } }, retireDeniedReads)
 
     init {
+        viewModelScope.launch {
+            repository.readAccessDenials.collect { denial ->
+                if (denial.binding == activeBinding) retireDeniedReads(denial.failure)
+            }
+        }
         viewModelScope.launch {
             repository.observeActiveLedgerAccess()
                 .distinctUntilChanged()
@@ -82,6 +97,7 @@ class RecurringViewModel(
                         return@collect
                     }
                     activeBinding = nextBinding
+                    historyTask.dismiss()
                     requestGeneration += 1
                     refreshGeneration += 1
                     activeManualAttemptId = null

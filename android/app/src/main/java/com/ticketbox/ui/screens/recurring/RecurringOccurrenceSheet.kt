@@ -75,6 +75,7 @@ fun RecurringOccurrenceSheet(
             OccurrencePaymentConflict(origin, actions)
             state.seriesPending.forEach { OccurrencePending(it, state.access?.canModify == true, actions.onRecover) }
             state.occurrence?.let { occurrence ->
+                OccurrenceDefinitionBasis(occurrence)
                 Text(stringResource(occurrenceStateLabel(occurrence.state)), modifier = Modifier.testTag("occurrence-state"))
                 Text(stringResource(R.string.occurrence_reserved, recurringRecordedAmountText(occurrence.reservedAmountCents, occurrence.homeCurrencyCode)))
                 occurrence.paidAmountCents?.let {

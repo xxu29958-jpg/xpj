@@ -663,6 +663,8 @@ internal class StubApi(
     override suspend fun budgetAdviceInputs(month: String, timezone: String?, homeCurrencyCode: String?): com.ticketbox.data.remote.dto.BudgetAdviceInputsDto = ledgerUnsupported()
     override suspend fun budgetAdvise(request: com.ticketbox.data.remote.dto.BudgetAdviseRequestDto): com.ticketbox.data.remote.dto.BudgetAdviseResponseDto = ledgerUnsupported()
     override suspend fun recurringCandidates(timezone: String?): com.ticketbox.data.remote.dto.RecurringCandidatesResponseDto = ledgerUnsupported()
+    override suspend fun recurringHistory(publicId: String, limit: Int, beforeVersion: Long?):
+        com.ticketbox.data.remote.dto.RecurringHistoryPageDto = error("Unexpected recurring definition history")
     override suspend fun recurringItems(
         status: String?,
         includeArchived: Boolean,

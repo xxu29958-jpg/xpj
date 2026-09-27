@@ -17,6 +17,7 @@ from app.services.idempotency import (
     fingerprint_request,
     mark_idempotency_succeeded,
 )
+from app.services.recurring_history_service import ensure_recurring_history_baseline
 from app.services.recurring_occurrence_query import (
     eligible_payment_query,
     get_occurrence,
@@ -119,7 +120,9 @@ def set_occurrence_payment(
     if previous_id == payment_id:
         raise AppError("invalid_request", "本期付款关联没有变化。", status_code=422)
     if row is None:
-        row = RecurringOccurrence(tenant_id=tenant_id, series_id=item.id, period_start=period, row_version=1)
+        definition = ensure_recurring_history_baseline(db, item)
+        row = RecurringOccurrence(tenant_id=tenant_id, series_id=item.id, period_start=period, row_version=1,
+            recorded_definition_row_version=definition.row_version, definition_recorded_at=now_utc())
         db.add(row)
     else:
         row.row_version += 1

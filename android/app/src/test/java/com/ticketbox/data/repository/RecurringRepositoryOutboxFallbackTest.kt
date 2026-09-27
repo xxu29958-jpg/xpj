@@ -118,6 +118,7 @@ class RecurringRepositoryOutboxFallbackTest {
         return Harness(
             repository = RecurringRepository(
                 apiProvider = provider,
+                sessionCoordinator = LocalLedgerSessionCoordinator(boundSettingsStore(), session.sessionStore, FakeExpenseDao(), outbox),
                 outbox = outbox,
                 createAdapter = adapters.adapter(RecurringItemCreateRequestDto::class.java),
                 updateAdapter = adapters.adapter(RecurringItemUpdateRequestDto::class.java),

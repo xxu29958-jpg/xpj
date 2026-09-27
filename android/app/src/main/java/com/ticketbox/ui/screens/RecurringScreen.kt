@@ -120,7 +120,7 @@ fun RecurringScreen(
         recurringOverviewSection(state, derived, callbacks)
         recurringRegistrySection(
             derived,
-            actions,
+            actions.copy(items = actions.items.copy(onOpenHistory = actions.items.onOpenHistory.takeIf { editorHost.editor == null })),
             callbacks,
             editEnabled = !state.manualSaveInFlight,
         )
@@ -158,6 +158,7 @@ data class RecurringItemActions(
     val onCreate: (RecurringItemDraft) -> Long,
     val onEdit: (RecurringItem, RecurringItemPatch) -> Long,
     val onOpenOccurrence: (RecurringItem) -> Unit = {},
+    val onOpenHistory: ((RecurringItem) -> Unit)? = null,
 )
 
 data class RecurringCandidateActions(

@@ -26,6 +26,11 @@ from app.services.money_projection_service import (
     project_recorded_amount,
     project_valuation_amount,
 )
+from app.services.recurring_history_service import (
+    ensure_recurring_history_baseline,
+    lock_recurring_item,
+    record_recurring_item_revision,
+)
 from app.services.spending_contract_service import (
     accounting_zone,
     calendar_month_bounds,
@@ -280,7 +285,17 @@ def get_recurring_item(db: Session, *, tenant_id: str, public_id: str) -> Recurr
     return item
 
 
-def pause_recurring_item(db: Session, *, tenant_id: str, public_id: str, expected_row_version: int) -> RecurringItem:
+def _commit_recurring_transition(db: Session, item: RecurringItem, *, change_kind: str,
+    actor_account_id: int | None) -> RecurringItem:
+    db.flush()
+    db.refresh(item)
+    record_recurring_item_revision(db, item, change_kind=change_kind, actor_account_id=actor_account_id)
+    db.commit()
+    return get_recurring_item(db, tenant_id=item.tenant_id, public_id=item.public_id)
+
+
+def pause_recurring_item(db: Session, *, tenant_id: str, public_id: str, expected_row_version: int,
+    actor_account_id: int | None = None) -> RecurringItem:
     """ADR-0038 PR-A: pause with optimistic concurrency.
 
     pause and resume are a state-machine toggle pair — stale pause arriving
@@ -289,6 +304,8 @@ def pause_recurring_item(db: Session, *, tenant_id: str, public_id: str, expecte
     Token check rejects the stale request.
     """
     resolve_write_capability(db)
+    item = lock_recurring_item(db, tenant_id=tenant_id, public_id=public_id)
+    ensure_recurring_history_baseline(db, item)
     now = now_utc()
     result = db.execute(
         update(RecurringItem)
@@ -305,8 +322,7 @@ def pause_recurring_item(db: Session, *, tenant_id: str, public_id: str, expecte
         )
     )
     if result.rowcount:
-        db.commit()
-        return get_recurring_item(db, tenant_id=tenant_id, public_id=public_id)
+        return _commit_recurring_transition(db, item, change_kind="pause", actor_account_id=actor_account_id)
     db.rollback()
     item = get_recurring_item(db, tenant_id=tenant_id, public_id=public_id)
     if item.status == "archived" or item.archived_at is not None:
@@ -318,10 +334,13 @@ def pause_recurring_item(db: Session, *, tenant_id: str, public_id: str, expecte
     raise AppError("state_conflict", status_code=409)
 
 
-def resume_recurring_item(db: Session, *, tenant_id: str, public_id: str, expected_row_version: int) -> RecurringItem:
+def resume_recurring_item(db: Session, *, tenant_id: str, public_id: str, expected_row_version: int,
+    actor_account_id: int | None = None) -> RecurringItem:
     """ADR-0038 PR-A: resume with optimistic concurrency. Same rationale
     as :func:`pause_recurring_item`."""
     resolve_write_capability(db)
+    item = lock_recurring_item(db, tenant_id=tenant_id, public_id=public_id)
+    ensure_recurring_history_baseline(db, item)
     now = now_utc()
     result = db.execute(
         update(RecurringItem)
@@ -338,8 +357,7 @@ def resume_recurring_item(db: Session, *, tenant_id: str, public_id: str, expect
         )
     )
     if result.rowcount:
-        db.commit()
-        return get_recurring_item(db, tenant_id=tenant_id, public_id=public_id)
+        return _commit_recurring_transition(db, item, change_kind="resume", actor_account_id=actor_account_id)
     db.rollback()
     item = get_recurring_item(db, tenant_id=tenant_id, public_id=public_id)
     if item.status == "archived" or item.archived_at is not None:
@@ -351,7 +369,8 @@ def resume_recurring_item(db: Session, *, tenant_id: str, public_id: str, expect
     raise AppError("state_conflict", status_code=409)
 
 
-def restore_recurring_item(db: Session, *, tenant_id: str, public_id: str, expected_row_version: int) -> RecurringItem:
+def restore_recurring_item(db: Session, *, tenant_id: str, public_id: str, expected_row_version: int,
+    actor_account_id: int | None = None) -> RecurringItem:
     """ADR-0051 recycle-bin restore: reactivate an archived recurring item.
 
     Inverse of :func:`archive_recurring_item` but OCC-gated like the
@@ -363,12 +382,13 @@ def restore_recurring_item(db: Session, *, tenant_id: str, public_id: str, expec
     a later, user-owned fact and must never be reported as a successful restore;
     stale tokens against archived or paused items are 409 ``state_conflict``.
     """
-    item = get_recurring_item(db, tenant_id=tenant_id, public_id=public_id)
+    item = lock_recurring_item(db, tenant_id=tenant_id, public_id=public_id)
     if item.status == "active" and item.archived_at is None:
         return item
     if item.status != "archived":
         raise AppError("state_conflict", status_code=409)
     resolve_write_capability(db)
+    ensure_recurring_history_baseline(db, item)
     now = now_utc()
     result = db.execute(
         update(RecurringItem)
@@ -385,8 +405,7 @@ def restore_recurring_item(db: Session, *, tenant_id: str, public_id: str, expec
         )
     )
     if result.rowcount:
-        db.commit()
-        return get_recurring_item(db, tenant_id=tenant_id, public_id=public_id)
+        return _commit_recurring_transition(db, item, change_kind="restore", actor_account_id=actor_account_id)
     db.rollback()
     current = get_recurring_item(db, tenant_id=tenant_id, public_id=public_id)
     if current.status == "active" and current.archived_at is None:
@@ -394,11 +413,13 @@ def restore_recurring_item(db: Session, *, tenant_id: str, public_id: str, expec
     raise AppError("state_conflict", status_code=409)
 
 
-def archive_recurring_item(db: Session, *, tenant_id: str, public_id: str) -> RecurringItem:
-    item = get_recurring_item(db, tenant_id=tenant_id, public_id=public_id)
+def archive_recurring_item(db: Session, *, tenant_id: str, public_id: str,
+    actor_account_id: int | None = None) -> RecurringItem:
+    item = lock_recurring_item(db, tenant_id=tenant_id, public_id=public_id)
     if item.status == "archived":
         return item
     resolve_write_capability(db)
+    ensure_recurring_history_baseline(db, item)
     now = now_utc()
     result = db.execute(
         update(RecurringItem)
@@ -413,7 +434,7 @@ def archive_recurring_item(db: Session, *, tenant_id: str, public_id: str) -> Re
         )
     )
     if result.rowcount:
-        db.commit()
+        return _commit_recurring_transition(db, item, change_kind="archive", actor_account_id=actor_account_id)
     else:
         db.rollback()
     return get_recurring_item(db, tenant_id=tenant_id, public_id=public_id)

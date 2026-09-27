@@ -232,6 +232,11 @@ private fun RecurringItemRow(
             androidx.compose.material3.TextButton(onClick = { actions.onOpenOccurrence(item) }) {
                 Text(stringResource(R.string.occurrence_open))
             }
+            actions.onOpenHistory?.let { open ->
+                androidx.compose.material3.TextButton(onClick = { open(item) }) {
+                    Text(stringResource(R.string.recurring_history_title))
+                }
+            }
             if (canModify) {
                 RecurringRowIconActions(item = item, capabilities = capabilities, actions = actions)
             }

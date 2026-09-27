@@ -8,9 +8,14 @@ import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.filterNotNull
+import retrofit2.HttpException
 import java.util.TimeZone
 
 interface RecurringQueryActions {
+    val readAccessDenials: Flow<SnapshotAccessDenial>
+    suspend fun history(binding: LogicalSessionBinding, publicId: String, beforeVersion: Long?):
+        Result<com.ticketbox.data.remote.dto.RecurringHistoryPageDto>
     fun canModifyLedger(): Boolean
     fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?>
     suspend fun items(
@@ -77,6 +82,7 @@ class RecurringRepository(
     createAdapter: JsonAdapter<RecurringItemCreateRequestDto>? = null,
     updateAdapter: JsonAdapter<RecurringItemUpdateRequestDto>? = null,
     occurrenceAdapter: JsonAdapter<RecurringOccurrencePayload>? = null,
+    private val sessionCoordinator: LocalLedgerSessionCoordinator,
 ) : RecurringActions,
     RecurringManualMutationActions by RecurringMutationClient(
         requestGuard = LedgerRequestGuard(apiProvider),
@@ -88,6 +94,22 @@ class RecurringRepository(
     ) {
     private val ledgerRequestGuard = LedgerRequestGuard(apiProvider)
     private val errorHandler = recurringErrorHandler(apiProvider)
+    override val readAccessDenials = sessionCoordinator.snapshotAccessDenials.filterNotNull()
+    override suspend fun history(binding: LogicalSessionBinding, publicId: String, beforeVersion: Long?) =
+        errorHandler.safeCall {
+            require(publicId.isNotBlank() && (beforeVersion == null || beforeVersion > 0)) { "固定支出历史范围不正确。" }
+            val bound = ledgerRequestGuard.bindExact(binding)
+            val ticket = sessionCoordinator.beginSnapshotRead()
+            val page = try {
+                bound.call { it.recurringHistory(publicId, 50, beforeVersion) }
+            } catch (error: HttpException) {
+                val failure = errorHandler.httpFailure(error)
+                sessionCoordinator.rejectSnapshotAccess(bound, logicalBindingAdapter.toJson(binding), failure)
+                throw failure
+            }
+            page.validateHistory(binding, publicId, beforeVersion)
+            sessionCoordinator.acceptSnapshotRead(ticket, bound, fromCache = false) { page }
+        }
     val occurrences: RecurringOccurrenceActions by lazy {
         RecurringOccurrenceRepository(apiProvider, requireNotNull(outbox), requireNotNull(occurrenceAdapter))
     }
