@@ -25,10 +25,15 @@ import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.BudgetCategoryDto
 import com.ticketbox.data.remote.dto.BudgetMonthlyDto
 import com.ticketbox.data.remote.dto.LedgerCalendarDto
+import com.ticketbox.data.remote.dto.DashboardCardDto
+import com.ticketbox.data.remote.dto.DashboardCardsResponseDto
+import com.ticketbox.data.remote.dto.MonthsDto
 import com.ticketbox.data.repository.newTaskMonth
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.AppThemeMode
 import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.BudgetMonthlyUpdate
+import com.ticketbox.domain.model.DASHBOARD_CARD_BUDGET
 import com.ticketbox.ui.theme.TicketboxTheme
 import java.net.ConnectException
 import java.util.concurrent.CopyOnWriteArrayList
@@ -64,7 +69,14 @@ class BudgetOfflineReadingConnectedTest {
             calendars.refresh(requireNotNull(calendars.currentBinding())).getOrThrow()
             calendars.newTaskMonth()
         }
-        runBlocking { harness.saveFailedCorrection() }
+        transport.uiMonth = month
+        runBlocking {
+            harness.saveFailedCorrection()
+            val binding = requireNotNull(calendars.currentBinding())
+            val id = harness.fixture.graph.budgetRepository.enqueueSave(binding, month,
+                BudgetMonthlyUpdate("JPY", 7, 1200)).getOrThrow()
+            harness.fixture.outbox.markFailed(id, "budget_delivery_unknown")
+        }
         val originalIntent = harness.fixture.stored()
         showPlans()
         compose.waitUntil(5_000) { transport.reads.contains(month) }
@@ -95,6 +107,15 @@ class BudgetOfflineReadingConnectedTest {
         compose.onNodeWithTag("budget-read-source").performScrollTo().assertIsDisplayed()
         assertNotNull("The online read must expose its actual read time", originalReadTime)
         assertEquals("Reopening must not manufacture a new fetch time", originalReadTime, readTime())
+        assertTrue(sourceText().contains("离线"))
+
+        compose.runOnIdle { harness.shell.selectPrimaryDomain(PrimaryDomain.Insights.key) }
+        compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("overview-module-budget"))
+            .fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("overview-module-budget").performScrollTo().assertIsDisplayed()
+        waitForAmount()
+        compose.onNodeWithTag("budget-read-source").performScrollTo().assertIsDisplayed()
+        assertEquals("Insights must identify the same saved query", originalReadTime, readTime())
         assertTrue(sourceText().contains("离线"))
         assertEquals(originalIntent, harness.fixture.stored())
     }
@@ -150,9 +171,15 @@ internal class OfflineBudgetTransport {
     @Volatile var offline = false
     @Volatile var denied = false
     @Volatile var beforeNextRead: (suspend () -> Unit)? = null
+    var uiMonth: String? = null
     var original = offlineBudget()
 
     fun wrap(delegate: ApiService): ApiService = object : ApiService by delegate {
+        override suspend fun months(timezone: String?) = MonthsDto(listOf(uiMonth ?: original.month))
+        override suspend fun monthlyStats(month: String?, tag: String?, timezone: String?, homeCurrencyCode: String?) =
+            delegate.monthlyStats(month, tag, timezone, homeCurrencyCode).copy(month = month ?: uiMonth ?: original.month)
+        override suspend fun dashboardCards(surface: String) = DashboardCardsResponseDto(surface,
+            listOf(DashboardCardDto(DASHBOARD_CARD_BUDGET, "预算", true, 0)))
         override suspend fun runtimeCompatibility() = delegate.runtimeCompatibility().let {
             it.copy(capabilities = it.capabilities.copy(accountingTimeInputVersion = 1))
         }

@@ -46,7 +46,8 @@ Status: direct tests prepared against existing production APIs; cloud RED pendin
 Production implementation, after-impact closure and qualification remain open.
 This reuses the unmerged 980f3a475 preparation, rebased conceptually on the current
 product and calendar owners; it does not inherit test qualification. Direct follow-up
-coverage still includes the actual Insights card source/time, preserved budget-command
-bytes and accepted-save invalidation. Same-ledger account/device isolation and a delayed
-pre-refusal GET are now specified alongside the original Room tests, but remain unrun.
+coverage still includes accepted-save invalidation. The original route journey now
+continues into the actual Insights budget card and retains both budget and expense
+original commands. Same-ledger account/device isolation and a delayed pre-refusal GET
+are specified alongside the original Room tests. All of this native execution remains unrun.
 These belong to this budget task, not to #436's merge gates.
