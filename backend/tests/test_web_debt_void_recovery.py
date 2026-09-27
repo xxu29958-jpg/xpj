@@ -199,3 +199,43 @@ def test_get_read_failure_mounts_all_original_debt_write_recovery_forms(monkeypa
         assert forms[action]['debt_public_id'] == 'debt-one'
     assert body.count('data-repayment-container') == 3
     assert body.count('data-repayment-can-recover="true"') == 3
+
+
+@pytest.mark.parametrize("outcome", ["state_conflict", "debt_void_original_requires_review", "dependency_unavailable"])
+@pytest.mark.parametrize("target_visible", [True, False])
+def test_repayment_void_response_has_one_owner_for_the_original_command(monkeypatch, outcome, target_visible):
+    from html.parser import HTMLParser
+
+    import app.services.debt_service as service
+
+    request, db, values, action = _void_setup(monkeypatch, "repayment-void")
+    if not target_visible:
+        listing = service.list_debt_activity(None)
+        monkeypatch.setattr(service, "list_debt_activity", lambda *a, **kw:
+            listing.model_copy(update={"items": [item for item in listing.items if item.repayment is None]}))
+    def fault(*a, **kw):
+        assert kw["idempotency_key"] == values["idempotency_key"]
+        assert kw["payload"].expected_row_version == 7
+        raise AppError(outcome, status_code=503 if outcome == "dependency_unavailable" else 409)
+    monkeypatch.setattr(commands, "void_repayment_idempotently", fault)
+    response = action(request, public_id="debt-one", db=db, _local=None, **values)
+
+    class Forms(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.forms = []
+        def handle_starttag(self, tag, attrs):
+            attrs = dict(attrs)
+            if tag == "form" and attrs.get("data-repayment-kind") == "repayment-void":
+                self.forms.append(attrs)
+    parsed = Forms()
+    parsed.feed(response.body.decode())
+    assert len(parsed.forms) == 1, "the original local draft/lease must have one usable response owner"
+    owner = parsed.forms[0]
+    assert owner["data-repayment-result"] == ("accepted-review" if outcome == "debt_void_original_requires_review" else "blocked" if outcome == "state_conflict" else "submitted")
+    assert owner["data-void-rejected"] == ("true" if outcome == "state_conflict" else "false")
+    returned = hidden_post_forms(response.body.decode())
+    original = next(fields for url, fields in returned.items() if "/repayment-voids" in url)
+    for name in values.keys() - {"reason"}:
+        assert original[name] == values[name]
+    assert values["reason"] in response.body.decode()

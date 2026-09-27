@@ -186,7 +186,9 @@
 
 {% if not debt.is_member %}
 {% include '_debt_void_form.html' %}
+{% if repayment_void_recovery %}
 {% with void_form = repayment_void_recovery %}{% include '_debt_void_form.html' %}{% endwith %}
+{% endif %}
 {% endif %}
 
 {% if can_write and debt_open and action_keys and (not debt.is_member or viewer_is_debtor == false) %}

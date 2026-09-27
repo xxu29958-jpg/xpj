@@ -44,12 +44,11 @@ def add_void_detail_context(request, db, *, ctx, debt, selected_id, public_id,
         **debt_feedback)
     repayments = [row["repayment"] for row in ctx["activity"]["rows"] if row["kind"] == "repayment"]
     target_on_page = any(fact["public_id"] == target for fact in repayments)
-    recovery_feedback = {"ack": repayment_feedback.get("ack")} if target_on_page else repayment_feedback
-    ctx["repayment_void_recovery"] = void_context(request, db, **base,
-        kind="repayment-void", **recovery_feedback)
+    ctx["repayment_void_recovery"] = None if target_on_page else void_context(request, db, **base,
+        kind="repayment-void", **repayment_feedback)
     can_void_repayment = writable and debt.status != "voided"
     for fact in repayments:
-        row_feedback = {**repayment_feedback, "ack": None} if fact["public_id"] == target else {}
+        row_feedback = repayment_feedback if fact["public_id"] == target else {}
         fact["void_form"] = void_context(request, db, **base,
             kind="repayment-void", expected=str(debt.row_version), target=fact["public_id"],
             can_create=can_void_repayment and not fact["is_voided"], **row_feedback)
