@@ -20,6 +20,13 @@ another merely by starting later; an older response must not downgrade a newer
 stored query. Access denial must withdraw every retained budget display for the
 same binding, even when only one screen issued the refused request.
 
+A verified save remains accepted if local query cleanup fails. Persist its original
+receipt and a local read-recovery marker in the existing Done update; do not expose
+it as a failed financial command or resend it. Keep that marker through pruning and
+Room recreation. Both Budget and global sync show the saved intent and offer read
+recovery, including for a reader. The same query owner repairs the local projection
+before another read; a persistent local failure cannot revive a known-stale snapshot.
+
 ## Impact closure before construction
 
 | Boundary | Entry, consumer, old exit and direct producer |
@@ -27,7 +34,7 @@ same binding, even when only one screen issued the refused request.
 | Budget queries | BudgetActions/BudgetRepository and Graph; exact binding, month and timezone; complete BudgetMonthlyDto snapshot, no local financial recomputation |
 | User displays | MainNavGraph → PlanRoute → BudgetRoute/BudgetViewModel; StatsBudgetViewModel → StatsUiState → actual overview budget card. Preserve month navigation, raw drafts/OCC and configured/unknown states |
 | Background consumer | NotificationRuntimeGraph → BudgetOverspendChecker must use a fresh query. Existing fresh entry stays explicit; a stored overspend snapshot cannot trigger a new notification |
-| Accepted save | SaveMonthlyBudgetDispatcher verified original receipt, AppContainer wiring, BudgetSaveRepository observation and both sync surfaces. Invalidate known-stale reads before publishing Done, without changing bytes/key/OCC or claiming an unaccepted save |
+| Accepted save | SaveMonthlyBudgetDispatcher verified original receipt, AppContainer wiring, BudgetSaveRepository observation and both sync surfaces. Invalidate known-stale reads, or persist Done/receipt/local read-recovery marker together if cleanup fails; never change bytes/key/OCC or send an accepted command again |
 | Refusal/recovery | Only transport unavailability can restore a snapshot. HTTP 401/403 clears affected read displays and binding snapshots; late requests cannot refill after clear/refusal/binding change. Malformed responses and protocol refusal remain failures |
 | Storage/producers | The existing stats_projection_cache can hold complete BudgetMonthlyDto reads, identified by kind/binding/month/timezone; reuse it if it meets the current requirements instead of creating a parallel cache owner. Existing cleanup already owns binding snapshots. Budget/Stats VM, notification and save-dispatch producers migrate together; Room tests preserve original intents |
 
@@ -62,9 +69,11 @@ BudgetRepository now owns a complete ReadSnapshot backed by the existing stats p
 table. Plans and Budget share BudgetViewModel; Insights propagates the same source/time
 only for the matching binding and month. Both visible consumers retire known old queries
 on accepted original saves and preserve newer drafts. NotificationRuntimeGraph explicitly
-requires a fresh query. Before Done, the verified dispatcher must invalidate older
+requires a fresh query. The verified dispatcher attempts to invalidate older
 timezone projections for the original month while preserving already-read accepted
-or newer revisions; it must not seed a query or alter the original command.
+or newer revisions. Failed local cleanup remains a recoverable read task after Done;
+recovery must not seed a query or alter the original command. It uses the existing
+Outbox binding boundary and the same reader, with no reverse coordinator lock.
 The old network-only read exit has been replaced in every direct consumer. No new table,
 writer, protocol, notification framework or Windows lifecycle work is introduced.
 
@@ -88,3 +97,13 @@ incorrectly expected a standalone amount instead of the actual labelled remainin
 amount; the assertion now uses that complete label and still requires the amount,
 source, original time and unchanged intent. That route passed on 56dc9becf and
 produced all three previews, including the offline Insights remaining amount.
+
+The following bounded review found that a local cleanup exception could mislabel a
+verified save as unverified. Test-only db8049627 adds dispatcher, real Room failure,
+restart and both recovery-entrance counterexamples. A real SQLite DELETE trigger
+keeps the old query present while cleanup fails; assertions require accepted Done,
+durable receipt/marker, no offline resurrection, and recovery without another PUT.
+The implementation also keeps Done persistence through cancellation after receipt
+verification. 59ee047eb's actual unit and native failures exposed the nullable
+generation comparison using an Int fallback; the fix uses Long zero throughout
+and retains the original unconfigured-month and first-use assertions.

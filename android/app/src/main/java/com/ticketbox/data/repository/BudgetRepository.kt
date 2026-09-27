@@ -1,7 +1,6 @@
 package com.ticketbox.data.repository
 
 import com.ticketbox.OutboxAdapterGraph
-import com.ticketbox.data.local.ExpenseDao
 import com.ticketbox.data.local.MonthlyArrangementCacheDao
 import com.ticketbox.domain.model.BudgetAdviceResult
 import com.ticketbox.domain.model.BudgetMonthly
@@ -51,7 +50,7 @@ data class LedgerAccessState(
     val canModify: Boolean get() = ledgerRoleCanModify(role)
 }
 
-internal data class BudgetLocalStorage(val arrangementDao: MonthlyArrangementCacheDao, val expenseDao: ExpenseDao)
+internal data class BudgetLocalStorage(val arrangementDao: MonthlyArrangementCacheDao, val queries: BudgetQueryReader)
 
 class BudgetRepository internal constructor(
     private val apiProvider: ApiServiceProvider,
@@ -61,14 +60,15 @@ class BudgetRepository internal constructor(
     sessionCoordinator: LocalLedgerSessionCoordinator,
     internal val adviceCallStore: BudgetAdviceCallStore = BudgetAdviceCallStore(LedgerRequestGuard(apiProvider), budgetNetworkErrors(apiProvider)),
 ) : BudgetActions, BudgetHistoryReader,
-    BudgetSaveActions by BudgetSaveRepository(apiProvider, outbox, adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter),
+    BudgetSaveActions by BudgetSaveRepository(apiProvider, outbox, adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter,
+        localStorage.queries::read),
     ManualRateActions by ManualExchangeRateRepository(apiProvider, outbox, adapters.manualRateAdapter, adapters.manualRateReceiptAdapter),
     MonthlyArrangementActions by MonthlyArrangementRepository(apiProvider, outbox, localStorage.arrangementDao,
         adapters, adviceCallStore::noteAdviceInputSnapshot, sessionCoordinator),
     BudgetAdviceInputsActions by BudgetAdviceInputsRepository(apiProvider, adviceCallStore, budgetNetworkErrors(apiProvider)) {
     private val errorHandler = budgetNetworkErrors(apiProvider)
     private val ledgerRequestGuard = LedgerRequestGuard(apiProvider)
-    private val budgetQueries = BudgetQueryReader(apiProvider, localStorage.expenseDao, sessionCoordinator)
+    private val budgetQueries = localStorage.queries
     private val readAccessDenials = sessionCoordinator.snapshotAccessDenials.filterNotNull()
     internal val invalidateBudgetReadsAfterDelivery: suspend (OutboxRow, Long) -> Unit = budgetQueries::invalidate
 

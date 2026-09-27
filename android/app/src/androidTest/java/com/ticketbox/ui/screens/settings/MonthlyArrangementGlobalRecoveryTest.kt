@@ -47,7 +47,7 @@ class MonthlyArrangementGlobalRecoveryTest {
             status = OutboxStatus(0, emptyList(), listOf(pending.row)), arrangements = mapOf(pending.row.id to pending))
         compose.setContent { TicketboxTheme(skin = AppSkin.Default) {
             CompositionLocalProvider(LocalCurrencyDisplay provides CurrencyDisplay(CurrencyCode.CNY)) {
-                SyncStatusScreenContent(state, SyncStatusActions(onOpenExpense = {}, onRefreshExpense = {},
+                SyncStatusScreenContent(state, SyncStatusActions(onOpenExpense = {}, onRefreshAcceptedResult = {},
                     onKeepMine = { error("No automatic overwrite") }, onDropMine = { error("No automatic stop") },
                     onRetry = { error("No automatic retry") }, onDropFailed = { error("No automatic stop") },
                     onClearQuarantined = {}, onOpenBudget = {}, onOpenRecurring = {}, onOpenGoalCreation = {},

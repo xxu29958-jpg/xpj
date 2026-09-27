@@ -56,7 +56,7 @@ fun SyncStatusScreen(
     val actions = remember(viewModel, navigation) {
         SyncStatusActions(
             onOpenExpense = navigation.onOpenExpense,
-            onRefreshExpense = viewModel::refreshExpense,
+            onRefreshAcceptedResult = viewModel::refreshAcceptedResult,
             onKeepMine = viewModel::keepMine,
             onDropMine = viewModel::dropMine,
             onRetry = viewModel::retry,
@@ -94,7 +94,7 @@ data class SyncStatusNavigation(
 /** Row callbacks grouped to keep the content API small and testable. */
 internal data class SyncStatusActions(
     val onOpenExpense: (Long) -> Unit,
-    val onRefreshExpense: (OutboxRow) -> Unit,
+    val onRefreshAcceptedResult: (OutboxRow) -> Unit,
     val onKeepMine: (OutboxRow) -> Unit,
     val onDropMine: (OutboxRow) -> Unit,
     val onRetry: (OutboxRow) -> Unit,
@@ -274,12 +274,20 @@ private fun SyncStatusExpenseRecoverySection(state: OutboxStatusUiState, actions
     if (rows.isEmpty()) return
     SettingsSection(title = stringResource(R.string.sync_status_refresh_title), icon = Icons.Filled.RestartAlt) {
         rows.forEach { row ->
+            val budget = state.budgetSaves[row.id]
             SettingsOpenPanel(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
                 Text(stringResource(syncStatusMutationLabelResources.getValue(row.type)), style = MaterialTheme.typography.titleSmall)
-                Text(stringResource(R.string.sync_status_refresh_required), style = MaterialTheme.typography.bodyMedium)
-                AppOutlinedButton(onClick = { actions.onRefreshExpense(row) },
+                Text(stringResource(if (budget != null) R.string.budget_saved_read_pending else R.string.sync_status_refresh_required),
+                    style = MaterialTheme.typography.bodyMedium)
+                budget?.let { com.ticketbox.ui.screens.budget.BudgetSaveIntentSummary(it) }
+                AppOutlinedButton(onClick = { actions.onRefreshAcceptedResult(row) },
                     options = AppOutlinedButtonOptions(enabled = state.busyRowId == null)) {
-                    Text(stringResource(R.string.sync_status_refresh_expense))
+                    Text(stringResource(if (budget != null) R.string.budget_read_recover else R.string.sync_status_refresh_expense))
+                }
+                budget?.intent?.takeIf { budget.hasSupportedIntent }?.let { intent ->
+                    TextButton(onClick = { actions.onOpenBudget(intent.month) }) {
+                        Text(stringResource(R.string.budget_save_open_month))
+                    }
                 }
             }
         }

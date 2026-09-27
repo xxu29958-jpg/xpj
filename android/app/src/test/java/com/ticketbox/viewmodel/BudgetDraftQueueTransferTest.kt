@@ -149,7 +149,7 @@ class BudgetDraftQueueTransferTest {
         val draft = editor.uiState.value.form
         val accepted = budget(totalAmountCents = 1200).copy(homeCurrencyCode = "JPY", rowVersion = 2)
         val original = pendingBudget().let { it.copy(row = it.row.copy(status = PendingMutationStatus.Done,
-            lastError = "budget_read_refresh_required"), receipt = accepted) }
+            lastError = "budget_read_refresh_required", receiptJson = "{\"row_version\":2}"), receipt = accepted) }
         owner.monthlyBudgetResponder = { Result.failure(java.io.IOException("Local read recovery unavailable")) }
         owner.commands.saves.value = listOf(original)
         advanceUntilIdle()

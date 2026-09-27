@@ -90,10 +90,14 @@ class BudgetGlobalRecoveryTest {
         compose.runOnIdle { assertEquals(accepted, recovered) }
     }
 
-    private fun acceptedReadPending() = pending().let { it.copy(
-        row = it.row.copy(status = PendingMutationStatus.Done, lastError = "budget_read_refresh_required"),
-        receipt = offlineBudget().copy(rowVersion = 8).toDomain(),
-    ) }
+    private fun acceptedReadPending(): PendingBudgetSave {
+        val receipt = offlineBudget().copy(rowVersion = 8)
+        return pending().let { it.copy(
+            row = it.row.copy(status = PendingMutationStatus.Done, lastError = "budget_read_refresh_required",
+                receiptJson = com.ticketbox.OutboxAdapterGraph().budgetReceiptAdapter.toJson(receipt)),
+            receipt = receipt.toDomain(),
+        ) }
+    }
 
     private fun show(pending: PendingBudgetSave, onOpenBudget: (String) -> Unit = {}, onRead: (OutboxRow) -> Unit = {}) {
         val binding = LogicalSessionBinding("https://example.test", "owner", "owner", "session", "binding")
@@ -104,7 +108,7 @@ class BudgetGlobalRecoveryTest {
             budgetSaves = mapOf(pending.row.id to pending))
         compose.setContent { TicketboxTheme(skin = AppSkin.Default) {
             CompositionLocalProvider(LocalCurrencyDisplay provides CurrencyDisplay(CurrencyCode.CNY)) {
-                SyncStatusScreenContent(state, SyncStatusActions(onRefreshExpense = onRead, onRepairCorrectionRate = { _, _ -> }, onOpenRateSubmission = {}, onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {},
+                SyncStatusScreenContent(state, SyncStatusActions(onRefreshAcceptedResult = onRead, onRepairCorrectionRate = { _, _ -> }, onOpenRateSubmission = {}, onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {},
                     onOpenExpense = {}, onKeepMine = { error("Unexpected write") },
                     onDropMine = { error("Unexpected drop") }, onRetry = { error("Unexpected retry") },
                     onDropFailed = { error("Unexpected drop") }, onClearQuarantined = {},

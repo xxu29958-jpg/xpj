@@ -33,9 +33,13 @@ import java.io.IOException
 import java.util.TimeZone
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.yield
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.After
@@ -358,6 +362,9 @@ class BudgetOfflineSnapshotConnectedTest {
         assertEquals(PendingMutationStatus.Done.wireValue, accepted["status"])
         assertEquals("budget_read_refresh_required", accepted["lastError"])
         assertEquals(receipt, adapters.budgetReceiptAdapter.fromJson(requireNotNull(accepted["receiptJson"])))
+        val status = fixture.outbox.observeStatus().first()
+        assertTrue(status.failed.isEmpty())
+        assertEquals(accepted["id"], status.refreshRequired.single().id.toString())
         assertEquals(0, fixture.pendingDao.deleteResolvedBeforeCutoff("9999-01-01T00:00:00.000Z"))
         assertEquals(0, engine.drainOnce().attempted)
         transport.offline = true
@@ -365,10 +372,15 @@ class BudgetOfflineSnapshotConnectedTest {
             fixture.reopen().budgetRepository.monthlyBudget("2026-09").isFailure)
         assertEquals(accepted, fixture.stored().single())
         fixture.blockBudgetReadDeletion(false)
+        fixture.role("viewer")
+        val resumed = fixture.graph.budgetRepository
+        val originalSave = resumed.observeSaves(binding).first().single()
         assertTrue("The receipt cannot seed a query when only local cleanup has recovered",
-            fixture.graph.budgetRepository.monthlyBudget("2026-09").isFailure)
+            resumed.recoverSave(binding, originalSave, false).isFailure)
         val recovered = fixture.stored().single()
         assertNull(recovered["lastError"])
+        assertTrue("A reader can finish local recovery without acquiring write permission",
+            fixture.outbox.observeStatus().first().refreshRequired.isEmpty())
         for (field in listOf("id", "status", "payload", "idempotencyKey", "expectedRowVersion", "ownerKey", "ledgerId", "serverUrl", "receiptJson")) {
             assertEquals("Local recovery must preserve original $field", accepted[field], recovered[field])
         }
@@ -380,6 +392,35 @@ class BudgetOfflineSnapshotConnectedTest {
         assertEquals(fresh.fetchedAt, saved.fetchedAt)
         assertTrue(saved.fromCache)
         assertEquals("Read recovery must never resend an accepted command", 1, writes)
+    }
+
+    @Test fun cancellationAfterVerifiedAcceptanceKeepsDoneAndTheOriginalReceipt() = runBlocking {
+        val repository = fixture.reopen().budgetRepository
+        val binding = requireNotNull(fixture.graph.expenseRepository.captureDeferredLedgerBinding())
+        repository.enqueueSave(binding, "2026-09", BudgetMonthlyUpdate("JPY", 7, 2400)).getOrThrow()
+        val receipt = offlineBudget().copy(rowVersion = 8, totalAmountCents = 2400,
+            excludedCategories = emptyList(), categoryBudgets = emptyList())
+        var writes = 0
+        val api = object : ApiService by transport.service {
+            override suspend fun updateMonthlyBudget(month: String, request: BudgetMonthlyUpdateRequestDto,
+                timezone: String?, idempotencyKey: String?): BudgetMonthlyDto {
+                writes++
+                return receipt
+            }
+        }
+        val adapters = OutboxAdapterGraph()
+        val engine = OutboxDrainEngine(fixture.outbox, listOf(SaveMonthlyBudgetDispatcher({ api },
+            adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter, onAccepted = { _, _ ->
+                currentCoroutineContext().cancel()
+                yield()
+            })), now = fixture.clock::millis)
+        launch { engine.drainOnce() }.join()
+        val accepted = fixture.stored().single()
+        assertEquals(PendingMutationStatus.Done.wireValue, accepted["status"])
+        assertEquals(receipt, adapters.budgetReceiptAdapter.fromJson(requireNotNull(accepted["receiptJson"])))
+        assertEquals("budget_read_refresh_required", accepted["lastError"])
+        assertEquals(0, engine.drainOnce().attempted)
+        assertEquals(1, writes)
     }
 
     @Test fun independentReadsSurviveALaterFailureAndLateOlderSuccessCannotDowngradeRoom() = runBlocking {

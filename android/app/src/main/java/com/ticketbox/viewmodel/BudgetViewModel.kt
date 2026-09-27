@@ -239,6 +239,10 @@ class BudgetViewModel(
     }
 
     fun recoverSave(pending: PendingBudgetSave, drop: Boolean) {
+        if (pending.requiresReadRefresh) {
+            if (!drop && _uiState.value.saves.any { it.row.id == pending.row.id }) refresh()
+            return
+        }
         val binding = activeBinding ?: return
         val generation = requestGeneration
         val month = _uiState.value.month

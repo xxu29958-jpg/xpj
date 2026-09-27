@@ -148,6 +148,13 @@ interface PendingMutationDao {
     """)
     suspend fun clearExpenseRefresh(id: Long, expectedError: String): Int
 
+    @Query("""
+        UPDATE pending_mutations SET lastError = NULL
+        WHERE id = :id AND status = 'done' AND type = 'save_monthly_budget'
+          AND lastError = 'budget_read_refresh_required' AND receiptJson = :receiptJson
+    """)
+    suspend fun clearBudgetReadRefresh(id: Long, receiptJson: String): Int
+
     @Query(
         """
         UPDATE pending_mutations
@@ -753,7 +760,8 @@ interface PendingMutationDao {
         WHERE status = :doneStatus
           AND completedAt IS NOT NULL
           AND completedAt < :cutoffIso
-          AND (lastError IS NULL OR lastError NOT GLOB 'correction_refresh_required:*')
+          AND (lastError IS NULL OR (lastError NOT GLOB 'correction_refresh_required:*'
+              AND lastError != 'budget_read_refresh_required'))
         """,
     )
     suspend fun deleteResolvedBefore(

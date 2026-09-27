@@ -17,6 +17,7 @@ internal class BudgetQueryReader(
     apiProvider: ApiServiceProvider,
     private val dao: ExpenseDao,
     private val coordinator: LocalLedgerSessionCoordinator,
+    private val outbox: OutboxRepository,
 ) {
     private val guard = LedgerRequestGuard(apiProvider)
     private val errors = NetworkErrorHandler({ apiProvider.currentSession()?.serverUrl }, "Budget",
@@ -40,11 +41,11 @@ internal class BudgetQueryReader(
         val month = row.targetId.removePrefix("monthly_budget:")
         mutex.withLock {
             val monthKey = "$bindingKey|$month"
-            val minimum = maxOf(minimumRevisions[monthKey] ?: 0, acceptedRevision)
+            val minimum = maxOf(minimumRevisions[monthKey] ?: 0L, acceptedRevision)
             minimumRevisions[monthKey] = minimum
-            saveGenerations[monthKey] = (saveGenerations[monthKey] ?: 0) + 1
+            saveGenerations[monthKey] = (saveGenerations[monthKey] ?: 0L) + 1
             dao.budgetSnapshotsForMonth(bindingKey, month).forEach { saved ->
-                val revision = adapter.fromJson(saved.responseJson)?.rowVersion ?: 0
+                val revision = adapter.fromJson(saved.responseJson)?.rowVersion ?: 0L
                 if (revision < minimum) dao.deleteStatsProjection(saved)
             }
         }
@@ -56,9 +57,10 @@ internal class BudgetQueryReader(
         ZoneId.of(timezone)
         val binding = expectedBinding ?: requireNotNull(guard.captureLogicalBinding()) { "请重新绑定账本。" }
         val bound = guard.bindExact(binding)
+        recoverReadRefresh(bound, cleanMonth)
         val bindingKey = bindingAdapter.toJson(binding)
         val ticket = coordinator.beginSnapshotRead()
-        val saveGeneration = mutex.withLock { saveGenerations["$bindingKey|$cleanMonth"] ?: 0 }
+        val saveGeneration = mutex.withLock { saveGenerations["$bindingKey|$cleanMonth"] ?: 0L }
         val wire = try {
             bound.call { it.monthlyBudget(cleanMonth, timezone) }
         } catch (error: HttpException) {
@@ -88,6 +90,16 @@ internal class BudgetQueryReader(
         }
     }
 
+    private suspend fun recoverReadRefresh(bound: BoundLedgerRequest, month: String) {
+        // The binding lease covers cleanup and compare-clear; cleanup never enters the coordinator.
+        outbox.recoverBudgetReadRefresh(bound, month) { row ->
+            val receipt = requireNotNull(adapter.fromJson(requireNotNull(row.receiptJson)))
+            require(receipt.configured && receipt.ledgerId == row.ledgerId && receipt.month == month)
+            val revision = requireNotNull(receipt.rowVersion).also { require(it > 0) }
+            invalidate(row, revision)
+        }
+    }
+
     private suspend fun acceptWire(wire: BudgetMonthlyDto, binding: LogicalSessionBinding,
         timezone: String, ticket: SnapshotReadTicket, saveGeneration: Long): ReadSnapshot<BudgetMonthly> {
         val bindingKey = bindingAdapter.toJson(binding)
@@ -99,7 +111,7 @@ internal class BudgetQueryReader(
             validate(cached, binding, wire.month)
             val savedRevision = cached.rowVersion?.takeIf { it > 0 }
             val wireRevision = wire.rowVersion?.takeIf { it > 0 }
-            val newerRead = (latestAcceptedReads[cacheKey] ?: 0) > ticket.sequence
+            val newerRead = (latestAcceptedReads[cacheKey] ?: 0L) > ticket.sequence
             val newerRevision = savedRevision != null && wireRevision != null && savedRevision > wireRevision
             val useSequence = savedRevision == null || wireRevision == null || savedRevision == wireRevision
             if (newerRevision || useSequence && newerRead) {
@@ -116,8 +128,8 @@ internal class BudgetQueryReader(
     private fun requireAcceptedRevision(bindingKey: String, wire: BudgetMonthlyDto, saveGeneration: Long? = null) {
         val monthKey = "$bindingKey|${wire.month}"
         val revision = wire.rowVersion?.takeIf { it > 0 }
-        val allowed = if (revision != null) revision >= (minimumRevisions[monthKey] ?: 0)
-            else saveGeneration == null || saveGeneration == (saveGenerations[monthKey] ?: 0)
+        val allowed = if (revision != null) revision >= (minimumRevisions[monthKey] ?: 0L)
+            else saveGeneration == null || saveGeneration == (saveGenerations[monthKey] ?: 0L)
         check(allowed) {
             "预算已保存更新，请重新读取。"
         }

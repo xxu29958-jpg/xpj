@@ -29,6 +29,7 @@ class BudgetSaveRepository(
     private val outbox: OutboxRepository,
     private val saveAdapter: JsonAdapter<BudgetSavePayload>,
     private val receiptAdapter: JsonAdapter<BudgetMonthlyDto>,
+    private val recoverRead: suspend (String, String, LogicalSessionBinding?, Boolean) -> Result<ReadSnapshot<com.ticketbox.domain.model.BudgetMonthly>>,
 ) : BudgetSaveActions {
     private val ledgerRequestGuard = LedgerRequestGuard(apiProvider)
     private val errorHandler = NetworkErrorHandler(
@@ -57,6 +58,12 @@ class BudgetSaveRepository(
     override suspend fun recoverSave(expectedBinding: LogicalSessionBinding, pending: PendingBudgetSave, drop: Boolean): Result<Unit> = errorHandler.safeCall {
         val bound = ledgerRequestGuard.bindExact(expectedBinding)
         val original = checkNotNull(describeSave(pending.row)) { "原预算提交不属于当前连接，请重新核对。" }
+        if (original.requiresReadRefresh) {
+            check(!drop) { "预算已保存，请保留回执并刷新读取。" }
+            val intent = requireNotNull(original.intent) { "无法确认原预算月份，请保留记录并核对。" }
+            recoverRead(intent.month, intent.timezone, expectedBinding, false).getOrThrow()
+            return@safeCall Unit
+        }
         check(drop || ledgerRoleCanModify(apiProvider.currentLedgerRole())) { "当前角色为只读，无法修改账本。" }
         check(drop || original.canRetry) {
             "无法确认原预算提交的格式，请保留记录并核对。"

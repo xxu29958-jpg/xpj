@@ -32,8 +32,15 @@ class SaveMonthlyBudgetDispatcher(
             if (!receipt.confirms(row, payload.month, request)) {
                 DispatchResult.Failure(BUDGET_SAVE_UNVERIFIED)
             } else {
-                onAccepted(row, requireNotNull(receipt.rowVersion))
-                DispatchResult.Success(receiptJson = receiptAdapter.toJson(receipt))
+                val receiptJson = receiptAdapter.toJson(receipt)
+                val refreshRequired = try {
+                    onAccepted(row, requireNotNull(receipt.rowVersion))
+                    false
+                } catch (_: Exception) {
+                    // Verified acceptance is final; only local projection repair remains.
+                    true
+                }
+                DispatchResult.Success(receiptJson = receiptJson, budgetReadRefreshRequired = refreshRequired)
             }
         } catch (error: HttpException) {
             // A month without a budget returns an unconfigured response, never 404.

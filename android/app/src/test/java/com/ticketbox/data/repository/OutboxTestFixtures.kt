@@ -9,8 +9,9 @@ internal fun testBudgetRepository(provider: ApiServiceProvider,
         bindingProvider = { provider.currentSession().toOutboxBinding() })): BudgetRepository {
     val adapters = com.ticketbox.OutboxAdapterGraph()
     val expenseDao = FakeExpenseDao()
-    return BudgetRepository(provider, outbox, adapters, BudgetLocalStorage(FakeMonthlyArrangementCacheDao(), expenseDao),
-        testSnapshotCoordinator(provider, outbox, expenseDao))
+    val coordinator = testSnapshotCoordinator(provider, outbox, expenseDao)
+    return BudgetRepository(provider, outbox, adapters, BudgetLocalStorage(FakeMonthlyArrangementCacheDao(),
+        BudgetQueryReader(provider, expenseDao, coordinator, outbox)), coordinator)
 }
 
 internal fun testSnapshotCoordinator(provider: ApiServiceProvider, outbox: OutboxRepository,

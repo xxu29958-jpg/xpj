@@ -464,7 +464,8 @@ class FakePendingMutationDao : PendingMutationDao {
             it.status == doneStatus &&
                 it.completedAt != null &&
                 it.completedAt < cutoffIso &&
-                it.lastError?.startsWith("correction_refresh_required:") != true
+                it.lastError?.startsWith("correction_refresh_required:") != true &&
+                it.lastError != BUDGET_READ_REFRESH_REQUIRED
         }.map { it.id }
         victims.forEach { rows.remove(it) }
         refreshObservables()
@@ -514,6 +515,15 @@ class FakePendingMutationDao : PendingMutationDao {
         val current = rows[id] ?: return 0
         if (current.type != type) return 0
         rows[id] = current.copy(payload = payload)
+        refreshObservables()
+        return 1
+    }
+
+    override suspend fun clearBudgetReadRefresh(id: Long, receiptJson: String): Int {
+        val current = rows[id] ?: return 0
+        if (current.status != "done" || current.type != "save_monthly_budget" ||
+            current.lastError != BUDGET_READ_REFRESH_REQUIRED || current.receiptJson != receiptJson) return 0
+        rows[id] = current.copy(lastError = null)
         refreshObservables()
         return 1
     }

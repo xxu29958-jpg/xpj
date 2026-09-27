@@ -114,7 +114,8 @@ internal class RepositoryGraph(
         apiProvider = apiServiceProvider,
         outbox = outbox,
         adapters = outboxAdapters,
-        localStorage = BudgetLocalStorage(database.monthlyArrangementCacheDao(), database.expenseDao()),
+        localStorage = BudgetLocalStorage(database.monthlyArrangementCacheDao(),
+            com.ticketbox.data.repository.BudgetQueryReader(apiServiceProvider, database.expenseDao(), ledgerSessionCoordinator, outbox)),
         sessionCoordinator = ledgerSessionCoordinator,
     )
 
