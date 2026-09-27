@@ -149,6 +149,7 @@ internal class OfflineBudgetTransport {
     val readScopes = CopyOnWriteArrayList<Pair<String, String?>>()
     @Volatile var offline = false
     @Volatile var denied = false
+    @Volatile var beforeNextRead: (suspend () -> Unit)? = null
     var original = offlineBudget()
 
     fun wrap(delegate: ApiService): ApiService = object : ApiService by delegate {
@@ -160,9 +161,11 @@ internal class OfflineBudgetTransport {
         override suspend fun monthlyBudget(month: String, timezone: String?): BudgetMonthlyDto {
             reads += month
             readScopes += month to timezone
+            val captured = original.copy(month = month)
+            beforeNextRead?.let { beforeNextRead = null; it(); return captured }
             if (denied) throw HttpException(Response.error<Any>(403, "{}".toResponseBody()))
             if (offline) throw ConnectException("Synthetic unavailable budget transport")
-            return original.copy(month = month)
+            return captured
         }
     }
 }

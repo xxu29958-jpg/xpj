@@ -176,6 +176,10 @@ internal class ExpenseCorrectionConnectedFixture(
     fun role(value: String) { session.value = session.value.copy(identity = session.value.identity.copy(role = value)) }
     fun switchLedger() { session.value = session.value.copy(bindingRevision = "another-binding",
         identity = session.value.identity.copy(ledgerId = "another-ledger")) }
+    fun switchAccount() { session.value = session.value.copy(bindingRevision = "another-account-binding",
+        identity = session.value.identity.copy(accountPublicId = "40000000-0000-4000-8000-000000000003")) }
+    fun switchDevice() { session.value = session.value.copy(bindingRevision = "another-device-binding",
+        identity = session.value.identity.copy(devicePublicId = "40000000-0000-4000-8000-000000000004")) }
     fun close() { database?.close(); context.deleteDatabase(name) }
 }
 

@@ -18,6 +18,8 @@ import com.ticketbox.notification.budget.BudgetOverspendDispatchOutcome
 import com.ticketbox.notification.budget.SharedPrefsBudgetOverspendStore
 import com.ticketbox.notification.budget.budgetOverspendSentKey
 import java.util.TimeZone
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -66,6 +68,39 @@ class BudgetOfflineSnapshotConnectedTest {
         fixture.switchLedger()
 
         assertTrue(repository.monthlyBudget("2026-09").isFailure)
+    }
+
+    @Test fun theSameLedgerDoesNotShareAnOfflineReadAcrossAccountsOrDevices() = runBlocking {
+        for (replacePrincipal in listOf(fixture::switchAccount, fixture::switchDevice)) {
+            transport.offline = false
+            fixture.reopen().budgetRepository.monthlyBudget("2026-09").getOrThrow()
+            transport.offline = true
+            val repository = fixture.reopen().budgetRepository
+            assertTrue(repository.monthlyBudget("2026-09").isSuccess)
+
+            replacePrincipal()
+
+            assertTrue("The unchanged ledger ID cannot authorize another principal's saved read",
+                repository.monthlyBudget("2026-09").isFailure)
+        }
+    }
+
+    @Test fun aReadStartedBeforeRefusalCannotRepublishTheWithdrawnBudget() = runBlocking {
+        val repository = fixture.reopen().budgetRepository
+        repository.monthlyBudget("2026-09").getOrThrow()
+        val started = CompletableDeferred<Unit>()
+        val resume = CompletableDeferred<Unit>()
+        transport.beforeNextRead = { started.complete(Unit); resume.await() }
+        val olderRead = async { repository.monthlyBudget("2026-09") }
+        started.await()
+        transport.denied = true
+        assertTrue(repository.monthlyBudget("2026-09").isFailure)
+        transport.denied = false
+        resume.complete(Unit)
+
+        assertTrue("A response captured before refusal cannot restore the withdrawn query", olderRead.await().isFailure)
+        transport.offline = true
+        assertTrue(fixture.reopen().budgetRepository.monthlyBudget("2026-09").isFailure)
     }
 
     @Test fun anOfflineOverspendSnapshotCannotConsumeANewNotificationSentKey() = runBlocking {
