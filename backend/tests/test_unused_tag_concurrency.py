@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.errors import AppError
-from app.services import tag_management_service, tag_service
+from app.services import tag_management_service, tag_mutation_expense_projection_service, tag_service
 from tests._infra.client import make_test_client
 from tests._infra.tag_helpers import expense_row, manual_expense, tag_index, tag_links
 
@@ -66,6 +66,69 @@ def test_unused_cleanup_cannot_rewrite_a_new_expense_or_hide_its_reused_tag(clie
     assert tag_links(accepted["id"]) == ["工作"]
     current = tag_index(client, identity.app_headers)["工作"]
     assert current["public_id"] == unused["public_id"] and current["usage_count"] == 1
+
+
+@pytest.mark.real_db
+def test_retaining_a_tag_during_correction_preserves_the_fact_and_rejects_a_concurrent_stale_rename(
+    client: TestClient, identity, monkeypatch,
+) -> None:
+    original = manual_expense(client, identity.app_headers, tags="工作", merchant="原始账单")
+    tag = tag_index(client, identity.app_headers)["工作"]
+    correction_ready, rename_projection_ready = Event(), Event()
+    ensure_tag = tag_service._ensure_tag
+    claim_projection = tag_mutation_expense_projection_service.claim_row_with_token
+    correction_headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
+    correction_url = f"/api/expenses/{original['id']}/corrections"
+    payload = {
+        "expected_row_version": original["row_version"], "reason": "更正商家，保留原标签",
+        "merchant": "更正后的商家", "tags": "工作",
+    }
+
+    def retain_tag_after_rename_claim(*args, **kwargs):
+        correction_ready.set()
+        assert rename_projection_ready.wait(timeout=10), "Rename never reached the original Expense projection"
+        return ensure_tag(*args, **kwargs)
+
+    def mark_original_projection_claim(*args, **kwargs):
+        # Rename already holds the Tag row and captured the original Expense OCC.
+        rename_projection_ready.set()
+        return claim_projection(*args, **kwargs)
+
+    def correct_original():
+        with make_test_client() as writer:
+            return writer.post(correction_url, headers=correction_headers, json=payload)
+
+    def rename_original():
+        with make_test_client() as writer:
+            return writer.post(
+                f"/api/tags/{tag['public_id']}/rename", headers=identity.app_headers,
+                json={"expected_row_version": tag["row_version"], "name": "办公"},
+            )
+
+    with monkeypatch.context() as patch, ThreadPoolExecutor(max_workers=2) as pool:
+        patch.setattr(tag_service, "_ensure_tag", retain_tag_after_rename_claim)
+        patch.setattr(tag_mutation_expense_projection_service, "claim_row_with_token", mark_original_projection_claim)
+        correcting = pool.submit(correct_original)
+        assert correction_ready.wait(timeout=10)
+        renaming = pool.submit(rename_original)
+        accepted, conflict = correcting.result(timeout=15), renaming.result(timeout=15)
+
+    assert accepted.status_code == 201, accepted.text
+    assert conflict.status_code == 409, conflict.text
+    assert conflict.json()["error"] == "state_conflict"
+    fact = accepted.json()["expense"]
+    assert expense_row("更正后的商家") == (original["id"], fact["row_version"], "工作")
+    assert fact["amount_cents"] == original["amount_cents"] == 1000
+    assert fact["home_currency"] == original["home_currency"] == "CNY"
+    assert tag_links(original["id"]) == ["工作"]
+    tags = tag_index(client, identity.app_headers)
+    assert set(tags) == {"工作"}
+    assert tags["工作"]["public_id"] == tag["public_id"]
+    assert tags["工作"]["row_version"] == tag["row_version"]
+    replay = client.post(correction_url, headers=correction_headers, json=payload)
+    assert replay.status_code == 201 and replay.json() == accepted.json()
+    history = client.get(f"/api/expenses/{original['id']}/revisions", headers=identity.app_headers)
+    assert history.status_code == 200 and history.json()["total"] == 2
 
 
 @pytest.mark.real_db
