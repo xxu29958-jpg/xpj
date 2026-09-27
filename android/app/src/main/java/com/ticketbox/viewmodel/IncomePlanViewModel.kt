@@ -106,6 +106,12 @@ data class IncomePlanDraftUi(
     }
 }
 
+internal fun IncomePlanDraftUi.withAmountValidation(): IncomePlanDraftUi = copy(
+    validationError = if (homeCurrency != null && amountYuanInput.isNotBlank() && parsedAmountCents() == null) {
+        UiText.res(R.string.expense_edit_amount_invalid)
+    } else null,
+)
+
 private fun IncomePlanDraftUi.toRepositoryDraftOrNull(): IncomePlanDraft? {
     if (intentMonth.isEmpty()) return null
     val cleanLabel = label.trim().takeIf(String::isNotEmpty) ?: return null

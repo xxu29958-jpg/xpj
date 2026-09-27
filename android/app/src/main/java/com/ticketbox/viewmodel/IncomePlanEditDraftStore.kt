@@ -16,6 +16,7 @@ internal class IncomePlanEditDraftStore(private val state: SavedStateHandle) {
 
     fun read(binding: LogicalSessionBinding, publicId: String? = null): IncomePlanEditSession? =
         drafts.lastOrNull { it.binding == binding && (publicId == null || it.publicId == publicId) }
+            ?.let { it.copy(draft = it.draft.withAmountValidation()) }
 
     fun write(session: IncomePlanEditSession) {
         state["income.edit.drafts"] = adapter.toJson(drafts.filterNot {

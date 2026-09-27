@@ -65,10 +65,13 @@ class IncomePlanDraftNavigationRoomTest {
 
     @After fun close() {
         acknowledge.complete(Unit)
-        compose.runOnIdle { mounted.value = false; base.models.viewModelStore.clear() }
-        compose.waitForIdle()
-        income.close()
-        base.close()
+        try {
+            compose.runOnIdle { mounted.value = false; base.models.viewModelStore.clear() }
+            compose.waitForIdle()
+        } finally {
+            income.close()
+            base.close()
+        }
     }
 
     @Test fun actualPopAndReentryKeepTheOriginalRawDraftAndItsInFlightAcceptance() {
@@ -88,6 +91,10 @@ class IncomePlanDraftNavigationRoomTest {
         assertSame(originalEditor, retainedEditor())
         assertEquals(original, retainedEditor().state.value.session)
         compose.onNodeWithText("00120.00").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("保存").performScrollTo().performClick()
+        assertTrue(income.stored().isEmpty())
+        assertEquals("00120.00", originalEditor.state.value.session?.draft?.amountYuanInput)
+        compose.onNodeWithText("00120.00").performScrollTo().performTextReplacement("120.00")
         compose.onNodeWithText("保存").performScrollTo().performClick()
         compose.waitUntil(10_000) { income.stored().size == 1 && originalEditor.state.value.isSubmitting }
         val accepted = income.stored().single()

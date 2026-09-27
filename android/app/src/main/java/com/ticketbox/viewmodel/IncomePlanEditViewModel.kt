@@ -15,7 +15,6 @@ import com.ticketbox.domain.model.IncomePlan
 import com.ticketbox.domain.model.IncomeSourceType
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.formatAmountInput
-import com.ticketbox.ui.components.parseAmountCents
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -174,19 +173,7 @@ class IncomePlanEditViewModel(
             when (field) {
                 IncomePlanDraftField.Label -> draft.copy(label = value)
                 IncomePlanDraftField.IncomeMonth -> draft.copy(incomeMonthInput = value)
-                IncomePlanDraftField.Amount -> {
-                    // R14-2 镜像：币种已注入时即时报解析失败。
-                    val parseFailed = draft.homeCurrency != null && value.isNotBlank() &&
-                        parseAmountCents(value, draft.homeCurrency) == null
-                    draft.copy(
-                        amountYuanInput = value,
-                        validationError = if (parseFailed) {
-                            UiText.res(R.string.expense_edit_amount_invalid)
-                        } else {
-                            null
-                        },
-                    )
-                }
+                IncomePlanDraftField.Amount -> draft.copy(amountYuanInput = value).withAmountValidation()
                 IncomePlanDraftField.PayDay -> draft.copy(payDayInput = value)
             }.let { if (field == IncomePlanDraftField.Amount) it else it.copy(validationError = null) }
         }
