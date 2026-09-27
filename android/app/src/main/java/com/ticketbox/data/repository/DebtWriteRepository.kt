@@ -72,13 +72,14 @@ class DebtWriteRepository internal constructor(
         if (row.type !in DEBT_WRITE_TYPES ||
             row.ownerKey != binding.ownerKey || row.ledgerId != binding.ledgerId
         ) return null
-        return when (row.type) {
+        val pending = when (row.type) {
             PendingMutationType.RecordDebtAdjustment -> row.describeDebtAdjustment(adapters.debtAdjustmentAdapter)
             PendingMutationType.RecordDebtRepayment -> row.describeDebtRepayment(adapters.debtRepaymentAdapter)
             PendingMutationType.VoidDebt -> row.describeDebtVoid(adapters.debtVoidAdapter)
             PendingMutationType.VoidDebtRepayment -> row.describeRepaymentVoid(adapters.debtRepaymentVoidAdapter)
             else -> null
         }
+        return pending?.copy(originalBindingChanged = pending.isVoid && pending.intent?.matchesVoidOrigin(binding) == false)
     }
 
     override fun observeWrites(binding: LogicalSessionBinding, publicId: String): Flow<List<PendingDebtWrite>> =
@@ -157,6 +158,7 @@ class DebtWriteRepository internal constructor(
             val original = describeWrite(current)
             require(original != null) { "请回到原账本核对这次提交。" }
             require(drop || currentAccess()?.canModify == true) { "当前角色为只读，无法重试提交。" }
+            require(drop || !original.originalBindingChanged) { "连接信息已变化，无法继续这次作废；原记录仍保留，可停止本机追踪。" }
             require(drop || original.hasSupportedIntent) { "当前版本无法读取原提交，请升级后继续。" }
             require(drop || original.canRetry) { "这次原提交不能重试，请核对后处理本地记录。" }
             val changed = if (drop) outbox.abandonDebtWrite(bound, current)

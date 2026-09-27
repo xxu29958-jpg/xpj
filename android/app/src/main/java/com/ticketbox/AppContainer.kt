@@ -351,10 +351,10 @@ class AppContainer(context: Context) {
                 receiptAdapter = outboxAdapters.debtRepaymentReceiptAdapter,
             ),
             com.ticketbox.data.repository.VoidDebtDispatcher(
-                ::outboxApi, outboxAdapters.debtVoidAdapter, outboxAdapters.debtVoidReceiptAdapter,
+                outboxRequestGuard, outboxAdapters.debtVoidAdapter, outboxAdapters.debtVoidReceiptAdapter,
             ),
             com.ticketbox.data.repository.VoidDebtRepaymentDispatcher(
-                ::outboxApi, outboxAdapters.debtRepaymentVoidAdapter, outboxAdapters.debtVoidReceiptAdapter,
+                outboxRequestGuard, outboxAdapters.debtRepaymentVoidAdapter, outboxAdapters.debtVoidReceiptAdapter,
             ),
             CreateDebtDispatcher(
                 apiProvider = ::outboxApi,

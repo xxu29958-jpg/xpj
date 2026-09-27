@@ -8,24 +8,24 @@ import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import retrofit2.HttpException
 
-class VoidDebtDispatcher(private val apiProvider: (OutboxRow) -> ApiService,
+class VoidDebtDispatcher(private val guard: LedgerRequestGuard,
     private val adapter: JsonAdapter<DebtVoidPayload>, private val receiptAdapter: JsonAdapter<DebtDto>) : OutboxMutationDispatcher {
     override val type = PendingMutationType.VoidDebt
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
         val intent = row.describeDebtVoid(adapter).debtVoid ?: return DispatchResult.Failure("debt_void_payload_unsupported")
         return dispatchVoid(intent, row, receiptAdapter, requireVoided = true) {
-            apiProvider(row).voidDebt(intent.subject.publicId, intent.request, row.idempotencyKey)
+            guard.bind(expectedLedgerId = row.ledgerId).serviceForOriginalVoid(row, intent).voidDebt(intent.subject.publicId, intent.request, row.idempotencyKey)
         }
     }
 }
 
-class VoidDebtRepaymentDispatcher(private val apiProvider: (OutboxRow) -> ApiService,
+class VoidDebtRepaymentDispatcher(private val guard: LedgerRequestGuard,
     private val adapter: JsonAdapter<DebtRepaymentVoidPayload>, private val receiptAdapter: JsonAdapter<DebtDto>) : OutboxMutationDispatcher {
     override val type = PendingMutationType.VoidDebtRepayment
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
         val intent = row.describeRepaymentVoid(adapter).repaymentVoid ?: return DispatchResult.Failure("debt_void_payload_unsupported")
         return dispatchVoid(intent, row, receiptAdapter, requireVoided = false) {
-            apiProvider(row).voidDebtRepayment(intent.subject.publicId, intent.request, row.idempotencyKey)
+            guard.bind(expectedLedgerId = row.ledgerId).serviceForOriginalVoid(row, intent).voidDebtRepayment(intent.subject.publicId, intent.request, row.idempotencyKey)
         }
     }
 }
@@ -57,4 +57,9 @@ private fun DebtDto.matchesOriginalVoid(intent: DebtWriteIntent, row: OutboxRow,
         else status == "open" && remainingAmountCents > 0L
     return publicId == intent.subject.publicId && ledgerId == row.ledgerId &&
         homeCurrencyCode == intent.subject.homeCurrencyCode && rowVersion == intent.expectedRowVersion + 1 && matchesVoidResult
+}
+
+private fun BoundLedgerRequest.serviceForOriginalVoid(row: OutboxRow, intent: DebtWriteIntent): ApiService {
+    if (!intent.matchesVoidOrigin(logicalBinding)) throw RepositoryException("连接信息已变化，无法继续这次作废。")
+    return serviceFor(requireNotNull(row.bindingOrNull()))
 }

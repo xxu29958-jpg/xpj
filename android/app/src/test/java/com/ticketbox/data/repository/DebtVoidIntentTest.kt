@@ -2,6 +2,7 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.security.LocalSessionRecord
+import com.ticketbox.security.StoredSessionToken
 import com.ticketbox.ui.screens.settings.syncStatusOverview
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -175,6 +176,33 @@ class DebtVoidIntentTest {
             assertEquals(original.expectedRowVersion, retained.expectedRowVersion)
             assertEquals(null, retained.receiptJson)
             assertTrue(pending.isUnresolved)
+        }
+    }
+
+    @Test fun credentialRefreshKeepsBothOriginalVoidsRecoverableUnderTheSameLogicalBinding() = runTest {
+        for (payment in listOf(false, true)) {
+            val fixture = DirectRepaymentTestFixture()
+            save(fixture, payment).getOrThrow()
+            assertEquals(1, fixture.engine().drainOnce().failures)
+            val original = fixture.dao.rows.values.single()
+            val session = requireNotNull(fixture.session.sessionStore.currentSession())
+            val refresh = requireNotNull(fixture.session.sessionStore.sessionRefresh.beginOrReuse(
+                expectedSessionGeneration = session.sessionGeneration, expectedToken = session.credential.token))
+            assertTrue(fixture.session.sessionStore.sessionRefresh.completeIfCurrent(
+                expectedSessionGeneration = session.sessionGeneration, expectedToken = session.credential.token,
+                refreshAttemptId = refresh.attemptId, replacement = StoredSessionToken("refreshed-token")))
+            assertEquals(fixture.binding, requireNotNull(fixture.repository.currentAccess()).binding)
+            assertTrue(fixture.pending().canRetry)
+            fixture.repository.recover(fixture.binding, fixture.pending(), false).getOrThrow()
+            fixture.api.loseResponse = false
+            assertEquals(1, fixture.engine().drainOnce().done)
+            val confirmed = fixture.dao.rows.values.single()
+            assertEquals(original.payload, confirmed.payload)
+            assertEquals(original.idempotencyKey, confirmed.idempotencyKey)
+            assertEquals(original.expectedRowVersion, confirmed.expectedRowVersion)
+            assertEquals(1, fixture.api.voidFacts.size)
+            assertTrue(fixture.api.voidCalls.all { it == fixture.api.voidCalls.first() })
+            assertNotNull(confirmed.receiptJson)
         }
     }
 

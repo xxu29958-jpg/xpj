@@ -24,10 +24,7 @@ import com.ticketbox.ui.screens.settings.isExpiredFailure
 
 @Composable
 internal fun DebtWriteIntentSummary(pending: PendingDebtWrite) {
-    if (pending.row.status == PendingMutationStatus.Abandoned) {
-        Text(stringResource(if (pending.legacyVoidAccepted) R.string.debt_void_accepted_locally_stopped
-            else R.string.debt_write_stopped_body))
-    }
+    DebtWriteRecoveryContext(pending)
     val intent = pending.intent
     if (intent == null) {
         Text(stringResource(if (pending.row.status == PendingMutationStatus.Abandoned) {
@@ -50,6 +47,15 @@ internal fun DebtWriteIntentSummary(pending: PendingDebtWrite) {
     }
     if (pending.reductionRejected) Text(stringResource(R.string.debt_adjustment_reduction_rejected))
     if (pending.requiresReview) Text(stringResource(R.string.debt_void_original_requires_review))
+}
+
+@Composable
+private fun DebtWriteRecoveryContext(pending: PendingDebtWrite) {
+    if (pending.row.status == PendingMutationStatus.Abandoned) {
+        Text(stringResource(if (pending.legacyVoidAccepted) R.string.debt_void_accepted_locally_stopped
+            else R.string.debt_write_stopped_body))
+    }
+    if (pending.originalBindingChanged && !pending.isTerminal) Text(stringResource(R.string.debt_void_original_binding_changed))
 }
 
 /** Original commands remain readable even when the canonical detail cannot be fetched. */

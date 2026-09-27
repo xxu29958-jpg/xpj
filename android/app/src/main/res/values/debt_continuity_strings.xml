@@ -50,4 +50,5 @@
     <string name="debt_void_original_requires_review">原作废已被接受，但旧版本未保存当时结果。请核对原记录，勿重复作废。</string>
     <string name="debt_void_review_stop_explanation">只停止本机对原作废的追踪，保留原提交。账本已接受的作废不会撤销；请查看原记录，勿重复作废。</string>
     <string name="debt_void_accepted_locally_stopped">原作废已被接受，但旧版本未保存当时结果。本机已停止追踪，原提交仍保留；不会撤销账本作废，勿重复作废。</string>
+    <string name="debt_void_original_binding_changed">连接信息已变化，无法继续这次作废。原原因和提交仍保留，请核对原记录。停止本机追踪不会撤销账本中已接受的作废。</string>
 </resources>

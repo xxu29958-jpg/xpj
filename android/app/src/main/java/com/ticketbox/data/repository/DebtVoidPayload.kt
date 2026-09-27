@@ -48,3 +48,10 @@ private fun OutboxRow.validVoid(intent: DebtWriteIntent, revision: Int, session:
 
 private fun <T> JsonAdapter<T>.readVoidPayload(json: String): T? = try { fromJson(json) }
     catch (_: JsonDataException) { null } catch (_: IOException) { null }
+
+/** Credential rotation retains these axes; a new logical binding cannot adopt the original command. */
+internal fun DebtWriteIntent.matchesVoidOrigin(binding: LogicalSessionBinding): Boolean = when (this) {
+    is DebtVoidPayload -> originSessionGeneration == binding.sessionGeneration && originBindingRevision == binding.bindingRevision
+    is DebtRepaymentVoidPayload -> originSessionGeneration == binding.sessionGeneration && originBindingRevision == binding.bindingRevision
+    else -> true
+}

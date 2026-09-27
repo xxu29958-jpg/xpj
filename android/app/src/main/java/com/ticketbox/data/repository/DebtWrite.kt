@@ -20,7 +20,7 @@ sealed interface DebtWriteIntent {
 
 sealed interface DebtAmountIntent : DebtWriteIntent { val amountCents: Long }
 
-data class PendingDebtWrite(val row: OutboxRow, val intent: DebtWriteIntent?) {
+data class PendingDebtWrite(val row: OutboxRow, val intent: DebtWriteIntent?, val originalBindingChanged: Boolean = false) {
     val adjustment: DebtAdjustmentPayload? get() = intent as? DebtAdjustmentPayload
     val repayment: DebtRepaymentPayload? get() = intent as? DebtRepaymentPayload
     val debtVoid: DebtVoidPayload? get() = intent as? DebtVoidPayload
@@ -35,7 +35,7 @@ data class PendingDebtWrite(val row: OutboxRow, val intent: DebtWriteIntent?) {
     val reductionRejected: Boolean
         get() = row.status == PendingMutationStatus.Failed && row.lastError == DEBT_ADJUSTMENT_NEGATIVE_REMAINING
     val canRetry: Boolean
-        get() = row.status == PendingMutationStatus.Failed && hasSupportedIntent && !reductionRejected && !requiresReview &&
+        get() = row.status == PendingMutationStatus.Failed && hasSupportedIntent && !originalBindingChanged && !reductionRejected && !requiresReview &&
             row.lastError?.startsWith("outbox_row_expired") != true
 }
 
