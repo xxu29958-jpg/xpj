@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
@@ -24,8 +24,13 @@ from app.routes.web_common import (
     templates,
 )
 from app.schemas import GoalCreateRequest
-from app.services.currency_common import currency_input_metadata, major_amount_to_minor, normalize_currency_code
+from app.services.currency_common import (
+    currency_input_metadata,
+    major_amount_to_minor,
+    normalize_currency_code,
+)
 from app.services.goal_create_command import create_spending_goal_idempotently
+from app.services.goal_history_service import goal_history
 from app.services.goal_service import archive_goal, list_goals
 from app.services.ledger_calendar_service import current_ledger_month
 
@@ -225,3 +230,26 @@ def web_goals_archive(
         include_archived="true",
         msg="目标已归档。",
     )
+
+
+@router.get("/{public_id}/history", response_class=HTMLResponse)
+def web_goal_history(
+    request: Request, public_id: str, ledger_id: str | None = None, month: str | None = None,
+    include_archived: bool = True, limit: int = Query(default=20, ge=1, le=100),
+    before_version: int | None = Query(default=None, ge=1),
+    _local: None = LocalOnly, db: Session = Depends(get_db),
+) -> HTMLResponse:
+    options = _list_ledger_options(db)
+    selected = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
+    history = goal_history(db, tenant_id=selected, public_id=public_id,
+        limit=limit, before_version=before_version)
+    return_month = month or (history.items[0].snapshot.month if history.items else None)
+    ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected,
+        show_month_picker=False, selected_month=return_month)
+    ctx.update(history=history, return_month=return_month, include_archived=include_archived,
+        limit=limit, before_version=before_version, history_money=_goal_history_money)
+    return templates.TemplateResponse(request=request, name="goal_history.html", context=ctx)
+
+
+def _goal_history_money(amount: int, currency: str | None) -> str:
+    return f"{currency} {_amount_yuan(amount, currency)}" if currency else f"{amount} 最小单位（原币种未记录）"

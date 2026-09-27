@@ -354,6 +354,9 @@ private class FakeCreateReportsActions(
     override suspend fun goals(month: String?, includeArchived: Boolean, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?, timezone: String): Result<ReadSnapshot<List<Goal>>> =
         Result.success(ReadSnapshot(emptyList(), "2026-09-09T00:00:00Z", false))
 
+    override suspend fun goalHistory(publicId: String, beforeVersion: Long?,
+        binding: com.ticketbox.data.repository.LogicalSessionBinding):
+        Result<ReadSnapshot<com.ticketbox.domain.model.GoalHistoryPage>> = error("Unused spending goal history")
     override suspend fun goal(publicId: String, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?, timezone: String): Result<ReadSnapshot<Goal>> =
         Result.failure(UnsupportedOperationException())
 

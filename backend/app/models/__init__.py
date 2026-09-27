@@ -74,6 +74,7 @@ from app.models.expense import Expense, ExpenseItem, ExpenseSplit
 from app.models.expense_offset import ExpenseOffsetFact, ExpenseOffsetRevision
 from app.models.expense_revision import ExpenseRevision
 from app.models.financial_planning import MonthlyIncomePlan
+from app.models.goal_revision import GoalRevision
 from app.models.idempotency import ApiIdempotencyKey
 from app.models.identity import (
     Account,
@@ -141,6 +142,7 @@ __all__ = [
     "ExchangeRate",
     "FxRate",
     "Goal",
+    "GoalRevision",
     "Invitation",
     "InstallationCurrencyAuditLog",
     "InstallationCurrencyBinding",

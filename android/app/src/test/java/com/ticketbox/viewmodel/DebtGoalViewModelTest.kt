@@ -719,6 +719,9 @@ private class FakeReportsActions(
         return debtGoalsResult.map { ReadSnapshot(it, "2026-09-09T00:00:00Z", fromCache) }
     }
 
+    override suspend fun goalHistory(publicId: String, beforeVersion: Long?,
+        binding: com.ticketbox.data.repository.LogicalSessionBinding):
+        Result<ReadSnapshot<com.ticketbox.domain.model.GoalHistoryPage>> = error("Unused spending goal history")
     override suspend fun goal(publicId: String, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?, timezone: String): Result<ReadSnapshot<Goal>> {
         goalCalls += publicId
         return (goalResultOverride ?: goalResult).map { ReadSnapshot(it, "2026-09-09T00:00:00Z", fromCache) }

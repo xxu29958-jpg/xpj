@@ -143,6 +143,8 @@ flowchart LR
 
 每次改变一个业务语义或 Owner，施工前后均覆盖入口、消费者、旧成功出口、持久化、协议/恢复和直接验证生产者。**没有证据证明不受影响的，不能默认跳过。** 高风险事实/身份/原件用最小充分反例及 exact SHA 云端资格；文档/局部外观按对应风险验证。主审、定向回归、final-head 复核满足后收片继续，不用无关矩阵拖延交付。
 
+开销目标修改历史正在 #441 按完整纵向任务补齐：原创建、修改、归档和恢复定义由现有命令事务保存，两端可一点击达，编辑原文与原提交保持；可携带出口包含全部定义。旧数据只记录实际可证的起点，不能虚构更早历史或把当前执行进度当作过去事实。旧生产已取得真实 PostgreSQL 的历史入口与完整出口反例；Web 隔离流程通过，候选整体和 Android 的最终资格仍未完成。固定支出 Series 历史、其他计划连续性及后续全产品任务继续保留，不以此片代替。
+
 ## 7. 边界、未知项与终点
 
 完整 Windows repair、preserved reinstall、complete uninstall、upgrade/downgrade、complete backup/restore、Cut C/D/E 和 Stage 2 宿主 mutation 仍遵守有效 Goal/合同条件。Internal Beta 明确允许的导出/诊断/冷备须可执行，既不能扩成完整 restore，也不能因后者 HOLD 漏掉当前数据安全。

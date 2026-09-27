@@ -43,7 +43,7 @@
   {% if goals %}
   <div class="plan-goal-list">
     {% for goal in goals %}
-    <div class="plan-goal{% if goal.is_archived %} is-archived{% endif %}">
+    <div id="goal-{{ goal.public_id }}" class="plan-goal{% if goal.is_archived %} is-archived{% endif %}">
       <div class="plan-goal-header">
         <div>
           <strong>{{ goal.name }}</strong>
@@ -62,8 +62,9 @@
         <span>剩余 {{ goal.home_currency_code }} {{ goal.remaining_yuan }}</span>
       </div>
       {% else %}<p class="product-feedback" role="status">币种或汇率待补充，暂时无法计算进度。目标金额已保留。</p>{% endif %}
-      {% if can_write and not goal.is_archived %}
       <div class="budget-actions">
+      <a class="product-button product-button--quiet product-button--small" href="/web/goals/{{ goal.public_id }}/history?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ month|urlencode }}&amp;include_archived={{ 'true' if include_archived else 'false' }}">修改记录</a>
+      {% if can_write and not goal.is_archived %}
       <a class="product-button product-button--quiet product-button--small" href="/web/goals/{{ goal.public_id }}/edit?ledger_id={{ selected_ledger_id }}&month={{ month }}">编辑目标</a>
       <form method="post" action="/web/goals/{{ goal.public_id }}/archive" class="product-inline-form">
         <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
@@ -71,8 +72,8 @@
         {{ csrf_field|safe }}
         <button type="submit" class="product-button product-button--quiet product-button--small">归档</button>
       </form>
-      </div>
       {% endif %}
+      </div>
     </div>
     {% endfor %}
   </div>

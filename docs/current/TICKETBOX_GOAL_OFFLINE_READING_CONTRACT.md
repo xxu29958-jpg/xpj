@@ -20,8 +20,8 @@ from that real OCC when access has not been refused. Do not attach a query time
 or write that receipt into the query cache. A same-or-newer verified query can
 replace it; an old Done subscription cannot refill a view cleared by refusal.
 
-This is one high-frequency read journey. Budget and debt read persistence remain
-separate gaps. Permissions, local governance and current tool health do not gain
+This is one high-frequency read journey. Budget persistence is now independently
+main-qualified in #438; debt read persistence remains separate work. Permissions, local governance and current tool health do not gain
 offline authority, and not every product page is promised offline operation.
 
 ## Impact closure before construction
@@ -91,4 +91,41 @@ not reopen any Windows lifecycle HOLD.
 Status: #401 CLOSED and independently main-qualified at f06983be. Candidate
 CI34591130351, CodeQL34591130415 and Connected34591130460 passed; main
 CI34593146043, CodeQL34593145923 and Connected34593145951 passed. No local
-Gradle or long suite ran. Budget/debt offline queries remain separate RC work.
+Gradle or long suite ran. Later Budget qualification belongs to #438; debt offline
+queries remain separate RC work.
+
+## Spending definition history — #441 candidate
+
+Users can open saved definitions from the existing Web list/editor and Android
+detail, including archived goals and viewer access. The editor's original text,
+currency, key/OCC and pending commands survive history reads and retries. History
+contains original name, month, category, amount/currency and archive state; current
+spending, progress and FX are not presented as historical plan definitions.
+
+The existing Goal command transaction appends one immutable revision per accepted
+version, together with its existing original receipt. Key replay and repeated
+archive/restore keep their existing behavior. The same restore owner serves the
+recycle bin. Old rows yield only their known baseline at the actual capture time,
+without invented earlier versions or change dates. Scoped portable export includes
+all revisions, independent of screen month filters.
+
+Android extends ReportsRepository/GoalQueryReader and the existing Room snapshot
+table with binding-scoped history pages. Only pages actually read can reopen
+offline; changing device timezone does not change a saved definition's identity.
+A missing older page remains an actionable read failure. Refusal retires
+read projections while preserving original intents. An authorized fresh page
+survives a failed local cache write, and cancellation still propagates. Existing
+accepted mutation invalidation also reaches history; there is no second writer,
+queue, database or generic history framework.
+
+Frozen old-production source fc549b6b2e65a7f442f25f1c4e09a52fdb450cc8 has actual
+four PostgreSQL business failures for missing history access, missing original
+definitions in portable export, and the real Web history entrance. Its five
+native UI scenarios fail at the missing history entrance; later assertions still
+require execution against the candidate. The old-row seed separately lacked the
+existing transaction writer proof; the fixture is corrected without changing its
+baseline assertions, and that setup failure is not a business counterexample. The local Web
+candidate passes twelve targeted checks and isolated Edge list/history/editor
+flows. Android, migrations and complete final-source qualification remain open;
+source checks and test collection are not runtime qualification. Series history,
+debt queries, original unsubmitted drafts and the complete product Goal remain.

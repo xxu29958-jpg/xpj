@@ -10,7 +10,10 @@ import pytest
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import Goal, LedgerMember
+from app.errors import AppError
+from app.models import ApiIdempotencyKey, Goal, GoalRevision, LedgerMember
+from app.services import goal_service
+from app.services.currency_binding_service import resolve_write_capability
 from tests import test_web_goal_edit_continuity
 from tests._runtime_protocol import negotiated_headers
 
@@ -160,6 +163,7 @@ def test_archived_history_is_reader_visible_but_stays_ledger_scoped(client, iden
 def test_first_edit_of_a_preexisting_row_records_only_the_known_baseline(client, identity):
     public_id = str(uuid4())
     with SessionLocal.begin() as db:
+        resolve_write_capability(db)
         db.add(Goal(public_id=public_id, tenant_id="owner", name="既有定义", month="2026-05", category="交通",
             target_amount_cents=1200, home_currency_code="JPY", row_version=7,
             created_at=datetime(2020, 1, 1, tzinfo=UTC), updated_at=datetime(2021, 1, 1, tzinfo=UTC)))
@@ -187,3 +191,57 @@ def test_real_web_goal_consumer_links_to_original_definition_history(web_client,
     assert "原交通上限" in history.text and "六月餐饮上限" in history.text
     assert "2026-05" in history.text and "2026-06" in history.text
     assert "JPY" in history.text and "1200" in history.text and "1800" in history.text
+
+
+@pytest.mark.parametrize("operation", ["create", "edit"])
+def test_failed_history_append_cannot_commit_a_goal_or_its_accepted_receipt(client, identity, monkeypatch, operation):
+    _, _, original = _create(client, identity)
+    key = str(uuid4())
+    url = "/api/goals" if operation == "create" else f'/api/goals/{original["public_id"]}'
+    body = {"name": "尚未接受定义", "home_currency_code": "JPY", "target_amount_cents": 1800}
+    if operation == "create":
+        body.update(month="2026-07", category="餐饮")
+    else:
+        body["expected_row_version"] = original["row_version"]
+    method = "POST" if operation == "create" else "PATCH"
+
+    def refuse(*args, **kwargs):
+        raise AppError("state_conflict", status_code=409)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(goal_service, "record_goal_revision", refuse)
+        failed = client.request(method, url, json=body, headers=_headers(client, identity, key))
+    assert failed.status_code == 409, failed.text
+    current = client.get(f'/api/goals/{original["public_id"]}', headers=identity.app_headers)
+    assert current.status_code == 200 and current.json()["row_version"] == original["row_version"]
+    assert current.json()["name"] == original["name"]
+    assert len(_history(client, identity, original["public_id"])["items"]) == 1
+    with SessionLocal() as db:
+        assert db.scalar(select(Goal.id).where(Goal.tenant_id == "owner", Goal.name == body["name"])) is None
+        assert db.scalar(select(ApiIdempotencyKey.id).where(ApiIdempotencyKey.tenant_id == "owner",
+            ApiIdempotencyKey.idempotency_key == key)) is None
+    accepted = client.request(method, url, json=body, headers=_headers(client, identity, key))
+    assert accepted.status_code == (201 if operation == "create" else 200), accepted.text
+    replay = client.request(method, url, json=body, headers=_headers(client, identity, key))
+    assert replay.status_code == accepted.status_code and replay.json() == accepted.json()
+    history = _history(client, identity, accepted.json()["public_id"])
+    assert len(history["items"]) == (1 if operation == "create" else 2)
+
+
+def test_recycle_bin_restore_records_the_same_original_definition_and_known_actor(client, identity):
+    _, _, goal = _create(client, identity)
+    archived = client.post(f'/api/goals/{goal["public_id"]}/archive', headers=identity.app_headers)
+    assert archived.status_code == 200, archived.text
+    restored = client.post("/api/recycle-bin/restore", headers=identity.app_headers, json={
+        "kind": "goal", "resource_id": goal["public_id"], "expected_row_version": archived.json()["row_version"],
+    })
+    assert restored.status_code == 200, restored.text
+    current = client.get(f'/api/goals/{goal["public_id"]}', headers=identity.app_headers)
+    assert current.status_code == 200 and current.json()["row_version"] == archived.json()["row_version"] + 1
+    history = _history(client, identity, goal["public_id"])
+    assert len(history["items"]) == 3
+    _assert_definition(history["items"][0], current.json(), "restore")
+    with SessionLocal() as db:
+        actors = db.scalars(select(GoalRevision.actor_account_id).join(Goal, Goal.id == GoalRevision.goal_id)
+            .where(Goal.tenant_id == "owner", Goal.public_id == goal["public_id"])).all()
+        assert len(actors) == 3 and actors[0] is not None and actors == [actors[0]] * 3

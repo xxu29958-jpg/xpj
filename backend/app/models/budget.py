@@ -120,6 +120,7 @@ class Goal(Base):
     # tenant/month/scope" rule does NOT wrongly cap a tenant at one active
     # debt_repayment goal — those are allowed to coexist (and have NULL month).
     __table_args__ = (
+        UniqueConstraint("id", "tenant_id", name="uq_goals_id_tenant"),
         *money_check_constraints_for_table("goals"),
         CheckConstraint(
             "goal_type IN ('spending_limit', 'debt_repayment')", name="ck_goals_type_valid"

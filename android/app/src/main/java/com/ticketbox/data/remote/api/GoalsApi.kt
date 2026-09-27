@@ -16,6 +16,13 @@ import retrofit2.http.Path
 import retrofit2.http.Query
 
 interface GoalsApi {
+    @GET("api/goals/{publicId}/history")
+    suspend fun goalHistory(
+        @Path("publicId") publicId: String,
+        @Query("limit") limit: Int,
+        @Query("before_version") beforeVersion: Long?,
+    ): com.ticketbox.data.remote.dto.GoalHistoryResponseDto
+
     @GET("api/goals")
     suspend fun goals(
         @Query("month") month: String? = null,

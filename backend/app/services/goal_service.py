@@ -14,6 +14,7 @@ from app.services.currency_binding_service import (
     resolve_write_capability,
 )
 from app.services.currency_common import normalize_currency_code
+from app.services.goal_history_service import ensure_goal_history_baseline, lock_spending_goal, record_goal_revision
 from app.services.goal_spending_response import goal_response, month_spend_totals
 from app.services.optimistic_concurrency import bump_row_version, claim_row_with_token
 from app.services.spending_contract_service import clean_month
@@ -192,6 +193,7 @@ def create_goal(
     payload: GoalCreateRequest,
     timezone_name: str | None = None,
     commit: bool = True,
+    actor_account_id: int | None = None,
 ) -> GoalResponse:
     """Spending creation may join the caller's accepted-receipt transaction."""
     goal_type = _clean_goal_type(payload.goal_type)
@@ -242,6 +244,7 @@ def create_goal(
         db.rollback()
         _raise_duplicate_goal()
     db.refresh(goal)
+    record_goal_revision(db, goal, change_kind="create", actor_account_id=actor_account_id)
     totals = month_spend_totals(
         db,
         tenant_id=tenant_id,
@@ -263,6 +266,7 @@ def update_goal(
     payload: GoalUpdateRequest,
     timezone_name: str | None = None,
     commit: bool = True,
+    actor_account_id: int | None = None,
 ) -> GoalResponse:
     """Update an active target using its captured currency and original row version.
 
@@ -270,7 +274,7 @@ def update_goal(
     together. A concurrent edit/archive cannot be overwritten by a stale form.
     """
     validated_target = validate_goal_update_money_command(payload)
-    goal = get_goal(db, tenant_id=tenant_id, public_id=public_id)
+    goal = lock_spending_goal(db, get_goal(db, tenant_id=tenant_id, public_id=public_id))
     if goal.goal_type == "debt_repayment":
         # ADR-0049 §6: a debt goal has no month/category/target to PATCH and its
         # linked Debt set changes only via the link-replace route (a new version).
@@ -308,6 +312,7 @@ def update_goal(
     ):
         _raise_duplicate_goal()
 
+    ensure_goal_history_baseline(db, goal)
     now = now_utc()
     try:
         rowcount = claim_row_with_token(
@@ -335,14 +340,12 @@ def update_goal(
         if current.status != "active":
             raise AppError("invalid_request", "目标已归档，不能继续修改。", status_code=409)
         raise AppError("state_conflict", status_code=409)
-    if commit:
-        db.commit()
-    else:
-        db.flush()
+    db.flush()
     # synchronize_session=False left the identity-mapped row stale; drop it so
     # the re-read below reflects the UPDATE (whether committed or only flushed).
     db.expire_all()
     goal = get_goal(db, tenant_id=tenant_id, public_id=public_id)
+    record_goal_revision(db, goal, change_kind="edit", actor_account_id=actor_account_id)
     totals = month_spend_totals(
         db,
         tenant_id=tenant_id,
@@ -350,7 +353,10 @@ def update_goal(
         home_currency_code=goal.home_currency_code,
         timezone_name=timezone_name,
     )
-    return goal_response(goal, totals)
+    response = goal_response(goal, totals)
+    if commit:
+        db.commit()
+    return response
 
 
 def _goal_response_by_type(db: Session, goal: Goal, *, timezone_name: str | None) -> GoalResponse:
@@ -381,16 +387,19 @@ def archive_goal(
     tenant_id: str,
     public_id: str,
     timezone_name: str | None = None,
+    actor_account_id: int | None = None,
 ) -> GoalResponse:
-    goal = get_goal(db, tenant_id=tenant_id, public_id=public_id)
+    goal = lock_spending_goal(db, get_goal(db, tenant_id=tenant_id, public_id=public_id))
     if goal.status == "archived":
         return _goal_response_by_type(db, goal, timezone_name=timezone_name)
     resolve_write_capability(db)
+    ensure_goal_history_baseline(db, goal)
     now = now_utc()
     goal.status = "archived"
     goal.archived_at = now
     goal.updated_at = now
     bump_row_version(goal)
+    record_goal_revision(db, goal, change_kind="archive", actor_account_id=actor_account_id)
     db.commit()
     db.refresh(goal)
     return _goal_response_by_type(db, goal, timezone_name=timezone_name)
@@ -403,6 +412,7 @@ def restore_goal(
     public_id: str,
     expected_row_version: int,
     timezone_name: str | None = None,
+    actor_account_id: int | None = None,
 ) -> GoalResponse:
     """ADR-0051 recycle-bin restore: reactivate an archived goal. OCC-gated.
 
@@ -419,7 +429,7 @@ def restore_goal(
     ``IntegrityError`` catch is the race backstop). ``debt_repayment`` goals have
     a NULL month and no such uniqueness, so they skip the pre-check.
     """
-    goal = get_goal(db, tenant_id=tenant_id, public_id=public_id)
+    goal = lock_spending_goal(db, get_goal(db, tenant_id=tenant_id, public_id=public_id))
     if goal.status != "archived":
         return _goal_response_by_type(db, goal, timezone_name=timezone_name)
     resolve_write_capability(db)
@@ -433,6 +443,7 @@ def restore_goal(
         exclude_public_id=goal.public_id,
     ):
         _raise_duplicate_goal()
+    ensure_goal_history_baseline(db, goal)
     now = now_utc()
     try:
         rowcount = claim_row_with_token(
@@ -454,7 +465,9 @@ def restore_goal(
         if current.status != "archived":
             return _goal_response_by_type(db, current, timezone_name=timezone_name)
         raise AppError("state_conflict", status_code=409)
-    db.commit()
+    db.flush()
     db.expire_all()
     goal = get_goal(db, tenant_id=tenant_id, public_id=public_id)
+    record_goal_revision(db, goal, change_kind="restore", actor_account_id=actor_account_id)
+    db.commit()
     return _goal_response_by_type(db, goal, timezone_name=timezone_name)
