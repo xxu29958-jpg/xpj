@@ -78,6 +78,8 @@ RESTORE_TABLE_SECURITY: Mapping[str, RestoreTableSecurity] = MappingProxyType(
         "merchant_aliases": "preserve",
         "merchant_catalog": "preserve",
         "monthly_income_plans": "preserve",
+        "monthly_arrangements": "preserve",
+        "monthly_arrangement_revisions": "preserve",
         "income_plan_revisions": "preserve",
         "ocr_facts": "preserve",
         "recurring_items": "preserve",

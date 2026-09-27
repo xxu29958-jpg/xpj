@@ -56,6 +56,7 @@ from app.routes import (
     ledgers,
     maintenance,
     merchants,
+    monthly_arrangements,
     owner_console,
     owner_ledgers,
     recurring,
@@ -99,6 +100,7 @@ from app.routes import (
     web_income_plans,
     web_media,
     web_merchants,
+    web_monthly_arrangement,
     web_originals,
     web_pending,
     web_receivables,
@@ -352,6 +354,7 @@ app.include_router(devices.router)
 app.include_router(recurring.router)
 app.include_router(recycle_bin.router)
 app.include_router(budgets.router)
+app.include_router(monthly_arrangements.router)
 app.include_router(budget_advisor.router)
 app.include_router(income_plans.router)
 app.include_router(goals.router)
@@ -400,6 +403,7 @@ app.include_router(web_rules_routes.router)
 app.include_router(web_rule_edit.router)
 app.include_router(web_budgets.router)
 app.include_router(web_budget_advise.router)
+app.include_router(web_monthly_arrangement.router, prefix="/web/budget-advise")
 app.include_router(web_income_plans.router)
 app.include_router(web_income_edit.router)
 app.include_router(web_library.router)

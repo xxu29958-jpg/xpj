@@ -537,6 +537,7 @@ internal val syncStatusMutationLabelResources = mapOf(
     PendingMutationType.CreateIncomePlan to R.string.income_plan_submission_create,
     PendingMutationType.UpdateIncomePlan to R.string.sync_status_mutation_update_income_plan,
     PendingMutationType.SaveMonthlyBudget to R.string.budget_editor_save,
+    PendingMutationType.SaveMonthlyArrangement to R.string.arrangement_save,
     PendingMutationType.SaveManualExchangeRate to R.string.advice_rate_submit,
     PendingMutationType.CreateRecurringItem to R.string.sync_status_mutation_create_recurring_item,
     PendingMutationType.UpdateRecurringItem to R.string.sync_status_mutation_update_recurring_item,

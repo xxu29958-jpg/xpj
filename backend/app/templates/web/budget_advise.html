@@ -1,19 +1,26 @@
 {% extends "base.html" %}
-{% set page_title = '预算建议' %}
+{% set page_title = '本月安排' %}
 {% set product_body_domain = 'plans' %}
-{% block title %}预算建议 · 小票夹{% endblock %}
+{% block title %}本月安排 · 小票夹{% endblock %}
 
-{% macro money(value, subtract=false) %}{% if value is none %}{{ '待核对输入' if form_error else '待补汇率' }}{% else %}{% if subtract %}− {% endif %}{{ currency_input.currency_symbol }}{{ value }}{% endif %}{% endmacro %}
+{% macro money(value, subtract=false) %}{% if value is none %}{{ '待核对输入' if form_error or undated_expense_count else '待补汇率' }}{% else %}{% if subtract %}− {% endif %}{{ currency_input.currency_symbol }}{{ value }}{% endif %}{% endmacro %}
 {% block content %}
+{% set editor_currency = arrangement_currency_input|default(currency_input) %}
 <header class="product-page-header">
   <div class="product-page-heading">
-    <span class="product-eyebrow">计划 / 预算建议</span>
-    <h1 class="page-title">预算建议</h1>
+    <span class="product-eyebrow">计划 / 储蓄与备用金</span>
+    <h1 class="page-title">本月想留出多少</h1>
     <p class="product-page-summary">{{ month }} · 按收入计划与已确认支出估算剩余安排空间；智能建议可选，默认不调用。</p>
   </div>
+  <form method="get" action="/web/budget-advise" class="arrangement-month-form">
+    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <label for="arrangement-month">查看月份</label><input id="arrangement-month" class="product-input" type="month" name="month" value="{{ month }}" required>
+    <button class="product-button" type="submit">查看</button>
+  </form>
 </header>
 {% if message %}<div class="product-feedback" role="status">{{ message }}</div>{% endif %}
 {% if form_error %}<div class="product-feedback product-feedback--danger" role="alert">{{ form_error }}</div>{% endif %}
+{% if save_error %}<div class="product-feedback product-feedback--danger" role="alert">{{ save_error }}</div>{% endif %}
 
 <div class="plan-flow">
 <section class="product-panel product-panel--padded" aria-label="本月预计可安排">
@@ -32,20 +39,25 @@
     <span><small>备用金</small><strong>{{ money(reserved_yuan, true) }}</strong></span>
   </div>
 </section>
-
-{% if not currency_choice_required %}
-{% include 'partials/budget_fx_gaps.html' %}
-{% include 'partials/reference_rates.html' %}
-{% endif %}
+{% if has_shortfall %}<div class="product-feedback product-feedback--danger" role="status">当前安排超出计划收入 {{ money(shortfall_yuan) }}。可以减少计划留出的金额，或核对收入和待履约支出；这不是实际欠款或账户亏损。</div>{% endif %}
+{% if undated_expense_count %}<div class="product-feedback" role="status">有账务日期待确认的记录，请核对原记录后查看完整输入并生成建议。</div>{% endif %}
 
 <div class="advice-workspace">
-  <section class="product-panel product-panel--padded" aria-label="计算参数">
+  <section class="product-panel product-panel--padded" aria-label="本月储蓄与备用金安排">
     <div class="product-panel-header">
-      <h2 class="product-panel-title">参数</h2>
-      <p class="product-panel-subtitle">改了参数就重新算一次。</p>
+      <h2 class="product-panel-title">{{ month }} · 计划留出</h2>
+      <p class="product-panel-subtitle">先试算，再明确保存。计划留出不代表已经存入。</p>
     </div>
+    {% if saved_arrangement %}
+    <p class="hint">已保存第 {{ saved_arrangement.row_version }} 版：储蓄 {{ saved_savings }}、备用金 {{ saved_buffer }}（{{ saved_arrangement.home_currency_code }}）。</p>
+    <a class="product-button product-button--quiet" href="/web/budget-advise/history?ledger_id={{ selected_ledger_id|urlencode }}&month={{ month|urlencode }}">查看修改记录</a>
+    {% else %}<p class="hint">这个月尚未设置，计算暂按零预留。保存为零也会保留一条明确安排。</p>{% endif %}
+    {% if is_trial %}<p class="product-feedback" role="status">正在查看临时试算，尚未保存。</p>{% endif %}
     <form method="post" action="/web/budget-advise" class="budget-form">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      <input type="hidden" name="month" value="{{ month }}">
+      <input type="hidden" name="expected_row_version" value="{{ expected_row_version }}">
+      <input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
       {% if currency_choice_required %}
       <div class="product-field">
         <label for="advise-currency">原输入使用的币种</label>
@@ -54,37 +66,40 @@
           {% for code in currency_codes %}<option value="{{ code }}">{{ code }}</option>{% endfor %}
         </select>
       </div>
-      {% else %}<input type="hidden" name="home_currency_code" value="{{ currency_input.currency_code }}">{% endif %}
+      {% else %}<input type="hidden" name="home_currency_code" value="{{ editor_currency.currency_code }}">{% endif %}
       {{ csrf_field|safe }}
       <div class="product-field">
-        <label for="advise-month">月份</label>
-        <input id="advise-month" class="product-input" type="month" name="month" value="{{ month }}">
+        <label for="advise-savings">计划储蓄（{{ '原币种待选' if currency_choice_required else editor_currency.currency_code }}）</label>
+        <input id="advise-savings" class="product-input" type="text" name="savings_target_yuan" inputmode="{{ editor_currency.inputmode }}" placeholder="{{ editor_currency.amount_placeholder }}" value="{{ savings_target_yuan }}">
       </div>
       <div class="product-field">
-        <label for="advise-savings">储蓄目标（{{ '原币种待选' if currency_choice_required else currency_input.currency_code }}）</label>
-        <input id="advise-savings" class="product-input" type="text" name="savings_target_yuan" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}" value="{{ savings_target_yuan }}">
-      </div>
-      <div class="product-field">
-        <label for="advise-reserved">备用金（{{ '原币种待选' if currency_choice_required else currency_input.currency_code }}）</label>
-        <input id="advise-reserved" class="product-input" type="text" name="reserved_buffer_yuan" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}" value="{{ reserved_buffer_yuan }}">
+        <label for="advise-reserved">备用金（{{ '原币种待选' if currency_choice_required else editor_currency.currency_code }}）</label>
+        <input id="advise-reserved" class="product-input" type="text" name="reserved_buffer_yuan" inputmode="{{ editor_currency.inputmode }}" placeholder="{{ editor_currency.amount_placeholder }}" value="{{ reserved_buffer_yuan }}">
       </div>
       <div class="budget-actions">
-        <button class="product-button" type="submit">重新计算</button>
-        {% if advisor_can_request and not missing_rates and not form_error %}
-        <button class="product-button product-button--primary" type="submit" name="run_advise" value="true">获取智能建议</button>
+        <button class="product-button" type="submit">试算，不保存</button>
+        {% if can_write %}<button class="product-button product-button--primary" type="submit" formaction="/web/budget-advise/save">保存本月安排</button>{% endif %}
+        {% if save_conflict and can_write %}<button class="product-button" type="submit" formaction="/web/budget-advise/save" name="review_latest" value="true">保留输入，核对当前版本</button>{% endif %}
+        {% if advisor_can_request and not missing_rates and not form_error and not undated_expense_count %}
+        <button class="product-button" type="submit" name="run_advise" value="true">获取智能建议</button>
         {% endif %}
       </div>
     </form>
+    <div class="budget-actions">
+      <a href="/web/budgets?ledger_id={{ selected_ledger_id|urlencode }}&month={{ month|urlencode }}">月度支出预算</a>
+      <a href="/web/income-plans?ledger_id={{ selected_ledger_id|urlencode }}&month={{ month|urlencode }}">收入计划</a>
+      <a href="/web/recurring?ledger_id={{ selected_ledger_id|urlencode }}">固定支出</a>
+    </div>
   </section>
 
   <section class="product-panel product-panel--padded" aria-label="智能建议">
     <div class="product-panel-header">
       <h2 class="product-panel-title">智能建议</h2>
-      <p class="product-panel-subtitle">可选；只看到匿名化的分类聚合。</p>
+      <p class="product-panel-subtitle">可选；只发送分类聚合、泛化收入计划、固定支出摘要和这次安排的金额，不发送商户名、姓名、备注或票据图片。</p>
     </div>
     {% if form_error %}
     <div class="product-state"><div class="product-state-title">先核对原输入</div><div class="product-state-body">金额仍保留在参数区，核对后再重新计算。</div></div>
-    {% elif missing_rates %}
+    {% elif missing_rates or undated_expense_count %}
     <div class="product-state">
       <div class="product-state-title">先核对换算所需的信息</div>
       <div class="product-state-body">完整金额尚未确定，暂不生成智能建议。补齐后会重算 {{ month }}，生成建议仍由你确认。</div>
@@ -92,7 +107,7 @@
     {% elif not provider_enabled %}
     <div class="product-state">
       <div class="product-state-title">智能建议未开启</div>
-      <div class="product-state-body">本地计算不受影响，上方结果照常可用。开启后，建议也只会看到匿名化的分类聚合，不会看到商户名、姓名或票据图片。</div>
+      <div class="product-state-body">本地计算不受影响，保存也可独立使用。智能建议由你主动请求，不会自动更改安排。</div>
     </div>
     {% elif advisor_blocked_message %}
     <div class="product-state">
@@ -104,7 +119,7 @@
     {% elif not run_advise %}
     <div class="product-state">
       <div class="product-state-title">还没有生成建议</div>
-      <div class="product-state-body">在参数区点「获取智能建议」生成一份参考。建议只看到匿名化的分类聚合，不会看到真实商户名、真实姓名或图片。</div>
+      <div class="product-state-body">点「获取智能建议」生成一份参考。建议使用这次填写的金额；试算仍须点击保存才能成为跨端安排。</div>
     </div>
     {% elif advice is none %}
     <div class="product-state">
@@ -144,6 +159,10 @@
     {% endif %}
   </section>
 </div>
+{% if not currency_choice_required %}
+{% include 'partials/budget_fx_gaps.html' %}
+{% include 'partials/reference_rates.html' %}
+{% endif %}
 </div>
 
 {% endblock %}

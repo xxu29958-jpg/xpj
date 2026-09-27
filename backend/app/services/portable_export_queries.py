@@ -59,6 +59,8 @@ _LEDGER_RECORDS = (
         "rollover_amount_cents excluded_categories created_at updated_at row_version archived_at"),
     (m.BudgetCategory, "id public_id tenant_id month category amount_cents created_at updated_at"),
     (m.BudgetRevision, "id tenant_id budget_id row_version change_kind snapshot actor_account_id recorded_at"),
+    (m.MonthlyArrangement, "id tenant_id month home_currency_code savings_target_cents reserved_buffer_cents row_version created_at updated_at"),
+    (m.MonthlyArrangementRevision, "id tenant_id arrangement_id row_version home_currency_code savings_target_cents reserved_buffer_cents actor_account_id recorded_at"),
     (m.Goal, "id public_id tenant_id name goal_type period month category target_amount_cents home_currency_code "
         "status created_at updated_at row_version archived_at goal_version achieved_at achieved_version "
         "integrity_reviewed_version target_date"),
@@ -290,7 +292,7 @@ def _accepted_operations(auth: AuthContext) -> Select:
     receipt = m.ApiIdempotencyKey
     # Every listed resource kind is a ledger-shared business result. Private
     # resource results require the same actor predicates as their read owner.
-    shared = receipt.resource_type.in_(("expense", "expense_batch", "expense_offset", "monthly_budget", "goal",
+    shared = receipt.resource_type.in_(("expense", "expense_batch", "expense_offset", "monthly_budget", "monthly_arrangement", "goal",
         "income_plan", "recurring_item", "recurring_occurrence", "category_rule", "exchange_rate",
         "ledger_calendar_revision", "upload_receipt", "merchant_alias"))
     debt_relationships = _authorized_debt_receipts(auth)

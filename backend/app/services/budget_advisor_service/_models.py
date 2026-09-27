@@ -76,6 +76,11 @@ class BudgetInputs:
     # monthly recurring spend + how many active items — never per-merchant rows.
     recurring_total_monthly_cents: int = 0
     recurring_active_count: int = 0
+    savings_target_cents: int = 0
+    reserved_buffer_cents: int = 0
+    outstanding_fixed_cents: int = 0
+    discretionary_cents: int = 0
+    shortfall_cents: int = 0
 
 
 class BudgetAdvisorCategoryPayload(TypedDict):
@@ -104,6 +109,11 @@ class BudgetAdvisorOutboundPayload(TypedDict):
     income_plan: list[BudgetAdvisorIncomePlanPayload]
     recurring_total_monthly_cents: int
     recurring_active_count: int
+    savings_target_cents: int
+    reserved_buffer_cents: int
+    outstanding_fixed_cents: int
+    discretionary_cents: int
+    shortfall_cents: int
 
 
 BudgetAdvisorChatRequest: TypeAlias = JsonObject

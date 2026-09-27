@@ -29,11 +29,17 @@ ALLOWED_TOP_LEVEL_KEYS = frozenset(
         # no per-merchant rows — recurring items are merchant-keyed = PII).
         "recurring_total_monthly_cents",
         "recurring_active_count",
+        "savings_target_cents",
+        "reserved_buffer_cents",
+        "outstanding_fixed_cents",
+        "discretionary_cents",
+        "shortfall_cents",
     }
 )
 
 _NON_NEGATIVE_INT_KEYS = frozenset(
-    {"recurring_total_monthly_cents", "recurring_active_count"}
+    {"recurring_total_monthly_cents", "recurring_active_count", "savings_target_cents",
+     "reserved_buffer_cents", "outstanding_fixed_cents", "discretionary_cents", "shortfall_cents"}
 )
 
 ALLOWED_CATEGORY_KEYS = frozenset({"category", "amount_cents", "count"})

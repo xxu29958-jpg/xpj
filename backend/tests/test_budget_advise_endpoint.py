@@ -437,6 +437,8 @@ def test_builder_returns_valid_budget_inputs_when_empty(identity) -> None:  # no
         "income_plan",
         "recurring_total_monthly_cents",
         "recurring_active_count",
+        "savings_target_cents", "reserved_buffer_cents", "outstanding_fixed_cents",
+        "discretionary_cents", "shortfall_cents",
     }
     assert inputs.income_plan == []  # empty ledger -> no income lines
     assert inputs.recurring_total_monthly_cents == 0  # empty ledger -> no commitments

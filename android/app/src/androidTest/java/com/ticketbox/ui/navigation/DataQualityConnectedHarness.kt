@@ -105,11 +105,12 @@ internal class DataQualityConnectedHarness : AutoCloseable {
             bindingProvider = { sessionRecord.toOutboxBinding() },
         )
         val adapters = OutboxAdapterGraph()
+        val coordinator = com.ticketbox.data.repository.LocalLedgerSessionCoordinator(settingsStore, sessionStore, database.expenseDao(), outbox)
         val repositories = MainFeatureRepositories(
             uploadIntents = com.ticketbox.data.repository.UploadIntentRepository(apiProvider, outbox,
                 com.ticketbox.data.repository.UploadIntentFileStore(context), adapters.uploadPayloadAdapter,
                 adapters.uploadReceiptAdapter, settingsStore),
-            repository = ExpenseRepository(database.expenseDao(), binding, offlineMutations =
+            repository = ExpenseRepository(database.expenseDao(), binding, sessionCoordinator = coordinator, offlineMutations =
                 com.ticketbox.data.repository.ExpenseOfflineMutationWiring(outbox, adapters.correctionAdapter, adapters.legacyCorrectionAdapter,
                     adapters.billSplitCreateAdapter, adapters.billSplitReceiptAdapter,
                     manualCreateAdapter = com.ticketbox.OutboxAdapterGraph().manualCreateAdapter,
@@ -123,10 +124,10 @@ internal class DataQualityConnectedHarness : AutoCloseable {
                 expenseDao = database.expenseDao(),
                 sessionStore = sessionStore,
                 apiProvider = apiProvider,
+                sessionCoordinator = coordinator,
             ),
             recurringRepository = RecurringRepository(apiProvider),
-            budgetRepository = BudgetRepository(apiProvider, outbox, adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter,
-                adapters.manualRateAdapter, adapters.manualRateReceiptAdapter),
+            budgetRepository = BudgetRepository(apiProvider, outbox, adapters, database.monthlyArrangementCacheDao(), coordinator),
             reportsRepository = interfaceProxy<ReportsActions>(),
             goalEditRepository = com.ticketbox.data.repository.GoalEditRepository(apiProvider, outbox,
                 adapters.goalUpdateAdapter, adapters.goalReceiptAdapter, adapters.goalCreateAdapter),

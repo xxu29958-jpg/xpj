@@ -80,9 +80,6 @@ internal fun SyncStatusDropDialog(
 @Composable
 private fun dropConfirmationText(selection: SyncStatusDropSelection): DropConfirmationText {
     val row = selection.row
-    val expired = selection.failed && isExpiredFailure(row.lastError)
-    val debtCreation = row.type == PendingMutationType.CreateDebt
-    val label = stringResource(syncStatusMutationLabelResources.getValue(row.type))
     return when {
         row.type == PendingMutationType.CreateExpense -> DropConfirmationText(
             stringResource(R.string.manual_submission_stop), stringResource(R.string.manual_submission_stop_body),
@@ -102,6 +99,9 @@ private fun dropConfirmationText(selection: SyncStatusDropSelection): DropConfir
         row.type in setOf(PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem) -> DropConfirmationText(
             stringResource(R.string.recurring_original_drop), stringResource(R.string.recurring_original_drop_explanation),
             stringResource(R.string.recurring_original_drop),
+        )
+        row.type == PendingMutationType.SaveMonthlyArrangement -> DropConfirmationText(
+            stringResource(R.string.arrangement_stop), stringResource(R.string.arrangement_stop_body), stringResource(R.string.arrangement_stop),
         )
         row.type == PendingMutationType.SaveMonthlyBudget -> DropConfirmationText(
             stringResource(R.string.budget_save_drop), stringResource(R.string.budget_save_drop_explanation),
@@ -126,13 +126,17 @@ private fun dropConfirmationText(selection: SyncStatusDropSelection): DropConfir
             stringResource(R.string.occurrence_drop_explanation),
             stringResource(R.string.occurrence_drop),
         )
-        else -> legacyDropConfirmationText(selection, label, expired, debtCreation)
+        else -> legacyDropConfirmationText(selection)
     }
 }
 
 @Composable
-private fun legacyDropConfirmationText(selection: SyncStatusDropSelection, label: String,
-    expired: Boolean, debtCreation: Boolean): DropConfirmationText = when {
+private fun legacyDropConfirmationText(selection: SyncStatusDropSelection): DropConfirmationText {
+    val row = selection.row
+    val label = stringResource(syncStatusMutationLabelResources.getValue(row.type))
+    val expired = selection.failed && isExpiredFailure(row.lastError)
+    val debtCreation = row.type == PendingMutationType.CreateDebt
+    return when {
     !selection.failed -> DropConfirmationText(
         stringResource(R.string.sync_status_conflict_drop_dialog_title),
         stringResource(R.string.sync_status_conflict_drop_dialog_text, label),
@@ -151,4 +155,5 @@ private fun legacyDropConfirmationText(selection: SyncStatusDropSelection, label
         else stringResource(R.string.sync_status_failed_drop_dialog_text, label),
         stringResource(R.string.sync_status_drop_dialog_confirm),
     )
+    }
 }

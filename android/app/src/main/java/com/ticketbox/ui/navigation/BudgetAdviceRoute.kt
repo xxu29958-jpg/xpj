@@ -35,7 +35,9 @@ internal fun BudgetAdviceRoute(
         state = state,
         actions = com.ticketbox.ui.screens.plan.BudgetAdviceActions(viewModel::requestAdvice, viewModel::refreshInputs,
             viewModel::shiftMonth, { viewModel.openRate(it) }, viewModel::editRate, viewModel::updateRateInput,
-            viewModel::saveRate, viewModel::closeRateEditor, viewModel::reviewRate, viewModel::recoverRate),
+            viewModel::saveRate, viewModel::closeRateEditor, viewModel::reviewRate, viewModel::recoverRate,
+            viewModel::editArrangement, viewModel::trialArrangement, viewModel::saveArrangement,
+            viewModel::refreshArrangement, viewModel::loadArrangementHistory, viewModel::reviewArrangement, viewModel::recoverArrangement),
         onBack = onBack,
         correctionContinuation = correctionContinuation,
     )

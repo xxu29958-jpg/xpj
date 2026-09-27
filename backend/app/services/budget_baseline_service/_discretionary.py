@@ -26,9 +26,10 @@ class DiscretionaryBreakdown:
     monthly_income_cents: int | None
     fixed_expenses_cents: int | None
     spent_amount_cents: int | None
-    savings_target_cents: int
-    reserved_buffer_cents: int
+    savings_target_cents: int | None
+    reserved_buffer_cents: int | None
     discretionary_cents: int | None
+    shortfall_cents: int | None
 
 
 def compute_monthly_discretionary(
@@ -36,8 +37,8 @@ def compute_monthly_discretionary(
     monthly_income_cents: int | None,
     fixed_expenses_cents: int | None = 0,
     spent_amount_cents: int | None = 0,
-    savings_target_cents: int = 0,
-    reserved_buffer_cents: int = 0,
+    savings_target_cents: int | None = 0,
+    reserved_buffer_cents: int | None = 0,
 ) -> DiscretionaryBreakdown:
     """Return the 本月可自由支配 amount with its subtractions exposed.
 
@@ -46,7 +47,8 @@ def compute_monthly_discretionary(
     is floored at zero so downstream UI never has to deal with a
     "negative spendable" oxymoron.
     """
-    raw = None if None in (monthly_income_cents, fixed_expenses_cents, spent_amount_cents) else (
+    raw = None if None in (monthly_income_cents, fixed_expenses_cents, spent_amount_cents,
+                          savings_target_cents, reserved_buffer_cents) else (
         monthly_income_cents
         - fixed_expenses_cents
         - spent_amount_cents
@@ -60,4 +62,5 @@ def compute_monthly_discretionary(
         savings_target_cents=savings_target_cents,
         reserved_buffer_cents=reserved_buffer_cents,
         discretionary_cents=None if raw is None else max(0, raw),
+        shortfall_cents=None if raw is None else max(0, -raw),
     )

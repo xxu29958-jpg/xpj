@@ -1025,11 +1025,11 @@
       "path": "docs/DECISIONS/0036-v1.1-ai-budget-provider-privacy-boundary.md",
       "title": "v1.1 AI Budget Provider Privacy",
       "summary": "AI 只看最小结构化摘要 + 本地映射表；不上传原始账本 / 图片 / 真名 / 路径",
-      "current_scope": "AI budget provider 逐个声明最小出站 allowlist；建议不写权威预算且采纳必须人工确认",
+      "current_scope": "ADR-0036 未被后继关系覆盖的 declared_current_scope：AI budget provider 逐个声明最小出站 allowlist；建议不写权威预算且采纳必须人工确认；当前修订：ADR-0077 后继修订（Current implementation note 的 provider 字段白名单，仅增加五个无个人信息的月度金额聚合）：Internal Beta 月度安排、本地可安排金额、预算建议 provider 和 Web/Android 建议消费者",
       "schema_version": 1,
       "source_kind": "legacy-baseline",
       "decision_status": "accepted",
-      "implementation_status": "partial",
+      "implementation_status": "implementing",
       "verification_status": "unverified",
       "decision_type": "domain",
       "risk_level": "critical",
@@ -1048,7 +1048,14 @@
       "declared_current_scope": "AI budget provider 逐个声明最小出站 allowlist；建议不写权威预算且采纳必须人工确认",
       "declared_implementation_status": "partial",
       "declared_verification_status": "unverified",
-      "effective_amendments": []
+      "effective_amendments": [
+        {
+          "source": "0077",
+          "scope": "Current implementation note 的 provider 字段白名单，仅增加五个无个人信息的月度金额聚合",
+          "implementation_status": "implementing",
+          "verification_status": "unverified"
+        }
+      ]
     },
     {
       "path": "docs/DECISIONS/0037-v1.2-learning-feedback-dual-tables.md",
@@ -3213,6 +3220,53 @@
       "id": "0076",
       "declared_current_scope": "正式 Windows Inno 首装、repair、跨 release 同事务恢复、installation owner claim、pairing-only handoff、Desktop Manager 首次绑定、旧 owner handoff 审计与统一失败证据",
       "declared_implementation_status": "partial",
+      "declared_verification_status": "unverified",
+      "effective_amendments": []
+    },
+    {
+      "path": "docs/DECISIONS/0077-monthly-arrangement-advice-basis.md",
+      "title": "月度安排与外部建议共享最小金额依据",
+      "summary": "在既有匿名聚合中加入本次月度安排的五个金额，不发送事实身份、版本、历史或个人信息",
+      "current_scope": "Internal Beta 月度安排、本地可安排金额、预算建议 provider 和 Web/Android 建议消费者",
+      "schema_version": 2,
+      "source_kind": "frontmatter",
+      "decision_status": "accepted",
+      "implementation_status": "implementing",
+      "verification_status": "unverified",
+      "decision_type": "data-consistency",
+      "risk_level": "high",
+      "confidence": "high",
+      "decision_owner": "当前 Goal 授权的 Codex 产品与架构主控",
+      "implementation_owner": "Planning 后端及 Web/Android 消费者",
+      "verification_owner": "当前片主控与既有 exact-head 门禁",
+      "risk_owner": "项目维护者",
+      "relations": [
+        {
+          "kind": "amends",
+          "target": "0036",
+          "scope": "Current implementation note 的 provider 字段白名单，仅增加五个无个人信息的月度金额聚合"
+        }
+      ],
+      "clause_ids": [
+        "ADR-0077-SCOPE",
+        "ADR-0077-ASSUMPTIONS",
+        "ADR-0077-DRIVERS",
+        "ADR-0077-ALTERNATIVES",
+        "ADR-0077-DECISION",
+        "ADR-0077-C01",
+        "ADR-0077-C02",
+        "ADR-0077-CONSEQUENCES",
+        "ADR-0077-REVERSIBILITY",
+        "ADR-0077-EVIDENCE",
+        "ADR-0077-REFERENCES"
+      ],
+      "reviewed_at": null,
+      "reviewed_against_commit": null,
+      "calibration_reason": null,
+      "history_fingerprint": "adr-history-v2:25a900e69764e48ace5f51e96429a7e5ed93ae474aef9ada21500202ed35301a",
+      "id": "0077",
+      "declared_current_scope": "Internal Beta 月度安排、本地可安排金额、预算建议 provider 和 Web/Android 建议消费者",
+      "declared_implementation_status": "implementing",
       "declared_verification_status": "unverified",
       "effective_amendments": []
     }

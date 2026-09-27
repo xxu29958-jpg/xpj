@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
+import com.ticketbox.data.remote.dto.BudgetAdviceInputsDto
 import com.ticketbox.data.remote.dto.ExchangeRateDto
 import com.ticketbox.data.repository.LogicalSessionBinding
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -26,19 +27,21 @@ internal fun BudgetAdviceViewModel.observeAdviceAccess() {
             requestGeneration += 1
             inputGeneration += 1
             rateObservation?.cancel()
+            arrangementObservation?.cancel()
             _state.update { current -> BudgetAdviceUiState(month = current.month,
                 binding = access?.binding, canRequest = access?.canModify == true,
                 selectedRateSubmissionId = current.selectedRateSubmissionId.takeUnless { observedInputBinding }) }
             observedInputBinding = true
             access?.let {
                 observeRateSubmissions(it.binding)
+                observeArrangementSubmissions(it.binding)
                 resolvingMonth = !monthSelected
                 viewModelScope.launch {
                     val month = if (resolvingMonth) defaultMonth(it.binding) else _state.value.month
                     if (_state.value.binding != it.binding) return@launch
                     resolvingMonth = false
                     if (!monthSelected) _state.update { state -> state.copy(month = month) }
-                    refreshInputs()
+                    openArrangementMonth()
                 }
             }
         }
@@ -68,28 +71,55 @@ fun BudgetAdviceViewModel.refreshInputs() {
     val generation = ++inputGeneration
     _state.update { it.copy(inputsLoading = true, inputsError = null) }
     viewModelScope.launch {
-        val inputs = repository.adviceInputs(binding, snapshot.month, snapshot.reportingHomeCurrencyCode)
+        val inputs = snapshot.trialRequest?.let { repository.trialAdviceInputs(binding, snapshot.month, it) }
+            ?: repository.adviceInputs(binding, snapshot.month, snapshot.reportingHomeCurrencyCode)
         val rates = repository.exchangeRates(binding)
         if (_state.value.binding != binding || _state.value.month != snapshot.month || generation != inputGeneration) return@launch
-        _state.update { current -> current.copy(inputsLoading = false,
-            inputs = inputs.getOrNull(), rates = rates.getOrNull() ?: current.rates,
-            reportingHomeCurrencyCode = inputs.getOrNull()?.homeCurrencyCode ?: current.reportingHomeCurrencyCode,
-            inputsError = inputs.exceptionOrNull()?.toUiText(R.string.advice_inputs_load_failed)
-                ?: rates.exceptionOrNull()?.toUiText(R.string.advice_rates_load_failed)) }
-        if (inputs.getOrNull()?.readyForAdvice == false) {
-            _state.update { it.copy(result = null, loadState = BudgetAdviceLoadState.Idle) }
-        } else if (_state.value.loadState == BudgetAdviceLoadState.Idle) restoreCachedAdvice()
+        acceptAdviceInputs(inputs, rates, snapshot.inputs)
     }
 }
 
+private fun BudgetAdviceViewModel.acceptAdviceInputs(
+    inputs: Result<BudgetAdviceInputsDto>,
+    rates: Result<List<ExchangeRateDto>>,
+    requestedInputs: BudgetAdviceInputsDto?,
+) {
+    val denied = listOfNotNull(inputs.exceptionOrNull(), rates.exceptionOrNull()).firstOrNull { it.isReadAccessDenied() }
+    if (denied != null) { rejectArrangementRead(denied); return }
+    val freshInputs = inputs.getOrNull()
+    val current = _state.value
+    val adviceBasisChanged = current.result?.inputs?.let { it != freshInputs }
+        ?: (current.loadState == BudgetAdviceLoadState.Loading && requestedInputs != freshInputs)
+    if (adviceBasisChanged) requestGeneration += 1
+    _state.update { it.inputsRefreshed(inputs, rates, adviceBasisChanged) }
+    freshInputs?.homeCurrencyCode?.let(::seedArrangementDraft)
+    if (freshInputs?.readyForAdvice == false) {
+        _state.update { it.copy(result = null, loadState = BudgetAdviceLoadState.Idle) }
+    } else if (_state.value.loadState == BudgetAdviceLoadState.Idle) restoreCachedAdvice()
+}
+
+private fun BudgetAdviceUiState.inputsRefreshed(
+    read: Result<BudgetAdviceInputsDto>,
+    rateRead: Result<List<ExchangeRateDto>>,
+    adviceBasisChanged: Boolean,
+): BudgetAdviceUiState = copy(inputsLoading = false,
+    inputs = read.getOrNull(), rates = rateRead.getOrNull() ?: rates,
+    result = if (adviceBasisChanged) null else result,
+    loadState = if (adviceBasisChanged) BudgetAdviceLoadState.Idle else loadState,
+    reportingHomeCurrencyCode = read.getOrNull()?.homeCurrencyCode ?: reportingHomeCurrencyCode,
+    inputsError = read.exceptionOrNull()?.toUiText(R.string.advice_inputs_load_failed)
+        ?: rateRead.exceptionOrNull()?.toUiText(R.string.advice_rates_load_failed))
+
 fun BudgetAdviceViewModel.shiftMonth(delta: Long) {
-    if (_state.value.rateBusy || _state.value.loadState == BudgetAdviceLoadState.Loading) return
+    if (_state.value.arrangementBusy || _state.value.rateBusy || _state.value.loadState == BudgetAdviceLoadState.Loading) return
     val month = runCatching { YearMonth.parse(_state.value.month).plusMonths(delta).toString() }.getOrNull() ?: return
     monthSelected = true
     requestGeneration += 1
     _state.update { it.copy(month = month, inputs = null, result = null, loadState = BudgetAdviceLoadState.Idle,
-        error = null, terminalErrorCode = null, selectedRateSubmissionId = null, rateEditor = null) }
-    refreshInputs()
+        error = null, terminalErrorCode = null, selectedRateSubmissionId = null, rateEditor = null,
+        arrangementRead = null, arrangementDraft = null, trialRequest = null, arrangementHistory = emptyList(),
+        arrangementHistoryLoaded = false, arrangementHistoryNext = null, arrangementMessage = null) }
+    openArrangementMonth()
 }
 
 fun BudgetAdviceViewModel.openRateSubmission(id: Long) {
@@ -102,7 +132,9 @@ fun BudgetAdviceViewModel.openRateSubmission(id: Long) {
     if (_state.value.month != month || _state.value.reportingHomeCurrencyCode != home) {
         requestGeneration += 1
         _state.update { it.copy(month = month, reportingHomeCurrencyCode = home, inputs = null, result = null,
-            rateEditor = null, loadState = BudgetAdviceLoadState.Idle) }
-        refreshInputs()
+            rateEditor = null, loadState = BudgetAdviceLoadState.Idle,
+            arrangementRead = null, arrangementDraft = null, trialRequest = null, arrangementHistory = emptyList(),
+            arrangementHistoryLoaded = false, arrangementHistoryNext = null) }
+        openArrangementMonth()
     }
 }

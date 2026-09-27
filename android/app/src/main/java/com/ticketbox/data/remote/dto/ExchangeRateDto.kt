@@ -39,6 +39,8 @@ data class BudgetAdviceInputsDto(
     @param:Json(name = "inputs_fingerprint") val inputsFingerprint: String? = null,
     @param:Json(name = "undated_expense_count")
     val undatedExpenseCount: Int? = null,
+    @param:Json(name = "saved_arrangement") val savedArrangement: MonthlyArrangementDto? = null,
+    @param:Json(name = "is_trial") val isTrial: Boolean = false,
 ) {
     val readyForAdvice: Boolean get() = missingRates.isEmpty() && breakdown.monthlyIncomeCents != null &&
         breakdown.fixedExpensesCents != null && breakdown.spentAmountCents != null && breakdown.discretionaryCents != null

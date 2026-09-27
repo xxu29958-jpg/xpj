@@ -624,41 +624,35 @@ private class BudgetApiHandler : InvocationHandler {
                 )
                 budgetDto(configured = true)
             }
-            "budgetAdvise" -> {
-                adviceError?.let { throw it }
-                val request = values[0] as BudgetAdviseRequestDto
-                val queuedResponse = synchronized(adviceResponses) {
-                    adviceCalls += AdviceCall(
-                        month = request.month,
-                        timezone = request.timezone,
-                    )
-                    adviceResponses.removeFirstOrNull()
-                }
-                // Reserve this invocation's response before announcing that it
-                // entered the barrier. Otherwise two released callers race on
-                // removeFirstOrNull() and the fixture can swap the pre-write
-                // and post-write responses even when the repository is correct.
-                adviceEntered?.countDown()
-                adviceRelease?.await(10, TimeUnit.SECONDS)
-                queuedResponse ?: adviceResponse ?: BudgetAdviseResponseDto(
-                    advice = BudgetAdviceDto(
-                        summary = "为弹性支出留出余量。",
-                        suggestions = listOf(
-                            BudgetSuggestionDto(
-                                category = "餐饮",
-                                suggestedAmountCents = 80_000,
-                                rationale = "近期支出稳定。",
-                            ),
-                        ),
-                        confidence = 0.8,
-                    ),
-                    homeCurrencyCode = "CNY",
-                    providerName = "mock",
-                    reasonCode = "advisor_ready",
-                )
-            }
+            "budgetAdvise" -> replyToAdvice(values[0] as BudgetAdviseRequestDto)
             else -> error("Unexpected API call: ${method.name}")
         }
+    }
+
+    private fun replyToAdvice(request: BudgetAdviseRequestDto): BudgetAdviseResponseDto {
+        adviceError?.let { throw it }
+        val queuedResponse = synchronized(adviceResponses) {
+            adviceCalls += AdviceCall(month = request.month, timezone = request.timezone)
+            adviceResponses.removeFirstOrNull()
+        }
+        // Reserve the reply before the barrier so concurrent callers cannot swap
+        // the pre-write and post-write responses in the freshness tests.
+        adviceEntered?.countDown()
+        adviceRelease?.await(10, TimeUnit.SECONDS)
+        val response = queuedResponse ?: adviceResponse ?: BudgetAdviseResponseDto(
+            advice = BudgetAdviceDto(
+                summary = "为弹性支出留出余量。",
+                suggestions = listOf(BudgetSuggestionDto(
+                    category = "餐饮", suggestedAmountCents = 80_000, rationale = "近期支出稳定。")),
+                confidence = 0.8,
+            ),
+            homeCurrencyCode = "CNY",
+            providerName = "mock",
+            reasonCode = "advisor_ready",
+        )
+        return response.copy(inputs = response.inputs ?: com.ticketbox.data.remote.dto.BudgetAdviceInputsDto(
+            request.month, response.homeCurrencyCode ?: "CNY", com.ticketbox.data.remote.dto.DiscretionaryResponseDto(
+                10000, 1000, 2000, 0, 0, 7000), emptyList()))
     }
 }
 

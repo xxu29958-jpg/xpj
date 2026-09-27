@@ -188,9 +188,9 @@ def test_budget_advise_render_follows_zero_decimal_home(jpy_env, web_client: Tes
         r"<small>\s*储蓄目标\s*</small>\s*<strong>\s*−\s*¥12\.00\s*</strong>",
         page.text,
     )
-    assert "储蓄目标（JPY）" in page.text
+    assert "计划储蓄（JPY）" in page.text
     assert "备用金（JPY）" in page.text
-    assert "储蓄目标（元）" not in page.text
+    assert "计划储蓄（元）" not in page.text
     assert "备用金（元）" not in page.text
     assert 'name="savings_target_yuan" inputmode="numeric"' in page.text
 

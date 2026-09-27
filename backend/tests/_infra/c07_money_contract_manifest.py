@@ -284,6 +284,10 @@ def _assert_openapi_money_schema_contract() -> None:
     for schema in textual_money.values():
         # Query strings preserve lexical evidence so +1/01/space cannot be
         # normalized away before the canonical-money validator.
+        # Omission now means "use the saved monthly arrangement"; an explicit
+        # amount keeps the same strict textual-money evidence.
+        assert {variant["type"] for variant in schema["anyOf"]} == {"string", "null"}
+        schema = next(variant for variant in schema["anyOf"] if variant["type"] == "string")
         assert schema["type"] == "string"
         assert schema["pattern"] == (
             CANONICAL_NONNEGATIVE_MONEY_MINOR_TEXT_PATTERN
