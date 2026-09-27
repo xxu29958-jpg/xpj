@@ -19,6 +19,8 @@ from app.services.saved_view_service import (
 )
 from app.services.time_service import now_utc
 
+pytestmark = pytest.mark.usefixtures("identity")
+
 
 def _owner_id(db):
     owner_id = db.scalar(select(Ledger.owner_account_id)
@@ -35,7 +37,7 @@ def _definition(**overrides):
 
 
 @pytest.mark.parametrize("month", ["0000-01", "9999-12", "2026-13"])
-def test_fixed_view_rejects_months_the_original_financial_query_cannot_read(identity, month):  # noqa: ARG001
+def test_fixed_view_rejects_months_the_original_financial_query_cannot_read(month):
     with SessionLocal() as db:
         owner_id = _owner_id(db)
         with pytest.raises(AppError) as exc:
@@ -46,7 +48,7 @@ def test_fixed_view_rejects_months_the_original_financial_query_cannot_read(iden
         assert list_views(db, tenant_id="owner", actor_account_id=owner_id) == []
 
 
-def test_saved_view_replay_is_original_receipt_and_tag_identity_needs_repair(identity):  # noqa: ARG001
+def test_saved_view_replay_is_original_receipt_and_tag_identity_needs_repair():
     with SessionLocal() as db:
         owner_id = _owner_id(db)
         tag = Tag(tenant_id="owner", name="旅行", key="旅行")
@@ -97,7 +99,7 @@ def test_saved_view_replay_is_original_receipt_and_tag_identity_needs_repair(ide
                                                 public_id=original.public_id)
 
 
-def test_saved_view_shared_read_viewer_denied_write_and_occ(identity):  # noqa: ARG001
+def test_saved_view_shared_read_viewer_denied_write_and_occ():
     with SessionLocal() as db:
         owner_id = _owner_id(db)
         viewer = Account(display_name="只读家人")
@@ -142,7 +144,7 @@ def test_saved_view_shared_read_viewer_denied_write_and_occ(identity):  # noqa: 
         assert list_views(db, tenant_id="owner", actor_account_id=viewer.id) == []
 
 
-def test_current_month_is_resolved_from_ledger_calendar_each_time(identity, monkeypatch):  # noqa: ARG001
+def test_current_month_is_resolved_from_ledger_calendar_each_time(monkeypatch):
     with SessionLocal() as db:
         owner_id = _owner_id(db)
         monkeypatch.setattr("app.services.ledger_calendar_service.now_utc",
@@ -164,7 +166,7 @@ def test_current_month_is_resolved_from_ledger_calendar_each_time(identity, monk
                                   public_id=fixed.public_id)["month"] == "2026-09"
 
 
-def test_create_retry_rejects_different_intent_or_actor_and_does_not_revive_deleted_view(identity):  # noqa: ARG001
+def test_create_retry_rejects_different_intent_or_actor_and_does_not_revive_deleted_view():
     with SessionLocal() as db:
         owner_id = _owner_id(db)
         member = Account(display_name="可编辑家人")
@@ -195,7 +197,7 @@ def test_create_retry_rejects_different_intent_or_actor_and_does_not_revive_dele
         assert list_views(db, tenant_id="owner", actor_account_id=owner_id) == []
 
 
-def test_second_ledger_member_cannot_cross_view_scope_or_read_after_revocation(identity):  # noqa: ARG001
+def test_second_ledger_member_cannot_cross_view_scope_or_read_after_revocation():
     with SessionLocal() as db:
         owner_id = _owner_id(db)
         foreign_owner = Account(display_name="另一本拥有者")
