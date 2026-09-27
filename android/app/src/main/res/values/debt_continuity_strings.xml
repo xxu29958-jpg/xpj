@@ -43,4 +43,10 @@
     <string name="debt_repayment_confirmed">这次还款已确认。欠款余额与还款记录可刷新查看。</string>
     <string name="debt_repayment_pending_amount">原还款金额：%1$s</string>
     <string name="debt_repayment_original_date">原还款时间：%1$s</string>
+    <string name="debt_void_saved">原作废已保存在本机，同步确认后更新记录。</string>
+    <string name="debt_void_review_title">原作废已接受，待核对</string>
+    <string name="debt_void_confirmed">这次原作废已确认。欠款与历史记录可刷新查看。</string>
+    <string name="debt_void_original_repayment">原还款记录：%1$s</string>
+    <string name="debt_void_original_requires_review">原作废已被接受，但旧版本未保存当时结果。请核对原记录，勿重复作废。</string>
+    <string name="debt_void_review_stop_explanation">只停止本机对原作废的追踪，保留原提交。账本已接受的作废不会撤销；请查看原记录，勿重复作废。</string>
 </resources>

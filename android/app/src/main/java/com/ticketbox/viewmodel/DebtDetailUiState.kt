@@ -88,7 +88,7 @@ internal fun DebtDetailUiState.withWriteRows(
         .mapNotNull { it.row.expectedRowVersion }.maxOrNull()
     val needsRefresh = newlyTerminal || confirmedVersion != null && (debt?.rowVersion ?: 0) <= confirmedVersion
     return copy(
-        pendingWrites = rows.filter { it.row.status != PendingMutationStatus.Done || it.repayment != null },
+        pendingWrites = rows.filter { it.row.status != PendingMutationStatus.Done || it.repayment != null || it.isVoid },
         writeSnapshotLoaded = true,
         locallyAcceptedWriteId = locallyAcceptedWriteId?.takeUnless { id -> rows.any { it.row.id == id } },
         writeRefreshAfterVersion = if (needsRefresh && confirmedVersion != null) maxOf(writeRefreshAfterVersion ?: 0, confirmedVersion)

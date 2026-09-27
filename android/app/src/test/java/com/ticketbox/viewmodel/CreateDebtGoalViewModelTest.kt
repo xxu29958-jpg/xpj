@@ -321,18 +321,6 @@ private class FakeCreateDebtActions(
 
     // slice 8c widened DebtActions; the create-debt-goal flow only reads listDebts for the picker.
 
-    override suspend fun voidRepayment(
-        publicId: String,
-        repaymentPublicId: String,
-        expectedRowVersion: Long,
-        reason: String,
-    ): Result<Debt> = Result.failure(UnsupportedOperationException())
-
-    override suspend fun voidDebt(
-        publicId: String,
-        expectedRowVersion: Long,
-        reason: String,
-    ): Result<Debt> = Result.failure(UnsupportedOperationException())
 
     override suspend fun setDebtKind(
         publicId: String,

@@ -88,15 +88,6 @@ private class SwitchingDebtActions(
     ): Result<DebtBillSuggestion> = Result.failure(UnsupportedOperationException())
 
 
-    override suspend fun voidRepayment(
-        publicId: String,
-        repaymentPublicId: String,
-        expectedRowVersion: Long,
-        reason: String,
-    ): Result<Debt> = Result.failure(UnsupportedOperationException())
-
-    override suspend fun voidDebt(publicId: String, expectedRowVersion: Long, reason: String): Result<Debt> =
-        Result.success(switchDebt(publicId))
 
     override suspend fun setDebtKind(publicId: String, expectedRowVersion: Long, debtKind: String): Result<Debt> =
         Result.success(switchDebt(publicId))

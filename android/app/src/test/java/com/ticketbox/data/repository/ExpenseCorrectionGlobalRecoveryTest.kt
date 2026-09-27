@@ -336,7 +336,7 @@ private class CorrectionRecoveryHarness : ExpensePendingRepositoryOutboxTestBase
                 outbox, adapters.categoryRuleUpdateAdapter, adapters.categoryRuleDeleteAdapter,
                 adapters.categoryRuleSubmissionAdapter, adapters.categoryRuleReceiptAdapter)),
             incomePlans = IncomePlanRepository(binding.apiProvider, outbox, adapters.incomePlanSubmissionAdapter, adapters.incomePlanReceiptAdapter),
-            debtWrites = DebtWriteRepository(binding.apiProvider, outbox, adapters.debtAdjustmentAdapter, adapters.debtRepaymentAdapter),
+            debtWrites = DebtWriteRepository(binding.apiProvider, outbox, adapters.debtAdjustmentAdapter, adapters.debtRepaymentAdapter, adapters.debtVoidAdapter, adapters.debtRepaymentVoidAdapter),
             goalEdits = GoalEditRepository(binding.apiProvider, outbox, adapters.goalUpdateAdapter, adapters.goalReceiptAdapter, adapters.goalCreateAdapter),
             budgetSaves = testBudgetRepository(binding.apiProvider, outbox),
         )

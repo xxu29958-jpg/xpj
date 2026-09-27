@@ -2,12 +2,10 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.data.remote.dto.DebtForgiveCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtKindSetRequestDto
-import com.ticketbox.data.remote.dto.DebtVoidCreateRequestDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalConfirmRequestDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalCreateRequestDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalRejectRequestDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalWithdrawRequestDto
-import com.ticketbox.data.remote.dto.RepaymentVoidCreateRequestDto
 import com.ticketbox.domain.model.DebtBillSuggestion
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtListLens
@@ -29,18 +27,6 @@ interface DebtActions {
     suspend fun getDebt(publicId: String): Result<Debt>
     suspend fun parseDebtBillImage(expectedBinding: LogicalSessionBinding, fileName: String,
         contentType: String?, bytes: ByteArray): Result<DebtBillSuggestion>
-    // ADR-0049 §3 (slice 8c) direct fact writes on an external/manual Debt. [expectedRowVersion]
-    // is the §2.1 OCC carrier (the local Debt's row_version); the response is the fold-after Debt
-    // (status / remaining / paid / a fresh row_version) the detail screen swaps in.
-    suspend fun voidDebt(publicId: String, expectedRowVersion: Long, reason: String): Result<Debt>
-
-    suspend fun voidRepayment(
-        publicId: String,
-        repaymentPublicId: String,
-        expectedRowVersion: Long,
-        reason: String,
-    ): Result<Debt>
-
     // ADR-0049 §7.0 / 8e-6e: set / correct this external Debt's repayment-rhythm classification
     // (debt_kind). [expectedRowVersion] is the §2.1 OCC carrier (the local Debt's row_version); the
     // response is the fold-after Debt (a fresh row_version + the new debt_kind) the detail screen
@@ -121,30 +107,6 @@ class DebtRepository(
             ledgerRequestGuard.guardedCall { api -> api.debt(publicId).toDomain() }
         }
 
-    override suspend fun voidRepayment(
-        publicId: String,
-        repaymentPublicId: String,
-        expectedRowVersion: Long,
-        reason: String,
-    ): Result<Debt> {
-        if (!canModifyLedger()) return Result.failure(RepositoryException(DEBT_VIEWER_READONLY))
-        val cleanReason = reason.trim()
-        if (cleanReason.isEmpty()) return Result.failure(RepositoryException("请填写作废原因。"))
-        return errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
-                api.voidDebtRepayment(
-                    publicId = publicId,
-                    request = RepaymentVoidCreateRequestDto(
-                        repaymentPublicId = repaymentPublicId,
-                        reason = cleanReason,
-                        expectedRowVersion = expectedRowVersion,
-                    ),
-                    idempotencyKey = UUID.randomUUID().toString(),
-                ).toDomain()
-            }
-        }
-    }
-
     // Local and cross-ledger receivables share the same session/ledger response guard.
     override suspend fun listReceivables(): Result<List<Debt>> =
         errorHandler.safeCall {
@@ -171,28 +133,6 @@ class DebtRepository(
             val filePart = MultipartBody.Part.createFormData("file", cleanName, body)
             ledgerRequestGuard.bindExact(expectedBinding).call { api ->
                 api.parseDebtBill(filePart).toDomain()
-            }
-        }
-    }
-
-    override suspend fun voidDebt(
-        publicId: String,
-        expectedRowVersion: Long,
-        reason: String,
-    ): Result<Debt> {
-        if (!canModifyLedger()) return Result.failure(RepositoryException(DEBT_VIEWER_READONLY))
-        val cleanReason = reason.trim()
-        if (cleanReason.isEmpty()) return Result.failure(RepositoryException("请填写作废原因。"))
-        return errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
-                api.voidDebt(
-                    publicId = publicId,
-                    request = DebtVoidCreateRequestDto(
-                        reason = cleanReason,
-                        expectedRowVersion = expectedRowVersion,
-                    ),
-                    idempotencyKey = UUID.randomUUID().toString(),
-                ).toDomain()
             }
         }
     }

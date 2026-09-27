@@ -350,6 +350,12 @@ class AppContainer(context: Context) {
                 apiProvider = ::outboxApi, adapter = outboxAdapters.debtRepaymentAdapter,
                 receiptAdapter = outboxAdapters.debtRepaymentReceiptAdapter,
             ),
+            com.ticketbox.data.repository.VoidDebtDispatcher(
+                ::outboxApi, outboxAdapters.debtVoidAdapter, outboxAdapters.debtVoidReceiptAdapter,
+            ),
+            com.ticketbox.data.repository.VoidDebtRepaymentDispatcher(
+                ::outboxApi, outboxAdapters.debtRepaymentVoidAdapter, outboxAdapters.debtVoidReceiptAdapter,
+            ),
             CreateDebtDispatcher(
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.debtCreateAdapter,

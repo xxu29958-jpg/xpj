@@ -214,6 +214,16 @@ internal class OutboxAdapterGraph {
         moshi.adapter(com.ticketbox.data.remote.dto.DebtRepaymentReceiptDto::class.java)
     }
 
+    val debtVoidAdapter: JsonAdapter<com.ticketbox.data.repository.DebtVoidPayload> = lazyJsonAdapter {
+        moshi.adapter(com.ticketbox.data.repository.DebtVoidPayload::class.java)
+    }
+    val debtRepaymentVoidAdapter: JsonAdapter<com.ticketbox.data.repository.DebtRepaymentVoidPayload> = lazyJsonAdapter {
+        moshi.adapter(com.ticketbox.data.repository.DebtRepaymentVoidPayload::class.java)
+    }
+    val debtVoidReceiptAdapter: JsonAdapter<com.ticketbox.data.remote.dto.DebtDto> = lazyJsonAdapter {
+        moshi.adapter(com.ticketbox.data.remote.dto.DebtDto::class.java).serializeNulls()
+    }
+
     val debtCreateAdapter: JsonAdapter<DebtCreateOutboxPayload> = lazyJsonAdapter {
         moshi.adapter(DebtCreateOutboxPayload::class.java)
     }

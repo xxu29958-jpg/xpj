@@ -235,7 +235,11 @@ class OutboxStatusViewModel(
             return
         }
         if (!drop && !pending.canRetry) {
-            val message = if (pending.reductionRejected) R.string.debt_adjustment_reduction_rejected else R.string.debt_write_attention
+            val message = when {
+                pending.requiresReview -> R.string.debt_void_original_requires_review
+                pending.reductionRejected -> R.string.debt_adjustment_reduction_rejected
+                else -> R.string.debt_write_attention
+            }
             _uiState.update { it.copy(message = UiText.res(message), messageTone = MessageTone.Danger) }
             return
         }
@@ -406,7 +410,7 @@ private fun OutboxRow.refusesRetry(observation: ExpenseCorrectionObservation): B
     (type == PendingMutationType.SplitAgreement && lastError in com.ticketbox.data.repository.SPLIT_SHARE_REFUSALS) ||
     lastError == EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW ||
         (type == PendingMutationType.UndoExpense && lastError == "expense_not_found") ||
-        (type in writerSubmissionTypes && observation.access?.canModify != true)
+        ((type in writerSubmissionTypes || type in DEBT_WRITE_TYPES) && observation.access?.canModify != true)
 
 private fun OutboxBinding?.matches(binding: LogicalSessionBinding?): Boolean =
     this != null && binding != null && ownerStorageKey == binding.ownerKey && ledgerId == binding.ledgerId &&

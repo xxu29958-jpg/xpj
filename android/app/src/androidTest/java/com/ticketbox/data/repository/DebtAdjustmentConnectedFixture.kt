@@ -53,7 +53,7 @@ internal class DebtAdjustmentConnectedFixture(private val context: Context, priv
     private val clock: Clock = Clock.fixed(Instant.parse("2026-09-30T15:30:00Z"), ZoneOffset.UTC)
     val network = DebtAdjustmentConnectedNetwork()
     private val adapters = OutboxAdapterGraph()
-    private val session = debtAdjustmentConnectedSession()
+    var session = debtAdjustmentConnectedSession()
     var scheduleCalls = 0
     lateinit var outbox: OutboxRepository
     lateinit var graph: RepositoryGraph
@@ -88,7 +88,9 @@ internal class DebtAdjustmentConnectedFixture(private val context: Context, priv
 
     suspend fun drain(maxAttempts: Int = 10) = OutboxDrainEngine(outbox,
         listOf(RecordDebtAdjustmentDispatcher({ remote ?: network.service }, adapters.debtAdjustmentAdapter),
-            RecordDebtRepaymentDispatcher({ remote ?: network.service }, adapters.debtRepaymentAdapter, adapters.debtRepaymentReceiptAdapter)),
+            RecordDebtRepaymentDispatcher({ remote ?: network.service }, adapters.debtRepaymentAdapter, adapters.debtRepaymentReceiptAdapter),
+            VoidDebtDispatcher({ remote ?: network.service }, adapters.debtVoidAdapter, adapters.debtVoidReceiptAdapter),
+            VoidDebtRepaymentDispatcher({ remote ?: network.service }, adapters.debtRepaymentVoidAdapter, adapters.debtVoidReceiptAdapter)),
         maxAttempts = maxAttempts, now = clock::millis).drainOnce()
 
     fun close() { database?.close(); context.deleteDatabase(name) }

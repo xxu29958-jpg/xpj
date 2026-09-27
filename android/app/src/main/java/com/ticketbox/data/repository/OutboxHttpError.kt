@@ -5,7 +5,7 @@ import retrofit2.HttpException
 private val outboxHttpErrors = NetworkErrorHandler(serverUrlProvider = { null }, context = "Outbox")
 private val outboxRecoveryErrorCodes = setOf(
     "runtime_version_mismatch", "client_upgrade_required", "rule_category_deleted", DEBT_ADJUSTMENT_NEGATIVE_REMAINING,
-    BUDGET_CURRENCY_CONFLICT,
+    BUDGET_CURRENCY_CONFLICT, DEBT_VOID_ORIGINAL_REQUIRES_REVIEW,
     EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW,
     "split_total_exceeds_parent", "split_amount_exceeds_parent",
 )

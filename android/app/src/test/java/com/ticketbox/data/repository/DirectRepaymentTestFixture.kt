@@ -39,10 +39,12 @@ internal class DirectRepaymentTestFixture(role: String = "owner") {
         onEnqueued = { publishedDepths += dao.rows.size })
 
     fun newRepository(outbox: OutboxRepository, at: Clock) = DebtWriteRepository(provider, outbox,
-        adapters.debtAdjustmentAdapter, adapters.debtRepaymentAdapter, at)
+        adapters.debtAdjustmentAdapter, adapters.debtRepaymentAdapter, adapters.debtVoidAdapter, adapters.debtRepaymentVoidAdapter, at)
 
     fun engine(outbox: OutboxRepository = this.outbox, at: Clock = clock) = OutboxDrainEngine(outbox,
-        listOf(RecordDebtRepaymentDispatcher({ api }, adapters.debtRepaymentAdapter, adapters.debtRepaymentReceiptAdapter)),
+        listOf(RecordDebtRepaymentDispatcher({ api }, adapters.debtRepaymentAdapter, adapters.debtRepaymentReceiptAdapter),
+            VoidDebtDispatcher({ api }, adapters.debtVoidAdapter, adapters.debtVoidReceiptAdapter),
+            VoidDebtRepaymentDispatcher({ api }, adapters.debtRepaymentVoidAdapter, adapters.debtVoidReceiptAdapter)),
         maxAttempts = 1, now = at::millis)
 
     suspend fun save(amount: Long = 10_000) = repository.saveRepayment(binding, debt, amount)
@@ -58,6 +60,9 @@ internal class RepaymentResponseLossProbe : ApiService by FakeApiService(mutable
     var loseResponse = true
     var refusal: Pair<Int, String>? = null
     var receiptTransform: (DebtRepaymentReceiptDto) -> DebtRepaymentReceiptDto = { it }
+    var voidReceiptTransform: (DebtDto) -> DebtDto = { it }
+    val voidCalls = mutableListOf<Triple<String, Any, String>>()
+    val voidFacts = mutableMapOf<String, Pair<Any, DebtDto>>()
     var current = DebtDto(
         publicId = "d1", ledgerId = "owner", direction = "i_owe", counterpartyType = "external",
         counterpartyLabel = "Bank", principalAmountCents = 50_000L, remainingAmountCents = 50_000L,
@@ -66,6 +71,25 @@ internal class RepaymentResponseLossProbe : ApiService by FakeApiService(mutable
     )
 
     override suspend fun debt(publicId: String): DebtDto = current
+
+    override suspend fun voidDebt(publicId: String, request: com.ticketbox.data.remote.dto.DebtVoidCreateRequestDto,
+        idempotencyKey: String?): DebtDto = commitVoid(publicId, request, requireNotNull(idempotencyKey), request.expectedRowVersion)
+
+    override suspend fun voidDebtRepayment(publicId: String, request: com.ticketbox.data.remote.dto.RepaymentVoidCreateRequestDto,
+        idempotencyKey: String?): DebtDto = commitVoid(publicId, request, requireNotNull(idempotencyKey), request.expectedRowVersion)
+
+    private fun commitVoid(publicId: String, request: Any, key: String, version: Long): DebtDto {
+        voidCalls += Triple(publicId, request, key)
+        refusal?.let { (status, code) -> throw repaymentRefusal(status, code) }
+        voidFacts[key]?.let { (original, receipt) -> check(original == request); return voidReceiptTransform(receipt) }
+        if (version != current.rowVersion) throw repaymentRefusal(409, "state_conflict")
+        current = if (request is com.ticketbox.data.remote.dto.DebtVoidCreateRequestDto) {
+            current.copy(status = "voided", remainingAmountCents = 0, rowVersion = current.rowVersion + 1)
+        } else current.copy(status = "open", rowVersion = current.rowVersion + 1)
+        voidFacts[key] = request to current
+        if (loseResponse) throw IOException("Synthetic response loss after void commit")
+        return voidReceiptTransform(current)
+    }
 
     override suspend fun recordDebtRepayment(publicId: String, request: RepaymentCreateRequestDto,
         idempotencyKey: String?): DebtRepaymentReceiptDto {

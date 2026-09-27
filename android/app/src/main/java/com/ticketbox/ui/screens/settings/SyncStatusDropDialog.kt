@@ -109,10 +109,7 @@ private fun dropConfirmationText(selection: SyncStatusDropSelection): DropConfir
             stringResource(R.string.budget_save_drop), stringResource(R.string.budget_save_drop_explanation),
             stringResource(R.string.budget_save_drop),
         )
-        row.type in com.ticketbox.data.repository.DEBT_WRITE_TYPES -> DropConfirmationText(
-            stringResource(R.string.debt_write_drop), stringResource(R.string.debt_write_drop_explanation),
-            stringResource(R.string.debt_write_drop),
-        )
+        row.type in com.ticketbox.data.repository.DEBT_WRITE_TYPES -> debtWriteDropConfirmationText(selection)
         selection.incomeSubmission?.requiresReview == true -> DropConfirmationText(
             stringResource(R.string.income_plan_submission_stop_record),
             stringResource(R.string.income_plan_submission_stop_record_explanation),
@@ -159,3 +156,10 @@ private fun legacyDropConfirmationText(selection: SyncStatusDropSelection): Drop
     )
     }
 }
+
+@Composable
+private fun debtWriteDropConfirmationText(selection: SyncStatusDropSelection): DropConfirmationText = DropConfirmationText(
+    stringResource(R.string.debt_write_drop), stringResource(if (selection.debtWrite?.requiresReview == true)
+        R.string.debt_void_review_stop_explanation else R.string.debt_write_drop_explanation),
+    stringResource(R.string.debt_write_drop),
+)
