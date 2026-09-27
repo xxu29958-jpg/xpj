@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, Response
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -19,19 +20,25 @@ from app.routes._web_expense_helpers import (
 )
 from app.routes._web_expense_return_context import (
     ExpenseReturnContext,
+    edit_context_params,
+    expense_return_form_context,
     expense_return_query_context,
     resolve_return_to,
     return_context_params,
 )
-from app.routes._web_session_common import resolve_web_actor
+from app.routes._web_session_common import parse_form_row_version_token, resolve_web_actor
 from app.routes.web_common import (
     LocalOnly,
+    _base_ctx,
     _list_ledger_options,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _web_redirect,
+    _with_ledger,
+    preserve_original_ledger_form,
     templates,
 )
+from app.services.expense_ocr_command_service import submit_expense_ocr_retry
 
 router = APIRouter(prefix="/web", tags=["web"])
 
@@ -168,3 +175,49 @@ def web_refresh_expense_fx(
     _local: None = LocalOnly, db: Session = Depends(get_db),
 ) -> Response:
     return render_web_fx_action(db, request, expense_id, form, start=False)
+
+
+@router.post("/expenses/{expense_id}/ocr/retry", response_class=HTMLResponse)
+def web_retry_expense_ocr(
+    expense_id: int,
+    request: Request,
+    ledger_id: str = Form(default=""),
+    expected_row_version: str = Form(default=""),
+    idempotency_key: str = Form(default=""),
+    return_context: ExpenseReturnContext = Depends(expense_return_form_context),
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> Response:
+    options = _list_ledger_options(db)
+    selected = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
+    fields = {**return_context.as_kwargs(), "ledger_id": ledger_id,
+        "expected_row_version": expected_row_version, "idempotency_key": idempotency_key}
+    retained = preserve_original_ledger_form(request, db, options=options, selected=selected,
+        fields=fields, task="继续原账单的识别请求")
+    if retained is not None:
+        return retained
+    _require_selected_ledger_write(options, selected)
+    account_id, device_id = resolve_web_actor(db, request, selected)
+    origin = edit_context_params(**return_context.as_kwargs())
+    try:
+        version = parse_form_row_version_token(expected_row_version)
+        if version is None or not idempotency_key.strip():
+            raise AppError("invalid_request", "请从原账单页面发起识别。", status_code=422)
+        submit_expense_ocr_retry(db, expense_id=expense_id, tenant_id=selected,
+            initiator_account_id=account_id, initiator_device_id=device_id,
+            expected_row_version=version, request_expected_row_version=version,
+            idempotency_key=idempotency_key)
+    except (AppError, SQLAlchemyError) as exc:
+        db.rollback()
+        status = exc.status_code if isinstance(exc, AppError) else 503
+        message = exc.message if isinstance(exc, AppError) else "暂时未能取得识别结果，请稍后重试原请求。"
+        ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected)
+        ctx.update(error=message, original_fields=fields,
+            can_retry=status >= 500 or status == 429 or (isinstance(exc, AppError) and exc.error == "idempotency_key_in_progress"),
+            current_href=_with_ledger(f"/web/expenses/{expense_id}/edit", selected, **origin),
+            original_href=_with_ledger(f"/web/expenses/{expense_id}/original", selected))
+        return templates.TemplateResponse(request=request, name="expense_ocr_retry.html", context=ctx,
+            status_code=status, headers={"Cache-Control": "no-store"})
+    return _web_redirect(f"/web/expenses/{expense_id}/edit", selected,
+        msg="识别请求已接受；请核对当前账单，仍缺少的字段可手动补全。原窗口未保存的填写仍保留。",
+        **origin)
