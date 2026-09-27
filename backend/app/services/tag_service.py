@@ -50,7 +50,12 @@ def _ensure_tag(db: Session, *, tenant_id: str, name: str) -> Tag:
     key = tag_key(name)
     # The (tenant_id, key) unique constraint spans soft-deleted rows, so this
     # returns at most one tag for the key — live OR soft-deleted.
-    existing = db.scalar(ledger_scoped_select(Tag, tenant_id).where(Tag.key == key).limit(1))
+    # Share the tag through publication. Unused cleanup takes FOR UPDATE, so a
+    # writer waiting behind cleanup reads its committed state and revives it.
+    existing = db.scalar(
+        ledger_scoped_select(Tag, tenant_id).where(Tag.key == key).limit(1)
+        .with_for_update(read=True, key_share=True).execution_options(populate_existing=True)
+    )
     if existing is not None:
         # ADR-0043 契约 4: implicit re-creation colliding with a soft-deleted key
         # REVIVES that tag (so the unique key isn't violated and no duplicate is
@@ -187,7 +192,10 @@ def _tags_by_key_for_names(db: Session, tenant_id: str, names: list[str]) -> dic
         return {}
 
     tags_by_key = {
-        tag.key: tag for tag in db.scalars(ledger_scoped_select(Tag, tenant_id).where(Tag.key.in_(set(names_by_key))))
+        tag.key: tag for tag in db.scalars(
+            ledger_scoped_select(Tag, tenant_id).where(Tag.key.in_(set(names_by_key)))
+            .with_for_update(read=True, key_share=True).execution_options(populate_existing=True)
+        )
     }
     now = now_utc()
     created = False

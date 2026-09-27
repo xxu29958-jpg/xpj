@@ -227,15 +227,11 @@ def _claim_tag_soft_delete(
     it) is rejected rather than clobbered. Returns rowcount (0 → stale token, or —
     for require_orphan — a link appeared).
 
-    Residual READ-COMMITTED skew (documented + accepted, NOT auto-healed): a re-tag
-    whose link INSERT commits *after* this UPDATE's snapshot is invisible to the
-    ``NOT EXISTS``, so the tag ends up soft-deleted beside a still-live link — never
-    dropped, just invisible in management (reads filter ``deleted_at``) while still
-    functional on its expense. ``reconcile_expense_tag_mirror`` sees NO drift (string
-    key == link key), so the cure is the next same-key ``_ensure_tag`` (revive, 契约 4)
-    or undoing the delete in its window. Fully closing it needs SERIALIZABLE / a tag
-    lock on the re-tag hot path — disproportionate for this loopback single-owner
-    cleanup surface (one human can't click cleanup and tag-save the same instant)."""
+    Financial tag writers share the row until commit. Lock it exclusively in a
+    separate statement before checking usage, so READ COMMITTED sees links from
+    an earlier writer after the wait. A later writer waits for cleanup and then
+    uses the existing same-identity revival path. Ordinary explicit deletion
+    retains its affected-expense behavior."""
     if not require_orphan:
         return claim_row_with_token(
             db,
@@ -246,6 +242,9 @@ def _claim_tag_soft_delete(
             set_values={"deleted_at": now_utc(), "updated_at": now_utc()},
             synchronize_session=False,
         )
+    db.execute(
+        select(Tag.id).where(Tag.id == tag.id, Tag.tenant_id == tenant_id).with_for_update()
+    ).scalar_one_or_none()
     now = now_utc()
     return db.execute(
         sa_update(Tag)
@@ -273,7 +272,7 @@ def delete_tag(
     and write the undo snapshot — one transaction (契约 1). An orphan tag (no
     links) still writes a group row (undo anchor) with zero items.
 
-    ``require_orphan`` (owner-console cleanup): make the soft-delete atomic on the
+    ``require_orphan`` (unused-tag cleanup): make the soft-delete atomic on the
     tag having NO live links, so a concurrent re-tag landing between the caller's
     orphan-check and this claim can't be silently clobbered. Re-tagging a live tag
     does not bump its ``row_version``, so the OCC token alone can't catch it — the
