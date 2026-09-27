@@ -1,7 +1,6 @@
 """The actual read endpoint admits viewers and exposes gaps without AI side effects."""
 
-from datetime import date
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -17,8 +16,9 @@ from app.services.money_projection_service import ProjectionGap
 
 
 def test_cross_currency_http_trial_and_ai_share_repaired_report_basis(monkeypatch):
-    from app.services.budget_advisor_service import _inputs_builder as builder, _runner
     from app.schemas._monthly_arrangement import MonthlyArrangementDto
+    from app.services.budget_advisor_service import _inputs_builder as builder
+    from app.services.budget_advisor_service import _runner
     from tests.test_budget_inputs_projection import seed_reads
 
     seed_reads(monkeypatch)

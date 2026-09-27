@@ -1,10 +1,10 @@
 """One monthly intention survives native editing, cross-client reads and conflicts."""
 
-from uuid import uuid4
 from datetime import UTC, date, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import select
@@ -18,17 +18,20 @@ from tests.test_web_budgets import web_client as web_client
 
 
 def test_web_cross_currency_posts_preserve_report_source_and_save_intent(monkeypatch):
+    from urllib.parse import parse_qs, urlsplit
+
     from fastapi import FastAPI
     from fastapi.responses import HTMLResponse
     from fastapi.testclient import TestClient
     from jinja2 import ChoiceLoader, DictLoader, Environment, FileSystemLoader
     from sqlalchemy.exc import SQLAlchemyError
-    from urllib.parse import parse_qs, urlsplit
 
     from app.database import get_db
-    from app.routes import web_budget_advise as web, web_monthly_arrangement as save
+    from app.routes import web_budget_advise as web
+    from app.routes import web_monthly_arrangement as save
     from app.schemas._monthly_arrangement import MonthlyArrangementDto
-    from app.services.budget_advisor_service import _inputs_builder as builder, _runner
+    from app.services.budget_advisor_service import _inputs_builder as builder
+    from app.services.budget_advisor_service import _runner
     from app.services.money_projection_service import ProjectionGap
     from tests.test_budget_inputs_projection import seed_reads
 
