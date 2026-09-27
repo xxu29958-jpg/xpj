@@ -5,14 +5,20 @@
   {% set outcomes = {'updated': '当次识别结果已写入待确认账单', 'no_result': '当次未识别出可用字段', 'not_pending': '执行时账单已离开待确认队列', 'conflict': '保留了后续修改，当次识别未覆盖账单'} %}
   <ul>
     {% for task in recent_recognition_tasks %}
+    {% set state = task.recognition_state|default('failed') %}
     <li data-recognition-task-id="{{ task.public_id }}">
-      <p><strong>{{ statuses.get(task.status, '状态未知') }}</strong> · <time datetime="{{ task.created_at|to_iso }}">{{ task.created_at|to_iso }}</time></p>
-      {% if task.status == 'completed' %}
-      <p>{{ outcomes.get((task.result_summary or {}).get('outcome'), '当次执行已结束，请查看原单当前内容') }}。</p>
-      {% elif task.error_message %}
-      <p>{{ task.error_message }}</p>
+      <p><strong>{{ '结果无法核对' if task.status == 'completed' and state == 'failed' else statuses.get(task.status, '状态未知') }}</strong> · <time datetime="{{ task.created_at|to_iso }}">{{ task.created_at|to_iso }}</time></p>
+      {% if task.status == 'completed' and state == 'failed' %}
+      <p>当次结果缺失或无法解释，不能判断识别是否成功；请查看原单当前内容。</p>
+      {% elif task.status == 'completed' %}
+      <p>{{ outcomes.get(state, '当次执行已结束，请查看原单当前内容') }}。</p>
+      {% elif task.status == 'failed' %}
+      <p>{{ task.recognition_error|default('自动识别失败；请打开原单重试识别或手动补全。') }}</p>
       {% elif task.progress_message %}
       <p>{{ task.progress_message }}</p>
+      {% endif %}
+      {% if task.status in ['queued', 'running'] %}
+      <a class="product-button" href="/web/pending?ledger_id={{ selected_ledger_id|urlencode }}&amp;filter={{ filter|default('all')|urlencode }}&amp;watch={{ task.public_id|urlencode }}#recognition">查看进度</a>
       {% endif %}
       {% if task.source_expense_id %}
       <a class="product-button" href="/web/expenses/{{ task.source_expense_id }}/edit?ledger_id={{ selected_ledger_id }}&amp;return_to=pending&amp;return_filter={{ filter|default('all') }}">打开原单 #{{ task.source_expense_id }}</a>
