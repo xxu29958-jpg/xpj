@@ -39,7 +39,7 @@ internal class DirectRepaymentTestFixture(role: String = "owner") {
         onEnqueued = { publishedDepths += dao.rows.size })
 
     fun newRepository(outbox: OutboxRepository, at: Clock) = DebtWriteRepository(provider, outbox,
-        adapters.debtAdjustmentAdapter, adapters.debtRepaymentAdapter, adapters.debtVoidAdapter, adapters.debtRepaymentVoidAdapter, at)
+        adapters, at)
 
     fun engine(outbox: OutboxRepository = this.outbox, at: Clock = clock) = OutboxDrainEngine(outbox,
         listOf(RecordDebtRepaymentDispatcher({ api }, adapters.debtRepaymentAdapter, adapters.debtRepaymentReceiptAdapter),

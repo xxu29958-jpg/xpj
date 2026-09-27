@@ -1,6 +1,6 @@
 package com.ticketbox.data.repository
 
-import com.squareup.moshi.JsonAdapter
+import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
@@ -32,13 +32,10 @@ interface DebtWriteActions {
 }
 
 /** Publishes either original debt command; the matching thin dispatcher owns network delivery. */
-class DebtWriteRepository(
+class DebtWriteRepository internal constructor(
     private val apiProvider: ApiServiceProvider,
     private val outbox: OutboxRepository,
-    private val adapter: JsonAdapter<DebtAdjustmentPayload>,
-    private val repaymentAdapter: JsonAdapter<DebtRepaymentPayload>,
-    private val voidAdapter: JsonAdapter<DebtVoidPayload>,
-    private val repaymentVoidAdapter: JsonAdapter<DebtRepaymentVoidPayload>,
+    private val adapters: OutboxAdapterGraph,
     private val clock: Clock = Clock.systemUTC(),
 ) : DebtWriteActions {
     private val guard = LedgerRequestGuard(apiProvider)
@@ -76,10 +73,10 @@ class DebtWriteRepository(
             row.ownerKey != binding.ownerKey || row.ledgerId != binding.ledgerId
         ) return null
         return when (row.type) {
-            PendingMutationType.RecordDebtAdjustment -> row.describeDebtAdjustment(adapter)
-            PendingMutationType.RecordDebtRepayment -> row.describeDebtRepayment(repaymentAdapter)
-            PendingMutationType.VoidDebt -> row.describeDebtVoid(voidAdapter)
-            PendingMutationType.VoidDebtRepayment -> row.describeRepaymentVoid(repaymentVoidAdapter)
+            PendingMutationType.RecordDebtAdjustment -> row.describeDebtAdjustment(adapters.debtAdjustmentAdapter)
+            PendingMutationType.RecordDebtRepayment -> row.describeDebtRepayment(adapters.debtRepaymentAdapter)
+            PendingMutationType.VoidDebt -> row.describeDebtVoid(adapters.debtVoidAdapter)
+            PendingMutationType.VoidDebtRepayment -> row.describeRepaymentVoid(adapters.debtRepaymentVoidAdapter)
             else -> null
         }
     }
@@ -103,7 +100,7 @@ class DebtWriteRepository(
                 originBindingRevision = binding.bindingRevision,
                 request = DebtAdjustmentCreateRequestDto(amountCents, cleanReason, debt.rowVersion),
             )
-            publish(binding, debt, type = PendingMutationType.RecordDebtAdjustment, payload = adapter.toJson(payload))
+            publish(binding, debt, type = PendingMutationType.RecordDebtAdjustment, payload = adapters.debtAdjustmentAdapter.toJson(payload))
         }
 
     override suspend fun saveRepayment(binding: LogicalSessionBinding, debt: Debt, amountCents: Long): Result<Long> =
@@ -112,7 +109,7 @@ class DebtWriteRepository(
             val payload = DebtRepaymentPayload(1, DebtWriteSubject(debt.publicId, debt.counterpartyLabel, debt.homeCurrencyCode),
                 binding.sessionGeneration, binding.bindingRevision,
                 RepaymentCreateRequestDto(amountCents, debt.rowVersion, clock.instant().toString()))
-            publish(binding, debt, type = PendingMutationType.RecordDebtRepayment, payload = repaymentAdapter.toJson(payload))
+            publish(binding, debt, type = PendingMutationType.RecordDebtRepayment, payload = adapters.debtRepaymentAdapter.toJson(payload))
         }
 
     override suspend fun saveVoid(binding: LogicalSessionBinding, debt: Debt, reason: String): Result<Long> = errors.safeCall {
@@ -121,7 +118,7 @@ class DebtWriteRepository(
         val payload = DebtVoidPayload(1, DebtWriteSubject(debt.publicId, debt.counterpartyLabel, debt.homeCurrencyCode),
             binding.sessionGeneration, binding.bindingRevision,
             com.ticketbox.data.remote.dto.DebtVoidCreateRequestDto(cleanReason, debt.rowVersion))
-        publish(binding, debt, type = PendingMutationType.VoidDebt, payload = voidAdapter.toJson(payload))
+        publish(binding, debt, type = PendingMutationType.VoidDebt, payload = adapters.debtVoidAdapter.toJson(payload))
     }
 
     override suspend fun saveRepaymentVoid(binding: LogicalSessionBinding, debt: Debt, repaymentPublicId: String,
@@ -131,7 +128,7 @@ class DebtWriteRepository(
         val payload = DebtRepaymentVoidPayload(1, DebtWriteSubject(debt.publicId, debt.counterpartyLabel, debt.homeCurrencyCode),
             binding.sessionGeneration, binding.bindingRevision,
             com.ticketbox.data.remote.dto.RepaymentVoidCreateRequestDto(repaymentPublicId, cleanReason, debt.rowVersion))
-        publish(binding, debt, type = PendingMutationType.VoidDebtRepayment, payload = repaymentVoidAdapter.toJson(payload))
+        publish(binding, debt, type = PendingMutationType.VoidDebtRepayment, payload = adapters.debtRepaymentVoidAdapter.toJson(payload))
     }
 
     private suspend fun publish(binding: LogicalSessionBinding, debt: Debt, type: PendingMutationType, payload: String): Long {

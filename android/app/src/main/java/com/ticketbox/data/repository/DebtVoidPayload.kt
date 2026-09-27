@@ -27,25 +27,24 @@ data class DebtRepaymentVoidPayload(
 
 internal fun OutboxRow.describeDebtVoid(adapter: JsonAdapter<DebtVoidPayload>): PendingDebtWrite {
     val payload = adapter.readVoidPayload(payloadJson)?.takeIf {
-        validVoid(it.revision, it.subject, it.originSessionGeneration, it.originBindingRevision, it.request.reason,
-            it.expectedRowVersion)
+        validVoid(it, it.revision, it.originSessionGeneration, it.originBindingRevision, it.request.reason)
     }
     return PendingDebtWrite(this, payload)
 }
 
 internal fun OutboxRow.describeRepaymentVoid(adapter: JsonAdapter<DebtRepaymentVoidPayload>): PendingDebtWrite {
     val payload = adapter.readVoidPayload(payloadJson)?.takeIf {
-        it.request.repaymentPublicId.isNotBlank() && validVoid(it.revision, it.subject,
-            it.originSessionGeneration, it.originBindingRevision, it.request.reason, it.expectedRowVersion)
+        it.request.repaymentPublicId.isNotBlank() && validVoid(it, it.revision,
+            it.originSessionGeneration, it.originBindingRevision, it.request.reason)
     }
     return PendingDebtWrite(this, payload)
 }
 
-private fun OutboxRow.validVoid(revision: Int, subject: DebtWriteSubject, session: String, binding: String,
-    reason: String, version: Long): Boolean = revision == 1 && subject.publicId.isNotBlank() &&
-    subject.homeCurrencyCode.isNotBlank() && session.isNotBlank() && binding.isNotBlank() &&
-    isDebtAdjustmentReasonValid(reason) && version > 0 && expectedRowVersion == version &&
-    targetId == debtWriteTarget(subject.publicId) && !idempotencyKey.isNullOrBlank()
+private fun OutboxRow.validVoid(intent: DebtWriteIntent, revision: Int, session: String, binding: String,
+    reason: String): Boolean = revision == 1 && intent.subject.publicId.isNotBlank() &&
+    intent.subject.homeCurrencyCode.isNotBlank() && session.isNotBlank() && binding.isNotBlank() &&
+    isDebtAdjustmentReasonValid(reason) && intent.expectedRowVersion > 0 && expectedRowVersion == intent.expectedRowVersion &&
+    targetId == debtWriteTarget(intent.subject.publicId) && !idempotencyKey.isNullOrBlank()
 
 private fun <T> JsonAdapter<T>.readVoidPayload(json: String): T? = try { fromJson(json) }
     catch (_: JsonDataException) { null } catch (_: IOException) { null }
