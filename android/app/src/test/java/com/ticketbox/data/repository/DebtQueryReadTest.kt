@@ -196,6 +196,40 @@ class DebtQueryReadTest {
         assertEquals("jpy-debt", reopened.detail(fixture.binding, "jpy-debt").getOrThrow().value.publicId)
     }
 
+    @Test fun cachedDebtTakenBeforeAnotherOwnersAcceptedChangeCannotBePublishedAfterIt() = runTest {
+        val api = DebtReadApi()
+        val fixture = GoalReadFixture { api }
+        val cached = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        var pauseCachedRead = false
+        val queryDao = object : ExpenseDao by fixture.dao {
+            override suspend fun debtSnapshotIfCurrent(query: StatsProjectionCacheEntity, epoch: Long): StatsProjectionCacheEntity? {
+                val saved = fixture.dao.debtSnapshotIfCurrent(query, epoch)
+                if (pauseCachedRead) { cached.complete(Unit); release.await() }
+                return saved
+            }
+        }
+        val reader = DebtQueryReader(fixture.provider, queryDao, fixture.coordinator)
+        val original = reader.detail(fixture.binding, "jpy-debt").getOrThrow()
+        pauseCachedRead = true
+        api.offline = true
+        val old = async { reader.detail(fixture.binding, "jpy-debt") }
+        cached.await()
+        try {
+            api.offline = false
+            val other = DebtRepository(fixture.provider, DebtQueryReader(fixture.provider, fixture.dao, fixture.coordinator))
+            assertEquals("installment", other.setDebtKind("jpy-debt", original.value.rowVersion, "installment").getOrThrow().debtKind)
+        } finally { release.complete(Unit) }
+        assertTrue(old.await().isFailure, "A retrieved old cache row cannot outlive another owner's accepted type change")
+        pauseCachedRead = false
+        val fresh = reader.detail(fixture.binding, "jpy-debt").getOrThrow()
+        assertEquals("installment", fresh.value.debtKind)
+        assertEquals("JPY", fresh.value.homeCurrencyCode)
+        assertEquals(1200L, fresh.value.originalAmountMinor)
+        assertFalse(fresh.fromCache)
+        assertEquals(1, api.commands)
+    }
+
     @Test fun acceptedWriteRetiresPersistedAndInFlightReadsAcrossDifferentReadersWithoutSeedingAQuery() = runTest {
         val api = DebtReadApi()
         val fixture = GoalReadFixture { api }

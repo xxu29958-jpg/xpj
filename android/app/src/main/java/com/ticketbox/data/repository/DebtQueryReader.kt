@@ -169,7 +169,16 @@ internal class DebtQueryReader(
         check(stored.epoch == request.epoch)
         val value = requireNotNull(spec.adapter.fromJson(stored.response))
         spec.validate(value)
-        ReadSnapshot(spec.project(value, denied.keys), saved.fetchedAt, fromCache = true)
+        check(request.localGeneration == generation.get() && (dao.debtReadEpoch(query.bindingKey)?.toLong() ?: 0L) == request.epoch) {
+            "往来已接受修改，请重新读取。"
+        }
+        check(dao.debtDirectBarriers(query.bindingKey).isEmpty() &&
+            !dao.hasUnpublishedAcceptedDebt(request.binding.ownerKey, request.binding.ledgerId)) {
+            "原往来提交状态已变化，请重新读取。"
+        }
+        val currentDenied = deniedResources(query.bindingKey)
+        check(request.scope.publicId == null || request.scope.publicId !in currentDenied) { "没有找到这笔欠款。" }
+        ReadSnapshot(spec.project(value, currentDenied.keys), saved.fetchedAt, fromCache = true)
     }
 
     private suspend fun <T> publish(request: DebtReadRequest, spec: DebtReadSpec<T>, wire: T,
