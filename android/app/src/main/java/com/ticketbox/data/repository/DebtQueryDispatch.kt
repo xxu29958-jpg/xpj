@@ -43,6 +43,10 @@ internal suspend fun DebtQueryReader.finishDebtDispatch(row: OutboxRow, result: 
         if (result is DispatchResult.Failure && result.credentialRejected) {
             coordinator.rejectSnapshotAccess(protection.bound, key, RepositoryException(result.message, httpStatusCode = 401))
         }
+        if (result is DispatchResult.Failure && result.missingDebtPublicId != null && protection.bound.isStillActive()) {
+            rejectResource(protection.binding, result.missingDebtPublicId,
+                RepositoryException(result.message, httpStatusCode = 404, errorCode = "debt_not_found"))
+        }
         if (rejected && !protection.hadUnresolved) dao.settleDebtOutboxReadBarrier(key, protection.binding.ledgerId,
             protection.token, retire = false)
     } catch (_: SQLiteException) { /* Preserve protection until an actual current query reconciles it. */ }

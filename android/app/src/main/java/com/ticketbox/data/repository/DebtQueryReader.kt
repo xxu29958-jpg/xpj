@@ -85,7 +85,7 @@ internal class DebtQueryReader(
         val value = fetchDebtNetwork(bound, fetch) { error ->
             val failure = errors.httpFailure(error)
             if (failure.httpStatusCode == 404 && failure.errorCode == "debt_not_found" && bound.isStillActive()) {
-                rejectResource(task.binding, debtScope(task.binding, "debt_fresh", task.debtPublicId), task.debtPublicId, failure)
+                rejectResource(task.binding, task.debtPublicId, failure)
             } else coordinator.rejectSnapshotAccess(bound, key, failure)
             failure
         }
@@ -146,7 +146,7 @@ internal class DebtQueryReader(
                 val failure = errors.httpFailure(error)
                 if (failure.httpStatusCode == 404 && failure.errorCode == "debt_not_found" &&
                     scope.publicId != null && bound.isStillActive()) {
-                    rejectResource(binding, query, scope.publicId, failure)
+                    rejectResource(binding, scope.publicId, failure)
                 } else coordinator.rejectSnapshotAccess(bound, query.bindingKey, failure)
                 failure
             }
@@ -229,13 +229,13 @@ internal class DebtQueryReader(
         val value = requireNotNull(spec.adapter.fromJson(selected.stored.response))
         ReadSnapshot(spec.project(value, denied.keys), selected.query.fetchedAt, fromCache = selected !== incoming)
     }
-    internal suspend fun rejectResource(binding: LogicalSessionBinding, query: StatsProjectionCacheEntity,
-        publicId: String, failure: RepositoryException) {
+    internal suspend fun rejectResource(binding: LogicalSessionBinding, publicId: String, failure: RepositoryException) {
+        val query = debtScope(binding, "debt_resource_denial", publicId)
         val token = UUID.randomUUID().toString()
         localResourceDenials["${query.bindingKey}|$publicId"] = token
         resourceDenials.emit(DebtReadResourceDenial(binding, publicId, failure, resourceGeneration.incrementAndGet()))
         try {
-            dao.saveStatsProjection(debtScope(binding, "debt_resource_denial", publicId).copy(responseJson = token,
+            dao.saveStatsProjection(query.copy(responseJson = token,
                 fetchedAt = Instant.now().toString()))
             dao.clearDebtResourceSnapshots(query.bindingKey, publicId)
         } catch (_: SQLiteException) { /* Preserve the original 404 and refuse this owner's stale resource. */ }
@@ -294,7 +294,7 @@ internal suspend fun <T> DebtQueryReader.direct(binding: LogicalSessionBinding, 
             val failure = NetworkErrorHandler({ binding.serverUrl }, "Debt").httpFailure(error)
             if (failure.httpStatusCode == 401) coordinator.rejectSnapshotAccess(bound, key, failure)
             if (failure.httpStatusCode == 404 && failure.errorCode == "debt_not_found" && publicId != null && bound.isStillActive()) {
-                rejectResource(binding, debtScope(binding, "debt_detail", publicId), publicId, failure)
+                rejectResource(binding, publicId, failure)
             }
             if (error.code() in 400..499 && error.code() !in setOf(408, 429) && failure.errorCode != "idempotency_key_in_progress") {
                 try { dao.clearDebtDirectBarriers(key, listOf(token)) } catch (_: SQLiteException) { /* Retry the read repair only. */ }

@@ -10,6 +10,7 @@ import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -160,8 +161,10 @@ class DebtOfflineReadingConnectedTest {
         val source = context.getString(if (offline) R.string.debt_read_cached_title else R.string.debt_read_title)
         compose.onNodeWithText(source, substring = true).assertIsDisplayed()
         compose.onNodeWithText("原日元往来").performClick()
-        waitForText(context.getString(R.string.debt_detail_back))
-        waitForText(source)
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithContentDescription(context.getString(R.string.debt_detail_back)).fetchSemanticsNodes().isNotEmpty()
+        }
+        waitForText(source, substring = true)
         // Cached-source feedback can put the note outside the lazy viewport; reach it by scrolling.
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("原债务备注"))
         compose.onNodeWithText("原债务备注").performScrollTo().assertIsDisplayed()
@@ -179,8 +182,8 @@ class DebtOfflineReadingConnectedTest {
         compose.onNodeWithText("${displayDateTime(recordedAt)} · 原记录人").assertIsDisplayed()
     }
 
-    private fun waitForText(value: String) {
-        compose.waitUntil(5_000) { compose.onAllNodesWithText(value).fetchSemanticsNodes().isNotEmpty() }
+    private fun waitForText(value: String, substring: Boolean = false) {
+        compose.waitUntil(5_000) { compose.onAllNodesWithText(value, substring = substring).fetchSemanticsNodes().isNotEmpty() }
     }
 
     private fun activityJson(page: Int): String {

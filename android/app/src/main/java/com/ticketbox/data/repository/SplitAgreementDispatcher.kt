@@ -24,10 +24,7 @@ class SplitAgreementDispatcher(
         } catch (error: CancellationException) {
             throw error
         } catch (error: HttpException) {
-            when (val result = mapOutboxHttpException(error)) {
-                is DispatchResult.Discarded -> DispatchResult.Failure(result.reason, definitelyRejected = true)
-                else -> result
-            }
+            mapDebtWriteHttpException(error, intent.originalDebtPublicId)
         } catch (_: IOException) {
             DispatchResult.RetryableFailure("split_agreement_connection_interrupted")
         } catch (_: Exception) {

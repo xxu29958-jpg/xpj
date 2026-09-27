@@ -82,6 +82,7 @@ class DebtAcceptedReadRoomTest {
             }
             var replayFailure: Exception? = null
             val attempts = mutableListOf<OriginalRepaymentCall>()
+            val queriedWriteStatuses = java.util.concurrent.CopyOnWriteArrayList<String?>()
             var offline = false
             var started: CompletableDeferred<Unit>? = null
             var release: CompletableDeferred<Unit>? = null
@@ -96,6 +97,7 @@ class DebtAcceptedReadRoomTest {
                     override suspend fun debt(publicId: String): DebtDto {
                         if (offline) throw ConnectException("offline after original acceptance")
                         val captured = api.current
+                        queriedWriteStatuses += db.pendingMutationDao().allRows().singleOrNull()?.status
                         started?.complete(Unit)
                         release?.await()
                         return captured
@@ -186,6 +188,7 @@ class DebtAcceptedReadRoomTest {
             offline = false
             started = CompletableDeferred()
             release = CompletableDeferred()
+            val readsBeforeCompletion = queriedWriteStatuses.size
             val late = async(Dispatchers.IO) { reader().detail(fixture.binding, "d1") }
             requireNotNull(started).await()
             try {
@@ -207,13 +210,11 @@ class DebtAcceptedReadRoomTest {
                 assertEquals(null, db.expenseDao().debtOutboxReadBarrier(key))
                 assertTrue(db.expenseDao().statsProjections(key, "debt_detail", "", "d1", "UTC").isEmpty())
             } finally { requireNotNull(release).complete(Unit) }
-            assertTrue(late.await().isFailure, "Another owner's read begun before Done cannot republish across its epoch")
-            offline = true
-            assertTrue(reader().detail(fixture.binding, "d1").isFailure, "Receipt is not a replacement GET")
+            val fresh = late.await().getOrThrow()
+            assertEquals(listOf("pending", "done"), queriedWriteStatuses.drop(readsBeforeCompletion),
+                "Retiring the old read must issue a real second GET after Done; the original wire cannot cross its epoch")
             started = null
             release = null
-            offline = false
-            val fresh = reader().detail(fixture.binding, "d1").getOrThrow()
             assertFalse(fresh.fromCache)
             assertEquals(40_000L, fresh.value.remainingAmountCents)
             assertEquals("JPY", fresh.value.homeCurrencyCode)
