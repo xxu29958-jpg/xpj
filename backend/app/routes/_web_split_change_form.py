@@ -5,8 +5,7 @@ from uuid import uuid4
 
 from starlette.responses import Response
 
-from app.routes._web_debt_repayment import repayment_scope
-from app.routes._web_debt_write import _debt_write_gate
+from app.routes._web_debt_write import _debt_write_gate, repayment_scope
 from app.routes._web_split_agreement import agreement_href, agreement_view, settlement_label
 from app.routes.web_common import _base_ctx, _currency_input_view, _minor_amount_value, templates
 from app.services.currency_common import supported_currency_codes

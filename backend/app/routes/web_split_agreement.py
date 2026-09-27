@@ -8,7 +8,8 @@ from starlette.responses import Response
 
 from app.database import get_db
 from app.errors import AppError
-from app.routes._web_debt_repayment import repayment_scope, require_repayment_binding
+from app.routes._web_debt_repayment import require_repayment_binding
+from app.routes._web_debt_write import repayment_scope
 from app.routes._web_session_common import resolve_web_actor_account_id
 from app.routes._web_split_change_form import CHANGE_FIELDS, initial_values, render_change_task
 from app.routes.web_common import (

@@ -12,7 +12,6 @@ from app.errors import AppError
 from app.routes import _web_debt_write
 from app.routes.web_common import _base_ctx, _currency_input_view, templates
 from app.services.currency_common import supported_currency_codes
-from app.services.manual_expense_draft_presenter import manual_draft_scope
 from app.services.time_service import now_utc
 
 REPAYMENT_FIELDS = (
@@ -21,13 +20,8 @@ REPAYMENT_FIELDS = (
 )
 
 
-def repayment_scope(request: Request, db: Session) -> dict[str, str]:
-    auth = getattr(request.state, "web_session_auth", None)
-    return manual_draft_scope(db, auth) if auth is not None else {}
-
-
 def require_repayment_binding(request: Request, db: Session, *, values: dict, public_id: str) -> None:
-    scope = repayment_scope(request, db)
+    scope = _web_debt_write.repayment_scope(request, db)
     try:
         original = json.loads(values["origin_binding"]) if values["origin_binding"] else {}
     except (ValueError, TypeError) as exc:
@@ -45,7 +39,7 @@ def repayment_context(
     values: dict[str, str] | None = None, error: str = "", result: str = "",
     ack: dict | None = None, rejected: bool = False,
 ) -> dict:
-    scope = repayment_scope(request, db)
+    scope = _web_debt_write.repayment_scope(request, db)
     zone = _web_debt_write.accounting_zone()
     initial = {
         "debt_public_id": public_id, "ledger_id": selected_id,

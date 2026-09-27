@@ -1,10 +1,16 @@
 """Typed void forms use the existing original-submission storage and binding owner."""
+from __future__ import annotations
+
 import json
+from typing import Any
 from uuid import uuid4
 
-from app.routes._web_debt_repayment import repayment_scope
-from app.routes._web_debt_write import _debt_write_gate
+from fastapi import Request
+from sqlalchemy.orm import Session
+
+from app.routes._web_debt_write import _debt_write_gate, repayment_scope
 from app.routes.web_common import _base_ctx, templates
+from app.schemas import DebtResponse
 
 VOID_FIELDS = ("debt_public_id", "ledger_id", "origin_binding", "expected_row_version", "reason", "repayment_public_id")
 
@@ -32,8 +38,12 @@ def render_void_recovery(request, db, *, options, selected_id, public_id, kind,
     return templates.TemplateResponse(request=request, name="debt_void_recovery.html", context=ctx, status_code=status_code)
 
 
-def add_void_detail_context(request, db, *, ctx, debt, selected_id, public_id,
-                            kind=None, values=None, error="", result="", ack=None, target="", rejected=False):
+def add_void_detail_context(
+    request: Request, db: Session, *, ctx: dict[str, Any], debt: DebtResponse,
+    selected_id: str, public_id: str, kind: str | None = None,
+    values: dict[str, str] | None = None, error: str = "", result: str = "",
+    ack: dict[str, Any] | None = None, target: str = "", rejected: bool = False,
+) -> None:
     writable = ctx["can_write"] and not ctx["debt"]["is_member"]
     base = {"selected_id": selected_id, "public_id": public_id, "can_recover": writable}
     feedback = {"values": values, "error": error, "result": result, "ack": ack, "rejected": rejected}

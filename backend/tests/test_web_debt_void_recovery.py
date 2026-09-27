@@ -131,7 +131,7 @@ def test_void_original_binding_change_refuses_write_and_keeps_input(monkeypatch,
     import app.routes._web_debt_void as void_forms
     request, db, values, action = _void_setup(monkeypatch, 'debt-void')
     scope = {'datasetId': 'dataset', 'clientGeneration': 'generation', 'accountId': 'account', 'ledgerId': 'my-ledger', 'deviceId': 'device'}
-    monkeypatch.setattr(repayment, 'repayment_scope', lambda *a: scope)
+    monkeypatch.setattr(repayment._web_debt_write, 'repayment_scope', lambda *a: scope)
     monkeypatch.setattr(void_forms, 'repayment_scope', lambda *a: scope)
     original_scope = dict(scope, **{axis:'original'})
     values['origin_binding'] = json.dumps(original_scope)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import ValidationError
@@ -15,11 +17,10 @@ from app.routes import _web_debt_write
 from app.routes._web_debt_money import parse_web_debt_major_minor
 from app.routes._web_debt_repayment import (
     render_repayment_recovery,
-    repayment_scope,
     require_repayment_binding,
 )
 from app.routes._web_debt_void import VOID_FIELDS, render_void_recovery
-from app.routes._web_debt_write import _parse_paid_at
+from app.routes._web_debt_write import _parse_paid_at, repayment_scope
 from app.routes.web_common import (
     LocalOnly,
     _list_ledger_options,
@@ -33,6 +34,7 @@ from app.schemas import (
     DebtAdjustmentCreateRequest,
     DebtForgiveCreateRequest,
     DebtKindSetRequest,
+    DebtResponse,
     DebtVoidCreateRequest,
     RepaymentCreateRequest,
     RepaymentVoidCreateRequest,
@@ -303,7 +305,10 @@ def _void_outcome(request, db, *, options, selected_id, public_id, kind,
             values=values, error=error, result=result, status_code=status_code, ack=ack, rejected=rejected)
 
 
-def _submit_void(request, db, *, public_id, kind, values, writer):
+def _submit_void(
+    request: Request, db: Session, *, public_id: str, kind: str,
+    values: dict[str, str], writer: Callable[..., DebtResponse],
+) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, values["ledger_id"], options, request=request)
     attempted = False
