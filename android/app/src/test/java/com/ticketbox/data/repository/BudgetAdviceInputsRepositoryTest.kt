@@ -16,6 +16,49 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class BudgetAdviceInputsRepositoryTest {
+    @Test fun oldOrWrongCurrencyEchoCannotPublishCrossCurrencyTrialOrCacheAiWhileCorrectEchoKeepsTheYenDraft() = budgetTest {
+        val f = AdviceInputsFixture()
+        f.savedArrangement = MonthlyArrangementDto(f.binding.ledgerId, "2026-09", "JPY", 1200, 300, 1, "now")
+        f.inputs = f.inputs.copy(homeCurrencyCode = "USD", savedArrangement = f.savedArrangement,
+            breakdown = DiscretionaryResponseDto(10000, 1000, 2000, 120, 30, 6850), missingRates = emptyList())
+        val vm = BudgetAdviceViewModel(f.repository, initialMonth = "2026-09")
+        advanceUntilIdle()
+        vm.editArrangement(true, "2400")
+        advanceUntilIdle()
+        val draft = assertNotNull(vm.uiState.value.arrangementDraft)
+        val original = draft.request()
+        for (echo in listOf(null, "USD", "CNY")) {
+            // N-1 ignores the source query and labels unchanged JPY integers as USD.
+            f.trialOverride = f.inputs.copy(isTrial = true, arrangementCurrencyCode = echo,
+                breakdown = f.inputs.breakdown.copy(savingsTargetCents = 2400, reservedBufferCents = 300))
+            vm.trialArrangement()
+            advanceUntilIdle()
+            assertNull(vm.uiState.value.inputs)
+            assertNull(vm.uiState.value.result)
+            assertEquals("USD", vm.uiState.value.reportingHomeCurrencyCode)
+            assertEquals(draft, vm.uiState.value.arrangementDraft)
+            assertEquals(original, vm.uiState.value.trialRequest)
+            val before = f.requests.size
+            vm.requestAdvice()
+            advanceUntilIdle()
+            assertEquals(before, f.requests.size, "Unverified trial must block the UI provider action")
+            assertTrue(f.repository.requestTrialAdvice(f.binding, "2026-09", original, "USD").isFailure)
+            assertNull(f.repository.adviceCallStore.cached(f.binding, "2026-09", "USD", original))
+        }
+        f.trialOverride = null
+        vm.refreshInputs()
+        advanceUntilIdle()
+        assertEquals("JPY", vm.uiState.value.inputs?.arrangementCurrencyCode)
+        assertEquals(240L, vm.uiState.value.inputs?.breakdown?.savingsTargetCents)
+        vm.requestAdvice()
+        advanceUntilIdle()
+        assertEquals("JPY", vm.uiState.value.result?.inputs?.arrangementCurrencyCode)
+        assertNotNull(f.repository.adviceCallStore.cached(f.binding, "2026-09", "USD", original))
+        assertEquals(draft, vm.uiState.value.arrangementDraft)
+        assertEquals(original, vm.uiState.value.trialRequest)
+        assertTrue(f.dao.allRows().isEmpty(), "Reads and provider requests must not replace the original JPY intent")
+    }
+
     @Test fun trialValidationKeepsSameCurrencyAmountsStrictAndRejectsAnotherRateTargetBeforePublishingOrCaching() = runTest {
         val f = AdviceInputsFixture()
         f.inputs = f.inputs.copy(breakdown = DiscretionaryResponseDto(10000, 1000, 2000, 0, 0, 7000), missingRates = emptyList())
@@ -98,6 +141,8 @@ class BudgetAdviceInputsRepositoryTest {
         f.inputs = f.inputs.copy(breakdown = DiscretionaryResponseDto(10000, 1000, 2000, 1000, 500, 5500), missingRates = emptyList())
         val first = MonthlyArrangementSaveRequest("JPY", 1200, 300)
         val second = first.copy(savingsTargetCents = 2400)
+        f.trialOverride = f.inputs.copy(isTrial = true, arrangementCurrencyCode = null,
+            breakdown = f.inputs.breakdown.copy(savingsTargetCents = 1200, reservedBufferCents = 300))
         val trial = f.repository.trialAdviceInputs(f.binding, "2026-09", first).getOrThrow()
         assertTrue(trial.isTrial)
         assertEquals(1200L, trial.breakdown.savingsTargetCents)
@@ -105,6 +150,7 @@ class BudgetAdviceInputsRepositoryTest {
         assertTrue(f.requests.isEmpty(), "Trial is a deterministic read, never an AI call or save")
         f.repository.requestBudgetAdvice("2026-09", "JPY", f.binding).getOrThrow()
         f.repository.requestTrialAdvice(f.binding, "2026-09", first).getOrThrow()
+        f.trialOverride = null
         f.repository.requestTrialAdvice(f.binding, "2026-09", second).getOrThrow()
         val cache = f.repository.adviceCallStore
         assertEquals(1000L, cache.cached(f.binding, "2026-09", "JPY")?.inputs?.breakdown?.savingsTargetCents)
@@ -201,7 +247,7 @@ private class AdviceInputsFixture {
     var missingTrialRate = false
     var fxDivisor = 10L
     var trialOverride: BudgetAdviceInputsDto? = null
-    val api = object : ApiService by FakeApiService(mutableListOf(), 0) {
+    val api: ApiService = object : ApiService by FakeApiService(mutableListOf(), 0) {
         override suspend fun budgetAdviceInputs(month: String, timezone: String?, homeCurrencyCode: String?): BudgetAdviceInputsDto {
             reads += month to homeCurrencyCode
             return inputs
@@ -224,16 +270,16 @@ private class AdviceInputsFixture {
     private fun trialBasis(month: String, home: String, savings: Long, buffer: Long, source: String? = null): BudgetAdviceInputsDto {
         trialOverride?.let { return it }
         val divisor = if (source != null && source != home) fxDivisor else 1L
-        return inputs.copy(month = month, homeCurrencyCode = home, isTrial = true,
+        return inputs.copy(month = month, homeCurrencyCode = home, isTrial = true, arrangementCurrencyCode = source ?: home,
             missingRates = if (missingTrialRate) listOf(MissingExchangeRateDto(source, home, "$month-01")) else inputs.missingRates,
             breakdown = inputs.breakdown.copy(savingsTargetCents = if (missingTrialRate) null else savings / divisor,
                 reservedBufferCents = if (missingTrialRate) null else buffer / divisor,
                 discretionaryCents = if (missingTrialRate) null else 7000 - savings / divisor - buffer / divisor))
     }
-    val provider = testApiServiceProvider(object : ApiServiceFactory {
+    val provider: ApiServiceProvider = testApiServiceProvider(object : ApiServiceFactory {
         override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = api
     }, session)
-    val binding = requireNotNull(LedgerRequestGuard(provider).captureLogicalBinding())
+    val binding: LogicalSessionBinding = requireNotNull(LedgerRequestGuard(provider).captureLogicalBinding())
     val dao = FakePendingMutationDao()
-    val repository = testBudgetRepository(provider, testOutboxRepository(dao, bindingProvider = { provider.currentSession().toOutboxBinding() }))
+    val repository: BudgetRepository = testBudgetRepository(provider, testOutboxRepository(dao, bindingProvider = { provider.currentSession().toOutboxBinding() }))
 }

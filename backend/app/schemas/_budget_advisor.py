@@ -64,6 +64,7 @@ class BudgetInputsResponse(BaseModel):
     reference_rates: list[ProjectionReferenceDto] = Field(default_factory=list)
     saved_arrangement: MonthlyArrangementDto | None = None
     is_trial: bool = False
+    arrangement_currency_code: str | None = None
 
 
 class BudgetAdviseRequest(BaseModel):

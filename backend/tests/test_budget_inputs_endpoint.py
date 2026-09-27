@@ -53,6 +53,10 @@ def test_cross_currency_http_trial_and_ai_share_repaired_report_basis(monkeypatc
         "arrangement_currency_code": "JPY", "savings_target_cents": 1200, "reserved_buffer_cents": 30}
     before = client.get("/api/budget/advisor/inputs", params=body).json()
     assert before["home_currency_code"] == "USD"
+    assert before.get("arrangement_currency_code") == "JPY"
+    saved_read = client.get("/api/budget/advisor/inputs", params={"month": "2026-08",
+        "home_currency_code": "USD", "arrangement_currency_code": "USD"}).json()
+    assert saved_read["arrangement_currency_code"] == "JPY" and not saved_read["is_trial"]
     assert before["breakdown"]["savings_target_cents"] is None
     assert before["inputs_fingerprint"] is None
     blocked = client.post("/api/budget/advise", json=body)
@@ -63,6 +67,7 @@ def test_cross_currency_http_trial_and_ai_share_repaired_report_basis(monkeypatc
     generated = client.post("/api/budget/advise", json=body)
     assert generated.status_code == 200, generated.text
     assert generated.json()["inputs"] == read
+    assert read["arrangement_currency_code"] == "JPY"
     assert generated.json()["home_currency_code"] == "USD"
     basis = provider.advise.call_args.args[0]
     assert (basis.home_currency, basis.savings_target_cents, basis.reserved_buffer_cents) == ("USD", 2400, 60)

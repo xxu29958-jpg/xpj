@@ -54,6 +54,7 @@ class BudgetInputProjection:
     undated_expense_count: int = 0
     saved_arrangement: MonthlyArrangementDto | None = None
     is_trial: bool = False
+    arrangement_currency_code: str | None = None
 
     @property
     def inputs_fingerprint(self) -> str | None:
@@ -108,7 +109,7 @@ def read_budget_inputs(
             outstanding_fixed_cents=fixed, discretionary_cents=breakdown.discretionary_cents,
             shortfall_cents=breakdown.shortfall_cents)
     return BudgetInputProjection(month, home, breakdown, ordered_projection_gaps(gaps), inputs, tuple(sorted(references)),
-        undated_expense_count=undated, saved_arrangement=saved, is_trial=is_trial)
+        undated_expense_count=undated, saved_arrangement=saved, is_trial=is_trial, arrangement_currency_code=source)
 
 
 def _project_arrangement_amounts(db, *, tenant_id, month, amounts, source, home, gaps, references) -> tuple[int | None, int | None]:

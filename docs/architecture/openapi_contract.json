@@ -7300,6 +7300,17 @@
       },
       "BudgetInputsResponse": {
         "properties": {
+          "arrangement_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Arrangement Currency Code"
+          },
           "breakdown": {
             "$ref": "#/components/schemas/DiscretionaryResponse"
           },

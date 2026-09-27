@@ -22,18 +22,23 @@ class BudgetTrialApiContractTest {
             val request = chain.request()
             observed += request
             bodies += request.body?.let { Buffer().also(it::writeTo).readUtf8() }.orEmpty()
-            val basis = """{"month":"2026-09","home_currency_code":"USD","breakdown":{"monthly_income_cents":10000,"fixed_expenses_cents":1000,"spent_amount_cents":2000,"savings_target_cents":240,"reserved_buffer_cents":30,"discretionary_cents":6730},"missing_rates":[],"is_trial":true}"""
+            val echo = if (request.method == "POST" || request.url.queryParameter("arrangement_currency_code") != null)
+                ", \"arrangement_currency_code\":\"JPY\"" else ""
+            val basis = """{"month":"2026-09","home_currency_code":"USD","breakdown":{"monthly_income_cents":10000,"fixed_expenses_cents":1000,"spent_amount_cents":2000,"savings_target_cents":240,"reserved_buffer_cents":30,"discretionary_cents":6730},"missing_rates":[],"is_trial":true$echo}"""
             val response = if (request.method == "POST")
                 """{"advice":null,"provider_name":"fixture","home_currency_code":"USD","inputs":$basis}""" else basis
             Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(200).message("Controlled response")
                 .body(response.toResponseBody("application/json".toMediaType())).build()
         }.build()
         val api = buildApiService("https://example.test/", client)
-        api.trialBudgetAdviceInputs("2026-09", "Asia/Shanghai", mapOf("home_currency_code" to "USD",
+        val trial = api.trialBudgetAdviceInputs("2026-09", "Asia/Shanghai", mapOf("home_currency_code" to "USD",
             "arrangement_currency_code" to "JPY", "savings_target_cents" to "5000000000", "reserved_buffer_cents" to "300"))
-        api.budgetAdvise(BudgetAdviseRequestDto("2026-09", "Asia/Shanghai", "USD", 5_000_000_000, 300, "JPY"))
-        api.trialBudgetAdviceInputs("2026-09", "Asia/Shanghai", mapOf("home_currency_code" to "JPY",
+        val advice = api.budgetAdvise(BudgetAdviseRequestDto("2026-09", "Asia/Shanghai", "USD", 5_000_000_000, 300, "JPY"))
+        val legacy = api.trialBudgetAdviceInputs("2026-09", "Asia/Shanghai", mapOf("home_currency_code" to "JPY",
             "savings_target_cents" to "2400", "reserved_buffer_cents" to "300"))
+        assertEquals("JPY", trial.arrangementCurrencyCode)
+        assertEquals("JPY", advice.inputs?.arrangementCurrencyCode)
+        assertNull(legacy.arrangementCurrencyCode)
         assertEquals("/api/budget/advisor/inputs", observed[0].url.encodedPath)
         assertEquals("2026-09", observed[0].url.queryParameter("month"))
         assertEquals("Asia/Shanghai", observed[0].url.queryParameter("timezone"))

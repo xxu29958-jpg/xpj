@@ -45,6 +45,7 @@ def test_read_model_keeps_discretionary_known_when_only_history_has_gap(monkeypa
 def test_complete_projection_preserves_outbound_privacy_and_paid_reservation(monkeypatch):
     seed_reads(monkeypatch)
     result = builder.read_budget_inputs(object(), tenant_id="owner", month="2026-08", home_currency_code="JPY")
+    assert result.arrangement_currency_code == "JPY"
     assert result.breakdown.fixed_expenses_cents == 100
     assert result.breakdown.discretionary_cents == 1600
     payload = to_outbound_dict(result.provider_inputs)
@@ -121,6 +122,7 @@ def test_saved_original_currency_is_not_relabelled_or_zeroed_when_conversion_is_
     monkeypatch.setattr(builder, "project_recorded_amount", missing_projection)
     incomplete = builder.read_budget_inputs(object(), tenant_id="owner", month="2026-08", **home_kwargs)
     assert incomplete.home_currency_code == "JPY"
+    assert getattr(incomplete, "arrangement_currency_code", None) == "USD"
     assert incomplete.breakdown.savings_target_cents is incomplete.breakdown.reserved_buffer_cents is None
     assert incomplete.breakdown.discretionary_cents is incomplete.breakdown.shortfall_cents is None
     assert incomplete.provider_inputs is None and incomplete.inputs_fingerprint is None
@@ -176,6 +178,7 @@ def test_original_jpy_trial_projects_to_usd_without_replacing_saved_arrangement(
     result = builder.read_budget_inputs(object(), tenant_id="owner", month="2026-08",
         home_currency_code="USD", arrangement_currency_code="JPY", savings_target_cents=1200, reserved_buffer_cents=30)
     assert result.home_currency_code == "USD" and result.is_trial
+    assert result.arrangement_currency_code == "JPY"
     assert result.saved_arrangement is saved and saved.savings_target_cents == 500
     assert result.breakdown.savings_target_cents == (None if missing else 2400)
     assert result.breakdown.reserved_buffer_cents == (None if missing else 60)

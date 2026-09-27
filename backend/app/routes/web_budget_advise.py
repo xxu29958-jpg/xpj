@@ -142,6 +142,8 @@ def _render_budget_advise(
     readiness_ctx = _advisor_readiness_context(request, selected=selected, options=options)
     month_label = month or current_ledger_month(db, ledger_id=selected)
     home = normalize_currency_code(home_currency_code or require_runtime_home_currency_code(db))
+    if savings_target_yuan is None and reserved_buffer_yuan is None:
+        arrangement_currency_code = None
     original_home = normalize_currency_code(arrangement_currency_code or home)
     savings_cents, reserved_cents, form_error, currency_choice_required = _reserve_values(
         savings_target_yuan, reserved_buffer_yuan, original_home, captured_home=arrangement_currency_code or home_currency_code,

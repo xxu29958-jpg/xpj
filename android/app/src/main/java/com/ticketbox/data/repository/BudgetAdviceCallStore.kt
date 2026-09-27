@@ -216,7 +216,10 @@ private fun verifyAdviceBasis(result: BudgetAdviceResult, key: AdviceRequestKey)
 private fun verifyTrialAmounts(basis: com.ticketbox.data.remote.dto.BudgetAdviceInputsDto,
     trial: com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest) {
     // Cross-currency projection belongs to the server; raw equality only holds in the original currency.
-    if (trial.homeCurrencyCode != basis.homeCurrencyCode) return
+    if (trial.homeCurrencyCode != basis.homeCurrencyCode) {
+        if (basis.arrangementCurrencyCode != trial.homeCurrencyCode) throw unverifiedAdviceBasis()
+        return
+    }
     if (basis.breakdown.savingsTargetCents != trial.savingsTargetCents ||
         basis.breakdown.reservedBufferCents != trial.reservedBufferCents) throw unverifiedAdviceBasis()
 }

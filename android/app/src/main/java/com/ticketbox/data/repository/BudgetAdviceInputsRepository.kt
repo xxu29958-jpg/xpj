@@ -46,6 +46,7 @@ internal class BudgetAdviceInputsRepository(
                 CurrencyCode.fromStorageKeyOrNull(home) != null && it.missingRates.all { gap -> gap.homeCurrencyCode == home })
             if (home == request.homeCurrencyCode) require(it.breakdown.savingsTargetCents == request.savingsTargetCents &&
                 it.breakdown.reservedBufferCents == request.reservedBufferCents)
+            else require(it.arrangementCurrencyCode == request.homeCurrencyCode)
             adviceCallStore.noteAdviceInputSnapshot("budget_inputs:$binding:$clean:$home:trial:${request.homeCurrencyCode}:${request.savingsTargetCents}:${request.reservedBufferCents}", it.toString())
         }
     }

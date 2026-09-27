@@ -91,6 +91,20 @@ def test_web_cross_currency_posts_preserve_report_source_and_save_intent(monkeyp
     client = TestClient(app)
     page = client.get("/web/budget-advise?ledger_id=owner&month=2026-08")
     assert page.status_code == 200
+    original_saved = saved
+    saved = saved.model_copy(update={"home_currency_code": "USD"})
+    no_draft = client.get("/web/budget-advise?ledger_id=owner&month=2026-08&home_currency_code=USD&arrangement_currency_code=JPY")
+    untouched = hidden_post_forms(no_draft.text)["/web/budget-advise"]
+    assert untouched["arrangement_currency_code"] == "USD"
+    assert rendered[-1]["savings_target_yuan"] == "5.00" and rendered[-1]["reserved_buffer_yuan"] == "1.00"
+    response = client.post("/web/budget-advise/save", data={**untouched,
+        "savings_target_yuan": rendered[-1]["savings_target_yuan"], "reserved_buffer_yuan": rendered[-1]["reserved_buffer_yuan"]},
+        follow_redirects=False)
+    assert response.status_code == 303
+    assert command.call_args.kwargs["payload"].home_currency_code == "USD"
+    assert command.call_args.kwargs["payload"].savings_target_cents == 500
+    command.reset_mock()
+    saved = original_saved
     form = {**hidden_post_forms(page.text)["/web/budget-advise"], "savings_target_yuan": "1200",
         "reserved_buffer_yuan": "30"}
     assert form["home_currency_code"] == "USD" and form["arrangement_currency_code"] == "JPY"
