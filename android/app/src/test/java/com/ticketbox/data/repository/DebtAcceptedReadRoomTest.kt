@@ -136,6 +136,12 @@ class DebtAcceptedReadRoomTest {
             }
             replayFailure = null
             db.openHelper.writableDatabase.execSQL("DROP TRIGGER fail_debt_cleanup")
+            val originalProtection = requireNotNull(db.expenseDao().debtOutboxReadBarrier(key)).responseJson
+            fixture.coordinator.clearLocalCache()
+            assertEquals(originalProtection, db.expenseDao().debtOutboxReadBarrier(key)?.responseJson,
+                "Settings cache cleanup cannot consume the accepted original's read protection")
+            assertTrue(db.expenseDao().statsProjections(key, "debt_detail", "", "d1", "UTC").isEmpty())
+            assertTrue(reader().detail(fixture.binding, "d1").isFailure)
             offline = false
             started = CompletableDeferred()
             release = CompletableDeferred()
@@ -174,6 +180,79 @@ class DebtAcceptedReadRoomTest {
             assertEquals(fresh.copy(fromCache = true), reader().detail(fixture.binding, "d1").getOrThrow())
         } finally { db.close() }
     }
+    @Test fun originalRepaymentCredentialRefusalSurvivesCleanupFailureWithoutRevokingAReplacementIdentity() = runBlocking {
+        for ((status, rebind) in listOf(401 to false, 403 to false, 401 to true)) {
+            val db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), AppDatabase::class.java).build()
+            try {
+                val api = RepaymentResponseLossProbe().apply {
+                    loseResponse = false
+                    current = current.copy(homeCurrencyCode = "JPY", originalCurrencyCode = "JPY", originalAmountMinor = 50_000)
+                    refusal = status to "original_request_refused"
+                }
+                var offline = false
+                var beforeRefusal: () -> Unit = {}
+                val fixture = GoalReadFixture(decorateDao = { db.expenseDao() }, decorate = {
+                    object : ApiService by api {
+                        override suspend fun debt(publicId: String): DebtDto {
+                            if (offline) throw ConnectException("offline after the original repayment refusal")
+                            return api.current
+                        }
+                        override suspend fun recordDebtRepayment(publicId: String, request: RepaymentCreateRequestDto,
+                            idempotencyKey: String?): DebtRepaymentReceiptDto {
+                            beforeRefusal()
+                            return api.recordDebtRepayment(publicId, request, idempotencyKey)
+                        }
+                    }
+                })
+                val settings = boundSettingsStore()
+                fun coordinator() = LocalLedgerSessionCoordinator(settings, fixture.session.sessionStore, db.expenseDao())
+                val originalCoordinator = coordinator()
+                val reads = DebtRepository(fixture.provider, DebtQueryReader(fixture.provider, db.expenseDao(), originalCoordinator))
+                val original = reads.getDebt("d1").getOrThrow()
+                val outbox = testOutboxRepository(db.pendingMutationDao(), bindingProvider = { fixture.provider.currentSession().toOutboxBinding() })
+                outbox.onDebtDispatchPreparing = reads::prepareReadsBeforeDispatch
+                outbox.onDebtDispatchFinished = reads::finishReadDispatch
+                outbox.onDebtAccepted = reads::invalidateReadsAfterAccepted
+                val adapters = OutboxAdapterGraph()
+                DebtWriteRepository(fixture.provider, outbox, adapters).saveRepayment(fixture.binding, original.value, 10_000).getOrThrow()
+                val queued = db.pendingMutationDao().allRows().single()
+                db.openHelper.writableDatabase.execSQL("CREATE TRIGGER fail_denied_debt_cleanup BEFORE DELETE ON stats_projection_cache " +
+                    "WHEN OLD.kind = 'debt_detail' BEGIN SELECT RAISE(ABORT, 'Read cleanup unavailable'); END")
+                if (rebind) beforeRefusal = {
+                    fixture.session.rebindToDifferentServerForFixture("https://other.example.com", "other-session-token")
+                }
+                val engine = OutboxDrainEngine(outbox, listOf(RecordDebtRepaymentDispatcher(
+                    LedgerRequestGuard(fixture.provider), adapters.debtRepaymentAdapter, adapters.debtRepaymentReceiptAdapter)))
+                assertEquals(1, engine.drainOnce().failures)
+                val failed = db.pendingMutationDao().allRows().single()
+                assertEquals(queued.payload, failed.payload)
+                assertEquals(queued.idempotencyKey, failed.idempotencyKey)
+                assertEquals(queued.expectedRowVersion, failed.expectedRowVersion)
+                assertTrue(api.facts.isEmpty(), "A refused repayment never changes the original balance")
+                offline = true
+                val cold = DebtRepository(fixture.provider, DebtQueryReader(fixture.provider, db.expenseDao(), coordinator()))
+                val reopened = cold.getDebt("d1")
+                if (rebind) {
+                    assertEquals(null, originalCoordinator.snapshotAccessDenials.value)
+                    assertTrue((reopened.exceptionOrNull() as RepositoryException).httpStatusCode != 401)
+                } else if (status == 401) {
+                    assertEquals(401, (reopened.exceptionOrNull() as RepositoryException).httpStatusCode,
+                        "The denied original identity cannot reopen its retained JPY cache after process reconstruction")
+                } else {
+                    assertEquals(original.copy(fromCache = true), reopened.getOrThrow(), "Write-only refusal retains read permission")
+                }
+                db.openHelper.writableDatabase.execSQL("DROP TRIGGER fail_denied_debt_cleanup")
+                if (!rebind) {
+                    offline = false
+                    val fresh = cold.getDebt("d1").getOrThrow()
+                    assertEquals(original.value, fresh.value)
+                    offline = true
+                    assertEquals(fresh.copy(fromCache = true), cold.getDebt("d1").getOrThrow())
+                }
+            } finally { db.close() }
+        }
+    }
+
     @Test fun unsentAndDefiniteRefusalsPreserveReadFactsWhileAnEarlierUnknownAcceptanceSurvivesDropAndCleanup() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), AppDatabase::class.java).build()
         try {

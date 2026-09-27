@@ -6,7 +6,8 @@ import java.time.Instant
 import java.util.UUID
 
 /** Existing Debt read owner protects dispatch and retirement; no receipt is a canonical query. */
-internal data class DebtDispatchReadProtection(val binding: LogicalSessionBinding, val token: String, val hadUnresolved: Boolean)
+internal data class DebtDispatchReadProtection(val binding: LogicalSessionBinding, val token: String,
+    val hadUnresolved: Boolean, val bound: BoundLedgerRequest)
 
 private fun DebtQueryReader.originalDebtBinding(row: OutboxRow): LogicalSessionBinding {
     val binding = requireNotNull(guard.captureLogicalBinding())
@@ -23,7 +24,7 @@ internal suspend fun DebtQueryReader.prepareDebtDispatch(row: OutboxRow) {
     val token = "${row.idempotencyKey ?: row.id}:${UUID.randomUUID()}"
     activeDirect.add("$key|$token")
     try {
-        val protection = DebtDispatchReadProtection(binding, token, dao.debtOutboxReadBarrier(key) != null)
+        val protection = DebtDispatchReadProtection(binding, token, dao.debtOutboxReadBarrier(key) != null, guard.bindExact(binding))
         dao.saveStatsProjection(StatsProjectionCacheEntity(key, binding.ledgerId, "debt_outbox_read_barrier",
             "", "", "", "UTC", token, Instant.now().toString()))
         dispatchProtections[row.id] = protection
@@ -33,10 +34,15 @@ internal suspend fun DebtQueryReader.prepareDebtDispatch(row: OutboxRow) {
     }
 }
 
-internal suspend fun DebtQueryReader.finishDebtDispatch(row: OutboxRow, rejected: Boolean) {
+internal suspend fun DebtQueryReader.finishDebtDispatch(row: OutboxRow, result: DispatchResult?) {
     val protection = dispatchProtections.remove(row.id) ?: return
     val key = logicalBindingAdapter.toJson(protection.binding)
+    val rejected = result is DispatchResult.Conflict || result is DispatchResult.Discarded ||
+        (result is DispatchResult.Failure && result.definitelyRejected)
     try {
+        if (result is DispatchResult.Failure && result.credentialRejected) {
+            coordinator.rejectSnapshotAccess(protection.bound, key, RepositoryException(result.message, httpStatusCode = 401))
+        }
         if (rejected && !protection.hadUnresolved) dao.settleDebtOutboxReadBarrier(key, protection.binding.ledgerId,
             protection.token, retire = false)
     } catch (_: SQLiteException) { /* Preserve protection until an actual current query reconciles it. */ }

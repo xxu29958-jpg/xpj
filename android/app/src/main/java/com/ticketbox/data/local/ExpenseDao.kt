@@ -46,7 +46,8 @@ interface ExpenseDao {
     @Query("DELETE FROM goal_query_cache WHERE bindingKey = :bindingKey")
     suspend fun clearGoalSnapshotsForBinding(bindingKey: String)
 
-    @Query("DELETE FROM stats_projection_cache WHERE bindingKey = :bindingKey")
+    @Query("DELETE FROM stats_projection_cache WHERE bindingKey = :bindingKey " +
+        "AND kind NOT IN ('debt_direct_barrier', 'debt_outbox_read_barrier', 'debt_read_epoch')")
     suspend fun clearStatsProjectionsForBinding(bindingKey: String)
 
     @Query("SELECT * FROM stats_projection_cache WHERE bindingKey = :bindingKey AND kind = 'budget' AND month = :month")
@@ -57,14 +58,9 @@ interface ExpenseDao {
 
     @Transaction
     suspend fun clearReadSnapshotsForBinding(bindingKey: String) {
-        val outboxBarrier = debtOutboxReadBarrier(bindingKey)
-        val debtBarriers = debtDirectBarriers(bindingKey)
-        val debtEpoch = statsProjections(bindingKey, "debt_read_epoch", "", "", "UTC").singleOrNull()
+        // Cache cleanup retires payloads; each query owner alone settles its dispatch proof and epoch.
         clearGoalSnapshotsForBinding(bindingKey)
         clearStatsProjectionsForBinding(bindingKey)
-        debtBarriers.forEach { saveStatsProjection(it) }
-        debtEpoch?.let { saveStatsProjection(it) }
-        outboxBarrier?.let { saveStatsProjection(it) }
     }
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -166,10 +162,12 @@ interface ExpenseDao {
         bindingKey: String, kind: String, month: String, tag: String, timezone: String,
     ): List<StatsProjectionCacheEntity>
 
-    @Query("DELETE FROM stats_projection_cache")
+    @Query("DELETE FROM stats_projection_cache " +
+        "WHERE kind NOT IN ('debt_direct_barrier', 'debt_outbox_read_barrier', 'debt_read_epoch')")
     suspend fun clearStatsProjections()
 
-    @Query("DELETE FROM stats_projection_cache WHERE ledgerId = :ledgerId")
+    @Query("DELETE FROM stats_projection_cache WHERE ledgerId = :ledgerId " +
+        "AND kind NOT IN ('debt_direct_barrier', 'debt_outbox_read_barrier', 'debt_read_epoch')")
     suspend fun clearStatsProjectionsForLedger(ledgerId: String)
 
     @Query(

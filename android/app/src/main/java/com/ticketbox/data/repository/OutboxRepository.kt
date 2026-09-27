@@ -512,7 +512,7 @@ class OutboxRepository private constructor(
         dao.markInFlightIfPending(id, PendingMutationStatus.Pending.wireValue, PendingMutationStatus.InFlight.wireValue, nowIso()) > 0
 
     internal var onDebtDispatchPreparing: suspend (OutboxRow) -> Unit = {}
-    internal var onDebtDispatchFinished: suspend (OutboxRow, Boolean) -> Unit = { _, _ -> }
+    internal var onDebtDispatchFinished: suspend (OutboxRow, DispatchResult?) -> Unit = { _, _ -> }
     internal var onDebtAccepted: suspend (OutboxRow) -> Unit = {}
 
     suspend fun markDone(id: Long, cacheRefreshVersion: Long? = null, receiptJson: String? = null,

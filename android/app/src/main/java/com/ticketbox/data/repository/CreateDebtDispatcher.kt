@@ -49,7 +49,7 @@ class CreateDebtDispatcher(
             error.code() == 408 || error.code() == 429 || error.code() in 500..599 ->
                 DispatchResult.RetryableFailure("debt_create_connection_interrupted")
             else -> DispatchResult.Failure("debt_create_rejected", definitelyRejected = error.code() in setOf(400, 401, 403, 404, 405, 410, 412, 422) ||
-                (error.code() == 409 && code == "state_conflict"))
+                (error.code() == 409 && code == "state_conflict"), credentialRejected = error.code() == 401)
         }
     }
 }

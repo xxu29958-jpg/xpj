@@ -79,7 +79,7 @@ class DebtRepository internal constructor(
     override fun observeReadAccessDenials(): Flow<SnapshotAccessDenial> = queryReader.readAccessDenials
     override fun observeResourceDenials(): Flow<DebtReadResourceDenial> = queryReader.readResourceDenials
     suspend fun prepareReadsBeforeDispatch(row: OutboxRow) = queryReader.prepareDebtDispatch(row)
-    suspend fun finishReadDispatch(row: OutboxRow, rejected: Boolean) = queryReader.finishDebtDispatch(row, rejected)
+    suspend fun finishReadDispatch(row: OutboxRow, result: DispatchResult?) = queryReader.finishDebtDispatch(row, result)
     suspend fun invalidateReadsAfterAccepted(row: OutboxRow) = queryReader.invalidateDebtAccepted(row)
     private val ledgerRequestGuard = LedgerRequestGuard(apiProvider)
     private val errorHandler = NetworkErrorHandler(
