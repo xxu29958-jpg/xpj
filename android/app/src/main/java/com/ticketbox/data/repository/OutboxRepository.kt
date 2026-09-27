@@ -1,5 +1,6 @@
 package com.ticketbox.data.repository
 
+import android.database.sqlite.SQLiteException
 import com.ticketbox.data.local.PendingMutationDao
 import com.ticketbox.data.local.PendingMutationEntity
 import com.ticketbox.data.local.PendingMutationStatus
@@ -7,7 +8,6 @@ import com.ticketbox.data.local.PendingMutationType
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
-import android.database.sqlite.SQLiteException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -515,19 +515,47 @@ class OutboxRepository private constructor(
     internal var onDebtDispatchFinished: suspend (OutboxRow, DispatchResult?) -> Unit = { _, _ -> }
     internal var onDebtAccepted: suspend (OutboxRow) -> Unit = {}
 
+    internal var onRecurringDispatchPreparing: suspend (OutboxRow) -> Unit = {}
+    internal var onRecurringDispatchFinished: suspend (OutboxRow, DispatchResult?) -> Unit = { _, _ -> }
+    internal var onRecurringAccepted: suspend (OutboxRow) -> Unit = {}
+
+    internal fun affectsRecurringReads(row: OutboxRow) = row.type in setOf(
+        PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem,
+        PendingMutationType.SetRecurringOccurrencePayment, PendingMutationType.PatchExpense, PendingMutationType.CorrectExpense,
+        PendingMutationType.CreateExpense, PendingMutationType.ConfirmExpense, PendingMutationType.UndoExpense,
+        PendingMutationType.CreateExpenseOffset, PendingMutationType.VoidExpenseOffset)
+
+
+    internal suspend fun prepareReadProtection(row: OutboxRow) {
+        if (affectsRecurringReads(row)) onRecurringDispatchPreparing(row)
+        if (row.type in DEBT_QUERY_MUTATION_TYPES) onDebtDispatchPreparing(row)
+    }
+
+    internal suspend fun finishReadProtection(row: OutboxRow, result: DispatchResult?) {
+        if (affectsRecurringReads(row)) onRecurringDispatchFinished(row, result)
+        if (row.type in DEBT_QUERY_MUTATION_TYPES) onDebtDispatchFinished(row, result)
+    }
+
     suspend fun markDone(id: Long, cacheRefreshVersion: Long? = null, receiptJson: String? = null,
         budgetReadRefreshRequired: Boolean = false, acceptedRow: OutboxRow? = null) {
         val refreshError = if (budgetReadRefreshRequired) BUDGET_READ_REFRESH_REQUIRED
             else cacheRefreshVersion?.let { "$EXPENSE_REFRESH_PREFIX$it" }
+        val recurringAccepted = acceptedRow?.let(::affectsRecurringReads) == true
         val debtAccepted = acceptedRow?.type in DEBT_QUERY_MUTATION_TYPES
         try {
-            // The read owner commits retirement first; a later Done failure cannot roll it back.
+            // Retirement commits first; a later Done failure cannot roll back its read proof.
+            if (recurringAccepted) onRecurringAccepted(requireNotNull(acceptedRow))
             if (debtAccepted) onDebtAccepted(requireNotNull(acceptedRow))
             dao.markDone(id, PendingMutationStatus.Done.wireValue, nowIso(), refreshError, receiptJson)
         } catch (error: SQLiteException) {
-            // Only the original key re-enters; a failed local publication is not a new financial command.
-            if (debtAccepted) withContext(NonCancellable) { markRetryable(id, "accepted_debt_read_publication_pending") }
-            throw error
+            // The server has accepted this attempt. Reentry repeats the original key; it never refunds the send.
+            val diagnostic = when {
+                recurringAccepted -> "accepted_recurring_read_publication_pending"
+                debtAccepted -> "accepted_debt_read_publication_pending"
+                else -> null
+            }
+            if (diagnostic != null) withContext(NonCancellable) { markRetryable(id, diagnostic) }
+            throw error // The existing worker schedules retry, without claiming local delivery completed.
         }
     }
 

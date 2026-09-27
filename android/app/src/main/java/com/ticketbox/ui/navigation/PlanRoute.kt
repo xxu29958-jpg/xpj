@@ -39,6 +39,7 @@ internal fun PlanRoute(
                 budget = budgetViewModel,
                 recurring = recurringViewModel,
                 income = incomePlanViewModel,
+                invalidateRecurring = true,
             )
         }
     }
@@ -73,8 +74,9 @@ private fun refreshPlanOverview(
     budget: BudgetViewModel,
     recurring: RecurringViewModel,
     income: IncomePlanViewModel,
+    invalidateRecurring: Boolean = false,
 ) {
     budget.refresh()
-    recurring.refresh()
+    recurring.refresh(retireCurrent = invalidateRecurring)
     income.refresh()
 }

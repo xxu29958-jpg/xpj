@@ -39,19 +39,21 @@ class ConfirmExpenseDispatcher(
         // the server would 422 anyway — surface it as a visible FAILED row the
         // user can drop, not a silent server round-trip + Discard.
         val idempotencyKey = row.idempotencyKey
-            ?: return DispatchResult.Failure("ConfirmExpense row missing idempotency key")
+            ?: return DispatchResult.Failure("ConfirmExpense row missing idempotency key", definitelyRejected = true)
 
         val request = try {
             val storedPayload = payloadAdapter.fromJson(row.payloadJson)
-                ?: return DispatchResult.Failure("payload deserialised to null")
+                ?: return DispatchResult.Failure("payload deserialised to null", definitelyRejected = true)
             storedPayload.copy(expectedRowVersion = row.expectedRowVersion)
         } catch (e: JsonDataException) {
             return DispatchResult.Failure(
                 "payload JSON shape changed: ${e.message ?: "JsonDataException"}",
+                definitelyRejected = true,
             )
         } catch (e: JsonEncodingException) {
             return DispatchResult.Failure(
                 "payload JSON malformed: ${e.message ?: "JsonEncodingException"}",
+                definitelyRejected = true,
             )
         }
 

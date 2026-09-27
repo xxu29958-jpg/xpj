@@ -50,10 +50,10 @@ class ExpenseOffsetDispatchersTest {
         val original = createRow().copy(payloadJson = createRow().payloadJson
             .replace("\"expected_row_version\":7", "\"expected_row_version\":0"))
 
-        assertEquals(DispatchResult.Failure("offset_create_requires_review"), dispatcher.dispatch(original))
-        assertEquals(DispatchResult.Failure("offset_create_requires_review"),
+        assertEquals(DispatchResult.Failure("offset_create_requires_review", definitelyRejected = true), dispatcher.dispatch(original))
+        assertEquals(DispatchResult.Failure("offset_create_requires_review", definitelyRejected = true),
             dispatcher.dispatch(createRow().copy(expectedRowVersion = 8)))
-        assertEquals(DispatchResult.Failure("offset_create_requires_review"),
+        assertEquals(DispatchResult.Failure("offset_create_requires_review", definitelyRejected = true),
             dispatcher.dispatch(createRow().copy(payloadJson = "{")))
         assertEquals(null, stub.createRequest)
         assertEquals(null, stub.createKey)
@@ -65,7 +65,7 @@ class ExpenseOffsetDispatchersTest {
         val dispatcher = CreateExpenseOffsetDispatcher({ stub },
             moshi.adapter(ExpenseOffsetCreateRequestDto::class.java), { _, _ -> })
 
-        assertEquals(DispatchResult.Failure("offset_create_requires_review"), dispatcher.dispatch(createRow()))
+        assertEquals(DispatchResult.Failure("offset_create_requires_review", definitelyRejected = true), dispatcher.dispatch(createRow()))
         assertEquals(7L, stub.createRequest?.expectedRowVersion)
         assertEquals("offset-key", stub.createKey)
     }

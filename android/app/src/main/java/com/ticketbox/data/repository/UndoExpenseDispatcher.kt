@@ -21,17 +21,17 @@ class UndoExpenseDispatcher(
 
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
         val expenseId = parseExpenseTargetRef(row.targetId)?.toLongOrNull()?.takeIf { it > 0 }
-            ?: return DispatchResult.Failure("UndoExpense row has invalid target")
+            ?: return DispatchResult.Failure("UndoExpense row has invalid target", definitelyRejected = true)
         val key = row.idempotencyKey?.takeIf { it.isNotBlank() }
-            ?: return DispatchResult.Failure("UndoExpense row missing idempotency key")
+            ?: return DispatchResult.Failure("UndoExpense row missing idempotency key", definitelyRejected = true)
         val request = try {
             val payload = payloadAdapter.fromJson(row.payloadJson)
-                ?: return DispatchResult.Failure("payload deserialised to null")
+                ?: return DispatchResult.Failure("payload deserialised to null", definitelyRejected = true)
             payload.copy(expectedRowVersion = row.expectedRowVersion)
         } catch (error: JsonDataException) {
-            return DispatchResult.Failure("payload JSON shape changed: ${error.message}")
+            return DispatchResult.Failure("payload JSON shape changed: ${error.message}", definitelyRejected = true)
         } catch (error: JsonEncodingException) {
-            return DispatchResult.Failure("payload JSON malformed: ${error.message}")
+            return DispatchResult.Failure("payload JSON malformed: ${error.message}", definitelyRejected = true)
         }
 
         return try {
@@ -43,7 +43,7 @@ class UndoExpenseDispatcher(
             publishAcceptedExpense(restored.id, restored.rowVersion) { publishExpense(row.ledgerId, restored) }
                 .copy(receiptJson = receipt)
         } catch (error: HttpException) {
-            if (error.code() == 404) DispatchResult.Failure("expense_not_found") else mapOutboxHttpException(error)
+            if (error.code() == 404) DispatchResult.Failure("expense_not_found", definitelyRejected = true) else mapOutboxHttpException(error)
         } catch (error: IOException) {
             DispatchResult.RetryableFailure(error.message ?: "network IO failure")
         } catch (cancelled: CancellationException) {

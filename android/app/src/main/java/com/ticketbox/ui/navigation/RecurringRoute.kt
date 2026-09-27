@@ -35,14 +35,14 @@ internal fun RecurringRoute(
     }
     LaunchedEffect(financialDataRevision) {
         if (financialDataRevision > 0) {
-            recurringViewModel.refresh()
-            occurrenceModel.refresh()
+            recurringViewModel.refresh(retireCurrent = true)
+            occurrenceModel.refresh(retireCurrent = true)
         }
     }
     RecurringScreen(
         state = state,
         actions = RecurringScreenActions(
-            onRefresh = recurringViewModel::refresh,
+            onRefresh = { recurringViewModel.refresh() },
             items = RecurringItemActions(
                 onOpenOccurrence = { occurrenceModel.open(it) },
                 onOpenHistory = recurringViewModel.historyTask::open,

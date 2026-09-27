@@ -17,12 +17,12 @@ class UpdateRecurringItemDispatcher(
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
         val publicId = row.targetId.removePrefix(UPDATE_TARGET_PREFIX).takeIf {
             row.targetId.startsWith(UPDATE_TARGET_PREFIX) && it.isNotBlank()
-        } ?: return DispatchResult.Failure(RECURRING_ORIGINAL_UNSUPPORTED)
+        } ?: return DispatchResult.Failure(RECURRING_ORIGINAL_UNSUPPORTED, definitelyRejected = true)
         val key = row.idempotencyKey?.takeIf(String::isNotBlank)
-            ?: return DispatchResult.Failure(RECURRING_ORIGINAL_UNSUPPORTED)
+            ?: return DispatchResult.Failure(RECURRING_ORIGINAL_UNSUPPORTED, definitelyRejected = true)
         val request = runCatching { payloadAdapter.fromJson(row.payloadJson) }.getOrNull()
             ?.takeIf { it.matchesOriginal(row) }
-            ?: return DispatchResult.Failure(RECURRING_ORIGINAL_UNSUPPORTED)
+            ?: return DispatchResult.Failure(RECURRING_ORIGINAL_UNSUPPORTED, definitelyRejected = true)
         return try {
             val receipt = apiProvider(row).updateRecurringItem(publicId, request, key)
             // Each later original retains its own OCC basis; accepting this one cannot rebase it.

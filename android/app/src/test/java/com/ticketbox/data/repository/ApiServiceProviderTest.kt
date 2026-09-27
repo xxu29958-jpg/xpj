@@ -193,16 +193,18 @@ class ApiServiceProviderTest {
             requireNotNull(sessionStore.currentSession()).copy(bindingRevision = "binding-2"),
         )
 
+        val recurringCache = FakeExpenseDao()
+        val recurringCoordinator = LocalLedgerSessionCoordinator(boundSettingsStore(), sessionStore, recurringCache)
         val results = listOf(
             testBudgetRepository(provider).monthlyBudget(binding, "2026-05"),
-            RecurringRepository(provider, sessionCoordinator = LocalLedgerSessionCoordinator(boundSettingsStore(), sessionStore, FakeExpenseDao())).items(binding, includeArchived = true),
+            RecurringRepository(provider, queryReader = RecurringQueryReader(provider, recurringCache, recurringCoordinator)).items(binding, includeArchived = true),
             IncomePlanRepository(provider, testOutboxRepository(dao = FakePendingMutationDao()), com.ticketbox.OutboxAdapterGraph().incomePlanSubmissionAdapter, com.ticketbox.OutboxAdapterGraph().incomePlanReceiptAdapter).listActive(binding),
             testBudgetRepository(provider).enqueueSave(
                 binding,
                 "2026-05",
                 BudgetMonthlyUpdate(homeCurrencyCode = "CNY", expectedRowVersion = null, totalAmountCents = 300_000),
             ),
-            RecurringRepository(provider, sessionCoordinator = LocalLedgerSessionCoordinator(boundSettingsStore(), sessionStore, FakeExpenseDao())).pause(binding, "recurring-1", expectedRowVersion = 1L),
+            RecurringRepository(provider, queryReader = RecurringQueryReader(provider, recurringCache, recurringCoordinator)).pause(binding, "recurring-1", expectedRowVersion = 1L),
             IncomePlanRepository(provider, testOutboxRepository(dao = FakePendingMutationDao()), com.ticketbox.OutboxAdapterGraph().incomePlanSubmissionAdapter, com.ticketbox.OutboxAdapterGraph().incomePlanReceiptAdapter).archive(binding, "income-1", expectedRowVersion = 1L, intentMonth = "2026-09"),
         )
 

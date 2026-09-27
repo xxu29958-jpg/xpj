@@ -47,7 +47,8 @@ interface ExpenseDao {
     suspend fun clearGoalSnapshotsForBinding(bindingKey: String)
 
     @Query("DELETE FROM stats_projection_cache WHERE bindingKey = :bindingKey " +
-        "AND kind NOT IN ('debt_direct_barrier', 'debt_outbox_read_barrier', 'debt_read_epoch')")
+        "AND kind NOT IN ('recurring_direct_barrier', 'recurring_outbox_read_barrier', 'recurring_read_epoch', " +
+        "'debt_direct_barrier', 'debt_outbox_read_barrier', 'debt_read_epoch')")
     suspend fun clearStatsProjectionsForBinding(bindingKey: String)
 
     @Query("SELECT * FROM stats_projection_cache WHERE bindingKey = :bindingKey AND kind = 'budget' AND month = :month")
@@ -152,6 +153,87 @@ interface ExpenseDao {
         clearDebtDirectBarriers(bindingKey, tokens)
     }
 
+    /** Local invalidation metadata only; never a business snapshot, currency or receipt. */
+    @Query("SELECT responseJson FROM stats_projection_cache WHERE bindingKey = :bindingKey " +
+        "AND kind = 'recurring_read_epoch' AND month = '' AND tag = '' AND homeCurrencyCode = '' AND timezone = 'UTC'")
+    suspend fun recurringReadEpoch(bindingKey: String): String?
+
+    /** Dispatch protection belongs to the projection store, not a retry diagnostic or receipt. */
+    suspend fun recurringOutboxReadBarrier(bindingKey: String): StatsProjectionCacheEntity? =
+        statsProjections(bindingKey, "recurring_outbox_read_barrier", "", "", "UTC").singleOrNull()
+
+    suspend fun recurringDirectBarrier(bindingKey: String): StatsProjectionCacheEntity? =
+        statsProjections(bindingKey, "recurring_direct_barrier", "", "", "UTC").singleOrNull()
+
+    /** Persist before dispatch; this reversible barrier does not discard any already-read fact. */
+    @Transaction
+    suspend fun beginRecurringDirectBarrier(bindingKey: String, ledgerId: String, token: String) {
+        check(recurringDirectBarrier(bindingKey) == null) { "原固定支出操作结果尚需联网核对，请先重新读取。" }
+        saveStatsProjection(StatsProjectionCacheEntity(bindingKey, ledgerId, "recurring_direct_barrier", "", "", "", "UTC",
+            token, java.time.Instant.now().toString()))
+    }
+
+    /** A cleanup failure rolls back settlement, leaving the pre-dispatch barrier durable. */
+    @Transaction
+    suspend fun settleRecurringDirectBarrier(bindingKey: String, ledgerId: String, token: String,
+        accepted: Boolean, expectedEpoch: Long? = null) {
+        check(expectedEpoch == null || (recurringReadEpoch(bindingKey)?.toLong() ?: 0L) == expectedEpoch) {
+            "固定支出已接受修改，请重新读取。"
+        }
+        val barrier = recurringDirectBarrier(bindingKey)
+        check(barrier?.responseJson == token) { "固定支出读取屏障已改变，请重新读取。" }
+        if (accepted) invalidateRecurringSnapshots(bindingKey, ledgerId)
+        deleteStatsProjection(requireNotNull(barrier))
+    }
+
+    @Transaction
+    suspend fun invalidateRecurringSnapshots(bindingKey: String, ledgerId: String) {
+        val next = Math.addExact(recurringReadEpoch(bindingKey)?.toLong() ?: 0L, 1L)
+        clearRecurringSnapshots(bindingKey)
+        saveStatsProjection(StatsProjectionCacheEntity(bindingKey, ledgerId, "recurring_read_epoch", "", "", "", "UTC",
+            next.toString(), java.time.Instant.now().toString()))
+    }
+
+    /** Only its original owner may finish an Outbox barrier; a parallel direct ACK cannot consume it. */
+    @Transaction
+    suspend fun settleRecurringOutboxReadBarrier(bindingKey: String, ledgerId: String, token: String, retire: Boolean) {
+        val barrier = recurringOutboxReadBarrier(bindingKey)
+        if (retire) invalidateRecurringSnapshots(bindingKey, ledgerId)
+        if (barrier?.responseJson == token) deleteStatsProjection(barrier)
+    }
+
+    @Transaction
+    suspend fun reconcileRecurringReadBarriers(bindingKey: String, ledgerId: String, expectedEpoch: Long,
+        directToken: String?, outboxToken: String?) {
+        check((recurringReadEpoch(bindingKey)?.toLong() ?: 0L) == expectedEpoch &&
+            recurringDirectBarrier(bindingKey)?.responseJson == directToken &&
+            recurringOutboxReadBarrier(bindingKey)?.responseJson == outboxToken) { "固定支出读取屏障已改变，请重新读取。" }
+        invalidateRecurringSnapshots(bindingKey, ledgerId)
+        recurringDirectBarrier(bindingKey)?.let { deleteStatsProjection(it) }
+        recurringOutboxReadBarrier(bindingKey)?.let { deleteStatsProjection(it) }
+    }
+
+    @Query("DELETE FROM stats_projection_cache WHERE bindingKey = :bindingKey " +
+        "AND kind IN ('recurring_items', 'recurring_history', 'recurring_occurrence')")
+    suspend fun clearRecurringSnapshots(bindingKey: String)
+
+    /** The same Room database serializes this proof with accepted command settlement. */
+    @Transaction
+    suspend fun saveRecurringSnapshotIfCurrent(snapshot: StatsProjectionCacheEntity, expectedEpoch: Long) {
+        check((recurringReadEpoch(snapshot.bindingKey)?.toLong() ?: 0L) == expectedEpoch) { "固定支出已接受修改，请重新读取。" }
+        check(recurringOutboxReadBarrier(snapshot.bindingKey) == null) { "原固定支出提交尚需核对，请重新读取。" }
+        check(recurringDirectBarrier(snapshot.bindingKey) == null) { "固定支出操作尚需核对，请重新读取。" }
+        saveStatsProjection(snapshot)
+    }
+
+    @Transaction
+    suspend fun recurringSnapshotIfCurrent(query: StatsProjectionCacheEntity, expectedEpoch: Long): StatsProjectionCacheEntity? {
+        check((recurringReadEpoch(query.bindingKey)?.toLong() ?: 0L) == expectedEpoch) { "固定支出已接受修改，请重新读取。" }
+        check(recurringOutboxReadBarrier(query.bindingKey) == null) { "原固定支出提交尚需核对，请重新读取。" }
+        check(recurringDirectBarrier(query.bindingKey) == null) { "固定支出操作尚需联网核对，请重新读取。" }
+        return statsProjections(query.bindingKey, query.kind, query.month, query.tag, query.timezone).singleOrNull()
+    }
+
     @Query("""
         SELECT * FROM stats_projection_cache
         WHERE bindingKey = :bindingKey AND kind = :kind AND month = :month AND tag = :tag
@@ -163,11 +245,13 @@ interface ExpenseDao {
     ): List<StatsProjectionCacheEntity>
 
     @Query("DELETE FROM stats_projection_cache " +
-        "WHERE kind NOT IN ('debt_direct_barrier', 'debt_outbox_read_barrier', 'debt_read_epoch')")
+        "WHERE kind NOT IN ('recurring_direct_barrier', 'recurring_outbox_read_barrier', 'recurring_read_epoch', " +
+        "'debt_direct_barrier', 'debt_outbox_read_barrier', 'debt_read_epoch')")
     suspend fun clearStatsProjections()
 
     @Query("DELETE FROM stats_projection_cache WHERE ledgerId = :ledgerId " +
-        "AND kind NOT IN ('debt_direct_barrier', 'debt_outbox_read_barrier', 'debt_read_epoch')")
+        "AND kind NOT IN ('recurring_direct_barrier', 'recurring_outbox_read_barrier', 'recurring_read_epoch', " +
+        "'debt_direct_barrier', 'debt_outbox_read_barrier', 'debt_read_epoch')")
     suspend fun clearStatsProjectionsForLedger(ledgerId: String)
 
     @Query(

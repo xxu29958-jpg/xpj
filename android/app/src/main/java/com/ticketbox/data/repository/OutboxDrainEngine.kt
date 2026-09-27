@@ -223,11 +223,11 @@ class OutboxDrainEngine(
                 outbox.revertClaimWithoutAttempt(row.id)
                 return@withDispatchLease DrainSummary(1, 0, 0, 0, aborted = 1)
             }
-            val protectsReads = row.type in DEBT_QUERY_MUTATION_TYPES
+            val protectsReads = outbox.affectsRecurringReads(row) || row.type in DEBT_QUERY_MUTATION_TYPES
             var dispatchResult: DispatchResult? = null
             try {
                 if (protectsReads) {
-                    try { outbox.onDebtDispatchPreparing(row) }
+                    try { outbox.prepareReadProtection(row) }
                     catch (error: Exception) {
                         withContext(NonCancellable) { outbox.revertClaimWithoutAttempt(row.id) }
                         throw error
@@ -237,7 +237,7 @@ class OutboxDrainEngine(
                 dispatchResult = result
                 settle(row, result)
             } finally {
-                if (protectsReads) withContext(NonCancellable) { outbox.onDebtDispatchFinished(row, dispatchResult) }
+                if (protectsReads) withContext(NonCancellable) { outbox.finishReadProtection(row, dispatchResult) }
             }
         }
     }
