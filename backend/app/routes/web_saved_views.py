@@ -110,7 +110,7 @@ def _save_view(request, db, *, fields, public_id="") -> Response:
         return _render_views(request, db, options=options, selected=selected,
             error=_error_message(exc), draft=fields, editing_public_id=public_id, status_code=exc.status_code)
     return _web_redirect("/web/saved-views", selected,
-                         msg="视图已更新。" if public_id else "视图已保存，可从资料库重新打开。")
+                         msg="视图已更新。" if public_id else "保存请求已完成，资料库会显示视图的当前状态。")
 
 
 @router.post("/saved-views", response_class=HTMLResponse)
