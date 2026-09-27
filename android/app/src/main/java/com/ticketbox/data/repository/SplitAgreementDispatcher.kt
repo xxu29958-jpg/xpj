@@ -16,7 +16,7 @@ class SplitAgreementDispatcher(
     override val type = PendingMutationType.SplitAgreement
 
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
-        val intent = adapter.readSplitAgreement(row) ?: return DispatchResult.Failure("split_agreement_payload_unsupported")
+        val intent = adapter.readSplitAgreement(row) ?: return DispatchResult.Failure("split_agreement_payload_unsupported", definitelyRejected = true)
         return try {
             val receipt = send(apiProvider(row), intent, row.idempotencyKey)
             // Both original versions belong to this intent; a receipt never cascades a new token.
@@ -25,7 +25,7 @@ class SplitAgreementDispatcher(
             throw error
         } catch (error: HttpException) {
             when (val result = mapOutboxHttpException(error)) {
-                is DispatchResult.Discarded -> DispatchResult.Failure(result.reason)
+                is DispatchResult.Discarded -> DispatchResult.Failure(result.reason, definitelyRejected = true)
                 else -> result
             }
         } catch (_: IOException) {

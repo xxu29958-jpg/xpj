@@ -154,7 +154,11 @@ internal class RepositoryGraph(
         queryReader = debtQueries,
     )
 
-    init { outbox.onDebtAccepted = debtRepository::invalidateReadsAfterAccepted }
+    init {
+        outbox.onDebtDispatchPreparing = debtRepository::prepareReadsBeforeDispatch
+        outbox.onDebtDispatchFinished = debtRepository::finishReadDispatch
+        outbox.onDebtAccepted = debtRepository::invalidateReadsAfterAccepted
+    }
 
     val goalEditRepository = com.ticketbox.data.repository.GoalEditRepository(
         apiServiceProvider, outbox, outboxAdapters.goalUpdateAdapter, outboxAdapters.goalReceiptAdapter,

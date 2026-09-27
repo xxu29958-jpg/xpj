@@ -78,14 +78,9 @@ class DebtRepository internal constructor(
     val activity: DebtActivityQueries = DebtActivityRepository(queryReader)
     override fun observeReadAccessDenials(): Flow<SnapshotAccessDenial> = queryReader.readAccessDenials
     override fun observeResourceDenials(): Flow<DebtReadResourceDenial> = queryReader.readResourceDenials
-    suspend fun invalidateReadsAfterAccepted(row: OutboxRow) {
-        val binding = requireNotNull(ledgerRequestGuard.captureLogicalBinding())
-        require(row.ownerKey == binding.ownerKey && row.ledgerId == binding.ledgerId &&
-            canonicalServerOriginOrNull(row.serverUrl) == canonicalServerOriginOrNull(binding.serverUrl)) {
-            "原往来提交不属于当前连接。"
-        }
-        queryReader.invalidate(binding)
-    }
+    suspend fun prepareReadsBeforeDispatch(row: OutboxRow) = queryReader.prepareDebtDispatch(row)
+    suspend fun finishReadDispatch(row: OutboxRow, rejected: Boolean) = queryReader.finishDebtDispatch(row, rejected)
+    suspend fun invalidateReadsAfterAccepted(row: OutboxRow) = queryReader.invalidateDebtAccepted(row)
     private val ledgerRequestGuard = LedgerRequestGuard(apiProvider)
     private val errorHandler = NetworkErrorHandler(
         serverUrlProvider = { apiProvider.currentSession()?.serverUrl },

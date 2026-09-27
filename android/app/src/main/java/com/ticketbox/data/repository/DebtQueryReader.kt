@@ -39,7 +39,7 @@ private val activeDebtDirectTokens = ConcurrentHashMap.newKeySet<String>()
 internal data class DebtQueryScope(val row: StatsProjectionCacheEntity, val publicId: String? = null, val directTokens: Set<String> = emptySet())
 private data class DebtReadRequest(val binding: LogicalSessionBinding, val scope: DebtQueryScope,
     val ticket: SnapshotReadTicket, val localGeneration: Long, val epoch: Long, val resourceFence: String?,
-    val unpublishedAcceptance: Boolean, val directWasActive: Boolean)
+    val unpublishedAcceptance: String?, val directWasActive: Boolean)
 internal data class DebtReadSpec<T>(val adapter: JsonAdapter<T>, val fetch: suspend ApiService.() -> T,
     val validate: (T) -> Unit, val isNewer: (T, T) -> Boolean, val project: (T, Set<String>) -> T)
 
@@ -62,7 +62,8 @@ internal class DebtQueryReader(
     internal val activeDirect = activeDebtDirectTokens
     private val resourceGeneration = AtomicLong()
     private val accepted = mutableMapOf<String, AcceptedDebtQuery>()
-    private val retired = ConcurrentHashMap.newKeySet<String>()
+    internal val dispatchProtections = ConcurrentHashMap<Long, DebtDispatchReadProtection>()
+    internal val retired = ConcurrentHashMap.newKeySet<String>()
     private val resourceDenials = MutableSharedFlow<DebtReadResourceDenial>(extraBufferCapacity = 64)
     private val localResourceDenials = ConcurrentHashMap<String, String>()
     val readAccessDenials = coordinator.snapshotAccessDenials.filterNotNull()
@@ -74,7 +75,7 @@ internal class DebtQueryReader(
         val ticket = coordinator.beginSnapshotRead()
         val key = logicalBindingAdapter.toJson(task.binding)
         val epoch = dao.debtReadEpoch(key)?.toLong() ?: 0L
-        val unpublished = dao.hasUnpublishedAcceptedDebt(task.binding.ownerKey, task.binding.ledgerId)
+        val unpublished = dao.debtOutboxReadBarrier(key)?.responseJson
         val directTokens = dao.debtDirectBarriers(key).map { it.tag }.toSet()
         val directWasActive = hasActiveDirect(key)
         val fence = deniedResources(key)[task.debtPublicId]
@@ -87,7 +88,7 @@ internal class DebtQueryReader(
         }
         coordinator.acceptSnapshotRead(ticket, bound, fromCache = false) {
             check((dao.debtReadEpoch(key)?.toLong() ?: 0L) == epoch && deniedResources(key)[task.debtPublicId] == fence)
-            check(unpublished || !dao.hasUnpublishedAcceptedDebt(task.binding.ownerKey, task.binding.ledgerId)) {
+            check(unpublished == dao.debtOutboxReadBarrier(key)?.responseJson) {
                 "原往来提交已接受，请重新读取。"
             }
             check(dao.debtDirectBarriers(key).map { it.tag }.toSet() == directTokens &&
@@ -136,7 +137,7 @@ internal class DebtQueryReader(
         val request = DebtReadRequest(binding, scope.copy(directTokens = dao.debtDirectBarriers(query.bindingKey).map { it.tag }.toSet()), ticket, generation.get(),
             dao.debtReadEpoch(query.bindingKey)?.toLong() ?: 0L,
             scope.publicId?.let { deniedResources(query.bindingKey)[it] },
-            dao.hasUnpublishedAcceptedDebt(binding.ownerKey, binding.ledgerId), hasActiveDirect(query.bindingKey))
+            dao.debtOutboxReadBarrier(query.bindingKey)?.responseJson, hasActiveDirect(query.bindingKey))
         val wire = try {
             fetchDebtNetwork(bound, spec.fetch) { error ->
                 val failure = errors.httpFailure(error)
@@ -163,7 +164,7 @@ internal class DebtQueryReader(
         val query = request.scope.row
         check(request.localGeneration == generation.get() && query.bindingKey !in retired)
         check(dao.debtDirectBarriers(query.bindingKey).isEmpty()) { "原往来提交结果仍待核对，请联网重新读取。" }
-        check(!dao.hasUnpublishedAcceptedDebt(request.binding.ownerKey, request.binding.ledgerId)) {
+        check(dao.debtOutboxReadBarrier(query.bindingKey) == null) {
             "原往来提交已接受，读取仍待恢复。"
         }
         val denied = deniedResources(query.bindingKey)
@@ -177,7 +178,7 @@ internal class DebtQueryReader(
             "往来已接受修改，请重新读取。"
         }
         check(dao.debtDirectBarriers(query.bindingKey).isEmpty() &&
-            !dao.hasUnpublishedAcceptedDebt(request.binding.ownerKey, request.binding.ledgerId)) {
+            dao.debtOutboxReadBarrier(query.bindingKey) == null) {
             "原往来提交状态已变化，请重新读取。"
         }
         val currentDenied = deniedResources(query.bindingKey)
@@ -195,9 +196,9 @@ internal class DebtQueryReader(
         val denied = deniedResources(query.bindingKey)
         check(publicId == null || denied[publicId] == request.resourceFence) { "这笔往来的读取已失效。" }
         val fresh = spec.project(wire, denied.keys)
-        val unpublished = dao.hasUnpublishedAcceptedDebt(request.binding.ownerKey, request.binding.ledgerId)
-        check(request.unpublishedAcceptance || !unpublished) { "原往来提交已接受，请重新读取。" }
-        if (!cacheAllowed || unpublished) {
+        val unpublished = dao.debtOutboxReadBarrier(query.bindingKey)?.responseJson
+        check(request.unpublishedAcceptance == unpublished) { "原往来提交已接受，请重新读取。" }
+        if (!cacheAllowed || unpublished != null) {
             return@withLock ReadSnapshot(fresh, Instant.now().toString(), fromCache = false)
         }
         val stored = StoredDebtQuery(request.epoch, request.ticket.sequence, spec.adapter.toJson(fresh), readOwner)
@@ -302,14 +303,17 @@ private suspend fun DebtQueryReader.repairDebtDirectRead(request: DebtReadReques
     cacheAllowed: Boolean): Pair<DebtReadRequest, Boolean> {
     val query = request.scope.row
     val tokens = dao.debtDirectBarriers(query.bindingKey).map { it.tag }.toSet()
+    val publication = dao.debtOutboxReadBarrier(query.bindingKey)?.responseJson
+    check(publication == request.unpublishedAcceptance) { "原往来提交状态已变化，请重新读取。" }
     check(tokens == request.scope.directTokens) { "原往来提交状态已变化，请重新读取。" }
     val active = hasActiveDirect(query.bindingKey)
     check(!request.directWasActive || active) { "原往来提交状态已变化，请重新读取。" }
     if (!cacheAllowed || active) return request to false
-    if (tokens.isEmpty()) return request to true
+    if (tokens.isEmpty() && publication == null) return request to true
     return try {
-        dao.settleDebtDirectReads(query.bindingKey, request.binding.ledgerId, tokens.toList(), request.epoch)
-        request.copy(epoch = request.epoch + 1) to true
+        dao.reconcileDebtReadBarriers(query.bindingKey, request.binding.ledgerId, request.epoch, tokens, publication)
+        request.copy(epoch = request.epoch + 1, unpublishedAcceptance = null,
+            scope = request.scope.copy(directTokens = emptySet())) to true
     } catch (_: SQLiteException) { request to false }
 }
 

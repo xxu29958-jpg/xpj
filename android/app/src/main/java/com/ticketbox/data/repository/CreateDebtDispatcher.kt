@@ -16,12 +16,12 @@ class CreateDebtDispatcher(
 
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
         val key = row.idempotencyKey?.takeIf { it.isNotBlank() }
-            ?: return DispatchResult.Failure("debt_create_intent_invalid")
+            ?: return DispatchResult.Failure("debt_create_intent_invalid", definitelyRejected = true)
         if (row.targetId != "$DEBT_CREATE_TARGET_PREFIX$key" || row.expectedRowVersion != 0L) {
-            return DispatchResult.Failure("debt_create_intent_invalid")
+            return DispatchResult.Failure("debt_create_intent_invalid", definitelyRejected = true)
         }
         val payload = payloadAdapter.readSupportedDebtCreate(row.payloadJson)
-            ?: return DispatchResult.Failure("debt_create_payload_unsupported")
+            ?: return DispatchResult.Failure("debt_create_payload_unsupported", definitelyRejected = true)
         return try {
             val created = apiProvider(row).createDebt(payload.toCreateRequest(), key)
             if (created.homeCurrencyCode != payload.homeCurrencyCode || created.ledgerId != row.ledgerId || created.publicId.isBlank()) {
@@ -34,7 +34,7 @@ class CreateDebtDispatcher(
         } catch (_: IOException) {
             DispatchResult.RetryableFailure("debt_create_connection_interrupted")
         } catch (_: RepositoryException) {
-            DispatchResult.Failure("debt_create_binding_changed")
+            DispatchResult.Failure("debt_create_binding_changed", definitelyRejected = true)
         } catch (_: Exception) {
             // The request may already have committed. Retain the same intent for explicit recovery.
             DispatchResult.Failure("debt_create_response_unverified")
@@ -48,7 +48,8 @@ class CreateDebtDispatcher(
                 DispatchResult.RetryableFailure("debt_create_response_pending")
             error.code() == 408 || error.code() == 429 || error.code() in 500..599 ->
                 DispatchResult.RetryableFailure("debt_create_connection_interrupted")
-            else -> DispatchResult.Failure("debt_create_rejected")
+            else -> DispatchResult.Failure("debt_create_rejected", definitelyRejected = error.code() in setOf(400, 401, 403, 404, 405, 410, 412, 422) ||
+                (error.code() == 409 && code == "state_conflict"))
         }
     }
 }

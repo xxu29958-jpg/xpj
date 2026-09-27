@@ -165,30 +165,25 @@ class DebtQueryReadTest {
         assertEquals(0, api.commands)
     }
 
-    @Test fun failedAcceptedOutboxPublicationBlocksOldReadsUntilTheOriginalDeliverySettles() = runTest {
+    @Test fun durableOutboxReadProtectionRejectsOldFactsUntilAnActualCurrentDebtGetRetiresThem() = runTest {
         val api = DebtReadApi()
         val fixture = GoalReadFixture { api }
-        var unpublished = false
-        val queryDao = object : ExpenseDao by fixture.dao {
-            override suspend fun hasUnpublishedAcceptedDebt(ownerKey: String, ledgerId: String) = unpublished
-        }
-        val reader = DebtQueryReader(fixture.provider, queryDao, fixture.coordinator)
+        val reader = DebtQueryReader(fixture.provider, fixture.dao, fixture.coordinator)
         reader.detail(fixture.binding, "jpy-debt").getOrThrow()
-        unpublished = true
+        val key = logicalBindingAdapter.toJson(fixture.binding)
+        fixture.dao.saveStatsProjection(StatsProjectionCacheEntity(key, fixture.binding.ledgerId,
+            "debt_outbox_read_barrier", "", "", "", "UTC", "original-key:attempt", "2026-09-01T00:00:00Z"))
         api.offline = true
-        val reopened = DebtQueryReader(fixture.provider, queryDao, fixture.coordinator)
+        val reopened = DebtQueryReader(fixture.provider, fixture.dao, fixture.coordinator)
         assertTrue(reopened.detail(fixture.binding, "jpy-debt").isFailure)
         api.offline = false
         api.detail = { readDebt().copy(rowVersion = 5, remainingAmountCents = 600) }
-        assertEquals(600L, reopened.detail(fixture.binding, "jpy-debt").getOrThrow().value.remainingAmountCents)
-        api.offline = true
-        assertTrue(reopened.detail(fixture.binding, "jpy-debt").isFailure)
-        reopened.invalidate(fixture.binding)
-        unpublished = false
-        api.offline = false
         val restored = reopened.detail(fixture.binding, "jpy-debt").getOrThrow()
+        assertEquals(600L, restored.value.remainingAmountCents)
+        assertEquals(null, fixture.dao.debtOutboxReadBarrier(key))
+        assertEquals("1", fixture.dao.debtReadEpoch(key))
         api.offline = true
-        assertEquals(restored.fetchedAt, reopened.detail(fixture.binding, "jpy-debt").getOrThrow().fetchedAt)
+        assertEquals(restored.copy(fromCache = true), reopened.detail(fixture.binding, "jpy-debt").getOrThrow())
         assertEquals(0, api.commands)
     }
 

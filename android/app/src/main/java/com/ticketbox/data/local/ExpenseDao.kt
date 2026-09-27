@@ -57,12 +57,14 @@ interface ExpenseDao {
 
     @Transaction
     suspend fun clearReadSnapshotsForBinding(bindingKey: String) {
+        val outboxBarrier = debtOutboxReadBarrier(bindingKey)
         val debtBarriers = debtDirectBarriers(bindingKey)
         val debtEpoch = statsProjections(bindingKey, "debt_read_epoch", "", "", "UTC").singleOrNull()
         clearGoalSnapshotsForBinding(bindingKey)
         clearStatsProjectionsForBinding(bindingKey)
         debtBarriers.forEach { saveStatsProjection(it) }
         debtEpoch?.let { saveStatsProjection(it) }
+        outboxBarrier?.let { saveStatsProjection(it) }
     }
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -72,8 +74,9 @@ interface ExpenseDao {
         "AND kind = 'debt_read_epoch' AND month = '' AND tag = '' AND homeCurrencyCode = '' AND timezone = 'UTC'")
     suspend fun debtReadEpoch(bindingKey: String): String?
 
-    @Query("SELECT EXISTS(SELECT 1 FROM pending_mutations WHERE ownerKey = :ownerKey AND ledgerId = :ledgerId AND lastError = 'accepted_debt_read_publication_pending')")
-    suspend fun hasUnpublishedAcceptedDebt(ownerKey: String, ledgerId: String): Boolean
+    /** Durable projection protection; retry diagnostics and business receipts are separate. */
+    suspend fun debtOutboxReadBarrier(bindingKey: String): StatsProjectionCacheEntity? =
+        statsProjections(bindingKey, "debt_outbox_read_barrier", "", "", "UTC").singleOrNull()
 
     @Query("DELETE FROM stats_projection_cache WHERE bindingKey = :bindingKey " +
         "AND kind IN ('debt_list', 'debt_detail', 'debt_activity')")
@@ -83,6 +86,24 @@ interface ExpenseDao {
     suspend fun invalidateDebtSnapshots(bindingKey: String, ledgerId: String) {
         advanceDebtReadEpoch(bindingKey, ledgerId)
         clearDebtSnapshots(bindingKey)
+    }
+
+    @Transaction
+    suspend fun settleDebtOutboxReadBarrier(bindingKey: String, ledgerId: String, token: String, retire: Boolean) {
+        val barrier = debtOutboxReadBarrier(bindingKey)
+        if (retire) invalidateDebtSnapshots(bindingKey, ledgerId)
+        if (barrier?.responseJson == token) deleteStatsProjection(barrier)
+    }
+
+    @Transaction
+    suspend fun reconcileDebtReadBarriers(bindingKey: String, ledgerId: String, expectedEpoch: Long,
+        directTokens: Set<String>, outboxToken: String?) {
+        check((debtReadEpoch(bindingKey)?.toLong() ?: 0L) == expectedEpoch &&
+            debtDirectBarriers(bindingKey).map { it.tag }.toSet() == directTokens &&
+            debtOutboxReadBarrier(bindingKey)?.responseJson == outboxToken) { "原往来提交状态已变化，请重新读取。" }
+        invalidateDebtSnapshots(bindingKey, ledgerId)
+        clearDebtDirectBarriers(bindingKey, directTokens.toList())
+        debtOutboxReadBarrier(bindingKey)?.let { deleteStatsProjection(it) }
     }
 
     @Transaction
@@ -96,6 +117,7 @@ interface ExpenseDao {
     @Transaction
     suspend fun saveDebtSnapshotIfCurrent(snapshot: StatsProjectionCacheEntity, epoch: Long, restoredPublicId: String? = null) {
         check((debtReadEpoch(snapshot.bindingKey)?.toLong() ?: 0L) == epoch) { "往来已接受修改，请重新读取。" }
+        check(debtOutboxReadBarrier(snapshot.bindingKey) == null) { "原往来提交结果仍待核对，请重新读取。" }
         if (restoredPublicId != null) clearDebtResourceSnapshots(snapshot.bindingKey, restoredPublicId)
         saveStatsProjection(snapshot)
         if (restoredPublicId != null) clearDebtResourceDenial(snapshot.bindingKey, restoredPublicId)
@@ -104,6 +126,7 @@ interface ExpenseDao {
     @Transaction
     suspend fun debtSnapshotIfCurrent(query: StatsProjectionCacheEntity, epoch: Long): StatsProjectionCacheEntity? {
         check((debtReadEpoch(query.bindingKey)?.toLong() ?: 0L) == epoch) { "往来已接受修改，请重新读取。" }
+        check(debtOutboxReadBarrier(query.bindingKey) == null) { "原往来提交结果仍待核对，请重新读取。" }
         return statsProjections(query.bindingKey, query.kind, query.month, query.tag, query.timezone).singleOrNull()
     }
 

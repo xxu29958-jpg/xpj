@@ -511,6 +511,8 @@ class OutboxRepository private constructor(
     suspend fun tryClaim(id: Long): Boolean =
         dao.markInFlightIfPending(id, PendingMutationStatus.Pending.wireValue, PendingMutationStatus.InFlight.wireValue, nowIso()) > 0
 
+    internal var onDebtDispatchPreparing: suspend (OutboxRow) -> Unit = {}
+    internal var onDebtDispatchFinished: suspend (OutboxRow, Boolean) -> Unit = { _, _ -> }
     internal var onDebtAccepted: suspend (OutboxRow) -> Unit = {}
 
     suspend fun markDone(id: Long, cacheRefreshVersion: Long? = null, receiptJson: String? = null,
@@ -519,10 +521,9 @@ class OutboxRepository private constructor(
             else cacheRefreshVersion?.let { "$EXPENSE_REFRESH_PREFIX$it" }
         val debtAccepted = acceptedRow?.type in DEBT_QUERY_MUTATION_TYPES
         try {
-            dao.publishDelivery {
-                dao.markDone(id, PendingMutationStatus.Done.wireValue, nowIso(), refreshError, receiptJson)
-                if (debtAccepted) onDebtAccepted(requireNotNull(acceptedRow))
-            }
+            // The read owner commits retirement first; a later Done failure cannot roll it back.
+            if (debtAccepted) onDebtAccepted(requireNotNull(acceptedRow))
+            dao.markDone(id, PendingMutationStatus.Done.wireValue, nowIso(), refreshError, receiptJson)
         } catch (error: SQLiteException) {
             // Only the original key re-enters; a failed local publication is not a new financial command.
             if (debtAccepted) withContext(NonCancellable) { markRetryable(id, "accepted_debt_read_publication_pending") }
