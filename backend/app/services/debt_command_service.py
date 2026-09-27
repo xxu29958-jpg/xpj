@@ -333,6 +333,9 @@ def void_repayment_idempotently(
         idempotency_key=idempotency_key,
         commit=False,
     )
+    # Materialize the pending OCC increment while the original fact lock is held.
+    db.flush()
+    db.refresh(debt)
     result = get_debt_response(db, tenant_id=tenant_id, public_id=public_id)
     mark_idempotency_succeeded(
         db,
@@ -376,6 +379,9 @@ def void_debt_idempotently(
         idempotency_key=idempotency_key,
         commit=False,
     )
+    # The fact, materialized version and original receipt share this transaction.
+    db.flush()
+    db.refresh(debt)
     result = get_debt_response(db, tenant_id=tenant_id, public_id=public_id)
     mark_idempotency_succeeded(
         db,
