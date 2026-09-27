@@ -5,8 +5,13 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodes
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -19,6 +24,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.espresso.Espresso.closeSoftKeyboard
 import com.ticketbox.data.repository.IncomePlanActions
 import com.ticketbox.R
 import com.ticketbox.data.repository.IncomePlanConnectedFixture
@@ -111,6 +117,49 @@ class IncomePlanDraftNavigationRoomTest {
             assertEquals(accepted[key], income.stored().single()[key])
         }
         assertTrue(income.network.calls.isEmpty())
+    }
+
+    @Test fun actualPopAndReentryKeepUnsubmittedCreationDraftWithoutFinancialWrite() {
+        showRoutes()
+        enterIncome()
+        compose.onNodeWithText(context.getString(R.string.income_plan_add_action_short))
+            .performScrollTo().performClick()
+        compose.onAllNodes(hasSetTextAction())[0].performScrollTo().performTextReplacement("十月临时稿")
+        closeSoftKeyboard()
+        compose.waitForIdle()
+        compose.onNodeWithText(context.getString(R.string.income_plan_source_bonus))
+            .performScrollTo().performClick()
+        compose.onAllNodes(hasSetTextAction())[1].performScrollTo().performTextReplacement("00120.00")
+        closeSoftKeyboard()
+        compose.waitForIdle()
+        compose.onNodeWithContentDescription(context.getString(R.string.income_plan_month_next))
+            .performScrollTo().performClick()
+
+        val originalMonth = context.getString(R.string.components_month_label, "2026", "10")
+        compose.onNodeWithText("十月临时稿").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("00120.00").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(originalMonth).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.income_plan_source_bonus)).assertIsSelected()
+        compose.onNodeWithText("¥ CNY").performScrollTo().assertIsDisplayed()
+        assertTrue(income.stored().isEmpty())
+        assertTrue(income.network.creationCalls.isEmpty())
+
+        val originalEntry = compose.runOnIdle { requireNotNull(inner.currentBackStackEntry) }
+        compose.runOnIdle { assertTrue(inner.popBackStack()) }
+        compose.waitUntil(10_000) { originalEntry.lifecycle.currentState == Lifecycle.State.DESTROYED }
+        assertTrue(income.stored().isEmpty())
+        enterIncome()
+        assertNotSame(originalEntry, compose.runOnIdle { inner.currentBackStackEntry })
+        compose.onNodeWithText(context.getString(R.string.income_plan_add_action_short))
+            .performScrollTo().performClick()
+
+        compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("十月临时稿")
+        compose.onAllNodes(hasSetTextAction())[1].assertTextEquals("00120.00")
+        compose.onNodeWithText(originalMonth).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.income_plan_source_bonus)).assertIsSelected()
+        compose.onNodeWithText("¥ CNY").performScrollTo().assertIsDisplayed()
+        assertTrue(income.stored().isEmpty())
+        assertTrue(income.network.creationCalls.isEmpty())
     }
 
     private fun showRoutes() {

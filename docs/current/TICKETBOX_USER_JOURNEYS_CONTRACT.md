@@ -171,7 +171,7 @@ submitted-command receipt is a complete query snapshot. Offline reads do not
 confer permission or prove current governance/tool health, nor promise that every
 page works offline.
 
-Income editing continuation is being qualified in #447. Same-identity role
+Income editing continuation is merged and main-qualified in #447. Same-identity role
 changes retain the original raw input, currency, month and OCC; read-only access
 blocks new writes without swallowing an in-flight original result. Android Back
 or swipe retains the edit, while explicit Cancel discards it. Saved-state restore
@@ -184,6 +184,17 @@ new facts. Native saved-state registry restoration and actual Room recovery are
 distinct from an OS process-kill qualification. Unsubmitted income-creation and
 goal drafts, Web refresh/session draft durability and other cross-client return
 paths remain in the atlas; this edit slice does not declare them complete.
+
+Income creation must retain a distinct unsubmitted task across closing and real
+route exit/reentry, including raw name/amount, source/frequency, original currency
+and intended month. Closing is not an explicit discard. Same-binding role loss
+must prevent submission while preserving the task; a replacement binding must
+not receive the old intent. Once the existing Room owner accepts that creation,
+continuation refers to the original key/body and receipt instead of creating a
+second command. Two deliberately separate plans with identical fields remain
+two creations; body equality is not task identity. The native navigation
+counterexample is prepared for cloud execution; these are required outcomes,
+not a claim that the current creation form already satisfies them.
 
 ## Unused tag cleanup
 
