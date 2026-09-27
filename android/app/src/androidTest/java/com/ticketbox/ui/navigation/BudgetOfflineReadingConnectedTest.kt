@@ -8,9 +8,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasAnyAncestor
-import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -103,10 +104,13 @@ class BudgetOfflineReadingConnectedTest {
         compose.onNodeWithTag("plan_destination_budget").performScrollTo().performClick()
         compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("budget_total_amount"))
             .fetchSemanticsNodes().isNotEmpty() }
-        compose.waitUntil(5_000) { compose.onAllNodes(hasSetTextAction() and hasText("1200"), useUnmergedTree = true)
+        // The original queued command locks editing; disabled fields retain text but have no SetText action.
+        val originalAmount = SemanticsMatcher.keyIsDefined(SemanticsProperties.EditableText) and
+            hasAnyAncestor(hasTestTag("budget_total_amount"))
+        compose.waitUntil(5_000) { compose.onAllNodes(originalAmount and hasText("1200"), useUnmergedTree = true)
             .fetchSemanticsNodes().isNotEmpty() }
-        compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("budget_total_amount")),
-            useUnmergedTree = true).performScrollTo().assertTextEquals("1200")
+        compose.onNode(originalAmount, useUnmergedTree = true).performScrollTo()
+            .assertTextEquals("1200").assertIsNotEnabled()
         compose.onNodeWithTag("budget-read-source").performScrollTo().assertIsDisplayed()
         assertNotNull("The online read must expose its actual read time", originalReadTime)
         assertEquals("Reopening must not manufacture a new fetch time", originalReadTime, readTime())
