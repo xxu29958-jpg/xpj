@@ -76,7 +76,8 @@ def _task_return(values):
         return "/web/reports", params, "期间报表"
     params.update(savings_target_yuan=values["savings_target_yuan"], reserved_buffer_yuan=values["reserved_buffer_yuan"])
     params.update({key: values[key] for key in ("arrangement_version", "arrangement_key") if values.get(key)})
-    params["home_currency_code"] = values.get("arrangement_currency_code") or values["home_currency_code"]
+    if values.get("arrangement_currency_code"):
+        params["arrangement_currency_code"] = values["arrangement_currency_code"]
     return "/web/budget-advise", params, "本月安排"
 
 

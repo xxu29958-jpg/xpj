@@ -31,6 +31,7 @@ internal data class SyncStatusDropSelection(
     val goalCreation: com.ticketbox.data.repository.PendingGoalCreation? = null,
     val goalEdit: com.ticketbox.data.repository.PendingGoalEdit? = null,
     val categoryRule: com.ticketbox.data.repository.PendingCategoryRuleSubmission? = null,
+    val arrangement: com.ticketbox.data.repository.PendingMonthlyArrangement? = null,
 )
 
 private data class DropConfirmationText(val title: String, val text: String, val confirmWord: String)
@@ -63,6 +64,7 @@ internal fun SyncStatusDropDialog(
                 selection.categoryRule?.let { com.ticketbox.ui.screens.settings.categoryrules.CategoryRuleSubmissionSummary(it) }
                 selection.recurringOriginal?.let { com.ticketbox.ui.screens.recurring.RecurringManualIntentSummary(it) }
                 selection.budgetSave?.let { com.ticketbox.ui.screens.budget.BudgetSaveIntentSummary(it) }
+                selection.arrangement?.let { com.ticketbox.ui.screens.plan.MonthlyArrangementIntentSummary(it) }
                 Text(copy.text)
             }
         },

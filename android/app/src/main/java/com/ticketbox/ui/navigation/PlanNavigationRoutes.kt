@@ -11,6 +11,7 @@ internal fun spendingGoalCreationRoute(id: Long): String = "${ProductSecondaryPa
 
 internal fun incomePlanSubmissionRoute(id: Long): String = "${ProductSecondaryPage.IncomePlans.route}?submission=$id"
 internal fun budgetAdviceSubmissionRoute(id: Long): String = "${ProductSecondaryPage.BudgetAdvice.route}?submission=$id"
+internal fun monthlyArrangementRoute(month: String): String = "${ProductSecondaryPage.BudgetAdvice.route}?arrangement=$month"
 
 internal fun budgetRoute(month: String): String = "${ProductSecondaryPage.Budget.route}?month=$month"
 
@@ -46,9 +47,10 @@ internal fun NavGraphBuilder.addPlanRoutes(
                 financialDataRevision = shellState.financialDataRevision,
             )
         }
-        composable("${ProductSecondaryPage.BudgetAdvice.route}?submission={submission}&report={report}",
+        composable("${ProductSecondaryPage.BudgetAdvice.route}?submission={submission}&report={report}&arrangement={arrangement}",
             arguments = listOf(navArgument("submission") { type = NavType.StringType; nullable = true; defaultValue = null },
-                navArgument("report") { type = NavType.StringType; nullable = true; defaultValue = null })) { entry ->
+                navArgument("report") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("arrangement") { type = NavType.StringType; nullable = true; defaultValue = null })) { entry ->
             BudgetAdviceRoute(
                 screenFactory = screenFactory, onBack = onBack,
                 originalSubmissionId = entry.arguments?.getString("submission")?.toLongOrNull(),

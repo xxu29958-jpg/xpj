@@ -1,5 +1,9 @@
 """One monthly intention survives native editing, cross-client reads and conflicts."""
 
+from datetime import UTC, date, datetime
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
 from uuid import uuid4
 
 import pytest
@@ -11,6 +15,132 @@ from app.models import LedgerMember
 from app.routes.web_monthly_arrangement import MonthlyArrangementForm, arrangement_payload
 from tests._web_native_form_support import hidden_post_forms
 from tests.test_web_budgets import web_client as web_client
+
+
+def test_web_cross_currency_posts_preserve_report_source_and_save_intent(monkeypatch):
+    from urllib.parse import parse_qs, urlsplit
+
+    from fastapi import FastAPI
+    from fastapi.responses import HTMLResponse
+    from fastapi.testclient import TestClient
+    from jinja2 import ChoiceLoader, DictLoader, Environment, FileSystemLoader
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from app.database import get_db
+    from app.routes import web_budget_advise as web
+    from app.routes import web_monthly_arrangement as save
+    from app.schemas._monthly_arrangement import MonthlyArrangementDto
+    from app.services.budget_advisor_service import _inputs_builder as builder
+    from app.services.budget_advisor_service import _runner
+    from app.services.money_projection_service import ProjectionGap
+    from tests.test_budget_inputs_projection import seed_reads
+
+    seed_reads(monkeypatch)
+    saved = MonthlyArrangementDto(ledger_id="owner", month="2026-08", home_currency_code="JPY",
+        savings_target_cents=500, reserved_buffer_cents=100, row_version=3, updated_at=datetime(2026, 9, 27, tzinfo=UTC))
+    monkeypatch.setattr(builder, "read_monthly_arrangement", lambda *a, **kw: saved)
+    monkeypatch.setattr(builder, "current_calendar", lambda *a, **kw: SimpleNamespace(timezone_name="UTC"))
+    monkeypatch.setattr(builder, "now_utc", lambda: datetime(2026, 9, 27, tzinfo=UTC))
+    missing = True
+
+    def project(db, **kw):
+        assert (kw["source_currency"], kw["home_currency"]) == ("JPY", "USD")
+        if missing:
+            kw["missing_rates"].add(ProjectionGap("JPY", "USD", date(2026, 8, 31)))
+            return None
+        return kw["amount_minor"] * 2
+
+    monkeypatch.setattr(builder, "project_recorded_amount", project)
+    monkeypatch.setattr(web, "require_runtime_home_currency_code", lambda _: "USD")
+    monkeypatch.setattr(builder, "require_runtime_home_currency_code", lambda _: "USD")
+    for owner in (web, save):
+        monkeypatch.setattr(owner, "_list_ledger_options", lambda _: [])
+        monkeypatch.setattr(owner, "_resolve_selected_ledger_id", lambda *a, **kw: "owner")
+        monkeypatch.setattr(owner, "preserve_original_ledger_form", lambda *a, **kw: None)
+    monkeypatch.setattr(web, "_base_ctx", lambda *a, **kw: {"selected_ledger_id": "owner", "can_write": True})
+    monkeypatch.setattr(web, "_advisor_readiness_context", lambda *a, **kw: {
+        "provider_name": "local", "provider_enabled": True, "advisor_can_request": True})
+    monkeypatch.setattr(web, "_actor_role", lambda *a, **kw: "owner")
+    monkeypatch.setattr(web, "_actor_account_id", lambda _: 1)
+    monkeypatch.setattr(_runner, "get_advisor_readiness", lambda: SimpleNamespace(
+        provider="empty", is_live=False, blocked_reason=lambda _: None))
+    provider = Mock()
+    provider.advise.return_value = None
+    monkeypatch.setattr(_runner, "get_budget_advisor", lambda: provider)
+    monkeypatch.setattr(save, "_require_selected_ledger_write", lambda *a: None)
+    monkeypatch.setattr(save, "resolve_web_actor_account_id", lambda *a: 1)
+    monkeypatch.setattr(save, "read_monthly_arrangement", lambda *a, **kw: saved)
+    monkeypatch.setattr(save, "review_monthly_arrangement_save", lambda *a, **kw: None)
+    command = Mock()
+    monkeypatch.setattr(save, "save_monthly_arrangement", command)
+    env = Environment(autoescape=True, loader=ChoiceLoader([
+        DictLoader({"base.html": "{% block content %}{% endblock %}"}),
+        FileSystemLoader(Path(__file__).parents[1] / "app/templates/web")]))
+    rendered = []
+
+    def render(**kw):
+        rendered.append(kw["context"])
+        return HTMLResponse(env.get_template(kw["name"]).render(**kw["context"]), status_code=kw.get("status_code", 200))
+
+    monkeypatch.setattr(web, "templates", SimpleNamespace(TemplateResponse=render))
+    app = FastAPI()
+    app.include_router(web.router)
+    app.include_router(save.router, prefix="/web/budget-advise")
+    app.dependency_overrides[get_db] = lambda: Mock()
+    app.dependency_overrides[web.LocalOnly.dependency] = lambda: None
+    client = TestClient(app)
+    page = client.get("/web/budget-advise?ledger_id=owner&month=2026-08")
+    assert page.status_code == 200
+    original_saved = saved
+    saved = saved.model_copy(update={"home_currency_code": "USD"})
+    no_draft = client.get("/web/budget-advise?ledger_id=owner&month=2026-08&home_currency_code=USD&arrangement_currency_code=JPY")
+    untouched = hidden_post_forms(no_draft.text)["/web/budget-advise"]
+    assert untouched["arrangement_currency_code"] == "USD"
+    assert rendered[-1]["savings_target_yuan"] == "5.00" and rendered[-1]["reserved_buffer_yuan"] == "1.00"
+    response = client.post("/web/budget-advise/save", data={**untouched,
+        "savings_target_yuan": rendered[-1]["savings_target_yuan"], "reserved_buffer_yuan": rendered[-1]["reserved_buffer_yuan"]},
+        follow_redirects=False)
+    assert response.status_code == 303
+    assert command.call_args.kwargs["payload"].home_currency_code == "USD"
+    assert command.call_args.kwargs["payload"].savings_target_cents == 500
+    command.reset_mock()
+    saved = original_saved
+    form = {**hidden_post_forms(page.text)["/web/budget-advise"], "savings_target_yuan": "1200",
+        "reserved_buffer_yuan": "30"}
+    assert form["home_currency_code"] == "USD" and form["arrangement_currency_code"] == "JPY"
+    blocked = client.post("/web/budget-advise", data={**form, "run_advise": "true"})
+    assert blocked.status_code == 200 and rendered[-1]["savings_yuan"] is None
+    provider.advise.assert_not_called()
+    missing = False
+    trial = client.post("/web/budget-advise", data=form)
+    trial_projection = rendered[-1]
+    advice = client.post("/web/budget-advise", data={**form, "run_advise": "true"})
+    assert trial.status_code == advice.status_code == 200
+    assert rendered[-1]["home_currency_code"] == "USD" and rendered[-1]["savings_yuan"] == "24.00"
+    assert rendered[-1]["savings_yuan"] == trial_projection["savings_yuan"]
+    assert (provider.advise.call_args.args[0].home_currency, provider.advise.call_args.args[0].savings_target_cents) == ("USD", 2400)
+    for error in (AppError("state_conflict", "conflict", status_code=409),
+                  AppError("idempotency_key_reused", "key conflict", status_code=409), SQLAlchemyError("unconfirmed")):
+        command.side_effect = error
+        failed = client.post("/web/budget-advise/save", data=form)
+        assert failed.status_code in (409, 503)
+        kept = hidden_post_forms(failed.text)["/web/budget-advise"]
+        for field in ("home_currency_code", "arrangement_currency_code", "idempotency_key", "expected_row_version"):
+            assert kept[field] == form[field]
+        assert rendered[-1]["savings_target_yuan"] == "1200" and rendered[-1]["home_currency_code"] == "USD"
+    reviewed = client.post("/web/budget-advise/save", data={**form, "review_latest": "true"})
+    assert reviewed.status_code == 200 and rendered[-1]["home_currency_code"] == "USD"
+    assert hidden_post_forms(reviewed.text)["/web/budget-advise"]["idempotency_key"] == form["idempotency_key"]
+    invalid = client.post("/web/budget-advise/save", data={**form, "savings_target_yuan": "oops"})
+    assert invalid.status_code == 422 and rendered[-1]["savings_target_yuan"] == "oops"
+    assert rendered[-1]["arrangement_currency_input"]["currency_code"] == "JPY" and rendered[-1]["home_currency_code"] == "USD"
+    command.side_effect = None
+    accepted = client.post("/web/budget-advise/save", data=form, follow_redirects=False)
+    assert accepted.status_code == 303
+    assert command.call_args.kwargs["payload"].home_currency_code == "JPY"
+    assert command.call_args.kwargs["payload"].savings_target_cents == 1200
+    assert parse_qs(urlsplit(accepted.headers["location"]).query)["home_currency_code"] == ["USD"]
+    assert saved.home_currency_code == "JPY" and saved.savings_target_cents == 500
 
 _MONTH = "2026-09"
 _API = f"/api/budget/arrangements/{_MONTH}"
@@ -88,6 +218,15 @@ def test_captured_zero_decimal_form_does_not_reinterpret_values():
     assert payload.savings_target_cents == 500 and payload.reserved_buffer_cents == 0
     assert payload.home_currency_code == "JPY" and payload.expected_row_version is None
     assert form.savings_target_yuan == "500" and form.idempotency_key == "original"
+
+
+def test_cross_currency_save_keeps_jpy_fact_and_usd_report():
+    form = MonthlyArrangementForm(month=_MONTH, home_currency_code="USD", arrangement_currency_code="JPY",
+        savings_target_yuan="1200", reserved_buffer_yuan="30", expected_row_version="3", idempotency_key="original")
+    payload = arrangement_payload(form)
+    assert payload.home_currency_code == "JPY" and payload.savings_target_cents == 1200
+    assert payload.reserved_buffer_cents == 30 and payload.expected_row_version == 3
+    assert form.home_currency_code == "USD" and form.idempotency_key == "original"
 
 
 @pytest.mark.parametrize("version", ["", "0", "yesterday"])

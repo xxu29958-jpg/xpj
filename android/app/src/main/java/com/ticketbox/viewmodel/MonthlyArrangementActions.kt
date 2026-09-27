@@ -52,14 +52,16 @@ fun BudgetAdviceViewModel.editArrangement(savings: Boolean, value: String) {
     val draft = snapshot.arrangementDraft ?: return
     if (snapshot.arrangementBusy) return
     val changed = if (savings) draft.copy(savings = value, edited = true) else draft.copy(buffer = value, edited = true)
+    val initialRead = snapshot.reportingHomeCurrencyCode == null && snapshot.inputsLoading && snapshot.trialRequest == null
     requestGeneration += 1
-    inputGeneration += 1
-    _state.update { it.copy(arrangementDraft = changed, trialRequest = null, inputs = null, inputsLoading = false,
+    if (!initialRead) inputGeneration += 1
+    _state.update { it.copy(arrangementDraft = changed, trialRequest = null, inputs = null, inputsLoading = initialRead,
         result = null, loadState = BudgetAdviceLoadState.Idle, arrangementMessage = UiText.res(R.string.arrangement_edited)) }
     viewModelScope.launch { arrangementDraftWrites.withLock { repository.storeArrangementDraft(binding, snapshot.month, changed) } }
 }
 
 fun BudgetAdviceViewModel.trialArrangement() {
+    if (_state.value.reportingHomeCurrencyCode == null) return
     val request = runCatching { requireNotNull(_state.value.arrangementDraft).request() }
         .getOrElse { error -> _state.update { it.copy(arrangementMessage = error.toUiText(R.string.arrangement_invalid_amount)) }; return }
     requestGeneration += 1
@@ -124,13 +126,7 @@ fun BudgetAdviceViewModel.loadArrangementHistory(more: Boolean = false) {
         if (_state.value.binding != binding || _state.value.month != snapshot.month) return@launch
         val denied = read.exceptionOrNull()?.takeIf { it.isReadAccessDenied() }
         if (denied != null) { rejectArrangementRead(denied); return@launch }
-        _state.update { it.copy(arrangementBusy = false, arrangementHistoryLoaded = read.isSuccess,
-            arrangementHistory = read.getOrNull()?.response?.items?.let { items ->
-                (if (more) it.arrangementHistory + items else items).distinctBy { item -> item.rowVersion }
-            } ?: it.arrangementHistory,
-            arrangementHistoryNext = read.getOrNull()?.response?.nextBeforeVersion,
-            arrangementHistoryCached = read.getOrNull()?.fromCache == true,
-            arrangementMessage = read.exceptionOrNull()?.toUiText(R.string.arrangement_load_failed)) }
+        _state.update { it.arrangementHistoryRefreshed(read, more) }
     }
 }
 

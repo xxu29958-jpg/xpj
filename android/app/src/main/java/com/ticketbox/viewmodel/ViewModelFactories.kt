@@ -1,5 +1,6 @@
 package com.ticketbox.viewmodel
 
+import androidx.lifecycle.DEFAULT_ARGS_KEY
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.createSavedStateHandle
@@ -97,6 +98,10 @@ fun budgetAdviceViewModelFactory(
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return BudgetAdviceViewModel(repository, calendars = calendars) as T
+    }
+    override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T {
+        val originalMonth = extras[DEFAULT_ARGS_KEY]?.getString("arrangement")
+        return BudgetAdviceViewModel(repository, initialMonth = originalMonth, calendars = calendars) as T
     }
 }
 

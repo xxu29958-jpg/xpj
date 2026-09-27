@@ -71,7 +71,7 @@ fun BudgetAdviceViewModel.refreshInputs() {
     val generation = ++inputGeneration
     _state.update { it.copy(inputsLoading = true, inputsError = null) }
     viewModelScope.launch {
-        val inputs = snapshot.trialRequest?.let { repository.trialAdviceInputs(binding, snapshot.month, it) }
+        val inputs = snapshot.trialRequest?.let { repository.trialAdviceInputs(binding, snapshot.month, it, snapshot.reportingHomeCurrencyCode) }
             ?: repository.adviceInputs(binding, snapshot.month, snapshot.reportingHomeCurrencyCode)
         val rates = repository.exchangeRates(binding)
         if (_state.value.binding != binding || _state.value.month != snapshot.month || generation != inputGeneration) return@launch

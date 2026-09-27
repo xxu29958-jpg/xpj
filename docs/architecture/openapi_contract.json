@@ -2025,6 +2025,17 @@
       },
       "Body_page_budget_advise_run_web_budget_advise_post": {
         "properties": {
+          "arrangement_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Arrangement Currency Code"
+          },
           "expected_row_version": {
             "default": "",
             "title": "Expected Row Version",
@@ -6883,6 +6894,18 @@
         "additionalProperties": false,
         "description": "Caller picks the month (YYYY-MM); other inputs are read from the\nuser's existing data (income plan, recurring items, confirmed\nexpenses, personal baseline) by the builder service.",
         "properties": {
+          "arrangement_currency_code": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z]{3}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Arrangement Currency Code"
+          },
           "home_currency_code": {
             "anyOf": [
               {
@@ -7277,6 +7300,17 @@
       },
       "BudgetInputsResponse": {
         "properties": {
+          "arrangement_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Arrangement Currency Code"
+          },
           "breakdown": {
             "$ref": "#/components/schemas/DiscretionaryResponse"
           },
@@ -16831,6 +16865,11 @@
       },
       "MonthlyArrangementForm": {
         "properties": {
+          "arrangement_currency_code": {
+            "default": "",
+            "title": "Arrangement Currency Code",
+            "type": "string"
+          },
           "expected_row_version": {
             "default": "",
             "title": "Expected Row Version",
@@ -23219,6 +23258,23 @@
                 }
               ],
               "title": "Home Currency Code"
+            }
+          },
+          {
+            "in": "query",
+            "name": "arrangement_currency_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Z]{3}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Arrangement Currency Code"
             }
           },
           {
@@ -44204,6 +44260,22 @@
                 }
               ],
               "title": "Arrangement Key"
+            }
+          },
+          {
+            "in": "query",
+            "name": "arrangement_currency_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Arrangement Currency Code"
             }
           },
           {

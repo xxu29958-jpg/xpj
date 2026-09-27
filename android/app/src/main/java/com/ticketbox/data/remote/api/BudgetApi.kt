@@ -9,6 +9,7 @@ import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.PUT
 import retrofit2.http.Query
+import retrofit2.http.QueryMap
 
 interface BudgetApi {
     @GET("api/budget/arrangements/{month}")
@@ -26,9 +27,8 @@ interface BudgetApi {
 
     @GET("api/budget/advisor/inputs")
     suspend fun trialBudgetAdviceInputs(@Query("month") month: String,
-        @Query("timezone") timezone: String?, @Query("home_currency_code") homeCurrencyCode: String,
-        @Query("savings_target_cents") savingsTargetCents: Long,
-        @Query("reserved_buffer_cents") reservedBufferCents: Long): com.ticketbox.data.remote.dto.BudgetAdviceInputsDto
+        @Query("timezone") timezone: String?,
+        @QueryMap arrangement: Map<String, String>): com.ticketbox.data.remote.dto.BudgetAdviceInputsDto
 
     @GET("api/budgets/monthly/{month}/history")
     suspend fun budgetHistory(

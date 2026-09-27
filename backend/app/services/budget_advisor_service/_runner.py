@@ -42,6 +42,7 @@ def run_budget_advisor(
     month: str,
     timezone_name: str,
     home_currency_code: str | None = None,
+    arrangement_currency_code: str | None = None,
     savings_target_cents: int | None = None,
     reserved_buffer_cents: int | None = None,
 ) -> AdvisorRunResult:
@@ -61,6 +62,7 @@ def run_budget_advisor(
         month=month,
         timezone_name=timezone_name,
         home_currency_code=home_currency_code,
+        arrangement_currency_code=arrangement_currency_code,
         savings_target_cents=savings_target_cents,
         reserved_buffer_cents=reserved_buffer_cents,
     )

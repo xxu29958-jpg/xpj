@@ -10,9 +10,9 @@ interface BudgetAdviceInputsActions {
     suspend fun adviceInputs(expectedBinding: LogicalSessionBinding, month: String,
         homeCurrencyCode: String? = null): Result<BudgetAdviceInputsDto>
     suspend fun trialAdviceInputs(binding: LogicalSessionBinding, month: String,
-        request: MonthlyArrangementSaveRequest): Result<BudgetAdviceInputsDto>
+        request: MonthlyArrangementSaveRequest, reportingHomeCurrencyCode: String? = null): Result<BudgetAdviceInputsDto>
     suspend fun requestTrialAdvice(binding: LogicalSessionBinding, month: String,
-        request: MonthlyArrangementSaveRequest): Result<BudgetAdviceResult>
+        request: MonthlyArrangementSaveRequest, reportingHomeCurrencyCode: String? = null): Result<BudgetAdviceResult>
 }
 
 /** Reads advice premises and routes explicit trial AI to the same freshness owner as saved advice. */
@@ -35,18 +35,25 @@ internal class BudgetAdviceInputsRepository(
         }
     }
     override suspend fun trialAdviceInputs(binding: LogicalSessionBinding, month: String,
-        request: MonthlyArrangementSaveRequest) = errors.safeCall {
+        request: MonthlyArrangementSaveRequest, reportingHomeCurrencyCode: String?) = errors.safeCall {
         val clean = validatedBudgetMonth(month).getOrThrow()
-        guard.bindExact(binding).call { it.trialBudgetAdviceInputs(clean, currentBudgetTimezoneId(),
-            request.homeCurrencyCode, request.savingsTargetCents, request.reservedBufferCents) }.also {
-            require(it.month == clean && it.homeCurrencyCode == request.homeCurrencyCode && it.isTrial &&
-                it.breakdown.savingsTargetCents == request.savingsTargetCents && it.breakdown.reservedBufferCents == request.reservedBufferCents)
+        val home = reportingHomeCurrencyCode ?: request.homeCurrencyCode
+        val query = mutableMapOf("home_currency_code" to home, "savings_target_cents" to request.savingsTargetCents.toString(),
+            "reserved_buffer_cents" to request.reservedBufferCents.toString())
+        if (home != request.homeCurrencyCode) query["arrangement_currency_code"] = request.homeCurrencyCode
+        guard.bindExact(binding).call { it.trialBudgetAdviceInputs(clean, currentBudgetTimezoneId(), query) }.also {
+            require(it.month == clean && it.homeCurrencyCode == home && it.isTrial &&
+                CurrencyCode.fromStorageKeyOrNull(home) != null && it.missingRates.all { gap -> gap.homeCurrencyCode == home })
+            if (home == request.homeCurrencyCode) require(it.breakdown.savingsTargetCents == request.savingsTargetCents &&
+                it.breakdown.reservedBufferCents == request.reservedBufferCents)
+            else require(it.arrangementCurrencyCode == request.homeCurrencyCode)
+            adviceCallStore.noteAdviceInputSnapshot("budget_inputs:$binding:$clean:$home:trial:${request.homeCurrencyCode}:${request.savingsTargetCents}:${request.reservedBufferCents}", it.toString())
         }
     }
     override suspend fun requestTrialAdvice(binding: LogicalSessionBinding, month: String,
-        request: MonthlyArrangementSaveRequest): Result<BudgetAdviceResult> {
+        request: MonthlyArrangementSaveRequest, reportingHomeCurrencyCode: String?): Result<BudgetAdviceResult> {
         if (!ledgerRoleCanModify(apiProvider.currentLedgerRole())) return Result.failure(RepositoryException("当前角色为只读。"))
         return adviceCallStore.attachOrRequest(binding, validatedBudgetMonth(month).getOrElse { return Result.failure(it) },
-            request.homeCurrencyCode, request)
+            reportingHomeCurrencyCode ?: request.homeCurrencyCode, request)
     }
 }

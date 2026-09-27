@@ -64,6 +64,7 @@ class BudgetInputsResponse(BaseModel):
     reference_rates: list[ProjectionReferenceDto] = Field(default_factory=list)
     saved_arrangement: MonthlyArrangementDto | None = None
     is_trial: bool = False
+    arrangement_currency_code: str | None = None
 
 
 class BudgetAdviseRequest(BaseModel):
@@ -76,6 +77,7 @@ class BudgetAdviseRequest(BaseModel):
     month: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
     timezone: str | None = None
     home_currency_code: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
+    arrangement_currency_code: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
     savings_target_cents: NonNegativeMoneyMinor | None = None
     reserved_buffer_cents: NonNegativeMoneyMinor | None = None
 
