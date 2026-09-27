@@ -1,11 +1,13 @@
 package com.ticketbox.data.repository
 
+import com.squareup.moshi.JsonDataException
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.data.local.ExpenseDao
 import com.ticketbox.data.local.StatsProjectionCacheEntity
 import com.ticketbox.data.remote.dto.BudgetMonthlyDto
 import com.ticketbox.domain.model.BudgetMonthly
+import java.io.IOException
 import java.time.Instant
 import java.time.ZoneId
 import kotlinx.coroutines.sync.Mutex
@@ -45,8 +47,8 @@ internal class BudgetQueryReader(
             minimumRevisions[monthKey] = minimum
             saveGenerations[monthKey] = (saveGenerations[monthKey] ?: 0L) + 1
             dao.budgetSnapshotsForMonth(bindingKey, month).forEach { saved ->
-                val revision = adapter.fromJson(saved.responseJson)?.rowVersion ?: 0L
-                if (revision < minimum) dao.deleteStatsProjection(saved)
+                val cached = readCached(saved)
+                if (cached == null || (cached.rowVersion ?: 0L) < minimum) dao.deleteStatsProjection(saved)
             }
         }
     }
@@ -69,21 +71,25 @@ internal class BudgetQueryReader(
             throw failure
         } catch (error: Exception) {
             if (freshOnly || !error.isReadTransportUnavailable()) throw error
-            return@safeCall coordinator.acceptSnapshotRead(ticket, bound) {
+            return@safeCall coordinator.acceptSnapshotRead(ticket, bound, fromCache = true) {
                 mutex.withLock {
                     val saved = dao.statsProjections(bindingKey, "budget", cleanMonth, "", timezone).singleOrNull()
                         ?: throw error
-                    val cached = requireNotNull(adapter.fromJson(saved.responseJson))
-                    validate(cached, binding, cleanMonth)
+                    val cached = requireNotNull(readCached(saved))
+                    validate(cached, binding.ledgerId, cleanMonth)
                     requireAcceptedRevision(bindingKey, cached)
                     ReadSnapshot(cached.toDomain(), saved.fetchedAt, fromCache = true)
                 }
             }
         }
-        validate(wire, binding, cleanMonth)
-        coordinator.acceptSnapshotRead(ticket, bound) {
+        validate(wire, binding.ledgerId, cleanMonth)
+        val query = StatsProjectionCacheEntity(bindingKey, binding.ledgerId, "budget", cleanMonth,
+            "", "", timezone, adapter.toJson(wire), Instant.now().toString())
+        coordinator.acceptSnapshotRead(ticket, bound, fromCache = false) { cacheAllowed ->
             mutex.withLock {
-                val snapshot = acceptWire(wire, binding, timezone, ticket, saveGeneration)
+                val saved = if (cacheAllowed) dao.statsProjections(bindingKey, "budget", cleanMonth, "", timezone).singleOrNull()
+                    else null
+                val snapshot = acceptWire(wire, query, ticket, saveGeneration, saved)
                 if (freshOnly && snapshot.fromCache) {
                     // Room keeps its newer query; this independent GET still supplies a fresh result.
                     ReadSnapshot(wire.toDomain(), Instant.now().toString(), fromCache = false)
@@ -102,15 +108,13 @@ internal class BudgetQueryReader(
         }
     }
 
-    private suspend fun acceptWire(wire: BudgetMonthlyDto, binding: LogicalSessionBinding,
-        timezone: String, ticket: SnapshotReadTicket, saveGeneration: Long): ReadSnapshot<BudgetMonthly> {
-        val bindingKey = bindingAdapter.toJson(binding)
-        requireAcceptedRevision(bindingKey, wire, saveGeneration)
-        val cacheKey = "$bindingKey|${wire.month}|$timezone"
-        val saved = dao.statsProjections(bindingKey, "budget", wire.month, "", timezone).singleOrNull()
-        if (saved != null) {
-            val cached = requireNotNull(adapter.fromJson(saved.responseJson))
-            validate(cached, binding, wire.month)
+    private suspend fun acceptWire(wire: BudgetMonthlyDto, query: StatsProjectionCacheEntity,
+        ticket: SnapshotReadTicket, saveGeneration: Long, saved: StatsProjectionCacheEntity?): ReadSnapshot<BudgetMonthly> {
+        requireAcceptedRevision(query.bindingKey, wire, saveGeneration)
+        val cacheKey = "${query.bindingKey}|${wire.month}|${query.timezone}"
+        val cached = saved?.let(::readCached)
+        if (saved != null && cached != null) {
+            validate(cached, query.ledgerId, wire.month)
             val savedRevision = cached.rowVersion?.takeIf { it > 0 }
             val wireRevision = wire.rowVersion?.takeIf { it > 0 }
             val newerRead = (latestAcceptedReads[cacheKey] ?: 0L) > ticket.sequence
@@ -120,11 +124,18 @@ internal class BudgetQueryReader(
                 return ReadSnapshot(cached.toDomain(), saved.fetchedAt, fromCache = true)
             }
         }
-        val fetchedAt = Instant.now().toString()
-        dao.saveStatsProjection(StatsProjectionCacheEntity(bindingKey, binding.ledgerId, "budget",
-            wire.month, "", "", timezone, adapter.toJson(wire), fetchedAt))
+        dao.saveStatsProjection(query)
         latestAcceptedReads[cacheKey] = ticket.sequence
-        return ReadSnapshot(wire.toDomain(), fetchedAt, fromCache = false)
+        return ReadSnapshot(wire.toDomain(), query.fetchedAt, fromCache = false)
+    }
+
+    /** Only rebuildable query rows are tolerant; accepted command receipts stay strict. */
+    private fun readCached(saved: StatsProjectionCacheEntity): BudgetMonthlyDto? = try {
+        adapter.fromJson(saved.responseJson)?.takeIf { it.ledgerId == saved.ledgerId && it.month == saved.month }
+    } catch (_: JsonDataException) {
+        null
+    } catch (_: IOException) {
+        null
     }
 
     private fun requireAcceptedRevision(bindingKey: String, wire: BudgetMonthlyDto, saveGeneration: Long? = null) {
@@ -137,7 +148,7 @@ internal class BudgetQueryReader(
         }
     }
 
-    private fun validate(wire: BudgetMonthlyDto, binding: LogicalSessionBinding, month: String) {
-        require(wire.ledgerId == binding.ledgerId && wire.month == month) { "预算所属账本或月份不匹配。" }
+    private fun validate(wire: BudgetMonthlyDto, ledgerId: String, month: String) {
+        require(wire.ledgerId == ledgerId && wire.month == month) { "预算所属账本或月份不匹配。" }
     }
 }

@@ -79,7 +79,7 @@ internal class ExpenseStatsRepositoryActions(
             throw failure
         } catch (error: Exception) {
             if (!error.isReadTransportUnavailable()) throw error
-            return@safeCall core.sessionCoordinator.acceptSnapshotRead(ticket, bound) {
+            return@safeCall core.sessionCoordinator.acceptSnapshotRead(ticket, bound, fromCache = true) {
                 val cached = core.expenseDao.statsProjections(bindingKey, kind.storageKey, query.month, query.tag.trim(), query.timezone)
                     .firstOrNull { query.homeCurrencyCode == null || it.homeCurrencyCode == query.homeCurrencyCode } ?: throw error
                 val restored = requireNotNull(adapter.fromJson(cached.responseJson))
@@ -94,7 +94,7 @@ internal class ExpenseStatsRepositoryActions(
             kind = kind.storageKey, month = query.month, tag = query.tag.trim(), homeCurrencyCode = wire.homeCurrencyCode,
             timezone = query.timezone, responseJson = adapter.toJson(wire), fetchedAt = Instant.now().toString(),
         )
-        core.sessionCoordinator.acceptSnapshotRead(ticket, bound) {
+        core.sessionCoordinator.acceptSnapshotRead(ticket, bound, fromCache = false) {
             cacheMutex.withLock {
                 if (latestReads[kind] === token) core.expenseDao.saveStatsProjection(row)
             }

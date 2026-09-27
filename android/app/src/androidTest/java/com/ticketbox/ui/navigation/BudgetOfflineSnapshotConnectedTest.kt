@@ -496,7 +496,7 @@ class BudgetOfflineSnapshotConnectedTest {
         repository.monthlyBudget("2026-09").getOrThrow()
         val binding = requireNotNull(fixture.graph.expenseRepository.captureDeferredLedgerBinding())
         repository.enqueueSave(binding, "2026-09", BudgetMonthlyUpdate("JPY", 7, 2400)).getOrThrow()
-        val receipt = offlineBudget().copy(rowVersion = 8, totalAmountCents = 2400, remainingAmountCents = 1989,
+        var receipt = offlineBudget().copy(rowVersion = 8, totalAmountCents = 2400, remainingAmountCents = 1989,
             excludedCategories = emptyList(), categoryBudgets = emptyList())
         var writes = 0
         val api = object : ApiService by transport.service {
@@ -535,6 +535,38 @@ class BudgetOfflineSnapshotConnectedTest {
             assertEquals(originalIntents, fixture.stored())
         }
         assertEquals("Repairing query JSON never resends the accepted financial command", 1, writes)
+        val damaged = fixture.expenseDao.budgetSnapshotsForMonth(bindingJson, "2026-09").single()
+        fixture.expenseDao.saveStatsProjection(damaged.copy(responseJson = "{"))
+        repository.enqueueSave(binding, "2026-09", BudgetMonthlyUpdate("JPY", 8, 3600)).getOrThrow()
+        receipt = receipt.copy(rowVersion = 9, totalAmountCents = 3600, remainingAmountCents = 3189)
+        fixture.blockBudgetReadDeletion(true)
+        val recoveryEngine = OutboxDrainEngine(fixture.outbox, listOf(SaveMonthlyBudgetDispatcher({ api },
+            adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter,
+            onAccepted = repository.invalidateBudgetReadsAfterDelivery)), now = fixture.clock::millis)
+        assertEquals(1, recoveryEngine.drainOnce().done)
+        val accepted = fixture.stored().maxBy { requireNotNull(it["id"]).toLong() }
+        assertEquals("budget_read_refresh_required", accepted["lastError"])
+        assertEquals(receipt, adapters.budgetReceiptAdapter.fromJson(requireNotNull(accepted["receiptJson"])))
+        assertTrue("A damaged query still cannot bypass an unavailable accepted-save cleanup",
+            repository.monthlyBudget("2026-09").isFailure)
+        fixture.blockBudgetReadDeletion(false)
+        assertTrue("Clearing the damaged query must not seed it from the accepted receipt",
+            repository.monthlyBudget("2026-09").isFailure)
+        val recovered = fixture.stored().first { it["id"] == accepted["id"] }
+        assertNull("Read recovery must clear its marker even when the retired query JSON is broken", recovered["lastError"])
+        assertEquals(accepted - "lastError", recovered - "lastError")
+        assertEquals(originalIntents.single(), fixture.stored().first { it["id"] == originalIntents.single()["id"] })
+        transport.offline = false
+        transport.original = receipt
+        val fresh = repository.monthlyBudget("2026-09").getOrThrow()
+        assertEquals(receipt.toDomain(), fresh.value)
+        assertTrue(!fresh.fromCache)
+        transport.offline = true
+        val reopened = fixture.reopen().budgetRepository.monthlyBudget("2026-09").getOrThrow()
+        assertEquals(fresh.value, reopened.value)
+        assertEquals(fresh.fetchedAt, reopened.fetchedAt)
+        assertTrue(reopened.fromCache)
+        assertEquals("Both original saves are accepted once; local cleanup never resends them", 2, writes)
     }
 
     @Test fun oneRefusedConsumerWithdrawsAllRetainedBudgetDisplaysWithoutTouchingOriginals() = runBlocking {
@@ -586,9 +618,17 @@ class BudgetOfflineSnapshotConnectedTest {
             val offline = repository.monthlyBudget("2026-09")
             assertTrue("Failed deletion cannot grant offline access to the still-persisted refused query", offline.isFailure)
             assertEquals(403, (offline.exceptionOrNull() as? RepositoryException)?.httpStatusCode)
-            fixture.blockBudgetReadDeletion(false)
             transport.offline = false
             transport.original = offlineBudget().copy(rowVersion = 8, totalAmountCents = 2600, remainingAmountCents = 2189)
+            val onlineOnly = repository.monthlyBudget("2026-09").getOrThrow()
+            assertEquals("An authorized GET can display its own result while old-query deletion is still unavailable",
+                transport.original.toDomain(), onlineOnly.value)
+            assertTrue(!onlineOnly.fromCache)
+            transport.offline = true
+            assertEquals("One successful GET cannot lift a binding's unfinished old-query cleanup", 403,
+                (repository.monthlyBudget("2026-09").exceptionOrNull() as? RepositoryException)?.httpStatusCode)
+            fixture.blockBudgetReadDeletion(false)
+            transport.offline = false
             val authorized = repository.monthlyBudget("2026-09").getOrThrow()
             assertEquals(transport.original.toDomain(), authorized.value)
             assertTrue(!authorized.fromCache)

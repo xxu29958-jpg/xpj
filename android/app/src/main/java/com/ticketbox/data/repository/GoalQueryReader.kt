@@ -76,7 +76,7 @@ internal class GoalQueryReader(
             throw failure
         } catch (error: Exception) {
             if (!error.isReadTransportUnavailable()) throw error
-            return@safeCall coordinator.acceptSnapshotRead(ticket, bound) {
+            return@safeCall coordinator.acceptSnapshotRead(ticket, bound, fromCache = true) {
                 mutex.withLock {
                     requireLatest(cacheKey, ticket)
                     val saved = dao.goalSnapshot(bindingKey, timezone, query.key) ?: throw error
@@ -88,7 +88,7 @@ internal class GoalQueryReader(
         }
         validateGoals(wire, query, binding)
         val values = wire.map { it.toDomain() }
-        coordinator.acceptSnapshotRead(ticket, bound) {
+        coordinator.acceptSnapshotRead(ticket, bound, fromCache = false) {
             mutex.withLock {
                 requireLatest(cacheKey, ticket)
                 val detailKeys = wire.map { "$bindingKey|$timezone|detail:${it.publicId}" }

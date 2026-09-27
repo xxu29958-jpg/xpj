@@ -114,3 +114,14 @@ generation comparison using an Int fallback; the fix uses Long zero throughout
 and retains the original unconfigured-month and first-use assertions.
 
 2026-09-27 最后定向修正：d704bd3ab 的 CI、CodeQL、Connected 均实际通过，Plans/Budget/Insights 三张离线预览已查看。后续直接审查发现 fresh-only 并发成功请求被错判为缓存、Done 先于 enqueue 返回导致保存后空白、撤权后未修改的查询表单未清理。test-only d76dc5ac4 的 Android fast108540816253 实际重现后两条（2654 tests，仅新增2失败）；Connected108540803108 实际重现第一条，成功 GET 被“预算已有更新的读取”拒绝。最小修复保持原接受版本和 Room 的更新顺序：fresh-only 返回自己的合法网络结果；保存结束后补读已观察到的 Done；撤权清除仅来自查询的表单，真实 dirty 草稿和未完成原提交仍保留。三生产文件 source-only 0，最终源仍须独立 CI/CodeQL/Connected 与合入后 main 验证；不继承 d704 的绿灯。
+
+2026-09-27 定向恢复修正：b6145300b 的 CI、CodeQL、Connected 均实际通过。
+test-only fc8931182 随后取得两个真实 Room 业务 RED：Connected 108545203230
+在 DELETE 失败时丢失原 403，108545203226 在查询 JSON 损坏时让合法 GET 也失败。
+撤权现在先通知消费者，再尝试清理；共用 coordinator 的预算、目标、统计和月度安排
+十个 fresh/cache 接纳入口均显式迁移。清理未完成时保留拒绝，合法 GET 可显示自己的
+结果，但不能借旧查询或重新开启离线回退；后续 GET 完成清理后恢复缓存读取。
+预算查询坏 JSON 可由合法 GET 替换，已接受保存的本地恢复也能退役坏查询行；
+原 command receipt 解析仍严格，恢复不重发保存、不拿 receipt 伪造查询。
+既有原生测试覆盖在线/离线恢复交叉、Done marker、Room 重开与原意图不变。
+本段记录反例和实现，不替代修复后 exact source 的原生、CI、CodeQL 与 main 资格。

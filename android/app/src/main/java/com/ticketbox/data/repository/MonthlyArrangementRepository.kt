@@ -64,7 +64,7 @@ class MonthlyArrangementRepository internal constructor(private val apiProvider:
             if (!error.isReadTransportUnavailable()) throw error
             val receipt = observeArrangements(binding).first().filter { it.isConfirmed && it.receipt?.month == clean }
                 .maxByOrNull { it.receipt?.rowVersion ?: 0 }?.receipt
-            return@safeCall coordinator.acceptSnapshotRead(ticket, bound) {
+            return@safeCall coordinator.acceptSnapshotRead(ticket, bound, fromCache = true) {
                 // A receipt can update an existing query, but cannot recreate a withdrawn query.
                 val local = dao.read(key, clean, "saved")?.let { saved.fromJson(it.json) } ?: throw error
                 verifyArrangementResponse(local, binding, clean)
@@ -78,7 +78,7 @@ class MonthlyArrangementRepository internal constructor(private val apiProvider:
         }
         verifyArrangementResponse(response, binding, clean)
         val json = saved.toJson(response)
-        coordinator.acceptSnapshotRead(ticket, bound) {
+        coordinator.acceptSnapshotRead(ticket, bound, fromCache = false) {
             dao.write(MonthlyArrangementCacheEntity(key, clean, "saved", json))
             onSnapshot("arrangement:$key:$clean", json)
             MonthlyArrangementRead(response)
@@ -105,7 +105,7 @@ class MonthlyArrangementRepository internal constructor(private val apiProvider:
             if (!error.isReadTransportUnavailable()) throw error
             val receipts = observeArrangements(binding).first().filter { it.isConfirmed && it.receipt?.month == clean }
                 .mapNotNull { it.receipt }
-            return@safeCall coordinator.acceptSnapshotRead(ticket, bound) {
+            return@safeCall coordinator.acceptSnapshotRead(ticket, bound, fromCache = true) {
                 val local = dao.read(key, clean, kind)?.let { history.fromJson(it.json) } ?: throw error
                 verifyArrangementHistory(local, binding, clean)
                 val projection = local.withNewerReceipts(receipts, beforeVersion)
@@ -115,7 +115,7 @@ class MonthlyArrangementRepository internal constructor(private val apiProvider:
             }
         }
         verifyArrangementHistory(response, binding, clean)
-        coordinator.acceptSnapshotRead(ticket, bound) {
+        coordinator.acceptSnapshotRead(ticket, bound, fromCache = false) {
             dao.write(MonthlyArrangementCacheEntity(key, clean, kind, history.toJson(response)))
             MonthlyArrangementHistoryRead(response)
         }
