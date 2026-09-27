@@ -175,6 +175,7 @@ from app.schemas._expense_stream import (
     ExpenseLineageStatus,
     PaginatedExpensesResponse,
 )
+from app.schemas._goal_history import GoalHistoryResponse, GoalRevisionResponse, GoalSnapshot
 from app.schemas._goals import (
     DebtGoalIntegrityReviewRequest,
     DebtGoalLinksReplaceRequest,
@@ -431,6 +432,9 @@ __all__ = [
     "ExpenseSplitsResponse",
     "ExpenseUpdateRequest",
     "GoalCreateRequest",
+    "GoalHistoryResponse",
+    "GoalRevisionResponse",
+    "GoalSnapshot",
     "GoalListResponse",
     "GoalResponse",
     "GoalTokenRequest",

@@ -51,6 +51,7 @@ data class SpendingGoalDetailUiState(
     val pendingEdits: List<PendingGoalEdit> = emptyList(),
     val fetchedAt: String? = null,
     val fromCache: Boolean = false,
+    val history: GoalHistoryState = GoalHistoryState(),
 ) {
     val goalCurrency: CurrencyCode? get() = CurrencyCode.fromStorageKeyOrNull(goal?.homeCurrencyCode)
     val hasPendingEdit: Boolean get() = pendingEdits.any { !it.isDone }
@@ -79,6 +80,10 @@ class SpendingGoalDetailViewModel(
     private var taskBinding: LogicalSessionBinding? = edits.currentAccess()?.binding
     private var observation: Job? = null
     private var commandJob: Job? = null
+    internal val historyTask = GoalHistoryTask(reports, viewModelScope,
+        currentTask = { taskBinding?.takeIf { it == edits.currentAccess()?.binding && _state.value.goal != null }
+            ?.let { it to _state.value.publicId } },
+        publish = { history -> _state.update { it.copy(history = history) } })
 
     val acceptedArchive: Pair<LogicalSessionBinding, Goal>?
         get() {
@@ -93,6 +98,7 @@ class SpendingGoalDetailViewModel(
                 if (denial.binding != taskBinding || edits.currentAccess()?.binding != denial.binding) return@collect
                 loadGeneration += 1
                 loadJob?.cancel()
+                historyTask.reset()
                 _state.update { it.withReadFailure(denial.failure) }
             }
         }
@@ -101,6 +107,7 @@ class SpendingGoalDetailViewModel(
                 val changed = access?.binding != taskBinding
                 _state.update { it.copy(canModify = access?.canModify == true) }
                 if (changed) {
+                    historyTask.reset()
                     taskBinding = access?.binding
                     commandJob?.cancel()
                     observation?.cancel()
@@ -123,7 +130,10 @@ class SpendingGoalDetailViewModel(
         val generation = ++loadGeneration
         loadJob?.cancel()
         observation?.cancel()
-        if (!sameTask) _state.value = SpendingGoalDetailUiState(edits.currentAccess()?.canModify == true, publicId = id)
+        if (!sameTask) {
+            historyTask.reset()
+            _state.value = SpendingGoalDetailUiState(edits.currentAccess()?.canModify == true, publicId = id)
+        }
         _state.update { it.copy(isLoading = true, loadError = null) }
         observeSubmission(binding, id)
         loadJob = viewModelScope.launch {
@@ -158,6 +168,7 @@ class SpendingGoalDetailViewModel(
                         updated.copy(goal = accepted, fetchedAt = null, fromCache = false)
                     } else updated
                 }
+                if (completed) historyTask.refresh()
                 if (completed && !_state.value.isLoading) load(id)
             }
         }
@@ -293,6 +304,7 @@ class SpendingGoalDetailViewModel(
                             mutationRevision = it.mutationRevision + 1,
                         )
                     }
+                    historyTask.refresh()
                 },
                 onFailure = { error ->
                     _state.update {

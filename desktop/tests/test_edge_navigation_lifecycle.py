@@ -8,6 +8,7 @@ import time
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -85,6 +86,9 @@ def test_missing_main_load_is_document_timeout_not_renderer_evaluation(monkeypat
     page = _edge_cdp._WebSocket.__new__(_edge_cdp._WebSocket)
     page._events = deque([_navigated("main", "new", "http://localhost/web"), _loaded("child", "new")])
     page._socket = object()
+    # The queued navigation/subframe events consume part of the same deadline.
+    clock = iter((100.0, 100.125, 100.25, 100.5))
+    monkeypatch.setattr(_edge_cdp, "time", SimpleNamespace(monotonic=lambda: next(clock)))
     waits = []
     def select_ready(read, _write, _errors, timeout):
         waits.append((read, timeout))
@@ -92,7 +96,7 @@ def test_missing_main_load_is_document_timeout_not_renderer_evaluation(monkeypat
     monkeypatch.setattr(_edge_cdp.select, "select", select_ready)
     assert not page.wait_for_document("main", "http://localhost/web", timeout=30)
     assert len(waits) == 1 and waits[0][0] == [page._socket]
-    assert 29 < waits[0][1] <= 30
+    assert waits[0][1] == 29.5
 
 
 def test_cdp_command_response_preserves_interleaved_document_events():

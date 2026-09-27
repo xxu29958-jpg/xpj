@@ -215,6 +215,7 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("POST", "/web/family/members/{member_id}/transfer-owner"): "writer-only",
     # Goals
     ("GET", "/web/goals"): "local-only-rendering",
+    ("GET", "/web/goals/{public_id}/history"): "local-only-rendering",
     ("GET", "/web/goals/{public_id}/edit"): "writer-only",
     ("POST", "/web/goals/{public_id}/edit"): "writer-only",
     ("POST", "/web/goals/create"): "writer-only",

@@ -64,6 +64,7 @@ _LEDGER_RECORDS = (
     (m.Goal, "id public_id tenant_id name goal_type period month category target_amount_cents home_currency_code "
         "status created_at updated_at row_version archived_at goal_version achieved_at achieved_version "
         "integrity_reviewed_version target_date"),
+    (m.GoalRevision, "id tenant_id goal_id row_version change_kind snapshot actor_account_id recorded_at"),
     (m.MonthlyIncomePlan, "id public_id tenant_id label source_type frequency income_month home_currency_code "
         "amount_cents pay_day status created_at updated_at row_version archived_at"),
     (m.IncomePlanRevision, "id tenant_id plan_id revision_number effective_month intent_month change_kind label "

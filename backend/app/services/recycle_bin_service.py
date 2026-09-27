@@ -113,11 +113,15 @@ def restore_recycle_bin_item(
         )
         return "收入计划已恢复。"
 
+    if clean_kind == "goal":
+        restore_goal(db, tenant_id=tenant_id, public_id=clean_resource_id,
+            expected_row_version=_require_token(expected_row_version), actor_account_id=actor_account_id)
+        return "目标已恢复。"
+
     public_id_restore = {
         "category_preference": (restore_category_preference, "分类已恢复。"),
         "merchant_catalog": (restore_merchant_catalog, "商家已恢复。"),
         "recurring_item": (restore_recurring_item, "固定支出已恢复。"),
-        "goal": (restore_goal, "目标已恢复。"),
     }.get(clean_kind)
     if public_id_restore is not None:
         restore_func, message = public_id_restore

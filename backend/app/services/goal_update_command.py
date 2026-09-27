@@ -21,6 +21,7 @@ def update_goal_idempotently(
     payload: GoalUpdateRequest,
     idempotency_key: str | None,
     timezone_name: str,
+    actor_account_id: int | None = None,
 ) -> GoalResponse:
     # Claim before OCC: replaying a committed but unseen edit must not conflict
     # with its own version increment. Both writes commit in one transaction.
@@ -53,6 +54,7 @@ def update_goal_idempotently(
     result = update_goal(
         db, tenant_id=tenant_id, public_id=public_id, payload=payload,
         timezone_name=timezone_name, commit=False,
+        actor_account_id=actor_account_id,
     )
     mark_idempotency_succeeded(db, claim.row, resource_type="goal", resource_id=public_id,
         response_body=result.model_dump(mode="json"))

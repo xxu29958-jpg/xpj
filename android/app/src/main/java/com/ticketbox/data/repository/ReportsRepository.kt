@@ -38,6 +38,8 @@ interface DashboardCardsActions {
 }
 
 interface ReportsActions : DashboardCardsActions {
+    suspend fun goalHistory(publicId: String, beforeVersion: Long?, binding: LogicalSessionBinding):
+        Result<ReadSnapshot<com.ticketbox.domain.model.GoalHistoryPage>>
     val readAccessDenials: kotlinx.coroutines.flow.Flow<SnapshotAccessDenial> get() = kotlinx.coroutines.flow.emptyFlow()
     fun observeReportsAccess(): kotlinx.coroutines.flow.Flow<LedgerAccessContext?> = kotlinx.coroutines.flow.flowOf(dashboardAccess())
     suspend fun reportsOverview(query: ReportsOverviewQuery = ReportsOverviewQuery(), expectedBinding: LogicalSessionBinding? = null): Result<ReportsOverview>
@@ -100,6 +102,8 @@ class ReportsRepository(
     expenseDao: com.ticketbox.data.local.ExpenseDao,
     sessionCoordinator: LocalLedgerSessionCoordinator,
 ) : ReportsActions {
+    override suspend fun goalHistory(publicId: String, beforeVersion: Long?, binding: LogicalSessionBinding) =
+        goalQueries.history(publicId, beforeVersion, binding)
     override val readAccessDenials = sessionCoordinator.snapshotAccessDenials.filterNotNull()
     private val goalQueries = GoalQueryReader(apiProvider, expenseDao, sessionCoordinator)
     private val ledgerRequestGuard = LedgerRequestGuard(apiProvider)

@@ -34,6 +34,7 @@ def create_spending_goal_idempotently(
     payload: GoalCreateRequest,
     idempotency_key: str | None,
     timezone_name: str | None = None,
+    actor_account_id: int | None = None,
 ) -> GoalResponse:
     if payload.goal_type.strip() != "spending_limit":
         raise AppError("invalid_request", status_code=422)
@@ -52,7 +53,8 @@ def create_spending_goal_idempotently(
     replayed = _replayed_receipt(claim)
     if replayed is not None:
         return replayed
-    result = create_goal(db, tenant_id=tenant_id, payload=payload, timezone_name=timezone_name, commit=False)
+    result = create_goal(db, tenant_id=tenant_id, payload=payload, timezone_name=timezone_name,
+        commit=False, actor_account_id=actor_account_id)
     mark_idempotency_succeeded(db, claim.row, resource_type="goal", resource_id=result.public_id,
         response_body=result.model_dump(mode="json"))
     db.commit()

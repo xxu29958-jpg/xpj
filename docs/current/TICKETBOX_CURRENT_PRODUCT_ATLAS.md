@@ -79,7 +79,7 @@ flowchart LR
 | 固定支出到付款；Recurring/Expense/Outbox | [外币固定支出与期次履约](TICKETBOX_RECURRING_OCCURRENCE_CONTRACT.md)已接通：缺付款时记录真实付款，义务月份与付款月份独立，显式关联回原期次后不重复预留；有效冲正会使付款失去资格、回到待核对并恢复预留。[原表单与付款选择续办](TICKETBOX_RECURRING_FORM_CONTINUITY_CONTRACT.md)保留；[收入计划](TICKETBOX_INCOME_PLAN_CONTRACT.md)只形成预测和预算输入，不等于到账。 | 核验退款/冲正、后台接受及跨端回看的完整履约旅程，补实际发现的续办缺口及修改历史。建议候选是否仍读已冲正原金额属待复现，不能直接宣布事实错误。 |
 | 搜索与资料库；Reference，Web 深度/Android 轻量 | 分类偏好、商家别名、标签改名/合并/撤销、规则预览/应用/回滚、重复处理和历史引用有既有 owner。 | 分类维护与改名/合并后的引用处理不完整；规则/计划/历史/查询一起承接。Owner 孤立标签清理迁移独有行为后退役。 |
 | 回顾、报表、数据健康；Insights | 真数据总览、月度净额、分类/趋势、计划状态、事实下钻、CSV 事件/FX 字段；安装版总览和预算实际可对照。 | 保存查询视图缺失，卡片布局偏好不等于它；健康状态未覆盖原件 bytes 损坏和完整关系历史。 |
-| 离线与跨端；Room/Outbox/query owners | [直接还款](TICKETBOX_DIRECT_REPAYMENT_CONTINUITY_CONTRACT.md)及已接入财务命令在联网前冻结原 key/body/主体与账本绑定/OCC；协议或回执不匹配、ACK 未知不把未证实意图标为 Done。保存、重试及[拒绝 Undo](TICKETBOX_PENDING_COMMAND_ADMISSION_CONTRACT.md)沿同一原提交与原接受回执恢复。Expense/统计、[Goal 列表/详情](TICKETBOX_GOAL_OFFLINE_READING_CONTRACT.md)和 #438 Budget 已有持久查询读取；SavedState 草稿与 Room/Outbox 原提交分别保留。预算按完整 binding/month/timezone 保存查询及原时间，接受保存只退役旧查询，本地清理失败保留回执并提供读取恢复；撤权同步撤下保留页面的旧查询，提醒只读新鲜结果。 | Debt 业务查询及收入/目标原始草稿仍不足；页面内存、草稿和 Outbox 不能冒充查询快照，见[查询与草稿边界](TICKETBOX_USER_JOURNEYS_CONTRACT.md)。继续补跨端重入、过期/撤权、混合版本和 OS 中断，不另建队列、不靠清缓存解决。#438 合并前实际原生三片通过，合并后 main 的独立资格另行确认。 |
+| 离线与跨端；Room/Outbox/query owners | [直接还款](TICKETBOX_DIRECT_REPAYMENT_CONTINUITY_CONTRACT.md)及已接入财务命令在联网前冻结原 key/body/主体与账本绑定/OCC；协议或回执不匹配、ACK 未知不把未证实意图标为 Done。保存、重试及[拒绝 Undo](TICKETBOX_PENDING_COMMAND_ADMISSION_CONTRACT.md)沿同一原提交与原接受回执恢复。Expense/统计、[Goal 列表/详情](TICKETBOX_GOAL_OFFLINE_READING_CONTRACT.md)和 #438 Budget 已有持久查询读取；SavedState 草稿与 Room/Outbox 原提交分别保留。预算按完整 binding/month/timezone 保存查询及原时间，接受保存只退役旧查询，本地清理失败保留回执并提供读取恢复；撤权同步撤下保留页面的旧查询，提醒只读新鲜结果。 | Debt 业务查询及收入/目标原始草稿仍不足；页面内存、草稿和 Outbox 不能冒充查询快照，见[查询与草稿边界](TICKETBOX_USER_JOURNEYS_CONTRACT.md)。继续补跨端重入、过期/撤权、混合版本和 OS 中断，不另建队列、不靠清缓存解决。#438 合并前及合并后 main 的独立 CI、CodeQL、Connected 三个实际原生分片均已通过。 |
 | 首用、家庭、权限；Identity + Desktop/Owner/客户端 | Owner 接入、配对、明确币种、邀请原代码续办、成员/只读角色、设备/上传能力撤销、账本隔离；公网管理和重复 Owner 回收站已退役。 | exact RC 重演各角色、重入、撤销；Shortcut 旧 bootstrap 文档需对齐当前首用。恢复代际相关限制按原 HOLD。 |
 | OCR/AI/FX/后台任务；provider/worker/task | 识别热配置、原单任务续办；Advisor 区分配置/同意/角色/实际调用；FX 已有 worker/lease/最近结果。 | OCR 的 Owner 设置/诊断主要显示配置，缺最近执行结果、失败原因和回原任务的一体入口，本次运行已确认。 |
 | 原件、数据出口、宿主；Assets/Portability/Windows | 鉴权原图、上传 digest、受限 resolver、缩略图/清理、备份原件 hash 与 inventory；#424 已交付完整性状态、同账单补回、旧件核验和持久清理续办，主线独立资格通过。#425 已交付含历史、关系和原件的授权完整出口。Fresh-G2 关闭，Desktop 诊断已有实现。 | 整本归档账本的只读直接导出仍待增强；全局孤立原件处置及当前阶段可执行数据安全边界继续按实际风险闭合。完整 restore/upgrade 等继续 HOLD。 |
@@ -142,6 +142,8 @@ flowchart LR
 目标/series 历史、Debt 查询冷启动、收入/目标原始草稿、往来类型修改的原提交连续性、资料库与 Backstage、消费级体验及 exact RC 仍在完整终点内。#440 接续既有还款/调整的原会话归属缺口：原 payload 已保存 origin session/revision，候选使四种 DebtWrite 发送、原记录展示及恢复复用同一绑定校验；新会话不能接管旧意图，正常凭据刷新可继续，原记录可读且可明确停止本机追踪，不靠丢弃旧意图处理。反例与最终资格单独记录在[直接还款连续性合同](TICKETBOX_DIRECT_REPAYMENT_CONTINUITY_CONTRACT.md#original-logical-binding-follow-up--2026-09-27)。这些任务按真实用户价值继续推进，不挂到 #438 的合并门上；已有读写、原始草稿、回执、历史和恢复能力不能缩水。已成立成果不重做，正常验证沿用现有门禁，不再开展 CI 优化工程。
 
 每次改变一个业务语义或 Owner，施工前后均覆盖入口、消费者、旧成功出口、持久化、协议/恢复和直接验证生产者。**没有证据证明不受影响的，不能默认跳过。** 高风险事实/身份/原件用最小充分反例及 exact SHA 云端资格；文档/局部外观按对应风险验证。主审、定向回归、final-head 复核满足后收片继续，不用无关矩阵拖延交付。
+
+开销目标修改历史 #441 已合并：原创建、修改、归档和恢复定义由现有命令事务保存，两端可一点击达，编辑原文与原提交保持；可携带出口包含全部定义。旧数据只记录实际可证的起点，不能虚构更早历史或把当前执行进度当作过去事实。最终源 `d9a11515d3b5815b187f635af1a6d3d4b0d072a5` 的 CI、CodeQL、Connected 三个实际原生分片均通过；合并为 main `780797b2cb1494c015877631135a0e05a5fe779f`，独立主线资格正在执行，不能继承源提交结果。固定支出 Series 历史、其他计划连续性及后续全产品任务继续保留，不以此片代替。
 
 ## 7. 边界、未知项与终点
 
