@@ -26,6 +26,71 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class DebtQueryReadTest {
+    @Test fun onlyCanonicalListsCapturedAfterTheLastMissingResourceCanRestoreItWithoutRevivingOldDetail() = runTest {
+        val api = DebtReadApi()
+        val fixture = GoalReadFixture { api }
+        fun reader() = DebtQueryReader(fixture.provider, fixture.dao, fixture.coordinator)
+        val queries = reader()
+        val other = queries.detail(fixture.binding, "other-debt").getOrThrow()
+        queries.detail(fixture.binding, "jpy-debt").getOrThrow()
+        val original = queries.list(fixture.binding, DebtListLens.Ledger).getOrThrow()
+        val missing = HttpException(Response.error<Any>(404, """{"error":"debt_not_found"}""".toResponseBody()))
+        api.failure = missing
+        assertTrue(queries.detail(fixture.binding, "jpy-debt").isFailure)
+        api.failure = null
+        api.offline = true
+        val cached = reader().list(fixture.binding, DebtListLens.Ledger).getOrThrow()
+        assertEquals(listOf("other-debt"), cached.value.debts.map { it.publicId })
+        assertEquals(original.fetchedAt, cached.fetchedAt)
+        api.offline = false
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val freshPage = DebtListResponseDto(listOf(readDebt().copy(rowVersion = 6, remainingAmountCents = 500),
+            readDebt().copy(publicId = "other-debt")), "JPY")
+        api.list = { started.complete(Unit); release.await(); freshPage }
+        val late = async { queries.list(fixture.binding, DebtListLens.Ledger) }
+        started.await()
+        api.failure = missing
+        assertTrue(reader().detail(fixture.binding, "jpy-debt").isFailure)
+        api.failure = null
+        release.complete(Unit)
+        assertEquals(listOf("other-debt"), late.await().getOrThrow().value.debts.map { it.publicId })
+        api.offline = true
+        assertTrue(reader().detail(fixture.binding, "jpy-debt").isFailure)
+        api.offline = false
+        api.list = { freshPage }
+        val recovered = queries.list(fixture.binding, DebtListLens.Ledger).getOrThrow()
+        assertEquals(listOf("jpy-debt", "other-debt"), recovered.value.debts.map { it.publicId })
+        assertEquals(500L, recovered.value.debts.first().remainingAmountCents)
+        assertEquals("JPY", recovered.value.homeCurrencyCode)
+        api.offline = true
+        assertEquals(recovered.copy(fromCache = true), reader().list(fixture.binding, DebtListLens.Ledger).getOrThrow())
+        assertTrue(reader().detail(fixture.binding, "jpy-debt").isFailure, "List recovery cannot recreate a detail snapshot")
+        assertEquals(other.copy(fromCache = true), reader().detail(fixture.binding, "other-debt").getOrThrow())
+        assertEquals(0, api.commands)
+    }
+
+    @Test fun failedDeferredMarkerStillPersistsTheActualMissingResourceInTheOriginalRoomOwner() = runTest {
+        val api = DebtReadApi()
+        val fixture = GoalReadFixture { api }
+        val settings = object : com.ticketbox.data.local.TicketboxSettingsStore by boundSettingsStore() {
+            override fun markDebtResourceCacheRetirement(bindingKey: String, publicId: String, token: String) {
+                error("configuration storage unavailable")
+            }
+        }
+        val coordinator = LocalLedgerSessionCoordinator(settings, fixture.session.sessionStore, fixture.dao)
+        fun reader() = DebtQueryReader(fixture.provider, fixture.dao, coordinator)
+        reader().detail(fixture.binding, "jpy-debt").getOrThrow()
+        val other = reader().detail(fixture.binding, "other-debt").getOrThrow()
+        api.failure = HttpException(Response.error<Any>(404, """{"error":"debt_not_found"}""".toResponseBody()))
+        assertEquals("debt_not_found", (reader().detail(fixture.binding, "jpy-debt").exceptionOrNull() as RepositoryException).errorCode)
+        api.failure = null
+        api.offline = true
+        assertTrue(reader().detail(fixture.binding, "jpy-debt").isFailure)
+        assertEquals(other.copy(fromCache = true), reader().detail(fixture.binding, "other-debt").getOrThrow())
+        assertEquals(null, coordinator.snapshotAccessDenials.value)
+    }
+
     @Test fun dispatchedMissingDebtWithdrawsOnlyItsResourceAfterDropWhileOtherRefusalsKeepOriginalReadsAndCommands() = runTest {
         for ((status, code) in listOf(404 to "debt_not_found", 404 to "repayment_not_found", 403 to "forbidden")) {
             val api = DebtReadApi()
@@ -141,6 +206,7 @@ class DebtQueryReadTest {
         api.failure = HttpException(Response.error<Any>(404, """{"error":"debt_not_found"}""".toResponseBody()))
         assertTrue(reader.detail(fixture.binding, "jpy-debt").isFailure)
         api.failure = null
+        api.list = { DebtListResponseDto(listOf(readDebt().copy(publicId = "other-debt")), "JPY") }
         assertEquals(listOf("other-debt"), reader.list(fixture.binding, DebtListLens.Ledger).getOrThrow().value.debts.map { it.publicId })
         val restored = reader.detail(fixture.binding, "jpy-debt").getOrThrow()
         api.offline = true
@@ -149,6 +215,7 @@ class DebtQueryReadTest {
         assertEquals(other.copy(fromCache = true), reopened.detail(fixture.binding, "other-debt").getOrThrow())
         assertTrue(reopened.list(fixture.binding, DebtListLens.Ledger).isFailure)
         api.offline = false
+        api.list = { DebtListResponseDto(listOf(readDebt(), readDebt().copy(publicId = "other-debt")), "JPY") }
         val complete = reader.list(fixture.binding, DebtListLens.Ledger).getOrThrow()
         assertEquals(listOf("jpy-debt", "other-debt"), complete.value.debts.map { it.publicId })
         api.offline = true
@@ -451,9 +518,9 @@ class DebtQueryReadTest {
         val fixture = GoalReadFixture { api }
         var saveFails = false
         val queryDao = object : ExpenseDao by fixture.dao {
-            override suspend fun saveDebtSnapshotIfCurrent(snapshot: StatsProjectionCacheEntity, epoch: Long, restoredPublicId: String?) {
+            override suspend fun saveDebtSnapshotIfCurrent(snapshot: StatsProjectionCacheEntity, epoch: Long, restoredResourceFences: Map<String, String>): Set<String> {
                 if (saveFails) throw SQLiteException("Debt snapshot write failed")
-                fixture.dao.saveDebtSnapshotIfCurrent(snapshot, epoch, restoredPublicId)
+                return fixture.dao.saveDebtSnapshotIfCurrent(snapshot, epoch, restoredResourceFences)
             }
         }
         val reader = DebtQueryReader(fixture.provider, queryDao, fixture.coordinator)
@@ -530,6 +597,9 @@ private class DebtReadApi : ApiService by FakeApiService(mutableListOf(), confir
     var offline = false
     var failure: Throwable? = null
     var detail: suspend () -> DebtDto = { readDebt() }
+    var list: suspend () -> DebtListResponseDto = {
+        DebtListResponseDto(listOf(readDebt(), readDebt().copy(publicId = "other-debt")), "JPY")
+    }
     var commands = 0
     var commandFailure: Throwable? = null
     var acceptBeforeFailure = false
@@ -551,7 +621,7 @@ private class DebtReadApi : ApiService by FakeApiService(mutableListOf(), confir
     override suspend fun debt(publicId: String): DebtDto { checkTransport(); return detail().copy(publicId = publicId) }
     override suspend fun debts(lens: String?): DebtListResponseDto {
         checkTransport()
-        return DebtListResponseDto(listOf(readDebt(), readDebt().copy(publicId = "other-debt")), "JPY")
+        return list()
     }
     override suspend fun repaymentProposals(publicId: String): MemberRepaymentProposalListResponseDto {
         checkTransport()

@@ -87,6 +87,8 @@ internal class DataQualityConnectedHarness : AutoCloseable {
         val settingsStore = interfaceProxy<TicketboxSettingsStore> { name ->
             when (name) {
                 "lastUploadAtForLedger", "snapshotReadAccessDenial" -> null
+                "debtResourceCacheRetirements" -> emptyMap<String, String>()
+                "markDebtResourceCacheRetirement", "finishDebtResourceCacheRetirement" -> Unit
                 else -> Unhandled
             }
         }

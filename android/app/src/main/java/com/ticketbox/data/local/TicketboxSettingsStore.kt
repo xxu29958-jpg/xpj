@@ -112,6 +112,13 @@ interface TicketboxSettingsStore {
 
     fun saveSnapshotReadAccessDenial(bindingKey: String, monthlyBindingKey: String, statusCode: Int?) = Unit
 
+    /** Actual Debt 404 cleanup not yet committed to Room; scoped to the complete original binding. */
+    fun debtResourceCacheRetirements(bindingKey: String): Map<String, String> = emptyMap()
+
+    fun markDebtResourceCacheRetirement(bindingKey: String, publicId: String, token: String) = Unit
+
+    fun finishDebtResourceCacheRetirement(bindingKey: String, publicId: String, expectedToken: String) = Unit
+
     fun markUnlocked()
 
     fun markBackgrounded()

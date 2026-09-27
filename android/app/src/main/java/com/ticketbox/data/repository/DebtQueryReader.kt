@@ -21,6 +21,7 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -38,13 +39,16 @@ private data class AcceptedDebtQuery(val query: StatsProjectionCacheEntity, val 
 private val activeDebtDirectTokens = ConcurrentHashMap.newKeySet<String>()
 internal data class DebtQueryScope(val row: StatsProjectionCacheEntity, val publicId: String? = null, val directTokens: Set<String> = emptySet())
 private data class DebtReadRequest(val binding: LogicalSessionBinding, val scope: DebtQueryScope,
-    val ticket: SnapshotReadTicket, val localGeneration: Long, val epoch: Long, val resourceFence: String?,
+    val ticket: SnapshotReadTicket, val localGeneration: Long, val epoch: Long, val resourceFences: Map<String, String>,
     val unpublishedAcceptance: String?, val directWasActive: Boolean)
 private class DebtReadChanged : IllegalStateException("原往来提交状态已变化，请重新读取。")
 private val DebtReadRequest.canRetryRepair: Boolean
     get() = !directWasActive && (unpublishedAcceptance != null || scope.directTokens.isNotEmpty())
+private val DebtReadRequest.resourceFence: String?
+    get() = scope.publicId?.let(resourceFences::get)
 internal data class DebtReadSpec<T>(val adapter: JsonAdapter<T>, val fetch: suspend ApiService.() -> T,
-    val validate: (T) -> Unit, val isNewer: (T, T) -> Boolean, val project: (T, Set<String>) -> T)
+    val validate: (T) -> Unit, val isNewer: (T, T) -> Boolean, val project: (T, Set<String>) -> T,
+    val publicIds: (T) -> Set<String> = { emptySet() })
 
 /** The canonical Debt GET owner; participant shells and command intents remain separate facts. */
 internal class DebtQueryReader(
@@ -139,7 +143,7 @@ internal class DebtQueryReader(
         val ticket = coordinator.beginSnapshotRead()
         val request = DebtReadRequest(binding, scope.copy(directTokens = dao.debtDirectBarriers(query.bindingKey).map { it.tag }.toSet()), ticket, generation.get(),
             dao.debtReadEpoch(query.bindingKey)?.toLong() ?: 0L,
-            scope.publicId?.let { deniedResources(query.bindingKey)[it] },
+            deniedResources(query.bindingKey),
             dao.debtOutboxReadBarrier(query.bindingKey)?.responseJson, hasActiveDirect(query.bindingKey))
         val wire = try {
             fetchDebtNetwork(bound, spec.fetch) { error ->
@@ -201,7 +205,8 @@ internal class DebtQueryReader(
         if (request.localGeneration != generation.get() || (dao.debtReadEpoch(query.bindingKey)?.toLong() ?: 0L) != request.epoch) throw DebtReadChanged()
         val denied = deniedResources(query.bindingKey)
         check(publicId == null || denied[publicId] == request.resourceFence) { "这笔往来的读取已失效。" }
-        val fresh = spec.project(wire, denied.keys)
+        val restoring = restorableDebtResources(request, spec, wire, denied)
+        val fresh = spec.project(wire, denied.keys - restoring.keys)
         val unpublished = dao.debtOutboxReadBarrier(query.bindingKey)?.responseJson
         check(request.unpublishedAcceptance == unpublished) { "原往来提交已接受，请重新读取。" }
         if (!cacheAllowed || unpublished != null) {
@@ -215,43 +220,58 @@ internal class DebtQueryReader(
             dao.debtSnapshotIfCurrent(query, request.epoch)?.let { row -> storedAdapter.readStored(row)?.let {
                 AcceptedDebtQuery(row, it, request.ticket.generation) } }
         } catch (_: SQLiteException) { null }
-        val selected = selectDebtRead(previous.takeIf { request.resourceFence == null }, incoming, spec)
+        val selected = selectDebtRead(previous.takeIf { restoring.isEmpty() }, incoming, spec)
         accepted[key] = selected
         try {
-            dao.saveDebtSnapshotIfCurrent(selected.query, request.epoch, publicId?.takeIf { request.resourceFence != null })
-            retireRestoredDebtLists(accepted, request)
-            if (publicId != null) {
-                dao.clearDebtResourceDenial(query.bindingKey, publicId)
-                localResourceDenials.remove("${query.bindingKey}|$publicId")
-            }
+            val restored = dao.saveDebtSnapshotIfCurrent(selected.query, request.epoch, restoring)
+            retireRestoredDebtLists(accepted, localResourceDenials, request, restored)
+            accepted[key] = selected
             retired.remove(query.bindingKey)
         } catch (_: SQLiteException) { /* A verified fresh GET remains usable. */ }
         val value = requireNotNull(spec.adapter.fromJson(selected.stored.response))
-        ReadSnapshot(spec.project(value, denied.keys), selected.query.fetchedAt, fromCache = selected !== incoming)
+        val currentDenied = deniedResources(query.bindingKey)
+        check(publicId?.let { currentDenied[it] in setOf(null, request.resourceFence) } != false) {
+            "这笔往来的读取已失效。"
+        }
+        val stillDenied = currentDenied.filterNot { restoring[it.key] == it.value }.keys
+        ReadSnapshot(spec.project(value, stillDenied), selected.query.fetchedAt, fromCache = selected !== incoming)
     }
     internal suspend fun rejectResource(binding: LogicalSessionBinding, publicId: String, failure: RepositoryException) {
         val query = debtScope(binding, "debt_resource_denial", publicId)
         val token = UUID.randomUUID().toString()
-        localResourceDenials["${query.bindingKey}|$publicId"] = token
+        val marked = try { coordinator.settingsStore.markDebtResourceCacheRetirement(query.bindingKey, publicId, token); true }
+        catch (error: Exception) { if (error is CancellationException) throw error else false }
+        if (!marked) localResourceDenials["${query.bindingKey}|$publicId"] = token
         resourceDenials.emit(DebtReadResourceDenial(binding, publicId, failure, resourceGeneration.incrementAndGet()))
         try {
-            dao.saveStatsProjection(query.copy(responseJson = token,
-                fetchedAt = Instant.now().toString()))
-            dao.clearDebtResourceSnapshots(query.bindingKey, publicId)
+            dao.retireDebtResourceCache(query.copy(responseJson = token, fetchedAt = Instant.now().toString()))
+            localResourceDenials.remove("${query.bindingKey}|$publicId", token)
+            coordinator.settingsStore.finishDebtResourceCacheRetirement(query.bindingKey, publicId, token)
         } catch (_: SQLiteException) { /* Preserve the original 404 and refuse this owner's stale resource. */ }
+        catch (error: Exception) { if (error is CancellationException) throw error /* An uncleared marker is retried before cache use. */ }
     }
 
-    private suspend fun deniedResources(bindingKey: String): Map<String, String> =
-        dao.debtResourceDenials(bindingKey).associate { it.tag to it.responseJson } + localResourceDenials.entries
-            .filter { it.key.startsWith("$bindingKey|") }.associate { it.key.removePrefix("$bindingKey|") to it.value }
+    private suspend fun deniedResources(bindingKey: String): Map<String, String> {
+        repairDeferredDebtResourceRetirements(dao, coordinator.settingsStore, bindingKey)
+        return dao.debtResourceDenials(bindingKey).associate { it.tag to it.responseJson } + localResourceDenials.entries
+            .filter { it.key.startsWith("$bindingKey|") }.associate { it.key.removePrefix("$bindingKey|") to it.value } +
+            coordinator.settingsStore.debtResourceCacheRetirements(bindingKey)
+    }
 
 
 }
 
-private fun retireRestoredDebtLists(accepted: MutableMap<String, AcceptedDebtQuery>, request: DebtReadRequest) {
-    if (request.resourceFence != null) {
+private fun retireRestoredDebtLists(accepted: MutableMap<String, AcceptedDebtQuery>, localDenials: ConcurrentHashMap<String, String>,
+    request: DebtReadRequest, restored: Set<String>) {
+    if (restored.isNotEmpty()) {
         accepted.entries.removeAll { it.value.query.bindingKey == request.scope.row.bindingKey && it.value.query.kind == "debt_list" }
     }
+    restored.forEach { localDenials.remove("${request.scope.row.bindingKey}|$it", request.resourceFences[it]) }
+}
+
+private fun <T> restorableDebtResources(request: DebtReadRequest, spec: DebtReadSpec<T>, wire: T, denied: Map<String, String>): Map<String, String> {
+    val returned = spec.publicIds(wire) + listOfNotNull(request.scope.publicId)
+    return denied.filter { it.key in returned && request.resourceFences[it.key] == it.value }
 }
 
 private fun validateDebt(debt: DebtDto, binding: LogicalSessionBinding, publicId: String?, allowShell: Boolean) {
@@ -344,4 +364,5 @@ private fun DebtQueryReader.hasActiveDirect(bindingKey: String) = activeDirect.a
             isNewer = { old, incoming -> old.items.associateBy { it.publicId }.let { previous ->
                 incoming.items.any { previous[it.publicId]?.rowVersion?.let { version -> version < it.rowVersion } == true }
             } },
-            project = { page, denied -> page.copy(items = page.items.filterNot { it.publicId in denied }) }))
+            project = { page, denied -> page.copy(items = page.items.filterNot { it.publicId in denied }) },
+            publicIds = { page -> page.items.mapTo(mutableSetOf()) { it.publicId } }))

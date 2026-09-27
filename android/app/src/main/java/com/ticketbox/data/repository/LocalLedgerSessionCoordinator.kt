@@ -80,7 +80,7 @@ enum class LedgerCacheInvalidation {
 
 /** Linearization point for local session establishment and ledger selection. */
 class LocalLedgerSessionCoordinator(
-    private val settingsStore: TicketboxSettingsStore,
+    internal val settingsStore: TicketboxSettingsStore,
     private val sessionStore: LocalSessionStore,
     private val expenseDao: ExpenseDao,
     private val outbox: OutboxRepository? = null,

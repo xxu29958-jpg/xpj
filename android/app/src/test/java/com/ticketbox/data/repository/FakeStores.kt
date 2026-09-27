@@ -206,6 +206,17 @@ internal class FakeTicketboxSettingsStore(
     fun isBound(): Boolean = !serverUrl.isNullOrBlank()
 
     private val readAccessDenials = mutableMapOf<String, Int>()
+    private val debtCacheRetirements = mutableMapOf<String, MutableMap<String, String>>()
+    override fun debtResourceCacheRetirements(bindingKey: String): Map<String, String> = synchronized(debtCacheRetirements) {
+        debtCacheRetirements[bindingKey]?.toMap().orEmpty()
+    }
+    override fun markDebtResourceCacheRetirement(bindingKey: String, publicId: String, token: String) = synchronized(debtCacheRetirements) {
+        debtCacheRetirements.getOrPut(bindingKey) { mutableMapOf() }[publicId] = token
+    }
+    override fun finishDebtResourceCacheRetirement(bindingKey: String, publicId: String, expectedToken: String) = synchronized(debtCacheRetirements) {
+        debtCacheRetirements[bindingKey]?.let { if (it[publicId] == expectedToken) it.remove(publicId) }
+        Unit
+    }
     override fun snapshotReadAccessDenial(bindingKey: String, monthlyBindingKey: String): Int? =
         readAccessDenials[bindingKey] ?: readAccessDenials[monthlyBindingKey]
     override fun saveSnapshotReadAccessDenial(bindingKey: String, monthlyBindingKey: String, statusCode: Int?) {
@@ -222,6 +233,7 @@ internal class FakeTicketboxSettingsStore(
 
     override fun clear() {
         readAccessDenials.clear()
+        debtCacheRetirements.clear()
         serverUrl = null
         accountName = null
         ledgerIdFlow.value = null

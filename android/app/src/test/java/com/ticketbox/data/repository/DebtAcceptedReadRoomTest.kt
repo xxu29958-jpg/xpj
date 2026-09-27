@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.room.Room
 import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.local.AppDatabase
+import com.ticketbox.data.local.LocalSettingsStore
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.DebtDto
@@ -34,12 +35,82 @@ import kotlin.test.assertTrue
 @Config(application = Application::class, sdk = [35])
 @SQLiteMode(SQLiteMode.Mode.NATIVE)
 class DebtAcceptedReadRoomTest {
+    @Test fun missingDebtSurvivesRoomWriteFailureAndDatabaseReopenWhileOtherFactsRemainReadable() = runBlocking {
+        val app = RuntimeEnvironment.getApplication<Application>()
+        val name = "debt-missing-${java.util.UUID.randomUUID()}.db"
+        var db = Room.databaseBuilder(app, AppDatabase::class.java, name).build()
+        val settings = LocalSettingsStore(app)
+        var key: String? = null
+        try {
+            val debt = RepaymentResponseLossProbe().current.copy(homeCurrencyCode = "JPY", originalCurrencyCode = "JPY")
+            var offline = false
+            var missing = false
+            val fixture = GoalReadFixture(decorateDao = { db.expenseDao() }, decorate = { api -> object : ApiService by api {
+                override suspend fun debt(publicId: String): DebtDto {
+                    if (offline) throw ConnectException("offline after database reopen")
+                    if (missing) throw HttpException(Response.error<Any>(404, """{"error":"debt_not_found"}""".toResponseBody()))
+                    return debt.copy(publicId = publicId)
+                }
+                override suspend fun debts(lens: String?): DebtListResponseDto {
+                    if (offline) throw ConnectException("offline after database reopen")
+                    return DebtListResponseDto(listOf(debt, debt.copy(publicId = "other")), "JPY")
+                }
+            } })
+            val bindingKey = logicalBindingAdapter.toJson(fixture.binding)
+            key = bindingKey
+            fun reader() = DebtQueryReader(fixture.provider, db.expenseDao(),
+                LocalLedgerSessionCoordinator(LocalSettingsStore(app), fixture.session.sessionStore, db.expenseDao()))
+            val queries = reader()
+            queries.detail(fixture.binding, debt.publicId).getOrThrow()
+            val other = queries.detail(fixture.binding, "other").getOrThrow()
+            val original = queries.list(fixture.binding, DebtListLens.Ledger).getOrThrow()
+            db.openHelper.writableDatabase.execSQL("CREATE TRIGGER fail_debt_read_insert BEFORE INSERT ON stats_projection_cache " +
+                "BEGIN SELECT RAISE(ABORT, 'read cache unavailable'); END")
+            missing = true
+            assertEquals("debt_not_found", (queries.detail(fixture.binding, debt.publicId).exceptionOrNull() as RepositoryException).errorCode)
+            val token = requireNotNull(settings.debtResourceCacheRetirements(bindingKey)[debt.publicId])
+            assertTrue(db.expenseDao().debtResourceDenials(bindingKey).isEmpty(), "The actual Room transaction rolled back")
+            db.close()
+            db = Room.databaseBuilder(app, AppDatabase::class.java, name).build()
+            offline = true
+            missing = false
+            assertTrue(reader().detail(fixture.binding, debt.publicId).isFailure)
+            assertEquals(other.copy(fromCache = true), reader().detail(fixture.binding, "other").getOrThrow())
+            val retained = reader().list(fixture.binding, DebtListLens.Ledger).getOrThrow()
+            assertEquals(listOf("other"), retained.value.debts.map { it.publicId })
+            assertEquals(original.fetchedAt, retained.fetchedAt)
+            assertEquals(token, LocalSettingsStore(app).debtResourceCacheRetirements(bindingKey)[debt.publicId])
+            db.openHelper.writableDatabase.execSQL("DROP TRIGGER fail_debt_read_insert")
+            assertTrue(reader().detail(fixture.binding, debt.publicId).isFailure)
+            assertTrue(settings.debtResourceCacheRetirements(bindingKey).isEmpty())
+            assertEquals(token, db.expenseDao().debtResourceDenials(bindingKey).single().responseJson)
+            offline = false
+            val recovered = reader().list(fixture.binding, DebtListLens.Ledger).getOrThrow()
+            assertEquals(listOf(debt.publicId, "other"), recovered.value.debts.map { it.publicId })
+            offline = true
+            assertEquals(recovered.copy(fromCache = true), reader().list(fixture.binding, DebtListLens.Ledger).getOrThrow())
+            assertTrue(reader().detail(fixture.binding, debt.publicId).isFailure)
+            assertEquals(other.copy(fromCache = true), reader().detail(fixture.binding, "other").getOrThrow())
+            settings.markDebtResourceCacheRetirement(bindingKey, debt.publicId, "older")
+            LocalSettingsStore(app).markDebtResourceCacheRetirement(bindingKey, debt.publicId, "newer")
+            settings.finishDebtResourceCacheRetirement(bindingKey, debt.publicId, "older")
+            assertEquals("newer", LocalSettingsStore(app).debtResourceCacheRetirements(bindingKey)[debt.publicId])
+            settings.finishDebtResourceCacheRetirement(bindingKey, debt.publicId, "newer")
+        } finally {
+            key?.let { bindingKey -> settings.debtResourceCacheRetirements(bindingKey).forEach { (id, token) ->
+                settings.finishDebtResourceCacheRetirement(bindingKey, id, token) } }
+            db.close()
+            app.deleteDatabase(name)
+        }
+    }
+
     @Test fun restoredResourceRetiresItsFilteredRoomListsWithoutRetiringOtherDebtFacts() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), AppDatabase::class.java).build()
         try {
             val debt = RepaymentResponseLossProbe().current
             var offline = false
             var missing = false
+            var listMissing = true
             val fixture = GoalReadFixture(decorateDao = { db.expenseDao() }, decorate = { api -> object : ApiService by api {
                 override suspend fun debt(publicId: String): DebtDto {
                     if (offline) throw ConnectException("offline after resource recovery")
@@ -48,7 +119,8 @@ class DebtAcceptedReadRoomTest {
                 }
                 override suspend fun debts(lens: String?): DebtListResponseDto {
                     if (offline) throw ConnectException("offline after resource recovery")
-                    return DebtListResponseDto(listOf(debt, debt.copy(publicId = "other")), debt.homeCurrencyCode)
+                    return DebtListResponseDto(if (listMissing) listOf(debt.copy(publicId = "other"))
+                        else listOf(debt, debt.copy(publicId = "other")), debt.homeCurrencyCode)
                 }
             } })
             fun reader() = DebtQueryReader(fixture.provider, db.expenseDao(), fixture.coordinator)
@@ -66,6 +138,7 @@ class DebtAcceptedReadRoomTest {
             assertEquals(other.copy(fromCache = true), reader().detail(fixture.binding, "other").getOrThrow())
             for (lens in DebtListLens.entries) assertTrue(reader().list(fixture.binding, lens).isFailure)
             offline = false
+            listMissing = false
             val complete = queries.list(fixture.binding, DebtListLens.Ledger).getOrThrow()
             assertEquals(listOf(debt.publicId, "other"), complete.value.debts.map { it.publicId })
             offline = true

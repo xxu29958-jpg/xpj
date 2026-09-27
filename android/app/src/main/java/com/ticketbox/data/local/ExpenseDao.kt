@@ -112,15 +112,21 @@ interface ExpenseDao {
     }
 
     @Transaction
-    suspend fun saveDebtSnapshotIfCurrent(snapshot: StatsProjectionCacheEntity, epoch: Long, restoredPublicId: String? = null) {
+    suspend fun saveDebtSnapshotIfCurrent(snapshot: StatsProjectionCacheEntity, epoch: Long,
+        restoredResourceFences: Map<String, String> = emptyMap()): Set<String> {
         check((debtReadEpoch(snapshot.bindingKey)?.toLong() ?: 0L) == epoch) { "往来已接受修改，请重新读取。" }
         check(debtOutboxReadBarrier(snapshot.bindingKey) == null) { "原往来提交结果仍待核对，请重新读取。" }
-        if (restoredPublicId != null) {
-            clearDebtResourceSnapshots(snapshot.bindingKey, restoredPublicId)
+        val denied = debtResourceDenials(snapshot.bindingKey).associate { it.tag to it.responseJson }
+        val restored = restoredResourceFences.filter { denied[it.key] == null || denied[it.key] == it.value }.keys
+        if (restored.isNotEmpty()) {
+            for (publicId in restored) {
+                clearDebtResourceSnapshots(snapshot.bindingKey, publicId)
+                clearDebtResourceDenial(snapshot.bindingKey, publicId)
+            }
             clearDebtListSnapshots(snapshot.bindingKey)
         }
         saveStatsProjection(snapshot)
-        if (restoredPublicId != null) clearDebtResourceDenial(snapshot.bindingKey, restoredPublicId)
+        return restored
     }
 
     @Transaction
@@ -132,6 +138,19 @@ interface ExpenseDao {
 
     @Query("SELECT * FROM stats_projection_cache WHERE bindingKey = :bindingKey AND kind = 'debt_resource_denial'")
     suspend fun debtResourceDenials(bindingKey: String): List<StatsProjectionCacheEntity>
+
+    @Transaction
+    suspend fun retireDebtResourceCache(denial: StatsProjectionCacheEntity) {
+        saveStatsProjection(denial)
+        clearDebtResourceSnapshots(denial.bindingKey, denial.tag)
+    }
+
+    @Transaction
+    suspend fun retireDeferredDebtResourceCache(denial: StatsProjectionCacheEntity, expectedStoredToken: String?): Boolean {
+        if (debtResourceDenials(denial.bindingKey).find { it.tag == denial.tag }?.responseJson != expectedStoredToken) return false
+        retireDebtResourceCache(denial)
+        return true
+    }
 
     @Query("DELETE FROM stats_projection_cache WHERE bindingKey = :bindingKey AND kind = 'debt_resource_denial' AND tag = :publicId")
     suspend fun clearDebtResourceDenial(bindingKey: String, publicId: String)

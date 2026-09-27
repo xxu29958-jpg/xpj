@@ -1,7 +1,10 @@
 package com.ticketbox.data.repository
 
 import android.database.sqlite.SQLiteException
+import com.ticketbox.data.local.ExpenseDao
 import com.ticketbox.data.local.StatsProjectionCacheEntity
+import com.ticketbox.data.local.TicketboxSettingsStore
+import kotlinx.coroutines.CancellationException
 import java.time.Instant
 import java.util.UUID
 
@@ -60,5 +63,26 @@ internal suspend fun DebtQueryReader.invalidateDebtAccepted(row: OutboxRow) {
     retired.add(key)
     dao.settleDebtOutboxReadBarrier(key, binding.ledgerId, requireNotNull(dispatchProtections[row.id]).token, retire = true)
     retired.remove(key)
+}
+
+/** Retry only unfinished resource retirement; a normal read creates no configuration or Room write. */
+internal suspend fun repairDeferredDebtResourceRetirements(dao: ExpenseDao, settings: TicketboxSettingsStore, key: String) {
+    val pending = settings.debtResourceCacheRetirements(key)
+    if (pending.isEmpty()) return
+    val binding = requireNotNull(logicalBindingAdapter.fromJson(key))
+    for ((publicId, token) in pending) {
+        try {
+            val previous = dao.debtResourceDenials(key).find { it.tag == publicId }?.responseJson
+            if (settings.debtResourceCacheRetirements(key)[publicId] != token) continue
+            val denial = StatsProjectionCacheEntity(key, binding.ledgerId, "debt_resource_denial", "", publicId, "", "UTC",
+                token, Instant.now().toString())
+            if (dao.retireDeferredDebtResourceCache(denial, previous)) {
+                settings.finishDebtResourceCacheRetirement(key, publicId, token)
+            }
+        } catch (error: Exception) {
+            if (error is CancellationException) throw error
+            // Keep the original marker if either cache retirement or marker cleanup is still unavailable.
+        }
+    }
 }
 
