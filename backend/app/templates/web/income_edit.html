@@ -56,7 +56,8 @@
       </div>
       <div class="budget-actions">
         {% if plan.status != 'archived' %}
-          {% if conflict %}<button class="product-button product-button--primary" type="submit" name="review_latest" value="true" formnovalidate>保留输入，按 {{ review_month }} 核对</button>
+          {% if permission_refused %}<button class="product-button product-button--primary" type="submit" {% if values.review_latest %}name="review_latest" value="true" formnovalidate{% endif %}>权限恢复后重试{% if values.review_latest %}核对{% else %}保存{% endif %}</button>
+          {% elif conflict %}<button class="product-button product-button--primary" type="submit" name="review_latest" value="true" formnovalidate>保留输入，按 {{ review_month }} 核对</button>
           {% else %}<button class="product-button product-button--primary" type="submit">保存修改</button>{% endif %}
         {% endif %}
       </div>
