@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from contextlib import suppress
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
@@ -19,6 +20,7 @@ def _record_with_original_tag(headers: dict[str, str]) -> dict:
         return manual_expense(client, headers, tags="工作", merchant="清理进行中新记账")
 
 
+@pytest.mark.real_db
 def test_unused_cleanup_cannot_rewrite_a_new_expense_or_hide_its_reused_tag(client: TestClient, identity, monkeypatch) -> None:
     original = manual_expense(client, identity.app_headers, tags="工作", merchant="原使用者")
     correction = client.post(
