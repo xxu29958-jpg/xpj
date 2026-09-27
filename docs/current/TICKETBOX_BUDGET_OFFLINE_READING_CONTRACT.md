@@ -125,3 +125,8 @@ test-only fc8931182 随后取得两个真实 Room 业务 RED：Connected 1085452
 原 command receipt 解析仍严格，恢复不重发保存、不拿 receipt 伪造查询。
 既有原生测试覆盖在线/离线恢复交叉、Done marker、Room 重开与原意图不变。
 本段记录反例和实现，不替代修复后 exact source 的原生、CI、CodeQL 与 main 资格。
+
+db33a1e12 的 CI 和 CodeQL 通过，Connected 108548722094 的原撤权恢复例仍失败：
+清理被 SQLite DELETE trigger 拒绝时，fresh 结果的 INSERT OR REPLACE 同样触发
+旧行删除。修复保持原断言：未完成清理时，合法 GET 只显示自己的已校验结果，
+不写缓存；原离线拒绝保持，后续清理成功后再恢复持久读取。

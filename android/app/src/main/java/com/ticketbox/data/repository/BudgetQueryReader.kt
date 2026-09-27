@@ -87,8 +87,11 @@ internal class BudgetQueryReader(
             "", "", timezone, adapter.toJson(wire), Instant.now().toString())
         coordinator.acceptSnapshotRead(ticket, bound, fromCache = false) { cacheAllowed ->
             mutex.withLock {
-                val saved = if (cacheAllowed) dao.statsProjections(bindingKey, "budget", cleanMonth, "", timezone).singleOrNull()
-                    else null
+                if (!cacheAllowed) {
+                    requireAcceptedRevision(bindingKey, wire, saveGeneration)
+                    return@withLock ReadSnapshot(wire.toDomain(), query.fetchedAt, fromCache = false)
+                }
+                val saved = dao.statsProjections(bindingKey, "budget", cleanMonth, "", timezone).singleOrNull()
                 val snapshot = acceptWire(wire, query, ticket, saveGeneration, saved)
                 if (freshOnly && snapshot.fromCache) {
                     // Room keeps its newer query; this independent GET still supplies a fresh result.
