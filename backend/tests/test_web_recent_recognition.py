@@ -20,6 +20,7 @@ from app.routes import _web_pending_enrichment_watch as recognition
 from app.routes.owner_console._shared import templates as owner_templates
 from app.routes.web_auth import SESSION_COOKIE_NAME
 from app.routes.web_common import templates
+from app.services.currency_binding_service import authorize_currency_metadata_write
 from tests._web_public_session_support import mint_session, public_client
 from tests.test_background_task_continuation import _failed_upload
 
@@ -193,6 +194,7 @@ def test_recent_http_tasks_without_valid_original_never_invent_links(web_client,
     rejected = reject_expense_api(web_client, original["id"], headers=identity.app_headers)
     assert rejected.status_code == 200, rejected.text
     with SessionLocal() as db:
+        authorize_currency_metadata_write(db)
         db.delete(db.get(Expense, removed["id"]))
         db.commit()
         removed_task = db.scalar(select(BackgroundTask).where(
