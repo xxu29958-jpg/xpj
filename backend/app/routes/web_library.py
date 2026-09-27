@@ -25,7 +25,7 @@ from app.services.merchant_alias_service import list_merchant_aliases
 from app.services.merchant_catalog_service import list_merchant_catalog
 from app.services.recycle_bin_service import list_recycle_bin_items
 from app.services.rule_service import list_rules
-from app.services.saved_view_service import list_views
+from app.services.saved_view_service import count_views
 from app.services.tag_management_service import list_tags_with_usage
 
 router = APIRouter(prefix="/web", tags=["web"])
@@ -55,7 +55,7 @@ def web_reference_library(
     tags = list_tags_with_usage(db, selected_id)
     rules = list_rules(db, selected_id)
     recycle_bin = list_recycle_bin_items(db, tenant_id=selected_id)
-    saved_views = list_views(db, tenant_id=selected_id,
+    saved_view_count = count_views(db, tenant_id=selected_id,
         actor_account_id=resolve_web_actor_account_id(db, request, selected_id))
 
     ctx = _base_ctx(
@@ -67,7 +67,7 @@ def web_reference_library(
     )
     ctx.update(
         library_counts={
-            "saved_views": len(saved_views),
+            "saved_views": saved_view_count,
             "custom_categories": len(categories),
             "merchants": len(merchants),
             "merchant_aliases": len(aliases),

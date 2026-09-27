@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -73,8 +73,7 @@ def resolve_live_tag_public_id(
     return row.public_id
 
 
-def _detail(db: Session, row: SavedView) -> SavedViewDetail:
-    tag = _tag(db, row.tenant_id, row.tag_public_id)
+def _detail(row: SavedView, tag: Tag | None) -> SavedViewDetail:
     invalid = bool(row.tag_public_id and (tag is None or tag.deleted_at is not None))
     return SavedViewDetail(
         public_id=row.public_id, name=row.name, row_version=row.row_version,
@@ -95,9 +94,16 @@ def _view(db: Session, tenant_id: str, public_id: str) -> SavedView:
 
 def list_views(db: Session, *, tenant_id: str, actor_account_id: int) -> list[SavedViewDetail]:
     _require_ledger_role(db, tenant_id=tenant_id, actor_account_id=actor_account_id)
-    rows = db.scalars(select(SavedView).where(SavedView.tenant_id == tenant_id)
-                      .order_by(SavedView.created_at.desc(), SavedView.id.desc())).all()
-    return [_detail(db, row) for row in rows]
+    rows = db.execute(select(SavedView, Tag).outerjoin(Tag,
+        (Tag.tenant_id == SavedView.tenant_id) & (Tag.public_id == SavedView.tag_public_id))
+        .where(SavedView.tenant_id == tenant_id)
+        .order_by(SavedView.created_at.desc(), SavedView.id.desc())).all()
+    return [_detail(row, tag) for row, tag in rows]
+
+
+def count_views(db: Session, *, tenant_id: str, actor_account_id: int) -> int:
+    _require_ledger_role(db, tenant_id=tenant_id, actor_account_id=actor_account_id)
+    return int(db.scalar(select(func.count(SavedView.id)).where(SavedView.tenant_id == tenant_id)) or 0)
 
 
 def _query_month(month_mode: str, month: str | None, filter: str) -> tuple[str, str | None]:
@@ -179,7 +185,7 @@ def create_view(
     except IntegrityError as exc:
         db.rollback()
         raise AppError("saved_view_conflict", status_code=409) from exc
-    result = _detail(db, row)
+    result = _detail(row, _tag(db, row.tenant_id, row.tag_public_id))
     mark_idempotency_succeeded(db, claim.row, resource_type="saved_view", resource_id=row.public_id,
                                response_body=asdict(result))
     db.commit()
@@ -211,7 +217,8 @@ def update_view(
         raise AppError("state_conflict", status_code=409)
     db.commit()
     db.expire_all()
-    return _detail(db, _view(db, tenant_id, public_id))
+    row = _view(db, tenant_id, public_id)
+    return _detail(row, _tag(db, row.tenant_id, row.tag_public_id))
 
 
 def delete_view(

@@ -4,12 +4,13 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import event, select
 
 from app.database import SessionLocal
 from app.errors import AppError
-from app.models import Account, Ledger, LedgerMember, Tag
+from app.models import Account, Ledger, LedgerMember, SavedView, Tag
 from app.services.saved_view_service import (
+    count_views,
     create_view,
     delete_view,
     list_views,
@@ -99,6 +100,72 @@ def test_saved_view_replay_is_original_receipt_and_tag_identity_needs_repair():
                                                 public_id=original.public_id)
 
 
+def test_list_views_resolves_mixed_tag_identities_without_per_view_reads():
+    with SessionLocal() as db:
+        owner_id = _owner_id(db)
+        other_id = "saved_view_tags_other"
+        db.add(Ledger(ledger_id=other_id, name="另一本账本", owner_account_id=owner_id))
+        db.flush()
+        db.add(LedgerMember(ledger_id=other_id, account_id=owner_id, role="owner"))
+        live = Tag(tenant_id="owner", name="旅行", key="旅行")
+        deleted = Tag(tenant_id="owner", name="旧标签", key="旧标签")
+        missing = Tag(tenant_id="owner", name="消失标签", key="消失标签")
+        foreign = Tag(tenant_id=other_id, name="另一本私有标签", key="另一本私有标签")
+        db.add_all([live, deleted, missing, foreign])
+        db.commit()
+        live_id, deleted_id, missing_id, foreign_id = (
+            live.public_id, deleted.public_id, missing.public_id, foreign.public_id,
+        )
+        definitions = [
+            ("旅行一", live_id), ("旅行二", live_id), ("已删除标签", deleted_id),
+            ("缺失标签", missing_id), ("越界标签", None), ("无标签", None),
+        ]
+        created = [create_view(db, tenant_id="owner", actor_account_id=owner_id,
+            idempotency_key=str(uuid4()), **_definition(name=name, tag_public_id=tag_id))
+            for name, tag_id in definitions]
+        create_view(db, tenant_id=other_id, actor_account_id=owner_id,
+            idempotency_key=str(uuid4()), **_definition(name="另一本视图", tag_public_id=foreign_id))
+        live.name = live.key = "假期"
+        deleted.deleted_at = now_utc()
+        db.delete(missing)
+        # A stale cross-ledger reference must stay broken rather than expose its label.
+        foreign_reference = db.scalar(select(SavedView).where(SavedView.public_id == created[4].public_id))
+        foreign_reference.tag_public_id = foreign_id
+        db.commit()
+
+        selects = []
+
+        def before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+            del conn, cursor, parameters, context, executemany
+            if statement.lstrip().upper().startswith("SELECT"):
+                selects.append(statement)
+
+        bind = db.get_bind()
+        event.listen(bind, "before_cursor_execute", before_cursor_execute)
+        try:
+            views = list_views(db, tenant_id="owner", actor_account_id=owner_id)
+        finally:
+            event.remove(bind, "before_cursor_execute", before_cursor_execute)
+
+        assert [view.public_id for view in views] == [view.public_id for view in reversed(created)]
+        by_name = {view.name: view for view in views}
+        assert [(by_name[name].tag_public_id, by_name[name].tag_name, by_name[name].repair_reason)
+                for name in ("旅行一", "旅行二")] == [(live_id, "假期", None)] * 2
+        assert by_name["已删除标签"].tag_name == "旧标签"
+        for name, tag_id in (("已删除标签", deleted_id), ("缺失标签", missing_id), ("越界标签", foreign_id)):
+            assert by_name[name].tag_public_id == tag_id
+            assert by_name[name].repair_reason == "saved_view_tag_repair_required"
+            with pytest.raises(AppError) as exc:
+                resolve_view_query(db, tenant_id="owner", actor_account_id=owner_id,
+                                   public_id=by_name[name].public_id)
+            assert exc.value.error == "saved_view_tag_repair_required"
+        assert by_name["缺失标签"].tag_name is None and by_name["越界标签"].tag_name is None
+        assert by_name["无标签"].tag_public_id is None and by_name["无标签"].repair_reason is None
+        assert len(selects) == 2
+        assert count_views(db, tenant_id="owner", actor_account_id=owner_id) == 6
+        assert count_views(db, tenant_id=other_id, actor_account_id=owner_id) == 1
+
+
 def test_saved_view_shared_read_viewer_denied_write_and_occ():
     with SessionLocal() as db:
         owner_id = _owner_id(db)
@@ -112,6 +179,7 @@ def test_saved_view_shared_read_viewer_denied_write_and_occ():
                 filter="missing_accounting_date"))
         assert created.month_mode == "current" and created.month is None
         assert list_views(db, tenant_id="owner", actor_account_id=viewer.id)[0].public_id == created.public_id
+        assert count_views(db, tenant_id="owner", actor_account_id=viewer.id) == 1
         query = resolve_view_query(db, tenant_id="owner", actor_account_id=viewer.id,
                                    public_id=created.public_id)
         assert query == {"ledger_id": "owner", "filter": "missing_accounting_date",
@@ -139,9 +207,14 @@ def test_saved_view_shared_read_viewer_denied_write_and_occ():
             list_views(db, tenant_id="owner", actor_account_id=999999)
         assert exc.value.error == "ledger_not_found"
         db.rollback()
+        with pytest.raises(AppError) as exc:
+            count_views(db, tenant_id="owner", actor_account_id=999999)
+        assert exc.value.error == "ledger_not_found"
+        db.rollback()
         delete_view(db, tenant_id="owner", actor_account_id=owner_id,
                     public_id=created.public_id, expected_row_version=changed.row_version)
         assert list_views(db, tenant_id="owner", actor_account_id=viewer.id) == []
+        assert count_views(db, tenant_id="owner", actor_account_id=viewer.id) == 0
 
 
 def test_current_month_is_resolved_from_ledger_calendar_each_time(monkeypatch):
