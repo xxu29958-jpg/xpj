@@ -6,11 +6,14 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.navigation.compose.rememberNavController
 import androidx.test.core.app.ApplicationProvider
@@ -157,7 +160,10 @@ class DebtOfflineReadingConnectedTest {
         val source = context.getString(if (offline) R.string.debt_read_cached_title else R.string.debt_read_title)
         compose.onNodeWithText(source, substring = true).assertIsDisplayed()
         compose.onNodeWithText("原日元往来").performClick()
-        waitForText("原债务备注")
+        waitForText(context.getString(R.string.debt_detail_back))
+        waitForText(source)
+        // Cached-source feedback can put the note outside the lazy viewport; reach it by scrolling.
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("原债务备注"))
         compose.onNodeWithText("原债务备注").performScrollTo().assertIsDisplayed()
     }
 
@@ -167,6 +173,7 @@ class DebtOfflineReadingConnectedTest {
     }
 
     private fun assertActivity(reason: String, recordedAt: String) {
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(context.getString(R.string.debt_activity_title)))
         waitForText(reason)
         compose.onNodeWithText(reason).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("${displayDateTime(recordedAt)} · 原记录人").assertIsDisplayed()

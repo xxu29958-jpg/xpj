@@ -432,7 +432,7 @@ private fun DebtActionForm(
             )
         }
         DebtActionWarning(action)
-        DebtActionReadFeedback(state, viewModel::refresh)
+        DebtActionReadFeedback(state, viewModel::refresh) { viewModel.updateActionInput(reviewLatest = true) }
         state.writeMessage?.let { message -> AppStatusBanner(message = message, tone = MessageTone.Info) }
         state.validationError?.let { err ->
             AppStatusBanner(message = err, tone = MessageTone.Danger)

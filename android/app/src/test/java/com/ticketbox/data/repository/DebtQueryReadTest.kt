@@ -22,6 +22,111 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class DebtQueryReadTest {
+    @Test fun parallelCanonicalRecoveryRequeriesTheRetiredBarrierRatherThanLeavingOneConsumerUnrestored() = runTest {
+        val api = DebtReadApi()
+        val fixture = GoalReadFixture { api }
+        val reader = DebtQueryReader(fixture.provider, fixture.dao, fixture.coordinator)
+        reader.detail(fixture.binding, "jpy-debt").getOrThrow()
+        reader.detail(fixture.binding, "other-debt").getOrThrow()
+        val key = logicalBindingAdapter.toJson(fixture.binding)
+        fixture.dao.saveStatsProjection(StatsProjectionCacheEntity(key, fixture.binding.ledgerId,
+            "debt_outbox_read_barrier", "", "", "", "UTC", "original-key:unknown", "2026-09-01T00:00:00Z"))
+        val firstStarted = CompletableDeferred<Unit>()
+        val secondStarted = CompletableDeferred<Unit>()
+        val firstRelease = CompletableDeferred<Unit>()
+        val secondRelease = CompletableDeferred<Unit>()
+        var fetches = 0
+        api.detail = {
+            fetches++
+            when (fetches) {
+                1 -> { firstStarted.complete(Unit); firstRelease.await() }
+                2 -> { secondStarted.complete(Unit); secondRelease.await() }
+            }
+            readDebt().copy(rowVersion = 5, remainingAmountCents = 600)
+        }
+        val first = async { reader.detail(fixture.binding, "jpy-debt") }
+        firstStarted.await()
+        val second = async { reader.detail(fixture.binding, "other-debt") }
+        secondStarted.await()
+        firstRelease.complete(Unit)
+        val recoveredFirst = first.await().getOrThrow()
+        secondRelease.complete(Unit)
+        val recoveredSecond = second.await().getOrThrow()
+        assertEquals(3, fetches, "The competing repair must discard its original wire and issue one new canonical GET")
+        assertEquals(listOf(600L, 600L), listOf(recoveredFirst.value.remainingAmountCents, recoveredSecond.value.remainingAmountCents))
+        assertEquals(null, fixture.dao.debtOutboxReadBarrier(key))
+        api.offline = true
+        val reopened = DebtQueryReader(fixture.provider, fixture.dao, fixture.coordinator)
+        assertEquals(recoveredFirst.copy(fromCache = true), reopened.detail(fixture.binding, "jpy-debt").getOrThrow())
+        assertEquals(recoveredSecond.copy(fromCache = true), reopened.detail(fixture.binding, "other-debt").getOrThrow())
+        assertEquals(0, api.commands)
+    }
+
+    @Test fun directMissingDebtRetiresOnlyThatResourceAndCannotReopenItsOriginalSnapshot() = runTest {
+        for (code in listOf("debt_not_found", "proposal_not_found")) {
+            val api = DebtReadApi()
+            val fixture = GoalReadFixture { api }
+            fun reader() = DebtQueryReader(fixture.provider, fixture.dao, fixture.coordinator)
+            val repository = DebtRepository(fixture.provider, reader())
+            repository.getDebt("jpy-debt").getOrThrow()
+            val other = repository.getDebt("other-debt").getOrThrow()
+            repository.listDebts().getOrThrow()
+            api.commandFailure = HttpException(Response.error<Any>(404, """{"error":"$code"}""".toResponseBody()))
+            assertEquals(code, (repository.setDebtKind("jpy-debt", 4, "installment").exceptionOrNull() as RepositoryException).errorCode)
+            api.offline = true
+            assertEquals(other.copy(fromCache = true), reader().detail(fixture.binding, "other-debt").getOrThrow())
+            if (code == "debt_not_found") {
+                assertTrue(reader().detail(fixture.binding, "jpy-debt").isFailure)
+                assertEquals(listOf("other-debt"), reader().list(fixture.binding, DebtListLens.Ledger).getOrThrow().value.debts.map { it.publicId })
+            } else assertEquals("jpy-debt", reader().detail(fixture.binding, "jpy-debt").getOrThrow().value.publicId)
+            assertEquals(1, api.commands)
+        }
+    }
+
+    @Test fun restoredDetailRetiresFilteredListsUntilACompleteCanonicalListRecovers() = runTest {
+        val api = DebtReadApi()
+        val fixture = GoalReadFixture { api }
+        val reader = DebtQueryReader(fixture.provider, fixture.dao, fixture.coordinator)
+        val other = reader.detail(fixture.binding, "other-debt").getOrThrow()
+        api.failure = HttpException(Response.error<Any>(404, """{"error":"debt_not_found"}""".toResponseBody()))
+        assertTrue(reader.detail(fixture.binding, "jpy-debt").isFailure)
+        api.failure = null
+        assertEquals(listOf("other-debt"), reader.list(fixture.binding, DebtListLens.Ledger).getOrThrow().value.debts.map { it.publicId })
+        val restored = reader.detail(fixture.binding, "jpy-debt").getOrThrow()
+        api.offline = true
+        val reopened = DebtQueryReader(fixture.provider, fixture.dao, fixture.coordinator)
+        assertEquals(restored.copy(fromCache = true), reopened.detail(fixture.binding, "jpy-debt").getOrThrow())
+        assertEquals(other.copy(fromCache = true), reopened.detail(fixture.binding, "other-debt").getOrThrow())
+        assertTrue(reopened.list(fixture.binding, DebtListLens.Ledger).isFailure)
+        api.offline = false
+        val complete = reader.list(fixture.binding, DebtListLens.Ledger).getOrThrow()
+        assertEquals(listOf("jpy-debt", "other-debt"), complete.value.debts.map { it.publicId })
+        api.offline = true
+        assertEquals(complete.copy(fromCache = true), reopened.list(fixture.binding, DebtListLens.Ledger).getOrThrow())
+    }
+
+    @Test fun successfulReadRecoveryClearsSharedDenialBeforeReopeningButALaterRealRefusalStillRevokesIt() = runTest {
+        val api = DebtReadApi()
+        val fixture = GoalReadFixture { api }
+        fun reader() = DebtQueryReader(fixture.provider, fixture.dao, fixture.coordinator)
+        reader().detail(fixture.binding, "jpy-debt").getOrThrow()
+        api.failure = HttpException(Response.error<Any>(403, """{"error":"forbidden"}""".toResponseBody()))
+        assertTrue(reader().detail(fixture.binding, "jpy-debt").isFailure)
+        val deniedGeneration = requireNotNull(fixture.coordinator.snapshotAccessDenials.value).generation
+        api.failure = null
+        val recovered = reader().detail(fixture.binding, "jpy-debt").getOrThrow()
+        assertEquals(null, fixture.coordinator.snapshotAccessDenials.value)
+        api.offline = true
+        assertEquals(recovered.copy(fromCache = true), reader().detail(fixture.binding, "jpy-debt").getOrThrow())
+        api.offline = false
+        api.failure = HttpException(Response.error<Any>(403, """{"error":"forbidden"}""".toResponseBody()))
+        assertTrue(reader().detail(fixture.binding, "jpy-debt").isFailure)
+        assertTrue(requireNotNull(fixture.coordinator.snapshotAccessDenials.value).generation > deniedGeneration)
+        api.failure = null
+        api.offline = true
+        assertTrue(reader().detail(fixture.binding, "jpy-debt").isFailure)
+    }
+
     @Test fun aReadRefusalDuringDirectDispatchCannotTurnTheOriginalRealAckIntoFailureOrRestoreOldReads() = runTest {
         val api = DebtReadApi()
         val fixture = GoalReadFixture { api }

@@ -241,9 +241,12 @@ class DebtDetailViewModel(
         amount: String = state.value.amountInput,
         reason: String = state.value.reasonInput,
         adjustmentIncrease: Boolean = state.value.adjustmentIncrease,
+        reviewLatest: Boolean = false,
     ) {
         _state.update { it.copy(amountInput = amount, reasonInput = reason,
-            adjustmentIncrease = adjustmentIncrease, validationError = null) }
+            adjustmentIncrease = adjustmentIncrease, validationError = null,
+            actionTarget = if (reviewLatest && it.canReviewAction && writes.currentAccess()?.binding == loadedBinding)
+                it.debt else it.actionTarget) }
     }
 
     fun dismissAction() {

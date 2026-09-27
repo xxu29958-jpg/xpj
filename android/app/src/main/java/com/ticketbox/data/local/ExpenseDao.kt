@@ -115,7 +115,10 @@ interface ExpenseDao {
     suspend fun saveDebtSnapshotIfCurrent(snapshot: StatsProjectionCacheEntity, epoch: Long, restoredPublicId: String? = null) {
         check((debtReadEpoch(snapshot.bindingKey)?.toLong() ?: 0L) == epoch) { "往来已接受修改，请重新读取。" }
         check(debtOutboxReadBarrier(snapshot.bindingKey) == null) { "原往来提交结果仍待核对，请重新读取。" }
-        if (restoredPublicId != null) clearDebtResourceSnapshots(snapshot.bindingKey, restoredPublicId)
+        if (restoredPublicId != null) {
+            clearDebtResourceSnapshots(snapshot.bindingKey, restoredPublicId)
+            clearDebtListSnapshots(snapshot.bindingKey)
+        }
         saveStatsProjection(snapshot)
         if (restoredPublicId != null) clearDebtResourceDenial(snapshot.bindingKey, restoredPublicId)
     }
@@ -136,6 +139,9 @@ interface ExpenseDao {
     @Query("DELETE FROM stats_projection_cache WHERE bindingKey = :bindingKey AND " +
         "((kind = 'debt_detail' AND tag = :publicId) OR (kind = 'debt_activity' AND substr(tag, 1, length(:publicId) + 1) = :publicId || ':'))")
     suspend fun clearDebtResourceSnapshots(bindingKey: String, publicId: String)
+
+    @Query("DELETE FROM stats_projection_cache WHERE bindingKey = :bindingKey AND kind = 'debt_list'")
+    suspend fun clearDebtListSnapshots(bindingKey: String)
 
     @Query("SELECT * FROM stats_projection_cache WHERE bindingKey = :bindingKey AND kind = 'debt_direct_barrier'")
     suspend fun debtDirectBarriers(bindingKey: String): List<StatsProjectionCacheEntity>

@@ -7,6 +7,8 @@ import com.ticketbox.data.local.AppDatabase
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.DebtDto
+import com.ticketbox.data.remote.dto.DebtListResponseDto
+import com.ticketbox.domain.model.DebtListLens
 import com.ticketbox.data.remote.dto.RepaymentCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtRepaymentReceiptDto
 import java.net.ConnectException
@@ -32,6 +34,45 @@ import kotlin.test.assertTrue
 @Config(application = Application::class, sdk = [35])
 @SQLiteMode(SQLiteMode.Mode.NATIVE)
 class DebtAcceptedReadRoomTest {
+    @Test fun restoredResourceRetiresItsFilteredRoomListsWithoutRetiringOtherDebtFacts() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), AppDatabase::class.java).build()
+        try {
+            val debt = RepaymentResponseLossProbe().current
+            var offline = false
+            var missing = false
+            val fixture = GoalReadFixture(decorateDao = { db.expenseDao() }, decorate = { api -> object : ApiService by api {
+                override suspend fun debt(publicId: String): DebtDto {
+                    if (offline) throw ConnectException("offline after resource recovery")
+                    if (missing) throw HttpException(Response.error<Any>(404, """{"error":"debt_not_found"}""".toResponseBody()))
+                    return debt.copy(publicId = publicId)
+                }
+                override suspend fun debts(lens: String?): DebtListResponseDto {
+                    if (offline) throw ConnectException("offline after resource recovery")
+                    return DebtListResponseDto(listOf(debt, debt.copy(publicId = "other")), debt.homeCurrencyCode)
+                }
+            } })
+            fun reader() = DebtQueryReader(fixture.provider, db.expenseDao(), fixture.coordinator)
+            val queries = reader()
+            val other = queries.detail(fixture.binding, "other").getOrThrow()
+            missing = true
+            assertTrue(queries.detail(fixture.binding, debt.publicId).isFailure)
+            missing = false
+            for (lens in DebtListLens.entries) {
+                assertEquals(listOf("other"), queries.list(fixture.binding, lens).getOrThrow().value.debts.map { it.publicId })
+            }
+            val restored = queries.detail(fixture.binding, debt.publicId).getOrThrow()
+            offline = true
+            assertEquals(restored.copy(fromCache = true), reader().detail(fixture.binding, debt.publicId).getOrThrow())
+            assertEquals(other.copy(fromCache = true), reader().detail(fixture.binding, "other").getOrThrow())
+            for (lens in DebtListLens.entries) assertTrue(reader().list(fixture.binding, lens).isFailure)
+            offline = false
+            val complete = queries.list(fixture.binding, DebtListLens.Ledger).getOrThrow()
+            assertEquals(listOf(debt.publicId, "other"), complete.value.debts.map { it.publicId })
+            offline = true
+            assertEquals(complete.copy(fromCache = true), reader().list(fixture.binding, DebtListLens.Ledger).getOrThrow())
+        } finally { db.close() }
+    }
+
     @Test fun originalAcceptedRepaymentAutomaticallyReentersAfterReadCleanupRollbackWithoutRevivingTheOldQuery() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), AppDatabase::class.java).build()
         try {

@@ -860,6 +860,7 @@ internal class LedgerFakeDao : ExpenseDao {
         statsCache.byKind(bindingKey, "debt_direct_barrier").filter { it.tag in tokens }.forEach(statsCache::delete)
     }
     override suspend fun debtReadEpoch(bindingKey: String) = statsCache.find(bindingKey, "debt_read_epoch", "", "", "UTC").singleOrNull()?.responseJson
+    override suspend fun clearDebtListSnapshots(bindingKey: String) = statsCache.clearKinds(bindingKey, setOf("debt_list"))
     override suspend fun clearDebtSnapshots(bindingKey: String) = statsCache.clearKinds(bindingKey, setOf("debt_list", "debt_detail", "debt_activity"))
     override suspend fun debtResourceDenials(bindingKey: String) = statsCache.byKind(bindingKey, "debt_resource_denial")
     override suspend fun clearDebtResourceDenial(bindingKey: String, publicId: String) {

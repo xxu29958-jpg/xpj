@@ -40,6 +40,9 @@ internal data class DebtQueryScope(val row: StatsProjectionCacheEntity, val publ
 private data class DebtReadRequest(val binding: LogicalSessionBinding, val scope: DebtQueryScope,
     val ticket: SnapshotReadTicket, val localGeneration: Long, val epoch: Long, val resourceFence: String?,
     val unpublishedAcceptance: String?, val directWasActive: Boolean)
+private class DebtReadChanged : IllegalStateException("原往来提交状态已变化，请重新读取。")
+private val DebtReadRequest.canRetryRepair: Boolean
+    get() = !directWasActive && (unpublishedAcceptance != null || scope.directTokens.isNotEmpty())
 internal data class DebtReadSpec<T>(val adapter: JsonAdapter<T>, val fetch: suspend ApiService.() -> T,
     val validate: (T) -> Unit, val isNewer: (T, T) -> Boolean, val project: (T, Set<String>) -> T)
 
@@ -129,7 +132,7 @@ internal class DebtQueryReader(
             .map { ReadSnapshot(it.value.toDomain(), it.fetchedAt, it.fromCache) }
 
     internal suspend fun <T> read(binding: LogicalSessionBinding, scope: DebtQueryScope,
-        spec: DebtReadSpec<T>): Result<ReadSnapshot<T>> = errors.safeCall {
+        spec: DebtReadSpec<T>, retryRepair: Boolean = true): Result<ReadSnapshot<T>> = errors.safeCall {
         val query = scope.row
         scope.publicId?.let { require(it.isNotBlank()) }
         val bound = guard.bindExact(binding)
@@ -154,9 +157,14 @@ internal class DebtQueryReader(
             }
         }
         spec.validate(wire)
-        coordinator.acceptSnapshotRead(ticket, bound, fromCache = false) { allowed ->
-            val (repaired, storageAllowed) = repairDebtDirectRead(request, allowed)
-            publish(repaired, spec, wire, storageAllowed)
+        try {
+            coordinator.acceptSnapshotRead(ticket, bound, fromCache = false) { allowed ->
+                val (repaired, storageAllowed) = repairDebtDirectRead(request, allowed)
+                publish(repaired, spec, wire, storageAllowed)
+            }
+        } catch (error: DebtReadChanged) {
+            if (!retryRepair || !request.canRetryRepair) throw error
+            read(binding, scope, spec, retryRepair = false).getOrThrow()
         }
     }
 
@@ -190,9 +198,7 @@ internal class DebtQueryReader(
         cacheAllowed: Boolean): ReadSnapshot<T> = mutex.withLock {
         val query = request.scope.row
         val publicId = request.scope.publicId
-        check(request.localGeneration == generation.get() && (dao.debtReadEpoch(query.bindingKey)?.toLong() ?: 0L) == request.epoch) {
-            "往来已接受修改，请重新读取。"
-        }
+        if (request.localGeneration != generation.get() || (dao.debtReadEpoch(query.bindingKey)?.toLong() ?: 0L) != request.epoch) throw DebtReadChanged()
         val denied = deniedResources(query.bindingKey)
         check(publicId == null || denied[publicId] == request.resourceFence) { "这笔往来的读取已失效。" }
         val fresh = spec.project(wire, denied.keys)
@@ -213,6 +219,7 @@ internal class DebtQueryReader(
         accepted[key] = selected
         try {
             dao.saveDebtSnapshotIfCurrent(selected.query, request.epoch, publicId?.takeIf { request.resourceFence != null })
+            retireRestoredDebtLists(accepted, request)
             if (publicId != null) {
                 dao.clearDebtResourceDenial(query.bindingKey, publicId)
                 localResourceDenials.remove("${query.bindingKey}|$publicId")
@@ -222,7 +229,7 @@ internal class DebtQueryReader(
         val value = requireNotNull(spec.adapter.fromJson(selected.stored.response))
         ReadSnapshot(spec.project(value, denied.keys), selected.query.fetchedAt, fromCache = selected !== incoming)
     }
-    private suspend fun rejectResource(binding: LogicalSessionBinding, query: StatsProjectionCacheEntity,
+    internal suspend fun rejectResource(binding: LogicalSessionBinding, query: StatsProjectionCacheEntity,
         publicId: String, failure: RepositoryException) {
         val token = UUID.randomUUID().toString()
         localResourceDenials["${query.bindingKey}|$publicId"] = token
@@ -239,6 +246,12 @@ internal class DebtQueryReader(
             .filter { it.key.startsWith("$bindingKey|") }.associate { it.key.removePrefix("$bindingKey|") to it.value }
 
 
+}
+
+private fun retireRestoredDebtLists(accepted: MutableMap<String, AcceptedDebtQuery>, request: DebtReadRequest) {
+    if (request.resourceFence != null) {
+        accepted.entries.removeAll { it.value.query.bindingKey == request.scope.row.bindingKey && it.value.query.kind == "debt_list" }
+    }
 }
 
 private fun validateDebt(debt: DebtDto, binding: LogicalSessionBinding, publicId: String?, allowShell: Boolean) {
@@ -267,7 +280,7 @@ private fun debtScope(binding: LogicalSessionBinding, kind: String, tag: String)
     logicalBindingAdapter.toJson(binding), binding.ledgerId, kind, "", tag, "", "UTC", "", "")
 
 /** Only the existing direct writer invokes this guard; the original command and key remain its own. */
-internal suspend fun <T> DebtQueryReader.direct(binding: LogicalSessionBinding, send: suspend () -> T): T {
+internal suspend fun <T> DebtQueryReader.direct(binding: LogicalSessionBinding, publicId: String? = null, send: suspend () -> T): T {
     val bound = guard.bindExact(binding)
     val key = logicalBindingAdapter.toJson(binding)
     val token = UUID.randomUUID().toString()
@@ -280,6 +293,9 @@ internal suspend fun <T> DebtQueryReader.direct(binding: LogicalSessionBinding, 
         val result = try { send() } catch (error: HttpException) {
             val failure = NetworkErrorHandler({ binding.serverUrl }, "Debt").httpFailure(error)
             if (failure.httpStatusCode == 401) coordinator.rejectSnapshotAccess(bound, key, failure)
+            if (failure.httpStatusCode == 404 && failure.errorCode == "debt_not_found" && publicId != null && bound.isStillActive()) {
+                rejectResource(binding, debtScope(binding, "debt_detail", publicId), publicId, failure)
+            }
             if (error.code() in 400..499 && error.code() !in setOf(408, 429) && failure.errorCode != "idempotency_key_in_progress") {
                 try { dao.clearDebtDirectBarriers(key, listOf(token)) } catch (_: SQLiteException) { /* Retry the read repair only. */ }
             }
@@ -304,8 +320,7 @@ private suspend fun DebtQueryReader.repairDebtDirectRead(request: DebtReadReques
     val query = request.scope.row
     val tokens = dao.debtDirectBarriers(query.bindingKey).map { it.tag }.toSet()
     val publication = dao.debtOutboxReadBarrier(query.bindingKey)?.responseJson
-    check(publication == request.unpublishedAcceptance) { "原往来提交状态已变化，请重新读取。" }
-    check(tokens == request.scope.directTokens) { "原往来提交状态已变化，请重新读取。" }
+    if (publication != request.unpublishedAcceptance || tokens != request.scope.directTokens) throw DebtReadChanged()
     val active = hasActiveDirect(query.bindingKey)
     check(!request.directWasActive || active) { "原往来提交状态已变化，请重新读取。" }
     if (!cacheAllowed || active) return request to false
@@ -315,6 +330,7 @@ private suspend fun DebtQueryReader.repairDebtDirectRead(request: DebtReadReques
         request.copy(epoch = request.epoch + 1, unpublishedAcceptance = null,
             scope = request.scope.copy(directTokens = emptySet())) to true
     } catch (_: SQLiteException) { request to false }
+    catch (_: IllegalStateException) { throw DebtReadChanged() }
 }
 
 private fun DebtQueryReader.hasActiveDirect(bindingKey: String) = activeDirect.any { it.startsWith("$bindingKey|") }

@@ -141,7 +141,7 @@ class DebtRepository internal constructor(
         if (!canModifyLedger()) return Result.failure(RepositoryException(DEBT_VIEWER_READONLY))
         return errorHandler.safeCall {
             ledgerRequestGuard.guardedCall { api ->
-                queryReader.direct(logicalBinding) { api.setDebtKind(
+                queryReader.direct(logicalBinding, publicId) { api.setDebtKind(
                     publicId = publicId,
                     request = DebtKindSetRequestDto(
                         debtKind = debtKind,
@@ -182,7 +182,7 @@ class DebtRepository internal constructor(
                 throw RepositoryException("确认金额必须大于 0。")
             }
             ledgerRequestGuard.bindExact(task.binding).call { api ->
-                queryReader.direct(task.binding) { when (command) {
+                queryReader.direct(task.binding, task.debtPublicId) { when (command) {
                     is MemberSettlementCommand.Propose -> MemberSettlementResult.Proposal(
                         api.createRepaymentProposal(task.debtPublicId, MemberRepaymentProposalCreateRequestDto(
                             proposedAmountCents = command.amountCents, note = command.note,

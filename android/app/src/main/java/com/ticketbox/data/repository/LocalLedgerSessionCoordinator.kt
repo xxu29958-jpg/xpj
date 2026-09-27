@@ -119,7 +119,9 @@ class LocalLedgerSessionCoordinator(
             settingsStore.persistSnapshotAccessDenial(bound.logicalBinding, requireNotNull(pendingAccessCleanupBindingKey), null))
         if (cacheAllowed && pending != null) pendingAccessCleanupBindingKey = null
         val outboxRef = outbox
-        if (outboxRef == null) block(cacheAllowed) else outboxRef.withActiveBinding(bound) { block(cacheAllowed) }
+        val result = if (outboxRef == null) block(cacheAllowed) else outboxRef.withActiveBinding(bound) { block(cacheAllowed) }
+        if (!fromCache && cacheAllowed && accessDenials.value?.binding == bound.logicalBinding) accessDenials.value = null
+        result
     }
 
     internal suspend fun rejectSnapshotAccess(bound: BoundLedgerRequest, bindingKey: String, failure: RepositoryException) {

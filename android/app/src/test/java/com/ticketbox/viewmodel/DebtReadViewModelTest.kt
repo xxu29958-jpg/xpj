@@ -80,7 +80,7 @@ class DebtReadViewModelTest {
         assertEquals("2026-09-27T01:00:00Z", model.state.value.fetchedAt)
     }
 
-    @Test fun actionKeepsOriginalTargetOccAndTextAcrossRefreshAndRefusalUntilExplicitCancel() = runTest(dispatcher) {
+    @Test fun actionKeepsOriginalTargetOccAndTextUntilExplicitReviewOrCancel() = runTest(dispatcher) {
         val actions = FakeDebtActions().apply {
             detailResult = Result.success(sampleDebt().copy(homeCurrencyCode = "JPY", originalCurrencyCode = "JPY"))
         }
@@ -112,8 +112,39 @@ class DebtReadViewModelTest {
         assertEquals("1200", model.state.value.amountInput)
         assertEquals(original, actions.writes.saveCalls.single().debt)
         assertEquals(original.rowVersion, actions.writes.saveCalls.single().debt.rowVersion)
+        model.updateActionInput(reviewLatest = true)
+        assertEquals(8L, model.state.value.actionTarget?.rowVersion)
+        assertEquals("1200", model.state.value.amountInput)
+        assertEquals("原原因", model.state.value.reasonInput)
+        assertEquals(com.ticketbox.domain.model.CurrencyCode.JPY, model.state.value.amountInputCurrency)
+        assertFalse(model.state.value.canReviewAction)
+        model.submit()
+        advanceUntilIdle()
+        assertEquals(8L, actions.writes.saveCalls.last().debt.rowVersion)
+        assertEquals(1_200L, actions.writes.saveCalls.last().amountCents)
         model.dismissAction()
         assertNull(model.state.value.actionTarget)
+    }
+
+    @Test fun cachedDetailWithNoOriginalWriteKeepsOfflineAdjustmentAvailable() = runTest(dispatcher) {
+        val actions = FakeDebtActions().apply {
+            fromCache = true
+            detailResult = Result.success(sampleDebt().copy(homeCurrencyCode = "JPY", originalCurrencyCode = "JPY"))
+        }
+        val model = DebtDetailViewModel(actions, actions.writes)
+        model.loadDebt("debt-1")
+        advanceUntilIdle()
+        assertTrue(model.state.value.fromCache)
+        assertNull(model.state.value.writeMessage)
+        assertTrue(model.state.value.canWriteActions)
+        model.openAction(DebtAction.Adjustment)
+        model.updateActionInput(amount = "1200", reason = "保留离线调整")
+        model.submit()
+        advanceUntilIdle()
+        val original = actions.writes.saveCalls.single()
+        assertEquals(1_200L, original.amountCents)
+        assertEquals("JPY", original.debt.homeCurrencyCode)
+        assertEquals("保留离线调整", original.reason)
     }
     @Test fun cachedHigherVersionDoesNotClearAcceptedOriginalWriteRefreshGate() = runTest(dispatcher) {
         val actions = FakeDebtActions().apply {

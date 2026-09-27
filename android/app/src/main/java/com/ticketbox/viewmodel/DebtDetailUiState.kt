@@ -47,6 +47,12 @@ data class DebtDetailUiState(
             pendingWrites.none { it.isUnresolved } && locallyAcceptedWriteId == null &&
             writeRefreshAfterVersion == null && writeRefreshAtVersion == null
 
+    /** Only an explicit review can replace an unsubmitted form's original same-currency target. */
+    val canReviewAction: Boolean
+        get() = canWriteActions && !fromCache && activeAction != null && actionTarget != null && debt != null &&
+            debt.publicId == actionTarget.publicId && debt.homeCurrencyCode == actionTarget.homeCurrencyCode &&
+            debt.rowVersion > actionTarget.rowVersion
+
     val writeMessage: UiText?
         get() = when {
             writeRefreshAfterVersion != null || writeRefreshAtVersion != null ->
@@ -96,7 +102,7 @@ internal fun DebtDetailUiState.withWriteRows(
         locallyAcceptedWriteId = locallyAcceptedWriteId?.takeUnless { id -> rows.any { it.row.id == id } },
         writeRefreshAfterVersion = if (needsRefresh && confirmedVersion != null) maxOf(writeRefreshAfterVersion ?: 0, confirmedVersion)
             else writeRefreshAfterVersion,
-        writeRefreshAtVersion = if (initial || newlyTerminal) maxOf(writeRefreshAtVersion ?: 0, stoppedVersion ?: 0)
+        writeRefreshAtVersion = if ((initial || newlyTerminal) && stoppedVersion != null) maxOf(writeRefreshAtVersion ?: 0, stoppedVersion)
             else writeRefreshAtVersion,
     )
 }

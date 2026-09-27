@@ -16,6 +16,41 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class BillSplitDebtReadContinuityTest {
+    @Test fun acceptingIntoAnotherLedgerCannotReuseThatLedgersEarlierBindingAfterSelection() = runTest {
+        for (loseAck in listOf(false, true)) {
+            val api = InvitationDebtApi().apply { this.loseAck = loseAck }
+            val fixture = GoalReadFixture { api }
+            suspend fun select(ledgerId: String) {
+                val current = requireNotNull(fixture.session.sessionStore.currentSession()).identity
+                fixture.coordinator.applyTransition(LedgerSessionTransition(LocalSessionChange.SelectLedger,
+                    LedgerSessionIdentity(current.accountPublicId, current.devicePublicId, current.accountName,
+                        ledgerId, ledgerId, current.deviceName, current.role, current.boundAt)))
+            }
+            fun reader() = DebtQueryReader(fixture.provider, fixture.dao, fixture.coordinator)
+            select("target")
+            val originalTarget = fixture.binding
+            assertTrue(reader().list(originalTarget, DebtListLens.Ledger).getOrThrow().value.debts.isEmpty())
+            select("owner")
+            val accepted = fixture.stats.acceptBillSplitInvitation(fixture.binding, "split-jpy", "target")
+            assertEquals(!loseAck, accepted.isSuccess)
+            assertEquals(BillSplitAcceptRequestDto("target"), api.request)
+            select("target")
+            assertTrue(originalTarget.bindingRevision != fixture.binding.bindingRevision)
+            api.offline = true
+            assertTrue(reader().list(fixture.binding, DebtListLens.Ledger).isFailure,
+                "A real new target selection cannot present its retired empty list, including after ACK loss")
+            api.offline = false
+            val recovered = reader().list(fixture.binding, DebtListLens.Ledger).getOrThrow()
+            assertEquals("received-debt", recovered.value.debts.single().publicId)
+            assertEquals("target", recovered.value.debts.single().ledgerId)
+            assertEquals("JPY", recovered.value.debts.single().homeCurrencyCode)
+            assertEquals(1200L, recovered.value.debts.single().originalAmountMinor)
+            api.offline = true
+            assertEquals(recovered.copy(fromCache = true), reader().list(fixture.binding, DebtListLens.Ledger).getOrThrow())
+            assertEquals(1, api.acceptCalls)
+        }
+    }
+
     @Test fun acceptedInvitationCannotLeaveAnOldEmptyDebtListReadableAfterReopening() = runTest {
         val api = InvitationDebtApi()
         val fixture = GoalReadFixture { api }
@@ -57,11 +92,12 @@ private class InvitationDebtApi : ApiService by FakeApiService(mutableListOf(), 
     var offline = false
     var reject = false
     var accepted = false
+    var loseAck = false
     var acceptCalls = 0
     var request: BillSplitAcceptRequestDto? = null
     override suspend fun debts(lens: String?): DebtListResponseDto {
         if (offline) throw ConnectException("offline after invitation result")
-        return DebtListResponseDto(if (accepted) listOf(DebtDto(publicId = "received-debt", ledgerId = "owner",
+        return DebtListResponseDto(if (accepted) listOf(DebtDto(publicId = "received-debt", ledgerId = request?.targetLedgerId,
             direction = "i_owe", counterpartyType = "member", counterpartyLabel = "原拆账发起人",
             principalAmountCents = 1200, remainingAmountCents = 1200, paidAmountCents = 0, status = "open",
             sourceType = "bill_split", homeCurrencyCode = "JPY", originalCurrencyCode = "JPY", originalAmountMinor = 1200,
@@ -72,6 +108,7 @@ private class InvitationDebtApi : ApiService by FakeApiService(mutableListOf(), 
         acceptCalls++
         if (reject) throw HttpException(Response.error<Any>(409, """{"error":"bill_split_not_pending"}""".toResponseBody()))
         accepted = true
+        if (loseAck) throw ConnectException("accepted invitation ACK lost")
         return FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0).acceptBillSplitInvitation(publicId, request)
             .copy(publicId = publicId, status = "accepted", amountCents = 1200, homeCurrencyCode = "JPY",
                 acceptedAt = "2026-09-27T01:00:00Z")

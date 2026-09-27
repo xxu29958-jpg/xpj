@@ -82,7 +82,7 @@ class RepaymentDraftRepository internal constructor(
         if (!canModifyLedger()) return Result.failure(RepositoryException(REPAYMENT_DRAFT_VIEWER_READONLY))
         return errorHandler.safeCall {
             ledgerRequestGuard.bindExact(expectedBinding).call { api ->
-                queryReader.direct(expectedBinding) { api.confirmRepaymentDraft(
+                queryReader.direct(expectedBinding, targetDebtPublicId) { api.confirmRepaymentDraft(
                     publicId = draftPublicId,
                     request = confirmRepaymentDraftRequest(
                         targetDebtPublicId = targetDebtPublicId,
