@@ -104,6 +104,7 @@ fun RepaymentDraftInboxScreen(
             onRefresh = viewModel::refresh,
         ),
     ) {
+        item { DebtReadSource(state.targetsFetchedAt, state.targetsFromCache, state.isLoading) }
         state.flashMessage?.let { msg ->
             item { AppStatusBanner(message = msg, tone = MessageTone.Success) }
         }

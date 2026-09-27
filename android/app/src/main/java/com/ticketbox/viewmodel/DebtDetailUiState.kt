@@ -18,10 +18,13 @@ import com.ticketbox.domain.model.UiText
 data class DebtDetailUiState(
     val binding: LogicalSessionBinding? = null,
     val isLoading: Boolean = false,
+    val fetchedAt: String? = null,
+    val fromCache: Boolean = false,
     val debt: Debt? = null,
     val canModify: Boolean = true,
     val error: UiText? = null,
     val activeAction: DebtAction? = null,
+    val actionTarget: Debt? = null,
     val repaymentToVoid: DebtRepayment? = null,
     val amountInput: String = "",
     val reasonInput: String = "",
@@ -44,6 +47,12 @@ data class DebtDetailUiState(
             pendingWrites.none { it.isUnresolved } && locallyAcceptedWriteId == null &&
             writeRefreshAfterVersion == null && writeRefreshAtVersion == null
 
+    /** Only an explicit review can replace an unsubmitted form's original same-currency target. */
+    val canReviewAction: Boolean
+        get() = canWriteActions && !fromCache && activeAction != null && actionTarget != null && debt != null &&
+            debt.publicId == actionTarget.publicId && debt.homeCurrencyCode == actionTarget.homeCurrencyCode &&
+            debt.rowVersion > actionTarget.rowVersion
+
     val writeMessage: UiText?
         get() = when {
             writeRefreshAfterVersion != null || writeRefreshAtVersion != null ->
@@ -61,7 +70,7 @@ data class DebtDetailUiState(
      * 环境 CurrencyDisplay（否则 JPY 欠款显示 ¥500.00 却按 JPY 实扣 500，见 PR#255 P1）。
      */
     val amountInputCurrency: CurrencyCode
-        get() = debt?.let { CurrencyCode.fromStorageKey(it.homeCurrencyCode) } ?: FxContract.HomeCurrency
+        get() = (actionTarget ?: debt)?.let { CurrencyCode.fromStorageKey(it.homeCurrencyCode) } ?: FxContract.HomeCurrency
 
     /**
      * record 币种是否在客户端支持集外（PR#255 R7-2 / R10⑤）：true 时**金额动作**（还款/调整）
@@ -93,7 +102,7 @@ internal fun DebtDetailUiState.withWriteRows(
         locallyAcceptedWriteId = locallyAcceptedWriteId?.takeUnless { id -> rows.any { it.row.id == id } },
         writeRefreshAfterVersion = if (needsRefresh && confirmedVersion != null) maxOf(writeRefreshAfterVersion ?: 0, confirmedVersion)
             else writeRefreshAfterVersion,
-        writeRefreshAtVersion = if (initial || newlyTerminal) maxOf(writeRefreshAtVersion ?: 0, stoppedVersion ?: 0)
+        writeRefreshAtVersion = if ((initial || newlyTerminal) && stoppedVersion != null) maxOf(writeRefreshAtVersion ?: 0, stoppedVersion)
             else writeRefreshAtVersion,
     )
 }

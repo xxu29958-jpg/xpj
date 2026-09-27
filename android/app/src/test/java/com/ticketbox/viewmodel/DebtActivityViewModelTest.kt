@@ -33,7 +33,7 @@ class DebtActivityViewModelTest {
     @Test
     fun acknowledgedProposalInvalidatesActivityWithoutChangingDebtVersion() = runTest(dispatcher) {
         var reads = 0
-        val model = DebtActivityViewModel(DebtActivityQueries { task, page, _ ->
+        val model = DebtActivityViewModel(debtActivityQueries { task, page, _ ->
             reads++
             Result.success(historyPage(task.debtPublicId, page))
         })
@@ -52,7 +52,7 @@ class DebtActivityViewModelTest {
     fun failedReentryKeepsTheRetainedPageAndRetriesTheCurrentTimeline() = runTest(dispatcher) {
         var fail = false
         val requestedPages = mutableListOf<Int>()
-        val model = DebtActivityViewModel(DebtActivityQueries { task, page, _ ->
+        val model = DebtActivityViewModel(debtActivityQueries { task, page, _ ->
             requestedPages += page
             if (fail) Result.failure(IOException("offline")) else Result.success(historyPage(task.debtPublicId, page))
         })
@@ -78,7 +78,7 @@ class DebtActivityViewModelTest {
     @Test
     fun acceptedCommandRefreshFailureMakesRetainedPageReadOnlyUntilRecovery() = runTest(dispatcher) {
         var fail = false
-        val model = DebtActivityViewModel(DebtActivityQueries { task, page, _ ->
+        val model = DebtActivityViewModel(debtActivityQueries { task, page, _ ->
             if (fail) Result.failure(IOException("offline")) else Result.success(historyPage(task.debtPublicId, page))
         })
         val task = memberDebtTask("A")
@@ -106,7 +106,7 @@ class DebtActivityViewModelTest {
     fun linkedPaymentUsesServerPageAndFailedFocusCanRetryWithoutLosingCurrentRows() = runTest(dispatcher) {
         var fail = true
         val focuses = mutableListOf<String?>()
-        val model = DebtActivityViewModel(DebtActivityQueries { task, page, focus ->
+        val model = DebtActivityViewModel(debtActivityQueries { task, page, focus ->
             focuses += focus
             if (focus != null && fail) Result.failure(IOException("offline"))
             else Result.success(historyPage(task.debtPublicId, if (focus == null) page else 3).copy(total = 3))
@@ -132,7 +132,7 @@ class DebtActivityViewModelTest {
 
     @Test
     fun pageNavigationReplacesRatherThanMergesIndependentResponses() = runTest(dispatcher) {
-        val queries = DebtActivityQueries { id, page, _ -> Result.success(historyPage(id.debtPublicId, page)) }
+        val queries = debtActivityQueries { id, page, _ -> Result.success(historyPage(id.debtPublicId, page)) }
         val viewModel = DebtActivityViewModel(queries)
         viewModel.loadDebt(memberDebtTask("A"), 1)
         advanceUntilIdle()
@@ -152,7 +152,7 @@ class DebtActivityViewModelTest {
     @Test
     fun failedNextPageKeepsVisibleRecordsAndCanRetryRequestedPage() = runTest(dispatcher) {
         var failed = true
-        val queries = DebtActivityQueries { id, page, _ ->
+        val queries = debtActivityQueries { id, page, _ ->
             if (page == 2 && failed) Result.failure(IOException("offline"))
             else Result.success(historyPage(id.debtPublicId, page))
         }
@@ -174,7 +174,7 @@ class DebtActivityViewModelTest {
     @Test
     fun canonicalParentVersionChangeReloadsHistoryAndKeepsVoidedFactVisible() = runTest(dispatcher) {
         var page = historyPage("A", 1)
-        val viewModel = DebtActivityViewModel(DebtActivityQueries { _, _, _ -> Result.success(page) })
+        val viewModel = DebtActivityViewModel(debtActivityQueries { _, _, _ -> Result.success(page) })
         viewModel.loadDebt(memberDebtTask("A"), 1)
         advanceUntilIdle()
 
@@ -192,7 +192,7 @@ class DebtActivityViewModelTest {
     @Test
     fun movingToAnotherDebtDoesNotPublishAnEarlierInFlightHistory() = runTest(dispatcher) {
         val oldLoad = CompletableDeferred<Result<DebtActivityPage>>()
-        val queries = DebtActivityQueries { id, page, _ ->
+        val queries = debtActivityQueries { id, page, _ ->
             if (id.debtPublicId == "A") oldLoad.await() else Result.success(historyPage(id.debtPublicId, page))
         }
         val viewModel = DebtActivityViewModel(queries)
@@ -212,7 +212,7 @@ class DebtActivityViewModelTest {
         val original = memberDebtTask("A")
         val replacement = original.copy(binding = original.binding.copy(bindingRevision = "replacement"))
         val oldLoad = CompletableDeferred<Result<DebtActivityPage>>()
-        val queries = DebtActivityQueries { task, page, _ ->
+        val queries = debtActivityQueries { task, page, _ ->
             if (task == original) oldLoad.await() else Result.success(historyPage(task.debtPublicId, page)
                 .copy(items = emptyList(), total = 0))
         }
@@ -232,7 +232,7 @@ class DebtActivityViewModelTest {
     @Test
     fun failedInitialHistoryKeepsItsRenderedTaskAndRetryFeedback() = runTest(dispatcher) {
         val task = memberDebtTask("A")
-        val model = DebtActivityViewModel(DebtActivityQueries { _, _, _ -> Result.failure(IOException("offline")) })
+        val model = DebtActivityViewModel(debtActivityQueries { _, _, _ -> Result.failure(IOException("offline")) })
         model.loadDebt(task, 1)
         assertTrue(model.state.value.isLoading)
         assertEquals(task.binding, model.state.value.binding)
@@ -241,6 +241,35 @@ class DebtActivityViewModelTest {
         assertEquals(task.binding, model.state.value.binding)
         assertNotNull(model.state.value.error)
         assertFalse(model.state.value.isLoading)
+    }
+
+    @Test fun sharedRefusalRemovesHistoryAndItsSourceAndStopsEarlierPageFromReturning() = runTest(dispatcher) {
+        val denials = kotlinx.coroutines.flow.MutableSharedFlow<com.ticketbox.data.repository.SnapshotAccessDenial>()
+        val gate = CompletableDeferred<Unit>()
+        var delayed = false
+        val queries = object : DebtActivityQueries {
+            override fun observeReadAccessDenials() = denials
+            override suspend fun listActivity(task: com.ticketbox.data.repository.DebtTask, page: Int, focusRepayment: String?) = run {
+                if (delayed) gate.await()
+                Result.success(debtReadSnapshot(historyPage(task.debtPublicId, page)))
+            }
+        }
+        val task = memberDebtTask("A")
+        val model = DebtActivityViewModel(queries)
+        model.loadDebt(task, 1)
+        advanceUntilIdle()
+        assertTrue(model.state.value.items.isNotEmpty())
+        delayed = true
+        model.loadPage(2)
+        runCurrent()
+        denials.emit(com.ticketbox.data.repository.SnapshotAccessDenial(task.binding,
+            com.ticketbox.data.repository.RepositoryException("无权查看", httpStatusCode = 403), 1))
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertTrue(model.state.value.items.isEmpty())
+        assertEquals(null, model.state.value.fetchedAt)
+        assertFalse(model.state.value.actionsCurrent)
+        assertEquals(0, model.state.value.total)
     }
 
 }
@@ -254,3 +283,6 @@ private fun historyPage(id: String, page: Int) = DebtActivityPage(
     ))),
     page = page, pageSize = 1, total = 2,
 )
+
+private fun debtActivityQueries(block: suspend (com.ticketbox.data.repository.DebtTask, Int, String?) -> Result<DebtActivityPage>) =
+    DebtActivityQueries { task, page, focus -> block(task, page, focus).map { debtReadSnapshot(it) } }

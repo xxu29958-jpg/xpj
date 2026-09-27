@@ -16,17 +16,17 @@ interface SplitAgreementActions {
     suspend fun recover(task: DebtTask, row: OutboxRow, drop: Boolean): Result<Unit>
 }
 
-class SplitAgreementRepository(
+class SplitAgreementRepository internal constructor(
     private val apiProvider: ApiServiceProvider,
     private val outbox: OutboxRepository,
     private val adapter: JsonAdapter<SplitAgreementPayload>,
+    private val queryReader: DebtQueryReader,
 ) : SplitAgreementActions {
     private val guard = LedgerRequestGuard(apiProvider)
     private val errors = NetworkErrorHandler(serverUrlProvider = { null }, context = "SplitAgreement")
 
-    override suspend fun load(task: DebtTask, share: Long?): Result<BillSplitAgreementDto> = errors.safeCall {
-        guard.bindExact(task.binding).call { it.splitAgreement(task.debtPublicId, share) }
-    }
+    override suspend fun load(task: DebtTask, share: Long?): Result<BillSplitAgreementDto> =
+        queryReader.freshQuery(task) { splitAgreement(task.debtPublicId, share) }
 
     override suspend fun submit(task: DebtTask, intent: SplitAgreementPayload): Result<Long> = errors.safeCall {
         val bound = guard.bindExact(task.binding)

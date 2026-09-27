@@ -90,7 +90,7 @@ sealed interface DispatchResult {
      */
     // True only for an unsent original or a proven HTTP refusal, never an unverified 2xx receipt.
     data class Failure(val message: String, val blocksFollowing: Boolean = true, val definitelyRejected: Boolean = false,
-        val credentialRejected: Boolean = false) : DispatchResult
+        val credentialRejected: Boolean = false, val missingDebtPublicId: String? = null) : DispatchResult
 
     /**
      * Transient failure that the drain engine should retry on a

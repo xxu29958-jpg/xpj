@@ -8,6 +8,7 @@ import com.ticketbox.domain.model.ImmersionMode
 import com.ticketbox.domain.model.NotificationPreferences
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import org.json.JSONObject
 
 private val Context.ticketboxBackgroundDataStore by preferencesDataStore(
     name = "ticketbox_background_settings",
@@ -197,6 +198,29 @@ internal class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
             if (statusCode == null) update.remove(key) else update.putInt(key, statusCode)
         }
         check(update.commit()) { "Unable to persist read access denial." }
+    }
+
+    override fun debtResourceCacheRetirements(bindingKey: String): Map<String, String> = synchronized(prefs) {
+        val json = prefs.getString("debt_resource_cache_retirement:$bindingKey", null) ?: return@synchronized emptyMap()
+        val pending = JSONObject(json)
+        pending.keys().asSequence().associateWith { pending.getString(it) }
+    }
+
+    override fun markDebtResourceCacheRetirement(bindingKey: String, publicId: String, token: String) = synchronized(prefs) {
+        val pending = debtResourceCacheRetirements(bindingKey) + (publicId to token)
+        writeDebtResourceCacheRetirements(bindingKey, pending)
+    }
+
+    override fun finishDebtResourceCacheRetirement(bindingKey: String, publicId: String, expectedToken: String) = synchronized(prefs) {
+        val pending = debtResourceCacheRetirements(bindingKey)
+        if (pending[publicId] == expectedToken) writeDebtResourceCacheRetirements(bindingKey, pending - publicId)
+    }
+
+    private fun writeDebtResourceCacheRetirements(bindingKey: String, pending: Map<String, String>) {
+        val key = "debt_resource_cache_retirement:$bindingKey"
+        val update = prefs.edit()
+        if (pending.isEmpty()) update.remove(key) else update.putString(key, JSONObject(pending).toString())
+        check(update.commit()) { "Unable to persist Debt cache retirement." }
     }
 
     override fun markUnlocked() {

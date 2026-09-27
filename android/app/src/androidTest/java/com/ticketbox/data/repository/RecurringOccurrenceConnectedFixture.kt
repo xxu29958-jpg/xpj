@@ -46,7 +46,8 @@ internal class RecurringOccurrenceConnectedFixture(private val context: Context)
     val confirmedStream = MutableStateFlow(listOf(occurrenceConnectedPayment()))
     val debts: DebtActions = object : DebtActions by occurrenceProxy<DebtActions>({ method, _ -> error("Unexpected debt method: $method") }) {
         override suspend fun listDebts(lens: DebtListLens) =
-            Result.success(DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "CNY"))
+            Result.success(ReadSnapshot(DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "CNY"),
+                "2026-09-27T01:00:00Z", false))
     }
     val ledger: LedgerActions = object : LedgerActions by occurrenceProxy<LedgerActions>({ method, _ -> error("Unexpected ledger method: $method") }) {
         override fun observeConfirmedStream() = confirmedStream

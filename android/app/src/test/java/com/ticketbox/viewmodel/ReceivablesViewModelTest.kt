@@ -3,6 +3,8 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.ReceivablesActions
+import com.ticketbox.data.repository.DebtReadResourceDenial
+import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtDirections
@@ -12,6 +14,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.job
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -39,6 +42,40 @@ class ReceivablesViewModelTest {
     @AfterTest
     fun tearDown() {
         Dispatchers.resetMain()
+    }
+
+    @Test fun resourceRefusalDuringColdOrRefreshReadContinuesOtherPersonalReceivablesAndRejectsLateRows() = runTest(dispatcher) {
+        for (cold in listOf(true, false)) {
+            val other = sampleReceivable("kept").copy(homeCurrencyCode = "JPY", originalCurrencyCode = "JPY")
+            val actions = FakeReceivablesActions(Result.success(listOf(other.copy(publicId = "gone"), other)))
+            val gate = CompletableDeferred<Unit>()
+            if (cold) actions.gate = gate
+            val vm = ReceivablesViewModel(actions, FakeDebtWriteActions())
+            advanceUntilIdle()
+            if (!cold) {
+                actions.gate = gate
+                vm.refresh()
+                runCurrent()
+            }
+            assertTrue(vm.state.value.isLoading)
+            val current = other.copy(rowVersion = 9, remainingAmountCents = 7_000)
+            actions.result = Result.success(listOf(current))
+            actions.gate = null
+            try {
+                actions.resourceDenials.emit(DebtReadResourceDenial(adjustmentBinding(), "gone",
+                    RepositoryException("记录不存在", httpStatusCode = 404, errorCode = "debt_not_found"), 1))
+                advanceUntilIdle()
+                assertEquals(listOf(current), vm.state.value.receivables)
+                assertEquals(false, vm.state.value.isLoading)
+                assertNull(vm.state.value.error)
+            } finally { gate.complete(Unit) }
+            advanceUntilIdle()
+            assertEquals(listOf(current), vm.state.value.receivables, "The late personal list cannot revive the refused resource or its old balance")
+            assertEquals("JPY", vm.state.value.receivables.single().homeCurrencyCode)
+            assertEquals(false, vm.state.value.receivables.single().viewerIsDebtor)
+            assertNull(vm.state.value.receivables.single().ledgerId)
+            vm.viewModelScope.cancel()
+        }
     }
 
     @Test
@@ -156,22 +193,47 @@ class ReceivablesViewModelTest {
 
         assertEquals(listOf("first", "second"), sorted.map { it.publicId })
     }
+    @Test fun refusalRejectsLateReceivablesButResourceDenialKeepsOtherRows() = runTest(dispatcher) {
+        val actions = FakeReceivablesActions(Result.success(listOf(sampleReceivable("gone"), sampleReceivable("kept"))))
+        val writes = FakeDebtWriteActions()
+        val model = ReceivablesViewModel(actions, writes)
+        advanceUntilIdle()
+        actions.resourceDenials.emit(com.ticketbox.data.repository.DebtReadResourceDenial(requireNotNull(writes.currentAccess()).binding,
+            "gone", com.ticketbox.data.repository.RepositoryException("不存在", httpStatusCode = 404), 1))
+        advanceUntilIdle()
+        assertEquals(listOf("kept"), model.state.value.receivables.map { it.publicId })
+        val gate = CompletableDeferred<Unit>()
+        actions.gate = gate
+        model.refresh()
+        runCurrent()
+        actions.readDenials.emit(com.ticketbox.data.repository.SnapshotAccessDenial(requireNotNull(writes.currentAccess()).binding,
+            com.ticketbox.data.repository.RepositoryException("无权查看", httpStatusCode = 403), 1))
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertTrue(model.state.value.receivables.isEmpty())
+        assertEquals(null, model.state.value.fetchedAt)
+    }
+
 }
 
 private class FakeReceivablesActions(
     var result: Result<List<Debt>> = Result.success(emptyList()),
 ) : ReceivablesActions {
+    val readDenials = kotlinx.coroutines.flow.MutableSharedFlow<com.ticketbox.data.repository.SnapshotAccessDenial>()
+    val resourceDenials = kotlinx.coroutines.flow.MutableSharedFlow<com.ticketbox.data.repository.DebtReadResourceDenial>()
+    override fun observeReadAccessDenials() = readDenials
+    override fun observeResourceDenials() = resourceDenials
     /** When set, listReceivables() stalls until completed — used to interleave a slow load. */
     var gate: CompletableDeferred<Unit>? = null
     var listCalls = 0
 
-    override suspend fun listReceivables(): Result<List<Debt>> {
+    override suspend fun listReceivables(): Result<com.ticketbox.data.repository.ReadSnapshot<List<Debt>>> {
         listCalls++
         // Capture at entry so a stalled load returns the snapshot it started with, even if a newer
         // load swaps `result` in the meantime.
         val captured = result
         gate?.await()
-        return captured
+        return captured.map { debtReadSnapshot(it) }
     }
 }
 

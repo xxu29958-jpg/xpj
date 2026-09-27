@@ -163,7 +163,10 @@ blank-form/failed-read success labels and generic offline promise are retired.
 Previously read Goal and Budget lists/details reopen through their durable query
 owners; Recurring reading is also delivered in #444. They retain recorded
 currencies and data time, with explicit access refusals handled separately.
-Debt query persistence is being qualified in #446. Neither page memory nor a
+Debt query persistence is merged in #446 after exact source CI, CodeQL and all
+three actual native shards passed. Its corrected native journey retains real
+navigation, Room reopening and offline access; the earlier missing-reentry
+timeout is not business RED evidence. Neither page memory nor a
 submitted-command receipt is a complete query snapshot. Offline reads do not
 confer permission or prove current governance/tool health, nor promise that every
 page works offline.

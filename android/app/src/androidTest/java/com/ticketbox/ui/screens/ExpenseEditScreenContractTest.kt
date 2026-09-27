@@ -1,12 +1,14 @@
 package com.ticketbox.ui.screens
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.test.espresso.Espresso.closeSoftKeyboard
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
@@ -94,13 +96,15 @@ class ExpenseEditScreenContractTest {
         }
         composeRule.onNodeWithText("展开").performScrollTo().performClick()
         composeRule.onNodeWithTag(TAG_TAGS_FIELD).performScrollTo().performTextReplacement("原件任务期间的输入")
+        closeSoftKeyboard()
+        composeRule.waitForIdle()
         composeRule.runOnIdle { state.value = state.value.copy(originalBaselineRequired = true) }
         composeRule.runOnIdle {
             state.value = state.value.copy(expense = original.copy(rowVersion = original.rowVersion + 1,
                 updatedAt = "2026-09-20T00:00:00Z", imageHash = "a".repeat(64)),
                 originalBaselineRequired = false, preservedFormTimestamp = original.updatedAt)
         }
-        composeRule.onNodeWithText("保存").performClick()
+        composeRule.onNodeWithText("保存").assertIsDisplayed().assertIsEnabled().performClick()
         composeRule.runOnIdle { assertEquals("原件任务期间的输入", requireNotNull(submitted).tags) }
     }
 
