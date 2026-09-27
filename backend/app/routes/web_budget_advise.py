@@ -142,11 +142,9 @@ def _render_budget_advise(
     readiness_ctx = _advisor_readiness_context(request, selected=selected, options=options)
     month_label = month or current_ledger_month(db, ledger_id=selected)
     home = normalize_currency_code(home_currency_code or require_runtime_home_currency_code(db))
-    if savings_target_yuan is None and reserved_buffer_yuan is None:
-        arrangement_currency_code = None
-    original_home = normalize_currency_code(arrangement_currency_code or home)
-    savings_cents, reserved_cents, form_error, currency_choice_required = _reserve_values(
-        savings_target_yuan, reserved_buffer_yuan, original_home, captured_home=arrangement_currency_code or home_currency_code,
+    savings_cents, reserved_cents, form_error, currency_choice_required, arrangement_currency_code = _reserve_values(
+        savings_target_yuan, reserved_buffer_yuan, home, captured_home=home_currency_code,
+        arrangement_currency_code=arrangement_currency_code,
         require_original=request.method == "POST" or idempotency_key is not None)
     projection = read_budget_inputs(db, tenant_id=selected, month=month_label,
         home_currency_code=home if savings_cents is not None else home_currency_code,
@@ -202,15 +200,16 @@ def _arrangement_context(projection, *, savings, reserved, expected_row_version,
     }
 
 
-def _reserve_values(savings, reserved, home, *, captured_home, require_original):
+def _reserve_values(savings, reserved, home, *, captured_home, require_original, arrangement_currency_code=None):
     if savings is None and reserved is None:
-        return None, None, None, False
-    if require_original and not captured_home:
-        return 0, 0, "原表单未记录币种。金额已保留，请选择填写时使用的币种后重新计算。", True
+        return None, None, None, False, None
+    source = normalize_currency_code(arrangement_currency_code or home)
+    if require_original and not (arrangement_currency_code or captured_home):
+        return 0, 0, "原表单未记录币种。金额已保留，请选择填写时使用的币种后重新计算。", True, None
     try:
-        return _reserve_minor(savings, home), _reserve_minor(reserved, home), None, False
+        return _reserve_minor(savings, source), _reserve_minor(reserved, source), None, False, arrangement_currency_code
     except AppError as exc:
-        return 0, 0, exc.message, False
+        return 0, 0, exc.message, False, arrangement_currency_code
 
 
 def _reserve_minor(raw: str, currency: str) -> int:

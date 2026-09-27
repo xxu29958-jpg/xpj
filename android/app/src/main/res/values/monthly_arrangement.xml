@@ -6,6 +6,8 @@
     <string name="arrangement_buffer">备用金</string>
     <string name="arrangement_currency">输入币种：%1$s（按原币精度保存）</string>
     <string name="arrangement_trial">试算，不保存</string>
+    <string name="arrangement_reading_currency">正在读取报告币种，可继续编辑原安排。</string>
+    <string name="arrangement_refresh_currency">请先刷新计算依据，再试算。原输入仍保留。</string>
     <string name="arrangement_save">明确保存本月安排</string>
     <string name="arrangement_attention">本月安排提交需要核对</string>
     <string name="arrangement_load_failed">暂时无法读取月度安排，请稍后重试。</string>

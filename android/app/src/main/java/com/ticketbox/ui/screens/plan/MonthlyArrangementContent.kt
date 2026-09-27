@@ -49,8 +49,10 @@ private fun MonthlyArrangementEditor(state: BudgetAdviceUiState, actions: Budget
                 enabled = !busy, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)),
                 actions = AppTextInputActions(onValueChange = { value -> actions.onArrangementValue(false, value) }),
                 modifier = Modifier.fillMaxWidth().testTag("arrangement_buffer"))
-            TextButton(onClick = actions.onTrialArrangement, enabled = !busy,
+            TextButton(onClick = actions.onTrialArrangement, enabled = !busy && state.reportingHomeCurrencyCode != null,
                 modifier = Modifier.testTag("arrangement_trial")) { Text(stringResource(R.string.arrangement_trial)) }
+            if (state.reportingHomeCurrencyCode == null) Text(stringResource(
+                if (state.inputsLoading) R.string.arrangement_reading_currency else R.string.arrangement_refresh_currency))
             TextButton(onClick = actions.onSaveArrangement, enabled = !busy && state.canRequest && state.arrangementRead != null && pending.none { p -> !p.isConfirmed },
                 modifier = Modifier.testTag("arrangement_save")) { Text(stringResource(R.string.arrangement_save)) }
         }

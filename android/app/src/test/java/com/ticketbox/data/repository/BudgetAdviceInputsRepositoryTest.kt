@@ -1,9 +1,13 @@
 package com.ticketbox.data.repository
 
+import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.*
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.job
 import com.ticketbox.viewmodel.refreshInputs
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -16,47 +20,83 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class BudgetAdviceInputsRepositoryTest {
+    @Test fun editingDuringTheInitialReadKeepsTheYenDraftAndWaitsForDollarReportingBeforeTrial() = budgetTest {
+        val f = AdviceInputsFixture()
+        f.savedArrangement = MonthlyArrangementDto(f.binding.ledgerId, "2026-09", "JPY", 1200, 300, 1, "now")
+        f.inputs = f.inputs.copy(homeCurrencyCode = "USD", savedArrangement = f.savedArrangement,
+            breakdown = DiscretionaryResponseDto(10000, 1000, 2000, 120, 30, 6850), missingRates = emptyList())
+        val initial = CompletableDeferred<BudgetAdviceInputsDto>()
+        f.delayedInputs = initial
+        f.withViewModel { vm ->
+            vm.uiState.first { it.arrangementDraft != null && it.inputsLoading }
+            assertEquals("JPY", vm.uiState.value.arrangementDraft?.homeCurrencyCode)
+            assertNull(vm.uiState.value.reportingHomeCurrencyCode)
+            assertTrue(vm.uiState.value.inputsLoading)
+            vm.editArrangement(true, "2400")
+            val draft = assertNotNull(vm.uiState.value.arrangementDraft)
+            vm.trialArrangement()
+            advanceUntilIdle()
+            assertTrue(f.trialQueries.isEmpty(), "The original currency cannot substitute for an unknown report currency")
+            assertNull(vm.uiState.value.trialRequest)
+            assertTrue(vm.uiState.value.inputsLoading)
+            initial.complete(f.inputs)
+            vm.uiState.first { !it.inputsLoading }
+            assertEquals("USD", vm.uiState.value.reportingHomeCurrencyCode)
+            assertEquals(draft, vm.uiState.value.arrangementDraft)
+            assertFalse(vm.uiState.value.inputs?.isTrial == true)
+            assertTrue(f.requests.isEmpty())
+            vm.trialArrangement()
+            vm.uiState.first { !it.inputsLoading }
+            assertEquals("USD", vm.uiState.value.inputs?.homeCurrencyCode)
+            assertEquals(240L, vm.uiState.value.inputs?.breakdown?.savingsTargetCents)
+            assertEquals("JPY", vm.uiState.value.trialRequest?.homeCurrencyCode)
+            assertEquals(draft, vm.uiState.value.arrangementDraft)
+            assertTrue(f.dao.allRows().isEmpty())
+        }
+    }
+
     @Test fun oldOrWrongCurrencyEchoCannotPublishCrossCurrencyTrialOrCacheAiWhileCorrectEchoKeepsTheYenDraft() = budgetTest {
         val f = AdviceInputsFixture()
         f.savedArrangement = MonthlyArrangementDto(f.binding.ledgerId, "2026-09", "JPY", 1200, 300, 1, "now")
         f.inputs = f.inputs.copy(homeCurrencyCode = "USD", savedArrangement = f.savedArrangement,
             breakdown = DiscretionaryResponseDto(10000, 1000, 2000, 120, 30, 6850), missingRates = emptyList())
-        val vm = BudgetAdviceViewModel(f.repository, initialMonth = "2026-09")
-        advanceUntilIdle()
-        vm.editArrangement(true, "2400")
-        advanceUntilIdle()
-        val draft = assertNotNull(vm.uiState.value.arrangementDraft)
-        val original = draft.request()
-        for (echo in listOf(null, "USD", "CNY")) {
-            // N-1 ignores the source query and labels unchanged JPY integers as USD.
-            f.trialOverride = f.inputs.copy(isTrial = true, arrangementCurrencyCode = echo,
-                breakdown = f.inputs.breakdown.copy(savingsTargetCents = 2400, reservedBufferCents = 300))
-            vm.trialArrangement()
+        f.withViewModel { vm ->
+            vm.uiState.first { it.reportingHomeCurrencyCode != null }
+            vm.editArrangement(true, "2400")
             advanceUntilIdle()
-            assertNull(vm.uiState.value.inputs)
-            assertNull(vm.uiState.value.result)
-            assertEquals("USD", vm.uiState.value.reportingHomeCurrencyCode)
+            val draft = assertNotNull(vm.uiState.value.arrangementDraft)
+            val original = draft.request()
+            for (echo in listOf(null, "USD", "CNY")) {
+                // N-1 ignores the source query and labels unchanged JPY integers as USD.
+                f.trialOverride = f.inputs.copy(isTrial = true, arrangementCurrencyCode = echo,
+                    breakdown = f.inputs.breakdown.copy(savingsTargetCents = 2400, reservedBufferCents = 300))
+                vm.trialArrangement()
+                vm.uiState.first { !it.inputsLoading }
+                assertNull(vm.uiState.value.inputs)
+                assertNull(vm.uiState.value.result)
+                assertEquals("USD", vm.uiState.value.reportingHomeCurrencyCode)
+                assertEquals(draft, vm.uiState.value.arrangementDraft)
+                assertEquals(original, vm.uiState.value.trialRequest)
+                val before = f.requests.size
+                vm.requestAdvice()
+                vm.uiState.first { !it.inputsLoading }
+                assertEquals(before, f.requests.size, "Unverified trial must block the UI provider action")
+                assertTrue(f.repository.requestTrialAdvice(f.binding, "2026-09", original, "USD").isFailure)
+                assertNull(f.repository.adviceCallStore.cached(f.binding, "2026-09", "USD", original))
+            }
+            f.trialOverride = null
+            vm.refreshInputs()
+            vm.uiState.first { !it.inputsLoading }
+            assertEquals("JPY", vm.uiState.value.inputs?.arrangementCurrencyCode)
+            assertEquals(240L, vm.uiState.value.inputs?.breakdown?.savingsTargetCents)
+            vm.requestAdvice()
+            vm.uiState.first { it.result != null }
+            assertEquals("JPY", vm.uiState.value.result?.inputs?.arrangementCurrencyCode)
+            assertNotNull(f.repository.adviceCallStore.cached(f.binding, "2026-09", "USD", original))
             assertEquals(draft, vm.uiState.value.arrangementDraft)
             assertEquals(original, vm.uiState.value.trialRequest)
-            val before = f.requests.size
-            vm.requestAdvice()
-            advanceUntilIdle()
-            assertEquals(before, f.requests.size, "Unverified trial must block the UI provider action")
-            assertTrue(f.repository.requestTrialAdvice(f.binding, "2026-09", original, "USD").isFailure)
-            assertNull(f.repository.adviceCallStore.cached(f.binding, "2026-09", "USD", original))
+            assertTrue(f.dao.allRows().isEmpty(), "Reads and provider requests must not replace the original JPY intent")
         }
-        f.trialOverride = null
-        vm.refreshInputs()
-        advanceUntilIdle()
-        assertEquals("JPY", vm.uiState.value.inputs?.arrangementCurrencyCode)
-        assertEquals(240L, vm.uiState.value.inputs?.breakdown?.savingsTargetCents)
-        vm.requestAdvice()
-        advanceUntilIdle()
-        assertEquals("JPY", vm.uiState.value.result?.inputs?.arrangementCurrencyCode)
-        assertNotNull(f.repository.adviceCallStore.cached(f.binding, "2026-09", "USD", original))
-        assertEquals(draft, vm.uiState.value.arrangementDraft)
-        assertEquals(original, vm.uiState.value.trialRequest)
-        assertTrue(f.dao.allRows().isEmpty(), "Reads and provider requests must not replace the original JPY intent")
     }
 
     @Test fun trialValidationKeepsSameCurrencyAmountsStrictAndRejectsAnotherRateTargetBeforePublishingOrCaching() = runTest {
@@ -79,61 +119,62 @@ class BudgetAdviceInputsRepositoryTest {
         f.savedArrangement = MonthlyArrangementDto(f.binding.ledgerId, "2026-09", "JPY", 1200, 300, 1, "now")
         f.inputs = f.inputs.copy(homeCurrencyCode = "USD", savedArrangement = f.savedArrangement,
             breakdown = DiscretionaryResponseDto(10000, 1000, 2000, 120, 30, 6850), missingRates = emptyList())
-        val vm = BudgetAdviceViewModel(f.repository, initialMonth = "2026-09")
-        advanceUntilIdle()
-        assertEquals("USD", vm.uiState.value.reportingHomeCurrencyCode)
-        assertEquals("JPY", vm.uiState.value.arrangementDraft?.homeCurrencyCode)
-        vm.editArrangement(true, "2400")
-        vm.trialArrangement()
-        advanceUntilIdle()
-        val draft = assertNotNull(vm.uiState.value.arrangementDraft)
-        val trial = assertNotNull(vm.uiState.value.trialRequest)
-        assertEquals("JPY", trial.homeCurrencyCode)
-        assertEquals(2400L, trial.savingsTargetCents)
-        assertEquals("USD", vm.uiState.value.inputs?.homeCurrencyCode)
-        assertEquals(240L, vm.uiState.value.inputs?.breakdown?.savingsTargetCents)
-        assertEquals(mapOf("home_currency_code" to "USD", "arrangement_currency_code" to "JPY",
-            "savings_target_cents" to "2400", "reserved_buffer_cents" to "300"), f.trialQueries.single())
-        assertTrue(f.requests.isEmpty())
-        vm.requestAdvice()
-        advanceUntilIdle()
-        val original = assertNotNull(vm.uiState.value.result)
-        assertEquals("USD", original.homeCurrencyCode)
-        assertEquals("USD", f.requests.single().homeCurrencyCode)
-        assertEquals("JPY", f.requests.single().arrangementCurrencyCode)
-        assertEquals(2400L, f.requests.single().savingsTargetCents)
-        assertNotNull(f.repository.adviceCallStore.cached(f.binding, "2026-09", "USD", trial))
-        assertNull(f.repository.adviceCallStore.cached(f.binding, "2026-09", "JPY", trial))
-        f.missingTrialRate = true
-        vm.refreshInputs()
-        advanceUntilIdle()
-        assertEquals("USD", vm.uiState.value.reportingHomeCurrencyCode)
-        assertEquals("USD", vm.uiState.value.inputs?.missingRates?.single()?.homeCurrencyCode)
-        assertNull(vm.uiState.value.result)
-        vm.requestAdvice()
-        advanceUntilIdle()
-        assertEquals(1, f.requests.size, "A missing arrangement rate must block AI")
-        f.missingTrialRate = false
-        f.fxDivisor = 20
-        vm.refreshInputs()
-        advanceUntilIdle()
-        assertEquals(120L, vm.uiState.value.inputs?.breakdown?.savingsTargetCents)
-        assertNull(f.repository.adviceCallStore.cached(f.binding, "2026-09", "USD", trial))
-        assertEquals(1, f.requests.size, "Rate refresh must not call AI")
-        assertEquals(draft, vm.uiState.value.arrangementDraft)
-        assertEquals(trial, vm.uiState.value.trialRequest)
-        vm.requestAdvice()
-        advanceUntilIdle()
-        assertEquals("USD", vm.uiState.value.result?.homeCurrencyCode)
-        assertEquals(120L, vm.uiState.value.result?.inputs?.breakdown?.savingsTargetCents)
-        assertEquals(2, f.requests.size)
-        vm.saveArrangement()
-        advanceUntilIdle()
-        val row = f.dao.allRows().single()
-        val saved = assertNotNull(com.ticketbox.OutboxAdapterGraph().arrangementSaveAdapter.fromJson(row.payload))
-        assertEquals(trial.copy(expectedRowVersion = null), saved.request)
-        assertEquals("JPY", saved.request.homeCurrencyCode)
-        assertEquals(1L, row.expectedRowVersion)
+        f.withViewModel { vm ->
+            vm.uiState.first { it.reportingHomeCurrencyCode != null }
+            assertEquals("USD", vm.uiState.value.reportingHomeCurrencyCode)
+            assertEquals("JPY", vm.uiState.value.arrangementDraft?.homeCurrencyCode)
+            vm.editArrangement(true, "2400")
+            vm.trialArrangement()
+            vm.uiState.first { !it.inputsLoading }
+            val draft = assertNotNull(vm.uiState.value.arrangementDraft)
+            val trial = assertNotNull(vm.uiState.value.trialRequest)
+            assertEquals("JPY", trial.homeCurrencyCode)
+            assertEquals(2400L, trial.savingsTargetCents)
+            assertEquals("USD", vm.uiState.value.inputs?.homeCurrencyCode)
+            assertEquals(240L, vm.uiState.value.inputs?.breakdown?.savingsTargetCents)
+            assertEquals(mapOf("home_currency_code" to "USD", "arrangement_currency_code" to "JPY",
+                "savings_target_cents" to "2400", "reserved_buffer_cents" to "300"), f.trialQueries.single())
+            assertTrue(f.requests.isEmpty())
+            vm.requestAdvice()
+            vm.uiState.first { it.result != null }
+            val original = assertNotNull(vm.uiState.value.result)
+            assertEquals("USD", original.homeCurrencyCode)
+            assertEquals("USD", f.requests.single().homeCurrencyCode)
+            assertEquals("JPY", f.requests.single().arrangementCurrencyCode)
+            assertEquals(2400L, f.requests.single().savingsTargetCents)
+            assertNotNull(f.repository.adviceCallStore.cached(f.binding, "2026-09", "USD", trial))
+            assertNull(f.repository.adviceCallStore.cached(f.binding, "2026-09", "JPY", trial))
+            f.missingTrialRate = true
+            vm.refreshInputs()
+            vm.uiState.first { !it.inputsLoading }
+            assertEquals("USD", vm.uiState.value.reportingHomeCurrencyCode)
+            assertEquals("USD", vm.uiState.value.inputs?.missingRates?.single()?.homeCurrencyCode)
+            assertNull(vm.uiState.value.result)
+            vm.requestAdvice()
+            vm.uiState.first { !it.inputsLoading }
+            assertEquals(1, f.requests.size, "A missing arrangement rate must block AI")
+            f.missingTrialRate = false
+            f.fxDivisor = 20
+            vm.refreshInputs()
+            vm.uiState.first { !it.inputsLoading }
+            assertEquals(120L, vm.uiState.value.inputs?.breakdown?.savingsTargetCents)
+            assertNull(f.repository.adviceCallStore.cached(f.binding, "2026-09", "USD", trial))
+            assertEquals(1, f.requests.size, "Rate refresh must not call AI")
+            assertEquals(draft, vm.uiState.value.arrangementDraft)
+            assertEquals(trial, vm.uiState.value.trialRequest)
+            vm.requestAdvice()
+            vm.uiState.first { it.result != null }
+            assertEquals("USD", vm.uiState.value.result?.homeCurrencyCode)
+            assertEquals(120L, vm.uiState.value.result?.inputs?.breakdown?.savingsTargetCents)
+            assertEquals(2, f.requests.size)
+            vm.saveArrangement()
+            vm.uiState.first { !it.arrangementBusy }
+            val row = f.dao.allRows().single()
+            val saved = assertNotNull(com.ticketbox.OutboxAdapterGraph().arrangementSaveAdapter.fromJson(row.payload))
+            assertEquals(trial.copy(expectedRowVersion = null), saved.request)
+            assertEquals("JPY", saved.request.homeCurrencyCode)
+            assertEquals(1L, row.expectedRowVersion)
+        }
     }
 
     @Test fun savedAndDifferentTrialsDoNotShareAdviceBasisOrCacheAndReadNeverCallsAi() = runTest {
@@ -166,16 +207,17 @@ class BudgetAdviceInputsRepositoryTest {
             val f = AdviceInputsFixture()
             f.inputs = f.inputs.copy(breakdown = DiscretionaryResponseDto(10000, 1000, 2000, 0, 0, 7000),
                 missingRates = emptyList(), inputsFingerprint = "original-history")
-            val vm = com.ticketbox.viewmodel.BudgetAdviceViewModel(f.repository, initialMonth = "2026-09")
-            vm.uiState.first { it.inputs?.inputsFingerprint == "original-history" }
-            vm.requestAdvice()
-            vm.uiState.first { it.result != null }
-            assertNotNull(f.repository.cachedBudgetAdvice("2026-09", "JPY"))
-            f.inputs = f.inputs.copy(inputsFingerprint = "changed-history-same-visible-totals")
-            vm.refreshInputs()
-            vm.uiState.first { it.inputs?.inputsFingerprint == "changed-history-same-visible-totals" && it.result == null }
-            assertNull(f.repository.cachedBudgetAdvice("2026-09", "JPY"))
-            assertEquals(1, f.requests.size)
+            f.withViewModel { vm ->
+                vm.uiState.first { it.inputs?.inputsFingerprint == "original-history" }
+                vm.requestAdvice()
+                vm.uiState.first { it.result != null }
+                assertNotNull(f.repository.cachedBudgetAdvice("2026-09", "JPY"))
+                f.inputs = f.inputs.copy(inputsFingerprint = "changed-history-same-visible-totals")
+                vm.refreshInputs()
+                vm.uiState.first { it.inputs?.inputsFingerprint == "changed-history-same-visible-totals" && it.result == null }
+                assertNull(f.repository.cachedBudgetAdvice("2026-09", "JPY"))
+                assertEquals(1, f.requests.size)
+            }
         }
     @Test fun advisorAccessCarriesRoleAndFullBindingInOneProjection() = runTest {
         val f = AdviceInputsFixture()
@@ -237,6 +279,11 @@ class BudgetAdviceInputsRepositoryTest {
 }
 
 private class AdviceInputsFixture {
+    // These tests await visible states because the real repository uses Dispatchers.IO.
+    suspend fun withViewModel(block: suspend (BudgetAdviceViewModel) -> Unit) {
+        val vm = BudgetAdviceViewModel(repository, initialMonth = "2026-09")
+        try { block(vm) } finally { vm.viewModelScope.coroutineContext.job.cancelAndJoin() }
+    }
     val session = TestSessionFixture().apply { saveToken("synthetic-advice-input-session") }
     var inputs = BudgetAdviceInputsDto("2026-09", "JPY", DiscretionaryResponseDto(10000, 1000, null, 0, 0, null),
         listOf(MissingExchangeRateDto("USD", "JPY", "2026-09-01")))
@@ -247,10 +294,11 @@ private class AdviceInputsFixture {
     var missingTrialRate = false
     var fxDivisor = 10L
     var trialOverride: BudgetAdviceInputsDto? = null
+    var delayedInputs: CompletableDeferred<BudgetAdviceInputsDto>? = null
     val api: ApiService = object : ApiService by FakeApiService(mutableListOf(), 0) {
         override suspend fun budgetAdviceInputs(month: String, timezone: String?, homeCurrencyCode: String?): BudgetAdviceInputsDto {
             reads += month to homeCurrencyCode
-            return inputs
+            return delayedInputs?.await() ?: inputs
         }
         override suspend fun monthlyArrangement(month: String) = MonthlyArrangementResponseDto(binding.ledgerId, month, savedArrangement)
         override suspend fun exchangeRates(currencyCode: String?, homeCurrencyCode: String?, rateDate: String?, limit: Int) =
