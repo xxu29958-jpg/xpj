@@ -145,7 +145,8 @@ def test_owner_index_local_returns_200(local_client: TestClient) -> None:
     assert 'class="owner-sidebar__group-label owner-sidebar__advanced-summary"' in body
     assert '<span class="owner-sidebar__advanced-title">高级</span>' in body
     assert '<span class="owner-sidebar__advanced-note">平时不用</span>' in body
-    assert '<span class="owner-sidebar__advanced-count" aria-label="4 个入口">4</span>' in body
+    assert '<span class="owner-sidebar__advanced-count" aria-label="3 个入口">3</span>' in body
+    assert "/owner/tag-cleanup" not in body
     assert '<use href="#owner-icon-phone">' in body
     for legacy_label in [
         "🔑 绑定你的手机",
