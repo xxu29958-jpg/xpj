@@ -56,6 +56,8 @@ def test_repair_link_carries_editor_currency_separately_from_display_currency():
     assert params["home_currency_code"] == ["USD"]
     assert params["arrangement_currency_code"] == ["JPY"]
     assert params["savings_target_yuan"] == ["1200"]
+    assert 'name="home_currency_code" value="USD"' in html
+    assert 'name="arrangement_currency_code" value="JPY"' in html
 
 
 def test_rate_return_keeps_report_currency_and_original_editor_currency():

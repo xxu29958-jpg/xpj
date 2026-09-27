@@ -88,11 +88,15 @@ def test_rate_repair_keeps_arrangement_amounts_in_their_original_currency(task):
     assert response.status_code == 303, response.text
     # The rate repairs the USD projection; the retained form still means 1200 JPY.
     assert task.saved.call_args.kwargs["payload"].home_currency_code == "USD"
-    params = parse_qs(urlsplit(response.headers["location"]).query)
-    assert params["home_currency_code"] == ["JPY"]
+    target = urlsplit(response.headers["location"])
+    params = parse_qs(target.query)
+    assert target.path == "/web/budget-advise" and params["month"] == ["2026-08"]
+    assert params["home_currency_code"] == ["USD"]
+    assert params["arrangement_currency_code"] == ["JPY"]
     assert params["savings_target_yuan"] == ["1200"]
     assert params["reserved_buffer_yuan"] == ["300"]
     assert params["arrangement_key"] == ["original-save-key"]
+    assert params["arrangement_version"] == ["3"]
 
 
 @pytest.mark.parametrize("error", ["state_conflict", "idempotency_key_reused"])

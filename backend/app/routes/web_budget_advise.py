@@ -87,6 +87,7 @@ def page_budget_advise_run(
     reserved_buffer_yuan: str = Form(default="0"),
     run_advise: bool = Form(default=False),
     home_currency_code: str | None = Form(default=None),
+    arrangement_currency_code: str | None = Form(default=None),
     expected_row_version: str = Form(default=""),
     idempotency_key: str = Form(default=""),
     db: Session = Depends(get_db),
@@ -102,6 +103,7 @@ def page_budget_advise_run(
         run_advise=run_advise,
         allow_outbound=run_advise,
         home_currency_code=home_currency_code,
+        arrangement_currency_code=arrangement_currency_code,
         expected_row_version=expected_row_version,
         idempotency_key=idempotency_key,
     )
@@ -131,6 +133,7 @@ def _render_budget_advise(
     if request.method == "POST":
         retained = preserve_original_ledger_form(request, db, options=options, selected=selected,
             fields={"ledger_id": ledger_id, "month": month, "home_currency_code": home_currency_code,
+                "arrangement_currency_code": arrangement_currency_code,
                 "savings_target_yuan": savings_target_yuan, "reserved_buffer_yuan": reserved_buffer_yuan,
                 "run_advise": run_advise, "expected_row_version": expected_row_version,
                 "idempotency_key": idempotency_key}, task="查看本月安排")
@@ -152,6 +155,7 @@ def _render_budget_advise(
         advice, advise_error, provider_name, advice_inputs = _budget_advice_response(request, db=db, selected=selected,
             options=options, month_label=month_label, provider_name=provider_name,
             run_advise=run_advise, allow_outbound=allow_outbound, home_currency_code=projection.home_currency_code,
+            arrangement_currency_code=arrangement_currency_code,
             savings_target_cents=savings_cents, reserved_buffer_cents=reserved_cents)
         if advice_inputs is not None:
             projection = advice_inputs
@@ -254,6 +258,7 @@ def _budget_advice_response(
     run_advise: bool,
     allow_outbound: bool,
     home_currency_code: str | None = None,
+    arrangement_currency_code: str | None = None,
     savings_target_cents: int | None = None,
     reserved_buffer_cents: int | None = None,
 ) -> tuple[Any, str | None, str, Any]:
@@ -272,6 +277,7 @@ def _budget_advice_response(
             month=month_label,
             timezone_name="Asia/Shanghai",
             home_currency_code=home_currency_code,
+            arrangement_currency_code=arrangement_currency_code,
             savings_target_cents=savings_target_cents,
             reserved_buffer_cents=reserved_buffer_cents,
         )

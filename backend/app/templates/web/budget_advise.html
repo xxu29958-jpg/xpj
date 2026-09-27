@@ -58,15 +58,16 @@
       <input type="hidden" name="month" value="{{ month }}">
       <input type="hidden" name="expected_row_version" value="{{ expected_row_version }}">
       <input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
+      <input type="hidden" name="home_currency_code" value="{{ home_currency_code }}">
       {% if currency_choice_required %}
       <div class="product-field">
         <label for="advise-currency">原输入使用的币种</label>
-        <select class="product-input" id="advise-currency" name="home_currency_code" required>
+        <select class="product-input" id="advise-currency" name="arrangement_currency_code" required>
           <option value="" selected>请选择原币种</option>
           {% for code in currency_codes %}<option value="{{ code }}">{{ code }}</option>{% endfor %}
         </select>
       </div>
-      {% else %}<input type="hidden" name="home_currency_code" value="{{ editor_currency.currency_code }}">{% endif %}
+      {% else %}<input type="hidden" name="arrangement_currency_code" value="{{ editor_currency.currency_code }}">{% endif %}
       {{ csrf_field|safe }}
       <div class="product-field">
         <label for="advise-savings">计划储蓄（{{ '原币种待选' if currency_choice_required else editor_currency.currency_code }}）</label>

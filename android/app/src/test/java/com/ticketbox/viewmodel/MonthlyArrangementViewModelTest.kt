@@ -58,9 +58,9 @@ class MonthlyArrangementViewModelTest {
         var income = 10000L
         val response = CompletableDeferred<Result<BudgetAdviceResult>>()
         val repository = object : BudgetActions by base {
-            override suspend fun trialAdviceInputs(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementSaveRequest) =
+            override suspend fun trialAdviceInputs(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementSaveRequest, reportingHomeCurrencyCode: String?) =
                 Result.success(trialInputs(month, request, income))
-            override suspend fun requestTrialAdvice(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementSaveRequest) = response.await()
+            override suspend fun requestTrialAdvice(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementSaveRequest, reportingHomeCurrencyCode: String?) = response.await()
         }
         val vm = BudgetAdviceViewModel(repository, initialMonth = "2026-09")
         advanceUntilIdle()
@@ -84,11 +84,11 @@ class MonthlyArrangementViewModelTest {
     @Test fun viewerCanEditAndTrialButCannotSaveOrRequestAi() = budgetTest {
         val base = FakeBudgetActions(budget(), canModify = false)
         val repository = object : BudgetActions by base {
-            override suspend fun trialAdviceInputs(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementSaveRequest) =
+            override suspend fun trialAdviceInputs(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementSaveRequest, reportingHomeCurrencyCode: String?) =
                 Result.success(trialInputs(month, request, 10000))
             override suspend fun enqueueArrangement(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementSaveRequest): Result<Long> =
                 error("Viewer must never reach the writer")
-            override suspend fun requestTrialAdvice(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementSaveRequest): Result<BudgetAdviceResult> =
+            override suspend fun requestTrialAdvice(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementSaveRequest, reportingHomeCurrencyCode: String?): Result<BudgetAdviceResult> =
                 error("Viewer must never reach AI")
         }
         val vm = BudgetAdviceViewModel(repository, initialMonth = "2026-09")
@@ -113,9 +113,9 @@ class MonthlyArrangementViewModelTest {
         val base = FakeBudgetActions(budget())
         var income = 10000L
         val repository = object : BudgetActions by base {
-            override suspend fun trialAdviceInputs(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementSaveRequest) =
+            override suspend fun trialAdviceInputs(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementSaveRequest, reportingHomeCurrencyCode: String?) =
                 Result.success(trialInputs(month, request, income))
-            override suspend fun requestTrialAdvice(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementSaveRequest) =
+            override suspend fun requestTrialAdvice(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementSaveRequest, reportingHomeCurrencyCode: String?) =
                 Result.success(BudgetAdviceResult(BudgetAdvice("Based on the returned inputs", emptyList(), null), request.homeCurrencyCode,
                     "fixture", null, trialInputs(month, request, income)))
         }
@@ -161,7 +161,7 @@ class MonthlyArrangementViewModelTest {
             override suspend fun enqueueArrangement(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementSaveRequest): Result<Long> {
                 queued += request; return Result.success(1L)
             }
-            override suspend fun trialAdviceInputs(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementSaveRequest): Result<BudgetAdviceInputsDto> {
+            override suspend fun trialAdviceInputs(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementSaveRequest, reportingHomeCurrencyCode: String?): Result<BudgetAdviceInputsDto> {
                 trials += request
                 return Result.success(BudgetAdviceInputsDto(month, request.homeCurrencyCode,
                     DiscretionaryResponseDto(10000, 1000, 2000, request.savingsTargetCents, request.reservedBufferCents,

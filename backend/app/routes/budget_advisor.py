@@ -67,6 +67,7 @@ def get_advisor_inputs(
     month: str = Query(pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
     timezone: str | None = Query(default=None),
     home_currency_code: str | None = Query(default=None, pattern=r"^[A-Z]{3}$"),
+    arrangement_currency_code: str | None = Query(default=None, pattern=r"^[A-Z]{3}$"),
     savings_target_cents: Annotated[NonNegativeMoneyMinorText | None, Query()] = None,
     reserved_buffer_cents: Annotated[NonNegativeMoneyMinorText | None, Query()] = None,
     auth: AuthContext = Depends(get_current_app_context),
@@ -74,6 +75,7 @@ def get_advisor_inputs(
 ) -> BudgetInputsResponse:
     projection = read_budget_inputs(db, tenant_id=auth.tenant_id, month=month,
         home_currency_code=home_currency_code, timezone_name=timezone or "Asia/Shanghai",
+        arrangement_currency_code=arrangement_currency_code,
         savings_target_cents=_trial_minor(savings_target_cents), reserved_buffer_cents=_trial_minor(reserved_buffer_cents))
     return BudgetInputsResponse.model_validate(projection)
 
@@ -92,6 +94,7 @@ def post_advise(
         month=payload.month,
         timezone_name=payload.timezone or "Asia/Shanghai",
         home_currency_code=payload.home_currency_code,
+        arrangement_currency_code=payload.arrangement_currency_code,
         savings_target_cents=payload.savings_target_cents,
         reserved_buffer_cents=payload.reserved_buffer_cents,
     )

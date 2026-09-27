@@ -24,6 +24,7 @@ data class BudgetAdviseRequestDto(
     @param:Json(name = "home_currency_code") val homeCurrencyCode: String? = null,
     @param:Json(name = "savings_target_cents") val savingsTargetCents: Long? = null,
     @param:Json(name = "reserved_buffer_cents") val reservedBufferCents: Long? = null,
+    @param:Json(name = "arrangement_currency_code") val arrangementCurrencyCode: String? = null,
 )
 
 data class BudgetSuggestionDto(

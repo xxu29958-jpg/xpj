@@ -112,6 +112,7 @@ internal class BudgetAdviceCallStore(
                         homeCurrencyCode = key.homeCurrencyCode,
                         savingsTargetCents = key.trial?.savingsTargetCents,
                         reservedBufferCents = key.trial?.reservedBufferCents,
+                        arrangementCurrencyCode = key.trial?.homeCurrencyCode?.takeIf { it != key.homeCurrencyCode },
                     ),
                 ).toDomain().also { verifyAdviceBasis(it, key) }
             }
@@ -207,10 +208,17 @@ private fun verifyAdviceBasis(result: BudgetAdviceResult, key: AdviceRequestKey)
         if (saved.ledgerId != key.binding.ledgerId || saved.month != key.month) throw unverifiedAdviceBasis()
     }
     if (basis.isTrial != (key.trial != null)) throw unverifiedAdviceBasis()
-    key.trial?.let { trial ->
-        if (basis.breakdown.savingsTargetCents != trial.savingsTargetCents ||
-            basis.breakdown.reservedBufferCents != trial.reservedBufferCents) throw unverifiedAdviceBasis()
-    }
+    if (basis.missingRates.any { it.homeCurrencyCode != result.homeCurrencyCode } ||
+        (result.advice != null && !basis.readyForAdvice)) throw unverifiedAdviceBasis()
+    key.trial?.let { verifyTrialAmounts(basis, it) }
+}
+
+private fun verifyTrialAmounts(basis: com.ticketbox.data.remote.dto.BudgetAdviceInputsDto,
+    trial: com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest) {
+    // Cross-currency projection belongs to the server; raw equality only holds in the original currency.
+    if (trial.homeCurrencyCode != basis.homeCurrencyCode) return
+    if (basis.breakdown.savingsTargetCents != trial.savingsTargetCents ||
+        basis.breakdown.reservedBufferCents != trial.reservedBufferCents) throw unverifiedAdviceBasis()
 }
 
 private fun unverifiedAdviceBasis() = RepositoryException(
