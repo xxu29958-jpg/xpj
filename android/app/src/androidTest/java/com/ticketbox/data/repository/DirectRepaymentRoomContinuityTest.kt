@@ -82,6 +82,11 @@ class DirectRepaymentRoomContinuityTest {
             }
             compose.waitUntil(10_000) { detail.value?.state?.value?.pendingWrites?.singleOrNull()?.originalBindingChanged == true &&
                 sync.uiState.value.waitingDebtWrites.size == 1 }
+            if (global) {
+                compose.onNodeWithText("有 1 笔原提交的连接已变化，请核对并停止本机追踪；原记录会保留。")
+                    .performScrollTo().assertIsDisplayed()
+                compose.onNodeWithText("离线改动已保留，恢复连接后会自动同步。").assertDoesNotExist()
+            }
             compose.onNodeWithText("原还款金额：", substring = true).performScrollTo().assertIsDisplayed()
             compose.onNodeWithText("原还款时间：", substring = true).performScrollTo().assertIsDisplayed()
             compose.onNodeWithText("重试原提交").assertDoesNotExist()
