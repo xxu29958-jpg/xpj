@@ -455,13 +455,39 @@ class BudgetOfflineSnapshotConnectedTest {
         assertEquals(newer.fetchedAt, olderResult.getOrThrow().fetchedAt)
         assertTrue("Selecting the saved newer query must identify its cache source", olderResult.getOrThrow().fromCache)
         transport.original = offlineBudget()
-        assertTrue("Fresh-only consumers cannot treat a selected saved query as a new GET",
-            reopened.monthlyBudget("2026-09", TimeZone.getDefault().id, freshOnly = true).isFailure)
+        val freshOnly = reopened.monthlyBudget("2026-09", TimeZone.getDefault().id, freshOnly = true).getOrThrow()
+        assertEquals("Fresh-only consumers receive their own successful network result", offlineBudget().toDomain(), freshOnly.value)
+        assertTrue("A real GET result is fresh even when Room already holds a later revision", !freshOnly.fromCache)
         transport.offline = true
         val saved = fixture.reopen().budgetRepository.monthlyBudget("2026-09").getOrThrow()
         assertEquals("The late v7 response cannot replace the accepted v8 query", newer.value, saved.value)
         assertEquals(newer.fetchedAt, saved.fetchedAt)
         assertTrue(saved.fromCache)
+    }
+
+    @Test fun overlappingFreshOnlyAndOrdinarySuccessfulReadsKeepTheirOwnSourcesWithoutDowngradingRoom() = runBlocking {
+        val repository = fixture.reopen().budgetRepository
+        val started = CompletableDeferred<Unit>()
+        val resume = CompletableDeferred<Unit>()
+        val notificationRead = offlineBudget().copy(spentAmountCents = 1300, remainingAmountCents = -100, overspentAmountCents = 100)
+        transport.original = notificationRead
+        transport.beforeNextRead = { started.complete(Unit); resume.await() }
+        val freshOnly = async { repository.monthlyBudget("2026-09", TimeZone.getDefault().id, freshOnly = true) }
+        started.await()
+        transport.original = offlineBudget().copy(spentAmountCents = 500, remainingAmountCents = 700)
+        val ordinary = try { repository.monthlyBudget("2026-09").getOrThrow() } finally { resume.complete(Unit) }
+        val independent = freshOnly.await()
+        assertTrue("An independent successful notification GET cannot fail because the screen GET finished first", independent.isSuccess)
+        assertEquals(notificationRead.toDomain(), independent.getOrThrow().value)
+        assertTrue("The notification must consume its own network overspend, never borrowed history", !independent.getOrThrow().fromCache)
+        assertTrue(!ordinary.fromCache)
+        transport.offline = true
+        val saved = fixture.reopen().budgetRepository.monthlyBudget("2026-09").getOrThrow()
+        assertEquals("The late notification response must not downgrade the screen query in Room", ordinary.value, saved.value)
+        assertEquals(ordinary.fetchedAt, saved.fetchedAt)
+        assertTrue(saved.fromCache)
+        assertTrue("Transport failure remains forbidden for fresh-only reminders",
+            fixture.graph.budgetRepository.monthlyBudget("2026-09", TimeZone.getDefault().id, freshOnly = true).isFailure)
     }
 
     @Test fun oneRefusedConsumerWithdrawsAllRetainedBudgetDisplaysWithoutTouchingOriginals() = runBlocking {

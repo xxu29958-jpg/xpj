@@ -78,5 +78,34 @@ class BudgetReadAccessTest {
         }
     }
 
+    @Test fun permissionRefusalClearsTheUntouchedQueryFormAndCannotSubmitItsAmounts() = budgetTest {
+        val queried = budget(month = "2026-09").copy(homeCurrencyCode = "JPY", rolloverAmountCents = 300,
+            nonMonthlyAmountCents = 400, excludedCategories = listOf("医疗"), categoryBudgets = listOf(
+                com.ticketbox.domain.model.BudgetCategoryBudget("餐饮", 500, null, null, null)))
+        val repository = FakeBudgetActions(queried)
+        val model = BudgetViewModel(repository, initialMonth = "2026-09")
+        advanceUntilIdle()
+        assertEquals(BudgetFormState(totalAmount = "300000", rolloverAmount = "300", nonMonthlyAmount = "400",
+            excludedCategories = "医疗", categoryRows = listOf(BudgetCategoryInput("餐饮", "500")),
+            homeCurrencyCode = "JPY", expectedRowVersion = 1), model.uiState.value.form)
+        assertEquals(false, model.uiState.value.formDirty)
+        val originals = repository.commands.saves.value
+        repository.monthlyBudgetResponder = { Result.failure(refused()) }
+
+        model.refresh()
+        advanceUntilIdle()
+        model.save()
+        advanceUntilIdle()
+
+        assertNull(model.uiState.value.budget)
+        assertNull(model.uiState.value.fetchedAt)
+        assertEquals(BudgetFormState(), model.uiState.value.form,
+            "An untouched form is another copy of the refused query, including currency, categories and OCC")
+        assertEquals(false, model.uiState.value.formDirty)
+        assertEquals(0, repository.commands.savedRequests.size,
+            "A refused server-derived form must not remain a valid new save command")
+        assertEquals(originals, repository.commands.saves.value)
+    }
+
     private fun refused() = RepositoryException("Synthetic read refusal", errorCode = "permission_denied", httpStatusCode = 403)
 }

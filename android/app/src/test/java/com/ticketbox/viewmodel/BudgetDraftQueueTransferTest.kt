@@ -168,6 +168,44 @@ class BudgetDraftQueueTransferTest {
         assertEquals(0, owner.commands.savedRequests.size)
     }
 
+    @Test fun doneBeforeEnqueueReturnsStillReadsTheAcceptedBudgetOnceSavingEnds() = budgetTest {
+        val owner = FakeBudgetActions(budget = budget().copy(homeCurrencyCode = "JPY", nonMonthlyAmountCents = 0))
+        val enqueueStarted = CompletableDeferred<Unit>()
+        val returnEnqueue = CompletableDeferred<Result<Long>>()
+        owner.commands.saveResponder = {
+            enqueueStarted.complete(Unit)
+            returnEnqueue.await()
+        }
+        val editor = BudgetViewModel(owner, "2026-05")
+        advanceUntilIdle()
+        editor.updateTotalAmount("1200")
+        editor.save()
+        advanceUntilIdle()
+        assertTrue(enqueueStarted.isCompleted)
+        assertTrue(editor.uiState.value.saving)
+        val accepted = budget(totalAmountCents = 1200).copy(homeCurrencyCode = "JPY", nonMonthlyAmountCents = 0, rowVersion = 2)
+        val original = pendingBudget().let { it.copy(row = it.row.copy(status = PendingMutationStatus.Done), receipt = accepted) }
+        owner.budget = accepted
+        owner.commands.saves.value = listOf(original)
+        advanceUntilIdle()
+        assertTrue(editor.uiState.value.saving, "Queue delivery must be observable before enqueue returns")
+        assertNull(editor.uiState.value.budget, "The receipt must retire v1 without becoming a query")
+        assertEquals(1, owner.loadCalls)
+
+        returnEnqueue.complete(Result.success(original.row.id))
+        advanceUntilIdle()
+
+        assertFalse(editor.uiState.value.saving)
+        assertEquals(accepted, editor.uiState.value.budget,
+            "Done observed during saving must trigger the authoritative GET after enqueue returns")
+        assertEquals(owner.readFetchedAt, editor.uiState.value.fetchedAt)
+        assertEquals(2, owner.loadCalls)
+        assertEquals(2L, editor.uiState.value.form.expectedRowVersion)
+        assertFalse(editor.uiState.value.formDirty)
+        assertEquals(listOf(original), owner.commands.saves.value)
+        assertEquals(1, owner.commands.savedRequests.size)
+    }
+
     private fun pendingBudget() = PendingBudgetSave(
         row = OutboxRow(id = 1, serverUrl = "https://api.example.com", ledgerId = "owner",
             type = PendingMutationType.SaveMonthlyBudget, targetId = "monthly_budget:2026-05", payloadJson = "{}",
