@@ -2,6 +2,7 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
+import com.ticketbox.security.StoredSessionToken
 import java.time.Clock
 import java.time.Duration
 import kotlinx.coroutines.flow.first
@@ -10,10 +11,99 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class DirectRepaymentIntentTest {
+    @Test fun newCurrentSessionOrRevisionCannotRecoverOriginalRepaymentButCanExplicitlyStopIt() = runTest {
+        for (axis in listOf("session", "revision")) {
+            val fixture = DirectRepaymentTestFixture()
+            fixture.save().getOrThrow()
+            assertEquals(1, fixture.engine().drainOnce().failures)
+            val original = fixture.dao.rows.values.single()
+            val originalIntent = fixture.pending().intent
+            val session = requireNotNull(fixture.session.sessionStore.currentSession())
+            fixture.session.sessionStore.replaceForFixture(if (axis == "session") session.copy(sessionGeneration = "new-session")
+                else session.copy(bindingRevision = "new-revision"))
+            val outbox = fixture.newOutbox(fixture.clock)
+            val writes = fixture.newRepository(outbox, fixture.clock)
+            val binding = requireNotNull(writes.currentAccess()).binding
+            assertEquals(fixture.binding.ownerKey, binding.ownerKey)
+            val pending = writes.observeWrites(binding, fixture.debt.publicId).first().single()
+            assertEquals(originalIntent, assertNotNull(pending.intent))
+            val refused = writes.recover(binding, pending, drop = false)
+            assertTrue(refused.isFailure, axis)
+            assertFalse(refused.exceptionOrNull()?.message.isNullOrBlank())
+            assertFalse(pending.canRetry)
+            assertEquals(original, fixture.dao.rows.values.single())
+            assertEquals(0, fixture.engine(outbox).drainOnce().attempted)
+            assertEquals(1, fixture.api.calls.size)
+            writes.recover(binding, pending, drop = true).getOrThrow()
+            val stopped = fixture.dao.rows.values.single()
+            assertEquals(original.payload, stopped.payload)
+            assertEquals(original.idempotencyKey, stopped.idempotencyKey)
+            assertEquals(original.expectedRowVersion, stopped.expectedRowVersion)
+            assertEquals(original.targetId, stopped.targetId)
+            assertEquals(PendingMutationStatus.Abandoned.wireValue, stopped.status)
+            assertEquals(1, fixture.api.facts.size)
+        }
+    }
+
+    @Test fun automaticDrainCannotAdoptOriginalRepaymentUnderNewCurrentSessionOrRevision() = runTest {
+        for (axis in listOf("session", "revision")) {
+            val fixture = DirectRepaymentTestFixture()
+            fixture.save().getOrThrow()
+            val original = fixture.dao.rows.values.single()
+            val originalIntent = fixture.pending().intent
+            val session = requireNotNull(fixture.session.sessionStore.currentSession())
+            fixture.session.sessionStore.replaceForFixture(if (axis == "session") session.copy(sessionGeneration = "new-session")
+                else session.copy(bindingRevision = "new-revision"))
+            val outbox = fixture.newOutbox(fixture.clock)
+            val writes = fixture.newRepository(outbox, fixture.clock)
+            fixture.engine(outbox).drainOnce()
+            assertTrue(fixture.api.calls.isEmpty(), axis)
+            assertTrue(fixture.api.facts.isEmpty(), axis)
+            val binding = requireNotNull(writes.currentAccess()).binding
+            val pending = writes.observeWrites(binding, fixture.debt.publicId).first().single()
+            assertEquals(originalIntent, assertNotNull(pending.intent))
+            assertFalse(pending.canRetry)
+            assertTrue(pending.isUnresolved)
+            val retained = fixture.dao.rows.values.single()
+            assertEquals(original.payload, retained.payload)
+            assertEquals(original.idempotencyKey, retained.idempotencyKey)
+            assertEquals(original.expectedRowVersion, retained.expectedRowVersion)
+            assertEquals(original.targetId, retained.targetId)
+            assertEquals(null, retained.receiptJson)
+        }
+    }
+
+    @Test fun credentialRefreshKeepsOriginalRepaymentRecoverableWithoutChangingBodyKeyOccOrFact() = runTest {
+        val fixture = DirectRepaymentTestFixture()
+        fixture.save().getOrThrow()
+        assertEquals(1, fixture.engine().drainOnce().failures)
+        val original = fixture.dao.rows.values.single()
+        val session = requireNotNull(fixture.session.sessionStore.currentSession())
+        val refresh = requireNotNull(fixture.session.sessionStore.sessionRefresh.beginOrReuse(
+            expectedSessionGeneration = session.sessionGeneration, expectedToken = session.credential.token))
+        assertTrue(fixture.session.sessionStore.sessionRefresh.completeIfCurrent(
+            expectedSessionGeneration = session.sessionGeneration, expectedToken = session.credential.token,
+            refreshAttemptId = refresh.attemptId, replacement = StoredSessionToken("refreshed-token")))
+        assertEquals(fixture.binding, requireNotNull(fixture.repository.currentAccess()).binding)
+        assertTrue(fixture.pending().canRetry)
+        fixture.repository.recover(fixture.binding, fixture.pending(), drop = false).getOrThrow()
+        fixture.api.loseResponse = false
+        assertEquals(1, fixture.engine().drainOnce().done)
+        val confirmed = fixture.dao.rows.values.single()
+        assertEquals(original.payload, confirmed.payload)
+        assertEquals(original.idempotencyKey, confirmed.idempotencyKey)
+        assertEquals(original.expectedRowVersion, confirmed.expectedRowVersion)
+        assertEquals(original.targetId, confirmed.targetId)
+        assertEquals(1, fixture.api.facts.size)
+        assertTrue(fixture.api.calls.all { it == fixture.api.calls.first() })
+        assertEquals(PendingMutationStatus.Done.wireValue, confirmed.status)
+    }
+
     @Test fun retryAfterLostResponseKeepsOriginalBindingBodyTimeOccAndKeyAcrossReopen() = runTest {
         val fixture = DirectRepaymentTestFixture()
         val id = fixture.save().getOrThrow()

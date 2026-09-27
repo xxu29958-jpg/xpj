@@ -17,6 +17,7 @@ import androidx.lifecycle.ViewModel
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.espresso.Espresso.closeSoftKeyboard
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.R
 import com.ticketbox.RepositoryGraph
 import com.ticketbox.viewmodel.DebtAction
 import com.ticketbox.ui.screens.DebtDetailScreen
@@ -38,6 +39,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -262,6 +264,64 @@ class DebtAdjustmentRoomContinuityTest {
         }
         compose.waitUntil(10_000) { retained.stored().size == 1 && model.state.value.activeAction == null }
         compose.runOnIdle { model.viewModelScope.cancel() }
+    }
+
+    @Test fun originalAdjustmentFromPreviousSessionRemainsReadableWithoutDetailOrGlobalRetry() {
+        assertChangedOriginCannotResume(changeSession = true)
+    }
+
+    @Test fun originalAdjustmentFromPreviousBindingRevisionRemainsReadableWithoutDetailOrGlobalRetry() {
+        assertChangedOriginCannotResume(changeSession = false)
+    }
+
+    private fun assertChangedOriginCannotResume(changeSession: Boolean) {
+        val originalGraph = fixture.reopen()
+        val binding = requireNotNull(originalGraph.debtWriteRepository.currentAccess()).binding
+        runBlocking { originalGraph.debtWriteRepository.save(binding, fixture.network.current.toDomain(), 3_000, "补记原借款").getOrThrow() }
+        fixture.network.loseResponse = true
+        assertEquals(1, runBlocking { fixture.drain(maxAttempts = 1) }.failures)
+        val original = fixture.stored().single()
+        fixture.session = if (changeSession) fixture.session.copy(sessionGeneration = "new-session")
+            else fixture.session.copy(bindingRevision = "new-revision")
+        installModels()
+        compose.setContent { detail.value?.let { model ->
+            TicketboxTheme(skin = AppSkin.Paper) { DebtDetailScreen(model, proposals, history, {}) }
+        } }
+        compose.waitUntil(10_000) { detail.value?.state?.value?.pendingWrites?.singleOrNull() != null }
+        val state = requireNotNull(detail.value).state.value
+        val pending = state.pendingWrites.single()
+        assertNotNull(pending.intent)
+        compose.onNodeWithText("原调整金额：", substring = true).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("补记原借款").assertExists()
+        compose.onNodeWithText(InstrumentationRegistry.getInstrumentation().targetContext.getString(R.string.debt_void_original_binding_changed).substringBefore('，'),
+            substring = true).assertExists()
+        compose.onNodeWithText("重试原提交").assertDoesNotExist()
+        assertFalse(pending.canRetry)
+        assertTrue(runBlocking { fixture.graph.debtWriteRepository.recover(requireNotNull(state.binding), pending, false) }.isFailure)
+        assertEquals(original, fixture.stored().single())
+        assertEquals(0, runBlocking { fixture.drain() }.attempted)
+        lateinit var sync: OutboxStatusViewModel
+        compose.runOnIdle { sync = outboxStatusViewModelFactory(fixture.outbox, fixture.graph.expenseRepository,
+            OutboxRecoveryRepositories(fixture.graph.debtCreationRepository, fixture.graph.recurringRepository.occurrences,
+                fixture.graph.incomePlanRepository, fixture.graph.debtWriteRepository, fixture.graph.goalEditRepository,
+                fixture.graph.budgetRepository, fixture.graph.recurringRepository, fixture.graph.ruleRepository))
+            .create(OutboxStatusViewModel::class.java) }
+        try {
+            compose.waitUntil(10_000) { sync.uiState.value.status.failed.size == 1 }
+            val failed = sync.uiState.value.status.failed.single()
+            assertFalse(sync.uiState.value.offersRetry(failed))
+            compose.runOnIdle { sync.retry(failed) }
+            compose.waitUntil(10_000) { sync.uiState.value.message != null }
+            assertEquals(original, fixture.stored().single())
+            assertEquals(1, fixture.network.calls.size)
+            compose.runOnIdle { sync.dropFailed(failed) }
+            compose.waitUntil(10_000) { fixture.stored().single()["status"] == "abandoned" }
+            for (field in listOf("payload", "idempotencyKey", "expectedRowVersion", "targetId", "ownerKey", "ledgerId", "serverUrl", "createdAt")) {
+                assertEquals(original[field], fixture.stored().single()[field])
+            }
+            assertEquals(0, runBlocking { fixture.drain() }.attempted)
+            assertEquals(1, fixture.network.results.size)
+        } finally { compose.runOnIdle { sync.viewModelScope.cancel() } }
     }
 
     private fun installModels() {
