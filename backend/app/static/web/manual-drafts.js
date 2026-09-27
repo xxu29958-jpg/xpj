@@ -63,6 +63,9 @@
         values: fieldValues(values), updatedAt: Date.now()};
       if (!["editing", "submitted", "blocked"].includes(phase)) throw Error("invalid_draft_phase");
       const previous = read(ref);
+      if (phase === "blocked" && (serverResult === "rejected" || previous && previous.serverResult === "rejected")) {
+        next.serverResult = "rejected";
+      }
       if (previous && !matches(previous.scope, next.scope)) throw Error("draft_binding_changed");
       if (previous && previous.phase !== "editing" && serverResult !== "rejected") {
         if (phase === "editing" || JSON.stringify(fieldValues(previous.values)) !== JSON.stringify(next.values)) {
@@ -108,7 +111,16 @@
       return true;
     }
 
-    return {fields, optionalFields, key, matches, read, save, list, acknowledge, canDiscardRejected, discardRejected};
+    function discardReviewed(proof) {
+      const record = read(proof.clientRef);
+      if (!record || record.phase !== "blocked" || proof.serverResult !== "accepted-review" ||
+          !matches(record.scope, scopeValue(proof.scope)) ||
+          JSON.stringify(fieldValues(record.values)) !== JSON.stringify(fieldValues(proof.values))) return false;
+      window.localStorage.removeItem(key(proof.clientRef));
+      return true;
+    }
+
+    return {fields, optionalFields, key, matches, read, save, list, acknowledge, canDiscardRejected, discardRejected, discardReviewed};
   }
 
   window.TicketboxDraftStore = {createStore};

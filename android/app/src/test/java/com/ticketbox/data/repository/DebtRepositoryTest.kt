@@ -9,7 +9,6 @@ import com.ticketbox.data.remote.dto.DebtDto
 import com.ticketbox.data.remote.dto.DebtForgiveCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtKindSetRequestDto
 import com.ticketbox.data.remote.dto.DebtListResponseDto
-import com.ticketbox.data.remote.dto.DebtVoidCreateRequestDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalConfirmRequestDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalCreateRequestDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalDto
@@ -214,34 +213,30 @@ class DebtRepositoryTest {
 
     @Test
     fun voidDebtSendsTrimmedReasonVersionAndKey() = runTest {
-        val handler = DebtApiHandler()
-
-        repository(handler).voidDebt(publicId = "d1", expectedRowVersion = 4L, reason = "  记错了  ").getOrThrow()
-
-        val call = handler.voidCalls.single()
-        assertEquals("记错了", call.request.reason)
-        assertEquals(4L, call.request.expectedRowVersion)
-        assertTrue(!call.idempotencyKey.isNullOrBlank())
+        val fixture = DirectRepaymentTestFixture()
+        fixture.api.loseResponse = false
+        fixture.repository.saveVoid(fixture.binding, fixture.debt.copy(rowVersion = 4), "  记错了  ").getOrThrow()
+        val original = fixture.pending().debtVoid!!
+        assertEquals("记错了", original.request.reason)
+        assertEquals(4L, original.expectedRowVersion)
+        assertTrue(!fixture.dao.rows.values.single().idempotencyKey.isNullOrBlank())
+        assertTrue(fixture.api.voidCalls.isEmpty())
     }
 
     @Test
     fun voidDebtRejectsBlankReasonBeforeApiCall() = runTest {
-        val handler = DebtApiHandler()
-
-        val result = repository(handler).voidDebt("d1", expectedRowVersion = 1L, reason = "   ")
-
-        assertTrue(result.isFailure)
-        assertTrue(handler.voidCalls.isEmpty())
+        val fixture = DirectRepaymentTestFixture()
+        assertTrue(fixture.repository.saveVoid(fixture.binding, fixture.debt, "   ").isFailure)
+        assertTrue(fixture.dao.rows.isEmpty())
+        assertTrue(fixture.api.voidCalls.isEmpty())
     }
 
     @Test
     fun voidDebtViewerShortCircuitsWithoutApiCall() = runTest {
-        val handler = DebtApiHandler()
-
-        val result = repository(handler, role = "viewer").voidDebt("d1", expectedRowVersion = 1L, reason = "x")
-
-        assertTrue(result.isFailure)
-        assertTrue(handler.voidCalls.isEmpty())
+        val fixture = DirectRepaymentTestFixture(role = "viewer")
+        assertTrue(fixture.repository.saveVoid(fixture.binding, fixture.debt, "x").isFailure)
+        assertTrue(fixture.dao.rows.isEmpty())
+        assertTrue(fixture.api.voidCalls.isEmpty())
     }
 
     // ── ADR-0049 §7.0 / 8e-6e debt_kind correction setter ───────────────────
@@ -556,7 +551,6 @@ private fun debtDto(
     isForgiven = isForgiven,
 )
 
-private data class VoidCall(val publicId: String, val request: DebtVoidCreateRequestDto, val idempotencyKey: String?)
 private data class SetKindCall(val publicId: String, val request: DebtKindSetRequestDto, val idempotencyKey: String?)
 private data class ForgiveCall(val publicId: String, val request: DebtForgiveCreateRequestDto, val idempotencyKey: String?)
 private data class ProposeProposalCall(
@@ -588,7 +582,6 @@ private fun proposalDto(publicId: String = "p1", proposed: Long = 20_000L): Memb
 private class DebtApiHandler : InvocationHandler, ApiServiceFactory {
     val listLenses = mutableListOf<String?>()
     val parseBillCalls = mutableListOf<MultipartBody.Part>()
-    val voidCalls = mutableListOf<VoidCall>()
     // ADR-0049 §7.0 / 8e-6e debt_kind correction-setter route recording.
     val setKindCalls = mutableListOf<SetKindCall>()
     var setKindResult: DebtDto? = null
@@ -608,7 +601,6 @@ private class DebtApiHandler : InvocationHandler, ApiServiceFactory {
     var parseBillResult: DebtBillParseResponseDto? = null
     // Fold-after Debt returned by getDebt / the write routes (defaults to a fresh sample).
     var debtResult: DebtDto? = null
-    var writeResult: DebtDto? = null
     var proposalsResult: MemberRepaymentProposalListResponseDto? = null
     var proposalResult: MemberRepaymentProposalDto? = null
     // Fold-after Debt returned by the confirm route (a DebtResponse, like the slice-2 fact writes).
@@ -645,14 +637,6 @@ private class DebtApiHandler : InvocationHandler, ApiServiceFactory {
             "parseDebtBill" -> {
                 parseBillCalls += values[0] as MultipartBody.Part
                 parseBillResult ?: DebtBillParseResponseDto()
-            }
-            "voidDebt" -> {
-                voidCalls += VoidCall(
-                    publicId = values[0] as String,
-                    request = values[1] as DebtVoidCreateRequestDto,
-                    idempotencyKey = values[2] as String?,
-                )
-                writeResult ?: debtDto(publicId = values[0] as String)
             }
             // ADR-0049 §3.2 (slice 8d) proposal routes are dispatched in a helper so invoke stays
             // under the LongMethod gate (the slice-2 fact arms already fill it).

@@ -2,6 +2,7 @@ package com.ticketbox.data.remote.dto
 
 import com.squareup.moshi.Json
 
+@com.squareup.moshi.JsonClass(generateAdapter = true)
 data class RepaymentVoidCreateRequestDto(
     @param:Json(name = "repayment_public_id") val repaymentPublicId: String,
     val reason: String,

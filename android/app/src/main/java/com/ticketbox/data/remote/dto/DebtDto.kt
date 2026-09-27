@@ -14,6 +14,7 @@ import com.squareup.moshi.JsonClass
  * `ledgerId` is NULLABLE: the backend redacts it to null for a cross-ledger participant view
  * (§5.2). Use [publicId] (+ [counterpartyAccountId]) as the local key, never `ledgerId`.
  */
+@JsonClass(generateAdapter = true)
 data class DebtDto(
     @param:Json(name = "public_id")
     val publicId: String,
@@ -205,6 +206,7 @@ data class DebtAdjustmentCreateRequestDto(
  * Body for `POST /api/debts/{id}/void` — void an entire Debt (ADR-0049 §3.5, slice 8c). [reason] is
  * required. [expectedRowVersion] is the §2.1 stale-intent token + §3.6 fingerprint component.
  */
+@JsonClass(generateAdapter = true)
 data class DebtVoidCreateRequestDto(
     val reason: String,
     @param:Json(name = "expected_row_version")

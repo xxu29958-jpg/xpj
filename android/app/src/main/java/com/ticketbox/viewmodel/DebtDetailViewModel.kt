@@ -251,20 +251,12 @@ class DebtDetailViewModel(
         }
         _state.update { it.copy(isSubmitting = true) }
         viewModelScope.launch {
-            val result = command.execute(repository, writes, binding)
+            val result = command.execute(writes, binding)
             if (loadedPublicId != debt.publicId || loadedBinding != binding || writes.currentAccess()?.binding != binding) return@launch
             result.fold(
                 onSuccess = { outcome ->
-                    val updated = (outcome as? DebtActionOutcome.Committed)?.debt
-                    // Supersede any in-flight refresh so its stale fold can't revert this committed
-                    // write (which would make the next write's OCC carrier stale → a 409).
-                    if (updated != null) {
-                        loadGeneration++
-                        detectSettleCelebration(updated, previousStatusByPublicId, celebratedDebtIds)
-                            ?.let { _celebration.value = it }
-                    }
                     _state.update { it.acceptAction(outcome, action, completedWrites.orEmpty()) }
-                    if (outcome is DebtActionOutcome.Queued && outcome.intentId in completedWrites.orEmpty() &&
+                    if (outcome.intentId in completedWrites.orEmpty() &&
                         refreshedWrites.add(outcome.intentId)) refresh()
                 },
                 onFailure = { err ->
@@ -326,21 +318,20 @@ class DebtDetailViewModel(
     }
 }
 
-private sealed interface DebtActionOutcome {
-    data class Committed(val debt: Debt) : DebtActionOutcome
-    data class Queued(val intentId: Long) : DebtActionOutcome
-}
+private data class DebtActionOutcome(val intentId: Long)
 
 /** Validated target and parsed form for this submission, captured before asynchronous work. */
 private data class DebtActionSubmission(val debt: Debt, val action: DebtAction, val input: DebtActionInput)
 
-private suspend fun DebtActionSubmission.execute(repository: DebtActions, writes: DebtWriteActions,
+private suspend fun DebtActionSubmission.execute(writes: DebtWriteActions,
     binding: LogicalSessionBinding): Result<DebtActionOutcome> = when (action) {
     DebtAction.Adjustment -> writes.save(binding, debt, requireNotNull(input.amountCents), input.reason)
-        .map { DebtActionOutcome.Queued(it) }
+        .map { DebtActionOutcome(it) }
     DebtAction.Repayment -> writes.saveRepayment(binding, debt, requireNotNull(input.amountCents))
-        .map { DebtActionOutcome.Queued(it) }
-    else -> repository.performAction(debt, action, input).map { DebtActionOutcome.Committed(it) }
+        .map { DebtActionOutcome(it) }
+    DebtAction.Void -> writes.saveVoid(binding, debt, input.reason).map { DebtActionOutcome(it) }
+    DebtAction.RepaymentVoid -> writes.saveRepaymentVoid(binding, debt, requireNotNull(input.repaymentPublicId), input.reason)
+        .map { DebtActionOutcome(it) }
 }
 
 private fun DebtDetailUiState.actionSubmission(): DebtActionSubmission? {
@@ -356,15 +347,15 @@ private fun DebtDetailUiState.acceptAction(
     action: DebtAction,
     completedWrites: Set<Long>,
 ): DebtDetailUiState = copy(
-    debt = (outcome as? DebtActionOutcome.Committed)?.debt ?: debt,
     activeAction = null, repaymentToVoid = null, amountInput = "", reasonInput = "",
     isSubmitting = false, validationError = null,
-    locallyAcceptedWriteId = if (outcome is DebtActionOutcome.Queued &&
-        outcome.intentId !in completedWrites && pendingWrites.none { it.row.id == outcome.intentId }
+    locallyAcceptedWriteId = if (outcome.intentId !in completedWrites && pendingWrites.none { it.row.id == outcome.intentId }
     ) outcome.intentId else locallyAcceptedWriteId,
-    flashMessage = UiText.res(if (outcome is DebtActionOutcome.Queued) {
-        if (action == DebtAction.Repayment) R.string.debt_repayment_saved else R.string.debt_adjustment_saved
-    } else debtActionDoneRes(action)),
+    flashMessage = UiText.res(when (action) {
+        DebtAction.Repayment -> R.string.debt_repayment_saved
+        DebtAction.Adjustment -> R.string.debt_adjustment_saved
+        DebtAction.Void, DebtAction.RepaymentVoid -> R.string.debt_void_saved
+    }),
 )
 
 /** Parsed input for one attempt, not a second draft or settlement owner. */
@@ -395,15 +386,6 @@ private fun DebtDetailUiState.actionInput(debt: Debt, action: DebtAction): DebtA
         errorRes = error,
     )
 }
-
-private suspend fun DebtActions.performAction(debt: Debt, action: DebtAction, input: DebtActionInput): Result<Debt> =
-    when (action) {
-        DebtAction.Repayment, DebtAction.Adjustment -> error("Debt amount commands publish through their durable owner")
-        DebtAction.Void -> voidDebt(debt.publicId, debt.rowVersion, input.reason)
-        DebtAction.RepaymentVoid -> voidRepayment(
-            debt.publicId, requireNotNull(input.repaymentPublicId), debt.rowVersion, input.reason,
-        )
-    }
 
 // §5.2 边沿检测（提到顶层让 DebtDetailViewModel 守住 detekt TooManyFunctions 阈值，逻辑不变）：crossedEdge
 // （本 VM 内先见非-cleared、后变 cleared）= 在场目击两清，返回庆祝信号；否则 null。首次见已 cleared 的债
@@ -446,11 +428,4 @@ private fun validateDebtAction(action: DebtAction, amountCents: Long?, reason: S
             null
         }
     DebtAction.Void, DebtAction.RepaymentVoid -> if (reason.isEmpty()) R.string.debt_action_void_validation else null
-}
-
-@StringRes
-private fun debtActionDoneRes(action: DebtAction): Int = when (action) {
-    DebtAction.Repayment, DebtAction.Adjustment -> error("Debt amount commands report durable publication, then canonical recovery")
-    DebtAction.Void -> R.string.debt_action_void_done
-    DebtAction.RepaymentVoid -> R.string.debt_action_repayment_void_done
 }

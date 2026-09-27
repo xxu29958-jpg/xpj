@@ -1,6 +1,6 @@
 package com.ticketbox.data.repository
 
-import com.squareup.moshi.JsonAdapter
+import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
@@ -26,15 +26,16 @@ interface DebtWriteActions {
     fun describeWrite(row: OutboxRow): PendingDebtWrite?
     suspend fun save(binding: LogicalSessionBinding, debt: Debt, amountCents: Long, reason: String): Result<Long>
     suspend fun saveRepayment(binding: LogicalSessionBinding, debt: Debt, amountCents: Long): Result<Long>
+    suspend fun saveVoid(binding: LogicalSessionBinding, debt: Debt, reason: String): Result<Long>
+    suspend fun saveRepaymentVoid(binding: LogicalSessionBinding, debt: Debt, repaymentPublicId: String, reason: String): Result<Long>
     suspend fun recover(binding: LogicalSessionBinding, pending: PendingDebtWrite, drop: Boolean): Result<Unit>
 }
 
 /** Publishes either original debt command; the matching thin dispatcher owns network delivery. */
-class DebtWriteRepository(
+class DebtWriteRepository internal constructor(
     private val apiProvider: ApiServiceProvider,
     private val outbox: OutboxRepository,
-    private val adapter: JsonAdapter<DebtAdjustmentPayload>,
-    private val repaymentAdapter: JsonAdapter<DebtRepaymentPayload>,
+    private val adapters: OutboxAdapterGraph,
     private val clock: Clock = Clock.systemUTC(),
 ) : DebtWriteActions {
     private val guard = LedgerRequestGuard(apiProvider)
@@ -71,11 +72,14 @@ class DebtWriteRepository(
         if (row.type !in DEBT_WRITE_TYPES ||
             row.ownerKey != binding.ownerKey || row.ledgerId != binding.ledgerId
         ) return null
-        return when (row.type) {
-            PendingMutationType.RecordDebtAdjustment -> row.describeDebtAdjustment(adapter)
-            PendingMutationType.RecordDebtRepayment -> row.describeDebtRepayment(repaymentAdapter)
+        val pending = when (row.type) {
+            PendingMutationType.RecordDebtAdjustment -> row.describeDebtAdjustment(adapters.debtAdjustmentAdapter)
+            PendingMutationType.RecordDebtRepayment -> row.describeDebtRepayment(adapters.debtRepaymentAdapter)
+            PendingMutationType.VoidDebt -> row.describeDebtVoid(adapters.debtVoidAdapter)
+            PendingMutationType.VoidDebtRepayment -> row.describeRepaymentVoid(adapters.debtRepaymentVoidAdapter)
             else -> null
         }
+        return pending?.copy(originalBindingChanged = pending.isVoid && pending.intent?.matchesVoidOrigin(binding) == false)
     }
 
     override fun observeWrites(binding: LogicalSessionBinding, publicId: String): Flow<List<PendingDebtWrite>> =
@@ -97,7 +101,7 @@ class DebtWriteRepository(
                 originBindingRevision = binding.bindingRevision,
                 request = DebtAdjustmentCreateRequestDto(amountCents, cleanReason, debt.rowVersion),
             )
-            publish(binding, debt, type = PendingMutationType.RecordDebtAdjustment, payload = adapter.toJson(payload))
+            publish(binding, debt, type = PendingMutationType.RecordDebtAdjustment, payload = adapters.debtAdjustmentAdapter.toJson(payload))
         }
 
     override suspend fun saveRepayment(binding: LogicalSessionBinding, debt: Debt, amountCents: Long): Result<Long> =
@@ -106,8 +110,27 @@ class DebtWriteRepository(
             val payload = DebtRepaymentPayload(1, DebtWriteSubject(debt.publicId, debt.counterpartyLabel, debt.homeCurrencyCode),
                 binding.sessionGeneration, binding.bindingRevision,
                 RepaymentCreateRequestDto(amountCents, debt.rowVersion, clock.instant().toString()))
-            publish(binding, debt, type = PendingMutationType.RecordDebtRepayment, payload = repaymentAdapter.toJson(payload))
+            publish(binding, debt, type = PendingMutationType.RecordDebtRepayment, payload = adapters.debtRepaymentAdapter.toJson(payload))
         }
+
+    override suspend fun saveVoid(binding: LogicalSessionBinding, debt: Debt, reason: String): Result<Long> = errors.safeCall {
+        val cleanReason = trimDebtAdjustmentReason(reason)
+        require(isDebtAdjustmentReasonValid(cleanReason)) { "请填写作废原因，最多 500 个字符。" }
+        val payload = DebtVoidPayload(1, DebtWriteSubject(debt.publicId, debt.counterpartyLabel, debt.homeCurrencyCode),
+            binding.sessionGeneration, binding.bindingRevision,
+            com.ticketbox.data.remote.dto.DebtVoidCreateRequestDto(cleanReason, debt.rowVersion))
+        publish(binding, debt, type = PendingMutationType.VoidDebt, payload = adapters.debtVoidAdapter.toJson(payload))
+    }
+
+    override suspend fun saveRepaymentVoid(binding: LogicalSessionBinding, debt: Debt, repaymentPublicId: String,
+        reason: String): Result<Long> = errors.safeCall {
+        val cleanReason = trimDebtAdjustmentReason(reason)
+        require(repaymentPublicId.isNotBlank() && isDebtAdjustmentReasonValid(cleanReason)) { "请核对原还款并填写作废原因，最多 500 个字符。" }
+        val payload = DebtRepaymentVoidPayload(1, DebtWriteSubject(debt.publicId, debt.counterpartyLabel, debt.homeCurrencyCode),
+            binding.sessionGeneration, binding.bindingRevision,
+            com.ticketbox.data.remote.dto.RepaymentVoidCreateRequestDto(repaymentPublicId, cleanReason, debt.rowVersion))
+        publish(binding, debt, type = PendingMutationType.VoidDebtRepayment, payload = adapters.debtRepaymentVoidAdapter.toJson(payload))
+    }
 
     private suspend fun publish(binding: LogicalSessionBinding, debt: Debt, type: PendingMutationType, payload: String): Long {
         val bound = guard.bindExact(binding)
@@ -115,12 +138,13 @@ class DebtWriteRepository(
         require(debt.ledgerId == binding.ledgerId && debt.isDirectWritable && !debt.isVoided && debt.rowVersion > 0L) {
             "这笔欠款不能直接修改。"
         }
-        require(CurrencyCode.fromStorageKeyOrNull(debt.homeCurrencyCode) != null) { "当前版本不支持这笔欠款的币种。" }
+        require(type in setOf(PendingMutationType.VoidDebt, PendingMutationType.VoidDebtRepayment) ||
+            CurrencyCode.fromStorageKeyOrNull(debt.homeCurrencyCode) != null) { "当前版本不支持这笔欠款的币种。" }
         return outbox.enqueue(boundRequest = bound, intent = PendingMutationIntent(type = type,
             targetId = debtWriteTarget(debt.publicId), payloadJson = payload, expectedRowVersion = debt.rowVersion,
             idempotencyKey = UUID.randomUUID().toString()), validateTargetRows = { rows ->
                 if (rows.any { it.status != PendingMutationStatus.Done }) {
-                    throw RepositoryException("这笔欠款还有待处理的还款或调整，请先核对原提交。")
+                    throw RepositoryException("这笔欠款还有待处理的提交，请先核对原提交。")
                 }
             })
     }
@@ -134,6 +158,7 @@ class DebtWriteRepository(
             val original = describeWrite(current)
             require(original != null) { "请回到原账本核对这次提交。" }
             require(drop || currentAccess()?.canModify == true) { "当前角色为只读，无法重试提交。" }
+            require(drop || !original.originalBindingChanged) { "连接信息已变化，无法继续这次作废；原记录仍保留，可停止本机追踪。" }
             require(drop || original.hasSupportedIntent) { "当前版本无法读取原提交，请升级后继续。" }
             require(drop || original.canRetry) { "这次原提交不能重试，请核对后处理本地记录。" }
             val changed = if (drop) outbox.abandonDebtWrite(bound, current)

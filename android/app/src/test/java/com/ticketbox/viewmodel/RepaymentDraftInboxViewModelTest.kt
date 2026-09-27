@@ -545,15 +545,6 @@ private class FakeRepayableDebtActions(
         bytes: ByteArray,
     ): Result<DebtBillSuggestion> = Result.failure(UnsupportedOperationException())
 
-    override suspend fun voidRepayment(
-        publicId: String,
-        repaymentPublicId: String,
-        expectedRowVersion: Long,
-        reason: String,
-    ): Result<Debt> = Result.failure(UnsupportedOperationException())
-
-    override suspend fun voidDebt(publicId: String, expectedRowVersion: Long, reason: String): Result<Debt> =
-        Result.success(debt(publicId))
 
     override suspend fun setDebtKind(publicId: String, expectedRowVersion: Long, debtKind: String): Result<Debt> =
         Result.success(debt(publicId))

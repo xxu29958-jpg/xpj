@@ -29,9 +29,10 @@ class DebtRepaymentVoidViewModelTest {
     @AfterTest fun tearDown() { Dispatchers.resetMain() }
 
     @Test
-    fun selectedPaymentUsesExistingActionOwnerAndPublishesCanonicalParent() = runTest(dispatcher) {
+    fun selectedPaymentPublishesOriginalThroughDurableOwnerBeforeCanonicalRefresh() = runTest(dispatcher) {
         val repository = RecordingVoidActions()
-        val viewModel = DebtDetailViewModel(repository, FakeDebtWriteActions())
+        val writes = FakeDebtWriteActions()
+        val viewModel = DebtDetailViewModel(repository, writes)
         viewModel.loadDebt("debt-1")
         advanceUntilIdle()
         viewModel.openAction(DebtAction.RepaymentVoid, payment())
@@ -41,8 +42,10 @@ class DebtRepaymentVoidViewModelTest {
         viewModel.submit()
         advanceUntilIdle()
 
-        assertEquals(listOf(VoidAttempt("debt-1", "payment-7", 4, "重复记录")), repository.calls)
-        assertEquals(repository.writeResult.getOrThrow(), viewModel.state.value.debt)
+        assertEquals("payment-7", writes.voidCalls.single().repaymentPublicId)
+        assertEquals("重复记录", writes.voidCalls.single().reason)
+        assertEquals(4L, writes.voidCalls.single().debt.rowVersion)
+        assertEquals(repository.debt.copy(publicId = "debt-1"), viewModel.state.value.debt)
         assertNull(viewModel.state.value.activeAction)
         assertNull(viewModel.state.value.repaymentToVoid)
         assertNotNull(viewModel.state.value.flashMessage)
@@ -50,10 +53,9 @@ class DebtRepaymentVoidViewModelTest {
 
     @Test
     fun failedVoidRetainsTheExactTargetAndReasonForRecovery() = runTest(dispatcher) {
-        val repository = RecordingVoidActions().apply {
-            writeResult = Result.failure(RepositoryException("欠款已变化，请刷新后再试"))
-        }
-        val viewModel = DebtDetailViewModel(repository, FakeDebtWriteActions())
+        val repository = RecordingVoidActions()
+        val writes = FakeDebtWriteActions().apply { saveResult = Result.failure(RepositoryException("本机保存失败")) }
+        val viewModel = DebtDetailViewModel(repository, writes)
         viewModel.loadDebt("debt-1")
         advanceUntilIdle()
         viewModel.openAction(DebtAction.RepaymentVoid, payment())
@@ -69,8 +71,9 @@ class DebtRepaymentVoidViewModelTest {
 
     @Test
     fun inFlightVoidCannotBeDismissedOrSubmittedTwice() = runTest(dispatcher) {
-        val repository = RecordingVoidActions().apply { gate = CompletableDeferred() }
-        val viewModel = DebtDetailViewModel(repository, FakeDebtWriteActions())
+        val repository = RecordingVoidActions()
+        val writes = FakeDebtWriteActions().apply { saveGate = CompletableDeferred() }
+        val viewModel = DebtDetailViewModel(repository, writes)
         viewModel.loadDebt("debt-1")
         advanceUntilIdle()
         viewModel.openAction(DebtAction.RepaymentVoid, payment())
@@ -81,16 +84,17 @@ class DebtRepaymentVoidViewModelTest {
         viewModel.submit()
         runCurrent()
 
-        assertEquals(1, repository.calls.size)
+        assertEquals(1, writes.voidCalls.size)
         assertTrue(viewModel.state.value.isSubmitting)
-        repository.gate!!.complete(repository.writeResult)
+        writes.saveGate!!.complete(Unit)
         advanceUntilIdle()
     }
 
     @Test
     fun anotherDebtCannotReceiveLateVoidResult() = runTest(dispatcher) {
-        val repository = RecordingVoidActions().apply { gate = CompletableDeferred() }
-        val viewModel = DebtDetailViewModel(repository, FakeDebtWriteActions())
+        val repository = RecordingVoidActions()
+        val writes = FakeDebtWriteActions().apply { saveGate = CompletableDeferred() }
+        val viewModel = DebtDetailViewModel(repository, writes)
         viewModel.loadDebt("debt-1")
         advanceUntilIdle()
         viewModel.openAction(DebtAction.RepaymentVoid, payment())
@@ -99,10 +103,10 @@ class DebtRepaymentVoidViewModelTest {
         runCurrent()
         viewModel.loadDebt("debt-2")
         advanceUntilIdle()
-        repository.gate!!.complete(repository.writeResult)
+        writes.saveGate!!.complete(Unit)
         advanceUntilIdle()
 
-        assertEquals(1, repository.calls.size)
+        assertEquals(1, writes.voidCalls.size)
         assertEquals("debt-2", viewModel.state.value.debt?.publicId)
     }
 
@@ -113,7 +117,8 @@ class DebtRepaymentVoidViewModelTest {
         }
         val repositories = listOf(member, RecordingVoidActions(canModify = false))
         for (repository in repositories) {
-            val viewModel = DebtDetailViewModel(repository, FakeDebtWriteActions())
+            val writes = FakeDebtWriteActions()
+            val viewModel = DebtDetailViewModel(repository, writes)
             viewModel.loadDebt("debt-1")
             advanceUntilIdle()
             viewModel.openAction(DebtAction.RepaymentVoid, payment())
@@ -122,22 +127,11 @@ class DebtRepaymentVoidViewModelTest {
     }
 }
 
-private data class VoidAttempt(val debtId: String, val repaymentId: String, val version: Long, val reason: String)
-
 private class RecordingVoidActions(canModify: Boolean = true) : DebtActions by FakeDebtActions(canModify) {
     var debt = sampleDebt().copy(rowVersion = 4, remainingAmountCents = 0, paidAmountCents = 50_000, status = "cleared")
-    var writeResult = Result.success(sampleDebt().copy(
-        rowVersion = 5, remainingAmountCents = 20_000, paidAmountCents = 30_000, status = "open",
-    ))
-    var gate: CompletableDeferred<Result<Debt>>? = null
-    val calls = mutableListOf<VoidAttempt>()
-
     override suspend fun getDebt(publicId: String): Result<Debt> = Result.success(debt.copy(publicId = publicId))
 
-    override suspend fun voidRepayment(publicId: String, repaymentPublicId: String, expectedRowVersion: Long, reason: String): Result<Debt> {
-        calls += VoidAttempt(publicId, repaymentPublicId, expectedRowVersion, reason)
-        return gate?.await() ?: writeResult
-    }
+
 }
 
 private fun payment() = DebtRepayment(

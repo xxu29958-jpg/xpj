@@ -12,7 +12,6 @@ from app.errors import AppError
 from app.routes import _web_debt_write
 from app.routes.web_common import _base_ctx, _currency_input_view, templates
 from app.services.currency_common import supported_currency_codes
-from app.services.manual_expense_draft_presenter import manual_draft_scope
 from app.services.time_service import now_utc
 
 REPAYMENT_FIELDS = (
@@ -21,13 +20,8 @@ REPAYMENT_FIELDS = (
 )
 
 
-def repayment_scope(request: Request, db: Session) -> dict[str, str]:
-    auth = getattr(request.state, "web_session_auth", None)
-    return manual_draft_scope(db, auth) if auth is not None else {}
-
-
 def require_repayment_binding(request: Request, db: Session, *, values: dict, public_id: str) -> None:
-    scope = repayment_scope(request, db)
+    scope = _web_debt_write.repayment_scope(request, db)
     try:
         original = json.loads(values["origin_binding"]) if values["origin_binding"] else {}
     except (ValueError, TypeError) as exc:
@@ -45,7 +39,7 @@ def repayment_context(
     values: dict[str, str] | None = None, error: str = "", result: str = "",
     ack: dict | None = None, rejected: bool = False,
 ) -> dict:
-    scope = repayment_scope(request, db)
+    scope = _web_debt_write.repayment_scope(request, db)
     zone = _web_debt_write.accounting_zone()
     initial = {
         "debt_public_id": public_id, "ledger_id": selected_id,
@@ -85,10 +79,16 @@ def render_repayment_recovery(
 ):
     # The identity/installation scope is still authoritative. No Debt fold,
     # history, side counts or inferred latest OCC is needed to retain a command.
-    ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id, page_title="核对还款")
+    ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id, page_title="核对原提交")
     ctx["repayment_form"] = repayment_context(
         request, db, selected_id=selected_id, public_id=public_id,
         values=values, error=error, result=result, ack=ack,
         can_recover=_web_debt_write._debt_write_gate(options, selected_id),
     )
+    from app.routes._web_debt_void import void_context
+
+    ctx["void_recovery_forms"] = [void_context(
+        request, db, selected_id=selected_id, public_id=public_id, kind=kind,
+        can_recover=ctx["repayment_form"]["can_recover"],
+    ) for kind in ("debt-void", "repayment-void")]
     return templates.TemplateResponse(request=request, name="debt_repayment_recovery.html", context=ctx, status_code=status_code)

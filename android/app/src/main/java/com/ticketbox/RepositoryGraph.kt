@@ -133,7 +133,7 @@ internal class RepositoryGraph(
     )
 
     val debtWriteRepository = com.ticketbox.data.repository.DebtWriteRepository(
-        apiServiceProvider, outbox, outboxAdapters.debtAdjustmentAdapter, outboxAdapters.debtRepaymentAdapter,
+        apiServiceProvider, outbox, outboxAdapters,
     )
 
     val debtCreationRepository = DebtCreationRepository(

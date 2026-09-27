@@ -6,6 +6,7 @@
 <script defer src="/static/web/repayment-entry.js?v={{ asset_version }}"></script>
 {% endblock %}
 {% block content %}
+<div data-repayment-container>
 <header class="product-page-header"><div>
   <a class="product-link" href="/web/debts/{{ change.public_id }}?ledger_id={{ selected_ledger_id }}">返回往来详情</a>
   <h1 class="product-page-title">拆账新约定</h1>
@@ -83,4 +84,5 @@
 <section class="product-panel product-panel--padded" data-repayment-shelf hidden>
   <h2 class="product-panel-title">此浏览器保留的约定任务</h2><ul data-repayment-list></ul>
 </section>
+</div>
 {% endblock %}
