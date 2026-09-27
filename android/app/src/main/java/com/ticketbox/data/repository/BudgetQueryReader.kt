@@ -1,5 +1,6 @@
 package com.ticketbox.data.repository
 
+import android.database.sqlite.SQLiteException
 import com.squareup.moshi.JsonDataException
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
@@ -33,7 +34,7 @@ internal class BudgetQueryReader(
     // Unconfigured reads have no revision; only responses started after acceptance may replace the saved budget.
     private val saveGenerations = mutableMapOf<String, Long>()
 
-    suspend fun invalidate(row: OutboxRow, acceptedRevision: Long) {
+    suspend fun invalidate(row: OutboxRow, acceptedRevision: Long?) {
         val binding = requireNotNull(guard.captureLogicalBinding()) { "请重新绑定账本。" }
         require(row.ledgerId == binding.ledgerId && row.ownerKey == binding.ownerKey &&
             canonicalServerOriginOrNull(row.serverUrl) == canonicalServerOriginOrNull(binding.serverUrl)) {
@@ -43,12 +44,13 @@ internal class BudgetQueryReader(
         val month = row.targetId.removePrefix("monthly_budget:")
         mutex.withLock {
             val monthKey = "$bindingKey|$month"
-            val minimum = maxOf(minimumRevisions[monthKey] ?: 0L, acceptedRevision)
+            // A repair marker is written only after the original OCC + 1 result was verified.
+            val minimum = maxOf(minimumRevisions[monthKey] ?: 0L, acceptedRevision ?: (row.expectedRowVersion + 1))
             minimumRevisions[monthKey] = minimum
             saveGenerations[monthKey] = (saveGenerations[monthKey] ?: 0L) + 1
             dao.budgetSnapshotsForMonth(bindingKey, month).forEach { saved ->
                 val cached = readCached(saved)
-                if (cached == null || (cached.rowVersion ?: 0L) < minimum) dao.deleteStatsProjection(saved)
+                if (acceptedRevision == null || cached == null || (cached.rowVersion ?: 0L) < minimum) dao.deleteStatsProjection(saved)
             }
         }
     }
@@ -91,7 +93,8 @@ internal class BudgetQueryReader(
                     requireAcceptedRevision(bindingKey, wire, saveGeneration)
                     return@withLock ReadSnapshot(wire.toDomain(), query.fetchedAt, fromCache = false)
                 }
-                val saved = dao.statsProjections(bindingKey, "budget", cleanMonth, "", timezone).singleOrNull()
+                val saved = try { dao.statsProjections(bindingKey, "budget", cleanMonth, "", timezone).singleOrNull() }
+                    catch (_: SQLiteException) { null }
                 val snapshot = acceptWire(wire, query, ticket, saveGeneration, saved)
                 if (freshOnly && snapshot.fromCache) {
                     // Room keeps its newer query; this independent GET still supplies a fresh result.
@@ -104,9 +107,11 @@ internal class BudgetQueryReader(
     private suspend fun recoverReadRefresh(bound: BoundLedgerRequest, month: String) {
         // The binding lease covers cleanup and compare-clear; cleanup never enters the coordinator.
         outbox.recoverBudgetReadRefresh(bound, month) { row ->
-            val receipt = requireNotNull(adapter.fromJson(requireNotNull(row.receiptJson)))
-            require(receipt.configured && receipt.ledgerId == row.ledgerId && receipt.month == month)
-            val revision = requireNotNull(receipt.rowVersion).also { require(it > 0) }
+            val receipt = try { adapter.fromJson(requireNotNull(row.receiptJson)) }
+                catch (_: JsonDataException) { null } catch (_: IOException) { null }
+            val revision = receipt?.takeIf { it.configured && it.ledgerId == row.ledgerId && it.month == month &&
+                it.rowVersion == row.expectedRowVersion + 1 }?.rowVersion
+            // Preserve the accepted row and its original bytes; an unreadable receipt only retires query caches.
             invalidate(row, revision)
         }
     }
@@ -127,12 +132,16 @@ internal class BudgetQueryReader(
                 return ReadSnapshot(cached.toDomain(), saved.fetchedAt, fromCache = true)
             }
         }
-        dao.saveStatsProjection(query)
-        latestAcceptedReads[cacheKey] = ticket.sequence
+        try {
+            dao.saveStatsProjection(query)
+            latestAcceptedReads[cacheKey] = ticket.sequence
+        } catch (_: SQLiteException) {
+            // The validated network result remains usable; the retained query keeps its original read time.
+        }
         return ReadSnapshot(wire.toDomain(), query.fetchedAt, fromCache = false)
     }
 
-    /** Only rebuildable query rows are tolerant; accepted command receipts stay strict. */
+    /** Rebuildable query rows may be discarded; command acceptance is still verified by the dispatcher. */
     private fun readCached(saved: StatsProjectionCacheEntity): BudgetMonthlyDto? = try {
         adapter.fromJson(saved.responseJson)?.takeIf { it.ledgerId == saved.ledgerId && it.month == saved.month }
     } catch (_: JsonDataException) {

@@ -55,11 +55,11 @@ class StatsBudgetViewModel(private val budgetRepository: BudgetActions) : ViewMo
                     }
                 }
             }
-            var previousDone: Set<Long>? = null
+            var previousDone: Set<Long> = emptySet()
             budgetRepository.observeSaves(binding).collect { saves ->
                 if (activeBinding != binding) return@collect
                 val done = saves.filter { it.row.status == PendingMutationStatus.Done }
-                val changed = done.filter { previousDone != null && it.row.id !in previousDone.orEmpty() }
+                val changed = done.filter { it.row.id !in previousDone }
                     .mapNotNull { save -> save.intent?.month?.let { it to save.receipt } }
                 previousDone = done.map { it.row.id }.toSet()
                 changed.forEach { (month, receipt) ->

@@ -24,7 +24,7 @@ data class PendingBudgetSave(
     val intent: BudgetSavePayload?,
     val receipt: com.ticketbox.domain.model.BudgetMonthly?,
 ) {
-    val requiresReadRefresh: Boolean get() = row.requiresBudgetReadRefresh() && receipt != null
+    val requiresReadRefresh: Boolean get() = row.requiresBudgetReadRefresh()
     val hasSupportedIntent: Boolean get() = intent?.matches(row) == true
     val canRetry: Boolean get() = hasSupportedIntent && row.status == PendingMutationStatus.Failed &&
         row.lastError != BUDGET_CURRENCY_CONFLICT && row.lastError?.startsWith("outbox_row_expired") != true

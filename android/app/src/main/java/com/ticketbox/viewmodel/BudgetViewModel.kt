@@ -125,12 +125,12 @@ class BudgetViewModel(
                     }
                 }
             }
-            var previousDone: Set<Long>? = null
+            var previousDone: Set<Long> = emptySet()
             repository.observeSaves(binding).collect { saves ->
                 if (activeBinding != binding) return@collect
                 observedSaves = saves
                 val done = saves.filter { it.row.status == PendingMutationStatus.Done }
-                val newlyDone = done.filter { previousDone != null && it.row.id !in previousDone.orEmpty() &&
+                val newlyDone = done.filter { it.row.id !in previousDone &&
                     it.intent?.month == _uiState.value.month }.maxByOrNull { it.row.id }
                 previousDone = done.map { it.row.id }.toSet()
                 updateObservedSaves(binding, newlyDone)
