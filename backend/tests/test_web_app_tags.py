@@ -8,10 +8,80 @@ real carrier the browser submits), not read from the DB.
 from __future__ import annotations
 
 import re as _re
+from urllib.parse import parse_qs, urlsplit
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
 from tests._infra.tag_helpers import manual_expense, tag_index
+
+
+def _unused_tag(client: TestClient, headers: dict[str, str]) -> dict:
+    expense = manual_expense(client, headers, tags="出差, 工作", merchant="原标签")
+    corrected = client.post(
+        f"/api/expenses/{expense['id']}/corrections",
+        headers={**headers, "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": expense["row_version"], "reason": "移除误加标签", "tags": "出差"},
+    )
+    assert corrected.status_code == 201, corrected.text
+    return tag_index(client, headers)["工作"]
+
+
+def test_unused_tags_show_only_unused_rows_but_keep_live_merge_destinations(web_client: TestClient, *, identity) -> None:
+    unused = _unused_tag(web_client, identity.app_headers)
+    used = tag_index(web_client, identity.app_headers)["出差"]
+    other = _unused_tag(web_client, identity.gray_app_headers)
+    page = web_client.get("/web/tags?ledger_id=owner&unused=1")
+    assert page.status_code == 200
+    assert f'data-tag-key="{unused["public_id"]}"' in page.text
+    assert f'data-tag-key="{used["public_id"]}"' not in page.text
+    assert other["public_id"] not in page.text
+    assert f'value="{used["public_id"]}:{used["row_version"]}"' in page.text
+    assert 'href="/web/tags?ledger_id=owner"' in page.text
+
+
+def test_unused_cleanup_does_not_remove_a_tag_reused_after_the_page_was_opened(web_client: TestClient, *, identity) -> None:
+    unused = _unused_tag(web_client, identity.app_headers)
+    public_id = unused["public_id"]
+    page = web_client.get("/web/tags?ledger_id=owner&unused=1")
+    token = _row_version_for(page.text, public_id, "delete")
+    manual_expense(web_client, identity.app_headers, tags="工作", merchant="新使用者")
+    reused = tag_index(web_client, identity.app_headers)["工作"]
+    assert str(reused["row_version"]) == token, "Reusing a live tag does not change its OCC token"
+    rejected = web_client.post(
+        f"/web/tags/{public_id}/delete",
+        data={"ledger_id": "owner", "expected_row_version": token, "unused": "1"},
+        follow_redirects=False,
+    )
+    assert rejected.status_code == 303
+    assert tag_index(web_client, identity.app_headers)["工作"] == reused
+    returned = web_client.get(rejected.headers["location"])
+    assert "已被使用" in returned.text
+    assert parse_qs(urlsplit(rejected.headers["location"]).query)["unused"] == ["1"]
+
+
+def test_unused_cleanup_native_form_and_undo_preserve_the_same_view(web_client: TestClient, *, identity) -> None:
+    unused = _unused_tag(web_client, identity.app_headers)
+    public_id = unused["public_id"]
+    page = web_client.get("/web/tags?ledger_id=owner&unused=1")
+    form = _re.search(rf'<form[^>]*action="/web/tags/{public_id}/delete"[^>]*>(.*?)</form>', page.text, _re.DOTALL)
+    assert form is not None
+    fields = dict(_re.findall(r'name="([^"]+)" value="([^"]*)"', form.group(1)))
+    assert fields["unused"] == "1"
+    deleted = web_client.post(f"/web/tags/{public_id}/delete", data=fields, follow_redirects=False)
+    assert deleted.status_code == 303
+    assert "工作" not in tag_index(web_client, identity.app_headers)
+    assert parse_qs(urlsplit(deleted.headers["location"]).query)["unused"] == ["1"]
+    undo_page = web_client.get(deleted.headers["location"])
+    undo = _re.search(r'<form[^>]*action="(/web/tags/mutations/[^/]+/undo)"[^>]*>(.*?)</form>', undo_page.text, _re.DOTALL)
+    assert undo is not None
+    undo_fields = dict(_re.findall(r'name="([^"]+)" value="([^"]*)"', undo.group(2)))
+    undone = web_client.post(undo.group(1), data=undo_fields, follow_redirects=False)
+    assert undone.status_code == 303
+    assert parse_qs(urlsplit(undone.headers["location"]).query)["unused"] == ["1"]
+    restored = tag_index(web_client, identity.app_headers)["工作"]
+    assert restored["public_id"] == public_id and restored["usage_count"] == 0
+    assert f'data-tag-key="{public_id}"' in web_client.get(undone.headers["location"]).text
 
 
 def _row_version_for(page_text: str, public_id: str, action: str) -> str:
