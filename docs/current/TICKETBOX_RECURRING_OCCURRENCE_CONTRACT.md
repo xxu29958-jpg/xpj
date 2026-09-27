@@ -127,3 +127,36 @@ Atlas, then continue the original Goal. This slice cannot complete the full RC.
   and actual Connected `34010262247` all passed on that exact merged head.
 - Room close/reopen and synthetic response-loss probes are mechanism tests, not
   process-death, cross-client, clean-Windows or full Internal Beta qualification.
+
+## Definition history follow-up — 2026-09-27
+
+Status: business-test preparation; no new runtime qualification. Product §6.5
+owns plan revisions. Existing payment association history does not explain an
+edited series definition: the old period page currently reads the latest baseline.
+
+Preserve the existing series, observation provenance, payment facts, association
+revisions, OCC, stable receipts, drafts and original queued intents. Append accepted
+create/adopt/edit/pause/resume/archive/restore definitions in their existing
+transactions. Same-key replay and terminal no-ops do not manufacture new history.
+Record original money, merchant, schedule, state and actual recording time; never
+derive earlier plans or a date-effective schedule from current values. Existing
+rows get only the known current baseline, with earlier history explicitly unknown.
+
+A newly recorded occurrence retains the accepted series definition used when its
+first payment association was recorded. This is the **definition at recording**,
+not proof that it was effective during the selected accounting month. Unlinking,
+relinking or later series edits do not replace that reference. Pre-existing
+occurrences have an unknown original definition; reads and later relinks cannot
+fill that gap with the new current definition. Query-only periods remain read-only.
+Current outstanding reservations and next reminders keep their existing semantics.
+
+Web and Android must distinguish the current plan from the recorded definition,
+provide readable history and preserve the original form while inspecting it.
+Portable output must carry definitions and their period references alongside the
+existing payment association revisions. Reuse current Planning owners and query
+cache/recovery boundaries; no second payment writer or generic history framework.
+The bounded checks cover original currency/definition, stable replay, provenance,
+unknown legacy history, scope/roles, both real user flows and retained offline
+intent. The unique CNY-create-to-JPY restoration scenario from #415 is preserved
+before that obsolete candidate is retired. This work is not a merge condition for
+#440 or #441 and does not complete the remaining five-domain/Backstage/RC Goal.
