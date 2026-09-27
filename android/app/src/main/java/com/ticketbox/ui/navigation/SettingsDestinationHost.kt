@@ -98,6 +98,7 @@ internal data class SettingsDestinationNavigation(
     val onRepairCorrectionRate: com.ticketbox.ui.screens.expense.fact.CorrectionRateAction,
     val onSecondaryActiveChange: (Boolean) -> Unit = {},
     val onCloseRoot: () -> Unit = {},
+    val onOpenArrangement: (String) -> Unit = {},
 )
 
 internal data class SettingsRouteActions(
@@ -398,6 +399,7 @@ internal fun SettingsDestinationHost(
             SyncStatusScreen(
                 navigation = com.ticketbox.ui.screens.settings.SyncStatusNavigation(
                     navigation.onOpenExpense, navigation.onOpenInbox, navigation.onOpenBudget, navigation.onOpenRecurring, navigation.onOpenGoalCreation, navigation.onOpenGoalEdit, navigation.onOpenRuleSubmission, navigation.onOpenIncomeSubmission, navigation.onOpenRateSubmission, navigation.onRepairCorrectionRate,
+                    onOpenArrangement = navigation.onOpenArrangement,
                 ),
                 viewModel = vm,
                 onBack = { route = SettingsDestination.Root },

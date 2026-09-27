@@ -39,6 +39,7 @@ class MonthlyArrangementForm(BaseModel):
     ledger_id: str = ""
     month: str = ""
     home_currency_code: str = ""
+    arrangement_currency_code: str = ""
     savings_target_yuan: str = ""
     reserved_buffer_yuan: str = ""
     expected_row_version: str = ""
@@ -50,9 +51,10 @@ def arrangement_payload(form: MonthlyArrangementForm) -> MonthlyArrangementSaveR
     version = parse_form_row_version_token(form.expected_row_version)
     if form.expected_row_version != "null" and version is None:
         raise AppError("state_conflict", "安排版本无法确认，请保留输入并核对当前版本。", status_code=409)
-    if not form.home_currency_code:
+    source = form.arrangement_currency_code or form.home_currency_code
+    if not source:
         raise AppError("invalid_request", "请选择原输入使用的币种，金额已保留。", status_code=422)
-    home = normalize_currency_code(form.home_currency_code)
+    home = normalize_currency_code(source)
     return MonthlyArrangementSaveRequest(home_currency_code=home, expected_row_version=version,
         savings_target_cents=major_amount_to_minor(form.savings_target_yuan or "0", home),
         reserved_buffer_cents=major_amount_to_minor(form.reserved_buffer_yuan or "0", home))
@@ -63,6 +65,7 @@ def _retained_response(request, db, form, *, error=None, message=None, conflict=
 
     return _render_budget_advise(request, db=db, ledger_id=form.ledger_id, month=form.month,
         home_currency_code=form.home_currency_code, savings_target_yuan=form.savings_target_yuan,
+        arrangement_currency_code=form.arrangement_currency_code or None,
         reserved_buffer_yuan=form.reserved_buffer_yuan, expected_row_version=form.expected_row_version,
         idempotency_key=form.idempotency_key, run_advise=False, allow_outbound=False,
         message=message, save_error=error, save_conflict=conflict, response_status=status_code)
@@ -84,7 +87,7 @@ def save_arrangement_form(request: Request, form: MonthlyArrangementForm = Form(
             accepted = review_monthly_arrangement_save(db, tenant_id=selected, month=month,
                 idempotency_key=form.idempotency_key)
             latest = read_monthly_arrangement(db, tenant_id=selected, month=month)
-            if latest and latest.home_currency_code != form.home_currency_code:
+            if latest and latest.home_currency_code != (form.arrangement_currency_code or form.home_currency_code):
                 return _retained_response(request, db, form, error="当前安排与原输入币种不同，原金额已保留。请打开当前安排重新编辑。",
                     conflict=True, status_code=409)
             form.expected_row_version = str(latest.row_version) if latest else "null"
@@ -102,7 +105,8 @@ def save_arrangement_form(request: Request, form: MonthlyArrangementForm = Form(
     except SQLAlchemyError:
         db.rollback()
         return _retained_response(request, db, form, error="保存结果尚未确认，原提交已保留，请原样重试。", status_code=503)
-    return _web_redirect("/web/budget-advise", selected, month=month, msg="本月安排已保存，其他端可读取同一份安排。")
+    return _web_redirect("/web/budget-advise", selected, month=month, home_currency_code=form.home_currency_code or None,
+        msg="本月安排已保存，其他端可读取同一份安排。")
 
 
 @router.get("/history", response_class=HTMLResponse)

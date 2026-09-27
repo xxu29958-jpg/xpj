@@ -57,6 +57,7 @@ class MonthlyArrangementRoomContinuityTest {
     private var loseAck = true
     private var conflict = false
     private var fact: MonthlyArrangementDto? = null
+    private val revisions = mutableListOf<MonthlyArrangementDto>()
     private val receipts = mutableMapOf<String, MonthlyArrangementDto>()
     private val snapshots = mutableMapOf<String, String>()
     private val calls = mutableListOf<Pair<MonthlyArrangementSaveRequest, String>>()
@@ -71,9 +72,12 @@ class MonthlyArrangementRoomContinuityTest {
         override suspend fun monthlyArrangementHistory(month: String, beforeVersion: Long?, limit: Int): MonthlyArrangementHistoryDto {
             readFailure?.let { throw it }
             if (offline) throw ConnectException("offline")
-            val items = fact?.let { listOf(MonthlyArrangementHistoryItemDto(it.rowVersion, it.updatedAt,
-                it.homeCurrencyCode, it.savingsTargetCents, it.reservedBufferCents)) } ?: emptyList()
-            return MonthlyArrangementHistoryDto(session.value.identity.ledgerId, month, items, null)
+            val matching = revisions.filter { it.month == month && (beforeVersion == null || it.rowVersion < beforeVersion) }
+                .sortedByDescending { it.rowVersion }
+            val items = matching.take(limit).map { MonthlyArrangementHistoryItemDto(it.rowVersion, it.updatedAt,
+                it.homeCurrencyCode, it.savingsTargetCents, it.reservedBufferCents) }
+            return MonthlyArrangementHistoryDto(session.value.identity.ledgerId, month, items,
+                if (matching.size > limit) items.last().rowVersion else null)
         }
         override suspend fun saveMonthlyArrangement(month: String, request: MonthlyArrangementSaveRequest, idempotencyKey: String): MonthlyArrangementDto {
             calls += request to idempotencyKey
@@ -83,6 +87,7 @@ class MonthlyArrangementRoomContinuityTest {
             val accepted = MonthlyArrangementDto("owner", month, request.homeCurrencyCode, request.savingsTargetCents,
                 request.reservedBufferCents, (request.expectedRowVersion ?: 0) + 1, "2026-09-27T00:00:00Z")
             receipts[idempotencyKey] = accepted; fact = accepted
+            revisions += accepted
             if (loseAck) throw IOException("lost ACK after server commit")
             return accepted
         }
@@ -180,6 +185,7 @@ class MonthlyArrangementRoomContinuityTest {
         offline = true
         repository = reopen()
         assertTrue(repository.arrangement(original, "2026-09").isFailure)
+        assertTrue(repository.arrangementHistory(original, "2026-09").isFailure)
         assertTrue(repository.observeArrangements(original).first().single().isConfirmed)
     }
     @Test fun explicitCacheClearingRetiresQueriesAndKeepsDraftAndReceiptBytes() = runBlocking {
@@ -260,6 +266,60 @@ class MonthlyArrangementRoomContinuityTest {
         assertNull(calls[0].first.expectedRowVersion)
         assertEquals(1L, calls[1].first.expectedRowVersion)
         assertEquals(2, receipts.size)
+    }
+    @Test fun confirmedSecondSaveRemainsVisibleInOfflineHistoryWithoutChangingTheOriginalReceipts() = runBlocking {
+        loseAck = false
+        val original = binding()
+        var repository = reopen()
+        repository.enqueueArrangement(original, "2026-09", MonthlyArrangementSaveRequest("JPY", 1200, 300)).getOrThrow()
+        assertEquals(1, drain().done)
+        repository.arrangement(original, "2026-09").getOrThrow()
+        assertEquals(listOf(1L), repository.arrangementHistory(original, "2026-09").getOrThrow().response.items.map { it.rowVersion })
+        repository.arrangementHistory(original, "2026-09", beforeVersion = 2).getOrThrow()
+        repository.enqueueArrangement(original, "2026-09", MonthlyArrangementSaveRequest("JPY", 1800, 400, 1)).getOrThrow()
+        assertEquals(1, drain().done)
+        val originalReceipts = requireNotNull(db).pendingMutationDao().allRows()
+
+        offline = true
+        repository = reopen()
+        assertEquals(2L, repository.arrangement(original, "2026-09").getOrThrow().response.arrangement?.rowVersion)
+        val history = repository.arrangementHistory(original, "2026-09").getOrThrow()
+        assertTrue(history.fromCache)
+        assertEquals(listOf(2L, 1L), history.response.items.map { it.rowVersion })
+        assertEquals(listOf(1800L, 1200L), history.response.items.map { it.savingsTargetCents })
+        assertTrue(history.response.items.all { it.homeCurrencyCode == "JPY" })
+        assertEquals(listOf(1L), repository.arrangementHistory(original, "2026-09", beforeVersion = 2)
+            .getOrThrow().response.items.map { it.rowVersion })
+        assertEquals(originalReceipts, requireNotNull(db).pendingMutationDao().allRows())
+    }
+    @Test fun offlineHistoryKeepsKnownRevisionsAndLeavesAnotherDevicesMissingRevisionReachable() = runBlocking {
+        loseAck = false
+        val original = binding()
+        var repository = reopen()
+        repository.enqueueArrangement(original, "2026-09", MonthlyArrangementSaveRequest("JPY", 1200, 300)).getOrThrow()
+        assertEquals(1, drain().done)
+        repository.arrangementHistory(original, "2026-09").getOrThrow()
+        // Another device saved v2: this device has neither that receipt nor a refreshed history page.
+        val remote = requireNotNull(fact).copy(rowVersion = 2, savingsTargetCents = 1500)
+        fact = remote
+        revisions += remote
+        repository.enqueueArrangement(original, "2026-09", MonthlyArrangementSaveRequest("JPY", 1800, 400, 2)).getOrThrow()
+        assertEquals(1, drain().done)
+        val originalReceipts = requireNotNull(db).pendingMutationDao().allRows()
+        offline = true
+        repository = reopen()
+        val known = repository.arrangementHistory(original, "2026-09").getOrThrow()
+        assertTrue(known.fromCache)
+        assertEquals(listOf(3L, 1L), known.response.items.map { it.rowVersion })
+        assertEquals(3L, known.response.nextBeforeVersion)
+        assertTrue(repository.arrangementHistory(original, "2026-09", known.response.nextBeforeVersion).isFailure)
+        offline = false
+        val missing = repository.arrangementHistory(original, "2026-09", known.response.nextBeforeVersion).getOrThrow()
+        assertFalse(missing.fromCache)
+        assertEquals(listOf(2L, 1L), missing.response.items.map { it.rowVersion })
+        assertEquals(1500L, missing.response.items.first().savingsTargetCents)
+        assertNull(missing.response.nextBeforeVersion)
+        assertEquals(originalReceipts, requireNotNull(db).pendingMutationDao().allRows())
     }
     @Test fun originalDraftSavedProjectionAndAckUnknownSurviveRoomReopenWithSameKey() = runBlocking {
         val original = binding()

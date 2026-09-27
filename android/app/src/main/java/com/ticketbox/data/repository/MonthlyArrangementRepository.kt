@@ -103,10 +103,15 @@ class MonthlyArrangementRepository internal constructor(private val apiProvider:
             throw failure
         } catch (error: Exception) {
             if (!error.isReadTransportUnavailable()) throw error
+            val receipts = observeArrangements(binding).first().filter { it.isConfirmed && it.receipt?.month == clean }
+                .mapNotNull { it.receipt }
             return@safeCall coordinator.acceptSnapshotRead(ticket, bound) {
                 val local = dao.read(key, clean, kind)?.let { history.fromJson(it.json) } ?: throw error
                 verifyArrangementHistory(local, binding, clean)
-                MonthlyArrangementHistoryRead(local, fromCache = true)
+                val projection = local.withNewerReceipts(receipts, beforeVersion)
+                verifyArrangementHistory(projection, binding, clean)
+                dao.write(MonthlyArrangementCacheEntity(key, clean, kind, history.toJson(projection)))
+                MonthlyArrangementHistoryRead(projection, fromCache = true)
             }
         }
         verifyArrangementHistory(response, binding, clean)
@@ -171,6 +176,19 @@ class MonthlyArrangementRepository internal constructor(private val apiProvider:
 }
 
 private val logicalBindingAdapter = Moshi.Builder().build().adapter(LogicalSessionBinding::class.java)
+
+private fun MonthlyArrangementHistoryDto.withNewerReceipts(receipts: List<MonthlyArrangementDto>, beforeVersion: Long?): MonthlyArrangementHistoryDto {
+    val latest = items.maxOfOrNull { it.rowVersion } ?: 0
+    val newer = receipts.filter { it.rowVersion > latest && (beforeVersion == null || it.rowVersion < beforeVersion) }
+        .map { MonthlyArrangementHistoryItemDto(it.rowVersion, it.updatedAt, it.homeCurrencyCode,
+            it.savingsTargetCents, it.reservedBufferCents) }
+    if (newer.isEmpty()) return this
+    val known = (newer + items).distinctBy { it.rowVersion }.sortedByDescending { it.rowVersion }
+    // Preserve known revisions; a receipt does not prove intervening changes from another device.
+    val gap = known.zipWithNext().firstOrNull { (new, old) -> new.rowVersion - old.rowVersion > 1 }?.first?.rowVersion
+    val missingTail = if (items.isEmpty()) known.last().rowVersion.takeIf { it > 1 } else null
+    return copy(items = known, nextBeforeVersion = gap ?: nextBeforeVersion ?: missingTail)
+}
 
 // Durable ownership follows the existing outbox identity; selection revisions only guard requests.
 internal fun monthlyArrangementPersistentBindingKey(binding: LogicalSessionBinding): String =

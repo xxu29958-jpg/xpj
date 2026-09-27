@@ -24,6 +24,7 @@ import com.ticketbox.viewmodel.OutboxStatusUiState
 @Composable
 internal fun SyncStatusOriginalIntentSummary(row: OutboxRow, state: OutboxStatusUiState, actions: SyncStatusActions) {
     OffsetRateRecovery(row, state, actions)
+    ArrangementOriginalRecovery(row, state, actions)
     state.manualRates[row.id]?.let { original ->
         com.ticketbox.ui.screens.plan.ManualRateSubmissionSummary(original)
         TextButton(onClick = { actions.onOpenRateSubmission(row.id) }) { Text(stringResource(R.string.advice_rate_submission_open)) }

@@ -3,6 +3,7 @@ package com.ticketbox.viewmodel
 import com.ticketbox.R
 import com.ticketbox.data.remote.dto.MonthlyArrangementDto
 import com.ticketbox.data.repository.MonthlyArrangementDraft
+import com.ticketbox.data.repository.MonthlyArrangementHistoryRead
 import com.ticketbox.data.repository.MonthlyArrangementRead
 import com.ticketbox.domain.model.CurrencyCode
 import java.math.BigDecimal
@@ -22,6 +23,17 @@ internal fun BudgetAdviceUiState.arrangementRefreshed(read: Result<MonthlyArrang
         result = if (retireTrial) null else result,
         loadState = if (retireTrial) BudgetAdviceLoadState.Idle else loadState,
         arrangementMessage = read.exceptionOrNull()?.toUiText(R.string.arrangement_load_failed))
+}
+
+internal fun BudgetAdviceUiState.arrangementHistoryRefreshed(read: Result<MonthlyArrangementHistoryRead>, more: Boolean): BudgetAdviceUiState {
+    val result = read.getOrNull() ?: return copy(arrangementBusy = false,
+        arrangementMessage = read.exceptionOrNull()?.toUiText(R.string.arrangement_load_failed))
+    val items = result.response.items
+    val known = (if (more) arrangementHistory + items else items).distinctBy { it.rowVersion }.sortedByDescending { it.rowVersion }
+    return copy(arrangementBusy = false, arrangementHistoryLoaded = true,
+        arrangementHistory = known,
+        arrangementHistoryNext = result.response.nextBeforeVersion,
+        arrangementHistoryCached = result.fromCache || (more && arrangementHistoryCached), arrangementMessage = null)
 }
 
 internal fun BudgetAdviceUiState.arrangementReadRefused(error: Throwable): BudgetAdviceUiState = copy(

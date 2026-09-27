@@ -82,9 +82,10 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
             return inputs(month, homeCurrencyCode ?: saved?.homeCurrencyCode ?: runtimeHome,
                 saved?.savingsTargetCents ?: 0, saved?.reservedBufferCents ?: 0, false)
         }
-        override suspend fun trialBudgetAdviceInputs(month: String, timezone: String?, homeCurrencyCode: String,
-            savingsTargetCents: Long, reservedBufferCents: Long) = inputs(month, homeCurrencyCode,
-                savingsTargetCents, reservedBufferCents, true)
+        override suspend fun trialBudgetAdviceInputs(month: String, timezone: String?, arrangement: Map<String, String>) =
+            inputs(month, arrangement.getValue("home_currency_code"), arrangement.getValue("savings_target_cents").toLong(),
+                arrangement.getValue("reserved_buffer_cents").toLong(), true)
+                .copy(arrangementCurrencyCode = arrangement["arrangement_currency_code"] ?: arrangement.getValue("home_currency_code"))
         override suspend fun monthlyArrangement(month: String) = MonthlyArrangementResponseDto(
             session.value.identity.ledgerId, month, arrangement?.takeIf { it.month == month })
         override suspend fun saveMonthlyArrangement(month: String, request: MonthlyArrangementSaveRequest,

@@ -54,6 +54,7 @@ class BudgetInputProjection:
     undated_expense_count: int = 0
     saved_arrangement: MonthlyArrangementDto | None = None
     is_trial: bool = False
+    arrangement_currency_code: str | None = None
 
     @property
     def inputs_fingerprint(self) -> str | None:
@@ -67,13 +68,13 @@ class BudgetInputProjection:
 def read_budget_inputs(
     db: Session, *, tenant_id: str, month: str, home_currency_code: str | None = None,
     timezone_name: str = "Asia/Shanghai", savings_target_cents: int | None = None, reserved_buffer_cents: int | None = None,
+    arrangement_currency_code: str | None = None,
 ) -> BudgetInputProjection:
     is_trial = savings_target_cents is not None or reserved_buffer_cents is not None
     if is_trial and (savings_target_cents is None or reserved_buffer_cents is None or not home_currency_code):
         raise AppError("invalid_request", "试算须同时提供储蓄、备用金和原输入币种。", status_code=422)
     saved = read_monthly_arrangement(db, tenant_id=tenant_id, month=month)
-    home = normalize_currency_code(home_currency_code or (saved.home_currency_code if saved else None)
-        or require_runtime_home_currency_code(db))
+    home = normalize_currency_code(home_currency_code or require_runtime_home_currency_code(db))
     report = compose_monthly_report(db, tenant_id=tenant_id, year_month=month, top_n=None,
         timezone_name=timezone_name, home_currency_code=home, compare_previous=False)
     gaps = set(report.missing_rates)
@@ -82,9 +83,14 @@ def read_budget_inputs(
     forecast = income_forecast(db, tenant_id=tenant_id, month=month, timezone_name=timezone_name,
         home_currency_code=home, missing_rates=gaps)
     references = set(forecast.reference_rates)
-    if not is_trial:
-        savings_target_cents, reserved_buffer_cents = _saved_amounts(db, tenant_id=tenant_id, month=month,
-            saved=saved, home=home, gaps=gaps, references=references)
+    if is_trial:
+        source = normalize_currency_code(arrangement_currency_code or home)
+        amounts = (savings_target_cents, reserved_buffer_cents)
+    else:
+        source = saved.home_currency_code if saved else home
+        amounts = (saved.savings_target_cents, saved.reserved_buffer_cents) if saved else (0, 0)
+    savings_target_cents, reserved_buffer_cents = _project_arrangement_amounts(db, tenant_id=tenant_id, month=month,
+        amounts=amounts, source=source, home=home, gaps=gaps, references=references)
     items = _active_recurring_items(db, tenant_id=tenant_id)
     recurring = recurring_monthly_total(db, tenant_id=tenant_id, items=items,
         home_currency_code=home, month=month, missing_rates=gaps, reference_rates=references)
@@ -103,21 +109,18 @@ def read_budget_inputs(
             outstanding_fixed_cents=fixed, discretionary_cents=breakdown.discretionary_cents,
             shortfall_cents=breakdown.shortfall_cents)
     return BudgetInputProjection(month, home, breakdown, ordered_projection_gaps(gaps), inputs, tuple(sorted(references)),
-        undated_expense_count=undated, saved_arrangement=saved, is_trial=is_trial)
+        undated_expense_count=undated, saved_arrangement=saved, is_trial=is_trial, arrangement_currency_code=source)
 
 
-def _saved_amounts(db, *, tenant_id, month, saved, home, gaps, references) -> tuple[int | None, int | None]:
-    if saved is None:
-        return 0, 0
-    amounts = (saved.savings_target_cents, saved.reserved_buffer_cents)
-    if saved.home_currency_code == home:
+def _project_arrangement_amounts(db, *, tenant_id, month, amounts, source, home, gaps, references) -> tuple[int | None, int | None]:
+    if source == home:
         return amounts
     period = date.fromisoformat(f"{month}-01")
     today = now_utc().astimezone(accounting_zone(current_calendar(db, ledger_id=tenant_id).timezone_name)).date()
     rate_date = min(today, period.replace(day=monthrange(period.year, period.month)[1]))
     project = project_valuation_amount if rate_date == today else project_recorded_amount
     return tuple(project(db, tenant_id=tenant_id, amount_minor=amount,
-        source_currency=saved.home_currency_code, home_currency=home, rate_date=rate_date,
+        source_currency=source, home_currency=home, rate_date=rate_date,
         missing_rates=gaps, reference_rates=references) for amount in amounts)
 
 

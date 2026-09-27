@@ -657,7 +657,7 @@ internal class StubApi(
     override suspend fun monthlyArrangement(month: String): com.ticketbox.data.remote.dto.MonthlyArrangementResponseDto = ledgerUnsupported()
     override suspend fun saveMonthlyArrangement(month: String, request: com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest, idempotencyKey: String): com.ticketbox.data.remote.dto.MonthlyArrangementDto = ledgerUnsupported()
     override suspend fun monthlyArrangementHistory(month: String, beforeVersion: Long?, limit: Int): com.ticketbox.data.remote.dto.MonthlyArrangementHistoryDto = ledgerUnsupported()
-    override suspend fun trialBudgetAdviceInputs(month: String, timezone: String?, homeCurrencyCode: String, savingsTargetCents: Long, reservedBufferCents: Long): com.ticketbox.data.remote.dto.BudgetAdviceInputsDto = ledgerUnsupported()
+    override suspend fun trialBudgetAdviceInputs(month: String, timezone: String?, arrangement: Map<String, String>): com.ticketbox.data.remote.dto.BudgetAdviceInputsDto = ledgerUnsupported()
     override suspend fun budgetAdviceInputs(month: String, timezone: String?, homeCurrencyCode: String?): com.ticketbox.data.remote.dto.BudgetAdviceInputsDto = ledgerUnsupported()
     override suspend fun budgetAdvise(request: com.ticketbox.data.remote.dto.BudgetAdviseRequestDto): com.ticketbox.data.remote.dto.BudgetAdviseResponseDto = ledgerUnsupported()
     override suspend fun recurringCandidates(timezone: String?): com.ticketbox.data.remote.dto.RecurringCandidatesResponseDto = ledgerUnsupported()

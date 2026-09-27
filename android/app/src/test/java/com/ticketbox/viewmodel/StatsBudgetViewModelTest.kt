@@ -167,8 +167,8 @@ private class FakeStatsBudgetActions(
 }
 
 private object UnusedStatsAdviceInputs : com.ticketbox.data.repository.BudgetAdviceInputsActions {
-    override suspend fun trialAdviceInputs(binding: LogicalSessionBinding, month: String, request: com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest): Result<com.ticketbox.data.remote.dto.BudgetAdviceInputsDto> = error("Unexpected trial read")
-    override suspend fun requestTrialAdvice(binding: LogicalSessionBinding, month: String, request: com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest): Result<BudgetAdviceResult> = error("Unexpected trial AI call")
+    override suspend fun trialAdviceInputs(binding: LogicalSessionBinding, month: String, request: com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest, reportingHomeCurrencyCode: String?): Result<com.ticketbox.data.remote.dto.BudgetAdviceInputsDto> = error("Unexpected trial read")
+    override suspend fun requestTrialAdvice(binding: LogicalSessionBinding, month: String, request: com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest, reportingHomeCurrencyCode: String?): Result<BudgetAdviceResult> = error("Unexpected trial AI call")
     override suspend fun adviceInputs(expectedBinding: LogicalSessionBinding, month: String, homeCurrencyCode: String?): Result<com.ticketbox.data.remote.dto.BudgetAdviceInputsDto> = Result.failure(UnsupportedOperationException())
 }
 

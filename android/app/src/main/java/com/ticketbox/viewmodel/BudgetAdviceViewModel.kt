@@ -229,7 +229,7 @@ class BudgetAdviceViewModel(
                 )
             }
             val trial = _state.value.trialRequest
-            (if (trial != null) repository.requestTrialAdvice(binding, month, trial)
+            (if (trial != null) repository.requestTrialAdvice(binding, month, trial, home)
              else repository.requestBudgetAdvice(month, home, binding))
                 .onSuccess { result ->
                     _state.update {
