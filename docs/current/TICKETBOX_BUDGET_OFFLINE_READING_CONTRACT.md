@@ -76,9 +76,15 @@ The final bccb92a94 review identified three bounded corrections: retained consum
 were not notified of another reader's denial; recovery of an earlier receipt removed
 newer queries; and independent reads superseded one another. The test-only 56dc9becf
 adds real Room/Outbox/consumer counterexamples and a focused ViewModel recovery case.
-Their actual execution and the corrected implementation remain subject to final
-qualification. bccb92a94's route reached and rendered the offline Plans and Budget
+All three native counterexamples actually failed in Connected 36288046205; the
+ViewModel case failed in CI 36288046213 with the already-read budget replaced by null.
+The corrected implementation remains subject to final qualification, including the
+existing unconfigured/archived state: positive revisions can be compared, but a new
+legitimate unconfigured GET must not be hidden by an older configured snapshot.
+A save boundary rejects an unknown response issued before acceptance without
+blocking a new post-save read. bccb92a94's route reached and rendered the offline Plans and Budget
 surfaces with the original amount/time and locked intent. Its Insights assertion
 incorrectly expected a standalone amount instead of the actual labelled remaining
 amount; the assertion now uses that complete label and still requires the amount,
-source, original time and unchanged intent.
+source, original time and unchanged intent. That route passed on 56dc9becf and
+produced all three previews, including the offline Insights remaining amount.
