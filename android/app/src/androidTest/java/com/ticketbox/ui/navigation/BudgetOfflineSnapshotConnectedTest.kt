@@ -80,9 +80,19 @@ class BudgetOfflineSnapshotConnectedTest {
     }
 
     @Test fun anUnconfiguredMonthWithNullableVersionRemainsAnOriginalOfflineRead() = runBlocking {
-        transport.original = offlineBudget().copy(configured = false, rowVersion = null, homeCurrencyCode = null,
+        val repository = fixture.reopen().budgetRepository
+        assertTrue(repository.monthlyBudget("2026-09").getOrThrow().value.configured)
+        val configuredStarted = CompletableDeferred<Unit>()
+        val releaseConfigured = CompletableDeferred<Unit>()
+        transport.beforeNextRead = { configuredStarted.complete(Unit); releaseConfigured.await() }
+        val oldConfigured = async { repository.monthlyBudget("2026-09") }
+        configuredStarted.await()
+        val unconfigured = offlineBudget().copy(configured = false, rowVersion = null, homeCurrencyCode = null,
             totalAmountCents = 0, categoryBudgets = emptyList())
-        val fresh = fixture.reopen().budgetRepository.monthlyBudget("2026-09").getOrThrow()
+        transport.original = unconfigured
+        val fresh = try { repository.monthlyBudget("2026-09").getOrThrow() } finally { releaseConfigured.complete(Unit) }
+        assertEquals("A later successful archived read must replace the configured query", transport.original.toDomain(), fresh.value)
+        assertEquals("The late configured response must not undo the archived read", fresh.value, oldConfigured.await().getOrThrow().value)
         transport.offline = true
 
         val reopened = fixture.reopen().budgetRepository.monthlyBudget("2026-09").getOrThrow()
@@ -91,6 +101,46 @@ class BudgetOfflineSnapshotConnectedTest {
         assertEquals(fresh.fetchedAt, reopened.fetchedAt)
         assertTrue(reopened.fromCache)
         assertTrue(!reopened.value.configured)
+
+        transport.offline = false
+        val graph = fixture.graph
+        val afterReopen = graph.budgetRepository
+        transport.original = offlineBudget()
+        afterReopen.monthlyBudget("2026-09").getOrThrow()
+        val binding = requireNotNull(graph.expenseRepository.captureDeferredLedgerBinding())
+        afterReopen.enqueueSave(binding, "2026-09", BudgetMonthlyUpdate("JPY", 7, 2400)).getOrThrow()
+        val originalIntent = fixture.stored().single()
+        transport.original = unconfigured
+        val unknownStarted = CompletableDeferred<Unit>()
+        val releaseUnknown = CompletableDeferred<Unit>()
+        transport.beforeNextRead = { unknownStarted.complete(Unit); releaseUnknown.await() }
+        val oldUnknown = async { afterReopen.monthlyBudget("2026-09") }
+        unknownStarted.await()
+        val receipt = offlineBudget().copy(rowVersion = 8, totalAmountCents = 2400, flexBudgetCents = 2400,
+            remainingAmountCents = 1989, excludedCategories = emptyList(), categoryBudgets = emptyList())
+        val api = object : ApiService by transport.service {
+            override suspend fun updateMonthlyBudget(month: String, request: BudgetMonthlyUpdateRequestDto,
+                timezone: String?, idempotencyKey: String?): BudgetMonthlyDto {
+                assertEquals(originalIntent["idempotencyKey"], idempotencyKey)
+                assertEquals(BudgetMonthlyUpdateRequestDto("JPY", 7, 2400), request)
+                return receipt
+            }
+        }
+        val adapters = OutboxAdapterGraph()
+        val done = try {
+            OutboxDrainEngine(fixture.outbox, listOf(SaveMonthlyBudgetDispatcher({ api }, adapters.budgetSaveAdapter,
+                adapters.budgetReceiptAdapter, afterReopen.invalidateBudgetReadsAfterDelivery)), now = fixture.clock::millis).drainOnce()
+        } finally { releaseUnknown.complete(Unit) }
+        assertEquals(1, done.done)
+        assertTrue("An unknown response started before save acceptance cannot seed the read", oldUnknown.await().isFailure)
+        val archivedAfterSave = afterReopen.monthlyBudget("2026-09").getOrThrow()
+        assertEquals("A new GET after save acceptance may legitimately report an archived budget",
+            transport.original.toDomain(), archivedAfterSave.value)
+        transport.offline = true
+        val archivedOffline = fixture.reopen().budgetRepository.monthlyBudget("2026-09").getOrThrow()
+        assertEquals(archivedAfterSave.value, archivedOffline.value)
+        assertEquals(archivedAfterSave.fetchedAt, archivedOffline.fetchedAt)
+        assertTrue(archivedOffline.fromCache)
     }
 
     @Test fun replacingTheBindingCannotExposeTheOriginalMonthlyBudget() = runBlocking {

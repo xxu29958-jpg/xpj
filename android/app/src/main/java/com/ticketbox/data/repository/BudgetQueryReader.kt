@@ -27,6 +27,8 @@ internal class BudgetQueryReader(
     private val mutex = Mutex()
     private val latestAcceptedReads = mutableMapOf<String, Long>()
     private val minimumRevisions = mutableMapOf<String, Long>()
+    // Unconfigured reads have no revision; only responses started after acceptance may replace the saved budget.
+    private val saveGenerations = mutableMapOf<String, Long>()
 
     suspend fun invalidate(row: OutboxRow, acceptedRevision: Long) {
         val binding = requireNotNull(guard.captureLogicalBinding()) { "请重新绑定账本。" }
@@ -40,6 +42,7 @@ internal class BudgetQueryReader(
             val monthKey = "$bindingKey|$month"
             val minimum = maxOf(minimumRevisions[monthKey] ?: 0, acceptedRevision)
             minimumRevisions[monthKey] = minimum
+            saveGenerations[monthKey] = (saveGenerations[monthKey] ?: 0) + 1
             dao.budgetSnapshotsForMonth(bindingKey, month).forEach { saved ->
                 val revision = adapter.fromJson(saved.responseJson)?.rowVersion ?: 0
                 if (revision < minimum) dao.deleteStatsProjection(saved)
@@ -55,6 +58,7 @@ internal class BudgetQueryReader(
         val bound = guard.bindExact(binding)
         val bindingKey = bindingAdapter.toJson(binding)
         val ticket = coordinator.beginSnapshotRead()
+        val saveGeneration = mutex.withLock { saveGenerations["$bindingKey|$cleanMonth"] ?: 0 }
         val wire = try {
             bound.call { it.monthlyBudget(cleanMonth, timezone) }
         } catch (error: HttpException) {
@@ -77,25 +81,28 @@ internal class BudgetQueryReader(
         validate(wire, binding, cleanMonth)
         coordinator.acceptSnapshotRead(ticket, bound) {
             mutex.withLock {
-                acceptWire(wire, binding, timezone, ticket, freshOnly)
+                acceptWire(wire, binding, timezone, ticket, saveGeneration).also {
+                    check(!freshOnly || !it.fromCache) { "预算已有更新的读取，请重新读取。" }
+                }
             }
         }
     }
 
     private suspend fun acceptWire(wire: BudgetMonthlyDto, binding: LogicalSessionBinding,
-        timezone: String, ticket: SnapshotReadTicket, freshOnly: Boolean): ReadSnapshot<BudgetMonthly> {
+        timezone: String, ticket: SnapshotReadTicket, saveGeneration: Long): ReadSnapshot<BudgetMonthly> {
         val bindingKey = bindingAdapter.toJson(binding)
-        requireAcceptedRevision(bindingKey, wire)
+        requireAcceptedRevision(bindingKey, wire, saveGeneration)
         val cacheKey = "$bindingKey|${wire.month}|$timezone"
         val saved = dao.statsProjections(bindingKey, "budget", wire.month, "", timezone).singleOrNull()
         if (saved != null) {
             val cached = requireNotNull(adapter.fromJson(saved.responseJson))
             validate(cached, binding, wire.month)
-            val savedRevision = cached.rowVersion ?: 0
-            val wireRevision = wire.rowVersion ?: 0
-            if (savedRevision > wireRevision || savedRevision == wireRevision &&
-                (latestAcceptedReads[cacheKey] ?: 0) > ticket.sequence) {
-                check(!freshOnly) { "预算已有更新的读取，请重新读取。" }
+            val savedRevision = cached.rowVersion?.takeIf { it > 0 }
+            val wireRevision = wire.rowVersion?.takeIf { it > 0 }
+            val newerRead = (latestAcceptedReads[cacheKey] ?: 0) > ticket.sequence
+            val newerRevision = savedRevision != null && wireRevision != null && savedRevision > wireRevision
+            val useSequence = savedRevision == null || wireRevision == null || savedRevision == wireRevision
+            if (newerRevision || useSequence && newerRead) {
                 return ReadSnapshot(cached.toDomain(), saved.fetchedAt, fromCache = true)
             }
         }
@@ -106,8 +113,12 @@ internal class BudgetQueryReader(
         return ReadSnapshot(wire.toDomain(), fetchedAt, fromCache = false)
     }
 
-    private fun requireAcceptedRevision(bindingKey: String, wire: BudgetMonthlyDto) {
-        check((wire.rowVersion ?: 0) >= (minimumRevisions["$bindingKey|${wire.month}"] ?: 0)) {
+    private fun requireAcceptedRevision(bindingKey: String, wire: BudgetMonthlyDto, saveGeneration: Long? = null) {
+        val monthKey = "$bindingKey|${wire.month}"
+        val revision = wire.rowVersion?.takeIf { it > 0 }
+        val allowed = if (revision != null) revision >= (minimumRevisions[monthKey] ?: 0)
+            else saveGeneration == null || saveGeneration == (saveGenerations[monthKey] ?: 0)
+        check(allowed) {
             "预算已保存更新，请重新读取。"
         }
     }
