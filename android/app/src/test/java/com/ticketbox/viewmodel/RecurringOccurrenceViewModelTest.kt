@@ -37,6 +37,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -44,7 +45,41 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class RecurringOccurrenceViewModelTest {
     @Test
-    fun refreshUpdatesFactsButSubmissionKeepsOriginalPaymentChoiceAndVersions() = runTest {
+    fun offlineOriginalPeriodAndChoiceSurviveSharedRefusalWithoutRepublishingPaymentFacts() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val actions = OccurrenceChoiceActions()
+        actions.occurrence = actions.occurrence.copy(period = "2026-08")
+        actions.fromCache = true
+        val ledger = OccurrenceChoiceLedger(confirmedExpenseDtoFixture().toDomain())
+        val model = occurrenceModel(actions, ledger)
+        try {
+            model.open(recurringItem { rowVersion = 7L })
+            advanceUntilIdle()
+            assertEquals("2026-08", model.uiState.value.occurrence?.period)
+            assertEquals("2026-09-27T10:00:00Z", model.uiState.value.fetchedAt)
+            assertTrue(model.uiState.value.fromCache)
+            model.choose(model.uiState.value.payments.single() as ConfirmedStreamItem.ExpenseRow)
+            val original = assertNotNull(model.uiState.value.choice)
+            actions.readAccessDenials.emit(com.ticketbox.data.repository.SnapshotAccessDenial(actions.access.binding,
+                com.ticketbox.data.repository.RepositoryException("Shared refusal", httpStatusCode = 403), 1))
+            advanceUntilIdle()
+            ledger.payment = ledger.payment.copy(merchant = "Later cached payment emission")
+            ledger.syncConfirmed()
+            advanceUntilIdle()
+            assertNull(model.uiState.value.occurrence)
+            assertNull(model.uiState.value.fetchedAt)
+            assertTrue(model.uiState.value.payments.isEmpty())
+            assertEquals(original, model.uiState.value.choice)
+            model.submit()
+            advanceUntilIdle()
+            assertTrue(actions.submissions.isEmpty())
+        } finally {
+            model.viewModelScope.coroutineContext.job.cancelAndJoin()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test fun acceptedFinancialInvalidationRetiresOldPaymentProjectionButKeepsOriginalChoiceAndOccThroughRecovery() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val actions = OccurrenceChoiceActions()
         val payment = confirmedExpenseDtoFixture().toDomain().copy(rowVersion = 11L)
@@ -53,21 +88,78 @@ class RecurringOccurrenceViewModelTest {
         try {
             model.open(recurringItem { rowVersion = 7L })
             advanceUntilIdle()
+            model.choose(model.uiState.value.payments.single() as ConfirmedStreamItem.ExpenseRow)
+            val original = assertNotNull(model.uiState.value.choice)
+            actions.failure = java.io.IOException("offline after accepted payment correction")
+            model.refresh(retireCurrent = true)
+            advanceUntilIdle()
+            ledger.payment = payment.copy(rowVersion = 12L, merchant = "Corrected payment")
+            ledger.syncConfirmed()
+            advanceUntilIdle()
+            assertNull(model.uiState.value.occurrence)
+            assertNull(model.uiState.value.fetchedAt)
+            assertTrue(model.uiState.value.payments.isEmpty())
+            assertFalse(model.uiState.value.canWrite)
+            assertTrue(model.uiState.value.message != null)
+            assertEquals(original, model.uiState.value.choice)
+            model.submit()
+            advanceUntilIdle()
+            assertTrue(actions.submissions.isEmpty())
+            actions.failure = null
+            actions.occurrence = actions.occurrence.copy(rowVersion = 4L, seriesRowVersion = 8L, state = "needs_review")
+            model.refresh()
+            advanceUntilIdle()
+            assertEquals(actions.occurrence, model.uiState.value.occurrence)
+            assertEquals(original, model.uiState.value.choice)
+            assertEquals(3L, original.request.expectedRowVersion)
+            assertEquals(7L, original.request.expectedSeriesRowVersion)
+            assertEquals(11L, original.request.expectedExpenseRowVersion)
+            actions.fromCache = true
+            model.refresh(retireCurrent = true)
+            advanceUntilIdle()
+            assertTrue(model.uiState.value.fromCache)
+            assertTrue(model.uiState.value.canWrite, "A cache accepted by the query owner still supports the original offline submission")
+            assertEquals(original, model.uiState.value.choice)
+            model.submit()
+            advanceUntilIdle()
+            assertEquals(listOf(actions.access.binding to original), actions.submissions)
+        } finally { model.viewModelScope.coroutineContext.job.cancelAndJoin(); Dispatchers.resetMain() }
+    }
+
+    @Test
+    fun refreshCurrentAfterCachedMonthKeepsOriginalPaymentChoiceAndVersions() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val actions = OccurrenceChoiceActions().apply {
+            occurrence = occurrence.copy(period = "2026-08")
+            fromCache = true
+        }
+        val payment = confirmedExpenseDtoFixture().toDomain().copy(rowVersion = 11L)
+        val ledger = OccurrenceChoiceLedger(payment)
+        val model = occurrenceModel(actions, ledger)
+        try {
+            model.open(recurringItem { rowVersion = 7L })
+            advanceUntilIdle()
             assertTrue(model.uiState.value.canWrite)
+            assertEquals("2026-08", model.uiState.value.occurrence?.period)
+            assertTrue(model.uiState.value.fromCache)
             model.choose(model.uiState.value.payments.single() as ConfirmedStreamItem.ExpenseRow)
             val original = assertNotNull(model.uiState.value.choice)
             assertEquals(3L, original.request.expectedRowVersion)
             assertEquals(7L, original.request.expectedSeriesRowVersion)
             assertEquals(11L, original.request.expectedExpenseRowVersion)
 
-            actions.occurrence = actions.occurrence.copy(rowVersion = 4L, seriesRowVersion = 8L)
+            actions.occurrence = actions.occurrence.copy(period = "2026-09", rowVersion = 4L, seriesRowVersion = 8L)
+            actions.fromCache = false
             ledger.payment = payment.copy(rowVersion = 12L, merchant = "Updated payment")
             model.refresh()
             advanceUntilIdle()
 
             assertEquals(actions.occurrence, model.uiState.value.occurrence)
+            assertEquals("current", model.uiState.value.requestedPeriod)
+            assertEquals(false, model.uiState.value.fromCache)
             assertEquals(12L, model.uiState.value.payments.single().root.rowVersion)
             assertEquals(original, model.uiState.value.choice)
+            assertEquals("2026-08", original.occurrence.period)
             model.submit()
             advanceUntilIdle()
 
@@ -217,6 +309,9 @@ private fun unsupportedOccurrenceDebtActions(): DebtActions = requireNotNull(
 )
 
 private class OccurrenceChoiceActions : RecurringOccurrenceActions {
+    override val readAccessDenials = kotlinx.coroutines.flow.MutableSharedFlow<com.ticketbox.data.repository.SnapshotAccessDenial>()
+    var failure: Throwable? = null
+    var fromCache = false
     val access = LedgerAccessContext(
         LogicalSessionBinding("https://occurrence.example", "ledger-1", "owner", "session", "binding"), true,
     )
@@ -231,8 +326,10 @@ private class OccurrenceChoiceActions : RecurringOccurrenceActions {
     override fun observeAccess(): Flow<LedgerAccessContext?> = flowOf(access)
     override fun describe(row: OutboxRow): PendingOccurrencePayment? = null
     override fun observeQueue(binding: LogicalSessionBinding): Flow<List<PendingOccurrencePayment>> = flowOf(emptyList())
-    override suspend fun fetch(binding: LogicalSessionBinding, seriesId: String, period: String): Result<RecurringOccurrenceDto> =
-        Result.success(if (period == "current") occurrence else occurrence.copy(period = period))
+    override suspend fun fetch(binding: LogicalSessionBinding, seriesId: String, period: String):
+        Result<com.ticketbox.data.repository.ReadSnapshot<RecurringOccurrenceDto>> =
+            failure?.let { Result.failure(it) } ?: Result.success(com.ticketbox.data.repository.ReadSnapshot(
+                if (period == "current") occurrence else occurrence.copy(period = period), "2026-09-27T10:00:00Z", fromCache))
 
     override suspend fun enqueue(binding: LogicalSessionBinding, draft: OccurrencePaymentDraft): Result<Long> {
         submissions += binding to draft

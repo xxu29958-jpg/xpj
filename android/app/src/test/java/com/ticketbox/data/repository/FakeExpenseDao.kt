@@ -17,6 +17,9 @@ internal class FakeExpenseDao(
     override suspend fun monthlyReadSnapshotBindings() = monthlyCache.readSnapshotBindings()
     private val statsCache = com.ticketbox.data.local.StatsProjectionCacheFake()
     private val goalCache = com.ticketbox.data.local.GoalQueryCacheFake()
+    override suspend fun recurringReadEpoch(bindingKey: String) =
+        statsCache.find(bindingKey, "recurring_read_epoch", "", "", "UTC").singleOrNull()?.responseJson
+    override suspend fun clearRecurringSnapshots(bindingKey: String) = statsCache.clearRecurring(bindingKey)
     override suspend fun saveGoalSnapshots(snapshots: List<com.ticketbox.data.local.GoalQueryCacheEntity>) = goalCache.save(snapshots)
     override suspend fun goalSnapshot(bindingKey: String, timezone: String, queryKey: String) = goalCache.find(bindingKey, timezone, queryKey)
     override suspend fun clearGoalSnapshots() = goalCache.clear(null)

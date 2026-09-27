@@ -102,14 +102,24 @@ internal class RepositoryGraph(
         sessionCoordinator = ledgerSessionCoordinator,
     )
 
+    private val recurringQueries = com.ticketbox.data.repository.RecurringQueryReader(
+        apiServiceProvider, database.expenseDao(), ledgerSessionCoordinator,
+    )
+
     val recurringRepository = RecurringRepository(
         apiProvider = apiServiceProvider,
         outbox = outbox,
         createAdapter = outboxAdapters.recurringCreateAdapter,
         updateAdapter = outboxAdapters.recurringUpdateAdapter,
         occurrenceAdapter = outboxAdapters.recurringOccurrenceAdapter,
-        sessionCoordinator = ledgerSessionCoordinator,
+        queryReader = recurringQueries,
     )
+
+    init {
+        outbox.onRecurringDispatchPreparing = recurringQueries::prepareDispatch
+        outbox.onRecurringDispatchFinished = recurringQueries::finishDispatch
+        outbox.onRecurringAccepted = recurringQueries::invalidateAccepted
+    }
 
     val budgetRepository = BudgetRepository(
         apiProvider = apiServiceProvider,

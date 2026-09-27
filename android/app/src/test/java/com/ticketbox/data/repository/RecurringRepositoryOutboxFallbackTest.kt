@@ -115,10 +115,11 @@ class RecurringRepositoryOutboxFallbackTest {
         }
         val provider = testApiServiceProvider(ServiceFactory(api), session)
         val adapters = moshi()
+        val readCache = FakeExpenseDao()
         return Harness(
             repository = RecurringRepository(
                 apiProvider = provider,
-                sessionCoordinator = LocalLedgerSessionCoordinator(boundSettingsStore(), session.sessionStore, FakeExpenseDao(), outbox),
+                queryReader = RecurringQueryReader(provider, readCache, LocalLedgerSessionCoordinator(boundSettingsStore(), session.sessionStore, readCache, outbox)),
                 outbox = outbox,
                 createAdapter = adapters.adapter(RecurringItemCreateRequestDto::class.java),
                 updateAdapter = adapters.adapter(RecurringItemUpdateRequestDto::class.java),

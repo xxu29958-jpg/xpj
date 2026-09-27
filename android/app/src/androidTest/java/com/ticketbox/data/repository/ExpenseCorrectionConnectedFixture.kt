@@ -321,7 +321,8 @@ internal class CorrectionConnectedNetwork {
         override suspend fun recurringOccurrence(publicId: String, month: String): RecurringOccurrenceDto {
             check(publicId == correctionRecurringItem().publicId)
             occurrenceReads += publicId to month
-            return RecurringOccurrenceDto(publicId, month, 2, 1, "fulfilled", 1000, 0,
+            val period = if (month == "current") "2026-09" else month
+            return RecurringOccurrenceDto(publicId, period, 2, 1, "fulfilled", 1000, 0,
                 current.publicId, 1000, null, expenseId = current.id)
         }
         override suspend fun categories() = CategoriesDto(listOf("餐饮", "购物"))

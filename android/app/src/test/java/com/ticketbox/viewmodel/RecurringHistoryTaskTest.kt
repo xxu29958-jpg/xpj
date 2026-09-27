@@ -66,8 +66,54 @@ class RecurringHistoryTaskTest {
         } finally { vm.viewModelScope.cancel(); Dispatchers.resetMain() }
     }
 
+    @Test fun financialInvalidationRetiresLateListAndHistoryOnFailureWithoutChangingEditorIdentity() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val actions = HistoryActions()
+        val vm = RecurringViewModel(actions)
+        try {
+            advanceUntilIdle()
+            vm.historyTask.open(actions.item)
+            advanceUntilIdle()
+            val originalEpoch = vm.uiState.value.editorEpoch
+            val originalRuntime = vm.uiState.value.editorRuntimeId
+            val lateItems = CompletableDeferred<Result<List<RecurringItem>>>()
+            val lateHistory = CompletableDeferred<Result<RecurringHistoryPageDto>>()
+            actions.pendingItems = lateItems
+            actions.pendingHistory = lateHistory
+            vm.refresh()
+            vm.historyTask.more()
+            runCurrent()
+            actions.pendingItems = null
+            actions.pendingHistory = null
+            actions.itemFailure = java.io.IOException("offline after accepted correction")
+            actions.result = Result.failure(java.io.IOException("offline history"))
+            vm.refresh(retireCurrent = true)
+            advanceUntilIdle()
+            lateItems.complete(Result.success(listOf(actions.item)))
+            lateHistory.complete(Result.success(historyPage(8, null)))
+            advanceUntilIdle()
+            assertTrue(vm.uiState.value.items.isEmpty())
+            assertNull(vm.uiState.value.itemsFetchedAt)
+            assertEquals(RecurringListLoadState.Failed, vm.uiState.value.itemsLoadState)
+            assertTrue(vm.uiState.value.history.items.isEmpty())
+            assertNull(vm.uiState.value.history.fetchedAt)
+            assertEquals(actions.item.publicId, vm.uiState.value.history.publicId)
+            assertTrue(vm.uiState.value.history.error != null)
+            assertEquals(originalEpoch, vm.uiState.value.editorEpoch)
+            assertEquals(originalRuntime, vm.uiState.value.editorRuntimeId)
+            actions.itemFailure = null
+            actions.result = Result.success(historyPage(10, null))
+            vm.refresh()
+            vm.historyTask.retry()
+            advanceUntilIdle()
+            assertEquals(listOf(actions.item), vm.uiState.value.items)
+            assertEquals(listOf(10L), vm.uiState.value.history.items.map { it.rowVersion })
+        } finally { vm.viewModelScope.cancel(); advanceUntilIdle(); Dispatchers.resetMain() }
+    }
+
     @Test fun pagingFailureRetryPreservesReadDefinitionsAndNeverRefreshesCurrentItems() = runTest {
         val actions = HistoryActions()
+        actions.fromCache = true
         var state = RecurringHistoryState()
         val task = RecurringHistoryTask(actions, backgroundScope, { actions.access.value?.binding }, { state = it }, {})
         task.open(actions.item)
@@ -77,10 +123,16 @@ class RecurringHistoryTaskTest {
         runCurrent()
         assertEquals(listOf(9L), state.items.map { it.rowVersion })
         assertTrue(state.error != null)
+        assertTrue(state.fromCache)
+        assertEquals("2026-09-27T10:00:00Z", state.fetchedAt)
         actions.result = Result.success(historyPage(8, null))
+        actions.fromCache = false
+        actions.fetchedAt = "2026-09-27T11:00:00Z"
         task.retry()
         runCurrent()
         assertEquals(listOf(9L, 8L), state.items.map { it.rowVersion })
+        assertTrue(state.fromCache)
+        assertEquals("2026-09-27T10:00:00Z", state.fetchedAt)
         assertEquals(listOf(null, 9L, 9L), actions.cursors)
         assertEquals(0, actions.itemCalls)
         task.dismiss()
@@ -137,21 +189,26 @@ private class HistoryActions : RecurringActions by unsupportedHistoryActions() {
     val access = MutableStateFlow<LedgerAccessContext?>(LedgerAccessContext(
         LogicalSessionBinding("https://history.example", "owner", "test-owner", "session", "binding"), true))
     var result = Result.success(historyPage(9, 9))
+    var fetchedAt = "2026-09-27T10:00:00Z"
+    var fromCache = false
     val cursors = mutableListOf<Long?>()
+    var itemFailure: Throwable? = null
     var itemCalls = 0
     var pendingItems: CompletableDeferred<Result<List<RecurringItem>>>? = null
     var pendingHistory: CompletableDeferred<Result<RecurringHistoryPageDto>>? = null
     override fun canModifyLedger() = true
     override fun observeActiveLedgerAccess() = access
     override fun observePendingIntents() = flowOf(emptyList<com.ticketbox.data.repository.RecurringPendingIntent>())
-    override suspend fun history(binding: LogicalSessionBinding, publicId: String, beforeVersion: Long?): Result<RecurringHistoryPageDto> {
+    override suspend fun history(binding: LogicalSessionBinding, publicId: String, beforeVersion: Long?):
+        Result<com.ticketbox.data.repository.ReadSnapshot<RecurringHistoryPageDto>> {
         cursors += beforeVersion
-        return pendingHistory?.await() ?: result
+        return (pendingHistory?.await() ?: result).map { com.ticketbox.data.repository.ReadSnapshot(it, fetchedAt, fromCache) }
     }
     override suspend fun items(expectedBinding: LogicalSessionBinding, status: String?, includeArchived: Boolean,
-        month: String?): Result<List<RecurringItem>> {
+        month: String?): Result<com.ticketbox.data.repository.ReadSnapshot<List<RecurringItem>>> {
         itemCalls += 1
-        return pendingItems?.await() ?: Result.success(listOf(item))
+        return (pendingItems?.await() ?: itemFailure?.let { Result.failure(it) } ?: Result.success(listOf(item)))
+            .map { com.ticketbox.data.repository.ReadSnapshot(it, fetchedAt, fromCache) }
     }
     override suspend fun candidates(expectedBinding: LogicalSessionBinding) = Result.success(emptyList<RecurringCandidate>())
 }

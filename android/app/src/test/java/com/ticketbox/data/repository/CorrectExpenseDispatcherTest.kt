@@ -171,7 +171,7 @@ internal class CorrectExpenseDispatcherTest : ExpensePendingRepositoryOutboxTest
         val stub = Stub(StubResult.Success(ExpenseCorrectionResponseDto(successExpenseDto(), originalRevision)))
         val dispatcher = CorrectExpenseDispatcher({ stub }, adapter, { _, _ -> }, {})
 
-        assertEquals(DispatchResult.Failure("correction_requires_review"), dispatcher.dispatch(empty))
+        assertEquals(DispatchResult.Failure("correction_requires_review", definitelyRejected = true), dispatcher.dispatch(empty))
         assertEquals(0, stub.calls)
         val pending = PendingExpenseCorrection(empty, adapter.readSupportedCorrection(empty))
         assertEquals(false, pending.hasSupportedIntent)
@@ -247,7 +247,7 @@ internal class CorrectExpenseDispatcherTest : ExpensePendingRepositoryOutboxTest
         for (invalidRequest in invalid) {
             val retained = original.copy(status = PendingMutationStatus.Failed,
                 payloadJson = adapter.toJson(payload.copy(request = invalidRequest)))
-            assertEquals(DispatchResult.Failure("correction_requires_review"), dispatcher.dispatch(retained), invalidRequest.toString())
+            assertEquals(DispatchResult.Failure("correction_requires_review", definitelyRejected = true), dispatcher.dispatch(retained), invalidRequest.toString())
             assertEquals(invalidRequest, adapter.readDisplayCorrection(retained))
             val pending = PendingExpenseCorrection(retained, adapter.readSupportedCorrection(retained))
             assertEquals(false, pending.canRetry)
@@ -263,7 +263,7 @@ internal class CorrectExpenseDispatcherTest : ExpensePendingRepositoryOutboxTest
         val stub = Stub(StubResult.Throw(httpException(422, """{"detail":"server validation"}""")))
         val dispatcher = CorrectExpenseDispatcher({ stub }, adapter, { _, _ -> error("No accepted fact") }, {})
         val result = dispatcher.dispatch(original)
-        assertEquals(DispatchResult.Failure("correction_requires_review"), result)
+        assertEquals(DispatchResult.Failure("correction_requires_review", definitelyRejected = true), result)
         val retained = original.copy(status = PendingMutationStatus.Failed,
             lastError = (result as DispatchResult.Failure).message)
         val pending = PendingExpenseCorrection(retained, adapter.readSupportedCorrection(retained))

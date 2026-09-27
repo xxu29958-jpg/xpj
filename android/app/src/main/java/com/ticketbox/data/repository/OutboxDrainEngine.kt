@@ -223,7 +223,22 @@ class OutboxDrainEngine(
                 outbox.revertClaimWithoutAttempt(row.id)
                 return@withDispatchLease DrainSummary(1, 0, 0, 0, aborted = 1)
             }
-            settle(row, dispatchSafely(row, dispatcher))
+            val protectsReads = outbox.affectsRecurringReads(row)
+            var dispatchResult: DispatchResult? = null
+            try {
+                if (protectsReads) {
+                    try { outbox.onRecurringDispatchPreparing(row) }
+                    catch (error: Exception) {
+                        withContext(NonCancellable) { outbox.revertClaimWithoutAttempt(row.id) }
+                        throw error
+                    }
+                }
+                val result = dispatchSafely(row, dispatcher)
+                dispatchResult = result
+                settle(row, result)
+            } finally {
+                if (protectsReads) withContext(NonCancellable) { outbox.onRecurringDispatchFinished(row, dispatchResult) }
+            }
         }
     }
 
@@ -246,7 +261,7 @@ class OutboxDrainEngine(
                 withContext(if (row.type == PendingMutationType.SaveMonthlyBudget) NonCancellable
                     else kotlin.coroutines.EmptyCoroutineContext) {
                     outbox.markDone(row.id, cacheRefreshVersion = result.cacheRefreshVersion, receiptJson = result.receiptJson,
-                        budgetReadRefreshRequired = result.budgetReadRefreshRequired)
+                        budgetReadRefreshRequired = result.budgetReadRefreshRequired, acceptedRow = row)
                 }
                 outbox.noteAcceptedReplay()
                 result.newRowVersion?.takeIf { it != 0L && row.type != PendingMutationType.CreateExpense }

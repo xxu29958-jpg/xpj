@@ -297,6 +297,7 @@ class FactEntryNavigationTest {
         compose.onNodeWithText(openOccurrence).assertIsDisplayed()
         assertEquals(MainProductDestination.Secondary(ProductSecondaryPage.Recurring), harness.shell.activeDestination)
         assertEquals("navigation-recurring", harness.fixture.network.occurrenceReads.single().first)
+        assertEquals("current", harness.fixture.network.occurrenceReads.single().second)
         assertTrue(harness.fixture.stored().isEmpty())
     }
 

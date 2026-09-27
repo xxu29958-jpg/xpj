@@ -17,9 +17,11 @@ data class RecurringHistoryState(
     val nextBeforeVersion: Long? = null,
     val loading: Boolean = false,
     val error: UiText? = null,
+    val fetchedAt: String? = null,
+    val fromCache: Boolean = false,
 )
 
-/** Only this open task's successfully read pages are retained, never a persisted query projection. */
+/** Each visible page keeps the source of its accepted query; an unread page cannot fill a gap. */
 internal class RecurringHistoryTask(
     private val queries: RecurringQueryActions,
     private val scope: CoroutineScope,
@@ -50,6 +52,15 @@ internal class RecurringHistoryTask(
     fun more() { if (!state.loading && state.error == null) state.nextBeforeVersion?.let(::read) }
     fun retry() { if (!state.loading && state.error != null) read(failedBefore) }
 
+    fun invalidate() {
+        generation += 1
+        job?.cancel()
+        state = state.copy(items = emptyList(), nextBeforeVersion = null, fetchedAt = null, fromCache = false,
+            loading = false, error = null)
+        publish(state)
+        if (state.publicId != null) read(null)
+    }
+
     private fun read(before: Long?) {
         val binding = currentBinding() ?: return
         val id = state.publicId ?: return
@@ -60,10 +71,14 @@ internal class RecurringHistoryTask(
         job = scope.launch {
             val result = queries.history(binding, id, before)
             if (generation != sequence || currentBinding() != binding) return@launch
-            result.fold(onSuccess = { page ->
+            result.fold(onSuccess = { read ->
+                val page = read.value
                 val rows = if (before == null) page.items else state.items + page.items
                 state = state.copy(items = rows.distinctBy { it.rowVersion }, nextBeforeVersion = page.nextBeforeVersion,
-                    loading = false)
+                    loading = false,
+                    fetchedAt = if (before == null) read.fetchedAt else listOfNotNull(state.fetchedAt, read.fetchedAt)
+                        .minByOrNull { java.time.Instant.parse(it) },
+                    fromCache = read.fromCache || (before != null && state.fromCache))
             }, onFailure = { error ->
                 if (error.isReadAccessDenied()) {
                     state = RecurringHistoryState()

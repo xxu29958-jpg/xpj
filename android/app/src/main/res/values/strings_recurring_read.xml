@@ -1,0 +1,8 @@
+<resources>
+    <string name="recurring_read_title">已读取固定支出</string>
+    <string name="recurring_read_cached_title">固定支出离线记录</string>
+    <string name="recurring_read_body">读取于 %1$s</string>
+    <string name="recurring_read_cached_body">上次读取于 %1$s。保留原金额、币种与期次；联网后可刷新。</string>
+    <string name="recurring_history_read_cached">包含离线保存的已读页，最早读取于 %1$s。未读记录仍需联网。</string>
+    <string name="occurrence_cached_period">上次读取的付款期次：%1$s。当前月份尚未重新核实。</string>
+</resources>

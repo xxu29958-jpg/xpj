@@ -211,6 +211,9 @@ internal fun PlanFixedArrangementsSection(
                 onClick = onOpenRecurring,
             ),
         )
+        com.ticketbox.ui.screens.recurring.RecurringReadSource(
+            recurring.itemsFetchedAt, recurring.itemsFromCache, recurring.loading,
+        )
         PlanDestinationRow(
             model = PlanRowModel(
                 title = stringResource(R.string.plan_income_title),

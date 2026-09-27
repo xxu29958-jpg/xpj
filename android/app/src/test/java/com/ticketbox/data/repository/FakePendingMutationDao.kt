@@ -3,13 +3,14 @@ package com.ticketbox.data.repository
 import com.ticketbox.data.local.PendingMutationDao
 import com.ticketbox.data.local.PendingMutationEntity
 import com.ticketbox.data.local.PendingMutationStatus
+import java.util.Collections
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 
 /** In-memory [PendingMutationDao] preserving bound FIFO, original row identity and atomic batch changes. */
 class FakePendingMutationDao : PendingMutationDao {
-    val rows = linkedMapOf<Long, PendingMutationEntity>()
+    val rows: MutableMap<Long, PendingMutationEntity> = Collections.synchronizedMap(linkedMapOf())
     var beforeNextRunnableBatchReturn: (suspend () -> Unit)? = null
     var beforeInsert: (suspend () -> Unit)? = null
     var replacePayloadError: Throwable? = null
@@ -394,8 +395,8 @@ class FakePendingMutationDao : PendingMutationDao {
         ledgerId: String,
         types: Collection<String>,
         activeStatuses: Collection<String>,
-    ): Flow<List<PendingMutationEntity>> = queueDepth.map { _ ->
-        rows.values
+    ): Flow<List<PendingMutationEntity>> = observeRows().map { snapshot ->
+        snapshot
             .filter {
                 it.ownerKey == ownerKey &&
                     it.ledgerId == ledgerId &&
@@ -410,13 +411,12 @@ class FakePendingMutationDao : PendingMutationDao {
         ledgerId: String,
         pendingStatus: String,
         inFlightStatus: String,
-    ): Flow<Int> = queueDepth.map { snapshot ->
-        rows.values.count {
+    ): Flow<Int> = observeRows().map { snapshot ->
+        snapshot.count {
             it.ownerKey == ownerKey &&
                 it.ledgerId == ledgerId &&
                 (it.status == pendingStatus || it.status == inFlightStatus)
         }
-            .also { /* read through snapshot to keep StateFlow hot */ snapshot.let { } }
     }
 
     override fun observeConflictRows(
@@ -424,8 +424,8 @@ class FakePendingMutationDao : PendingMutationDao {
         ledgerId: String,
         conflictStatus: String,
     ): Flow<List<PendingMutationEntity>> =
-        queueDepth.map { _ ->
-            rows.values
+        observeRows().map { snapshot ->
+            snapshot
                 .filter { it.ownerKey == ownerKey && it.ledgerId == ledgerId && it.status == conflictStatus }
                 .sortedWith(compareBy({ it.createdAt }, { it.id }))
         }
@@ -435,8 +435,8 @@ class FakePendingMutationDao : PendingMutationDao {
         ledgerId: String,
         failedStatus: String,
     ): Flow<List<PendingMutationEntity>> =
-        queueDepth.map { _ ->
-            rows.values
+        observeRows().map { snapshot ->
+            snapshot
                 .filter { it.ownerKey == ownerKey && it.ledgerId == ledgerId && it.status == failedStatus }
                 .sortedWith(compareBy({ it.createdAt }, { it.id }))
         }
@@ -497,10 +497,13 @@ class FakePendingMutationDao : PendingMutationDao {
     }
 
     override fun observeQuarantinedCount(activeOwnerKey: String?): Flow<Int> =
-        queueDepth.map { snapshot ->
-            rows.values.count { activeOwnerKey == null || it.ownerKey == null || it.ownerKey != activeOwnerKey }
-                .also { snapshot.let { } }
+        observeRows().map { snapshot ->
+            snapshot.count { activeOwnerKey == null || it.ownerKey == null || it.ownerKey != activeOwnerKey }
         }
+
+    // Real recovery runs on IO while Main observes; publish a stable row set like a Room query.
+    private fun observeRows(): Flow<List<PendingMutationEntity>> =
+        queueDepth.map { synchronized(rows) { rows.values.toList() } }
 
     override suspend fun deleteQuarantined(activeOwnerKey: String): Int {
         val ids = rows.values

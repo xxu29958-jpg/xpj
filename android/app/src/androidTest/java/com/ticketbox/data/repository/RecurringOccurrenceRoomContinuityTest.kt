@@ -65,7 +65,7 @@ class RecurringOccurrenceRoomContinuityTest {
             val state by current.uiState.collectAsState()
             TicketboxTheme(skin = AppSkin.Paper) {
                 RecurringOccurrenceSheet(state, OccurrenceSheetActions(
-                    current::dismiss, current::refresh, current::changePeriod,
+                    current::dismiss, { current.refresh() }, current::changePeriod,
                     current::choose, current::submit, current::recover,
                     onOpenExpense = { host.openedExpenses += it },
                 ))
@@ -515,7 +515,7 @@ class RecurringOccurrenceRoomContinuityTest {
             val state by current.uiState.collectAsState()
             TicketboxTheme(skin = AppSkin.Paper) {
                 RecurringOccurrenceSheet(state, OccurrenceSheetActions(
-                    current::dismiss, current::refresh, current::changePeriod,
+                    current::dismiss, { current.refresh() }, current::changePeriod,
                     current::choose, current::submit, current::recover,
                 ))
             }
@@ -1171,7 +1171,7 @@ class RecurringOccurrenceRoomContinuityTest {
                 RecurringOccurrenceSheet(
                     state,
                     OccurrenceSheetActions(
-                        current::dismiss, current::refresh, current::changePeriod,
+                        current::dismiss, { current.refresh() }, current::changePeriod,
                         current::choose, current::submit, current::recover,
                     ),
                     origin = OccurrencePaymentGuard(resolved = true, conflict = true),

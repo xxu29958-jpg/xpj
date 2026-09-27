@@ -1,10 +1,13 @@
 package com.ticketbox.data.repository
 
+import android.database.sqlite.SQLiteException
 import com.ticketbox.data.local.PendingMutationDao
 import com.ticketbox.data.local.PendingMutationEntity
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -508,11 +511,31 @@ class OutboxRepository private constructor(
     suspend fun tryClaim(id: Long): Boolean =
         dao.markInFlightIfPending(id, PendingMutationStatus.Pending.wireValue, PendingMutationStatus.InFlight.wireValue, nowIso()) > 0
 
+    internal var onRecurringDispatchPreparing: suspend (OutboxRow) -> Unit = {}
+    internal var onRecurringDispatchFinished: suspend (OutboxRow, DispatchResult?) -> Unit = { _, _ -> }
+    internal var onRecurringAccepted: suspend (OutboxRow) -> Unit = {}
+
+    internal fun affectsRecurringReads(row: OutboxRow) = row.type in setOf(
+        PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem,
+        PendingMutationType.SetRecurringOccurrencePayment, PendingMutationType.PatchExpense, PendingMutationType.CorrectExpense,
+        PendingMutationType.CreateExpense, PendingMutationType.ConfirmExpense, PendingMutationType.UndoExpense,
+        PendingMutationType.CreateExpenseOffset, PendingMutationType.VoidExpenseOffset)
+
+
     suspend fun markDone(id: Long, cacheRefreshVersion: Long? = null, receiptJson: String? = null,
-        budgetReadRefreshRequired: Boolean = false) {
+        budgetReadRefreshRequired: Boolean = false, acceptedRow: OutboxRow? = null) {
         val refreshError = if (budgetReadRefreshRequired) BUDGET_READ_REFRESH_REQUIRED
             else cacheRefreshVersion?.let { "$EXPENSE_REFRESH_PREFIX$it" }
-        dao.markDone(id, PendingMutationStatus.Done.wireValue, nowIso(), refreshError, receiptJson)
+        val recurringAccepted = acceptedRow?.let(::affectsRecurringReads) == true
+        try {
+            // Retirement commits first; a later Done failure cannot roll back its read proof.
+            if (recurringAccepted) onRecurringAccepted(requireNotNull(acceptedRow))
+            dao.markDone(id, PendingMutationStatus.Done.wireValue, nowIso(), refreshError, receiptJson)
+        } catch (error: SQLiteException) {
+            // The server has accepted this attempt. Reentry repeats the original key; it never refunds the send.
+            if (recurringAccepted) withContext(NonCancellable) { markRetryable(id, "accepted_recurring_read_publication_pending") }
+            throw error // The existing worker schedules retry, without claiming local delivery completed.
+        }
     }
 
     internal suspend fun recoverBudgetReadRefresh(bound: BoundLedgerRequest, month: String,

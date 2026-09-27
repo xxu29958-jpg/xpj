@@ -50,7 +50,7 @@ class PatchExpenseDispatcher(
         // that the server would 422 anyway — surface it as a visible FAILED row
         // the user can drop, not a silent server round-trip + Discard.
         val idempotencyKey = row.idempotencyKey
-            ?: return DispatchResult.Failure("PatchExpense row missing idempotency key")
+            ?: return DispatchResult.Failure("PatchExpense row missing idempotency key", definitelyRejected = true)
 
         // [codex round-2 P1#3] fix: payload deserialise errors are
         // TERMINAL, not retryable. A corrupted / stale-shape JSON
@@ -59,7 +59,7 @@ class PatchExpenseDispatcher(
         // the user sees the dead row and can drop it.
         val request = try {
             val storedPayload = payloadAdapter.fromJson(row.payloadJson)
-                ?: return DispatchResult.Failure("payload deserialised to null")
+                ?: return DispatchResult.Failure("payload deserialised to null", definitelyRejected = true)
             // The token on the row is the authoritative one; replace
             // any older value embedded in the serialised payload
             // (KeepMine refreshes ``row.expectedRowVersion`` but
@@ -68,10 +68,12 @@ class PatchExpenseDispatcher(
         } catch (e: JsonDataException) {
             return DispatchResult.Failure(
                 "payload JSON shape changed: ${e.message ?: "JsonDataException"}",
+                definitelyRejected = true,
             )
         } catch (e: JsonEncodingException) {
             return DispatchResult.Failure(
                 "payload JSON malformed: ${e.message ?: "JsonEncodingException"}",
+                definitelyRejected = true,
             )
         }
 

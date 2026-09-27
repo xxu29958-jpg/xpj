@@ -16,10 +16,10 @@ class RecurringOccurrenceDispatcher(
 
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
         val key = row.idempotencyKey?.takeIf { it.isNotBlank() }
-            ?: return DispatchResult.Failure("recurring_occurrence_intent_invalid")
+            ?: return DispatchResult.Failure("recurring_occurrence_intent_invalid", definitelyRejected = true)
         val payload = payloadAdapter.readSupportedOccurrence(row.payloadJson)
-            ?: return DispatchResult.Failure("recurring_occurrence_payload_unsupported")
-        if (!payload.matchesOriginal(row)) return DispatchResult.Failure("recurring_occurrence_intent_invalid")
+            ?: return DispatchResult.Failure("recurring_occurrence_payload_unsupported", definitelyRejected = true)
+        if (!payload.matchesOriginal(row)) return DispatchResult.Failure("recurring_occurrence_intent_invalid", definitelyRejected = true)
         return try {
             val receipt = apiProvider(row).setRecurringOccurrencePayment(payload.seriesPublicId, payload.period, payload.request, key)
             // Preserve every original command's OCC, including later commands. Never rewrite its frozen payload.
@@ -47,7 +47,8 @@ class RecurringOccurrenceDispatcher(
             error.code() == 409 -> DispatchResult.Failure(parsed.outboxFailureMessage())
             error.code() == 408 || error.code() == 429 || error.code() in 500..599 ->
                 DispatchResult.RetryableFailure("recurring_occurrence_connection_interrupted")
-            else -> DispatchResult.Failure("recurring_occurrence_rejected")
+            else -> DispatchResult.Failure("recurring_occurrence_rejected", definitelyRejected = error.code() in setOf(400, 401, 403, 404, 405, 410, 412, 422),
+                credentialRejected = error.code() == 401)
         }
     }
 }
