@@ -34,9 +34,9 @@ class DebtQueryReadTest {
         val other = queries.detail(fixture.binding, "other-debt").getOrThrow()
         queries.detail(fixture.binding, "jpy-debt").getOrThrow()
         val original = queries.list(fixture.binding, DebtListLens.Ledger).getOrThrow()
-        val missing = HttpException(Response.error<Any>(404, """{"error":"debt_not_found"}""".toResponseBody()))
-        api.failure = missing
-        assertTrue(queries.detail(fixture.binding, "jpy-debt").isFailure)
+        fun missing() = HttpException(Response.error<Any>(404, """{"error":"debt_not_found"}""".toResponseBody()))
+        api.failure = missing()
+        assertEquals("debt_not_found", (queries.detail(fixture.binding, "jpy-debt").exceptionOrNull() as RepositoryException).errorCode)
         api.failure = null
         api.offline = true
         val cached = reader().list(fixture.binding, DebtListLens.Ledger).getOrThrow()
@@ -50,8 +50,8 @@ class DebtQueryReadTest {
         api.list = { started.complete(Unit); release.await(); freshPage }
         val late = async { queries.list(fixture.binding, DebtListLens.Ledger) }
         started.await()
-        api.failure = missing
-        assertTrue(reader().detail(fixture.binding, "jpy-debt").isFailure)
+        api.failure = missing()
+        assertEquals("debt_not_found", (reader().detail(fixture.binding, "jpy-debt").exceptionOrNull() as RepositoryException).errorCode)
         api.failure = null
         release.complete(Unit)
         assertEquals(listOf("other-debt"), late.await().getOrThrow().value.debts.map { it.publicId })
