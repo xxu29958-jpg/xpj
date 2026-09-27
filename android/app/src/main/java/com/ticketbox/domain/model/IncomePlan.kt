@@ -1,9 +1,12 @@
 package com.ticketbox.domain.model
 
+import com.squareup.moshi.JsonClass
+
 /**
  * v1.1 user-declared monthly income line. Drives the income leg of
  * "本月可自由支配".
  */
+@JsonClass(generateAdapter = true)
 data class IncomePlan(
     val publicId: String,
     val label: String,
@@ -23,9 +26,9 @@ data class IncomePlan(
     val isArchived: Boolean get() = status == IncomePlanStatus.ARCHIVED
 }
 
-enum class IncomeFrequency(val wireValue: String, val displayName: String) {
-    MONTHLY("monthly", "每月固定"),
-    ONE_TIME("one_time", "实际到账"),
+enum class IncomeFrequency(val wireValue: String) {
+    MONTHLY("monthly"),
+    ONE_TIME("one_time"),
     ;
 
     companion object {

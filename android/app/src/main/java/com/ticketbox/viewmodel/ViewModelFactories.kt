@@ -133,6 +133,10 @@ fun incomePlanEditViewModelFactory(
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return IncomePlanEditViewModel(repository, onDataChanged = onDataChanged) as T
     }
+    override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T {
+        return IncomePlanEditViewModel(repository, onDataChanged = onDataChanged,
+            savedStateHandle = extras.createSavedStateHandle()) as T
+    }
 }
 
 @Suppress("UNCHECKED_CAST")

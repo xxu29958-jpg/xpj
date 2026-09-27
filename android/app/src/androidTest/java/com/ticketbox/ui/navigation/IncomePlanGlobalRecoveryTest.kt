@@ -75,9 +75,12 @@ class IncomePlanGlobalRecoveryTest {
     }
 
     @After fun close() {
-        compose.runOnIdle { mounted.value = false; harness.models.viewModelStore.clear() }
-        compose.waitForIdle()
-        harness.close()
+        try {
+            compose.runOnIdle { mounted.value = false; harness.models.viewModelStore.clear() }
+            compose.waitForIdle()
+        } finally {
+            harness.close()
+        }
     }
 
     @Test fun originalYenCreationStaysYenAndOpensTheExactIncomeSubmission() {
@@ -142,17 +145,22 @@ class IncomePlanGlobalRecoveryTest {
                 LocalCurrencyDisplay provides CurrencyDisplay(CurrencyCode.CNY)) {
                 TicketboxTheme(skin = AppSkin.Default) {
                     if (mounted.value) {
-                        navigation = rememberNavController()
-                        NavHost(navigation, startDestination = "income-sync") {
-                            composable("income-sync") {
-                                val global: OutboxStatusViewModel = viewModel(factory = globalFactory())
-                                SyncStatusScreen(global, {}, SyncStatusNavigation({}, {}, {}, {}, {}, {}, {},
-                                    { id -> navigation.navigate(incomePlanSubmissionRoute(id)) }, {}, onRepairCorrectionRate = { _, _ -> }))
+                        val outer = rememberNavController()
+                        NavHost(outer, startDestination = MAIN_ROUTE) {
+                            composable(MAIN_ROUTE) {
+                                navigation = rememberNavController()
+                                NavHost(navigation, startDestination = "income-sync") {
+                                    composable("income-sync") {
+                                        val global: OutboxStatusViewModel = viewModel(factory = globalFactory())
+                                        SyncStatusScreen(global, {}, SyncStatusNavigation({}, {}, {}, {}, {}, {}, {},
+                                            { id -> navigation.navigate(incomePlanSubmissionRoute(id)) }, {}, onRepairCorrectionRate = { _, _ -> }))
+                                    }
+                                    addPlanRoutes(MainProductRouteDependencies(
+                                        MainNavigationRuntime(outer, harness.shell, harness.screenFactory), navigation,
+                                        MainWorkspaceControls(SettingsPreferenceControls(AppSkin.Default, AppThemeMode.System,
+                                            CurrencyCode.CNY, {}, {}), {})))
+                                }
                             }
-                            addPlanRoutes(MainProductRouteDependencies(
-                                MainNavigationRuntime(navigation, harness.shell, harness.screenFactory), navigation,
-                                MainWorkspaceControls(SettingsPreferenceControls(AppSkin.Default, AppThemeMode.System,
-                                    CurrencyCode.CNY, {}, {}), {})))
                         }
                     }
                 }

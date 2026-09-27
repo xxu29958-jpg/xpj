@@ -36,7 +36,7 @@ internal fun IncomePlanIntentSummary(pending: PendingIncomePlanSubmission) {
             formatDisplayAmount(intent.request.amountCents ?: intent.originalAmountCents,
                 CurrencyDisplay.forRecord(intent.homeCurrencyCode)))
         intent.request.sourceType?.let { Text(IncomeSourceType.fromWire(it).displayName) }
-        intent.request.frequency?.let { Text(IncomeFrequency.fromWire(it).displayName) }
+        intent.request.frequency?.let { Text(stringResource(incomeFrequencyLabelRes(IncomeFrequency.fromWire(it)))) }
         intent.request.incomeMonth?.let { Text(stringResource(R.string.income_plan_edit_target_month, it)) }
         intent.request.payDay?.let { Text(stringResource(R.string.income_plan_submission_pay_day, it)) }
     }

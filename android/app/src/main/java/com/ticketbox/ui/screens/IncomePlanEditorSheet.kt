@@ -27,7 +27,7 @@ internal data class IncomePlanEditSheetCallbacks(
     val onArchive: () -> Unit,
 )
 
-/** 编辑会话宿主：会话在才挂抽屉；滑走/返回 = dismiss（草稿即弃，不产生写）。 */
+/** 编辑会话宿主：滑走/返回保留原草稿，明确取消才丢弃。 */
 @Composable
 internal fun IncomePlanEditSheetHost(
     state: IncomePlanEditUiState,
@@ -54,7 +54,7 @@ internal fun IncomePlanEditSheetHost(
                     onFrequency = { editViewModel.updateDraftChoice(frequency = it) },
                 ),
                 onSubmit = editViewModel::submit,
-                onCancel = editViewModel::dismiss,
+                onCancel = editViewModel::cancel,
                 onArchive = editViewModel::archiveFromEdit,
             ),
         )
@@ -69,10 +69,11 @@ private fun EditIncomePlanSheet(
 ) {
     val session = state.session ?: return
     AppSheetScaffold(title = stringResource(R.string.income_plan_edit_sheet_title)) {
+        if (!state.canModify) Text(stringResource(R.string.common_readonly_ledger))
         IncomePlanDraftForm(
             state = IncomePlanDraftFormState(
                 draft = session.draft,
-                isSubmitting = state.isSubmitting,
+                isSubmitting = state.isSubmitting || !state.canModify,
                 currencyPending = state.currencyPending,
             ),
             fieldCallbacks = callbacks.fields,
@@ -86,7 +87,7 @@ private fun EditIncomePlanSheet(
                     stringResource(R.string.income_plan_sheet_save)
                 },
                 onClick = callbacks.onSubmit,
-                enabled = !state.isSubmitting,
+                enabled = !state.isSubmitting && state.canModify && !state.succeeded,
             ),
             secondary = AppAction(
                 text = stringResource(R.string.common_cancel),
@@ -95,7 +96,7 @@ private fun EditIncomePlanSheet(
             ),
         )
         Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            TextButton(onClick = callbacks.onArchive, enabled = !state.isSubmitting) {
+            TextButton(onClick = callbacks.onArchive, enabled = !state.isSubmitting && state.canModify && !state.succeeded) {
                 Text(
                     stringResource(R.string.income_plan_card_archive_action),
                     color = MaterialTheme.colorScheme.error,

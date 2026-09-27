@@ -20,6 +20,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.domain.model.DebtListLens
 import com.ticketbox.ui.design.LocalCurrencyDisplay
@@ -135,13 +136,18 @@ internal fun BudgetRoute(
     )
 }
 
+internal data class IncomePlanRouteContext(
+    val editOwner: ViewModelStoreOwner,
+    val originalSubmissionId: Long? = null,
+    val financialDataRevision: Int = 0,
+)
+
 @Composable
 internal fun IncomePlanRoute(
     screenFactory: MainScreenFactory,
     onBack: () -> Unit,
     onDataChanged: () -> Unit = {},
-    originalSubmissionId: Long? = null,
-    financialDataRevision: Int = 0,
+    context: IncomePlanRouteContext,
 ) {
     val incomePlanViewModel: IncomePlanViewModel = viewModel(
         key = IncomePlanViewModelKey,
@@ -153,17 +159,18 @@ internal fun IncomePlanRoute(
     // 编辑会话 VM 与列表 VM 分离（同 DebtActivityViewModel 先例）：打开时捕获 binding +
     // rowVersion baseline，成功 receipt 独立展示，列表刷新失败不吞「已更新收入」。
     val incomePlanEditViewModel: IncomePlanEditViewModel = viewModel(
+        viewModelStoreOwner = context.editOwner,
         key = IncomePlanEditViewModelKey,
         factory = incomePlanEditViewModelFactory(
             repository = screenFactory.incomePlanRepository,
             onDataChanged = onDataChanged,
         ),
     )
-    LaunchedEffect(incomePlanViewModel, originalSubmissionId) {
-        originalSubmissionId?.let(incomePlanViewModel::openSubmission)
+    LaunchedEffect(incomePlanViewModel, context.originalSubmissionId) {
+        context.originalSubmissionId?.let(incomePlanViewModel::openSubmission)
     }
-    LaunchedEffect(financialDataRevision) {
-        if (financialDataRevision > 0) incomePlanViewModel.refresh()
+    LaunchedEffect(context.financialDataRevision) {
+        if (context.financialDataRevision > 0) incomePlanViewModel.refresh()
     }
     IncomePlanScreen(
         viewModel = incomePlanViewModel,
