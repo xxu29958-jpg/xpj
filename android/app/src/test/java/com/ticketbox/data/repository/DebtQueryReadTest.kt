@@ -41,7 +41,8 @@ class DebtQueryReadTest {
         postStarted.await()
         refuseGet.complete(Unit)
         assertEquals(403, (get.await().exceptionOrNull() as RepositoryException).httpStatusCode)
-        assertTrue(fixture.dao.debtDirectBarriers(logicalBindingAdapter.toJson(fixture.binding)).isEmpty())
+        assertEquals(1, fixture.dao.debtDirectBarriers(logicalBindingAdapter.toJson(fixture.binding)).size,
+            "Refusal retires read payloads while preserving the executing command's evidence")
         ack.complete(Unit)
         assertEquals(5L, post.await().getOrThrow().rowVersion)
         api.offline = true

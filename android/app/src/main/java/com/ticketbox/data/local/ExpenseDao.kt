@@ -57,8 +57,12 @@ interface ExpenseDao {
 
     @Transaction
     suspend fun clearReadSnapshotsForBinding(bindingKey: String) {
+        val debtBarriers = debtDirectBarriers(bindingKey)
+        val debtEpoch = statsProjections(bindingKey, "debt_read_epoch", "", "", "UTC").singleOrNull()
         clearGoalSnapshotsForBinding(bindingKey)
         clearStatsProjectionsForBinding(bindingKey)
+        debtBarriers.forEach { saveStatsProjection(it) }
+        debtEpoch?.let { saveStatsProjection(it) }
     }
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)

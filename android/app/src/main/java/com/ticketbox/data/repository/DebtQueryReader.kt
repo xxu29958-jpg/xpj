@@ -267,7 +267,7 @@ internal suspend fun <T> DebtQueryReader.direct(binding: LogicalSessionBinding, 
         try {
             try { dao.settleDebtDirectReads(key, binding.ledgerId, listOf(token)) }
             catch (error: IllegalStateException) {
-                // Shared read refusal may already have retired this token and all its old projections.
+                // Explicit cache cleanup may already have retired this token and all its old projections.
                 if (dao.debtDirectBarriers(key).any { it.tag == token }) throw error
                 dao.invalidateDebtSnapshots(key, binding.ledgerId)
             }
