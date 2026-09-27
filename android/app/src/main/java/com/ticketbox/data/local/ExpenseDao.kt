@@ -48,6 +48,9 @@ interface ExpenseDao {
     @Query("DELETE FROM stats_projection_cache WHERE bindingKey = :bindingKey")
     suspend fun clearStatsProjectionsForBinding(bindingKey: String)
 
+    @Query("DELETE FROM stats_projection_cache WHERE bindingKey = :bindingKey AND kind = 'budget' AND month = :month")
+    suspend fun clearBudgetSnapshotsForMonth(bindingKey: String, month: String)
+
     @Transaction
     suspend fun clearReadSnapshotsForBinding(bindingKey: String) {
         clearGoalSnapshotsForBinding(bindingKey)

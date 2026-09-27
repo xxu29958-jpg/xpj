@@ -42,15 +42,24 @@ qualification. Close the changed consumers
 and replaced exits after implementation; do not expand into advice generation,
 new commands, Windows lifecycle or a generic caching framework.
 
-Status: direct tests prepared against existing production APIs; cloud RED pending.
-Production implementation, after-impact closure and qualification remain open.
-This reuses the unmerged 980f3a475 preparation; main 9711aa781 has been merged into
-the preparation branch with the current product/calendar owners. It does not inherit
-test qualification. The save counterexample now sends an original JPY v7 command through
-the real dispatcher/Outbox to accept v8, then releases a delayed v7 GET; that old response
-must not publish, and only a new successful query may seed the offline v8 read. Command
-body, key, binding, original OCC and final receipt remain unchanged. The original route journey now
-continues into the actual Insights budget card and retains both budget and expense
-original commands. Same-ledger account/device isolation and a delayed pre-refusal GET
-are specified alongside the original Room tests. All of this native execution remains unrun.
-These belong to this budget task, not to #436's merge gates.
+Status: production and consumer implementation is present; final native qualification remains open.
+The original preparation is preserved and based on independently qualified main 9711aa781.
+4380333's unit execution found both Budget and Insights retaining old values after 403
+(CI 36283570688, Android fast 108519996295). Its first Connected attempt failed fixture
+compilation and is not business RED. After wiring the actual separate calendar owner,
+35a5ed7bd reached real Room/route business RED in Connected 36284411993: an offline reopen
+lost the saved query, a v7 GET republished after accepted v8, and a pre-refusal GET restored
+a withdrawn read. The Plans amount was present online and absent after reopen.
+
+BudgetRepository now owns a complete ReadSnapshot backed by the existing stats projection
+table. Plans and Budget share BudgetViewModel; Insights propagates the same source/time
+only for the matching binding and month. Both visible consumers retire known old queries
+on accepted original saves and preserve newer drafts. NotificationRuntimeGraph explicitly
+requires a fresh query. The verified dispatcher receipt invalidates all timezone projections
+for the original month before Done; it does not seed a query or alter the original command.
+The old network-only read exit has been replaced in every direct consumer. No new table,
+writer, protocol, notification framework or Windows lifecycle work is introduced.
+
+Short source-only checks pass for changed production/consumer files; they do not prove
+native execution. Final source and independent main qualification belong to #438, and
+are not added to #437's merge requirements.

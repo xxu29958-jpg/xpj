@@ -147,7 +147,8 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
             error("Unexpected settings method ${method.name}")
         } as com.ticketbox.data.local.TicketboxSettingsStore
         val coordinator = com.ticketbox.data.repository.LocalLedgerSessionCoordinator(settings, sessions, db.expenseDao(), outbox)
-        repository = BudgetRepository(provider, outbox, adapters, db.monthlyArrangementCacheDao(), coordinator)
+        repository = BudgetRepository(provider, outbox, adapters, com.ticketbox.data.repository.BudgetLocalStorage(
+            db.monthlyArrangementCacheDao(), db.expenseDao()), coordinator)
     }
 
     fun switchBinding() {

@@ -75,7 +75,9 @@ internal class NotificationRuntimeGraph(
         source = BudgetOverspendSource { month ->
             dependencies.budgetRepository.monthlyBudget(
                 month = month,
-            )
+                timezone = com.ticketbox.data.repository.currentBudgetTimezoneId(),
+                freshOnly = true,
+            ).map { it.value }
         },
         store = SharedPrefsBudgetOverspendStore(dependencies.appContext),
         dispatcher = NotifierBudgetOverspendDispatcher(notifier::onBudgetOverspent),

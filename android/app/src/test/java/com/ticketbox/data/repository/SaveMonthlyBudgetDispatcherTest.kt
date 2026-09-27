@@ -19,6 +19,7 @@ import kotlin.test.assertNull
 
 class SaveMonthlyBudgetDispatcherTest {
     private val adapters = OutboxAdapterGraph()
+    private val acceptedRows = mutableListOf<OutboxRow>()
 
     @Test
     fun lostResponseRetriesOriginalNullVersionCurrencyAndKey() = runTest {
@@ -26,6 +27,7 @@ class SaveMonthlyBudgetDispatcherTest {
         val row = row(version = 0)
         val writer = dispatcher(stub)
         assertIs<DispatchResult.RetryableFailure>(writer.dispatch(row))
+        assertEquals(emptyList(), acceptedRows)
         stub.result = Result.success(receipt(version = 1))
         val success = assertIs<DispatchResult.Success>(writer.dispatch(row))
         assertEquals(listOf<String?>("original-budget-key", "original-budget-key"), stub.keys)
@@ -36,6 +38,7 @@ class SaveMonthlyBudgetDispatcherTest {
         assertNull(stub.requests.last().expectedRowVersion)
         assertNotNull(success.receiptJson)
         assertNull(success.newRowVersion, "a saved budget must not silently rebase another intent")
+        assertEquals(listOf(row), acceptedRows)
     }
 
     @Test
@@ -46,6 +49,7 @@ class SaveMonthlyBudgetDispatcherTest {
             baseline.copy(excludedCategories = listOf("医疗")))) {
             assertIs<DispatchResult.Failure>(dispatcher(BudgetSaveStub(Result.success(changed))).dispatch(row()))
         }
+        assertEquals(emptyList(), acceptedRows)
     }
 
     @Test
@@ -81,7 +85,8 @@ class SaveMonthlyBudgetDispatcherTest {
         assertIs<DispatchResult.Failure>(dispatcher(BudgetSaveStub(Result.failure(missing))).dispatch(row()))
     }
 
-    private fun dispatcher(api: ApiService) = SaveMonthlyBudgetDispatcher({ api }, adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter)
+    private fun dispatcher(api: ApiService) = SaveMonthlyBudgetDispatcher({ api }, adapters.budgetSaveAdapter,
+        adapters.budgetReceiptAdapter, onAccepted = { acceptedRows += it })
 
     private fun row(version: Long = 1) = OutboxRow(
         id = 1, serverUrl = "https://example.test", ledgerId = "owner", type = PendingMutationType.SaveMonthlyBudget,

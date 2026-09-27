@@ -14,6 +14,7 @@ class SaveMonthlyBudgetDispatcher(
     private val apiProvider: (OutboxRow) -> ApiService,
     private val payloadAdapter: JsonAdapter<BudgetSavePayload>,
     private val receiptAdapter: JsonAdapter<BudgetMonthlyDto>,
+    private val onAccepted: suspend (OutboxRow) -> Unit,
 ) : OutboxMutationDispatcher {
     override val type = PendingMutationType.SaveMonthlyBudget
 
@@ -30,7 +31,10 @@ class SaveMonthlyBudgetDispatcher(
             val receipt = apiProvider(row).updateMonthlyBudget(payload.month, request, payload.timezone, key)
             if (!receipt.confirms(row, payload.month, request)) {
                 DispatchResult.Failure(BUDGET_SAVE_UNVERIFIED)
-            } else { DispatchResult.Success(receiptJson = receiptAdapter.toJson(receipt)) }
+            } else {
+                onAccepted(row)
+                DispatchResult.Success(receiptJson = receiptAdapter.toJson(receipt))
+            }
         } catch (error: HttpException) {
             // A month without a budget returns an unconfigured response, never 404.
             // A missing route or ledger does not prove this original was accepted.

@@ -3,6 +3,7 @@ package com.ticketbox.viewmodel
 import com.ticketbox.data.repository.BudgetActions
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.ReadSnapshot
 import com.ticketbox.domain.model.BudgetAdviceResult
 import com.ticketbox.domain.model.BudgetMonthly
 import com.ticketbox.domain.model.BudgetMonthlyUpdate
@@ -140,7 +141,8 @@ private class FakeStatsBudgetActions(
 
     override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> = access
 
-    override suspend fun monthlyBudget(month: String): Result<BudgetMonthly> = Result.success(responder?.invoke(month) ?: budget.copy(month = month))
+    override suspend fun monthlyBudget(month: String): Result<ReadSnapshot<BudgetMonthly>> = Result.success(
+        ReadSnapshot(responder?.invoke(month) ?: budget.copy(month = month), "2026-09-27T00:00:00Z", false))
 
     override suspend fun requestBudgetAdvice(month: String, homeCurrencyCode: String?, expectedBinding: LogicalSessionBinding?): Result<BudgetAdviceResult> =
         Result.failure(UnsupportedOperationException())
@@ -148,7 +150,7 @@ private class FakeStatsBudgetActions(
     override suspend fun monthlyBudget(
         expectedBinding: LogicalSessionBinding,
         month: String,
-    ): Result<BudgetMonthly> {
+    ): Result<ReadSnapshot<BudgetMonthly>> {
         requestedBindings += expectedBinding
         return monthlyBudget(month)
     }

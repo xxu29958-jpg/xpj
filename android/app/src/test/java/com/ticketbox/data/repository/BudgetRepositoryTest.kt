@@ -47,7 +47,7 @@ class BudgetRepositoryTest {
             val api = BudgetApiHandler()
             val (repository) = repository(api)
 
-            val result = repository.monthlyBudget(" 2026-05 ").getOrThrow()
+            val result = repository.monthlyBudget(" 2026-05 ").getOrThrow().value
 
             assertEquals("2026-05", api.monthlyBudgetCalls.single().month)
             assertEquals("Asia/Shanghai", api.monthlyBudgetCalls.single().timezone)
@@ -72,7 +72,7 @@ class BudgetRepositoryTest {
             val (repository) = repository(api)
 
             val result = repository.monthlyBudget("2026-05", timezone = "Asia/Shanghai")
-                .getOrThrow()
+                .getOrThrow().value
 
             assertEquals("2026-05", api.monthlyBudgetCalls.single().month)
             assertEquals("Asia/Shanghai", api.monthlyBudgetCalls.single().timezone)
@@ -165,7 +165,7 @@ class BudgetRepositoryTest {
         val pending = repository.observeSaves(binding).first { it.isNotEmpty() }.single()
         val adapters = com.ticketbox.OutboxAdapterGraph()
         val refused = SaveMonthlyBudgetDispatcher({ api.service() }, adapters.budgetSaveAdapter,
-            adapters.budgetReceiptAdapter).dispatch(pending.row)
+            adapters.budgetReceiptAdapter, repository::invalidateBudgetReadsAfterDelivery).dispatch(pending.row)
         assertTrue(refused is DispatchResult.Failure)
         assertEquals(pending.row, repository.observeSaves(binding).first().single().row)
     }

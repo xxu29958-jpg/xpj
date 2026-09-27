@@ -56,6 +56,8 @@ data class BudgetUiState(
     val formDirty: Boolean = false,
     val saves: List<PendingBudgetSave> = emptyList(),
     val binding: LogicalSessionBinding? = null,
+    val fetchedAt: String? = null,
+    val fromCache: Boolean = false,
 ) {
     val formCurrency: CurrencyCode? get() = CurrencyCode.fromStorageKeyOrNull(form.homeCurrencyCode)
     val hasPendingSave: Boolean get() = saves.any { it.row.status != PendingMutationStatus.Done }
@@ -137,6 +139,9 @@ class BudgetViewModel(
         val receipt = (newlyDone ?: transferred)?.receipt?.takeUnless { dirty }
         val pending = rows.firstOrNull { it.row.status != PendingMutationStatus.Done }
         _uiState.value = state.copy(saves = rows,
+            budget = state.budget.takeIf { newlyDone == null },
+            fetchedAt = state.fetchedAt.takeIf { newlyDone == null },
+            fromCache = newlyDone == null && state.fromCache,
             form = receipt?.toFormState() ?: pending?.originalForm()?.takeUnless { dirty } ?: state.form,
             formDirty = dirty,
             message = if (receipt != null) UiText.res(R.string.budget_message_saved) else state.message,
@@ -151,17 +156,17 @@ class BudgetViewModel(
         val month = _uiState.value.month
         _uiState.update { it.copy(loading = true, loadError = null) }
         viewModelScope.launch {
-            repository.monthlyBudget(binding, month).fold(onSuccess = { budget ->
+            repository.monthlyBudget(binding, month).fold(onSuccess = { read ->
+                val budget = read.value
                 _uiState.update { state ->
                     if (!isCurrent(generation, month) || refresh != refreshGeneration) state else state.copy(
                         loading = false, budget = budget, loadError = null,
+                        fetchedAt = read.fetchedAt, fromCache = read.fromCache,
                         form = if (!state.formDirty && !state.hasPendingSave) budget.toFormState() else state.form)
                 }
             }, onFailure = { error ->
                 _uiState.update { state ->
-                    if (!isCurrent(generation, month) || refresh != refreshGeneration) state else state.copy(
-                        loading = false, loadError = error.toUiText(if (state.budget == null)
-                            R.string.budget_message_load_failed else R.string.budget_message_refresh_failed_with_data))
+                    if (!isCurrent(generation, month) || refresh != refreshGeneration) state else state.withReadFailure(error)
                 }
             })
         }

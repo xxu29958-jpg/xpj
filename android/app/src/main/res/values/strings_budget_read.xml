@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="budget_read_title">已读取预算</string>
+    <string name="budget_read_body">数据时间：%1$s</string>
+    <string name="budget_read_cached_title">离线预算</string>
+    <string name="budget_read_cached_body">数据时间：%1$s。执行金额可能已变化，联网后刷新。</string>
+</resources>

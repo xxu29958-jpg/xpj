@@ -42,6 +42,7 @@ import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.ui.screens.budget.BudgetProgressBar
+import com.ticketbox.ui.screens.budget.BudgetReadSource
 import com.ticketbox.viewmodel.BudgetUiState
 import com.ticketbox.viewmodel.IncomePlanLoadState
 import com.ticketbox.viewmodel.IncomePlanUiState
@@ -64,6 +65,7 @@ internal fun PlanBudgetSection(
     Column(modifier = Modifier.fillMaxWidth()) {
         PlanSectionTitle(stringResource(R.string.plan_section_month))
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium))
+        BudgetReadSource(state.fetchedAt, state.fromCache, state.loading)
         val budget = state.budget?.takeIf { it.configured }
         if (budget == null) {
             PlanDestinationRow(

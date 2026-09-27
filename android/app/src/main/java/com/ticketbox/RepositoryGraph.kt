@@ -5,6 +5,7 @@ import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiClient
 import com.ticketbox.data.repository.ApiServiceProvider
 import com.ticketbox.data.repository.BudgetRepository
+import com.ticketbox.data.repository.BudgetLocalStorage
 import com.ticketbox.data.repository.CategoryPreferenceRepository
 import com.ticketbox.data.repository.CategoryRuleOfflineMutationWiring
 import com.ticketbox.data.repository.DebtRepository
@@ -113,7 +114,7 @@ internal class RepositoryGraph(
         apiProvider = apiServiceProvider,
         outbox = outbox,
         adapters = outboxAdapters,
-        arrangementDao = database.monthlyArrangementCacheDao(),
+        localStorage = BudgetLocalStorage(database.monthlyArrangementCacheDao(), database.expenseDao()),
         sessionCoordinator = ledgerSessionCoordinator,
     )
 

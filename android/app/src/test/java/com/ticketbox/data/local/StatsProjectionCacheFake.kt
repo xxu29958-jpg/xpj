@@ -12,5 +12,8 @@ internal class StatsProjectionCacheFake {
             it.timezone == timezone }
             .sortedByDescending { it.fetchedAt }
     fun clear(ledgerId: String?) { rows.removeAll { ledgerId == null || it.ledgerId == ledgerId } }
+    fun clearBudgetMonth(bindingKey: String, month: String) {
+        rows.removeAll { it.bindingKey == bindingKey && it.kind == "budget" && it.month == month }
+    }
     fun clearBinding(bindingKey: String) { rows.removeAll { it.bindingKey == bindingKey } }
 }

@@ -47,14 +47,17 @@ class BudgetOfflineSnapshotConnectedTest {
         transport.original = offlineBudget().copy(fixedAmountCents = null, flexBudgetCents = null,
             spentAmountCents = null, remainingAmountCents = null, overspentAmountCents = null,
             missingCurrencyCodes = listOf("USD"))
-        fixture.reopen().budgetRepository.monthlyBudget("2026-09", timezone = "Asia/Shanghai").getOrThrow()
+        val fresh = fixture.reopen().budgetRepository.monthlyBudget("2026-09", timezone = "Asia/Shanghai").getOrThrow()
+        assertTrue(!fresh.fromCache)
         val originalIntents = fixture.stored()
         transport.offline = true
         val repository = fixture.reopen().budgetRepository
 
         val saved = repository.monthlyBudget("2026-09", timezone = "Asia/Shanghai")
         assertTrue("Previously read September must survive reopening disk Room offline", saved.isSuccess)
-        assertEquals(transport.original.toDomain(), saved.getOrThrow())
+        assertEquals(transport.original.toDomain(), saved.getOrThrow().value)
+        assertEquals(fresh.fetchedAt, saved.getOrThrow().fetchedAt)
+        assertTrue(saved.getOrThrow().fromCache)
         assertTrue(repository.monthlyBudget("2026-10", timezone = "Asia/Shanghai").isFailure)
         assertTrue(repository.monthlyBudget("2026-09", timezone = "America/Los_Angeles").isFailure)
 
@@ -64,6 +67,20 @@ class BudgetOfflineSnapshotConnectedTest {
         assertTrue("The refused snapshot must not return when the transport fails again",
             repository.monthlyBudget("2026-09", timezone = "Asia/Shanghai").isFailure)
         assertEquals(originalIntents, fixture.stored())
+    }
+
+    @Test fun anUnconfiguredMonthWithNullableVersionRemainsAnOriginalOfflineRead() = runBlocking {
+        transport.original = offlineBudget().copy(configured = false, rowVersion = null, homeCurrencyCode = null,
+            totalAmountCents = 0, categoryBudgets = emptyList())
+        val fresh = fixture.reopen().budgetRepository.monthlyBudget("2026-09").getOrThrow()
+        transport.offline = true
+
+        val reopened = fixture.reopen().budgetRepository.monthlyBudget("2026-09").getOrThrow()
+
+        assertEquals(transport.original.toDomain(), reopened.value)
+        assertEquals(fresh.fetchedAt, reopened.fetchedAt)
+        assertTrue(reopened.fromCache)
+        assertTrue(!reopened.value.configured)
     }
 
     @Test fun replacingTheBindingCannotExposeTheOriginalMonthlyBudget() = runBlocking {
@@ -179,7 +196,7 @@ class BudgetOfflineSnapshotConnectedTest {
         val adapters = OutboxAdapterGraph()
         val outcome = try {
             OutboxDrainEngine(fixture.outbox, listOf(SaveMonthlyBudgetDispatcher(
-                { api }, adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter)), now = fixture.clock::millis).drainOnce()
+                { api }, adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter, repository::invalidateBudgetReadsAfterDelivery)), now = fixture.clock::millis).drainOnce()
         } finally { resume.complete(Unit) }
         assertEquals(1, outcome.done)
         val acceptedIntent = fixture.stored().single()
@@ -192,9 +209,9 @@ class BudgetOfflineSnapshotConnectedTest {
         assertTrue("The v8 receipt is not a fresh monthly-budget query",
             fixture.reopen().budgetRepository.monthlyBudget("2026-09").isFailure)
         transport.offline = false
-        assertEquals(accepted.toDomain(), fixture.graph.budgetRepository.monthlyBudget("2026-09").getOrThrow())
+        assertEquals(accepted.toDomain(), fixture.graph.budgetRepository.monthlyBudget("2026-09").getOrThrow().value)
         transport.offline = true
-        assertEquals(accepted.toDomain(), fixture.reopen().budgetRepository.monthlyBudget("2026-09").getOrThrow())
+        assertEquals(accepted.toDomain(), fixture.reopen().budgetRepository.monthlyBudget("2026-09").getOrThrow().value)
         assertEquals(acceptedIntent, fixture.stored().single())
     }
 }

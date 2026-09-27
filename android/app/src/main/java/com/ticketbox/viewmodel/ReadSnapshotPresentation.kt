@@ -5,6 +5,15 @@ import com.ticketbox.data.repository.RepositoryException
 internal fun Throwable.isReadAccessDenied(): Boolean =
     (this as? RepositoryException)?.httpStatusCode in setOf(401, 403)
 
+internal fun BudgetUiState.withReadFailure(error: Throwable): BudgetUiState {
+    val denied = error.isReadAccessDenied()
+    val visible = budget.takeUnless { denied }
+    return copy(loading = false, budget = visible, fetchedAt = fetchedAt.takeUnless { denied },
+        fromCache = !denied && fromCache,
+        loadError = error.toUiText(if (visible == null) com.ticketbox.R.string.budget_message_load_failed
+            else com.ticketbox.R.string.budget_message_refresh_failed_with_data))
+}
+
 internal fun DebtGoalUiState.withReadFailure(error: Throwable): DebtGoalUiState {
     val denied = error.isReadAccessDenied()
     return copy(isLoading = false, error = error.toUiText(com.ticketbox.R.string.debt_goal_load_failed),

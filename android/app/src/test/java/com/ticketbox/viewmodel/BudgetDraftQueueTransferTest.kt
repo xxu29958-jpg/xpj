@@ -8,10 +8,12 @@ import com.ticketbox.data.repository.BudgetSavePayload
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.PendingBudgetSave
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -66,6 +68,43 @@ class BudgetDraftQueueTransferTest {
         assertEquals(original, restored.uiState.value.form)
         assertTrue(restored.uiState.value.formDirty)
         assertEquals(0, owner.commands.savedRequests.size)
+    }
+
+    @Test fun acceptedSaveRetiresVisibleBudgetAndLateInsightsReadWithoutErasingANewerDraft() = budgetTest {
+        val owner = FakeBudgetActions(budget = budget().copy(homeCurrencyCode = "JPY", nonMonthlyAmountCents = 0))
+        val editor = BudgetViewModel(owner, "2026-05")
+        val insights = StatsBudgetViewModel(owner)
+        advanceUntilIdle()
+        insights.refresh("2026-05")
+        advanceUntilIdle()
+        editor.updateTotalAmount(" 1500 ")
+        val draft = editor.uiState.value.form
+        val late = CompletableDeferred<Result<com.ticketbox.domain.model.BudgetMonthly>>()
+        owner.monthlyBudgetResponder = { late.await() }
+        insights.refresh("2026-05", force = true)
+        advanceUntilIdle()
+        owner.monthlyBudgetResponder = { Result.failure(java.net.ConnectException("Offline after accepted save")) }
+        val accepted = budget(totalAmountCents = 1200).copy(homeCurrencyCode = "JPY", rowVersion = 2)
+        val original = pendingBudget().let { it.copy(row = it.row.copy(status = PendingMutationStatus.Done), receipt = accepted) }
+        owner.commands.saves.value = listOf(original)
+        advanceUntilIdle()
+        late.complete(Result.success(owner.budget))
+        advanceUntilIdle()
+        assertNull(editor.uiState.value.budget)
+        assertNull(editor.uiState.value.fetchedAt)
+        assertNull(insights.uiState.value.budgetProgress)
+        assertNull(insights.uiState.value.fetchedAt)
+        assertEquals(draft, editor.uiState.value.form)
+        assertTrue(editor.uiState.value.formDirty)
+        assertEquals(listOf(original), owner.commands.saves.value)
+        owner.monthlyBudgetResponder = { Result.success(accepted) }
+        editor.refresh()
+        insights.refresh("2026-05")
+        advanceUntilIdle()
+        assertEquals(1200L, editor.uiState.value.budget?.totalAmountCents)
+        assertEquals(1200L, insights.uiState.value.budgetProgress?.budgetCents)
+        assertEquals(draft, editor.uiState.value.form)
+        assertEquals(listOf(original), owner.commands.saves.value)
     }
 
     private fun pendingBudget() = PendingBudgetSave(
