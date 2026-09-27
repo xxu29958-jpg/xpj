@@ -15,6 +15,7 @@ from app.config import get_settings
 from app.errors import AppError
 from app.routes._web_session_common import resolve_web_actor_account_id
 from app.services import background_task_service
+from app.services.background_task_response import task_response_dicts
 from app.services.pending_enrichment_task_service import (
     PENDING_EXPENSE_ENRICHMENT_TASK_TYPE,
 )
@@ -63,6 +64,11 @@ _TERMINAL_FEEDBACK = {
         "",
     ),
 }
+_RECENT_FAILURE_MESSAGES = {
+    "orphaned_after_restart": "服务重启中断了当次识别；请打开原单重试识别或手动补全。",
+    "task_submission_failed": "当次识别未能启动；请打开原单重试识别或手动补全。",
+    "task_input_unavailable": "原识别输入已不可用；请打开原单核对凭证后重新识别或手动补全。",
+}
 
 
 def _canonical_task_public_id(raw: str | None) -> str | None:
@@ -92,7 +98,7 @@ def _completed_state(raw_summary: str | None) -> PendingEnrichmentState:
     if not isinstance(summary, dict):
         return "failed"
     outcome = summary.get("outcome")
-    if outcome not in _COMPLETED_OUTCOMES:
+    if not isinstance(outcome, str) or outcome not in _COMPLETED_OUTCOMES:
         return "failed"
     return outcome
 
@@ -185,7 +191,7 @@ def web_pending_enrichment_context(
     flash_message: str,
     flash_type: str,
 ) -> dict[str, object]:
-    """Project one task watch into the Pending template context."""
+    """Project the active watch and this account's recent upload records."""
     presentation = pending_enrichment_presentation(
         resolve_web_pending_enrichment_watch(
             db,
@@ -196,9 +202,26 @@ def web_pending_enrichment_context(
         flash_message=flash_message,
         flash_type=flash_type,
     )
+    try:
+        account_id = resolve_web_actor_account_id(db, request, tenant_id)
+    except AppError:
+        recent_tasks = []
+    else:
+        recent_tasks = background_task_service.list_recent_tasks(
+            db, account_id=account_id, tenant_id=tenant_id, limit=10,
+            task_type=PENDING_EXPENSE_ENRICHMENT_TASK_TYPE,
+        )
     return {
         "enrichment_watch": presentation.active_watch,
         "enrichment_terminal": presentation.terminal,
+        "recent_recognition_tasks": [
+            {**view, "recognition_state": _completed_state(row.result_summary_json)
+                if row.status == "completed" else row.status,
+                "recognition_error": _RECENT_FAILURE_MESSAGES.get(row.error_code,
+                    "当次自动识别失败；请打开原单核对凭证后重试识别或手动补全。")
+                if row.status == "failed" else None}
+            for view, row in zip(task_response_dicts(db, recent_tasks, tenant_id=tenant_id), recent_tasks, strict=True)
+        ],
         "flash_message": presentation.flash_message,
         "flash_type": presentation.flash_type,
     }
