@@ -16,16 +16,19 @@ import java.io.Closeable
 import kotlinx.coroutines.flow.first
 
 /** Only prepares dependencies and a real Room recovery row; all navigation stays in MainNavGraph. */
-internal class FactEntryNavigationHarness(context: Context,
+internal class FactEntryNavigationHarness(private val context: Context,
     wrapApi: (com.ticketbox.data.remote.ApiService) -> com.ticketbox.data.remote.ApiService = { it },
 ) : Closeable {
     val fixture = ExpenseCorrectionConnectedFixture(context, wrapApi)
-    private val graph = fixture.reopen()
+    private var graph = fixture.reopen()
     val shell = MainShellState()
     val models = object : ViewModelStoreOwner {
         override val viewModelStore = ViewModelStore()
     }
-    val screenFactory = MainScreenFactory(
+    var screenFactory = createScreenFactory()
+        private set
+
+    private fun createScreenFactory() = MainScreenFactory(
         MainFeatureRepositories(
             repository = graph.expenseRepository,
             uploadIntents = fixture.uploadIntents,
@@ -53,6 +56,13 @@ internal class FactEntryNavigationHarness(context: Context,
                 LocalBackgroundImageRepository(BackgroundImageStore(context))),
         ),
     )
+
+    /** Recreates query owners over the same disk Room and preserved session/Outbox. */
+    fun reopen() {
+        models.viewModelStore.clear()
+        graph = fixture.reopen()
+        screenFactory = createScreenFactory()
+    }
 
     suspend fun saveFailedCorrection(): Map<String, String?> {
         val repository = graph.expenseRepository
