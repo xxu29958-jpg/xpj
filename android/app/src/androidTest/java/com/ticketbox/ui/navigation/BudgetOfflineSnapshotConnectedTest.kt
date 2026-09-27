@@ -15,6 +15,7 @@ import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.BudgetMonthlyUpdateRequestDto
 import com.ticketbox.data.remote.dto.BudgetMonthlyDto
+import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.data.repository.ExpenseCorrectionConnectedFixture
 import com.ticketbox.data.repository.OutboxDrainEngine
 import com.ticketbox.data.repository.SaveMonthlyBudgetDispatcher
@@ -490,6 +491,52 @@ class BudgetOfflineSnapshotConnectedTest {
             fixture.graph.budgetRepository.monthlyBudget("2026-09", TimeZone.getDefault().id, freshOnly = true).isFailure)
     }
 
+    @Test fun aSuccessfulGetRepairsMalformedOrIncompatibleQueryJsonWithoutChangingAcceptedReceipts() = runBlocking {
+        var repository = fixture.reopen().budgetRepository
+        repository.monthlyBudget("2026-09").getOrThrow()
+        val binding = requireNotNull(fixture.graph.expenseRepository.captureDeferredLedgerBinding())
+        repository.enqueueSave(binding, "2026-09", BudgetMonthlyUpdate("JPY", 7, 2400)).getOrThrow()
+        val receipt = offlineBudget().copy(rowVersion = 8, totalAmountCents = 2400, remainingAmountCents = 1989,
+            excludedCategories = emptyList(), categoryBudgets = emptyList())
+        var writes = 0
+        val api = object : ApiService by transport.service {
+            override suspend fun updateMonthlyBudget(month: String, request: BudgetMonthlyUpdateRequestDto,
+                timezone: String?, idempotencyKey: String?): BudgetMonthlyDto {
+                writes++
+                return receipt
+            }
+        }
+        val adapters = OutboxAdapterGraph()
+        val engine = OutboxDrainEngine(fixture.outbox, listOf(SaveMonthlyBudgetDispatcher({ api },
+            adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter,
+            onAccepted = repository.invalidateBudgetReadsAfterDelivery)), now = fixture.clock::millis)
+        assertEquals(1, engine.drainOnce().done)
+        transport.original = receipt
+        repository.monthlyBudget("2026-09").getOrThrow()
+        val originalIntents = fixture.stored()
+        assertEquals(receipt, adapters.budgetReceiptAdapter.fromJson(requireNotNull(originalIntents.single()["receiptJson"])))
+        val bindingJson = com.squareup.moshi.Moshi.Builder().add(com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory())
+            .build().adapter(com.ticketbox.data.repository.LogicalSessionBinding::class.java).toJson(binding)
+        for (brokenJson in listOf("{", "{}")) {
+            val query = fixture.expenseDao.budgetSnapshotsForMonth(bindingJson, "2026-09").single()
+            fixture.expenseDao.saveStatsProjection(query.copy(responseJson = brokenJson))
+            transport.offline = true
+            assertTrue("An unreadable cache is never a successful offline budget", repository.monthlyBudget("2026-09").isFailure)
+            transport.offline = false
+            val repaired = repository.monthlyBudget("2026-09").getOrThrow()
+            assertEquals(receipt.toDomain(), repaired.value)
+            assertTrue("The repair must use the successful network GET", !repaired.fromCache)
+            transport.offline = true
+            repository = fixture.reopen().budgetRepository
+            val saved = repository.monthlyBudget("2026-09").getOrThrow()
+            assertEquals(repaired.value, saved.value)
+            assertEquals(repaired.fetchedAt, saved.fetchedAt)
+            assertTrue(saved.fromCache)
+            assertEquals(originalIntents, fixture.stored())
+        }
+        assertEquals("Repairing query JSON never resends the accepted financial command", 1, writes)
+    }
+
     @Test fun oneRefusedConsumerWithdrawsAllRetainedBudgetDisplaysWithoutTouchingOriginals() = runBlocking {
         val graph = fixture.reopen()
         val repository = graph.budgetRepository
@@ -514,13 +561,16 @@ class BudgetOfflineSnapshotConnectedTest {
             val id = repository.enqueueSave(binding, "2026-09", BudgetMonthlyUpdate("JPY", 7, 1200)).getOrThrow()
             fixture.outbox.markFailed(id, "budget_delivery_unknown")
             val originalIntents = fixture.stored()
+            fixture.blockBudgetReadDeletion(true)
             transport.denied = true
             val readCount = transport.reads.size
-            instrumentation.runOnMainSync { editor.refresh() }
-            withTimeout(5_000) { editor.uiState.first { it.loadError != null && it.budget == null } }
+            val refusal = repository.monthlyBudget("2026-09")
+            assertEquals("Room cleanup failure must not replace the original permission refusal", 403,
+                (refusal.exceptionOrNull() as? RepositoryException)?.httpStatusCode)
             withTimeoutOrNull(2_000) {
-                combine(plans.uiState, insights.uiState) { plan, stats -> plan.budget == null && stats.budgetProgress == null }
-                    .first { it }
+                combine(plans.uiState, editor.uiState, insights.uiState) { plan, edit, stats ->
+                    plan.budget == null && edit.budget == null && stats.budgetProgress == null
+                }.first { it }
             }
             assertNull("Plans must withdraw without issuing another GET", plans.uiState.value.budget)
             assertNull(plans.uiState.value.fetchedAt)
@@ -530,6 +580,30 @@ class BudgetOfflineSnapshotConnectedTest {
             assertEquals(readCount + 1, transport.reads.size)
             assertEquals(draft, plans.uiState.value.form)
             assertTrue(plans.uiState.value.formDirty)
+            assertEquals(originalIntents, fixture.stored())
+            transport.denied = false
+            transport.offline = true
+            val offline = repository.monthlyBudget("2026-09")
+            assertTrue("Failed deletion cannot grant offline access to the still-persisted refused query", offline.isFailure)
+            assertEquals(403, (offline.exceptionOrNull() as? RepositoryException)?.httpStatusCode)
+            fixture.blockBudgetReadDeletion(false)
+            transport.offline = false
+            transport.original = offlineBudget().copy(rowVersion = 8, totalAmountCents = 2600, remainingAmountCents = 2189)
+            val authorized = repository.monthlyBudget("2026-09").getOrThrow()
+            assertEquals(transport.original.toDomain(), authorized.value)
+            assertTrue(!authorized.fromCache)
+            instrumentation.runOnMainSync { editor.refresh(); plans.refresh(); insights.refresh("2026-09", force = true) }
+            withTimeout(5_000) {
+                combine(plans.uiState, editor.uiState, insights.uiState) { plan, edit, stats ->
+                    plan.budget == authorized.value && edit.budget == authorized.value &&
+                        stats.budgetProgress?.budgetCents == authorized.value.totalAmountCents
+                }.first { it }
+            }
+            transport.offline = true
+            val restored = repository.monthlyBudget("2026-09").getOrThrow()
+            assertEquals(authorized.value, restored.value)
+            assertTrue(restored.fromCache)
+            assertEquals(draft, plans.uiState.value.form)
             assertEquals(originalIntents, fixture.stored())
         } finally { instrumentation.runOnMainSync { models.clear() } }
     }
