@@ -15,6 +15,7 @@ from app.config import get_settings
 from app.errors import AppError
 from app.routes._web_session_common import resolve_web_actor_account_id
 from app.services import background_task_service
+from app.services.background_task_response import task_response_dicts
 from app.services.pending_enrichment_task_service import (
     PENDING_EXPENSE_ENRICHMENT_TASK_TYPE,
 )
@@ -185,7 +186,7 @@ def web_pending_enrichment_context(
     flash_message: str,
     flash_type: str,
 ) -> dict[str, object]:
-    """Project one task watch into the Pending template context."""
+    """Project the active watch and this account's recent upload records."""
     presentation = pending_enrichment_presentation(
         resolve_web_pending_enrichment_watch(
             db,
@@ -196,9 +197,19 @@ def web_pending_enrichment_context(
         flash_message=flash_message,
         flash_type=flash_type,
     )
+    try:
+        account_id = resolve_web_actor_account_id(db, request, tenant_id)
+    except AppError:
+        recent_tasks = []
+    else:
+        recent_tasks = background_task_service.list_recent_tasks(
+            db, account_id=account_id, tenant_id=tenant_id, limit=10,
+            task_type=PENDING_EXPENSE_ENRICHMENT_TASK_TYPE,
+        )
     return {
         "enrichment_watch": presentation.active_watch,
         "enrichment_terminal": presentation.terminal,
+        "recent_recognition_tasks": task_response_dicts(db, recent_tasks, tenant_id=tenant_id),
         "flash_message": presentation.flash_message,
         "flash_type": presentation.flash_type,
     }

@@ -1,0 +1,27 @@
+<details class="product-panel product-panel--padded" id="recognition">
+  <summary>近期上传识别{% if recent_recognition_tasks %} · {{ recent_recognition_tasks|length }} 条{% endif %}</summary>
+  <p class="text-muted">当前账号在这个账本最近 10 次上传识别的记录。之后手动补全或重试不会改写这些记录；账单现在的内容请打开原单查看。</p>
+  {% set statuses = {'queued': '等待识别', 'running': '识别中', 'completed': '已完成', 'failed': '失败', 'cancelled': '已取消'} %}
+  {% set outcomes = {'updated': '当次识别结果已写入待确认账单', 'no_result': '当次未识别出可用字段', 'not_pending': '执行时账单已离开待确认队列', 'conflict': '保留了后续修改，当次识别未覆盖账单'} %}
+  <ul>
+    {% for task in recent_recognition_tasks %}
+    <li data-recognition-task-id="{{ task.public_id }}">
+      <p><strong>{{ statuses.get(task.status, '状态未知') }}</strong> · <time datetime="{{ task.created_at|to_iso }}">{{ task.created_at|to_iso }}</time></p>
+      {% if task.status == 'completed' %}
+      <p>{{ outcomes.get((task.result_summary or {}).get('outcome'), '当次执行已结束，请查看原单当前内容') }}。</p>
+      {% elif task.error_message %}
+      <p>{{ task.error_message }}</p>
+      {% elif task.progress_message %}
+      <p>{{ task.progress_message }}</p>
+      {% endif %}
+      {% if task.source_expense_id %}
+      <a class="product-button" href="/web/expenses/{{ task.source_expense_id }}/edit?ledger_id={{ selected_ledger_id }}&amp;return_to=pending&amp;return_filter={{ filter|default('all') }}">打开原单 #{{ task.source_expense_id }}</a>
+      {% else %}
+      <p class="text-muted">原单当前不可查看。</p>
+      {% endif %}
+    </li>
+    {% else %}
+    <li>还没有这个账号在当前账本的上传识别记录。</li>
+    {% endfor %}
+  </ul>
+</details>

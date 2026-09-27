@@ -307,20 +307,22 @@ def get_task(db: Session, public_id: str, *, account_id: int | None, tenant_id: 
 
 
 def list_recent_tasks(
-    db: Session, *, account_id: int | None, tenant_id: str | None, limit: int = 50
+    db: Session, *, account_id: int | None, tenant_id: str | None, limit: int = 50,
+    task_type: str | None = None,
 ) -> list[BackgroundTask]:
     """Most-recent first; scoped to the caller's account AND active ledger so a
     user only sees their own ledger's tasks (system tasks with tenant_id=NULL
     are not surfaced through the user-facing task list)."""
     if account_id is None:
         return []
-    rows = db.scalars(
+    query = (
         select(BackgroundTask)
         .where(BackgroundTask.initiated_by_account_id == account_id)
         .where(BackgroundTask.tenant_id == tenant_id)
-        .order_by(BackgroundTask.created_at.desc())
-        .limit(limit)
     )
+    if task_type is not None:
+        query = query.where(BackgroundTask.task_type == task_type)
+    rows = db.scalars(query.order_by(BackgroundTask.created_at.desc()).limit(limit))
     return list(rows)
 
 
