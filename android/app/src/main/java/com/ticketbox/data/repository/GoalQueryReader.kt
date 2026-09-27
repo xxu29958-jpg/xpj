@@ -1,5 +1,6 @@
 package com.ticketbox.data.repository
 
+import android.database.sqlite.SQLiteException
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
@@ -7,7 +8,9 @@ import com.ticketbox.data.local.ExpenseDao
 import com.ticketbox.data.local.GoalQueryCacheEntity
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.GoalDto
+import com.ticketbox.data.remote.dto.GoalHistoryResponseDto
 import com.ticketbox.domain.model.Goal
+import com.ticketbox.domain.model.GoalHistoryPage
 import java.time.Instant
 import java.time.YearMonth
 import java.time.ZoneId
@@ -26,6 +29,7 @@ internal class GoalQueryReader(
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
     private val goalsAdapter = moshi.adapter<List<GoalDto>>(Types.newParameterizedType(List::class.java, GoalDto::class.java))
     private val bindingAdapter = moshi.adapter(LogicalSessionBinding::class.java)
+    private val historyAdapter = moshi.adapter(GoalHistoryResponseDto::class.java)
     private val mutex = Mutex()
     private val latestRequests = mutableMapOf<String, Long>()
     private val latestDetails = mutableMapOf<String, Long>()
@@ -54,6 +58,50 @@ internal class GoalQueryReader(
         read(GoalQuery("detail", publicId = publicId.trim()), expectedBinding, timezone) { api, query ->
             listOf(api.goal(requireNotNull(query.publicId), timezone))
         }.map { ReadSnapshot(it.value.single(), it.fetchedAt, it.fromCache) }
+
+    suspend fun history(publicId: String, beforeVersion: Long?, binding: LogicalSessionBinding): Result<ReadSnapshot<GoalHistoryPage>> = errors.safeCall {
+        require(publicId.isNotBlank() && (beforeVersion == null || beforeVersion > 0)) { "目标历史范围不正确。" }
+        val bound = guard.bindExact(binding)
+        val bindingKey = bindingAdapter.toJson(binding)
+        val queryKey = "history:$publicId:50:$beforeVersion"
+        val cacheKey = "$bindingKey|UTC|$queryKey"
+        val ticket = coordinator.beginSnapshotRead()
+        mutex.withLock { latestRequests[cacheKey] = ticket.sequence }
+        val wire = try {
+            bound.call { it.goalHistory(publicId, 50, beforeVersion) }
+        } catch (error: HttpException) {
+            val failure = errors.httpFailure(error)
+            coordinator.rejectSnapshotAccess(bound, bindingKey, failure)
+            throw failure
+        } catch (error: Exception) {
+            if (!error.isReadTransportUnavailable()) throw error
+            return@safeCall coordinator.acceptSnapshotRead(ticket, bound, fromCache = true) {
+                mutex.withLock {
+                    requireLatest(cacheKey, ticket)
+                    val saved = dao.goalSnapshot(bindingKey, "UTC", queryKey) ?: throw error
+                    val page = requireNotNull(historyAdapter.fromJson(saved.responseJson))
+                    page.validateHistory(publicId, beforeVersion, binding)
+                    ReadSnapshot(page.toDomain(), saved.fetchedAt, fromCache = true)
+                }
+            }
+        }
+        wire.validateHistory(publicId, beforeVersion, binding)
+        coordinator.acceptSnapshotRead(ticket, bound, fromCache = false) { cacheAllowed ->
+            mutex.withLock {
+                requireLatest(cacheKey, ticket)
+                val fetchedAt = Instant.now().toString()
+                if (cacheAllowed) {
+                    try {
+                        dao.saveGoalSnapshots(listOf(GoalQueryCacheEntity(bindingKey, binding.ledgerId,
+                            "UTC", queryKey, historyAdapter.toJson(wire), fetchedAt)))
+                    } catch (_: SQLiteException) {
+                        // Rebuildable storage failure cannot erase this authorized fresh GET.
+                    }
+                }
+                ReadSnapshot(wire.toDomain(), fetchedAt, fromCache = false)
+            }
+        }
+    }
 
     private suspend fun read(
         requested: GoalQuery,
@@ -111,6 +159,25 @@ internal class GoalQueryReader(
     private fun requireLatest(cacheKey: String, ticket: SnapshotReadTicket) {
         check(latestRequests[cacheKey] == ticket.sequence) { "目标已有更新的读取，请重新读取。" }
     }
+}
+
+private fun GoalHistoryResponseDto.validateHistory(id: String, before: Long?, binding: LogicalSessionBinding) {
+    require(publicId == id && ledgerId == binding.ledgerId) { "目标历史所属账本不匹配。" }
+    val versions = items.map { it.rowVersion }
+    require(items.size <= 50 && versions.all { it > 0 && (before == null || it < before) } &&
+        versions.zipWithNext().all { (a, b) -> a > b }) { "目标历史顺序不正确。" }
+    require(nextBeforeVersion == null || versions.lastOrNull() == nextBeforeVersion) { "目标历史分页不正确。" }
+    items.forEach { it.validateDefinition() }
+}
+
+private fun com.ticketbox.data.remote.dto.GoalRevisionDto.validateDefinition() {
+    Instant.parse(recordedAt)
+    require(changeKind in setOf("baseline", "create", "edit", "archive", "restore")) { "目标历史变更无法识别。" }
+    require(snapshot.goalType == "spending_limit" && snapshot.period == "monthly" && snapshot.name.isNotBlank() &&
+        snapshot.status in setOf("active", "archived") && (snapshot.targetAmountCents ?: 0) > 0) { "目标历史定义不正确。" }
+    YearMonth.parse(requireNotNull(snapshot.month))
+    require((changeKind != "archive" || snapshot.status == "archived") &&
+        (changeKind != "restore" || snapshot.status == "active")) { "目标历史状态不正确。" }
 }
 
 private data class GoalQuery(

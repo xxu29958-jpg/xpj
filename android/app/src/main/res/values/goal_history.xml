@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="goal_history_title">定义历史</string>
+    <string name="goal_history_explanation">这里保存的是计划定义：名称、月份、范围、原币金额和归档状态。实际支出、执行进度和汇率请看当前详情，不代表这些记录保存时的情况。</string>
+    <string name="goal_history_offline">包含本机已读取的历史；最后一页读取于 %1$s。未读页面离线时无法补全。</string>
+    <string name="goal_history_failed">无法读取定义历史，请重试。已读内容仍保留。</string>
+    <string name="goal_history_empty">暂无保存的定义记录；更早的修改没有记录，不从当前值推测旧版本。</string>
+    <string name="goal_history_version">版本 %1$d · %2$s</string>
+    <string name="goal_history_recorded_at">记录保存时间：%1$s</string>
+    <string name="goal_history_archived">已归档 · 只读记录</string>
+    <string name="goal_history_active">有效计划 · 只读记录</string>
+</resources>

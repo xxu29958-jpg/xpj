@@ -657,6 +657,8 @@ internal class FakeApiService(
         timezone: String?,
     ): GoalListResponseDto = unsupported()
     override suspend fun createGoal(request: GoalCreateRequestDto, timezone: String?, idempotencyKey: String?): GoalDto = unsupported()
+    override suspend fun goalHistory(publicId: String, limit: Int, beforeVersion: Long?):
+        com.ticketbox.data.remote.dto.GoalHistoryResponseDto = error("Unexpected goal definition history")
     override suspend fun goal(publicId: String, timezone: String?): GoalDto = unsupported()
     override suspend fun updateGoal(
         publicId: String,

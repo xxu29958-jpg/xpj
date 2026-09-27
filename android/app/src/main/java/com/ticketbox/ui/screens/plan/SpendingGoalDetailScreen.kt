@@ -82,7 +82,12 @@ internal fun SpendingGoalDetailScreen(
                 viewModel = viewModel,
             )
         }
+        if (goal != null) item {
+            TextButton(onClick = viewModel.historyTask::open) { Text(stringResource(R.string.goal_history_title)) }
+        }
     }
+    if (state.history.visible) GoalHistorySheet(state.history, viewModel.historyTask::retry, viewModel.historyTask::more,
+        viewModel.historyTask::dismiss)
     if (state.showArchiveDialog) {
         SpendingGoalArchiveDialog(state = state, viewModel = viewModel)
     }

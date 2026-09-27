@@ -158,6 +158,7 @@ def _patch_terminal_retry_dependencies(
         "_goal_response_by_type",
         lambda _db, goal, *, timezone_name: goal,
     )
+    monkeypatch.setattr(goal_service, "lock_spending_goal", lambda _db, goal: goal)
 
 
 def test_terminal_archive_restore_retries_do_not_require_a_writer(

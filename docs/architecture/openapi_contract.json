@@ -13786,6 +13786,44 @@
         "title": "GoalCreateRequest",
         "type": "object"
       },
+      "GoalHistoryResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GoalRevisionResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "ledger_id": {
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "next_before_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Before Version"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ledger_id",
+          "public_id",
+          "items",
+          "next_before_version"
+        ],
+        "title": "GoalHistoryResponse",
+        "type": "object"
+      },
       "GoalListResponse": {
         "properties": {
           "items": {
@@ -13987,6 +14025,112 @@
           "row_version"
         ],
         "title": "GoalResponse",
+        "type": "object"
+      },
+      "GoalRevisionResponse": {
+        "properties": {
+          "change_kind": {
+            "enum": [
+              "baseline",
+              "create",
+              "edit",
+              "archive",
+              "restore"
+            ],
+            "title": "Change Kind",
+            "type": "string"
+          },
+          "recorded_at": {
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "row_version": {
+            "minimum": 1.0,
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/GoalSnapshot"
+          }
+        },
+        "required": [
+          "row_version",
+          "change_kind",
+          "recorded_at",
+          "snapshot"
+        ],
+        "title": "GoalRevisionResponse",
+        "type": "object"
+      },
+      "GoalSnapshot": {
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "goal_type": {
+            "const": "spending_limit",
+            "title": "Goal Type",
+            "type": "string"
+          },
+          "home_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Currency Code"
+          },
+          "month": {
+            "title": "Month",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "period": {
+            "const": "monthly",
+            "title": "Period",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "archived"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "target_amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 1.0,
+            "title": "Target Amount Cents",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "goal_type",
+          "period",
+          "month",
+          "category",
+          "target_amount_cents",
+          "home_currency_code",
+          "status"
+        ],
+        "title": "GoalSnapshot",
         "type": "object"
       },
       "GoalTokenRequest": {
@@ -33019,6 +33163,119 @@
         ]
       }
     },
+    "/api/goals/{public_id}/history": {
+      "get": {
+        "operationId": "get_goal_history_api_goals__public_id__history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before_version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Version"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoalHistoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Get Goal History",
+        "tags": [
+          "goals"
+        ]
+      }
+    },
     "/api/goals/{public_id}/integrity-review/acknowledge": {
       "post": {
         "operationId": "post_goal_integrity_review_acknowledge_api_goals__public_id__integrity_review_acknowledge_post",
@@ -49166,6 +49423,119 @@
           }
         },
         "summary": "Web Goal Save",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/goals/{public_id}/history": {
+      "get": {
+        "operationId": "web_goal_history_web_goals__public_id__history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ledger Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "month",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Month"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_archived",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Include Archived",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before_version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Goal History",
         "tags": [
           "web"
         ]

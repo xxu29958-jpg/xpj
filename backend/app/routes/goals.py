@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_app_context, get_current_protocol_writer_context, get_current_writer_context
@@ -11,6 +11,7 @@ from app.schemas import (
     DebtGoalLinksReplaceRequest,
     DebtGoalTargetDateRequest,
     GoalCreateRequest,
+    GoalHistoryResponse,
     GoalListResponse,
     GoalResponse,
     GoalTokenRequest,
@@ -23,6 +24,7 @@ from app.services.goal_debt_repayment_service import (
     replace_debt_repayment_goal_links,
     set_debt_goal_target_date,
 )
+from app.services.goal_history_service import goal_history
 from app.services.goal_service import (
     archive_goal,
     create_goal,
@@ -113,6 +115,7 @@ def post_goal(
         payload=payload,
         timezone_name=timezone_name,
         idempotency_key=idempotency_key,
+        actor_account_id=auth.account_id,
     )
 
 
@@ -133,6 +136,7 @@ def patch_goal(
         payload=payload,
         timezone_name=timezone_name,
         idempotency_key=idempotency_key,
+        actor_account_id=auth.account_id,
     )
 
 
@@ -149,6 +153,7 @@ def post_goal_archive(
         tenant_id=auth.tenant_id,
         public_id=public_id,
         timezone_name=timezone_name,
+        actor_account_id=auth.account_id,
     )
 
 
@@ -171,7 +176,20 @@ def post_goal_restore(
         public_id=public_id,
         expected_row_version=payload.expected_row_version,
         timezone_name=timezone_name,
+        actor_account_id=auth.account_id,
     )
+
+
+@router.get("/{public_id}/history", response_model=GoalHistoryResponse)
+def get_goal_history(
+    public_id: str,
+    before_version: int | None = Query(default=None, ge=1),
+    limit: int = Query(default=20, ge=1, le=50),
+    auth: AuthContext = Depends(get_current_app_context),
+    db: Session = Depends(get_db),
+) -> GoalHistoryResponse:
+    return goal_history(db, tenant_id=auth.tenant_id, public_id=public_id,
+        before_version=before_version, limit=limit)
 
 
 @router.post("/{public_id}/debt-links", response_model=GoalResponse)
