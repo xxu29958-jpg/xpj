@@ -16,7 +16,7 @@ class DebtActivityRepositoryTest {
         val api = ActivityApi()
         val repository = repaymentRepository(api)
         val task = DebtTask(requireNotNull(repository.proposals.currentAccess()).binding, "debt-1")
-        val result = repository.activity.listActivity(task, 1, "repayment-1").getOrThrow()
+        val result = repository.activity.listActivity(task, 1, "repayment-1").getOrThrow().value
         assertEquals(listOf(Triple<String, Int, String?>("debt-1", 1, "repayment-1")), api.requests)
         assertEquals(3, result.page)
         assertEquals("JPY", result.homeCurrencyCode)

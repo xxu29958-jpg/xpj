@@ -23,10 +23,10 @@ import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.components.AppFloatingActionBar
 import com.ticketbox.ui.components.AppListRow
 import com.ticketbox.ui.components.AppListStateContent
+import com.ticketbox.ui.components.AppListStateMessage
 import com.ticketbox.ui.components.AppListStateSpec
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppPrimaryButton
@@ -38,7 +38,6 @@ import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
-import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
@@ -118,13 +117,10 @@ fun CreateDebtGoalScreen(
 @Composable
 private fun CreateDebtGoalStatusStack(state: CreateDebtGoalUiState, onRemoveUnavailable: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        if (state.isLoadingDebts || state.candidates.isNotEmpty()) {
-            AppDataAuthorityStrip(
-                tone = if (state.isLoadingDebts) DataAuthorityTone.Refreshing else DataAuthorityTone.Backend,
-            )
-        }
+        DebtReadSource(state.fetchedAt, state.fromCache, state.isLoadingDebts)
         state.formError?.let { err -> AppStatusBanner(message = err, tone = MessageTone.Danger) }
-        state.loadError?.let { err -> AppStatusBanner(message = err, tone = MessageTone.Danger) }
+        state.loadError?.takeIf { state.candidates.isNotEmpty() }
+            ?.let { err -> AppStatusBanner(message = err, tone = MessageTone.Danger) }
         if (state.unavailableSelectedDebtIds.isNotEmpty()) {
             AppStatusBanner(message = UiText.res(R.string.debt_goal_create_selection_changed), tone = MessageTone.Info)
             TextButton(onClick = onRemoveUnavailable) {
@@ -163,6 +159,7 @@ private fun DebtGoalPickerContent(
             emptyTitle = stringResource(R.string.debt_goal_create_picker_empty_title),
             emptyBody = stringResource(R.string.debt_goal_create_picker_empty_body),
         ),
+        message = state.loadError?.let { AppListStateMessage(it, MessageTone.Danger) },
     ) {
         state.candidates.forEachIndexed { index, debt ->
             DebtPickerRow(

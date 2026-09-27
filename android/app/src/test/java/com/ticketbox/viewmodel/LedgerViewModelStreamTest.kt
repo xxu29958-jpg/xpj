@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtListPage
+import com.ticketbox.data.repository.ReadSnapshot
 import com.ticketbox.data.repository.LedgerActions
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.MonthCalendarFixture
@@ -258,8 +259,8 @@ private class StreamLedgerActions(
 private class StreamDebtActions : DebtActions by unsupportedStreamDebtActions() {
     override fun canModifyLedger(): Boolean = true
 
-    override suspend fun listDebts(lens: com.ticketbox.domain.model.DebtListLens): Result<DebtListPage> =
-        Result.success(DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "CNY"))
+    override suspend fun listDebts(lens: com.ticketbox.domain.model.DebtListLens): Result<ReadSnapshot<DebtListPage>> =
+        Result.success(debtReadSnapshot(DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "CNY")))
 }
 
 @Suppress("UNCHECKED_CAST")
@@ -269,6 +270,8 @@ private fun unsupportedStreamDebtActions(): DebtActions = Proxy.newProxyInstance
 ) { _, method, _ ->
     when (method.name) {
         "toString" -> "UnsupportedStreamDebtActions"
+        "observeReadAccessDenials" -> kotlinx.coroutines.flow.emptyFlow<com.ticketbox.data.repository.SnapshotAccessDenial>()
+        "observeResourceDenials" -> kotlinx.coroutines.flow.emptyFlow<com.ticketbox.data.repository.DebtReadResourceDenial>()
         else -> throw UnsupportedOperationException(method.name)
     }
 } as DebtActions

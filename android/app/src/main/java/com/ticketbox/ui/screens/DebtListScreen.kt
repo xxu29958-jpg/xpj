@@ -305,6 +305,7 @@ private fun LazyListScope.debtListSection(
     state: DebtListUiState,
     onOpenDebt: (Debt) -> Unit,
 ) {
+    item { DebtReadSource(state.fetchedAt, state.fromCache, state.isLoading) }
     when (
         readableListBodyState(
             hasRows = state.debts.isNotEmpty(),

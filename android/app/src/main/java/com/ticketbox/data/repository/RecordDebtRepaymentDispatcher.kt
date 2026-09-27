@@ -16,7 +16,7 @@ class RecordDebtRepaymentDispatcher internal constructor(
 
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
         val intent = row.describeDebtRepayment(adapter).repayment
-            ?: return DispatchResult.Failure("debt_repayment_payload_unsupported")
+            ?: return DispatchResult.Failure("debt_repayment_payload_unsupported", definitelyRejected = true)
         return try {
             val result = guard.bind(expectedLedgerId = row.ledgerId).serviceForOriginalDebtWrite(row, intent).recordDebtRepayment(intent.subject.publicId, intent.request, row.idempotencyKey)
             val repaymentId = result.repaymentPublicId
@@ -30,14 +30,11 @@ class RecordDebtRepaymentDispatcher internal constructor(
         } catch (error: CancellationException) {
             throw error
         } catch (error: HttpException) {
-            when (val result = mapOutboxHttpException(error)) {
-                is DispatchResult.Discarded -> DispatchResult.Failure(result.reason)
-                else -> result
-            }
+            mapDebtWriteHttpException(error, intent.subject.publicId)
         } catch (_: IOException) {
             DispatchResult.RetryableFailure("debt_repayment_connection_interrupted")
         } catch (_: RepositoryException) {
-            DispatchResult.Failure("debt_repayment_binding_changed")
+            DispatchResult.Failure("debt_repayment_binding_changed", definitelyRejected = true)
         } catch (_: Exception) {
             DispatchResult.Failure("debt_repayment_response_unverified")
         }

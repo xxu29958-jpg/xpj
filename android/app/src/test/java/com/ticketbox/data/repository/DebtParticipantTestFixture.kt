@@ -14,5 +14,11 @@ internal fun repaymentRepository(api: ApiService, role: String = "owner"): DebtR
     val factory = object : ApiServiceFactory {
         override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = api
     }
-    return DebtRepository(testApiServiceProvider(factory, session))
+    val provider = testApiServiceProvider(factory, session)
+    return DebtRepository(provider, debtReaderFixture(provider, session))
+}
+
+internal fun debtReaderFixture(provider: ApiServiceProvider, session: TestSessionFixture): DebtQueryReader {
+    val dao = FakeExpenseDao()
+    return DebtQueryReader(provider, dao, LocalLedgerSessionCoordinator(boundSettingsStore(), session.sessionStore, dao))
 }

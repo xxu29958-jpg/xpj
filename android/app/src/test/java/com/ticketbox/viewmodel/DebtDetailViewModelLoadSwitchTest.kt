@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.LogicalSessionBinding
 
+import com.ticketbox.data.repository.ReadSnapshot
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtListPage
 import com.ticketbox.domain.model.Debt
@@ -70,13 +71,13 @@ private class SwitchingDebtActions(
 
     override fun canModifyLedger(): Boolean = true
 
-    override suspend fun listDebts(lens: com.ticketbox.domain.model.DebtListLens): Result<DebtListPage> =
-        Result.success(DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = null))
+    override suspend fun listDebts(lens: com.ticketbox.domain.model.DebtListLens): Result<ReadSnapshot<DebtListPage>> =
+        Result.success(debtReadSnapshot(DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = null)))
 
-    override suspend fun getDebt(publicId: String): Result<Debt> {
+    override suspend fun getDebt(publicId: String): Result<ReadSnapshot<Debt>> {
         val captured = getResult
         getGate?.await()
-        return captured
+        return captured.map { debtReadSnapshot(it) }
     }
 
 

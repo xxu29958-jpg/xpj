@@ -22,6 +22,8 @@ data class DebtActivityUiState(
     val total: Int = 0,
     val hasNext: Boolean = false,
     val isLoading: Boolean = false,
+    val fetchedAt: String? = null,
+    val fromCache: Boolean = false,
     val error: UiText? = null,
     val focusedRepaymentId: String? = null,
     val actionsCurrent: Boolean = false,
@@ -37,6 +39,28 @@ class DebtActivityViewModel(private val repository: DebtActivityQueries) : ViewM
     private var requestedRepayment: String? = null
     private var commandRevision = 0L
     private var generation = 0L
+
+    init {
+        viewModelScope.launch {
+            repository.observeReadAccessDenials().collect { denial ->
+                if (denial.binding != target?.first?.binding) return@collect
+                generation++
+                _state.update { it.copy(items = emptyList(), fetchedAt = null, fromCache = false, isLoading = false,
+                    actionsCurrent = false, homeCurrencyCode = null, total = 0, hasNext = false, page = 1, focusedRepaymentId = null,
+                    error = denial.failure.toUiText(R.string.debt_activity_load_failed)) }
+            }
+        }
+        viewModelScope.launch {
+            repository.observeResourceDenials().collect { denial ->
+                val task = target?.first ?: return@collect
+                if (denial.binding != task.binding || denial.debtPublicId != task.debtPublicId) return@collect
+                generation++
+                _state.update { it.copy(items = emptyList(), fetchedAt = null, fromCache = false, isLoading = false,
+                    actionsCurrent = false, homeCurrencyCode = null, total = 0, hasNext = false, page = 1, focusedRepaymentId = null,
+                    error = denial.failure.toUiText(R.string.debt_activity_load_failed)) }
+            }
+        }
+    }
 
     /** Reentry also rereads remote proposals, whose changes need not advance the parent version. */
     fun loadDebt(
@@ -88,7 +112,8 @@ class DebtActivityViewModel(private val repository: DebtActivityQueries) : ViewM
             val result = repository.listActivity(task, page, focus)
             if (generation != requestGeneration) return@launch
             result.fold(
-                onSuccess = { history ->
+                onSuccess = { snapshot ->
+                    val history = snapshot.value
                     requestedPage = history.page
                     requestedRepayment = null
                     _state.value = DebtActivityUiState(
@@ -100,7 +125,8 @@ class DebtActivityViewModel(private val repository: DebtActivityQueries) : ViewM
                         total = history.total,
                         hasNext = history.page * history.pageSize < history.total,
                         focusedRepaymentId = focus,
-                        actionsCurrent = true,
+                        actionsCurrent = !snapshot.fromCache,
+                        fetchedAt = snapshot.fetchedAt, fromCache = snapshot.fromCache,
                     )
                 },
                 onFailure = { error ->

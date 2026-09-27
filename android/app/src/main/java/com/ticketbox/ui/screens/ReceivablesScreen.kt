@@ -138,6 +138,7 @@ private fun LazyListScope.receivablesSection(
     state: ReceivablesUiState,
     onOpenReceivable: (Debt) -> Unit,
 ) {
+    item { DebtReadSource(state.fetchedAt, state.fromCache, state.isLoading) }
     val bodyState = readableListBodyState(
         hasRows = state.receivables.isNotEmpty(),
         isLoading = state.isLoading,

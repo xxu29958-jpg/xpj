@@ -418,7 +418,7 @@ private fun DebtActionForm(
         // 单笔还款作废：选中还款的只读摘要确认作废对象，无金额输入。
         if (action == DebtAction.RepaymentVoid) {
             state.repaymentToVoid?.let { repayment ->
-                DebtRepaymentVoidTarget(repayment = repayment, homeCurrencyCode = state.debt?.homeCurrencyCode)
+                DebtRepaymentVoidTarget(repayment = repayment, homeCurrencyCode = (state.actionTarget ?: state.debt)?.homeCurrencyCode)
             }
         }
         if (action != DebtAction.Repayment) {
@@ -432,6 +432,7 @@ private fun DebtActionForm(
             )
         }
         DebtActionWarning(action)
+        DebtActionReadFeedback(state, viewModel::refresh) { viewModel.updateActionInput(reviewLatest = true) }
         state.writeMessage?.let { message -> AppStatusBanner(message = message, tone = MessageTone.Info) }
         state.validationError?.let { err ->
             AppStatusBanner(message = err, tone = MessageTone.Danger)
@@ -454,6 +455,7 @@ private fun DebtActionForm(
         )
     }
 }
+
 
 @Composable
 private fun DebtAdjustmentSignChips(increase: Boolean, onSelect: (Boolean) -> Unit) {

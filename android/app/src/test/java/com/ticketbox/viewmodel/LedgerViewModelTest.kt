@@ -3,6 +3,7 @@ package com.ticketbox.viewmodel
 import com.ticketbox.R
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtListPage
+import com.ticketbox.data.repository.ReadSnapshot
 import com.ticketbox.data.repository.LedgerActions
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.BatchApplyResult
@@ -17,6 +18,7 @@ import com.ticketbox.domain.model.RecentMerchant
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
@@ -1078,6 +1080,44 @@ class LedgerViewModelCurrencyRelatchTest {
     }
 
     @Test
+    fun sharedDenialWithdrawsCurrencyAndLateReadUntilFreshRecovery() = relatchTest {
+        val binding = adjustmentBinding()
+        val calendars = object : com.ticketbox.data.repository.LedgerCalendarReader {
+            override fun currentBinding() = binding
+            override fun cached(binding: com.ticketbox.data.repository.LogicalSessionBinding, revision: Long?) =
+                null
+            override suspend fun refresh(binding: com.ticketbox.data.repository.LogicalSessionBinding, revision: Long?) =
+                Result.success<com.ticketbox.data.remote.dto.LedgerCalendarDto?>(null)
+        }
+        val debts = DeferredLedgerDebtActions()
+        val vm = LedgerViewModel(FakeLedgerActions(expenses = emptyList()), debts, calendars = calendars)
+        runCurrent()
+        debts.calls[0].complete(Result.success(DebtListPage(emptyList(), "JPY")))
+        advanceUntilIdle()
+        assertEquals(CurrencyCode.JPY, vm.uiState.value.ledgerCurrency)
+
+        val pending = async { vm.prepareManualEntry() }
+        runCurrent()
+        val failure = com.ticketbox.data.repository.RepositoryException("无权读取", httpStatusCode = 403)
+        debts.denials.emit(com.ticketbox.data.repository.SnapshotAccessDenial(
+            binding.copy(ledgerId = "other-ledger"), failure, 1))
+        advanceUntilIdle()
+        assertEquals(CurrencyCode.JPY, vm.uiState.value.ledgerCurrency)
+        debts.denials.emit(com.ticketbox.data.repository.SnapshotAccessDenial(binding, failure, 2))
+        advanceUntilIdle()
+        assertNull(vm.uiState.value.ledgerCurrency)
+        debts.calls[1].complete(Result.success(DebtListPage(emptyList(), "CNY")))
+        advanceUntilIdle()
+        assertNull(pending.await(), "A late read cannot restore withdrawn manual-entry currency")
+
+        val recovered = async { vm.prepareManualEntry() }
+        runCurrent()
+        debts.calls[2].complete(Result.success(DebtListPage(emptyList(), "JPY")))
+        advanceUntilIdle()
+        assertEquals(CurrencyCode.JPY, recovered.await())
+    }
+
+    @Test
     fun nextManualTaskReadsTheNewDefaultWithoutRewritingAnExistingDraft() = relatchTest {
         val debts = RecoverableLedgerDebtActions(online = true)
         val fake = FakeLedgerActions(expenses = emptyList())
@@ -1149,9 +1189,9 @@ private class RecoverableLedgerDebtActions(
     var currency = "CNY"
     override fun canModifyLedger(): Boolean = true
 
-    override suspend fun listDebts(lens: com.ticketbox.domain.model.DebtListLens): Result<DebtListPage> =
+    override suspend fun listDebts(lens: com.ticketbox.domain.model.DebtListLens): Result<ReadSnapshot<DebtListPage>> =
         if (online) {
-            Result.success(DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = currency))
+            Result.success(debtReadSnapshot(DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = currency)))
         } else {
             Result.failure(IllegalStateException("offline"))
         }
@@ -1160,13 +1200,15 @@ private class RecoverableLedgerDebtActions(
 /** 逐调用挂起闸门的账本币种 fake（代际乱序钉）：每次 listDebts 给一个待完成的 deferred。 */
 private class DeferredLedgerDebtActions : DebtActions by unsupportedLedgerDebtActions() {
     val calls = mutableListOf<CompletableDeferred<Result<DebtListPage>>>()
+    val denials = kotlinx.coroutines.flow.MutableSharedFlow<com.ticketbox.data.repository.SnapshotAccessDenial>()
+    override fun observeReadAccessDenials() = denials
 
     override fun canModifyLedger(): Boolean = true
 
-    override suspend fun listDebts(lens: com.ticketbox.domain.model.DebtListLens): Result<DebtListPage> {
+    override suspend fun listDebts(lens: com.ticketbox.domain.model.DebtListLens): Result<ReadSnapshot<DebtListPage>> {
         val gate = CompletableDeferred<Result<DebtListPage>>()
         calls += gate
-        return gate.await()
+        return gate.await().map { debtReadSnapshot(it) }
     }
 }
 
@@ -1177,6 +1219,8 @@ private fun unsupportedLedgerDebtActions(): DebtActions = Proxy.newProxyInstance
 ) { _, method, _ ->
     when (method.name) {
         "toString" -> "UnsupportedLedgerDebtActions"
+        "observeReadAccessDenials" -> kotlinx.coroutines.flow.emptyFlow<com.ticketbox.data.repository.SnapshotAccessDenial>()
+        "observeResourceDenials" -> kotlinx.coroutines.flow.emptyFlow<com.ticketbox.data.repository.DebtReadResourceDenial>()
         else -> throw UnsupportedOperationException(method.name)
     }
 } as DebtActions

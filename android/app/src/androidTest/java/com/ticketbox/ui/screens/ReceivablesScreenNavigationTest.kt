@@ -69,7 +69,8 @@ class ReceivablesScreenNavigationTest {
 }
 
 private class FakeReceivables(private val rows: List<Debt>) : ReceivablesActions {
-    override suspend fun listReceivables(): Result<List<Debt>> = Result.success(rows)
+    override suspend fun listReceivables(): Result<com.ticketbox.data.repository.ReadSnapshot<List<Debt>>> =
+        Result.success(com.ticketbox.data.repository.ReadSnapshot(rows, "2026-09-27T01:00:00Z", false))
 }
 
 // A cross-ledger member receivable: viewer is the creditor (viewerIsDebtor=false), ledger id redacted

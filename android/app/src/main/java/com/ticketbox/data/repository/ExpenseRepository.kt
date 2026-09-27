@@ -37,7 +37,7 @@ import kotlinx.coroutines.flow.Flow
  * constructor and concrete methods stable while implementation bodies live in
  * protocol-focused collaborators below.
  */
-class ExpenseRepository(
+class ExpenseRepository internal constructor(
     expenseDao: ExpenseDao,
     binding: ServerSessionBinding,
     sessionCoordinator: LocalLedgerSessionCoordinator = LocalLedgerSessionCoordinator(
@@ -47,6 +47,7 @@ class ExpenseRepository(
     ),
     deviceNameProvider: () -> String = ::defaultAndroidDeviceName,
     offlineMutations: ExpenseOfflineMutationWiring,
+    debtQueryReader: DebtQueryReader = DebtQueryReader(binding.apiProvider, expenseDao, sessionCoordinator),
 ) : ServerBindingRepository,
     PendingReviewActions,
     LedgerActions,
@@ -92,7 +93,7 @@ class ExpenseRepository(
     private val correctionRepository = ExpenseCorrectionRepository(core, offlineMutations.outbox,
         offlineMutations.correctionAdapter, offlineMutations.legacyCorrectionAdapter)
     private val offsetRepository = ExpenseOffsetRepository(core, correctionRepository)
-    private val billSplitRepository = ExpenseBillSplitRepository(core)
+    private val billSplitRepository = ExpenseBillSplitRepository(core, debtQueryReader)
     private val backgroundTaskRepository = ExpenseBackgroundTaskRepository(core)
 
     override fun hasActiveSession(): Boolean = bindingRepository.hasActiveSession()

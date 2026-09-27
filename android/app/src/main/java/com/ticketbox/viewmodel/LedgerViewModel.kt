@@ -212,6 +212,13 @@ class LedgerViewModel(
     private var inFlightSyncKey: LedgerSyncKey? = null
 
     init {
+        viewModelScope.launch {
+            debts.observeReadAccessDenials().collect { denial ->
+                if (denial.binding != calendars?.currentBinding()) return@collect
+                currencyResolutionGeneration++
+                _uiState.update { it.copy(ledgerCurrency = null) }
+            }
+        }
         loadCategories()
         loadTags()
         loadMonths()
@@ -628,7 +635,7 @@ class LedgerViewModel(
     private suspend fun refreshLedgerCurrency() {
         val generation = ++currencyResolutionGeneration
         val resolved = debts.listDebts().fold(
-            onSuccess = { CurrencyCode.fromStorageKeyOrNull(it.ledgerHomeCurrencyCode) },
+            onSuccess = { CurrencyCode.fromStorageKeyOrNull(it.value.ledgerHomeCurrencyCode) },
             onFailure = { _uiState.value.ledgerCurrency },
         )
         _uiState.update {

@@ -54,6 +54,25 @@ class DebtListViewModel(
 
     init {
         viewModelScope.launch {
+            repository.observeReadAccessDenials().collect { denial ->
+                if (denial.binding != creation.currentAccess()?.binding) return@collect
+                loadGeneration++
+                _state.update { it.copy(debts = emptyList(), fetchedAt = null, fromCache = false, isLoading = false,
+                    homeCurrencyResolved = false, error = denial.failure.toUiText(R.string.debt_list_load_failed)) }
+            }
+        }
+        viewModelScope.launch {
+            repository.observeResourceDenials().collect { denial ->
+                if (denial.binding != creation.currentAccess()?.binding) return@collect
+                val replaceInFlightRead = _state.value.isLoading
+                loadGeneration++
+                _state.update { it.copy(debts = it.debts.filterNot { debt -> debt.publicId == denial.debtPublicId },
+                    isLoading = false, error = denial.failure.toUiText(R.string.debt_list_load_failed)) }
+                // The old response must stay retired, but unrelated debts still need their current read.
+                if (replaceInFlightRead) refresh()
+            }
+        }
+        viewModelScope.launch {
             combine(
                 creation.observeActiveLedgerAccess(),
                 creation.observePendingCreations(),
@@ -116,6 +135,7 @@ class DebtListViewModel(
         _state.update {
             it.copy(
                 debts = emptyList(),
+                fetchedAt = null, fromCache = false,
                 error = null,
                 canModify = creation.currentAccess()?.canModify == true,
                 addAccepted = false,
@@ -146,7 +166,8 @@ class DebtListViewModel(
             if (gen != loadGeneration || binding != creation.currentAccess()?.binding ||
                 binding != writes.currentAccess()?.binding) return@launch
             result.fold(
-                onSuccess = { page ->
+                onSuccess = { snapshot ->
+                    val page = snapshot.value
                     if (!page.debts.filterNot { "debt:${it.publicId}" in observation.unresolvedTargetIds }
                             .all(observation::acceptsCanonical)) {
                         _state.update { it.copy(isLoading = false,
@@ -168,6 +189,7 @@ class DebtListViewModel(
                             isLoading = false,
                             canModify = creation.currentAccess()?.canModify == true,
                             debts = debts,
+                            fetchedAt = snapshot.fetchedAt, fromCache = snapshot.fromCache,
                             error = null,
                             addDraft = if (it.isSubmitting) it.addDraft else {
                                 ledgerCurrency?.let(it.addDraft::rebindHomeCurrency) ?: it.addDraft

@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.map
 
 internal class ExpenseBillSplitRepository(
     private val core: ExpenseRepositoryCore,
+    private val debtQueries: DebtQueryReader,
 ) {
     private val outbox = core.offlineMutations.outbox
     private val adapter = core.offlineMutations.billSplitCreateAdapter
@@ -94,12 +95,14 @@ internal class ExpenseBillSplitRepository(
         targetLedgerId: String,
     ): Result<BillSplitInbox> = core.errorHandler.safeCall {
         val bound = core.ledgerRequestGuard.bindExact(binding)
-        bound.call {
-            it.acceptBillSplitInvitation(
-                publicId,
-                BillSplitAcceptRequestDto(targetLedgerId),
-            )
-        }.toDomain()
+        debtQueries.direct(binding) {
+            bound.call {
+                it.acceptBillSplitInvitation(
+                    publicId,
+                    BillSplitAcceptRequestDto(targetLedgerId),
+                )
+            }.toDomain()
+        }
     }
 
     suspend fun rejectBillSplitInvitation(binding: LogicalSessionBinding, publicId: String): Result<BillSplitInbox> = core.errorHandler.safeCall {
