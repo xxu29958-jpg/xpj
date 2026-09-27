@@ -80,7 +80,7 @@ def _link(client, identity, series, payment, month="2026-05", version=0):
     assert response.status_code == 200, response.text
     assert response.json()["state"] == "fulfilled"
     assert (response.json()["expense_public_id"], response.json()["paid_amount_cents"],
-        response.json()["paid_home_currency_code"]) == (payment["public_id"], payment["amount_cents"], payment["home_currency_code"])
+        response.json()["paid_home_currency_code"]) == (payment["public_id"], payment["amount_cents"], payment["home_currency"])
     return body, key, response.json()
 
 
@@ -93,6 +93,24 @@ def _payment_revisions(public_id):
                 RecurringItem.id == RecurringOccurrenceRevision.series_id).where(
                     RecurringItem.tenant_id == "owner", RecurringItem.public_id == public_id)
             .order_by(RecurringOccurrenceRevision.revision_number)))
+
+
+def _assert_complete_portable_history(client, identity, public_id, accepted):
+    response = client.get("/api/exports/portable", headers=identity.app_headers, params={"month": "1999-01"})
+    assert response.status_code == 200, response.text
+    with ZipFile(BytesIO(response.content)) as package:
+        assert json.loads(package.read("manifest.json"))["records_complete"] is True
+        assert "records/recurring_item_revisions.jsonl" in package.namelist()
+        series = next(json.loads(line) for line in package.read("records/recurring_items.jsonl").splitlines()
+            if json.loads(line)["public_id"] == public_id)
+        revisions = [json.loads(line) for line in package.read("records/recurring_item_revisions.jsonl").splitlines()]
+        revisions = sorted((row for row in revisions if row["series_id"] == series["id"]), key=lambda row: row["row_version"])
+        assert [row["snapshot"] for row in revisions] == [_definition(row) for row in accepted]
+        assert [row["row_version"] for row in revisions] == [row["row_version"] for row in accepted]
+        latest = _history(client, identity, public_id)
+        assert {row["row_version"]: datetime.fromisoformat(row["recorded_at"].replace("Z", "+00:00"))
+            for row in revisions} == {row["row_version"]: datetime.fromisoformat(row["recorded_at"].replace("Z", "+00:00"))
+                for row in latest["items"]}
 
 
 def test_original_receipts_lifecycle_history_stable_pages_and_complete_portable_stay_ledger_scoped(client, identity):
@@ -136,21 +154,7 @@ def test_original_receipts_lifecycle_history_stable_pages_and_complete_portable_
         ("restore", "archive", "resume", "pause", "edit", "edit", "create"), strict=True):
         assert (item["row_version"], item["change_kind"], item["snapshot"]) == (receipt["row_version"], kind, _definition(receipt))
         assert datetime.fromisoformat(item["recorded_at"].replace("Z", "+00:00")).tzinfo is not None
-    response = client.get("/api/exports/portable", headers=identity.app_headers, params={"month": "1999-01"})
-    assert response.status_code == 200, response.text
-    with ZipFile(BytesIO(response.content)) as package:
-        assert json.loads(package.read("manifest.json"))["records_complete"] is True
-        assert "records/recurring_item_revisions.jsonl" in package.namelist()
-        series = next(json.loads(line) for line in package.read("records/recurring_items.jsonl").splitlines()
-            if json.loads(line)["public_id"] == original["public_id"])
-        revisions = [json.loads(line) for line in package.read("records/recurring_item_revisions.jsonl").splitlines()]
-        revisions = sorted((row for row in revisions if row["series_id"] == series["id"]), key=lambda row: row["row_version"])
-        assert [row["snapshot"] for row in revisions] == [_definition(row) for row in [*accepted, newest]]
-        assert [row["row_version"] for row in revisions] == [row["row_version"] for row in [*accepted, newest]]
-        latest = _history(client, identity, original["public_id"])
-        assert {row["row_version"]: datetime.fromisoformat(row["recorded_at"].replace("Z", "+00:00"))
-            for row in revisions} == {row["row_version"]: datetime.fromisoformat(row["recorded_at"].replace("Z", "+00:00"))
-                for row in latest["items"]}
+    _assert_complete_portable_history(client, identity, original["public_id"], [*accepted, newest])
     with SessionLocal.begin() as db:
         member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "owner"))
         assert member is not None

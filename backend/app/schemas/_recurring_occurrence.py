@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas._money import NonNegativeMoneyMinor, PositiveMoneyMinor
+from app.schemas._recurring_history import RecordedRecurringDefinition
 
 
 class RecurringOccurrenceWriteRequest(BaseModel):
@@ -28,6 +29,7 @@ class RecurringOccurrenceWriteRequest(BaseModel):
 
 
 class RecurringOccurrenceResponse(BaseModel):
+    recorded_definition: RecordedRecurringDefinition | None = None
     home_currency_code: str | None = None
     paid_home_currency_code: str | None = None
     series_public_id: str

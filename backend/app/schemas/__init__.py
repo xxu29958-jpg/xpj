@@ -245,6 +245,12 @@ from app.schemas._recurring import (
     RecurringItemTokenRequest,
     RecurringItemUpdateRequest,
 )
+from app.schemas._recurring_history import (
+    RecordedRecurringDefinition,
+    RecurringItemHistoryResponse,
+    RecurringItemRevisionResponse,
+    RecurringItemSnapshot,
+)
 from app.schemas._recycle_bin import (
     RecycleBinItemResponse,
     RecycleBinListResponse,
@@ -510,6 +516,10 @@ __all__ = [
     "RecurringCandidateItem",
     "RecurringCandidatesResponse",
     "RecurringItemCreateRequest",
+    "RecordedRecurringDefinition",
+    "RecurringItemHistoryResponse",
+    "RecurringItemRevisionResponse",
+    "RecurringItemSnapshot",
     "RecurringItemListResponse",
     "RecurringItemResponse",
     "RecurringItemTokenRequest",

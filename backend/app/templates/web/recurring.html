@@ -13,6 +13,7 @@
      只读语义 / 409 引导链接全部保留; 行内编辑用 <details class="plan-edit">,
      open 仍由 open_edit_id 驱动。 #}
 {% block content %}
+{% set history_month = request.query_params.get('month', '') %}
 <header class="product-page-header">
   <div class="product-page-heading">
     <span class="product-eyebrow">计划 / 固定支出</span>
@@ -108,6 +109,7 @@
       </div>
       <div class="recurring-row-actions">
         <a class="product-button product-button--small" href="/web/recurring/{{ item.public_id }}/occurrence?ledger_id={{ selected_ledger_id }}">查看本期</a>
+        <a class="product-button product-button--small" href="/web/recurring/{{ item.public_id }}/history?ledger_id={{ selected_ledger_id|urlencode }}&amp;status={{ status_filter|urlencode }}{% if history_month %}&amp;month={{ history_month|urlencode }}{% endif %}">修改记录</a>
         {% if can_write %}
           {# ADR-0038 PR-A: hidden expected_row_version OCC token. Without it
              a stale pause/resume POST (e.g. from a tab opened before another
@@ -181,6 +183,7 @@
               <p class="hint">清空表示不提醒——不留日期就不会提醒。</p>
             </div>
           </div>
+          <a class="product-button product-button--quiet" target="_blank" rel="noopener" href="/web/recurring/{{ item.public_id }}/history?ledger_id={{ selected_ledger_id|urlencode }}&amp;status={{ status_filter|urlencode }}{% if history_month %}&amp;month={{ history_month|urlencode }}{% endif %}">在新窗口查看修改记录</a>
           {% if item.status == 'archived' %}
           <p class="hint">填写仍保留。这条固定支出已归档，恢复后才能继续修改。</p>
           {% else %}

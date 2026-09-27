@@ -134,7 +134,8 @@ private class CorrectionBindingFixture(private val delayedType: PendingMutationT
     fun model() = OutboxStatusViewModel(outbox, repository, com.ticketbox.viewmodel.OutboxRecoveryRepositories(
         DebtCreationRepository(binding.apiProvider, outbox, adapters.debtCreateAdapter),
         recurringOccurrences = null,
-        recurringItems = RecurringRepository(binding.apiProvider, outbox, adapters.recurringCreateAdapter, adapters.recurringUpdateAdapter),
+        recurringItems = RecurringRepository(binding.apiProvider, outbox, adapters.recurringCreateAdapter, adapters.recurringUpdateAdapter,
+            sessionCoordinator = LocalLedgerSessionCoordinator(binding.settingsStore, binding.sessionStore, FakeExpenseDao(), outbox)),
         rules = RuleRepository(binding, offlineMutations = CategoryRuleOfflineMutationWiring(
             outbox, adapters.categoryRuleUpdateAdapter, adapters.categoryRuleDeleteAdapter,
             adapters.categoryRuleSubmissionAdapter, adapters.categoryRuleReceiptAdapter)),

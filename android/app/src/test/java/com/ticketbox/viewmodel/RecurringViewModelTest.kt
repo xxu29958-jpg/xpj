@@ -775,6 +775,7 @@ private class FakeRecurringQueryActions(
 ) : RecurringQueryActions {
     var itemsResponder: (suspend () -> Result<List<RecurringItem>>)? = null
 
+    override val readAccessDenials = kotlinx.coroutines.flow.emptyFlow<com.ticketbox.data.repository.SnapshotAccessDenial>()
     override fun canModifyLedger(): Boolean = true
     override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> = activeAccessFlow
     override suspend fun items(
@@ -788,6 +789,8 @@ private class FakeRecurringQueryActions(
         includeArchived: Boolean,
         month: String?,
     ): Result<List<RecurringItem>> = items(status, includeArchived, month)
+    override suspend fun history(binding: LogicalSessionBinding, publicId: String, beforeVersion: Long?):
+        Result<com.ticketbox.data.remote.dto.RecurringHistoryPageDto> = error("Unused recurring definition history")
     override suspend fun candidates(
         expectedBinding: LogicalSessionBinding,
     ): Result<List<RecurringCandidate>> = candidatesResult

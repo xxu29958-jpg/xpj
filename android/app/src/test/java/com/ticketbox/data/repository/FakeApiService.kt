@@ -802,6 +802,8 @@ internal class FakeApiService(
     override suspend fun budgetAdviceInputs(month: String, timezone: String?, homeCurrencyCode: String?): com.ticketbox.data.remote.dto.BudgetAdviceInputsDto = unsupported()
     override suspend fun budgetAdvise(request: com.ticketbox.data.remote.dto.BudgetAdviseRequestDto): com.ticketbox.data.remote.dto.BudgetAdviseResponseDto = unsupported()
     override suspend fun recurringCandidates(timezone: String?): com.ticketbox.data.remote.dto.RecurringCandidatesResponseDto = unsupported()
+    override suspend fun recurringHistory(publicId: String, limit: Int, beforeVersion: Long?):
+        com.ticketbox.data.remote.dto.RecurringHistoryPageDto = error("Unexpected recurring definition history")
     override suspend fun recurringItems(
         status: String?,
         includeArchived: Boolean,

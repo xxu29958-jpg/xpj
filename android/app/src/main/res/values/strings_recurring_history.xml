@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="recurring_history_title">定义历史</string>
+    <string name="recurring_history_explanation">这里保存固定支出的计划定义；实际支出、本期预留和下次提醒请看当前计划，不代表保存时的执行结果。</string>
+    <string name="recurring_history_failed">无法读取定义历史，请重试。</string>
+    <string name="recurring_history_read_pages">仅保留本次已读页面；未读记录需要联网，关闭后需重新读取。</string>
+    <string name="recurring_history_empty">暂无定义记录。</string>
+    <string name="recurring_history_version">版本 %1$d · %2$s</string>
+    <string name="recurring_history_saved_at">记录保存时间：%1$s</string>
+    <string name="recurring_history_monthly_amount">每月计划金额：%1$s</string>
+    <string name="recurring_history_anchor">提醒计划日期：%1$s</string>
+    <string name="recurring_history_manual">来源：手工计划</string>
+    <string name="recurring_history_candidate">来源：用户采用的观察建议</string>
+    <string name="recurring_history_source">来源：%1$s</string>
+    <string name="recurring_definition_current">当前计划</string>
+    <string name="recurring_definition_recorded">本期首次记录时所据定义 · 版本 %1$d</string>
+    <string name="recurring_definition_unrecorded">本期尚未建立记录，因此还没有保存首次记录所据定义。</string>
+    <string name="recurring_definition_unknown">本期已有记录，但旧版本未保存当时所据定义，原依据未知；当前计划不能替代它。</string>
+</resources>
