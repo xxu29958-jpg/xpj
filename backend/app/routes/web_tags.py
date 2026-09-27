@@ -47,8 +47,10 @@ def _stale_redirect(selected_id: str, unused: str = "") -> RedirectResponse:
     return _web_redirect("/web/tags", selected_id, unused=unused, msg="页面已过期，请刷新后重试。", flash_type="error")
 
 
-def _conflict_message(exc: AppError) -> str:
+def _conflict_message(exc: AppError, unused: str = "") -> str:
     """Map a tag service error code to a 生活化 Chinese flash message."""
+    if unused == "1" and exc.error in {"state_conflict", "tag_not_found"}:
+        return "标签可能已被使用或状态已变化，请刷新后重试。"
     if exc.error == "state_conflict":
         return "标签已在其它端被修改，请刷新后重试。"
     if exc.error == "tag_not_found":
@@ -62,7 +64,9 @@ def _conflict_message(exc: AppError) -> str:
     return exc.message
 
 
-def _rename_error_message(exc: AppError) -> str:
+def _rename_error_message(exc: AppError, unused: str = "") -> str:
+    if unused == "1":
+        return _conflict_message(exc, unused)
     if exc.error == "state_conflict":
         return "标签状态已变化，请根据当前状态重试。"
     return _conflict_message(exc)
@@ -176,6 +180,7 @@ def web_tag_rename(
             name=name,
             actor_account_id=actor_account_id,
             actor_device_id=actor_device_id,
+            require_orphan=unused == "1",
         )
         msg = f"标签已重命名为 「{tag.name}」。"
     except AppError as exc:
@@ -186,7 +191,7 @@ def web_tag_rename(
             options=options,
             selected_id=selected_id,
             unused=unused,
-            rename_error=_rename_error_message(exc),
+            rename_error=_rename_error_message(exc, unused),
             rename_error_public_id=public_id,
             rename_error_value=name,
             status_code=422,
@@ -222,11 +227,7 @@ def web_tag_delete(
             require_orphan=unused == "1",
         )
     except AppError as exc:
-        msg = (
-            "标签可能已被使用或状态已变化，请刷新后重试。"
-            if unused == "1" and exc.error in {"state_conflict", "tag_not_found"}
-            else _conflict_message(exc)
-        )
+        msg = _conflict_message(exc, unused)
         return _web_redirect("/web/tags", selected_id, unused=unused, msg=msg, flash_type="error")
     # ADR-0043 undo: pass the mutation handle + the soft-deleted tag's undo token
     # so the page renders a 5s 撤销 banner; recoverable until cleanup purges it.
@@ -274,9 +275,10 @@ def web_tag_merge(
             target_row_version=target_rv,
             actor_account_id=actor_account_id,
             actor_device_id=actor_device_id,
+            require_orphan=unused == "1",
         )
     except AppError as exc:
-        return _web_redirect("/web/tags", selected_id, unused=unused, msg=_conflict_message(exc), flash_type="error")
+        return _web_redirect("/web/tags", selected_id, unused=unused, msg=_conflict_message(exc, unused), flash_type="error")
     return _web_redirect(
         "/web/tags",
         selected_id,

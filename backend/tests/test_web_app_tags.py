@@ -14,7 +14,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from tests._infra.tag_helpers import demote_owner_to_viewer, manual_expense, tag_index
+from tests._infra.tag_helpers import demote_owner_to_viewer, expense_row, manual_expense, tag_index, tag_links
 
 
 def _unused_tag(client: TestClient, headers: dict[str, str]) -> dict:
@@ -59,6 +59,39 @@ def test_unused_cleanup_does_not_remove_a_tag_reused_after_the_page_was_opened(w
     returned = web_client.get(rejected.headers["location"])
     assert "已被使用" in returned.text
     assert parse_qs(urlsplit(rejected.headers["location"]).query)["unused"] == ["1"]
+
+
+@pytest.mark.parametrize("action", ["rename", "merge"])
+def test_unused_tag_actions_cannot_rewrite_a_bill_that_reused_the_source_after_render(
+    web_client: TestClient, identity, action: str,
+) -> None:
+    source = _unused_tag(web_client, identity.app_headers)
+    target = tag_index(web_client, identity.app_headers)["出差"]
+    page = web_client.get("/web/tags?ledger_id=owner&unused=1")
+    token = _row_version_for(page.text, source["public_id"], action)
+    accepted = manual_expense(web_client, identity.app_headers, tags="工作", merchant="随后使用标签的账单")
+    reused = tag_index(web_client, identity.app_headers)["工作"]
+    assert str(reused["row_version"]) == token
+    response = web_client.post(
+        f"/web/tags/{source['public_id']}/{action}",
+        data={"ledger_id": "owner", "unused": "1", "expected_row_version": token,
+              "name": "办公", "target": f"{target['public_id']}:{target['row_version']}"},
+        follow_redirects=False,
+    )
+    if action == "rename":
+        assert response.status_code == 422
+        returned = response
+    else:
+        assert response.status_code == 303
+        assert parse_qs(urlsplit(response.headers["location"]).query)["unused"] == ["1"]
+        returned = web_client.get(response.headers["location"])
+    assert "已被使用" in returned.text and 'role="alert"' in returned.text
+    assert expense_row("随后使用标签的账单") == (accepted["id"], accepted["row_version"], "工作")
+    assert tag_links(accepted["id"]) == ["工作"]
+    current = tag_index(web_client, identity.app_headers)
+    assert current["工作"] == reused and current["出差"] == target
+    history = web_client.get(f"/api/expenses/{accepted['id']}/revisions", headers=identity.app_headers)
+    assert history.status_code == 200 and history.json()["total"] == 1
 
 
 def test_unused_cleanup_native_form_and_undo_preserve_the_same_view(web_client: TestClient, *, identity) -> None:

@@ -175,10 +175,12 @@ unused view hides used rows but keeps every live same-ledger merge destination.
 Rename, merge, delete, validation recovery and undo retain the selected view;
 readonly viewers can inspect it without acquiring write authority.
 
-Cleanup uses the existing tag command and requires that the tag is still unused
-when accepted. A stale page must not remove a tag reused by a financial writer,
+Rename, merge and delete from the unused view reuse their existing commands and
+require that the source tag is still unused when accepted. The merge target may
+already be used. A stale page must not remove a tag reused by a financial writer,
 rewrite that new bill, or hide its live tag. Normal explicit tag deletion keeps
-its existing affected-bill behavior. Refusal is visible as an error; original OCC,
+its existing affected-bill behavior, as do rename and merge from the all view.
+Refusal is visible as an error; original OCC,
 actor, ledger isolation and undo identity remain owned by the existing services.
 The duplicate Owner cleanup page, handler and navigation retire only with this
 capability present in the Web consumer. Exact candidate status stays in the atlas.

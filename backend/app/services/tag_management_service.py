@@ -86,6 +86,15 @@ def _disambiguate_tag_claim(db: Session, tenant_id: str, public_id: str) -> AppE
     return AppError("state_conflict", status_code=409)
 
 
+def _unused_tag_claim_conditions(db: Session, *, tenant_id: str, tag_id: int) -> tuple:
+    # New financial links share the Tag until publication. Acquire this lock in
+    # a separate statement so the following claim sees their committed links.
+    db.execute(
+        select(Tag.id).where(Tag.id == tag_id, Tag.tenant_id == tenant_id).with_for_update()
+    ).scalar_one_or_none()
+    return (Tag.deleted_at.is_(None), ~exists().where(ExpenseTag.tag_id == tag_id, ExpenseTag.tenant_id == tenant_id))
+
+
 def _claim_merge_pair(
     db: Session,
     *,
@@ -94,6 +103,7 @@ def _claim_merge_pair(
     target: Tag,
     source_row_version: int,
     target_row_version: int,
+    require_orphan: bool,
 ) -> None:
     """Atomically soft-delete source A (keeps its tag_id; revivable via undo) and
     bump target B (stays live; its link set changed so a stale B PATCH must 409).
@@ -116,6 +126,10 @@ def _claim_merge_pair(
         key=lambda claim: claim[0],
     )
     for pk_id, expected_row_version, set_values in claims:
+        extra_where = (
+            _unused_tag_claim_conditions(db, tenant_id=tenant_id, tag_id=pk_id)
+            if require_orphan and pk_id == source.id else ()
+        )
         if (
             claim_row_with_token(
                 db,
@@ -124,6 +138,7 @@ def _claim_merge_pair(
                 tenant_id=tenant_id,
                 expected_row_version=expected_row_version,
                 set_values=set_values,
+                extra_where=extra_where,
                 synchronize_session=False,
             )
             != 1
@@ -155,6 +170,7 @@ def rename_tag(
     name: str,
     actor_account_id: int | None = None,
     actor_device_id: int | None = None,
+    require_orphan: bool = False,
 ) -> Tag:
     """Self-inverse rename (no snapshot — undo by renaming back). Rewrites the
     denormalised string on every linked expense (the string carries the NAME)
@@ -175,6 +191,7 @@ def rename_tag(
             raise _tag_conflict_error(clash, tag)
 
     try:
+        extra_where = _unused_tag_claim_conditions(db, tenant_id=tenant_id, tag_id=tag.id) if require_orphan else ()
         rowcount = claim_row_with_token(
             db,
             Tag,
@@ -182,6 +199,7 @@ def rename_tag(
             tenant_id=tenant_id,
             expected_row_version=expected_row_version,
             set_values={"name": new_name, "key": new_key, "updated_at": now_utc()},
+            extra_where=extra_where,
             synchronize_session=False,
         )
     except IntegrityError as exc:
@@ -242,17 +260,14 @@ def _claim_tag_soft_delete(
             set_values={"deleted_at": now_utc(), "updated_at": now_utc()},
             synchronize_session=False,
         )
-    db.execute(
-        select(Tag.id).where(Tag.id == tag.id, Tag.tenant_id == tenant_id).with_for_update()
-    ).scalar_one_or_none()
+    extra_where = _unused_tag_claim_conditions(db, tenant_id=tenant_id, tag_id=tag.id)
     now = now_utc()
     return db.execute(
         sa_update(Tag)
         .where(Tag.id == tag.id)
         .where(Tag.tenant_id == tenant_id)
         .where(Tag.row_version == expected_row_version)
-        .where(Tag.deleted_at.is_(None))
-        .where(~exists().where(ExpenseTag.tag_id == tag.id, ExpenseTag.tenant_id == tenant_id))
+        .where(*extra_where)
         .values(deleted_at=now, updated_at=now, row_version=Tag.row_version + 1)
         .execution_options(synchronize_session=False)
     ).rowcount
@@ -344,6 +359,7 @@ def merge_tags(
     target_row_version: int,
     actor_account_id: int | None = None,
     actor_device_id: int | None = None,
+    require_orphan: bool = False,
 ) -> TagMutationResult:
     """Merge source A into target B: soft-delete A (keep its tag_id stable),
     move A's links to B (dedup), rebuild + bump each affected expense, write the
@@ -363,6 +379,7 @@ def merge_tags(
         target=target,
         source_row_version=source_row_version,
         target_row_version=target_row_version,
+        require_orphan=require_orphan,
     )
 
     group = TagMutationUndoGroup(

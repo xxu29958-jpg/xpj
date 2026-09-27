@@ -132,13 +132,18 @@ def test_retaining_a_tag_during_correction_preserves_the_fact_and_rejects_a_conc
 
 
 @pytest.mark.real_db
+@pytest.mark.parametrize("operation", ["delete", "rename", "merge"])
 def test_unused_cleanup_waits_for_an_existing_tag_writer_and_rejects_its_now_used_tag(
-    client: TestClient, identity, monkeypatch,
+    client: TestClient, identity, monkeypatch, operation: str,
 ) -> None:
+    target = None
+    if operation == "merge":
+        manual_expense(client, identity.app_headers, tags="出差", merchant="原合并目标")
+        target = tag_index(client, identity.app_headers)["出差"]
     unused = _unused_tag(client, identity.app_headers)
     writer_ready, release_writer, cleanup_started = Event(), Event(), Event()
     ensure_tag = tag_service._ensure_tag
-    claim = tag_management_service._claim_tag_soft_delete
+    claim = tag_management_service._unused_tag_claim_conditions
 
     def pause_original_writer(*args, **kwargs):
         tag = ensure_tag(*args, **kwargs)
@@ -153,6 +158,18 @@ def test_unused_cleanup_waits_for_an_existing_tag_writer_and_rejects_its_now_use
     def cleanup():
         with SessionLocal() as db:
             try:
+                if operation == "merge":
+                    assert target is not None
+                    return tag_management_service.merge_tags(
+                        db, tenant_id="owner", source_public_id=unused["public_id"],
+                        source_row_version=unused["row_version"], target_public_id=target["public_id"],
+                        target_row_version=target["row_version"], require_orphan=True,
+                    )
+                if operation == "rename":
+                    return tag_management_service.rename_tag(
+                        db, tenant_id="owner", public_id=unused["public_id"],
+                        expected_row_version=unused["row_version"], name="办公", require_orphan=True,
+                    )
                 return tag_management_service.delete_tag(
                     db, tenant_id="owner", public_id=unused["public_id"],
                     expected_row_version=unused["row_version"], require_orphan=True,
@@ -162,7 +179,7 @@ def test_unused_cleanup_waits_for_an_existing_tag_writer_and_rejects_its_now_use
 
     with monkeypatch.context() as patch, ThreadPoolExecutor(max_workers=2) as pool:
         patch.setattr(tag_service, "_ensure_tag", pause_original_writer)
-        patch.setattr(tag_management_service, "_claim_tag_soft_delete", mark_cleanup_started)
+        patch.setattr(tag_management_service, "_unused_tag_claim_conditions", mark_cleanup_started)
         recording = pool.submit(_record_with_original_tag, identity.app_headers)
         try:
             assert writer_ready.wait(timeout=5)
@@ -179,3 +196,5 @@ def test_unused_cleanup_waits_for_an_existing_tag_writer_and_rejects_its_now_use
     assert tag_links(accepted["id"]) == ["工作"]
     current = tag_index(client, identity.app_headers)["工作"]
     assert current["public_id"] == unused["public_id"] and current["usage_count"] == 1
+    if target is not None:
+        assert tag_index(client, identity.app_headers)["出差"] == target
