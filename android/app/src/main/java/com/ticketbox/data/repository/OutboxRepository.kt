@@ -1,10 +1,13 @@
 package com.ticketbox.data.repository
 
+import android.database.sqlite.SQLiteException
 import com.ticketbox.data.local.PendingMutationDao
 import com.ticketbox.data.local.PendingMutationEntity
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -514,10 +517,17 @@ class OutboxRepository private constructor(
         budgetReadRefreshRequired: Boolean = false, acceptedRow: OutboxRow? = null) {
         val refreshError = if (budgetReadRefreshRequired) BUDGET_READ_REFRESH_REQUIRED
             else cacheRefreshVersion?.let { "$EXPENSE_REFRESH_PREFIX$it" }
-        dao.publishDelivery {
-            dao.markDone(id, PendingMutationStatus.Done.wireValue, nowIso(), refreshError, receiptJson)
-            if (acceptedRow?.type in setOf(PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem,
-                PendingMutationType.SetRecurringOccurrencePayment)) onRecurringAccepted(requireNotNull(acceptedRow))
+        val recurringAccepted = acceptedRow?.type in setOf(PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem,
+            PendingMutationType.SetRecurringOccurrencePayment)
+        try {
+            dao.publishDelivery {
+                dao.markDone(id, PendingMutationStatus.Done.wireValue, nowIso(), refreshError, receiptJson)
+                if (recurringAccepted) onRecurringAccepted(requireNotNull(acceptedRow))
+            }
+        } catch (error: SQLiteException) {
+            // The server has accepted this attempt. Reentry repeats the original key; it never refunds the send.
+            if (recurringAccepted) withContext(NonCancellable) { markRetryable(id, "accepted_recurring_read_publication_pending") }
+            throw error // The existing worker schedules retry, without claiming local delivery completed.
         }
     }
 

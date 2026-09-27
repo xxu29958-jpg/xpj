@@ -39,8 +39,8 @@ internal class RecurringQueryReader(
     private val retiredBindings = ConcurrentHashMap.newKeySet<String>()
     val readAccessDenials = coordinator.snapshotAccessDenials.filterNotNull()
 
-    /** Reminder reads share binding/refusal coordination but never consume or publish a UI cache. */
-    suspend fun freshItems(binding: LogicalSessionBinding, status: String?, archived: Boolean, month: String?): Result<List<RecurringItem>> =
+    /** Reminder and candidate reads share refusal coordination without consuming or publishing a UI cache. */
+    suspend fun <T> freshQuery(binding: LogicalSessionBinding, fetch: suspend ApiService.() -> T, validate: (T) -> Unit): Result<T> =
         errors.safeCall {
             val bound = guard.bindExact(binding)
             val ticket = coordinator.beginSnapshotRead()
@@ -48,18 +48,18 @@ internal class RecurringQueryReader(
             val key = logicalBindingAdapter.toJson(binding)
             val epoch = dao.recurringReadEpoch(key)?.toLong() ?: 0L
             val page = try {
-                bound.call { it.recurringItems(status, archived, month, TimeZone.getDefault().id) }
+                bound.call { fetch(it) }
             } catch (error: HttpException) {
                 val failure = errors.httpFailure(error)
                 coordinator.rejectSnapshotAccess(bound, logicalBindingAdapter.toJson(binding), failure)
                 throw failure
             }
-            require(page.items.all { it.ledgerId == binding.ledgerId }) { "固定支出所属账本不匹配。" }
+            validate(page)
             coordinator.acceptSnapshotRead(ticket, bound, fromCache = false) {
                 check(localInvalidation.get() == generation && (dao.recurringReadEpoch(key)?.toLong() ?: 0L) == epoch) {
                     "固定支出已接受修改，请重新读取。"
                 }
-                page.items.map { it.toDomain() }
+                page
             }
         }
 
@@ -178,9 +178,24 @@ internal class RecurringQueryReader(
 
     private suspend fun cachedQuery(query: StatsProjectionCacheEntity, epoch: Long): StatsProjectionCacheEntity? {
         val exact = dao.recurringSnapshotIfCurrent(query, epoch)
-        if (exact != null || query.kind != "recurring_occurrence" || query.month == "current") return exact
-        // Only a response whose actual period validates against the requested month can be reused below.
-        return dao.recurringSnapshotIfCurrent(query.copy(month = "current"), epoch)
+        if (query.kind != "recurring_occurrence" || query.month == "current") return exact
+        val current = dao.recurringSnapshotIfCurrent(query.copy(month = "current"), epoch) ?: return exact
+        val currentValue = requireNotNull(occurrenceAdapter.fromJson(current.responseJson))
+        if (currentValue.period != query.month) return exact
+        currentValue.validateOccurrence(query.tag, query.month)
+        if (exact == null) return current
+        val exactValue = requireNotNull(occurrenceAdapter.fromJson(exact.responseJson))
+        exactValue.validateOccurrence(query.tag, query.month)
+        // Both definition and payment versions must advance together; receipt time cannot undo either.
+        val currentDominates = currentValue.seriesRowVersion >= exactValue.seriesRowVersion && currentValue.rowVersion >= exactValue.rowVersion
+        val exactDominates = exactValue.seriesRowVersion >= currentValue.seriesRowVersion && exactValue.rowVersion >= currentValue.rowVersion
+        check(currentDominates || exactDominates) { "本期读取版本不一致，请联网重新读取。" }
+        return when {
+            !currentDominates -> exact
+            !exactDominates -> current
+            Instant.parse(current.fetchedAt) > Instant.parse(exact.fetchedAt) -> current
+            else -> exact
+        }
     }
 
     private fun scope(binding: LogicalSessionBinding, kind: String, month: String, tag: String, timezone: String) =

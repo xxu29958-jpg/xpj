@@ -137,6 +137,65 @@ class RecurringQueryReadTest {
         assertEquals(repaired.copy(fromCache = true), repository.items(fixture.binding, includeArchived = true).getOrThrow())
     }
 
+    @Test fun candidateRefusalRevokesCachedPagesAndLateItemsBeforeColdOfflineReentry() = runTest {
+        for (status in listOf(401, 403)) {
+            lateinit var api: RecurringReadProbe
+            val fixture = GoalReadFixture(decorate = { delegate ->
+                api = RecurringReadProbe(delegate)
+                object : ApiService by api {
+                    override suspend fun recurringCandidates(timezone: String?): com.ticketbox.data.remote.dto.RecurringCandidatesResponseDto =
+                        throw HttpException(Response.error<Any>(status, "".toResponseBody()))
+                }
+            })
+            val reader = RecurringQueryReader(fixture.provider, fixture.dao, fixture.coordinator)
+            val repository = RecurringRepository(fixture.provider, queryReader = reader)
+            repository.items(fixture.binding, includeArchived = true).getOrThrow()
+            reader.history(fixture.binding, "recurring", null).getOrThrow()
+            reader.occurrence(fixture.binding, "recurring", "current").getOrThrow()
+            api.started = CompletableDeferred()
+            api.release = CompletableDeferred()
+            val late = async { repository.items(fixture.binding, includeArchived = true) }
+            requireNotNull(api.started).await()
+            assertTrue(repository.candidates(fixture.binding).isFailure)
+            assertEquals(status, fixture.coordinator.snapshotAccessDenials.value?.failure?.httpStatusCode)
+            requireNotNull(api.release).complete(Unit)
+            assertTrue(late.await().isFailure, "A candidate refusal must block an earlier complete list from returning")
+            api.failure = ConnectException("cold offline after candidate refusal")
+            val cold = RecurringQueryReader(fixture.provider, fixture.dao,
+                LocalLedgerSessionCoordinator(boundSettingsStore(), fixture.session.sessionStore, fixture.dao))
+            assertTrue(cold.items(fixture.binding, null, true, null).isFailure)
+            assertTrue(cold.history(fixture.binding, "recurring", null).isFailure)
+            assertTrue(cold.occurrence(fixture.binding, "recurring", "current").isFailure)
+        }
+    }
+
+    @Test fun newerCurrentPaymentAndSameVersionReviewStateRemainVisibleWhenOfflineChoosingItsExplicitMonth() = runTest {
+        var offline = false
+        var response = RecurringOccurrenceDto("recurring", "2026-09", 9, 0, "unfulfilled", 2400, 2400, null, null, null,
+            homeCurrencyCode = "JPY")
+        val fixture = GoalReadFixture(decorate = { delegate -> object : ApiService by delegate {
+            override suspend fun recurringOccurrence(publicId: String, month: String): RecurringOccurrenceDto {
+                if (offline) throw ConnectException("offline period")
+                return response
+            }
+        } })
+        val reader = RecurringQueryReader(fixture.provider, fixture.dao, fixture.coordinator)
+        reader.occurrence(fixture.binding, "recurring", "2026-09").getOrThrow()
+        response = response.copy(rowVersion = 1, state = "fulfilled", reservedAmountCents = 0,
+            expensePublicId = "paid-original", paidAmountCents = 2400, paidHomeCurrencyCode = "JPY")
+        val paid = reader.occurrence(fixture.binding, "recurring", "current").getOrThrow()
+        offline = true
+        val cold = RecurringQueryReader(fixture.provider, fixture.dao, fixture.coordinator)
+        assertEquals(paid.copy(fromCache = true), cold.occurrence(fixture.binding, "recurring", "2026-09").getOrThrow())
+        offline = false
+        reader.occurrence(fixture.binding, "recurring", "2026-09").getOrThrow()
+        response = response.copy(state = "needs_review")
+        val reviewed = reader.occurrence(fixture.binding, "recurring", "current").getOrThrow()
+        offline = true
+        assertEquals(reviewed.copy(fromCache = true), cold.occurrence(fixture.binding, "recurring", "2026-09").getOrThrow())
+        assertTrue(cold.occurrence(fixture.binding, "recurring", "2026-08").isFailure)
+    }
+
     @Test fun lateCurrentReadCannotReplaceNewerExplicitPeriodAndOfflineNeverInventsAnotherMonth() = runTest {
         val started = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()

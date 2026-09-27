@@ -111,8 +111,10 @@ class RecurringRepository internal constructor(
     ): Result<List<RecurringItem>> =
         errorHandler.safeCall {
             val binding = requireNotNull(ledgerRequestGuard.captureLogicalBinding()) { "请重新绑定账本。" }
-            queryReader.freshItems(binding, status?.trim()?.ifBlank { null }, includeArchived,
-                month?.trim()?.ifBlank { null }).getOrThrow()
+            queryReader.freshQuery(binding, { recurringItems(status?.trim()?.ifBlank { null }, includeArchived,
+                month?.trim()?.ifBlank { null }, recurringTimezoneId()) }) { page ->
+                require(page.items.all { it.ledgerId == binding.ledgerId }) { "固定支出所属账本不匹配。" }
+            }.getOrThrow().items.map { it.toDomain() }
         }
 
     override suspend fun items(
@@ -139,9 +141,8 @@ class RecurringRepository internal constructor(
         expectedBinding: LogicalSessionBinding,
     ): Result<List<RecurringCandidate>> =
         errorHandler.safeCall {
-            ledgerRequestGuard.bindExact(expectedBinding).call { api ->
-                api.recurringCandidates(timezone = recurringTimezoneId()).items.map { it.toDomain() }
-            }
+            queryReader.freshQuery(expectedBinding, { recurringCandidates(timezone = recurringTimezoneId()) }, {}).getOrThrow()
+                .items.map { it.toDomain() }
         }
 
     override suspend fun confirmCandidate(

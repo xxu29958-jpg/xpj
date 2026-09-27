@@ -18,7 +18,6 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.SQLiteMode
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 @RunWith(RobolectricTestRunner::class)
@@ -53,11 +52,15 @@ class RecurringAcceptedReadRoomTest {
             }, adapters.recurringUpdateAdapter)))
             db.openHelper.writableDatabase.execSQL("CREATE TRIGGER fail_recurring_cleanup BEFORE DELETE ON stats_projection_cache " +
                 "WHEN OLD.kind = 'recurring_items' BEGIN SELECT RAISE(ABORT, 'Read cleanup unavailable'); END")
-            assertTrue(runCatching { engine.drainOnce() }.isFailure)
-            assertFalse(db.pendingMutationDao().allRows().single().status == "done", "Room cannot publish Done while stale query deletion rolled back")
+            assertEquals(OutboxDrainWorker.DrainOutcome.RETRY, OutboxDrainWorker.runDrain { engine.drainOnce() })
+            val retry = db.pendingMutationDao().allRows().single()
+            assertEquals("pending", retry.status, "Local publication failure must automatically release the original claim for worker retry")
+            assertEquals(original.retryCount + 1, retry.retryCount, "A real accepted send is not refunded")
+            assertEquals(original.payload, retry.payload)
+            assertEquals(original.expectedRowVersion, retry.expectedRowVersion)
+            assertEquals(original.idempotencyKey, retry.idempotencyKey)
             assertEquals(listOf(original.idempotencyKey), calls.map { it.first })
             db.openHelper.writableDatabase.execSQL("DROP TRIGGER fail_recurring_cleanup")
-            outbox.revertClaimWithoutAttempt(original.id)
             api.started = CompletableDeferred()
             api.release = CompletableDeferred()
             val late = async(Dispatchers.IO) {
@@ -72,6 +75,7 @@ class RecurringAcceptedReadRoomTest {
                 assertEquals(original.expectedRowVersion, done.expectedRowVersion)
                 assertEquals(original.idempotencyKey, done.idempotencyKey)
                 assertEquals("done", done.status)
+                assertEquals(original.retryCount + 2, done.retryCount)
                 val bindingKey = logicalBindingAdapter.toJson(fixture.binding)
                 assertEquals("1", db.expenseDao().recurringReadEpoch(bindingKey))
                 assertEquals(1, db.pendingMutationDao().deleteResolvedBefore("done", "2099-01-01T00:00:00Z"))
