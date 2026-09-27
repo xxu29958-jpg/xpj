@@ -213,10 +213,16 @@ private fun overviewCaption(overview: SyncStatusOverview): String = when {
 
 /** Both Sync entrances share the pending and explicit local-stop descriptions. */
 @Composable
-internal fun SyncStatusDebtSections(state: OutboxStatusUiState) {
+internal fun SyncStatusDebtSections(state: OutboxStatusUiState, actions: SyncStatusActions) {
     if (state.waitingDebtWrites.isNotEmpty()) {
-        SettingsSection(title = stringResource(R.string.debt_write_waiting), icon = Icons.Filled.CloudUpload) {
-            state.waitingDebtWrites.forEach { com.ticketbox.ui.screens.DebtWriteIntentSummary(it) }
+        val title = if (state.waitingDebtWrites.any { it.canStop }) R.string.sync_status_section_needs_action else R.string.debt_write_waiting
+        SettingsSection(title = stringResource(title), icon = Icons.Filled.CloudUpload) {
+            state.waitingDebtWrites.forEach { pending ->
+                com.ticketbox.ui.screens.DebtWriteIntentSummary(pending)
+                if (pending.canStop) TextButton(enabled = state.busyRowId == null, onClick = { actions.onDropFailed(pending.row) }) {
+                    Text(stringResource(R.string.debt_write_drop))
+                }
+            }
         }
     }
     val stopped = state.debtWrites.values.filter { it.row.status == PendingMutationStatus.Abandoned }

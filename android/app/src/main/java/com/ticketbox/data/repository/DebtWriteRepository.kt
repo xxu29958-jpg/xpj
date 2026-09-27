@@ -157,6 +157,7 @@ class DebtWriteRepository internal constructor(
                 ?: throw RepositoryException("这次本地提交状态已变化，请重新核对。")
             val original = describeWrite(current)
             require(original != null) { "请回到原账本核对这次提交。" }
+            require(!drop || original.canStop) { "这次本地提交状态已变化，请重新核对。" }
             require(drop || currentAccess()?.canModify == true) { "当前角色为只读，无法重试提交。" }
             require(drop || !original.originalBindingChanged) { "连接信息已变化，无法继续这次原提交；原记录仍保留，可停止本机追踪。" }
             require(drop || original.hasSupportedIntent) { "当前版本无法读取原提交，请升级后继续。" }

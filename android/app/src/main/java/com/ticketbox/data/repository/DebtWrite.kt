@@ -39,6 +39,9 @@ data class PendingDebtWrite(val row: OutboxRow, val intent: DebtWriteIntent?, va
     val canRetry: Boolean
         get() = row.status == PendingMutationStatus.Failed && hasSupportedIntent && !originalBindingChanged && !reductionRejected && !requiresReview &&
             row.lastError?.startsWith("outbox_row_expired") != true
+    val canStop: Boolean
+        get() = row.status in setOf(PendingMutationStatus.Failed, PendingMutationStatus.Conflict) ||
+            row.status == PendingMutationStatus.Pending && originalBindingChanged
 }
 
 internal fun debtWriteTarget(publicId: String): String = "debt:$publicId"

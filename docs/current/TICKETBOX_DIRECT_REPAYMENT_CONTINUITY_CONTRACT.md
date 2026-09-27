@@ -116,3 +116,14 @@ including lost ACK, reopen, explicit stop and credential refresh. Production and
 direct constructor/resource consumers have been migrated locally. Source checks
 are separate from actual cloud RED, candidate GREEN and final main qualification;
 those runtime outcomes are not claimed here.
+
+The current review also identified a concrete offline dead end: a binding-changed
+command still Pending could not be stopped until a connected worker first made
+it Failed. Frozen source 649a7dd1fd90620d00cf7dadeacecb49feffa069 adds direct
+owner and real Room/detail/global-screen cases before the fix. Both existing
+surfaces now use the same stop eligibility: failed/conflict rows, or an original
+Pending row whose logical binding changed. The command owner rechecks it and the
+existing Room update compares the observed status atomically, so an InFlight
+claim cannot be overwritten. Stopping retains original bytes and creates no
+financial fact. Same-binding Pending and InFlight rows retain their previous
+behavior; no network attempt is required just to stop the changed-binding row.

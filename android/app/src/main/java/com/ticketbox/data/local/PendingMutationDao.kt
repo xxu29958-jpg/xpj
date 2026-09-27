@@ -402,13 +402,13 @@ interface PendingMutationDao {
         expectedStatus: String,
     ): Int
 
-    /** Debt-only local stop. The original command and failure context remain intact. */
+    /** Debt-only local stop after the owner checks eligibility; a concurrent claim cannot be overwritten. */
     @Query(
         """
         UPDATE pending_mutations SET status = 'abandoned', completedAt = :stoppedAt
         WHERE id = :id AND ownerKey = :ownerKey AND ledgerId = :ledgerId
           AND type IN ('record_debt_adjustment', 'record_debt_repayment', 'void_debt', 'void_debt_repayment') AND status = :expectedStatus
-          AND status IN ('failed', 'conflict')
+          AND status IN ('pending', 'failed', 'conflict')
         """,
     )
     suspend fun abandonDebtWrite(
