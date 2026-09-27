@@ -104,6 +104,48 @@ class DebtQueryReadTest {
         assertEquals(1, api.commands)
     }
 
+    @Test fun getStartedBeforeDirectAcceptanceCannotReconcileItsFailedCleanupWithAnOldDebt() = runTest {
+        val api = DebtReadApi()
+        val postStarted = CompletableDeferred<Unit>()
+        val accept = CompletableDeferred<Unit>()
+        val fixture = GoalReadFixture { object : ApiService by api {
+            override suspend fun setDebtKind(publicId: String, request: DebtKindSetRequestDto, idempotencyKey: String?): DebtDto {
+                postStarted.complete(Unit)
+                accept.await()
+                return api.setDebtKind(publicId, request, idempotencyKey)
+            }
+        } }
+        var cleanupFails = false
+        val dao = object : ExpenseDao by fixture.dao {
+            override suspend fun settleDebtDirectReads(bindingKey: String, ledgerId: String, tokens: List<String>, expectedEpoch: Long?) {
+                if (cleanupFails) throw SQLiteException("Accepted read cleanup unavailable")
+                fixture.dao.settleDebtDirectReads(bindingKey, ledgerId, tokens, expectedEpoch)
+            }
+        }
+        fun repository() = DebtRepository(fixture.provider, DebtQueryReader(fixture.provider, dao, fixture.coordinator))
+        repository().getDebt("jpy-debt").getOrThrow()
+        val post = async { repository().setDebtKind("jpy-debt", 4, "installment") }
+        postStarted.await()
+        val getStarted = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        api.detail = { val old = readDebt(); getStarted.complete(Unit); release.await(); old }
+        val old = async { repository().getDebt("jpy-debt") }
+        getStarted.await()
+        cleanupFails = true
+        try { accept.complete(Unit); assertEquals(5L, post.await().getOrThrow().rowVersion) }
+        finally { release.complete(Unit) }
+        assertTrue(old.await().isFailure, "A GET issued before the type change committed cannot consume its later accepted barrier")
+        api.offline = true
+        assertTrue(repository().getDebt("jpy-debt").isFailure)
+        cleanupFails = false
+        api.offline = false
+        val current = repository().getDebt("jpy-debt").getOrThrow()
+        assertEquals("installment", current.value.debtKind)
+        assertEquals("JPY", current.value.homeCurrencyCode)
+        assertFalse(current.fromCache)
+        assertEquals(1, api.commands)
+    }
+
     @Test fun proposalReadRefusalRetiresTheSameDebtSnapshotWithoutAddingAnOfflineProposalCache() = runTest {
         val api = DebtReadApi()
         val fixture = GoalReadFixture { api }

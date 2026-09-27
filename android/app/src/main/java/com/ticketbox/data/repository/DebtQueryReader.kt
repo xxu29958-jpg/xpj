@@ -39,7 +39,7 @@ private val activeDebtDirectTokens = ConcurrentHashMap.newKeySet<String>()
 internal data class DebtQueryScope(val row: StatsProjectionCacheEntity, val publicId: String? = null, val directTokens: Set<String> = emptySet())
 private data class DebtReadRequest(val binding: LogicalSessionBinding, val scope: DebtQueryScope,
     val ticket: SnapshotReadTicket, val localGeneration: Long, val epoch: Long, val resourceFence: String?,
-    val unpublishedAcceptance: Boolean)
+    val unpublishedAcceptance: Boolean, val directWasActive: Boolean)
 internal data class DebtReadSpec<T>(val adapter: JsonAdapter<T>, val fetch: suspend ApiService.() -> T,
     val validate: (T) -> Unit, val isNewer: (T, T) -> Boolean, val project: (T, Set<String>) -> T)
 
@@ -75,6 +75,8 @@ internal class DebtQueryReader(
         val key = logicalBindingAdapter.toJson(task.binding)
         val epoch = dao.debtReadEpoch(key)?.toLong() ?: 0L
         val unpublished = dao.hasUnpublishedAcceptedDebt(task.binding.ownerKey, task.binding.ledgerId)
+        val directTokens = dao.debtDirectBarriers(key).map { it.tag }.toSet()
+        val directWasActive = hasActiveDirect(key)
         val fence = deniedResources(key)[task.debtPublicId]
         val value = fetchDebtNetwork(bound, fetch) { error ->
             val failure = errors.httpFailure(error)
@@ -88,6 +90,8 @@ internal class DebtQueryReader(
             check(unpublished || !dao.hasUnpublishedAcceptedDebt(task.binding.ownerKey, task.binding.ledgerId)) {
                 "原往来提交已接受，请重新读取。"
             }
+            check(dao.debtDirectBarriers(key).map { it.tag }.toSet() == directTokens &&
+                (!directWasActive || hasActiveDirect(key))) { "原往来提交状态已变化，请重新读取。" }
             value
         }
     }
@@ -132,7 +136,7 @@ internal class DebtQueryReader(
         val request = DebtReadRequest(binding, scope.copy(directTokens = dao.debtDirectBarriers(query.bindingKey).map { it.tag }.toSet()), ticket, generation.get(),
             dao.debtReadEpoch(query.bindingKey)?.toLong() ?: 0L,
             scope.publicId?.let { deniedResources(query.bindingKey)[it] },
-            dao.hasUnpublishedAcceptedDebt(binding.ownerKey, binding.ledgerId))
+            dao.hasUnpublishedAcceptedDebt(binding.ownerKey, binding.ledgerId), hasActiveDirect(query.bindingKey))
         val wire = try {
             fetchDebtNetwork(bound, spec.fetch) { error ->
                 val failure = errors.httpFailure(error)
@@ -299,13 +303,17 @@ private suspend fun DebtQueryReader.repairDebtDirectRead(request: DebtReadReques
     val query = request.scope.row
     val tokens = dao.debtDirectBarriers(query.bindingKey).map { it.tag }.toSet()
     check(tokens == request.scope.directTokens) { "原往来提交状态已变化，请重新读取。" }
-    if (!cacheAllowed || activeDirect.any { it.startsWith("${query.bindingKey}|") }) return request to false
+    val active = hasActiveDirect(query.bindingKey)
+    check(!request.directWasActive || active) { "原往来提交状态已变化，请重新读取。" }
+    if (!cacheAllowed || active) return request to false
     if (tokens.isEmpty()) return request to true
     return try {
         dao.settleDebtDirectReads(query.bindingKey, request.binding.ledgerId, tokens.toList(), request.epoch)
         request.copy(epoch = request.epoch + 1) to true
     } catch (_: SQLiteException) { request to false }
 }
+
+private fun DebtQueryReader.hasActiveDirect(bindingKey: String) = activeDirect.any { it.startsWith("$bindingKey|") }
 
     private suspend fun DebtQueryReader.listQuery(binding: LogicalSessionBinding, lens: String, fetch: suspend ApiService.() -> DebtListResponseDto) =
         read(binding, DebtQueryScope(debtScope(binding, "debt_list", lens)), DebtReadSpec(listAdapter, fetch,
