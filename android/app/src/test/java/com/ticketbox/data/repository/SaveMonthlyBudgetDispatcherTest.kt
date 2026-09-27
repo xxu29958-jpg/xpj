@@ -87,6 +87,23 @@ class SaveMonthlyBudgetDispatcherTest {
         assertIs<DispatchResult.Failure>(dispatcher(BudgetSaveStub(Result.failure(missing))).dispatch(row()))
     }
 
+    @Test fun verifiedReceiptRemainsAcceptedWhenLocalReadCleanupFails() = runTest {
+        val accepted = receipt()
+        val stub = BudgetSaveStub(Result.success(accepted))
+        val writer = SaveMonthlyBudgetDispatcher({ stub }, adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter,
+            onAccepted = { _, revision ->
+                assertEquals(accepted.rowVersion, revision)
+                throw IllegalStateException("Local read cleanup failed after server acceptance")
+            })
+
+        val result = assertIs<DispatchResult.Success>(writer.dispatch(row()))
+
+        assertEquals(accepted, adapters.budgetReceiptAdapter.fromJson(requireNotNull(result.receiptJson)))
+        assertNull(result.newRowVersion, "Local recovery cannot rebase any original budget command")
+        assertEquals(1, stub.requests.size)
+        assertEquals(listOf<String?>("original-budget-key"), stub.keys)
+    }
+
     private fun dispatcher(api: ApiService) = SaveMonthlyBudgetDispatcher({ api }, adapters.budgetSaveAdapter,
         adapters.budgetReceiptAdapter, onAccepted = { row, revision ->
             acceptedRows += row

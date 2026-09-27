@@ -150,6 +150,13 @@ internal class ExpenseCorrectionConnectedFixture(
             while (cursor.moveToNext()) add(cursor.columnNames.mapIndexed { index, column -> column to cursor.getString(index) }.toMap())
         } }
 
+    fun blockBudgetReadDeletion(block: Boolean) {
+        requireNotNull(database).openHelper.writableDatabase.execSQL(if (block)
+            "CREATE TRIGGER fail_budget_read_delete BEFORE DELETE ON stats_projection_cache " +
+                "WHEN OLD.kind = 'budget' BEGIN SELECT RAISE(ABORT, 'Budget read cleanup unavailable'); END"
+            else "DROP TRIGGER IF EXISTS fail_budget_read_delete")
+    }
+
     suspend fun drain(maxAttempts: Int = 10) = OutboxDrainEngine(outbox,
         listOf(CorrectExpenseDispatcher(
             apiProvider = { network.service },

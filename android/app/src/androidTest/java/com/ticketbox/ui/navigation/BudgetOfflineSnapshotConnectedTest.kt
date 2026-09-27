@@ -300,7 +300,9 @@ class BudgetOfflineSnapshotConnectedTest {
             }
             val adapters = OutboxAdapterGraph()
             val engine = OutboxDrainEngine(fixture.outbox, listOf(SaveMonthlyBudgetDispatcher({ api },
-                adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter, repository.invalidateBudgetReadsAfterDelivery)),
+                adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter, onAccepted = { _, _ ->
+                    throw IOException("Local cleanup unavailable after the accepted original replay")
+                })),
                 now = fixture.clock::millis)
             assertEquals(1, engine.drainOnce().retryable)
             transport.original = receipt.copy(rowVersion = queryVersion, spentAmountCents = 600, remainingAmountCents = 1800)
@@ -309,6 +311,7 @@ class BudgetOfflineSnapshotConnectedTest {
             assertEquals(1, engine.drainOnce().done)
             assertEquals(2, writes)
             val settled = fixture.stored().single { it["id"] == id.toString() }
+            assertEquals("budget_read_refresh_required", settled["lastError"])
             for (field in listOf("payload", "idempotencyKey", "expectedRowVersion", "ownerKey", "ledgerId", "serverUrl")) {
                 assertEquals("Replay must preserve original $field", original[field], settled[field])
             }
@@ -319,7 +322,63 @@ class BudgetOfflineSnapshotConnectedTest {
             assertEquals(query.value, saved.getOrThrow().value)
             assertEquals(query.fetchedAt, saved.getOrThrow().fetchedAt)
             assertTrue(saved.getOrThrow().fromCache)
+            assertNull("Read recovery alone retires the local refresh marker",
+                fixture.stored().single { it["id"] == id.toString() }["lastError"])
         }
+    }
+
+    @Test fun acceptedSaveWithFailedRoomCleanupSettlesOnceAndRecoversOnlyTheLocalRead() = runBlocking {
+        val graph = fixture.reopen()
+        val repository = graph.budgetRepository
+        repository.monthlyBudget("2026-09").getOrThrow()
+        val binding = requireNotNull(graph.expenseRepository.captureDeferredLedgerBinding())
+        repository.enqueueSave(binding, "2026-09", BudgetMonthlyUpdate("JPY", 7, 2400)).getOrThrow()
+        val original = fixture.stored().single()
+        val receipt = offlineBudget().copy(rowVersion = 8, totalAmountCents = 2400, flexBudgetCents = 2400,
+            remainingAmountCents = 1989, excludedCategories = emptyList(), categoryBudgets = emptyList())
+        var writes = 0
+        val api = object : ApiService by transport.service {
+            override suspend fun updateMonthlyBudget(month: String, request: BudgetMonthlyUpdateRequestDto,
+                timezone: String?, idempotencyKey: String?): BudgetMonthlyDto {
+                writes++
+                assertEquals(original["idempotencyKey"], idempotencyKey)
+                assertEquals(BudgetMonthlyUpdateRequestDto("JPY", 7, 2400), request)
+                transport.original = receipt
+                return receipt
+            }
+        }
+        fixture.blockBudgetReadDeletion(true)
+        val adapters = OutboxAdapterGraph()
+        val engine = OutboxDrainEngine(fixture.outbox, listOf(SaveMonthlyBudgetDispatcher({ api },
+            adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter, repository.invalidateBudgetReadsAfterDelivery)),
+            now = fixture.clock::millis)
+        assertEquals("Local Room cleanup cannot undo a verified server receipt", 1, engine.drainOnce().done)
+        val accepted = fixture.stored().single()
+        assertEquals(PendingMutationStatus.Done.wireValue, accepted["status"])
+        assertEquals("budget_read_refresh_required", accepted["lastError"])
+        assertEquals(receipt, adapters.budgetReceiptAdapter.fromJson(requireNotNull(accepted["receiptJson"])))
+        assertEquals(0, fixture.pendingDao.deleteResolvedBeforeCutoff("9999-01-01T00:00:00.000Z"))
+        assertEquals(0, engine.drainOnce().attempted)
+        transport.offline = true
+        assertTrue("Room reopen must not resurrect the v7 read while local recovery is blocked",
+            fixture.reopen().budgetRepository.monthlyBudget("2026-09").isFailure)
+        assertEquals(accepted, fixture.stored().single())
+        fixture.blockBudgetReadDeletion(false)
+        assertTrue("The receipt cannot seed a query when only local cleanup has recovered",
+            fixture.graph.budgetRepository.monthlyBudget("2026-09").isFailure)
+        val recovered = fixture.stored().single()
+        assertNull(recovered["lastError"])
+        for (field in listOf("id", "status", "payload", "idempotencyKey", "expectedRowVersion", "ownerKey", "ledgerId", "serverUrl", "receiptJson")) {
+            assertEquals("Local recovery must preserve original $field", accepted[field], recovered[field])
+        }
+        transport.offline = false
+        val fresh = fixture.graph.budgetRepository.monthlyBudget("2026-09").getOrThrow()
+        transport.offline = true
+        val saved = fixture.reopen().budgetRepository.monthlyBudget("2026-09").getOrThrow()
+        assertEquals(fresh.value, saved.value)
+        assertEquals(fresh.fetchedAt, saved.fetchedAt)
+        assertTrue(saved.fromCache)
+        assertEquals("Read recovery must never resend an accepted command", 1, writes)
     }
 
     @Test fun independentReadsSurviveALaterFailureAndLateOlderSuccessCannotDowngradeRoom() = runBlocking {
