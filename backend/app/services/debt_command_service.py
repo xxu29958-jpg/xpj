@@ -8,6 +8,7 @@ replay semantics instead of re-implementing the Debt contract per surface.
 
 from __future__ import annotations
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -286,6 +287,21 @@ def record_adjustment_idempotently(
     return get_debt_response(db, tenant_id=tenant_id, public_id=public_id)
 
 
+def _original_void_response(
+    db: Session, *, tenant_id: str, idempotency_key: str,
+) -> DebtResponse:
+    stored = db.scalar(select(ApiIdempotencyKey).where(
+        ApiIdempotencyKey.tenant_id == tenant_id,
+        ApiIdempotencyKey.idempotency_key == idempotency_key,
+    ))
+    if stored is None or stored.response_body is None:
+        # Pre-receipt versions recorded the accepted key and append-only fact.
+        # A current balance cannot reconstruct their original accepted result.
+        raise AppError("debt_void_original_requires_review",
+            "原作废已被接受，但旧版本未保存当时结果。请核对原记录，勿重复作废。", status_code=409)
+    return DebtResponse.model_validate(stored.response_body)
+
+
 def void_repayment_idempotently(
     db: Session,
     *,
@@ -307,7 +323,7 @@ def void_repayment_idempotently(
     )
     assert idempotency_key
     if claim is None:
-        return get_debt_response(db, tenant_id=tenant_id, public_id=public_id)
+        return _original_void_response(db, tenant_id=tenant_id, idempotency_key=idempotency_key)
     debt = void_repayment(
         db,
         tenant_id=tenant_id,
@@ -317,15 +333,16 @@ def void_repayment_idempotently(
         idempotency_key=idempotency_key,
         commit=False,
     )
+    result = get_debt_response(db, tenant_id=tenant_id, public_id=public_id)
     mark_idempotency_succeeded(
         db,
         claim,
         resource_type=_DEBT_TARGET_TYPE,
         resource_id=debt.public_id,
+        response_body=result.model_dump(mode="json"),
     )
     db.commit()
-    db.expire_all()
-    return get_debt_response(db, tenant_id=tenant_id, public_id=public_id)
+    return result
 
 
 def void_debt_idempotently(
@@ -349,7 +366,7 @@ def void_debt_idempotently(
     )
     assert idempotency_key
     if claim is None:
-        return get_debt_response(db, tenant_id=tenant_id, public_id=public_id)
+        return _original_void_response(db, tenant_id=tenant_id, idempotency_key=idempotency_key)
     debt = void_debt(
         db,
         tenant_id=tenant_id,
@@ -359,15 +376,16 @@ def void_debt_idempotently(
         idempotency_key=idempotency_key,
         commit=False,
     )
+    result = get_debt_response(db, tenant_id=tenant_id, public_id=public_id)
     mark_idempotency_succeeded(
         db,
         claim,
         resource_type=_DEBT_TARGET_TYPE,
         resource_id=debt.public_id,
+        response_body=result.model_dump(mode="json"),
     )
     db.commit()
-    db.expire_all()
-    return get_debt_response(db, tenant_id=tenant_id, public_id=public_id)
+    return result
 
 
 def forgive_debt_idempotently(

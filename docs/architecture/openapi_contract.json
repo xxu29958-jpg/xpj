@@ -6571,6 +6571,11 @@
             "title": "Csrf Token",
             "type": "string"
           },
+          "debt_public_id": {
+            "default": "",
+            "title": "Debt Public Id",
+            "type": "string"
+          },
           "expected_row_version": {
             "default": "",
             "title": "Expected Row Version",
@@ -6586,9 +6591,19 @@
             "title": "Ledger Id",
             "type": "string"
           },
+          "origin_binding": {
+            "default": "",
+            "title": "Origin Binding",
+            "type": "string"
+          },
           "reason": {
             "default": "",
             "title": "Reason",
+            "type": "string"
+          },
+          "repayment_public_id": {
+            "default": "",
+            "title": "Repayment Public Id",
             "type": "string"
           }
         },
@@ -6703,6 +6718,11 @@
             "title": "Csrf Token",
             "type": "string"
           },
+          "debt_public_id": {
+            "default": "",
+            "title": "Debt Public Id",
+            "type": "string"
+          },
           "expected_row_version": {
             "default": "",
             "title": "Expected Row Version",
@@ -6716,6 +6736,11 @@
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
+            "type": "string"
+          },
+          "origin_binding": {
+            "default": "",
+            "title": "Origin Binding",
             "type": "string"
           },
           "reason": {
