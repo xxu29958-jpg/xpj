@@ -407,7 +407,7 @@ interface PendingMutationDao {
         """
         UPDATE pending_mutations SET status = 'abandoned', completedAt = :stoppedAt
         WHERE id = :id AND ownerKey = :ownerKey AND ledgerId = :ledgerId
-          AND type IN ('record_debt_adjustment', 'record_debt_repayment') AND status = :expectedStatus
+          AND type IN ('record_debt_adjustment', 'record_debt_repayment', 'void_debt', 'void_debt_repayment') AND status = :expectedStatus
           AND status IN ('failed', 'conflict')
         """,
     )

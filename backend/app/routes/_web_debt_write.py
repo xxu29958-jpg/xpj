@@ -22,6 +22,7 @@ from app.routes.web_common import (
     _require_selected_ledger_write,
     _sidebar_counts,
 )
+from app.services.manual_expense_draft_presenter import manual_draft_scope
 from app.services.spending_contract_service import accounting_zone
 from app.services.time_service import now_utc
 
@@ -46,6 +47,11 @@ PROPOSAL_CONFIRM_AMOUNT_FIELD = "confirmed_amount_major"
 # N-1 兼容：D3 修复前路由误读的旧字段名。旧客户端/旧页面仍按它提交时不得静默丢金额
 # (新字段非空优先，旧字段兜底，两者皆空按申报全额)；路由侧同样以 Form(alias=...) 绑定本常量。
 PROPOSAL_CONFIRM_AMOUNT_FIELD_LEGACY = "amount_major"
+
+
+def repayment_scope(request: Request, db: Session) -> dict[str, str]:
+    auth = getattr(request.state, "web_session_auth", None)
+    return manual_draft_scope(db, auth) if auth is not None else {}
 
 
 def _parse_paid_at(raw: str, timezone_name: str = "") -> datetime | None:

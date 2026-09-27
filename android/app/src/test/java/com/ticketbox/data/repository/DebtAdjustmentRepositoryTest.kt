@@ -379,7 +379,7 @@ internal class DebtAdjustmentFixture(role: String = "owner") {
         onEnqueued = { queueDepthAtSchedule += dao.rows.size },
     )
 
-    fun newRepository(outbox: OutboxRepository) = DebtWriteRepository(provider, outbox, adapters.debtAdjustmentAdapter, adapters.debtRepaymentAdapter)
+    fun newRepository(outbox: OutboxRepository) = DebtWriteRepository(provider, outbox, adapters)
 
     suspend fun save(amountCents: Long = 3_000L, reason: String = "  补记借款  ", debt: Debt = this.debt) =
         repository.save(binding, debt, amountCents, reason)

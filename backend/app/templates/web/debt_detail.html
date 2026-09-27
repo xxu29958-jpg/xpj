@@ -184,6 +184,13 @@
 {% include '_debt_repayment_form.html' %}
 {% endif %}
 
+{% if not debt.is_member %}
+{% include '_debt_void_form.html' %}
+{% if repayment_void_recovery %}
+{% with void_form = repayment_void_recovery %}{% include '_debt_void_form.html' %}{% endwith %}
+{% endif %}
+{% endif %}
+
 {% if can_write and debt_open and action_keys and (not debt.is_member or viewer_is_debtor == false) %}
 <section class="product-panel product-panel--padded debt-actions" aria-labelledby="debt-actions-title">
   <h2 class="product-panel-title" id="debt-actions-title">处理这笔欠款</h2>
@@ -241,28 +248,7 @@
     </details>
     {% endif %}
 
-    {% if not debt.is_member %}
-    <details class="debt-action-panel debt-action-panel--danger" id="debt-action-panel-void"{% if action_form.kind == 'void' %} open{% endif %}>
-      <summary>作废这笔欠款</summary>
-      <form class="debt-action-form" method="post" action="/web/debts/{{ debt.public_id }}/void">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-        <input type="hidden" name="idempotency_key" value="{{ action_keys.void }}">
-        <input type="hidden" name="expected_row_version" value="{{ expected_row_version }}">
-        {% if action_form.kind == 'void' %}
-        <div id="debt-action-error-void" class="product-feedback product-feedback--danger debt-action-error" role="alert">{{ action_form.error }}</div>
-        {% endif %}
-        <p class="hint">作废是不可逆的状态标记（记录保留），仅当这笔欠款本就记错时使用。</p>
-        <div class="product-field">
-          <label for="debt-void-reason">作废原因（可选）</label>
-          <input id="debt-void-reason" class="product-input" name="reason" type="text" maxlength="80" placeholder="比如：重复记账" value="{{ action_form.draft.reason if action_form.kind == 'void' else '' }}"{% if action_form.kind == 'void' %} aria-describedby="debt-action-error-void"{% endif %}>
-        </div>
-        <div class="debt-form-actions">
-          <button class="product-button product-button--danger" type="submit">确认作废</button>
-        </div>
-      </form>
-    </details>
-    {% endif %}
+
   </div>
 </section>
 {% endif %}

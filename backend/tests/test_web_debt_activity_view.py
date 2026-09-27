@@ -3,10 +3,25 @@
 from datetime import UTC, datetime
 
 import pytest
+from starlette.requests import Request
 
+from app.routes._web_debt_void import void_context
 from app.routes.web_common import templates
 from app.schemas._debt_activity import DebtActivityListResponse, DebtActivityResponse
 from app.schemas._debts import MemberRepaymentProposalResponse, RepaymentFactResponse
+
+
+def _void_activity(view, *, status="open", values=None, error=""):
+    request = Request({"type": "http", "headers": []})
+    for row in view["rows"]:
+        if row["kind"] == "repayment":
+            fact = row["repayment"]
+            fact["void_form"] = void_context(request, None, selected_id="my-ledger", public_id="debt-one",
+                kind="repayment-void", expected="7", target=fact["public_id"],
+                can_create=status != "voided" and not fact["is_voided"], can_recover=True,
+                values=values, error=error, result="blocked" if values else "")
+    return view
+
 
 
 def _page(items, *, page=2, total=42):
@@ -68,7 +83,7 @@ def test_repayment_retains_frozen_fx_paid_date_and_void_intent_on_older_page():
     )
     view = activity_view(_page([event]), selected_id="my-ledger")
     html = templates.get_template("_debt_activity.html").render(
-        activity=view, debt={"is_member": False, "public_id": "debt-one"}, can_write=True,
+        activity=_void_activity(view, values={"reason":"填错了", "idempotency_key":"original-key"}), debt={"is_member": False, "public_id": "debt-one"}, can_write=True,
         action_form={"kind": "repayment_void", "target_public_id": "repay-one",
                      "draft": {"reason": "填错了", "idempotency_key": "original-key"}, "error": "请核对"},
         selected_ledger_id="my-ledger", csrf_token="csrf", expected_row_version=7,
@@ -177,14 +192,16 @@ def test_already_voided_fact_keeps_failed_attempt_visible_without_another_submit
     event = DebtActivityResponse(kind="repayment", public_id=fact.public_id,
                                  recorded_at=fact.created_at, actor_is_you=True, repayment=fact)
     html = templates.get_template("_debt_activity.html").render(
-        activity=activity_view(_page([event]), selected_id="my-ledger"),
+        activity=_void_activity(activity_view(_page([event]), selected_id="my-ledger"),
+            values={"reason":"我填写的原因", "idempotency_key":"original-key"}, error="另一端已经撤销"),
         debt={"is_member": False, "public_id": "debt-one"}, can_write=True,
         action_form={"kind": "repayment_void", "target_public_id": "repay-one", "fallback": False,
                      "error": "另一端已经撤销", "draft": {"reason": "我填写的原因"}},
     )
-    assert 'id="debt-action-error-repayment_void-repay-one"' in html
+    assert "另一端已经撤销" in html
     assert "我填写的原因" in html and "先到的更正" in html
-    assert "/repayment-voids" not in html
+    assert 'name="idempotency_key" value="original-key"' in html
+    assert 'data-repayment-can-create="false"' in html
 
 
 @pytest.mark.parametrize("debt_status, can_void", [("open", True), ("cleared", True), ("voided", False)])
@@ -199,11 +216,11 @@ def test_repayment_void_action_respects_whole_debt_terminal_state(debt_status, c
     debt = stub_debt(public_id="debt-one", status=debt_status,
                      remaining_amount_cents=4000 if debt_status == "open" else 0)
     html = templates.get_template("_debt_activity.html").render(
-        activity=activity_view(_page([event]), selected_id="my-ledger"),
+        activity=_void_activity(activity_view(_page([event]), selected_id="my-ledger"), status=debt_status),
         debt=_detail_view(debt), debt_open=debt_status == "open", can_write=True,
         action_form={"kind": ""}, selected_ledger_id="my-ledger",
         csrf_token="csrf", expected_row_version=7,
     )
-    assert ('action="/web/debts/debt-one/repayment-voids' in html) is can_void
+    assert ('data-repayment-can-create="true"' in html) is can_void
     assert 'id="repayment-repay-one"' in html
     assert "付款日期 2026-09-10" in html and "$5.50" in html

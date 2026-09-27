@@ -1,0 +1,10 @@
+{% extends 'base.html' %}
+{% block page_scripts %}
+<script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/repayment-entry.js?v={{ asset_version }}"></script>
+{% endblock %}
+{% block content %}
+<h1 class="page-title">核对原作废提交</h1>
+{% include '_debt_void_form.html' %}
+<a href="/web/debts/{{ void_form.public_id }}?ledger_id={{ selected_ledger_id }}">返回原欠款与往来历史</a>
+{% endblock %}

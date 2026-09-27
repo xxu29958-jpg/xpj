@@ -1,4 +1,5 @@
 {% set repayment = repayment_form %}
+<div data-repayment-container>
 <section class="product-panel product-panel--padded debt-actions" data-repayment-panel{% if not repayment.visible %} hidden{% endif %}>
   <h2 class="product-panel-title">{{ '核对原还款' if repayment.result else '记一笔还款' }}</h2>
   <form class="debt-action-form" method="post" action="/web/debts/{{ repayment.public_id }}/repayments"
@@ -41,3 +42,4 @@
 {% if repayment.ack %}
 <div class="product-feedback" id="debt-action-feedback" role="status" data-repayment-ack="{{ repayment.ack | tojson | forceescape }}">还款事实已记录。<span data-repayment-ack-status></span></div>
 {% endif %}
+</div>

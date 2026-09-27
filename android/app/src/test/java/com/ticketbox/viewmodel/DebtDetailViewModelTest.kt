@@ -132,9 +132,9 @@ class DebtDetailViewModelTest {
         // 否则用户失去作废错账的安全出口；金额动作（还款/调整）维持 fail closed（见上钉）。
         val repo = FakeDebtDetailActions(
             getResult = Result.success(sampleDebt("d1", rowVersion = 1L, remaining = 50_000L).copy(homeCurrencyCode = "XXX")),
-            writeResult = Result.success(sampleDebt("d1", rowVersion = 2L, status = DebtLinkStatuses.VOIDED)),
         )
-        val viewModel = DebtDetailViewModel(repo, FakeDebtWriteActions())
+        val writes = FakeDebtWriteActions()
+        val viewModel = DebtDetailViewModel(repo, writes)
         viewModel.loadDebt("d1")
         advanceUntilIdle()
 
@@ -143,10 +143,10 @@ class DebtDetailViewModelTest {
         viewModel.submit()
         advanceUntilIdle()
 
-        val call = repo.voidCalls.single()
-        assertEquals("d1", call.publicId)
-        assertEquals(1L, call.expectedRowVersion)
-        assertEquals(DebtLinkStatuses.VOIDED, viewModel.state.value.debt?.status)
+        val call = writes.voidCalls.single()
+        assertEquals("d1", call.debt.publicId)
+        assertEquals(1L, call.debt.rowVersion)
+        assertEquals(DebtLinkStatuses.OPEN, viewModel.state.value.debt?.status)
         assertNull(viewModel.state.value.validationError)
     }
 
@@ -179,7 +179,6 @@ class DebtDetailViewModelTest {
         // C07：1.230 精确等于 123 minor；超精度拒绝由共享 formatter 契约测试钉住。
         val repo = FakeDebtDetailActions(
             getResult = Result.success(sampleDebt("d1", rowVersion = 1L, remaining = 50_000L)),
-            writeResult = Result.success(sampleDebt("d1", rowVersion = 2L, remaining = 49_899L)),
         )
         val writes = FakeDebtWriteActions()
         val viewModel = DebtDetailViewModel(repo, writes)
@@ -202,9 +201,6 @@ class DebtDetailViewModelTest {
             getResult = Result.success(
                 sampleDebt("d1", rowVersion = 1L, remaining = 50_000L).copy(homeCurrencyCode = "JPY"),
             ),
-            writeResult = Result.success(
-                sampleDebt("d1", rowVersion = 2L, remaining = 48_800L).copy(homeCurrencyCode = "JPY"),
-            ),
         )
         val writes = FakeDebtWriteActions()
         val viewModel = DebtDetailViewModel(repo, writes)
@@ -226,9 +222,6 @@ class DebtDetailViewModelTest {
         val repo = FakeDebtDetailActions(
             getResult = Result.success(
                 sampleDebt("d1", rowVersion = 1L, remaining = 50_000L).copy(homeCurrencyCode = "JPY"),
-            ),
-            writeResult = Result.success(
-                sampleDebt("d1", rowVersion = 2L, remaining = 49_500L).copy(homeCurrencyCode = "JPY"),
             ),
         )
         val writes = FakeDebtWriteActions()
@@ -342,12 +335,12 @@ class DebtDetailViewModelTest {
     }
 
     @Test
-    fun submitVoidSendsReasonAndSwapsFold() = runTest(dispatcher) {
+    fun submitVoidPublishesOriginalReasonWithoutChangingCanonicalFold() = runTest(dispatcher) {
         val repo = FakeDebtDetailActions(
             getResult = Result.success(sampleDebt("d1", rowVersion = 1L)),
-            writeResult = Result.success(sampleDebt("d1", rowVersion = 2L, status = DebtLinkStatuses.VOIDED)),
         )
-        val viewModel = DebtDetailViewModel(repo, FakeDebtWriteActions())
+        val writes = FakeDebtWriteActions()
+        val viewModel = DebtDetailViewModel(repo, writes)
         viewModel.loadDebt("d1")
         advanceUntilIdle()
 
@@ -356,17 +349,18 @@ class DebtDetailViewModelTest {
         viewModel.submit()
         advanceUntilIdle()
 
-        val call = repo.voidCalls.single()
+        val call = writes.voidCalls.single()
         assertEquals("记错了", call.reason)
-        assertEquals(1L, call.expectedRowVersion)
-        assertEquals(DebtLinkStatuses.VOIDED, viewModel.state.value.debt?.status)
+        assertEquals(1L, call.debt.rowVersion)
+        assertEquals(DebtLinkStatuses.OPEN, viewModel.state.value.debt?.status)
         assertNull(viewModel.state.value.activeAction)
     }
 
     @Test
     fun submitVoidValidationRequiresReasonWithoutWrite() = runTest(dispatcher) {
         val repo = FakeDebtDetailActions()
-        val viewModel = DebtDetailViewModel(repo, FakeDebtWriteActions())
+        val writes = FakeDebtWriteActions()
+        val viewModel = DebtDetailViewModel(repo, writes)
         viewModel.loadDebt("d1")
         advanceUntilIdle()
 
@@ -375,7 +369,7 @@ class DebtDetailViewModelTest {
         advanceUntilIdle()
 
         assertTrue(viewModel.state.value.validationError != null)
-        assertTrue(repo.voidCalls.isEmpty())
+        assertTrue(writes.voidCalls.isEmpty())
     }
 
     @Test
@@ -625,14 +619,14 @@ class DebtDetailViewModelTest {
     // ── ADR-0049 §2.1 stale-refresh 代际守卫（功能正确性加固 #2，镜像 DebtGoalViewModel）─────────────
 
     @Test
-    fun refreshSupersededByOnlineVoidStillClearsLoadingFlag() = runTest(dispatcher) {
+    fun refreshDuringVoidPublicationStillClearsLoadingFlag() = runTest(dispatcher) {
         // A refresh dropped because a (non-refresh) write superseded it must still clear isLoading,
         // or the screen sticks "loading".
         val repo = FakeDebtDetailActions(
             getResult = Result.success(sampleDebt("d1", rowVersion = 5L)),
-            writeResult = Result.success(sampleDebt("d1", rowVersion = 6L)),
         )
-        val viewModel = DebtDetailViewModel(repo, FakeDebtWriteActions())
+        val writes = FakeDebtWriteActions()
+        val viewModel = DebtDetailViewModel(repo, writes)
         viewModel.loadDebt("d1")
         advanceUntilIdle()
 
@@ -647,8 +641,9 @@ class DebtDetailViewModelTest {
         viewModel.updateActionInput(reason = "duplicate")
         viewModel.submit()
         advanceUntilIdle()
-        assertEquals(listOf(WriteArgs("d1", 5L, null, "duplicate")), repo.voidCalls)
-        assertEquals(6L, viewModel.state.value.debt?.rowVersion)
+        assertEquals("duplicate", writes.voidCalls.single().reason)
+        assertEquals(5L, writes.voidCalls.single().debt.rowVersion)
+        assertEquals(5L, viewModel.state.value.debt?.rowVersion)
         // The stalled refresh still owns the (true) loading flag; the write didn't touch it.
         assertTrue(viewModel.state.value.isLoading)
 
@@ -721,21 +716,12 @@ class DebtDetailViewModelTest {
 
 }
 
-private data class WriteArgs(
-    val publicId: String,
-    val expectedRowVersion: Long,
-    val amountCents: Long?,
-    val reason: String?,
-)
-
 private data class KindArgs(val publicId: String, val expectedRowVersion: Long, val kind: String)
 
 private class FakeDebtDetailActions(
     private val canModify: Boolean = true,
     var getResult: Result<Debt> = Result.success(sampleDebt("d1")),
-    var writeResult: Result<Debt> = Result.success(sampleDebt("d1")),
 ) : DebtActions {
-    val voidCalls = mutableListOf<WriteArgs>()
     val setKindCalls = mutableListOf<KindArgs>()
     var setKindResult: Result<Debt> = Result.success(sampleDebt("d1"))
 
@@ -763,21 +749,6 @@ private class FakeDebtDetailActions(
         bytes: ByteArray,
     ): Result<DebtBillSuggestion> = Result.failure(UnsupportedOperationException())
 
-    override suspend fun voidRepayment(
-        publicId: String,
-        repaymentPublicId: String,
-        expectedRowVersion: Long,
-        reason: String,
-    ): Result<Debt> = Result.failure(UnsupportedOperationException())
-
-    override suspend fun voidDebt(
-        publicId: String,
-        expectedRowVersion: Long,
-        reason: String,
-    ): Result<Debt> {
-        voidCalls += WriteArgs(publicId, expectedRowVersion, null, reason)
-        return writeResult
-    }
 
     override suspend fun setDebtKind(
         publicId: String,

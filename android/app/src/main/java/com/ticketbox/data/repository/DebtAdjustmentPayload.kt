@@ -18,7 +18,7 @@ data class DebtAdjustmentPayload(
     val originSessionGeneration: String,
     val originBindingRevision: String,
     val request: DebtAdjustmentCreateRequestDto,
-) : DebtWriteIntent {
+) : DebtAmountIntent {
     override val amountCents: Long get() = request.amountCents
     override val expectedRowVersion: Long get() = request.expectedRowVersion
 }

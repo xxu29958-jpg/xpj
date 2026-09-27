@@ -32,6 +32,8 @@ internal data class RepaymentSaveCall(
     val amountCents: Long,
 )
 
+internal data class VoidSaveCall(val binding: LogicalSessionBinding, val debt: Debt, val repaymentPublicId: String?, val reason: String)
+
 internal data class AdjustmentRecoveryCall(
     val binding: LogicalSessionBinding,
     val pending: PendingDebtWrite,
@@ -45,6 +47,7 @@ internal class FakeDebtWriteActions(
     val rows = MutableStateFlow<List<PendingDebtWrite>>(emptyList())
     val saveCalls = mutableListOf<AdjustmentSaveCall>()
     val repaymentCalls = mutableListOf<RepaymentSaveCall>()
+    val voidCalls = mutableListOf<VoidSaveCall>()
     val recoveryCalls = mutableListOf<AdjustmentRecoveryCall>()
     var saveResult = Result.success(1L)
     var saveGate: CompletableDeferred<Unit>? = null
@@ -81,6 +84,19 @@ internal class FakeDebtWriteActions(
 
     override suspend fun saveRepayment(binding: LogicalSessionBinding, debt: Debt, amountCents: Long): Result<Long> {
         repaymentCalls += RepaymentSaveCall(binding, debt, amountCents)
+        val captured = saveResult
+        saveGate?.await()
+        return captured
+    }
+
+    override suspend fun saveVoid(binding: LogicalSessionBinding, debt: Debt, reason: String): Result<Long> =
+        saveVoidCommand(binding, debt, null, reason)
+
+    override suspend fun saveRepaymentVoid(binding: LogicalSessionBinding, debt: Debt, repaymentPublicId: String, reason: String): Result<Long> =
+        saveVoidCommand(binding, debt, repaymentPublicId, reason)
+
+    private suspend fun saveVoidCommand(binding: LogicalSessionBinding, debt: Debt, repaymentPublicId: String?, reason: String): Result<Long> {
+        voidCalls += VoidSaveCall(binding, debt, repaymentPublicId, reason)
         val captured = saveResult
         saveGate?.await()
         return captured
@@ -129,15 +145,8 @@ internal fun pendingAdjustment(
 
 internal class AdjustmentDetailActions : DebtActions by FakeDebtActions() {
     val mutations = mutableListOf<String>()
-    override suspend fun voidDebt(publicId: String, expectedRowVersion: Long, reason: String): Result<Debt> {
-        mutations += "void:$publicId:$expectedRowVersion:$reason"
-        return getResult
-    }
-    override suspend fun voidRepayment(publicId: String, repaymentPublicId: String,
-        expectedRowVersion: Long, reason: String): Result<Debt> {
-        mutations += "repaymentVoid:$publicId:$repaymentPublicId:$expectedRowVersion:$reason"
-        return getResult
-    }
+
+
     override suspend fun setDebtKind(publicId: String, expectedRowVersion: Long, debtKind: String): Result<Debt> {
         mutations += "kind:$publicId:$expectedRowVersion:$debtKind"
         return getResult
