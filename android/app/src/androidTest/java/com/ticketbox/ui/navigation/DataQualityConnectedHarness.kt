@@ -86,7 +86,7 @@ internal class DataQualityConnectedHarness : AutoCloseable {
         }
         val settingsStore = interfaceProxy<TicketboxSettingsStore> { name ->
             when (name) {
-                "lastUploadAtForLedger" -> null
+                "lastUploadAtForLedger", "snapshotReadAccessDenial" -> null
                 else -> Unhandled
             }
         }
@@ -127,7 +127,8 @@ internal class DataQualityConnectedHarness : AutoCloseable {
                 sessionCoordinator = coordinator,
             ),
             recurringRepository = RecurringRepository(apiProvider),
-            budgetRepository = BudgetRepository(apiProvider, outbox, adapters, database.monthlyArrangementCacheDao(), coordinator),
+            budgetRepository = BudgetRepository(apiProvider, outbox, adapters, com.ticketbox.data.repository.BudgetLocalStorage(
+                database.monthlyArrangementCacheDao(), com.ticketbox.data.repository.BudgetQueryReader(apiProvider, database.expenseDao(), coordinator, outbox)), coordinator),
             reportsRepository = interfaceProxy<ReportsActions>(),
             goalEditRepository = com.ticketbox.data.repository.GoalEditRepository(apiProvider, outbox,
                 adapters.goalUpdateAdapter, adapters.goalReceiptAdapter, adapters.goalCreateAdapter),

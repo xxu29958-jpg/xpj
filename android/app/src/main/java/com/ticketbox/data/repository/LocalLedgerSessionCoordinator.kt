@@ -8,8 +8,12 @@ import com.ticketbox.security.LocalSessionRecord
 import com.ticketbox.security.LocalSessionStore
 import com.ticketbox.security.LocalSessionVersion
 import com.ticketbox.security.StoredSessionToken
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import java.util.UUID
 
 internal data class SnapshotReadTicket(val generation: Long, val sequence: Long)
@@ -85,20 +89,37 @@ class LocalLedgerSessionCoordinator(
     private var readGeneration = 0L
     private var readSequence = 0L
     private var readInvalidation = RepositoryException("读取结果已失效，请重新读取。")
+    private val accessDenials = MutableStateFlow(settingsStore.restoreSnapshotAccessDenial(sessionStore))
+    private var pendingAccessCleanupBindingKey: String? = accessDenials.value?.let { logicalBindingAdapter.toJson(it.binding) }
+    val snapshotAccessDenials: StateFlow<SnapshotAccessDenial?> = accessDenials.asStateFlow()
 
     internal suspend fun beginSnapshotRead(): SnapshotReadTicket = mutex.withLock {
+        val restored = settingsStore.restoreSnapshotAccessDenial(sessionStore)
+        if (restored != null && (accessDenials.value?.binding != restored.binding || pendingAccessCleanupBindingKey == null)) {
+            accessDenials.value = restored.copy(generation = readGeneration)
+            pendingAccessCleanupBindingKey = logicalBindingAdapter.toJson(restored.binding)
+        }
         SnapshotReadTicket(readGeneration, ++readSequence)
     }
 
     internal suspend fun <T> acceptSnapshotRead(
         ticket: SnapshotReadTicket,
         bound: BoundLedgerRequest,
-        block: suspend () -> T,
+        fromCache: Boolean,
+        block: suspend (Boolean) -> T,
     ): T = mutex.withLock {
         bound.requireStillActive()
         if (ticket.generation != readGeneration) throw readInvalidation
+        val pending = accessDenials.value?.takeIf {
+            it.binding == bound.logicalBinding && pendingAccessCleanupBindingKey != null
+        }
+        if (fromCache && pending != null) throw pending.failure
+        val cacheAllowed = pending == null || (expenseDao.clearDeniedSnapshotCaches(bound.logicalBinding,
+            requireNotNull(pendingAccessCleanupBindingKey)) &&
+            settingsStore.persistSnapshotAccessDenial(bound.logicalBinding, requireNotNull(pendingAccessCleanupBindingKey), null))
+        if (cacheAllowed && pending != null) pendingAccessCleanupBindingKey = null
         val outboxRef = outbox
-        if (outboxRef == null) block() else outboxRef.withActiveBinding(bound) { block() }
+        if (outboxRef == null) block(cacheAllowed) else outboxRef.withActiveBinding(bound) { block(cacheAllowed) }
     }
 
     internal suspend fun rejectSnapshotAccess(bound: BoundLedgerRequest, bindingKey: String, failure: RepositoryException) {
@@ -106,8 +127,12 @@ class LocalLedgerSessionCoordinator(
         mutex.withLock {
             if (!bound.isStillActive()) return@withLock
             invalidateSnapshotReads(failure)
-            expenseDao.clearReadSnapshotsForBinding(bindingKey)
-            expenseDao.clearMonthlyReadSnapshotsForBinding(monthlyArrangementPersistentBindingKey(bound.logicalBinding))
+            val denial = SnapshotAccessDenial(bound.logicalBinding, failure, readGeneration)
+            pendingAccessCleanupBindingKey = bindingKey
+            accessDenials.value = denial
+            settingsStore.persistSnapshotAccessDenial(bound.logicalBinding, bindingKey, failure.httpStatusCode)
+            if (expenseDao.clearDeniedSnapshotCaches(bound.logicalBinding, bindingKey) &&
+                settingsStore.persistSnapshotAccessDenial(bound.logicalBinding, bindingKey, null)) pendingAccessCleanupBindingKey = null
         }
     }
 
@@ -375,3 +400,14 @@ private fun LocalSessionIdentity.toLedgerSessionIdentity(): LedgerSessionIdentit
         role = role,
         boundAt = boundAt,
     )
+
+/** A cache failure cannot undo denial; cancellation still belongs to the caller. */
+private suspend fun ExpenseDao.clearDeniedSnapshotCaches(binding: LogicalSessionBinding, bindingKey: String): Boolean = try {
+    clearReadSnapshotsForBinding(bindingKey)
+    clearMonthlyReadSnapshotsForBinding(monthlyArrangementPersistentBindingKey(binding))
+    true
+} catch (error: CancellationException) {
+    throw error
+} catch (_: Exception) {
+    false
+}

@@ -41,7 +41,9 @@ class DebtGoalCanonicalContinuityTest {
         var detailFails = false
         var detailCalls = 0
         val unexpected = Proxy.newProxyInstance(ReportsActions::class.java.classLoader,
-            arrayOf(ReportsActions::class.java)) { _, method, _ -> error("Unexpected goal call: ${method.name}") } as ReportsActions
+            arrayOf(ReportsActions::class.java)) { _, method, _ ->
+            if (method.name == "getReadAccessDenials") kotlinx.coroutines.flow.emptyFlow<com.ticketbox.data.repository.SnapshotAccessDenial>()
+            else error("Unexpected goal call: ${method.name}") } as ReportsActions
         val repository = object : ReportsActions by unexpected {
             override fun canModifyLedger() = true
             override suspend fun debtGoals(includeArchived: Boolean, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?, timezone: String) = Result.success(ReadSnapshot(listOf(listed), "2026-09-09T00:00:00Z", false))
@@ -92,7 +94,9 @@ class DebtGoalCanonicalContinuityTest {
         var result = Result.success(listOf(original))
         var gate: CompletableDeferred<Unit>? = null
         val unexpected = Proxy.newProxyInstance(ReportsActions::class.java.classLoader,
-            arrayOf(ReportsActions::class.java)) { _, method, _ -> error("Unexpected goal call: ${method.name}") } as ReportsActions
+            arrayOf(ReportsActions::class.java)) { _, method, _ ->
+            if (method.name == "getReadAccessDenials") kotlinx.coroutines.flow.emptyFlow<com.ticketbox.data.repository.SnapshotAccessDenial>()
+            else error("Unexpected goal call: ${method.name}") } as ReportsActions
         val repo = object : ReportsActions by unexpected {
             override fun canModifyLedger() = true
             override suspend fun debtGoals(includeArchived: Boolean, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?, timezone: String): Result<ReadSnapshot<List<Goal>>> {
@@ -142,7 +146,9 @@ class DebtGoalCanonicalContinuityTest {
         var queried = original
         var fromCache = false
         val unexpected = Proxy.newProxyInstance(ReportsActions::class.java.classLoader,
-            arrayOf(ReportsActions::class.java)) { _, method, _ -> error("Unexpected goal call: ${method.name}") } as ReportsActions
+            arrayOf(ReportsActions::class.java)) { _, method, _ ->
+            if (method.name == "getReadAccessDenials") kotlinx.coroutines.flow.emptyFlow<com.ticketbox.data.repository.SnapshotAccessDenial>()
+            else error("Unexpected goal call: ${method.name}") } as ReportsActions
         val repo = object : ReportsActions by unexpected {
             override fun canModifyLedger() = true
             override suspend fun debtGoals(includeArchived: Boolean, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?, timezone: String) =

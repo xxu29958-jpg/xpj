@@ -35,6 +35,7 @@ data class SpendingGoalDetailUiState(
     val isLoading: Boolean = false,
     val loadError: UiText? = null,
     val isEditing: Boolean = false,
+    val formDirty: Boolean = false,
     val name: String = "",
     val month: String = YearMonth.now().toString(),
     val targetAmountInput: String = "",
@@ -87,6 +88,14 @@ class SpendingGoalDetailViewModel(
         }
 
     init {
+        viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            reports.readAccessDenials.collect { denial ->
+                if (denial.binding != taskBinding || edits.currentAccess()?.binding != denial.binding) return@collect
+                loadGeneration += 1
+                loadJob?.cancel()
+                _state.update { it.withReadFailure(denial.failure) }
+            }
+        }
         viewModelScope.launch {
             edits.observeAccess().collect { access ->
                 val changed = access?.binding != taskBinding
@@ -108,7 +117,7 @@ class SpendingGoalDetailViewModel(
     fun load(publicId: String = _state.value.publicId) {
         val id = publicId.trim().takeIf { it.isNotEmpty() } ?: return
         val binding = edits.currentAccess()?.binding ?: return
-        if (id == _state.value.publicId && _state.value.isEditing && taskBinding == binding) return
+        if (id == _state.value.publicId && _state.value.isEditing && _state.value.goal != null && taskBinding == binding) return
         val sameTask = id == _state.value.publicId && taskBinding == binding
         taskBinding = binding
         val generation = ++loadGeneration
@@ -168,6 +177,7 @@ class SpendingGoalDetailViewModel(
         _state.update {
             it.copy(
                 isEditing = true,
+                formDirty = false,
                 name = goal.name,
                 month = goal.month,
                 targetAmountInput = formatAmountInput(goal.targetAmountCents, currency),
@@ -180,25 +190,31 @@ class SpendingGoalDetailViewModel(
 
     fun cancelEdit() {
         if (!_state.value.isSaving) {
-            _state.update { it.copy(isEditing = false, formError = null, message = null) }
+            _state.update { it.copy(isEditing = false, formDirty = false, formError = null, message = null) }
         }
     }
 
     fun updateField(field: SpendingGoalEditField, value: String) {
         _state.update {
+            val previous = when (field) {
+                SpendingGoalEditField.Name -> it.name
+                SpendingGoalEditField.Amount -> it.targetAmountInput
+                SpendingGoalEditField.Category -> it.category
+            }
+            val current = it.copy(formDirty = it.formDirty || value != previous)
             when (field) {
-                SpendingGoalEditField.Name -> it.copy(name = value, formError = null)
+                SpendingGoalEditField.Name -> current.copy(name = value, formError = null)
                 SpendingGoalEditField.Amount -> {
                     // R14-2：币种已解析时即时报解析失败（同 CreateSpendingGoalViewModel）。
                     val parseFailed = value.isNotBlank() && it.goalCurrency?.let { currency ->
                         parseAmountCents(value, currency) == null
                     } == true
-                    it.copy(
+                    current.copy(
                         targetAmountInput = value,
                         formError = if (parseFailed) UiText.res(R.string.expense_edit_amount_invalid) else null,
                     )
                 }
-                SpendingGoalEditField.Category -> it.copy(category = value, formError = null)
+                SpendingGoalEditField.Category -> current.copy(category = value, formError = null)
             }
         }
     }
@@ -222,6 +238,8 @@ class SpendingGoalDetailViewModel(
             if (!matches(binding, goal.publicId)) return@launch
             result.fold(onSuccess = {
                 _state.update { it.copy(isSaving = false, isEditing = false,
+                    formDirty = listOf(it.name, it.month, it.targetAmountInput, it.category) !=
+                        listOf(current.name, current.month, current.targetAmountInput, current.category),
                     message = null, messageTone = MessageTone.Info) }
             }, onFailure = { error ->
                 _state.update { it.copy(isSaving = false, formError = error.toUiText(R.string.spending_goal_edit_failed)) }

@@ -30,6 +30,8 @@ data class StatsUiState(
     val lifestyleFromCache: Boolean = false,
     val budgetProgress: BudgetProgress? = null,
     val budgetProgressStatus: BudgetProgressStatus = BudgetProgressStatus.Unknown,
+    val budgetFetchedAt: String? = null,
+    val budgetFromCache: Boolean = false,
     val reportsExporting: Boolean = false,
     val reportsExportMessage: UiText? = null,
     val reportsOverview: ReportsOverview? = null,
@@ -96,6 +98,8 @@ data class StatsBudgetUiState(
     val budgetProgressStatus: BudgetProgressStatus = BudgetProgressStatus.Unknown,
     val month: String = "",
     val ledgerId: String? = null,
+    val fetchedAt: String? = null,
+    val fromCache: Boolean = false,
 )
 
 data class StatsReportsUiState(
@@ -135,6 +139,8 @@ internal fun mergeStatsUiState(
         lifestyleFetchedAt = monthly.lifestyleFetchedAt,
         lifestyleFromCache = monthly.lifestyleFromCache,
         budgetProgress = if (budgetMatch) budget.budgetProgress else null,
+        budgetFetchedAt = budget.fetchedAt.takeIf { budgetMatch },
+        budgetFromCache = budgetMatch && budget.fromCache,
         budgetProgressStatus = if (budgetMatch) {
             budget.budgetProgressStatus
         } else {

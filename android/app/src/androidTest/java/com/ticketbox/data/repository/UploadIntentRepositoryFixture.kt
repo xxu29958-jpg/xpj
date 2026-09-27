@@ -79,6 +79,7 @@ internal class UploadIntentRepositoryFixture : Closeable {
             else -> error("Unexpected session method: $method")
         } }
         val settings = repositoryUploadProxy<TicketboxSettingsStore> { method, args -> when (method) {
+            "snapshotReadAccessDenial" -> null
             "lastUploadAtForLedger" -> timestamps[args[0] as String]
             "saveLastUploadAtForLedger" -> {
                 if (failNextTimestampWrite) {

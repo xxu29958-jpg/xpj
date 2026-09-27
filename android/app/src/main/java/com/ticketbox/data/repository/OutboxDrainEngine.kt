@@ -242,7 +242,12 @@ class OutboxDrainEngine(
         val summary = DrainSummary(1, 0, 0, 0)
         return when (result) {
             is DispatchResult.Success -> {
-                outbox.markDone(row.id, cacheRefreshVersion = result.cacheRefreshVersion, receiptJson = result.receiptJson)
+                // Once a budget receipt is verified, cancellation may leave only local read repair.
+                withContext(if (row.type == PendingMutationType.SaveMonthlyBudget) NonCancellable
+                    else kotlin.coroutines.EmptyCoroutineContext) {
+                    outbox.markDone(row.id, cacheRefreshVersion = result.cacheRefreshVersion, receiptJson = result.receiptJson,
+                        budgetReadRefreshRequired = result.budgetReadRefreshRequired)
+                }
                 outbox.noteAcceptedReplay()
                 result.newRowVersion?.takeIf { it != 0L && row.type != PendingMutationType.CreateExpense }
                     ?.let { outbox.cascadeFreshToken(row.targetId, it) }

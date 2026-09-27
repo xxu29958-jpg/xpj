@@ -112,6 +112,7 @@ private fun unsupportedSpendingGoalActions(): ReportsActions = Proxy.newProxyIns
 ) { _, method, _ ->
     when (method.name) {
         "toString" -> "UnsupportedSpendingGoalActions"
+        "getReadAccessDenials" -> kotlinx.coroutines.flow.emptyFlow<com.ticketbox.data.repository.SnapshotAccessDenial>()
         else -> throw UnsupportedOperationException(method.name)
     }
 } as ReportsActions

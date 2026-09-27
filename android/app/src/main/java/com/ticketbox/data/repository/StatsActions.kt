@@ -7,6 +7,7 @@ import com.ticketbox.domain.model.MonthlyStats
 import kotlinx.coroutines.flow.Flow
 
 interface StatsActions {
+    val readAccessDenials: Flow<SnapshotAccessDenial> get() = kotlinx.coroutines.flow.emptyFlow()
     fun observeStatsBinding(): Flow<LogicalSessionBinding?>
     fun statsBinding(): LogicalSessionBinding?
     fun lastUploadAt(): String?

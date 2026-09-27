@@ -100,6 +100,12 @@ class BudgetAdviceViewModel(
     private var displayedResultGeneration: Int? = null
 
     init {
+        viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            repository.observeReadAccessDenials().collect { denial ->
+                if (denial.binding == _state.value.binding)
+                    rejectArrangementRead(denial.failure)
+            }
+        }
         observeAdviceAccess()
         observeAdviceInvalidations()
     }

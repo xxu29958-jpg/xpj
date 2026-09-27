@@ -115,6 +115,7 @@ internal class UploadIntentConnectedFixture(private val context: Context) : Clos
             else -> error("Unexpected session method: $method")
         } }
         val settings = uploadProxy<TicketboxSettingsStore> { method, args -> when (method) {
+            "snapshotReadAccessDenial" -> null
             "lastUploadAtForLedger" -> lastUploadAt[args[0] as String]
             "saveLastUploadAtForLedger" -> {
                 lastUploadAt[args[0] as String] = args[1] as String

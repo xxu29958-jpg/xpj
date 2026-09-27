@@ -53,7 +53,7 @@ internal class IncomePlanConnectedFixture(private val context: Context) {
             override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = network.service
         }
         return RepositoryGraph(RepositoryGraphDependencies(db, ApiClient(),
-            incomeProxy<TicketboxSettingsStore> { error("Unexpected settings: $it") },
+            incomeProxy<TicketboxSettingsStore> { if (it == "snapshotReadAccessDenial") null else error("Unexpected settings: $it") },
             sessions, credentials, ApiServiceProvider(factory, sessions, credentials), RepositoryGraphOutbox(outbox, adapters)))
     }
 

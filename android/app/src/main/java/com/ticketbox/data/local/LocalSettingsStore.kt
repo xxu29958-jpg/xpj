@@ -183,6 +183,22 @@ internal class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
         }
     }
 
+    override fun snapshotReadAccessDenial(bindingKey: String, monthlyBindingKey: String): Int? {
+        val key = listOf(bindingKey, monthlyBindingKey).map { "snapshot_read_access_denial:$it" }
+            .firstOrNull { prefs.contains(it) } ?: return null
+        return prefs.getInt(key, 403)
+    }
+
+    override fun saveSnapshotReadAccessDenial(bindingKey: String, monthlyBindingKey: String, statusCode: Int?) {
+        require(statusCode == null || statusCode in setOf(401, 403))
+        val update = prefs.edit()
+        for (scope in listOf(bindingKey, monthlyBindingKey)) {
+            val key = "snapshot_read_access_denial:$scope"
+            if (statusCode == null) update.remove(key) else update.putInt(key, statusCode)
+        }
+        check(update.commit()) { "Unable to persist read access denial." }
+    }
+
     override fun markUnlocked() {
         prefs.edit {
             putLong(KEY_LAST_UNLOCKED_AT, System.currentTimeMillis())

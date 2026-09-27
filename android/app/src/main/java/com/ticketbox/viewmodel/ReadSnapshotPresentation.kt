@@ -1,9 +1,27 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.RepositoryException
+import com.ticketbox.data.local.PendingMutationStatus
+import com.ticketbox.domain.model.BudgetMonthly
+
+/** A recovered command receipt retires older queries, never a query already at that revision. */
+internal fun BudgetMonthly?.isOlderThanAccepted(receipt: BudgetMonthly?): Boolean =
+    receipt?.rowVersion == null || (this?.rowVersion ?: 0L) < receipt.rowVersion
 
 internal fun Throwable.isReadAccessDenied(): Boolean =
     (this as? RepositoryException)?.httpStatusCode in setOf(401, 403)
+
+internal fun BudgetUiState.withReadFailure(error: Throwable): BudgetUiState {
+    val denied = error.isReadAccessDenied()
+    val visible = budget.takeUnless { denied }
+    return copy(loading = false, budget = visible, fetchedAt = fetchedAt.takeUnless { denied },
+        fromCache = !denied && fromCache,
+        form = if (!denied || formDirty) form else saves.firstOrNull {
+            it.row.status != PendingMutationStatus.Done
+        }?.originalForm() ?: BudgetFormState(),
+        loadError = error.toUiText(if (visible == null) com.ticketbox.R.string.budget_message_load_failed
+            else com.ticketbox.R.string.budget_message_refresh_failed_with_data))
+}
 
 internal fun DebtGoalUiState.withReadFailure(error: Throwable): DebtGoalUiState {
     val denied = error.isReadAccessDenied()
@@ -16,7 +34,11 @@ internal fun DebtGoalUiState.withReadFailure(error: Throwable): DebtGoalUiState 
 
 internal fun SpendingGoalDetailUiState.withReadFailure(error: Throwable): SpendingGoalDetailUiState {
     val denied = error.isReadAccessDenied()
+    val preserveForm = !denied || formDirty || hasPendingEdit
     return copy(isLoading = false, loadError = error.toUiText(com.ticketbox.R.string.spending_goal_detail_load_failed),
+        isEditing = isEditing && preserveForm, name = if (preserveForm) name else "",
+        month = if (preserveForm) month else java.time.YearMonth.now().toString(),
+        targetAmountInput = if (preserveForm) targetAmountInput else "", category = if (preserveForm) category else "",
         goal = if (denied) null else goal, fetchedAt = if (denied) null else fetchedAt,
         fromCache = !denied && fromCache)
 }

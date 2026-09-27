@@ -128,7 +128,9 @@ class DebtAdjustmentRetainedQueriesTest {
 
 private fun retainedCreateReports(calls: MutableList<Pair<String, List<String>>>): ReportsActions {
     val unused = Proxy.newProxyInstance(ReportsActions::class.java.classLoader,
-        arrayOf(ReportsActions::class.java)) { _, method, _ -> error("Unexpected report call: ${method.name}") } as ReportsActions
+        arrayOf(ReportsActions::class.java)) { _, method, _ ->
+        if (method.name == "getReadAccessDenials") kotlinx.coroutines.flow.emptyFlow<com.ticketbox.data.repository.SnapshotAccessDenial>()
+        else error("Unexpected report call: ${method.name}") } as ReportsActions
     return object : ReportsActions by unused {
         override fun canModifyLedger() = true
         override suspend fun createDebtGoal(name: String, debtPublicIds: List<String>, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding): Result<Goal> {

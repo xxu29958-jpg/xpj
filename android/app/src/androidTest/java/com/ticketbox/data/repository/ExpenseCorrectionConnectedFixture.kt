@@ -1,9 +1,12 @@
 package com.ticketbox.data.repository
 
 import android.content.Context
+import android.content.ContextWrapper
+import com.ticketbox.data.local.LocalSettingsStore
 import android.graphics.Bitmap
 import androidx.room.Room
 import com.ticketbox.OutboxAdapterGraph
+import com.ticketbox.NotificationRuntimeDependencies
 import com.ticketbox.RepositoryGraph
 import com.ticketbox.RepositoryGraphDependencies
 import com.ticketbox.RepositoryGraphOutbox
@@ -65,6 +68,13 @@ internal class ExpenseCorrectionConnectedFixture(
     private val wrapApi: (ApiService) -> ApiService = { it },
 ) {
     private val name = "expense-correction-continuity.db"
+    private val readSettingsContext = object : ContextWrapper(context) {
+        override fun getApplicationContext(): Context = this
+        override fun getSharedPreferences(preferenceName: String, mode: Int) =
+            context.getSharedPreferences("$name.$preferenceName", mode)
+    }
+    private val readSettings = LocalSettingsStore(readSettingsContext)
+    private val calendarPreferences = context.getSharedPreferences("$name.calendar", Context.MODE_PRIVATE)
     private var database: AppDatabase? = null
     val clock = Clock.fixed(Instant.parse("2026-09-06T00:00:00Z"), ZoneOffset.UTC)
     private val session = MutableStateFlow(correctionSession())
@@ -72,6 +82,8 @@ internal class ExpenseCorrectionConnectedFixture(
     private val adapters = OutboxAdapterGraph()
     lateinit var outbox: OutboxRepository
     lateinit var graph: RepositoryGraph
+    lateinit var ledgerCalendarRepository: LedgerCalendarRepository
+    lateinit var notificationDependencies: NotificationRuntimeDependencies
     lateinit var uploadIntents: UploadIntentRepository
     val expenseDao get() = requireNotNull(database).expenseDao()
     val pendingDao get() = requireNotNull(database).pendingMutationDao()
@@ -91,6 +103,10 @@ internal class ExpenseCorrectionConnectedFixture(
             else -> error("Unexpected settings: $method")
         }
     }) {
+        override fun snapshotReadAccessDenial(bindingKey: String, monthlyBindingKey: String): Int? =
+            readSettings.snapshotReadAccessDenial(bindingKey, monthlyBindingKey)
+        override fun saveSnapshotReadAccessDenial(bindingKey: String, monthlyBindingKey: String, statusCode: Int?) =
+            readSettings.saveSnapshotReadAccessDenial(bindingKey, monthlyBindingKey, statusCode)
         override fun saveAvailableLedgersJson(json: String?) { availableLedgers = json }
         override fun clearLastConfirmedSyncAtForLedger(ledgerId: String) { lastSyncAt = null }
         override fun saveLastConfirmedSyncAtForLedger(ledgerId: String, value: String) {
@@ -130,8 +146,11 @@ internal class ExpenseCorrectionConnectedFixture(
             override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = service
         }
         val provider = ApiServiceProvider(factory, sessions, credentials)
+        ledgerCalendarRepository = LedgerCalendarRepository(LedgerRequestGuard(provider), calendarPreferences)
         graph = RepositoryGraph(RepositoryGraphDependencies(db, ApiClient(), settingsStore, sessions, credentials,
             provider, RepositoryGraphOutbox(outbox, adapters)))
+        notificationDependencies = NotificationRuntimeDependencies(context, settingsStore, sessions, provider,
+            graph.recurringRepository, graph.budgetRepository, ledgerCalendarRepository)
         uploadIntents = UploadIntentRepository(provider, outbox, UploadIntentFileStore(context),
             adapters.uploadPayloadAdapter, adapters.uploadReceiptAdapter, settingsStore)
         graph.expenseRepository.onConfirmedCommitted = { confirmedCallbacks++ }
@@ -142,6 +161,13 @@ internal class ExpenseCorrectionConnectedFixture(
         .query("SELECT * FROM pending_mutations ORDER BY id").use { cursor -> buildList {
             while (cursor.moveToNext()) add(cursor.columnNames.mapIndexed { index, column -> column to cursor.getString(index) }.toMap())
         } }
+
+    fun blockBudgetReadDeletion(block: Boolean) {
+        requireNotNull(database).openHelper.writableDatabase.execSQL(if (block)
+            "CREATE TRIGGER fail_budget_read_delete BEFORE DELETE ON stats_projection_cache " +
+                "WHEN OLD.kind = 'budget' BEGIN SELECT RAISE(ABORT, 'Budget read cleanup unavailable'); END"
+            else "DROP TRIGGER IF EXISTS fail_budget_read_delete")
+    }
 
     suspend fun drain(maxAttempts: Int = 10) = OutboxDrainEngine(outbox,
         listOf(CorrectExpenseDispatcher(
@@ -172,7 +198,11 @@ internal class ExpenseCorrectionConnectedFixture(
     fun role(value: String) { session.value = session.value.copy(identity = session.value.identity.copy(role = value)) }
     fun switchLedger() { session.value = session.value.copy(bindingRevision = "another-binding",
         identity = session.value.identity.copy(ledgerId = "another-ledger")) }
-    fun close() { database?.close(); context.deleteDatabase(name) }
+    fun switchAccount() { session.value = session.value.copy(bindingRevision = "another-account-binding",
+        identity = session.value.identity.copy(accountPublicId = "40000000-0000-4000-8000-000000000003")) }
+    fun switchDevice() { session.value = session.value.copy(bindingRevision = "another-device-binding",
+        identity = session.value.identity.copy(devicePublicId = "40000000-0000-4000-8000-000000000004")) }
+    fun close() { database?.close(); context.deleteDatabase(name); calendarPreferences.edit().clear().commit(); readSettings.clear() }
 }
 
 /** Response-loss model deduplicates by the actual original key and full request; not a PostgreSQL substitute. */

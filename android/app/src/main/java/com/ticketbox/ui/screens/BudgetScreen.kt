@@ -11,6 +11,7 @@ import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.data.repository.PendingBudgetSave
 import com.ticketbox.ui.screens.budget.BudgetPendingSaves
+import com.ticketbox.ui.screens.budget.BudgetReadSource
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppPageRole
@@ -103,6 +104,7 @@ private fun BudgetScreenContent(
         budgetInlineLoadError(state)?.let { error ->
             item { AppStatusBanner(message = error, tone = MessageTone.Info) }
         }
+        item { BudgetReadSource(state.fetchedAt, state.fromCache, state.loading) }
         if (state.saves.isNotEmpty()) {
             item { BudgetPendingSaves(state.saves, state.canModify, actions.onRecoverSave) }
         }
