@@ -30,6 +30,9 @@
     <string name="arrangement_history_item">v%1$d · %2$s · 储蓄 %3$s · 备用金 %4$s</string>
     <string name="arrangement_more">更早的修改</string>
     <string name="arrangement_original">原提交 %1$s · 基于 v%2$d · 储蓄 %3$s · 备用金 %4$s</string>
+    <string name="arrangement_original_currency">原提交币种：%1$s</string>
+    <string name="arrangement_original_unsupported">原安排提交暂时无法解读，仍已保留；请勿把它当作已保存。</string>
+    <string name="arrangement_open_month">查看原提交月份的安排</string>
     <string name="arrangement_pending">等待确认：保留原提交，不能当作已保存</string>
     <string name="arrangement_confirmed">服务器已确认原提交</string>
     <string name="arrangement_retry">按原键继续重试</string>

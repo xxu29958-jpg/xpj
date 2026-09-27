@@ -98,6 +98,10 @@ fun budgetAdviceViewModelFactory(
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return BudgetAdviceViewModel(repository, calendars = calendars) as T
     }
+    override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T {
+        val originalMonth = extras.createSavedStateHandle().get<String>("arrangement")
+        return BudgetAdviceViewModel(repository, initialMonth = originalMonth, calendars = calendars) as T
+    }
 }
 
 @Suppress("UNCHECKED_CAST")

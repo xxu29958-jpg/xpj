@@ -76,10 +76,7 @@ private fun MonthlyArrangementSubmission(state: BudgetAdviceUiState, submission:
     actions: BudgetAdviceActions, onStop: () -> Unit) {
     val busy = state.arrangementBusy || state.arrangementLoading
     AppContentCard {
-        val intent = submission.intent
-        if (intent != null) Text(stringResource(R.string.arrangement_original, intent.month, submission.row.expectedRowVersion,
-            formatDisplayAmount(intent.request.savingsTargetCents, CurrencyDisplay.forRecord(intent.request.homeCurrencyCode)),
-            formatDisplayAmount(intent.request.reservedBufferCents, CurrencyDisplay.forRecord(intent.request.homeCurrencyCode))))
+        MonthlyArrangementIntentSummary(submission)
         Text(stringResource(if (submission.isConfirmed) R.string.arrangement_confirmed else R.string.arrangement_pending))
         submission.row.lastError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         if (submission.canRetry) TextButton(onClick = { actions.onRecoverArrangement(submission, false) }, enabled = !busy && state.canRequest) {
@@ -90,6 +87,19 @@ private fun MonthlyArrangementSubmission(state: BudgetAdviceUiState, submission:
             TextButton(onClick = onStop, enabled = !busy) { Text(stringResource(R.string.arrangement_stop)) }
         }
     }
+}
+
+@Composable
+internal fun MonthlyArrangementIntentSummary(submission: PendingMonthlyArrangement) {
+    val intent = submission.intent
+    if (intent == null) {
+        Text(stringResource(R.string.arrangement_original_unsupported))
+        return
+    }
+    Text(stringResource(R.string.arrangement_original_currency, intent.request.homeCurrencyCode))
+    Text(stringResource(R.string.arrangement_original, intent.month, submission.row.expectedRowVersion,
+        formatDisplayAmount(intent.request.savingsTargetCents, CurrencyDisplay.forRecord(intent.request.homeCurrencyCode)),
+        formatDisplayAmount(intent.request.reservedBufferCents, CurrencyDisplay.forRecord(intent.request.homeCurrencyCode))))
 }
 
 @Composable

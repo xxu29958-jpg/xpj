@@ -24,12 +24,25 @@ import com.ticketbox.data.remote.dto.DashboardCardDto
 import com.ticketbox.data.remote.dto.DashboardCardsResponseDto
 import com.ticketbox.data.remote.dto.MonthlyStatsDto
 import com.ticketbox.data.remote.dto.MonthsDto
+import com.ticketbox.data.remote.dto.MonthlyArrangementDto
+import com.ticketbox.data.remote.dto.MonthlyArrangementResponseDto
+import com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest
+import com.ticketbox.data.remote.dto.BudgetAdviceInputsDto
+import com.ticketbox.data.remote.dto.DiscretionaryResponseDto
+import com.ticketbox.data.repository.MonthlyArrangementDraft
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.AppThemeMode
 import com.ticketbox.domain.model.BudgetMonthlyUpdate
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.DASHBOARD_CARD_BUDGET
 import com.ticketbox.ui.theme.TicketboxTheme
+import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.domain.model.CurrencyDisplay
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.assertIsNotEnabled
 import java.time.YearMonth
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.runBlocking
@@ -62,6 +75,68 @@ class BudgetRecoveryNavigationRouteTest {
 
     @Test fun workspaceOriginalSubmissionOpensItsOwnBudgetMonth() {
         openOriginalBudget(fromWorkspace = true)
+    }
+
+    @Test fun readOnlyObligationArrangementConflictOpensItsOriginalMonthWithoutChangingItsCommandOrNewerDraft() {
+        openOriginalArrangement(fromWorkspace = false, readOnly = true)
+    }
+
+    @Test fun workspaceArrangementConflictOpensItsOriginalMonthWithoutChangingItsCommandOrNewerDraft() {
+        openOriginalArrangement(fromWorkspace = true)
+    }
+
+    private fun openOriginalArrangement(fromWorkspace: Boolean, readOnly: Boolean = false) {
+        val repository = harness.screenFactory.budgetRepository
+        val draft = MonthlyArrangementDraft("JPY", "8000", "750", 2, true)
+        val binding = runBlocking {
+            val binding = requireNotNull(harness.fixture.graph.expenseRepository.captureDeferredLedgerBinding())
+            val id = repository.enqueueArrangement(binding, originalMonth,
+                MonthlyArrangementSaveRequest("JPY", 3000, 500, 1)).getOrThrow()
+            harness.fixture.outbox.markConflict(id, "monthly_arrangement_row_version_conflict")
+            repository.storeArrangementDraft(binding, originalMonth, draft)
+            binding
+        }
+        val original = harness.fixture.stored().single()
+        if (readOnly) harness.fixture.role("viewer")
+        val summary = context.getString(R.string.arrangement_original, originalMonth, 1,
+            formatDisplayAmount(3000, CurrencyDisplay.forRecord("JPY")),
+            formatDisplayAmount(500, CurrencyDisplay.forRecord("JPY")))
+        show()
+        if (fromWorkspace) {
+            compose.runOnIdle { harness.shell.openAccount() }
+            val entry = context.getString(R.string.settings_root_entry_offline_sync_title)
+            waitForText(entry)
+            compose.onNodeWithText(entry).performScrollTo().performClick()
+        } else compose.runOnIdle { harness.shell.openSecondaryPage(ProductSecondaryPage.ObligationSync) }
+        waitForText(summary)
+        compose.onNodeWithText(summary).performScrollTo().assertIsDisplayed()
+        val action = context.getString(R.string.arrangement_open_month)
+        waitForText(action)
+        compose.onNodeWithText(action).performScrollTo().performClick()
+        waitForText(context.getString(R.string.arrangement_title))
+        compose.waitUntil(5_000) { transport.arrangementReads.lastOrNull() == originalMonth }
+        waitForText(summary)
+        compose.onNodeWithText(summary).performScrollTo().assertIsDisplayed()
+        compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("arrangement_savings")), useUnmergedTree = true)
+            .performScrollTo().assertTextEquals("8000")
+        val review = compose.onNodeWithText(context.getString(R.string.arrangement_review)).performScrollTo()
+        review.assertIsDisplayed()
+        if (readOnly) review.assertIsNotEnabled()
+        compose.onNodeWithText(context.getString(R.string.arrangement_save)).performScrollTo().assertIsNotEnabled()
+        assertEquals(MainProductDestination.Secondary(ProductSecondaryPage.BudgetAdvice), harness.shell.activeDestination)
+        assertEquals(MAIN_ROUTE, outer.currentBackStackEntry?.destination?.route)
+        assertEquals("Opening must preserve the original key, body, binding, OCC and Conflict", original,
+            harness.fixture.stored().single())
+        assertEquals(draft, runBlocking { repository.arrangementDraft(binding, originalMonth) })
+        assertEquals(originalMonth, transport.arrangementReads.last())
+        if (!readOnly) {
+            review.performScrollTo().performClick()
+            waitForText(context.getString(R.string.arrangement_reviewed))
+            compose.onNodeWithText(context.getString(R.string.arrangement_save)).performScrollTo().assertIsNotEnabled()
+            assertEquals(original, harness.fixture.stored().single())
+            val reviewed = MonthlyArrangementDraft("JPY", "3000", "500", 2, true)
+            compose.waitUntil(5_000) { runBlocking { repository.arrangementDraft(binding, originalMonth) == reviewed } }
+        }
     }
 
     @Test fun insightsHistoricalMonthBudgetActionKeepsTheSelectedMonth() {
@@ -148,8 +223,19 @@ class BudgetRecoveryNavigationRouteTest {
 
 private class BudgetNavigationTransport(private val currentMonth: String, private val originalMonth: String) {
     val budgetReads = CopyOnWriteArrayList<String>()
+    val arrangementReads = CopyOnWriteArrayList<String>()
 
     fun wrap(delegate: ApiService): ApiService = object : ApiService by delegate {
+        override suspend fun monthlyArrangement(month: String): MonthlyArrangementResponseDto {
+            arrangementReads += month
+            return MonthlyArrangementResponseDto("correction-ledger", month,
+                MonthlyArrangementDto("correction-ledger", month, "JPY", 4000, 600, 2, "2026-09-27T00:00:00Z"))
+        }
+
+        override suspend fun budgetAdviceInputs(month: String, timezone: String?, homeCurrencyCode: String?) =
+            BudgetAdviceInputsDto(month, homeCurrencyCode ?: "JPY",
+                DiscretionaryResponseDto(10000, 1000, 2000, 4000, 600, 2400, 0), emptyList())
+
         override suspend fun months(timezone: String?) = MonthsDto(listOf(currentMonth, originalMonth))
 
         override suspend fun monthlyStats(month: String?, tag: String?, timezone: String?, homeCurrencyCode: String?) =

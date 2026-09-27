@@ -58,7 +58,22 @@ def test_repair_link_carries_editor_currency_separately_from_display_currency():
     assert params["savings_target_yuan"] == ["1200"]
 
 
-def _render_task(monkeypatch, *, home="JPY", savings="150", gaps=()):
+def test_rate_return_keeps_report_currency_and_original_editor_currency():
+    from app.routes.web_budget_fx import _TASK_FIELDS, _task_return
+
+    values = dict.fromkeys(_TASK_FIELDS, "")
+    values.update(month="2026-08", home_currency_code="USD", arrangement_currency_code="JPY",
+        savings_target_yuan="1200", reserved_buffer_yuan="30", arrangement_version="3", arrangement_key="draft-key")
+    path, params, _ = _task_return(values)
+    assert path == "/web/budget-advise"
+    assert params["home_currency_code"] == "USD"
+    assert params["arrangement_currency_code"] == "JPY"
+    assert params["savings_target_yuan"] == "1200"
+    assert params["arrangement_version"] == "3" and params["arrangement_key"] == "draft-key"
+
+
+def _render_task(monkeypatch, *, home="JPY", savings="150", gaps=(), arrangement_currency=None,
+    method="POST", read_owner=None, reserved="3"):
     from starlette.requests import Request
 
     from app.routes import web_budget_advise as web
@@ -73,16 +88,56 @@ def _render_task(monkeypatch, *, home="JPY", savings="150", gaps=()):
     monkeypatch.setattr(web, "_advisor_readiness_context", lambda *a, **k: {"provider_name": "live"})
     breakdown = compute_monthly_discretionary(monthly_income_cents=1000, fixed_expenses_cents=0,
         spent_amount_cents=0, savings_target_cents=0, reserved_buffer_cents=0)
-    read = Mock(return_value=BudgetInputProjection("2026-08", home or "CNY", breakdown, gaps, None))
+    read = Mock(side_effect=read_owner) if read_owner else Mock(return_value=BudgetInputProjection("2026-08", home or "CNY", breakdown, gaps, None))
     outbound = Mock(return_value=(None, None, "live", None))
     monkeypatch.setattr(web, "read_budget_inputs", read)
     monkeypatch.setattr(web, "_budget_advice_response", outbound)
     monkeypatch.setattr(web, "templates", SimpleNamespace(TemplateResponse=lambda **k: k))
-    request = Request({"type": "http", "method": "POST", "path": "/web/budget-advise"})
+    request = Request({"type": "http", "method": method, "path": "/web/budget-advise"})
     result = web._render_budget_advise(request, db=Mock(), ledger_id="original", month="2026-08",
-        savings_target_yuan=savings, reserved_buffer_yuan="3", run_advise=True, allow_outbound=True,
-        home_currency_code=home)
+        savings_target_yuan=savings, reserved_buffer_yuan=reserved, run_advise=method == "POST", allow_outbound=method == "POST",
+        home_currency_code=home, arrangement_currency_code=arrangement_currency)
     return result["context"], read, outbound
+
+
+def test_jpy_editor_returns_from_rate_repair_to_usd_projection_without_reparsing(monkeypatch):
+    from datetime import UTC, datetime
+
+    from app.routes.web_budget_fx import _TASK_FIELDS, _task_return
+    from app.services.budget_advisor_service import _inputs_builder as builder
+    from app.services.money_projection_service import ProjectionGap
+    from tests.test_budget_inputs_projection import seed_reads
+
+    seed_reads(monkeypatch)
+    saved = SimpleNamespace(home_currency_code="JPY", savings_target_cents=500, reserved_buffer_cents=100, row_version=3)
+    monkeypatch.setattr(builder, "read_monthly_arrangement", lambda *a, **kw: saved)
+    monkeypatch.setattr(builder, "current_calendar", lambda *a, **kw: SimpleNamespace(timezone_name="UTC"))
+    monkeypatch.setattr(builder, "now_utc", lambda: datetime(2026, 9, 27, tzinfo=UTC))
+    values = dict.fromkeys(_TASK_FIELDS, "")
+    values.update(month="2026-08", home_currency_code="USD", arrangement_currency_code="JPY",
+        savings_target_yuan="1200", reserved_buffer_yuan="30")
+    _, params, _ = _task_return(values)
+    missing = True
+
+    def project(db, **kwargs):
+        assert kwargs["source_currency"] == "JPY" and kwargs["home_currency"] == "USD"
+        if missing:
+            kwargs["missing_rates"].add(ProjectionGap("JPY", "USD", date(2026, 8, 31)))
+            return None
+        return kwargs["amount_minor"] * 2
+
+    monkeypatch.setattr(builder, "project_recorded_amount", project)
+    for is_missing in (True, False):
+        missing = is_missing
+        context, read, _ = _render_task(monkeypatch, home=params["home_currency_code"],
+            arrangement_currency=params["arrangement_currency_code"], savings=params["savings_target_yuan"],
+            reserved=params["reserved_buffer_yuan"], method="GET", read_owner=builder.read_budget_inputs)
+        assert read.call_args.kwargs["savings_target_cents"] == 1200
+        assert context["home_currency_code"] == "USD"
+        assert context["arrangement_currency_input"]["currency_code"] == "JPY"
+        assert context["savings_target_yuan"] == "1200" and context["reserved_buffer_yuan"] == "30"
+        assert context["savings_yuan"] == (None if missing else "24.00")
+        assert saved.savings_target_cents == 500 and saved.home_currency_code == "JPY"
 
 
 def test_native_budget_preserves_original_month_and_home_through_generation(monkeypatch):

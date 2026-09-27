@@ -10,6 +10,49 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlin.test.*
 
 class MonthlyArrangementViewModelTest {
+    @Test fun reconnectingHistoryFillsTheMissingRevisionInOrderAndKeepsTheEditedDraft() = budgetTest {
+        val base = FakeBudgetActions(budget())
+        var online = false
+        val versions = listOf(3L, 2L, 1L).map { version ->
+            MonthlyArrangementHistoryItemDto(version, "2026-09-27T00:00:00Z", "JPY", version * 1000, 300)
+        }
+        val repository = object : BudgetActions by base {
+            override suspend fun arrangementHistory(binding: LogicalSessionBinding, month: String, beforeVersion: Long?) =
+                if (beforeVersion != null && !online) Result.failure(java.net.ConnectException("offline"))
+                else Result.success(MonthlyArrangementHistoryRead(MonthlyArrangementHistoryDto(binding.ledgerId, month,
+                    if (beforeVersion != null) versions.drop(1) else if (online) versions else listOf(versions[0], versions[2]),
+                    if (beforeVersion == null && !online) 3 else null), fromCache = beforeVersion == null && !online))
+        }
+        val vm = BudgetAdviceViewModel(repository, initialMonth = "2026-09")
+        advanceUntilIdle()
+        vm.editArrangement(true, "82.00")
+        advanceUntilIdle()
+        val draft = vm.uiState.value.arrangementDraft
+        vm.loadArrangementHistory()
+        advanceUntilIdle()
+        assertEquals(listOf(3L, 1L), vm.uiState.value.arrangementHistory.map { it.rowVersion })
+        assertTrue(vm.uiState.value.arrangementHistoryCached)
+        vm.loadArrangementHistory(more = true)
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.arrangementHistoryLoaded)
+        assertTrue(vm.uiState.value.arrangementHistoryCached)
+        assertEquals(listOf(3L, 1L), vm.uiState.value.arrangementHistory.map { it.rowVersion })
+        assertEquals(3L, vm.uiState.value.arrangementHistoryNext)
+        online = true
+        vm.loadArrangementHistory(more = true)
+        advanceUntilIdle()
+        assertEquals(versions, vm.uiState.value.arrangementHistory)
+        assertNull(vm.uiState.value.arrangementHistoryNext)
+        // Reading an older page does not establish that the cached first page is still the latest.
+        assertTrue(vm.uiState.value.arrangementHistoryCached)
+        assertEquals(draft, vm.uiState.value.arrangementDraft)
+        vm.loadArrangementHistory()
+        advanceUntilIdle()
+        assertEquals(versions, vm.uiState.value.arrangementHistory)
+        assertFalse(vm.uiState.value.arrangementHistoryCached)
+        assertEquals(draft, vm.uiState.value.arrangementDraft)
+    }
+
     @Test fun changedTrialRefreshPreventsAnOlderInFlightAdviceFromReturning() = budgetTest {
         val base = FakeBudgetActions(budget())
         var income = 10000L

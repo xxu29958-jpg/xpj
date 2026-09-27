@@ -124,13 +124,7 @@ fun BudgetAdviceViewModel.loadArrangementHistory(more: Boolean = false) {
         if (_state.value.binding != binding || _state.value.month != snapshot.month) return@launch
         val denied = read.exceptionOrNull()?.takeIf { it.isReadAccessDenied() }
         if (denied != null) { rejectArrangementRead(denied); return@launch }
-        _state.update { it.copy(arrangementBusy = false, arrangementHistoryLoaded = read.isSuccess,
-            arrangementHistory = read.getOrNull()?.response?.items?.let { items ->
-                (if (more) it.arrangementHistory + items else items).distinctBy { item -> item.rowVersion }
-            } ?: it.arrangementHistory,
-            arrangementHistoryNext = read.getOrNull()?.response?.nextBeforeVersion,
-            arrangementHistoryCached = read.getOrNull()?.fromCache == true,
-            arrangementMessage = read.exceptionOrNull()?.toUiText(R.string.arrangement_load_failed)) }
+        _state.update { it.arrangementHistoryRefreshed(read, more) }
     }
 }
 

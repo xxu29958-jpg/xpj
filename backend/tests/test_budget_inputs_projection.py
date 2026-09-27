@@ -103,12 +103,15 @@ def test_saved_arrangement_is_used_across_reads_but_trial_does_not_replace_it(mo
     assert reopened.inputs_fingerprint == initial.inputs_fingerprint != trial.inputs_fingerprint
 
 
-def test_saved_original_currency_is_not_relabelled_or_zeroed_when_conversion_is_missing(monkeypatch):
+@pytest.mark.parametrize("implicit_home", [False, True])
+def test_saved_original_currency_is_not_relabelled_or_zeroed_when_conversion_is_missing(monkeypatch, implicit_home):
     seed_reads(monkeypatch)
     saved = SimpleNamespace(home_currency_code="USD", savings_target_cents=500, reserved_buffer_cents=100)
     monkeypatch.setattr(builder, "read_monthly_arrangement", lambda *a, **kw: saved)
     monkeypatch.setattr(builder, "current_calendar", lambda *a, **kw: SimpleNamespace(timezone_name="Asia/Shanghai"))
     monkeypatch.setattr(builder, "now_utc", lambda: datetime(2026, 9, 27, tzinfo=UTC))
+    monkeypatch.setattr(builder, "require_runtime_home_currency_code", lambda db: "JPY")
+    home_kwargs = {} if implicit_home else {"home_currency_code": "JPY"}
 
     def missing_projection(db, **kwargs):
         assert kwargs["source_currency"] == "USD" and kwargs["rate_date"] == date(2026, 8, 31)
@@ -116,16 +119,28 @@ def test_saved_original_currency_is_not_relabelled_or_zeroed_when_conversion_is_
         return None
 
     monkeypatch.setattr(builder, "project_recorded_amount", missing_projection)
-    incomplete = builder.read_budget_inputs(object(), tenant_id="owner", month="2026-08", home_currency_code="JPY")
+    incomplete = builder.read_budget_inputs(object(), tenant_id="owner", month="2026-08", **home_kwargs)
+    assert incomplete.home_currency_code == "JPY"
     assert incomplete.breakdown.savings_target_cents is incomplete.breakdown.reserved_buffer_cents is None
     assert incomplete.breakdown.discretionary_cents is incomplete.breakdown.shortfall_cents is None
     assert incomplete.provider_inputs is None and incomplete.inputs_fingerprint is None
     assert incomplete.saved_arrangement.home_currency_code == "USD"
     assert incomplete.saved_arrangement.savings_target_cents == 500
     monkeypatch.setattr(builder, "project_recorded_amount", lambda db, **kw: kw["amount_minor"] * 2)
-    recovered = builder.read_budget_inputs(object(), tenant_id="owner", month="2026-08", home_currency_code="JPY")
+    recovered = builder.read_budget_inputs(object(), tenant_id="owner", month="2026-08", **home_kwargs)
     assert recovered.breakdown.savings_target_cents == 1000 and recovered.breakdown.discretionary_cents == 400
     assert recovered.saved_arrangement is saved and saved.savings_target_cents == 500
+    if implicit_home:
+        monkeypatch.setattr(_runner, "get_advisor_readiness", lambda: SimpleNamespace(
+            provider="empty", is_live=False, blocked_reason=lambda _: None))
+        provider = Mock()
+        provider.advise.return_value = None
+        monkeypatch.setattr(_runner, "get_budget_advisor", lambda: provider)
+        generated = _runner.run_budget_advisor(object(), tenant_id="owner", actor_account_id=1,
+            actor_role="owner", month="2026-08", timezone_name="UTC")
+        assert generated.home_currency_code == provider.advise.call_args.args[0].home_currency == "JPY"
+        assert provider.advise.call_args.args[0].savings_target_cents == 1000
+        assert saved.home_currency_code == "USD" and saved.savings_target_cents == 500
 
 
 def test_generation_returns_the_same_trial_basis_that_reaches_the_provider(monkeypatch):
@@ -140,6 +155,34 @@ def test_generation_returns_the_same_trial_basis_that_reaches_the_provider(monke
     assert result.inputs.provider_inputs is captured[0]
     assert to_outbound_dict(captured[0])["savings_target_cents"] == 1800
     assert to_outbound_dict(captured[0])["shortfall_cents"] == 300
+
+
+@pytest.mark.parametrize("missing", [True, False])
+def test_original_jpy_trial_projects_to_usd_without_replacing_saved_arrangement(monkeypatch, missing):
+    seed_reads(monkeypatch)
+    saved = SimpleNamespace(home_currency_code="JPY", savings_target_cents=500, reserved_buffer_cents=100)
+    monkeypatch.setattr(builder, "read_monthly_arrangement", lambda *a, **kw: saved)
+    monkeypatch.setattr(builder, "current_calendar", lambda *a, **kw: SimpleNamespace(timezone_name="UTC"))
+    monkeypatch.setattr(builder, "now_utc", lambda: datetime(2026, 9, 27, tzinfo=UTC))
+
+    def project(db, **kwargs):
+        assert kwargs["source_currency"] == "JPY" and kwargs["home_currency"] == "USD"
+        if missing:
+            kwargs["missing_rates"].add(ProjectionGap("JPY", "USD", date(2026, 8, 31)))
+            return None
+        return kwargs["amount_minor"] * 2
+
+    monkeypatch.setattr(builder, "project_recorded_amount", project)
+    result = builder.read_budget_inputs(object(), tenant_id="owner", month="2026-08",
+        home_currency_code="USD", arrangement_currency_code="JPY", savings_target_cents=1200, reserved_buffer_cents=30)
+    assert result.home_currency_code == "USD" and result.is_trial
+    assert result.saved_arrangement is saved and saved.savings_target_cents == 500
+    assert result.breakdown.savings_target_cents == (None if missing else 2400)
+    assert result.breakdown.reserved_buffer_cents == (None if missing else 60)
+    if missing:
+        assert result.provider_inputs is None and result.breakdown.discretionary_cents is None
+    else:
+        assert result.provider_inputs.home_currency == "USD" and result.breakdown.shortfall_cents == 860
 
 
 def test_hidden_historical_rate_change_invalidates_advice_without_changing_month_totals(monkeypatch):
