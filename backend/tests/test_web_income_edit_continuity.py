@@ -119,10 +119,13 @@ def test_viewer_and_unknown_ledger_cannot_publish_income_revisions(web_income, i
     assert _revisions(plan["public_id"]) == before
 
 
-def test_permission_refusal_keeps_the_original_form_and_resumes_once_after_month_rollover(web_income, identity):
+@pytest.mark.parametrize("review_latest", [False, True])
+def test_permission_refusal_keeps_the_original_form_and_resumes_once_after_month_rollover(web_income, identity, review_latest):
     client, clock = web_income
     plan = _create(client, identity)
     action, fields = _edit(client, plan["public_id"])
+    if review_latest:
+        fields["review_latest"] = "true"
     before = _revisions(plan["public_id"])
     with SessionLocal() as db:
         member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1))
@@ -140,6 +143,10 @@ def test_permission_refusal_keeps_the_original_form_and_resumes_once_after_month
     retained = forms[action]
     assert all(retained[key] == fields[key] for key in ("ledger_id", "intent_month", "expected_row_version", "idempotency_key"))
     assert 'value="调整后的工资"' in refused.text and 'value="2000.25"' in refused.text
+    assert "权限恢复后重试" in refused.text
+    assert ("权限恢复后重试核对" in refused.text) == review_latest
+    assert client.post(action, data={**fields, **retained}).status_code == 403
+    assert _revisions(plan["public_id"]) == before
 
     with SessionLocal() as db:
         member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1))
@@ -148,6 +155,15 @@ def test_permission_refusal_keeps_the_original_form_and_resumes_once_after_month
         db.commit()
     # Resume the retained original; permission recovery cannot invent a new key, month or version.
     resumed = {**fields, **retained}
+    if review_latest:
+        reviewed = client.post(action, data=resumed, follow_redirects=False)
+        assert reviewed.status_code == 200
+        prepared = hidden_post_forms(reviewed.text)[action]
+        assert prepared["intent_month"] == "2026-10"
+        assert prepared["idempotency_key"] != fields["idempotency_key"]
+        assert 'value="调整后的工资"' in reviewed.text and 'value="2000.25"' in reviewed.text
+        assert _revisions(plan["public_id"]) == before, "Resuming an explicit review must never publish a save"
+        return
     assert client.post(action, data=resumed, follow_redirects=False).status_code == 303
     assert client.post(action, data=resumed, follow_redirects=False).status_code == 303
     assert _revisions(plan["public_id"]) == before + [(plan["row_version"] + 1, "2026-09-01", 200025)]

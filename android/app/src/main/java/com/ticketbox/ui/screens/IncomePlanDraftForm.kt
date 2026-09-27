@@ -145,6 +145,7 @@ private fun IncomePlanDraftChoices(
                 value = draft.incomeMonthInput,
                 onPrevious = fieldCallbacks.onPreviousIncomeMonth,
                 onNext = fieldCallbacks.onNextIncomeMonth,
+                enabled = enabled,
             )
         }
     }
@@ -286,13 +287,14 @@ internal fun IncomeMonthPicker(
     value: String,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
+    enabled: Boolean = true,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
-        IconButton(onClick = onPrevious) {
+        IconButton(onClick = onPrevious, enabled = enabled) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
                 contentDescription = stringResource(R.string.income_plan_month_previous),
@@ -305,7 +307,7 @@ internal fun IncomeMonthPicker(
             textAlign = TextAlign.Center,
             modifier = Modifier.weight(1f),
         )
-        IconButton(onClick = onNext) {
+        IconButton(onClick = onNext, enabled = enabled) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = stringResource(R.string.income_plan_month_next),

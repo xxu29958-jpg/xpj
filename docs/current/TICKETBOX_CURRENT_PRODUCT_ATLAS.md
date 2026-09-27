@@ -147,6 +147,8 @@ flowchart LR
 
 ## 7. 边界、未知项与终点
 
+**收入原编辑草稿候选 #447：**冻结源 `ec5aa11b67224af7d393e9e0f3a090be87ce50a5` 已取得实际业务反例：同一身份权限变化使 Android 丢掉原日元输入和在途结果，Web 的写拒绝没有返回原表单。候选复用原编辑 ViewModel、系统 SavedStateHandle 和现有 Income/Room/Outbox；保留原文、币种、原月份及 OCC，同身份只读期间禁止新写但接续原接受结果。返回、滑走和系统保存状态恢复保留原草稿，明确取消才丢弃；完整身份切换立即隐藏旧表单，迟到读取不把它带给新身份。系统旧快照恢复时，已发布的完全匹配原提交继续归 Room 所有，不生成第二条命令。Web 写权限拒绝保留原表单、key、期间及显式核对动作，恢复权限后沿原任务继续。源码检查不冒充运行资格；当前仍是候选，真实系统保存状态恢复也不冒充 OS 杀进程演练。收入新建、目标原草稿、Web 刷新持久草稿及其余五域、Backstage、消费级体验和 exact RC 继续保留，不因本片完成而缩减。
+
 完整 Windows repair、preserved reinstall、complete uninstall、upgrade/downgrade、complete backup/restore、Cut C/D/E 和 Stage 2 宿主 mutation 仍遵守有效 Goal/合同条件。Internal Beta 明确允许的导出/诊断/冷备须可执行，既不能扩成完整 restore，也不能因后者 HOLD 漏掉当前数据安全。
 
 [恢复代际身份限制](TICKETBOX_USER_JOURNEYS_CONTRACT.md#restore-dependent-identity-holds)继续登记。实际到账/银行余额/净资产、银行直连、插件市场、多活、通用 workflow engine 不由本次摸排引入。具体增强若真要改变边界，单独呈现用户后果、既有能力不足和取舍理由，只裁决该变化，其他授权工作继续。

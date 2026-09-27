@@ -54,7 +54,8 @@ def _render_editor(
     ctx.update(
         plan=plan, current=current, currency_input=_currency_input_view(plan.home_currency_code), values=values if values is not None else {
             **current, "intent_month": intent_month, "idempotency_key": str(uuid4()),
-        }, error=error, conflict=conflict, review_month=current_ledger_month(db, ledger_id=selected),
+        }, error=error, conflict=conflict, permission_refused=status_code == 403,
+        review_month=current_ledger_month(db, ledger_id=selected),
     )
     return templates.TemplateResponse(
         request=request, name="income_edit.html", context=ctx, status_code=status_code,
@@ -102,12 +103,24 @@ def web_income_save(
         "income_month": income_month, "amount_yuan": amount_yuan, "pay_day": pay_day,
         "intent_month": intent_month, "expected_row_version": expected_row_version,
         "idempotency_key": idempotency_key,
+        "review_latest": "true" if review_latest else "",
     }
     retained = preserve_original_ledger_form(request, db, options=options, selected=selected,
         fields={**values, "ledger_id": ledger_id, "review_latest": review_latest}, task="修改收入计划")
     if retained is not None:
         return retained
-    _require_selected_ledger_write(options, selected)
+    try:
+        _require_selected_ledger_write(options, selected)
+    except AppError as exc:
+        if exc.error != "permission_denied":
+            raise
+        # Ledger selection already checked read access. Keep the same form, including a
+        # pending review action; a write-only refusal must not silently create a new intent.
+        plan = get_income_plan(db, tenant_id=selected, public_id=public_id)
+        return _render_editor(
+            request, db, options, selected, plan, intent_month=intent_month, values=values,
+            error="当前角色为只读，尚未保存。原输入已保留，权限恢复后可重试。", status_code=403,
+        )
     plan = get_income_plan(db, tenant_id=selected, public_id=public_id)
     if review_latest:
         # The labelled review action prepares, but never publishes, a new intent.

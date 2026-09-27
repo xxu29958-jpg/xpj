@@ -1,9 +1,12 @@
 package com.ticketbox.domain.model
 
+import com.squareup.moshi.JsonClass
+
 /**
  * v1.1 user-declared monthly income line. Drives the income leg of
  * "本月可自由支配".
  */
+@JsonClass(generateAdapter = true)
 data class IncomePlan(
     val publicId: String,
     val label: String,

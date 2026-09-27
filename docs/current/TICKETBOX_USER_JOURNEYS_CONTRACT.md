@@ -160,13 +160,27 @@ retain explicit read-only feedback. No query, protocol, persistence or mutation
 owner changes. Goal VM and Room recovery producers remain applicable; the old
 blank-form/failed-read success labels and generic offline promise are retired.
 
-Previously read Goal lists/details now reopen through the durable query owner,
-retaining recorded currencies, unknown progress and data time, with explicit
-access refusals handled separately. Budget/debt query persistence remains open;
-neither page memory nor a submitted-command receipt is a complete query snapshot.
-Unsubmitted goal/income drafts and returning after another client changed facts
-also need their own continuation. Offline reads do not confer permission or prove
-current governance/tool health, nor promise that every page works offline.
+Previously read Goal and Budget lists/details reopen through their durable query
+owners; Recurring reading is also delivered in #444. They retain recorded
+currencies and data time, with explicit access refusals handled separately.
+Debt query persistence is being qualified in #446. Neither page memory nor a
+submitted-command receipt is a complete query snapshot. Offline reads do not
+confer permission or prove current governance/tool health, nor promise that every
+page works offline.
+
+Income editing continuation is being qualified in #447. Same-identity role
+changes retain the original raw input, currency, month and OCC; read-only access
+blocks new writes without swallowing an in-flight original result. Android Back
+or swipe retains the edit, while explicit Cancel discards it. Saved-state restore
+uses the complete original binding and reconciles an already published exact
+original with the existing Room submission owner, without creating a second
+command. A changed identity hides the old form immediately; late restoration
+cannot replace the current identity. Web write refusal returns the original form
+and retry identity, preserving whether the user was saving or explicitly reviewing
+new facts. Native saved-state registry restoration and actual Room recovery are
+distinct from an OS process-kill qualification. Unsubmitted income-creation and
+goal drafts, Web refresh/session draft durability and other cross-client return
+paths remain in the atlas; this edit slice does not declare them complete.
 
 ## Recycle recovery
 
