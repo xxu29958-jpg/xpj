@@ -414,6 +414,7 @@ class ExpenseRepository(
     override fun saveRecentSearches(queries: List<String>) =
         searchRepository.saveRecentSearches(queries)
 
+    override val readAccessDenials: Flow<SnapshotAccessDenial> get() = statsRepository.readAccessDenials
     override fun observeStatsBinding(): Flow<LogicalSessionBinding?> = statsRepository.observeStatsBinding()
 
     override fun statsBinding(): LogicalSessionBinding? = statsRepository.statsBinding()

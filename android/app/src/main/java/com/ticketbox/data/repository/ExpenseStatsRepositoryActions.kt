@@ -7,6 +7,7 @@ import com.ticketbox.domain.model.MonthlyStats
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import com.squareup.moshi.Moshi
@@ -33,6 +34,8 @@ internal class ExpenseStatsRepositoryActions(
     private val bindingAdapter = moshi.adapter(LogicalSessionBinding::class.java)
     private val cacheMutex = Mutex()
     private val latestReads = mutableMapOf<StatsProjectionKind, Any>()
+
+    override val readAccessDenials: Flow<SnapshotAccessDenial> = core.sessionCoordinator.snapshotAccessDenials.filterNotNull()
 
     override fun observeStatsBinding(): Flow<LogicalSessionBinding?> =
         core.apiProvider.observeActiveLedgerAccess().map { it?.binding }.distinctUntilChanged()

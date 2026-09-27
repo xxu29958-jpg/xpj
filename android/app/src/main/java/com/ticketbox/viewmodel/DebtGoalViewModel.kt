@@ -80,6 +80,13 @@ class DebtGoalViewModel(
     private var latestRefreshGeneration = 0L
 
     init {
+        viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            repository.readAccessDenials.collect { denial ->
+                if (denial.binding != adjustmentBinding || writes.currentAccess()?.binding != denial.binding) return@collect
+                loadGeneration += 1
+                _state.update { it.withReadFailure(denial.failure) }
+            }
+        }
         viewModelScope.launch {
             writes.observeWrites().collect { change ->
                 val changedBinding = adjustmentBinding != change.binding

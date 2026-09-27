@@ -35,6 +35,11 @@ class MonthlyStatsViewModel(
     private var resolvingMonth = false
 
     init {
+        viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            repository.readAccessDenials.collect { denial ->
+                if (denial.binding == _uiState.value.binding && isBindingCurrent(denial.binding)) clearRejectedRead(denial.failure)
+            }
+        }
         viewModelScope.launch {
             repository.observeStatsBinding().distinctUntilChanged().collect { binding ->
                 refreshGeneration += 1

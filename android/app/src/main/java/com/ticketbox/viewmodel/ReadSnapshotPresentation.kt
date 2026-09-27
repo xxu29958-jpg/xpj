@@ -34,7 +34,11 @@ internal fun DebtGoalUiState.withReadFailure(error: Throwable): DebtGoalUiState 
 
 internal fun SpendingGoalDetailUiState.withReadFailure(error: Throwable): SpendingGoalDetailUiState {
     val denied = error.isReadAccessDenied()
+    val preserveForm = !denied || formDirty || hasPendingEdit
     return copy(isLoading = false, loadError = error.toUiText(com.ticketbox.R.string.spending_goal_detail_load_failed),
+        isEditing = isEditing && preserveForm, name = if (preserveForm) name else "",
+        month = if (preserveForm) month else java.time.YearMonth.now().toString(),
+        targetAmountInput = if (preserveForm) targetAmountInput else "", category = if (preserveForm) category else "",
         goal = if (denied) null else goal, fetchedAt = if (denied) null else fetchedAt,
         fromCache = !denied && fromCache)
 }

@@ -37,6 +37,7 @@ internal fun BudgetAdviceUiState.arrangementHistoryRefreshed(read: Result<Monthl
 }
 
 internal fun BudgetAdviceUiState.arrangementReadRefused(error: Throwable): BudgetAdviceUiState = copy(
+    arrangementDraft = arrangementDraft?.takeIf { it.edited },
     arrangementRead = null, arrangementHistory = emptyList(), arrangementHistoryNext = null,
     arrangementHistoryLoaded = false, arrangementHistoryCached = false,
     arrangementLoading = false, arrangementBusy = false, trialRequest = null,

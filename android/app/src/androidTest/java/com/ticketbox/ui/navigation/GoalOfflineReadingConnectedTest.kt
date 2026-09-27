@@ -230,13 +230,13 @@ class GoalOfflineReadingConnectedTest {
         assertEquals(dirty.pendingEdits, dirtyDetail.state.value.pendingEdits)
         assertEquals(detailReads, detailCalls.get())
         assertEquals(rows, harness.fixture.stored())
-        assertRetainedReadersWithdrawAndRecover(monthly, reports, debt, cleanDetail)
+        assertRetainedReadersWithdrawAndRecover(monthly, reports, debt, cleanDetail, dirtyDetail)
         assertEquals("2345", dirtyDetail.state.value.targetAmountInput)
         assertEquals(rows, harness.fixture.stored())
     }
 
     private fun assertRetainedReadersWithdrawAndRecover(monthly: MonthlyStatsViewModel, reports: StatsReportsViewModel,
-        debt: DebtGoalViewModel, cleanDetail: SpendingGoalDetailViewModel) {
+        debt: DebtGoalViewModel, cleanDetail: SpendingGoalDetailViewModel, dirtyDetail: SpendingGoalDetailViewModel) {
         assertNull("Retained monthly statistics must be withdrawn without a refresh", monthly.uiState.value.stats)
         assertNull(monthly.uiState.value.statsFetchedAt)
         assertNull(monthly.uiState.value.lifestyleStats)
@@ -266,6 +266,9 @@ class GoalOfflineReadingConnectedTest {
         compose.runOnIdle { cleanDetail.load() }
         compose.waitUntil(5_000) { cleanDetail.state.value.goal != null }
         assertTrue(!cleanDetail.state.value.fromCache)
+        compose.runOnIdle { dirtyDetail.load() }
+        compose.waitUntil(5_000) { dirtyDetail.state.value.goal != null }
+        assertTrue(!dirtyDetail.state.value.fromCache)
     }
 
     @Test fun oneBudgetRefusalWithdrawsRetainedArrangementHistoryAdviceAndOnlyTheUneditedServerForm() {
