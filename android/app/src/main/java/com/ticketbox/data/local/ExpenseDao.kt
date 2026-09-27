@@ -21,6 +21,8 @@ data class ConfirmedStreamSnapshot(
     val offsets: List<ExpenseOffsetStreamEntity>,
 )
 
+data class DebtReadProtection(val epoch: Long, val directTokens: Set<String>, val outboxToken: String?)
+
 /**
  * v0.4-alpha1 multi-ledger contract:
  *
@@ -74,6 +76,14 @@ interface ExpenseDao {
     /** Durable projection protection; retry diagnostics and business receipts are separate. */
     suspend fun debtOutboxReadBarrier(bindingKey: String): StatsProjectionCacheEntity? =
         statsProjections(bindingKey, "debt_outbox_read_barrier", "", "", "UTC").singleOrNull()
+
+    /** A concurrent canonical repair cannot split the epoch from the protection it retires. */
+    @Transaction
+    suspend fun captureDebtReadProtection(bindingKey: String): DebtReadProtection = DebtReadProtection(
+        debtReadEpoch(bindingKey)?.toLong() ?: 0L,
+        debtDirectBarriers(bindingKey).map { it.tag }.toSet(),
+        debtOutboxReadBarrier(bindingKey)?.responseJson,
+    )
 
     @Query("DELETE FROM stats_projection_cache WHERE bindingKey = :bindingKey " +
         "AND kind IN ('debt_list', 'debt_detail', 'debt_activity')")

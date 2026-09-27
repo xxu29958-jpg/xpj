@@ -141,10 +141,12 @@ internal class DebtQueryReader(
         scope.publicId?.let { require(it.isNotBlank()) }
         val bound = guard.bindExact(binding)
         val ticket = coordinator.beginSnapshotRead()
-        val request = DebtReadRequest(binding, scope.copy(directTokens = dao.debtDirectBarriers(query.bindingKey).map { it.tag }.toSet()), ticket, generation.get(),
-            dao.debtReadEpoch(query.bindingKey)?.toLong() ?: 0L,
+        val localGeneration = generation.get()
+        val protection = dao.captureDebtReadProtection(query.bindingKey)
+        val request = DebtReadRequest(binding, scope.copy(directTokens = protection.directTokens), ticket, localGeneration,
+            protection.epoch,
             deniedResources(query.bindingKey),
-            dao.debtOutboxReadBarrier(query.bindingKey)?.responseJson, hasActiveDirect(query.bindingKey))
+            protection.outboxToken, hasActiveDirect(query.bindingKey))
         val wire = try {
             fetchDebtNetwork(bound, spec.fetch) { error ->
                 val failure = errors.httpFailure(error)
