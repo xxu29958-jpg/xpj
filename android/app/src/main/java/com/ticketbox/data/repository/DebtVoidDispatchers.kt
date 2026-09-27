@@ -34,9 +34,7 @@ class VoidDebtRepaymentDispatcher(private val apiProvider: (OutboxRow) -> ApiSer
 private suspend fun dispatchVoid(intent: DebtWriteIntent, row: OutboxRow, adapter: JsonAdapter<DebtDto>,
     requireVoided: Boolean, send: suspend () -> DebtDto): DispatchResult = try {
     val result = send()
-    if (result.publicId != intent.subject.publicId || result.ledgerId != row.ledgerId ||
-        result.homeCurrencyCode != intent.subject.homeCurrencyCode || result.rowVersion != intent.expectedRowVersion + 1 ||
-        (result.status == "voided") != requireVoided) {
+    if (!result.matchesOriginalVoid(intent, row, requireVoided)) {
         DispatchResult.Failure("debt_void_response_unverified")
     } else DispatchResult.Success(receiptJson = adapter.toJson(result))
 } catch (error: CancellationException) {
@@ -52,4 +50,11 @@ private suspend fun dispatchVoid(intent: DebtWriteIntent, row: OutboxRow, adapte
     DispatchResult.Failure("debt_void_binding_changed")
 } catch (_: Exception) {
     DispatchResult.Failure("debt_void_response_unverified")
+}
+
+private fun DebtDto.matchesOriginalVoid(intent: DebtWriteIntent, row: OutboxRow, requireVoided: Boolean): Boolean {
+    val matchesVoidResult = if (requireVoided) status == "voided" && remainingAmountCents == 0L
+        else status == "open" && remainingAmountCents > 0L
+    return publicId == intent.subject.publicId && ledgerId == row.ledgerId &&
+        homeCurrencyCode == intent.subject.homeCurrencyCode && rowVersion == intent.expectedRowVersion + 1 && matchesVoidResult
 }
