@@ -26,7 +26,8 @@ data class PendingDebtWrite(val row: OutboxRow, val intent: DebtWriteIntent?) {
     val debtVoid: DebtVoidPayload? get() = intent as? DebtVoidPayload
     val repaymentVoid: DebtRepaymentVoidPayload? get() = intent as? DebtRepaymentVoidPayload
     val isVoid: Boolean get() = row.type in setOf(PendingMutationType.VoidDebt, PendingMutationType.VoidDebtRepayment)
-    val requiresReview: Boolean get() = isVoid && row.lastError == DEBT_VOID_ORIGINAL_REQUIRES_REVIEW
+    val legacyVoidAccepted: Boolean get() = isVoid && row.lastError == DEBT_VOID_ORIGINAL_REQUIRES_REVIEW
+    val requiresReview: Boolean get() = legacyVoidAccepted && !isTerminal
     val isTerminal: Boolean get() = row.status == PendingMutationStatus.Done || row.status == PendingMutationStatus.Abandoned
     val isUnresolved: Boolean get() = row.status in setOf(PendingMutationStatus.Pending,
         PendingMutationStatus.InFlight, PendingMutationStatus.Failed, PendingMutationStatus.Conflict)

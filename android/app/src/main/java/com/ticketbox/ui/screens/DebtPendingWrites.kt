@@ -24,7 +24,10 @@ import com.ticketbox.ui.screens.settings.isExpiredFailure
 
 @Composable
 internal fun DebtWriteIntentSummary(pending: PendingDebtWrite) {
-    if (pending.row.status == PendingMutationStatus.Abandoned && !pending.requiresReview) Text(stringResource(R.string.debt_write_stopped_body))
+    if (pending.row.status == PendingMutationStatus.Abandoned) {
+        Text(stringResource(if (pending.legacyVoidAccepted) R.string.debt_void_accepted_locally_stopped
+            else R.string.debt_write_stopped_body))
+    }
     val intent = pending.intent
     if (intent == null) {
         Text(stringResource(if (pending.row.status == PendingMutationStatus.Abandoned) {
