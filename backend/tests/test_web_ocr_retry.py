@@ -6,6 +6,7 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 from api_contract_helpers import confirm_expense_api, patch_expense, upload_png
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.database import SessionLocal
 from app.errors import AppError
@@ -74,8 +75,9 @@ def _post_different_ledger_with_session(web_client, identity, expense_id, action
     return response, fields
 
 
+@pytest.mark.parametrize("failure", ["provider", "queue_busy", "database"])
 def test_failed_original_retry_can_resume_same_key_and_occ_then_replay_one_suggestion(
-    web_client, monkeypatch, *, identity,
+    web_client, monkeypatch, *, identity, failure,
 ):
     expense_id, action, original = _open_retry(web_client, identity)
     before = _record(expense_id)
@@ -84,14 +86,27 @@ def test_failed_original_retry_can_resume_same_key_and_occ_then_replay_one_sugge
 
     def extract(expense):
         calls.append(expense.id)
-        if len(calls) == 1:
+        if len(calls) == 1 and failure == "provider":
             raise AppError("ocr_unavailable", "识别暂时不可用，请继续原请求。", status_code=503)
+        if len(calls) == 1 and failure == "queue_busy":
+            raise AppError("rate_limited", "本地大模型识别队列繁忙，请稍后再试。", status_code=429)
         return _suggestion()
 
     monkeypatch.setattr("app.services.expense_service._ocr.extract_ocr_result", extract)
+    if failure == "database":
+        from app.services import expense_ocr_command_service as command
+        prepare = command.prepare_pending_expense_fx
+
+        def fail_first_staging(*args, **kwargs):
+            if len(calls) == 1:
+                raise SQLAlchemyError("synthetic database detail must stay private")
+            return prepare(*args, **kwargs)
+        monkeypatch.setattr(command, "prepare_pending_expense_fx", fail_first_staging)
     failed = web_client.post(action, data=original, follow_redirects=False)
-    assert failed.status_code == 503, failed.text
-    assert "识别暂时不可用" in failed.text
+    assert failed.status_code == (429 if failure == "queue_busy" else 503), failed.text
+    expected_message = {"provider": "识别暂时不可用", "queue_busy": "识别队列繁忙", "database": "暂时未能取得识别结果"}
+    assert expected_message[failure] in failed.text
+    assert "synthetic database detail" not in failed.text
     assert _record(expense_id) == before
     retry = hidden_post_forms(failed.text)[action]
     for name in ("ledger_id", "expected_row_version", "idempotency_key", "return_to"):

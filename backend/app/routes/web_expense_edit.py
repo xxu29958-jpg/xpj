@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, Response
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -206,15 +207,17 @@ def web_retry_expense_ocr(
             initiator_account_id=account_id, initiator_device_id=device_id,
             expected_row_version=version, request_expected_row_version=version,
             idempotency_key=idempotency_key)
-    except AppError as exc:
+    except (AppError, SQLAlchemyError) as exc:
         db.rollback()
+        status = exc.status_code if isinstance(exc, AppError) else 503
+        message = exc.message if isinstance(exc, AppError) else "暂时未能取得识别结果，请稍后重试原请求。"
         ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected)
-        ctx.update(error=exc.message, original_fields=fields,
-            can_retry=exc.status_code >= 500 or exc.error == "idempotency_key_in_progress",
+        ctx.update(error=message, original_fields=fields,
+            can_retry=status >= 500 or status == 429 or (isinstance(exc, AppError) and exc.error == "idempotency_key_in_progress"),
             current_href=_with_ledger(f"/web/expenses/{expense_id}/edit", selected, **origin),
             original_href=_with_ledger(f"/web/expenses/{expense_id}/original", selected))
         return templates.TemplateResponse(request=request, name="expense_ocr_retry.html", context=ctx,
-            status_code=exc.status_code, headers={"Cache-Control": "no-store"})
+            status_code=status, headers={"Cache-Control": "no-store"})
     return _web_redirect(f"/web/expenses/{expense_id}/edit", selected,
         msg="识别请求已接受；请核对当前账单，仍缺少的字段可手动补全。原窗口未保存的填写仍保留。",
         **origin)

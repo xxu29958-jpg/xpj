@@ -10,6 +10,7 @@ from unittest.mock import Mock
 import pytest
 from _web_native_form_support import hidden_post_forms
 from jinja2 import ChoiceLoader, DictLoader
+from sqlalchemy.exc import SQLAlchemyError
 from starlette.requests import Request
 
 from app.errors import AppError
@@ -220,6 +221,7 @@ def test_ocr_retry_missing_original_has_an_explicit_safe_next_step(record_contex
 
 @pytest.mark.parametrize("code,status,retryable", [
     ("ocr_not_configured", 503, True), ("idempotency_key_in_progress", 409, True),
+    ("rate_limited", 429, True), ("database", 503, True),
     ("state_conflict", 409, False), ("image_not_found", 404, False),
 ])
 def test_original_ocr_failure_page_preserves_intent_or_guides_review(
@@ -231,7 +233,8 @@ def test_original_ocr_failure_page_preserves_intent_or_guides_review(
     monkeypatch.setattr(edit, "_require_selected_ledger_write", lambda *_a: None)
     monkeypatch.setattr(edit, "resolve_web_actor", lambda *_a: (1, None))
     monkeypatch.setattr(edit, "_base_ctx", helpers._base_ctx)
-    monkeypatch.setattr(edit, "submit_expense_ocr_retry", Mock(side_effect=AppError(code, status_code=status)))
+    failure = SQLAlchemyError("synthetic database detail must stay private") if code == "database" else AppError(code, status_code=status)
+    monkeypatch.setattr(edit, "submit_expense_ocr_retry", Mock(side_effect=failure))
     env = templates.env.overlay(loader=ChoiceLoader([
         DictLoader({"base.html": "{% block content %}{% endblock %}"}), templates.env.loader]))
     monkeypatch.setattr(templates, "env", env)
@@ -240,7 +243,11 @@ def test_original_ocr_failure_page_preserves_intent_or_guides_review(
     response = edit.web_retry_expense_ocr(41, request, "owner", "1", "original-ocr-key",
         ExpenseReturnContext(return_to="pending"), None, Mock())
     body = response.body.decode()
-    assert response.status_code == status and AppError(code).message in body
+    assert response.status_code == status
+    if code == "database":
+        assert "暂时未能取得识别结果" in body and str(failure) not in body
+    else:
+        assert AppError(code).message in body
     assert "原窗口的填写仍保留" in body
     assert '/web/expenses/41/edit?ledger_id=owner&amp;return_to=pending' in body
     assert '/web/expenses/41/original?ledger_id=owner' in body
