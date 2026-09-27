@@ -8,11 +8,18 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.NotificationRuntimeGraph
+import com.ticketbox.OutboxAdapterGraph
+import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.TicketboxSettingsStore
+import com.ticketbox.data.remote.ApiService
+import com.ticketbox.data.remote.dto.BudgetMonthlyUpdateRequestDto
 import com.ticketbox.data.repository.ExpenseCorrectionConnectedFixture
+import com.ticketbox.data.repository.OutboxDrainEngine
+import com.ticketbox.data.repository.SaveMonthlyBudgetDispatcher
 import com.ticketbox.data.repository.newTaskMonth
 import com.ticketbox.data.repository.toDomain
 import com.ticketbox.domain.model.NotificationPreferences
+import com.ticketbox.domain.model.BudgetMonthlyUpdate
 import com.ticketbox.notification.TicketboxNotifier
 import com.ticketbox.notification.budget.BudgetOverspendDispatchOutcome
 import com.ticketbox.notification.budget.SharedPrefsBudgetOverspendStore
@@ -143,5 +150,51 @@ class BudgetOfflineSnapshotConnectedTest {
             if (originalValue == null) preferences.edit().remove(key).commit()
             else preferences.edit().putBoolean(key, originalValue).commit()
         }
+    }
+
+    @Test fun acceptedOriginalBudgetCannotBeDowngradedByAnOlderGetOrUsedAsAFreshQueryReceipt() = runBlocking {
+        val graph = fixture.reopen()
+        val repository = graph.budgetRepository
+        repository.monthlyBudget("2026-09").getOrThrow()
+        val started = CompletableDeferred<Unit>()
+        val resume = CompletableDeferred<Unit>()
+        transport.beforeNextRead = { started.complete(Unit); resume.await() }
+        val olderRead = async { repository.monthlyBudget("2026-09") }
+        started.await()
+        val binding = requireNotNull(graph.expenseRepository.captureDeferredLedgerBinding())
+        repository.enqueueSave(binding, "2026-09", BudgetMonthlyUpdate("JPY", 7, 2400)).getOrThrow()
+        val originalIntent = fixture.stored().single()
+        val accepted = transport.original.copy(rowVersion = 8, totalAmountCents = 2400, flexBudgetCents = 2400,
+            remainingAmountCents = 1989, excludedCategories = emptyList(), categoryBudgets = emptyList())
+        val api = object : ApiService by transport.service {
+            override suspend fun updateMonthlyBudget(month: String, request: BudgetMonthlyUpdateRequestDto,
+                timezone: String?, idempotencyKey: String?): com.ticketbox.data.remote.dto.BudgetMonthlyDto {
+                assertEquals("2026-09", month)
+                assertEquals(BudgetMonthlyUpdateRequestDto("JPY", 7, 2400), request)
+                assertEquals(originalIntent["idempotencyKey"], idempotencyKey)
+                transport.original = accepted
+                return accepted
+            }
+        }
+        val adapters = OutboxAdapterGraph()
+        val outcome = try {
+            OutboxDrainEngine(fixture.outbox, listOf(SaveMonthlyBudgetDispatcher(
+                { api }, adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter)), now = fixture.clock::millis).drainOnce()
+        } finally { resume.complete(Unit) }
+        assertEquals(1, outcome.done)
+        val acceptedIntent = fixture.stored().single()
+        assertEquals(PendingMutationStatus.Done.wireValue, acceptedIntent["status"])
+        for (field in listOf("id", "type", "targetId", "payload", "idempotencyKey", "expectedRowVersion", "ownerKey", "ledgerId", "serverUrl")) {
+            assertEquals("Accepted delivery must preserve the original $field", originalIntent[field], acceptedIntent[field])
+        }
+        assertTrue("A v7 GET captured before the accepted v8 command must not republish", olderRead.await().isFailure)
+        transport.offline = true
+        assertTrue("The v8 receipt is not a fresh monthly-budget query",
+            fixture.reopen().budgetRepository.monthlyBudget("2026-09").isFailure)
+        transport.offline = false
+        assertEquals(accepted.toDomain(), fixture.graph.budgetRepository.monthlyBudget("2026-09").getOrThrow())
+        transport.offline = true
+        assertEquals(accepted.toDomain(), fixture.reopen().budgetRepository.monthlyBudget("2026-09").getOrThrow())
+        assertEquals(acceptedIntent, fixture.stored().single())
     }
 }

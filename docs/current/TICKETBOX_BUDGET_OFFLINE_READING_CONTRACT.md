@@ -28,7 +28,7 @@ save receipt as a newly fetched query.
 
 Direct producers: BudgetOfflineReadingConnectedTest (actual Plans → Budget after
 Room/VM reopen, original read time and Outbox bytes); BudgetOfflineSnapshotConnectedTest
-(fixed September JPY/unknown values, unvisited month/timezone, binding/refusal and
+(fixed September JPY/unknown values, unvisited month/timezone, binding/refusal, accepted-save ordering and
 actual NotificationRuntimeGraph freshness with a SENT delivery control); BudgetReadAccessTest (both visible consumers clear on 403,
 original draft/OCC retained). The Plan entry uses its actual ledger-calendar month so
 this test does not expire at a calendar boundary. The reopened graph also replaces
@@ -44,9 +44,12 @@ new commands, Windows lifecycle or a generic caching framework.
 
 Status: direct tests prepared against existing production APIs; cloud RED pending.
 Production implementation, after-impact closure and qualification remain open.
-This reuses the unmerged 980f3a475 preparation, rebased conceptually on the current
-product and calendar owners; it does not inherit test qualification. Direct follow-up
-coverage still includes accepted-save invalidation. The original route journey now
+This reuses the unmerged 980f3a475 preparation; main 9711aa781 has been merged into
+the preparation branch with the current product/calendar owners. It does not inherit
+test qualification. The save counterexample now sends an original JPY v7 command through
+the real dispatcher/Outbox to accept v8, then releases a delayed v7 GET; that old response
+must not publish, and only a new successful query may seed the offline v8 read. Command
+body, key, binding, original OCC and final receipt remain unchanged. The original route journey now
 continues into the actual Insights budget card and retains both budget and expense
 original commands. Same-ledger account/device isolation and a delayed pre-refusal GET
 are specified alongside the original Room tests. All of this native execution remains unrun.

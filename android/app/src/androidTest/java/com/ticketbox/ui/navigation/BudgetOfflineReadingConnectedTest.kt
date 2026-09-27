@@ -166,6 +166,8 @@ class BudgetOfflineReadingConnectedTest {
 }
 
 internal class OfflineBudgetTransport {
+    lateinit var service: ApiService
+        private set
     val reads = CopyOnWriteArrayList<String>()
     val readScopes = CopyOnWriteArrayList<Pair<String, String?>>()
     @Volatile var offline = false
@@ -194,7 +196,7 @@ internal class OfflineBudgetTransport {
             if (offline) throw ConnectException("Synthetic unavailable budget transport")
             return captured
         }
-    }
+    }.also { service = it }
 }
 
 internal fun offlineBudget() = BudgetMonthlyDto(
