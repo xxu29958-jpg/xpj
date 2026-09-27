@@ -107,8 +107,16 @@ def test_web_budget_advise_form_keeps_csrf_token_out_of_get_url(
     assert response.status_code == 200, response.text
     assert 'method="post"' in response.text
     assert 'name="csrf_token"' in response.text
-    assert 'method="get"' not in response.text
     assert "formmethod" not in response.text
+    assert "csrf_token=" not in response.text
+    post_payloads = hidden_post_forms(response.text)
+    assert all(payload.get("csrf_token") for payload in post_payloads.values())
+    get_forms = re.findall(r'<form method="get"[^>]*>(.*?)</form>', response.text, re.S)
+    assert len(get_forms) == 1
+    month_form = get_forms[0]
+    assert 'name="csrf_token"' not in month_form
+    assert set(re.findall(r'name="([^"]+)"', month_form)) == {"ledger_id", "month"}
+    assert 'value="2026-05"' in month_form and 'value="owner"' in month_form
 
 
 def test_web_budget_advise_post_defaults_money_to_canonical_zero_text(

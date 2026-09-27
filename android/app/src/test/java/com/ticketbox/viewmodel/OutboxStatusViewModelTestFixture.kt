@@ -34,9 +34,7 @@ internal fun outboxStatusHarness(onEnqueued: () -> Unit = {}): OutboxStatusHarne
             OutboxAdapterGraph().debtAdjustmentAdapter, OutboxAdapterGraph().debtRepaymentAdapter),
         goalEdits = com.ticketbox.data.repository.GoalEditRepository(testApiServiceProvider(api, tokenStore), outbox,
             OutboxAdapterGraph().goalUpdateAdapter, OutboxAdapterGraph().goalReceiptAdapter, OutboxAdapterGraph().goalCreateAdapter),
-        budgetSaves = com.ticketbox.data.repository.BudgetRepository(testApiServiceProvider(api, tokenStore), outbox,
-            OutboxAdapterGraph().budgetSaveAdapter, OutboxAdapterGraph().budgetReceiptAdapter,
-            OutboxAdapterGraph().manualRateAdapter, OutboxAdapterGraph().manualRateReceiptAdapter),
+        budgetSaves = com.ticketbox.data.repository.testBudgetRepository(testApiServiceProvider(api, tokenStore), outbox),
         recurringItems = com.ticketbox.data.repository.RecurringRepository(testApiServiceProvider(api, tokenStore), outbox,
             OutboxAdapterGraph().recurringCreateAdapter, OutboxAdapterGraph().recurringUpdateAdapter),
         rules = com.ticketbox.data.repository.RuleRepository(binding, offlineMutations = OutboxAdapterGraph().let { adapters ->

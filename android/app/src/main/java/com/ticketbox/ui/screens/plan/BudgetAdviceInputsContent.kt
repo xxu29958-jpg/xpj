@@ -31,7 +31,12 @@ internal data class BudgetAdviceActions(val onGenerate: () -> Unit, val onRefres
     val onEditRate: (ExchangeRateDto) -> Unit, val onRateValue: (String) -> Unit,
     val onSaveRate: () -> Unit, val onCloseRate: () -> Unit,
     val onReviewRate: (PendingManualRateSubmission) -> Unit,
-    val onRecoverRate: (PendingManualRateSubmission, Boolean) -> Unit)
+    val onRecoverRate: (PendingManualRateSubmission, Boolean) -> Unit,
+    val onArrangementValue: (Boolean, String) -> Unit,
+    val onTrialArrangement: () -> Unit, val onSaveArrangement: () -> Unit,
+    val onRefreshArrangement: () -> Unit, val onHistory: (Boolean) -> Unit,
+    val onReviewArrangement: (com.ticketbox.data.repository.PendingMonthlyArrangement) -> Unit,
+    val onRecoverArrangement: (com.ticketbox.data.repository.PendingMonthlyArrangement, Boolean) -> Unit)
 
 @Composable
 internal fun BudgetAdviceInputsContent(state: BudgetAdviceUiState, actions: BudgetAdviceActions) {
@@ -40,19 +45,26 @@ internal fun BudgetAdviceInputsContent(state: BudgetAdviceUiState, actions: Budg
         Text(displayMonthLabel(state.month), style = MaterialTheme.typography.titleMedium)
         TextButton(onClick = { actions.onShiftMonth(1) }, enabled = !state.rateBusy) { Text("›") }
     }
+    MonthlyArrangementContent(state, actions)
     AppContentCard {
         Text(stringResource(R.string.advice_inputs_title), style = MaterialTheme.typography.titleMedium)
         state.inputs?.let { inputs ->
             com.ticketbox.ui.components.AccountingDateNotice(inputs.undatedExpenseCount)
+            Text(stringResource(if (inputs.isTrial) R.string.arrangement_trial_basis else R.string.arrangement_saved_basis))
             val currency = CurrencyDisplay.forRecord(inputs.homeCurrencyCode)
             val amounts = listOf(R.string.advice_inputs_income to inputs.breakdown.monthlyIncomeCents,
                 R.string.advice_inputs_fixed to inputs.breakdown.fixedExpensesCents,
                 R.string.advice_inputs_spent to inputs.breakdown.spentAmountCents,
+                R.string.arrangement_savings to inputs.breakdown.savingsTargetCents,
+                R.string.arrangement_buffer to inputs.breakdown.reservedBufferCents,
                 R.string.advice_inputs_available to inputs.breakdown.discretionaryCents)
             amounts.forEach { (label, amount) -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(stringResource(label))
                 Text(amount?.let { formatDisplayAmount(it, currency) } ?: stringResource(R.string.advice_inputs_unknown))
             } }
+            inputs.breakdown.shortfallCents?.takeIf { it > 0 }?.let {
+                Text(stringResource(R.string.arrangement_shortfall, formatDisplayAmount(it, currency)), color = MaterialTheme.colorScheme.error)
+            }
             com.ticketbox.ui.components.CurrencyReferenceDates(inputs.referenceRates.map { it.toDomain() })
             if (inputs.missingRates.isNotEmpty()) Text(stringResource(R.string.advice_missing_rates))
             inputs.missingRates.forEach { gap ->

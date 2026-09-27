@@ -9,13 +9,14 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.ticketbox.domain.model.FxContract
 
 @Database(
-    entities = [ExpenseEntity::class, PendingMutationEntity::class, ExpenseOffsetStreamEntity::class, StatsProjectionCacheEntity::class, GoalQueryCacheEntity::class],
-    version = 21,
+    entities = [ExpenseEntity::class, PendingMutationEntity::class, ExpenseOffsetStreamEntity::class, StatsProjectionCacheEntity::class, GoalQueryCacheEntity::class, MonthlyArrangementCacheEntity::class],
+    version = 22,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun expenseDao(): ExpenseDao
     abstract fun pendingMutationDao(): PendingMutationDao
+    abstract fun monthlyArrangementCacheDao(): MonthlyArrangementCacheDao
 
     companion object {
         @Volatile
@@ -561,6 +562,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        internal val MIGRATION_21_22_STATEMENTS = listOf(
+            "CREATE TABLE IF NOT EXISTS monthly_arrangement_cache (bindingKey TEXT NOT NULL, month TEXT NOT NULL, kind TEXT NOT NULL, json TEXT NOT NULL, PRIMARY KEY(bindingKey, month, kind))",
+        )
+        internal val Migration21To22 = object : Migration(21, 22) {
+            override fun migrate(db: SupportSQLiteDatabase) { MIGRATION_21_22_STATEMENTS.forEach(db::execSQL) }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -589,6 +597,7 @@ abstract class AppDatabase : RoomDatabase() {
                         Migration18To19,
                         Migration19To20,
                         Migration20To21,
+                        Migration21To22,
                     )
                     .build()
                     .also { instance = it }

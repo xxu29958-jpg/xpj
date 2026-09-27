@@ -31,6 +31,8 @@ CURRENCY_EVIDENCE_TABLES = (
     "income_plan_revisions",
     "member_repayment_proposals",
     "monthly_income_plans",
+    "monthly_arrangements",
+    "monthly_arrangement_revisions",
     "ocr_facts",
     "recurring_items",
     "repayment_drafts",

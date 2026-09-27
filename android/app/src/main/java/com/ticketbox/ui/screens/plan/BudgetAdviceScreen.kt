@@ -59,13 +59,7 @@ internal fun BudgetAdviceScreen(
         ),
         slots = AppSecondaryPageSlots(
             status = {
-                val authorityTone = when {
-                    !state.canRequest -> DataAuthorityTone.ReadOnly
-                    state.inputsLoading || state.loadState == BudgetAdviceLoadState.Loading -> DataAuthorityTone.Refreshing
-                    state.inputs != null || state.result != null -> DataAuthorityTone.Backend
-                    else -> null
-                }
-                authorityTone?.let { AppDataAuthorityStrip(tone = it) }
+                state.authorityTone?.let { AppDataAuthorityStrip(tone = it) }
             },
         ),
     ) {
@@ -75,13 +69,22 @@ internal fun BudgetAdviceScreen(
             return@AppSecondaryScrollableColumn
         }
         BudgetAdviceInputsContent(state, actions)
-        if (state.inputsLoading || state.inputs?.readyForAdvice != true) return@AppSecondaryScrollableColumn
+        if (state.inputsLoading || state.inputs?.readyForAdvice != true ||
+            (state.arrangementDraft?.edited == true && state.trialRequest == null)) return@AppSecondaryScrollableColumn
         BudgetAdviceBody(
             state = state,
             onRequestAdvice = actions.onGenerate,
         )
     }
 }
+
+private val BudgetAdviceUiState.authorityTone: DataAuthorityTone?
+    get() = when {
+        !canRequest -> DataAuthorityTone.ReadOnly
+        inputsLoading || loadState == BudgetAdviceLoadState.Loading -> DataAuthorityTone.Refreshing
+        inputs != null || result != null -> DataAuthorityTone.Backend
+        else -> null
+    }
 
 @Composable
 private fun BudgetAdviceBody(

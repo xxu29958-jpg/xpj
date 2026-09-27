@@ -26,6 +26,7 @@ from app.services.budget_advisor_service import (
     read_budget_inputs,
     run_budget_advisor,
 )
+from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.ledger_calendar_service import current_ledger_month
 from app.tenants import AuthContext
 
@@ -39,24 +40,22 @@ def get_discretionary(
         pattern=r"^\d{4}-(0[1-9]|1[0-2])$",
         description="Accounting month used for one-time income.",
     ),
-    savings_target_cents: Annotated[NonNegativeMoneyMinorText, Query()] = "0",
-    reserved_buffer_cents: Annotated[NonNegativeMoneyMinorText, Query()] = "0",
+    savings_target_cents: Annotated[NonNegativeMoneyMinorText | None, Query()] = None,
+    reserved_buffer_cents: Annotated[NonNegativeMoneyMinorText | None, Query()] = None,
+    home_currency_code: str | None = Query(default=None, pattern=r"^[A-Z]{3}$"),
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> DiscretionaryResponse:
-    savings_target = parse_canonical_money_minor(
-        savings_target_cents,
-        sign=MoneySign.NONNEGATIVE,
-        label="budget_discretionary.savings_target_cents",
-    )
-    reserved_buffer = parse_canonical_money_minor(
-        reserved_buffer_cents,
-        sign=MoneySign.NONNEGATIVE,
-        label="budget_discretionary.reserved_buffer_cents",
-    )
+    # Keep the existing single-parameter calculator usable; omitted amounts
+    # remain zero for this legacy trial entry. An unparameterized read uses
+    # the saved arrangement instead.
+    trial = savings_target_cents is not None or reserved_buffer_cents is not None
+    savings_target = _trial_minor(savings_target_cents or "0") if trial else None
+    reserved_buffer = _trial_minor(reserved_buffer_cents or "0") if trial else None
     month_label = month or current_ledger_month(db, ledger_id=auth.tenant_id)
     projection = read_budget_inputs(
         db, tenant_id=auth.tenant_id, month=month_label,
+        home_currency_code=(home_currency_code or require_runtime_home_currency_code(db)) if trial else home_currency_code,
         savings_target_cents=savings_target,
         reserved_buffer_cents=reserved_buffer,
     )
@@ -68,17 +67,14 @@ def get_advisor_inputs(
     month: str = Query(pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
     timezone: str | None = Query(default=None),
     home_currency_code: str | None = Query(default=None, pattern=r"^[A-Z]{3}$"),
-    savings_target_cents: Annotated[NonNegativeMoneyMinorText, Query()] = "0",
-    reserved_buffer_cents: Annotated[NonNegativeMoneyMinorText, Query()] = "0",
+    savings_target_cents: Annotated[NonNegativeMoneyMinorText | None, Query()] = None,
+    reserved_buffer_cents: Annotated[NonNegativeMoneyMinorText | None, Query()] = None,
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> BudgetInputsResponse:
     projection = read_budget_inputs(db, tenant_id=auth.tenant_id, month=month,
         home_currency_code=home_currency_code, timezone_name=timezone or "Asia/Shanghai",
-        savings_target_cents=parse_canonical_money_minor(savings_target_cents, sign=MoneySign.NONNEGATIVE,
-            label="budget_inputs.savings_target_cents"),
-        reserved_buffer_cents=parse_canonical_money_minor(reserved_buffer_cents, sign=MoneySign.NONNEGATIVE,
-            label="budget_inputs.reserved_buffer_cents"))
+        savings_target_cents=_trial_minor(savings_target_cents), reserved_buffer_cents=_trial_minor(reserved_buffer_cents))
     return BudgetInputsResponse.model_validate(projection)
 
 
@@ -96,12 +92,15 @@ def post_advise(
         month=payload.month,
         timezone_name=payload.timezone or "Asia/Shanghai",
         home_currency_code=payload.home_currency_code,
+        savings_target_cents=payload.savings_target_cents,
+        reserved_buffer_cents=payload.reserved_buffer_cents,
     )
     return BudgetAdviseResponse(
         advice=_advice_to_dto(result.advice),
         home_currency_code=result.home_currency_code,
         provider_name=result.provider_name,
         reason_code=result.reason_code,
+        inputs=BudgetInputsResponse.model_validate(result.inputs),
     )
 
 
@@ -143,3 +142,8 @@ def _advice_to_dto(advice: BudgetAdvice | None) -> BudgetAdviceDto | None:
         ],
         confidence=advice.confidence,
     )
+
+
+def _trial_minor(value: str | None) -> int | None:
+    return None if value is None else parse_canonical_money_minor(value, sign=MoneySign.NONNEGATIVE,
+        label="budget_inputs.reserve_amount")

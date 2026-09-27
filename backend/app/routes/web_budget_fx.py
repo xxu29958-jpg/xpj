@@ -31,6 +31,7 @@ from app.services.ledger_calendar_service import current_ledger_month
 
 router = APIRouter(prefix="/rates", tags=["web"])
 _TASK_FIELDS = ("ledger_id", "month", "home_currency_code", "savings_target_yuan", "reserved_buffer_yuan",
+    "arrangement_version", "arrangement_key", "arrangement_currency_code",
     "return_to", "granularity", "ranking_metric", "merchant_category", "tag", "page", "filter")
 _RATE_FIELDS = ("currency_code", "rate_date", "rate_to_cny", "expected_row_version", "idempotency_key")
 
@@ -43,6 +44,9 @@ class BudgetRateForm(BaseModel):
     home_currency_code: str = ""
     savings_target_yuan: str = ""
     reserved_buffer_yuan: str = ""
+    arrangement_version: str = ""
+    arrangement_key: str = ""
+    arrangement_currency_code: str = ""
     return_to: str = ""
     granularity: str = ""
     ranking_metric: str = ""
@@ -71,7 +75,9 @@ def _task_return(values):
             merchant_category=values["merchant_category"])
         return "/web/reports", params, "期间报表"
     params.update(savings_target_yuan=values["savings_target_yuan"], reserved_buffer_yuan=values["reserved_buffer_yuan"])
-    return "/web/budget-advise", params, "预算"
+    params.update({key: values[key] for key in ("arrangement_version", "arrangement_key") if values.get(key)})
+    params["home_currency_code"] = values.get("arrangement_currency_code") or values["home_currency_code"]
+    return "/web/budget-advise", params, "本月安排"
 
 
 def _current_rates(db, selected, values):

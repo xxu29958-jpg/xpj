@@ -75,6 +75,7 @@ data class BudgetAdviceResult(
     val homeCurrencyCode: String,
     val providerName: String,
     val reasonCode: String?,
+    val inputs: com.ticketbox.data.remote.dto.BudgetAdviceInputsDto? = null,
 )
 
 data class BudgetAdvice(

@@ -344,6 +344,7 @@ interface ExpenseDao {
         clearConfirmedStreamOffsets()
         clearStatsProjections()
         clearGoalSnapshots()
+        clearMonthlyReadSnapshots()
     }
 
     @Transaction
@@ -352,6 +353,22 @@ interface ExpenseDao {
         clearConfirmedStreamOffsetsForLedger(ledgerId)
         clearStatsProjectionsForLedger(ledgerId)
         clearGoalSnapshotsForLedger(ledgerId)
+        clearMonthlyReadSnapshotsForLedger(ledgerId)
+    }
+
+    @Query("DELETE FROM monthly_arrangement_cache WHERE kind != 'draft'")
+    suspend fun clearMonthlyReadSnapshots()
+
+    @Query("DELETE FROM monthly_arrangement_cache WHERE bindingKey = :bindingKey AND kind != 'draft'")
+    suspend fun clearMonthlyReadSnapshotsForBinding(bindingKey: String)
+
+    @Query("SELECT DISTINCT bindingKey FROM monthly_arrangement_cache WHERE kind != 'draft'")
+    suspend fun monthlyReadSnapshotBindings(): List<String>
+
+    @Transaction
+    suspend fun clearMonthlyReadSnapshotsForLedger(ledgerId: String) {
+        monthlyReadSnapshotBindings().filter { monthlyArrangementCacheLedgerId(it) == ledgerId }
+            .forEach { clearMonthlyReadSnapshotsForBinding(it) }
     }
 
     @Transaction

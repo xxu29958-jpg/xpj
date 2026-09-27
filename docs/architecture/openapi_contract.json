@@ -2025,6 +2025,11 @@
       },
       "Body_page_budget_advise_run_web_budget_advise_post": {
         "properties": {
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
           "home_currency_code": {
             "anyOf": [
               {
@@ -2035,6 +2040,11 @@
               }
             ],
             "title": "Home Currency Code"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
           },
           "ledger_id": {
             "anyOf": [
@@ -6890,6 +6900,34 @@
             "title": "Month",
             "type": "string"
           },
+          "reserved_buffer_cents": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reserved Buffer Cents"
+          },
+          "savings_target_cents": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Savings Target Cents"
+          },
           "timezone": {
             "anyOf": [
               {
@@ -6925,6 +6963,9 @@
             "title": "Home Currency Code",
             "type": "string"
           },
+          "inputs": {
+            "$ref": "#/components/schemas/BudgetInputsResponse"
+          },
           "provider_name": {
             "title": "Provider Name",
             "type": "string"
@@ -6944,7 +6985,8 @@
         "required": [
           "advice",
           "home_currency_code",
-          "provider_name"
+          "provider_name",
+          "inputs"
         ],
         "title": "BudgetAdviseResponse",
         "type": "object"
@@ -7253,6 +7295,11 @@
             ],
             "title": "Inputs Fingerprint"
           },
+          "is_trial": {
+            "default": false,
+            "title": "Is Trial",
+            "type": "boolean"
+          },
           "missing_rates": {
             "items": {
               "$ref": "#/components/schemas/ProjectionGapDto"
@@ -7270,6 +7317,16 @@
             },
             "title": "Reference Rates",
             "type": "array"
+          },
+          "saved_arrangement": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MonthlyArrangementDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "undated_expense_count": {
             "default": 0,
@@ -7600,6 +7657,21 @@
       "BudgetRateForm": {
         "description": "Raw native fields survive validation before the command owner parses them.",
         "properties": {
+          "arrangement_currency_code": {
+            "default": "",
+            "title": "Arrangement Currency Code",
+            "type": "string"
+          },
+          "arrangement_key": {
+            "default": "",
+            "title": "Arrangement Key",
+            "type": "string"
+          },
+          "arrangement_version": {
+            "default": "",
+            "title": "Arrangement Version",
+            "type": "string"
+          },
           "currency_code": {
             "default": "",
             "title": "Currency Code",
@@ -10598,18 +10670,46 @@
             "title": "Monthly Income Cents"
           },
           "reserved_buffer_cents": {
-            "format": "int64",
-            "maximum": 9000000000000.0,
-            "minimum": 0.0,
-            "title": "Reserved Buffer Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reserved Buffer Cents"
           },
           "savings_target_cents": {
-            "format": "int64",
-            "maximum": 9000000000000.0,
-            "minimum": 0.0,
-            "title": "Savings Target Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Savings Target Cents"
+          },
+          "shortfall_cents": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shortfall Cents"
           },
           "spent_amount_cents": {
             "anyOf": [
@@ -10632,7 +10732,8 @@
           "spent_amount_cents",
           "savings_target_cents",
           "reserved_buffer_cents",
-          "discretionary_cents"
+          "discretionary_cents",
+          "shortfall_cents"
         ],
         "title": "DiscretionaryResponse",
         "type": "object"
@@ -16676,6 +16777,254 @@
           "expected_row_version"
         ],
         "title": "MerchantCatalogUpdateRequest",
+        "type": "object"
+      },
+      "MonthlyArrangementDto": {
+        "properties": {
+          "home_currency_code": {
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "ledger_id": {
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "month": {
+            "title": "Month",
+            "type": "string"
+          },
+          "reserved_buffer_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "Reserved Buffer Cents",
+            "type": "integer"
+          },
+          "row_version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "savings_target_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "Savings Target Cents",
+            "type": "integer"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ledger_id",
+          "month",
+          "home_currency_code",
+          "savings_target_cents",
+          "reserved_buffer_cents",
+          "row_version",
+          "updated_at"
+        ],
+        "title": "MonthlyArrangementDto",
+        "type": "object"
+      },
+      "MonthlyArrangementForm": {
+        "properties": {
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "home_currency_code": {
+            "default": "",
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "month": {
+            "default": "",
+            "title": "Month",
+            "type": "string"
+          },
+          "reserved_buffer_yuan": {
+            "default": "",
+            "title": "Reserved Buffer Yuan",
+            "type": "string"
+          },
+          "review_latest": {
+            "default": false,
+            "title": "Review Latest",
+            "type": "boolean"
+          },
+          "savings_target_yuan": {
+            "default": "",
+            "title": "Savings Target Yuan",
+            "type": "string"
+          }
+        },
+        "title": "MonthlyArrangementForm",
+        "type": "object"
+      },
+      "MonthlyArrangementHistory": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MonthlyArrangementRevisionDto"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "ledger_id": {
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "month": {
+            "title": "Month",
+            "type": "string"
+          },
+          "next_before_version": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Before Version"
+          }
+        },
+        "required": [
+          "ledger_id",
+          "month",
+          "items"
+        ],
+        "title": "MonthlyArrangementHistory",
+        "type": "object"
+      },
+      "MonthlyArrangementRevisionDto": {
+        "properties": {
+          "home_currency_code": {
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "recorded_at": {
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "reserved_buffer_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "Reserved Buffer Cents",
+            "type": "integer"
+          },
+          "row_version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "savings_target_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "Savings Target Cents",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "row_version",
+          "recorded_at",
+          "home_currency_code",
+          "savings_target_cents",
+          "reserved_buffer_cents"
+        ],
+        "title": "MonthlyArrangementRevisionDto",
+        "type": "object"
+      },
+      "MonthlyArrangementSaveRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_row_version": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Row Version"
+          },
+          "home_currency_code": {
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "reserved_buffer_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "Reserved Buffer Cents",
+            "type": "integer"
+          },
+          "savings_target_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "Savings Target Cents",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "home_currency_code",
+          "savings_target_cents",
+          "reserved_buffer_cents",
+          "expected_row_version"
+        ],
+        "title": "MonthlyArrangementSaveRequest",
+        "type": "object"
+      },
+      "MonthlyArrangementState": {
+        "properties": {
+          "arrangement": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MonthlyArrangementDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ledger_id": {
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "month": {
+            "title": "Month",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ledger_id",
+          "month",
+          "arrangement"
+        ],
+        "title": "MonthlyArrangementState",
         "type": "object"
       },
       "MonthlyStatsResponse": {
@@ -22877,11 +23226,17 @@
             "name": "savings_target_cents",
             "required": false,
             "schema": {
-              "default": "0",
-              "maxLength": 13,
-              "pattern": "^(?:0|[1-9][0-9]{0,12})$",
-              "title": "Savings Target Cents",
-              "type": "string"
+              "anyOf": [
+                {
+                  "maxLength": 13,
+                  "pattern": "^(?:0|[1-9][0-9]{0,12})$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Savings Target Cents"
             }
           },
           {
@@ -22889,11 +23244,17 @@
             "name": "reserved_buffer_cents",
             "required": false,
             "schema": {
-              "default": "0",
-              "maxLength": 13,
-              "pattern": "^(?:0|[1-9][0-9]{0,12})$",
-              "title": "Reserved Buffer Cents",
-              "type": "string"
+              "anyOf": [
+                {
+                  "maxLength": 13,
+                  "pattern": "^(?:0|[1-9][0-9]{0,12})$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reserved Buffer Cents"
             }
           },
           {
@@ -23042,6 +23403,332 @@
         ]
       }
     },
+    "/api/budget/arrangements/{month}": {
+      "get": {
+        "operationId": "get_monthly_arrangement_api_budget_arrangements__month__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "month",
+            "required": true,
+            "schema": {
+              "title": "Month",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonthlyArrangementState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Get Monthly Arrangement",
+        "tags": [
+          "monthly-arrangements"
+        ]
+      },
+      "put": {
+        "operationId": "put_monthly_arrangement_api_budget_arrangements__month__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "month",
+            "required": true,
+            "schema": {
+              "title": "Month",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "description": "Required API contract version from the runtime compatibility handshake.",
+            "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required API contract version from the runtime compatibility handshake.",
+              "title": "Ticketbox-Api-Version"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MonthlyArrangementSaveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonthlyArrangementDto"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Put Monthly Arrangement",
+        "tags": [
+          "monthly-arrangements"
+        ]
+      }
+    },
+    "/api/budget/arrangements/{month}/history": {
+      "get": {
+        "operationId": "get_monthly_arrangement_history_api_budget_arrangements__month__history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "month",
+            "required": true,
+            "schema": {
+              "title": "Month",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before_version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Version"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonthlyArrangementHistory"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Get Monthly Arrangement History",
+        "tags": [
+          "monthly-arrangements"
+        ]
+      }
+    },
     "/api/budget/discretionary": {
       "get": {
         "operationId": "get_discretionary_api_budget_discretionary_get",
@@ -23070,11 +23757,17 @@
             "name": "savings_target_cents",
             "required": false,
             "schema": {
-              "default": "0",
-              "maxLength": 13,
-              "pattern": "^(?:0|[1-9][0-9]{0,12})$",
-              "title": "Savings Target Cents",
-              "type": "string"
+              "anyOf": [
+                {
+                  "maxLength": 13,
+                  "pattern": "^(?:0|[1-9][0-9]{0,12})$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Savings Target Cents"
             }
           },
           {
@@ -23082,11 +23775,34 @@
             "name": "reserved_buffer_cents",
             "required": false,
             "schema": {
-              "default": "0",
-              "maxLength": 13,
-              "pattern": "^(?:0|[1-9][0-9]{0,12})$",
-              "title": "Reserved Buffer Cents",
-              "type": "string"
+              "anyOf": [
+                {
+                  "maxLength": 13,
+                  "pattern": "^(?:0|[1-9][0-9]{0,12})$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reserved Buffer Cents"
+            }
+          },
+          {
+            "in": "query",
+            "name": "home_currency_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Z]{3}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Home Currency Code"
             }
           },
           {
@@ -43431,9 +44147,15 @@
             "name": "savings_target_yuan",
             "required": false,
             "schema": {
-              "default": "0",
-              "title": "Savings Target Yuan",
-              "type": "string"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Savings Target Yuan"
             }
           },
           {
@@ -43441,9 +44163,47 @@
             "name": "reserved_buffer_yuan",
             "required": false,
             "schema": {
-              "default": "0",
-              "title": "Reserved Buffer Yuan",
-              "type": "string"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reserved Buffer Yuan"
+            }
+          },
+          {
+            "in": "query",
+            "name": "arrangement_version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Arrangement Version"
+            }
+          },
+          {
+            "in": "query",
+            "name": "arrangement_key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Arrangement Key"
             }
           },
           {
@@ -43555,6 +44315,81 @@
         ]
       }
     },
+    "/web/budget-advise/history": {
+      "get": {
+        "operationId": "arrangement_history_page_web_budget_advise_history_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ledger Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "month",
+            "required": true,
+            "schema": {
+              "title": "Month",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before_version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Arrangement History Page",
+        "tags": [
+          "web"
+        ]
+      }
+    },
     "/web/budget-advise/rates": {
       "get": {
         "operationId": "page_budget_rates_web_budget_advise_rates_get",
@@ -43613,6 +44448,47 @@
         "summary": "Save Budget Rate",
         "tags": [
           "web",
+          "web"
+        ]
+      }
+    },
+    "/web/budget-advise/save": {
+      "post": {
+        "operationId": "save_arrangement_form_web_budget_advise_save_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/MonthlyArrangementForm"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Arrangement Form",
+        "tags": [
           "web"
         ]
       }

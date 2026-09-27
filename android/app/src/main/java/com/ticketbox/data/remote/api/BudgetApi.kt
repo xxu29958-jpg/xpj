@@ -11,6 +11,25 @@ import retrofit2.http.PUT
 import retrofit2.http.Query
 
 interface BudgetApi {
+    @GET("api/budget/arrangements/{month}")
+    suspend fun monthlyArrangement(@Path("month") month: String): com.ticketbox.data.remote.dto.MonthlyArrangementResponseDto
+
+    @PUT("api/budget/arrangements/{month}")
+    suspend fun saveMonthlyArrangement(@Path("month") month: String,
+        @Body request: com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest,
+        @Header("Idempotency-Key") idempotencyKey: String): com.ticketbox.data.remote.dto.MonthlyArrangementDto
+
+    @GET("api/budget/arrangements/{month}/history")
+    suspend fun monthlyArrangementHistory(@Path("month") month: String,
+        @Query("before_version") beforeVersion: Long? = null,
+        @Query("limit") limit: Int = 20): com.ticketbox.data.remote.dto.MonthlyArrangementHistoryDto
+
+    @GET("api/budget/advisor/inputs")
+    suspend fun trialBudgetAdviceInputs(@Query("month") month: String,
+        @Query("timezone") timezone: String?, @Query("home_currency_code") homeCurrencyCode: String,
+        @Query("savings_target_cents") savingsTargetCents: Long,
+        @Query("reserved_buffer_cents") reservedBufferCents: Long): com.ticketbox.data.remote.dto.BudgetAdviceInputsDto
+
     @GET("api/budgets/monthly/{month}/history")
     suspend fun budgetHistory(
         @Path("month") month: String,

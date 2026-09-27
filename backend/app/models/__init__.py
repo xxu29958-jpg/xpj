@@ -87,6 +87,7 @@ from app.models.import_csv import CsvImportBatch, CsvImportEvent, CsvImportRow
 from app.models.income_plan_revision import IncomePlanRevision
 from app.models.learning import AlgorithmDecision, LedgerLearningEvent
 from app.models.ledger_calendar import LedgerCalendarRevision
+from app.models.monthly_arrangement import MonthlyArrangement, MonthlyArrangementRevision
 from app.models.ocr_facts import OcrFact
 from app.models.recurring import RecurringItem
 from app.models.recurring_occurrence import RecurringOccurrence, RecurringOccurrenceRevision
@@ -154,6 +155,8 @@ __all__ = [
     "MerchantAlias",
     "MerchantCatalog",
     "MonthlyIncomePlan",
+    "MonthlyArrangement",
+    "MonthlyArrangementRevision",
     "IncomePlanRevision",
     "OcrFact",
     "PairingAttemptFailure",

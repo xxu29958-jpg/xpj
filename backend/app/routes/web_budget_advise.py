@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any, TypedDict
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse
@@ -47,8 +48,10 @@ def page_budget_advise(
     request: Request,
     ledger_id: str | None = Query(default=None),
     month: str | None = Query(default=None),
-    savings_target_yuan: str = Query(default="0"),
-    reserved_buffer_yuan: str = Query(default="0"),
+    savings_target_yuan: str | None = Query(default=None),
+    reserved_buffer_yuan: str | None = Query(default=None),
+    arrangement_version: str | None = Query(default=None),
+    arrangement_key: str | None = Query(default=None),
     run_advise: bool = Query(default=False),
     home_currency_code: str | None = Query(default=None),
     msg: str | None = Query(default=None),
@@ -68,6 +71,8 @@ def page_budget_advise(
         allow_outbound=False,
         home_currency_code=home_currency_code,
         message=msg,
+        expected_row_version=arrangement_version,
+        idempotency_key=arrangement_key,
     )
 
 
@@ -80,6 +85,8 @@ def page_budget_advise_run(
     reserved_buffer_yuan: str = Form(default="0"),
     run_advise: bool = Form(default=False),
     home_currency_code: str | None = Form(default=None),
+    expected_row_version: str = Form(default=""),
+    idempotency_key: str = Form(default=""),
     db: Session = Depends(get_db),
     _local: None = LocalOnly,
 ) -> HTMLResponse:
@@ -93,6 +100,8 @@ def page_budget_advise_run(
         run_advise=run_advise,
         allow_outbound=run_advise,
         home_currency_code=home_currency_code,
+        expected_row_version=expected_row_version,
+        idempotency_key=idempotency_key,
     )
 
 
@@ -102,12 +111,17 @@ def _render_budget_advise(
     db: Session,
     ledger_id: str | None,
     month: str | None,
-    savings_target_yuan: str,
-    reserved_buffer_yuan: str,
+    savings_target_yuan: str | None,
+    reserved_buffer_yuan: str | None,
     run_advise: bool,
     allow_outbound: bool,
     home_currency_code: str | None = None,
     message: str | None = None,
+    expected_row_version: str | None = None,
+    idempotency_key: str | None = None,
+    save_error: str | None = None,
+    save_conflict: bool = False,
+    response_status: int | None = None,
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected = _resolve_selected_ledger_id(db, ledger_id, options=options, request=request)
@@ -115,31 +129,37 @@ def _render_budget_advise(
         retained = preserve_original_ledger_form(request, db, options=options, selected=selected,
             fields={"ledger_id": ledger_id, "month": month, "home_currency_code": home_currency_code,
                 "savings_target_yuan": savings_target_yuan, "reserved_buffer_yuan": reserved_buffer_yuan,
-                "run_advise": run_advise}, task="重新计算预算建议")
+                "run_advise": run_advise, "expected_row_version": expected_row_version,
+                "idempotency_key": idempotency_key}, task="查看本月安排")
         if retained is not None:
             return retained
     readiness_ctx = _advisor_readiness_context(request, selected=selected, options=options)
     month_label = month or current_ledger_month(db, ledger_id=selected)
     home = normalize_currency_code(home_currency_code or require_runtime_home_currency_code(db))
-    currency_choice_required = request.method == "POST" and not home_currency_code
-    savings_cents, reserved_cents, form_error = _reserve_values(
-        savings_target_yuan, reserved_buffer_yuan, home, currency_choice_required=currency_choice_required)
-    projection = read_budget_inputs(db, tenant_id=selected, month=month_label, home_currency_code=home,
+    savings_cents, reserved_cents, form_error, currency_choice_required = _reserve_values(
+        savings_target_yuan, reserved_buffer_yuan, home, captured_home=home_currency_code,
+        require_original=request.method == "POST" or idempotency_key is not None)
+    projection = read_budget_inputs(db, tenant_id=selected, month=month_label,
+        home_currency_code=home if savings_cents is not None else home_currency_code,
         timezone_name="Asia/Shanghai", savings_target_cents=savings_cents, reserved_buffer_cents=reserved_cents)
     advice, advise_error, provider_name = None, None, readiness_ctx["provider_name"]
     if not projection.missing_rates and form_error is None:
-        advice, advise_error, provider_name = _budget_advice_response(request, db=db, selected=selected,
+        advice, advise_error, provider_name, advice_inputs = _budget_advice_response(request, db=db, selected=selected,
             options=options, month_label=month_label, provider_name=provider_name,
-            run_advise=run_advise, allow_outbound=allow_outbound, home_currency_code=projection.home_currency_code)
-    ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected, page_title="预算建议")
+            run_advise=run_advise, allow_outbound=allow_outbound, home_currency_code=projection.home_currency_code,
+            savings_target_cents=savings_cents, reserved_buffer_cents=reserved_cents)
+        if advice_inputs is not None:
+            projection = advice_inputs
+    home = projection.home_currency_code
+    ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected, page_title="本月安排")
     ctx.update(readiness_ctx)
     ctx.update(_projection_context(projection, form_error=form_error))
+    ctx.update(_arrangement_context(projection, savings=savings_target_yuan, reserved=reserved_buffer_yuan,
+        expected_row_version=expected_row_version, idempotency_key=idempotency_key))
     ctx.update(
         month=month_label,
         provider_name=provider_name,
         minor_amount_label=lambda cents: minor_amount_value(cents, home),
-        savings_target_yuan=savings_target_yuan,
-        reserved_buffer_yuan=reserved_buffer_yuan,
         advice=advice,
         advise_error=advise_error,
         run_advise=run_advise,
@@ -147,18 +167,39 @@ def _render_budget_advise(
         currency_choice_required=currency_choice_required,
         currency_codes=sorted(supported_currency_codes()),
         message=message,
+        save_error=save_error,
+        save_conflict=save_conflict,
     )
     status = 409 if currency_choice_required else 422 if form_error else 200
-    return templates.TemplateResponse(request=request, name="budget_advise.html", context=ctx, status_code=status)
+    return templates.TemplateResponse(request=request, name="budget_advise.html", context=ctx,
+        status_code=response_status or status, headers={"Cache-Control": "no-store"})
 
 
-def _reserve_values(savings, reserved, home, *, currency_choice_required):
-    if currency_choice_required:
-        return 0, 0, "原表单未记录币种。金额已保留，请选择填写时使用的币种后重新计算。"
+def _arrangement_context(projection, *, savings, reserved, expected_row_version, idempotency_key):
+    saved = projection.saved_arrangement
+    original_home = projection.home_currency_code if savings is not None or reserved is not None else (
+        saved.home_currency_code if saved else projection.home_currency_code)
+    return {
+        "saved_arrangement": saved, "is_trial": projection.is_trial,
+        "savings_target_yuan": savings if savings is not None else minor_amount_value(saved.savings_target_cents if saved else 0, original_home),
+        "reserved_buffer_yuan": reserved if reserved is not None else minor_amount_value(saved.reserved_buffer_cents if saved else 0, original_home),
+        "arrangement_currency_input": currency_input_metadata(original_home),
+        "saved_savings": minor_amount_value(saved.savings_target_cents, saved.home_currency_code) if saved else None,
+        "saved_buffer": minor_amount_value(saved.reserved_buffer_cents, saved.home_currency_code) if saved else None,
+        "expected_row_version": expected_row_version if expected_row_version is not None else str(saved.row_version) if saved else "null",
+        "idempotency_key": idempotency_key if idempotency_key is not None else str(uuid4()),
+    }
+
+
+def _reserve_values(savings, reserved, home, *, captured_home, require_original):
+    if savings is None and reserved is None:
+        return None, None, None, False
+    if require_original and not captured_home:
+        return 0, 0, "原表单未记录币种。金额已保留，请选择填写时使用的币种后重新计算。", True
     try:
-        return _reserve_minor(savings, home), _reserve_minor(reserved, home), None
+        return _reserve_minor(savings, home), _reserve_minor(reserved, home), None, False
     except AppError as exc:
-        return 0, 0, exc.message
+        return 0, 0, exc.message, False
 
 
 def _reserve_minor(raw: str, currency: str) -> int:
@@ -171,15 +212,16 @@ def _reserve_minor(raw: str, currency: str) -> int:
 def _projection_context(projection, *, form_error=None) -> dict:
     fields = {"income_yuan": "monthly_income_cents", "fixed_yuan": "fixed_expenses_cents",
         "spent_yuan": "spent_amount_cents", "savings_yuan": "savings_target_cents",
-        "reserved_yuan": "reserved_buffer_cents", "discretionary_yuan": "discretionary_cents"}
+        "reserved_yuan": "reserved_buffer_cents", "discretionary_yuan": "discretionary_cents", "shortfall_yuan": "shortfall_cents"}
     home = projection.home_currency_code
     values = {name: None if (value := getattr(projection.breakdown, field)) is None
         else minor_amount_value(value, home) for name, field in fields.items()}
     if form_error:
-        values.update(savings_yuan=None, reserved_yuan=None, discretionary_yuan=None)
+        values.update(savings_yuan=None, reserved_yuan=None, discretionary_yuan=None, shortfall_yuan=None)
     metadata = currency_input_metadata(home)
     return {**values, "home_currency_code": home, "home_currency_symbol": metadata["currency_symbol"], "currency_input": metadata,
-        "missing_rates": projection.missing_rates, "reference_rates": projection.reference_rates}
+        "missing_rates": projection.missing_rates, "reference_rates": projection.reference_rates,
+        "undated_expense_count": projection.undated_expense_count, "has_shortfall": (projection.breakdown.shortfall_cents or 0) > 0 and not form_error}
 
 
 def _advisor_readiness_context(request: Request, *, selected: str, options: list) -> _AdvisorReadinessContext:
@@ -207,11 +249,13 @@ def _budget_advice_response(
     run_advise: bool,
     allow_outbound: bool,
     home_currency_code: str | None = None,
-) -> tuple[Any, str | None, str]:
+    savings_target_cents: int | None = None,
+    reserved_buffer_cents: int | None = None,
+) -> tuple[Any, str | None, str, Any]:
     if not run_advise or provider_name == "empty":
-        return None, None, provider_name
+        return None, None, provider_name, None
     if not allow_outbound:
-        return None, "AI advisor calls require the form button so request checks can run.", provider_name
+        return None, "请点击表单中的按钮生成建议。", provider_name, None
     try:
         actor_role = _actor_role(request, ledger_id=selected, options=options)
         actor_account_id = _actor_account_id(request)
@@ -223,13 +267,15 @@ def _budget_advice_response(
             month=month_label,
             timezone_name="Asia/Shanghai",
             home_currency_code=home_currency_code,
+            savings_target_cents=savings_target_cents,
+            reserved_buffer_cents=reserved_buffer_cents,
         )
     except AppError as exc:
-        return None, exc.message or exc.error, provider_name
+        return None, exc.message or exc.error, provider_name, None
 
     advice = result.advice
     advise_error = result.reason_code if advice is None and result.reason_code else None
-    return advice, advise_error, result.provider_name
+    return advice, advise_error, result.provider_name, result.inputs
 
 
 def _actor_role(request: Request, *, ledger_id: str, options) -> str:

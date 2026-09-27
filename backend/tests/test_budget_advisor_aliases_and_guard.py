@@ -67,6 +67,8 @@ def test_to_outbound_dict_only_contains_current_builder_keys() -> None:
         "income_plan",
         "recurring_total_monthly_cents",
         "recurring_active_count",
+        "savings_target_cents", "reserved_buffer_cents", "outstanding_fixed_cents",
+        "discretionary_cents", "shortfall_cents",
     }
 
 
@@ -152,14 +154,16 @@ def test_validate_accepts_recurring_summary_scalars() -> None:
     "bad_value",
     ["不能放商户名", -1, True, 3.5],
 )
-def test_validate_rejects_non_int_recurring_scalar(bad_value) -> None:
+@pytest.mark.parametrize("key", ["recurring_total_monthly_cents", "savings_target_cents", "reserved_buffer_cents",
+    "outstanding_fixed_cents", "discretionary_cents", "shortfall_cents"])
+def test_validate_rejects_non_int_recurring_scalar(bad_value, key) -> None:
     # The scalar slots must stay coarse ints — fail closed so no free-text
     # (potential PII) or sentinel can ride through. bool is rejected too
     # (bool is an int subclass in Python).
     payload = to_outbound_dict(_full_inputs())
-    payload["recurring_total_monthly_cents"] = bad_value
+    payload[key] = bad_value
 
-    with pytest.raises(DataIntegrityError, match="recurring_total_monthly_cents"):
+    with pytest.raises(DataIntegrityError, match=key):
         validate_outbound_payload(payload)
 
 

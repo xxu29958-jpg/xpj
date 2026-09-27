@@ -49,7 +49,7 @@ legacy ADR 由 [哈希 baseline](legacy-baseline.json) 冻结元数据与正文�
 | [0030](0030-long-task-execution-model.md) | Long Task Execution Model | 单进程 ThreadPoolExecutor + PG progress table + orphan recovery | superseded / implemented / stale | refines 0016 |
 | [0031](0031-v1-data-migration-protocol.md) | v1.0 Data Migration Protocol | 一次性 SQLite cut-over 历史；仅 compatibility gate 继续有效 | superseded / implemented / stale | depends-on 0030 |
 | [0035](0035-line-items-discount-tax-mismatch.md) | Line Items Discount/Tax Mismatch | line item kind enum + items_sum_status；items 不再要求总额等于 expense | accepted / implemented / unverified | — |
-| [0036](0036-v1.1-ai-budget-provider-privacy-boundary.md) | v1.1 AI Budget Provider Privacy | AI 只看最小结构化摘要 + 本地映射表；不上传原始账本 / 图片 / 真名 / 路径 | accepted / partial / unverified | — |
+| [0036](0036-v1.1-ai-budget-provider-privacy-boundary.md) | v1.1 AI Budget Provider Privacy | AI 只看最小结构化摘要 + 本地映射表；不上传原始账本 / 图片 / 真名 / 路径 | accepted / implementing / unverified | amended-by 0077 |
 | [0037](0037-v1.2-learning-feedback-dual-tables.md) | v1.2 Learning Feedback Dual Tables | algorithm_decisions / ledger_learning_events / ocr_facts 三表 append-only 建议层，不污染账本 | accepted / partial / unverified | refines 0021 |
 | [0038](0038-v1.3-multi-surface-sync.md) | v1.3 Multi-Surface Sync | row_version OCC + Android outbox + 显式冲突；当前扩展见后续 ADR | accepted / nonconformant / failed | amended-by 0041; amended-by 0042 |
 | [0039](0039-adr-implementation-calibration.md) | ADR Implementation Calibration | `54c21841` 历史校准快照，不再承载当前状态 | superseded / implemented / stale | — |
@@ -90,12 +90,13 @@ legacy ADR 由 [哈希 baseline](legacy-baseline.json) 冻结元数据与正文�
 | [0074](0074-windows-installer-state-authority-and-owner-handoff.md) | Windows 安装器状态权限域与 owner handoff 原子交接 | 分置 installer 权威与 backend-readable 运行投影，以不可变进程身份、原子状态机和显式租约交接完成可重入安装事务 | accepted / partial / unverified | amends 0062; amends 0063; depends-on 0065; refines 0066; informational 0006; amended-by 0076 |
 | [0075](0075-currency-binding-write-drift-gate.md) | 写时币种绑定 drift 门（ADR-0061 C02/C03 桥接） | 持久版本化绑定落地前，写入口以 env 盖章新事实前校验与已持久事实的 home_currency_code 一致，漂移 fail closed | accepted / implemented / verified | amends 0061; depends-on 0061 |
 | [0076](0076-windows-installation-owner-pairing-and-protocol-retirement.md) | Windows installation owner 短期配对与旧协议退役边界 | 提权安装器只提交机器安装事务和短期配对能力，普通用户进程自行建立并保存用户凭据，旧 handoff 永不成为新版权威或门禁 | accepted / partial / unverified | amends 0063; amends 0074; depends-on 0062; depends-on 0065; refines 0068 |
+| [0077](0077-monthly-arrangement-advice-basis.md) | 月度安排与外部建议共享最小金额依据 | 在既有匿名聚合中加入本次月度安排的五个金额，不发送事实身份、版本、历史或个人信息 | accepted / implementing / unverified | amends 0036 |
 <!-- ADR_INDEX_TABLE_END -->
 
 ## 编写新 ADR
 
 <!-- ADR_NEXT_ID_START -->
-下一编号 `0077`。
+下一编号 `0078`。
 <!-- ADR_NEXT_ID_END -->
 
 命名 `NNNN-kebab-case-topic.md`，从

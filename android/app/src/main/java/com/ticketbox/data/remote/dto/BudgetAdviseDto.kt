@@ -12,15 +12,18 @@ data class DiscretionaryResponseDto(
     @param:Json(name = "monthly_income_cents") val monthlyIncomeCents: Long?,
     @param:Json(name = "fixed_expenses_cents") val fixedExpensesCents: Long?,
     @param:Json(name = "spent_amount_cents") val spentAmountCents: Long?,
-    @param:Json(name = "savings_target_cents") val savingsTargetCents: Long,
-    @param:Json(name = "reserved_buffer_cents") val reservedBufferCents: Long,
+    @param:Json(name = "savings_target_cents") val savingsTargetCents: Long?,
+    @param:Json(name = "reserved_buffer_cents") val reservedBufferCents: Long?,
     @param:Json(name = "discretionary_cents") val discretionaryCents: Long?,
+    @param:Json(name = "shortfall_cents") val shortfallCents: Long? = null,
 )
 
 data class BudgetAdviseRequestDto(
     val month: String,
     val timezone: String? = null,
     @param:Json(name = "home_currency_code") val homeCurrencyCode: String? = null,
+    @param:Json(name = "savings_target_cents") val savingsTargetCents: Long? = null,
+    @param:Json(name = "reserved_buffer_cents") val reservedBufferCents: Long? = null,
 )
 
 data class BudgetSuggestionDto(
@@ -40,4 +43,5 @@ data class BudgetAdviseResponseDto(
     @param:Json(name = "home_currency_code") val homeCurrencyCode: String? = null,
     @param:Json(name = "provider_name") val providerName: String,
     @param:Json(name = "reason_code") val reasonCode: String? = null,
+    val inputs: BudgetAdviceInputsDto? = null,
 )

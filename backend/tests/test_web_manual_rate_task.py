@@ -69,6 +69,32 @@ def test_save_uses_same_owner_and_returns_original_task_without_generation(task)
     assert "run_advise" not in returned and "idempotency_key" not in returned
 
 
+def test_rate_repair_preserves_original_arrangement_version_and_save_identity(task):
+    response = task.client.post("/web/budget-advise/rates", data=_form(
+        arrangement_version="3", arrangement_key="original-save-key"), follow_redirects=False)
+    assert response.status_code == 303, response.text
+    params = parse_qs(urlsplit(response.headers["location"]).query)
+    assert params["arrangement_version"] == ["3"]
+    assert params["arrangement_key"] == ["original-save-key"]
+
+
+def test_rate_repair_keeps_arrangement_amounts_in_their_original_currency(task):
+    fields = _form(home_currency_code="USD", arrangement_currency_code="JPY",
+        arrangement_version="3", arrangement_key="original-save-key",
+        savings_target_yuan="1200", reserved_buffer_yuan="300")
+    editor = task.client.get("/web/budget-advise/rates", params=fields)
+    assert 'name="arrangement_currency_code" value="JPY"' in editor.text
+    response = task.client.post("/web/budget-advise/rates", data=fields, follow_redirects=False)
+    assert response.status_code == 303, response.text
+    # The rate repairs the USD projection; the retained form still means 1200 JPY.
+    assert task.saved.call_args.kwargs["payload"].home_currency_code == "USD"
+    params = parse_qs(urlsplit(response.headers["location"]).query)
+    assert params["home_currency_code"] == ["JPY"]
+    assert params["savings_target_yuan"] == ["1200"]
+    assert params["reserved_buffer_yuan"] == ["300"]
+    assert params["arrangement_key"] == ["original-save-key"]
+
+
 @pytest.mark.parametrize("error", ["state_conflict", "idempotency_key_reused"])
 def test_conflict_retains_raw_rate_key_version_and_original_month(task, error):
     task.saved.side_effect = AppError(error, status_code=409)

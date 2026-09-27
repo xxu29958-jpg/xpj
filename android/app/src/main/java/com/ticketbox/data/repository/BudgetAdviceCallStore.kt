@@ -70,6 +70,7 @@ internal class BudgetAdviceCallStore(
         binding: LogicalSessionBinding,
         month: String,
         homeCurrencyCode: String?,
+        trial: com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest? = null,
     ): Result<BudgetAdviceResult> {
         val (key, deferred, isOwner) = synchronized(lock) {
             val key = AdviceRequestKey(
@@ -78,6 +79,7 @@ internal class BudgetAdviceCallStore(
                 homeCurrencyCode = homeCurrencyCode,
                 timezone = currentTimezoneId(),
                 dataGeneration = dataGeneration,
+                trial = trial?.copy(expectedRowVersion = null),
             )
             val existing = inFlight[key]
             if (existing != null) {
@@ -108,12 +110,10 @@ internal class BudgetAdviceCallStore(
                         month = month,
                         timezone = key.timezone,
                         homeCurrencyCode = key.homeCurrencyCode,
+                        savingsTargetCents = key.trial?.savingsTargetCents,
+                        reservedBufferCents = key.trial?.reservedBufferCents,
                     ),
-                ).toDomain().also { result ->
-                    if (key.homeCurrencyCode != null && result.homeCurrencyCode != key.homeCurrencyCode) {
-                        throw RepositoryException("budget_advice_inputs_unverified", localFailure = LocalRepositoryFailure.BudgetInputsUnverified)
-                    }
-                }
+                ).toDomain().also { verifyAdviceBasis(it, key) }
             }
         }
         synchronized(lock) {
@@ -138,7 +138,7 @@ internal class BudgetAdviceCallStore(
      *  null-advice results leave the cache absent. Nothing is persisted; an
      *  app restart simply starts cold. The binding is part of the lookup key,
      *  so a re-paired household never sees a previous binding's entry. */
-    fun cached(binding: LogicalSessionBinding, month: String, homeCurrencyCode: String?): BudgetAdviceResult? =
+    fun cached(binding: LogicalSessionBinding, month: String, homeCurrencyCode: String?, trial: com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest? = null): BudgetAdviceResult? =
         synchronized(lock) {
             lastSuccess[
                 AdviceRequestKey(
@@ -147,6 +147,7 @@ internal class BudgetAdviceCallStore(
                     homeCurrencyCode = homeCurrencyCode,
                     timezone = currentTimezoneId(),
                     dataGeneration = dataGeneration,
+                    trial = trial?.copy(expectedRowVersion = null),
                 ),
             ]
         }
@@ -195,4 +196,23 @@ private data class AdviceRequestKey(
     val homeCurrencyCode: String?,
     val timezone: String,
     val dataGeneration: Int,
+    val trial: com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest? = null,
+)
+
+private fun verifyAdviceBasis(result: BudgetAdviceResult, key: AdviceRequestKey) {
+    val basis = result.inputs ?: throw unverifiedAdviceBasis()
+    if (basis.month != key.month || basis.homeCurrencyCode != result.homeCurrencyCode ||
+        (key.homeCurrencyCode != null && result.homeCurrencyCode != key.homeCurrencyCode)) throw unverifiedAdviceBasis()
+    basis.savedArrangement?.let { saved ->
+        if (saved.ledgerId != key.binding.ledgerId || saved.month != key.month) throw unverifiedAdviceBasis()
+    }
+    if (basis.isTrial != (key.trial != null)) throw unverifiedAdviceBasis()
+    key.trial?.let { trial ->
+        if (basis.breakdown.savingsTargetCents != trial.savingsTargetCents ||
+            basis.breakdown.reservedBufferCents != trial.reservedBufferCents) throw unverifiedAdviceBasis()
+    }
+}
+
+private fun unverifiedAdviceBasis() = RepositoryException(
+    "budget_advice_inputs_unverified", localFailure = LocalRepositoryFailure.BudgetInputsUnverified,
 )

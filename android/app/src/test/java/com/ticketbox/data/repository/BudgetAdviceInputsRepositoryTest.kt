@@ -14,6 +14,27 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class BudgetAdviceInputsRepositoryTest {
+    @Test fun savedAndDifferentTrialsDoNotShareAdviceBasisOrCacheAndReadNeverCallsAi() = runTest {
+        val f = AdviceInputsFixture()
+        f.inputs = f.inputs.copy(breakdown = DiscretionaryResponseDto(10000, 1000, 2000, 1000, 500, 5500), missingRates = emptyList())
+        val first = MonthlyArrangementSaveRequest("JPY", 1200, 300)
+        val second = first.copy(savingsTargetCents = 2400)
+        val trial = f.repository.trialAdviceInputs(f.binding, "2026-09", first).getOrThrow()
+        assertTrue(trial.isTrial)
+        assertEquals(1200L, trial.breakdown.savingsTargetCents)
+        assertTrue(f.requests.isEmpty(), "Trial is a deterministic read, never an AI call or save")
+        f.repository.requestBudgetAdvice("2026-09", "JPY", f.binding).getOrThrow()
+        f.repository.requestTrialAdvice(f.binding, "2026-09", first).getOrThrow()
+        f.repository.requestTrialAdvice(f.binding, "2026-09", second).getOrThrow()
+        val cache = f.repository.adviceCallStore
+        assertEquals(1000L, cache.cached(f.binding, "2026-09", "JPY")?.inputs?.breakdown?.savingsTargetCents)
+        assertEquals(1200L, cache.cached(f.binding, "2026-09", "JPY", first)?.inputs?.breakdown?.savingsTargetCents)
+        assertEquals(2400L, cache.cached(f.binding, "2026-09", "JPY", second)?.inputs?.breakdown?.savingsTargetCents)
+        f.repository.invalidateBudgetAdvice()
+        assertNull(cache.cached(f.binding, "2026-09", "JPY", first))
+        assertEquals(3, f.requests.size, "Invalidation never calls AI automatically")
+    }
+
     @Test fun hiddenProviderBasisFingerprintInvalidatesCacheAndVisibleReadyWithoutAnotherProviderCall() =
         com.ticketbox.viewmodel.budgetTest {
             val f = AdviceInputsFixture()
@@ -100,11 +121,18 @@ private class AdviceInputsFixture {
             reads += month to homeCurrencyCode
             return inputs
         }
+        override suspend fun trialBudgetAdviceInputs(month: String, timezone: String?, homeCurrencyCode: String,
+            savingsTargetCents: Long, reservedBufferCents: Long): BudgetAdviceInputsDto = trialBasis(month, homeCurrencyCode, savingsTargetCents, reservedBufferCents)
         override suspend fun budgetAdvise(request: BudgetAdviseRequestDto): BudgetAdviseResponseDto {
             requests += request
-            return BudgetAdviseResponseDto(BudgetAdviceDto("Synthetic advice", emptyList(), null), inputs.homeCurrencyCode, "mock")
+            val basis = if (request.savingsTargetCents == null) inputs else trialBasis(request.month,
+                requireNotNull(request.homeCurrencyCode), request.savingsTargetCents, requireNotNull(request.reservedBufferCents))
+            return BudgetAdviseResponseDto(BudgetAdviceDto("Synthetic advice", emptyList(), null), inputs.homeCurrencyCode, "mock", inputs = basis)
         }
     }
+    private fun trialBasis(month: String, home: String, savings: Long, buffer: Long) = inputs.copy(month = month, homeCurrencyCode = home,
+        isTrial = true, breakdown = inputs.breakdown.copy(savingsTargetCents = savings, reservedBufferCents = buffer,
+            discretionaryCents = 7000 - savings - buffer))
     val provider = testApiServiceProvider(object : ApiServiceFactory {
         override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = api
     }, session)
