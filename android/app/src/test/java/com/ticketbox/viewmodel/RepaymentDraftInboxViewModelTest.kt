@@ -6,6 +6,10 @@ import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtAdjustmentFixture
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.DebtListPage
+import com.ticketbox.data.repository.ReadSnapshot
+import com.ticketbox.data.repository.SnapshotAccessDenial
+import com.ticketbox.data.repository.DebtReadResourceDenial
+import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.data.repository.RepaymentDraftActions
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtBillSuggestion
@@ -20,6 +24,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -46,6 +51,74 @@ class RepaymentDraftInboxViewModelTest {
     @AfterTest
     fun tearDown() {
         Dispatchers.resetMain()
+    }
+
+    @Test
+    fun cachedTargetKeepsItsOriginalOccAndReadDenialPreservesTheCapturedDraft() = runTest(dispatcher) {
+        val original = debt("card", rowVersion = 7)
+        val capturedDraft = draft("capture", suggestedDebtPublicId = original.publicId)
+        val draftActions = FakeRepaymentDraftActions(listResult = Result.success(listOf(capturedDraft)))
+        val debtActions = FakeRepayableDebtActions(listResult = Result.success(listOf(original)))
+        debtActions.fromCache = true
+        val vm = RepaymentDraftInboxViewModel(draftActions, debtActions, FakeDebtWriteActions())
+        advanceUntilIdle()
+        assertEquals(original, vm.state.value.suggestedDebtByDraftId[capturedDraft.publicId])
+        assertEquals(debtActions.fetchedAt, vm.state.value.targetsFetchedAt)
+        assertTrue(vm.state.value.targetsFromCache)
+        vm.confirm(capturedDraft.publicId, original)
+        advanceUntilIdle()
+        assertEquals(ConfirmCall(capturedDraft.publicId, original.publicId, 7), draftActions.confirmCalls.single())
+
+        val oldRead = CompletableDeferred<Unit>()
+        debtActions.listGate = oldRead
+        vm.refresh()
+        runCurrent()
+        debtActions.denials.emit(SnapshotAccessDenial(adjustmentBinding(),
+            RepositoryException("无权读取", httpStatusCode = 403), 1))
+        advanceUntilIdle()
+        oldRead.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(listOf(capturedDraft), vm.state.value.drafts)
+        assertTrue(vm.state.value.targetDebts.isEmpty())
+        assertTrue(vm.state.value.suggestedDebtByDraftId.isEmpty())
+        assertNull(vm.state.value.targetsFetchedAt)
+        assertTrue(!vm.state.value.canModify)
+        vm.confirm(capturedDraft.publicId, original)
+        vm.dismiss(capturedDraft.publicId)
+        advanceUntilIdle()
+        assertEquals(1, draftActions.confirmCalls.size, "Denial removes qualification without deleting the capture")
+        assertTrue(draftActions.dismissCalls.isEmpty())
+
+        debtActions.listGate = null
+        debtActions.fromCache = false
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(listOf(capturedDraft), vm.state.value.drafts)
+        assertTrue(vm.state.value.canModify)
+        assertTrue(!vm.state.value.targetsFromCache)
+    }
+
+    @Test
+    fun hiddenTargetWithdrawsOnlyThatSuggestionAndKeepsOtherDebtsAndTheDraft() = runTest(dispatcher) {
+        val hidden = debt("hidden")
+        val other = debt("other")
+        val captured = draft("capture", suggestedDebtPublicId = hidden.publicId)
+        val debts = FakeRepayableDebtActions(listResult = Result.success(listOf(hidden, other)))
+        val drafts = FakeRepaymentDraftActions(listResult = Result.success(listOf(captured)))
+        val vm = RepaymentDraftInboxViewModel(drafts, debts, FakeDebtWriteActions())
+        advanceUntilIdle()
+        debts.resourceDenials.emit(DebtReadResourceDenial(adjustmentBinding(), hidden.publicId,
+            RepositoryException("不可见", errorCode = "debt_not_found", httpStatusCode = 404), 1))
+        advanceUntilIdle()
+        assertEquals(listOf(captured), vm.state.value.drafts)
+        assertEquals(listOf(other), vm.state.value.targetDebts)
+        assertTrue(vm.state.value.suggestedDebtByDraftId.isEmpty())
+        vm.confirm(captured.publicId, hidden)
+        advanceUntilIdle()
+        assertTrue(drafts.confirmCalls.isEmpty())
+        vm.confirm(captured.publicId, other)
+        advanceUntilIdle()
+        assertEquals(other.publicId, drafts.confirmCalls.single().targetDebtPublicId)
     }
 
     @Test
@@ -527,17 +600,23 @@ private class FakeRepayableDebtActions(
     private val canModify: Boolean = true,
     var listResult: Result<List<Debt>> = Result.success(emptyList()),
 ) : DebtActions {
+    val denials = MutableSharedFlow<SnapshotAccessDenial>()
+    val resourceDenials = MutableSharedFlow<DebtReadResourceDenial>()
+    var fetchedAt = "2026-09-27T01:00:00Z"
+    var fromCache = false
+    override fun observeReadAccessDenials() = denials
+    override fun observeResourceDenials() = resourceDenials
     /** When set, listDebts() stalls until completed — used to interleave a slow load. */
     var listGate: CompletableDeferred<Unit>? = null
 
     override fun canModifyLedger(): Boolean = canModify
-    override suspend fun listDebts(lens: com.ticketbox.domain.model.DebtListLens): Result<DebtListPage> {
+    override suspend fun listDebts(lens: com.ticketbox.domain.model.DebtListLens): Result<ReadSnapshot<DebtListPage>> {
         // Capture at entry so a stalled load returns the snapshot it started with.
-        val captured = listResult
+        val captured = listResult.map { ReadSnapshot(DebtListPage(it, null), fetchedAt, fromCache) }
         listGate?.await()
-        return captured.map { DebtListPage(debts = it, ledgerHomeCurrencyCode = null) }
+        return captured
     }
-    override suspend fun getDebt(publicId: String): Result<Debt> = Result.success(debt(publicId))
+    override suspend fun getDebt(publicId: String): Result<ReadSnapshot<Debt>> = Result.success(debtReadSnapshot(debt(publicId)))
     override suspend fun parseDebtBillImage(
         expectedBinding: LogicalSessionBinding,
         fileName: String,

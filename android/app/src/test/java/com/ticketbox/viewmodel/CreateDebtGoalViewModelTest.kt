@@ -6,6 +6,9 @@ import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.DebtListPage
 import com.ticketbox.data.repository.ReadSnapshot
+import com.ticketbox.data.repository.SnapshotAccessDenial
+import com.ticketbox.data.repository.DebtReadResourceDenial
+import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.DashboardCardUpdate
@@ -19,6 +22,9 @@ import com.ticketbox.domain.model.GoalUpdate
 import com.ticketbox.domain.model.ReportsOverview
 import com.ticketbox.domain.model.ReportsOverviewQuery
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -44,6 +50,55 @@ class CreateDebtGoalViewModelTest {
     @AfterTest
     fun tearDown() {
         Dispatchers.resetMain()
+    }
+
+    @Test
+    fun cachedCandidatesAndDeniedRefreshPreserveTheNameAndExplicitSelection() = runTest(dispatcher) {
+        val original = debt("original", "open")
+        val other = debt("other", "open")
+        val debts = FakeCreateDebtActions(listResult = Result.success(listOf(original, other)))
+        debts.fromCache = true
+        val reports = FakeCreateReportsActions()
+        val vm = CreateDebtGoalViewModel(reports, debts, FakeDebtWriteActions())
+        vm.reload()
+        advanceUntilIdle()
+        vm.updateName("保留我的还债安排")
+        vm.toggleDebt(original.publicId)
+        assertTrue(vm.state.value.canSubmit, "A labeled cache does not remove an existing supported action")
+        assertEquals(debts.fetchedAt, vm.state.value.fetchedAt)
+        assertTrue(vm.state.value.fromCache)
+
+        debts.resourceDenials.emit(DebtReadResourceDenial(adjustmentBinding(), original.publicId,
+            RepositoryException("不可见", errorCode = "debt_not_found", httpStatusCode = 404), 1))
+        advanceUntilIdle()
+        assertEquals(listOf(other), vm.state.value.candidates)
+        assertEquals(setOf(original.publicId), vm.state.value.unavailableSelectedDebtIds)
+        assertEquals("保留我的还债安排", vm.state.value.name)
+        assertFalse(vm.state.value.canSubmit)
+
+        val oldRead = CompletableDeferred<Unit>()
+        debts.listGate = oldRead
+        vm.refreshCandidates()
+        runCurrent()
+        debts.denials.emit(SnapshotAccessDenial(adjustmentBinding(),
+            RepositoryException("无权读取", httpStatusCode = 403), 2))
+        advanceUntilIdle()
+        oldRead.complete(Unit)
+        advanceUntilIdle()
+        assertTrue(vm.state.value.candidates.isEmpty(), "The late read cannot restore denied candidates")
+        assertNull(vm.state.value.fetchedAt)
+        assertEquals("保留我的还债安排", vm.state.value.name)
+        assertEquals(setOf(original.publicId), vm.state.value.selectedDebtIds)
+        vm.submit()
+        advanceUntilIdle()
+        assertTrue(reports.createDebtGoalCalls.isEmpty())
+
+        debts.listGate = null
+        debts.fromCache = false
+        vm.refreshCandidates()
+        advanceUntilIdle()
+        assertTrue(vm.state.value.canSubmit)
+        assertFalse(vm.state.value.fromCache)
     }
 
     @Test
@@ -307,10 +362,20 @@ private class FakeCreateDebtActions(
     private val canModify: Boolean = true,
     var listResult: Result<List<Debt>> = Result.success(emptyList()),
 ) : DebtActions {
+    val denials = MutableSharedFlow<SnapshotAccessDenial>()
+    val resourceDenials = MutableSharedFlow<DebtReadResourceDenial>()
+    var listGate: CompletableDeferred<Unit>? = null
+    var fetchedAt = "2026-09-27T01:00:00Z"
+    var fromCache = false
+    override fun observeReadAccessDenials() = denials
+    override fun observeResourceDenials() = resourceDenials
     override fun canModifyLedger(): Boolean = canModify
-    override suspend fun listDebts(lens: com.ticketbox.domain.model.DebtListLens): Result<DebtListPage> =
-        listResult.map { DebtListPage(debts = it, ledgerHomeCurrencyCode = null) }
-    override suspend fun getDebt(publicId: String): Result<Debt> =
+    override suspend fun listDebts(lens: com.ticketbox.domain.model.DebtListLens): Result<ReadSnapshot<DebtListPage>> {
+        val captured = listResult.map { ReadSnapshot(DebtListPage(it, null), fetchedAt, fromCache) }
+        listGate?.await()
+        return captured
+    }
+    override suspend fun getDebt(publicId: String): Result<ReadSnapshot<Debt>> =
         Result.failure(UnsupportedOperationException())
     override suspend fun parseDebtBillImage(
         expectedBinding: LogicalSessionBinding,

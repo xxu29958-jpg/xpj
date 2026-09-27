@@ -64,6 +64,71 @@ interface ExpenseDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun saveStatsProjection(snapshot: StatsProjectionCacheEntity)
 
+    @Query("SELECT responseJson FROM stats_projection_cache WHERE bindingKey = :bindingKey " +
+        "AND kind = 'debt_read_epoch' AND month = '' AND tag = '' AND homeCurrencyCode = '' AND timezone = 'UTC'")
+    suspend fun debtReadEpoch(bindingKey: String): String?
+
+    @Query("SELECT EXISTS(SELECT 1 FROM pending_mutations WHERE ownerKey = :ownerKey AND ledgerId = :ledgerId AND lastError = 'accepted_debt_read_publication_pending')")
+    suspend fun hasUnpublishedAcceptedDebt(ownerKey: String, ledgerId: String): Boolean
+
+    @Query("DELETE FROM stats_projection_cache WHERE bindingKey = :bindingKey " +
+        "AND kind IN ('debt_list', 'debt_detail', 'debt_activity')")
+    suspend fun clearDebtSnapshots(bindingKey: String)
+
+    @Transaction
+    suspend fun invalidateDebtSnapshots(bindingKey: String, ledgerId: String) {
+        advanceDebtReadEpoch(bindingKey, ledgerId)
+        clearDebtSnapshots(bindingKey)
+    }
+
+    @Transaction
+    suspend fun advanceDebtReadEpoch(bindingKey: String, ledgerId: String): Long {
+        val next = Math.addExact(debtReadEpoch(bindingKey)?.toLong() ?: 0L, 1L)
+        saveStatsProjection(StatsProjectionCacheEntity(bindingKey, ledgerId, "debt_read_epoch", "", "", "", "UTC",
+            next.toString(), java.time.Instant.now().toString()))
+        return next
+    }
+
+    @Transaction
+    suspend fun saveDebtSnapshotIfCurrent(snapshot: StatsProjectionCacheEntity, epoch: Long, restoredPublicId: String? = null) {
+        check((debtReadEpoch(snapshot.bindingKey)?.toLong() ?: 0L) == epoch) { "往来已接受修改，请重新读取。" }
+        if (restoredPublicId != null) clearDebtResourceSnapshots(snapshot.bindingKey, restoredPublicId)
+        saveStatsProjection(snapshot)
+        if (restoredPublicId != null) clearDebtResourceDenial(snapshot.bindingKey, restoredPublicId)
+    }
+
+    @Transaction
+    suspend fun debtSnapshotIfCurrent(query: StatsProjectionCacheEntity, epoch: Long): StatsProjectionCacheEntity? {
+        check((debtReadEpoch(query.bindingKey)?.toLong() ?: 0L) == epoch) { "往来已接受修改，请重新读取。" }
+        return statsProjections(query.bindingKey, query.kind, query.month, query.tag, query.timezone).singleOrNull()
+    }
+
+    @Query("SELECT * FROM stats_projection_cache WHERE bindingKey = :bindingKey AND kind = 'debt_resource_denial'")
+    suspend fun debtResourceDenials(bindingKey: String): List<StatsProjectionCacheEntity>
+
+    @Query("DELETE FROM stats_projection_cache WHERE bindingKey = :bindingKey AND kind = 'debt_resource_denial' AND tag = :publicId")
+    suspend fun clearDebtResourceDenial(bindingKey: String, publicId: String)
+
+    @Query("DELETE FROM stats_projection_cache WHERE bindingKey = :bindingKey AND " +
+        "((kind = 'debt_detail' AND tag = :publicId) OR (kind = 'debt_activity' AND substr(tag, 1, length(:publicId) + 1) = :publicId || ':'))")
+    suspend fun clearDebtResourceSnapshots(bindingKey: String, publicId: String)
+
+    @Query("SELECT * FROM stats_projection_cache WHERE bindingKey = :bindingKey AND kind = 'debt_direct_barrier'")
+    suspend fun debtDirectBarriers(bindingKey: String): List<StatsProjectionCacheEntity>
+
+    @Query("DELETE FROM stats_projection_cache WHERE bindingKey = :bindingKey AND kind = 'debt_direct_barrier' AND tag IN (:tokens)")
+    suspend fun clearDebtDirectBarriers(bindingKey: String, tokens: List<String>)
+
+    @Transaction
+    suspend fun settleDebtDirectReads(bindingKey: String, ledgerId: String, tokens: List<String>, expectedEpoch: Long? = null) {
+        check(expectedEpoch == null || (debtReadEpoch(bindingKey)?.toLong() ?: 0L) == expectedEpoch) {
+            "往来已接受修改，请重新读取。"
+        }
+        check(tokens.all { token -> debtDirectBarriers(bindingKey).any { it.tag == token } })
+        invalidateDebtSnapshots(bindingKey, ledgerId)
+        clearDebtDirectBarriers(bindingKey, tokens)
+    }
+
     @Query("""
         SELECT * FROM stats_projection_cache
         WHERE bindingKey = :bindingKey AND kind = :kind AND month = :month AND tag = :tag

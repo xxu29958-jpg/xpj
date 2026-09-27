@@ -23,10 +23,10 @@ internal class CapabilityDebtActions(
 
     override fun canModifyLedger(): Boolean = canModify
 
-    override suspend fun listDebts(lens: com.ticketbox.domain.model.DebtListLens): Result<DebtListPage> {
+    override suspend fun listDebts(lens: com.ticketbox.domain.model.DebtListLens): Result<ReadSnapshot<DebtListPage>> {
         listCalls += 1
         listDebtsGate?.invoke()
-        return Result.success(page)
+        return Result.success(debtReadSnapshot(page))
     }
 }
 
@@ -37,6 +37,8 @@ private fun unsupportedDebtActions(): DebtActions = Proxy.newProxyInstance(
 ) { _, method, _ ->
     when (method.name) {
         "toString" -> "UnsupportedDebtActions"
+        "observeReadAccessDenials" -> kotlinx.coroutines.flow.emptyFlow<com.ticketbox.data.repository.SnapshotAccessDenial>()
+        "observeResourceDenials" -> kotlinx.coroutines.flow.emptyFlow<com.ticketbox.data.repository.DebtReadResourceDenial>()
         else -> throw UnsupportedOperationException(method.name)
     }
 } as DebtActions

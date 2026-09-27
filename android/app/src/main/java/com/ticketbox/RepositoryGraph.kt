@@ -67,11 +67,13 @@ internal class RepositoryGraph(
         expenseDao = database.expenseDao(),
         outbox = outbox,
     )
+    private val debtQueries = com.ticketbox.data.repository.DebtQueryReader(apiServiceProvider, database.expenseDao(), ledgerSessionCoordinator)
 
     val expenseRepository = ExpenseRepository(
         expenseDao = database.expenseDao(),
         sessionCoordinator = ledgerSessionCoordinator,
         binding = serverSessionBinding,
+        debtQueryReader = debtQueries,
         // PR-2g.3: pass the outbox + adapter so the PATCH expense
         // call site can fall back to enqueue on IOException.
         // PR-2g.7: + token adapter for confirm/reject offline routing.
@@ -130,8 +132,9 @@ internal class RepositoryGraph(
 
     val debtRepository = DebtRepository(
         apiProvider = apiServiceProvider,
+        queryReader = debtQueries,
         splitAgreement = com.ticketbox.data.repository.SplitAgreementRepository(
-            apiServiceProvider, outbox, outboxAdapters.splitAgreementAdapter,
+            apiServiceProvider, outbox, outboxAdapters.splitAgreementAdapter, debtQueries,
         ),
     )
 
@@ -148,7 +151,10 @@ internal class RepositoryGraph(
     // ADR-0049 §杠杆③ (slice 3a): NLS 还款捕获复核箱仓库。direct-only online；NLS service 路由还款草稿到它。
     val repaymentDraftRepository = RepaymentDraftRepository(
         apiProvider = apiServiceProvider,
+        queryReader = debtQueries,
     )
+
+    init { outbox.onDebtAccepted = debtRepository::invalidateReadsAfterAccepted }
 
     val goalEditRepository = com.ticketbox.data.repository.GoalEditRepository(
         apiServiceProvider, outbox, outboxAdapters.goalUpdateAdapter, outboxAdapters.goalReceiptAdapter,

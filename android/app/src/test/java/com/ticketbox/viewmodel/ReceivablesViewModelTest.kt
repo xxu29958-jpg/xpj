@@ -156,22 +156,47 @@ class ReceivablesViewModelTest {
 
         assertEquals(listOf("first", "second"), sorted.map { it.publicId })
     }
+    @Test fun refusalRejectsLateReceivablesButResourceDenialKeepsOtherRows() = runTest(dispatcher) {
+        val actions = FakeReceivablesActions(Result.success(listOf(sampleReceivable("gone"), sampleReceivable("kept"))))
+        val writes = FakeDebtWriteActions()
+        val model = ReceivablesViewModel(actions, writes)
+        advanceUntilIdle()
+        actions.resourceDenials.emit(com.ticketbox.data.repository.DebtReadResourceDenial(requireNotNull(writes.currentAccess()).binding,
+            "gone", com.ticketbox.data.repository.RepositoryException("不存在", httpStatusCode = 404), 1))
+        advanceUntilIdle()
+        assertEquals(listOf("kept"), model.state.value.receivables.map { it.publicId })
+        val gate = CompletableDeferred<Unit>()
+        actions.gate = gate
+        model.refresh()
+        runCurrent()
+        actions.readDenials.emit(com.ticketbox.data.repository.SnapshotAccessDenial(requireNotNull(writes.currentAccess()).binding,
+            com.ticketbox.data.repository.RepositoryException("无权查看", httpStatusCode = 403), 1))
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertTrue(model.state.value.receivables.isEmpty())
+        assertEquals(null, model.state.value.fetchedAt)
+    }
+
 }
 
 private class FakeReceivablesActions(
     var result: Result<List<Debt>> = Result.success(emptyList()),
 ) : ReceivablesActions {
+    val readDenials = kotlinx.coroutines.flow.MutableSharedFlow<com.ticketbox.data.repository.SnapshotAccessDenial>()
+    val resourceDenials = kotlinx.coroutines.flow.MutableSharedFlow<com.ticketbox.data.repository.DebtReadResourceDenial>()
+    override fun observeReadAccessDenials() = readDenials
+    override fun observeResourceDenials() = resourceDenials
     /** When set, listReceivables() stalls until completed — used to interleave a slow load. */
     var gate: CompletableDeferred<Unit>? = null
     var listCalls = 0
 
-    override suspend fun listReceivables(): Result<List<Debt>> {
+    override suspend fun listReceivables(): Result<com.ticketbox.data.repository.ReadSnapshot<List<Debt>>> {
         listCalls++
         // Capture at entry so a stalled load returns the snapshot it started with, even if a newer
         // load swaps `result` in the meantime.
         val captured = result
         gate?.await()
-        return captured
+        return captured.map { debtReadSnapshot(it) }
     }
 }
 

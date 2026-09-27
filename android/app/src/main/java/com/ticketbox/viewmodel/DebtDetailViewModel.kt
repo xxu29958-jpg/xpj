@@ -77,6 +77,24 @@ class DebtDetailViewModel(
 
     init {
         viewModelScope.launch {
+            repository.observeReadAccessDenials().collect { denial ->
+                if (denial.binding != loadedBinding) return@collect
+                loadGeneration++
+                _celebration.value = null
+                _state.update { it.copy(debt = null, fetchedAt = null, fromCache = false, isLoading = false,
+                    error = denial.failure.toUiText(R.string.debt_detail_load_failed)) }
+            }
+        }
+        viewModelScope.launch {
+            repository.observeResourceDenials().collect { denial ->
+                if (denial.binding != loadedBinding || denial.debtPublicId != loadedPublicId) return@collect
+                loadGeneration++
+                _celebration.value = null
+                _state.update { it.copy(debt = null, fetchedAt = null, fromCache = false, isLoading = false,
+                    error = denial.failure.toUiText(R.string.debt_detail_load_failed)) }
+            }
+        }
+        viewModelScope.launch {
             writes.observeActiveLedgerAccess().collect { access ->
                 if (loadedBinding != null && loadedBinding != access?.binding) {
                     loadGeneration++
@@ -111,8 +129,9 @@ class DebtDetailViewModel(
                 it.copy(
                     binding = loadedBinding,
                     debt = null,
+                    fetchedAt = null, fromCache = false,
                     error = null,
-                    activeAction = null,
+                    activeAction = null, actionTarget = null,
                     repaymentToVoid = null,
                     amountInput = "",
                     reasonInput = "",
@@ -160,26 +179,26 @@ class DebtDetailViewModel(
                 return@launch
             }
             result.fold(
-                onSuccess = { debt ->
-                    detectSettleCelebration(debt, previousStatusByPublicId, celebratedDebtIds)
+                onSuccess = { snapshot ->
+                    val debt = snapshot.value
+                    if (!snapshot.fromCache) detectSettleCelebration(debt, previousStatusByPublicId, celebratedDebtIds)
                         ?.let { _celebration.value = it }
                     _state.update {
                         it.copy(
                             isLoading = false,
                             debt = debt,
-                            writeRefreshAfterVersion = it.writeRefreshAfterVersion?.takeIf { version -> debt.rowVersion <= version },
-                            writeRefreshAtVersion = it.writeRefreshAtVersion?.takeIf { version -> debt.rowVersion < version },
+                            fetchedAt = snapshot.fetchedAt, fromCache = snapshot.fromCache,
+                            writeRefreshAfterVersion = if (snapshot.fromCache) it.writeRefreshAfterVersion else
+                                it.writeRefreshAfterVersion?.takeIf { version -> debt.rowVersion <= version },
+                            writeRefreshAtVersion = if (snapshot.fromCache) it.writeRefreshAtVersion else
+                                it.writeRefreshAtVersion?.takeIf { version -> debt.rowVersion < version },
                             canModify = repository.canModifyLedger() && writes.currentAccess()?.canModify == true,
                             error = null,
                         )
                     }
                 },
                 onFailure = { err ->
-                    _state.update {
-                        it.copy(isLoading = false,
-                            debt = if ((err as? RepositoryException)?.errorCode == "debt_not_found") null else it.debt,
-                            error = err.toUiText(R.string.debt_detail_load_failed))
-                    }
+                    _state.update { it.withReadFailure(err) }
                 },
             )
         }
@@ -193,7 +212,7 @@ class DebtDetailViewModel(
             updated.rowVersion < current.rowVersion) return
         loadGeneration++
         detectSettleCelebration(updated, previousStatusByPublicId, celebratedDebtIds)?.let { _celebration.value = it }
-        _state.update { it.copy(debt = updated, isLoading = false, error = null,
+        _state.update { it.copy(debt = updated, fetchedAt = null, fromCache = false, isLoading = false, error = null,
             writeRefreshAfterVersion = it.writeRefreshAfterVersion?.takeIf { version -> updated.rowVersion <= version },
             writeRefreshAtVersion = it.writeRefreshAtVersion?.takeIf { version -> updated.rowVersion < version }) }
     }
@@ -208,6 +227,7 @@ class DebtDetailViewModel(
         _state.update {
             it.copy(
                 activeAction = action,
+                actionTarget = current.debt,
                 repaymentToVoid = repayment.takeIf { action == DebtAction.RepaymentVoid },
                 amountInput = "",
                 reasonInput = "",
@@ -230,7 +250,7 @@ class DebtDetailViewModel(
         if (_state.value.isSubmitting) return
         _state.update {
             it.copy(
-                activeAction = null,
+                activeAction = null, actionTarget = null,
                 repaymentToVoid = null,
                 amountInput = "",
                 reasonInput = "",
@@ -289,7 +309,7 @@ class DebtDetailViewModel(
                 onSuccess = { updated ->
                     loadGeneration++
                     _state.update {
-                        it.copy(debt = updated, isSubmitting = false, error = null, flashMessage = UiText.res(R.string.debt_kind_updated))
+                        it.copy(debt = updated, fetchedAt = null, fromCache = false, isSubmitting = false, error = null, flashMessage = UiText.res(R.string.debt_kind_updated))
                     }
                 },
                 onFailure = { err ->
@@ -336,7 +356,7 @@ private suspend fun DebtActionSubmission.execute(writes: DebtWriteActions,
 
 private fun DebtDetailUiState.actionSubmission(): DebtActionSubmission? {
     if (!canWriteActions) return null
-    val target = debt ?: return null
+    val target = actionTarget ?: debt ?: return null
     val action = activeAction ?: return null
     if (action == DebtAction.RepaymentVoid && repaymentToVoid == null) return null
     return DebtActionSubmission(target, action, actionInput(target, action))
@@ -347,7 +367,7 @@ private fun DebtDetailUiState.acceptAction(
     action: DebtAction,
     completedWrites: Set<Long>,
 ): DebtDetailUiState = copy(
-    activeAction = null, repaymentToVoid = null, amountInput = "", reasonInput = "",
+    activeAction = null, actionTarget = null, repaymentToVoid = null, amountInput = "", reasonInput = "",
     isSubmitting = false, validationError = null,
     locallyAcceptedWriteId = if (outcome.intentId !in completedWrites && pendingWrites.none { it.row.id == outcome.intentId }
     ) outcome.intentId else locallyAcceptedWriteId,
@@ -428,4 +448,11 @@ private fun validateDebtAction(action: DebtAction, amountCents: Long?, reason: S
             null
         }
     DebtAction.Void, DebtAction.RepaymentVoid -> if (reason.isEmpty()) R.string.debt_action_void_validation else null
+}
+
+private fun DebtDetailUiState.withReadFailure(failure: Throwable): DebtDetailUiState {
+    val unavailable = (failure as? RepositoryException)?.errorCode == "debt_not_found"
+    return copy(isLoading = false, debt = if (unavailable) null else debt,
+        fetchedAt = if (unavailable) null else fetchedAt, fromCache = !unavailable && fromCache,
+        error = failure.toUiText(R.string.debt_detail_load_failed))
 }

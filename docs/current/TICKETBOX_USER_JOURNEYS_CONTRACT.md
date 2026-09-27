@@ -162,8 +162,11 @@ blank-form/failed-read success labels and generic offline promise are retired.
 
 Previously read Goal lists/details now reopen through the durable query owner,
 retaining recorded currencies, unknown progress and data time, with explicit
-access refusals handled separately. Budget/debt query persistence remains open;
-neither page memory nor a submitted-command receipt is a complete query snapshot.
+access refusals handled separately. Budget query persistence is delivered in #438
+across Plans, Budget and Insights; its original currencies, unknown values, read
+time and refusal handling remain intact. Debt query persistence is being completed
+in #446 after a real offline Room-reopen counterexample. Neither page memory nor
+a submitted-command receipt is a complete query snapshot.
 Unsubmitted goal/income drafts and returning after another client changed facts
 also need their own continuation. Offline reads do not confer permission or prove
 current governance/tool health, nor promise that every page works offline.

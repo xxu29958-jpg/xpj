@@ -851,6 +851,21 @@ internal fun existingOwnerSessionFixture(
 
 internal class LedgerFakeDao : ExpenseDao {
     private val statsCache = com.ticketbox.data.local.StatsProjectionCacheFake()
+    override suspend fun clearDebtResourceSnapshots(bindingKey: String, publicId: String) {
+        statsCache.byKind(bindingKey, "debt_detail").filter { it.tag == publicId }.forEach(statsCache::delete)
+        statsCache.byKind(bindingKey, "debt_activity").filter { it.tag.startsWith("$publicId:") }.forEach(statsCache::delete)
+    }
+    override suspend fun debtDirectBarriers(bindingKey: String) = statsCache.byKind(bindingKey, "debt_direct_barrier")
+    override suspend fun clearDebtDirectBarriers(bindingKey: String, tokens: List<String>) {
+        statsCache.byKind(bindingKey, "debt_direct_barrier").filter { it.tag in tokens }.forEach(statsCache::delete)
+    }
+    override suspend fun debtReadEpoch(bindingKey: String) = statsCache.find(bindingKey, "debt_read_epoch", "", "", "UTC").singleOrNull()?.responseJson
+    override suspend fun hasUnpublishedAcceptedDebt(ownerKey: String, ledgerId: String) = false
+    override suspend fun clearDebtSnapshots(bindingKey: String) = statsCache.clearKinds(bindingKey, setOf("debt_list", "debt_detail", "debt_activity"))
+    override suspend fun debtResourceDenials(bindingKey: String) = statsCache.byKind(bindingKey, "debt_resource_denial")
+    override suspend fun clearDebtResourceDenial(bindingKey: String, publicId: String) {
+        statsCache.byKind(bindingKey, "debt_resource_denial").filter { it.tag == publicId }.forEach(statsCache::delete)
+    }
     private val goalCache = com.ticketbox.data.local.GoalQueryCacheFake()
     override suspend fun saveGoalSnapshots(snapshots: List<com.ticketbox.data.local.GoalQueryCacheEntity>) = goalCache.save(snapshots)
     override suspend fun goalSnapshot(bindingKey: String, timezone: String, queryKey: String) = goalCache.find(bindingKey, timezone, queryKey)

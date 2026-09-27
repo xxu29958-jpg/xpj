@@ -158,7 +158,7 @@ class SplitAgreementRepositoryTest {
     }
 
     private fun repository(f: DebtAdjustmentFixture, outbox: OutboxRepository = f.outbox) =
-        SplitAgreementRepository(f.provider, outbox, f.adapters.splitAgreementAdapter)
+        SplitAgreementRepository(f.provider, outbox, f.adapters.splitAgreementAdapter, debtReaderFixture(f.provider, f.session))
     private fun create() = SplitAgreementPayload(operation = SPLIT_CREATE, originalDebtPublicId = "original",
         create = BillSplitChangeCreateRequestDto(2000, -1000, "退款后双方重议", 7, 8))
 }

@@ -32,8 +32,9 @@ interface RepaymentDraftActions {
     suspend fun dismissDraft(draftPublicId: String): Result<RepaymentDraft>
 }
 
-class RepaymentDraftRepository(
+class RepaymentDraftRepository internal constructor(
     private val apiProvider: ApiServiceProvider,
+    private val queryReader: DebtQueryReader,
 ) : RepaymentDraftActions {
     private val ledgerRequestGuard = LedgerRequestGuard(apiProvider)
     private val errorHandler = NetworkErrorHandler(
@@ -81,7 +82,7 @@ class RepaymentDraftRepository(
         if (!canModifyLedger()) return Result.failure(RepositoryException(REPAYMENT_DRAFT_VIEWER_READONLY))
         return errorHandler.safeCall {
             ledgerRequestGuard.bindExact(expectedBinding).call { api ->
-                api.confirmRepaymentDraft(
+                queryReader.direct(expectedBinding) { api.confirmRepaymentDraft(
                     publicId = draftPublicId,
                     request = confirmRepaymentDraftRequest(
                         targetDebtPublicId = targetDebtPublicId,
@@ -89,7 +90,7 @@ class RepaymentDraftRepository(
                     ),
                     // ADR-0042: single-use key — direct-only path, no offline replay.
                     idempotencyKey = UUID.randomUUID().toString(),
-                ).toDomain()
+                ).toDomain() }
             }
         }
     }

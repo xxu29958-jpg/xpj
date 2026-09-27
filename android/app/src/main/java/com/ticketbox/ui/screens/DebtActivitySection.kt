@@ -65,6 +65,7 @@ internal fun DebtActivitySection(
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.SemiBold,
         )
+        DebtReadSource(history.fetchedAt, history.fromCache, history.isLoading)
         history.error?.let { error ->
             AppStatusBanner(message = error, tone = MessageTone.Danger)
             QuietOutlinedButton(

@@ -33,6 +33,8 @@ data class RepaymentDraftInboxUiState(
     val canModify: Boolean = true,
     val drafts: List<RepaymentDraft> = emptyList(),
     val targetDebts: List<Debt> = emptyList(),
+    val targetsFetchedAt: String? = null,
+    val targetsFromCache: Boolean = false,
     val focusedDraftPublicId: String? = null,
     /**
      * §杠杆③ 3b：每条草稿的服务端建议欠款（draft.publicId → 已解析的 [Debt]），仅含「服务端 suggested_debt_public_id
@@ -67,6 +69,26 @@ class RepaymentDraftInboxViewModel(
 
     init {
         viewModelScope.launch {
+            debts.observeReadAccessDenials().collect { denial ->
+                if (denial.binding != writes.currentAccess()?.binding) return@collect
+                loadGeneration++
+                _state.update { it.copy(targetDebts = emptyList(), suggestedDebtByDraftId = emptyMap(),
+                    targetsFetchedAt = null, targetsFromCache = false, isLoading = false, canModify = false,
+                    error = denial.failure.toUiText(R.string.repayment_draft_debts_load_failed)) }
+            }
+        }
+        viewModelScope.launch {
+            debts.observeResourceDenials().collect { denial ->
+                if (denial.binding != writes.currentAccess()?.binding) return@collect
+                loadGeneration++
+                _state.update { current ->
+                    val targets = current.targetDebts.filterNot { it.publicId == denial.debtPublicId }
+                    current.copy(isLoading = false, targetDebts = targets,
+                        suggestedDebtByDraftId = resolveSuggestions(current.drafts, targets))
+                }
+            }
+        }
+        viewModelScope.launch {
             writes.observeWrites().collect { change ->
                 val changedBinding = adjustmentBinding != change.binding
                 adjustmentBinding = change.binding
@@ -94,6 +116,8 @@ class RepaymentDraftInboxViewModel(
             it.copy(
                 drafts = emptyList(),
                 targetDebts = emptyList(),
+                targetsFetchedAt = null,
+                targetsFromCache = false,
                 suggestedDebtByDraftId = emptyMap(),
                 focusedDraftPublicId = focusedDraftPublicId,
                 error = null,
@@ -109,10 +133,12 @@ class RepaymentDraftInboxViewModel(
             return
         }
         val gen = ++loadGeneration
-        _state.update { it.copy(isLoading = true, targetDebts = emptyList(), suggestedDebtByDraftId = emptyMap(), error = null) }
+        _state.update { it.copy(isLoading = true, targetDebts = emptyList(), suggestedDebtByDraftId = emptyMap(),
+            targetsFetchedAt = null, targetsFromCache = false, error = null) }
         viewModelScope.launch {
             val draftResult = drafts.listPendingDrafts()
-            val repayable = debts.listDebts().getOrNull()?.debts?.filter(::isRepayableDebt)
+            val debtSnapshot = debts.listDebts().getOrNull()
+            val repayable = debtSnapshot?.value?.debts?.filter(::isRepayableDebt)
                 ?.filter { adjustmentSnapshot?.acceptsCanonical(it) == true }
             // Drop a load superseded by a newer refresh (which set isLoading and owns clearing it).
             if (gen != loadGeneration) return@launch
@@ -132,6 +158,8 @@ class RepaymentDraftInboxViewModel(
                             // 下次对同一债 confirm 会用陈旧 OCC token 触发确定性 409;并报错让用户下拉刷新,
                             // 也避免空候选被误读成「没有欠款」（拉取成功但无可还款债时 repayable 是空列表、不报错）。
                             targetDebts = repayable ?: emptyList(),
+                            targetsFetchedAt = debtSnapshot?.fetchedAt,
+                            targetsFromCache = debtSnapshot?.fromCache == true,
                             // 用本地拉到的欠款解析服务端建议（拉取失败 → 空建议，与清空候选一致）。
                             suggestedDebtByDraftId = resolveSuggestions(orderedDrafts, repayable ?: emptyList()),
                             error = if (repayable == null) {
@@ -182,7 +210,7 @@ class RepaymentDraftInboxViewModel(
     }
 
     fun dismiss(draftPublicId: String) {
-        if (_state.value.pendingActionDraftId != null) return
+        if (_state.value.pendingActionDraftId != null || !_state.value.canModify) return
         _state.update { it.copy(pendingActionDraftId = draftPublicId, error = null) }
         viewModelScope.launch {
             val result = drafts.dismissDraft(draftPublicId)

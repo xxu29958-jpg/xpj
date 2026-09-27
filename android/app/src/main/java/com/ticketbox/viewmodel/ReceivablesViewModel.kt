@@ -26,6 +26,8 @@ import kotlinx.coroutines.launch
  */
 data class ReceivablesUiState(
     val isLoading: Boolean = false,
+    val fetchedAt: String? = null,
+    val fromCache: Boolean = false,
     val receivables: List<Debt> = emptyList(),
     val error: UiText? = null,
 )
@@ -47,6 +49,22 @@ class ReceivablesViewModel(
     private var loadGeneration = 0L
 
     init {
+        viewModelScope.launch {
+            repository.observeReadAccessDenials().collect { denial ->
+                if (denial.binding != writes.currentAccess()?.binding) return@collect
+                loadGeneration++
+                _state.update { it.copy(receivables = emptyList(), fetchedAt = null, fromCache = false, isLoading = false,
+                    error = denial.failure.toUiText(R.string.receivables_load_failed)) }
+            }
+        }
+        viewModelScope.launch {
+            repository.observeResourceDenials().collect { denial ->
+                if (denial.binding != writes.currentAccess()?.binding) return@collect
+                loadGeneration++
+                _state.update { it.copy(receivables = it.receivables.filterNot { debt -> debt.publicId == denial.debtPublicId },
+                    isLoading = false, error = denial.failure.toUiText(R.string.receivables_load_failed)) }
+            }
+        }
         viewModelScope.launch {
             writes.observeWrites().collect { change ->
                 val changedBinding = adjustmentBinding != change.binding
@@ -78,7 +96,8 @@ class ReceivablesViewModel(
             // Drop a load superseded by a newer refresh (which set isLoading and owns clearing it).
             if (gen != loadGeneration || observation.binding != writes.currentAccess()?.binding) return@launch
             result.fold(
-                onSuccess = { debts ->
+                onSuccess = { snapshot ->
+                    val debts = snapshot.value
                     if (!debts.filterNot { "debt:${it.publicId}" in observation.unresolvedTargetIds }
                             .all(observation::acceptsCanonical)) {
                         _state.update { it.copy(isLoading = false,
@@ -89,6 +108,7 @@ class ReceivablesViewModel(
                         it.copy(
                             isLoading = false,
                             receivables = sortReceivablesActiveFirst(debts),
+                            fetchedAt = snapshot.fetchedAt, fromCache = snapshot.fromCache,
                             error = null,
                         )
                     }

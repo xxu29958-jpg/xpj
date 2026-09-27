@@ -42,8 +42,8 @@ class DebtRepositoryTest {
         val handler = DebtApiHandler()
         val repository = repository(handler)
 
-        repository.listDebts().getOrThrow()
-        repository.listDebts(DebtListLens.Payables).getOrThrow()
+        repository.listDebts().getOrThrow().value
+        repository.listDebts(DebtListLens.Payables).getOrThrow().value
 
         assertEquals(listOf(null, "payables"), handler.listLenses)
     }
@@ -57,7 +57,7 @@ class DebtRepositoryTest {
             )
         }
 
-        val page = repository(handler).listDebts().getOrThrow()
+        val page = repository(handler).listDebts().getOrThrow().value
 
         assertEquals(1, page.debts.size)
         assertEquals("d1", page.debts.single().publicId)
@@ -74,7 +74,7 @@ class DebtRepositoryTest {
             debtsResult = DebtListResponseDto(items = listOf(debtDto(publicId = "d1")))
         }
 
-        val page = repository(handler).listDebts().getOrThrow()
+        val page = repository(handler).listDebts().getOrThrow().value
 
         assertEquals(1, page.debts.size)
         assertNull(page.ledgerHomeCurrencyCode)
@@ -155,7 +155,7 @@ class DebtRepositoryTest {
     fun getDebtMapsDomainModel() = runTest {
         val handler = DebtApiHandler().apply { debtResult = debtDto(publicId = "d9", remaining = 1_200L) }
 
-        val debt = repository(handler).getDebt("d9").getOrThrow()
+        val debt = repository(handler).getDebt("d9").getOrThrow().value
 
         assertEquals("d9", debt.publicId)
         assertEquals(1_200L, debt.remainingAmountCents)
@@ -180,7 +180,7 @@ class DebtRepositoryTest {
             )
         }
 
-        val receivables = repository(handler).listReceivables().getOrThrow()
+        val receivables = repository(handler).listReceivables().getOrThrow().value
 
         assertEquals(1, receivables.size)
         val row = receivables.single()
@@ -520,9 +520,8 @@ class DebtRepositoryTest {
                 boundAt = "2026-05-01T00:00:00Z",
             ),
         ).apply { saveToken("session-token") }
-        return DebtRepository(
-            apiProvider = testApiServiceProvider(handler, tokenStore),
-        )
+        val provider = testApiServiceProvider(handler, tokenStore)
+        return DebtRepository(provider, debtReaderFixture(provider, tokenStore))
     }
 }
 

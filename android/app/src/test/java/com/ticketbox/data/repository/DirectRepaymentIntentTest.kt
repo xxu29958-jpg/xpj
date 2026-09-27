@@ -161,7 +161,8 @@ class DirectRepaymentIntentTest {
         assertEquals(PendingMutationStatus.Done.wireValue, delivered.status)
         val receipt = assertNotNull(fixture.adapters.debtRepaymentReceiptAdapter.fromJson(assertNotNull(delivered.receiptJson)))
         assertEquals("repayment-original", receipt.repaymentPublicId)
-        assertEquals(40_000L, DebtRepository(fixture.provider).getDebt("d1").getOrThrow().remainingAmountCents)
+        assertEquals(40_000L, DebtRepository(fixture.provider, debtReaderFixture(fixture.provider, fixture.session))
+            .getDebt("d1").getOrThrow().value.remainingAmountCents)
     }
 
     @Test fun publicationRejectsInvalidAmountViewerAndNonDirectDebtBeforePersistOrSend() = runTest {

@@ -246,7 +246,7 @@ class OutboxDrainEngine(
                 withContext(if (row.type == PendingMutationType.SaveMonthlyBudget) NonCancellable
                     else kotlin.coroutines.EmptyCoroutineContext) {
                     outbox.markDone(row.id, cacheRefreshVersion = result.cacheRefreshVersion, receiptJson = result.receiptJson,
-                        budgetReadRefreshRequired = result.budgetReadRefreshRequired)
+                        budgetReadRefreshRequired = result.budgetReadRefreshRequired, acceptedRow = row)
                 }
                 outbox.noteAcceptedReplay()
                 result.newRowVersion?.takeIf { it != 0L && row.type != PendingMutationType.CreateExpense }

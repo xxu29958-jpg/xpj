@@ -29,6 +29,8 @@ data class CreateDebtGoalUiState(
     val canModify: Boolean = true,
     /** 可关联的欠款（仅未结清）。 */
     val candidates: List<Debt> = emptyList(),
+    val fetchedAt: String? = null,
+    val fromCache: Boolean = false,
     val selectedDebtIds: Set<String> = emptySet(),
     val name: String = "",
     val isSubmitting: Boolean = false,
@@ -66,6 +68,23 @@ class CreateDebtGoalViewModel(
     private var loadGeneration = 0L
 
     init {
+        viewModelScope.launch {
+            debts.observeReadAccessDenials().collect { denial ->
+                if (denial.binding != writes.currentAccess()?.binding) return@collect
+                loadGeneration++
+                _state.update { it.copy(candidates = emptyList(), fetchedAt = null, fromCache = false,
+                    isLoadingDebts = false, canModify = false,
+                    loadError = denial.failure.toUiText(R.string.debt_goal_create_load_failed)) }
+            }
+        }
+        viewModelScope.launch {
+            debts.observeResourceDenials().collect { denial ->
+                if (denial.binding != writes.currentAccess()?.binding) return@collect
+                loadGeneration++
+                _state.update { it.copy(isLoadingDebts = false,
+                    candidates = it.candidates.filterNot { debt -> debt.publicId == denial.debtPublicId }) }
+            }
+        }
         viewModelScope.launch {
             writes.observeWrites().collect { change ->
                 val changedBinding = adjustmentBinding != change.binding
@@ -108,7 +127,8 @@ class CreateDebtGoalViewModel(
             if (generation != loadGeneration || observation.binding != writes.currentAccess()?.binding) return@launch
             val currentObservation = writeObservation ?: return@launch
             result.fold(
-                onSuccess = { page ->
+                onSuccess = { snapshot ->
+                    val page = snapshot.value
                     if (!page.debts.filterNot { "debt:${it.publicId}" in observation.unresolvedTargetIds }
                             .all(observation::acceptsCanonical)) {
                         _state.update { it.copy(isLoadingDebts = false,
@@ -121,6 +141,8 @@ class CreateDebtGoalViewModel(
                             canModify = reports.canModifyLedger(),
                             candidates = page.debts.filter { debt -> debt.isOpen &&
                                 "debt:${debt.publicId}" !in currentObservation.unresolvedTargetIds },
+                            fetchedAt = snapshot.fetchedAt,
+                            fromCache = snapshot.fromCache,
                             loadError = null,
                         )
                     }

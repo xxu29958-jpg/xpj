@@ -5,6 +5,9 @@ import com.ticketbox.data.local.PendingMutationEntity
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+import android.database.sqlite.SQLiteException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -508,11 +511,23 @@ class OutboxRepository private constructor(
     suspend fun tryClaim(id: Long): Boolean =
         dao.markInFlightIfPending(id, PendingMutationStatus.Pending.wireValue, PendingMutationStatus.InFlight.wireValue, nowIso()) > 0
 
+    internal var onDebtAccepted: suspend (OutboxRow) -> Unit = {}
+
     suspend fun markDone(id: Long, cacheRefreshVersion: Long? = null, receiptJson: String? = null,
-        budgetReadRefreshRequired: Boolean = false) {
+        budgetReadRefreshRequired: Boolean = false, acceptedRow: OutboxRow? = null) {
         val refreshError = if (budgetReadRefreshRequired) BUDGET_READ_REFRESH_REQUIRED
             else cacheRefreshVersion?.let { "$EXPENSE_REFRESH_PREFIX$it" }
-        dao.markDone(id, PendingMutationStatus.Done.wireValue, nowIso(), refreshError, receiptJson)
+        val debtAccepted = acceptedRow?.type in DEBT_QUERY_MUTATION_TYPES
+        try {
+            dao.publishDelivery {
+                dao.markDone(id, PendingMutationStatus.Done.wireValue, nowIso(), refreshError, receiptJson)
+                if (debtAccepted) onDebtAccepted(requireNotNull(acceptedRow))
+            }
+        } catch (error: SQLiteException) {
+            // Only the original key re-enters; a failed local publication is not a new financial command.
+            if (debtAccepted) withContext(NonCancellable) { markRetryable(id, "accepted_debt_read_publication_pending") }
+            throw error
+        }
     }
 
     internal suspend fun recoverBudgetReadRefresh(bound: BoundLedgerRequest, month: String,

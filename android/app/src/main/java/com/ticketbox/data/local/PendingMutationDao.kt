@@ -142,6 +142,9 @@ interface PendingMutationDao {
     )
     suspend fun markDone(id: Long, status: String, completedAt: String, lastError: String? = null, receiptJson: String? = null): Int
 
+    @Transaction
+    suspend fun publishDelivery(settle: suspend () -> Unit) { settle() }
+
     @Query("""
         UPDATE pending_mutations SET lastError = NULL
         WHERE id = :id AND status = 'done' AND lastError = :expectedError

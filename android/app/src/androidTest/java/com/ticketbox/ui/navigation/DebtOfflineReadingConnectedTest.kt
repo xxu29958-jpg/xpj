@@ -88,20 +88,21 @@ class DebtOfflineReadingConnectedTest {
         olderPage()
         assertActivity("首次记录日元往来", CREATION_TIME)
         val onlineDebt = runBlocking { harness.fixture.graph.debtRepository.getDebt(DEBT_ID).getOrThrow() }
-        assertEquals("JPY", onlineDebt.homeCurrencyCode)
-        assertEquals(1_200L, onlineDebt.originalAmountMinor)
-        assertEquals(900L, onlineDebt.remainingAmountCents)
-        assertEquals(300L, onlineDebt.paidAmountCents)
-        assertEquals(4L, onlineDebt.rowVersion)
+        assertEquals("JPY", onlineDebt.value.homeCurrencyCode)
+        assertEquals(1_200L, onlineDebt.value.originalAmountMinor)
+        assertEquals(900L, onlineDebt.value.remainingAmountCents)
+        assertEquals(300L, onlineDebt.value.paidAmountCents)
+        assertEquals(4L, onlineDebt.value.rowVersion)
+        assertTrue(!onlineDebt.fromCache)
         val task = DebtTask(requireNotNull(originalBinding), DEBT_ID)
         val onlinePaymentPage = runBlocking {
             harness.fixture.graph.debtRepository.activity.listActivity(task, 1, null).getOrThrow()
         }
-        val payment = requireNotNull(onlinePaymentPage.items.single().repayment)
+        val payment = requireNotNull(onlinePaymentPage.value.items.single().repayment)
         assertEquals(300L, payment.amountCents)
         assertEquals("JPY", payment.originalCurrencyCode)
         assertEquals(300L, payment.originalAmountMinor)
-        assertEquals(PAYMENT_TIME, onlinePaymentPage.items.single().recordedAt)
+        assertEquals(PAYMENT_TIME, onlinePaymentPage.value.items.single().recordedAt)
         assertTrue(requests.any { it.url.encodedPath.endsWith("/activity") && it.url.queryParameter("page") == "2" })
         assertTrue(requests.none { it.url.queryParameter("page") == "3" })
 
@@ -116,11 +117,15 @@ class DebtOfflineReadingConnectedTest {
         olderPage()
         assertActivity("首次记录日元往来", CREATION_TIME)
         val reopenedDebt = runBlocking { harness.fixture.graph.debtRepository.getDebt(DEBT_ID).getOrThrow() }
-        assertEquals(onlineDebt, reopenedDebt)
+        assertEquals(onlineDebt.value, reopenedDebt.value)
+        assertEquals(onlineDebt.fetchedAt, reopenedDebt.fetchedAt)
+        assertTrue(reopenedDebt.fromCache)
         val offlinePaymentPage = runBlocking {
             harness.fixture.graph.debtRepository.activity.listActivity(task, 1, null).getOrThrow()
         }
-        assertEquals(onlinePaymentPage, offlinePaymentPage)
+        assertEquals(onlinePaymentPage.value, offlinePaymentPage.value)
+        assertEquals(onlinePaymentPage.fetchedAt, offlinePaymentPage.fetchedAt)
+        assertTrue(offlinePaymentPage.fromCache)
         val unread = runBlocking { harness.fixture.graph.debtRepository.activity.listActivity(task, 3, null) }
         assertTrue("A never-read page must remain unavailable offline", unread.isFailure)
         assertActivity("首次记录日元往来", CREATION_TIME)
@@ -149,6 +154,8 @@ class DebtOfflineReadingConnectedTest {
 
     private fun openDebt() {
         waitForText("原日元往来")
+        val source = context.getString(if (offline) R.string.debt_read_cached_title else R.string.debt_read_title)
+        compose.onNodeWithText(source, substring = true).assertIsDisplayed()
         compose.onNodeWithText("原日元往来").performClick()
         waitForText("原债务备注")
         compose.onNodeWithText("原债务备注").performScrollTo().assertIsDisplayed()
