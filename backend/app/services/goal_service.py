@@ -399,6 +399,8 @@ def archive_goal(
     goal.archived_at = now
     goal.updated_at = now
     bump_row_version(goal)
+    db.flush()
+    db.refresh(goal)
     record_goal_revision(db, goal, change_kind="archive", actor_account_id=actor_account_id)
     db.commit()
     db.refresh(goal)
