@@ -96,7 +96,7 @@ class BudgetSaveRepository(
                 type = PendingMutationType.SaveMonthlyBudget, targetId = monthlyBudgetTarget(cleanMonth),
                 payloadJson = saveAdapter.toJson(payload), expectedRowVersion = update.expectedRowVersion ?: 0L,
                 idempotencyKey = UUID.randomUUID().toString()), validateTargetRows = { rows ->
-                    check(rows.isEmpty()) { "这月预算有待处理的保存，请先查看原提交的同步结果。" }
+                    check(rows.all { it.status == PendingMutationStatus.Done }) { "这月预算有待处理的保存，请先查看原提交的同步结果。" }
                 })
         }
     }

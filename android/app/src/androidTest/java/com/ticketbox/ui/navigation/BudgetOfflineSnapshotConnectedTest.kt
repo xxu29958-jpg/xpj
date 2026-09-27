@@ -618,6 +618,10 @@ class BudgetOfflineSnapshotConnectedTest {
         val damaged = fixture.expenseDao.budgetSnapshotsForMonth(bindingJson, "2026-09").single()
         fixture.expenseDao.saveStatsProjection(damaged.copy(responseJson = "{"))
         repository.enqueueSave(binding, "2026-09", BudgetMonthlyUpdate("JPY", 8, 3600)).getOrThrow()
+        val queued = fixture.stored()
+        assertTrue("A completed save permits a new revision, but that unfinished revision still blocks another save",
+            repository.enqueueSave(binding, "2026-09", BudgetMonthlyUpdate("JPY", 8, 4000)).isFailure)
+        assertEquals("Rejected parallel admission preserves both the accepted receipt and the new original", queued, fixture.stored())
         receipt = receipt.copy(rowVersion = 9, totalAmountCents = 3600, remainingAmountCents = 3189)
         fixture.blockBudgetReadDeletion(true)
         val recoveryEngine = OutboxDrainEngine(fixture.outbox, listOf(SaveMonthlyBudgetDispatcher({ api },

@@ -144,4 +144,9 @@ current/history 共用同一接纳条件，合法 fresh 结果仍可用，月度
 test-only c5f751d9e 的 Android fast 108552890433 实际复现首次 Done 后仍显示旧预算，
 以及 Goal/Stats 在拒绝清理失败时丢失 fresh 结果。该源的 Connected 停在两处新增
 JUnit 断言参数顺序错误，不能当作业务 RED；2636dd214 仅纠正参数顺序，保留全部
-业务断言。修复后的 exact source 仍需独立 CI、CodeQL、Connected 和 main 验证。
+业务断言。2636dd214 的三个 Connected 分片实际复现损坏 Done 回执隐藏修复、
+SQLite 写失败吞掉 fresh 预算、月度 current/history 丢失合法 fresh 结果，以及
+重建后丢失原 403。原有坏查询修复流程还暴露同月第二次保存被已完成记录阻止；
+预算 admission 现按既有队列语义区分 Done 与未完成记录，保留旧回执，允许新版本
+保存，仍拒绝并发未完成提交。该流程继续验证两次原保存和缓存修复，不删除断言。
+修复后的 exact source 仍需独立 CI、CodeQL、Connected 和 main 验证。
