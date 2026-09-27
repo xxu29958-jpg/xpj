@@ -121,7 +121,9 @@ class BudgetOfflineReadingConnectedTest {
         compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("overview-module-budget"))
             .fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("overview-module-budget").performScrollTo().assertIsDisplayed()
-        waitForAmount()
+        val remaining = context.getString(com.ticketbox.R.string.stats_budget_progress_remaining, "¥789")
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText(remaining)).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText(remaining).performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag("budget-read-source").performScrollTo().assertIsDisplayed()
         assertEquals("Insights must identify the same saved query", originalReadTime, readTime())
         assertTrue(sourceText().contains("离线"))

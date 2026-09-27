@@ -107,6 +107,40 @@ class BudgetDraftQueueTransferTest {
         assertEquals(listOf(original), owner.commands.saves.value)
     }
 
+    @Test fun recoveringAnOlderReceiptKeepsTheAlreadyReadBudgetAndItsOriginalTime() = budgetTest {
+        for (queryVersion in listOf(2L, 3L)) {
+            val accepted = budget(totalAmountCents = 1200).copy(homeCurrencyCode = "JPY", rowVersion = 2)
+            val queried = accepted.copy(rowVersion = queryVersion,
+                totalAmountCents = if (queryVersion == 2L) 1200 else 2600)
+            val owner = FakeBudgetActions(budget = queried)
+            owner.commands.saves.value = listOf(pendingBudget())
+            val editor = BudgetViewModel(owner, "2026-05")
+            val insights = StatsBudgetViewModel(owner)
+            advanceUntilIdle()
+            insights.refresh("2026-05")
+            advanceUntilIdle()
+            assertEquals(queried, editor.uiState.value.budget)
+            assertEquals(queried.totalAmountCents, insights.uiState.value.budgetProgress?.budgetCents)
+            val readTime = editor.uiState.value.fetchedAt
+
+            owner.monthlyBudgetResponder = { Result.failure(java.net.ConnectException("Offline after receipt recovery")) }
+            owner.commands.saves.value = listOf(pendingBudget().let {
+                it.copy(row = it.row.copy(status = PendingMutationStatus.Done), receipt = accepted)
+            })
+            advanceUntilIdle()
+
+            assertEquals(queried, editor.uiState.value.budget,
+                "Recovering the original receipt cannot erase a same-or-newer authoritative query")
+            assertEquals(readTime, editor.uiState.value.fetchedAt)
+            assertEquals(queried.totalAmountCents, insights.uiState.value.budgetProgress?.budgetCents)
+            assertEquals(readTime, insights.uiState.value.fetchedAt)
+            assertEquals(queryVersion, editor.uiState.value.form.expectedRowVersion)
+            assertEquals(queried.totalAmountCents.toString(), editor.uiState.value.form.totalAmount)
+            assertFalse(editor.uiState.value.hasPendingSave)
+            assertEquals(0, owner.commands.savedRequests.size)
+        }
+    }
+
     private fun pendingBudget() = PendingBudgetSave(
         row = OutboxRow(id = 1, serverUrl = "https://api.example.com", ledgerId = "owner",
             type = PendingMutationType.SaveMonthlyBudget, targetId = "monthly_budget:2026-05", payloadJson = "{}",
