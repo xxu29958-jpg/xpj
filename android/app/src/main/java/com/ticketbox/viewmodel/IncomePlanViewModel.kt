@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.squareup.moshi.JsonClass
 import com.ticketbox.R
 import com.ticketbox.data.repository.IncomePlanActions
 import com.ticketbox.data.repository.IncomePlanDraft
@@ -66,6 +67,7 @@ data class IncomePlanMonthSummary(
     val expectedAmountCents: Long? = null,
 )
 
+@JsonClass(generateAdapter = true)
 data class IncomePlanDraftUi(
     val intentMonth: String = YearMonth.now().toString(),
     val label: String = "",
@@ -74,7 +76,7 @@ data class IncomePlanDraftUi(
     val incomeMonthInput: String = YearMonth.now().toString(),
     val amountYuanInput: String = "",
     val payDayInput: String = "10",
-    val validationError: UiText? = null,
+    @Transient val validationError: UiText? = null,
     /** 账本币种（R12-D）：VM 由列表信封 capability 注入；null=未确认 → parsedAmountCents 归
      *  null → isValid false → 禁写（不落 CNY 兜底）。 */
     val homeCurrency: CurrencyCode? = null,
@@ -103,6 +105,12 @@ data class IncomePlanDraftUi(
         return runCatching { YearMonth.parse(text).toString() }.getOrNull()
     }
 }
+
+internal fun IncomePlanDraftUi.withAmountValidation(): IncomePlanDraftUi = copy(
+    validationError = if (homeCurrency != null && amountYuanInput.isNotBlank() && parsedAmountCents() == null) {
+        UiText.res(R.string.expense_edit_amount_invalid)
+    } else null,
+)
 
 private fun IncomePlanDraftUi.toRepositoryDraftOrNull(): IncomePlanDraft? {
     if (intentMonth.isEmpty()) return null

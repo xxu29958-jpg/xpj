@@ -4,6 +4,7 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import androidx.compose.runtime.remember
 
 internal fun spendingGoalEditRoute(id: String): String = "${ProductSecondaryPage.SpendingGoal.route}?goal=${android.net.Uri.encode(id)}"
 
@@ -65,15 +66,28 @@ internal fun NavGraphBuilder.addPlanRoutes(
                 financialDataRevision = shellState.financialDataRevision,
             )
         }
+        addIncomePlanRoute(dependencies, onAdviceInputChanged)
+    }
+}
+
+private fun NavGraphBuilder.addIncomePlanRoute(
+    dependencies: MainProductRouteDependencies,
+    onDataChanged: () -> Unit,
+) {
+    with(dependencies) {
         composable(route = "${ProductSecondaryPage.IncomePlans.route}?submission={submission}",
             arguments = listOf(navArgument("submission") { type = NavType.StringType; nullable = true; defaultValue = null }),
         ) { entry ->
+            val editOwner = remember(runtime.navController, entry) {
+                runtime.navController.getBackStackEntry(MAIN_ROUTE)
+            }
             IncomePlanRoute(
-                originalSubmissionId = entry.arguments?.getString("submission")?.toLongOrNull(),
+                context = IncomePlanRouteContext(editOwner,
+                    originalSubmissionId = entry.arguments?.getString("submission")?.toLongOrNull(),
+                    financialDataRevision = shellState.financialDataRevision),
                 screenFactory = screenFactory,
                 onBack = onBack,
-                onDataChanged = onAdviceInputChanged,
-                financialDataRevision = shellState.financialDataRevision,
+                onDataChanged = onDataChanged,
             )
         }
     }

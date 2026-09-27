@@ -58,14 +58,18 @@ internal class FakeIncomePlanEditRepository(
     val archiveCalls = mutableListOf<IncomePlanArchiveCall>()
     var updateResult: Result<Long>? = null
     var archiveResult: Result<IncomePlan>? = null
+    var submissions: List<com.ticketbox.data.repository.PendingIncomePlanSubmission> = emptyList()
 
     /** 测试延迟钩：挂起 update 直至放行（模拟在途保存期间的 Back/手势/切 target）。 */
     var updateGate: (suspend () -> Unit)? = null
     var listGate: (suspend () -> Unit)? = null
+    var submissionGate: (suspend (LogicalSessionBinding) -> Unit)? = null
 
     override fun describeSubmission(row: com.ticketbox.data.repository.OutboxRow): com.ticketbox.data.repository.PendingIncomePlanSubmission? = null
-    override fun observeSubmissions(expectedBinding: LogicalSessionBinding) =
-        kotlinx.coroutines.flow.flowOf(emptyList<com.ticketbox.data.repository.PendingIncomePlanSubmission>())
+    override fun observeSubmissions(expectedBinding: LogicalSessionBinding) = kotlinx.coroutines.flow.flow {
+        submissionGate?.invoke(expectedBinding)
+        emit(submissions)
+    }
     override suspend fun recoverSubmission(expectedBinding: LogicalSessionBinding,
         pending: com.ticketbox.data.repository.PendingIncomePlanSubmission, drop: Boolean) = Result.success(Unit)
 
