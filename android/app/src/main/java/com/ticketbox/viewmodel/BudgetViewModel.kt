@@ -20,6 +20,7 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.parseExactMoneyMinor
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -76,7 +77,7 @@ class BudgetViewModel(
     private var requestGeneration = 0
     private var refreshGeneration = 0
     private var activeBinding: LogicalSessionBinding? = null
-    private var savesJob: Job? = null
+    private var observationsJob: Job? = null
     private var observedSaves: List<PendingBudgetSave> = emptyList()
 
     private var monthSelected = initialMonth != null || savedStateHandle.get<String>("month") != null
@@ -90,13 +91,13 @@ class BudgetViewModel(
                 } else {
                     activeBinding = access?.binding
                     requestGeneration += 1
-                    savesJob?.cancel()
+                    observationsJob?.cancel()
                     observedSaves = emptyList()
                     _uiState.value = BudgetUiState(month = _uiState.value.month, canModify = access?.canModify == true,
                         binding = access?.binding)
                     restoreDraft()
                     access?.let {
-                        observeSaves(it.binding)
+                        observeBudgetChanges(it.binding)
                         resolvingMonth = !monthSelected && !uiState.value.formDirty && calendars != null
                         viewModelScope.launch {
                             val month = if (resolvingMonth) calendars.newTaskMonth(it.binding) else uiState.value.month
@@ -114,8 +115,16 @@ class BudgetViewModel(
         }
     }
 
-    private fun observeSaves(binding: LogicalSessionBinding) {
-        savesJob = viewModelScope.launch {
+    private fun observeBudgetChanges(binding: LogicalSessionBinding) {
+        observationsJob = viewModelScope.launch {
+            launch(start = CoroutineStart.UNDISPATCHED) {
+                repository.observeReadAccessDenials().collect { denial ->
+                    if (activeBinding == binding && denial.binding == binding) {
+                        refreshGeneration += 1
+                        _uiState.update { it.withReadFailure(denial.failure) }
+                    }
+                }
+            }
             var previousDone: Set<Long>? = null
             repository.observeSaves(binding).collect { saves ->
                 if (activeBinding != binding) return@collect
@@ -138,11 +147,12 @@ class BudgetViewModel(
         val dirty = state.formDirty && transferred == null
         val receipt = (newlyDone ?: transferred)?.receipt?.takeUnless { dirty }
         val pending = rows.firstOrNull { it.row.status != PendingMutationStatus.Done }
+        val visible = state.budget.takeUnless { newlyDone != null && it.isOlderThanAccepted(newlyDone.receipt) }
         _uiState.value = state.copy(saves = rows,
-            budget = state.budget.takeIf { newlyDone == null },
-            fetchedAt = state.fetchedAt.takeIf { newlyDone == null },
-            fromCache = newlyDone == null && state.fromCache,
-            form = receipt?.toFormState() ?: pending?.originalForm()?.takeUnless { dirty } ?: state.form,
+            budget = visible,
+            fetchedAt = state.fetchedAt.takeIf { visible != null },
+            fromCache = visible != null && state.fromCache,
+            form = receipt?.let { (visible ?: it).toFormState() } ?: pending?.originalForm()?.takeUnless { dirty } ?: state.form,
             formDirty = dirty,
             message = if (receipt != null) UiText.res(R.string.budget_message_saved) else state.message,
             messageTone = if (receipt != null) MessageTone.Success else state.messageTone)

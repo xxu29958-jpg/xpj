@@ -12,6 +12,7 @@ import com.ticketbox.domain.model.toBudgetProgress
 import com.ticketbox.domain.model.toBudgetProgressStatus
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -27,7 +28,7 @@ class StatsBudgetViewModel(private val budgetRepository: BudgetActions) : ViewMo
     private var activeBinding: LogicalSessionBinding? = null
     private var selectedMonth: String? = null
     private var requestSequence = 0L
-    private var savesJob: Job? = null
+    private var observationsJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -35,26 +36,38 @@ class StatsBudgetViewModel(private val budgetRepository: BudgetActions) : ViewMo
                 activeBinding = binding
                 budgetCache.clear()
                 inFlight.clear()
-                savesJob?.cancel()
-                binding?.let(::observeSaves)
+                observationsJob?.cancel()
+                binding?.let(::observeBudgetChanges)
                 publish(selectedMonth.orEmpty())
                 selectedMonth?.let { refresh(it) }
             }
         }
     }
 
-    private fun observeSaves(binding: LogicalSessionBinding) {
-        savesJob = viewModelScope.launch {
+    private fun observeBudgetChanges(binding: LogicalSessionBinding) {
+        observationsJob = viewModelScope.launch {
+            launch(start = CoroutineStart.UNDISPATCHED) {
+                budgetRepository.observeReadAccessDenials().collect { denial ->
+                    if (activeBinding == binding && denial.binding == binding) {
+                        budgetCache.clear()
+                        inFlight.clear()
+                        publish(selectedMonth.orEmpty())
+                    }
+                }
+            }
             var previousDone: Set<Long>? = null
             budgetRepository.observeSaves(binding).collect { saves ->
                 if (activeBinding != binding) return@collect
                 val done = saves.filter { it.row.status == PendingMutationStatus.Done }
                 val changed = done.filter { previousDone != null && it.row.id !in previousDone.orEmpty() }
-                    .mapNotNull { it.intent?.month }.toSet()
+                    .mapNotNull { save -> save.intent?.month?.let { it to save.receipt } }
                 previousDone = done.map { it.row.id }.toSet()
-                changed.forEach { budgetCache.remove(it); inFlight.remove(it) }
+                changed.forEach { (month, receipt) ->
+                    if (budgetCache[month]?.value.isOlderThanAccepted(receipt)) budgetCache.remove(month)
+                    inFlight.remove(month)
+                }
                 if (changed.isNotEmpty()) publish(selectedMonth.orEmpty())
-                selectedMonth?.takeIf { it in changed }?.let { refresh(it, force = true) }
+                selectedMonth?.takeIf { month -> changed.any { it.first == month } }?.let { refresh(it, force = true) }
             }
         }
     }

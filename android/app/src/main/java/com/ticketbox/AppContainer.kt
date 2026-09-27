@@ -330,7 +330,7 @@ class AppContainer(context: Context) {
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.budgetSaveAdapter,
                 receiptAdapter = outboxAdapters.budgetReceiptAdapter,
-                onAccepted = budgetRepository::invalidateBudgetReadsAfterDelivery,
+                onAccepted = budgetRepository.invalidateBudgetReadsAfterDelivery,
             ),
             com.ticketbox.data.repository.SaveMonthlyArrangementDispatcher(::outboxApi,
                 outboxAdapters.arrangementSaveAdapter, outboxAdapters.arrangementReceiptAdapter),

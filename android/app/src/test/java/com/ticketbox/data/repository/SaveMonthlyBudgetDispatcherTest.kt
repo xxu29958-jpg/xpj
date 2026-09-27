@@ -20,6 +20,7 @@ import kotlin.test.assertNull
 class SaveMonthlyBudgetDispatcherTest {
     private val adapters = OutboxAdapterGraph()
     private val acceptedRows = mutableListOf<OutboxRow>()
+    private val acceptedRevisions = mutableListOf<Long>()
 
     @Test
     fun lostResponseRetriesOriginalNullVersionCurrencyAndKey() = runTest {
@@ -39,6 +40,7 @@ class SaveMonthlyBudgetDispatcherTest {
         assertNotNull(success.receiptJson)
         assertNull(success.newRowVersion, "a saved budget must not silently rebase another intent")
         assertEquals(listOf(row), acceptedRows)
+        assertEquals(listOf(1L), acceptedRevisions)
     }
 
     @Test
@@ -86,7 +88,10 @@ class SaveMonthlyBudgetDispatcherTest {
     }
 
     private fun dispatcher(api: ApiService) = SaveMonthlyBudgetDispatcher({ api }, adapters.budgetSaveAdapter,
-        adapters.budgetReceiptAdapter, onAccepted = { acceptedRows += it })
+        adapters.budgetReceiptAdapter, onAccepted = { row, revision ->
+            acceptedRows += row
+            acceptedRevisions += revision
+        })
 
     private fun row(version: Long = 1) = OutboxRow(
         id = 1, serverUrl = "https://example.test", ledgerId = "owner", type = PendingMutationType.SaveMonthlyBudget,

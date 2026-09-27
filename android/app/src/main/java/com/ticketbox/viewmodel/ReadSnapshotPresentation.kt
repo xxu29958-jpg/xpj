@@ -1,6 +1,11 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.RepositoryException
+import com.ticketbox.domain.model.BudgetMonthly
+
+/** A recovered command receipt retires older queries, never a query already at that revision. */
+internal fun BudgetMonthly?.isOlderThanAccepted(receipt: BudgetMonthly?): Boolean =
+    receipt?.rowVersion == null || (this?.rowVersion ?: 0L) < receipt.rowVersion
 
 internal fun Throwable.isReadAccessDenied(): Boolean =
     (this as? RepositoryException)?.httpStatusCode in setOf(401, 403)

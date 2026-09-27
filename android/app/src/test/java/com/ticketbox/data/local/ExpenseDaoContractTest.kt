@@ -463,7 +463,8 @@ private class FakeExpenseDao : ExpenseDao {
     override suspend fun clearGoalSnapshotsForLedger(ledgerId: String) = goalCache.clear(ledgerId)
     override suspend fun clearGoalSnapshotsForBinding(bindingKey: String) = goalCache.clearBinding(bindingKey)
     override suspend fun clearStatsProjectionsForBinding(bindingKey: String) = statsCache.clearBinding(bindingKey)
-    override suspend fun clearBudgetSnapshotsForMonth(bindingKey: String, month: String) = statsCache.clearBudgetMonth(bindingKey, month)
+    override suspend fun budgetSnapshotsForMonth(bindingKey: String, month: String) = statsCache.budgetMonth(bindingKey, month)
+    override suspend fun deleteStatsProjection(snapshot: com.ticketbox.data.local.StatsProjectionCacheEntity) = statsCache.delete(snapshot)
     override suspend fun saveStatsProjection(snapshot: com.ticketbox.data.local.StatsProjectionCacheEntity) = statsCache.save(snapshot)
     override suspend fun statsProjections(bindingKey: String, kind: String, month: String, tag: String,
         timezone: String) = statsCache.find(bindingKey, kind, month, tag, timezone)

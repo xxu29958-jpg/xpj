@@ -206,7 +206,7 @@ class BudgetOfflineSnapshotConnectedTest {
         val adapters = OutboxAdapterGraph()
         val outcome = try {
             OutboxDrainEngine(fixture.outbox, listOf(SaveMonthlyBudgetDispatcher(
-                { api }, adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter, repository::invalidateBudgetReadsAfterDelivery)), now = fixture.clock::millis).drainOnce()
+                { api }, adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter, repository.invalidateBudgetReadsAfterDelivery)), now = fixture.clock::millis).drainOnce()
         } finally { resume.complete(Unit) }
         assertEquals(1, outcome.done)
         val acceptedIntent = fixture.stored().single()
@@ -250,7 +250,7 @@ class BudgetOfflineSnapshotConnectedTest {
             }
             val adapters = OutboxAdapterGraph()
             val engine = OutboxDrainEngine(fixture.outbox, listOf(SaveMonthlyBudgetDispatcher({ api },
-                adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter, repository::invalidateBudgetReadsAfterDelivery)),
+                adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter, repository.invalidateBudgetReadsAfterDelivery)),
                 now = fixture.clock::millis)
             assertEquals(1, engine.drainOnce().retryable)
             transport.original = receipt.copy(rowVersion = queryVersion, spentAmountCents = 600, remainingAmountCents = 1800)
@@ -298,7 +298,14 @@ class BudgetOfflineSnapshotConnectedTest {
         olderStarted.await()
         transport.original = offlineBudget().copy(rowVersion = 8, totalAmountCents = 2400, remainingAmountCents = 1989)
         val newer = try { reopened.monthlyBudget("2026-09").getOrThrow() } finally { releaseOlder.complete(Unit) }
-        assertTrue("Both independent successful GET callers must remain successful", older.await().isSuccess)
+        val olderResult = older.await()
+        assertTrue("Both independent successful GET callers must remain successful", olderResult.isSuccess)
+        assertEquals(newer.value, olderResult.getOrThrow().value)
+        assertEquals(newer.fetchedAt, olderResult.getOrThrow().fetchedAt)
+        assertTrue("Selecting the saved newer query must identify its cache source", olderResult.getOrThrow().fromCache)
+        transport.original = offlineBudget()
+        assertTrue("Fresh-only consumers cannot treat a selected saved query as a new GET",
+            reopened.monthlyBudget("2026-09", TimeZone.getDefault().id, freshOnly = true).isFailure)
         transport.offline = true
         val saved = fixture.reopen().budgetRepository.monthlyBudget("2026-09").getOrThrow()
         assertEquals("The late v7 response cannot replace the accepted v8 query", newer.value, saved.value)

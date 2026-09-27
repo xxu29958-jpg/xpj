@@ -14,7 +14,7 @@ class SaveMonthlyBudgetDispatcher(
     private val apiProvider: (OutboxRow) -> ApiService,
     private val payloadAdapter: JsonAdapter<BudgetSavePayload>,
     private val receiptAdapter: JsonAdapter<BudgetMonthlyDto>,
-    private val onAccepted: suspend (OutboxRow) -> Unit,
+    private val onAccepted: suspend (OutboxRow, Long) -> Unit,
 ) : OutboxMutationDispatcher {
     override val type = PendingMutationType.SaveMonthlyBudget
 
@@ -32,7 +32,7 @@ class SaveMonthlyBudgetDispatcher(
             if (!receipt.confirms(row, payload.month, request)) {
                 DispatchResult.Failure(BUDGET_SAVE_UNVERIFIED)
             } else {
-                onAccepted(row)
+                onAccepted(row, requireNotNull(receipt.rowVersion))
                 DispatchResult.Success(receiptJson = receiptAdapter.toJson(receipt))
             }
         } catch (error: HttpException) {

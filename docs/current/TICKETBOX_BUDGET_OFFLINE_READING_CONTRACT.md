@@ -13,6 +13,13 @@ Keep original drafts and Outbox commands intact. A verified save invalidates old
 reads; its accepted result cannot be downgraded by an older query. Never store a
 save receipt as a newly fetched query.
 
+An accepted revision only retires older queries. A same-or-newer GET already
+obtained while recovering a lost acknowledgement must retain its original read
+time, including after Room recreation. Independent readers cannot cancel one
+another merely by starting later; an older response must not downgrade a newer
+stored query. Access denial must withdraw every retained budget display for the
+same binding, even when only one screen issued the refused request.
+
 ## Impact closure before construction
 
 | Boundary | Entry, consumer, old exit and direct producer |
@@ -55,11 +62,23 @@ BudgetRepository now owns a complete ReadSnapshot backed by the existing stats p
 table. Plans and Budget share BudgetViewModel; Insights propagates the same source/time
 only for the matching binding and month. Both visible consumers retire known old queries
 on accepted original saves and preserve newer drafts. NotificationRuntimeGraph explicitly
-requires a fresh query. The verified dispatcher receipt invalidates all timezone projections
-for the original month before Done; it does not seed a query or alter the original command.
+requires a fresh query. Before Done, the verified dispatcher must invalidate older
+timezone projections for the original month while preserving already-read accepted
+or newer revisions; it must not seed a query or alter the original command.
 The old network-only read exit has been replaced in every direct consumer. No new table,
 writer, protocol, notification framework or Windows lifecycle work is introduced.
 
 Short source-only checks pass for changed production/consumer files; they do not prove
 native execution. Final source and independent main qualification belong to #438, and
 are not added to #437's merge requirements.
+
+The final bccb92a94 review identified three bounded corrections: retained consumers
+were not notified of another reader's denial; recovery of an earlier receipt removed
+newer queries; and independent reads superseded one another. The test-only 56dc9becf
+adds real Room/Outbox/consumer counterexamples and a focused ViewModel recovery case.
+Their actual execution and the corrected implementation remain subject to final
+qualification. bccb92a94's route reached and rendered the offline Plans and Budget
+surfaces with the original amount/time and locked intent. Its Insights assertion
+incorrectly expected a standalone amount instead of the actual labelled remaining
+amount; the assertion now uses that complete label and still requires the amount,
+source, original time and unchanged intent.

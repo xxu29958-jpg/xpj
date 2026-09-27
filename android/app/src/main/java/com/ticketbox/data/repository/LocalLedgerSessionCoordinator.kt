@@ -10,9 +10,18 @@ import com.ticketbox.security.LocalSessionVersion
 import com.ticketbox.security.StoredSessionToken
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import java.util.UUID
 
 internal data class SnapshotReadTicket(val generation: Long, val sequence: Long)
+
+data class SnapshotAccessDenial(
+    val binding: LogicalSessionBinding,
+    val failure: RepositoryException,
+    val generation: Long,
+)
 
 data class LedgerSessionIdentity(
     val accountPublicId: String? = null,
@@ -85,6 +94,8 @@ class LocalLedgerSessionCoordinator(
     private var readGeneration = 0L
     private var readSequence = 0L
     private var readInvalidation = RepositoryException("读取结果已失效，请重新读取。")
+    private val accessDenials = MutableStateFlow<SnapshotAccessDenial?>(null)
+    val snapshotAccessDenials: StateFlow<SnapshotAccessDenial?> = accessDenials.asStateFlow()
 
     internal suspend fun beginSnapshotRead(): SnapshotReadTicket = mutex.withLock {
         SnapshotReadTicket(readGeneration, ++readSequence)
@@ -108,6 +119,7 @@ class LocalLedgerSessionCoordinator(
             invalidateSnapshotReads(failure)
             expenseDao.clearReadSnapshotsForBinding(bindingKey)
             expenseDao.clearMonthlyReadSnapshotsForBinding(monthlyArrangementPersistentBindingKey(bound.logicalBinding))
+            accessDenials.value = SnapshotAccessDenial(bound.logicalBinding, failure, readGeneration)
         }
     }
 

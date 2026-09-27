@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
 import java.time.YearMonth
 import java.util.TimeZone
@@ -18,6 +19,7 @@ import java.util.TimeZone
 interface BudgetActions : BudgetSaveActions, ManualRateActions, MonthlyArrangementActions, BudgetAdviceInputsActions {
     fun canModifyLedger(): Boolean
     fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?>
+    fun observeReadAccessDenials(): Flow<SnapshotAccessDenial> = emptyFlow()
 
     /** One full binding/role projection for the advisor, including member-to-owner changes. */
     fun observeLedgerAccessState(): Flow<LedgerAccessState?> = emptyFlow()
@@ -67,6 +69,8 @@ class BudgetRepository internal constructor(
     private val errorHandler = budgetNetworkErrors(apiProvider)
     private val ledgerRequestGuard = LedgerRequestGuard(apiProvider)
     private val budgetQueries = BudgetQueryReader(apiProvider, localStorage.expenseDao, sessionCoordinator)
+    private val readAccessDenials = sessionCoordinator.snapshotAccessDenials.filterNotNull()
+    internal val invalidateBudgetReadsAfterDelivery: suspend (OutboxRow, Long) -> Unit = budgetQueries::invalidate
 
     override fun canModifyLedger(): Boolean = ledgerRoleCanModify(apiProvider.currentLedgerRole())
 
@@ -81,6 +85,8 @@ class BudgetRepository internal constructor(
 
     override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> =
         apiProvider.observeActiveLedgerAccess()
+
+    override fun observeReadAccessDenials(): Flow<SnapshotAccessDenial> = readAccessDenials
 
     override fun observeLedgerAccessState(): Flow<LedgerAccessState?> =
         apiProvider.observeSession()
@@ -105,8 +111,6 @@ class BudgetRepository internal constructor(
         expectedBinding: LogicalSessionBinding? = null,
         freshOnly: Boolean = false,
     ): Result<ReadSnapshot<BudgetMonthly>> = budgetQueries.read(month, timezone, expectedBinding, freshOnly)
-
-    internal suspend fun invalidateBudgetReadsAfterDelivery(row: OutboxRow) = budgetQueries.invalidate(row)
 
     override suspend fun requestBudgetAdvice(month: String, homeCurrencyCode: String?, expectedBinding: LogicalSessionBinding?): Result<BudgetAdviceResult> {
         if (!canModifyLedger()) {

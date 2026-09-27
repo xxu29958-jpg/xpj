@@ -25,9 +25,10 @@ internal class BudgetQueryReader(
     private val adapter = moshi.adapter(BudgetMonthlyDto::class.java)
     private val bindingAdapter = moshi.adapter(LogicalSessionBinding::class.java)
     private val mutex = Mutex()
-    private val latestRequests = mutableMapOf<String, Long>()
+    private val latestAcceptedReads = mutableMapOf<String, Long>()
+    private val minimumRevisions = mutableMapOf<String, Long>()
 
-    suspend fun invalidate(row: OutboxRow) {
+    suspend fun invalidate(row: OutboxRow, acceptedRevision: Long) {
         val binding = requireNotNull(guard.captureLogicalBinding()) { "请重新绑定账本。" }
         require(row.ledgerId == binding.ledgerId && row.ownerKey == binding.ownerKey &&
             canonicalServerOriginOrNull(row.serverUrl) == canonicalServerOriginOrNull(binding.serverUrl)) {
@@ -36,8 +37,13 @@ internal class BudgetQueryReader(
         val bindingKey = bindingAdapter.toJson(binding)
         val month = row.targetId.removePrefix("monthly_budget:")
         mutex.withLock {
-            latestRequests.keys.removeAll { it.startsWith("$bindingKey|$month|") }
-            dao.clearBudgetSnapshotsForMonth(bindingKey, month)
+            val monthKey = "$bindingKey|$month"
+            val minimum = maxOf(minimumRevisions[monthKey] ?: 0, acceptedRevision)
+            minimumRevisions[monthKey] = minimum
+            dao.budgetSnapshotsForMonth(bindingKey, month).forEach { saved ->
+                val revision = adapter.fromJson(saved.responseJson)?.rowVersion ?: 0
+                if (revision < minimum) dao.deleteStatsProjection(saved)
+            }
         }
     }
 
@@ -49,8 +55,6 @@ internal class BudgetQueryReader(
         val bound = guard.bindExact(binding)
         val bindingKey = bindingAdapter.toJson(binding)
         val ticket = coordinator.beginSnapshotRead()
-        val cacheKey = "$bindingKey|$cleanMonth|$timezone"
-        mutex.withLock { latestRequests[cacheKey] = ticket.sequence }
         val wire = try {
             bound.call { it.monthlyBudget(cleanMonth, timezone) }
         } catch (error: HttpException) {
@@ -61,11 +65,11 @@ internal class BudgetQueryReader(
             if (freshOnly || !error.isReadTransportUnavailable()) throw error
             return@safeCall coordinator.acceptSnapshotRead(ticket, bound) {
                 mutex.withLock {
-                    requireLatest(cacheKey, ticket)
                     val saved = dao.statsProjections(bindingKey, "budget", cleanMonth, "", timezone).singleOrNull()
                         ?: throw error
                     val cached = requireNotNull(adapter.fromJson(saved.responseJson))
                     validate(cached, binding, cleanMonth)
+                    requireAcceptedRevision(bindingKey, cached)
                     ReadSnapshot(cached.toDomain(), saved.fetchedAt, fromCache = true)
                 }
             }
@@ -73,17 +77,39 @@ internal class BudgetQueryReader(
         validate(wire, binding, cleanMonth)
         coordinator.acceptSnapshotRead(ticket, bound) {
             mutex.withLock {
-                requireLatest(cacheKey, ticket)
-                val fetchedAt = Instant.now().toString()
-                dao.saveStatsProjection(StatsProjectionCacheEntity(bindingKey, binding.ledgerId, "budget",
-                    cleanMonth, "", "", timezone, adapter.toJson(wire), fetchedAt))
-                ReadSnapshot(wire.toDomain(), fetchedAt, fromCache = false)
+                acceptWire(wire, binding, timezone, ticket, freshOnly)
             }
         }
     }
 
-    private fun requireLatest(cacheKey: String, ticket: SnapshotReadTicket) {
-        check(latestRequests[cacheKey] == ticket.sequence) { "预算已有更新的读取，请重新读取。" }
+    private suspend fun acceptWire(wire: BudgetMonthlyDto, binding: LogicalSessionBinding,
+        timezone: String, ticket: SnapshotReadTicket, freshOnly: Boolean): ReadSnapshot<BudgetMonthly> {
+        val bindingKey = bindingAdapter.toJson(binding)
+        requireAcceptedRevision(bindingKey, wire)
+        val cacheKey = "$bindingKey|${wire.month}|$timezone"
+        val saved = dao.statsProjections(bindingKey, "budget", wire.month, "", timezone).singleOrNull()
+        if (saved != null) {
+            val cached = requireNotNull(adapter.fromJson(saved.responseJson))
+            validate(cached, binding, wire.month)
+            val savedRevision = cached.rowVersion ?: 0
+            val wireRevision = wire.rowVersion ?: 0
+            if (savedRevision > wireRevision || savedRevision == wireRevision &&
+                (latestAcceptedReads[cacheKey] ?: 0) > ticket.sequence) {
+                check(!freshOnly) { "预算已有更新的读取，请重新读取。" }
+                return ReadSnapshot(cached.toDomain(), saved.fetchedAt, fromCache = true)
+            }
+        }
+        val fetchedAt = Instant.now().toString()
+        dao.saveStatsProjection(StatsProjectionCacheEntity(bindingKey, binding.ledgerId, "budget",
+            wire.month, "", "", timezone, adapter.toJson(wire), fetchedAt))
+        latestAcceptedReads[cacheKey] = ticket.sequence
+        return ReadSnapshot(wire.toDomain(), fetchedAt, fromCache = false)
+    }
+
+    private fun requireAcceptedRevision(bindingKey: String, wire: BudgetMonthlyDto) {
+        check((wire.rowVersion ?: 0) >= (minimumRevisions["$bindingKey|${wire.month}"] ?: 0)) {
+            "预算已保存更新，请重新读取。"
+        }
     }
 
     private fun validate(wire: BudgetMonthlyDto, binding: LogicalSessionBinding, month: String) {

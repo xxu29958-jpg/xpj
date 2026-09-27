@@ -1,6 +1,7 @@
 package com.ticketbox.data.local
 
 import androidx.room.Dao
+import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
@@ -48,8 +49,11 @@ interface ExpenseDao {
     @Query("DELETE FROM stats_projection_cache WHERE bindingKey = :bindingKey")
     suspend fun clearStatsProjectionsForBinding(bindingKey: String)
 
-    @Query("DELETE FROM stats_projection_cache WHERE bindingKey = :bindingKey AND kind = 'budget' AND month = :month")
-    suspend fun clearBudgetSnapshotsForMonth(bindingKey: String, month: String)
+    @Query("SELECT * FROM stats_projection_cache WHERE bindingKey = :bindingKey AND kind = 'budget' AND month = :month")
+    suspend fun budgetSnapshotsForMonth(bindingKey: String, month: String): List<StatsProjectionCacheEntity>
+
+    @Delete
+    suspend fun deleteStatsProjection(snapshot: StatsProjectionCacheEntity)
 
     @Transaction
     suspend fun clearReadSnapshotsForBinding(bindingKey: String) {
