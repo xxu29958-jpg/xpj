@@ -162,7 +162,7 @@ class DebtWriteRepository internal constructor(
             require(drop || !original.originalBindingChanged) { "连接信息已变化，无法继续这次原提交；原记录仍保留，可停止本机追踪。" }
             require(drop || original.hasSupportedIntent) { "当前版本无法读取原提交，请升级后继续。" }
             require(drop || original.canRetry) { "这次原提交不能重试，请核对后处理本地记录。" }
-            val changed = if (drop) outbox.abandonDebtWrite(bound, current, allowPending = original.originalBindingChanged)
+            val changed = if (drop) outbox.abandonDebtWrite(bound, current)
                 else outbox.resolveFailed(current.id, FailedResolution.Retry())
             if (!changed) throw RepositoryException("这次本地提交状态已变化，请重新核对。")
         }

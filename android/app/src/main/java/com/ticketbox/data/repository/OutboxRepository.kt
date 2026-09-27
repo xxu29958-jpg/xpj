@@ -648,11 +648,11 @@ class OutboxRepository private constructor(
     suspend fun activeForTarget(targetId: String): List<OutboxRow> =
         dao.activeRowsForTarget(currentBinding(), targetId, ACTIVE_STATUS_VALUES)
 
-    internal suspend fun abandonDebtWrite(boundRequest: BoundLedgerRequest, row: OutboxRow, allowPending: Boolean = false): Boolean =
+    internal suspend fun abandonDebtWrite(boundRequest: BoundLedgerRequest, row: OutboxRow): Boolean =
         withActiveBinding(boundRequest) { binding ->
             require(row.type in DEBT_WRITE_TYPES)
             dao.abandonDebtWrite(row.id, binding.ownerStorageKey, binding.ledgerId,
-                row.status.wireValue, ISO.format(Instant.now(clock)), allowPending) > 0
+                row.status.wireValue, ISO.format(Instant.now(clock))) > 0
         }.also { changed -> if (changed) schedulePending() }
 
     internal fun observeDebtWrites(): Flow<List<OutboxRow>> = observeBoundDebtWrites(
