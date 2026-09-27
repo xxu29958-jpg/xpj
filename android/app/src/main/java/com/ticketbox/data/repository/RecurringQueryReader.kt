@@ -38,7 +38,7 @@ internal class RecurringQueryReader(
     private val latestRequests = mutableMapOf<String, Long>()
     private val localInvalidation = AtomicLong()
     private val retiredBindings = ConcurrentHashMap.newKeySet<String>()
-    private data class DispatchReadProtection(val binding: LogicalSessionBinding, val token: String, val hadUnresolved: Boolean)
+    private data class DispatchReadProtection(val binding: LogicalSessionBinding, val token: String, val hadUnresolved: Boolean, val bound: BoundLedgerRequest)
     private val dispatchProtections = ConcurrentHashMap<Long, DispatchReadProtection>()
 
     companion object {
@@ -158,7 +158,7 @@ internal class RecurringQueryReader(
         val token = "${row.idempotencyKey ?: row.id}:${UUID.randomUUID()}"
         activeDirectTokens.add(token)
         try {
-            val protection = DispatchReadProtection(binding, token, dao.recurringOutboxReadBarrier(key) != null)
+            val protection = DispatchReadProtection(binding, token, dao.recurringOutboxReadBarrier(key) != null, guard.bindExact(binding))
             dao.saveStatsProjection(recurringScope(binding, "recurring_outbox_read_barrier", "", "", "UTC")
                 .copy(responseJson = token, fetchedAt = Instant.now().toString()))
             dispatchProtections[row.id] = protection
@@ -168,9 +168,15 @@ internal class RecurringQueryReader(
         }
     }
 
-    suspend fun finishDispatch(row: OutboxRow, rejected: Boolean) {
+    suspend fun finishDispatch(row: OutboxRow, result: DispatchResult?) {
         val protection = dispatchProtections.remove(row.id) ?: return
+        val rejected = result is DispatchResult.Conflict || result is DispatchResult.Discarded ||
+            (result is DispatchResult.Failure && result.definitelyRejected)
         try {
+            if (result is DispatchResult.Failure && result.credentialRejected) {
+                coordinator.rejectSnapshotAccess(protection.bound, logicalBindingAdapter.toJson(protection.binding),
+                    RepositoryException(result.message, httpStatusCode = 401))
+            }
             if (rejected && !protection.hadUnresolved) {
                 dao.settleRecurringOutboxReadBarrier(logicalBindingAdapter.toJson(protection.binding),
                     protection.binding.ledgerId, protection.token, retire = false)

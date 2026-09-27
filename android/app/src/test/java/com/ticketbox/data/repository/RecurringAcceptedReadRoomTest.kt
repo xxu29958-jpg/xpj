@@ -368,4 +368,55 @@ class RecurringAcceptedReadRoomTest {
         } finally { db.close() }
     }
 
+    @Test fun clearingLocalCacheDuringPausePreservesTheRealAcknowledgementAndRequiresAnActualNewRead() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), AppDatabase::class.java).build()
+        try {
+            lateinit var api: RecurringReadProbe
+            val started = CompletableDeferred<Unit>()
+            val release = CompletableDeferred<Unit>()
+            var commands = 0
+            val fixture = GoalReadFixture(decorateDao = { db.expenseDao() }, decorate = { delegate ->
+                api = RecurringReadProbe(delegate)
+                object : ApiService by api {
+                    override suspend fun pauseRecurringItem(publicId: String, request: RecurringItemTokenRequest):
+                        com.ticketbox.data.remote.dto.RecurringItemDto {
+                        commands++
+                        started.complete(Unit)
+                        release.await()
+                        api.item = api.item.copy(status = "paused", rowVersion = 10)
+                        return api.item
+                    }
+                }
+            })
+            val reader = RecurringQueryReader(fixture.provider, db.expenseDao(), fixture.coordinator)
+            val baseline = reader.items(fixture.binding, null, true, null).getOrThrow()
+            val outbox = testOutboxRepository(db.pendingMutationDao(), bindingProvider = { fixture.provider.currentSession().toOutboxBinding() })
+            val adapters = OutboxAdapterGraph()
+            val repository = RecurringRepository(fixture.provider, outbox, adapters.recurringCreateAdapter,
+                adapters.recurringUpdateAdapter, queryReader = reader)
+            val pending = async(Dispatchers.IO) { repository.pause(fixture.binding, baseline.value.single().publicId, baseline.value.single().rowVersion) }
+            started.await()
+            val key = logicalBindingAdapter.toJson(fixture.binding)
+            val token = requireNotNull(db.expenseDao().recurringDirectBarrier(key)).responseJson
+            val reopened = RecurringQueryReader(fixture.provider, db.expenseDao(), fixture.coordinator)
+            try {
+                fixture.coordinator.clearLocalCache()
+                assertEquals(token, db.expenseDao().recurringDirectBarrier(key)?.responseJson)
+                assertTrue(db.expenseDao().statsProjections(key, "recurring_items", "", ":true", java.util.TimeZone.getDefault().id).isEmpty())
+                assertTrue(reopened.items(fixture.binding, null, true, null).isFailure,
+                    "Clearing cache cannot permit an in-flight command's pre-acceptance query to refill it")
+            } finally { release.complete(Unit) }
+            assertEquals("paused", pending.await().getOrThrow().status, "Cache cleanup cannot turn the actual ACK into failure")
+            assertEquals(1, commands)
+            api.failure = ConnectException("offline after accepted pause")
+            assertTrue(reopened.items(fixture.binding, null, true, null).isFailure, "The ACK is not a cached query")
+            api.failure = null
+            val fresh = reopened.items(fixture.binding, null, true, null).getOrThrow()
+            assertEquals("paused", fresh.value.single().status)
+            assertEquals(baseline.value.single().homeCurrencyCode, fresh.value.single().homeCurrencyCode)
+            api.failure = ConnectException("offline after reading current pause")
+            assertEquals(fresh.copy(fromCache = true), reopened.items(fixture.binding, null, true, null).getOrThrow())
+        } finally { db.close() }
+    }
+
 }

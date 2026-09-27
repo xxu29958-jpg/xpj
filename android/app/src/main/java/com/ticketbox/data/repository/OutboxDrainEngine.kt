@@ -224,7 +224,7 @@ class OutboxDrainEngine(
                 return@withDispatchLease DrainSummary(1, 0, 0, 0, aborted = 1)
             }
             val protectsReads = outbox.affectsRecurringReads(row)
-            var rejected = false
+            var dispatchResult: DispatchResult? = null
             try {
                 if (protectsReads) {
                     try { outbox.onRecurringDispatchPreparing(row) }
@@ -234,11 +234,10 @@ class OutboxDrainEngine(
                     }
                 }
                 val result = dispatchSafely(row, dispatcher)
-                rejected = result is DispatchResult.Conflict || result is DispatchResult.Discarded ||
-                    (result is DispatchResult.Failure && result.definitelyRejected)
+                dispatchResult = result
                 settle(row, result)
             } finally {
-                if (protectsReads) withContext(NonCancellable) { outbox.onRecurringDispatchFinished(row, rejected) }
+                if (protectsReads) withContext(NonCancellable) { outbox.onRecurringDispatchFinished(row, dispatchResult) }
             }
         }
     }

@@ -5,6 +5,10 @@ import com.ticketbox.data.local.ExpenseDao
 import com.ticketbox.data.local.StatsProjectionCacheEntity
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
+import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
+import com.ticketbox.data.remote.dto.ExpenseDto
+import com.ticketbox.data.remote.dto.RecurringItemUpdateRequestDto
+import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.remote.dto.RecurringDefinitionDto
 import com.ticketbox.data.remote.dto.RecurringHistoryPageDto
 import com.ticketbox.data.remote.dto.RecurringItemDto
@@ -24,7 +28,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-class RecurringQueryReadTest {
+internal class RecurringQueryReadTest : ExpensePendingRepositoryOutboxTestBase() {
     @Test fun cachedPayloadCannotReturnAfterAnotherOwnerRetiresItBetweenReadAndDecode() = runTest {
         lateinit var api: RecurringReadProbe
         var afterCacheRead: (suspend () -> Unit)? = null
@@ -82,6 +86,151 @@ class RecurringQueryReadTest {
                 assertEquals(original.copy(fromCache = true), reopened.getOrThrow(), "A write-only 403 is not read revocation")
             }
         }
+    }
+
+    @Test fun originalOutboxCredentialRefusalPersistsReadDenialButWriteOnly403KeepsReadFacts() = runTest {
+        for ((status, rebindBeforeResponse) in listOf(401 to false, 403 to false, 401 to true)) {
+            lateinit var api: RecurringReadProbe
+            var beforeRefusal: () -> Unit = {}
+            val settings = boundSettingsStore()
+            val saved = FakeExpenseDao()
+            val dao = object : ExpenseDao by saved {
+                override suspend fun clearReadSnapshotsForBinding(bindingKey: String) {
+                    throw SQLiteException("denied read cleanup unavailable")
+                }
+            }
+            val fixture = GoalReadFixture(decorateDao = { dao }, decorate = { delegate ->
+                api = RecurringReadProbe(delegate)
+                object : ApiService by api {
+                    override suspend fun updateRecurringItem(publicId: String, request: RecurringItemUpdateRequestDto,
+                        idempotencyKey: String): RecurringItemDto {
+                        beforeRefusal()
+                        throw HttpException(Response.error<Any>(status, "".toResponseBody()))
+                    }
+                }
+            })
+            val coordinator = LocalLedgerSessionCoordinator(settings, fixture.session.sessionStore, dao)
+            val reader = RecurringQueryReader(fixture.provider, dao, coordinator)
+            val original = reader.items(fixture.binding, null, true, null).getOrThrow()
+            val pending = FakePendingMutationDao()
+            val outbox = testOutboxRepository(pending, bindingProvider = { fixture.provider.currentSession().toOutboxBinding() })
+            outbox.onRecurringDispatchPreparing = reader::prepareDispatch
+            outbox.onRecurringDispatchFinished = reader::finishDispatch
+            outbox.onRecurringAccepted = reader::invalidateAccepted
+            val adapters = OutboxAdapterGraph()
+            val repository = RecurringRepository(fixture.provider, outbox, adapters.recurringCreateAdapter,
+                adapters.recurringUpdateAdapter, queryReader = reader)
+            repository.updateAllowingOffline(fixture.binding, original.value.single(),
+                RecurringItemPatch(merchant = "原编辑", homeCurrencyCode = requireNotNull(original.value.single().homeCurrencyCode))).getOrThrow()
+            val row = pending.allRows().single()
+            val guard = LedgerRequestGuard(fixture.provider)
+            val engine = OutboxDrainEngine(outbox, listOf(UpdateRecurringItemDispatcher({ request ->
+                guard.bind(expectedLedgerId = request.ledgerId).serviceFor(requireNotNull(request.bindingOrNull()))
+            }, adapters.recurringUpdateAdapter)))
+            if (rebindBeforeResponse) beforeRefusal = {
+                fixture.session.rebindToDifferentServerForFixture("https://other.example.com", "other-session-token")
+            }
+            assertEquals(1, engine.drainOnce().failures)
+            val failed = pending.allRows().single()
+            assertEquals(row.idempotencyKey, failed.idempotencyKey)
+            assertEquals(row.payload, failed.payload)
+            assertEquals(row.expectedRowVersion, failed.expectedRowVersion)
+            api.failure = ConnectException("cold offline after original HTTP refusal")
+            val cold = RecurringQueryReader(fixture.provider, dao,
+                LocalLedgerSessionCoordinator(settings, fixture.session.sessionStore, dao))
+            val reopened = cold.items(fixture.binding, null, true, null)
+            if (rebindBeforeResponse) {
+                assertEquals(null, coordinator.snapshotAccessDenials.value,
+                    "An old request's 401 cannot revoke the replacement identity's read access")
+                assertTrue((reopened.exceptionOrNull() as RepositoryException).httpStatusCode != 401)
+            } else if (status == 401) {
+                assertEquals(401, coordinator.snapshotAccessDenials.value?.failure?.httpStatusCode)
+                assertEquals(401, (reopened.exceptionOrNull() as RepositoryException).httpStatusCode)
+            } else {
+                assertEquals(null, coordinator.snapshotAccessDenials.value)
+                assertEquals(original.copy(fromCache = true), reopened.getOrThrow())
+            }
+        }
+    }
+
+    @Test fun acceptedManualExpenseRetiresTheOldAmountAnomalyUntilItsActualCurrentList() = runTest {
+        lateinit var api: RecurringReadProbe
+        val request = ExpenseManualCreateRequestDto(originalCurrency = "JPY", originalAmount = "3600", spentAt = null,
+            merchant = "原计划", category = "其他", note = null, expenseTime = "2026-09-21T12:00:00Z", tags = null,
+            valueScore = null, regretScore = null, clientRef = "original-manual-ref", homeCurrencyCode = "JPY")
+        val receipt = successExpenseDto().copy(merchant = request.merchant, homeCurrency = "JPY", originalCurrencyCode = "JPY",
+            originalAmountMinor = 3600, amountCents = 3600, source = "手动记账", status = "confirmed")
+        var calls = 0
+        var published = 0
+        var refusal: HttpException? = null
+        val fixture = GoalReadFixture(decorate = { delegate ->
+            api = RecurringReadProbe(delegate)
+            object : ApiService by api {
+                override suspend fun createManualExpense(submitted: ExpenseManualCreateRequestDto): ExpenseDto {
+                    assertEquals(request, submitted)
+                    refusal?.let { throw it }
+                    calls++
+                    api.item = api.item.copy(anomalyStatus = "higher_than_average", currentMonthAmountCents = 3600)
+                    return receipt
+                }
+            }
+        })
+        val reader = RecurringQueryReader(fixture.provider, fixture.dao, fixture.coordinator)
+        val original = reader.items(fixture.binding, null, true, null).getOrThrow()
+        assertEquals("none", original.value.single().anomalyStatus)
+        val pending = FakePendingMutationDao()
+        val outbox = testOutboxRepository(pending, bindingProvider = { fixture.provider.currentSession().toOutboxBinding() })
+        outbox.onRecurringDispatchPreparing = reader::prepareDispatch
+        outbox.onRecurringDispatchFinished = reader::finishDispatch
+        outbox.onRecurringAccepted = reader::invalidateAccepted
+        val adapter = moshi().adapter(ExpenseManualCreateRequestDto::class.java)
+        val guard = LedgerRequestGuard(fixture.provider)
+        val dispatcher = CreateExpenseDispatcher({ row ->
+            guard.bind(expectedLedgerId = row.ledgerId).serviceFor(requireNotNull(row.bindingOrNull()))
+        }, adapter, applyServerIdentity = { ledger, ref, created ->
+            assertEquals(fixture.binding.ledgerId, ledger)
+            assertEquals(request.clientRef, ref)
+            assertEquals(receipt, created)
+            published++
+        })
+        val engine = OutboxDrainEngine(outbox, listOf(dispatcher))
+        val malformedId = outbox.enqueue(PendingMutationType.CreateExpense, "expense:local:malformed", "{}", 0,
+            idempotencyKey = "malformed-original-key")
+        assertEquals(1, engine.drainOnce().failures)
+        assertEquals(0, calls, "Malformed original never reaches the create provider")
+        api.failure = ConnectException("offline after an unsent original")
+        assertEquals(original.copy(fromCache = true), reader.items(fixture.binding, null, true, null).getOrThrow())
+        assertTrue(outbox.resolveFailed(malformedId, FailedResolution.Drop))
+        val refusedId = outbox.enqueue(PendingMutationType.CreateExpense, "expense:local:original-manual-ref", adapter.toJson(request), 0,
+            idempotencyKey = "refused-create-key")
+        refusal = HttpException(Response.error<Any>(422, "invalid original".toResponseBody()))
+        assertEquals(1, engine.drainOnce().failures)
+        assertEquals(0, calls)
+        assertEquals(original.copy(fromCache = true), reader.items(fixture.binding, null, true, null).getOrThrow(),
+            "A definite create refusal preserves this month's known amount anomaly")
+        assertTrue(outbox.resolveFailed(refusedId, FailedResolution.Drop))
+        refusal = null
+        api.failure = null
+        outbox.enqueue(PendingMutationType.CreateExpense, "expense:local:original-manual-ref", adapter.toJson(request), 0,
+            idempotencyKey = "original-create-key")
+        val originalRow = pending.allRows().single()
+        assertEquals(1, engine.drainOnce().done)
+        val done = pending.allRows().single()
+        assertEquals("done", done.status)
+        assertEquals(originalRow.payload, done.payload)
+        assertEquals(originalRow.idempotencyKey, done.idempotencyKey)
+        assertEquals(1, calls)
+        assertEquals(1, published)
+        api.failure = ConnectException("cold offline after confirmed manual create")
+        val cold = RecurringQueryReader(fixture.provider, fixture.dao, fixture.coordinator)
+        assertTrue(cold.items(fixture.binding, null, true, null).isFailure,
+            "A confirmed create changes this month's amount anomaly even when it does not edit the Recurring series")
+        api.failure = null
+        val fresh = cold.items(fixture.binding, null, true, null).getOrThrow()
+        assertEquals("higher_than_average", fresh.value.single().anomalyStatus)
+        assertEquals(3600L, fresh.value.single().currentMonthAmountCents)
+        api.failure = ConnectException("offline after current anomaly query")
+        assertEquals(fresh.copy(fromCache = true), cold.items(fixture.binding, null, true, null).getOrThrow())
     }
 
     @Test fun acceptedLinkedExpenseChangesRetireListAndOccurrenceUntilTheirActualGet() = runTest {

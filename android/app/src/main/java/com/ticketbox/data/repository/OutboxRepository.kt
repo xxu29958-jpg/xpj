@@ -512,13 +512,13 @@ class OutboxRepository private constructor(
         dao.markInFlightIfPending(id, PendingMutationStatus.Pending.wireValue, PendingMutationStatus.InFlight.wireValue, nowIso()) > 0
 
     internal var onRecurringDispatchPreparing: suspend (OutboxRow) -> Unit = {}
-    internal var onRecurringDispatchFinished: suspend (OutboxRow, Boolean) -> Unit = { _, _ -> }
+    internal var onRecurringDispatchFinished: suspend (OutboxRow, DispatchResult?) -> Unit = { _, _ -> }
     internal var onRecurringAccepted: suspend (OutboxRow) -> Unit = {}
 
     internal fun affectsRecurringReads(row: OutboxRow) = row.type in setOf(
         PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem,
         PendingMutationType.SetRecurringOccurrencePayment, PendingMutationType.PatchExpense, PendingMutationType.CorrectExpense,
-        PendingMutationType.ConfirmExpense, PendingMutationType.UndoExpense,
+        PendingMutationType.CreateExpense, PendingMutationType.ConfirmExpense, PendingMutationType.UndoExpense,
         PendingMutationType.CreateExpenseOffset, PendingMutationType.VoidExpenseOffset)
 
 

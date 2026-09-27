@@ -47,7 +47,8 @@ class RecurringOccurrenceDispatcher(
             error.code() == 409 -> DispatchResult.Failure(parsed.outboxFailureMessage())
             error.code() == 408 || error.code() == 429 || error.code() in 500..599 ->
                 DispatchResult.RetryableFailure("recurring_occurrence_connection_interrupted")
-            else -> DispatchResult.Failure("recurring_occurrence_rejected", definitelyRejected = error.code() in setOf(400, 401, 403, 404, 405, 410, 412, 422))
+            else -> DispatchResult.Failure("recurring_occurrence_rejected", definitelyRejected = error.code() in setOf(400, 401, 403, 404, 405, 410, 412, 422),
+                credentialRejected = error.code() == 401)
         }
     }
 }

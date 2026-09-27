@@ -32,6 +32,7 @@ internal fun mapOutboxHttpError(statusCode: Int, parsed: NetworkErrorHandler.Par
         }
         404 -> DispatchResult.Discarded(message)
         408, 429, in 500..599 -> DispatchResult.RetryableFailure(message)
-        else -> DispatchResult.Failure(parsed.outboxFailureMessage(), definitelyRejected = statusCode in setOf(400, 401, 403, 405, 410, 412, 422))
+        else -> DispatchResult.Failure(parsed.outboxFailureMessage(), definitelyRejected = statusCode in setOf(400, 401, 403, 405, 410, 412, 422),
+            credentialRejected = statusCode == 401)
     }
 }

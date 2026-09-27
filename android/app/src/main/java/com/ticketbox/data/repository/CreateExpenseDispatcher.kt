@@ -43,11 +43,11 @@ class CreateExpenseDispatcher(
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
         val request = try {
             decodeManualCreateRequest(payloadAdapter, originAdapter, row.payloadJson)
-                ?: return DispatchResult.Failure("payload deserialised to null")
+                ?: return DispatchResult.Failure("payload deserialised to null", definitelyRejected = true)
         } catch (e: JsonDataException) {
-            return DispatchResult.Failure("payload JSON shape changed: ${e.message ?: "JsonDataException"}")
+            return DispatchResult.Failure("payload JSON shape changed: ${e.message ?: "JsonDataException"}", definitelyRejected = true)
         } catch (e: JsonEncodingException) {
-            return DispatchResult.Failure("payload JSON malformed: ${e.message ?: "JsonEncodingException"}")
+            return DispatchResult.Failure("payload JSON malformed: ${e.message ?: "JsonEncodingException"}", definitelyRejected = true)
         }
 
         // The create's idempotency lives in the body ``client_ref`` (not a header
@@ -55,9 +55,9 @@ class CreateExpenseDispatcher(
         // double-create on — surface it as a visible FAILED row, not a silent
         // duplicate.
         val clientRef = request.clientRef?.takeIf { it.isNotBlank() }
-            ?: return DispatchResult.Failure("manual_create_original_unverified")
+            ?: return DispatchResult.Failure("manual_create_original_unverified", definitelyRejected = true)
         if (request.originalCurrency.isNullOrBlank() || request.originalAmount.isNullOrBlank()) {
-            return DispatchResult.Failure("manual_create_original_unverified")
+            return DispatchResult.Failure("manual_create_original_unverified", definitelyRejected = true)
         }
 
         return performCreate(row, request, clientRef)
@@ -101,7 +101,7 @@ class CreateExpenseDispatcher(
         val parsed = errors.parseHttpError(e)
         if (parsed.errorCode == MANUAL_CREATE_RECEIPT_REVIEW) {
             val id = parsed.expenseId?.takeIf { it > 0 }
-            return DispatchResult.Failure(MANUAL_CREATE_RECEIPT_REVIEW + (id?.let { ":$it" } ?: ""))
+            return DispatchResult.Failure(MANUAL_CREATE_RECEIPT_REVIEW + (id?.let { ":$it" } ?: ""), credentialRejected = e.code() == 401)
         }
         val message = parsed.outboxFailureMessage()
         return when (e.code()) {
@@ -110,8 +110,9 @@ class CreateExpenseDispatcher(
             // (amount_required, idempotency_key_reused on a materially different
             // body). It will never succeed on retry, but the user MUST see it —
             // a visible FAILED row, not a silent Discard that drops their entry.
-            400, 422 -> DispatchResult.Failure(message.ifEmpty { "HTTP ${e.code()}" })
-            else -> DispatchResult.Failure(message.ifEmpty { "HTTP ${e.code()}" })
+            400, 422 -> DispatchResult.Failure(message.ifEmpty { "HTTP ${e.code()}" }, definitelyRejected = true)
+            else -> DispatchResult.Failure(message.ifEmpty { "HTTP ${e.code()}" },
+                definitelyRejected = e.code() in setOf(401, 403, 404, 405, 410, 412), credentialRejected = e.code() == 401)
         }
     }
 

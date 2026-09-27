@@ -98,7 +98,8 @@ private fun mapOffsetHttpException(error: HttpException): DispatchResult {
         404 -> DispatchResult.Discarded(message)
         408, 429, in 500..599 -> DispatchResult.RetryableFailure(message)
         else -> DispatchResult.Failure(message.ifEmpty { "HTTP ${error.code()}" },
-            definitelyRejected = error.code() in setOf(400, 401, 403, 405, 410, 412, 422))
+            definitelyRejected = error.code() in setOf(400, 401, 403, 405, 410, 412, 422),
+            credentialRejected = error.code() == 401)
     }
 }
 
