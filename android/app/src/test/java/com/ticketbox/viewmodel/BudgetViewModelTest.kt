@@ -1074,6 +1074,9 @@ internal class FakeBudgetActions(
         return Result.success(inputResponse ?: com.ticketbox.data.remote.dto.BudgetAdviceInputsDto(month, homeCurrencyCode ?: "CNY",
             com.ticketbox.data.remote.dto.DiscretionaryResponseDto(10000, 1000, 2000, 0, 0, 7000), emptyList()))
     }
+    override suspend fun archiveBudget(binding: com.ticketbox.data.repository.LogicalSessionBinding, month: String, expectedVersion: Long): Result<Unit> =
+        Result.failure(UnsupportedOperationException("Archive is not arranged by this fixture"))
+
     override fun canModifyLedger(): Boolean = canModify
 
     override suspend fun cachedBudgetAdvice(month: String, homeCurrencyCode: String?): BudgetAdviceResult? {

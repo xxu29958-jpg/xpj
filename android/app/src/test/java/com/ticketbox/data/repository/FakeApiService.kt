@@ -779,6 +779,7 @@ internal class FakeApiService(
         request: DashboardCardsUpdateRequestDto,
         surface: String,
     ): DashboardCardsResponseDto = unsupported()
+    override suspend fun archiveMonthlyBudget(month: String, request: com.ticketbox.data.remote.dto.BudgetMonthlyArchiveRequestDto): com.ticketbox.data.remote.dto.BudgetMonthlyArchiveResponseDto = unsupported()
     override suspend fun monthlyBudget(month: String, timezone: String?): BudgetMonthlyDto = unsupported()
     override suspend fun budgetHistory(month: String, beforeVersion: Long?): com.ticketbox.data.remote.dto.BudgetHistoryDto = unsupported()
     override suspend fun updateMonthlyBudget(

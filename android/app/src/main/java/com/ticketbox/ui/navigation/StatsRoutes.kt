@@ -136,6 +136,7 @@ internal fun BudgetRoute(
             onRemoveCategoryRow = budgetViewModel::removeCategoryRow,
             onSave = budgetViewModel::save,
             onRecoverSave = budgetViewModel::recoverSave,
+            onArchive = budgetViewModel::archive,
         ),
         onBack = onBack,
     )

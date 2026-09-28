@@ -4,9 +4,9 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import Budget, BudgetCategory, BudgetRevision, Expense
-from tests._local_web_identity_support import _connect_local_session, installed_web_setup
+from tests._local_web_identity_support import installed_web_setup
 from tests._web_native_form_support import hidden_post_forms
-from tests.test_web_planning_bound_intents import MONTH, _form
+from tests.test_web_planning_bound_intents import MONTH, _original
 
 
 @pytest.fixture
@@ -17,10 +17,9 @@ def installed_budget_browser():
 @pytest.mark.real_db
 @pytest.mark.currency_binding_unbound
 def test_budget_page_can_archive_its_captured_version_and_retains_history(installed_budget_browser):
-    browser = installed_budget_browser.browser
-    _connect_local_session(installed_budget_browser)
-    action, fields = _form(browser, "budget")
-    saved = browser.post(action, data=fields, headers={"Accept": "application/json"})
+    browser, action, fields, _, headers = _original(installed_budget_browser, "budget")
+    browser.headers.update({"Origin": headers["Origin"]})
+    saved = browser.post(action, data=fields, headers=headers)
     assert saved.status_code == 200, saved.text
     page = browser.get("/web/budgets", params={"month": MONTH})
     forms = hidden_post_forms(page.text)

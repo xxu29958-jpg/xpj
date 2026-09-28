@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="budget_archive_action">将本月预算移入回收站</string>
+    <string name="budget_archive_title">移入回收站？</string>
+    <string name="budget_archive_body">%1$s 不再启用这份预算。已确认支出、分类额度和修改记录保留，可在回收站恢复。未提交的填写仍保留。</string>
+    <string name="budget_archive_confirm">移入回收站</string>
+    <string name="budget_archive_done">预算已移入回收站，原支出和修改记录保留。</string>
+    <string name="budget_archive_failed">尚未确认预算归档结果，请联网重读当前预算后再处理。原填写仍保留。</string>
+</resources>
