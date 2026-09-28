@@ -31,7 +31,7 @@ internal class BudgetHistoryQueries(
     private val coordinator: LocalLedgerSessionCoordinator,
     private val prepareRead: suspend (BoundLedgerRequest, String) -> Unit,
     private val readProtection: BudgetReadProtection,
-) {
+) : BudgetHistoryReader {
     private val guard = LedgerRequestGuard(apiProvider)
     private val errors = NetworkErrorHandler({ apiProvider.currentSession()?.serverUrl }, "BudgetHistory")
     private val adapter = Moshi.Builder().add(KotlinJsonAdapterFactory()).build().adapter(BudgetHistoryDto::class.java)
@@ -46,8 +46,9 @@ internal class BudgetHistoryQueries(
         if (saved != null && (retireUnconditionally || revision < minimumRevision)) dao.deleteStatsProjection(saved)
     }
 
-    suspend fun read(binding: LogicalSessionBinding, month: String, before: Long?): Result<ReadSnapshot<BudgetHistoryPage>> =
+    override suspend fun history(binding: LogicalSessionBinding, month: String, beforeVersion: Long?): Result<ReadSnapshot<BudgetHistoryPage>> =
         errors.safeCall {
+            val before = beforeVersion
             val clean = validatedBudgetMonth(month).getOrThrow()
             require(before == null || before > 0)
             val bound = guard.bindExact(binding)

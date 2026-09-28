@@ -1,7 +1,7 @@
 """A real browser and Android app share one ephemeral PostgreSQL installation.
 
 The fixture creates only its installation identity and initial currency adoption.
-All income/goal commands must come from the actual product consumers.
+All business commands must come from the actual product consumers.
 """
 
 from __future__ import annotations
@@ -52,7 +52,7 @@ def _facts(ledger_id: str) -> dict:
         }
 
 
-def _seed():
+def _seed(group):
     from app.database import SessionLocal, init_db
     from app.services.identity_service import bootstrap_installation_owner
     from tests._infra.currency import activate_test_currency_authority
@@ -61,7 +61,8 @@ def _seed():
     with SessionLocal() as db:
         fixture = bootstrap_installation_owner(db, operation_id="planning-consumer-journey",
             installation_id="planning-consumer-journey", bootstrap_secret=secrets.token_urlsafe(32),
-            account_name="联动验证账户", ledger_name="收入与目标验证账本", device_name="隔离浏览器")
+            account_name="联动验证账户", ledger_name=("收入与目标验证账本" if group == "income-goals"
+                else "预算与固定支出验证账本"), device_name="隔离浏览器")
         activate_test_currency_authority(db, "CNY")
         db.commit()
         return fixture
@@ -175,7 +176,11 @@ def _browser_run(args, native, fixture):
         page = browser.new_page(viewport={"width": 1280, "height": 960})
         completed = False
         try:
-            result = _journey(page, native, fixture, args.evidence)
+            if args.group == "budget-recurring":
+                from scripts.planning_journey_budget import BudgetJourney
+                result = BudgetJourney(page, native, fixture, args.evidence, BASE_URL).run()
+            else:
+                result = _journey(page, native, fixture, args.evidence)
             completed = True
             return result
         finally:
@@ -205,7 +210,8 @@ def _run_consumers(args, native, fixture):
     result["checkout_sha"] = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
     result["source_sha"] = os.environ["TICKETBOX_JOURNEY_SOURCE_SHA"]
     result["apk_sha256"] = hashlib.sha256(args.apk.read_bytes()).hexdigest()
-    result["verified_leg"] = "Web/native creation, cross-client edits/OCC, reply loss, offline restart and resumption, both recycle bins, retained history, member edits and viewer reads"
+    result.setdefault("verified_leg", "Web/native creation, cross-client edits/OCC, reply loss, offline restart and resumption, both recycle bins, retained history, member edits and viewer reads")
+    result["group"] = args.group
     (args.evidence / "business-result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
     print("The actual Web/native planning recovery journey completed")
 
@@ -222,6 +228,7 @@ def main() -> int:
     parser.add_argument("--serial", required=True)
     parser.add_argument("--apk", type=Path, required=True)
     parser.add_argument("--evidence", type=Path, required=True)
+    parser.add_argument("--group", choices=("income-goals", "budget-recurring"), default="income-goals")
     args = parser.parse_args()
     if os.environ.get("GITHUB_ACTIONS") != "true":
         raise RuntimeError("Run this sustained PostgreSQL/native journey in the isolated cloud job")
@@ -237,7 +244,7 @@ def main() -> int:
         os.environ["UPLOAD_DIR"] = str(Path(data) / "uploads")
         with dedicated_test_database_lease(database_url, expected_database=TEST_POSTGRES_CONTRACT.smoke_database,
             reset=True, cluster_identity=os.environ["XPJ_TEST_CLUSTER_IDENTITY"], passfile=os.environ["PGPASSFILE"]):
-            fixture = _seed()
+            fixture = _seed(args.group)
             _run_consumers(args, native, fixture)
     return 0
 

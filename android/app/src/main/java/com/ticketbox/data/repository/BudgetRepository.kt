@@ -60,7 +60,7 @@ class BudgetRepository internal constructor(
     localStorage: BudgetLocalStorage,
     sessionCoordinator: LocalLedgerSessionCoordinator,
     internal val adviceCallStore: BudgetAdviceCallStore = BudgetAdviceCallStore(LedgerRequestGuard(apiProvider), budgetNetworkErrors(apiProvider)),
-) : BudgetActions, BudgetHistoryReader,
+) : BudgetActions, BudgetHistoryReader by localStorage.queries.history,
     BudgetSaveActions by BudgetSaveRepository(apiProvider, outbox, adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter,
         localStorage.queries::read),
     ManualRateActions by ManualExchangeRateRepository(apiProvider, outbox, adapters.manualRateAdapter, adapters.manualRateReceiptAdapter),
@@ -86,10 +86,6 @@ class BudgetRepository internal constructor(
             }
             invalidateBudgetAdvice()
         }
-
-    override suspend fun history(binding: LogicalSessionBinding, month: String, beforeVersion: Long?) =
-        budgetQueries.history.read(binding, month, beforeVersion)
-
 
     override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> =
         apiProvider.observeActiveLedgerAccess()

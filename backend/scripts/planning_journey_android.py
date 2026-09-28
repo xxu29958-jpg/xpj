@@ -91,11 +91,13 @@ class PlanningAndroid:
                 raise AssertionError(f"Native action is ambiguous: {text}")
             self.tap(matches[0])
 
-    def fill(self, value: str, *, previous: str | None = None):
+    def fill(self, value: str, *, previous: str | None = None, label: str | None = None):
         if not re.fullmatch(r"[A-Za-z0-9.:/_-]+", value):
             raise ValueError("This journey types only its numeric or ASCII inputs")
         def locate():
-            fields = [node for node in self.tree().iter("node") if node.attrib.get("class") == "android.widget.EditText"]
+            root = self.tree()
+            fields = self.labeled_fields(root, label) if label else [
+                node for node in root.iter("node") if node.attrib.get("class") == "android.widget.EditText"]
             return [node for node in fields if re.fullmatch(previous, node.attrib.get("text", ""))] if previous is not None else fields
         fields = wait_for(locate, "The native input did not finish loading")
         if len(fields) != 1:
@@ -104,6 +106,24 @@ class PlanningAndroid:
         self.adb("shell", "input", "keycombination", "113", "29")
         self.adb("shell", "input", "text", value)
         self.adb("shell", "input", "keyevent", "4")
+
+    def click_counted_tab(self, label: str):
+        def locate():
+            return [node for node in self.tree().iter("node")
+                    if re.fullmatch(re.escape(label) + r" \d+", node.attrib.get("text", ""))]
+        nodes = wait_for(locate, f"The actual counted tab is not visible: {label}")
+        assert len(nodes) == 1, "The actual counted tab is ambiguous"
+        self.tap(nodes[0])
+
+    @staticmethod
+    def labeled_fields(root, label):
+        candidates = []
+        for parent in root.iter("node"):
+            nodes = list(parent.iter("node"))
+            fields = [node for node in nodes if node.attrib.get("class") == "android.widget.EditText"]
+            if len(fields) == 1 and any(node.attrib.get("text") == label for node in nodes):
+                candidates.append((len(nodes), fields))
+        return min(candidates, key=lambda item: item[0])[1] if candidates else []
 
     def reveal_any(self, *texts: str):
         for attempt in range(8):
