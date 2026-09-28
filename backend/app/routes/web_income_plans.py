@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, Query, Request, Response
@@ -181,6 +182,20 @@ def page_income_plans(
     return _render_income_plans(request, db, options=options, selected=selected, message=message, error=error)
 
 
+def _render_create_refusal(request, db, *, options, selected, draft, exc, unbound_form):
+    message = exc.message if isinstance(exc, AppError) else "请检查名称、金额和预计日期。输入已保留。"
+    status = exc.status_code if isinstance(exc, AppError) else 422
+    if "application/json" in request.headers.get("accept", ""):
+        return JSONResponse({"error": exc.error if isinstance(exc, AppError) else "invalid_request",
+            "message": message, "draft_result": "blocked"}, status_code=status,
+            headers={"Cache-Control": "no-store"})
+    return _render_income_plans(request, db, options=options, selected=selected, draft=draft,
+        error=message, draft_result="blocked",
+        review=unbound_form or isinstance(exc, AppError) and exc.error in {
+            "idempotency_key_reused", "idempotency_key_required"},
+        status_code=status)
+
+
 @router.post("/create")
 def post_create(
     request: Request,
@@ -216,8 +231,12 @@ def post_create(
                 "message": "账本已切换；原草稿仍保留，请切回原账本后继续。", "draft_result": "blocked"},
                 status_code=409, headers={"Cache-Control": "no-store"})
         return retained
+    auth = getattr(request.state, "web_session_auth", None)
+    unbound_form = auth is not None and not draft_scope
     try:
-        require_draft_binding(db, request, ledger_id=selected, draft_scope=draft_scope, require_session=False)
+        if review_new and unbound_form:
+            draft["draft_scope"] = json.dumps(manual_draft_scope(db, auth))
+        require_draft_binding(db, request, ledger_id=selected, draft_scope=draft["draft_scope"], require_session=False)
         _require_selected_ledger_write(options, selected)
         if review_new:
             draft["idempotency_key"] = str(uuid4())
@@ -232,16 +251,8 @@ def post_create(
             actor_account_id=resolve_web_actor_account_id(db, request, selected), idempotency_key=idempotency_key)
     except (AppError, ValidationError) as exc:
         db.rollback()
-        message = exc.message if isinstance(exc, AppError) else "请检查名称、金额和预计日期。输入已保留。"
-        status = exc.status_code if isinstance(exc, AppError) else 422
-        if "application/json" in request.headers.get("accept", ""):
-            return JSONResponse({"error": exc.error if isinstance(exc, AppError) else "invalid_request",
-                "message": message, "draft_result": "blocked"}, status_code=status,
-                headers={"Cache-Control": "no-store"})
-        return _render_income_plans(request, db, options=options, selected=selected, draft=draft,
-            error=message, draft_result="blocked",
-            review=isinstance(exc, AppError) and exc.error in {"idempotency_key_reused", "idempotency_key_required"},
-            status_code=status)
+        return _render_create_refusal(request, db, options=options, selected=selected,
+            draft=draft, exc=exc, unbound_form=unbound_form)
     redirect = _web_redirect("/web/income-plans", selected, message="已添加收入计划")
     return draft_ack_response(request, draft_scope=draft_scope, idempotency_key=idempotency_key,
         receipt=receipt.model_dump(mode="json"), next_href=redirect.headers["location"]) or redirect

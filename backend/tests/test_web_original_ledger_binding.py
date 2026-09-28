@@ -1,6 +1,7 @@
 """Original planning forms cannot follow a browser session into another ledger."""
 
 import inspect
+import json
 import re
 from pathlib import Path
 from types import SimpleNamespace
@@ -179,6 +180,10 @@ def test_final_refund_after_rate_recovery_preserves_original_before_new_ledger_l
 
 def test_native_retained_form_can_retry_unchanged_after_switching_back(monkeypatch, retained_form_context):
     current = {"ledger": "new-ledger"}
+    original_scope = {"datasetId": "dataset", "clientGeneration": "generation", "accountId": "account",
+        "ledgerId": "old-ledger", "deviceId": "device"}
+    monkeypatch.setattr("app.services.manual_expense_draft_presenter.manual_draft_scope",
+        lambda _db, auth: {**original_scope, "ledgerId": auth.ledger_id})
     writer = Mock()
     monkeypatch.setattr(web_income_plans, "_list_ledger_options", lambda _db: [
         LedgerOption(current["ledger"], "Current", "owner", False, 0, 0)])
@@ -198,7 +203,8 @@ def test_native_retained_form_can_retry_unchanged_after_switching_back(monkeypat
 
     original = {"ledger_id": "old-ledger", "home_currency_code": "JPY", "amount_yuan": "1200", "label": "原日元收入",
         "source_type": "salary", "frequency": "monthly", "pay_day": "10", "intent_month": "2026-09",
-        "idempotency_key": "original-key", "csrf_token": csrf._csrf_token_for_seed("synthetic-browser-seed")}
+        "idempotency_key": "original-key", "draft_scope": json.dumps(original_scope),
+        "csrf_token": csrf._csrf_token_for_seed("synthetic-browser-seed")}
     with TestClient(app, base_url="https://example.test", client=("127.0.0.1", 50100)) as client:
         client.cookies.set(csrf.CSRF_COOKIE_NAME, "synthetic-browser-seed")
         retained = client.post("/web/income-plans/create", data=original, headers={"Origin": "https://example.test"})

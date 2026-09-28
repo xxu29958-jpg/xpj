@@ -166,6 +166,10 @@ def test_income_draft_cannot_follow_a_replacement_browser_identity(installed_inc
     refused = browser.post(ACTION, data=original,
         headers={"Origin": str(browser.base_url).rstrip("/"), "Accept": "application/json"},
         follow_redirects=False)
+    review = browser.post(ACTION, data={**original, "review_new": "true"},
+        headers={"Origin": str(browser.base_url).rstrip("/"), "Accept": "application/json"},
+        follow_redirects=False)
+    assert review.status_code == 409 and review.json()["error"] == "session_binding_changed", review.text
     with SessionLocal() as db:
         assert db.scalar(select(func.count()).select_from(MonthlyIncomePlan)) == 0
         assert db.scalar(select(func.count()).select_from(IncomePlanRevision)) == 0

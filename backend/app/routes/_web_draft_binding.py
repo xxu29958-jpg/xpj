@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.services.manual_expense_draft_presenter import manual_draft_scope
+from app.services import manual_expense_draft_presenter
 from app.tenants import AuthContext
 
 
@@ -22,7 +22,7 @@ def require_draft_binding(db: Session, request: Request, *, ledger_id: str,
         captured = json.loads(draft_scope)
     except (ValueError, TypeError) as exc:
         raise AppError("session_binding_changed", "原任务身份无法确认，请保留输入并重新打开原账本。", status_code=409) from exc
-    if ledger_id != auth.ledger_id or captured != manual_draft_scope(db, auth):
+    if ledger_id != auth.ledger_id or captured != manual_expense_draft_presenter.manual_draft_scope(db, auth):
         raise AppError("session_binding_changed", "身份或账本已切换；原草稿仍保留，请切回后继续。", status_code=409)
     return auth
 
