@@ -146,7 +146,7 @@ def _journey(page, native: PlanningAndroid, fixture, evidence: Path):
     wait_for(lambda: native.has("2,200") or native.has("2200"), "The native detail did not show the Web-edited amount")
     native.capture("goal-after-web-edit")
     native.click("定义历史")
-    wait_for(lambda: native.has("2,000") or native.has("2000"), "The original goal definition is not visible")
+    native.reveal_any("2,000", "2000")
     native.capture("goal-history")
     native.back()
 

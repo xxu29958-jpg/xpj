@@ -102,6 +102,26 @@ class PlanningAndroid:
         self.adb("shell", "input", "text", value)
         self.adb("shell", "input", "keyevent", "4")
 
+    def reveal_any(self, *texts: str):
+        for attempt in range(8):
+            nodes = list(self.tree().iter("node"))
+            if any(text in node.attrib.get("text", "") for node in nodes for text in texts):
+                return
+            scrollable = [node for node in nodes if node.attrib.get("scrollable") == "true"]
+            handles = [node for node in nodes if node.attrib.get("content-desc") == "Drag handle"]
+            if scrollable:
+                left, top, right, bottom = self.bounds(max(scrollable, key=lambda node: self.bounds(node)[3] - self.bounds(node)[1]))
+                x, start, end = (left + right) // 2, top + (bottom - top) * 4 // 5, top + (bottom - top) // 5
+            elif handles and attempt == 0:
+                left, top, right, bottom = self.bounds(handles[0])
+                window_bottom = self.bounds(nodes[0])[3]
+                x, start, end = (left + right) // 2, (top + bottom) // 2, window_bottom // 8
+            else:
+                time.sleep(0.3)
+                continue
+            self.adb("shell", "input", "swipe", str(x), str(start), str(x), str(end), "450")
+        raise AssertionError(f"The actual native content is not reachable after scrolling: {texts}")
+
     def bind(self, code: str, port: int):
         self.adb("reverse", f"tcp:{port}", f"tcp:{port}")
         self.adb("shell", "am", "start", "-n", "com.ticketbox/.MainActivity")

@@ -2,11 +2,13 @@ package com.ticketbox.ui.screens.plan
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
@@ -23,7 +25,7 @@ import com.ticketbox.viewmodel.GoalHistoryState
 @Composable
 internal fun GoalHistorySheet(state: GoalHistoryState, onRetry: () -> Unit, onMore: () -> Unit, onDismiss: () -> Unit) {
     AppBusyGuardedSheet(isSubmitting = false, onDismiss = onDismiss, skipPartiallyExpanded = true) {
-        AppSheetScaffold(title = stringResource(R.string.goal_history_title)) {
+        AppSheetScaffold(title = stringResource(R.string.goal_history_title), modifier = Modifier.fillMaxHeight()) {
             Text(stringResource(R.string.goal_history_explanation))
             if (state.fromCache) Text(stringResource(R.string.goal_history_offline, displayDateTime(state.fetchedAt)))
             state.items.forEach { GoalHistoryEntry(it) }
@@ -63,9 +65,9 @@ private fun GoalHistoryEntry(entry: GoalRevision) {
 
 private fun historyKind(kind: String): Int = when (kind) {
     "baseline" -> R.string.budget_history_baseline
-    "create" -> R.string.budget_history_create
-    "edit" -> R.string.budget_history_edit
-    "archive" -> R.string.budget_history_archive
-    "restore" -> R.string.budget_history_restore
+    "create" -> R.string.goal_history_create
+    "edit" -> R.string.goal_history_edit
+    "archive" -> R.string.goal_history_archive
+    "restore" -> R.string.goal_history_restore
     else -> R.string.goal_history_title
 }
