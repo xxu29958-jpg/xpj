@@ -119,7 +119,7 @@
     <form method="post" action="/web/income-plans/create" class="budget-form"{% if income_form_error %} aria-describedby="income-create-error"{% endif %}
       {% if income_draft_scope %}data-income-draft-scope="{{ income_draft_scope | tojson | forceescape }}" data-income-native-result="{{ income_draft_result | default('') }}"{% endif %}>
       {{ csrf_field|safe }}
-      {% if income_draft_scope %}<input type="hidden" name="draft_scope" value="{{ draft.get('draft_scope', income_draft_scope | tojson) }}">{% endif %}
+      {% if income_draft_scope %}<input type="hidden" name="draft_scope" value="{{ draft.get('draft_scope', income_draft_scope | tojson) | forceescape }}">{% endif %}
       <input type="hidden" name="home_currency_code" value="{{ draft.get('home_currency_code', '') }}">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       <input type="hidden" name="intent_month" value="{{ draft.get('intent_month', '') }}">
