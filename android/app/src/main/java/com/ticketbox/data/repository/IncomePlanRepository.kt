@@ -8,7 +8,6 @@ import com.ticketbox.data.remote.dto.IncomePlanDto
 import com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.IncomePlan
-import com.ticketbox.domain.model.IncomePlanStatus
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
@@ -16,16 +15,11 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 /** Income management and the server's month-specific forecast; edits publish durable intent first. */
-interface IncomePlanActions {
-    suspend fun history(binding: LogicalSessionBinding, publicId: String, beforeVersion: Long?):
-        Result<ReadSnapshot<com.ticketbox.domain.model.IncomeHistoryPage>>
-    val readAccessDenials: Flow<SnapshotAccessDenial>
+interface IncomePlanActions : IncomePlanReads {
     fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?>
     fun observeSubmissions(expectedBinding: LogicalSessionBinding): Flow<List<PendingIncomePlanSubmission>>
     fun describeSubmission(row: OutboxRow): PendingIncomePlanSubmission?
     suspend fun recoverSubmission(expectedBinding: LogicalSessionBinding, pending: PendingIncomePlanSubmission, drop: Boolean): Result<Unit>
-    suspend fun listActive(expectedBinding: LogicalSessionBinding): Result<IncomePlanListing>
-    suspend fun listIncluding(expectedBinding: LogicalSessionBinding, status: IncomePlanStatus): Result<ReadSnapshot<List<IncomePlan>>>
     suspend fun create(expectedBinding: LogicalSessionBinding, draft: IncomePlanDraft, creationKey: String): Result<Long>
     suspend fun originalCreation(expectedBinding: LogicalSessionBinding, creationKey: String): Result<PendingIncomePlanSubmission?>
     suspend fun enqueueUpdate(expectedBinding: LogicalSessionBinding, baseline: IncomePlan,
@@ -56,9 +50,8 @@ class IncomePlanRepository(
     private val incomePlanReceiptAdapter: JsonAdapter<IncomePlanDto>,
     cache: com.ticketbox.data.local.IncomeQueryCacheDao,
     coordinator: LocalLedgerSessionCoordinator,
-) : IncomePlanActions {
-    private val queries = IncomeQueryReader(apiProvider, cache, coordinator)
-    override val readAccessDenials = queries.accessDenials
+    internal val reads: IncomePlanReadRepository = IncomePlanReadRepository(apiProvider, cache, coordinator),
+) : IncomePlanActions, IncomePlanReads by reads {
     private val guard = LedgerRequestGuard(apiProvider)
     private val errors = NetworkErrorHandler(serverUrlProvider = { null }, context = "IncomePlan",
         statusMessages = mapOf(404 to "收入计划不存在。", 409 to "计划已发生变化，请刷新后核对。",
@@ -66,13 +59,6 @@ class IncomePlanRepository(
 
     private val canModify: Boolean get() = ledgerRoleCanModify(apiProvider.currentLedgerRole())
     override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> = apiProvider.observeActiveLedgerAccess()
-
-    override suspend fun history(binding: LogicalSessionBinding, publicId: String, beforeVersion: Long?) =
-        queries.history(binding, publicId, beforeVersion).map { ReadSnapshot(it.value.toDomain(), it.fetchedAt, it.fromCache) }
-
-    internal suspend fun prepareReadsBeforeDispatch(row: OutboxRow) = queries.prepareDispatch(row)
-    internal suspend fun finishReadDispatch(row: OutboxRow, result: DispatchResult?) = queries.finishDispatch(row, result)
-    internal suspend fun invalidateReadsAfterAccepted(row: OutboxRow) = queries.acceptedDispatch(row)
 
     override fun describeSubmission(row: OutboxRow): PendingIncomePlanSubmission? {
         val binding = guard.captureLogicalBinding() ?: return null
@@ -103,26 +89,10 @@ class IncomePlanRepository(
         check(changed) { "原收入提交状态已变化，请重新核对。" }
     }
 
-    override suspend fun listActive(expectedBinding: LogicalSessionBinding): Result<IncomePlanListing> =
-        queries.listing(expectedBinding, "active").map { read ->
-            val response = read.value
-            IncomePlanListing(response.items.map { it.toDomain() }, response.expectedAmountCents,
-                response.month, response.scheduledAmountCents, response.effectivePlanCount,
-                response.homeCurrencyCode, response.missingCurrencyCodes, response.referenceRates.map { it.toDomain() }, read.fetchedAt, read.fromCache)
-    }.onSuccess { listing ->
-        if (!listing.fromCache) onActivePlansSnapshot("m=${listing.month};home=${listing.homeCurrencyCode};total=${listing.expectedAmountCents};" +
-            "n=${listing.plans.size};rv=${listing.plans.maxOfOrNull(IncomePlan::rowVersion) ?: 0};" +
-            "ua=${listing.plans.maxOfOrNull(IncomePlan::updatedAt).orEmpty()}")
-    }
-
-    /** Invalidates advice on a changed confirmed forecast or management snapshot. */
-    var onActivePlansSnapshot: (stamp: String) -> Unit = {}
-
-    override suspend fun listIncluding(expectedBinding: LogicalSessionBinding,
-        status: IncomePlanStatus): Result<ReadSnapshot<List<IncomePlan>>> =
-        queries.listing(expectedBinding, status.wireValue).map { read ->
-            ReadSnapshot(read.value.items.map { it.toDomain() }, read.fetchedAt, read.fromCache)
-        }
+    /** Invalidates advice only after a confirmed income read. */
+    var onActivePlansSnapshot: (stamp: String) -> Unit
+        get() = reads.onActivePlansSnapshot
+        set(value) { reads.onActivePlansSnapshot = value }
 
     override suspend fun originalCreation(expectedBinding: LogicalSessionBinding,
         creationKey: String): Result<PendingIncomePlanSubmission?> = errors.safeCall {
@@ -175,7 +145,7 @@ class IncomePlanRepository(
         if (!canModify) throw RepositoryException("当前角色为只读，无法修改账本。")
         val bound = guard.bindExact(expectedBinding)
         requireIncomeTargetSettled(outbox.activeForTarget(bound, incomePlanTarget(publicId)))
-        queries.directWrite(expectedBinding) {
+        reads.queries.directWrite(expectedBinding) {
             it.archiveIncomePlan(publicId, IncomePlanTokenRequestDto(expectedRowVersion, intentMonth)).toDomain()
         }
     }
@@ -185,7 +155,7 @@ class IncomePlanRepository(
         if (!canModify) throw RepositoryException("当前角色为只读，无法修改账本。")
         val bound = guard.bindExact(expectedBinding)
         requireIncomeTargetSettled(outbox.activeForTarget(bound, incomePlanTarget(publicId)))
-        queries.directWrite(expectedBinding) {
+        reads.queries.directWrite(expectedBinding) {
             it.restoreIncomePlan(publicId, IncomePlanTokenRequestDto(expectedRowVersion, intentMonth)).toDomain()
         }
     }

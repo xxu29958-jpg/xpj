@@ -23,7 +23,7 @@ internal fun testIncomePlanRepository(provider: ApiServiceProvider, outbox: Outb
     submissionAdapter: JsonAdapter<IncomePlanSubmissionPayload>, receiptAdapter: JsonAdapter<IncomePlanDto>): IncomePlanRepository =
     IncomePlanRepository(provider, outbox, submissionAdapter, receiptAdapter,
         FakeIncomeQueryCacheDao(), testSnapshotCoordinator(provider, outbox)).also { repository ->
-        outbox.onIncomeDispatchPreparing = repository::prepareReadsBeforeDispatch
-        outbox.onIncomeDispatchFinished = repository::finishReadDispatch
-        outbox.onIncomeAccepted = repository::invalidateReadsAfterAccepted
+        outbox.onIncomeDispatchPreparing = repository.reads::prepareReadsBeforeDispatch
+        outbox.onIncomeDispatchFinished = repository.reads::finishReadDispatch
+        outbox.onIncomeAccepted = repository.reads::invalidateReadsAfterAccepted
     }

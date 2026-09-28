@@ -52,18 +52,10 @@ internal fun IncomeReadSource(fetchedAt: String?, fromCache: Boolean) {
 @Composable
 private fun IncomeHistoryEntry(entry: IncomeRevision) {
     val saved = entry.snapshot
-    val kind = when (entry.changeKind) {
-        "baseline" -> R.string.budget_history_baseline
-        "create" -> R.string.income_history_create
-        "edit" -> R.string.income_history_edit
-        "archive" -> R.string.income_history_archive
-        "restore" -> R.string.income_history_restore
-        else -> R.string.income_history_title
-    }
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         HorizontalDivider()
         Text(saved.label, style = MaterialTheme.typography.titleMedium)
-        Text(stringResource(R.string.goal_history_version, entry.rowVersion, stringResource(kind)), style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(R.string.goal_history_version, entry.rowVersion, stringResource(incomeHistoryKindLabel(entry.changeKind))), style = MaterialTheme.typography.bodySmall)
         Text(stringResource(R.string.goal_history_recorded_at, displayDateTime(entry.recordedAt)), style = MaterialTheme.typography.bodySmall)
         if (entry.changeKind == "baseline") Text(stringResource(R.string.budget_history_baseline_note))
         val source = IncomeSourceType.entries.firstOrNull { it.wireValue == saved.sourceType }
@@ -77,3 +69,12 @@ private fun IncomeHistoryEntry(entry: IncomeRevision) {
         Text(stringResource(if (saved.status == "archived") R.string.income_plan_section_archived else R.string.income_plan_section_active))
     }
 }
+
+private fun incomeHistoryKindLabel(kind: String): Int = when (kind) {
+        "baseline" -> R.string.budget_history_baseline
+        "create" -> R.string.income_history_create
+        "edit" -> R.string.income_history_edit
+        "archive" -> R.string.income_history_archive
+        "restore" -> R.string.income_history_restore
+        else -> R.string.income_history_title
+    }

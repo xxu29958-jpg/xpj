@@ -173,9 +173,9 @@ internal class RepositoryGraph(
     }
 
     init {
-        outbox.onIncomeDispatchPreparing = incomePlanRepository::prepareReadsBeforeDispatch
-        outbox.onIncomeDispatchFinished = incomePlanRepository::finishReadDispatch
-        outbox.onIncomeAccepted = incomePlanRepository::invalidateReadsAfterAccepted
+        outbox.onIncomeDispatchPreparing = incomePlanRepository.reads::prepareReadsBeforeDispatch
+        outbox.onIncomeDispatchFinished = incomePlanRepository.reads::finishReadDispatch
+        outbox.onIncomeAccepted = incomePlanRepository.reads::invalidateReadsAfterAccepted
     }
 
     val goalEditRepository = com.ticketbox.data.repository.GoalEditRepository(
