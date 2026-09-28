@@ -1,5 +1,5 @@
 (async function () {
-  const result = {before: null, after: null, unknown: null, duplicate: null, completed: null, error: null};
+  const result = {before: null, after: null, unknown: null, duplicate: null, completed: null, discarded: null, error: null};
   let stage = 'open original income form';
   const names = [
     'label', 'amount_yuan', 'source_type', 'frequency', 'pay_day',
@@ -122,6 +122,23 @@
       newKey: field('idempotency_key').value,
       location: frame.contentWindow.location.pathname + frame.contentWindow.location.search,
       hash: frame.contentWindow.location.hash
+    };
+    stage = 'deliberately retire a separate unknown local draft';
+    const unwantedRef = field('idempotency_key').value;
+    field('label').value = '已核对后不再续办的计划';
+    field('amount_yuan').value = '80.00';
+    field('label').dispatchEvent(new frame.contentWindow.Event('input', {bubbles: true}));
+    submit(frame).click();
+    await until(() => record(unwantedRef)?.phase === 'blocked' && !submit(frame).disabled);
+    let confirmation = '';
+    frame.contentWindow.confirm = message => { confirmation = message; return true; };
+    const retired = documentLoaded();
+    frame.contentDocument.querySelector('[data-income-discard]').click();
+    await retired;
+    await until(() => submit(frame) && !submit(frame).disabled);
+    result.discarded = {
+      removed: window.localStorage.getItem(storageKey(unwantedRef)) === null,
+      confirmation, newFormAvailable: field('label').value === '' && field('amount_yuan').value === '',
     };
   } catch (error) {
     result.error = {stage, message: String(error?.message || error)};

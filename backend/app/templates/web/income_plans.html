@@ -2,6 +2,12 @@
 {% set page_title = '收入计划' %}
 {% set product_body_domain = 'plans' %}
 {% block title %}收入计划 · 小票夹{% endblock %}
+{% block page_scripts %}
+{% if income_draft_scope %}
+<script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/income-create-entry.js?v={{ asset_version }}"></script>
+{% endif %}
+{% endblock %}
 
 {# C2 收入计划迁入 product 正文栈:
    - 新上旧下: 整月预测与按计划截至今日汇总 → 在用列表 → 添加表单收进右侧窄列
@@ -26,7 +32,7 @@
 {% if message %}<div class="product-feedback" role="status">{{ message }}</div>{% endif %}
 {% if error %}<div class="product-feedback product-feedback--danger" role="alert">{{ error }}</div>{% endif %}
 {% if not can_write %}
-<div class="product-feedback" role="status">只读角色可以查看收入计划，但不能添加或修改。</div>
+<div class="product-feedback" role="status">只读角色可以查看收入计划，但不能添加或修改。{% if income_draft_scope %}已保留的收入草稿可在恢复编辑权限后继续。{% endif %}</div>
 {% endif %}
 
 <section class="product-panel product-panel--padded" aria-label="本月预计收入">
@@ -104,13 +110,21 @@
     </div>
     {% set draft = income_form_draft or {} %}
     {% if income_form_error %}<div id="income-create-error" class="product-feedback product-feedback--danger" role="alert">{{ income_form_error }}</div>{% endif %}
-    <form method="post" action="/web/income-plans/create" class="budget-form"{% if income_form_error %} aria-describedby="income-create-error"{% endif %}>
+    {% if income_draft_scope %}
+    <div data-income-draft-shelf hidden>
+      <p class="meta">此浏览器保留的收入计划</p>
+      <ul data-income-draft-list></ul>
+    </div>
+    {% endif %}
+    <form method="post" action="/web/income-plans/create" class="budget-form"{% if income_form_error %} aria-describedby="income-create-error"{% endif %}
+      {% if income_draft_scope %}data-income-draft-scope="{{ income_draft_scope | tojson | forceescape }}" data-income-native-result="{{ income_draft_result | default('') }}"{% endif %}>
       {{ csrf_field|safe }}
+      {% if income_draft_scope %}<input type="hidden" name="draft_scope" value="{{ draft.get('draft_scope', income_draft_scope | tojson) }}">{% endif %}
       <input type="hidden" name="home_currency_code" value="{{ draft.get('home_currency_code', '') }}">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       <input type="hidden" name="intent_month" value="{{ draft.get('intent_month', '') }}">
       <input type="hidden" name="idempotency_key" value="{{ draft.get('idempotency_key', '') }}">
-      <p class="meta">本次每月计划从 {{ draft.get('intent_month') or '待确认月份' }} 生效。失败重试保留原月份和金额。</p>
+      <p class="meta" data-income-intent>本次每月计划从 {{ draft.get('intent_month') or '待确认月份' }} 生效。失败重试保留原月份和金额。</p>
       <div class="product-field">
         <label for="income-create-label">名称</label>
         <input id="income-create-label" class="product-input" type="text" name="label" maxlength="64" required placeholder="例如：我的工资" value="{{ draft.get('label', '') }}">
@@ -176,6 +190,13 @@
         <button class="product-button product-button--primary" type="submit">添加</button>
         {% endif %}
       </div>
+      {% if income_draft_scope %}
+      <p class="product-feedback" data-income-draft-status role="status" aria-live="polite" hidden></p>
+      <p class="meta" data-income-review-note hidden>请先核对已有收入计划。准备新计划会保留输入，原提交仍留在此浏览器供核对。</p>
+      <button class="product-button product-button--quiet" type="submit" name="review_new" value="true" data-income-review hidden>已核对，保留输入准备新计划</button>
+      <button class="product-button product-button--quiet" type="button" data-income-discard hidden>放弃此浏览器的原稿</button>
+      <a class="product-button product-button--quiet" href="/web/income-plans?ledger_id={{ selected_ledger_id }}&new_income=1#add-income">另建收入计划</a>
+      {% endif %}
     </form>
   </section>
 </div>

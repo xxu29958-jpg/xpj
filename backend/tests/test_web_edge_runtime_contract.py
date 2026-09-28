@@ -136,7 +136,7 @@ def test_income_create_original_form_draft_survives_refresh_in_real_edge(tmp_pat
             else:
                 fields = {name: values[0] for name, values in parse_qs(raw.decode(), keep_blank_values=True).items()}
             posts.append(fields)
-            if len(posts) == 1:
+            if len(posts) in {1, 3}:
                 # Synthetic unavailable response: no ACK and no financial database claim.
                 self.reply(json.dumps({"message": "synthetic unknown result"}).encode(),
                            content_type="application/json", status=503)
@@ -199,13 +199,18 @@ def test_income_create_original_form_draft_survives_refresh_in_real_edge(tmp_pat
     assert requests[2:] == [
         {"currency": "CNY", "month": "2026-10", "key": "aa740c64-6e8d-45e8-80fd-5dd26a2f7126"},
         {"currency": "CNY", "month": "2026-10", "key": "aa740c64-6e8d-45e8-80fd-5dd26a2f7126"},
+        {"currency": "CNY", "month": "2026-10", "key": "aa740c64-6e8d-45e8-80fd-5dd26a2f7126"},
     ], requests
-    assert len(posts) == 2, posts
+    assert len(posts) == 3, posts
     assert posts[0] == posts[1], posts
     for name, value in submitted.items():
         assert posts[0][name] == value, posts
     assert posts[0]["ledger_id"] == scope["ledgerId"], posts
     assert json.loads(posts[0]["draft_scope"]) == scope, posts
+    assert posts[2]["idempotency_key"] == "aa740c64-6e8d-45e8-80fd-5dd26a2f7126"
+    assert posts[2]["label"] == "已核对后不再续办的计划" and posts[2]["amount_yuan"] == "80.00"
+    assert probe["discarded"]["removed"] and probe["discarded"]["newFormAvailable"], probe
+    assert "不会撤销已发出的请求或已保存的计划" in probe["discarded"]["confirmation"], probe
 
 
 def test_drawer_fx_status_and_retry_keep_draft_until_explicit_load_in_real_edge(tmp_path: Path) -> None:

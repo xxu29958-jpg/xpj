@@ -5,12 +5,13 @@ from __future__ import annotations
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, Query, Request, Response
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
+from app.routes._web_draft_binding import draft_ack_response, require_draft_binding
 from app.routes._web_session_common import resolve_web_actor_account_id
 from app.routes.web_common import (
     LocalOnly,
@@ -38,6 +39,7 @@ from app.services.income_plan_service import (
 )
 from app.services.income_plan_service._delivery import create_income_plan_idempotently
 from app.services.ledger_calendar_service import current_ledger_month
+from app.services.manual_expense_draft_presenter import manual_draft_scope
 
 router = APIRouter(prefix="/web/income-plans", tags=["web"])
 
@@ -108,7 +110,7 @@ def _income_month_options(current: str) -> tuple[list[int], str, str]:
 
 
 def _render_income_plans(request, db, *, options, selected, message=None, error=None,
-                         draft=None, review=False, status_code=200) -> HTMLResponse:
+                         draft=None, review=False, draft_result="", status_code=200) -> HTMLResponse:
     plans_active = list_income_plans(db, tenant_id=selected, status="active")
     plans_archived = list_income_plans(db, tenant_id=selected, status="archived")
     intent_month = current_ledger_month(db, ledger_id=selected)
@@ -144,6 +146,9 @@ def _render_income_plans(request, db, *, options, selected, message=None, error=
     ctx.update(
         income_form_draft=form, income_form_currency=form_currency, income_form_error=error if draft is not None else None,
         income_form_review=review,
+        income_draft_scope=manual_draft_scope(db, request.state.web_session_auth)
+            if getattr(request.state, "web_session_auth", None) is not None else None,
+        income_draft_result=draft_result,
         plans_active=plans_active,
         plans_archived=plans_archived,
         total_yuan=minor_amount_value(forecast.expected_amount_cents, home) if forecast.expected_amount_cents is not None else None,
@@ -161,7 +166,8 @@ def _render_income_plans(request, db, *, options, selected, message=None, error=
         income_default_year=income_default_year,
         income_default_month=income_default_month,
     )
-    return templates.TemplateResponse(request=request, name="income_plans.html", context=ctx, status_code=status_code)
+    return templates.TemplateResponse(request=request, name="income_plans.html", context=ctx,
+        status_code=status_code, headers={"Cache-Control": "no-store"})
 
 
 @router.get("", response_class=HTMLResponse)
@@ -190,6 +196,7 @@ def post_create(
     pay_day: str = Form(default=""),
     intent_month: str = Form(default=""),
     idempotency_key: str = Form(default=""),
+    draft_scope: str = Form(default=""),
     review_new: bool = Form(default=False),
     db: Session = Depends(get_db),
     _local: None = LocalOnly,
@@ -200,30 +207,44 @@ def post_create(
         "income_month": income_month or "", "income_month_year": income_month_year or "",
         "income_month_number": income_month_number or "", "amount_yuan": amount_yuan,
         "home_currency_code": home_currency_code, "pay_day": pay_day,
-        "intent_month": intent_month, "idempotency_key": idempotency_key}
+        "intent_month": intent_month, "idempotency_key": idempotency_key, "draft_scope": draft_scope}
     retained = preserve_original_ledger_form(request, db, options=options, selected=selected,
         fields={**draft, "ledger_id": ledger_id, "review_new": review_new}, task="添加收入计划")
     if retained is not None:
+        if "application/json" in request.headers.get("accept", ""):
+            return JSONResponse({"error": "session_binding_changed",
+                "message": "账本已切换；原草稿仍保留，请切回原账本后继续。", "draft_result": "blocked"},
+                status_code=409, headers={"Cache-Control": "no-store"})
         return retained
-    _require_selected_ledger_write(options, selected)
-    if review_new:
-        draft["idempotency_key"] = str(uuid4())
-        return _render_income_plans(request, db, options=options, selected=selected, draft=draft)
     try:
+        require_draft_binding(db, request, ledger_id=selected, draft_scope=draft_scope, require_session=False)
+        _require_selected_ledger_write(options, selected)
+        if review_new:
+            draft["idempotency_key"] = str(uuid4())
+            return _render_income_plans(request, db, options=options, selected=selected,
+                draft=draft, draft_result="prepared")
         payload = IncomePlanCreateRequest(label=label, source_type=source_type, frequency=frequency,
             income_month=_income_month_from_form(income_month, year=income_month_year,
                 month=income_month_number, fallback_month=intent_month) if frequency == "one_time" else None,
             amount_cents=_parse_yuan(amount_yuan, currency_code=home_currency_code, label="预计收入金额"),
             home_currency_code=home_currency_code, pay_day=_parse_pay_day(pay_day), intent_month=intent_month)
-        create_income_plan_idempotently(db, tenant_id=selected, payload=payload,
+        receipt = create_income_plan_idempotently(db, tenant_id=selected, payload=payload,
             actor_account_id=resolve_web_actor_account_id(db, request, selected), idempotency_key=idempotency_key)
     except (AppError, ValidationError) as exc:
         db.rollback()
+        message = exc.message if isinstance(exc, AppError) else "请检查名称、金额和预计日期。输入已保留。"
+        status = exc.status_code if isinstance(exc, AppError) else 422
+        if "application/json" in request.headers.get("accept", ""):
+            return JSONResponse({"error": exc.error if isinstance(exc, AppError) else "invalid_request",
+                "message": message, "draft_result": "blocked"}, status_code=status,
+                headers={"Cache-Control": "no-store"})
         return _render_income_plans(request, db, options=options, selected=selected, draft=draft,
-            error=exc.message if isinstance(exc, AppError) else "请检查名称、金额和预计日期。输入已保留。",
+            error=message, draft_result="blocked",
             review=isinstance(exc, AppError) and exc.error in {"idempotency_key_reused", "idempotency_key_required"},
-            status_code=exc.status_code if isinstance(exc, AppError) else 422)
-    return _web_redirect("/web/income-plans", selected, message="已添加收入计划")
+            status_code=status)
+    redirect = _web_redirect("/web/income-plans", selected, message="已添加收入计划")
+    return draft_ack_response(request, draft_scope=draft_scope, idempotency_key=idempotency_key,
+        receipt=receipt.model_dump(mode="json"), next_href=redirect.headers["location"]) or redirect
 
 
 @router.post("/{public_id}/archive")

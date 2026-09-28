@@ -10,7 +10,7 @@ from starlette.responses import Response
 from app.database import get_db
 from app.errors import AppError
 from app.routes._upload_request import handle_upload
-from app.routes._web_attachment_intent import attachment_ack_response, require_attachment_binding
+from app.routes._web_draft_binding import draft_ack_response, require_draft_binding
 from app.routes._web_session_common import resolve_web_actor
 from app.routes.web_common import (
     LocalOnly,
@@ -66,7 +66,7 @@ async def web_pending_upload(
         request=request,
     )
     _require_selected_ledger_write(options, selected_id)
-    require_attachment_binding(db, request, ledger_id=ledger_id, draft_scope=draft_scope, require_session=False)
+    require_draft_binding(db, request, ledger_id=ledger_id, draft_scope=draft_scope, require_session=False)
     actor_account_id, actor_device_id = resolve_web_actor(db, request, selected_id)
     timezone_name = timezone.strip() or None
     try:
@@ -99,5 +99,5 @@ async def web_pending_upload(
         flash_type="success",
         watch=upload.enrichment_task_public_id,
     )
-    return attachment_ack_response(request, draft_scope=draft_scope, idempotency_key=idempotency_key,
+    return draft_ack_response(request, draft_scope=draft_scope, idempotency_key=idempotency_key,
         receipt=upload.model_dump(mode="json"), next_href=redirect.headers["location"]) or redirect
