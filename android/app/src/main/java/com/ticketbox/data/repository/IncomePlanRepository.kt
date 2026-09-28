@@ -48,9 +48,7 @@ class IncomePlanRepository(
     private val outbox: OutboxRepository,
     private val incomePlanSubmissionAdapter: JsonAdapter<IncomePlanSubmissionPayload>,
     private val incomePlanReceiptAdapter: JsonAdapter<IncomePlanDto>,
-    cache: com.ticketbox.data.local.IncomeQueryCacheDao,
-    coordinator: LocalLedgerSessionCoordinator,
-    internal val reads: IncomePlanReadRepository = IncomePlanReadRepository(apiProvider, cache, coordinator),
+    internal val reads: IncomePlanReadRepository,
 ) : IncomePlanActions, IncomePlanReads by reads {
     private val guard = LedgerRequestGuard(apiProvider)
     private val errors = NetworkErrorHandler(serverUrlProvider = { null }, context = "IncomePlan",

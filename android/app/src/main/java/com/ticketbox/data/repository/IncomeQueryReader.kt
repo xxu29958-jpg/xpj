@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.filterNotNull
 import retrofit2.HttpException
 
 private class IncomeQueryReplaced : IllegalStateException("已有更新的收入读取，请重试。")
+private data class IncomeReadQuery(val kind: String, val tag: String)
 
 /** IncomePlan's canonical reads. Neither a draft nor a command receipt is a query snapshot. */
 internal class IncomeQueryReader(
@@ -32,25 +33,26 @@ internal class IncomeQueryReader(
     val accessDenials = coordinator.snapshotAccessDenials.filterNotNull()
 
     suspend fun listing(binding: LogicalSessionBinding, status: String): Result<ReadSnapshot<IncomePlanListResponseDto>> =
-        read(binding, "income_list", status, listingAdapter, { it.validateIncomeListing(status) }) { api -> api.listIncomePlans(status) }
+        read(binding, IncomeReadQuery("income_list", status), listingAdapter, { it.validateIncomeListing(status) }) { api -> api.listIncomePlans(status) }
 
     suspend fun history(binding: LogicalSessionBinding, publicId: String, before: Long?): Result<ReadSnapshot<IncomeHistoryResponseDto>> =
-        read(binding, "income_history", "$publicId:20:$before", historyAdapter,
+        read(binding, IncomeReadQuery("income_history", "$publicId:20:$before"), historyAdapter,
             { it.validateIncomeHistory(binding, publicId, before) }) { api ->
             require(publicId.isNotBlank() && (before == null || before > 0)) { "收入历史范围不正确。" }
             api.incomePlanHistory(publicId, 20, before)
         }
 
-    private suspend fun <T> read(binding: LogicalSessionBinding, kind: String, tag: String, adapter: JsonAdapter<T>,
+    private suspend fun <T> read(binding: LogicalSessionBinding, query: IncomeReadQuery, adapter: JsonAdapter<T>,
         validate: (T) -> Unit, fetch: suspend (ApiService) -> T): Result<ReadSnapshot<T>> {
-        val result = readOnce(binding, kind, tag, adapter, validate, fetch)
+        val result = readOnce(binding, query, adapter, validate, fetch)
         // Overview and management can request the same projection together; restore the superseded reader once.
-        return if (result.exceptionOrNull()?.cause is IncomeQueryReplaced) readOnce(binding, kind, tag, adapter, validate, fetch) else result
+        return if (result.exceptionOrNull()?.cause is IncomeQueryReplaced) readOnce(binding, query, adapter, validate, fetch) else result
     }
 
-    private suspend fun <T> readOnce(binding: LogicalSessionBinding, kind: String, tag: String, adapter: JsonAdapter<T>,
+    private suspend fun <T> readOnce(binding: LogicalSessionBinding, query: IncomeReadQuery, adapter: JsonAdapter<T>,
         validate: (T) -> Unit, fetch: suspend (ApiService) -> T): Result<ReadSnapshot<T>> = errors.safeCall {
         val bound = guard.bindExact(binding)
+        val (kind, tag) = query
         val key = logicalBindingAdapter.toJson(binding)
         val ticket = coordinator.beginSnapshotRead()
         val queryKey = "$key|$kind|$tag"

@@ -138,8 +138,8 @@ internal class RepositoryGraph(
         outbox = outbox,
         incomePlanSubmissionAdapter = outboxAdapters.incomePlanSubmissionAdapter,
         incomePlanReceiptAdapter = outboxAdapters.incomePlanReceiptAdapter,
-        cache = database.incomeQueryCacheDao(),
-        coordinator = ledgerSessionCoordinator,
+        reads = com.ticketbox.data.repository.IncomePlanReadRepository(apiServiceProvider,
+            database.incomeQueryCacheDao(), ledgerSessionCoordinator),
     )
 
     val debtRepository = DebtRepository(
