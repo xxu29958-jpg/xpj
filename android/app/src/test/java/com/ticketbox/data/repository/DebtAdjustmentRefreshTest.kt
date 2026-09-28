@@ -154,7 +154,7 @@ class DebtAdjustmentRefreshTest {
         val original = fixture.pending()
         val bound = LedgerRequestGuard(fixture.provider).bindExact(fixture.binding)
         fixture.repository.recover(fixture.binding, original, false).getOrThrow()
-        assertFalse(fixture.outbox.abandonDebtWrite(bound, original.row))
+        assertFalse(fixture.outbox.abandonOriginalCommand(bound, original.row))
         // Eligibility belongs to the command owner; persistence still compares the exact observed state.
         val pending = fixture.dao.rows.getValue(id)
         assertTrue(fixture.repository.recover(fixture.binding, fixture.pending(), drop = true).isFailure)
@@ -162,13 +162,13 @@ class DebtAdjustmentRefreshTest {
         for (status in listOf("in_flight", "done")) {
             val current = fixture.dao.rows.getValue(id).copy(status = status)
             fixture.dao.rows[id] = current
-            assertEquals(0, fixture.dao.abandonDebtWrite(id, requireNotNull(current.ownerKey), current.ledgerId, status, "stop"))
+            assertEquals(0, fixture.dao.abandonOriginalCommand(id, requireNotNull(current.ownerKey), current.ledgerId, status, "stop"))
             assertEquals(current, fixture.dao.rows.getValue(id))
         }
         val failed = fixture.dao.rows.getValue(id).copy(status = "failed")
         fixture.dao.rows[id] = failed
-        assertEquals(0, fixture.dao.abandonDebtWrite(id, "other-owner", failed.ledgerId, "failed", "stop"))
-        assertEquals(0, fixture.dao.abandonDebtWrite(id, requireNotNull(failed.ownerKey), "other-ledger", "failed", "stop"))
+        assertEquals(0, fixture.dao.abandonOriginalCommand(id, "other-owner", failed.ledgerId, "failed", "stop"))
+        assertEquals(0, fixture.dao.abandonOriginalCommand(id, requireNotNull(failed.ownerKey), "other-ledger", "failed", "stop"))
         assertEquals(failed, fixture.dao.rows.getValue(id))
     }
 }

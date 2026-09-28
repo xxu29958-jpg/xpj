@@ -46,7 +46,7 @@ internal fun SyncStatusOriginalIntentSummary(row: OutboxRow, state: OutboxStatus
     }
     state.goalCreations[row.id]?.let { original ->
         com.ticketbox.ui.screens.GoalCreationIntentSummary(original)
-        TextButton(onClick = { actions.onOpenGoalCreation(row.id) }) { Text(stringResource(R.string.goal_creation_open)) }
+        TextButton(onClick = { actions.onOpenGoalCreation(original) }) { Text(stringResource(R.string.goal_creation_open)) }
     }
     state.recurringItems[row.id]?.let { original ->
         com.ticketbox.ui.screens.recurring.RecurringManualIntentSummary(original)

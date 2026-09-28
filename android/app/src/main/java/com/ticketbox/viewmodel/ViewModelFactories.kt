@@ -220,14 +220,16 @@ fun repaymentDraftInboxViewModelFactory(
     }
 }
 
-@Suppress("UNCHECKED_CAST")
 fun createDebtGoalViewModelFactory(
-    reportsRepository: ReportsActions,
+    edits: com.ticketbox.data.repository.GoalEditActions,
     debtRepository: DebtActions,
     writes: com.ticketbox.data.repository.DebtWriteActions,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return CreateDebtGoalViewModel(reportsRepository, debtRepository, writes) as T
+        return modelClass.cast(CreateDebtGoalViewModel(edits, debtRepository, writes))
+    }
+    override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T {
+        return modelClass.cast(CreateDebtGoalViewModel(edits, debtRepository, writes, extras.createSavedStateHandle()))
     }
 }
 

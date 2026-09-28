@@ -45,6 +45,10 @@ class SpendingGoalDraftNavigationRoomTest {
         object : ApiService by delegate {
             override suspend fun goals(month: String?, includeArchived: Boolean, goalType: String?, timezone: String?) =
                 GoalListResponseDto(emptyList())
+            override suspend fun runtimeCompatibility() = delegate.runtimeCompatibility().let { runtime ->
+                runtime.copy(capabilities = runtime.capabilities.copy(currency = runtime.capabilities.currency.copy(
+                    homeCurrencyCode = "CNY", minorUnitExponent = 2, readCompatibility = "compatible")))
+            }
         }
     }
     private val mounted = mutableStateOf(true)

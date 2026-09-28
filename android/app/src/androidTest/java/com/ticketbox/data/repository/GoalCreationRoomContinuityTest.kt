@@ -192,8 +192,9 @@ class GoalCreationRoomContinuityTest {
 
     private fun installModel(repository: GoalEditActions) {
         val actions = object : GoalEditActions by repository {
-            override suspend fun create(binding: LogicalSessionBinding, draft: GoalDraft, creationKey: String): Result<Long> {
-                val result = repository.create(binding, draft, creationKey)
+            override suspend fun create(binding: LogicalSessionBinding, request: com.ticketbox.data.remote.dto.GoalCreateRequestDto,
+                creationKey: String): Result<Long> {
+                val result = repository.create(binding, request, creationKey)
                 if (result.isSuccess) localAcknowledgement?.await()
                 return result
             }

@@ -9,7 +9,6 @@ import com.ticketbox.data.remote.dto.DashboardCardsResponseDto
 import com.ticketbox.data.remote.dto.DashboardCardsUpdateRequestDto
 import com.ticketbox.data.remote.dto.DebtGoalLinkViewDto
 import com.ticketbox.data.remote.dto.DebtRepaymentEvaluationDto
-import com.ticketbox.data.remote.dto.GoalCreateRequestDto
 import com.ticketbox.data.remote.dto.GoalDto
 import com.ticketbox.data.remote.dto.GoalListResponseDto
 import com.ticketbox.data.remote.dto.GoalUpdateRequestDto
@@ -148,76 +147,11 @@ class ReportsRepositoryTest {
     }
 
     @Test
-    fun createDebtGoalSendsDebtShapeRequestAndMapsDomain() = withReportsTimezone("UTC") {
-        runTest {
-            val api = ReportsApiHandler()
-            val repository = repository(api)
-
-            val created = repository.createDebtGoal(
-                name = " 还清欠款 ",
-                debtPublicIds = listOf(" debt-a ", "", "debt-b", "debt-a"),
-                expectedBinding = requireNotNull(repository.dashboardAccess()).binding,
-            ).getOrThrow()
-
-            val call = api.createGoalCalls.single()
-            assertEquals("还清欠款", call.request.name)
-            assertEquals("debt_repayment", call.request.goalType)
-            // trimmed + blanks dropped + de-duped, order preserved.
-            assertEquals(listOf("debt-a", "debt-b"), call.request.debtPublicIds)
-            // debt-goal shape: the spend fields are omitted (null on the wire).
-            assertNull(call.request.month)
-            assertNull(call.request.targetAmountCents)
-            assertNull(call.request.category)
-            assertEquals("UTC", call.timezone)
-            assertTrue(created.isDebtRepayment)
-            val stale = requireNotNull(repository.dashboardAccess()).binding.copy(sessionGeneration = "previous-session")
-            assertTrue(repository.createDebtGoal("原目标", listOf("debt-a"), stale).isFailure)
-            assertEquals(1, api.createGoalCalls.size)
-        }
-    }
-
-    @Test
-    fun createDebtGoalRejectedForViewerWithoutApiCall() = runTest {
-        val api = ReportsApiHandler()
-        val repository = repository(api, role = "viewer")
-
-        val result = repository.createDebtGoal("还清欠款", listOf("debt-a"), requireNotNull(repository.dashboardAccess()).binding)
-
-        assertTrue(result.isFailure)
-        assertEquals("当前角色为只读，无法修改账本。", result.exceptionOrNull()?.message)
-        assertTrue(api.createGoalCalls.isEmpty())
-    }
-
-    @Test
-    fun createDebtGoalRejectsEmptyIdsBeforeApiCall() = runTest {
-        val api = ReportsApiHandler()
-        val repository = repository(api)
-
-        val result = repository.createDebtGoal("还清欠款", listOf("  ", ""), requireNotNull(repository.dashboardAccess()).binding)
-
-        assertTrue(result.isFailure)
-        assertEquals("请至少关联一笔欠款。", result.exceptionOrNull()?.message)
-        assertTrue(api.createGoalCalls.isEmpty())
-    }
-
-    @Test
-    fun createDebtGoalRejectsBlankNameBeforeApiCall() = runTest {
-        val api = ReportsApiHandler()
-        val repository = repository(api)
-
-        val result = repository.createDebtGoal("   ", listOf("debt-a"), requireNotNull(repository.dashboardAccess()).binding)
-
-        assertTrue(result.isFailure)
-        assertEquals("请输入目标名称。", result.exceptionOrNull()?.message)
-        assertTrue(api.createGoalCalls.isEmpty())
-    }
-
-    @Test
     fun viewerWritesShortCircuitWithoutApiCall() = runTest {
         val api = ReportsApiHandler()
         val repository = repository(api, role = "viewer")
 
-        val goalResult = repository.createDebtGoal("清偿", listOf("debt-a"), repository.dashboardAccess()!!.binding)
+        val goalResult = repository.archiveGoal("goal-a", repository.dashboardAccess()!!.binding)
         val cardsResult = repository.updateDashboardCards(
             binding = repository.dashboardAccess()!!.binding,
             updates = listOf(DashboardCardUpdate("goals", visible = true, position = 0)),
@@ -227,7 +161,7 @@ class ReportsRepositoryTest {
         assertTrue(cardsResult.isFailure)
         assertEquals("当前角色为只读，无法修改账本。", goalResult.exceptionOrNull()?.message)
         assertEquals("当前角色为只读，无法修改账本。", cardsResult.exceptionOrNull()?.message)
-        assertTrue(api.createGoalCalls.isEmpty())
+        assertTrue(api.archiveGoalCalls.isEmpty())
         assertTrue(api.updateDashboardCardCalls.isEmpty())
     }
 
@@ -249,7 +183,7 @@ class ReportsRepositoryTest {
     @Test
     fun backendPermissionDeniedMapsToReadOnlyMessage() = runTest {
         val api = ReportsApiHandler().apply {
-            createGoalError = HttpException(
+            archiveGoalError = HttpException(
                 Response.error<GoalDto>(
                     403,
                     """{"error":"permission_denied","message":"当前角色无权进行此操作。"}"""
@@ -259,7 +193,7 @@ class ReportsRepositoryTest {
         }
         val repository = repository(api)
 
-        val result = repository.createDebtGoal("清偿", listOf("debt-a"), repository.dashboardAccess()!!.binding)
+        val result = repository.archiveGoal("goal-a", repository.dashboardAccess()!!.binding)
 
         assertTrue(result.isFailure)
         assertEquals("当前角色为只读，无法修改账本。", result.exceptionOrNull()?.message)
@@ -490,11 +424,6 @@ private data class SetGoalTargetDateCall(
     val timezone: String?,
 )
 
-private data class CreateGoalCall(
-    val request: GoalCreateRequestDto,
-    val timezone: String?,
-)
-
 private data class UpdateDashboardCardsCall(
     val request: DashboardCardsUpdateRequestDto,
     val surface: String,
@@ -516,14 +445,13 @@ private class ReportsApiHandler : InvocationHandler {
     val reportCalls = mutableListOf<ReportsOverviewCall>()
     val csvReportCalls = mutableListOf<ReportsOverviewCall>()
     val goalsCalls = mutableListOf<GoalsCall>()
-    val createGoalCalls = mutableListOf<CreateGoalCall>()
     val archiveGoalCalls = mutableListOf<Pair<String, String?>>()
     val replaceDebtLinksCalls = mutableListOf<ReplaceDebtLinksCall>()
     val acknowledgeIntegrityCalls = mutableListOf<AcknowledgeIntegrityCall>()
     val setGoalTargetDateCalls = mutableListOf<SetGoalTargetDateCall>()
     val dashboardCardCalls = mutableListOf<String>()
     val updateDashboardCardCalls = mutableListOf<UpdateDashboardCardsCall>()
-    var createGoalError: Throwable? = null
+    var archiveGoalError: Throwable? = null
     var debtGoalsResult: GoalListResponseDto? = null
     var replaceDebtLinksError: Throwable? = null
     var acknowledgeIntegrityError: Throwable? = null
@@ -628,18 +556,9 @@ private class ReportsApiHandler : InvocationHandler {
                 )
                 debtGoalDto()
             }
-            "createGoal" -> {
-                createGoalError?.let { throw it }
-                val request = values[0] as GoalCreateRequestDto
-                createGoalCalls += CreateGoalCall(
-                    request = request,
-                    timezone = values[1] as String?,
-                )
-                // ADR-0049 §6 (slice 8b): a debt_repayment create returns a debt goal shape.
-                if (request.goalType == "debt_repayment") debtGoalDto() else goalDto(category = request.category)
-            }
             "goal" -> goalDto()
             "archiveGoal" -> {
+                archiveGoalError?.let { throw it }
                 archiveGoalCalls += (values[0] as String) to (values[1] as String?)
                 goalDto(status = "archived", progressState = "archived", archivedAt = "2026-05-14T00:00:00Z")
             }

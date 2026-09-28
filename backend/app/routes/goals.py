@@ -20,6 +20,7 @@ from app.schemas import (
 from app.services.goal_create_command import create_spending_goal_idempotently
 from app.services.goal_debt_repayment_service import (
     acknowledge_integrity_review,
+    create_debt_repayment_goal_idempotently,
     list_debt_repayment_goals,
     replace_debt_repayment_goal_links,
     set_debt_goal_target_date,
@@ -108,6 +109,10 @@ def post_goal(
 ) -> GoalResponse:
     timezone_name = timezone or get_settings().ocr_default_timezone
     if payload.goal_type.strip() == "debt_repayment":
+        if idempotency_key is not None:
+            return create_debt_repayment_goal_idempotently(
+                db, tenant_id=auth.tenant_id, payload=payload, idempotency_key=idempotency_key,
+            )
         return create_goal(db, tenant_id=auth.tenant_id, payload=payload, timezone_name=timezone_name)
     return create_spending_goal_idempotently(
         db,

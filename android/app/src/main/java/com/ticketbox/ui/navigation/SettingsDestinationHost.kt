@@ -90,7 +90,7 @@ internal data class SettingsDestinationNavigation(
     val onOpenInbox: () -> Unit,
     val onOpenBudget: (String) -> Unit,
     val onOpenRecurring: () -> Unit,
-    val onOpenGoalCreation: (Long) -> Unit,
+    val onOpenGoalCreation: (com.ticketbox.data.repository.PendingGoalCreation) -> Unit,
     val onOpenGoalEdit: (String) -> Unit,
     val onOpenRuleSubmission: (Long) -> Unit,
     val onOpenIncomeSubmission: (Long) -> Unit,

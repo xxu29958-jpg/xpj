@@ -192,20 +192,25 @@ internal fun IncomePlanRoute(
 internal fun DebtGoalRoute(
     screenFactory: MainScreenFactory,
     onBack: () -> Unit,
+    creationOwner: ViewModelStoreOwner,
+    originalCreationId: Long? = null,
 ) {
-    val routeModels = rememberDebtGoalRouteViewModels(screenFactory)
+    val routeModels = rememberDebtGoalRouteViewModels(screenFactory, creationOwner)
+    val creation by routeModels.createGoal.state.collectAsStateWithLifecycle()
     // overlay 在 open/close 间复用缓存 VM 且跨账本切换存活;每次(重新)进入都 refresh(clearStale=true)
     // (先清旧账本的债务再拉),避免在新账本下短暂看到上一账本的欠款(账本隔离)。
     LaunchedEffect(Unit) { routeModels.debtGoal.refresh(clearStale = true) }
     // 新建还债目标是 overlay 内的子页（与列表/详情互斥渲染）：showCreate 切换,各屏自带
     // BackHandler（互斥 if/else 故同一时刻只有一个生效）。返回回到目标列表,创建成功后
     // 关闭子页并让目标列表重拉。
-    var showCreate by rememberSaveable { mutableStateOf(false) }
+    var showCreate by rememberSaveable { mutableStateOf(originalCreationId != null) }
+    var openedCreationId by rememberSaveable { mutableStateOf(originalCreationId) }
     var linkedDebtId by rememberSaveable { mutableStateOf<String?>(null) }
     val openLinkedDebtId = linkedDebtId
     if (showCreate) {
         CreateDebtGoalScreen(
             viewModel = routeModels.createGoal,
+            originalSubmissionId = openedCreationId,
             onBack = { showCreate = false },
             onCreated = {
                 showCreate = false
@@ -235,7 +240,8 @@ internal fun DebtGoalRoute(
             DebtGoalScreen(
                 viewModel = routeModels.debtGoal,
                 onBack = onBack,
-                onCreate = { showCreate = true },
+                onCreate = { openedCreationId = null; showCreate = true },
+                hasCreationDraft = creation.hasDraft,
                 onOpenLinkedDebt = { linkedDebtId = it },
             )
             DebtGoalCelebrationOverlay(

@@ -161,6 +161,7 @@ def web_debt_goal_create(
             tenant_id=selected_id,
             payload=payload,
             idempotency_key=idempotency_key.strip() or None,
+            allow_legacy_current=True,
         )
     except (AppError, ValidationError) as exc:
         db.rollback()

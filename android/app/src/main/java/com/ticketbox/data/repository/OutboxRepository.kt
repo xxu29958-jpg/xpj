@@ -712,21 +712,27 @@ class OutboxRepository private constructor(
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    internal fun observeOriginalCommand(type: PendingMutationType, idempotencyKey: String): Flow<List<OutboxRow>> =
-        bindingFlow().flatMapLatest { binding ->
-            dao.observeOriginalCommand(binding.serverUrl, binding.ownerStorageKey, binding.ledgerId, type.wireValue, idempotencyKey)
-                .map { rows -> rows.map { it.toDomain() } }
+    internal fun observeOriginalCommand(type: PendingMutationType, idempotencyKey: String? = null,
+        originalId: Long? = null): Flow<List<OutboxRow>> {
+        require((idempotencyKey != null) != (originalId != null)) { "请选择一份原提交。" }
+        return bindingFlow().flatMapLatest { binding ->
+            val originals = if (originalId != null)
+                dao.observeOriginalCommandById(binding.serverUrl, binding.ownerStorageKey, binding.ledgerId, type.wireValue, originalId)
+            else dao.observeOriginalCommand(binding.serverUrl, binding.ownerStorageKey, binding.ledgerId, type.wireValue,
+                requireNotNull(idempotencyKey))
+            originals.map { rows -> rows.map { it.toDomain() } }
         }
+    }
 
     fun observeStatus(): Flow<OutboxStatus> = observeBoundOutboxStatus(dao, bindingFlow(), writeBlock)
 
     suspend fun activeForTarget(targetId: String): List<OutboxRow> =
         dao.activeRowsForTarget(currentBinding(), targetId, ACTIVE_STATUS_VALUES)
 
-    internal suspend fun abandonDebtWrite(boundRequest: BoundLedgerRequest, row: OutboxRow): Boolean =
+    internal suspend fun abandonOriginalCommand(boundRequest: BoundLedgerRequest, row: OutboxRow): Boolean =
         withActiveBinding(boundRequest) { binding ->
-            require(row.type in DEBT_WRITE_TYPES)
-            dao.abandonDebtWrite(row.id, binding.ownerStorageKey, binding.ledgerId,
+            require(row.type in DEBT_WRITE_TYPES || row.type == PendingMutationType.CreateGoal)
+            dao.abandonOriginalCommand(row.id, binding.ownerStorageKey, binding.ledgerId,
                 row.status.wireValue, ISO.format(Instant.now(clock))) > 0
         }.also { changed -> if (changed) schedulePending() }
 

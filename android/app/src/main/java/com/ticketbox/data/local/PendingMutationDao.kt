@@ -54,6 +54,14 @@ interface PendingMutationDao {
         serverUrl: String, ownerKey: String, ledgerId: String, type: String, idempotencyKey: String,
     ): Flow<List<PendingMutationEntity>>
 
+    @Query(
+        "SELECT * FROM pending_mutations WHERE serverUrl = :serverUrl AND ownerKey = :ownerKey " +
+            "AND ledgerId = :ledgerId AND type = :type AND id = :originalId",
+    )
+    fun observeOriginalCommandById(
+        serverUrl: String, ownerKey: String, ledgerId: String, type: String, originalId: Long,
+    ): Flow<List<PendingMutationEntity>>
+
     @Transaction
     suspend fun deleteAndPublish(id: Long, ownerKey: String, ledgerId: String, status: String, publish: suspend () -> Unit): Boolean {
         val deleted = deleteIfStatus(id, ownerKey, ledgerId, status) > 0
@@ -426,16 +434,17 @@ interface PendingMutationDao {
         expectedStatus: String,
     ): Int
 
-    /** Debt-only local stop after the owner checks eligibility; a concurrent claim cannot be overwritten. */
+    /** Local stop after the command owner checks eligibility; a concurrent claim cannot be overwritten. */
     @Query(
         """
         UPDATE pending_mutations SET status = 'abandoned', completedAt = :stoppedAt
         WHERE id = :id AND ownerKey = :ownerKey AND ledgerId = :ledgerId
-          AND type IN ('record_debt_adjustment', 'record_debt_repayment', 'void_debt', 'void_debt_repayment') AND status = :expectedStatus
+          AND type IN ('record_debt_adjustment', 'record_debt_repayment', 'void_debt', 'void_debt_repayment', 'create_goal')
+          AND status = :expectedStatus
           AND status IN ('failed', 'conflict', 'pending')
         """,
     )
-    suspend fun abandonDebtWrite(
+    suspend fun abandonOriginalCommand(
         id: Long,
         ownerKey: String,
         ledgerId: String,

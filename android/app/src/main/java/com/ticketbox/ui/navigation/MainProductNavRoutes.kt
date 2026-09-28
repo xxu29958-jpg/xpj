@@ -6,6 +6,7 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import androidx.compose.ui.res.stringResource
+import androidx.compose.runtime.remember
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.R
 import com.ticketbox.domain.model.DebtListLens
@@ -74,7 +75,7 @@ internal fun NavGraphBuilder.addWorkspaceRoute(
                     onOpenInbox = { shellState.openPrimaryDomainRoot(PrimaryDomain.Inbox) },
                     onOpenBudget = { month -> navController.navigate(budgetRoute(month)) },
                     onOpenArrangement = { month -> navController.navigate(monthlyArrangementRoute(month)) },
-                    onOpenGoalCreation = { id -> navController.navigate(spendingGoalCreationRoute(id)) },
+                    onOpenGoalCreation = { original -> navController.navigate(goalCreationRoute(original)) },
                     onOpenGoalEdit = { id -> navController.navigate(spendingGoalEditRoute(id)) },
                     onOpenRuleSubmission = { id -> navController.navigate(categoryRuleSubmissionRoute(id)) },
                     onOpenIncomeSubmission = { id -> navController.navigate(incomePlanSubmissionRoute(id)) },
@@ -145,10 +146,14 @@ internal fun NavGraphBuilder.addObligationRoutes(
             BillSplitRoute(screenFactory = screenFactory, onBack = onBack,
                 onOpenExpense = runtime.navController::openExpense)
         }
-        composable(ProductSecondaryPage.DebtGoals.route) {
+        composable("${ProductSecondaryPage.DebtGoals.route}?create={create}",
+            arguments = listOf(navArgument("create") { type = NavType.StringType; nullable = true; defaultValue = null })) { entry ->
+            val creationOwner = remember(runtime.navController, entry) { runtime.navController.getBackStackEntry(MAIN_ROUTE) }
             DebtGoalRoute(
                 screenFactory = screenFactory,
                 onBack = onBack,
+                creationOwner = creationOwner,
+                originalCreationId = entry.arguments?.getString("create")?.toLongOrNull(),
             )
         }
         // 全账本往来二级页（W2-C）：ledger lens 的完整账本视图，标题带当前账本名。
@@ -205,7 +210,7 @@ private fun NavGraphBuilder.addObligationSyncRoute(dependencies: MainProductRout
                     onOpenInbox = { shellState.openPrimaryDomainRoot(PrimaryDomain.Inbox) },
                     onOpenBudget = { month -> navController.navigate(budgetRoute(month)) },
                     onOpenArrangement = { month -> navController.navigate(monthlyArrangementRoute(month)) },
-                    onOpenGoalCreation = { id -> navController.navigate(spendingGoalCreationRoute(id)) },
+                    onOpenGoalCreation = { original -> navController.navigate(goalCreationRoute(original)) },
                     onOpenGoalEdit = { id -> navController.navigate(spendingGoalEditRoute(id)) },
                     onOpenRuleSubmission = { id -> navController.navigate(categoryRuleSubmissionRoute(id)) },
                     onOpenIncomeSubmission = { id -> navController.navigate(incomePlanSubmissionRoute(id)) },

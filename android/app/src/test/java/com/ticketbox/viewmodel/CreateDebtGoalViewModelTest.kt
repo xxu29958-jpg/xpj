@@ -9,18 +9,10 @@ import com.ticketbox.data.repository.ReadSnapshot
 import com.ticketbox.data.repository.SnapshotAccessDenial
 import com.ticketbox.data.repository.DebtReadResourceDenial
 import com.ticketbox.data.repository.RepositoryException
-import com.ticketbox.data.repository.ReportsActions
-import com.ticketbox.domain.model.CsvExport
-import com.ticketbox.domain.model.DashboardCardUpdate
-import com.ticketbox.domain.model.DashboardCards
-import com.ticketbox.domain.model.DashboardSurface
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtBillSuggestion
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.GoalProgressState
-import com.ticketbox.domain.model.GoalUpdate
-import com.ticketbox.domain.model.ReportsOverview
-import com.ticketbox.domain.model.ReportsOverviewQuery
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
 import androidx.lifecycle.viewModelScope
@@ -59,7 +51,7 @@ class CreateDebtGoalViewModelTest {
         val original = debt("original", "open")
         val other = debt("other", "open")
         val debts = FakeCreateDebtActions(listResult = Result.success(listOf(original, other)))
-        val reports = FakeCreateReportsActions()
+        val reports = FakeCreateGoalEdits()
         val vm = CreateDebtGoalViewModel(reports, debts, FakeDebtWriteActions())
         vm.reload()
         advanceUntilIdle()
@@ -88,7 +80,7 @@ class CreateDebtGoalViewModelTest {
         for (cold in listOf(true, false)) {
             val other = debt("kept", "open").copy(homeCurrencyCode = "JPY", originalCurrencyCode = "JPY")
             val actions = FakeCreateDebtActions(listResult = Result.success(listOf(other.copy(publicId = "gone"), other)))
-            val reports = FakeCreateReportsActions()
+            val reports = FakeCreateGoalEdits()
             val gate = CompletableDeferred<Unit>()
             if (cold) actions.listGate = gate
             val vm = CreateDebtGoalViewModel(reports, actions, FakeDebtWriteActions())
@@ -132,7 +124,7 @@ class CreateDebtGoalViewModelTest {
         val other = debt("other", "open")
         val debts = FakeCreateDebtActions(listResult = Result.success(listOf(original, other)))
         debts.fromCache = true
-        val reports = FakeCreateReportsActions()
+        val reports = FakeCreateGoalEdits()
         val vm = CreateDebtGoalViewModel(reports, debts, FakeDebtWriteActions())
         vm.reload()
         advanceUntilIdle()
@@ -183,7 +175,7 @@ class CreateDebtGoalViewModelTest {
                 listOf(debt("open-1", "open"), debt("cleared-1", "cleared"), debt("voided-1", "voided")),
             ),
         )
-        val viewModel = CreateDebtGoalViewModel(FakeCreateReportsActions(canModify = false), debts, writes = FakeDebtWriteActions())
+        val viewModel = CreateDebtGoalViewModel(FakeCreateGoalEdits(canModify = false), debts, writes = FakeDebtWriteActions())
         viewModel.reload()
         advanceUntilIdle()
 
@@ -196,7 +188,7 @@ class CreateDebtGoalViewModelTest {
     @Test
     fun candidateRefreshRetainsDraftAfterFailureAndRecovery() = runTest(dispatcher) {
         val debts = FakeCreateDebtActions(listResult = Result.failure(RuntimeException("offline")))
-        val reports = FakeCreateReportsActions()
+        val reports = FakeCreateGoalEdits()
         val writes = FakeDebtWriteActions()
         val viewModel = CreateDebtGoalViewModel(reports, debts, writes)
         viewModel.reload()
@@ -247,7 +239,7 @@ class CreateDebtGoalViewModelTest {
 
     @Test
     fun submitWithBlankNameSetsValidationErrorWithoutApiCall() = runTest(dispatcher) {
-        val reports = FakeCreateReportsActions()
+        val reports = FakeCreateGoalEdits()
         val viewModel = CreateDebtGoalViewModel(reports, FakeCreateDebtActions(
             listResult = Result.success(listOf(debt("open-1", "open"))),
         ), writes = FakeDebtWriteActions())
@@ -265,7 +257,7 @@ class CreateDebtGoalViewModelTest {
 
     @Test
     fun submitWithNoSelectionSetsValidationErrorWithoutApiCall() = runTest(dispatcher) {
-        val reports = FakeCreateReportsActions()
+        val reports = FakeCreateGoalEdits()
         val viewModel = CreateDebtGoalViewModel(reports, FakeCreateDebtActions(
             listResult = Result.success(listOf(debt("open-1", "open"))),
         ), writes = FakeDebtWriteActions())
@@ -282,7 +274,7 @@ class CreateDebtGoalViewModelTest {
 
     @Test
     fun submitSuccessSetsCreatedSignalAndPassesSelectedIdsInCandidateOrder() = runTest(dispatcher) {
-        val reports = FakeCreateReportsActions(createResult = Result.success(debtGoal("new-goal")))
+        val reports = FakeCreateGoalEdits(createResult = Result.success(debtGoal("new-goal")))
         val debts = FakeCreateDebtActions(
             listResult = Result.success(
                 listOf(debt("open-a", "open"), debt("open-b", "open"), debt("open-c", "open")),
@@ -329,7 +321,7 @@ class CreateDebtGoalViewModelTest {
 
     @Test
     fun submitFailureSetsFormErrorAndClearsSubmitting() = runTest(dispatcher) {
-        val reports = FakeCreateReportsActions(createResult = Result.failure(RuntimeException("conflict")))
+        val reports = FakeCreateGoalEdits(createResult = Result.failure(RuntimeException("conflict")))
         val viewModel = CreateDebtGoalViewModel(reports, FakeCreateDebtActions(
             listResult = Result.success(listOf(debt("open-1", "open"))),
         ), writes = FakeDebtWriteActions())
@@ -349,7 +341,7 @@ class CreateDebtGoalViewModelTest {
 
     @Test
     fun consumeCreatedClearsTheOneShotSignal() = runTest(dispatcher) {
-        val reports = FakeCreateReportsActions(createResult = Result.success(debtGoal("new-goal")))
+        val reports = FakeCreateGoalEdits(createResult = Result.success(debtGoal("new-goal")))
         val viewModel = CreateDebtGoalViewModel(reports, FakeCreateDebtActions(
             listResult = Result.success(listOf(debt("open-1", "open"))),
         ), writes = FakeDebtWriteActions())
@@ -382,7 +374,7 @@ class CreateDebtGoalViewModelTest {
     // ── fixtures ─────────────────────────────────────────────────────────────
     private fun createViewModel(candidates: List<Debt>): CreateDebtGoalViewModel =
         CreateDebtGoalViewModel(
-            FakeCreateReportsActions(),
+            FakeCreateGoalEdits(),
             FakeCreateDebtActions(listResult = Result.success(candidates)),
             writes = FakeDebtWriteActions(),
         )
@@ -430,9 +422,9 @@ class CreateDebtGoalViewModelTest {
     )
 }
 
-private data class CreateDebtGoalCall(val name: String, val debtPublicIds: List<String>)
+internal data class CreateDebtGoalCall(val name: String, val debtPublicIds: List<String>)
 
-private class FakeCreateDebtActions(
+internal class FakeCreateDebtActions(
     private val canModify: Boolean = true,
     var listResult: Result<List<Debt>> = Result.success(emptyList()),
 ) : DebtActions {
@@ -466,73 +458,4 @@ private class FakeCreateDebtActions(
         expectedRowVersion: Long,
         debtKind: String,
     ): Result<Debt> = Result.failure(UnsupportedOperationException())
-}
-
-private class FakeCreateReportsActions(
-    private val canModify: Boolean = true,
-    private val createResult: Result<Goal> = Result.failure(UnsupportedOperationException()),
-) : ReportsActions {
-    val createDebtGoalCalls = mutableListOf<CreateDebtGoalCall>()
-    val createDebtGoalBindings = mutableListOf<com.ticketbox.data.repository.LogicalSessionBinding>()
-
-    override fun canModifyLedger(): Boolean = canModify
-
-    override suspend fun createDebtGoal(name: String, debtPublicIds: List<String>, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding): Result<Goal> {
-        createDebtGoalCalls += CreateDebtGoalCall(name, debtPublicIds)
-        createDebtGoalBindings += expectedBinding
-        return createResult
-    }
-
-    // ── unused ReportsActions surface ────────────────────────────────────────
-    override suspend fun reportsOverview(query: ReportsOverviewQuery, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?): Result<ReportsOverview> =
-        Result.failure(UnsupportedOperationException())
-
-    override suspend fun exportReportsOverviewCsv(query: ReportsOverviewQuery, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?): Result<CsvExport> =
-        Result.failure(UnsupportedOperationException())
-
-    override suspend fun goals(month: String?, includeArchived: Boolean, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?, timezone: String): Result<ReadSnapshot<List<Goal>>> =
-        Result.success(ReadSnapshot(emptyList(), "2026-09-09T00:00:00Z", false))
-
-    override suspend fun goalHistory(publicId: String, beforeVersion: Long?,
-        binding: com.ticketbox.data.repository.LogicalSessionBinding):
-        Result<ReadSnapshot<com.ticketbox.domain.model.GoalHistoryPage>> = error("Unused spending goal history")
-    override suspend fun goal(publicId: String, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?, timezone: String): Result<ReadSnapshot<Goal>> =
-        Result.failure(UnsupportedOperationException())
-
-    override suspend fun archiveGoal(publicId: String, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding): Result<Goal> =
-        Result.failure(UnsupportedOperationException())
-
-    override suspend fun debtGoals(includeArchived: Boolean, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?, timezone: String): Result<ReadSnapshot<List<Goal>>> =
-        Result.success(ReadSnapshot(emptyList(), "2026-09-09T00:00:00Z", false))
-
-    override suspend fun replaceDebtLinks(
-        publicId: String,
-        expectedRowVersion: Long,
-        debtPublicIds: List<String>,
-    ): Result<Goal> = Result.failure(UnsupportedOperationException())
-
-    override suspend fun acknowledgeDebtIntegrityReview(
-        publicId: String,
-        expectedRowVersion: Long,
-    ): Result<Goal> = Result.failure(UnsupportedOperationException())
-
-    override suspend fun setDebtGoalTargetDate(
-        publicId: String,
-        expectedRowVersion: Long,
-        targetDate: String?,
-    ): Result<Goal> = Result.failure(UnsupportedOperationException())
-
-    override fun dashboardAccess(): com.ticketbox.data.repository.LedgerAccessContext? = null
-
-    override suspend fun dashboardCards(
-        binding: com.ticketbox.data.repository.LogicalSessionBinding,
-        surface: DashboardSurface,
-    ): Result<DashboardCards> =
-        Result.failure(UnsupportedOperationException())
-
-    override suspend fun updateDashboardCards(
-        binding: com.ticketbox.data.repository.LogicalSessionBinding,
-        updates: List<DashboardCardUpdate>,
-        surface: DashboardSurface,
-    ): Result<DashboardCards> = Result.failure(UnsupportedOperationException())
 }

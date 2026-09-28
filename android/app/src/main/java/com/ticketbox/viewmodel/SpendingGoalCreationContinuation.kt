@@ -3,6 +3,7 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.PendingGoalCreation
+import com.ticketbox.data.repository.create
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.newTaskMonth
 import com.ticketbox.data.repository.originalCreation
@@ -62,7 +63,8 @@ internal fun CreateSpendingGoalViewModel.observeGoalCreations() {
     val original = task ?: return
     val revision = generation
     observationJob = viewModelScope.launch {
-        edits.observeCreations(original.binding, original.creationKey.takeIf { original.viewingOriginalId == null }).catch { error ->
+        edits.observeCreations(original.binding, original.creationKey.takeIf { original.viewingOriginalId == null },
+            originalId = original.viewingOriginalId).catch { error ->
             if (isCurrentGoalTask(original) && generation == revision) settleGoalFailure(original, error, SpendingGoalFailureKind.Lookup)
         }.collect { rows ->
             if (!isCurrentGoalTask(original) || generation != revision) return@collect
@@ -154,7 +156,7 @@ internal fun CreateSpendingGoalViewModel.settleGoalFailure(original: SpendingGoa
 }
 
 private fun CreateSpendingGoalUiState.withGoalOriginal(original: PendingGoalCreation): CreateSpendingGoalUiState {
-    val request = original.request?.takeIf { it.isSupportedGoalCreation(original.row) &&
+    val request = original.request?.takeIf { it.goalType == "spending_limit" && it.isSupportedGoalCreation(original.row) &&
         original.row.status !in setOf(PendingMutationStatus.Unknown, PendingMutationStatus.Abandoned) }
     val currency = CurrencyCode.fromStorageKeyOrNull(request?.homeCurrencyCode)
     return copy(pending = original, originalSubmissionId = original.row.id, monthReady = true,
@@ -162,5 +164,5 @@ private fun CreateSpendingGoalUiState.withGoalOriginal(original: PendingGoalCrea
         ledgerCurrency = if (request == null) ledgerCurrency else currency,
         targetAmountInput = if (request == null) targetAmountInput else if (currency != null) formatAmountInput(request.targetAmountCents, currency)
             else request.targetAmountCents?.toString().orEmpty(),
-        createdPublicId = original.confirmed?.publicId?.takeIf { original.isDone })
+        createdPublicId = original.confirmed?.takeIf { original.isDone && it.isSpendingLimit }?.publicId)
 }

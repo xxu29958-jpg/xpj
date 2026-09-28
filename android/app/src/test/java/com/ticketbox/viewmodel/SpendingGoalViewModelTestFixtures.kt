@@ -133,7 +133,7 @@ internal class RecordingGoalEdits : com.ticketbox.data.repository.GoalEditAction
     var saveGate: (suspend () -> Unit)? = null
     var saveResult = Result.success(1L)
     val saves = mutableListOf<GoalUpdate>()
-    val createCalls = mutableListOf<com.ticketbox.domain.model.GoalDraft>()
+    val createCalls = mutableListOf<com.ticketbox.data.remote.dto.GoalCreateRequestDto>()
     val createKeys = mutableListOf<String>()
     var createGate: (suspend () -> Unit)? = null
     var createFailure: Throwable? = null
@@ -143,24 +143,27 @@ internal class RecordingGoalEdits : com.ticketbox.data.repository.GoalEditAction
     private val creationOrigins = mutableMapOf<Long, com.ticketbox.data.repository.LogicalSessionBinding>()
     val creations = kotlinx.coroutines.flow.MutableStateFlow<List<com.ticketbox.data.repository.PendingGoalCreation>>(emptyList())
     override fun describeCreation(row: com.ticketbox.data.repository.OutboxRow) = creations.value.firstOrNull { it.row.id == row.id }
-    override fun observeCreations(binding: com.ticketbox.data.repository.LogicalSessionBinding, originalKey: String?) = flow {
+    override fun observeCreations(binding: com.ticketbox.data.repository.LogicalSessionBinding, originalKey: String?, goalType: String,
+        originalId: Long?) = flow {
         if (originalKey != null) {
             originalLookupGate?.invoke()
             originalLookupFailure?.let { throw it }
         }
         emitAll(creations.map { rows -> rows.filter {
-            creationOrigins[it.row.id] == binding && (originalKey == null || it.row.idempotencyKey == originalKey)
+            creationOrigins[it.row.id] == binding && when {
+                originalKey != null -> it.row.idempotencyKey == originalKey
+                originalId != null -> it.row.id == originalId
+                else -> it.request?.goalType == goalType
+            }
         } })
     }
     override suspend fun create(binding: com.ticketbox.data.repository.LogicalSessionBinding,
-        draft: com.ticketbox.domain.model.GoalDraft, creationKey: String): Result<Long> {
-        createCalls += draft
+        request: com.ticketbox.data.remote.dto.GoalCreateRequestDto, creationKey: String): Result<Long> {
+        createCalls += request
         createKeys += creationKey
         createGate?.invoke()
         if (access.value?.binding != binding) return Result.failure(IllegalStateException("Binding changed"))
         createFailure?.let { return Result.failure(it) }
-        val request = com.ticketbox.data.remote.dto.GoalCreateRequestDto(name = draft.name, month = draft.month,
-            category = draft.category, targetAmountCents = draft.targetAmountCents, homeCurrencyCode = draft.homeCurrencyCode)
         val original = originalCreation(binding, creationKey).getOrThrow()
         if (original != null) return if (original.request == request) Result.success(original.row.id)
             else Result.failure(IllegalArgumentException("Original intent changed"))

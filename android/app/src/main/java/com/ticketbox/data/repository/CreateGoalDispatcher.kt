@@ -9,7 +9,7 @@ import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import retrofit2.HttpException
 
-/** The only spending-goal POST writer; an unverified response retains the original intent. */
+/** The only queued goal POST writer; an unverified response retains the original intent. */
 class CreateGoalDispatcher(
     private val apiProvider: (OutboxRow) -> ApiService,
     private val payloadAdapter: JsonAdapter<GoalCreateRequestDto>,
@@ -20,7 +20,7 @@ class CreateGoalDispatcher(
 
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
         val request = payloadAdapter.readGoalCreation(row)?.takeIf { it.isSupportedGoalCreation(row) }
-            ?: return DispatchResult.Failure("原创建缺少可确认的金额或币种，已保留记录，请核对。")
+            ?: return DispatchResult.Failure("原创建内容无法确认，已保留记录，请核对。")
         return try {
             val receipt = apiProvider(row).createGoal(request, timezone = null, idempotencyKey = row.idempotencyKey)
             if (request.acceptsGoalCreationReceipt(row, receipt)) {

@@ -328,9 +328,6 @@ private class RecordingReportsActions : ReportsActions {
     override suspend fun goals(month: String?, includeArchived: Boolean, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?, timezone: String): Result<ReadSnapshot<List<Goal>>> =
         (goalsResponder?.invoke() ?: Result.success(emptyList())).map { ReadSnapshot(it, "2026-09-09T00:00:00Z", goalsFromCache) }
 
-    override suspend fun createDebtGoal(name: String, debtPublicIds: List<String>, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding): Result<Goal> =
-        Result.failure(UnsupportedOperationException())
-
     override suspend fun goalHistory(publicId: String, beforeVersion: Long?,
         binding: com.ticketbox.data.repository.LogicalSessionBinding):
         Result<ReadSnapshot<com.ticketbox.domain.model.GoalHistoryPage>> = error("Unused spending goal history")

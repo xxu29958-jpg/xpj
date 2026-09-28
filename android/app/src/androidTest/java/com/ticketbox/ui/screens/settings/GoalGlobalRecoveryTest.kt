@@ -33,6 +33,7 @@ class GoalGlobalRecoveryTest {
     @get:Rule val compose = createComposeRule()
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
     private var opened: String? = null
+    private var openedType: String? = null
     private var dropped: OutboxRow? = null
 
     @Test fun creationShowsOriginalYenAndOpensItsExactLocalSubmission() {
@@ -56,7 +57,19 @@ class GoalGlobalRecoveryTest {
         compose.runOnIdle { assertEquals("goal:original-goal", opened) }
     }
 
-    private fun show(create: Boolean, currency: String? = "JPY") {
+    @Test fun debtCreationKeepsTheOriginalSelectionWithoutInventingAMoneyTarget() {
+        show(create = true, debt = true)
+        compose.onNodeWithText("清偿原欠款").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.debt_goal_create_selected_count, 1)).assertIsDisplayed()
+        compose.onNodeWithText("JPY", substring = true).assertDoesNotExist()
+        compose.onNodeWithText(context.getString(R.string.goal_creation_open)).performScrollTo().performClick()
+        compose.runOnIdle {
+            assertEquals("creation:43", opened)
+            assertEquals("debt_repayment", openedType)
+        }
+    }
+
+    private fun show(create: Boolean, currency: String? = "JPY", debt: Boolean = false) {
         val binding = LogicalSessionBinding("https://example.test", "owner", "owner", "session", "binding")
         val row = OutboxRow(43, binding.serverUrl, binding.ledgerId, binding.ownerKey,
             if (create) PendingMutationType.CreateGoal else PendingMutationType.UpdateGoal,
@@ -66,13 +79,14 @@ class GoalGlobalRecoveryTest {
             correctionObservation = ExpenseCorrectionObservation(LedgerAccessContext(binding, true), emptyList()),
             status = OutboxStatus(0, emptyList(), listOf(row)),
             goalCreations = if (create) mapOf(row.id to PendingGoalCreation(row,
-                GoalCreateRequestDto("交通", month = "2026-09", targetAmountCents = 1200, homeCurrencyCode = currency), null)) else emptyMap(),
+                if (debt) GoalCreateRequestDto("清偿原欠款", goalType = "debt_repayment", debtPublicIds = listOf("original-debt"))
+                else GoalCreateRequestDto("交通", month = "2026-09", targetAmountCents = 1200, homeCurrencyCode = currency), null)) else emptyMap(),
             goalEdits = if (create) emptyMap() else mapOf(row.id to PendingGoalEdit(row,
                 GoalUpdateRequestDto(2, "交通", "2026-09", targetAmountCents = 1200, homeCurrencyCode = currency), null)))
         compose.setContent { TicketboxTheme(skin = AppSkin.Default) {
             CompositionLocalProvider(LocalCurrencyDisplay provides CurrencyDisplay(CurrencyCode.CNY)) {
                 SyncStatusScreenContent(state, SyncStatusActions(onRefreshAcceptedResult = {}, onRepairCorrectionRate = { _, _ -> }, onOpenRateSubmission = {}, onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = { opened = "goal:$it" },
-                    onOpenGoalCreation = { opened = "creation:$it" }, onOpenRecurring = {}, onOpenBudget = {},
+                    onOpenGoalCreation = { opened = "creation:${it.row.id}"; openedType = it.request?.goalType }, onOpenRecurring = {}, onOpenBudget = {},
                     onOpenExpense = {}, onKeepMine = { error("Unexpected write") }, onDropMine = { dropped = it },
                     onRetry = { error("Unexpected retry") }, onDropFailed = { dropped = it }, onClearQuarantined = {}), {}, {})
             }

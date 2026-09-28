@@ -4,13 +4,11 @@ import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.DebtGoalIntegrityReviewRequestDto
 import com.ticketbox.data.remote.dto.DebtGoalLinksReplaceRequestDto
 import com.ticketbox.data.remote.dto.DebtGoalTargetDateRequestDto
-import com.ticketbox.data.remote.dto.GoalCreateRequestDto
 import com.ticketbox.data.remote.dto.GoalDto
 import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.DashboardCardUpdate
 import com.ticketbox.domain.model.DashboardCards
 import com.ticketbox.domain.model.DashboardSurface
-import com.ticketbox.domain.model.GOAL_TYPE_DEBT_REPAYMENT
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.GoalUpdate
 import com.ticketbox.domain.model.ReportsOverview
@@ -54,7 +52,6 @@ interface ReportsActions : DashboardCardsActions {
      * rules (≥1 debt id, no month/target/category) — the repository validates the
      * shape it can (non-blank name, ≥1 id) so a bad form fails fast without a call.
      */
-    suspend fun createDebtGoal(name: String, debtPublicIds: List<String>, expectedBinding: LogicalSessionBinding): Result<Goal>
     suspend fun goal(publicId: String, expectedBinding: LogicalSessionBinding? = null,
         timezone: String = TimeZone.getDefault().id): Result<ReadSnapshot<Goal>>
     suspend fun archiveGoal(publicId: String, expectedBinding: LogicalSessionBinding): Result<Goal>
@@ -155,29 +152,6 @@ class ReportsRepository(
 
     override suspend fun goals(month: String?, includeArchived: Boolean, expectedBinding: LogicalSessionBinding?,
         timezone: String): Result<ReadSnapshot<List<Goal>>> = goalQueries.goals(month, includeArchived, expectedBinding, timezone)
-
-    override suspend fun createDebtGoal(name: String, debtPublicIds: List<String>, expectedBinding: LogicalSessionBinding): Result<Goal> {
-        if (!canModifyLedger()) {
-            return Result.failure(RepositoryException("当前角色为只读，无法修改账本。"))
-        }
-        val cleanName = name.cleanGoalName()
-            .getOrElse { return Result.failure(it) }
-        val cleanIds = debtPublicIds.cleanDebtPublicIds()
-            .getOrElse { return Result.failure(it) }
-        return goalCommand(expectedBinding) { api ->
-            // Debt-clearance creation retains its nonmonetary, keyless request shape.
-            // month/target/category omitted (Moshi drops nulls — the backend 422s a debt
-            // goal carrying them). Built inline like replaceDebtLinks' request DTO.
-            api.createGoal(
-                request = GoalCreateRequestDto(
-                    name = cleanName,
-                    goalType = GOAL_TYPE_DEBT_REPAYMENT,
-                    debtPublicIds = cleanIds,
-                ),
-                timezone = currentTimezoneId(),
-            )
-        }
-    }
 
     override suspend fun goal(publicId: String, expectedBinding: LogicalSessionBinding?, timezone: String): Result<ReadSnapshot<Goal>> =
         goalQueries.goal(publicId, expectedBinding, timezone)
@@ -339,7 +313,6 @@ class ReportsRepository(
 
 private val REPORTS_MONTH_PATTERN = Regex("^\\d{4}-\\d{2}$")
 
-private const val GOAL_NAME_MAX = 80
 
 private fun List<String>.cleanDebtPublicIds(): Result<List<String>> {
     return runCatching {
@@ -347,15 +320,6 @@ private fun List<String>.cleanDebtPublicIds(): Result<List<String>> {
         // Debt isn't sent twice; the server also dedupes, but a clean request is tidier.
         val clean = map { it.trim() }.filter { it.isNotBlank() }.distinct()
         require(clean.isNotEmpty()) { "请至少关联一笔欠款。" }
-        clean
-    }.mapError()
-}
-
-private fun String.cleanGoalName(): Result<String> {
-    return runCatching {
-        val clean = trim()
-        require(clean.isNotBlank()) { "请输入目标名称。" }
-        require(clean.length <= GOAL_NAME_MAX) { "目标名称太长。" }
         clean
     }.mapError()
 }
