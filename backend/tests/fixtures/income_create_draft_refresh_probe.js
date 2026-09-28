@@ -56,7 +56,7 @@
     frame.src = '/web/income-plans?ledger_id=income-ledger';
     document.body.append(frame);
     await opened;
-    await pause(100);
+    await until(() => !field('label').readOnly && !field('source_type').disabled && !submit(frame).disabled);
     stage = 'fill original income form';
     for (const [name, value] of Object.entries({
       label: '九月接单收入草稿', amount_yuan: ' 001200 ', source_type: 'freelance',

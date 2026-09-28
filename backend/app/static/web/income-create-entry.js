@@ -29,11 +29,12 @@
   }
   function notice(message) { status.hidden = false; status.textContent = message; }
   function controls() {
+    const editing = !blocked && phase === "editing" && (held || onlineOnly);
     names.forEach(name => {
       const input = field(name);
       if (!input) return;
-      if (input.tagName === "SELECT") input.disabled = blocked || phase !== "editing";
-      else input.readOnly = blocked || phase !== "editing";
+      if (input.tagName === "SELECT") input.disabled = !editing;
+      else input.readOnly = !editing;
     });
     submit.disabled = blocked || busy || accepted || (!held && !onlineOnly);
     submit.textContent = phase === "editing" ? nativeLabel : "核实原收入计划";
@@ -45,7 +46,11 @@
     form.dataset.incomeDraftPhase = phase;
   }
   function stop(message) { blocked = true; controls(); notice(message); }
-  function show(saved) {
+  function restore(record) {
+    if (!store.matches(record.scope, scope, false)) {
+      stop("这份原稿属于其他账本或账户，请回到原账本继续。"); return false;
+    }
+    const saved = record.values;
     names.forEach(name => {
       let input = field(name);
       if (!input) {
@@ -70,6 +75,12 @@
       "预计金额（" + (saved.home_currency_code || "币种待确认") + "）";
     form.querySelector("[data-income-intent]").textContent =
       "本次每月计划从 " + (saved.intent_month || "待确认月份") + " 生效。失败重试保留原月份和金额。";
+    phase = record.phase; pointTo();
+    if (!store.matches(record.scope, scope)) {
+      stop("这是原浏览器身份的收入计划，输入仍保留；不会转移到当前身份提交。"); return false;
+    }
+    field("draft_scope").value = JSON.stringify(record.scope);
+    return true;
   }
   function pointTo() { window.history.replaceState(null, "", "#income-create-" + ref); }
   function renderShelf() {
@@ -190,10 +201,7 @@
         held = true;
         field("idempotency_key").value = ref;
         if (record) {
-          if (!store.matches(record.scope, scope, false)) { stop("这份原稿属于其他账本或账户，请回到原账本继续。"); return; }
-          show(record.values); phase = record.phase; pointTo();
-          if (!store.matches(record.scope, scope)) { stop("这是原浏览器身份的收入计划，输入仍保留；不会转移到当前身份提交。"); return; }
-          field("draft_scope").value = JSON.stringify(record.scope);
+          if (!restore(record)) return;
         } else if (nativeResult === "blocked") {
           phase = "blocked";
         }
