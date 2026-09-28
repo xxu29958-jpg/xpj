@@ -75,6 +75,10 @@ class IncomePlanRoomContinuityTest {
         val original = fixture.stored().single()
         assertEquals(0, fixture.network.calls.size)
         assertEquals("income-ledger", original["ledgerId"])
+        // This case requires no confirmed GET after the lost acknowledgement.
+        // Block reads before dispatch so the save-triggered refresh cannot
+        // legitimately reconcile the original before the offline reopen.
+        fixture.network.failReads = true
         assertEquals(1, runBlocking { fixture.drain(maxAttempts = 1) }.failures)
         assertEquals(1, fixture.network.results.size)
         reopenInOctober(original, requireNotNull(beforeAcceptance))

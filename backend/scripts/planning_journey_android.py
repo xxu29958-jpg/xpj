@@ -140,10 +140,15 @@ class PlanningAndroid:
         self.click("收入计划")
         self.reveal_any("联动工资")
 
-    def open_goal(self):
+    def open_goals(self):
         self.plan_home()
         self.click("消费目标")
+        self.reveal_any("联动消费提醒")
+
+    def open_goal(self):
+        self.open_goals()
         self.click("联动消费提醒")
+        wait_for(lambda: self.has("编辑目标"), "The native goal detail did not open")
 
     def connection(self, port: int, *, online: bool):
         if online:

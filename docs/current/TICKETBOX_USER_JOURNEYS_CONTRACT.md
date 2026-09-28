@@ -288,8 +288,8 @@ existing Goal command supplies the first receipt, even after later changes or
 archive. Only a matching bound ACK retires the original. Explicit review prepares
 a separate proposal without writing or deleting unresolved work. The native
 form remains usable. PR #461 supplies this consumer and retires the former
-income-only script while retaining its stored record format; cloud qualification
-is pending. The integrated income/goal journey must keep predictions and spending
+income-only script while retaining its stored record format; its source and
+independent main qualification have passed. The integrated income/goal journey must keep predictions and spending
 reminders distinct from confirmed financial facts and budget configuration.
 
 Creation admission errors remain attached to the same raw draft through reopening and

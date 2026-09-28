@@ -2,8 +2,10 @@ package com.ticketbox.ui.screens.plan
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -13,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.GoalProgressState
@@ -102,14 +105,14 @@ private fun SpendingGoalRowHeader(goal: Goal) {
 
 @Composable
 private fun SpendingGoalAmountSummary(goal: Goal) {
-    Row(
+    FlowRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
         SpendingGoalAmountCell(
             label = stringResource(R.string.spending_goal_spent_label),
             value = spendingGoalAmountText(goal.spentAmountCents, goal.homeCurrencyCode),
-            modifier = Modifier.weight(1f),
         )
         SpendingGoalAmountCell(
             label = if (goal.isOverLimit) {
@@ -118,12 +121,10 @@ private fun SpendingGoalAmountSummary(goal: Goal) {
                 stringResource(R.string.spending_goal_remaining_label)
             },
             value = spendingGoalAmountText(goal.remainingAmountCents?.let { kotlin.math.abs(it) }, goal.homeCurrencyCode),
-            modifier = Modifier.weight(1f),
         )
         SpendingGoalAmountCell(
             label = stringResource(R.string.spending_goal_limit_label),
             value = spendingGoalAmountText(goal.targetAmountCents, goal.homeCurrencyCode),
-            modifier = Modifier.weight(1f),
         )
     }
 }
@@ -132,7 +133,7 @@ private fun SpendingGoalAmountSummary(goal: Goal) {
 private fun SpendingGoalAmountCell(
     label: String,
     value: String,
-    modifier: Modifier = Modifier,
+    modifier: Modifier = Modifier.widthIn(min = 128.dp),
 ) {
     Column(
         modifier = modifier,
@@ -142,16 +143,12 @@ private fun SpendingGoalAmountCell(
             text = label,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelSmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
         )
         Text(
             text = value,
             color = MaterialTheme.colorScheme.onSurface,
             style = MaterialTheme.typography.labelLarge.tabularNum(),
             fontWeight = FontWeight.Medium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
         )
     }
 }

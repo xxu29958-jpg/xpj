@@ -101,6 +101,10 @@ def _web_appearance(page, evidence, month):
                 page.goto(BASE_URL + path)
                 assert page.locator("html").get_attribute("data-theme") == theme
                 _web_capture(page, evidence, f"{name}-{width}-{theme}")
+                if width == 390:
+                    page.get_by_role("link", name="修改记录", exact=True).click()
+                    assert ("5000.00" if name == "income" else "2000.00") in page.inner_text("main")
+                    _web_capture(page, evidence, f"{name}-history-{width}-{theme}")
 
 
 def _journey(page, native: PlanningAndroid, fixture, evidence: Path):
@@ -142,7 +146,9 @@ def _journey(page, native: PlanningAndroid, fixture, evidence: Path):
     native.plan_home()
     native.click("消费目标")
     wait_for(lambda: native.has("联动消费提醒"), "The native goal list did not read the Web-created target")
+    native.capture("goal-list-after-web-edit")
     native.click("联动消费提醒")
+    wait_for(lambda: native.has("编辑目标"), "The native goal detail did not open after the Web edit")
     wait_for(lambda: native.has("2,200") or native.has("2200"), "The native detail did not show the Web-edited amount")
     native.capture("goal-after-web-edit")
     native.click("定义历史")

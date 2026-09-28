@@ -217,5 +217,7 @@ class PlanningRecovery:
         self.native.click("玄夜")
         self.native.open_income()
         self.native.capture("income-midnight")
+        self.native.open_goals()
+        self.native.capture("goal-list-midnight")
         self.native.open_goal()
         self.native.capture("goal-midnight")
