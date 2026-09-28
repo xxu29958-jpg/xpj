@@ -4,7 +4,7 @@ from calendar import monthrange
 from dataclasses import dataclass
 from datetime import date
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import func, or_, update
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -31,6 +31,7 @@ from app.services.recurring_history_service import (
     lock_recurring_item,
     record_recurring_item_revision,
 )
+from app.services.recurring_payment_query import eligible_payment_query
 from app.services.spending_contract_service import (
     accounting_zone,
     calendar_month_bounds,
@@ -197,11 +198,8 @@ def _recurring_observation_groups(
     current_entries: dict[str, list[tuple[date, int]]] = {key: [] for key in merchant_keys}
     unavailable: set[str] = set()
     expenses = db.scalars(
-        select(Expense)
-        .where(Expense.tenant_id == tenant_id)
-        .where(Expense.status == "confirmed")
+        eligible_payment_query(tenant_ids=[tenant_id])
         .where(Expense.merchant.is_not(None))
-        .where(Expense.amount_cents.is_not(None))
         .where(
             or_(
                 Expense.merchant.in_(merchant_names),

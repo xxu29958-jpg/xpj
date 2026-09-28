@@ -477,6 +477,60 @@ def test_recurring_items_mark_current_month_amount_anomaly(client: TestClient, *
     assert current["last_amount_cents"] == 20000
 
 
+@pytest.mark.parametrize("kind", ["reversal", "refund"])
+@pytest.mark.parametrize("payment_month", ["2026-04", "2026-05"])
+def test_recurring_amount_observations_follow_reversal_and_void_without_changing_plan(
+    client: TestClient, *, identity, kind: str, payment_month: str,
+) -> None:
+    formal = _confirm_candidate(client, identity=identity)
+    recorded = client.post("/api/expenses/manual", headers=identity.app_headers, json={
+        "client_ref": str(uuid4()), "home_currency_code": "CNY", "amount_cents": 28000,
+        "merchant": "ChatGPT Plus", "category": "AI订阅", "expense_time": f"{payment_month}-13T12:00:00Z",
+    })
+    assert recorded.status_code == 200, recorded.text
+    original = recorded.json()
+    projection = ("anomaly_status", "current_month_amount_cents", "historical_average_amount_cents", "amount_delta_percent")
+
+    def observation() -> dict:
+        response = client.get("/api/recurring/items?month=2026-05&timezone=UTC", headers=identity.app_headers)
+        assert response.status_code == 200, response.text
+        current, = response.json()["items"]
+        for field in ("public_id", "merchant", "home_currency_code", "baseline_amount_cents", "last_amount_cents",
+                      "occurrence_count", "next_expected_date", "status", "source", "row_version"):
+            assert current[field] == formal[field], field
+        return {field: current[field] for field in projection}
+
+    before = observation()
+    if payment_month == "2026-05":
+        assert before == {"anomaly_status": "higher_than_average", "current_month_amount_cents": 28000,
+                          "historical_average_amount_cents": 20000, "amount_delta_percent": 40}
+    else:
+        assert before["current_month_amount_cents"] == 20000
+        assert before["historical_average_amount_cents"] > 20000
+    payload = {"kind": kind, "accounting_date": f"{payment_month}-14", "reason": "核对这次付款",
+               "expected_row_version": original["row_version"]}
+    if kind == "refund":
+        payload["original_amount_minor"] = 28000
+    offset = client.post(f"/api/expenses/{original['id']}/offsets",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())}, json=payload)
+    assert offset.status_code == 201, offset.text
+    bundle = offset.json()
+    assert bundle["root"]["status"] == "confirmed"
+    assert bundle["root"]["amount_cents"] == 28000
+    assert bundle["financial_summary"]["lineage_home_net_cents"] == 0
+    expected = {"anomaly_status": "none", "current_month_amount_cents": 20000,
+                "historical_average_amount_cents": 20000, "amount_delta_percent": 0} if kind == "reversal" else before
+    assert observation() == expected
+    fact, = bundle["active_offsets"]
+    restored = client.post(f"/api/expenses/{original['id']}/offsets/{fact['public_id']}/voids",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())}, json={
+            "void_reason": "核对后撤销更正", "expected_row_version": fact["row_version"],
+        })
+    assert restored.status_code == 201, restored.text
+    assert restored.json()["financial_summary"]["lineage_home_net_cents"] == 28000
+    assert observation() == before
+
+
 def test_recurring_anomaly_ignores_unrelated_same_merchant_large_purchase(client: TestClient, *, identity) -> None:
     item = _confirm_candidate(client, identity=identity)
     one_off_purchase = datetime(2026, 5, 13, 12, 0, tzinfo=UTC)
