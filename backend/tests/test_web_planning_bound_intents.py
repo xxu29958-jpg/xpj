@@ -41,7 +41,7 @@ def _facts():
             [Budget, BudgetCategory, BudgetRevision, MonthlyArrangement, MonthlyArrangementRevision, RecurringItem, RecurringItemRevision, Expense]]
 
 
-def _form(browser, kind, *, public_id="", amount="0015.00"):
+def _form(browser, kind, *, public_id="", amount="15.00"):
     path = {"budget": "/web/budgets", "arrangement": "/web/budget-advise"}.get(kind, "/web/recurring")
     page = browser.get(path, params={"month": MONTH, "edit": public_id})
     assert page.status_code == 200, page.text
@@ -50,11 +50,11 @@ def _form(browser, kind, *, public_id="", amount="0015.00"):
     form_action = path if kind == "arrangement" else action
     fields = hidden_post_forms(page.text)[form_action]
     if kind == "budget":
-        fields.update(total_amount_yuan=amount, rollover_amount_yuan="-01.00", non_monthly_amount_yuan="0.00",
-            excluded_categories="", category_budget_category=["餐饮", "交通"], category_budget_amount_yuan=["005.00", "002.00"],
+        fields.update(total_amount_yuan=amount, rollover_amount_yuan="-1.00", non_monthly_amount_yuan="0.00",
+            excluded_categories="", category_budget_category=["餐饮", "交通"], category_budget_amount_yuan=["5.00", "2.00"],
             category_budget_remove=["1"], return_category="餐饮", return_month=MONTH)
     elif kind == "arrangement":
-        fields.update(savings_target_yuan=amount, reserved_buffer_yuan="0002.00")
+        fields.update(savings_target_yuan=amount, reserved_buffer_yuan="2.00")
     else:
         fields.update(merchant="原固定支出", baseline_amount_yuan=amount, home_currency_code="CNY", next_expected_date="2026-10-09")
     return action, fields
@@ -93,7 +93,7 @@ def test_original_planning_receipt_replays_after_another_revision_without_rewrit
         assert "/web/categories?" in result["next"] and receipt["rollover_amount_cents"] == -100
         assert [(row["category"], row["amount_cents"]) for row in receipt["category_budgets"]] == [("餐饮", 500)]
     later_kind = "recurring-edit" if kind.startswith("recurring") else kind
-    later_action, later = _form(browser, later_kind, public_id=receipt.get("public_id", ""), amount="0040.00")
+    later_action, later = _form(browser, later_kind, public_id=receipt.get("public_id", ""), amount="40.00")
     assert later["idempotency_key"] != fields["idempotency_key"]
     changed = browser.post(later_action, data=later, headers=headers)
     assert changed.status_code == 200, changed.text
@@ -155,7 +155,7 @@ def test_older_native_planning_form_requires_explicit_non_writing_identity_revie
     native_headers = {"Origin": headers["Origin"]}
     refused = browser.post(action, data=fields, headers=native_headers)
     assert refused.status_code == 409, refused.text
-    assert _facts() == before and "0015.00" in refused.text
+    assert _facts() == before and "15.00" in refused.text
     assert 'name="review_latest"' in refused.text
     reviewed = browser.post(action, data={**fields, "review_latest": "true"}, headers=native_headers)
     assert reviewed.status_code == 200, reviewed.text

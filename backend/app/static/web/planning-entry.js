@@ -6,7 +6,7 @@
   const definitions = {
     budget: {label: "月度预算", list: "/web/budgets", amount: "total_amount_yuan", idField: "month", titleField: "month",
       names: [...monthly, "return_category", "return_month", "total_amount_yuan", "rollover_amount_yuan",
-        "non_monthly_amount_yuan", "excluded_categories", "excluded_values", "category_rows", "input_step"], repeated},
+        "non_monthly_amount_yuan", "excluded_categories", "excluded_values", "category_rows", "input_step", "input_hint"], repeated},
     arrangement: {label: "本月安排", list: "/web/budget-advise", amount: "savings_target_yuan", idField: "month", titleField: "month",
       names: [...monthly, "arrangement_currency_code", "savings_target_yuan", "reserved_buffer_yuan"],
       action: "/web/budget-advise/save"},
@@ -104,6 +104,7 @@
             values.excluded_values = JSON.stringify([...current.querySelectorAll('[name="excluded_category"]')].filter(input => input.checked).map(input => input.value));
             values.category_rows = JSON.stringify(budgetRows(current));
             values.input_step = field(current, definition.amount).step;
+            values.input_hint = current.querySelector("[data-plan-amount-hint]").textContent;
           }
           return values;
         },
@@ -114,9 +115,10 @@
         present: (current, saved) => {
           const currency = saved.arrangement_currency_code || saved.home_currency_code || "币种待确认";
           current.querySelectorAll("[data-plan-currency]").forEach(label => { label.textContent = currency; });
+          if (family === "budget") current.querySelector("[data-plan-amount-hint]").textContent = saved.input_hint;
         },
         body: (body, saved) => {
-          names.filter(name => !["excluded_values", "category_rows", "input_step"].includes(name)).forEach(name => body.set(name, saved[name]));
+          names.filter(name => !["excluded_values", "category_rows", "input_step", "input_hint"].includes(name)).forEach(name => body.set(name, saved[name]));
           if (family !== "budget") return;
           JSON.parse(saved.excluded_values).forEach(value => body.append("excluded_category", value));
           JSON.parse(saved.category_rows).forEach(row => {

@@ -137,6 +137,7 @@ def _render_recurring(
     draft: dict | None = None,
     prepare_review: bool = False,
     draft_result: str = "",
+    status_code: int = 200,
 ) -> HTMLResponse:
     if status and status not in _VALID_STATUS_FILTERS:
         raise AppError("recurring_status_invalid", status_code=422)
@@ -202,7 +203,7 @@ def _render_recurring(
     apply_form_draft(ctx, draft, prepare_review=prepare_review)
     ctx["open_edit_id"] = open_edit_id
     ctx.update(recurring_draft_scope=scope, recurring_draft_result=draft_result)
-    return templates.TemplateResponse(request=request, name="recurring.html", context=ctx)
+    return templates.TemplateResponse(request=request, name="recurring.html", context=ctx, status_code=status_code)
 
 
 @router.get("", response_class=HTMLResponse)
@@ -286,6 +287,7 @@ def web_recurring_create(
             options=options,
             draft={**draft, "review_required": exc.error in {"idempotency_key_required", "idempotency_key_reused"}},
             draft_result=draft_refusal_result(exc),
+            status_code=exc.status_code if exc.error == "session_binding_changed" else 200,
             **_conflict_kwargs(exc, selected_id=selected_id, merchant=merchant),
         )
     return draft_ack_response(request, draft_scope=draft_scope, idempotency_key=idempotency_key,
@@ -411,6 +413,7 @@ def web_recurring_edit(
                 "state_conflict", "idempotency_key_required", "idempotency_key_reused",
             }},
             draft_result=draft_refusal_result(exc),
+            status_code=exc.status_code if exc.error == "session_binding_changed" else 200,
             **_conflict_kwargs(exc, selected_id=selected_id, merchant=merchant),
         )
     return draft_ack_response(request, draft_scope=draft_scope, idempotency_key=idempotency_key,
