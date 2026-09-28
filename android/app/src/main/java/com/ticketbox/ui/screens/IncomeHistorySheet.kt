@@ -63,8 +63,8 @@ private fun IncomeHistoryEntry(entry: IncomeRevision) {
             else formatDisplayAmount(saved.amountCents, CurrencyDisplay.forRecord(saved.homeCurrencyCode)))
         Text(if (saved.frequency == "one_time") stringResource(R.string.income_history_one_time,
             displayMonthLabel(saved.incomeMonth.orEmpty()), saved.payDay) else stringResource(R.string.income_history_monthly, saved.payDay))
-        Text(stringResource(R.string.income_history_months, entry.intentMonth?.let(::displayMonthLabel) ?: stringResource(R.string.income_history_unknown),
-            entry.effectiveMonth?.let(::displayMonthLabel) ?: stringResource(R.string.income_history_unknown)))
+        Text(stringResource(R.string.income_history_months, entry.intentMonth?.let { displayMonthLabel(it) } ?: stringResource(R.string.income_history_unknown),
+            entry.effectiveMonth?.let { displayMonthLabel(it) } ?: stringResource(R.string.income_history_unknown)))
         Text(stringResource(if (saved.status == "archived") R.string.income_plan_section_archived else R.string.income_plan_section_active))
     }
 }
