@@ -112,7 +112,8 @@ def page_budget_advise_run(
     )
 
 
-def _trial_binding_failure(db, request, selected, draft_scope, draft_result):
+def _trial_binding_failure(db: Session, request: Request, selected: str,
+    draft_scope: str | None, draft_result: str) -> AppError | None:
     if draft_result:
         return None
     try:
