@@ -247,6 +247,23 @@ merged main `021ea137`: CI `36376782029`, CodeQL `36376782049` and Connected
 `36376782067`, including all three actual native shards. This does not claim OS
 kill qualification or completion of other goal and Web draft journeys.
 
+Web income creation extends the same task boundary through the existing browser
+DraftStore. Refresh and closing must retain the raw amount, type, frequency,
+original currency, month and command key. A newer default currency or calendar
+month must not reinterpret that draft. The server checks the complete captured
+dataset, generation, account, ledger and browser identity before any write;
+another browser identity may inspect a retained task but cannot inherit it.
+Unknown responses retain an immutable original submission. A matching ACK uses
+the income command's original typed receipt, including after a later edit,
+before retiring the browser draft. Explicitly preparing another plan preserves
+the inputs under a fresh key without writing a plan or deleting the unresolved
+original. Explicit local discard requires the matching identity and snapshot,
+and warns that it does not undo a sent request or a saved plan; closing and
+refreshing are never discard. The native no-script form remains supported. PR #458 is qualifying
+this Web continuation; its browser transport fixture and real PostgreSQL
+business evidence are distinct, and neither claims full browser/OS lifecycle
+qualification.
+
 Creation admission errors remain attached to the same raw draft through reopening and
 system saved-state restoration. An unknown or abandoned original row must not retire
 the input into a list that cannot display it. If the original submission can no longer
