@@ -5,6 +5,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
@@ -98,11 +99,15 @@ class IncomePlanDraftNavigationRoomTest {
         assertSame(originalEditor, retainedEditor())
         assertEquals(original, retainedEditor().state.value.session)
         compose.onNodeWithText("00120.00").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("保存").performScrollTo().performClick()
+        closeSoftKeyboard()
+        compose.waitForIdle()
+        compose.onNodeWithText("保存").performScrollTo().assertIsDisplayed().assertIsEnabled().performClick()
         assertTrue(income.stored().isEmpty())
         assertEquals("00120.00", originalEditor.state.value.session?.draft?.amountYuanInput)
         compose.onNodeWithText("00120.00").performScrollTo().performTextReplacement("120.00")
-        compose.onNodeWithText("保存").performScrollTo().performClick()
+        closeSoftKeyboard()
+        compose.waitForIdle()
+        compose.onNodeWithText("保存").performScrollTo().assertIsDisplayed().assertIsEnabled().performClick()
         compose.waitUntil(10_000) { income.stored().size == 1 && originalEditor.state.value.isSubmitting }
         val accepted = income.stored().single()
         compose.runOnIdle { assertTrue(inner.popBackStack()) }
