@@ -38,7 +38,8 @@ internal class IncomePlanConnectedFixture(private val context: Context) {
     private var clock: Clock = Clock.fixed(Instant.parse("2026-09-30T15:30:00Z"), ZoneOffset.UTC)
     val network = IncomeConnectedNetwork()
     private val adapters = OutboxAdapterGraph()
-    private val session = incomeConnectedSession()
+    private var session = incomeConnectedSession()
+    private val deniedReads = mutableMapOf<String, Int>()
     lateinit var outbox: OutboxRepository
 
     fun reopen(): RepositoryGraph {
@@ -56,7 +57,12 @@ internal class IncomePlanConnectedFixture(private val context: Context) {
             override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = network.service
         }
         return RepositoryGraph(RepositoryGraphDependencies(db, ApiClient(),
-            incomeProxy<TicketboxSettingsStore> { if (it == "snapshotReadAccessDenial") null else error("Unexpected settings: $it") },
+            object : TicketboxSettingsStore by incomeProxy<TicketboxSettingsStore>({ error("Unexpected settings: $it") }) {
+                override fun snapshotReadAccessDenial(bindingKey: String, monthlyBindingKey: String) = deniedReads[bindingKey]
+                override fun saveSnapshotReadAccessDenial(bindingKey: String, monthlyBindingKey: String, status: Int?) {
+                    if (status == null) deniedReads.remove(bindingKey) else deniedReads[bindingKey] = status
+                }
+            },
             sessions, credentials, ApiServiceProvider(factory, sessions, credentials), RepositoryGraphOutbox(outbox, adapters)))
     }
 
@@ -74,6 +80,11 @@ internal class IncomePlanConnectedFixture(private val context: Context) {
 
     fun advanceToOctober() { clock = Clock.offset(clock, Duration.ofDays(1)); network.month = "2026-10" }
 
+    fun changeAccount() {
+        session = session.copy(sessionGeneration = "another-session", bindingRevision = "another-binding",
+            identity = session.identity.copy(accountPublicId = "40000000-0000-4000-8000-000000000005"))
+    }
+
     fun close() { database?.close(); context.deleteDatabase(name) }
 }
 
@@ -83,6 +94,9 @@ internal class IncomeConnectedNetwork {
     var month = "2026-09"
     var forecastCurrencyCode = "CNY"
     var failReads = false
+    var readFailure: Throwable? = null
+    var listing: (suspend (String) -> IncomePlanListResponseDto)? = null
+    var history: (suspend (Long?) -> IncomeHistoryResponseDto)? = null
     var loseResponse = true
     val calls = mutableListOf<Pair<IncomePlanUpdateRequestDto, String>>()
     val results = mutableMapOf<String, IncomePlanDto>()
@@ -92,6 +106,8 @@ internal class IncomeConnectedNetwork {
     val service = object : ApiService by incomeProxy<ApiService>({ error("Unexpected remote method: $it") }) {
         override suspend fun incomePlanHistory(publicId: String, limit: Int, beforeVersion: Long?): IncomeHistoryResponseDto {
             if (failReads) throw java.net.UnknownHostException("Synthetic unavailable history read")
+            readFailure?.let { throw it }
+            history?.let { return it(beforeVersion) }
             check(publicId == current.publicId && limit == 20 && beforeVersion == null)
             historyCalls += publicId
             return IncomeHistoryResponseDto("income-ledger", publicId, listOf(IncomeRevisionDto(2, "edit",
@@ -101,9 +117,17 @@ internal class IncomeConnectedNetwork {
 
         override suspend fun listIncomePlans(status: String): IncomePlanListResponseDto {
             if (failReads) throw java.net.UnknownHostException("Synthetic unavailable management read")
-            return IncomePlanListResponseDto(if (status == "active") listOf(current) else emptyList(),
+            readFailure?.let { throw it }
+            listing?.let { return it(status) }
+            return IncomePlanListResponseDto(if (status == current.status) listOf(current) else emptyList(),
                 current.amountCents, month, current.amountCents, 1, current.amountCents, homeCurrencyCode = forecastCurrencyCode)
         }
+
+        override suspend fun archiveIncomePlan(publicId: String, request: com.ticketbox.data.remote.dto.IncomePlanTokenRequestDto): IncomePlanDto =
+            changeStatus(publicId, request.expectedRowVersion, "archived")
+
+        override suspend fun restoreIncomePlan(publicId: String, request: com.ticketbox.data.remote.dto.IncomePlanTokenRequestDto): IncomePlanDto =
+            changeStatus(publicId, request.expectedRowVersion, "active")
 
         override suspend fun createIncomePlan(request: IncomePlanCreateRequestDto, idempotencyKey: String): IncomePlanDto {
             creationCalls += request to idempotencyKey
@@ -128,6 +152,14 @@ internal class IncomeConnectedNetwork {
             if (loseResponse) throw IOException("Synthetic lost response after commit")
             return response
         }
+    }
+
+    private fun changeStatus(publicId: String, version: Long, status: String): IncomePlanDto {
+        check(publicId == current.publicId && version == current.rowVersion)
+        current = current.copy(status = status, rowVersion = current.rowVersion + 1,
+            archivedAt = if (status == "archived") "2026-09-30T15:30:00Z" else null)
+        if (loseResponse) throw IOException("Synthetic lost status acknowledgement")
+        return current
     }
 }
 

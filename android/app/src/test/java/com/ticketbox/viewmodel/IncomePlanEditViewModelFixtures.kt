@@ -53,8 +53,9 @@ internal class FakeIncomePlanEditRepository(
     var active: IncomePlanListing = IncomePlanListing(emptyList(), 0L, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0, homeCurrencyCode = "CNY"),
     canModify: Boolean = true,
 ) : IncomePlanActions {
+    override val readAccessDenials = kotlinx.coroutines.flow.MutableSharedFlow<com.ticketbox.data.repository.SnapshotAccessDenial>()
     override suspend fun history(binding: LogicalSessionBinding, publicId: String, beforeVersion: Long?):
-        Result<com.ticketbox.domain.model.IncomeHistoryPage> = error("History is not requested in this fixture")
+        Result<com.ticketbox.data.repository.ReadSnapshot<com.ticketbox.domain.model.IncomeHistoryPage>> = error("History is not requested in this fixture")
 
     val activeAccessFlow = MutableStateFlow<LedgerAccessContext?>(editAccess(canModify = canModify))
     val updateCalls = mutableListOf<IncomePlanUpdateCall>()
@@ -85,9 +86,9 @@ internal class FakeIncomePlanEditRepository(
     override suspend fun listIncluding(
         expectedBinding: LogicalSessionBinding,
         status: IncomePlanStatus,
-    ): Result<List<IncomePlan>> {
+    ): Result<com.ticketbox.data.repository.ReadSnapshot<List<IncomePlan>>> {
         listGate?.invoke()
-        return Result.success(active.plans.filter { it.status == status })
+        return Result.success(com.ticketbox.data.repository.ReadSnapshot(active.plans.filter { it.status == status }, "2026-09-28T10:00:00Z", false))
     }
 
     override suspend fun originalCreation(expectedBinding: LogicalSessionBinding,

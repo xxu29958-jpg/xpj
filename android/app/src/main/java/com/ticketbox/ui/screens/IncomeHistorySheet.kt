@@ -26,6 +26,7 @@ internal fun IncomeHistorySheet(state: IncomeHistoryState, onRetry: () -> Unit, 
     AppBusyGuardedSheet(isSubmitting = false, onDismiss = onDismiss, skipPartiallyExpanded = true) {
         AppSheetScaffold(title = stringResource(R.string.income_history_title)) {
             Text(stringResource(R.string.income_history_explanation))
+            IncomeReadSource(state.fetchedAt, state.fromCache)
             state.items.forEach { IncomeHistoryEntry(it) }
             if (state.loading) Text(stringResource(R.string.budget_history_loading))
             state.error?.let {
@@ -38,6 +39,14 @@ internal fun IncomeHistorySheet(state: IncomeHistoryState, onRetry: () -> Unit, 
             }
         }
     }
+}
+
+@Composable
+internal fun IncomeReadSource(fetchedAt: String?, fromCache: Boolean) {
+    if (fetchedAt == null) return
+    Text(stringResource(if (fromCache) R.string.income_read_cached else R.string.income_read_fresh,
+        displayDateTime(fetchedAt)), style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 @Composable

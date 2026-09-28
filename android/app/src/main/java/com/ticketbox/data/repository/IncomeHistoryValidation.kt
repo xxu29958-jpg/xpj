@@ -23,10 +23,10 @@ private fun IncomeRevisionDto.validateRevision(before: Long?) {
     require(if (changeKind == "baseline") monthsUnknown else monthsKnown) { "收入历史月份无法核对。" }
     intentMonth?.let(YearMonth::parse)
     effectiveMonth?.let(YearMonth::parse)
-    snapshot.validateDefinition()
+    snapshot.validateIncomeDefinition()
 }
 
-private fun IncomeDefinitionDto.validateDefinition() {
+internal fun IncomeDefinitionDto.validateIncomeDefinition() {
     require(amountCents >= 0 && payDay in 1..31 && status in setOf("active", "archived")) { "原收入计划无法核对。" }
     require(homeCurrencyCode == null || CurrencyCode.fromStorageKeyOrNull(homeCurrencyCode) != null) { "原收入币种暂不支持。" }
     require(frequency in setOf("monthly", "one_time") &&

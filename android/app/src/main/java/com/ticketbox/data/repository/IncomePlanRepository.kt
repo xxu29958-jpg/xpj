@@ -18,13 +18,14 @@ import kotlinx.coroutines.flow.map
 /** Income management and the server's month-specific forecast; edits publish durable intent first. */
 interface IncomePlanActions {
     suspend fun history(binding: LogicalSessionBinding, publicId: String, beforeVersion: Long?):
-        Result<com.ticketbox.domain.model.IncomeHistoryPage>
+        Result<ReadSnapshot<com.ticketbox.domain.model.IncomeHistoryPage>>
+    val readAccessDenials: Flow<SnapshotAccessDenial>
     fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?>
     fun observeSubmissions(expectedBinding: LogicalSessionBinding): Flow<List<PendingIncomePlanSubmission>>
     fun describeSubmission(row: OutboxRow): PendingIncomePlanSubmission?
     suspend fun recoverSubmission(expectedBinding: LogicalSessionBinding, pending: PendingIncomePlanSubmission, drop: Boolean): Result<Unit>
     suspend fun listActive(expectedBinding: LogicalSessionBinding): Result<IncomePlanListing>
-    suspend fun listIncluding(expectedBinding: LogicalSessionBinding, status: IncomePlanStatus): Result<List<IncomePlan>>
+    suspend fun listIncluding(expectedBinding: LogicalSessionBinding, status: IncomePlanStatus): Result<ReadSnapshot<List<IncomePlan>>>
     suspend fun create(expectedBinding: LogicalSessionBinding, draft: IncomePlanDraft, creationKey: String): Result<Long>
     suspend fun originalCreation(expectedBinding: LogicalSessionBinding, creationKey: String): Result<PendingIncomePlanSubmission?>
     suspend fun enqueueUpdate(expectedBinding: LogicalSessionBinding, baseline: IncomePlan,
@@ -44,6 +45,8 @@ data class IncomePlanListing(
     val homeCurrencyCode: String? = null,
     val missingCurrencyCodes: List<String> = emptyList(),
     val referenceRates: List<com.ticketbox.domain.model.CurrencyReferenceRate> = emptyList(),
+    val fetchedAt: String? = null,
+    val fromCache: Boolean = false,
 )
 
 class IncomePlanRepository(
@@ -51,7 +54,11 @@ class IncomePlanRepository(
     private val outbox: OutboxRepository,
     private val incomePlanSubmissionAdapter: JsonAdapter<IncomePlanSubmissionPayload>,
     private val incomePlanReceiptAdapter: JsonAdapter<IncomePlanDto>,
+    cache: com.ticketbox.data.local.IncomeQueryCacheDao,
+    coordinator: LocalLedgerSessionCoordinator,
 ) : IncomePlanActions {
+    private val queries = IncomeQueryReader(apiProvider, cache, coordinator)
+    override val readAccessDenials = queries.accessDenials
     private val guard = LedgerRequestGuard(apiProvider)
     private val errors = NetworkErrorHandler(serverUrlProvider = { null }, context = "IncomePlan",
         statusMessages = mapOf(404 to "收入计划不存在。", 409 to "计划已发生变化，请刷新后核对。",
@@ -60,12 +67,12 @@ class IncomePlanRepository(
     private val canModify: Boolean get() = ledgerRoleCanModify(apiProvider.currentLedgerRole())
     override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> = apiProvider.observeActiveLedgerAccess()
 
-    override suspend fun history(binding: LogicalSessionBinding, publicId: String, beforeVersion: Long?) = errors.safeCall {
-        require(publicId.isNotBlank() && (beforeVersion == null || beforeVersion > 0)) { "收入历史范围不正确。" }
-        guard.bindExact(binding).call { api ->
-            api.incomePlanHistory(publicId, 20, beforeVersion).also { it.validateIncomeHistory(binding, publicId, beforeVersion) }.toDomain()
-        }
-    }
+    override suspend fun history(binding: LogicalSessionBinding, publicId: String, beforeVersion: Long?) =
+        queries.history(binding, publicId, beforeVersion).map { ReadSnapshot(it.value.toDomain(), it.fetchedAt, it.fromCache) }
+
+    internal suspend fun prepareReadsBeforeDispatch(row: OutboxRow) = queries.prepareDispatch(row)
+    internal suspend fun finishReadDispatch(row: OutboxRow, result: DispatchResult?) = queries.finishDispatch(row, result)
+    internal suspend fun invalidateReadsAfterAccepted(row: OutboxRow) = queries.acceptedDispatch(row)
 
     override fun describeSubmission(row: OutboxRow): PendingIncomePlanSubmission? {
         val binding = guard.captureLogicalBinding() ?: return null
@@ -96,15 +103,14 @@ class IncomePlanRepository(
         check(changed) { "原收入提交状态已变化，请重新核对。" }
     }
 
-    override suspend fun listActive(expectedBinding: LogicalSessionBinding): Result<IncomePlanListing> = errors.safeCall {
-        guard.bindExact(expectedBinding).call { api ->
-            val response = api.listIncomePlans(status = "active")
+    override suspend fun listActive(expectedBinding: LogicalSessionBinding): Result<IncomePlanListing> =
+        queries.listing(expectedBinding, "active").map { read ->
+            val response = read.value
             IncomePlanListing(response.items.map { it.toDomain() }, response.expectedAmountCents,
                 response.month, response.scheduledAmountCents, response.effectivePlanCount,
-                response.homeCurrencyCode, response.missingCurrencyCodes, response.referenceRates.map { it.toDomain() })
-        }
+                response.homeCurrencyCode, response.missingCurrencyCodes, response.referenceRates.map { it.toDomain() }, read.fetchedAt, read.fromCache)
     }.onSuccess { listing ->
-        onActivePlansSnapshot("m=${listing.month};home=${listing.homeCurrencyCode};total=${listing.expectedAmountCents};" +
+        if (!listing.fromCache) onActivePlansSnapshot("m=${listing.month};home=${listing.homeCurrencyCode};total=${listing.expectedAmountCents};" +
             "n=${listing.plans.size};rv=${listing.plans.maxOfOrNull(IncomePlan::rowVersion) ?: 0};" +
             "ua=${listing.plans.maxOfOrNull(IncomePlan::updatedAt).orEmpty()}")
     }
@@ -113,9 +119,10 @@ class IncomePlanRepository(
     var onActivePlansSnapshot: (stamp: String) -> Unit = {}
 
     override suspend fun listIncluding(expectedBinding: LogicalSessionBinding,
-        status: IncomePlanStatus): Result<List<IncomePlan>> = errors.safeCall {
-        guard.bindExact(expectedBinding).call { it.listIncomePlans(status = status.wireValue).items.map { row -> row.toDomain() } }
-    }
+        status: IncomePlanStatus): Result<ReadSnapshot<List<IncomePlan>>> =
+        queries.listing(expectedBinding, status.wireValue).map { read ->
+            ReadSnapshot(read.value.items.map { it.toDomain() }, read.fetchedAt, read.fromCache)
+        }
 
     override suspend fun originalCreation(expectedBinding: LogicalSessionBinding,
         creationKey: String): Result<PendingIncomePlanSubmission?> = errors.safeCall {
@@ -168,7 +175,7 @@ class IncomePlanRepository(
         if (!canModify) throw RepositoryException("当前角色为只读，无法修改账本。")
         val bound = guard.bindExact(expectedBinding)
         requireIncomeTargetSettled(outbox.activeForTarget(bound, incomePlanTarget(publicId)))
-        bound.call {
+        queries.directWrite(expectedBinding) {
             it.archiveIncomePlan(publicId, IncomePlanTokenRequestDto(expectedRowVersion, intentMonth)).toDomain()
         }
     }
@@ -178,7 +185,7 @@ class IncomePlanRepository(
         if (!canModify) throw RepositoryException("当前角色为只读，无法修改账本。")
         val bound = guard.bindExact(expectedBinding)
         requireIncomeTargetSettled(outbox.activeForTarget(bound, incomePlanTarget(publicId)))
-        bound.call {
+        queries.directWrite(expectedBinding) {
             it.restoreIncomePlan(publicId, IncomePlanTokenRequestDto(expectedRowVersion, intentMonth)).toDomain()
         }
     }

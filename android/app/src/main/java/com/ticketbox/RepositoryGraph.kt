@@ -138,6 +138,8 @@ internal class RepositoryGraph(
         outbox = outbox,
         incomePlanSubmissionAdapter = outboxAdapters.incomePlanSubmissionAdapter,
         incomePlanReceiptAdapter = outboxAdapters.incomePlanReceiptAdapter,
+        cache = database.incomeQueryCacheDao(),
+        coordinator = ledgerSessionCoordinator,
     )
 
     val debtRepository = DebtRepository(
@@ -168,6 +170,12 @@ internal class RepositoryGraph(
         outbox.onDebtDispatchPreparing = debtRepository::prepareReadsBeforeDispatch
         outbox.onDebtDispatchFinished = debtRepository::finishReadDispatch
         outbox.onDebtAccepted = debtRepository::invalidateReadsAfterAccepted
+    }
+
+    init {
+        outbox.onIncomeDispatchPreparing = incomePlanRepository::prepareReadsBeforeDispatch
+        outbox.onIncomeDispatchFinished = incomePlanRepository::finishReadDispatch
+        outbox.onIncomeAccepted = incomePlanRepository::invalidateReadsAfterAccepted
     }
 
     val goalEditRepository = com.ticketbox.data.repository.GoalEditRepository(

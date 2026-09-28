@@ -26,6 +26,10 @@ import java.time.YearMonth
 /** Income plan listing, forecast and durable submission recovery. */
 data class IncomePlanUiState(
     val history: IncomeHistoryState = IncomeHistoryState(),
+    val fetchedAt: String? = null,
+    val fromCache: Boolean = false,
+    val archivedFetchedAt: String? = null,
+    val archivedFromCache: Boolean = false,
     val isLoading: Boolean = false,
     val loadState: IncomePlanLoadState = IncomePlanLoadState.Unknown,
     val canModify: Boolean = true,
@@ -109,6 +113,7 @@ class IncomePlanViewModel(
     private var activeCanModify = false
     private var queueJob: Job? = null
     private var requestedSubmissionId: Long? = null
+    private var readDenial: com.ticketbox.data.repository.SnapshotAccessDenial? = null
     private val history = IncomeHistoryTask(repository::history, viewModelScope, { activeBinding }) { result ->
         _state.update { it.copy(history = result) }
     }
@@ -121,6 +126,12 @@ class IncomePlanViewModel(
     fun retryHistory() = history.retry()
 
     init {
+        viewModelScope.launch {
+            repository.readAccessDenials.collect { denied ->
+                readDenial = denied
+                if (denied.binding == activeBinding) retireReadData(denied.failure)
+            }
+        }
         viewModelScope.launch {
             repository.observeActiveLedgerAccess()
                 .distinctUntilChanged()
@@ -139,6 +150,7 @@ class IncomePlanViewModel(
                         selectedSubmissionId = selected)
                     queueJob?.cancel()
                     if (access != null) {
+                        readDenial?.takeIf { it.binding == access.binding }?.let { retireReadData(it.failure) }
                         queueJob = viewModelScope.launch {
                             var completed = emptySet<Long>()
                             repository.observeSubmissions(access.binding).collect { rows ->
@@ -178,6 +190,10 @@ class IncomePlanViewModel(
                 expectedBinding,
                 com.ticketbox.domain.model.IncomePlanStatus.ARCHIVED,
             )
+            if (binding != bindingGeneration || refresh != refreshGeneration) return@launch
+            val refusal = listOfNotNull(active.exceptionOrNull(), archived.exceptionOrNull()).firstOrNull { it.isReadAccessDenied() }
+            if (refusal != null) { retireReadData(refusal); return@launch }
+            val archivedRead = archived.getOrNull()
             val nextState = active.fold(
                 onSuccess = { listing ->
                     val archivedError = archived.exceptionOrNull()?.toUiText(R.string.income_plan_archived_load_failed)
@@ -186,7 +202,10 @@ class IncomePlanViewModel(
                         loadState = IncomePlanLoadState.Loaded,
                         canModify = activeCanModify,
                         activePlans = listing.plans,
-                        archivedPlans = archived.getOrDefault(emptyList()),
+                        archivedPlans = archivedRead?.value ?: _state.value.archivedPlans,
+                        fetchedAt = listing.fetchedAt, fromCache = listing.fromCache,
+                        archivedFetchedAt = archivedRead?.fetchedAt ?: _state.value.archivedFetchedAt,
+                        archivedFromCache = archivedRead?.fromCache ?: _state.value.archivedFromCache,
                         scheduledAmountCents = listing.scheduledAmountCents,
                         forecastMonth = listing.month,
                         forecastCurrencyCode = listing.homeCurrencyCode,
@@ -200,6 +219,9 @@ class IncomePlanViewModel(
                     _state.value.copy(
                         isLoading = false,
                         loadState = IncomePlanLoadState.Failed,
+                        archivedPlans = archivedRead?.value ?: _state.value.archivedPlans,
+                        archivedFetchedAt = archivedRead?.fetchedAt ?: _state.value.archivedFetchedAt,
+                        archivedFromCache = archivedRead?.fromCache ?: _state.value.archivedFromCache,
                         error = err.toUiText(R.string.income_plan_load_failed),
                     )
                 },
@@ -208,6 +230,16 @@ class IncomePlanViewModel(
                 _state.value = nextState
             }
         }
+    }
+
+    private fun retireReadData(error: Throwable) {
+        refreshGeneration += 1
+        history.dismiss()
+        _state.update { it.copy(isLoading = false, loadState = IncomePlanLoadState.Failed,
+            activePlans = emptyList(), archivedPlans = emptyList(), fetchedAt = null, fromCache = false,
+            archivedFetchedAt = null, archivedFromCache = false, forecastMonth = null, forecastCurrencyCode = null,
+            scheduledAmountCents = null, currentMonthSummary = IncomePlanMonthSummary(),
+            referenceRates = emptyList(), missingCurrencyCodes = emptyList(), error = error.toUiText(R.string.income_plan_load_failed)) }
     }
 
     fun recoverSubmission(pending: PendingIncomePlanSubmission, drop: Boolean) {

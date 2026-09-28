@@ -44,7 +44,8 @@ class IncomePlanViewModelTest {
             active = IncomePlanListing(
                 plans = listOf(plan("p1", 100_000, status = IncomePlanStatus.ACTIVE)),
                 expectedAmountCents = 120_000,
-             month = "2026-09", scheduledAmountCents = 50_000, effectivePlanCount = 2),
+             month = "2026-09", scheduledAmountCents = 50_000, effectivePlanCount = 2,
+                fetchedAt = "2026-09-28T10:00:00Z", fromCache = true),
             archived = listOf(plan("p2", 50_000, status = IncomePlanStatus.ARCHIVED)),
         )
         val viewModel = IncomePlanViewModel(repo)
@@ -57,6 +58,33 @@ class IncomePlanViewModelTest {
         assertEquals(2, state.currentMonthSummary.effectivePlanCount)
         assertEquals(50_000L, state.scheduledAmountCents)
         assertEquals("2026-09", state.forecastMonth)
+        assertEquals("2026-09-28T10:00:00Z", state.fetchedAt)
+        assertTrue(state.fromCache)
+    }
+
+    @Test fun accessDenialWithdrawsLoadedAndLateReadsWhileKeepingOriginalSubmissionSelection() = runTest(dispatcher) {
+        val repo = FakeRepository(active = IncomePlanListing(listOf(plan("income", 100_000)), 120_000,
+            "2026-09", 50_000, 2), archived = listOf(plan("old", 50_000, IncomePlanStatus.ARCHIVED)))
+        val vm = IncomePlanViewModel(repo)
+        advanceUntilIdle()
+        assertEquals(1, vm.state.value.activePlans.size)
+        vm.openSubmission(42)
+        val late = CompletableDeferred<Result<IncomePlanListing>>()
+        repo.activeResponder = { late.await() }
+        vm.refresh()
+        advanceUntilIdle()
+        repo.readAccessDenials.emit(com.ticketbox.data.repository.SnapshotAccessDenial(incomePlanBinding(),
+            com.ticketbox.data.repository.RepositoryException("权限已撤销", httpStatusCode = 403), 1))
+        advanceUntilIdle()
+        assertTrue(vm.state.value.activePlans.isEmpty() && vm.state.value.archivedPlans.isEmpty())
+        assertNull(vm.state.value.forecastMonth)
+        assertNull(vm.state.value.currentMonthSummary.expectedAmountCents)
+        assertEquals(42L, vm.state.value.selectedSubmissionId)
+        late.complete(Result.success(repo.active))
+        advanceUntilIdle()
+        assertTrue(vm.state.value.activePlans.isEmpty() && vm.state.value.archivedPlans.isEmpty())
+        assertEquals(IncomePlanLoadState.Failed, vm.state.value.loadState)
+        assertEquals(42L, vm.state.value.selectedSubmissionId)
     }
 
     @Test
@@ -287,8 +315,9 @@ class IncomePlanViewModelTest {
         private val archived: List<IncomePlan> = emptyList(),
         private val canModify: Boolean = true,
     ) : IncomePlanActions {
+        override val readAccessDenials = kotlinx.coroutines.flow.MutableSharedFlow<com.ticketbox.data.repository.SnapshotAccessDenial>()
         override suspend fun history(binding: LogicalSessionBinding, publicId: String, beforeVersion: Long?):
-            Result<com.ticketbox.domain.model.IncomeHistoryPage> = error("History is not requested in this fixture")
+            Result<com.ticketbox.data.repository.ReadSnapshot<com.ticketbox.domain.model.IncomeHistoryPage>> = error("History is not requested in this fixture")
 
         val activeAccessFlow = MutableStateFlow<LedgerAccessContext?>(
             incomePlanAccess(canModify = canModify),
@@ -316,8 +345,8 @@ class IncomePlanViewModelTest {
         override suspend fun listIncluding(
             expectedBinding: LogicalSessionBinding,
             status: IncomePlanStatus,
-        ): Result<List<IncomePlan>> =
-            Result.success(archived)
+        ): Result<com.ticketbox.data.repository.ReadSnapshot<List<IncomePlan>>> =
+            Result.success(com.ticketbox.data.repository.ReadSnapshot(archived, "2026-09-28T10:00:00Z", false))
 
         override suspend fun originalCreation(expectedBinding: LogicalSessionBinding,
             creationKey: String): Result<com.ticketbox.data.repository.PendingIncomePlanSubmission?> = Result.success(null)

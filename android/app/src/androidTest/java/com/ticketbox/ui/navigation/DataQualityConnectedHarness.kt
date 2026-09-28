@@ -139,7 +139,8 @@ internal class DataQualityConnectedHarness : AutoCloseable {
             ruleRepository = com.ticketbox.data.repository.RuleRepository(binding, offlineMutations = com.ticketbox.data.repository.CategoryRuleOfflineMutationWiring(
                 outbox, adapters.categoryRuleUpdateAdapter, adapters.categoryRuleDeleteAdapter,
                 adapters.categoryRuleSubmissionAdapter, adapters.categoryRuleReceiptAdapter)),
-            incomePlanRepository = IncomePlanRepository(apiProvider, outbox, adapters.incomePlanSubmissionAdapter, adapters.incomePlanReceiptAdapter),
+            incomePlanRepository = IncomePlanRepository(apiProvider, outbox, adapters.incomePlanSubmissionAdapter,
+                adapters.incomePlanReceiptAdapter, database.incomeQueryCacheDao(), coordinator),
             debtRepository = DebtRepository(apiProvider, debtQueries),
             debtCreationRepository = DebtCreationRepository(apiProvider, outbox, adapters.debtCreateAdapter),
             debtWriteRepository = com.ticketbox.data.repository.DebtWriteRepository(apiProvider, outbox,

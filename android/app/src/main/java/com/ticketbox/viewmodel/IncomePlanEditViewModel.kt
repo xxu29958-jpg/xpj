@@ -213,7 +213,7 @@ class IncomePlanEditViewModel(
         viewModelScope.launch {
             val result = repository.listIncluding(session.binding, session.baseline.status)
             if (generation != bindingGeneration) return@launch
-            val current = result.getOrNull()?.firstOrNull { it.publicId == session.publicId }
+            val current = result.getOrNull()?.value?.firstOrNull { it.publicId == session.publicId }
             _state.update { state ->
                 val currentSession = state.session ?: return@update state
                 if (state.isSubmitting) return@update state.copy(currencyPending = false)

@@ -189,7 +189,7 @@ private fun LazyListScope.incomePlanBody(
     incomePlanInlineMessage(bodyState = bodyState, message = state.error)?.let { err ->
         item { AppStatusBanner(message = err, tone = MessageTone.Danger) }
     }
-    if (incomePlanShowsSummary(bodyState)) {
+    if (incomePlanShowsSummary(bodyState) && state.forecastMonth != null) {
         item {
             IncomeTotalSummary(state)
         }
@@ -245,7 +245,10 @@ private fun LazyListScope.incomePlanSections(
     }
 
     if (state.archivedPlans.isNotEmpty()) {
-        item { SectionEyebrow(stringResource(R.string.income_plan_section_archived)) }
+        item {
+            SectionEyebrow(stringResource(R.string.income_plan_section_archived))
+            IncomeReadSource(state.archivedFetchedAt, state.archivedFromCache)
+        }
         items(state.archivedPlans, key = { "archived-${it.publicId}" }) { plan ->
             IncomePlanRow(
                 plan = plan,
@@ -310,6 +313,7 @@ private fun SectionEyebrow(text: String) {
 private fun IncomeTotalSummary(state: IncomePlanUiState) {
     val currency = CurrencyDisplay.forRecord(state.forecastCurrencyCode)
     Column(modifier = Modifier.fillMaxWidth()) {
+        IncomeReadSource(state.fetchedAt, state.fromCache)
         Text(
             stringResource(R.string.income_plan_month_expected, state.forecastMonth.orEmpty()),
             style = MaterialTheme.typography.labelMedium,

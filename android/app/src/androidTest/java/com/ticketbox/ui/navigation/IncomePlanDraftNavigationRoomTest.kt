@@ -197,6 +197,19 @@ class IncomePlanDraftNavigationRoomTest {
         assertEquals(listOf("income-1"), income.network.historyCalls)
         pressBack()
         compose.waitForIdle()
+        income.advanceToOctober()
+        income.network.failReads = true
+        compose.runOnIdle { assertTrue(inner.popBackStack()) }
+        enterIncome()
+        compose.onNodeWithText("2026-09 预计收入").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("包含离线保留的读取", substring = true).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.income_history_action)).performScrollTo().performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("八月工资预测").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("八月工资预测").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("包含离线保留的读取", substring = true).performScrollTo().assertIsDisplayed()
+        assertEquals(listOf("income-1"), income.network.historyCalls)
+        pressBack()
+        compose.waitForIdle()
         compose.onNodeWithText(context.getString(R.string.income_plan_add_action_short)).performScrollTo().performClick()
         compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("尚未提交的原稿")
         assertTrue(income.stored().isEmpty())

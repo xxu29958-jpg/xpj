@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.R
 import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.ReadSnapshot
 import com.ticketbox.domain.model.IncomeHistoryPage
 import com.ticketbox.domain.model.IncomeRevision
 import com.ticketbox.domain.model.UiText
@@ -15,11 +16,13 @@ data class IncomeHistoryState(
     val nextBeforeVersion: Long? = null,
     val loading: Boolean = false,
     val error: UiText? = null,
+    val fetchedAt: String? = null,
+    val fromCache: Boolean = false,
 )
 
 /** Reads saved revisions without touching the income editor, draft or submission. */
 internal class IncomeHistoryTask(
-    private val readPage: suspend (LogicalSessionBinding, String, Long?) -> Result<IncomeHistoryPage>,
+    private val readPage: suspend (LogicalSessionBinding, String, Long?) -> Result<ReadSnapshot<IncomeHistoryPage>>,
     private val scope: CoroutineScope,
     private val currentBinding: () -> LogicalSessionBinding?,
     private val publish: (IncomeHistoryState) -> Unit,
@@ -56,9 +59,12 @@ internal class IncomeHistoryTask(
         job = scope.launch {
             val result = readPage(binding, publicId, before)
             if (request != sequence || currentBinding() != binding) return@launch
-            state = result.fold(onSuccess = { page ->
+            state = result.fold(onSuccess = { read ->
+                val page = read.value
                 state.copy(items = if (before == null) page.items else state.items + page.items,
-                    nextBeforeVersion = page.nextBeforeVersion, loading = false)
+                    nextBeforeVersion = page.nextBeforeVersion, loading = false,
+                    fetchedAt = if (state.fromCache) state.fetchedAt else read.fetchedAt,
+                    fromCache = state.fromCache || read.fromCache)
             }, onFailure = { error ->
                 if (error.isReadAccessDenied()) IncomeHistoryState() else state.copy(loading = false,
                     error = error.toUiText(R.string.income_history_failed))
