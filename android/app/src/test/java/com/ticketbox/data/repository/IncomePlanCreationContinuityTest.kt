@@ -19,7 +19,7 @@ import kotlin.test.assertTrue
 class IncomePlanCreationContinuityTest {
     @Test fun durableCreateReplaysOriginalCurrencyMonthAndReceiptAfterLostAck() = runTest {
         val f = IncomeCreationFixture()
-        val id = f.repository.create(f.binding, f.draft).getOrThrow()
+        val id = f.repository.create(f.binding, f.draft, f.creationKey).getOrThrow()
         val original = f.dao.rows.getValue(id)
         assertTrue(f.keys.isEmpty())
         assertEquals("JPY", f.pending(id).intent?.homeCurrencyCode)
@@ -37,7 +37,7 @@ class IncomePlanCreationContinuityTest {
 
     @Test fun mismatchedReceiptAndUnknownOriginalNeverBecomeDone() = runTest {
         val f = IncomeCreationFixture()
-        val id = f.repository.create(f.binding, f.draft).getOrThrow()
+        val id = f.repository.create(f.binding, f.draft, f.creationKey).getOrThrow()
         f.loseAck = false
         f.latest = f.latest.copy(homeCurrencyCode = "CNY")
         assertEquals(1, f.engine().drainOnce().failures)
@@ -51,12 +51,12 @@ class IncomePlanCreationContinuityTest {
 
     @Test fun originalRecoveryRejectsForeignOriginBindingAndReadonlyRetry() = runTest {
         val f = IncomeCreationFixture()
-        val id = f.repository.create(f.binding, f.draft).getOrThrow()
+        val id = f.repository.create(f.binding, f.draft, f.creationKey).getOrThrow()
         f.outbox.markFailed(id, "client_upgrade_required")
         val original = f.pending(id)
         assertEquals(null, f.repository.describeSubmission(original.row.copy(serverUrl = "https://foreign.example")))
         f.session.switchLedgerForFixture("other", "其它账本")
-        assertTrue(f.repository.create(f.binding, f.draft).isFailure)
+        assertTrue(f.repository.create(f.binding, f.draft, f.creationKey).isFailure)
         assertTrue(f.repository.recoverSubmission(f.binding, original, false).isFailure)
         f.session.switchLedgerForFixture("owner", "原账本", "viewer")
         val binding = f.repository.observeActiveLedgerAccess().first()!!.binding
@@ -67,7 +67,7 @@ class IncomePlanCreationContinuityTest {
 
     @Test fun missingReceiptKeepsTheOriginalRowForReviewWithoutClaimingAcceptance() = runTest {
         val f = IncomeCreationFixture()
-        val id = f.repository.create(f.binding, f.draft).getOrThrow()
+        val id = f.repository.create(f.binding, f.draft, f.creationKey).getOrThrow()
         val original = f.dao.rows.getValue(id)
         f.outbox.markDone(id, receiptJson = "{}")
         val pending = f.pending(id)
@@ -78,6 +78,58 @@ class IncomePlanCreationContinuityTest {
         assertEquals(original.payload, f.dao.rows.getValue(id).payload)
         assertEquals(original.idempotencyKey, pending.row.idempotencyKey)
     }
+
+    @Test fun uncertainLocalAcceptanceReturnsTheOriginalAcrossFailedAndCompletedStates() = runTest {
+        val f = IncomeCreationFixture()
+        assertEquals(null, f.repository.originalCreation(f.binding, f.creationKey).getOrThrow())
+        val id = f.repository.create(f.binding, f.draft, f.creationKey).getOrThrow()
+        val original = f.dao.rows.getValue(id)
+        assertEquals(id, f.repository.create(f.binding, f.draft, f.creationKey).getOrThrow())
+        f.outbox.markFailed(id, "client_upgrade_required")
+        assertEquals(id, f.repository.originalCreation(f.binding, f.creationKey).getOrThrow()?.row?.id)
+        assertEquals(id, f.repository.create(f.binding, f.draft, f.creationKey).getOrThrow())
+        f.repository.recoverSubmission(f.binding, f.pending(id), false).getOrThrow()
+        f.loseAck = false
+        f.engine().drainOnce()
+        assertTrue(requireNotNull(f.repository.originalCreation(f.binding, f.creationKey).getOrThrow()).isConfirmed)
+        assertEquals(id, f.repository.create(f.binding, f.draft, f.creationKey).getOrThrow())
+        assertEquals(1, f.dao.rows.size)
+        assertEquals(original.payload, f.dao.rows.getValue(id).payload)
+        assertEquals(original.idempotencyKey, f.dao.rows.getValue(id).idempotencyKey)
+    }
+
+    @Test fun sameKeyCannotReplaceOriginalWhileIndependentKeyMayCreateIdenticalPlan() = runTest {
+        val f = IncomeCreationFixture()
+        val id = f.repository.create(f.binding, f.draft, f.creationKey).getOrThrow()
+        val original = f.dao.rows.getValue(id)
+        assertTrue(f.repository.create(f.binding, f.draft.copy(amountCents = 2400), f.creationKey).isFailure)
+        assertEquals(original, f.dao.rows.getValue(id))
+        val independent = f.repository.create(f.binding, f.draft, "independent-income-key").getOrThrow()
+        assertTrue(independent != id)
+        assertEquals(original.payload, f.dao.rows.getValue(independent).payload)
+        assertEquals(2, f.dao.rows.size)
+    }
+
+    @Test fun originalLookupRejectsForeignStoredOriginButAllowsReadonlyReview() = runTest {
+        val f = IncomeCreationFixture()
+        val id = f.repository.create(f.binding, f.draft, f.creationKey).getOrThrow()
+        val original = f.dao.rows.getValue(id)
+        for (foreign in listOf(original.copy(serverUrl = "https://foreign.example"),
+            original.copy(payload = original.payload.replace(f.binding.sessionGeneration, "foreign-session")),
+            original.copy(payload = original.payload.replace(f.binding.bindingRevision, "foreign-binding")))) {
+            f.dao.rows[id] = foreign
+            assertTrue(f.repository.originalCreation(f.binding, f.creationKey).isFailure)
+            assertTrue(f.repository.create(f.binding, f.draft, f.creationKey).isFailure)
+            assertEquals(1, f.dao.rows.size)
+        }
+        f.dao.rows[id] = original
+        val current = requireNotNull(f.session.sessionStore.currentSession())
+        f.session.sessionStore.replaceForFixture(current.copy(identity = current.identity.copy(role = "viewer")))
+        val readonly = requireNotNull(f.repository.observeActiveLedgerAccess().first()).binding
+        assertEquals(id, f.repository.originalCreation(readonly, f.creationKey).getOrThrow()?.row?.id)
+        assertTrue(f.repository.create(readonly, f.draft, f.creationKey).isFailure)
+        assertTrue(f.repository.originalCreation(readonly.copy(ownerKey = "foreign-owner"), f.creationKey).isFailure)
+    }
 }
 
 internal class IncomeCreationFixture {
@@ -87,6 +139,7 @@ internal class IncomeCreationFixture {
     val outbox = testOutboxRepository(dao)
     val draft = IncomePlanDraft("2026-09", "JPY", "旅行补贴", IncomeSourceType.OTHER,
         IncomeFrequency.ONE_TIME, "2026-09", 1200, 10)
+    val creationKey = "original-income-creation"
     var latest = IncomePlanDto("income-created", "旅行补贴", "other", "one_time", "2026-09", 1200, 10,
         "active", "2026-09-09T00:00:00Z", "2026-09-09T00:00:00Z", 1, null, "JPY")
     var loseAck = true

@@ -37,7 +37,7 @@ class IncomePlanGlobalRecoveryViewModelTest {
         val harness = outboxStatusHarness()
         val binding = requireNotNull(harness.expenseRepository.captureDeferredLedgerBinding())
         val id = harness.incomePlans.create(binding, IncomePlanDraft("2026-09", "JPY", "旧版收入",
-            IncomeSourceType.SALARY, amountCents = 1200, payDay = 12)).getOrThrow()
+            IncomeSourceType.SALARY, amountCents = 1200, payDay = 12), "original-global-creation").getOrThrow()
         harness.outbox.markDone(id)
         val vm = harness.createGlobalViewModel()
         try {
@@ -69,7 +69,7 @@ class IncomePlanGlobalRecoveryViewModelTest {
         val harness = outboxStatusHarness()
         val binding = requireNotNull(harness.expenseRepository.captureDeferredLedgerBinding())
         val id = harness.incomePlans.create(binding, IncomePlanDraft("2026-09", "JPY", "原日元收入",
-            IncomeSourceType.SALARY, amountCents = 1200, payDay = 12)).getOrThrow()
+            IncomeSourceType.SALARY, amountCents = 1200, payDay = 12), "original-global-creation").getOrThrow()
         harness.outbox.markFailed(id, "client_upgrade_required")
         val original = harness.outbox.observeStatus().first().failed.single()
         val vm = harness.createGlobalViewModel()

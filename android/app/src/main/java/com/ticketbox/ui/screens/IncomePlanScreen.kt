@@ -13,7 +13,6 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -38,14 +37,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
-import com.ticketbox.domain.model.IncomeFrequency
 import com.ticketbox.domain.model.IncomePlan
-import com.ticketbox.domain.model.IncomeSourceType
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.asString
-import com.ticketbox.ui.components.AppAction
-import com.ticketbox.ui.components.AppBusyGuardedSheet
 import com.ticketbox.ui.components.AppContentStateCopy
 import com.ticketbox.ui.components.AppContentStatePresentation
 import com.ticketbox.ui.components.AppContentStateSpec
@@ -54,9 +49,6 @@ import com.ticketbox.ui.components.AppErrorState
 import com.ticketbox.ui.components.AppListStateContent
 import com.ticketbox.ui.components.AppListStateSpec
 import com.ticketbox.ui.components.AppPageRole
-import com.ticketbox.ui.components.AppSheetActionRow
-import com.ticketbox.ui.components.AppSheetScaffold
-import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryPageSlots
 import com.ticketbox.ui.components.AppSecondaryRefreshState
@@ -69,11 +61,9 @@ import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.IncomePlanEditUiState
 import com.ticketbox.viewmodel.IncomePlanEditViewModel
+import com.ticketbox.viewmodel.IncomePlanCreateViewModel
 import com.ticketbox.viewmodel.IncomePlanUiState
 import com.ticketbox.viewmodel.IncomePlanViewModel
-import com.ticketbox.viewmodel.updateDraftAmount
-import com.ticketbox.viewmodel.updateDraftLabel
-import com.ticketbox.viewmodel.updateDraftPayDay
 import kotlinx.coroutines.delay
 
 /** 操作成功提示的展示时长，到点自动收起，与既有 undo 卡片的定时关闭同一惯例。 */
@@ -85,31 +75,20 @@ private data class IncomePlanRowAction(
     val onClick: () -> Unit,
 )
 
-private data class AddIncomePlanSheetActions(
-    val onLabel: (String) -> Unit,
-    val onSourceType: (IncomeSourceType) -> Unit,
-    val onFrequency: (IncomeFrequency) -> Unit,
-    val onPreviousIncomeMonth: () -> Unit,
-    val onNextIncomeMonth: () -> Unit,
-    val onAmount: (String) -> Unit,
-    val onPayDay: (String) -> Unit,
-    val onSubmit: () -> Unit,
-    val onCancel: () -> Unit,
-)
-
 @Composable
 fun IncomePlanScreen(
     viewModel: IncomePlanViewModel,
     editViewModel: IncomePlanEditViewModel,
+    createViewModel: IncomePlanCreateViewModel,
     onBack: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val editState by editViewModel.state.collectAsStateWithLifecycle()
+    val createState by createViewModel.state.collectAsStateWithLifecycle()
     var showAddSheet by rememberSaveable(state.binding) { mutableStateOf(false) }
 
-    IncomePlanSideEffects(
-        state, editState, viewModel, editViewModel, closeAddSheet = { showAddSheet = false },
-    )
+    IncomePlanSideEffects(state, editState, viewModel, editViewModel)
+    IncomeCreationSideEffects(createState, createViewModel, viewModel) { showAddSheet = false }
 
     AppSecondaryScrollableContent(
         chrome = AppSecondaryPageChrome(
@@ -130,36 +109,24 @@ fun IncomePlanScreen(
         ),
         slots = AppSecondaryPageSlots(
             actions = {
-                if (state.canModify) {
-                    AppSecondaryButton(
-                        text = stringResource(R.string.income_plan_add_action_short),
-                        enabled = state.forecastMonth != null && !state.isSubmitting,
-                        leadingIcon = Icons.Default.Add,
-                        onClick = {
-                            viewModel.resetDraft()
-                            showAddSheet = true
-                        },
-                    )
-                }
+                IncomePlanCreateAction(state, createState, createViewModel) { showAddSheet = true }
             },
         ),
     ) {
         incomePlanBody(
             state = state,
             editFlash = editState.flashMessage,
+            creationFlash = createState.takeIf { it.binding == state.binding }?.flashMessage,
             viewModel = viewModel,
             onEditPlan = { plan -> state.forecastMonth?.let { editViewModel.openEdit(plan, it) } },
         )
     }
 
     IncomePlanAddSheetHost(
-        showAddSheet = showAddSheet,
-        state = state,
-        viewModel = viewModel,
-        onDismiss = {
-            showAddSheet = false
-            viewModel.resetDraft()
-        },
+        showAddSheet = showAddSheet && createState.binding == state.binding,
+        state = createState,
+        viewModel = createViewModel,
+        onDismiss = { showAddSheet = false },
     )
     IncomePlanEditSheetHost(state = editState, editViewModel = editViewModel)
 }
@@ -170,7 +137,6 @@ private fun IncomePlanSideEffects(
     editState: IncomePlanEditUiState,
     viewModel: IncomePlanViewModel,
     editViewModel: IncomePlanEditViewModel,
-    closeAddSheet: () -> Unit,
 ) {
     // 成功提示在页头横幅展示数秒后自动收起；error 由下一次 refresh 清掉，与既有语义一致。
     LaunchedEffect(state.flashMessage) {
@@ -182,12 +148,6 @@ private fun IncomePlanSideEffects(
         if (editState.flashMessage == null) return@LaunchedEffect
         delay(FlashDismissMillis)
         editViewModel.dismissFlash()
-    }
-    // Room publication closes the editor; accepted delivery remains visible in the original submission card.
-    LaunchedEffect(state.addSubmitted) {
-        if (!state.addSubmitted) return@LaunchedEffect
-        closeAddSheet()
-        viewModel.resetDraft()
     }
     // 编辑成功 ack：关编辑器 + 主列表重读。receipt 由编辑器 flashMessage 独立展示——
     // 列表 refresh 失败只出 error 横幅，不吞「已更新收入」。
@@ -201,6 +161,7 @@ private fun IncomePlanSideEffects(
 private fun LazyListScope.incomePlanBody(
     state: IncomePlanUiState,
     editFlash: UiText?,
+    creationFlash: UiText?,
     viewModel: IncomePlanViewModel,
     onEditPlan: (IncomePlan) -> Unit,
 ) {
@@ -217,6 +178,9 @@ private fun LazyListScope.incomePlanBody(
     }
     editFlash?.let { msg ->
         item { AppStatusBanner(message = msg, tone = MessageTone.Success) }
+    }
+    creationFlash?.let { msg ->
+        item { AppStatusBanner(message = msg, tone = MessageTone.Info) }
     }
     incomePlanInlineMessage(bodyState = bodyState, message = state.error)?.let { err ->
         item { AppStatusBanner(message = err, tone = MessageTone.Danger) }
@@ -462,78 +426,5 @@ private fun IncomePlanRowSummary(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-    }
-}
-
-/** 添加抽屉宿主：表单与编辑共享 [IncomePlanDraftForm]；原提交持久化后由 addSubmitted 关闭。 */
-@Composable
-private fun IncomePlanAddSheetHost(
-    showAddSheet: Boolean,
-    state: IncomePlanUiState,
-    viewModel: IncomePlanViewModel,
-    onDismiss: () -> Unit,
-) {
-    if (!showAddSheet) return
-    AppBusyGuardedSheet(
-        isSubmitting = state.isSubmitting,
-        onDismiss = onDismiss,
-    ) {
-        AddIncomePlanSheet(
-            state = state,
-            actions = AddIncomePlanSheetActions(
-                onLabel = viewModel::updateDraftLabel,
-                onSourceType = viewModel::updateDraftSource,
-                onFrequency = viewModel::updateDraftFrequency,
-                onPreviousIncomeMonth = { viewModel.shiftDraftIncomeMonth(-1L) },
-                onNextIncomeMonth = { viewModel.shiftDraftIncomeMonth(1L) },
-                onAmount = viewModel::updateDraftAmount,
-                onPayDay = viewModel::updateDraftPayDay,
-                onSubmit = viewModel::submitDraft,
-                onCancel = onDismiss,
-            ),
-        )
-    }
-}
-
-@Composable
-private fun AddIncomePlanSheet(
-    state: IncomePlanUiState,
-    actions: AddIncomePlanSheetActions,
-) {
-    AppSheetScaffold(title = stringResource(R.string.income_plan_sheet_title)) {
-        if (!state.canModify) Text(stringResource(R.string.common_readonly_ledger))
-        IncomePlanDraftForm(
-            state = IncomePlanDraftFormState(
-                draft = state.addDraft,
-                isSubmitting = state.isSubmitting || !state.canModify,
-            ),
-            fieldCallbacks = IncomePlanDraftFieldCallbacks(
-                onLabel = actions.onLabel,
-                onAmount = actions.onAmount,
-                onPayDay = actions.onPayDay,
-                onPreviousIncomeMonth = actions.onPreviousIncomeMonth,
-                onNextIncomeMonth = actions.onNextIncomeMonth,
-            ),
-            choiceCallbacks = IncomePlanDraftChoiceCallbacks(
-                onSourceType = actions.onSourceType,
-                onFrequency = actions.onFrequency,
-            ),
-        )
-        AppSheetActionRow(
-            primary = AppAction(
-                text = if (state.isSubmitting) {
-                    stringResource(R.string.income_plan_sheet_submitting)
-                } else {
-                    stringResource(R.string.income_plan_sheet_save)
-                },
-                onClick = actions.onSubmit,
-                enabled = !state.isSubmitting && state.canModify,
-            ),
-            secondary = AppAction(
-                text = stringResource(R.string.common_cancel),
-                onClick = actions.onCancel,
-                enabled = !state.isSubmitting,
-            ),
-        )
     }
 }

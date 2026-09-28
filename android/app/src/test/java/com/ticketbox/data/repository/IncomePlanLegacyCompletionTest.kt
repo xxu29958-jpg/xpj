@@ -54,7 +54,7 @@ class IncomePlanLegacyCompletionTest {
 
     @Test fun verifiedAcceptedReceiptIsNotAnUncertainRecordThatCanBeStopped() = runTest {
         val f = IncomeCreationFixture()
-        val id = f.repository.create(f.binding, f.draft).getOrThrow()
+        val id = f.repository.create(f.binding, f.draft, f.creationKey).getOrThrow()
         f.loseAck = false
         f.engine().drainOnce()
         val pending = f.pending(id)

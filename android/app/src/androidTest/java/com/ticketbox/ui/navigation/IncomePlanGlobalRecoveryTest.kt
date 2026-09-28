@@ -134,7 +134,7 @@ class IncomePlanGlobalRecoveryTest {
     private fun createFailedIncome(): Map<String, String?> = runBlocking {
         val binding = requireNotNull(harness.screenFactory.repository.captureDeferredLedgerBinding())
         val id = harness.screenFactory.incomePlanRepository.create(binding, IncomePlanDraft("2026-09", "JPY",
-            "原日元收入", IncomeSourceType.SALARY, amountCents = 1200, payDay = 12)).getOrThrow()
+            "原日元收入", IncomeSourceType.SALARY, amountCents = 1200, payDay = 12), "global-recovery-income").getOrThrow()
         harness.fixture.outbox.markFailed(id, "client_upgrade_required")
         harness.fixture.stored().single()
     }

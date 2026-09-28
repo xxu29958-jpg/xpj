@@ -126,6 +126,15 @@ fun incomePlanViewModelFactory(
 }
 
 @Suppress("UNCHECKED_CAST")
+fun incomePlanCreateViewModelFactory(
+    repository: IncomePlanActions,
+): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T = IncomePlanCreateViewModel(repository) as T
+    override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T =
+        IncomePlanCreateViewModel(repository, savedStateHandle = extras.createSavedStateHandle()) as T
+}
+
+@Suppress("UNCHECKED_CAST")
 fun incomePlanEditViewModelFactory(
     repository: IncomePlanActions,
     onDataChanged: () -> Unit = {},

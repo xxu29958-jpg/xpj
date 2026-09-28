@@ -7,6 +7,8 @@ import java.util.Collections
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** In-memory [PendingMutationDao] preserving bound FIFO, original row identity and atomic batch changes. */
 class FakePendingMutationDao : PendingMutationDao {
@@ -15,6 +17,7 @@ class FakePendingMutationDao : PendingMutationDao {
     var beforeInsert: (suspend () -> Unit)? = null
     var replacePayloadError: Throwable? = null
     private var nextId = 1L
+    private val incomeCreationAcceptance = Mutex()
     private val queueDepth = MutableStateFlow(0)
 
     override suspend fun insert(row: PendingMutationEntity): Long {
@@ -42,6 +45,10 @@ class FakePendingMutationDao : PendingMutationDao {
     ): List<PendingMutationEntity> = rows.values
         .filter { it.ownerKey == ownerKey && it.ledgerId == ledgerId && it.type == type && it.idempotencyKey in keys }
         .sortedWith(compareBy({ it.createdAt }, { it.id }))
+
+    override suspend fun insertOriginalIncomeCreation(row: PendingMutationEntity): Long = incomeCreationAcceptance.withLock {
+        super.insertOriginalIncomeCreation(row)
+    }
 
     override suspend fun allRows(): List<PendingMutationEntity> = rows.values.sortedWith(compareBy({ it.createdAt }, { it.id }))
 
