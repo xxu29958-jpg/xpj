@@ -10,6 +10,9 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -206,7 +209,8 @@ class IncomePlanDraftNavigationRoomTest {
         compose.onNodeWithText(context.getString(R.string.income_history_action)).performScrollTo().performClick()
         compose.waitUntil(10_000) { compose.onAllNodesWithText("八月工资预测").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("八月工资预测").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("包含离线保留的读取", substring = true).performScrollTo().assertIsDisplayed()
+        compose.onNode(hasText("包含离线保留的读取", substring = true) and hasAnyAncestor(isDialog()))
+            .performScrollTo().assertIsDisplayed()
         assertEquals(listOf("income-1"), income.network.historyCalls)
         pressBack()
         compose.waitForIdle()

@@ -11,6 +11,7 @@ import com.ticketbox.data.repository.FakePendingMutationDao
 import com.ticketbox.data.repository.TestSessionFixture
 import com.ticketbox.data.repository.OutboxRepository
 import com.ticketbox.data.repository.testIncomePlanRepository
+import com.ticketbox.data.repository.IncomePlanRepository
 import com.ticketbox.data.repository.testOutboxRepository
 import com.ticketbox.data.repository.testApiServiceProvider
 import com.ticketbox.data.repository.testServerSessionBinding
