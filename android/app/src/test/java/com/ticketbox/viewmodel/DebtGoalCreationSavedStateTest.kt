@@ -109,7 +109,18 @@ class DebtGoalCreationSavedStateTest {
         restored.submit(); advanceUntilIdle()
         assertEquals(1, edits.keys.size)
         assertEquals(original, edits.rows.value.single())
+        val reentryStart = observed.size
         restored.reload(); advanceUntilIdle()
+        val reentryStates = observed.drop(reentryStart)
+        assertTrue(reentryStates.isNotEmpty())
+        assertTrue(reentryStates.all { it.pending?.row == original.row })
+        edits.lookupFailure = IOException("原任务暂时无法重新核对")
+        restored.retryOriginal(); advanceUntilIdle()
+        assertTrue(restored.state.value.acceptanceUncertain)
+        assertNotNull(restored.state.value.formError)
+        assertFalse(restored.state.value.canSubmit)
+        assertEquals(original.row, restored.state.value.pending?.row)
+        assertEquals(1, edits.keys.size)
         val acceptedStates = observed.filter { it.pending?.row?.id == original.row.id }
         assertTrue(acceptedStates.isNotEmpty())
         acceptedStates.forEach { accepted ->
