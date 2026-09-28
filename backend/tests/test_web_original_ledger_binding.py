@@ -1,6 +1,7 @@
 """Original planning forms cannot follow a browser session into another ledger."""
 
 import inspect
+import re
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -16,6 +17,7 @@ from starlette.requests import Request
 from app.database import get_db
 from app.middleware import csrf
 from app.routes import (
+    web_budgets,
     web_common,
     web_debt_create,
     web_expense_offsets,
@@ -33,6 +35,7 @@ from app.routes._web_session_common import LedgerOption
 from tests._web_native_form_support import hidden_post_forms
 
 CASES = [
+    (web_budgets, "web_budgets_save", "/web/budgets/save"),
     (web_goals, "web_goals_create", "/web/goals/create"),
     (web_goal_edit, "web_goal_save", "/web/goals/original-goal/edit"),
     (web_rules, "web_rules_create", "/web/rules/create"),
@@ -76,7 +79,7 @@ def test_switched_session_keeps_original_form_before_any_object_read_or_command(
         "update_goal_idempotently", "create_rule_idempotently", "update_rule_idempotently",
         "create_manual_recurring_item", "update_recurring_item", "confirm_recurring_candidate",
         "set_occurrence_payment", "create_income_plan_idempotently", "update_income_plan_idempotently",
-        "archive_income_plan", "restore_income_plan"):
+        "archive_income_plan", "restore_income_plan", "save_monthly_budget", "review_monthly_budget_save", "get_monthly_budget"):
         if hasattr(module, name):
             spy = Mock(side_effect=AssertionError("Original submission reached current-ledger reader/writer"))
             monkeypatch.setattr(module, name, spy)
@@ -88,6 +91,9 @@ def test_switched_session_keeps_original_form_before_any_object_read_or_command(
         "keyword": "原规则", "category": "transport", "source_type": "salary", "frequency": "monthly",
         "home_currency_code": "JPY", "month": "2026-09", "intent_month": "2026-09", "amount_yuan": "1200",
         "target_amount_yuan": "1200", "baseline_amount_yuan": "1200", "amount_min_yuan": "1200",
+        "total_amount_yuan": "1200", "rollover_amount_yuan": "-20", "non_monthly_amount_yuan": "100",
+        "excluded_category": ["医疗", "报销"], "category_budget_category": ["餐饮", "交通"],
+        "category_budget_amount_yuan": ["100", "020"], "category_budget_remove": [1, 0],
         "pay_day": "10", "expected_row_version": "3", "idempotency_key": "original-key",
         "public_id": "original-object", "rule_id": 17, "enabled": False, "action": "clear", "amount_cents": "1200"}
     values.update({key: value for key, value in supplied.items() if key in inspect.signature(handler).parameters})
@@ -96,9 +102,13 @@ def test_switched_session_keeps_original_form_before_any_object_read_or_command(
     html = response.body.decode()
     assert 'name="ledger_id" value="old-ledger"' in html
     assert f'action="{path}"' in html
-    for field in ("idempotency_key", "expected_row_version", "amount_yuan", "baseline_amount_yuan", "target_amount_yuan"):
+    for field in ("idempotency_key", "expected_row_version", "amount_yuan", "baseline_amount_yuan", "target_amount_yuan",
+        "total_amount_yuan", "rollover_amount_yuan", "non_monthly_amount_yuan"):
         if field in values:
             assert f'name="{field}" value="{values[field]}"' in html
+    for field in ("excluded_category", "category_budget_category", "category_budget_amount_yuan", "category_budget_remove"):
+        if field in values:
+            assert re.findall(rf'name="{field}" value="([^"]*)"', html) == [str(value) for value in values[field]]
     assert "切回原账本" in html
     assert all(not spy.called for spy in stopped)
 
