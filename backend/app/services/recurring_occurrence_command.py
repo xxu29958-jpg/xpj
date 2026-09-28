@@ -19,11 +19,11 @@ from app.services.idempotency import (
 )
 from app.services.recurring_history_service import ensure_recurring_history_baseline
 from app.services.recurring_occurrence_query import (
-    eligible_payment_query,
     get_occurrence,
     occurrence_period,
     occurrence_response,
 )
+from app.services.recurring_payment_query import eligible_payment_query
 from app.services.spending_contract_service import clean_month
 from app.services.time_service import now_utc
 
@@ -78,7 +78,7 @@ def _lock_payment(
     ).with_for_update().execution_options(populate_existing=True))
     if expense is None:
         raise AppError("expense_not_found", status_code=404)
-    eligible = db.scalar(eligible_payment_query(tenant_id=tenant_id).where(Expense.id == expense.id))
+    eligible = db.scalar(eligible_payment_query(tenant_ids=[tenant_id]).where(Expense.id == expense.id))
     if eligible is None:
         raise AppError("state_conflict", "这笔付款已撤回或冲销，请重新核对账单。", status_code=409)
     if expense.row_version != payload.expected_expense_row_version:
