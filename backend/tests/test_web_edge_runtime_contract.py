@@ -566,6 +566,10 @@ def test_goal_original_input_survives_reload_and_reopening_in_real_edge(tmp_path
         thread.join(timeout=5)
     assert posts == [] and missing == [], (posts, missing)
     assert isinstance(probe, dict) and probe.get("error") is None, probe
+    _assert_original_goal_recovered(probe, spec, original_key, kind)
+
+
+def _assert_original_goal_recovered(probe, spec, original_key, kind):
     expected = {**spec["input"], "month": "2026-09", "home_currency_code": "JPY", "idempotency_key": original_key}
     if kind == "edit":
         expected.update(expected_row_version="7", return_category="food", return_month="2026-09")
