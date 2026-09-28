@@ -32,7 +32,8 @@ import java.time.ZoneOffset
 import kotlinx.coroutines.flow.flowOf
 
 /** Disk Room and the real repository graph. Session, currency observation and remote transport are synthetic. */
-internal class IncomePlanConnectedFixture(private val context: Context) {
+internal class IncomePlanConnectedFixture(private val context: Context,
+    private val decorateApi: (ApiService) -> ApiService = { it }) {
     private val name = "income-plan-continuity.db"
     private var database: AppDatabase? = null
     private var clock: Clock = Clock.fixed(Instant.parse("2026-09-30T15:30:00Z"), ZoneOffset.UTC)
@@ -54,7 +55,7 @@ internal class IncomePlanConnectedFixture(private val context: Context) {
         } }
         val credentials = SessionCredentialAdapter(sessions)
         val factory = object : ApiServiceFactory {
-            override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = network.service
+            override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = decorateApi(network.service)
         }
         return RepositoryGraph(RepositoryGraphDependencies(db, ApiClient(),
             object : TicketboxSettingsStore by incomeProxy<TicketboxSettingsStore>({ error("Unexpected settings: $it") }) {
