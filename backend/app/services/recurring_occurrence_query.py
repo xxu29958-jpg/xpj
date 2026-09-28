@@ -5,15 +5,16 @@ from __future__ import annotations
 from calendar import monthrange
 from datetime import date
 
-from sqlalchemy import exists, or_, select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.models import Expense, ExpenseOffsetFact, RecurringItem, RecurringOccurrence
+from app.models import Expense, RecurringItem, RecurringOccurrence
 from app.money_contract import projection_sum_to_int
 from app.schemas._recurring_occurrence import RecurringOccurrenceResponse
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.money_projection_service import ProjectionGap, ProjectionReference
 from app.services.recurring_history_service import recorded_occurrence_definition
+from app.services.recurring_payment_query import eligible_payment_query
 from app.services.recurring_service import recurring_monthly_total
 from app.services.spending_contract_service import (
     calendar_month_bounds,
@@ -35,31 +36,12 @@ def get_occurrence(db: Session, *, tenant_id: str, series_id: int, period: date)
     ).execution_options(populate_existing=True))
 
 
-def eligible_payment_query(*, tenant_id: str):
-    return _eligible_payments_for_ledgers([tenant_id])
-
-
 def eligible_payment(db: Session, *, tenant_id: str, expense_id: int) -> Expense | None:
-    return db.scalar(eligible_payment_query(tenant_id=tenant_id).where(Expense.id == expense_id).limit(1))
-
-
-def _eligible_payments_for_ledgers(tenant_ids: list[str]):
-    reversal = exists(select(ExpenseOffsetFact.id).where(
-        ExpenseOffsetFact.tenant_id == Expense.tenant_id,
-        ExpenseOffsetFact.expense_id == Expense.id,
-        ExpenseOffsetFact.kind == "reversal",
-        ExpenseOffsetFact.status == "active",
-    )).correlate(Expense)
-    return select(Expense).where(
-        Expense.tenant_id.in_(tenant_ids),
-        Expense.status == "confirmed",
-        Expense.amount_cents >= 0,
-        ~reversal,
-    )
+    return db.scalar(eligible_payment_query(tenant_ids=[tenant_id]).where(Expense.id == expense_id).limit(1))
 
 
 def find_recurring_payments(db: Session, *, tenant_id: str, month: str | None, query: str) -> list[Expense]:
-    statement = eligible_payment_query(tenant_id=tenant_id)
+    statement = eligible_payment_query(tenant_ids=[tenant_id])
     if month:
         start, end = calendar_month_bounds(month)
         statement = statement.where(Expense.accounting_date >= start, Expense.accounting_date < end)
@@ -75,7 +57,7 @@ def next_due_dates_for_ledgers(db: Session, *, tenant_ids: list[str]) -> list[da
     items = list(db.scalars(select(RecurringItem).where(
         RecurringItem.tenant_id.in_(tenant_ids), RecurringItem.status == "active",
     )))
-    eligible_ids = _eligible_payments_for_ledgers(tenant_ids).with_only_columns(Expense.id)
+    eligible_ids = eligible_payment_query(tenant_ids=tenant_ids).with_only_columns(Expense.id)
     rows = db.execute(select(RecurringOccurrence.series_id, RecurringOccurrence.period_start).where(
         RecurringOccurrence.tenant_id.in_(tenant_ids),
         RecurringOccurrence.expense_id.in_(eligible_ids),
@@ -89,7 +71,7 @@ def next_due_dates_for_ledgers(db: Session, *, tenant_ids: list[str]) -> list[da
 def fulfilled_periods(
     db: Session, *, tenant_id: str, series_ids: list[int],
 ) -> dict[int, set[date]]:
-    eligible_ids = eligible_payment_query(tenant_id=tenant_id).with_only_columns(Expense.id)
+    eligible_ids = eligible_payment_query(tenant_ids=[tenant_id]).with_only_columns(Expense.id)
     rows = db.execute(select(RecurringOccurrence.series_id, RecurringOccurrence.period_start).where(
         RecurringOccurrence.tenant_id == tenant_id,
         RecurringOccurrence.series_id.in_(series_ids),
