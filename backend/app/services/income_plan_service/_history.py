@@ -80,7 +80,7 @@ def income_plan_history(db: Session, *, tenant_id: str, public_id: str,
     before_version: int | None = None, limit: int = 20) -> IncomePlanHistoryResponse:
     plan = db.scalar(ledger_scoped_select(MonthlyIncomePlan, tenant_id).where(MonthlyIncomePlan.public_id == public_id))
     if plan is None:
-        raise AppError("income_plan_not_found", status_code=404)
+        raise AppError("income_plan_not_found", "收入计划不存在。", status_code=404)
     query = select(IncomePlanRevision).where(IncomePlanRevision.tenant_id == tenant_id, IncomePlanRevision.plan_id == plan.id)
     if before_version is not None:
         query = query.where(IncomePlanRevision.revision_number < before_version)

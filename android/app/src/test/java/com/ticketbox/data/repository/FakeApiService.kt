@@ -788,6 +788,7 @@ internal class FakeApiService(
         idempotencyKey: String?,
     ): BudgetMonthlyDto = unsupported()
     override suspend fun listIncomePlans(status: String): com.ticketbox.data.remote.dto.IncomePlanListResponseDto = unsupported()
+    override suspend fun incomePlanHistory(publicId: String, limit: Int, beforeVersion: Long?): com.ticketbox.data.remote.dto.IncomeHistoryResponseDto = unsupported()
     override suspend fun createIncomePlan(request: com.ticketbox.data.remote.dto.IncomePlanCreateRequestDto, idempotencyKey: String): com.ticketbox.data.remote.dto.IncomePlanDto = unsupported()
     override suspend fun updateIncomePlan(publicId: String, request: com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto, idempotencyKey: String?): com.ticketbox.data.remote.dto.IncomePlanDto = unsupported()
     override suspend fun archiveIncomePlan(publicId: String, request: com.ticketbox.data.remote.dto.IncomePlanTokenRequestDto): com.ticketbox.data.remote.dto.IncomePlanDto = unsupported()
