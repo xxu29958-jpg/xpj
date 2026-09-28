@@ -6,6 +6,7 @@ import json
 from uuid import uuid4
 
 from fastapi import Request
+from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -73,10 +74,10 @@ def repayment_context(
 
 
 def render_repayment_recovery(
-    request: Request, db: Session, *, options, selected_id: str, public_id: str,
+    request: Request, db: Session, *, options: list[dict], selected_id: str, public_id: str,
     values: dict[str, str] | None = None, error: str = "", result: str = "",
     status_code: int = 503, ack: dict | None = None,
-):
+) -> HTMLResponse:
     # The identity/installation scope is still authoritative. No Debt fold,
     # history, side counts or inferred latest OCC is needed to retain a command.
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id, page_title="核对原提交")
@@ -91,4 +92,8 @@ def render_repayment_recovery(
         request, db, selected_id=selected_id, public_id=public_id, kind=kind,
         can_recover=ctx["repayment_form"]["can_recover"],
     ) for kind in ("debt-void", "repayment-void")]
+    from app.routes._web_debt_kind_forms import kind_context
+
+    ctx["kind_form"] = kind_context(request, db, selected_id=selected_id, public_id=public_id,
+        can_recover=ctx["repayment_form"]["can_recover"])
     return templates.TemplateResponse(request=request, name="debt_repayment_recovery.html", context=ctx, status_code=status_code)

@@ -291,13 +291,7 @@ class DebtDetailViewModel(
         }
     }
 
-    /**
-     * 8e-6e：把当前外部债重分类为 [kind]（POST /api/debts/{id}/kind，带 §2.1 OCC 载体 + ADR-0042 幂等键）。
-     * 选中当前类型是 no-op（不发请求，避免无谓 row_version bump）。成功后用服务端折叠后的 [Debt]（新
-     * row_version + debt_kind）原子换入并 bump loadGeneration——压制在途 refresh 的旧快照回退（否则下一次
-     * 写的 OCC 载体会变陈 → 409），与 [submit] 同构。失败走既有 [DebtDetailUiState.error] 横幅。选择器抽屉
-     * 的开合是详情屏的本地 UI 态（镜像新建抽屉），故本 VM 只负责提交这一步。
-     */
+    /** Retain the selected classification before delivery; only canonical reads replace displayed facts. */
     fun selectKind(kind: String) {
         val current = _state.value
         if (!current.canWriteActions) return
@@ -306,14 +300,17 @@ class DebtDetailViewModel(
         if (kind == debt.debtKind || writes.currentAccess()?.binding != binding) return
         _state.update { it.copy(isSubmitting = true) }
         viewModelScope.launch {
-            val result = repository.setDebtKind(debt.publicId, debt.rowVersion, kind)
+            val result = writes.saveKind(binding, debt, kind)
             if (loadedPublicId != debt.publicId || loadedBinding != binding || writes.currentAccess()?.binding != binding) return@launch
             result.fold(
-                onSuccess = { updated ->
-                    loadGeneration++
+                onSuccess = { id ->
                     _state.update {
-                        it.copy(debt = updated, fetchedAt = null, fromCache = false, isSubmitting = false, error = null, flashMessage = UiText.res(R.string.debt_kind_updated))
+                        it.copy(isSubmitting = false, error = null,
+                            locallyAcceptedWriteId = if (id !in completedWrites.orEmpty() && it.pendingWrites.none { row -> row.row.id == id })
+                                id else it.locallyAcceptedWriteId,
+                            flashMessage = UiText.res(R.string.debt_kind_saved))
                     }
+                    if (id in completedWrites.orEmpty() && refreshedWrites.add(id)) refresh()
                 },
                 onFailure = { err ->
                     _state.update { it.copy(isSubmitting = false, error = err.toUiText(R.string.debt_action_failed)) }

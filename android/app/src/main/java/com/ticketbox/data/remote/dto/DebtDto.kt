@@ -231,10 +231,11 @@ data class DebtForgiveCreateRequestDto(
  * classification (ADR-0049 §7.0 / 8e-6e correction entry). [debtKind] is one of DebtKinds;
  * [expectedRowVersion] is the §2.1 stale-intent OCC token (a reclassification bumps `row_version`,
  * so two concurrent edits cannot both silently win) + the §3.6 fingerprint component. NOT
- * fold-changing — `debt_kind` gates only the external-debt payoff projection. The backend marks
+ * fold-changing — the backend owns the projections that use `debt_kind`. The backend marks
  * this body `additionalProperties=false`, so the DTO field set must stay a subset of the schema
  * (the contract gate's forward check is the forbid protection).
  */
+@JsonClass(generateAdapter = true)
 data class DebtKindSetRequestDto(
     @param:Json(name = "debt_kind")
     val debtKind: String,

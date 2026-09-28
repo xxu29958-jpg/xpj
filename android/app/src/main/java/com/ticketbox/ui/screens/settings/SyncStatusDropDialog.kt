@@ -17,6 +17,7 @@ import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.PendingDebtCreation
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.DebtCreationIntentSummary
+import com.ticketbox.ui.screens.debtWriteStopExplanation
 
 /** Immutable user selection; a queue refresh cannot relabel an open discard confirmation. */
 internal data class SyncStatusDropSelection(
@@ -159,7 +160,6 @@ private fun legacyDropConfirmationText(selection: SyncStatusDropSelection): Drop
 
 @Composable
 private fun debtWriteDropConfirmationText(selection: SyncStatusDropSelection): DropConfirmationText = DropConfirmationText(
-    stringResource(R.string.debt_write_drop), stringResource(if (selection.debtWrite?.requiresReview == true)
-        R.string.debt_void_review_stop_explanation else R.string.debt_write_drop_explanation),
+    stringResource(R.string.debt_write_drop), stringResource(debtWriteStopExplanation(selection.debtWrite)),
     stringResource(R.string.debt_write_drop),
 )

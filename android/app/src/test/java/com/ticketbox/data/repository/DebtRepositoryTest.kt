@@ -7,7 +7,6 @@ import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.DebtBillParseResponseDto
 import com.ticketbox.data.remote.dto.DebtDto
 import com.ticketbox.data.remote.dto.DebtForgiveCreateRequestDto
-import com.ticketbox.data.remote.dto.DebtKindSetRequestDto
 import com.ticketbox.data.remote.dto.DebtListResponseDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalConfirmRequestDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalCreateRequestDto
@@ -239,55 +238,55 @@ class DebtRepositoryTest {
         assertTrue(fixture.api.voidCalls.isEmpty())
     }
 
-    // ── ADR-0049 §7.0 / 8e-6e debt_kind correction setter ───────────────────
-
     @Test
-    fun setDebtKindSendsKindVersionKeyAndRefolds() = runTest {
-        val handler = DebtApiHandler().apply {
-            setKindResult = debtDto(publicId = "d1", remaining = 50_000L)
-                .copy(debtKind = DebtKinds.REVOLVING, rowVersion = 4)
-        }
-
-        val updated = repository(handler).setDebtKind(
-            publicId = "d1",
-            expectedRowVersion = 3L,
-            debtKind = DebtKinds.REVOLVING,
-        ).getOrThrow()
-
-        val call = handler.setKindCalls.single()
-        assertEquals("d1", call.publicId)
-        assertEquals(DebtKinds.REVOLVING, call.request.debtKind)
-        assertEquals(3L, call.request.expectedRowVersion)
-        assertTrue(!call.idempotencyKey.isNullOrBlank())
-        // The fold-after Debt is swapped in (fresh row_version + the new kind).
-        assertEquals(DebtKinds.REVOLVING, updated.debtKind)
-        assertEquals(4L, updated.rowVersion)
+    fun savedDebtKindDispatchesTheOriginalVersionKeyAndRetainsItsVerifiedReceipt() = runTest {
+        val fixture = DirectRepaymentTestFixture()
+        fixture.api.current = fixture.api.current.copy(rowVersion = 3)
+        fixture.api.loseResponse = false
+        val debt = fixture.api.current.toDomain()
+        fixture.repository.saveKind(fixture.binding, debt, DebtKinds.REVOLVING).getOrThrow()
+        val original = fixture.dao.rows.values.single()
+        assertTrue(fixture.api.kindCalls.isEmpty())
+        assertEquals(1, fixture.engine().drainOnce().done)
+        val call = fixture.api.kindCalls.single()
+        assertEquals(debt.publicId, call.first)
+        assertEquals(DebtKinds.REVOLVING, call.second.debtKind)
+        assertEquals(3L, call.second.expectedRowVersion)
+        assertEquals(original.idempotencyKey, call.third)
+        assertTrue(call.third.isNotBlank())
+        val stored = fixture.dao.rows.values.single()
+        val receipt = requireNotNull(fixture.adapters.debtVoidReceiptAdapter.fromJson(requireNotNull(stored.receiptJson)))
+        assertEquals(DebtKinds.REVOLVING, receipt.debtKind)
+        assertEquals(4L, receipt.rowVersion)
+        assertEquals(original.payload, stored.payload)
+        assertEquals(original.expectedRowVersion, stored.expectedRowVersion)
     }
 
     @Test
-    fun setDebtKindViewerShortCircuitsWithoutApiCall() = runTest {
-        val handler = DebtApiHandler()
-
-        val result = repository(handler, role = "viewer")
-            .setDebtKind("d1", expectedRowVersion = 1L, debtKind = DebtKinds.ONE_OFF)
-
+    fun savedDebtKindViewerShortCircuitsBeforePublishingOrSending() = runTest {
+        val fixture = DirectRepaymentTestFixture(role = "viewer")
+        val result = fixture.repository.saveKind(fixture.binding, fixture.debt, DebtKinds.ONE_OFF)
         assertTrue(result.isFailure)
         assertEquals("当前角色为只读，无法修改账本。", result.exceptionOrNull()?.message)
-        assertTrue(handler.setKindCalls.isEmpty())
+        assertTrue(fixture.dao.rows.isEmpty())
+        assertTrue(fixture.api.kindCalls.isEmpty())
     }
 
     @Test
-    fun setDebtKindMintsFreshKeyPerCall() = runTest {
-        val handler = DebtApiHandler()
-        val repository = repository(handler)
-
-        // ADR-0042: each direct reclassification is a distinct single-use intent — keys must NOT repeat.
-        repository.setDebtKind("d1", expectedRowVersion = 1L, debtKind = DebtKinds.REVOLVING).getOrThrow()
-        repository.setDebtKind("d1", expectedRowVersion = 2L, debtKind = DebtKinds.INSTALLMENT).getOrThrow()
-
-        val keys = handler.setKindCalls.mapNotNull { it.idempotencyKey }
+    fun independentSavedDebtKindsKeepDistinctOriginalKeysAndVersions() = runTest {
+        val fixture = DirectRepaymentTestFixture()
+        fixture.api.loseResponse = false
+        fixture.repository.saveKind(fixture.binding, fixture.debt, DebtKinds.REVOLVING).getOrThrow()
+        assertEquals(1, fixture.engine().drainOnce().done)
+        val first = fixture.dao.rows.values.single()
+        val current = fixture.api.current.toDomain()
+        fixture.repository.saveKind(fixture.binding, current, DebtKinds.INSTALLMENT).getOrThrow()
+        assertEquals(1, fixture.engine().drainOnce().done)
+        val keys = fixture.api.kindCalls.map { it.third }
         assertEquals(2, keys.size)
         assertEquals(2, keys.toSet().size)
+        assertEquals(listOf(1L, 2L), fixture.api.kindCalls.map { it.second.expectedRowVersion })
+        assertEquals(first, fixture.dao.rows.values.first())
     }
 
     // ── ADR-0049 §3.2 (slice 8d) member repayment proposals ─────────────────
@@ -550,7 +549,6 @@ private fun debtDto(
     isForgiven = isForgiven,
 )
 
-private data class SetKindCall(val publicId: String, val request: DebtKindSetRequestDto, val idempotencyKey: String?)
 private data class ForgiveCall(val publicId: String, val request: DebtForgiveCreateRequestDto, val idempotencyKey: String?)
 private data class ProposeProposalCall(
     val publicId: String,
@@ -581,9 +579,6 @@ private fun proposalDto(publicId: String = "p1", proposed: Long = 20_000L): Memb
 private class DebtApiHandler : InvocationHandler, ApiServiceFactory {
     val listLenses = mutableListOf<String?>()
     val parseBillCalls = mutableListOf<MultipartBody.Part>()
-    // ADR-0049 §7.0 / 8e-6e debt_kind correction-setter route recording.
-    val setKindCalls = mutableListOf<SetKindCall>()
-    var setKindResult: DebtDto? = null
     // ADR-0049 §3.2 (slice 8d) proposal-route recordings.
     val proposeCalls = mutableListOf<ProposeProposalCall>()
     val withdrawProposalCalls = mutableListOf<WithdrawProposalCall>()
@@ -679,7 +674,7 @@ private class DebtApiHandler : InvocationHandler, ApiServiceFactory {
             )
             proposalResult ?: proposalDto(publicId = values[1] as String)
         }
-        // forgive / setDebtKind are NOT proposals; split into a second helper so neither this
+        // Forgiveness returns a debt fact; split into a second helper so neither this
         // dispatch nor invoke trips the CyclomaticComplexMethod / LongMethod gates as routes grow.
         else -> debtFactWriteCall(name, values)
     }
@@ -692,14 +687,6 @@ private class DebtApiHandler : InvocationHandler, ApiServiceFactory {
                 idempotencyKey = values[2] as String?,
             )
             forgiveResult ?: debtDto(publicId = values[0] as String)
-        }
-        "setDebtKind" -> {
-            setKindCalls += SetKindCall(
-                publicId = values[0] as String,
-                request = values[1] as DebtKindSetRequestDto,
-                idempotencyKey = values[2] as String?,
-            )
-            setKindResult ?: debtDto(publicId = values[0] as String)
         }
         else -> error("unexpected ApiService call: $name")
     }

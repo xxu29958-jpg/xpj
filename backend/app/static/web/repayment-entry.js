@@ -4,16 +4,21 @@
   const repaymentNames = ["debt_public_id", "ledger_id", "origin_binding", "home_currency_code",
     "expected_row_version", "amount_major", "paid_at", "paid_at_timezone"];
   const voidNames = ["debt_public_id", "ledger_id", "origin_binding", "expected_row_version", "reason", "repayment_public_id"];
+  const kindNames = ["debt_public_id", "ledger_id", "origin_binding", "expected_row_version", "debt_kind"];
+  const fieldNames = {repayment:repaymentNames, "debt-void":voidNames, "repayment-void":voidNames,
+    "debt-kind":kindNames, "split-change":["debt_public_id", "ledger_id", "origin_binding", "home_currency_code", "command",
+      "proposal_public_id", "expected_row_version", "expected_return_row_version", "new_share_amount_major",
+      "settlement_net_amount_major", "reason", "supersedes_proposal_public_id"]};
   function initialize(form) {
   const surface = form.closest("[data-repayment-container]");
   if (!surface) return;
   const voidCommand = ["debt-void", "repayment-void"].includes(form.dataset.repaymentKind);
   const splitChange = form.dataset.repaymentKind === "split-change";
-  const names = voidCommand ? voidNames : splitChange ? ["debt_public_id", "ledger_id", "origin_binding", "home_currency_code", "command",
-    "proposal_public_id", "expected_row_version", "expected_return_row_version", "new_share_amount_major",
-    "settlement_net_amount_major", "reason", "supersedes_proposal_public_id"] :
-    repaymentNames;
-  const namespace = voidCommand ? form.dataset.repaymentKind : splitChange ? "split-change" : "repayment";
+  const kindCorrection = form.dataset.repaymentKind === "debt-kind";
+  const typedCorrection = voidCommand || kindCorrection;
+  const namespace = Object.hasOwn(fieldNames, form.dataset.repaymentKind) ? form.dataset.repaymentKind : "repayment";
+  const names = fieldNames[namespace];
+  const kindLabels = {one_off:"一次结清", revolving:"循环往来", installment:"分期偿还", unspecified:"暂不指定"};
   const commandLabels = {create:"发送新约定", accept:"接受这份约定", reject:"拒绝这份约定", withdraw:"撤回我的约定"};
   const axes = ["datasetId", "clientGeneration", "accountId", "ledgerId", "deviceId"];
   const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
@@ -31,6 +36,13 @@
   const controls = names.map(name => form.elements.namedItem(name));
   const refInput = form.elements.namedItem("idempotency_key");
   const nativeRef = refInput.value, target = form.dataset.repaymentTarget;
+  const kindOriginalInput = kindCorrection ? document.createElement("input") : null;
+  if (kindOriginalInput) {
+    kindOriginalInput.type = "hidden";
+    kindOriginalInput.name = "debt_kind";
+    kindOriginalInput.disabled = true;
+    form.appendChild(kindOriginalInput);
+  }
   const nativeValues = values(), canCreate = form.dataset.repaymentCanCreate === "true";
   const canRecover = form.dataset.repaymentCanRecover === "true";
   let allowedCommand = canCreate ? nativeValues : null;
@@ -51,11 +63,18 @@
   }
   function notice(message, state) {
     status.hidden = false;
-    status.textContent = voidCommand ? message.replaceAll("还款", "作废提交").replaceAll("金额、日期", "对象、原因") : splitChange ? message.replaceAll("还款", "约定操作") : message;
+    status.textContent = kindCorrection ? message.replaceAll("还款", "偿还方式更正").replaceAll("金额、日期", "选择、版本") : voidCommand ? message.replaceAll("还款", "作废提交").replaceAll("金额、日期", "对象、原因") : splitChange ? message.replaceAll("还款", "约定操作") : message;
     form.dataset.repaymentState = state;
   }
   function lockInputs(locked) {
-    controls.forEach(control => { control.readOnly = locked; });
+    controls.forEach(control => {
+      control.readOnly = locked;
+      if (kindCorrection && control.tagName === "SELECT") {
+        control.disabled = locked;
+        kindOriginalInput.value = control.value;
+        kindOriginalInput.disabled = !locked;
+      }
+    });
   }
   function showValues(saved) {
     controls.forEach(control => { control.value = saved[control.name]; });
@@ -83,7 +102,7 @@
   function commandControls(editing) {
     if (!splitChange) {
       lockInputs(!editing);
-      submit.textContent = voidCommand ? (editing ? "确认作废" : "继续核实原作废") : editing ? "记一笔还款" : "继续核实这笔还款";
+      submit.textContent = kindCorrection ? (editing ? "保存偿还方式" : "继续核实原更正") : voidCommand ? (editing ? "确认作废" : "继续核实原作废") : editing ? "记一笔还款" : "继续核实这笔还款";
       return canCreate;
     }
     const command = values().command, writable = command === "create";
@@ -95,7 +114,7 @@
   }
   function showPhase() {
     panel.hidden = false;
-    if (voidCommand && retained) panel.open = true;
+    if (typedCorrection && retained) panel.open = true;
     const canEdit = commandControls(phase === "editing");
     const canReplace = replacement && phase === "blocked" && currentRef === nativeRef;
     submit.disabled = phase === "editing" ? !canEdit : !canRecover || !!canReplace || !!finishReview || knownRejected;
@@ -116,10 +135,12 @@
     items.forEach(record => {
       const item = document.createElement("li"), link = document.createElement("a");
       link.href = window.location.pathname + window.location.search + "#" + namespace + "-" + record.clientRef;
-      link.textContent = [record.values.home_currency_code,
+      const stateLabel = !drafts.matches(record.scope, scope) ? "旧身份，待核对" :
+        record.phase === "submitted" ? "结果待确认" : record.phase === "blocked" ? "待核对" : "未提交";
+      const description = kindCorrection ? [kindLabels[record.values.debt_kind] || record.values.debt_kind] : [record.values.home_currency_code,
         voidCommand ? record.values.reason || "未填原因" : splitChange ? commandLabels[record.values.command] : record.values.amount_major || "未填金额",
-        voidCommand ? record.values.repayment_public_id || record.values.debt_public_id : splitChange ? record.values.new_share_amount_major : record.values.paid_at, !drafts.matches(record.scope, scope) ? "旧身份，待核对" :
-          record.phase === "submitted" ? "结果待确认" : record.phase === "blocked" ? "待核对" : "未提交"].join(" · ");
+        voidCommand ? record.values.repayment_public_id || record.values.debt_public_id : splitChange ? record.values.new_share_amount_major : record.values.paid_at];
+      link.textContent = [...description, stateLabel].join(" · ");
       item.append(link);
       list.appendChild(item);
     });
@@ -148,9 +169,9 @@
     pointTo(currentRef);
   }
   function anotherDebtSubmission() {
-    return ["repayment", "debt-void", "repayment-void"].some(kind => {
+    return ["repayment", "debt-void", "repayment-void", "debt-kind"].some(kind => {
       const store = window.TicketboxDraftStore.createStore({prefix:"ticketbox:" + kind + "-draft:v1:",
-        fields:kind === "repayment" ? repaymentNames : voidNames, validRef:uuid});
+        fields:fieldNames[kind], validRef:uuid});
       return store.list(scope).some(record => record.values.debt_public_id === target &&
         (kind !== namespace || record.clientRef !== currentRef) && record.phase !== "editing");
     });
@@ -219,7 +240,7 @@
     held = true; panel.hidden = false;
     if (admitSubmission(record, selection, items.length)) {
       phase = record ? record.phase : "editing";
-      knownRejected = voidCommand && (!!record && record.serverResult === "rejected" ||
+      knownRejected = typedCorrection && (!!record && record.serverResult === "rejected" ||
         selection.nativePending && nativeRejected);
       if (record) { showValues(record.values); pointTo(currentRef); }
       if (selection.nativePending) applyNativeResult(record);
@@ -265,8 +286,9 @@
     const ackStatus = surface.querySelector("[data-repayment-ack-status]");
     try {
       const ack = JSON.parse(marker.getAttribute("data-repayment-ack"));
-      if (!uuid.test(ack.clientRef) || !uuid.test(splitChange || voidCommand ? ack.resultPublicId : ack.repaymentPublicId) ||
-          (voidCommand && ack.resultPublicId !== target) ||
+      if (!uuid.test(ack.clientRef) || !uuid.test(splitChange || typedCorrection ? ack.resultPublicId : ack.repaymentPublicId) ||
+          (typedCorrection && ack.resultPublicId !== target) ||
+          (kindCorrection && ack.debtKind !== ack.values.debt_kind) ||
           !drafts.matches(ack.scope, scope) || !bound(ack.values)) throw Error("ack_mismatch");
       if (voidCommand) leaseKey = "ticketbox:" + namespace + "-lease:v1:" +
         JSON.stringify([...axes.map(axis => scope[axis]), target, ack.values.repayment_public_id]);
@@ -302,6 +324,7 @@
         retained = false;
         pointTo("");
         blocked(serverResult === "rejected" ? "已结束这次未接受的本地提交。核对当前记录后可重新填写。" :
+          kindCorrection ? "已结束本地恢复。原更正记录仍保留，请在原记录核对。" :
           "已结束本地恢复。原作废事实仍保留，可在原记录与往来历史核对。");
         button.disabled = true;
         renderShelf();

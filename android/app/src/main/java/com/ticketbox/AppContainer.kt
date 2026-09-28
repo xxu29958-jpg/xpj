@@ -357,6 +357,9 @@ class AppContainer(context: Context) {
             com.ticketbox.data.repository.VoidDebtRepaymentDispatcher(
                 outboxRequestGuard, outboxAdapters.debtRepaymentVoidAdapter, outboxAdapters.debtVoidReceiptAdapter,
             ),
+            com.ticketbox.data.repository.SetDebtKindDispatcher(
+                outboxRequestGuard, outboxAdapters.debtKindAdapter, outboxAdapters.debtVoidReceiptAdapter,
+            ),
             CreateDebtDispatcher(
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.debtCreateAdapter,

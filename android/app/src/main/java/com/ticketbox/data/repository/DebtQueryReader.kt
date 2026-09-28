@@ -32,7 +32,7 @@ data class DebtReadResourceDenial(val binding: LogicalSessionBinding, val debtPu
 
 internal val DEBT_QUERY_MUTATION_TYPES = setOf(PendingMutationType.CreateDebt, PendingMutationType.RecordDebtRepayment,
     PendingMutationType.RecordDebtAdjustment, PendingMutationType.VoidDebt, PendingMutationType.VoidDebtRepayment,
-    PendingMutationType.SplitAgreement)
+    PendingMutationType.SplitAgreement, PendingMutationType.SetDebtKind)
 
 private data class StoredDebtQuery(val epoch: Long, val sequence: Long, val response: String, val readOwner: String)
 private data class AcceptedDebtQuery(val query: StatsProjectionCacheEntity, val stored: StoredDebtQuery, val accessGeneration: Long)

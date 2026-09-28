@@ -91,7 +91,7 @@ internal fun DebtDetailContent(
         item { DebtReadSource(state.fetchedAt, state.fromCache, state.isLoading) }
         if (state.pendingWrites.isNotEmpty()) item {
             DebtPendingWrites(state.pendingWrites.filter {
-                it.isVoid || it.row.status != com.ticketbox.data.local.PendingMutationStatus.Done ||
+                it.isVoid || it.kind != null || it.row.status != com.ticketbox.data.local.PendingMutationStatus.Done ||
                     (state.debt?.rowVersion ?: 0) <= (it.row.expectedRowVersion ?: Long.MAX_VALUE)
             }, state.canModify, callbacks.onRecoverDebtWrite)
         }

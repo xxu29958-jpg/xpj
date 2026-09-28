@@ -71,7 +71,7 @@ class DebtAdjustmentRecoveryViewModelTest {
             assertNull(model.state.value.debt)
             assertFalse(model.state.value.canWriteActions)
             assertTrue(model.state.value.error != null)
-            assertTrue(repo.mutations.isEmpty())
+            assertTrue(writes.dao.rows.values.none { it.type == "set_debt_kind" })
             assertEquals("abandoned", writes.dao.rows.getValue(id).status)
         } finally {
             oldRead.complete(Unit)
@@ -112,7 +112,7 @@ class DebtAdjustmentRecoveryViewModelTest {
             model.submit()
             model.selectKind(DebtKinds.REVOLVING)
             runCurrent()
-            assertTrue(repo.mutations.isEmpty(), "Kind writes must remain blocked")
+            assertTrue(writes.dao.rows.values.none { it.type == "set_debt_kind" }, "Kind originals must remain blocked")
             assertEquals(setOf(id), writes.dao.rows.keys, "The blocked repayment must not publish an original")
             assertEquals(canonical, model.state.value.debt)
             assertEquals("1.00", model.state.value.amountInput)
@@ -158,7 +158,7 @@ class DebtAdjustmentRecoveryViewModelTest {
             assertEquals(published.row.id, writes.outbox.dequeueNextRunnable().single().id)
             assertEquals("abandoned", writes.dao.rows.getValue(id).status)
             assertEquals(fresh, model.state.value.debt)
-            assertTrue(repo.mutations.isEmpty())
+            assertTrue(writes.dao.rows.values.none { it.type == "set_debt_kind" })
             assertTrue(writes.api.calls.isEmpty())
         } finally {
             gate.complete(Unit)
@@ -209,7 +209,7 @@ class DebtAdjustmentRecoveryViewModelTest {
             advanceUntilIdle()
             assertEquals(canonical, next.state.value.debt)
             assertTrue(next.state.value.canWriteActions)
-            assertTrue(repo.mutations.isEmpty())
+            assertTrue(writes.dao.rows.values.none { it.type == "set_debt_kind" })
         } finally {
             gate.complete(Unit)
             model.viewModelScope.coroutineContext.job.cancelAndJoin()

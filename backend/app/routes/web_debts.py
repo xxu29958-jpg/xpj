@@ -384,6 +384,9 @@ def _render_debt_detail(
     repayment_ack: dict | None = None,
     repayment_result: str = "",
     repayment_rejected: bool = False,
+    kind_ack: dict | None = None,
+    kind_result: str = "",
+    kind_rejected: bool = False,
 ) -> HTMLResponse:
     """详情页唯一渲染入口：GET 与 proposal 确认 422 原地重渲染共用 (照
     ``web_repayment_drafts._render_repayment_drafts`` 同页重渲染范式)，保证错误重渲染
@@ -422,6 +425,10 @@ def _render_debt_detail(
         )
     )
     ctx["today"] = now_utc().astimezone(accounting_zone()).strftime("%Y-%m-%d")
+    from app.routes._web_debt_kind_forms import add_kind_detail_context
+
+    add_kind_detail_context(request, db, ctx=ctx, debt=debt, selected_id=selected_id, public_id=public_id,
+        kind=action_kind, values=action_draft, error=action_error, result=kind_result, ack=kind_ack, rejected=kind_rejected)
     from app.routes._web_debt_repayment import repayment_context
 
     ctx["repayment_form"] = repayment_context(

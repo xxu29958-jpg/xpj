@@ -11,4 +11,5 @@
 {% include '_debt_repayment_form.html' %}
 {% for void_form in void_recovery_forms %}{% include '_debt_void_form.html' %}{% endfor %}
 <a class="product-state-action" href="/web/debts/{{ repayment_form.public_id }}?ledger_id={{ selected_ledger_id }}">返回这笔欠款</a>
+{% include '_debt_kind_form.html' %}
 {% endblock %}
