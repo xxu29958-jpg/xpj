@@ -244,7 +244,7 @@ class DebtAdjustmentRoomContinuityTest {
             model to { model.state.value.goals.singleOrNull()?.debtRepayment?.linkedDebts?.singleOrNull()?.remainingAmountCents }
         }
         "createGoal" -> {
-            val model = CreateDebtGoalViewModel(graph.reportsRepository, graph.debtRepository, graph.debtWriteRepository)
+            val model = CreateDebtGoalViewModel(graph.goalEditRepository, graph.debtRepository, graph.debtWriteRepository)
             model to { model.state.value.candidates.singleOrNull()?.remainingAmountCents }
         }
         "repaymentDraft" -> {

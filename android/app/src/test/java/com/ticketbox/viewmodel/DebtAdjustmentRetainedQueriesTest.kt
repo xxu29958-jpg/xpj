@@ -2,9 +2,10 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.local.PendingMutationStatus
-import com.ticketbox.data.repository.ReportsActions
-import com.ticketbox.domain.model.Goal
-import java.lang.reflect.Proxy
+import com.ticketbox.data.repository.GoalEditActions
+import com.ticketbox.data.repository.LedgerAccessContext
+import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.remote.dto.GoalCreateRequestDto
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -37,7 +38,7 @@ class DebtAdjustmentRetainedQueriesTest {
             val original = sampleDebt().copy(rowVersion = 7)
             val debts = FakeDebtActions(listResult = Result.success(listOf(original)))
             val calls = mutableListOf<Pair<String, List<String>>>()
-            val vm = CreateDebtGoalViewModel(retainedCreateReports(calls), debts, debts.writes)
+            val vm = CreateDebtGoalViewModel(retainedCreateCommands(calls), debts, debts.writes)
             try {
                 advanceUntilIdle()
                 vm.updateName("保留原计划")
@@ -126,15 +127,11 @@ class DebtAdjustmentRetainedQueriesTest {
     }
 }
 
-private fun retainedCreateReports(calls: MutableList<Pair<String, List<String>>>): ReportsActions {
-    val unused = Proxy.newProxyInstance(ReportsActions::class.java.classLoader,
-        arrayOf(ReportsActions::class.java)) { _, method, _ ->
-        if (method.name == "getReadAccessDenials") kotlinx.coroutines.flow.emptyFlow<com.ticketbox.data.repository.SnapshotAccessDenial>()
-        else error("Unexpected report call: ${method.name}") } as ReportsActions
-    return object : ReportsActions by unused {
-        override fun canModifyLedger() = true
-        override suspend fun createDebtGoal(name: String, debtPublicIds: List<String>, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding): Result<Goal> {
-            calls += name to debtPublicIds
+private fun retainedCreateCommands(calls: MutableList<Pair<String, List<String>>>): GoalEditActions {
+    val commands = RecordingGoalEdits().apply { access.value = LedgerAccessContext(adjustmentBinding(), true) }
+    return object : GoalEditActions by commands {
+        override suspend fun create(binding: LogicalSessionBinding, request: GoalCreateRequestDto, creationKey: String): Result<Long> {
+            calls += request.name to request.debtPublicIds.orEmpty()
             return Result.failure(IllegalStateException("Synthetic creation refusal after recording the exact request"))
         }
     }

@@ -763,9 +763,6 @@ private class FakeReportsActions(
     override suspend fun goals(month: String?, includeArchived: Boolean, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?, timezone: String): Result<ReadSnapshot<List<Goal>>> =
         Result.success(ReadSnapshot(emptyList(), "2026-09-09T00:00:00Z", false))
 
-    override suspend fun createDebtGoal(name: String, debtPublicIds: List<String>, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding): Result<Goal> =
-        Result.failure(UnsupportedOperationException())
-
     override suspend fun archiveGoal(publicId: String, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding): Result<Goal> {
         archiveCalls += publicId
         return archiveResult

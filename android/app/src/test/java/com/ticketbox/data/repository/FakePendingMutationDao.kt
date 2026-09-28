@@ -47,6 +47,13 @@ class FakePendingMutationDao : PendingMutationDao {
             row.type == type && row.idempotencyKey == idempotencyKey }.sortedBy { row -> row.id }
     }
 
+    override fun observeOriginalCommandById(
+        serverUrl: String, ownerKey: String, ledgerId: String, type: String, originalId: Long,
+    ): Flow<List<PendingMutationEntity>> = queueDepth.map {
+        rows.values.filter { row -> row.serverUrl == serverUrl && row.ownerKey == ownerKey && row.ledgerId == ledgerId &&
+            row.type == type && row.id == originalId }
+    }
+
     override suspend fun findByIdempotencyKeys(
         ownerKey: String, ledgerId: String, type: String, keys: Collection<String>,
     ): List<PendingMutationEntity> = rows.values
@@ -286,7 +293,7 @@ class FakePendingMutationDao : PendingMutationDao {
         return 1
     }
 
-    override suspend fun abandonDebtWrite(
+    override suspend fun abandonOriginalCommand(
         id: Long,
         ownerKey: String,
         ledgerId: String,
@@ -295,7 +302,7 @@ class FakePendingMutationDao : PendingMutationDao {
     ): Int {
         val current = rows[id] ?: return 0
         if (current.ownerKey != ownerKey || current.ledgerId != ledgerId || current.status != expectedStatus ||
-            current.type !in setOf("record_debt_adjustment", "record_debt_repayment", "void_debt", "void_debt_repayment") ||
+            current.type !in setOf("record_debt_adjustment", "record_debt_repayment", "void_debt", "void_debt_repayment", "create_goal") ||
             current.status !in setOf("failed", "conflict", "pending")
         ) return 0
         rows[id] = current.copy(status = "abandoned", completedAt = stoppedAt)

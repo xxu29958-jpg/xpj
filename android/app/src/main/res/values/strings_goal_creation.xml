@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="goal_creation_label">创建消费目标</string>
+    <string name="goal_creation_label">创建目标</string>
     <string name="goal_creation_pending">目标已保存在本机，等待同步。确认结果前，请继续使用这份原提交。</string>
     <string name="goal_creation_uncertain">还无法确认目标是否已创建。重试会核对同一份提交。</string>
     <string name="goal_creation_failed">原创建需要核对，内容已保留。</string>

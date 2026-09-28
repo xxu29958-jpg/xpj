@@ -70,6 +70,7 @@ fun DebtGoalScreen(
     onBack: () -> Unit,
     onCreate: () -> Unit,
     onOpenLinkedDebt: (String) -> Unit = {},
+    hasCreationDraft: Boolean = false,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val handleBack = {
@@ -90,6 +91,7 @@ fun DebtGoalScreen(
     val callbacks = DebtGoalScreenBodyCallbacks(
         handleBack = handleBack,
         onCreate = onCreate,
+        hasCreationDraft = hasCreationDraft,
         onOpenLinkedDebt = onOpenLinkedDebt,
         detailCallbacks = DebtGoalDetailCallbacks(
             sortMode = sortMode,
@@ -109,6 +111,7 @@ fun DebtGoalScreen(
 private data class DebtGoalScreenBodyCallbacks(
     val handleBack: () -> Unit,
     val onCreate: () -> Unit,
+    val hasCreationDraft: Boolean,
     val onOpenLinkedDebt: (String) -> Unit,
     val detailCallbacks: DebtGoalDetailCallbacks,
 )
@@ -121,10 +124,10 @@ private fun DebtGoalScreenBody(
 ) {
     val selected = state.selectedGoal
     val createAction: (@Composable () -> Unit)? =
-        if (selected == null && state.canModify) {
+        if (selected == null && (state.canModify || callbacks.hasCreationDraft)) {
             {
                 PrimaryCtaButton(
-                    text = stringResource(R.string.debt_goal_create_cta),
+                    text = stringResource(if (callbacks.hasCreationDraft) R.string.goal_draft_continue else R.string.debt_goal_create_cta),
                     icon = Icons.Default.Add,
                     onClick = callbacks.onCreate,
                 )

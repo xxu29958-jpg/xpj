@@ -8,12 +8,16 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -58,11 +62,11 @@ fun CreateDebtGoalScreen(
     viewModel: CreateDebtGoalViewModel,
     onBack: () -> Unit,
     onCreated: () -> Unit,
+    originalSubmissionId: Long? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
-    // 进入即（重新）加载候选欠款 + 重置草稿（账本隔离 + 拉到刚记的新欠款）。
-    LaunchedEffect(Unit) { viewModel.reload() }
+    LaunchedEffect(viewModel, originalSubmissionId) { viewModel.reload(originalSubmissionId) }
     // 创建成功的一次性信号：关闭新建页 + 让目标列表重拉，然后消费信号。
     LaunchedEffect(state.createdPublicId) {
         if (state.createdPublicId != null) {
@@ -88,7 +92,7 @@ fun CreateDebtGoalScreen(
             onRefresh = viewModel::refreshCandidates,
         ),
         slots = AppSecondaryPageSlots(
-            status = { CreateDebtGoalStatusStack(state = state, onRemoveUnavailable = viewModel::removeUnavailableSelections) },
+            status = { CreateDebtGoalStatusStack(state, viewModel) },
             bottomBar = {
                 CreateDebtGoalFooter(
                     selectedCount = state.selectedDebtIds.size,
@@ -99,7 +103,7 @@ fun CreateDebtGoalScreen(
             },
         ),
     ) {
-        item { CreateDebtGoalNameField(name = state.name, onNameChange = viewModel::updateName) }
+        item { CreateDebtGoalNameField(name = state.name, enabled = state.editable, onNameChange = viewModel::updateName) }
         item {
             DebtGoalOpenSection(
                 title = stringResource(R.string.debt_goal_create_picker_title),
@@ -115,22 +119,24 @@ fun CreateDebtGoalScreen(
 }
 
 @Composable
-private fun CreateDebtGoalStatusStack(state: CreateDebtGoalUiState, onRemoveUnavailable: () -> Unit) {
+private fun CreateDebtGoalStatusStack(state: CreateDebtGoalUiState, viewModel: CreateDebtGoalViewModel) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         DebtReadSource(state.fetchedAt, state.fromCache, state.isLoadingDebts)
         state.formError?.let { err -> AppStatusBanner(message = err, tone = MessageTone.Danger) }
         state.loadError?.takeIf { state.candidates.isNotEmpty() }
             ?.let { err -> AppStatusBanner(message = err, tone = MessageTone.Danger) }
-        if (state.unavailableSelectedDebtIds.isNotEmpty()) {
+        state.pending?.let { GoalCreationSubmissionStatus(it, state.isSubmitting, state.canModify, viewModel::recover) }
+        DebtGoalDraftActions(state, viewModel)
+        if (state.unavailableSelectedDebtIds.isNotEmpty() && state.pending == null) {
             AppStatusBanner(message = UiText.res(R.string.debt_goal_create_selection_changed), tone = MessageTone.Info)
-            TextButton(onClick = onRemoveUnavailable) {
+            TextButton(enabled = state.editable, onClick = viewModel::removeUnavailableSelections) {
                 Text(stringResource(R.string.debt_goal_create_remove_unavailable))
             }
         }
     }
 }
 @Composable
-private fun CreateDebtGoalNameField(name: String, onNameChange: (String) -> Unit) {
+private fun CreateDebtGoalNameField(name: String, enabled: Boolean, onNameChange: (String) -> Unit) {
     DebtGoalOpenSection(
         title = stringResource(R.string.debt_goal_create_name_section),
         subtitle = stringResource(R.string.debt_goal_create_name_hint),
@@ -139,6 +145,7 @@ private fun CreateDebtGoalNameField(name: String, onNameChange: (String) -> Unit
             state = AppTextInputState(
                 label = stringResource(R.string.debt_goal_create_name_label),
                 value = name,
+                enabled = enabled,
             ),
             actions = AppTextInputActions(onValueChange = onNameChange),
             modifier = Modifier.fillMaxWidth(),
@@ -165,6 +172,7 @@ private fun DebtGoalPickerContent(
             DebtPickerRow(
                 debt = debt,
                 selected = debt.publicId in state.selectedDebtIds,
+                enabled = state.editable,
                 onToggle = { onToggle(debt.publicId) },
                 showDivider = index < state.candidates.lastIndex,
             )
@@ -176,6 +184,7 @@ private fun DebtGoalPickerContent(
 private fun DebtPickerRow(
     debt: Debt,
     selected: Boolean,
+    enabled: Boolean,
     onToggle: () -> Unit,
     showDivider: Boolean,
 ) {
@@ -183,10 +192,10 @@ private fun DebtPickerRow(
         ?: stringResource(debtCounterpartyFallbackRes(debt.counterpartyType))
     AppListRow(
         modifier = Modifier.fillMaxWidth(),
-        onClick = onToggle,
+        onClick = { if (enabled) onToggle() },
         showDivider = showDivider,
     ) {
-        Checkbox(checked = selected, onCheckedChange = { onToggle() })
+        Checkbox(checked = selected, enabled = enabled, onCheckedChange = { onToggle() })
         Spacer(Modifier.width(AppSpacing.smallGap))
         Column(
             modifier = Modifier.weight(1f),
@@ -210,6 +219,28 @@ private fun DebtPickerRow(
             )
         }
     }
+}
+
+@Composable
+private fun DebtGoalDraftActions(state: CreateDebtGoalUiState, viewModel: CreateDebtGoalViewModel) {
+    var discarding by remember(state.creationKey, state.originalSubmissionId) { mutableStateOf(false) }
+    if (state.acceptanceUncertain || state.checkingOriginal) {
+        TextButton(enabled = !state.checkingOriginal && !state.isSubmitting, onClick = viewModel::retryOriginal) {
+            Text(stringResource(R.string.goal_draft_check_original))
+        }
+    }
+    if (state.canDiscardDraft) TextButton(onClick = { discarding = true }) {
+        Text(stringResource(R.string.goal_draft_discard))
+    }
+    if (discarding && state.canDiscardDraft) AlertDialog(
+        onDismissRequest = { discarding = false },
+        title = { Text(stringResource(R.string.goal_draft_discard)) },
+        text = { Text(stringResource(R.string.goal_draft_discard_explanation)) },
+        confirmButton = { TextButton(onClick = { discarding = false; viewModel.discardDraft() }) {
+            Text(stringResource(R.string.goal_draft_discard_confirm))
+        } },
+        dismissButton = { TextButton(onClick = { discarding = false }) { Text(stringResource(R.string.common_cancel)) } },
+    )
 }
 
 @Composable

@@ -8,7 +8,6 @@ import com.ticketbox.data.remote.dto.GoalCreateRequestDto
 import com.ticketbox.data.remote.dto.GoalUpdateRequestDto
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Goal
-import com.ticketbox.domain.model.GoalDraft
 import com.ticketbox.domain.model.GoalUpdate
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import java.util.UUID
@@ -25,9 +24,10 @@ interface GoalEditActions {
     fun observeEdits(binding: LogicalSessionBinding, publicId: String): Flow<List<PendingGoalEdit>>
     suspend fun save(binding: LogicalSessionBinding, goal: Goal, update: GoalUpdate): Result<Long>
     suspend fun recover(binding: LogicalSessionBinding, pending: PendingGoalEdit, drop: Boolean): Result<Unit>
-    suspend fun create(binding: LogicalSessionBinding, draft: GoalDraft, creationKey: String): Result<Long>
+    suspend fun create(binding: LogicalSessionBinding, request: GoalCreateRequestDto, creationKey: String): Result<Long>
     fun describeCreation(row: OutboxRow): PendingGoalCreation?
-    fun observeCreations(binding: LogicalSessionBinding, originalKey: String? = null): Flow<List<PendingGoalCreation>>
+    fun observeCreations(binding: LogicalSessionBinding, originalKey: String? = null,
+        goalType: String = "spending_limit", originalId: Long? = null): Flow<List<PendingGoalCreation>>
     suspend fun recoverCreation(binding: LogicalSessionBinding, pending: PendingGoalCreation, drop: Boolean): Result<Unit>
 }
 
@@ -39,7 +39,7 @@ data class PendingGoalEdit(val row: OutboxRow, val request: GoalUpdateRequestDto
     val canDrop: Boolean get() = row.status == PendingMutationStatus.Failed || row.status == PendingMutationStatus.Conflict
 }
 
-/** Owns original spending-goal commands; dispatchers are the only Android writers. */
+/** Owns original goal commands; dispatchers are the only Android writers. */
 class GoalEditRepository(
     private val apiProvider: ApiServiceProvider,
     private val outbox: OutboxRepository,
@@ -108,14 +108,14 @@ class GoalEditRepository(
             }
         }
 
-    override suspend fun create(binding: LogicalSessionBinding, draft: GoalDraft, creationKey: String): Result<Long> = errors.safeCall {
+    override suspend fun create(binding: LogicalSessionBinding, request: GoalCreateRequestDto, creationKey: String): Result<Long> = errors.safeCall {
         val bound = guard.bindExact(binding)
         require(currentAccess()?.canModify == true) { "当前角色为只读，无法修改账本。" }
         require(creationKey.isNotBlank() && creationKey.length <= 64) { "原创建标识无法确认，请保留草稿并重新打开。" }
-        val clean = draft.validatedGoalDraft().getOrThrow()
+        val clean = request.validatedGoalCreation().getOrThrow()
         outbox.enqueueOriginalCreation(boundRequest = bound, intent = PendingMutationIntent(
             type = PendingMutationType.CreateGoal, targetId = "goal_create:$creationKey", expectedRowVersion = 0,
-            payloadJson = createAdapter.toJson(clean.toRequest()), idempotencyKey = creationKey,
+            payloadJson = createAdapter.toJson(clean), idempotencyKey = creationKey,
         ))
     }
 
@@ -128,19 +128,32 @@ class GoalEditRepository(
         return PendingGoalCreation(row, request, receipt?.takeIf { request?.acceptsGoalCreationReceipt(row, it) == true }?.toDomain())
     }
 
-    override fun observeCreations(binding: LogicalSessionBinding, originalKey: String?): Flow<List<PendingGoalCreation>> {
-        val originals = if (originalKey == null) outbox.observeActiveByTypes(setOf(PendingMutationType.CreateGoal), includeCompleted = true)
-            else outbox.observeOriginalCommand(PendingMutationType.CreateGoal, originalKey)
+    override fun observeCreations(binding: LogicalSessionBinding, originalKey: String?, goalType: String,
+        originalId: Long?): Flow<List<PendingGoalCreation>> {
+        val explicitOriginal = originalKey != null || originalId != null
+        val originals = if (explicitOriginal) outbox.observeOriginalCommand(PendingMutationType.CreateGoal, originalKey, originalId)
+            else outbox.observeActiveByTypes(setOf(PendingMutationType.CreateGoal), includeCompleted = true)
         return originals.map { rows ->
             if (guard.captureLogicalBinding() != binding) emptyList() else rows.mapNotNull(::describeCreation)
+                .filter { explicitOriginal || it.request?.goalType == goalType }
         }
     }
 
     override suspend fun recoverCreation(binding: LogicalSessionBinding, pending: PendingGoalCreation, drop: Boolean): Result<Unit> =
         errors.safeCall {
-            recoverGoalSubmission(outbox, guard.bindExact(binding), pending.row, drop) { row ->
-                val original = describeCreation(row)
-                original != null && (drop && original.canDrop || !drop && original.canRetry && currentAccess()?.canModify == true)
+            val bound = guard.bindExact(binding)
+            if (drop && createAdapter.readGoalCreation(pending.row)?.goalType == "debt_repayment") {
+                val current = currentGoalSubmission(outbox, bound, pending.row) { row ->
+                    val original = describeCreation(row)
+                    original != null && original.request?.let { it.goalType == "debt_repayment" && it.isSupportedGoalCreation(row) } == true &&
+                        original.canDrop
+                }
+                check(outbox.abandonOriginalCommand(bound, current)) { "提交状态已变化，请重新核对。" }
+            } else {
+                recoverGoalSubmission(outbox, bound, pending.row, drop) { row ->
+                    val original = describeCreation(row)
+                    original != null && (drop && original.canDrop || !drop && original.canRetry && currentAccess()?.canModify == true)
+                }
             }
         }
 }
@@ -161,13 +174,19 @@ suspend fun GoalEditActions.originalCreation(binding: LogicalSessionBinding, cre
 
 private suspend fun recoverGoalSubmission(outbox: OutboxRepository, bound: BoundLedgerRequest, row: OutboxRow,
     drop: Boolean, permitted: (OutboxRow) -> Boolean) {
-    val current = requireNotNull(outbox.activeForTarget(bound, row.targetId).firstOrNull { it.id == row.id }) { "提交状态已变化，请重新核对。" }
-    require(current == row) { "提交状态已变化，请重新核对。" }
-    require(permitted(current)) { "请在原账本核对这份提交后继续。" }
+    val current = currentGoalSubmission(outbox, bound, row, permitted)
     val changed = when (current.status) {
         PendingMutationStatus.Conflict -> outbox.resolveConflict(current.id, ConflictResolution.DropMine, bound)
         PendingMutationStatus.Failed -> outbox.resolveFailed(current.id, if (drop) FailedResolution.Drop else FailedResolution.Retry(), bound)
         else -> false
     }
     check(changed) { "提交状态已变化，请重新核对。" }
+}
+
+private suspend fun currentGoalSubmission(outbox: OutboxRepository, bound: BoundLedgerRequest, row: OutboxRow,
+    permitted: (OutboxRow) -> Boolean): OutboxRow {
+    val current = requireNotNull(outbox.activeForTarget(bound, row.targetId).firstOrNull { it.id == row.id }) { "提交状态已变化，请重新核对。" }
+    require(current == row) { "提交状态已变化，请重新核对。" }
+    require(permitted(current)) { "请在原账本核对这份提交后继续。" }
+    return current
 }

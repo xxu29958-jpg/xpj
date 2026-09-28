@@ -2,6 +2,7 @@ package com.ticketbox.ui.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.ViewModelStoreOwner
 import com.ticketbox.viewmodel.CreateDebtGoalViewModel
 import com.ticketbox.viewmodel.DebtDetailViewModel
 import com.ticketbox.viewmodel.DebtGoalViewModel
@@ -22,16 +23,17 @@ internal data class DebtGoalRouteViewModels(
 )
 
 @Composable
-internal fun rememberDebtGoalRouteViewModels(screenFactory: MainScreenFactory): DebtGoalRouteViewModels =
+internal fun rememberDebtGoalRouteViewModels(screenFactory: MainScreenFactory, creationOwner: ViewModelStoreOwner): DebtGoalRouteViewModels =
     DebtGoalRouteViewModels(
         debtGoal = viewModel(
             key = DebtGoalViewModelKey,
             factory = debtGoalViewModelFactory(screenFactory.reportsRepository, screenFactory.debtWriteRepository),
         ),
         createGoal = viewModel(
+            viewModelStoreOwner = creationOwner,
             key = CreateDebtGoalViewModelKey,
             factory = createDebtGoalViewModelFactory(
-                screenFactory.reportsRepository,
+                screenFactory.goalEditRepository,
                 screenFactory.debtRepository,
                 screenFactory.debtWriteRepository,
             ),

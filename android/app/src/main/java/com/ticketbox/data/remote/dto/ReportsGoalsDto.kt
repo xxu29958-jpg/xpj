@@ -93,7 +93,7 @@ data class ReportsOverviewDto(
  * Moshi omits nulls, so the wire body carries only the fields that goal type
  * needs (the backend 422s a debt goal that carries month/category/target, and a
  * spending goal that carries debt_public_ids). Built by GoalDraft.toRequest (spending)
- * and inline in ReportsRepository.createDebtGoal (debt).
+ * and GoalEditActions.createDebtGoal (debt); both use the original outbox command owner.
  */
 @JsonClass(generateAdapter = true)
 data class GoalCreateRequestDto(

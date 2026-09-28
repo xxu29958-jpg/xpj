@@ -26,7 +26,10 @@ internal val PendingGoalCreation.needsRetainedDraft: Boolean
 @Composable
 fun GoalCreationIntentSummary(pending: PendingGoalCreation) {
     val request = pending.request
-    if (request == null) Text(stringResource(R.string.goal_creation_unreadable)) else {
+    if (request == null) Text(stringResource(R.string.goal_creation_unreadable)) else if (request.goalType == "debt_repayment") {
+        Text(request.name)
+        Text(stringResource(R.string.debt_goal_create_selected_count, request.debtPublicIds.orEmpty().size))
+    } else {
         com.ticketbox.ui.screens.plan.SpendingGoalOriginalSummary(request.name, request.month,
             request.targetAmountCents, request.homeCurrencyCode)
         request.category?.let { Text(it) }

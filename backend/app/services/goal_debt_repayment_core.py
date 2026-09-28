@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
-from app.models import ApiIdempotencyKey, Debt, DebtGoalLink, Goal
+from app.models import Debt, DebtGoalLink, Goal
 from app.money_contract import projection_sum_to_int
 from app.schemas import (
     DebtGoalLinkView,
@@ -24,6 +24,7 @@ from app.services.currency_binding_service import resolve_write_capability
 from app.services.debt_service import compute_remaining, derive_status
 from app.services.goal_debt_repayment_kpi import external_payoff_kpi
 from app.services.idempotency import (
+    IdempotencyOutcome,
     IdempotencyOutcomeKind,
     claim_idempotency_key,
     fingerprint_request,
@@ -349,9 +350,11 @@ def _create_claim(
     tenant_id: str,
     payload: GoalCreateRequest,
     idempotency_key: str | None,
-) -> ApiIdempotencyKey | None:
+) -> IdempotencyOutcome:
     if not idempotency_key:
         raise AppError("idempotency_key_required", status_code=422)
+    if len(idempotency_key) > 64:
+        raise AppError("invalid_request", status_code=422)
     fingerprint = fingerprint_request(
         operation=_CREATE_OPERATION,
         target_id=idempotency_key,
@@ -367,30 +370,11 @@ def _create_claim(
         target_type=_GOAL_TARGET_TYPE,
         target_id=idempotency_key,
     )
-    if outcome.kind is IdempotencyOutcomeKind.HIT:
-        return None
     if outcome.kind is IdempotencyOutcomeKind.IN_PROGRESS:
         raise AppError("idempotency_key_in_progress", status_code=409)
     if outcome.kind is IdempotencyOutcomeKind.FINGERPRINT_MISMATCH:
         raise AppError("idempotency_key_reused", status_code=422)
-    return outcome.row
-
-
-def _created_goal_public_id_for_key(
-    db: Session,
-    *,
-    tenant_id: str,
-    idempotency_key: str,
-) -> str:
-    row = db.scalar(
-        select(ApiIdempotencyKey)
-        .where(ApiIdempotencyKey.tenant_id == tenant_id)
-        .where(ApiIdempotencyKey.idempotency_key == idempotency_key)
-        .limit(1)
-    )
-    if row is None or row.status != "succeeded" or not row.resource_id:
-        raise AppError("idempotency_key_in_progress", status_code=409)
-    return row.resource_id
+    return outcome
 
 
 def create_debt_repayment_goal_idempotently(
@@ -399,24 +383,35 @@ def create_debt_repayment_goal_idempotently(
     tenant_id: str,
     payload: GoalCreateRequest,
     idempotency_key: str | None,
+    allow_legacy_current: bool = False,
 ) -> GoalResponse:
-    """Create the business rows and idempotency success in one transaction."""
+    """Atomically retain the original creation receipt with its business rows.
+
+    Web redirects can still locate historical creations lacking a receipt. API
+    original-intent consumers must review those instead of accepting current
+    progress as the original result.
+    """
     claim = _create_claim(
         db,
         tenant_id=tenant_id,
         payload=payload,
         idempotency_key=idempotency_key,
     )
-    assert idempotency_key
-    if claim is None:
+    if claim.kind is IdempotencyOutcomeKind.HIT:
+        if claim.row.response_body:
+            return GoalResponse.model_validate(claim.row.response_body)
+        if not allow_legacy_current:
+            raise AppError(
+                "goal_original_requires_review",
+                "原还债目标已被接受，但缺少原创建回执。请核对目标，勿重复创建。",
+                status_code=409,
+            )
+        if not claim.row.resource_id:
+            raise AppError("idempotency_key_in_progress", status_code=409)
         return _canonical_debt_goal_response(
             db,
             tenant_id=tenant_id,
-            public_id=_created_goal_public_id_for_key(
-                db,
-                tenant_id=tenant_id,
-                idempotency_key=idempotency_key,
-            ),
+            public_id=claim.row.resource_id,
         )
     goal = _stage_debt_repayment_goal(
         db,
@@ -424,20 +419,17 @@ def create_debt_repayment_goal_idempotently(
         payload=payload,
     )
     evaluation, _ = _evaluate_and_maybe_latch(db, goal, persist=True)
+    db.flush()
+    response = _debt_goal_response(goal, evaluation)
     mark_idempotency_succeeded(
         db,
-        claim,
+        claim.row,
         resource_type=_GOAL_TARGET_TYPE,
         resource_id=goal.public_id,
+        response_body=response.model_dump(mode="json"),
     )
     db.commit()
-    db.expire_all()
-    current = _require_debt_repayment_goal(
-        db,
-        tenant_id=tenant_id,
-        public_id=goal.public_id,
-    )
-    return _debt_goal_response(current, evaluation)
+    return response
 
 
 def list_debt_repayment_goals(

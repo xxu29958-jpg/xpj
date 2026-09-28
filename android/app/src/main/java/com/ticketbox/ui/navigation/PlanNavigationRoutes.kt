@@ -10,6 +10,10 @@ internal fun spendingGoalEditRoute(id: String): String = "${ProductSecondaryPage
 
 internal fun spendingGoalCreationRoute(id: Long): String = "${ProductSecondaryPage.SpendingGoal.route}?create=$id"
 
+internal fun goalCreationRoute(original: com.ticketbox.data.repository.PendingGoalCreation): String =
+    if (original.request?.goalType == "debt_repayment") "${ProductSecondaryPage.DebtGoals.route}?create=${original.row.id}"
+    else spendingGoalCreationRoute(original.row.id)
+
 internal fun incomePlanSubmissionRoute(id: Long): String = "${ProductSecondaryPage.IncomePlans.route}?submission=$id"
 internal fun budgetAdviceSubmissionRoute(id: Long): String = "${ProductSecondaryPage.BudgetAdvice.route}?submission=$id"
 internal fun monthlyArrangementRoute(month: String): String = "${ProductSecondaryPage.BudgetAdvice.route}?arrangement=$month"

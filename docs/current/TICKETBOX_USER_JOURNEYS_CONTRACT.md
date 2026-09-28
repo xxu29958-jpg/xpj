@@ -181,9 +181,9 @@ command. A changed identity hides the old form immediately; late restoration
 cannot replace the current identity. Web write refusal returns the original form
 and retry identity, preserving whether the user was saving or explicitly reviewing
 new facts. Native saved-state registry restoration and actual Room recovery are
-distinct from an OS process-kill qualification. Unsubmitted income-creation and
-goal drafts, Web refresh/session draft durability and other cross-client return
-paths remain in the atlas; this edit slice does not declare them complete.
+distinct from an OS process-kill qualification. Income creation is qualified
+separately below; goal drafts, Web refresh/session draft durability and other
+cross-client return paths retain their own status in the atlas.
 
 ## Spending goal creation continuity
 
@@ -199,7 +199,7 @@ preserve both original command identity and the unsubmitted input. Frozen source
 `108741221635` completed 2766 tests with exactly these two new failures at lines
 114 and 138. Compilation or environment failure is not the claimed RED.
 
-The #451 candidate retains the creation owner at MAIN_ROUTE and restores its
+The qualified #451 implementation retains the creation owner at MAIN_ROUTE and restores its
 complete binding, task key and raw input through the system saved-state registry.
 A readonly role retains the current binding's draft and its Continue entry;
 another binding never inherits it. Explicit original-submission inspection is
@@ -218,9 +218,11 @@ automatic reinterpretation under the current month or currency. The existing
 bare command payload, legacy explicit recovery and sole dispatcher stay in use.
 
 Actual route destruction/reentry, registry save/restore and Room continuity are
-separate checks; none is described as OS process-kill qualification. Candidate
-runtime and exact main qualification remain pending. Debt-goal drafts and Web
-refresh/session durability remain separate gaps in the full product map.
+separate checks; none is described as OS process-kill qualification. Final source
+`f89a6d1d` and merged main `11352a29` independently passed CI, CodeQL and all
+three actual Connected shards; main runs are `36381295871`, `36381295821` and
+`36381295892`. Debt-goal drafts and Web refresh/session durability retain their
+separate status in the full product map.
 
 ## Income creation continuity
 
@@ -233,15 +235,17 @@ continuation refers to the original key/body and receipt instead of creating a
 second command. Two deliberately separate plans with identical fields remain
 two creations; body equality is not task identity. Frozen source `d59498cf`
 executed the actual pop/reentry and failed on the restored name being empty
-(Connected `36359132642`, native job `108732697844`, line 155). The #450 candidate
+(Connected `36359132642`, native job `108732697844`, line 155). The qualified #450 implementation
 moves creation input out of the route-owned listing into the existing outer
 MAIN_ROUTE and SavedState mechanism. Stable-key acceptance is atomic in the
 original Room owner, including retained completed submissions. An older system
 snapshot first rejoins the matching original key and complete binding even if
 the accepted input is newer; it must not resubmit the old input. An unresolved
 publication keeps raw input and offers original-submission recovery. Current
-candidate runtime qualification remains pending; this does not claim OS kill
-qualification or completion of other goal and Web draft journeys.
+runtime qualification passed on final source `4c9a3618` and independently on
+merged main `021ea137`: CI `36376782029`, CodeQL `36376782049` and Connected
+`36376782067`, including all three actual native shards. This does not claim OS
+kill qualification or completion of other goal and Web draft journeys.
 
 Creation admission errors remain attached to the same raw draft through reopening and
 system saved-state restoration. An unknown or abandoned original row must not retire
@@ -249,8 +253,8 @@ the input into a list that cannot display it. If the original submission can no 
 be found, the user can explicitly confirm discarding only the local draft; this does
 not cancel a server-accepted income or automatically submit another plan. The income
 creation form opens fully expanded so its retained month and currency are reachable
-without first expanding a partially visible form. These candidate changes await their
-own cloud runtime qualification.
+without first expanding a partially visible form. These behaviors are included in
+the qualified #450 source and main above.
 
 ## Unused tag cleanup
 
@@ -416,3 +420,48 @@ schema preservation and export scope. Final source `f61bb93d` and merged main
 `609448a9` independently passed CI, CodeQL and all three actual Android Connected
 shards. This does not claim a daily installation update, replace the full Goal or
 reopen Windows lifecycle work.
+
+## Debt-goal creation continuity
+
+A debt-repayment goal retains its nonmonetary definition: name and selected debt
+identities, without inventing a target amount, currency or spending month. One
+original creation key must resolve to the same goal after a real repayment has
+changed its linked debt. Retrying that task must neither create another goal or
+link set nor record another repayment. Reusing the key with a different name or
+selected debt set must be refused without altering the accepted original.
+
+Frozen source `1788f1b3` executed three business failures in CI `36376017160`,
+job `108781938777`: the API bypassed Web's existing idempotent service, retry
+created another goal and changed name/selection each returned success; that job
+also passed 2757 other cases. The candidate API now shares that service and
+atomically stores the original creation receipt with its goal/link rows. A
+retry returns that receipt after real repayments or target-date changes, while
+ordinary GET returns current facts. Legacy keyless clients retain nonmonetary
+creation. Historical Web redirects may still locate their accepted goal;
+an API original with no frozen receipt requires review rather than inventing
+the initial result from current facts.
+
+Android's unsubmitted name/selection reset executed at frozen source `ecfe2aca`:
+CI `36379287818`, Android fast `108791533108` ran 2804 tests with only the new
+`returningToCreationRetainsRawNameAndSelectionForExplicitReview` failing. The candidate moves debt-goal
+creation from the Reports direct writer into the existing Goal command owner,
+Room acceptance and dispatcher. MAIN_ROUTE/system SavedState retain the raw
+name, selected debt identities, complete binding and stable task key. Inspecting
+another original cannot consume that independent draft. Candidate refresh keeps
+unavailable selections visible for explicit removal instead of silently dropping
+or replacing them. Readonly users can inspect retained input and stop an eligible
+local original; retry still requires write authority. Unknown or stopped
+originals retain evidence without becoming new submissions.
+
+If a system snapshot predates the fields actually accepted by Room, the form
+shows the accepted name/selection under that original key; it cannot substitute
+the older inputs or issue a second creation. Matching raw input is retained.
+
+Global recovery carries the original's goal type and opens the debt form with
+its original name and selected debts, without money or month fields. The old
+Reports creation writer is retired with its direct consumers migrated. Native
+route destruction/reentry, system registry restoration over reopened Room,
+ACK-loss/receipt continuity and same-key concurrent acceptance have dedicated
+candidate regressions; runtime and exact source/main qualification remain
+pending. They do not claim an OS kill, replace the existing goal lifecycle or
+declare the whole planning domain complete.

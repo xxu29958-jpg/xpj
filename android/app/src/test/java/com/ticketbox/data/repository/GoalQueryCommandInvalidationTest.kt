@@ -14,8 +14,7 @@ class GoalQueryCommandInvalidationTest {
     @Test fun everyDirectGoalCommandRetiresOldListsAndUnvisitedDetailsBeforeOfflineReopen() = runTest {
         for (command in GoalReadCommand.entries) {
             val original = command.original()
-            val accepted = original.copy(rowVersion = 3, status = if (command == GoalReadCommand.Archive) "archived" else original.status,
-                publicId = if (command == GoalReadCommand.CreateDebt) "created-debt-goal" else original.publicId)
+            val accepted = original.copy(rowVersion = 3, status = if (command == GoalReadCommand.Archive) "archived" else original.status)
             val f = GoalReadFixture { api -> goalCommandApi(api) { accepted } }
             f.api.goals = listOf(original)
             val repository = f.repository
@@ -56,7 +55,7 @@ class GoalQueryCommandInvalidationTest {
 }
 
 private enum class GoalReadCommand {
-    Archive, CreateDebt, ReplaceLinks, AcknowledgeReview, SetTargetDate;
+    Archive, ReplaceLinks, AcknowledgeReview, SetTargetDate;
 
     fun original(): GoalDto = if (this == Archive) readGoalDto() else readGoalDto().copy(
         goalType = "debt_repayment", month = null, targetAmountCents = null, homeCurrencyCode = null,
@@ -67,7 +66,6 @@ private enum class GoalReadCommand {
 
     suspend fun execute(repository: ReportsRepository, binding: LogicalSessionBinding) = when (this) {
         Archive -> repository.archiveGoal("goal-jpy", binding)
-        CreateDebt -> repository.createDebtGoal("还清欠款", listOf("debt-1"), binding)
         ReplaceLinks -> repository.replaceDebtLinks("goal-jpy", 2, listOf("debt-2"))
         AcknowledgeReview -> repository.acknowledgeDebtIntegrityReview("goal-jpy", 2)
         SetTargetDate -> repository.setDebtGoalTargetDate("goal-jpy", 2, "2026-12-31")
@@ -76,7 +74,6 @@ private enum class GoalReadCommand {
 
 private fun goalCommandApi(delegate: ApiService, accepted: () -> GoalDto): ApiService = object : ApiService by delegate {
     override suspend fun archiveGoal(publicId: String, timezone: String?) = accepted()
-    override suspend fun createGoal(request: GoalCreateRequestDto, timezone: String?, idempotencyKey: String?) = accepted()
     override suspend fun replaceGoalDebtLinks(publicId: String, request: DebtGoalLinksReplaceRequestDto,
         idempotencyKey: String?, timezone: String?) = accepted()
     override suspend fun acknowledgeGoalIntegrityReview(publicId: String, request: DebtGoalIntegrityReviewRequestDto,
