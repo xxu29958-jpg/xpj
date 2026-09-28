@@ -33,6 +33,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.CategoryPreference
+import com.ticketbox.domain.model.CategoryReference
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.ui.components.AppContentCard
 import com.ticketbox.ui.components.AppListRow
@@ -51,6 +52,7 @@ fun CategoryDirectoryScreen(
     viewModel: CategoryDirectoryViewModel,
     onBack: () -> Unit,
     onCategoriesChanged: () -> Unit = {},
+    onOpenReference: (CategoryReference) -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var pendingDelete by remember { mutableStateOf<CategoryPreference?>(null) }
@@ -98,12 +100,26 @@ fun CategoryDirectoryScreen(
                 style = MaterialTheme.typography.bodySmall,
             )
         }
+        CategoryReferencesCard(state, onOpenReference)
         DefaultCategoriesCard()
         CustomCategoriesCard(
             state = state,
             onRetry = viewModel::refresh,
             onDelete = { pendingDelete = it },
         )
+    }
+}
+
+@Composable
+private fun CategoryReferencesCard(state: CategoryDirectoryUiState, onOpen: (CategoryReference) -> Unit) {
+    if (!state.canModify || state.categoryReferences.isEmpty()) return
+    AppContentCard {
+        Text(stringResource(R.string.category_directory_references), style = MaterialTheme.typography.titleSmall)
+        state.categoryReferences.forEach { reference ->
+            TextButton(enabled = state.busyCategoryId == null, onClick = { onOpen(reference) }) {
+                Text(reference.label)
+            }
+        }
     }
 }
 

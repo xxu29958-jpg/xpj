@@ -110,8 +110,18 @@ fun CategoryRulesScreen(
     state: CategoryRulesScreenState,
     actions: CategoryRulesScreenActions,
     chrome: ManagementPageChrome = ManagementPageChrome(),
+    initialRuleId: Long? = null,
 ) {
     var form by remember(state.binding) { mutableStateOf<CategoryRuleDraftForm?>(null) }
+    var initialRuleOpened by remember(state.binding, initialRuleId) { mutableStateOf(false) }
+    LaunchedEffect(initialRuleId, state.rules.rules, state.interaction.readOnly) {
+        if (!initialRuleOpened && !state.interaction.readOnly) {
+            state.rules.rules.find { it.id == initialRuleId }?.let {
+                form = CategoryRuleDraftForm.fromRule(it)
+                initialRuleOpened = true
+            }
+        }
+    }
     LaunchedEffect(state.submittedRevision) { if (state.submittedRevision > 0) form = null }
     var deletingRule by remember(state.binding) { mutableStateOf<CategoryRule?>(null) }
     var rollbackApplication by remember(state.binding) { mutableStateOf<RuleApplicationBatch?>(null) }

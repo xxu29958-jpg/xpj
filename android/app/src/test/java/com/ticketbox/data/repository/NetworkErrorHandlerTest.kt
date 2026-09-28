@@ -55,6 +55,24 @@ class NetworkErrorHandlerTest {
     }
 
     @Test
+    fun categoryBlockerKeepsItsMessageAndOnlyNavigableConfigurationIdentities() {
+        val failure = handler.httpFailure(httpException(409, """{"error":"state_conflict","message":"先处理原配置",
+            "category_references":[
+                {"kind":"rule","id":"42","label":"规则 bakery"},
+                {"kind":"budget","id":"2026-02","label":"二月预算"},
+                {"kind":"goal","id":"bakery-goal","label":"烘焙目标"},
+                {"kind":"rule","id":"not-an-id","label":"无效规则"},
+                {"kind":"budget","id":"2026-99","label":"无效月份"},
+                {"kind":"unknown","id":"42","label":"未知配置"},
+                {"kind":"rule","id":"7"}]}"""))
+        assertEquals("先处理原配置", failure.message)
+        assertEquals("state_conflict", failure.errorCode)
+        assertEquals(listOf("42", "2026-02", "bakery-goal"), failure.conflict.categoryReferences.map { it.id })
+        assertTrue(handler.httpFailure(httpException(409, """{"error":"state_conflict","message":"页面已过期"}"""))
+            .conflict.categoryReferences.isEmpty())
+    }
+
+    @Test
     fun safeCallMapsHttpConflictToRepositoryExceptionWithTokens() = runTest {
         val result = handler.safeCall<Unit> { throw httpException(409, tagConflictBody) }
 

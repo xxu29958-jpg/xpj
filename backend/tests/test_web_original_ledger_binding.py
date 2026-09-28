@@ -95,7 +95,8 @@ def test_switched_session_keeps_original_form_before_any_object_read_or_command(
         "excluded_category": ["医疗", "报销"], "category_budget_category": ["餐饮", "交通"],
         "category_budget_amount_yuan": ["100", "020"], "category_budget_remove": [1, 0],
         "pay_day": "10", "expected_row_version": "3", "idempotency_key": "original-key",
-        "public_id": "original-object", "rule_id": 17, "enabled": False, "action": "clear", "amount_cents": "1200"}
+        "public_id": "original-object", "rule_id": 17, "enabled": False, "action": "clear", "amount_cents": "1200",
+        "return_category": "original-category", "return_month": "2026-02"}
     values.update({key: value for key, value in supplied.items() if key in inspect.signature(handler).parameters})
     response = handler(_request(path, current_role), **values, db=Mock(), _local=None)
     assert response.status_code == 409
@@ -103,7 +104,7 @@ def test_switched_session_keeps_original_form_before_any_object_read_or_command(
     assert 'name="ledger_id" value="old-ledger"' in html
     assert f'action="{path}"' in html
     for field in ("idempotency_key", "expected_row_version", "amount_yuan", "baseline_amount_yuan", "target_amount_yuan",
-        "total_amount_yuan", "rollover_amount_yuan", "non_monthly_amount_yuan"):
+        "total_amount_yuan", "rollover_amount_yuan", "non_monthly_amount_yuan", "return_category", "return_month"):
         if field in values:
             assert f'name="{field}" value="{values[field]}"' in html
     for field in ("excluded_category", "category_budget_category", "category_budget_amount_yuan", "category_budget_remove"):

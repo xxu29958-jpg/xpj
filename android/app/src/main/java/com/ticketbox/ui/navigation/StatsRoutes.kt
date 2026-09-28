@@ -94,6 +94,7 @@ internal fun BudgetRoute(
     onBack: () -> Unit,
     onDataChanged: () -> Unit = {},
     financialDataRevision: Int = 0,
+    backText: String? = null,
 ) {
     val budgetViewModel: BudgetViewModel = viewModel(
         factory = budgetViewModelFactory(
@@ -120,6 +121,7 @@ internal fun BudgetRoute(
     }
     BudgetScreen(
         state = state,
+        backText = backText,
         onHistory = { historyViewModel.open(state.month); historyVisible.value = true },
         actions = BudgetScreenActions(
             onRefresh = budgetViewModel::refresh,

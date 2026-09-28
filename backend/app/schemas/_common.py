@@ -4,16 +4,23 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 __all__ = [
     "AuthCheckResponse",
+    "CategoryReferenceResponse",
     "ErrorResponse",
     "HealthResponse",
     "InstallationHealthResponse",
     "InstallationMobileCapabilitiesResponse",
     "StatusResponse",
 ]
+
+
+class CategoryReferenceResponse(BaseModel):
+    kind: Literal["rule", "budget", "goal"]
+    id: str
+    label: str
 
 
 class ErrorResponse(BaseModel):
@@ -39,6 +46,7 @@ class ErrorResponse(BaseModel):
     conflict_alias_row_version: int | None = None
     conflict_alias_enabled: bool | None = None
     conflict_alias_deleted: bool | None = None
+    category_references: list[CategoryReferenceResponse] = Field(default_factory=list)
 
 
 class HealthResponse(BaseModel):

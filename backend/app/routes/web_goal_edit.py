@@ -3,7 +3,7 @@
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
@@ -18,6 +18,8 @@ from app.routes.web_common import (
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _web_redirect,
+    _with_ledger,
+    category_return_url,
     parse_form_row_version_token,
     preserve_original_ledger_form,
     templates,
@@ -49,6 +51,7 @@ def _render_editor(
     request: Request, db: Session, options, selected_id: str, goal,
     *, values: dict[str, str] | None = None, error: str | None = None,
     conflict: bool = False, status_code: int = 200,
+    return_category: str = "", return_month: str = "",
 ) -> HTMLResponse:
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id)
     current = {
@@ -57,7 +60,8 @@ def _render_editor(
         "home_currency_code": goal.home_currency_code or "",
         "expected_row_version": str(goal.row_version),
     }
-    values = values if values is not None else {**current, "idempotency_key": str(uuid4())}
+    values = values if values is not None else {**current, "idempotency_key": str(uuid4()),
+        "return_category": return_category, "return_month": return_month}
     try:
         form_currency = currency_input_metadata(values.get("home_currency_code"))
     except AppError:
@@ -66,6 +70,9 @@ def _render_editor(
     ctx.update(
         goal=goal, current=current, values=values, form_currency=form_currency,
         currency_matches=currency_matches, error=error, conflict=conflict,
+        category_return_url=category_return_url(selected_id, values.get("return_category", ""), values.get("return_month", "")),
+        current_edit_url=_with_ledger(f"/web/goals/{goal.public_id}/edit", selected_id,
+            return_category=values.get("return_category", ""), return_month=values.get("return_month", "")),
     )
     return templates.TemplateResponse(
         request=request, name="goal_edit.html", context=ctx, status_code=status_code,
@@ -75,10 +82,12 @@ def _render_editor(
 @router.get("/{public_id}/edit", response_class=HTMLResponse)
 def web_goal_edit(
     request: Request, public_id: str, ledger_id: str = "",
+    return_category: str = "", return_month: str = "",
     _local: None = LocalOnly, db: Session = Depends(get_db),
 ) -> HTMLResponse:
     options, selected_id, goal = _edit_scope(request, db, ledger_id, public_id)
-    return _render_editor(request, db, options, selected_id, goal)
+    return _render_editor(request, db, options, selected_id, goal,
+        return_category=return_category, return_month=return_month)
 
 
 @router.post("/{public_id}/edit", response_class=HTMLResponse)
@@ -89,6 +98,7 @@ def web_goal_save(
     category: str = Form(default=""), expected_row_version: str = Form(default=""),
     home_currency_code: str = Form(default=""),
     idempotency_key: str = Form(default=""), review_latest: bool = Form(default=False),
+    return_category: str = Form(""), return_month: str = Form(""),
     _local: None = LocalOnly, db: Session = Depends(get_db),
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
@@ -98,6 +108,7 @@ def web_goal_save(
         "category": category, "expected_row_version": expected_row_version,
         "idempotency_key": idempotency_key,
         "home_currency_code": home_currency_code,
+        "return_category": return_category, "return_month": return_month,
     }
     retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
         fields={**values, "ledger_id": ledger_id, "review_latest": review_latest}, task="修改支出目标")
@@ -140,4 +151,7 @@ def web_goal_save(
             request, db, options, selected_id, goal, values=values, error=error,
             conflict=conflict, status_code=exc.status_code if isinstance(exc, AppError) else 422,
         )
+    target = category_return_url(selected_id, return_category, return_month, message="目标修改已保存，可以继续整理原分类。")
+    if target:
+        return RedirectResponse(target, status_code=303)
     return _web_redirect("/web/goals", selected_id, month=result.month, msg="目标修改已保存。")

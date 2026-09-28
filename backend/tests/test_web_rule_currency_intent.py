@@ -77,10 +77,11 @@ def test_rule_edit_refusal_retains_raw_amount_original_currency_key_and_occ(monk
     monkeypatch.setattr(editor, "_render_editor", render)
     fields = {"keyword": "Shop", "category": "购物", "priority": "10", "amount_min_yuan": "1200",
         "amount_max_yuan": "", "source_contains": "", "tag_contains": "", "home_currency_code": "JPY",
-        "expected_row_version": "2", "idempotency_key": "original-rule-key", "review_latest": False}
+        "expected_row_version": "2", "idempotency_key": "original-rule-key", "review_latest": False,
+        "return_category": "original-category", "return_month": "2026-02"}
     assert editor.web_rule_save(Mock(), 3, ledger_id="owner", _local=None, db=Mock(), **fields) == "retained"
     values = render.call_args.kwargs["values"]
-    for name in ("amount_min_yuan", "home_currency_code", "expected_row_version", "idempotency_key"):
+    for name in ("amount_min_yuan", "home_currency_code", "expected_row_version", "idempotency_key", "return_category", "return_month"):
         assert values[name] == fields[name]
     fields["review_latest"] = True
     editor.web_rule_save(Mock(), 3, ledger_id="owner", _local=None, db=Mock(), **fields)

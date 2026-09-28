@@ -2628,6 +2628,16 @@
             "title": "Non Monthly Amount Yuan",
             "type": "string"
           },
+          "return_category": {
+            "default": "",
+            "title": "Return Category",
+            "type": "string"
+          },
+          "return_month": {
+            "default": "",
+            "title": "Return Month",
+            "type": "string"
+          },
           "review_latest": {
             "default": false,
             "title": "Review Latest",
@@ -2663,6 +2673,11 @@
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
+            "type": "string"
+          },
+          "month": {
+            "default": "",
+            "title": "Month",
             "type": "string"
           }
         },
@@ -4055,6 +4070,16 @@
           "name": {
             "default": "",
             "title": "Name",
+            "type": "string"
+          },
+          "return_category": {
+            "default": "",
+            "title": "Return Category",
+            "type": "string"
+          },
+          "return_month": {
+            "default": "",
+            "title": "Return Month",
             "type": "string"
           },
           "review_latest": {
@@ -5765,6 +5790,16 @@
           "priority": {
             "default": "100",
             "title": "Priority",
+            "type": "string"
+          },
+          "return_category": {
+            "default": "",
+            "title": "Return Category",
+            "type": "string"
+          },
+          "return_month": {
+            "default": "",
+            "title": "Return Month",
             "type": "string"
           },
           "review_latest": {
@@ -8309,6 +8344,34 @@
           "expected_row_version"
         ],
         "title": "CategoryPreferenceTokenRequest",
+        "type": "object"
+      },
+      "CategoryReferenceResponse": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "rule",
+              "budget",
+              "goal"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "label"
+        ],
+        "title": "CategoryReferenceResponse",
         "type": "object"
       },
       "CategoryRuleCreateRequest": {
@@ -11016,6 +11079,13 @@
       "ErrorResponse": {
         "additionalProperties": true,
         "properties": {
+          "category_references": {
+            "items": {
+              "$ref": "#/components/schemas/CategoryReferenceResponse"
+            },
+            "title": "Category References",
+            "type": "array"
+          },
           "conflict_alias_deleted": {
             "anyOf": [
               {
@@ -45335,6 +45405,26 @@
               ],
               "title": "Msg"
             }
+          },
+          {
+            "in": "query",
+            "name": "return_category",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Category",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_month",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Month",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -49837,6 +49927,26 @@
               "title": "Ledger Id",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "return_category",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Category",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_month",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Month",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -53706,6 +53816,26 @@
             "schema": {
               "default": "",
               "title": "Ledger Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_category",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Category",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_month",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return Month",
               "type": "string"
             }
           }

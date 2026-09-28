@@ -55,6 +55,7 @@ data class RepositoryConflictDetails(
     val merchant: MerchantConflictDetails = MerchantConflictDetails(),
     val alias: AliasConflictDetails = AliasConflictDetails(),
     val recurring: RecurringConflictDetails = RecurringConflictDetails(),
+    val categoryReferences: List<com.ticketbox.domain.model.CategoryReference> = emptyList(),
 )
 
 data class TagConflictDetails(

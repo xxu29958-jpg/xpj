@@ -5,6 +5,9 @@ import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.BuildConfig
 import com.ticketbox.data.remote.dto.ErrorDto
+import com.ticketbox.data.remote.dto.CategoryReferenceDto
+import com.ticketbox.domain.model.CategoryReference
+import com.ticketbox.domain.model.CategoryReferenceKind
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -153,4 +156,17 @@ private fun ErrorDto.toConflictDetails(): RepositoryConflictDetails =
             publicId = resourcePublicId,
             status = status,
         ),
+        categoryReferences = categoryReferences.mapNotNull(CategoryReferenceDto::toDomain),
     )
+
+private fun CategoryReferenceDto.toDomain(): CategoryReference? {
+    val target = id?.takeIf { it.isNotBlank() } ?: return null
+    val title = label?.takeIf { it.isNotBlank() } ?: return null
+    val type = when (kind) {
+        "rule" -> CategoryReferenceKind.Rule.takeIf { target.toLongOrNull()?.let { id -> id > 0 } == true }
+        "budget" -> CategoryReferenceKind.Budget.takeIf { runCatching { java.time.YearMonth.parse(target) }.isSuccess }
+        "goal" -> CategoryReferenceKind.SpendingGoal
+        else -> null
+    } ?: return null
+    return CategoryReference(type, target, title)
+}
