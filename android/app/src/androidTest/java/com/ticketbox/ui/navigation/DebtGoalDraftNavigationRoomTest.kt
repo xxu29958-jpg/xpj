@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasSetTextAction
@@ -116,11 +117,17 @@ class DebtGoalDraftNavigationRoomTest {
         compose.onNodeWithText(context.getString(R.string.goal_draft_discard)).performScrollTo().performClick()
         compose.onNodeWithText(context.getString(R.string.common_cancel)).performClick()
         compose.onNode(hasSetTextAction()).assertTextEquals("  原还债任务  ")
+        compose.runOnIdle { debtAvailable = true }
         compose.onNodeWithText(context.getString(R.string.goal_draft_discard)).performScrollTo().performClick()
         compose.onNodeWithText(context.getString(R.string.goal_draft_discard_confirm)).performClick()
-        compose.waitUntil(10_000) { originalOwner.state.value.editable }
+        compose.waitUntil(10_000) { originalOwner.state.value.editable && originalOwner.state.value.candidates.size == 1 }
         assertEquals("", compose.onNode(hasSetTextAction()).fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
         assertNotEquals(originalKey, originalOwner.state.value.creationKey)
+        compose.onNode(hasSetTextAction()).performScrollTo().performTextReplacement("新的还债安排")
+        closeSoftKeyboard()
+        compose.waitForIdle()
+        compose.onNodeWithText(requireNotNull(originalDebt.counterpartyLabel)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.debt_goal_create_save)).assertIsEnabled()
         assertTrue(harness.fixture.stored().isEmpty())
     }
 

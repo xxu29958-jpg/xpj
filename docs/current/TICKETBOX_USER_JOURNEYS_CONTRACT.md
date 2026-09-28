@@ -199,7 +199,7 @@ preserve both original command identity and the unsubmitted input. Frozen source
 `108741221635` completed 2766 tests with exactly these two new failures at lines
 114 and 138. Compilation or environment failure is not the claimed RED.
 
-The #451 candidate retains the creation owner at MAIN_ROUTE and restores its
+The qualified #451 implementation retains the creation owner at MAIN_ROUTE and restores its
 complete binding, task key and raw input through the system saved-state registry.
 A readonly role retains the current binding's draft and its Continue entry;
 another binding never inherits it. Explicit original-submission inspection is
@@ -218,9 +218,11 @@ automatic reinterpretation under the current month or currency. The existing
 bare command payload, legacy explicit recovery and sole dispatcher stay in use.
 
 Actual route destruction/reentry, registry save/restore and Room continuity are
-separate checks; none is described as OS process-kill qualification. Candidate
-runtime and exact main qualification remain pending. Debt-goal drafts and Web
-refresh/session durability remain separate gaps in the full product map.
+separate checks; none is described as OS process-kill qualification. Final source
+`f89a6d1d` and merged main `11352a29` independently passed CI, CodeQL and all
+three actual Connected shards; main runs are `36381295871`, `36381295821` and
+`36381295892`. Debt-goal drafts and Web refresh/session durability retain their
+separate status in the full product map.
 
 ## Income creation continuity
 

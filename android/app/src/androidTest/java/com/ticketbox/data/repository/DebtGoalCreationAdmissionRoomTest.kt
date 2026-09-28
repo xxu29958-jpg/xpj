@@ -141,7 +141,7 @@ class DebtGoalCreationAdmissionRoomTest {
         val graph = f.fixture.reopen()
         val repository = graph.goalEditRepository
         val binding = requireNotNull(repository.currentAccess()).binding
-        assertEquals("old-debt-goal", graph.reportsRepository.debtGoals().getOrThrow().single().publicId)
+        assertEquals("old-debt-goal", graph.reportsRepository.debtGoals().getOrThrow().value.single().publicId)
         graph.reportsRepository.goal("old-debt-goal").getOrThrow()
         repository.create(binding, f.request, f.key).getOrThrow()
         assertEquals(1, f.drain().done)

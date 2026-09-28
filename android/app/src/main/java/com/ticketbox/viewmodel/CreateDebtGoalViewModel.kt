@@ -287,6 +287,7 @@ class CreateDebtGoalViewModel(
         lookupJob?.cancel()
         store.remove(current)
         activateDebtGoalDraft()
+        refreshCandidates()
     }
 
     fun recover(pending: PendingGoalCreation, drop: Boolean) {
