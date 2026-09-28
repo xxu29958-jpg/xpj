@@ -185,6 +185,19 @@ distinct from an OS process-kill qualification. Unsubmitted income-creation and
 goal drafts, Web refresh/session draft durability and other cross-client return
 paths remain in the atlas; this edit slice does not declare them complete.
 
+## Spending goal creation continuity
+
+Returning from a chosen future-month draft to the list and then reopening Create
+must preserve the complete unsubmitted name, raw amount, category, currency and
+chosen month. The list's currently displayed month is a default for a genuinely
+new task, not authority to reset the existing task. Existing pending creations
+remain discoverable through original-submission recovery; the Create entry must
+not silently select the first unfinished command and replace an independent
+draft. Explicitly inspecting an original and then returning to the draft must
+preserve both original command identity and the unsubmitted input. Frozen unit
+counterexamples exercise these business outcomes through the current creation
+owner; their runtime result is not yet established.
+
 ## Unused tag cleanup
 
 The Library tag page offers all/unused views within the selected ledger. The

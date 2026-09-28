@@ -110,4 +110,62 @@ class CreateSpendingGoalViewModelTest {
         advanceUntilIdle()
         assertEquals(1, edits.createCalls.size)
     }
+
+    @Test fun reentryFromTheListPreservesTheChosenMonthAndEntireUnsubmittedDraft() = runTest(dispatcher) {
+        val edits = RecordingGoalEdits()
+        val vm = model(edits)
+        vm.reset("2026-09")
+        advanceUntilIdle()
+        vm.updateName("  十月旅行  ")
+        vm.updateTargetAmount("00120.00")
+        vm.updateCategory("出行")
+        vm.shiftMonth(1)
+        val original = vm.state.value
+        // The list still displays September when its Create entry is opened again.
+        vm.reset("2026-09")
+        advanceUntilIdle()
+        assertEquals(original.name, vm.state.value.name)
+        assertEquals("00120.00", vm.state.value.targetAmountInput)
+        assertEquals("2026-10", vm.state.value.month)
+        assertEquals("出行", vm.state.value.category)
+        assertEquals(original.ledgerCurrency, vm.state.value.ledgerCurrency)
+        assertNull(vm.state.value.pending)
+        assertNull(vm.state.value.createdPublicId)
+        assertTrue(edits.createCalls.isEmpty())
+        assertTrue(edits.creations.value.isEmpty())
+    }
+
+    @Test fun newDraftAndExplicitOriginalRecoveryDoNotConsumeEachOther() = runTest(dispatcher) {
+        val edits = RecordingGoalEdits()
+        edits.create(requireNotNull(edits.currentAccess()).binding,
+            com.ticketbox.domain.model.GoalDraft("九月原目标", "2026-09", 1200, homeCurrencyCode = "JPY"))
+        val original = edits.creations.value.single()
+        val vm = model(edits)
+        vm.reset("2026-10")
+        advanceUntilIdle()
+        assertNull(vm.state.value.pending)
+        assertEquals("", vm.state.value.name)
+        assertEquals("2026-10", vm.state.value.month)
+        vm.updateName("  十月独立目标  ")
+        vm.updateTargetAmount("0009.00")
+        val draft = vm.state.value
+        val failed = original.copy(row = original.row.copy(
+            status = com.ticketbox.data.local.PendingMutationStatus.Failed, lastError = "client_upgrade_required"))
+        edits.creations.value = listOf(failed)
+        advanceUntilIdle()
+        assertEquals(draft, vm.state.value)
+        vm.reset("2026-09", originalId = original.row.id)
+        advanceUntilIdle()
+        assertEquals(failed, vm.state.value.pending)
+        assertEquals("九月原目标", vm.state.value.name)
+        assertEquals("JPY", vm.state.value.ledgerCurrency?.storageKey)
+        assertTrue(requireNotNull(vm.state.value.pending).canRetry)
+        vm.reset("2026-10")
+        advanceUntilIdle()
+        assertEquals(draft, vm.state.value)
+        assertEquals(original.request, edits.creations.value.single().request)
+        assertEquals(original.row.idempotencyKey, edits.creations.value.single().row.idempotencyKey)
+        assertEquals(1, edits.createCalls.size)
+        assertNull(vm.state.value.createdPublicId)
+    }
 }
