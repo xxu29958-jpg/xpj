@@ -1,5 +1,6 @@
 """Native create preserves the rendered command through refusal and calendar rollover."""
 
+import json
 from datetime import UTC, datetime
 
 import pytest
@@ -10,6 +11,9 @@ from app.main import app
 from app.models import IncomePlanRevision, MonthlyIncomePlan
 from app.routes.web_app import _require_local
 from app.services import income_plan_service, spending_contract_service
+from app.services.identity_service import authenticate_web_session_token
+from app.services.manual_expense_draft_presenter import manual_draft_scope
+from tests._local_web_identity_support import _connect_local_session, installed_web_setup
 from tests._web_native_form_support import hidden_post_forms
 
 ACTION = "/web/income-plans/create"
@@ -86,3 +90,83 @@ def test_reused_key_requires_explicit_nonwriting_preparation_for_new_plan(income
     assert client.post(ACTION, data=next_fields, follow_redirects=False).status_code == 303
     with SessionLocal() as db:
         assert db.scalar(select(func.count()).select_from(MonthlyIncomePlan)) == 2
+
+
+@pytest.fixture
+def installed_income_browser():
+    yield from installed_web_setup()
+
+
+def _installed_income_form(installed):
+    token = _connect_local_session(installed)
+    browser = installed.browser
+    browser.base_url = browser.base_url.copy_with(scheme="https")
+    with SessionLocal() as db:
+        auth = authenticate_web_session_token(db, token, ttl_seconds=8 * 60 * 60).auth
+        scope = manual_draft_scope(db, auth)
+    page = browser.get("/web/income-plans")
+    assert page.status_code == 200, page.text
+    fields = {**hidden_post_forms(page.text)[ACTION], "draft_scope": json.dumps(scope),
+        "label": "原收入计划", "source_type": "salary", "frequency": "monthly",
+        "amount_yuan": " 001500.00 ", "pay_day": "10", "income_month_year": "2026", "income_month_number": "9"}
+    return browser, fields, scope
+
+
+@pytest.mark.real_db
+@pytest.mark.currency_binding_unbound
+def test_browser_income_ack_replays_original_result_after_later_edit(installed_income_browser):
+    browser, fields, scope = _installed_income_form(installed_income_browser)
+    headers = {"Origin": str(browser.base_url).rstrip("/"), "Accept": "application/json"}
+    accepted = browser.post(ACTION, data=fields, headers=headers, follow_redirects=False)
+    with SessionLocal() as db:
+        plan, = list(db.scalars(select(MonthlyIncomePlan)))
+        public_id = plan.public_id
+        assert (plan.tenant_id, plan.label, plan.home_currency_code, plan.amount_cents, plan.row_version) == (
+            installed_income_browser.shared_ledger_id, "原收入计划", "CNY", 150000, 1)
+    assert accepted.status_code == 200, accepted.text
+    receipt = accepted.json()
+    assert receipt["ack"] == {"scope": scope, "clientRef": fields["idempotency_key"]}
+    assert receipt["receipt"]["public_id"] == public_id
+    assert receipt["receipt"]["label"] == "原收入计划"
+    assert receipt["receipt"]["amount_cents"] == 150000
+    edit_action = f"/web/income-plans/{public_id}/edit"
+    editor = browser.get(f"{edit_action}?intent_month={fields['intent_month']}")
+    assert editor.status_code == 200, editor.text
+    changed = browser.post(edit_action, data={**fields, **hidden_post_forms(editor.text)[edit_action],
+        "label": "后来修改的计划", "amount_yuan": "2400", "income_month": ""},
+        headers={"Origin": headers["Origin"]}, follow_redirects=False)
+    assert changed.status_code == 303, changed.text
+    replayed = browser.post(ACTION, data=fields, headers=headers, follow_redirects=False)
+    assert replayed.status_code == 200, replayed.text
+    assert replayed.json() == receipt
+    with SessionLocal() as db:
+        plan, = list(db.scalars(select(MonthlyIncomePlan)))
+        assert (plan.public_id, plan.label, plan.amount_cents, plan.row_version) == (
+            public_id, "后来修改的计划", 240000, 2)
+        assert db.scalar(select(func.count()).select_from(IncomePlanRevision)) == 2
+
+
+@pytest.mark.real_db
+@pytest.mark.currency_binding_unbound
+def test_income_draft_cannot_follow_a_replacement_browser_identity(installed_income_browser):
+    browser, original, scope = _installed_income_form(installed_income_browser)
+    browser.base_url = browser.base_url.copy_with(scheme="http")
+    replacement = _connect_local_session(installed_income_browser)
+    browser.base_url = browser.base_url.copy_with(scheme="https")
+    with SessionLocal() as db:
+        auth = authenticate_web_session_token(db, replacement, ttl_seconds=8 * 60 * 60).auth
+        current_scope = manual_draft_scope(db, auth)
+    assert current_scope["accountId"] == scope["accountId"]
+    assert current_scope["ledgerId"] == scope["ledgerId"]
+    assert current_scope["deviceId"] != scope["deviceId"]
+    refreshed = browser.get("/web/income-plans")
+    assert refreshed.status_code == 200, refreshed.text
+    original["csrf_token"] = hidden_post_forms(refreshed.text)[ACTION]["csrf_token"]
+    refused = browser.post(ACTION, data=original,
+        headers={"Origin": str(browser.base_url).rstrip("/"), "Accept": "application/json"},
+        follow_redirects=False)
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(MonthlyIncomePlan)) == 0
+        assert db.scalar(select(func.count()).select_from(IncomePlanRevision)) == 0
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["error"] == "session_binding_changed"

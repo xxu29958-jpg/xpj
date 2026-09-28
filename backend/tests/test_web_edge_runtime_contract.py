@@ -1,7 +1,7 @@
-"""Real Edge consumer gate for the /web bulk bar (批选模式 + 异步反馈 aria 语义).
+"""Real Edge consumer gates for /web interactions and income-create draft refresh.
 
-#218 C5a: only the bulk-bar slice lives here for now — the responsive-shell /
-dashboard-refresh / confirm-modal consumer gates ride in with their own slices.
+The income gate renders the actual production template on a synthetic origin;
+it does not prove backend financial persistence or the complete draft lifecycle.
 Skips cleanly on hosts without Microsoft Edge (CI lane that pins a real browser
 runs it for real).
 """
@@ -13,10 +13,14 @@ import importlib.util
 import os
 import shutil
 import sys
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from types import ModuleType
+from urllib.parse import urlsplit
 
 import pytest
+from jinja2 import ChoiceLoader, DictLoader, Environment, FileSystemLoader, select_autoescape
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _BULK_BAR_JS = _REPO_ROOT / "backend" / "app" / "static" / "web" / "desktop" / "bulk-bar.js"
@@ -39,6 +43,118 @@ _SHELL_KEYBOARD_JS = (
     _REPO_ROOT / "backend" / "app" / "static" / "web" / "desktop" / "shell-keyboard.js"
 )
 _EDGE_CDP: ModuleType | None = None
+
+
+def test_income_create_original_form_draft_survives_refresh_in_real_edge(tmp_path: Path) -> None:
+    """Real template consumer only; financial creation is a separate PostgreSQL gate."""
+    edge = _discover_edge()
+    templates = _REPO_ROOT / "backend/app/templates/web"
+    static = (_REPO_ROOT / "backend/app/static").resolve()
+    environment = Environment(
+        loader=ChoiceLoader([
+            DictLoader({"base.html": '<!doctype html><html><head><meta charset="utf-8">'
+                        '{% block page_scripts %}{% endblock %}</head><body>'
+                        '{% block content %}{% endblock %}</body></html>'}),
+            FileSystemLoader(templates),
+        ]),
+        autoescape=select_autoescape(["html"]),
+    )
+    template = environment.get_template("income_plans.html")
+    scope = {"datasetId": "income-dataset", "clientGeneration": "income-generation",
+             "accountId": "income-account", "ledgerId": "income-ledger", "deviceId": "income-device"}
+    requests: list[dict[str, str]] = []
+    missing_resources: list[str] = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *_args: object) -> None:
+            pass
+
+        def reply(self, body: bytes, *, content_type: str = "text/html; charset=utf-8", status: int = 200) -> None:
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self) -> None:
+            path = urlsplit(self.path).path
+            if path == "/":
+                self.reply(b'<!doctype html><html><head><meta charset="utf-8"></head><body>'
+                           b'<script src="/probe.js"></script></body></html>')
+            elif path == "/web/income-plans":
+                refreshed = bool(requests)
+                currency, month, key = ("CNY", "2026-10", "aa740c64-6e8d-45e8-80fd-5dd26a2f7126") if refreshed else (
+                    "JPY", "2026-09", "19793a9e-7861-4c02-ae44-1cb35c5a1cdd")
+                requests.append({"currency": currency, "month": month, "key": key})
+                draft = {"home_currency_code": currency, "intent_month": month, "idempotency_key": key,
+                         "label": "", "source_type": "salary", "frequency": "one_time", "amount_yuan": "",
+                         "pay_day": "10", "income_month": "", "income_month_year": "2026",
+                         "income_month_number": "10" if refreshed else "9"}
+                body = template.render(
+                    can_write=True, plans_active=[], plans_archived=[], selected_ledger_id=scope["ledgerId"],
+                    income_draft_scope=scope, income_form_draft=draft, income_form_error=None,
+                    income_form_review=False, income_year_options=[2025, 2026, 2027, 2028],
+                    income_default_year="2026", income_default_month=draft["income_month_number"],
+                    income_form_currency={"amount_placeholder": "0.00" if refreshed else "0",
+                                          "inputmode": "decimal" if refreshed else "numeric"},
+                    home_currency_code=currency, home_currency_symbol="¥", intent_month=month,
+                    total_yuan="0", scheduled_yuan="0", reference_rates=[], missing_currency_codes=[],
+                    message=None, error=None, asset_version="income-draft-contract",
+                    csrf_field='<input type="hidden" name="csrf_token" value="synthetic-not-a-credential">',
+                )
+                self.reply(body.encode("utf-8"))
+            elif path == "/probe.js":
+                self.reply((_REPO_ROOT / "backend/tests/fixtures/income_create_draft_refresh_probe.js").read_bytes(),
+                           content_type="text/javascript")
+            elif path.startswith("/static/"):
+                resource = (static / path.removeprefix("/static/")).resolve()
+                if resource.is_relative_to(static) and resource.is_file():
+                    self.reply(resource.read_bytes(), content_type="text/javascript")
+                else:
+                    missing_resources.append(path)
+                    self.reply(b"not found", status=404)
+            else:
+                self.reply(b"not found", status=404)
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    def prepare_url(_attempt: int) -> str:
+        requests.clear()
+        missing_resources.clear()
+        return f"http://127.0.0.1:{server.server_port}/"
+
+    try:
+        probe = _edge_cdp().evaluate_page(
+            edge, profile=tmp_path / "edge-income-create-draft-refresh", prepare_url=prepare_url,
+            width=1024, height=768, expression="window.__incomeDraftRefreshProbe || undefined",
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+    assert missing_resources == [], f"actual template script failed to load: {missing_resources}"
+    assert isinstance(probe, dict)
+    assert probe.get("error") is None, probe
+    assert requests == [
+        {"currency": "JPY", "month": "2026-09", "key": "19793a9e-7861-4c02-ae44-1cb35c5a1cdd"},
+        {"currency": "CNY", "month": "2026-10", "key": "aa740c64-6e8d-45e8-80fd-5dd26a2f7126"},
+    ]
+    expected = {"label": "九月接单收入草稿", "amount_yuan": " 001200 ", "source_type": "freelance",
+                "frequency": "monthly", "pay_day": "23", "income_month_year": "2026", "income_month_number": "9",
+                "intent_month": "2026-09", "home_currency_code": "JPY", "idempotency_key": "19793a9e-7861-4c02-ae44-1cb35c5a1cdd"}
+    assert probe["before"]["fields"] == expected, probe
+    assert probe["after"]["fields"] == expected, f"refresh replaced unsent original income draft: {probe}"
+    assert probe["after"]["hash"] == probe["before"]["hash"], probe
+    assert probe["after"]["navigationType"] == "reload", probe
+    assert probe["after"]["amountLabel"] == "预计金额（JPY）", probe
+    assert probe["after"]["amountPlaceholder"] == "0", probe
+    assert probe["after"]["amountInputmode"] == "numeric", probe
+    assert "2026-09" in probe["after"]["intentNotice"], probe
+    assert "2026-10" not in probe["after"]["intentNotice"], probe
 
 
 def test_drawer_fx_status_and_retry_keep_draft_until_explicit_load_in_real_edge(tmp_path: Path) -> None:
