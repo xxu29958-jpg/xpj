@@ -122,6 +122,27 @@ def test_set_debt_kind_rejects_invalid_kind(client: TestClient, *, identity) -> 
     assert response.status_code == 422, response.json()
 
 
+def test_original_kind_receipt_survives_a_later_correction_without_reverting_current_facts(client: TestClient, *, identity) -> None:
+    debt = _create_external_debt(client, identity)
+    headers = _idem(identity.app_headers)
+    first = _set_kind(client, identity, debt["public_id"], debt_kind="revolving", expected_row_version=1, headers=headers)
+    assert first.status_code == 200, first.json()
+    original_receipt = first.json()
+    later = _set_kind(client, identity, debt["public_id"], debt_kind="installment", expected_row_version=2)
+    assert later.status_code == 200, later.json()
+    assert later.json()["row_version"] == 3
+
+    replay = _set_kind(client, identity, debt["public_id"], debt_kind="revolving", expected_row_version=1, headers=headers)
+    assert replay.status_code == 200, replay.json()
+    current = client.get(f"/api/debts/{debt['public_id']}", headers=identity.app_headers)
+    assert current.status_code == 200, current.json()
+    assert current.json()["debt_kind"] == "installment"
+    assert current.json()["row_version"] == 3
+    for field in ("principal_amount_cents", "remaining_amount_cents", "paid_amount_cents", "status"):
+        assert current.json()[field] == debt[field]
+    assert replay.json() == original_receipt
+
+
 def test_set_debt_kind_unknown_debt_is_404(client: TestClient, *, identity) -> None:
     response = _set_kind(client, identity, "does-not-exist", debt_kind="one_off", expected_row_version=1)
     assert response.status_code == 404, response.json()
