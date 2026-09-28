@@ -32,7 +32,7 @@ data class DebtReadProtection(val epoch: Long, val directTokens: Set<String>, va
  * different ledger's cached row.
  */
 @Dao
-interface ExpenseDao {
+interface ExpenseDao : BudgetReadProtectionDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun saveGoalSnapshots(snapshots: List<GoalQueryCacheEntity>)
 
@@ -50,14 +50,15 @@ interface ExpenseDao {
 
     @Query("DELETE FROM stats_projection_cache WHERE bindingKey = :bindingKey " +
         "AND kind NOT IN ('recurring_direct_barrier', 'recurring_outbox_read_barrier', 'recurring_read_epoch', " +
-        "'debt_direct_barrier', 'debt_outbox_read_barrier', 'debt_read_epoch', 'income_write_barrier', 'income_read_epoch')")
+        "'debt_direct_barrier', 'debt_outbox_read_barrier', 'debt_read_epoch', 'income_write_barrier', 'income_read_epoch', " +
+        "'budget_restore_barrier', 'budget_read_epoch')")
     suspend fun clearStatsProjectionsForBinding(bindingKey: String)
 
     @Query("SELECT * FROM stats_projection_cache WHERE bindingKey = :bindingKey AND kind = 'budget' AND month = :month")
-    suspend fun budgetSnapshotsForMonth(bindingKey: String, month: String): List<StatsProjectionCacheEntity>
+    override suspend fun budgetSnapshotsForMonth(bindingKey: String, month: String): List<StatsProjectionCacheEntity>
 
     @Delete
-    suspend fun deleteStatsProjection(snapshot: StatsProjectionCacheEntity)
+    override suspend fun deleteStatsProjection(snapshot: StatsProjectionCacheEntity)
 
     @Transaction
     suspend fun clearReadSnapshotsForBinding(bindingKey: String) {
@@ -67,7 +68,7 @@ interface ExpenseDao {
     }
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun saveStatsProjection(snapshot: StatsProjectionCacheEntity)
+    override suspend fun saveStatsProjection(snapshot: StatsProjectionCacheEntity)
 
     @Query("SELECT responseJson FROM stats_projection_cache WHERE bindingKey = :bindingKey " +
         "AND kind = 'debt_read_epoch' AND month = '' AND tag = '' AND homeCurrencyCode = '' AND timezone = 'UTC'")
@@ -275,18 +276,20 @@ interface ExpenseDao {
           AND timezone = :timezone
         ORDER BY fetchedAt DESC
     """)
-    suspend fun statsProjections(
+    override suspend fun statsProjections(
         bindingKey: String, kind: String, month: String, tag: String, timezone: String,
     ): List<StatsProjectionCacheEntity>
 
     @Query("DELETE FROM stats_projection_cache " +
         "WHERE kind NOT IN ('recurring_direct_barrier', 'recurring_outbox_read_barrier', 'recurring_read_epoch', " +
-        "'debt_direct_barrier', 'debt_outbox_read_barrier', 'debt_read_epoch', 'income_write_barrier', 'income_read_epoch')")
+        "'debt_direct_barrier', 'debt_outbox_read_barrier', 'debt_read_epoch', 'income_write_barrier', 'income_read_epoch', " +
+        "'budget_restore_barrier', 'budget_read_epoch')")
     suspend fun clearStatsProjections()
 
     @Query("DELETE FROM stats_projection_cache WHERE ledgerId = :ledgerId " +
         "AND kind NOT IN ('recurring_direct_barrier', 'recurring_outbox_read_barrier', 'recurring_read_epoch', " +
-        "'debt_direct_barrier', 'debt_outbox_read_barrier', 'debt_read_epoch', 'income_write_barrier', 'income_read_epoch')")
+        "'debt_direct_barrier', 'debt_outbox_read_barrier', 'debt_read_epoch', 'income_write_barrier', 'income_read_epoch', " +
+        "'budget_restore_barrier', 'budget_read_epoch')")
     suspend fun clearStatsProjectionsForLedger(ledgerId: String)
 
     @Query(

@@ -126,12 +126,15 @@ internal class RepositoryGraph(
         outbox.onRecurringAccepted = recurringQueries::invalidateAccepted
     }
 
+    private val budgetQueries = com.ticketbox.data.repository.BudgetQueryReader(
+        apiServiceProvider, database.expenseDao(), ledgerSessionCoordinator, outbox,
+    )
+
     val budgetRepository = BudgetRepository(
         apiProvider = apiServiceProvider,
         outbox = outbox,
         adapters = outboxAdapters,
-        localStorage = BudgetLocalStorage(database.monthlyArrangementCacheDao(),
-            com.ticketbox.data.repository.BudgetQueryReader(apiServiceProvider, database.expenseDao(), ledgerSessionCoordinator, outbox)),
+        localStorage = BudgetLocalStorage(database.monthlyArrangementCacheDao(), budgetQueries),
         sessionCoordinator = ledgerSessionCoordinator,
     )
 
@@ -195,6 +198,8 @@ internal class RepositoryGraph(
     init {
         ledgerRepository.restoreWithReadProtection = { binding, item, restore ->
             when (item.kind) {
+                "monthly_budget" -> budgetQueries.directRestore(binding, item.resourceId) { restore() }
+                "recurring_item" -> recurringQueries.directMutation(binding) { restore() }
                 "income_plan" -> incomePlanRepository.reads.queries.directWrite(binding) { restore() }
                 "goal" -> {
                     val result = restore()
