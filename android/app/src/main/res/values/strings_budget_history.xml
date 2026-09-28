@@ -1,6 +1,8 @@
 <resources>
     <string name="budget_history_title">预算修改记录</string>
     <string name="budget_history_explanation">回看每次保存的安排；这里的金额不是当时的实际支出。</string>
+    <string name="budget_history_cached">包含本机保留的已读记录，最早读取于 %1$s。未读页面仍需联网。</string>
+    <string name="budget_history_read_at">已读取服务端记录，最早读取于 %1$s。</string>
     <string name="budget_history_loading">正在读取记录…</string>
     <string name="budget_history_failed">暂时无法读取记录。请确认已联网且仍可访问这个账本，再重试。</string>
     <string name="budget_history_retry">重新读取</string>

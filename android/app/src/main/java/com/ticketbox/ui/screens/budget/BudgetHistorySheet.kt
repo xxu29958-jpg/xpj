@@ -7,6 +7,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.BudgetRevision
@@ -23,6 +25,10 @@ fun BudgetHistorySheet(state: BudgetHistoryState, onRetry: () -> Unit, onMore: (
     AppBusyGuardedSheet(isSubmitting = false, onDismiss = onDismiss, skipPartiallyExpanded = true) {
         AppSheetScaffold(title = stringResource(R.string.budget_history_title), subtitle = state.month) {
             Text(stringResource(R.string.budget_history_explanation))
+            state.fetchedAt?.let { readAt ->
+                Text(stringResource(if (state.fromCache) R.string.budget_history_cached else R.string.budget_history_read_at,
+                    displayDateTime(readAt)), modifier = Modifier.testTag("budget-history-read-source"))
+            }
             state.items.forEach { entry -> BudgetHistoryEntry(entry) }
             if (state.loading) Text(stringResource(R.string.budget_history_loading))
             if (state.failed) {
