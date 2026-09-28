@@ -5,6 +5,21 @@ from __future__ import annotations
 from scripts.planning_journey_android import wait_for
 
 
+def open_web_editor(page, base_url, ledger_id, path):
+    family = path.split("/")[2]
+    page.goto(f"{base_url}/web/{family}?ledger_id={ledger_id}")
+    # Follow the consumer's link, including its original month and return context.
+    page.locator(f'a[href^="{path}?"]').click()
+    return page.locator(f'form[action="{path}"]')
+
+
+def assert_original(form, original):
+    from playwright.sync_api import expect
+
+    for name, value in original.items():
+        expect(form.locator(f'[name="{name}"]')).to_have_value(value)
+
+
 class PlanningRecovery:
     def __init__(self, page, native, fixture, evidence, facts, base_url):
         self.page = page
@@ -20,8 +35,7 @@ class PlanningRecovery:
         family = "income-plans" if kind == "income" else "goals"
         path = f"/web/{family}/{self.facts()[kind + '_id']}/edit"
         page = self.page
-        page.goto(f"{self.base_url}{path}?ledger_id={self.ledger_id}")
-        form = page.locator(f'form[action="{path}"]')
+        form = open_web_editor(page, self.base_url, self.ledger_id, path)
         form.locator(f'[name="{field}"]').fill(amount)
         original = {name: form.locator(f'[name="{name}"]').input_value()
                     for name in ("idempotency_key", "expected_row_version", field)}
@@ -43,8 +57,7 @@ class PlanningRecovery:
         revisions = self.facts()[kind + "_revisions"]
         page.unroute("**" + path, lose_reply)
         page.reload()
-        for name, value in original.items():
-            assert form.locator(f'[name="{name}"]').input_value() == value, "Reopening replaced the original submission"
+        assert_original(form, original)
         page.screenshot(path=self.evidence / f"web-{kind}-retained-original.png", full_page=True)
         form.locator('button[type="submit"]').first.click()
         page.wait_for_url(f"**/web/{family}?*")
@@ -93,8 +106,7 @@ class PlanningRecovery:
     def hold_editor(self, kind, amount, field):
         family = "income-plans" if kind == "income" else "goals"
         path = f"/web/{family}/{self.facts()[kind + '_id']}/edit"
-        self.page.goto(f"{self.base_url}{path}?ledger_id={self.ledger_id}")
-        form = self.page.locator(f'form[action="{path}"]')
+        form = open_web_editor(self.page, self.base_url, self.ledger_id, path)
         form.locator(f'[name="{field}"]').fill(amount)
         original = {name: form.locator(f'[name="{name}"]').input_value()
                     for name in ("idempotency_key", "expected_row_version", field)}
@@ -109,8 +121,7 @@ class PlanningRecovery:
         assert reply.value.status == 409, "The stale browser editor overwrote the native change"
         self.page.wait_for_function("kind => document.querySelector('[data-' + kind + '-draft-phase]').dataset[kind + 'DraftPhase'] === 'blocked'", arg=kind)
         self.page.reload()
-        for name, value in original.items():
-            assert form.locator(f'[name="{name}"]').input_value() == value, "Conflict reread replaced the original draft"
+        assert_original(form, original)
         assert self.facts() == before, "A rejected conflict changed stored facts or revisions"
         self.page.screenshot(path=self.evidence / f"web-{kind}-conflict-after-native-edit.png", full_page=True)
         form.locator(f'[data-{kind}-discard]').click()

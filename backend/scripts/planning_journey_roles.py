@@ -5,6 +5,7 @@ from __future__ import annotations
 from contextlib import closing
 
 from scripts.planning_journey_android import wait_for
+from scripts.planning_journey_recovery import open_web_editor
 
 
 def _member_code(ledger_id, role):
@@ -32,11 +33,11 @@ def _connect(page, base_url, ledger_id, role):
 
 
 def _edit(page, base_url, ledger_id, path, field, value):
-    page.goto(f"{base_url}{path}?ledger_id={ledger_id}")
-    form = page.locator(f'form[action="{path}"]')
+    form = open_web_editor(page, base_url, ledger_id, path)
     form.locator(f'[name="{field}"]').fill(value)
     form.locator('button[type="submit"]:not([name])').click()
-    page.wait_for_url("**/web/*?*")
+    family = path.split("/")[2]
+    page.wait_for_url(f"{base_url}/web/{family}?*")
 
 
 def verify_roles(page, native, fixture, evidence, facts, base_url):

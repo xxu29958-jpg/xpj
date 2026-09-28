@@ -27,6 +27,7 @@ class PlanningAndroid:
         self.evidence = evidence
         self.bound = False
         self.pairing_code = ""
+        self.tree_attempt = 0
         if self.adb("shell", "getprop", "ro.kernel.qemu").strip() != "1":
             raise RuntimeError("The selected target is not an emulator")
 
@@ -39,8 +40,10 @@ class PlanningAndroid:
 
     def tree(self):
         def read_tree():
-            dump = self.adb("shell", "uiautomator", "dump", "/sdcard/planning-journey.xml")
-            raw = self.adb("exec-out", "cat", "/sdcard/planning-journey.xml")
+            self.tree_attempt += 1
+            path = f"/sdcard/planning-journey-{self.tree_attempt}.xml"
+            dump = self.adb("shell", "uiautomator", "dump", path)
+            raw = self.adb("exec-out", "cat", path)
             try:
                 return [ET.fromstring(raw)]
             except ET.ParseError:
@@ -135,7 +138,7 @@ class PlanningAndroid:
     def open_income(self):
         self.plan_home()
         self.click("收入计划")
-        wait_for(lambda: self.has("联动工资"), "The Web-created income did not reach the actual native consumer")
+        self.reveal_any("联动工资")
 
     def open_goal(self):
         self.plan_home()
