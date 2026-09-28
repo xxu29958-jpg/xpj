@@ -348,3 +348,21 @@ receipts after rename/delete, OCC and name conflicts, real tag rename/merge,
 schema preservation and export scope. This is candidate behavior pending exact
 runtime qualification, not delivered capability. It does not gate unrelated
 Income/Library work, replace the full Goal or reopen Windows lifecycle work.
+
+## Debt-goal creation continuity
+
+A debt-repayment goal retains its nonmonetary definition: name and selected debt
+identities, without inventing a target amount, currency or spending month. One
+original creation key must resolve to the same goal after a real repayment has
+changed its linked debt. Retrying that task must neither create another goal or
+link set nor record another repayment. Reusing the key with a different name or
+selected debt set must be refused without altering the accepted original.
+
+The API currently bypasses the existing idempotent debt-goal creation service,
+although Web already consumes that service. The frozen API counterexamples check
+actual goals, versioned membership and repayment facts; they are not yet executed
+business RED. Android also resets the unsubmitted name/selection on reentry and
+submits through the direct Reports writer. The correction must follow those real
+consumers and preserve candidate refresh, unavailable-selection review, complete
+binding, permissions and the existing goal lifecycle. It does not inherit the
+spending-goal monetary payload or declare the whole planning domain complete.
