@@ -7,7 +7,14 @@
     <string name="goal_creation_open">查看原创建</string>
     <string name="goal_creation_drop">停止本机重试</string>
     <string name="goal_creation_unreadable">原创建内容暂时无法读取。记录已保留，请先核对目标列表。</string>
+    <string name="goal_creation_stopped">这份原创建已停止本机发送，记录仍保留。请核对目标列表；停止发送不会撤销已创建的目标。</string>
+    <string name="goal_creation_unrecognized">当前版本还无法识别这份原创建的状态。记录已保留，请先核对目标列表。</string>
     <string name="goal_submission_stop_body">这只停止本机继续发送，不会撤销服务器可能已接受的目标创建或修改。请先核对目标，再决定是否重新提交。</string>
     <string name="goal_submission_open">查看原目标</string>
     <string name="goal_creation_missing">这份原创建已不在当前队列中。请先核对目标列表；不会替换为其它提交。</string>
+    <string name="goal_draft_continue">继续草稿</string>
+    <string name="goal_draft_check_original">核对原提交</string>
+    <string name="goal_draft_discard">放弃草稿</string>
+    <string name="goal_draft_discard_confirm">确认放弃</string>
+    <string name="goal_draft_discard_explanation">仅移除当前草稿，不会停止原提交或撤销已保存的目标。若此前保存结果不明，请先核对目标列表和原提交，避免重复创建。</string>
 </resources>

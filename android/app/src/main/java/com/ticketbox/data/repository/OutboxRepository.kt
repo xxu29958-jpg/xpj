@@ -6,6 +6,7 @@ import com.ticketbox.data.local.PendingMutationEntity
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
@@ -15,6 +16,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
@@ -378,11 +380,11 @@ class OutboxRepository private constructor(
     }
 
     /** Room, rather than this instance's binding mutex, owns the original create's atomic acceptance. */
-    internal suspend fun enqueueIncomeCreation(boundRequest: BoundLedgerRequest, intent: PendingMutationIntent): Long {
-        require(intent.type == PendingMutationType.CreateIncomePlan)
+    internal suspend fun enqueueOriginalCreation(boundRequest: BoundLedgerRequest, intent: PendingMutationIntent): Long {
+        require(intent.type in setOf(PendingMutationType.CreateIncomePlan, PendingMutationType.CreateGoal))
         val id = withActiveBinding(boundRequest) { binding ->
             binding.requireReadyForEnqueue()
-            dao.insertOriginalIncomeCreation(intent.toEntity(binding, nowIso()))
+            dao.insertOriginalCreation(intent.toEntity(binding, nowIso()))
         }
         schedulePending()
         return id
@@ -708,6 +710,13 @@ class OutboxRepository private constructor(
         val statuses = if (includeCompleted) ACTIVE_STATUS_VALUES + PendingMutationStatus.Done.wireValue else ACTIVE_STATUS_VALUES
         return observeBoundActiveRows(dao, bindingFlow(), wireTypes, statuses)
     }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    internal fun observeOriginalCommand(type: PendingMutationType, idempotencyKey: String): Flow<List<OutboxRow>> =
+        bindingFlow().flatMapLatest { binding ->
+            dao.observeOriginalCommand(binding.serverUrl, binding.ownerStorageKey, binding.ledgerId, type.wireValue, idempotencyKey)
+                .map { rows -> rows.map { it.toDomain() } }
+        }
 
     fun observeStatus(): Flow<OutboxStatus> = observeBoundOutboxStatus(dao, bindingFlow(), writeBlock)
 

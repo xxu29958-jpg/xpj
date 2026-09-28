@@ -11,11 +11,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
+import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.PendingGoalCreation
+import com.ticketbox.data.repository.isSupportedGoalCreation
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppContentCard
 import com.ticketbox.ui.components.AppStatusBanner
+
+internal val PendingGoalCreation.needsRetainedDraft: Boolean
+    get() = request?.isSupportedGoalCreation(row) != true ||
+        row.status in setOf(PendingMutationStatus.Unknown, PendingMutationStatus.Abandoned)
 
 @Composable
 fun GoalCreationIntentSummary(pending: PendingGoalCreation) {
@@ -44,6 +50,9 @@ internal fun GoalCreationSubmissionStatus(pending: PendingGoalCreation, busy: Bo
     }
     AppContentCard {
         AppStatusBanner(UiText.res(when {
+            pending.row.status == PendingMutationStatus.Abandoned -> R.string.goal_creation_stopped
+            pending.row.status == PendingMutationStatus.Unknown -> R.string.goal_creation_unrecognized
+            pending.needsRetainedDraft -> R.string.goal_creation_unreadable
             pending.canRetry -> R.string.goal_creation_uncertain
             pending.canDrop -> R.string.goal_creation_failed
             else -> R.string.goal_creation_pending

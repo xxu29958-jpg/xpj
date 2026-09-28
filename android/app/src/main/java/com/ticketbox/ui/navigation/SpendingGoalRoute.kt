@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.ui.screens.CreateSpendingGoalScreen
 import com.ticketbox.ui.screens.plan.SpendingGoalDetailScreen
@@ -36,13 +37,18 @@ private data class SpendingGoalRouteModels(
     val create: CreateSpendingGoalViewModel,
 )
 
+internal data class SpendingGoalRouteContext(
+    val creationOwner: ViewModelStoreOwner,
+    val originalCreationId: Long? = null,
+    val originalGoalPublicId: String? = null,
+    val financialDataRevision: Int = 0,
+)
+
 @Composable
 internal fun SpendingGoalsRoute(
     screenFactory: MainScreenFactory,
     onBack: () -> Unit,
-    originalCreationId: Long? = null,
-    originalGoalPublicId: String? = null,
-    financialDataRevision: Int = 0,
+    context: SpendingGoalRouteContext,
 ) {
     SpendingGoalRouteContent(
         models = SpendingGoalRouteModels(
@@ -56,14 +62,15 @@ internal fun SpendingGoalsRoute(
                 factory = spendingGoalDetailViewModelFactory(screenFactory.reportsRepository, screenFactory.goalEditRepository),
             ),
             create = viewModel(
+                viewModelStoreOwner = context.creationOwner,
                 key = CreateSpendingGoalViewModelKey,
                 factory = createSpendingGoalViewModelFactory(screenFactory.goalEditRepository, screenFactory.repositories.ledgerCalendarRepository),
             ),
         ),
         onBack = onBack,
-        originalCreationId = originalCreationId,
-        originalGoalPublicId = originalGoalPublicId,
-        financialDataRevision = financialDataRevision,
+        originalCreationId = context.originalCreationId,
+        originalGoalPublicId = context.originalGoalPublicId,
+        financialDataRevision = context.financialDataRevision,
     )
 }
 
@@ -102,6 +109,7 @@ private fun SpendingGoalRouteContent(
     when (page) {
         SpendingGoalPage.List -> SpendingGoalsScreen(
             viewModel = models.list,
+            hasRetainedDraft = models.create.state.collectAsStateWithLifecycle().value.hasDraft,
             actions = SpendingGoalsScreenActions(
                 onBack = onBack,
                 onCreate = {

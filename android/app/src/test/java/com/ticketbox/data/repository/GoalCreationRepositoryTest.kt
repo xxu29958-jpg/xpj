@@ -8,6 +8,7 @@ import com.ticketbox.data.remote.dto.GoalCreateRequestDto
 import com.ticketbox.data.remote.dto.GoalDto
 import com.ticketbox.domain.model.GoalDraft
 import java.io.IOException
+import java.util.UUID
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import okhttp3.MediaType.Companion.toMediaType
@@ -17,6 +18,7 @@ import retrofit2.Response
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class GoalCreationRepositoryTest {
@@ -82,7 +84,7 @@ class GoalCreationRepositoryTest {
 
     @Test fun foreignBindingCannotCreateOrDescribeAnotherOriginsIntent() = runTest {
         val fixture = GoalCreationFixture()
-        assertTrue(fixture.repository.create(fixture.binding.copy(ledgerId = "other"), fixture.draft).isFailure)
+        assertTrue(fixture.repository.create(fixture.binding.copy(ledgerId = "other"), fixture.draft, fixture.creationKey).isFailure)
         assertTrue(fixture.dao.rows.isEmpty())
         fixture.create().getOrThrow()
         val row = fixture.pending().row
@@ -114,6 +116,32 @@ class GoalCreationRepositoryTest {
         assertTrue(fixture.dao.rows.isEmpty())
         assertTrue(fixture.keys.isEmpty())
     }
+
+    @Test fun completedOriginalKeyReturnsItsReceiptWithoutAnotherCreation() = runTest {
+        val fixture = GoalCreationFixture()
+        val id = fixture.create().getOrThrow()
+        assertEquals(1, fixture.engine().drainOnce().done)
+        val original = fixture.pending()
+        assertEquals(id, fixture.create().getOrThrow())
+        assertEquals(original, fixture.repository.originalCreation(fixture.binding, fixture.creationKey).getOrThrow())
+        assertEquals("JPY", original.confirmed?.homeCurrencyCode)
+        assertEquals(1200L, original.confirmed?.targetAmountCents)
+        assertEquals(1, fixture.dao.rows.size)
+        assertNull(fixture.repository.originalCreation(fixture.binding, UUID.randomUUID().toString()).getOrThrow())
+    }
+
+    @Test fun staleSessionAndBindingRevisionCannotLookupOrAcceptAnOriginal() = runTest {
+        val fixture = GoalCreationFixture()
+        fixture.create().getOrThrow()
+        val original = fixture.pending()
+        for (stale in listOf(fixture.binding.copy(sessionGeneration = "retired-session"),
+            fixture.binding.copy(bindingRevision = "retired-binding"))) {
+            assertTrue(fixture.repository.originalCreation(stale, fixture.creationKey).isFailure)
+            assertTrue(fixture.repository.create(stale, fixture.draft, fixture.creationKey).isFailure)
+        }
+        assertEquals(original, fixture.pending())
+        assertEquals(1, fixture.dao.rows.size)
+    }
 }
 
 private class GoalCreationFixture {
@@ -129,6 +157,7 @@ private class GoalCreationFixture {
     var wrongReceipt = false
     var httpError: HttpException? = null
     val draft = GoalDraft(" Travel ", "2026-09", 1200, "交通", "jpy")
+    val creationKey = UUID.randomUUID().toString()
     val api = object : ApiService by FakeApiService(mutableListOf(), 0) {
         override suspend fun createGoal(request: GoalCreateRequestDto, timezone: String?, idempotencyKey: String?): GoalDto {
             keys += idempotencyKey
@@ -147,7 +176,7 @@ private class GoalCreationFixture {
     }, session)
     val repository = GoalEditRepository(provider, outbox, adapters.goalUpdateAdapter, adapters.goalReceiptAdapter, adapters.goalCreateAdapter)
     val binding = repository.currentAccess()!!.binding
-    suspend fun create() = repository.create(binding, draft)
+    suspend fun create() = repository.create(binding, draft, creationKey)
     suspend fun pending() = repository.observeCreations(binding).first().single()
     fun engine() = OutboxDrainEngine(outbox, listOf(CreateGoalDispatcher({ api },
         adapters.goalCreateAdapter, adapters.goalReceiptAdapter) { acceptedRows += it.id }), maxAttempts = 1)

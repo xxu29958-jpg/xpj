@@ -1,24 +1,21 @@
 package com.ticketbox.viewmodel
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
-import com.ticketbox.data.repository.LedgerCalendarReader
-import com.ticketbox.data.repository.newTaskMonth
 import androidx.lifecycle.viewModelScope
-import com.ticketbox.R
 import com.ticketbox.data.repository.GoalEditActions
-import com.ticketbox.data.repository.PendingGoalCreation
-import com.ticketbox.ui.components.formatAmountInput
+import com.ticketbox.data.repository.LedgerCalendarReader
 import com.ticketbox.data.repository.LogicalSessionBinding
-import kotlinx.coroutines.Job
+import com.ticketbox.data.repository.PendingGoalCreation
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.GoalDraft
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.parseAmountCents
 import java.time.YearMonth
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class CreateSpendingGoalUiState(
@@ -34,216 +31,174 @@ data class CreateSpendingGoalUiState(
     val ledgerCurrency: CurrencyCode? = null,
     val pending: PendingGoalCreation? = null,
     val originalSubmissionId: Long? = null,
+    val creationKey: String? = null,
+    val hasDraft: Boolean = false,
+    val acceptanceUncertain: Boolean = false,
+    val checkingOriginal: Boolean = false,
+    val isViewingOriginal: Boolean = false,
 ) {
-    val editable: Boolean get() = canModify && !isSubmitting && pending == null && originalSubmissionId == null
-    val canSubmit: Boolean
-        get() = editable && monthReady &&
-            ledgerCurrency != null &&
-            name.trim().isNotEmpty() &&
-            (ledgerCurrency.let { parseAmountCents(targetAmountInput, it)?.let { a -> a > 0L } == true })
+    val editable: Boolean get() = canModify && !isSubmitting && !checkingOriginal && !acceptanceUncertain &&
+        pending == null && originalSubmissionId == null
+    val canSubmit: Boolean get() = editable && monthReady && ledgerCurrency != null && name.trim().isNotEmpty() &&
+        ledgerCurrency?.let { parseAmountCents(targetAmountInput, it)?.let { amount -> amount > 0L } == true } == true
+    val canDiscardDraft: Boolean get() = hasDraft && !isViewingOriginal && !isSubmitting && !checkingOriginal
 }
 
 class CreateSpendingGoalViewModel(
-    private val edits: GoalEditActions,
-    private val calendars: LedgerCalendarReader? = null,
+    internal val edits: GoalEditActions,
+    internal val calendars: LedgerCalendarReader? = null,
+    savedStateHandle: SavedStateHandle = SavedStateHandle(),
 ) : ViewModel() {
-    private val _state = MutableStateFlow(CreateSpendingGoalUiState(canModify = edits.currentAccess()?.canModify == true))
-    val state: StateFlow<CreateSpendingGoalUiState> = _state.asStateFlow()
-
-    private var binding: LogicalSessionBinding? = edits.currentAccess()?.binding
-    private var generation = 0L
-    private var monthSelected = false
-    private var currencyJob: Job? = null
-    private var submitJob: Job? = null
-    private var observationJob: Job? = null
+    internal val store = SpendingGoalCreationDraftStore(savedStateHandle)
+    internal val mutableState = MutableStateFlow(CreateSpendingGoalUiState(canModify = edits.currentAccess()?.canModify == true))
+    val state: StateFlow<CreateSpendingGoalUiState> = mutableState.asStateFlow()
+    internal var binding: LogicalSessionBinding? = edits.currentAccess()?.binding
+    internal var task: SpendingGoalCreationDraft? = null
+    internal var generation = 0L
+    internal var currencyJob: Job? = null
+    internal var submitJob: Job? = null
+    internal var observationJob: Job? = null
+    internal var lookupJob: Job? = null
+    internal var submittingKey: String? = null
 
     init {
-        if (calendars != null) reset() else retryCurrency()
-        observeCreations()
+        activateGoalDraft()
         viewModelScope.launch {
             edits.observeAccess().collect { access ->
                 if (binding != access?.binding) {
                     binding = access?.binding
                     generation += 1
-                    currencyJob?.cancel()
-                    submitJob?.cancel()
-                    observeCreations()
-                    _state.value = CreateSpendingGoalUiState(canModify = access?.canModify == true)
-                    if (access != null) reset()
-                } else _state.update { it.copy(canModify = access?.canModify == true) }
+                    currencyJob?.cancel(); submitJob?.cancel(); lookupJob?.cancel(); observationJob?.cancel()
+                    activateGoalDraft()
+                } else mutableState.value = mutableState.value.copy(canModify = access?.canModify == true)
             }
         }
     }
 
     fun reset(month: String? = null, originalId: Long? = null) {
-        val taskMonth = month?.cleanGoalMonth() ?: _state.value.month
-        if (originalId != null && _state.value.originalSubmissionId != originalId) {
-            _state.value = CreateSpendingGoalUiState(canModify = edits.currentAccess()?.canModify == true,
-                month = taskMonth, originalSubmissionId = originalId, isSubmitting = true)
-            observeCreations()
-            return
-        }
-        if (_state.value.pending != null) return
-        if (_state.value.month == taskMonth && (_state.value.name.isNotEmpty() || _state.value.targetAmountInput.isNotEmpty())) return
+        val current = task ?: return
+        if (current.viewingOriginalId == originalId && (originalId != null || current.hasDraft || current.acceptedId != null)) return
         generation += 1
-        submitJob?.cancel()
-        _state.value = CreateSpendingGoalUiState(canModify = edits.currentAccess()?.canModify == true,
-            month = taskMonth, monthReady = month != null || calendars == null)
-        monthSelected = month != null
-        resolveNewTaskMonth()
-        retryCurrency()
-    }
-
-    private fun resolveNewTaskMonth() {
-        if (monthSelected) return
-        val origin = binding
-        val task = generation
-        viewModelScope.launch {
-            val resolved = calendars.newTaskMonth(origin)
-            if (binding != origin || edits.currentAccess()?.binding != origin || generation != task) return@launch
-            if (_state.value.pending != null || _state.value.originalSubmissionId != null) return@launch
-            _state.update { it.copy(month = if (monthSelected) it.month else resolved, monthReady = true) }
-        }
+        currencyJob?.cancel(); lookupJob?.cancel()
+        val next = if (originalId != null) current.copy(viewingOriginalId = originalId, viewFailure = null)
+            else current.copy(viewingOriginalId = null, viewFailure = null).let {
+                if (it.hasDraft || it.acceptedId != null || month == null) it.copy(opened = true) else it.copy(month = month.cleanGoalMonth(),
+                    monthSelected = true, monthReady = true, opened = true)
+            }
+        store.write(next)
+        activateGoalDraft()
     }
 
     fun retryCurrency() {
-        if (_state.value.originalSubmissionId != null) return
-        val origin = binding ?: return
+        val original = task?.takeIf { it.viewingOriginalId == null && it.acceptedId == null } ?: return
         val revision = generation
         currencyJob?.cancel()
         currencyJob = viewModelScope.launch {
-            val result = edits.currency(origin)
-            if (binding != origin || edits.currentAccess()?.binding != origin || generation != revision) return@launch
-            if (_state.value.originalSubmissionId != null) return@launch
-            _state.update { it.copy(ledgerCurrency = result.getOrNull(),
-                formError = result.exceptionOrNull()?.toUiText(R.string.currency_unconfirmed_write_blocked)) }
+            val result = edits.currency(original.binding)
+            if (!isCurrentGoalTask(original) || generation != revision || task?.viewingOriginalId != null || task?.acceptedId != null) return@launch
+            updateGoalDraft { it.copy(currencyCode = result.getOrNull()?.storageKey,
+                failure = result.exceptionOrNull()?.goalCreationFailure(SpendingGoalFailureKind.Currency)
+                    ?: it.failure?.takeUnless { failure -> failure.kind == SpendingGoalFailureKind.Currency }) }
         }
     }
 
     fun updateName(value: String) {
-        if (!_state.value.editable) return
-        _state.update { it.copy(name = value, formError = null) }
+        if (state.value.editable) updateGoalDraft { it.copy(name = value, failure = null) }
     }
 
     fun updateTargetAmount(value: String) {
-        if (!_state.value.editable) return
-        _state.update {
-            // R14-2：币种已解析时即时报解析失败（JPY 下输 "12.50" 不再静默 canSubmit=false）。
-            val parseFailed = it.ledgerCurrency != null && value.isNotBlank() &&
-                parseAmountCents(value, it.ledgerCurrency) == null
-            it.copy(
-                targetAmountInput = value,
-                formError = if (parseFailed) UiText.res(R.string.expense_edit_amount_invalid) else null,
-            )
-        }
+        if (!state.value.editable) return
+        val currency = state.value.ledgerCurrency
+        val invalid = currency != null && value.isNotBlank() && parseAmountCents(value, currency) == null
+        updateGoalDraft { it.copy(amount = value,
+            failure = if (invalid) SpendingGoalCreationFailure(SpendingGoalFailureKind.Amount) else null) }
     }
 
     fun updateCategory(value: String) {
-        if (!_state.value.editable) return
-        _state.update { it.copy(category = value, formError = null) }
-    }
-
-    fun submit() {
-        val current = _state.value
-        val origin = binding ?: return
-        val revision = generation
-        if (!current.monthReady || current.isSubmitting || current.originalSubmissionId != null || edits.currentAccess()?.binding != origin || edits.currentAccess()?.canModify != true) return
-        val currency = current.ledgerCurrency
-        if (currency == null) {
-            _state.update { it.copy(formError = UiText.res(R.string.currency_unconfirmed_write_blocked)) }
-            return
-        }
-        val amountCents = parseAmountCents(current.targetAmountInput, currency)
-        if (current.name.trim().isBlank() || amountCents == null || amountCents <= 0L) {
-            _state.update { it.copy(formError = UiText.res(R.string.spending_goal_create_validation)) }
-            return
-        }
-        _state.update { it.copy(isSubmitting = true, formError = null) }
-        submitJob = viewModelScope.launch {
-            val result = edits.create(origin,
-                GoalDraft(
-                    name = current.name,
-                    month = current.month,
-                    targetAmountCents = amountCents,
-                    homeCurrencyCode = currency.storageKey,
-                    category = current.category,
-                ),
-            )
-            if (binding != origin || edits.currentAccess()?.binding != origin || generation != revision) return@launch
-            result.fold(
-                onSuccess = { id ->
-                    _state.update { it.copy(isSubmitting = false, originalSubmissionId = id) }
-                    observeCreations()
-                },
-                onFailure = { err ->
-                    _state.update {
-                        it.copy(
-                            isSubmitting = false,
-                            formError = err.toUiText(R.string.spending_goal_create_failed),
-                        )
-                    }
-                },
-            )
-        }
-    }
-
-    fun consumeCreated() {
-        _state.update { CreateSpendingGoalUiState(canModify = it.canModify, month = it.month, ledgerCurrency = it.ledgerCurrency) }
+        if (state.value.editable) updateGoalDraft { it.copy(category = value, failure = null) }
     }
 
     fun shiftMonth(delta: Long) {
-        monthSelected = true
-        if (!_state.value.editable) return
-        _state.update {
-            val next = (runCatching { YearMonth.parse(it.month).plusMonths(delta) }.getOrNull()
-                ?: return@update it).toString()
-            it.copy(month = next, monthReady = true, formError = null)
+        if (!state.value.editable) return
+        val next = runCatching { YearMonth.parse(state.value.month).plusMonths(delta).toString() }.getOrNull() ?: return
+        updateGoalDraft { it.copy(month = next, monthReady = true, monthSelected = true, userSelectedMonth = true, failure = null) }
+    }
+
+    fun submit() {
+        val original = task ?: return
+        val current = state.value
+        if (!current.editable || !current.monthReady || edits.currentAccess()?.binding != original.binding ||
+            edits.currentAccess()?.canModify != true) return
+        val currency = current.ledgerCurrency
+        val amount = currency?.let { parseAmountCents(current.targetAmountInput, it) }
+        val failure = when {
+            currency == null -> SpendingGoalCreationFailure(SpendingGoalFailureKind.Currency)
+            current.name.trim().isBlank() || amount == null || amount <= 0 -> SpendingGoalCreationFailure(SpendingGoalFailureKind.Validation)
+            else -> null
         }
+        if (failure != null) { updateGoalDraft { it.copy(failure = failure) }; return }
+        val draft = GoalDraft(current.name, current.month, requireNotNull(amount),
+            homeCurrencyCode = requireNotNull(currency).storageKey, category = current.category)
+        updateGoalDraft { it.copy(failure = null) }
+        val published = requireNotNull(task)
+        submittingKey = published.creationKey
+        mutableState.value = state.value.copy(isSubmitting = true)
+        submitJob = viewModelScope.launch { submitGoalTask(published, draft) }
+    }
+
+    fun retryOriginal() {
+        if (state.value.isSubmitting || state.value.checkingOriginal) return
+        observeGoalCreations()
+        if (task?.viewingOriginalId == null) lookupGoalCreation()
+    }
+
+    fun discardDraft() {
+        val current = task ?: return
+        if (state.value.isSubmitting || state.value.checkingOriginal || current.viewingOriginalId != null) return
+        generation += 1
+        currencyJob?.cancel(); lookupJob?.cancel()
+        store.remove(current)
+        activateGoalDraft()
+    }
+
+    fun consumeCreated() {
+        val current = task ?: return
+        if (current.viewingOriginalId != null) store.write(current.copy(viewingOriginalId = null, viewFailure = null))
+        else store.remove(current)
+        generation += 1
+        activateGoalDraft()
     }
 
     fun recover(pending: PendingGoalCreation, drop: Boolean) {
-        val origin = binding ?: return
-        if (_state.value.isSubmitting || _state.value.pending?.row != pending.row) return
-        _state.update { it.copy(isSubmitting = true, formError = null) }
+        val current = task ?: return
+        if (state.value.isSubmitting || state.value.pending?.row != pending.row) return
+        val revision = generation
+        submittingKey = current.creationKey
+        mutableState.value = state.value.copy(isSubmitting = true, formError = null)
         submitJob = viewModelScope.launch {
-            val result = edits.recoverCreation(origin, pending, drop)
-            if (binding != origin || edits.currentAccess()?.binding != origin) return@launch
-            if (result.isSuccess && drop) {
-                _state.value = CreateSpendingGoalUiState(canModify = edits.currentAccess()?.canModify == true, month = _state.value.month)
-                retryCurrency()
-            } else _state.update { it.copy(isSubmitting = false,
-                formError = result.exceptionOrNull()?.toUiText(R.string.spending_goal_create_failed)) }
-        }
-    }
-
-    private fun observeCreations() {
-        observationJob?.cancel()
-        val origin = binding ?: return
-        observationJob = viewModelScope.launch {
-            edits.observeCreations(origin).collect { rows ->
-                if (binding != origin || edits.currentAccess()?.binding != origin) return@collect
-                val selectedId = _state.value.originalSubmissionId
-                val original = if (selectedId == null) rows.firstOrNull { !it.isDone } else rows.firstOrNull { it.row.id == selectedId }
-                if (original != null) {
-                    _state.update { it.withOriginalCreation(original) }
-                } else _state.update { it.copy(pending = null, isSubmitting = if (selectedId == null) it.isSubmitting else false,
-                    formError = if (selectedId != null) UiText.res(R.string.goal_creation_missing) else it.formError) }
+            try {
+                val result = edits.recoverCreation(current.binding, pending, drop)
+                if (!isCurrentGoalTask(current) || generation != revision) return@launch
+                if (result.isSuccess && drop) {
+                    if (current.viewingOriginalId != null) store.write(current.copy(viewingOriginalId = null, viewFailure = null)) else store.remove(current)
+                    activateGoalDraft()
+                } else {
+                    val failure = result.exceptionOrNull()?.goalCreationFailure(SpendingGoalFailureKind.Recovery)
+                    val settled = store.settle(current) {
+                        if (it.viewingOriginalId != null) it.copy(viewFailure = failure) else it.copy(failure = failure)
+                    }
+                    if (settled != null) task = settled
+                    mutableState.value = state.value.copy(formError = failure?.text())
+                }
+            } finally {
+                if (submittingKey == current.creationKey) {
+                    submittingKey = null
+                    if (isCurrentGoalTask(current)) mutableState.value = state.value.copy(isSubmitting = false)
+                }
             }
         }
     }
-
 }
 
-private fun String.cleanGoalMonth(): String =
+internal fun String.cleanGoalMonth(): String =
     runCatching { YearMonth.parse(trim()).toString() }.getOrDefault(YearMonth.now().toString())
-
-
-private fun CreateSpendingGoalUiState.withOriginalCreation(original: PendingGoalCreation): CreateSpendingGoalUiState {
-    val request = original.request
-    val currency = CurrencyCode.fromStorageKeyOrNull(request?.homeCurrencyCode)
-    return copy(pending = original, originalSubmissionId = original.row.id, monthReady = true, isSubmitting = false, name = request?.name.orEmpty(), month = request?.month ?: month,
-        category = request?.category.orEmpty(), ledgerCurrency = currency,
-        targetAmountInput = if (currency != null) formatAmountInput(request?.targetAmountCents, currency)
-            else request?.targetAmountCents?.toString().orEmpty(),
-        createdPublicId = original.confirmed?.publicId?.takeIf { original.isDone })
-}

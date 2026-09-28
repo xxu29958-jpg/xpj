@@ -19,18 +19,19 @@ internal fun MonthSwitcher(
     month: String,
     onPreviousMonth: () -> Unit,
     onNextMonth: () -> Unit,
+    enabled: Boolean = true,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        TextButton(onClick = onPreviousMonth) { Text(stringResource(R.string.budget_month_previous)) }
+        TextButton(onClick = onPreviousMonth, enabled = enabled) { Text(stringResource(R.string.budget_month_previous)) }
         Text(
             text = month,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = AppTextHierarchy.heading.weight,
         )
-        TextButton(onClick = onNextMonth) { Text(stringResource(R.string.budget_month_next)) }
+        TextButton(onClick = onNextMonth, enabled = enabled) { Text(stringResource(R.string.budget_month_next)) }
     }
 }

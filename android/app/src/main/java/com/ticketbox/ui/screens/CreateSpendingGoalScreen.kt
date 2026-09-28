@@ -6,10 +6,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -45,6 +50,8 @@ fun CreateSpendingGoalScreen(
     originalId: Long? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val showDraft = state.pending == null ||
+        (state.hasDraft && !state.isViewingOriginal && state.pending?.needsRetainedDraft == true)
     LaunchedEffect(viewModel, initialMonth, originalId) { viewModel.reset(initialMonth, originalId) }
     LaunchedEffect(state.createdPublicId) {
         if (state.createdPublicId != null) {
@@ -65,11 +72,9 @@ fun CreateSpendingGoalScreen(
         ),
         refresh = AppSecondaryRefreshState(isRefreshing = false, onRefresh = {}),
         slots = AppSecondaryPageSlots(
-            status = { CreateSpendingGoalStatusStack(state = state)
+            status = { CreateSpendingGoalStatusStack(state = state, onRetryCurrency = viewModel::retryCurrency)
                 state.pending?.let { GoalCreationSubmissionStatus(it, state.isSubmitting, state.canModify, viewModel::recover) }
-                if (state.ledgerCurrency == null && state.originalSubmissionId == null) androidx.compose.material3.TextButton(onClick = viewModel::retryCurrency) {
-                    Text(stringResource(R.string.common_retry))
-                }
+                SpendingGoalDraftActions(state, viewModel) { viewModel.discardDraft(); onBack() }
             },
             bottomBar = {
                 CreateSpendingGoalFooter(
@@ -80,7 +85,7 @@ fun CreateSpendingGoalScreen(
             },
         ),
     ) {
-        if (state.pending == null) item {
+        if (showDraft) item {
             DebtGoalOpenSection(
                 title = stringResource(R.string.spending_goal_create_month_section),
                 subtitle = stringResource(R.string.spending_goal_create_month_hint),
@@ -89,10 +94,11 @@ fun CreateSpendingGoalScreen(
                     month = displayMonthLabel(state.month),
                     onPreviousMonth = { viewModel.shiftMonth(-1) },
                     onNextMonth = { viewModel.shiftMonth(1) },
+                    enabled = state.editable,
                 )
             }
         }
-        if (state.pending == null) item {
+        if (showDraft) item {
             DebtGoalOpenSection(
                 title = stringResource(R.string.spending_goal_create_form_section),
                 subtitle = stringResource(R.string.spending_goal_create_form_hint),
@@ -104,12 +110,40 @@ fun CreateSpendingGoalScreen(
 }
 
 @Composable
-private fun CreateSpendingGoalStatusStack(state: CreateSpendingGoalUiState) {
+private fun SpendingGoalDraftActions(
+    state: CreateSpendingGoalUiState,
+    viewModel: CreateSpendingGoalViewModel,
+    onDiscard: () -> Unit,
+) {
+    if (!state.hasDraft || state.isViewingOriginal) return
+    var confirmDiscard by rememberSaveable(state.creationKey) { mutableStateOf(false) }
+    if (state.acceptanceUncertain) TextButton(enabled = !state.isSubmitting && !state.checkingOriginal, onClick = viewModel::retryOriginal) {
+        Text(stringResource(R.string.goal_draft_check_original))
+    }
+    TextButton(enabled = state.canDiscardDraft, onClick = { confirmDiscard = true }) {
+        Text(stringResource(R.string.goal_draft_discard))
+    }
+    if (confirmDiscard) AlertDialog(
+        onDismissRequest = { confirmDiscard = false },
+        title = { Text(stringResource(R.string.goal_draft_discard)) },
+        text = { Text(stringResource(R.string.goal_draft_discard_explanation)) },
+        confirmButton = { TextButton(enabled = state.canDiscardDraft, onClick = { confirmDiscard = false; onDiscard() }) {
+            Text(stringResource(R.string.goal_draft_discard_confirm))
+        } },
+        dismissButton = { TextButton(onClick = { confirmDiscard = false }) { Text(stringResource(R.string.common_cancel)) } },
+    )
+}
+
+@Composable
+private fun CreateSpendingGoalStatusStack(state: CreateSpendingGoalUiState, onRetryCurrency: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         if (!state.canModify) {
             AppStatusBanner(message = UiText.res(R.string.common_readonly_ledger), tone = MessageTone.Info)
         }
         state.formError?.let { err -> AppStatusBanner(message = err, tone = MessageTone.Danger) }
+        if (state.ledgerCurrency == null && state.originalSubmissionId == null) TextButton(onClick = onRetryCurrency) {
+            Text(stringResource(R.string.common_retry))
+        }
     }
 }
 

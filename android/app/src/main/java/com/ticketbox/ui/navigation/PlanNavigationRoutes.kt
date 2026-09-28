@@ -29,10 +29,14 @@ internal fun NavGraphBuilder.addPlanRoutes(
             arguments = listOf(navArgument("create") { type = NavType.StringType; nullable = true; defaultValue = null },
                 navArgument("goal") { type = NavType.StringType; nullable = true; defaultValue = null }),
         ) { entry ->
+            val creationOwner = remember(runtime.navController, entry) {
+                runtime.navController.getBackStackEntry(MAIN_ROUTE)
+            }
             SpendingGoalsRoute(
-                originalCreationId = entry.arguments?.getString("create")?.toLongOrNull(),
-                originalGoalPublicId = entry.arguments?.getString("goal"),
-                financialDataRevision = shellState.financialDataRevision,
+                context = SpendingGoalRouteContext(creationOwner,
+                    originalCreationId = entry.arguments?.getString("create")?.toLongOrNull(),
+                    originalGoalPublicId = entry.arguments?.getString("goal"),
+                    financialDataRevision = shellState.financialDataRevision),
                 screenFactory = screenFactory, onBack = onBack,
             )
         }

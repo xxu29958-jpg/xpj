@@ -7,7 +7,11 @@ import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.GoalProgressState
 import com.ticketbox.domain.model.GoalUpdate
+import com.ticketbox.data.repository.originalCreation
 import java.lang.reflect.Proxy
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 
 /** R12-D 三个写面（goal 新建/编辑、收入计划）的账本币种 fake：listDebts 返回带 capability
  *  的页型（默认 CNY），其余方法不支持。 */
@@ -130,21 +134,43 @@ internal class RecordingGoalEdits : com.ticketbox.data.repository.GoalEditAction
     var saveResult = Result.success(1L)
     val saves = mutableListOf<GoalUpdate>()
     val createCalls = mutableListOf<com.ticketbox.domain.model.GoalDraft>()
+    val createKeys = mutableListOf<String>()
     var createGate: (suspend () -> Unit)? = null
+    var createFailure: Throwable? = null
+    var afterCreateAccepted: (suspend () -> Unit)? = null
+    var originalLookupFailure: Throwable? = null
+    var originalLookupGate: (suspend () -> Unit)? = null
+    private val creationOrigins = mutableMapOf<Long, com.ticketbox.data.repository.LogicalSessionBinding>()
     val creations = kotlinx.coroutines.flow.MutableStateFlow<List<com.ticketbox.data.repository.PendingGoalCreation>>(emptyList())
     override fun describeCreation(row: com.ticketbox.data.repository.OutboxRow) = creations.value.firstOrNull { it.row.id == row.id }
-    override fun observeCreations(binding: com.ticketbox.data.repository.LogicalSessionBinding) = creations
+    override fun observeCreations(binding: com.ticketbox.data.repository.LogicalSessionBinding, originalKey: String?) = flow {
+        if (originalKey != null) {
+            originalLookupGate?.invoke()
+            originalLookupFailure?.let { throw it }
+        }
+        emitAll(creations.map { rows -> rows.filter {
+            creationOrigins[it.row.id] == binding && (originalKey == null || it.row.idempotencyKey == originalKey)
+        } })
+    }
     override suspend fun create(binding: com.ticketbox.data.repository.LogicalSessionBinding,
-        draft: com.ticketbox.domain.model.GoalDraft): Result<Long> {
+        draft: com.ticketbox.domain.model.GoalDraft, creationKey: String): Result<Long> {
         createCalls += draft
+        createKeys += creationKey
         createGate?.invoke()
         if (access.value?.binding != binding) return Result.failure(IllegalStateException("Binding changed"))
+        createFailure?.let { return Result.failure(it) }
         val request = com.ticketbox.data.remote.dto.GoalCreateRequestDto(name = draft.name, month = draft.month,
             category = draft.category, targetAmountCents = draft.targetAmountCents, homeCurrencyCode = draft.homeCurrencyCode)
-        val row = com.ticketbox.data.repository.OutboxRow(1, binding.serverUrl, binding.ledgerId, binding.ownerKey,
-            com.ticketbox.data.local.PendingMutationType.CreateGoal, "goal_create:original-key", "{}", 0,
-            com.ticketbox.data.local.PendingMutationStatus.Pending, 0, null, "2026-09-01", null, null, "original-key")
-        creations.value = listOf(com.ticketbox.data.repository.PendingGoalCreation(row, request, null))
+        val original = originalCreation(binding, creationKey).getOrThrow()
+        if (original != null) return if (original.request == request) Result.success(original.row.id)
+            else Result.failure(IllegalArgumentException("Original intent changed"))
+        val id = (creationOrigins.keys.maxOrNull() ?: 0) + 1
+        val row = com.ticketbox.data.repository.OutboxRow(id, binding.serverUrl, binding.ledgerId, binding.ownerKey,
+            com.ticketbox.data.local.PendingMutationType.CreateGoal, "goal_create:$creationKey", "{}", 0,
+            com.ticketbox.data.local.PendingMutationStatus.Pending, 0, null, "2026-09-01", null, null, creationKey)
+        creationOrigins[id] = binding
+        creations.value += com.ticketbox.data.repository.PendingGoalCreation(row, request, null)
+        afterCreateAccepted?.invoke()
         return Result.success(row.id)
     }
     override suspend fun recoverCreation(binding: com.ticketbox.data.repository.LogicalSessionBinding,
