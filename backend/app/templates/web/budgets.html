@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import '_planning_drafts.html' as drafts %}
 {% set page_title = '月度预算' %}
 {% set product_body_domain = 'plans' %}
 {% block title %}月度预算 · 小票夹{% endblock %}
@@ -18,6 +19,7 @@
      文本; normalize/alias/存在性仍归 service Owner, 浏览器不复制规则。 #}
 {% block page_scripts %}
 <script defer src="/static/web/desktop/budgets.js?v={{ asset_version }}"></script>
+{{ drafts.scripts(asset_version) }}
 {% endblock %}
 
 {% block content %}
@@ -111,7 +113,10 @@
   {# 草稿只活在表单 input 里; 上方执行区仍是未变更的服务端事实。 #}
   <div class="product-feedback product-feedback--danger" role="alert">预算没有保存：{{ error }} 你填的内容还在下面，修正后可再次保存。</div>
   {% endif %}
-  <form method="post" action="/web/budgets/save" class="budget-form">
+  {{ drafts.shelf('budget', '月度预算', budget_draft_scope) }}
+  <form method="post" action="/web/budgets/save" class="budget-form"
+    {% if budget_draft_scope %}data-budget-draft-scope="{{ budget_draft_scope | tojson | forceescape }}" data-budget-plan-id="{{ month }}" data-budget-native-result="{{ budget_draft_result | default('') }}"{% endif %}>
+    {% if budget_draft_scope %}<input type="hidden" name="draft_scope" value="{{ save_intent.get('draft_scope', budget_draft_scope | tojson) | forceescape }}">{% endif %}
     <input type="hidden" name="return_category" value="{{ save_intent.get('return_category', '') }}">
     <input type="hidden" name="return_month" value="{{ save_intent.get('return_month', '') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -123,7 +128,7 @@
     <input type="hidden" name="idempotency_key" value="{{ save_intent.idempotency_key }}">
 
     <div class="product-field budget-total-field">
-      <label for="budget-total-amount-yuan">月度总预算（{{ currency_input.currency_code }} · {{ currency_input.currency_symbol }}，{{ currency_input.amount_input_hint }}）</label>
+      <label for="budget-total-amount-yuan">月度总预算（<span data-plan-currency>{{ currency_input.currency_code }}</span><span data-plan-amount-hint> · {{ currency_input.currency_symbol }}，{{ currency_input.amount_input_hint }}</span>）</label>
       <input id="budget-total-amount-yuan" class="product-input" type="number" name="total_amount_yuan" value="{{ budget.form_total_yuan }}" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_example }}" required>
     </div>
 
@@ -134,11 +139,11 @@
       <div class="budget-sections">
         <div class="budget-fields">
           <div class="product-field">
-            <label for="budget-rollover-amount-yuan">结转金额（{{ currency_input.currency_code }}，可为负数）</label>
+            <label for="budget-rollover-amount-yuan">结转金额（<span data-plan-currency>{{ currency_input.currency_code }}</span>，可为负数）</label>
             <input id="budget-rollover-amount-yuan" class="product-input" type="number" name="rollover_amount_yuan" value="{{ budget.form_rollover_yuan }}" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}">
           </div>
           <div class="product-field">
-            <label for="budget-non-monthly-amount-yuan">非月度预留（{{ currency_input.currency_code }}）</label>
+            <label for="budget-non-monthly-amount-yuan">非月度预留（<span data-plan-currency>{{ currency_input.currency_code }}</span>）</label>
             <input id="budget-non-monthly-amount-yuan" class="product-input" type="number" name="non_monthly_amount_yuan" value="{{ budget.form_non_monthly_yuan }}" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}">
           </div>
         </div>
@@ -178,7 +183,7 @@
               </thead>
               <tbody>
                 {% for row in configured_rows %}
-                <tr class="budget-row">
+                <tr class="budget-row" data-saved-category="{{ row.saved_category }}">
                   <td>
                     <input class="product-input" type="text" name="category_budget_category" value="{{ row.category }}" placeholder="餐饮" aria-label="分类预算分类">
                     {# 已保存身份是不可变事实, 常显且零 JS: input 里是要保存的 draft,
@@ -218,8 +223,9 @@
       {% if budget_currency_changed %}
       <p role="status">原输入使用 {{ save_intent.home_currency_code }}，与当前预算币种不同。原输入保留在此页，请在新页面按当前预算币种重新填写金额。</p>
       <a class="product-button product-button--primary" href="{{ current_edit_url }}" target="_blank" rel="noopener">打开当前预算重新编辑</a>
-      {% elif budget_conflict %}<button class="product-button product-button--primary" type="submit" name="review_latest" value="true" formnovalidate>保留输入，核对最新预算</button>
-      {% else %}<button class="product-button product-button--primary" type="submit">保存预算</button>{% endif %}
+      {% elif budget_conflict and not budget_draft_scope %}<button class="product-button product-button--primary" type="submit" name="review_latest" value="true" formnovalidate>保留输入，核对最新预算</button>{% endif %}
+      <button class="product-button product-button--primary" type="submit" data-budget-submit{% if (budget_conflict or budget_currency_changed) and not budget_draft_scope %} disabled{% endif %}>保存预算</button>
+      {{ drafts.controls('budget', '预算', budget_draft_scope) }}
     </div>
   </form>
 </section>

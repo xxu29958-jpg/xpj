@@ -176,16 +176,21 @@ def test_recurring_history_other_ledger_and_missing_currency_are_not_reconstruct
     ("confirm-candidate","confirm_recurring_candidate"), ("pause","pause_recurring_item"),
     ("resume","resume_recurring_item"), ("archive","archive_recurring_item"), ("restore","restore_recurring_item")])
 def test_recurring_web_commands_pass_only_the_original_authenticated_actor(history_reader, monkeypatch, action, owner):
+    import json
+
     from app.routes import web_recurring as route
+    from app.services import manual_expense_draft_presenter as drafts
 
     client, _, _, state = history_reader
     state.update(role="owner", auth=True)
+    scope = {"datasetId": "installed", "clientGeneration": "generation", "accountId": "42", "deviceId": "21", "ledgerId": "owner"}
+    monkeypatch.setattr(drafts, "manual_draft_scope", lambda db, auth: scope)
     captured = []
     monkeypatch.setattr(route, owner, lambda db, **kw: captured.append(kw))
     url = "/web/recurring/" + (action if action in {"create","confirm-candidate"} else "series-one/"+action)
     body = {"ledger_id":"owner", "merchant":"原计划", "baseline_amount_yuan":"1200", "home_currency_code":"JPY",
         "next_expected_date":"2026-05-08", "expected_row_version":"7", "idempotency_key":"original-key",
-        "amount_cents":"1200", "actor_account_id":"999"}
+        "amount_cents":"1200", "actor_account_id":"999", "draft_scope":json.dumps(scope)}
     result = client.post(url,data=body,follow_redirects=False)
     assert result.status_code == 303 and len(captured)==1
     assert captured[0]["tenant_id"] == "owner" and captured[0]["actor_account_id"] == 42
