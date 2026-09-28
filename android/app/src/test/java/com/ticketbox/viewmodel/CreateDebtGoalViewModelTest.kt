@@ -54,6 +54,36 @@ class CreateDebtGoalViewModelTest {
         Dispatchers.resetMain()
     }
 
+    @Test
+    fun returningToCreationRetainsRawNameAndSelectionForExplicitReview() = runTest(dispatcher) {
+        val original = debt("original", "open")
+        val other = debt("other", "open")
+        val debts = FakeCreateDebtActions(listResult = Result.success(listOf(original, other)))
+        val reports = FakeCreateReportsActions()
+        val vm = CreateDebtGoalViewModel(reports, debts, FakeDebtWriteActions())
+        vm.reload()
+        advanceUntilIdle()
+        vm.updateName("  还清原来的欠款  ")
+        vm.toggleDebt(original.publicId)
+        assertTrue(vm.state.value.canSubmit)
+
+        // The create screen calls reload again on reentry. A now-cleared debt
+        // changes the readable candidates, not the user's unsubmitted selection.
+        debts.listResult = Result.success(listOf(other))
+        vm.reload()
+        advanceUntilIdle()
+        assertEquals("  还清原来的欠款  ", vm.state.value.name)
+        assertEquals(setOf(original.publicId), vm.state.value.selectedDebtIds)
+        assertEquals(listOf(other), vm.state.value.candidates)
+        assertEquals(setOf(original.publicId), vm.state.value.unavailableSelectedDebtIds)
+        assertFalse(vm.state.value.canSubmit)
+        assertTrue(reports.createDebtGoalCalls.isEmpty())
+        vm.removeUnavailableSelections()
+        assertTrue(vm.state.value.selectedDebtIds.isEmpty())
+        assertEquals("  还清原来的欠款  ", vm.state.value.name)
+        vm.viewModelScope.cancel()
+    }
+
     @Test fun resourceRefusalDuringColdOrRefreshReadRecoversOtherCandidatesWithoutReplacingTheForm() = runTest(dispatcher) {
         for (cold in listOf(true, false)) {
             val other = debt("kept", "open").copy(homeCurrencyCode = "JPY", originalCurrencyCode = "JPY")
