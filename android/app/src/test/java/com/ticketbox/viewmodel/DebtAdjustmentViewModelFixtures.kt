@@ -3,6 +3,8 @@ package com.ticketbox.viewmodel
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
+import com.ticketbox.data.remote.dto.DebtKindSetRequestDto
+import com.ticketbox.data.repository.DebtKindPayload
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtWriteActions
 import com.ticketbox.data.repository.DebtWriteObservation
@@ -15,7 +17,6 @@ import com.ticketbox.data.repository.PendingDebtWrite
 import com.ticketbox.domain.model.Debt
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.combine
 
@@ -32,6 +33,8 @@ internal data class RepaymentSaveCall(
     val amountCents: Long,
 )
 
+internal data class KindSaveCall(val binding: LogicalSessionBinding, val debt: Debt, val kind: String)
+
 internal data class VoidSaveCall(val binding: LogicalSessionBinding, val debt: Debt, val repaymentPublicId: String?, val reason: String)
 
 internal data class AdjustmentRecoveryCall(
@@ -47,6 +50,7 @@ internal class FakeDebtWriteActions(
     val rows = MutableStateFlow<List<PendingDebtWrite>>(emptyList())
     val saveCalls = mutableListOf<AdjustmentSaveCall>()
     val repaymentCalls = mutableListOf<RepaymentSaveCall>()
+    val kindCalls = mutableListOf<KindSaveCall>()
     val voidCalls = mutableListOf<VoidSaveCall>()
     val recoveryCalls = mutableListOf<AdjustmentRecoveryCall>()
     var saveResult = Result.success(1L)
@@ -69,10 +73,6 @@ internal class FakeDebtWriteActions(
             initial = false
         }
     }
-    override fun observeWrites(binding: LogicalSessionBinding, publicId: String) = rows.map { pending ->
-        pending.filter { it.row.serverUrl == binding.serverUrl && it.row.ledgerId == binding.ledgerId &&
-            it.row.ownerKey == binding.ownerKey && it.row.targetId == "debt:$publicId" }
-    }
     override fun describeWrite(row: OutboxRow) = rows.value.singleOrNull { it.row == row }
 
     override suspend fun save(binding: LogicalSessionBinding, debt: Debt, amountCents: Long, reason: String): Result<Long> {
@@ -84,6 +84,13 @@ internal class FakeDebtWriteActions(
 
     override suspend fun saveRepayment(binding: LogicalSessionBinding, debt: Debt, amountCents: Long): Result<Long> {
         repaymentCalls += RepaymentSaveCall(binding, debt, amountCents)
+        val captured = saveResult
+        saveGate?.await()
+        return captured
+    }
+
+    override suspend fun saveKind(binding: LogicalSessionBinding, debt: Debt, kind: String): Result<Long> {
+        kindCalls += KindSaveCall(binding, debt, kind)
         val captured = saveResult
         saveGate?.await()
         return captured
@@ -143,14 +150,17 @@ internal fun pendingAdjustment(
     )
 }
 
+internal fun pendingKind(debt: Debt, kind: String, status: PendingMutationStatus = PendingMutationStatus.Pending,
+    binding: LogicalSessionBinding = adjustmentBinding()): PendingDebtWrite {
+    val intent = DebtKindPayload(1, DebtWriteSubject(debt.publicId, debt.counterpartyLabel, debt.homeCurrencyCode),
+        binding.sessionGeneration, binding.bindingRevision, DebtKindSetRequestDto(kind, debt.rowVersion))
+    val original = pendingAdjustment(status = status, binding = binding).row
+    return PendingDebtWrite(original.copy(type = PendingMutationType.SetDebtKind, targetId = "debt:${debt.publicId}",
+        payloadJson = com.ticketbox.OutboxAdapterGraph().debtKindAdapter.toJson(intent),
+        expectedRowVersion = debt.rowVersion, idempotencyKey = "original-kind-1"), intent)
+}
+
 internal class AdjustmentDetailActions : DebtActions by FakeDebtActions() {
-    val mutations = mutableListOf<String>()
-
-
-    override suspend fun setDebtKind(publicId: String, expectedRowVersion: Long, debtKind: String): Result<Debt> {
-        mutations += "kind:$publicId:$expectedRowVersion:$debtKind"
-        return getResult
-    }
     var getResult: Result<Debt> = Result.success(sampleDebt().copy(rowVersion = 7))
     var getGate: CompletableDeferred<Unit>? = null
     val getCalls = mutableListOf<String>()

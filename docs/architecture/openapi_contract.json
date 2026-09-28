@@ -6239,6 +6239,11 @@
             "title": "Debt Kind",
             "type": "string"
           },
+          "debt_public_id": {
+            "default": "",
+            "title": "Debt Public Id",
+            "type": "string"
+          },
           "expected_row_version": {
             "default": "",
             "title": "Expected Row Version",
@@ -6252,6 +6257,11 @@
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
+            "type": "string"
+          },
+          "origin_binding": {
+            "default": "",
+            "title": "Origin Binding",
             "type": "string"
           }
         },

@@ -6,6 +6,8 @@ import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Debt
+import com.ticketbox.domain.model.DebtKinds
+import com.ticketbox.data.remote.dto.DebtKindSetRequestDto
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import java.util.UUID
 import java.time.Clock
@@ -22,12 +24,17 @@ interface DebtWriteActions {
     fun currentAccess(): LedgerAccessContext?
     fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?>
     fun observeWrites(): Flow<DebtWriteObservation>
-    fun observeWrites(binding: LogicalSessionBinding, publicId: String): Flow<List<PendingDebtWrite>>
+    fun observeWrites(binding: LogicalSessionBinding, publicId: String): Flow<List<PendingDebtWrite>> =
+        observeWrites().map { snapshot ->
+            if (snapshot.binding != binding) emptyList()
+            else snapshot.writes.filter { it.row.targetId == debtWriteTarget(publicId) }
+        }
     fun describeWrite(row: OutboxRow): PendingDebtWrite?
     suspend fun save(binding: LogicalSessionBinding, debt: Debt, amountCents: Long, reason: String): Result<Long>
     suspend fun saveRepayment(binding: LogicalSessionBinding, debt: Debt, amountCents: Long): Result<Long>
     suspend fun saveVoid(binding: LogicalSessionBinding, debt: Debt, reason: String): Result<Long>
     suspend fun saveRepaymentVoid(binding: LogicalSessionBinding, debt: Debt, repaymentPublicId: String, reason: String): Result<Long>
+    suspend fun saveKind(binding: LogicalSessionBinding, debt: Debt, kind: String): Result<Long>
     suspend fun recover(binding: LogicalSessionBinding, pending: PendingDebtWrite, drop: Boolean): Result<Unit>
 }
 
@@ -77,16 +84,11 @@ class DebtWriteRepository internal constructor(
             PendingMutationType.RecordDebtRepayment -> row.describeDebtRepayment(adapters.debtRepaymentAdapter)
             PendingMutationType.VoidDebt -> row.describeDebtVoid(adapters.debtVoidAdapter)
             PendingMutationType.VoidDebtRepayment -> row.describeRepaymentVoid(adapters.debtRepaymentVoidAdapter)
+            PendingMutationType.SetDebtKind -> row.describeDebtKind(adapters.debtKindAdapter)
             else -> null
         }
         return pending?.copy(originalBindingChanged = pending.intent?.matchesOriginalBinding(binding) == false)
     }
-
-    override fun observeWrites(binding: LogicalSessionBinding, publicId: String): Flow<List<PendingDebtWrite>> =
-        outbox.observeDebtWrites().map { rows ->
-            if (guard.captureLogicalBinding() != binding) emptyList()
-            else rows.filter { it.targetId == debtWriteTarget(publicId) }.mapNotNull(::describeWrite)
-        }
 
     override suspend fun save(binding: LogicalSessionBinding, debt: Debt, amountCents: Long, reason: String): Result<Long> =
         errors.safeCall {
@@ -132,13 +134,21 @@ class DebtWriteRepository internal constructor(
         publish(binding, debt, type = PendingMutationType.VoidDebtRepayment, payload = adapters.debtRepaymentVoidAdapter.toJson(payload))
     }
 
+    override suspend fun saveKind(binding: LogicalSessionBinding, debt: Debt, kind: String): Result<Long> = errors.safeCall {
+        require(kind in DebtKinds.ORDERED) { "请选择当前支持的偿还方式。" }
+        val payload = DebtKindPayload(1, DebtWriteSubject(debt.publicId, debt.counterpartyLabel, debt.homeCurrencyCode),
+            binding.sessionGeneration, binding.bindingRevision, DebtKindSetRequestDto(kind, debt.rowVersion))
+        publish(binding, debt, type = PendingMutationType.SetDebtKind, payload = adapters.debtKindAdapter.toJson(payload))
+    }
+
     private suspend fun publish(binding: LogicalSessionBinding, debt: Debt, type: PendingMutationType, payload: String): Long {
         val bound = guard.bindExact(binding)
         require(currentAccess()?.canModify == true) { "当前角色为只读，无法修改账本。" }
-        require(debt.ledgerId == binding.ledgerId && debt.isDirectWritable && !debt.isVoided && debt.rowVersion > 0L) {
+        require(debt.ledgerId == binding.ledgerId && debt.rowVersion > 0L &&
+            (type == PendingMutationType.SetDebtKind || debt.isDirectWritable && !debt.isVoided)) {
             "这笔欠款不能直接修改。"
         }
-        require(type in setOf(PendingMutationType.VoidDebt, PendingMutationType.VoidDebtRepayment) ||
+        require(type in setOf(PendingMutationType.VoidDebt, PendingMutationType.VoidDebtRepayment, PendingMutationType.SetDebtKind) ||
             CurrencyCode.fromStorageKeyOrNull(debt.homeCurrencyCode) != null) { "当前版本不支持这笔欠款的币种。" }
         return outbox.enqueue(boundRequest = bound, intent = PendingMutationIntent(type = type,
             targetId = debtWriteTarget(debt.publicId), payloadJson = payload, expectedRowVersion = debt.rowVersion,

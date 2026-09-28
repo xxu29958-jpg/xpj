@@ -51,4 +51,11 @@
     <string name="debt_void_review_stop_explanation">只停止本机对原作废的追踪，保留原提交。账本已接受的作废不会撤销；请查看原记录，勿重复作废。</string>
     <string name="debt_void_accepted_locally_stopped">原作废已被接受，但旧版本未保存当时结果。本机已停止追踪，原提交仍保留；不会撤销账本作废，勿重复作废。</string>
     <string name="debt_write_original_binding_changed">连接信息已变化，无法继续这次提交。原提交仍保留，请核对原记录。停止本机追踪不会撤销账本中已接受的操作。</string>
+    <string name="debt_kind_saved">原偿还方式修改已保留，等待同步确认。</string>
+    <string name="debt_kind_pending_value">原选择：%1$s</string>
+    <string name="debt_kind_confirmed">这次偿还方式修改已确认。当前往来可刷新查看。</string>
+    <string name="debt_kind_review_title">原偿还方式修改已接受，待核对</string>
+    <string name="debt_kind_original_requires_review">原修改已被接受，但旧版本未保存当时结果。请核对当前往来，勿重复修改。</string>
+    <string name="debt_kind_review_stop_explanation">只停止本机对原修改的追踪，保留原提交。已经接受的偿还方式修改不会撤销；请核对当前往来。</string>
+    <string name="debt_kind_accepted_locally_stopped">原修改已被接受，但旧版本未保存当时结果。本机已停止追踪，原选择仍保留；不会撤销已接受的修改。</string>
 </resources>

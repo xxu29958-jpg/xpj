@@ -55,6 +55,80 @@ class DebtAdjustmentRoomContinuityTest {
     fun close() { stopModels(); fixture.close() }
 
     @Test
+    fun offlineKindSelectionSurvivesRoomReopenWithoutClaimingAChangedDebt() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        installModels()
+        compose.setContent {
+            val model = detail.value ?: return@setContent
+            TicketboxTheme(skin = AppSkin.Paper) { DebtDetailScreen(model, proposals, history, {}) }
+        }
+        compose.waitUntil(10_000) { detail.value?.state?.value?.canWriteActions == true }
+        val originalDebt = fixture.network.current
+        val originalBinding = requireNotNull(detail.value?.state?.value?.binding)
+        val originalQueries = fixture.cachedDebtDetails()
+        assertEquals("The displayed canonical debt must also be retained for offline re-entry", 1, originalQueries.size)
+        assertEquals(originalDebt.publicId, originalQueries.single()["tag"])
+        fixture.network.readFailure = java.net.SocketException("Synthetic offline debt read")
+        fixture.network.failReads = true
+        compose.onNodeWithText(context.getString(R.string.debt_kind_edit)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.debt_kind_revolving)).performClick()
+        compose.waitUntil(10_000) {
+            detail.value?.state?.value?.isSubmitting == false &&
+                (fixture.stored().isNotEmpty() || detail.value?.state?.value?.error != null)
+        }
+        assertEquals("The selected classification must remain a recoverable task while offline", 1, fixture.stored().size)
+        val original = fixture.stored().single()
+        assertEquals("debt:${originalDebt.publicId}", original["targetId"])
+        assertEquals(originalDebt.rowVersion.toString(), original["expectedRowVersion"])
+        assertTrue(!original["idempotencyKey"].isNullOrBlank())
+        assertTrue(original["payload"].orEmpty().contains("revolving"))
+        assertEquals(originalDebt, fixture.network.current)
+        assertTrue(fixture.network.kindCalls.isEmpty())
+        assertEquals(originalDebt.debtKind, detail.value?.state?.value?.debt?.debtKind)
+        assertEquals("An unsent classification intent must preserve the last canonical read", originalQueries, fixture.cachedDebtDetails())
+        stopModels()
+        installModels()
+        assertEquals(originalBinding, detail.value?.state?.value?.binding)
+        assertEquals("Reopening Room must retain the same bound canonical read", originalQueries, fixture.cachedDebtDetails())
+        compose.waitUntil(10_000) {
+            detail.value?.state?.value?.let { it.pendingWrites.size == 1 && !it.isLoading } == true
+        }
+        assertEquals(listOf(original), fixture.stored())
+        assertEquals(originalDebt.debtKind, detail.value?.state?.value?.debt?.debtKind)
+        assertTrue(detail.value?.state?.value?.fromCache == true)
+        compose.onNodeWithText(context.getString(R.string.debt_kind_revolving), substring = true)
+            .performScrollTo().assertIsDisplayed()
+        settleOriginalKindAfterReopen(original)
+    }
+
+    private fun settleOriginalKindAfterReopen(original: Map<String, String?>) {
+        fixture.network.failReads = false
+        assertEquals(1, runBlocking { fixture.drain(maxAttempts = 1) }.failures)
+        val accepted = fixture.network.current
+        fixture.network.current = accepted.copy(debtKind = "installment", rowVersion = accepted.rowVersion + 1)
+        fixture.network.failReads = true
+        stopModels()
+        installModels()
+        compose.waitUntil(10_000) { detail.value?.state?.value?.pendingWrites?.singleOrNull()?.canRetry == true }
+        fixture.network.loseResponse = false
+        fixture.network.failReads = false
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        compose.onNodeWithText(context.getString(R.string.debt_write_retry)).performScrollTo().performClick()
+        compose.waitUntil(10_000) { fixture.stored().single()["status"] == "pending" }
+        assertEquals(1, runBlocking { fixture.drain() }.done)
+        compose.waitUntil(10_000) { detail.value?.state?.value?.debt?.debtKind == "installment" }
+        val completed = fixture.stored().single()
+        for (column in listOf("payload", "idempotencyKey", "expectedRowVersion", "ownerKey", "ledgerId")) {
+            assertEquals(original[column], completed[column])
+        }
+        val receipt = com.ticketbox.OutboxAdapterGraph().debtVoidReceiptAdapter.fromJson(requireNotNull(completed["receiptJson"]))
+        assertEquals(accepted, receipt)
+        assertEquals(1, fixture.network.kindResults.size)
+        assertTrue(fixture.network.kindCalls.all { it == fixture.network.kindCalls.first() })
+        compose.onNodeWithText(context.getString(R.string.debt_kind_confirmed)).performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
     fun actualSaveAndRetryKeepTheOriginalAdjustmentAcrossRoomReopenAndFailedDetailRead() {
         installModels()
         compose.setContent {

@@ -467,7 +467,14 @@ def set_debt_kind_idempotently(
     )
     assert idempotency_key
     if claim is None:
-        return get_debt_response(db, tenant_id=tenant_id, public_id=public_id)
+        stored = db.scalar(select(ApiIdempotencyKey).where(
+            ApiIdempotencyKey.tenant_id == tenant_id,
+            ApiIdempotencyKey.idempotency_key == idempotency_key,
+        ))
+        if stored is None or stored.response_body is None:
+            raise AppError("debt_kind_original_requires_review",
+                "原偿还方式更正已被接受，但缺少原回执。请核对原记录，勿重新更正。", status_code=409)
+        return DebtResponse.model_validate(stored.response_body)
     set_debt_kind(
         db,
         tenant_id=tenant_id,
@@ -475,12 +482,16 @@ def set_debt_kind_idempotently(
         payload=payload,
         commit=False,
     )
+    # The OCC update uses synchronize_session=False; expire before freezing its
+    # actual accepted type/version together with the unchanged financial fold.
+    db.expire_all()
+    result = get_debt_response(db, tenant_id=tenant_id, public_id=public_id)
     mark_idempotency_succeeded(
         db,
         claim,
         resource_type=_DEBT_TARGET_TYPE,
         resource_id=public_id,
+        response_body=result.model_dump(mode="json"),
     )
     db.commit()
-    db.expire_all()
-    return get_debt_response(db, tenant_id=tenant_id, public_id=public_id)
+    return result

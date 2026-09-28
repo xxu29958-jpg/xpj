@@ -14,8 +14,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import LedgerMember
+from app.models import ApiIdempotencyKey, LedgerMember
 from tests._runtime_protocol import negotiated_headers
+from tests.debt_repayment_goal_helpers import _repay_debt
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
 
@@ -120,6 +121,59 @@ def test_set_debt_kind_rejects_invalid_kind(client: TestClient, *, identity) -> 
     debt = _create_external_debt(client, identity)
     response = _set_kind(client, identity, debt["public_id"], debt_kind="credit_card", expected_row_version=1)
     assert response.status_code == 422, response.json()
+
+
+def test_original_kind_receipt_survives_a_later_correction_without_reverting_current_facts(client: TestClient, *, identity) -> None:
+    debt = _create_external_debt(client, identity)
+    headers = _idem(identity.app_headers)
+    first = _set_kind(client, identity, debt["public_id"], debt_kind="revolving", expected_row_version=1, headers=headers)
+    assert first.status_code == 200, first.json()
+    original_receipt = first.json()
+    later = _set_kind(client, identity, debt["public_id"], debt_kind="installment", expected_row_version=2)
+    assert later.status_code == 200, later.json()
+    assert later.json()["row_version"] == 3
+    for field in ("principal_amount_cents", "remaining_amount_cents", "paid_amount_cents", "status"):
+        assert later.json()[field] == debt[field]
+    payment = _repay_debt(client, identity.app_headers, later.json(), amount_cents=1000)
+
+    replay = _set_kind(client, identity, debt["public_id"], debt_kind="revolving", expected_row_version=1, headers=headers)
+    assert replay.status_code == 200, replay.json()
+    current = client.get(f"/api/debts/{debt['public_id']}", headers=identity.app_headers)
+    assert current.status_code == 200, current.json()
+    assert current.json()["debt_kind"] == "installment"
+    assert current.json()["row_version"] == 4
+    for field in ("principal_amount_cents", "remaining_amount_cents", "paid_amount_cents", "status"):
+        assert current.json()[field] == payment[field]
+    assert current.json()["paid_amount_cents"] == 1000
+    assert current.json()["remaining_amount_cents"] == 49000
+    assert replay.json() == original_receipt
+
+
+def test_kind_key_cannot_change_choice_and_missing_historical_receipt_requires_review(client: TestClient, *, identity):
+    debt = _create_external_debt(client, identity)
+    headers = _idem(identity.app_headers)
+    first = _set_kind(client, identity, debt["public_id"], debt_kind="revolving", expected_row_version=1, headers=headers)
+    assert first.status_code == 200, first.text
+    assert first.json()["debt_kind"] == "revolving"
+    changed = _set_kind(client, identity, debt["public_id"], debt_kind="installment", expected_row_version=1, headers=headers)
+    assert changed.status_code == 422, changed.text
+    assert changed.json()["error"] == "idempotency_key_reused"
+    with SessionLocal() as db:
+        claim = db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == headers["Idempotency-Key"]))
+        assert claim.response_body == first.json()
+        claim.response_body = None
+        db.commit()
+    replay = _set_kind(client, identity, debt["public_id"], debt_kind="revolving", expected_row_version=1, headers=headers)
+    assert replay.status_code == 409, replay.text
+    assert replay.json()["error"] == "debt_kind_original_requires_review"
+    current = client.get(f"/api/debts/{debt['public_id']}", headers=identity.app_headers).json()
+    assert current["debt_kind"] == "revolving"
+    assert current["row_version"] == 2
+    for field in ("principal_amount_cents", "remaining_amount_cents", "paid_amount_cents"):
+        assert current[field] == debt[field]
+    with SessionLocal() as db:
+        claim = db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == headers["Idempotency-Key"]))
+        assert claim.response_body is None
 
 
 def test_set_debt_kind_unknown_debt_is_404(client: TestClient, *, identity) -> None:

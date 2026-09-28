@@ -1,7 +1,6 @@
 package com.ticketbox.data.repository
 
 import com.ticketbox.data.remote.dto.DebtForgiveCreateRequestDto
-import com.ticketbox.data.remote.dto.DebtKindSetRequestDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalConfirmRequestDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalCreateRequestDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalRejectRequestDto
@@ -14,7 +13,6 @@ import com.ticketbox.domain.model.ledgerRoleCanModify
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
-import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 
@@ -30,11 +28,6 @@ interface DebtActions {
     suspend fun getDebt(publicId: String): Result<ReadSnapshot<Debt>>
     suspend fun parseDebtBillImage(expectedBinding: LogicalSessionBinding, fileName: String,
         contentType: String?, bytes: ByteArray): Result<DebtBillSuggestion>
-    // ADR-0049 §7.0 / 8e-6e: set / correct this external Debt's repayment-rhythm classification
-    // (debt_kind). [expectedRowVersion] is the §2.1 OCC carrier (the local Debt's row_version); the
-    // response is the fold-after Debt (a fresh row_version + the new debt_kind) the detail screen
-    // swaps in. Direct-only online; viewer role short-circuits before the network.
-    suspend fun setDebtKind(publicId: String, expectedRowVersion: Long, debtKind: String): Result<Debt>
 }
 
 /**
@@ -129,27 +122,6 @@ class DebtRepository internal constructor(
             val filePart = MultipartBody.Part.createFormData("file", cleanName, body)
             ledgerRequestGuard.bindExact(expectedBinding).call { api ->
                 api.parseDebtBill(filePart).toDomain()
-            }
-        }
-    }
-
-    override suspend fun setDebtKind(
-        publicId: String,
-        expectedRowVersion: Long,
-        debtKind: String,
-    ): Result<Debt> {
-        if (!canModifyLedger()) return Result.failure(RepositoryException(DEBT_VIEWER_READONLY))
-        return errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
-                queryReader.direct(logicalBinding, publicId) { api.setDebtKind(
-                    publicId = publicId,
-                    request = DebtKindSetRequestDto(
-                        debtKind = debtKind,
-                        expectedRowVersion = expectedRowVersion,
-                    ),
-                    // ADR-0042: single-use key — direct-only path, no offline replay.
-                    idempotencyKey = UUID.randomUUID().toString(),
-                ).toDomain() }
             }
         }
     }

@@ -302,7 +302,7 @@ class FakePendingMutationDao : PendingMutationDao {
     ): Int {
         val current = rows[id] ?: return 0
         if (current.ownerKey != ownerKey || current.ledgerId != ledgerId || current.status != expectedStatus ||
-            current.type !in setOf("record_debt_adjustment", "record_debt_repayment", "void_debt", "void_debt_repayment", "create_goal") ||
+            current.type !in setOf("record_debt_adjustment", "record_debt_repayment", "void_debt", "void_debt_repayment", "set_debt_kind", "create_goal") ||
             current.status !in setOf("failed", "conflict", "pending")
         ) return 0
         rows[id] = current.copy(status = "abandoned", completedAt = stoppedAt)

@@ -193,12 +193,21 @@ def test_get_read_failure_mounts_all_original_debt_write_recovery_forms(monkeypa
     assert 'data-repayment-kind="debt-void"' in body, 'GET failure must reopen the actual stored debt void'
     assert 'data-repayment-kind="repayment-void"' in body, 'GET failure must reopen the actual stored repayment void'
     forms = {action.split("?")[0]: fields for action, fields in hidden_post_forms(body).items()}
-    for action in ['/web/debts/debt-one/void', '/web/debts/debt-one/repayment-voids']:
+    original_actions = {'/web/debts/debt-one/repayments', '/web/debts/debt-one/void', '/web/debts/debt-one/repayment-voids'}
+    assert set(forms) == original_actions | {'/web/debts/debt-one/kind'}
+    for action in original_actions:
         assert forms[action]['idempotency_key'] == ''
         assert forms[action]['expected_row_version'] == ''
         assert forms[action]['debt_public_id'] == 'debt-one'
-    assert body.count('data-repayment-container') == 3
-    assert body.count('data-repayment-can-recover="true"') == 3
+    kind_form = forms['/web/debts/debt-one/kind']
+    assert kind_form['idempotency_key'] == '' and kind_form['expected_row_version'] == ''
+    assert kind_form['debt_public_id'] == 'debt-one'
+    assert kind_form['origin_binding'] == forms['/web/debts/debt-one/repayments']['origin_binding']
+    assert 'data-repayment-kind="debt-kind"' in body
+    assert '<select id="debt-kind-select"' in body and 'name="debt_kind"' in body
+    assert body.count('data-repayment-container') == 4
+    assert body.count('data-repayment-can-create="false"') == 4
+    assert body.count('data-repayment-can-recover="true"') == 4
 
 
 @pytest.mark.parametrize("outcome", ["state_conflict", "debt_void_original_requires_review", "dependency_unavailable"])

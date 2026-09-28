@@ -86,11 +86,6 @@ internal class FakeDebtActions(
 
 
 
-    override suspend fun setDebtKind(
-        publicId: String,
-        expectedRowVersion: Long,
-        debtKind: String,
-    ): Result<Debt> = Result.success(sampleDebt(publicId))
 }
 
 /** The creation boundary owns its binding, pending projection and controlled local acknowledgement. */

@@ -671,8 +671,6 @@ private class FakeRepayableDebtActions(
     ): Result<DebtBillSuggestion> = Result.failure(UnsupportedOperationException())
 
 
-    override suspend fun setDebtKind(publicId: String, expectedRowVersion: Long, debtKind: String): Result<Debt> =
-        Result.success(debt(publicId))
 }
 
 private fun draft(

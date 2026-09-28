@@ -18,6 +18,7 @@ import com.ticketbox.data.remote.dto.DebtRepaymentEvaluationDto
 import com.ticketbox.data.remote.dto.DebtGoalLinkViewDto
 import com.ticketbox.data.remote.dto.DebtListResponseDto
 import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
+import com.ticketbox.data.remote.dto.DebtKindSetRequestDto
 import com.ticketbox.data.remote.dto.DebtRepaymentReceiptDto
 import com.ticketbox.data.remote.dto.RepaymentCreateRequestDto
 import com.ticketbox.data.remote.dto.RepaymentFactDto
@@ -93,6 +94,12 @@ internal class DebtAdjustmentConnectedFixture(private val context: Context, priv
             while (cursor.moveToNext()) add(cursor.columnNames.mapIndexed { index, column -> column to cursor.getString(index) }.toMap())
         } }
 
+    fun cachedDebtDetails(): List<Map<String, String?>> = requireNotNull(database).openHelper.readableDatabase
+        .query("SELECT * FROM stats_projection_cache WHERE kind = 'debt_detail' ORDER BY bindingKey, tag, homeCurrencyCode")
+        .use { cursor -> buildList {
+            while (cursor.moveToNext()) add(cursor.columnNames.mapIndexed { index, column -> column to cursor.getString(index) }.toMap())
+        } }
+
     fun setStoredMutationStatus(id: Long, status: String) {
         requireNotNull(database).openHelper.writableDatabase.execSQL(
             "UPDATE pending_mutations SET status = ? WHERE id = ?", arrayOf<Any>(status, id))
@@ -102,7 +109,8 @@ internal class DebtAdjustmentConnectedFixture(private val context: Context, priv
         listOf(RecordDebtAdjustmentDispatcher(LedgerRequestGuard(apiProvider), adapters.debtAdjustmentAdapter),
             RecordDebtRepaymentDispatcher(LedgerRequestGuard(apiProvider), adapters.debtRepaymentAdapter, adapters.debtRepaymentReceiptAdapter),
             VoidDebtDispatcher(LedgerRequestGuard(apiProvider), adapters.debtVoidAdapter, adapters.debtVoidReceiptAdapter),
-            VoidDebtRepaymentDispatcher(LedgerRequestGuard(apiProvider), adapters.debtRepaymentVoidAdapter, adapters.debtVoidReceiptAdapter)),
+            VoidDebtRepaymentDispatcher(LedgerRequestGuard(apiProvider), adapters.debtRepaymentVoidAdapter, adapters.debtVoidReceiptAdapter),
+            SetDebtKindDispatcher(LedgerRequestGuard(apiProvider), adapters.debtKindAdapter, adapters.debtVoidReceiptAdapter)),
         maxAttempts = maxAttempts, now = clock::millis).drainOnce()
 
     fun close() { database?.close(); context.deleteDatabase(name) }
@@ -116,13 +124,29 @@ internal class DebtAdjustmentConnectedNetwork {
         homeCurrencyCode = "CNY", createdAt = "2026-09-01T00:00:00Z", updatedAt = "2026-09-01T00:00:00Z", rowVersion = 2,
     )
     var failReads = false
+    var readFailure: IOException = IOException("Synthetic unavailable debt read")
     var readGate: CompletableDeferred<Unit>? = null
     var loseResponse = true
     val calls = mutableListOf<Pair<DebtAdjustmentCreateRequestDto, String>>()
+    val kindCalls = mutableListOf<Pair<DebtKindSetRequestDto, String>>()
+    val kindResults = mutableMapOf<String, Pair<DebtKindSetRequestDto, DebtDto>>()
     val results = mutableMapOf<String, DebtDto>()
     val repaymentCalls = mutableListOf<Pair<RepaymentCreateRequestDto, String>>()
     val repaymentResults = mutableMapOf<String, Pair<RepaymentCreateRequestDto, DebtRepaymentReceiptDto>>()
     val service = object : ApiService by debtAdjustmentProxy<ApiService>({ error("Unexpected remote method: $it") }) {
+        override suspend fun setDebtKind(publicId: String, request: DebtKindSetRequestDto, idempotencyKey: String?): DebtDto {
+            check(publicId == current.publicId)
+            val key = requireNotNull(idempotencyKey)
+            kindCalls += request to key
+            if (failReads) throw IOException("Synthetic offline classification write")
+            kindResults[key]?.let { (original, receipt) -> check(original == request); return receipt }
+            check(request.expectedRowVersion == current.rowVersion)
+            current = current.copy(debtKind = request.debtKind, rowVersion = current.rowVersion + 1)
+            kindResults[key] = request to current
+            if (loseResponse) throw IOException("Synthetic classification reply lost after acceptance")
+            return current
+        }
+
         override suspend fun debt(publicId: String): DebtDto {
             check(publicId == current.publicId)
             return readCanonicalDebt()
@@ -198,7 +222,7 @@ internal class DebtAdjustmentConnectedNetwork {
         val snapshot = current
         val unavailable = failReads
         readGate?.await()
-        if (unavailable) throw IOException("Synthetic unavailable debt read")
+        if (unavailable) throw readFailure
         return snapshot
     }
 }
