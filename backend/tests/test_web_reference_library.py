@@ -8,14 +8,16 @@ user-facing hierarchy.
 from __future__ import annotations
 
 import re
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import CategoryPreference, CategoryRule, Expense
+from app.models import CategoryPreference, CategoryRule, Expense, Ledger, LedgerMember, Tag
 from app.services.category_preference_service import list_category_preferences
+from app.services.saved_view_service import create_view
 from app.services.time_service import now_utc
 
 
@@ -57,9 +59,10 @@ def test_reference_library_hub_groups_existing_owner_surfaces(
 
     assert response.status_code == 200
     body = response.text
-    for group in ("交易字典", "自动化", "数据生命周期"):
+    for group in ("常用查询", "交易字典", "自动化", "数据生命周期"):
         assert group in body
     for href in (
+        "/web/saved-views?ledger_id=owner",
         "/web/categories?ledger_id=owner",
         "/web/merchants?ledger_id=owner",
         "/web/tags?ledger_id=owner",
@@ -75,9 +78,42 @@ def test_reference_library_hub_groups_existing_owner_surfaces(
     assert "整个账本的已移除内容" in body
 
 
+def test_reference_library_counts_views_without_resolving_each_tag(web_client: TestClient, monkeypatch) -> None:
+    with SessionLocal() as db:
+        owner_id = db.scalar(select(Ledger.owner_account_id).where(Ledger.ledger_id == "owner"))
+        tag = Tag(tenant_id="owner", name="旅行", key="旅行")
+        other_id = "library_saved_view_other"
+        db.add(Ledger(ledger_id=other_id, name="另一本账本", owner_account_id=owner_id))
+        db.flush()
+        db.add_all([tag, LedgerMember(ledger_id=other_id, account_id=owner_id, role="owner")])
+        db.commit()
+        definition = {"month_mode": "current", "month": None, "filter": "", "home_currency_code": "CNY"}
+        for tenant_id, name, tag_id in (
+            ("owner", "旅行查询", tag.public_id), ("owner", "无标签查询", None),
+            (other_id, "另一本查询", None),
+        ):
+            create_view(db, tenant_id=tenant_id, actor_account_id=owner_id,
+                        idempotency_key=str(uuid4()), name=name, tag_public_id=tag_id, **definition)
+        tag.deleted_at = now_utc()
+        db.commit()
+
+    def reject_resolution(*args, **kwargs):
+        del args, kwargs
+        pytest.fail("Library count must not resolve saved-view details or tags")
+
+    monkeypatch.setattr("app.services.saved_view_service._detail", reject_resolution)
+    monkeypatch.setattr("app.services.saved_view_service._tag", reject_resolution)
+    response = web_client.get("/web/library?ledger_id=owner")
+
+    assert response.status_code == 200
+    assert "2 个共享视图" in response.text
+    assert 'href="/web/saved-views?ledger_id=owner"' in response.text
+
+
 @pytest.mark.parametrize(
     ("path", "heading"),
     [
+        ("/web/saved-views", "保存的视图"),
         ("/web/categories", "分类"),
         ("/web/merchants", "商家"),
         ("/web/tags", "标签"),

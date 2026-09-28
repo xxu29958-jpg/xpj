@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% from 'partials/saved_view_editor.html' import editor %}
+{% set page_title = '保存的视图' %}
+{% set product_body_domain = 'transactions' %}
+{% block title %}保存的视图 · 资料库 · 小票夹{% endblock %}
+{% block content %}
+<nav class="library-breadcrumb" aria-label="面包屑">
+  <a class="library-breadcrumb-parent" href="/web/library{{ q }}">资料库</a>
+  <span class="library-breadcrumb-sep" aria-hidden="true">/</span>
+  <span class="library-breadcrumb-current" aria-current="page">保存的视图</span>
+</nav>
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <h1 class="page-title page-title--compact">保存的视图</h1>
+    <p class="product-page-summary">当前账本的参与者都能查看。保存常用筛选，每次打开读取最新账单。</p>
+  </div>
+  <a class="product-button" href="/web/confirmed{{ q }}">去流水设置筛选</a>
+</header>
+{% if error %}<div class="product-feedback product-feedback--error" role="alert">{{ error }}</div>{% endif %}
+{% if flash_message %}<div class="product-feedback product-feedback--success" role="status">{{ flash_message }}</div>{% endif %}
+{% if not can_write %}<p class="product-feedback" role="status">当前角色只读，可以打开视图；修改条件请联系有写入权限的成员。</p>{% endif %}
+{% if draft %}
+<section class="product-panel product-panel--padded library-section" aria-label="保留的视图输入">
+  <h2 class="product-panel-title">继续原输入</h2>
+  {{ editor(draft, editing_public_id, selected_ledger_id, tag_options, currency_codes, csrf_field, can_write) }}
+  {% if editing_public_id %}<a class="product-button product-button--quiet" href="/web/saved-views{{ q }}">重新载入最新条件</a>{% endif %}
+</section>
+{% endif %}
+{% for view in views %}
+<section class="product-panel product-panel--padded library-section" aria-labelledby="view-{{ view.public_id }}">
+  <div class="product-panel-header">
+    <h2 class="product-panel-title" id="view-{{ view.public_id }}">{{ view.name }}</h2>
+    {% if not view.repair_reason %}<a class="product-button" href="/web/saved-views/{{ view.public_id }}/open{{ q }}">打开流水</a>{% endif %}
+  </div>
+  <p>{% if view.filter == 'missing_category' %}待补分类 · 全部月份{% elif view.filter == 'missing_accounting_date' %}账务日期待核对 · 全部月份{% elif view.month_mode == 'current' %}账本当前月{% else %}{{ view.month }} · 固定账务月{% endif %} · {{ view.tag_name or ('原标签待修复' if view.tag_public_id else '不限标签') }} · {{ view.home_currency_code }} 呈现</p>
+  {% if view.repair_reason %}<p class="product-feedback product-feedback--error" role="alert">原标签已被删除或合并，视图暂不能打开。{% if can_write %}请修改条件，明确选择替代标签或不限标签；也可在原标签可撤销时将其恢复。{% else %}请有写入权限的成员修复条件。{% endif %}</p>{% endif %}
+  {% if can_write %}
+  {% if not draft or editing_public_id != view.public_id %}
+  <details{% if view.repair_reason %} open{% endif %}>
+    <summary class="product-button product-button--quiet">修改名称或条件</summary>
+    {{ editor(view, view.public_id, selected_ledger_id, tag_options, currency_codes, csrf_field, can_write) }}
+  </details>
+  {% endif %}
+  <form method="post" action="/web/saved-views/{{ view.public_id }}/delete">
+    {{ csrf_field|safe }}
+    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <input type="hidden" name="expected_row_version" value="{{ view.row_version }}">
+    <button class="product-button product-button--quiet" type="submit" data-confirm="删除这个保存的视图？账单不会改变。">删除视图</button>
+  </form>
+  {% endif %}
+</section>
+{% else %}
+<section class="product-state">
+  <h2 class="product-state-title">还没有保存的视图</h2>
+  <p>在已确认流水中选好月份、标签或待处理范围，再选择“保存当前视图”。</p>
+</section>
+{% endfor %}
+{% endblock %}

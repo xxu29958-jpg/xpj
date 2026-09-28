@@ -1,0 +1,71 @@
+"""A saved view preserves a shared query, not a frozen list of financial facts."""
+
+from urllib.parse import parse_qs, urlsplit
+
+import pytest
+
+from app.routes.web_auth import SESSION_COOKIE_NAME
+from tests._infra.tag_helpers import manual_expense
+from tests._web_native_form_support import hidden_post_forms
+from tests._web_public_session_support import PUBLIC_HOST, mint_session, public_client
+
+pytestmark = pytest.mark.real_db
+
+
+def test_saved_view_reopens_the_same_query_and_reads_new_facts_without_changing_originals(client, identity) -> None:
+    original = manual_expense(client, identity.app_headers, tags="旅行", merchant="九月原账单",
+                              expense_time="2026-09-03T10:00:00Z")
+    before = client.get(f"/api/expenses/{original['id']}", headers=identity.app_headers)
+    assert before.status_code == 200, before.text
+    token = mint_session(client, identity=identity)
+    browser = public_client()
+    browser.cookies.set(SESSION_COOKIE_NAME, token, domain=PUBLIC_HOST, path="/")
+    try:
+        source = browser.get("/web/confirmed", params={"ledger_id": "owner", "month": "2026-09",
+                                                     "tag": "旅行", "home_currency_code": "CNY"})
+        assert source.status_code == 200, source.text
+        forms = hidden_post_forms(source.text)
+        assert "/web/saved-views" in forms, "The current financial query has no save-view entry"
+        submitted = {**forms["/web/saved-views"], "name": "九月旅行", "month_mode": "fixed"}
+        saved = browser.post("/web/saved-views", data=submitted,
+                             headers={"Origin": f"https://{PUBLIC_HOST}"}, follow_redirects=False)
+        assert saved.status_code == 303, saved.text
+        library = browser.get("/web/library?ledger_id=owner")
+        assert library.status_code == 200 and "/web/saved-views?ledger_id=owner" in library.text
+    finally:
+        browser.close()
+
+    manual_expense(client, identity.app_headers, tags="旅行", merchant="后来记入的九月账单",
+                   expense_time="2026-09-15T10:00:00Z")
+    manual_expense(client, identity.app_headers, tags="出差", merchant="同月其他标签账单",
+                   expense_time="2026-09-15T10:00:00Z")
+    manual_expense(client, identity.app_headers, tags="旅行", merchant="十月旅行账单",
+                   expense_time="2026-10-03T10:00:00Z")
+    reopened = public_client()
+    reopened.cookies.set(SESSION_COOKIE_NAME, token, domain=PUBLIC_HOST, path="/")
+    try:
+        views = reopened.get("/web/saved-views?ledger_id=owner")
+        assert views.status_code == 200 and "九月旅行" in views.text
+        actions = hidden_post_forms(views.text)
+        rename_action = next(action for action in actions if action.endswith("/rename"))
+        public_id = rename_action.split("/")[-2]
+        opened = reopened.get(f"/web/saved-views/{public_id}/open?ledger_id=owner", follow_redirects=False)
+        assert opened.status_code == 303, opened.text
+        location = urlsplit(opened.headers["location"])
+        assert location.path == "/web/confirmed"
+        query = parse_qs(location.query)
+        assert {key: query[key] for key in ("ledger_id", "month", "tag", "home_currency_code")} == {
+            "ledger_id": ["owner"], "month": ["2026-09"], "tag": ["旅行"], "home_currency_code": ["CNY"],
+        }
+        current = reopened.get(opened.headers["location"])
+        assert current.status_code == 200
+        assert "九月原账单" in current.text and "后来记入的九月账单" in current.text
+        assert "同月其他标签账单" not in current.text and "十月旅行账单" not in current.text
+    finally:
+        reopened.close()
+
+    after = client.get(f"/api/expenses/{original['id']}", headers=identity.app_headers)
+    assert after.status_code == 200, after.text
+    for field in ("amount_cents", "home_currency", "original_currency", "original_amount_minor", "expense_time",
+                  "accounting_time", "row_version", "fact_revision", "tags"):
+        assert after.json()[field] == before.json()[field], field

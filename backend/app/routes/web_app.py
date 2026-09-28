@@ -40,6 +40,7 @@ from app.routes.web_common import (
     _web_redirect,
     templates,
 )
+from app.routes.web_saved_views import confirmed_save_context
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import average_minor_amount, normalize_currency_code
 from app.services.expense_service import list_confirmed
@@ -333,6 +334,8 @@ def _render_confirmed_page(
         batch_reason_input=batch_reason_input,
         batch_idempotency_key=batch_idempotency_key or str(uuid4()),
     )
+    if ctx["can_write"]:
+        ctx.update(confirmed_save_context(request, db, ledger_id=selected_id, tag=tag or ""))
     return templates.TemplateResponse(
         request=request,
         name="confirmed.html",
