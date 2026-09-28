@@ -120,7 +120,16 @@
       return true;
     }
 
-    return {fields, optionalFields, key, matches, read, save, list, acknowledge, canDiscardRejected, discardRejected, discardReviewed};
+    function discardLocal(proof) {
+      const record = read(proof.clientRef);
+      if (!record || proof.decision !== "discard-local" ||
+          !matches(record.scope, scopeValue(proof.scope)) ||
+          JSON.stringify(fieldValues(record.values)) !== JSON.stringify(fieldValues(proof.values))) return false;
+      window.localStorage.removeItem(key(proof.clientRef));
+      return true;
+    }
+
+    return {fields, optionalFields, key, matches, read, save, list, acknowledge, canDiscardRejected, discardRejected, discardReviewed, discardLocal};
   }
 
   window.TicketboxDraftStore = {createStore};

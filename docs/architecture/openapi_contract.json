@@ -2116,6 +2116,11 @@
             "title": "Amount Yuan",
             "type": "string"
           },
+          "draft_scope": {
+            "default": "",
+            "title": "Draft Scope",
+            "type": "string"
+          },
           "frequency": {
             "default": "one_time",
             "title": "Frequency",

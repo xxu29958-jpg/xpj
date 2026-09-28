@@ -968,7 +968,7 @@ jobs:
         run: |
           python -m venv .ci-venv
           .\.ci-venv\Scripts\python.exe -m pip install --upgrade pip
-          .\.ci-venv\Scripts\python.exe -m pip install -r requirements.txt python-dotenv pytest ruff
+          .\.ci-venv\Scripts\python.exe -m pip install -r requirements.txt python-dotenv pytest ruff jinja2==3.1.6
 
       - name: Compile
         run: .\.ci-venv\Scripts\python.exe -m compileall backend_manager tests

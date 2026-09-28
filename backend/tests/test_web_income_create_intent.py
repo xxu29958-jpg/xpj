@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
+from fastapi import Request
 from jinja2 import ChoiceLoader, DictLoader, Environment, FileSystemLoader
 
 from app.errors import AppError
@@ -41,11 +42,12 @@ def test_income_create_refusal_renders_original_draft_without_rekeying(monkeypat
     monkeypatch.setattr(web_income_plans, "create_income_plan_idempotently", command, raising=False)
     render = Mock(return_value="retained")
     monkeypatch.setattr(web_income_plans, "_render_income_plans", render, raising=False)
-    result = web_income_plans.post_create(Mock(), ledger_id="owner", label="原计划",
+    request = Request({"type": "http", "headers": [], "state": {}})
+    result = web_income_plans.post_create(request, ledger_id="owner", label="原计划",
         source_type="salary", frequency="one_time", income_month=None,
         income_month_year="2026", income_month_number="9", amount_yuan="1200", home_currency_code="JPY",
         pay_day="10", intent_month="2026-09", idempotency_key="original-income-key",
-        review_new=False, db=Mock(), _local=None)
+        draft_scope="", review_new=False, db=Mock(), _local=None)
     assert result == "retained"
     draft = render.call_args.kwargs["draft"]
     assert draft["amount_yuan"] == "1200" and draft["home_currency_code"] == "JPY"

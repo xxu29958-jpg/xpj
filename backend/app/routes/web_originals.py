@@ -10,11 +10,8 @@ from starlette.responses import Response
 from app.config import get_settings
 from app.database import get_db
 from app.routes._upload_request import read_request_upload
-from app.routes._web_attachment_intent import (
-    attachment_ack_response,
-    attachment_form_context,
-    require_attachment_binding,
-)
+from app.routes._web_attachment_intent import attachment_form_context
+from app.routes._web_draft_binding import draft_ack_response, require_draft_binding
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
@@ -41,12 +38,12 @@ def _writer(db, request, ledger_id, draft_scope):
     options = _list_ledger_options(db)
     selected = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
     _require_selected_ledger_write(options, selected)
-    return require_attachment_binding(db, request, ledger_id=ledger_id, draft_scope=draft_scope)
+    return require_draft_binding(db, request, ledger_id=ledger_id, draft_scope=draft_scope)
 
 
 def _accepted(request, receipt: OriginalCommandReceipt, *, ledger_id, draft_scope, idempotency_key):
     redirect = _web_redirect(f"/web/expenses/{receipt.expense_id}/original", ledger_id, msg="原件操作已接受。下方为重新检查结果。")
-    return attachment_ack_response(request, draft_scope=draft_scope, idempotency_key=idempotency_key,
+    return draft_ack_response(request, draft_scope=draft_scope, idempotency_key=idempotency_key,
         receipt=receipt.model_dump(mode="json"), next_href=redirect.headers["location"]) or redirect
 
 
