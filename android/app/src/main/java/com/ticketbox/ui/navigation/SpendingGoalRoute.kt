@@ -9,6 +9,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ticketbox.R
 import com.ticketbox.ui.screens.CreateSpendingGoalScreen
 import com.ticketbox.ui.screens.plan.SpendingGoalDetailScreen
 import com.ticketbox.ui.screens.plan.SpendingGoalsScreen
@@ -42,6 +43,7 @@ internal data class SpendingGoalRouteContext(
     val originalCreationId: Long? = null,
     val originalGoalPublicId: String? = null,
     val financialDataRevision: Int = 0,
+    val backText: Int = R.string.spending_goal_detail_back,
 )
 
 @Composable
@@ -71,6 +73,7 @@ internal fun SpendingGoalsRoute(
         originalCreationId = context.originalCreationId,
         originalGoalPublicId = context.originalGoalPublicId,
         financialDataRevision = context.financialDataRevision,
+        backText = context.backText,
     )
 }
 
@@ -81,6 +84,7 @@ private fun SpendingGoalRouteContent(
     originalCreationId: Long?,
     originalGoalPublicId: String?,
     financialDataRevision: Int,
+    backText: Int,
 ) {
     var page by rememberSaveable(originalCreationId, originalGoalPublicId) { mutableStateOf(when {
         originalCreationId != null -> SpendingGoalPage.Create
@@ -91,6 +95,10 @@ private fun SpendingGoalRouteContent(
     var detailPublicId by rememberSaveable(originalGoalPublicId) { mutableStateOf(originalGoalPublicId) }
     var createMonth by rememberSaveable { mutableStateOf(models.list.monthForNewGoal) }
     val detailState by models.detail.state.collectAsStateWithLifecycle()
+    val closeDetail = {
+        detailPublicId = null
+        if (originalGoalPublicId != null) onBack() else page = SpendingGoalPage.List
+    }
 
     LaunchedEffect(financialDataRevision) {
         if (financialDataRevision > 0) models.list.refresh()
@@ -100,11 +108,7 @@ private fun SpendingGoalRouteContent(
             detailPublicId?.let(models.detail::load)
         }
     }
-    SpendingGoalDetailResultEffect(detailState, models.list::refresh) {
-        models.detail.acceptedArchive?.let { (binding, archived) -> models.list.acceptArchived(binding, archived) }
-        detailPublicId = null
-        page = SpendingGoalPage.List
-    }
+    SpendingGoalDetailResultEffect(detailState, models, closeDetail)
 
     when (page) {
         SpendingGoalPage.List -> SpendingGoalsScreen(
@@ -136,20 +140,21 @@ private fun SpendingGoalRouteContent(
         )
         SpendingGoalPage.Detail -> SpendingGoalDetailScreen(
             viewModel = models.detail,
-            onBack = {
-                detailPublicId = null
-                page = SpendingGoalPage.List
-            },
+            backText = backText,
+            onBack = closeDetail,
         )
     }
 }
 
 @Composable
-private fun SpendingGoalDetailResultEffect(state: SpendingGoalDetailUiState, refreshList: () -> Unit, onArchived: () -> Unit) {
+private fun SpendingGoalDetailResultEffect(state: SpendingGoalDetailUiState, models: SpendingGoalRouteModels, onArchived: () -> Unit) {
     LaunchedEffect(state.mutationRevision, state.archiveCompleted) {
         if (state.mutationRevision > 0) {
-            if (state.archiveCompleted) onArchived()
-            refreshList()
+            if (state.archiveCompleted) {
+                models.detail.acceptedArchive?.let { (binding, archived) -> models.list.acceptArchived(binding, archived) }
+                onArchived()
+            }
+            models.list.refresh()
         }
     }
 }

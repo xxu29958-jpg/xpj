@@ -39,6 +39,7 @@ import com.ticketbox.viewmodel.SpendingGoalDetailViewModel
 internal fun SpendingGoalDetailScreen(
     viewModel: SpendingGoalDetailViewModel,
     onBack: () -> Unit,
+    backText: Int = R.string.spending_goal_detail_back,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val goal = state.goal
@@ -54,7 +55,7 @@ internal fun SpendingGoalDetailScreen(
                     it.category ?: stringResource(R.string.spending_goal_scope_all),
                 )
             },
-            backText = stringResource(R.string.spending_goal_detail_back),
+            backText = stringResource(backText),
             onBack = navigateBack,
             hasBottomBar = false,
             verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),

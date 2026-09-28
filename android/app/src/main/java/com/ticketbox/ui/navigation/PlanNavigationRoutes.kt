@@ -5,6 +5,8 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import androidx.compose.runtime.remember
+import androidx.compose.ui.res.stringResource
+import com.ticketbox.R
 
 internal fun spendingGoalEditRoute(id: String): String = "${ProductSecondaryPage.SpendingGoal.route}?goal=${android.net.Uri.encode(id)}"
 
@@ -40,6 +42,8 @@ internal fun NavGraphBuilder.addPlanRoutes(
                 context = SpendingGoalRouteContext(creationOwner,
                     originalCreationId = entry.arguments?.getString("create")?.toLongOrNull(),
                     originalGoalPublicId = entry.arguments?.getString("goal"),
+                    backText = if (navController.previousBackStackEntry?.destination?.route == TRANSACTIONS_LIBRARY_CATEGORIES_ROUTE)
+                        R.string.category_directory_back else R.string.spending_goal_detail_back,
                     financialDataRevision = shellState.financialDataRevision),
                 screenFactory = screenFactory, onBack = onBack,
             )
@@ -54,6 +58,8 @@ internal fun NavGraphBuilder.addPlanRoutes(
                 // (_inputs_builder.py) — a budget save must not invalidate.
                 onDataChanged = shellState::markFinancialDataChanged,
                 financialDataRevision = shellState.financialDataRevision,
+                backText = if (navController.previousBackStackEntry?.destination?.route == TRANSACTIONS_LIBRARY_CATEGORIES_ROUTE)
+                    stringResource(R.string.category_directory_back) else null,
             )
         }
         composable("${ProductSecondaryPage.BudgetAdvice.route}?submission={submission}&report={report}&arrangement={arrangement}",

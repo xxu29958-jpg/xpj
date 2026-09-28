@@ -13,3 +13,7 @@ data class CategoryPreference(
     val usageCount: Int,
     val rowVersion: Long,
 )
+
+enum class CategoryReferenceKind { Rule, Budget, SpendingGoal }
+
+data class CategoryReference(val kind: CategoryReferenceKind, val id: String, val label: String)

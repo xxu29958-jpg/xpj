@@ -34,16 +34,13 @@ import com.ticketbox.ui.screens.settings.MerchantAliasesScreenActions
 import com.ticketbox.ui.screens.settings.MerchantAliasesScreenState
 import com.ticketbox.ui.screens.settings.MerchantAliasesUndoActions
 import com.ticketbox.ui.screens.settings.TagManagementScreen
-import com.ticketbox.ui.screens.transactions.CategoryDirectoryScreen
 import com.ticketbox.ui.screens.transactions.RecycleBinScreen
 import com.ticketbox.ui.screens.transactions.TransactionsLibraryActions
 import com.ticketbox.ui.screens.transactions.TransactionsLibraryScreen
-import com.ticketbox.viewmodel.CategoryDirectoryViewModel
 import com.ticketbox.viewmodel.CategoryRulesViewModel
 import com.ticketbox.viewmodel.MerchantAliasViewModel
 import com.ticketbox.viewmodel.RecycleBinViewModel
 import com.ticketbox.viewmodel.TagManagementViewModel
-import com.ticketbox.viewmodel.categoryDirectoryViewModelFactory
 import com.ticketbox.viewmodel.recycleBinViewModelFactory
 import com.ticketbox.viewmodel.tagManagementViewModelFactory
 import kotlinx.coroutines.flow.StateFlow
@@ -58,6 +55,7 @@ internal const val TRANSACTIONS_LIBRARY_MERCHANTS_ROUTE = "$TRANSACTIONS_LIBRARY
 internal const val TRANSACTIONS_LIBRARY_TAGS_ROUTE = "$TRANSACTIONS_LIBRARY_ROUTE/tags"
 internal const val TRANSACTIONS_LIBRARY_RULES_ROUTE = "$TRANSACTIONS_LIBRARY_ROUTE/rules"
 internal fun categoryRuleSubmissionRoute(id: Long): String = "$TRANSACTIONS_LIBRARY_RULES_ROUTE?submission=$id"
+internal fun categoryRuleEditRoute(id: Long): String = "$TRANSACTIONS_LIBRARY_RULES_ROUTE?rule=$id"
 internal const val TRANSACTIONS_LIBRARY_RECYCLE_BIN_ROUTE = "$TRANSACTIONS_LIBRARY_ROUTE/recycle-bin"
 
 /**
@@ -108,17 +106,7 @@ internal fun NavGraphBuilder.transactionsLibraryGraph(
                 onVocabularyChanged = onVocabularyChanged,
             )
         }
-        composable("$TRANSACTIONS_LIBRARY_RULES_ROUTE?submission={submission}", arguments = listOf(
-            navArgument("submission") { type = NavType.StringType; nullable = true; defaultValue = null },
-        )) { entry ->
-            CategoryRulesLibraryRoute(
-                navController = navController,
-                screenFactory = screenFactory,
-                onVocabularyChanged = onVocabularyChanged,
-                onTransactionRowsChanged = onTransactionRowsChanged,
-                originalSubmissionId = entry.arguments?.getString("submission")?.toLongOrNull(),
-            )
-        }
+        categoryRulesDestination(navController, screenFactory, onVocabularyChanged, onTransactionRowsChanged)
         composable(TRANSACTIONS_LIBRARY_RECYCLE_BIN_ROUTE) {
             RecycleBinLibraryRoute(
                 navController = navController,
@@ -164,26 +152,6 @@ private fun RecycleBinLibraryRoute(
 }
 
 @Composable
-private fun CategoryDirectoryRoute(
-    navController: NavHostController,
-    screenFactory: MainScreenFactory,
-    onVocabularyChanged: () -> Unit,
-) {
-    val viewModel: CategoryDirectoryViewModel = viewModel(
-        key = transactionsLibraryViewModelKey(
-            "category-directory",
-            screenFactory.ledgerRepository.activeLedgerId(),
-        ),
-        factory = categoryDirectoryViewModelFactory(screenFactory.categoryPreferenceRepository),
-    )
-    CategoryDirectoryScreen(
-        viewModel = viewModel,
-        onBack = navController::popBackStack,
-        onCategoriesChanged = onVocabularyChanged,
-    )
-}
-
-@Composable
 private fun TagDirectoryRoute(
     navController: NavHostController,
     screenFactory: MainScreenFactory,
@@ -212,6 +180,7 @@ private fun CategoryRulesLibraryRoute(
     onVocabularyChanged: () -> Unit,
     onTransactionRowsChanged: () -> Unit,
     originalSubmissionId: Long?,
+    originalRuleId: Long?,
 ) {
     val viewModel: CategoryRulesViewModel = viewModel(
         key = transactionsLibraryViewModelKey("category-rules", screenFactory.ledgerRepository.activeLedgerId()),
@@ -263,7 +232,8 @@ private fun CategoryRulesLibraryRoute(
                 onDismiss = viewModel::dismissUndo,
             ),
         ),
-        chrome = libraryManagementChrome(),
+        chrome = libraryManagementChrome(navController.previousBackStackEntry?.destination?.route == TRANSACTIONS_LIBRARY_CATEGORIES_ROUTE),
+        initialRuleId = originalRuleId,
     )
 }
 
@@ -320,9 +290,9 @@ private fun MerchantDirectoryRoute(
 }
 
 @Composable
-private fun libraryManagementChrome(): ManagementPageChrome = ManagementPageChrome(
+private fun libraryManagementChrome(backToCategories: Boolean = false): ManagementPageChrome = ManagementPageChrome(
     role = AppPageRole.Ledger,
-    backText = stringResource(R.string.transactions_library_back_to_library),
+    backText = stringResource(if (backToCategories) R.string.category_directory_back else R.string.transactions_library_back_to_library),
 )
 
 @Composable
@@ -337,5 +307,26 @@ private fun <T> ReportSuccessfulLibraryWrites(
             .distinctUntilChanged()
             .drop(1)
             .collect { currentOnChanged() }
+    }
+}
+
+private fun NavGraphBuilder.categoryRulesDestination(
+    navController: NavHostController,
+    screenFactory: MainScreenFactory,
+    onVocabularyChanged: () -> Unit,
+    onTransactionRowsChanged: () -> Unit,
+) {
+    composable("$TRANSACTIONS_LIBRARY_RULES_ROUTE?submission={submission}&rule={rule}", arguments = listOf(
+        navArgument("submission") { type = NavType.StringType; nullable = true; defaultValue = null },
+        navArgument("rule") { type = NavType.StringType; nullable = true; defaultValue = null },
+    )) { entry ->
+        CategoryRulesLibraryRoute(
+            navController = navController,
+            screenFactory = screenFactory,
+            onVocabularyChanged = onVocabularyChanged,
+            onTransactionRowsChanged = onTransactionRowsChanged,
+            originalSubmissionId = entry.arguments?.getString("submission")?.toLongOrNull(),
+            originalRuleId = entry.arguments?.getString("rule")?.toLongOrNull(),
+        )
     }
 }

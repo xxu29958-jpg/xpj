@@ -8,6 +8,7 @@ user-facing hierarchy.
 from __future__ import annotations
 
 import re
+from html import escape, unescape
 from uuid import uuid4
 
 import pytest
@@ -336,4 +337,77 @@ def test_referenced_category_removal_explains_the_required_next_step(
         assert original_expense.amount_cents == 3200
         assert db.scalar(select(CategoryRule).where(CategoryRule.id == rule_id)).category == "餐饮"
         preference = db.scalar(select(CategoryPreference).where(CategoryPreference.public_id == public_id))
+        assert preference.deleted_at is not None
+
+
+@pytest.mark.parametrize("source", ["budget", "goal"])
+def test_category_plan_reference_opens_the_saved_editor_and_returns_to_removal(
+    web_client: TestClient, identity, source: str,
+) -> None:
+    created = web_client.post("/api/expenses/manual", headers=identity.app_headers,
+        json={"home_currency_code": "CNY", "amount_cents": 3200, "merchant": "计划引用商家",
+            "category": "烘焙", "client_ref": f"web-category-plan-reference-{source}"})
+    assert created.status_code == 200, created.text
+    headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
+    goal_name = '烘焙 <img src=x onerror="alert(1)">'
+    if source == "budget":
+        saved = web_client.put("/api/budgets/monthly/2026-10", headers=headers,
+            json={"home_currency_code": "CNY", "expected_row_version": None, "total_amount_cents": 50000,
+                "excluded_categories": ["烘焙"], "category_budgets": [{"category": "烘焙", "amount_cents": 5000}]})
+        assert saved.status_code == 200, saved.text
+        editor_url = "/web/budgets?ledger_id=owner&month=2026-10"
+        edit_action = "/web/budgets/save"
+        read_url = "/api/budgets/monthly?month=2026-10"
+    else:
+        saved = web_client.post("/api/goals", headers=headers,
+            json={"home_currency_code": "CNY", "name": goal_name, "month": "2026-10",
+                "category": "烘焙", "target_amount_cents": 5000})
+        assert saved.status_code == 201, saved.text
+        goal_id = saved.json()["public_id"]
+        edit_action = f"/web/goals/{goal_id}/edit"
+        editor_url = f"{edit_action}?ledger_id=owner"
+        read_url = f"/api/goals/{goal_id}"
+    original_plan = web_client.get(read_url, headers=identity.app_headers).json()
+    categories = web_client.get("/web/categories?ledger_id=owner")
+    form_action = next(action for action in hidden_post_forms(categories.text)
+        if action.startswith("/web/categories/preferences/"))
+    form = hidden_post_forms(categories.text)[form_action]
+    rejected = web_client.post(form_action, data=form, follow_redirects=False)
+    assert rejected.status_code == 422, rejected.text
+    assert rejected.text.count(f'href="{escape(editor_url, quote=True)}"') == 1
+    assert web_client.get(read_url, headers=identity.app_headers).json() == original_plan
+    if source == "goal":
+        assert goal_name in unescape(rejected.text)
+        assert "烘焙 &lt;img" in rejected.text
+        assert '<img src=x onerror="alert(1)">' not in rejected.text
+    editor = web_client.get(editor_url)
+    assert editor.status_code == 200, editor.text
+    original_form = hidden_post_forms(editor.text)[edit_action]
+    assert 'name="month" value="2026-10"' in editor.text
+    if source == "budget":
+        changes = {"total_amount_yuan": "500.00", "rollover_amount_yuan": "0.00",
+            "non_monthly_amount_yuan": "0.00", "excluded_categories": "",
+            "category_budget_category": ["烘焙"], "category_budget_amount_yuan": ["50.00"],
+            "category_budget_remove": ["0"]}
+    else:
+        changes = {"name": goal_name, "month": "2026-10", "category": "餐饮", "target_amount_yuan": "50.00"}
+    changed = web_client.post(edit_action, data={**original_form, **changes}, follow_redirects=False)
+    assert changed.status_code in (302, 303), changed.text
+    changed_plan = web_client.get(read_url, headers=identity.app_headers).json()
+    if source == "budget":
+        assert changed_plan["total_amount_cents"] == 50000
+        assert changed_plan["excluded_categories"] == []
+        assert changed_plan["category_budgets"] == []
+    else:
+        assert changed_plan["category"] == "餐饮"
+        assert changed_plan["target_amount_cents"] == 5000
+    returned = web_client.get("/web/categories?ledger_id=owner")
+    removed = web_client.post(form_action, data=hidden_post_forms(returned.text)[form_action], follow_redirects=False)
+    assert removed.status_code in (302, 303), removed.text
+    with SessionLocal() as db:
+        expense = db.scalar(select(Expense).where(Expense.public_id == created.json()["public_id"]))
+        assert expense.category == "烘焙"
+        assert expense.amount_cents == 3200
+        preference_id = form_action.split("/")[-2]
+        preference = db.scalar(select(CategoryPreference).where(CategoryPreference.public_id == preference_id))
         assert preference.deleted_at is not None

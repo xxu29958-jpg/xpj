@@ -90,7 +90,7 @@
 {# C5c-1 增量 3: CategoryPreference Web 管理 consumer。
    事实合同: 默认分类只读不列入; 自定义分类在真实流水首次使用后实体化;
    移除只把选项移出今后的选择面, 不改写历史流水; 有 rule/budget/goal
-   active reference 时 Owner 拒绝 (422); 删除后可从整个账本回收站恢复。
+   active reference 时 Owner 拒绝 (API 409, Web 422); 删除后可从整个账本回收站恢复。
    OCC: 422 原地重渲染, 错误以 data-category-key 锚到被提交行并带
    fresh row_version 可直接重试 (回收站 C5b-2 同范式); viewer 无表单。 #}
 <section class="product-panel product-panel--padded library-section" aria-labelledby="library-custom-categories">
@@ -105,7 +105,12 @@
     {% set _orphan = category_error_public_id not in (category_preferences | map(attribute='public_id') | list) %}
     {% if _orphan %}
     {# 被提交行已不在列表 (已被其它端移除) 时, 422 文案仍须可见。 #}
-    <div class="product-feedback product-feedback--danger" role="alert" data-category-key="{{ category_error_public_id }}">{{ category_error }}</div>
+    <div class="product-feedback product-feedback--danger" role="alert" data-category-key="{{ category_error_public_id }}">
+      {{ category_error }}
+      {% for reference in category_reference_links %}
+      <a class="product-button product-button--small product-button--quiet" href="{{ reference.href }}">{{ reference.label }}</a>
+      {% endfor %}
+    </div>
     {% endif %}
   {% endif %}
 
@@ -131,7 +136,12 @@
           <td>
             {% if can_write %}
             {% if _row_error %}
-            <div id="category-preference-error" class="product-feedback product-feedback--danger library-row-error" role="alert" data-category-key="{{ item.public_id }}">{{ category_error }}</div>
+            <div id="category-preference-error" class="product-feedback product-feedback--danger library-row-error" role="alert" data-category-key="{{ item.public_id }}">
+              {{ category_error }}
+              {% for reference in category_reference_links %}
+              <a class="product-button product-button--small product-button--quiet" href="{{ reference.href }}">{{ reference.label }}</a>
+              {% endfor %}
+            </div>
             {% endif %}
             <form method="post" action="/web/categories/preferences/{{ item.public_id }}/delete"
                   data-confirm="把「{{ item.name }}」从可选分类移除？历史流水保持不变，需要时可从回收站恢复。">

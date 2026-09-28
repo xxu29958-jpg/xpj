@@ -4,7 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.CategoryPreferenceActions
+import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.CategoryPreference
+import com.ticketbox.domain.model.CategoryReference
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,6 +24,7 @@ data class CategoryDirectoryUiState(
     val message: UiText? = null,
     val messageTone: MessageTone = MessageTone.Neutral,
     val changedRevision: Int = 0,
+    val categoryReferences: List<CategoryReference> = emptyList(),
 )
 
 class CategoryDirectoryViewModel(
@@ -43,6 +46,7 @@ class CategoryDirectoryViewModel(
                     loading = true,
                     loadFailed = false,
                     message = null,
+                    categoryReferences = emptyList(),
                     messageTone = MessageTone.Neutral,
                     canModify = repository.canModifyLedger(),
                 )
@@ -82,6 +86,7 @@ class CategoryDirectoryViewModel(
                 it.copy(
                     busyCategoryId = category.publicId,
                     message = null,
+                    categoryReferences = emptyList(),
                     messageTone = MessageTone.Neutral,
                 )
             }
@@ -105,6 +110,9 @@ class CategoryDirectoryViewModel(
                             busyCategoryId = null,
                             message = error.toUiText(R.string.category_directory_delete_failed),
                             messageTone = MessageTone.Danger,
+                            categoryReferences = (error as? RepositoryException)
+                                ?.takeIf { it.errorCode == "state_conflict" }
+                                ?.conflict?.categoryReferences.orEmpty(),
                         )
                     }
                 }
