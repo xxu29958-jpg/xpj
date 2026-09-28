@@ -26,7 +26,7 @@ data class IncomePlanCreateSession(
     }
 }
 
-enum class IncomePlanCreationPhase { Draft, Publishing, NeedsRecovery }
+enum class IncomePlanCreationPhase { Draft, DraftNeedsRecovery, Publishing, NeedsRecovery }
 
 data class IncomePlanCreateUiState(
     val session: IncomePlanCreateSession? = null,

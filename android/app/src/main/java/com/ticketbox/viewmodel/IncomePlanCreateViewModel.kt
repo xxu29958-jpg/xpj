@@ -135,8 +135,11 @@ class IncomePlanCreateViewModel(
         viewModelScope.launch {
             val result = repository.originalCreation(session.binding, session.creationKey)
             val accepted = result.getOrNull()?.takeIf(session::matchesSubmission)
-            val missingDraft = result.isSuccess && result.getOrNull() == null && session.phase == IncomePlanCreationPhase.Draft
-            val unresolved = if (missingDraft) session else session.copy(phase = IncomePlanCreationPhase.NeedsRecovery,
+            val wasDraft = session.phase in setOf(IncomePlanCreationPhase.Draft, IncomePlanCreationPhase.DraftNeedsRecovery)
+            val missingDraft = result.isSuccess && result.getOrNull() == null && wasDraft
+            val unresolved = if (missingDraft) session.copy(phase = IncomePlanCreationPhase.Draft,
+                draft = session.draft.copy(validationError = null).withAmountValidation()) else session.copy(
+                phase = if (wasDraft) IncomePlanCreationPhase.DraftNeedsRecovery else IncomePlanCreationPhase.NeedsRecovery,
                 draft = session.draft.copy(validationError = result.exceptionOrNull()
                     ?.toUiText(R.string.income_plan_creation_recovery_required)
                     ?: UiText.res(R.string.income_plan_creation_recovery_required)))

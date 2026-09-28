@@ -98,6 +98,36 @@ class IncomePlanCreateRecoveryGuardsTest {
     }
 
     @Test
+    fun unsubmittedDraftRecoversAfterReadFailureWithoutLosingItsOriginalTask() = runTest(dispatcher) {
+        val saved = SavedStateHandle()
+        val original = retainedCreation(saved)
+        val repo = FakeIncomePlanCreateRepository().apply {
+            lookupResponder = { _, _ -> Result.failure(IllegalStateException("暂时无法读取原提交")) }
+        }
+        val owner = IncomePlanCreateViewModel(repo, saved)
+        advanceUntilIdle()
+        assertFalse(owner.state.value.isRestoring)
+        owner.updateDraftLabel("尚未核对时覆盖")
+        owner.submit()
+        advanceUntilIdle()
+        assertEquals(original.draft.label, owner.state.value.session?.draft?.label)
+        assertTrue(repo.creationCalls.isEmpty())
+        repo.lookupResponder = { _, _ -> Result.success(null) }
+        owner.retryPublicationRecovery()
+        advanceUntilIdle()
+        val recovered = assertNotNull(owner.state.value.session)
+        assertEquals(original.creationKey, recovered.creationKey)
+        assertEquals(original.draft, recovered.draft)
+        assertEquals(IncomePlanCreationPhase.Draft, recovered.phase)
+        owner.updateDraftLabel("核对后继续填写")
+        owner.submit()
+        advanceUntilIdle()
+        assertNull(owner.state.value.session)
+        assertEquals(original.creationKey, repo.creationCalls.single().creationKey)
+        assertEquals("核对后继续填写", repo.creationCalls.single().draft.label)
+    }
+
+    @Test
     fun unknownSavedPublicationPhasePreservesInputAndNeverFallsBackToDraftAdmission() = runTest(dispatcher) {
         val source = SavedStateHandle()
         val original = retainedCreation(source, IncomePlanCreationPhase.Publishing)

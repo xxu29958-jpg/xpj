@@ -99,7 +99,7 @@ private fun AddIncomePlanSheet(
     onDismiss: () -> Unit,
 ) {
     val session = state.session ?: return
-    val recovery = session.phase == IncomePlanCreationPhase.NeedsRecovery
+    val recovery = session.phase in setOf(IncomePlanCreationPhase.DraftNeedsRecovery, IncomePlanCreationPhase.NeedsRecovery)
     val busy = state.isSubmitting || state.isRestoring
     val editable = session.phase == IncomePlanCreationPhase.Draft && state.canModify
     AppSheetScaffold(title = stringResource(R.string.income_plan_sheet_title)) {

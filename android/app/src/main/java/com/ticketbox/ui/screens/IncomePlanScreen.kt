@@ -37,6 +37,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
+import com.ticketbox.domain.model.IncomeFrequency
 import com.ticketbox.domain.model.IncomePlan
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
