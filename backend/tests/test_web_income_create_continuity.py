@@ -203,3 +203,48 @@ def test_browser_income_refusal_can_prepare_correction_without_writing(installed
         assert (plan.tenant_id, plan.label, plan.amount_cents, plan.pay_day, plan.row_version) == (
             installed_income_browser.shared_ledger_id, "原收入计划", 150000, 12, 1)
         assert db.scalar(select(func.count()).select_from(IncomePlanRevision)) == 1
+
+
+@pytest.mark.real_db
+@pytest.mark.currency_binding_unbound
+def test_pre_binding_income_form_can_explicitly_prepare_a_bound_new_plan(installed_income_browser):
+    browser, original, scope = _installed_income_form(installed_income_browser)
+    original.pop("draft_scope")  # A genuine form opened before scope capture existed.
+    origin = str(browser.base_url).rstrip("/")
+    refused = browser.post(ACTION, data=original, headers={"Origin": origin}, follow_redirects=False)
+    assert refused.status_code == 409, refused.text
+    retained = hidden_post_forms(refused.text)[ACTION]
+    for name in ("ledger_id", "intent_month", "home_currency_code", "idempotency_key"):
+        assert retained[name] == original[name]
+    assert retained["draft_scope"] == ""
+    assert 'value="1500.00"' in refused.text and 'value="原收入计划"' in refused.text
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(MonthlyIncomePlan)) == 0
+        assert db.scalar(select(func.count()).select_from(IncomePlanRevision)) == 0
+    assert "已核对，准备新计划</button>" in refused.text
+
+    prepared = browser.post(ACTION, data={**original, **retained, "review_new": "true"},
+        headers={"Origin": origin}, follow_redirects=False)
+    assert prepared.status_code == 200, prepared.text
+    new_form = hidden_post_forms(prepared.text)[ACTION]
+    assert new_form["idempotency_key"] != original["idempotency_key"]
+    assert json.loads(new_form["draft_scope"]) == scope
+    for name in ("ledger_id", "intent_month", "home_currency_code"):
+        assert new_form[name] == original[name]
+    assert 'value="1500.00"' in prepared.text and 'value="原收入计划"' in prepared.text
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(MonthlyIncomePlan)) == 0
+        assert db.scalar(select(func.count()).select_from(IncomePlanRevision)) == 0
+
+    headers = {"Origin": origin, "Accept": "application/json"}
+    accepted = browser.post(ACTION, data={**original, **new_form}, headers=headers)
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["ack"] == {"scope": scope, "clientRef": new_form["idempotency_key"]}
+    replayed = browser.post(ACTION, data={**original, **new_form}, headers=headers)
+    assert replayed.status_code == 200 and replayed.json() == accepted.json()
+    assert browser.post(ACTION, data=original, headers=headers).status_code == 409
+    with SessionLocal() as db:
+        plan, = list(db.scalars(select(MonthlyIncomePlan)))
+        assert (plan.tenant_id, plan.label, plan.amount_cents, plan.row_version) == (
+            installed_income_browser.shared_ledger_id, "原收入计划", 150000, 1)
+        assert db.scalar(select(func.count()).select_from(IncomePlanRevision)) == 1
