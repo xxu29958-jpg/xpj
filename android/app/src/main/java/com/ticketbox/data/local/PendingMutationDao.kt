@@ -50,29 +50,9 @@ interface PendingMutationDao {
         "SELECT * FROM pending_mutations WHERE serverUrl = :serverUrl AND ownerKey = :ownerKey " +
             "AND ledgerId = :ledgerId AND type = :type AND idempotencyKey = :idempotencyKey ORDER BY id",
     )
-    suspend fun originalCommand(
-        serverUrl: String, ownerKey: String, ledgerId: String, type: String, idempotencyKey: String,
-    ): List<PendingMutationEntity>
-
-    @Query(
-        "SELECT * FROM pending_mutations WHERE serverUrl = :serverUrl AND ownerKey = :ownerKey " +
-            "AND ledgerId = :ledgerId AND type = :type AND idempotencyKey = :idempotencyKey ORDER BY id",
-    )
     fun observeOriginalCommand(
         serverUrl: String, ownerKey: String, ledgerId: String, type: String, idempotencyKey: String,
     ): Flow<List<PendingMutationEntity>>
-
-    /** A lost local acknowledgement returns the immutable original, including its completed receipt. */
-    @Transaction
-    suspend fun insertOriginalAndPublish(row: PendingMutationEntity, publish: suspend () -> Unit): Long {
-        val key = requireNotNull(row.idempotencyKey)
-        val originals = originalCommand(row.serverUrl, requireNotNull(row.ownerKey), row.ledgerId, row.type, key)
-        if (originals.isEmpty()) return insertAndPublish(row, publish)
-        val original = originals.single()
-        require(original.targetId == row.targetId && original.payload == row.payload &&
-            original.expectedRowVersion == row.expectedRowVersion) { "原创建内容已变化，请保留草稿并核对原提交。" }
-        return original.id
-    }
 
     @Transaction
     suspend fun deleteAndPublish(id: Long, ownerKey: String, ledgerId: String, status: String, publish: suspend () -> Unit): Boolean {
@@ -98,15 +78,16 @@ interface PendingMutationDao {
 
     /** An uncertain local acceptance must resolve to one immutable original, including retained DONE rows. */
     @Transaction
-    suspend fun insertOriginalIncomeCreation(row: PendingMutationEntity): Long {
-        require(row.type == PendingMutationType.CreateIncomePlan.wireValue && !row.idempotencyKey.isNullOrBlank())
+    suspend fun insertOriginalCreation(row: PendingMutationEntity): Long {
+        require(row.type in setOf(PendingMutationType.CreateIncomePlan.wireValue, PendingMutationType.CreateGoal.wireValue) &&
+            !row.idempotencyKey.isNullOrBlank())
         val originals = findByIdempotencyKeys(requireNotNull(row.ownerKey), row.ledgerId, row.type,
             listOf(requireNotNull(row.idempotencyKey)))
         if (originals.isEmpty()) return insert(row)
         val original = originals.single()
         require(original.serverUrl == row.serverUrl && original.targetId == row.targetId &&
             original.payload == row.payload && original.expectedRowVersion == row.expectedRowVersion) {
-            "原收入创建内容或归属已变化，请先核对原提交。"
+            "原创建内容或归属已变化，请先核对原提交。"
         }
         return original.id
     }

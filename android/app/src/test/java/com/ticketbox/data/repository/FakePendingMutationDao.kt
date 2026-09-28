@@ -17,9 +17,8 @@ class FakePendingMutationDao : PendingMutationDao {
     var beforeInsert: (suspend () -> Unit)? = null
     var replacePayloadError: Throwable? = null
     private var nextId = 1L
-    private val incomeCreationAcceptance = Mutex()
+    private val creationAcceptance = Mutex()
     private val queueDepth = MutableStateFlow(0)
-    private val originalCommandTransaction = Mutex()
 
     override suspend fun insert(row: PendingMutationEntity): Long {
         beforeInsert?.invoke()
@@ -41,21 +40,12 @@ class FakePendingMutationDao : PendingMutationDao {
         return additions.keys.toList()
     }
 
-    override suspend fun originalCommand(
-        serverUrl: String, ownerKey: String, ledgerId: String, type: String, idempotencyKey: String,
-    ): List<PendingMutationEntity> = rows.values.filter {
-        it.serverUrl == serverUrl && it.ownerKey == ownerKey && it.ledgerId == ledgerId &&
-            it.type == type && it.idempotencyKey == idempotencyKey
-    }.sortedBy { it.id }
-
     override fun observeOriginalCommand(
         serverUrl: String, ownerKey: String, ledgerId: String, type: String, idempotencyKey: String,
     ): Flow<List<PendingMutationEntity>> = queueDepth.map {
-        originalCommand(serverUrl, ownerKey, ledgerId, type, idempotencyKey)
+        rows.values.filter { row -> row.serverUrl == serverUrl && row.ownerKey == ownerKey && row.ledgerId == ledgerId &&
+            row.type == type && row.idempotencyKey == idempotencyKey }.sortedBy { row -> row.id }
     }
-
-    override suspend fun insertOriginalAndPublish(row: PendingMutationEntity, publish: suspend () -> Unit): Long =
-        originalCommandTransaction.withLock { super.insertOriginalAndPublish(row, publish) }
 
     override suspend fun findByIdempotencyKeys(
         ownerKey: String, ledgerId: String, type: String, keys: Collection<String>,
@@ -63,8 +53,8 @@ class FakePendingMutationDao : PendingMutationDao {
         .filter { it.ownerKey == ownerKey && it.ledgerId == ledgerId && it.type == type && it.idempotencyKey in keys }
         .sortedWith(compareBy({ it.createdAt }, { it.id }))
 
-    override suspend fun insertOriginalIncomeCreation(row: PendingMutationEntity): Long = incomeCreationAcceptance.withLock {
-        super.insertOriginalIncomeCreation(row)
+    override suspend fun insertOriginalCreation(row: PendingMutationEntity): Long = creationAcceptance.withLock {
+        super.insertOriginalCreation(row)
     }
 
     override suspend fun allRows(): List<PendingMutationEntity> = rows.values.sortedWith(compareBy({ it.createdAt }, { it.id }))

@@ -113,10 +113,10 @@ class GoalEditRepository(
         require(currentAccess()?.canModify == true) { "当前角色为只读，无法修改账本。" }
         require(creationKey.isNotBlank() && creationKey.length <= 64) { "原创建标识无法确认，请保留草稿并重新打开。" }
         val clean = draft.validatedGoalDraft().getOrThrow()
-        outbox.enqueue(boundRequest = bound, intent = PendingMutationIntent(
+        outbox.enqueueOriginalCreation(boundRequest = bound, intent = PendingMutationIntent(
             type = PendingMutationType.CreateGoal, targetId = "goal_create:$creationKey", expectedRowVersion = 0,
             payloadJson = createAdapter.toJson(clean.toRequest()), idempotencyKey = creationKey,
-        ), returnExistingOriginal = true)
+        ))
     }
 
     override fun describeCreation(row: OutboxRow): PendingGoalCreation? {

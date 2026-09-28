@@ -206,7 +206,7 @@ another binding never inherits it. Explicit original-submission inspection is
 separate from that draft. A user-confirmed draft discard removes only the local
 input, never stops a Room command or reverses an accepted target.
 
-The existing Room transaction accepts a stable task key once and preserves its
+The existing Room creation transaction shared with income accepts a stable task key once and preserves its
 immutable body and receipt. Two independent keys with identical content remain
 two intended creations. An older system snapshot rejoins its own original key,
 including a retained completion; unknown or abandoned originals remain evidence
@@ -221,7 +221,7 @@ Actual route destruction/reentry, registry save/restore and Room continuity are
 separate checks; none is described as OS process-kill qualification. Candidate
 runtime and exact main qualification remain pending. Debt-goal drafts and Web
 refresh/session durability remain separate gaps in the full product map.
- 
+
 ## Income creation continuity
 
 Income creation must retain a distinct unsubmitted task across closing and real

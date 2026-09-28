@@ -355,7 +355,6 @@ class OutboxRepository private constructor(
         boundRequest: BoundLedgerRequest?,
         intent: PendingMutationIntent,
         validateTargetRows: ((List<OutboxRow>) -> Unit)? = null,
-        returnExistingOriginal: Boolean = false,
         afterPersisted: suspend () -> Unit = {},
     ): Long {
         val id = bindingTransitionLease.withLock {
@@ -365,8 +364,7 @@ class OutboxRepository private constructor(
             validateTargetRows?.invoke(dao.expenseAdmissionRows(binding, intent.targetId, activeForTarget(binding, intent.targetId,
                 ACTIVE_STATUS_VALUES + PendingMutationStatus.Done.wireValue)))
             val row = intent.toEntity(binding, nowIso())
-            if (returnExistingOriginal) dao.insertOriginalAndPublish(row, afterPersisted)
-            else dao.insertAndPublish(row, afterPersisted)
+            dao.insertAndPublish(row, afterPersisted)
         }
         schedulePending()
         return id
@@ -382,11 +380,11 @@ class OutboxRepository private constructor(
     }
 
     /** Room, rather than this instance's binding mutex, owns the original create's atomic acceptance. */
-    internal suspend fun enqueueIncomeCreation(boundRequest: BoundLedgerRequest, intent: PendingMutationIntent): Long {
-        require(intent.type == PendingMutationType.CreateIncomePlan)
+    internal suspend fun enqueueOriginalCreation(boundRequest: BoundLedgerRequest, intent: PendingMutationIntent): Long {
+        require(intent.type in setOf(PendingMutationType.CreateIncomePlan, PendingMutationType.CreateGoal))
         val id = withActiveBinding(boundRequest) { binding ->
             binding.requireReadyForEnqueue()
-            dao.insertOriginalIncomeCreation(intent.toEntity(binding, nowIso()))
+            dao.insertOriginalCreation(intent.toEntity(binding, nowIso()))
         }
         schedulePending()
         return id

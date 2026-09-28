@@ -36,7 +36,7 @@ class GoalCreationAdmissionRoomTest {
         val row = intent(key).toEntity(outboxBinding(binding), Instant.now(fixture.clock).toString())
         // The Room transaction commits, but the caller never obtains its returned id.
         val acknowledgement = runCatching {
-            fixture.pendingDao.insertOriginalAndPublish(row) {}
+            fixture.pendingDao.insertOriginalCreation(row)
             throw IOException("Synthetic local acknowledgement lost after Room commit")
         }
         assertTrue(acknowledgement.isFailure)
@@ -56,11 +56,15 @@ class GoalCreationAdmissionRoomTest {
         val binding = requireNotNull(repository.currentAccess()).binding
         val second = OutboxRepository(fixture.pendingDao, fixture.clock, onRowsDeleted = {},
             bindingProvider = { outboxBinding(binding) })
+        val snapshot = BoundSessionSnapshot(binding.serverUrl, binding.ledgerId,
+            requireNotNull(OutboxOwnerIdentity.parseOrNull(binding.ownerKey)), "synthetic-session",
+            binding.sessionGeneration, binding.bindingRevision)
+        val bound = BoundLedgerRequest(fixture.network.service, snapshot) { snapshot }
         val start = CompletableDeferred<Unit>()
         val admissions = listOf(fixture.outbox, second).map { queue ->
             async(Dispatchers.IO) {
                 start.await()
-                queue.enqueue(boundRequest = null, intent = intent(key), returnExistingOriginal = true)
+                queue.enqueueOriginalCreation(bound, intent(key))
             }
         }
         start.complete(Unit)
@@ -125,7 +129,7 @@ class GoalCreationAdmissionRoomTest {
     }
 
     private suspend fun assertOriginalRefused(changed: PendingMutationEntity) {
-        assertTrue(runCatching { fixture.pendingDao.insertOriginalAndPublish(changed) {} }.isFailure)
+        assertTrue(runCatching { fixture.pendingDao.insertOriginalCreation(changed) }.isFailure)
     }
 
     private fun intent(creationKey: String) = PendingMutationIntent(PendingMutationType.CreateGoal,
