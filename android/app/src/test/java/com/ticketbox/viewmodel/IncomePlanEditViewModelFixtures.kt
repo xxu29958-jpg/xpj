@@ -73,7 +73,6 @@ internal class FakeIncomePlanEditRepository(
     override suspend fun recoverSubmission(expectedBinding: LogicalSessionBinding,
         pending: com.ticketbox.data.repository.PendingIncomePlanSubmission, drop: Boolean) = Result.success(Unit)
 
-    override fun canModifyLedger(): Boolean = activeAccessFlow.value?.canModify ?: false
 
     override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> = activeAccessFlow
 
@@ -88,9 +87,13 @@ internal class FakeIncomePlanEditRepository(
         return Result.success(active.plans.filter { it.status == status })
     }
 
+    override suspend fun originalCreation(expectedBinding: LogicalSessionBinding,
+        creationKey: String): Result<com.ticketbox.data.repository.PendingIncomePlanSubmission?> = Result.success(null)
+
     override suspend fun create(
         expectedBinding: LogicalSessionBinding,
         draft: IncomePlanDraft,
+        creationKey: String,
     ): Result<Long> = throw UnsupportedOperationException("create not used in edit tests")
 
     override suspend fun enqueueUpdate(
