@@ -29,6 +29,7 @@ def test_api_openapi_responses_use_project_error_envelope() -> None:
         "request_id",
         "conflict_tag_public_id",
         "conflict_tag_row_version",
+        "category_references",
     }.issubset(error_schema["properties"])
 
     checked = 0

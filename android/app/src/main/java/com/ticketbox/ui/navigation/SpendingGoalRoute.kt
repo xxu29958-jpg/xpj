@@ -44,6 +44,7 @@ internal data class SpendingGoalRouteContext(
     val originalGoalPublicId: String? = null,
     val financialDataRevision: Int = 0,
     val backText: Int = R.string.spending_goal_detail_back,
+    val returnToCaller: Boolean = false,
 )
 
 @Composable
@@ -70,10 +71,7 @@ internal fun SpendingGoalsRoute(
             ),
         ),
         onBack = onBack,
-        originalCreationId = context.originalCreationId,
-        originalGoalPublicId = context.originalGoalPublicId,
-        financialDataRevision = context.financialDataRevision,
-        backText = context.backText,
+        context = context,
     )
 }
 
@@ -81,29 +79,26 @@ internal fun SpendingGoalsRoute(
 private fun SpendingGoalRouteContent(
     models: SpendingGoalRouteModels,
     onBack: () -> Unit,
-    originalCreationId: Long?,
-    originalGoalPublicId: String?,
-    financialDataRevision: Int,
-    backText: Int,
+    context: SpendingGoalRouteContext,
 ) {
-    var page by rememberSaveable(originalCreationId, originalGoalPublicId) { mutableStateOf(when {
-        originalCreationId != null -> SpendingGoalPage.Create
-        originalGoalPublicId != null -> SpendingGoalPage.Detail
+    var page by rememberSaveable(context.originalCreationId, context.originalGoalPublicId) { mutableStateOf(when {
+        context.originalCreationId != null -> SpendingGoalPage.Create
+        context.originalGoalPublicId != null -> SpendingGoalPage.Detail
         else -> SpendingGoalPage.List
     }) }
-    var creationToOpen by rememberSaveable(originalCreationId) { mutableStateOf(originalCreationId) }
-    var detailPublicId by rememberSaveable(originalGoalPublicId) { mutableStateOf(originalGoalPublicId) }
+    var creationToOpen by rememberSaveable(context.originalCreationId) { mutableStateOf(context.originalCreationId) }
+    var detailPublicId by rememberSaveable(context.originalGoalPublicId) { mutableStateOf(context.originalGoalPublicId) }
     var createMonth by rememberSaveable { mutableStateOf(models.list.monthForNewGoal) }
     val detailState by models.detail.state.collectAsStateWithLifecycle()
     val closeDetail = {
         detailPublicId = null
-        if (originalGoalPublicId != null) onBack() else page = SpendingGoalPage.List
+        if (context.returnToCaller) onBack() else page = SpendingGoalPage.List
     }
 
-    LaunchedEffect(financialDataRevision) {
-        if (financialDataRevision > 0) models.list.refresh()
+    LaunchedEffect(context.financialDataRevision) {
+        if (context.financialDataRevision > 0) models.list.refresh()
     }
-    LaunchedEffect(page, detailPublicId, financialDataRevision, detailState.isEditing) {
+    LaunchedEffect(page, detailPublicId, context.financialDataRevision, detailState.isEditing) {
         if (page == SpendingGoalPage.Detail && !detailState.isEditing) {
             detailPublicId?.let(models.detail::load)
         }
@@ -140,7 +135,7 @@ private fun SpendingGoalRouteContent(
         )
         SpendingGoalPage.Detail -> SpendingGoalDetailScreen(
             viewModel = models.detail,
-            backText = backText,
+            backText = context.backText,
             onBack = closeDetail,
         )
     }

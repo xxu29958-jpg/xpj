@@ -38,6 +38,7 @@ class OpenApiContractGateTest {
 
     private val pairs = listOf(
         Pairing(ErrorDto::class, "ErrorResponse"),
+        Pairing(CategoryReferenceDto::class, "CategoryReferenceResponse"),
         Pairing(AuthCheckDto::class, "AuthCheckResponse"),
         Pairing(PairRequestDto::class, "PairRequest"),
         Pairing(PairResponseDto::class, "PairResponse"),

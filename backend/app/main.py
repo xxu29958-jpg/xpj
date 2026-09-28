@@ -288,7 +288,9 @@ def _custom_openapi() -> dict:
     )
     component_root = schema.setdefault("components", {})
     components = component_root.setdefault("schemas", {})
-    components["ErrorResponse"] = ErrorResponse.model_json_schema(ref_template="#/components/schemas/{model}")
+    error_schema = ErrorResponse.model_json_schema(ref_template="#/components/schemas/{model}")
+    components.update(error_schema.pop("$defs", {}))
+    components["ErrorResponse"] = error_schema
     parameter_components = component_root.setdefault("parameters", {})
     parameter_components["TicketboxApiVersion"] = {
         "name": "Ticketbox-Api-Version",

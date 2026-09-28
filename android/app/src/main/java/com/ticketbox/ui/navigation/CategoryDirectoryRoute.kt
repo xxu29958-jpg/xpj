@@ -58,4 +58,3 @@ private fun categoryReferenceRoute(reference: CategoryReference): String = when 
     CategoryReferenceKind.Budget -> budgetRoute(reference.id)
     CategoryReferenceKind.SpendingGoal -> spendingGoalEditRoute(reference.id)
 }
-

@@ -38,11 +38,13 @@ internal fun NavGraphBuilder.addPlanRoutes(
             val creationOwner = remember(runtime.navController, entry) {
                 runtime.navController.getBackStackEntry(MAIN_ROUTE)
             }
+            val backToCategories = navController.previousBackStackEntry?.destination?.route == TRANSACTIONS_LIBRARY_CATEGORIES_ROUTE
             SpendingGoalsRoute(
                 context = SpendingGoalRouteContext(creationOwner,
                     originalCreationId = entry.arguments?.getString("create")?.toLongOrNull(),
                     originalGoalPublicId = entry.arguments?.getString("goal"),
-                    backText = if (navController.previousBackStackEntry?.destination?.route == TRANSACTIONS_LIBRARY_CATEGORIES_ROUTE)
+                    returnToCaller = backToCategories,
+                    backText = if (backToCategories)
                         R.string.category_directory_back else R.string.spending_goal_detail_back,
                     financialDataRevision = shellState.financialDataRevision),
                 screenFactory = screenFactory, onBack = onBack,
