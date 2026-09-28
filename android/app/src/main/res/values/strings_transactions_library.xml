@@ -34,4 +34,6 @@
     <string name="category_directory_load_failed">暂时无法读取自定义分类。</string>
     <string name="category_directory_delete_failed">暂时无法移除这个分类。</string>
     <string name="category_directory_retry">重新加载</string>
+    <string name="category_directory_references">使用此分类的配置</string>
+    <string name="category_directory_back">返回分类</string>
 </resources>

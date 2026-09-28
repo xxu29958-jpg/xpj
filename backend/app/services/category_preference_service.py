@@ -310,67 +310,74 @@ def _ensure_category_can_be_deleted(
     tenant_id: str,
     name: str,
 ) -> None:
-    if _category_has_active_config_reference(db, tenant_id=tenant_id, name=name):
+    references = _active_category_references(db, tenant_id=tenant_id, name=name)
+    if references:
         raise AppError(
             "state_conflict",
             "这个分类仍被规则、预算或目标使用，请先处理相关配置。",
             status_code=409,
+            details={"category_references": references},
         )
 
 
-def _category_has_active_config_reference(
+def _active_category_references(
     db: Session,
     *,
     tenant_id: str,
     name: str,
-) -> bool:
+) -> list[dict[str, str]]:
     values = category_filter_values(name)
-    if db.scalar(
-        select(CategoryRule.id)
+    rules = db.scalars(
+        select(CategoryRule)
         .where(CategoryRule.tenant_id == tenant_id)
         .where(CategoryRule.deleted_at.is_(None))
         .where(CategoryRule.enabled.is_(True))
         .where(CategoryRule.category.in_(values))
-        .limit(1)
-    ):
-        return True
-    if db.scalar(
-        select(BudgetCategory.id)
-        .join(
-            Budget,
-            (Budget.tenant_id == BudgetCategory.tenant_id)
-            & (Budget.month == BudgetCategory.month),
+        .order_by(CategoryRule.id.asc())
+    )
+    references = [
+        {"kind": "rule", "id": str(rule.id), "label": f"规则「{rule.keyword}」"}
+        for rule in rules
+    ]
+    category_budget_months = set(
+        db.scalars(
+            select(BudgetCategory.month)
+            .join(
+                Budget,
+                (Budget.tenant_id == BudgetCategory.tenant_id)
+                & (Budget.month == BudgetCategory.month),
+            )
+            .where(BudgetCategory.tenant_id == tenant_id)
+            .where(BudgetCategory.category.in_(values))
+            .where(Budget.archived_at.is_(None))
         )
-        .where(BudgetCategory.tenant_id == tenant_id)
-        .where(BudgetCategory.category.in_(values))
-        .where(Budget.archived_at.is_(None))
-        .limit(1)
-    ):
-        return True
-    if db.scalar(
-        select(Goal.id)
-        .where(Goal.tenant_id == tenant_id)
-        .where(Goal.status == "active")
-        .where(Goal.goal_type == "spending_limit")
-        .where(Goal.category.in_(values))
-        .limit(1)
-    ):
-        return True
+    )
     key = category_preference_key(name)
-    return _active_budget_excludes_category(db, tenant_id=tenant_id, key=key)
-
-
-def _active_budget_excludes_category(db: Session, *, tenant_id: str, key: str) -> bool:
     budgets = db.scalars(
         select(Budget)
         .where(Budget.tenant_id == tenant_id)
         .where(Budget.archived_at.is_(None))
-        .where(Budget.excluded_categories.is_not(None))
+        .order_by(Budget.month.asc())
     )
-    return any(
-        key in _parse_budget_excluded_category_keys(budget.excluded_categories)
+    references.extend(
+        {"kind": "budget", "id": budget.month, "label": f"预算「{budget.month}」"}
         for budget in budgets
+        if budget.month in category_budget_months
+        or key in _parse_budget_excluded_category_keys(budget.excluded_categories)
     )
+    goals = db.scalars(
+        select(Goal)
+        .where(Goal.tenant_id == tenant_id)
+        .where(Goal.status == "active")
+        .where(Goal.goal_type == "spending_limit")
+        .where(Goal.category.in_(values))
+        .order_by(Goal.id.asc())
+    )
+    references.extend(
+        {"kind": "goal", "id": goal.public_id, "label": f"目标「{goal.name}」"}
+        for goal in goals
+    )
+    return references
 
 
 def _parse_budget_excluded_category_keys(value: str | None) -> set[str]:

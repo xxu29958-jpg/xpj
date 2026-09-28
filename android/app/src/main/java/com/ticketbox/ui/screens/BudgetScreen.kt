@@ -56,8 +56,9 @@ fun BudgetScreen(
     actions: BudgetScreenActions,
     onHistory: () -> Unit,
     onBack: (() -> Unit)? = null,
+    backText: String? = null,
 ) {
-    BudgetScreenContent(state = state, actions = actions, onBack = onBack, onHistory = onHistory)
+    BudgetScreenContent(state = state, actions = actions, onBack = onBack, onHistory = onHistory, backText = backText)
 }
 
 @Composable
@@ -66,6 +67,7 @@ private fun BudgetScreenContent(
     actions: BudgetScreenActions,
     onBack: (() -> Unit)?,
     onHistory: () -> Unit,
+    backText: String?,
 ) {
     val currencyDisplay = CurrencyDisplay.forRecord(state.budget?.homeCurrencyCode ?: "UNKNOWN")
     val decision = budgetPageDecision(state)
@@ -75,7 +77,7 @@ private fun BudgetScreenContent(
             role = AppPageRole.Stats,
             title = stringResource(R.string.budget_header_title),
             subtitle = stringResource(R.string.budget_header_subtitle, state.month),
-            backText = stringResource(R.string.budget_back_to_stats),
+            backText = backText ?: stringResource(R.string.budget_back_to_stats),
             onBack = onBack,
             hasBottomBar = onBack == null,
             verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap),

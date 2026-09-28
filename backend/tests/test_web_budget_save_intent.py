@@ -14,7 +14,8 @@ from app.services import budget_command_service as command
 def _draft(**changes):
     return dict(home_currency_code="JPY", expected_row_version="null", total_amount_yuan="1200",
         rollover_amount_yuan="-20", non_monthly_amount_yuan="", excluded_category=[], excluded_categories="",
-        category_budget_category=["食事"], category_budget_amount_yuan=["100"], category_budget_remove=set(), **changes)
+        category_budget_category=["食事"], category_budget_amount_yuan=["100"], category_budget_remove=set(),
+        return_category="original-category", return_month="2026-02", **changes)
 
 
 def test_budget_form_parses_captured_jpy_without_a_default_currency():

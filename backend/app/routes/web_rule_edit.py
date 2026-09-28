@@ -3,7 +3,7 @@
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
@@ -16,6 +16,8 @@ from app.routes.web_common import (
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _web_redirect,
+    _with_ledger,
+    category_return_url,
     parse_form_row_version_token,
     preserve_original_ledger_form,
     templates,
@@ -43,15 +45,19 @@ def _edit_scope(request: Request, db: Session, ledger_id: str, rule_id: int):
 
 
 def _render_editor(request, db, options, selected_id, rule, *, rule_id=None, values=None,
-                   error=None, conflict=False, status_code=200):
+                   error=None, conflict=False, status_code=200, return_category="", return_month=""):
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id)
     current = rule_edit_values(rule, new_currency=ctx["home_currency_code"]) if rule else {}
-    draft = values if values is not None else {**current, "idempotency_key": str(uuid4())}
+    draft = values if values is not None else {**current, "idempotency_key": str(uuid4()),
+        "return_category": return_category, "return_month": return_month}
     ctx.update(
         rule=rule, rule_id=rule.id if rule else rule_id, current=current, rule_draft=draft,
         rule_currency_input=rule_currency_input(draft.get("home_currency_code")),
         currency_matches=rule is not None and rule_form_currency_matches(rule, draft), rule_amount_label=rule_amount_label,
         error=error, conflict=conflict, q="?ledger_id=" + selected_id,
+        category_return_url=category_return_url(selected_id, draft.get("return_category", ""), draft.get("return_month", "")),
+        current_edit_url=_with_ledger(f"/web/rules/{rule.id if rule else rule_id}/edit", selected_id,
+            return_category=draft.get("return_category", ""), return_month=draft.get("return_month", "")),
     )
     return templates.TemplateResponse(request=request, name="rule_edit.html",
         context=ctx, status_code=status_code)
@@ -59,11 +65,13 @@ def _render_editor(request, db, options, selected_id, rule, *, rule_id=None, val
 
 @router.get("/{rule_id}/edit", response_class=HTMLResponse)
 def web_rule_edit(request: Request, rule_id: int, ledger_id: str = "",
+                  return_category: str = "", return_month: str = "",
                   _local: None = LocalOnly, db: Session = Depends(get_db)):
     options, selected_id, rule = _edit_scope(request, db, ledger_id, rule_id)
     if rule is None:
         raise AppError("rule_not_found", "规则不存在。", status_code=404)
-    return _render_editor(request, db, options, selected_id, rule)
+    return _render_editor(request, db, options, selected_id, rule,
+        return_category=return_category, return_month=return_month)
 
 
 @router.post("/{rule_id}/edit", response_class=HTMLResponse)
@@ -74,6 +82,7 @@ def web_rule_save(
     source_contains: str = Form(""), tag_contains: str = Form(""),
     home_currency_code: str = Form(""), expected_row_version: str = Form(""),
     idempotency_key: str = Form(""), review_latest: bool = Form(False),
+    return_category: str = Form(""), return_month: str = Form(""),
     _local: None = LocalOnly, db: Session = Depends(get_db),
 ):
     options = _list_ledger_options(db)
@@ -84,6 +93,7 @@ def web_rule_save(
         "source_contains": source_contains, "tag_contains": tag_contains,
         "home_currency_code": home_currency_code, "expected_row_version": expected_row_version,
         "idempotency_key": idempotency_key,
+        "return_category": return_category, "return_month": return_month,
     }
     retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
         fields={**values, "ledger_id": ledger_id, "review_latest": review_latest}, task="修改分类规则")
@@ -110,4 +120,7 @@ def web_rule_save(
             error = "这份表单已提交过或规则已更新。输入已保留，请核对当前规则后再保存。"
         return _render_editor(request, db, options, selected_id, rule, rule_id=rule_id, values=values,
             error=error, conflict=conflict, status_code=exc.status_code if isinstance(exc, AppError) else 422)
+    target = category_return_url(selected_id, return_category, return_month, message="规则修改已保存，可以继续整理原分类。")
+    if target:
+        return RedirectResponse(target, status_code=303)
     return _web_redirect("/web/rules", selected_id, msg="规则修改已保存。已有账单仍需预览并确认后才应用。")

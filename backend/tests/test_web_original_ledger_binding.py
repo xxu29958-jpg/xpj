@@ -89,14 +89,16 @@ def test_switched_session_keeps_original_form_before_any_object_read_or_command(
         "home_currency_code": "JPY", "month": "2026-09", "intent_month": "2026-09", "amount_yuan": "1200",
         "target_amount_yuan": "1200", "baseline_amount_yuan": "1200", "amount_min_yuan": "1200",
         "pay_day": "10", "expected_row_version": "3", "idempotency_key": "original-key",
-        "public_id": "original-object", "rule_id": 17, "enabled": False, "action": "clear", "amount_cents": "1200"}
+        "public_id": "original-object", "rule_id": 17, "enabled": False, "action": "clear", "amount_cents": "1200",
+        "return_category": "original-category", "return_month": "2026-02"}
     values.update({key: value for key, value in supplied.items() if key in inspect.signature(handler).parameters})
     response = handler(_request(path, current_role), **values, db=Mock(), _local=None)
     assert response.status_code == 409
     html = response.body.decode()
     assert 'name="ledger_id" value="old-ledger"' in html
     assert f'action="{path}"' in html
-    for field in ("idempotency_key", "expected_row_version", "amount_yuan", "baseline_amount_yuan", "target_amount_yuan"):
+    for field in ("idempotency_key", "expected_row_version", "amount_yuan", "baseline_amount_yuan", "target_amount_yuan",
+        "return_category", "return_month"):
         if field in values:
             assert f'name="{field}" value="{values[field]}"' in html
     assert "切回原账本" in html
