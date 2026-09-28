@@ -2,6 +2,12 @@
 {% set page_title = '编辑消费目标' %}
 {% set product_body_domain = 'plans' %}
 {% block title %}编辑消费目标 · 小票夹{% endblock %}
+{% block page_scripts %}
+{% if goal_draft_scope %}
+<script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/plan-entry.js?v={{ asset_version }}"></script>
+{% endif %}
+{% endblock %}
 {% block content %}
 <header class="product-page-header">
   <div class="product-page-heading">
@@ -14,19 +20,27 @@
 </header>
 <div class="plan-flow">
   {% if error %}<div class="product-feedback product-feedback--danger" role="alert">{{ error }}</div>{% endif %}
+  {% if can_write is defined and not can_write %}<div class="product-feedback" role="status">当前角色为只读，原修改仍保留；恢复编辑权限后可继续。</div>{% endif %}
   {% if goal.status == 'archived' %}<div class="product-feedback" role="status">目标已归档。请先到回收站恢复，再继续修改。</div>{% endif %}
   <section class="product-panel product-panel--padded" aria-label="编辑消费目标">
     <div class="product-panel-header">
       <h2 class="product-panel-title">目标设置</h2>
       <p class="product-panel-subtitle">修改月份后，进度会按所选月份的已确认支出重新计算。</p>
     </div>
-    <form method="post" action="/web/goals/{{ goal.public_id }}/edit" class="budget-form">
+    {% if goal_draft_scope %}<div data-goal-draft-shelf hidden><p class="meta">此浏览器保留的目标任务</p><ul data-goal-draft-list></ul></div>{% endif %}
+    <form method="post" action="/web/goals/{{ goal.public_id }}/edit" class="budget-form"
+      {% if goal_draft_scope %}data-goal-draft-scope="{{ goal_draft_scope | tojson | forceescape }}"
+      data-goal-plan-id="{{ goal.public_id }}" data-goal-native-result="{{ goal_draft_result | default('') }}"
+      data-goal-can-write="{{ 'false' if can_write is defined and not can_write else 'true' }}"
+      data-goal-archived="{{ 'true' if goal.status == 'archived' else 'false' }}"{% endif %}>
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       <input type="hidden" name="return_category" value="{{ values.get('return_category', '') }}">
       <input type="hidden" name="return_month" value="{{ values.get('return_month', '') }}">
       <input type="hidden" name="expected_row_version" value="{{ values.expected_row_version }}">
       <input type="hidden" name="idempotency_key" value="{{ values.idempotency_key }}">
       <input type="hidden" name="home_currency_code" value="{{ values.home_currency_code }}">
+      <input type="hidden" name="public_id" value="{{ goal.public_id }}">
+      {% if goal_draft_scope %}<input type="hidden" name="draft_scope" value="{{ values.get('draft_scope', goal_draft_scope | tojson) | forceescape }}">{% endif %}
       {{ csrf_field|safe }}
       <div class="product-form-grid">
         <div class="product-field">
@@ -38,8 +52,8 @@
           <input id="goal-edit-month" class="product-input" type="month" name="month" value="{{ values.month }}" required>
         </div>
         <div class="product-field">
-          <label for="goal-edit-amount">目标金额（{{ form_currency.currency_code or '原币种待确认' }}，{{ form_currency.amount_input_hint }}）</label>
-          <input id="goal-edit-amount" class="product-input" type="text" name="target_amount_yuan" value="{{ values.target_amount_yuan }}" inputmode="{{ form_currency.inputmode or 'text' }}" required>
+          <label for="goal-edit-amount" data-goal-amount-label>目标金额（{{ form_currency.currency_code or '原币种待确认' }}，{{ form_currency.amount_input_hint }}）</label>
+          <input id="goal-edit-amount" class="product-input" type="text" name="target_amount_yuan" value="{{ values.target_amount_yuan }}" inputmode="{{ form_currency.inputmode or 'text' }}" placeholder="{{ form_currency.amount_example }}" required>
         </div>
         <div class="product-field">
           <label for="goal-edit-category">分类（留空为总支出）</label>
@@ -51,10 +65,18 @@
           <p role="status">原输入币种与当前目标不一致或无法确认，原金额、版本和提交标识已保留。请先核对当前目标。</p>
           <a class="product-button product-button--quiet" target="_blank" rel="noopener" href="{{ current_edit_url }}">在新窗口打开当前目标</a>
         {% elif goal.status != 'archived' %}
-          {% if conflict %}<button class="product-button product-button--primary" type="submit" name="review_latest" value="true" formnovalidate>保留输入，按当前目标核对</button>
+          {% if can_write is defined and not can_write %}<button class="product-button product-button--primary" type="submit" {% if values.get('review_latest') %}name="review_latest" value="true" formnovalidate{% endif %}>权限恢复后重试{{ '核对' if values.get('review_latest') else '保存' }}</button>
+          {% elif conflict %}<button class="product-button product-button--primary" type="submit" name="review_latest" value="true" formnovalidate>保留输入，按当前目标核对</button>
           {% else %}<button class="product-button product-button--primary" type="submit">保存修改</button>{% endif %}
+        {% elif goal_draft_scope %}<button class="product-button" type="submit" disabled hidden>核实原目标修改</button>
         {% endif %}
       </div>
+      {% if goal_draft_scope %}
+      <p class="product-feedback" data-goal-draft-status role="status" aria-live="polite" hidden></p>
+      <p class="meta" data-goal-review-note hidden>请先核对下方当前已保存的目标。重新核对只准备新修改；原提交仍保留，不会再次保存。</p>
+      <button class="product-button product-button--quiet" type="submit" name="review_latest" value="true" data-goal-review formnovalidate hidden>已核对，保留输入准备修改</button>
+      <button class="product-button product-button--quiet" type="button" data-goal-discard hidden>放弃此浏览器的原稿</button>
+      {% endif %}
     </form>
   </section>
   <section class="product-panel product-panel--padded" aria-label="当前已保存的目标">

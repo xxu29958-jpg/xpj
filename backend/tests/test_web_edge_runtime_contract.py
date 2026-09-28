@@ -641,7 +641,7 @@ def test_goal_original_input_survives_reload_and_reopening_in_real_edge(tmp_path
         values = {**current, "idempotency_key": newer_key if newer else original_key,
             "return_category": query.get("return_category", [""])[0], "return_month": query.get("return_month", [""])[0]}
         return template.render(values=values, current=current, month=current["month"], goals=[], include_archived=False,
-            goal={"public_id": "goal-original", "status": "active"}, can_write=True, currency_matches=True,
+            goal={"public_id": "goal-original", "status": "archived" if posts else "active"}, can_write=True, currency_matches=True,
             form_currency={"currency_code": currency, "amount_input_hint": "整数日元" if currency == "JPY" else "两位小数",
                 "inputmode": "numeric" if currency == "JPY" else "decimal", "amount_example": "0"},
             selected_ledger_id=scope["ledgerId"], goal_draft_scope=scope, goal_draft_result="",
@@ -662,11 +662,12 @@ def test_goal_original_input_survives_reload_and_reopening_in_real_edge(tmp_path
 
         def do_GET(self):
             requested = urlsplit(self.path).path
-            if requested == "/":
-                self.reply(b'<!doctype html><html><head><meta charset="utf-8"></head><body><script src="/probe.js"></script></body></html>')
-                return
             if requested == path:
                 self.reply(goal_page(parse_qs(urlsplit(self.path).query)))
+                return
+            if requested in {"/", "/web/categories", "/web/goals"}:
+                self.reply(b'<!doctype html><html><head><meta charset="utf-8"></head><body><script src="/probe.js"></script></body></html>'
+                    if requested == "/" else b"<!doctype html><html><body>Original task after acknowledgement</body></html>")
                 return
             if requested == "/probe.js":
                 self.reply(('window.__goalDraftCase=' + json.dumps(spec) + ';\n').encode() +
@@ -681,8 +682,20 @@ def test_goal_original_input_survives_reload_and_reopening_in_real_edge(tmp_path
             self.reply(b"not found", status=404)
 
         def do_POST(self):
-            posts.append(self.path)
-            self.reply(b"unexpected write", status=409)
+            raw = self.rfile.read(int(self.headers["Content-Length"]))
+            message = BytesParser(policy=policy.default).parsebytes(
+                f'Content-Type: {self.headers["Content-Type"]}\r\nMIME-Version: 1.0\r\n\r\n'.encode() + raw)
+            submitted = {part.get_param("name", header="content-disposition"): part.get_payload(decode=True).decode("utf-8")
+                for part in message.iter_parts()}
+            posts.append({"path": self.path, "fields": submitted})
+            if len(posts) == 1:
+                self.reply(b'{"message":"Receipt unavailable"}', content_type="application/json", status=503)
+                return
+            destination = "/web/goals?ledger_id=goal-ledger&month=2026-09" if kind == "create" else \
+                "/web/categories?ledger_id=goal-ledger&month=2026-09#category-food"
+            body = {"ack": {"scope": scope, "clientRef": original_key},
+                "receipt": {"public_id": "goal-original", "row_version": 8, "target_amount_cents": 1200}, "next": destination}
+            self.reply(json.dumps(body).encode(), content_type="application/json")
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -701,12 +714,18 @@ def test_goal_original_input_survives_reload_and_reopening_in_real_edge(tmp_path
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
-    assert posts == [] and missing == [], (posts, missing)
+    assert missing == [], missing
     assert isinstance(probe, dict) and probe.get("error") is None, probe
-    _assert_original_goal_recovered(probe, spec, original_key, kind)
+    _assert_original_goal_recovered(probe, spec, original_key, kind, posts, scope)
 
 
-def _assert_original_goal_recovered(probe, spec, original_key, kind):
+def _assert_original_goal_recovered(probe, spec, original_key, kind, posts, scope):
+    assert len(posts) == 2 and posts[0] == posts[1], posts
+    sent = {**probe["before"]["fields"], "ledger_id": scope["ledgerId"], "csrf_token": "synthetic",
+        "draft_scope": json.dumps(scope, separators=(",", ":"))}
+    if kind == "edit":
+        sent["public_id"] = "goal-original"
+    assert posts[0] == {"path": spec["action"], "fields": sent}, posts
     expected = {**spec["input"], "month": "2026-09", "home_currency_code": "JPY", "idempotency_key": original_key}
     if kind == "edit":
         expected.update(expected_row_version="7", return_category="food", return_month="2026-09")
@@ -716,3 +735,8 @@ def _assert_original_goal_recovered(probe, spec, original_key, kind):
     assert probe["reopened"]["fields"] == expected and "JPY" in probe["reopened"]["amountLabel"], probe
     if kind == "edit":
         assert "另一端已修改" in probe["reopened"]["current"], probe
+        assert probe["archived"] and probe["destination"] == "/web/categories?ledger_id=goal-ledger&month=2026-09#category-food", probe
+    else:
+        assert probe["destination"] == "/web/goals?ledger_id=goal-ledger&month=2026-09", probe
+    assert probe["unknown"]["fields"] == probe["unresolved"]["fields"] == expected, probe
+    assert probe["frozen"] and probe["remaining"] is None, probe

@@ -2,6 +2,12 @@
 {% set page_title = '月度目标' %}
 {% set product_body_domain = 'plans' %}
 {% block title %}月度目标 · 小票夹{% endblock %}
+{% block page_scripts %}
+{% if goal_draft_scope %}
+<script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/plan-entry.js?v={{ asset_version }}"></script>
+{% endif %}
+{% endblock %}
 
 {# C2 月度目标迁入 product 正文栈:
    - 信息层级新上旧下: 「目标进度」列表是主体前置, 创建表单收在列表之后;
@@ -85,25 +91,30 @@
   {% endif %}
 </section>
 
-{% if can_write %}
+{% if can_write or goal_draft_scope or goal_draft_result %}
 <section class="product-panel product-panel--padded" id="new-goal" aria-label="新建目标">
   <div class="product-panel-header">
     <h2 class="product-panel-title">新建目标</h2>
     <p class="product-panel-subtitle">不影响预算，仅做提醒。</p>
   </div>
-  <form method="post" action="/web/goals/create" class="budget-form">
+  {% if goal_draft_scope %}<div data-goal-draft-shelf hidden><p class="meta">此浏览器保留的目标任务</p><ul data-goal-draft-list></ul></div>{% endif %}
+  <form method="post" action="/web/goals/create" class="budget-form"
+    {% if goal_draft_scope %}data-goal-draft-scope="{{ goal_draft_scope | tojson | forceescape }}"
+    data-goal-native-result="{{ goal_draft_result | default('') }}" data-goal-can-write="{{ 'true' if can_write else 'false' }}"{% endif %}>
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
     <input type="hidden" name="month" value="{{ values.month }}">
     <input type="hidden" name="home_currency_code" value="{{ values.home_currency_code }}">
     <input type="hidden" name="idempotency_key" value="{{ values.idempotency_key }}">
+    {% if goal_draft_scope %}<input type="hidden" name="draft_scope" value="{{ values.get('draft_scope', goal_draft_scope | tojson) | forceescape }}">{% endif %}
     {{ csrf_field|safe }}
+    <p class="meta" data-goal-intent>本次目标属于 {{ values.month }}，失败重试保留原月份和金额。</p>
     <div class="product-form-grid">
       <div class="product-field">
         <label for="goal-create-name">目标名称</label>
         <input id="goal-create-name" class="product-input" type="text" name="name" value="{{ values.name }}" maxlength="80" placeholder="本月餐饮" required>
       </div>
       <div class="product-field">
-        <label for="goal-create-amount">目标金额（{{ form_currency.currency_code or '币种待确认' }}，{{ form_currency.amount_input_hint }}）</label>
+        <label for="goal-create-amount" data-goal-amount-label>目标金额（{{ form_currency.currency_code or '币种待确认' }}，{{ form_currency.amount_input_hint }}）</label>
         <input id="goal-create-amount" class="product-input" type="text" name="target_amount_yuan" value="{{ values.target_amount_yuan }}" inputmode="{{ form_currency.inputmode or 'text' }}" placeholder="{{ form_currency.amount_example }}" required>
       </div>
       <div class="product-field">
@@ -112,9 +123,17 @@
       </div>
     </div>
     <div class="budget-actions">
-      {% if form_currency %}<button class="product-button product-button--primary" type="submit">保存目标</button>
+      {% if form_currency %}
+        {% if goal_draft_scope and goal_draft_result == 'blocked' and not values.get('draft_scope') %}<button class="product-button product-button--primary" type="submit" name="review_new" value="true" formnovalidate>已核对，准备新目标</button>
+        {% else %}<button class="product-button product-button--primary" type="submit">{{ '保存目标' if can_write else '权限恢复后重试保存' }}</button>{% endif %}
       {% else %}<p role="status">原表单缺少可确认的币种，输入已保留。请重新打开目标页后核对新表单。</p>{% endif %}
     </div>
+    {% if goal_draft_scope %}
+    <p class="product-feedback" data-goal-draft-status role="status" aria-live="polite" hidden></p>
+    <p class="meta" data-goal-review-note hidden>请先核对已保存的目标。准备新目标只保留输入并换用新编号，不会写入；原提交仍保留。</p>
+    <button class="product-button product-button--quiet" type="submit" name="review_new" value="true" data-goal-review formnovalidate hidden>已核对，保留输入准备新目标</button>
+    <button class="product-button product-button--quiet" type="button" data-goal-discard hidden>放弃此浏览器的原稿</button>
+    {% endif %}
   </form>
 </section>
 {% endif %}

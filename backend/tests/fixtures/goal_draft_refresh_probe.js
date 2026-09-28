@@ -5,6 +5,15 @@
   const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
   const form = () => frame.contentDocument.querySelector('form[action="' + spec.action + '"]');
   const field = name => form().elements.namedItem(name);
+  const submit = () => form().querySelector('[type="submit"]:not([name])');
+  async function until(predicate) {
+    const deadline = performance.now() + 2000;
+    while (performance.now() < deadline) {
+      if (predicate()) return;
+      await pause(25);
+    }
+    throw Error('goal state did not settle: ' + stage);
+  }
   function loaded() {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(Error('goal page did not load: ' + stage)), 3000);
@@ -47,6 +56,20 @@
     frame.remove(); frame = document.createElement('iframe');
     loading = loaded(); frame.src = spec.reopen; document.body.append(frame); await loading;
     result.reopened = await restored();
+    stage = 'publish the original with an unknown receipt';
+    form().requestSubmit(submit());
+    await until(() => form().dataset.goalDraftPhase === 'blocked');
+    result.unknown = snapshot();
+    result.frozen = field('name').readOnly && field('target_amount_yuan').readOnly;
+    stage = 'reopen unresolved original after later goal changes';
+    loading = loaded(); frame.contentWindow.location.reload(); await loading;
+    await until(() => form().dataset.goalDraftPhase === 'blocked' && !submit().disabled);
+    result.unresolved = snapshot();
+    result.archived = form().dataset.goalArchived === 'true';
+    stage = 'accept same original then return to the original task';
+    loading = loaded(); form().requestSubmit(submit()); await loading;
+    result.destination = frame.contentWindow.location.pathname + frame.contentWindow.location.search + frame.contentWindow.location.hash;
+    result.remaining = window.localStorage.getItem('ticketbox:goal-' + spec.kind + '-draft:v1:' + result.before.fields.idempotency_key);
   } catch (error) { result.error = {stage, message: String(error?.message || error)}; }
   window.__goalDraftProbe = result;
 })();
