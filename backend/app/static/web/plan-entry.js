@@ -5,17 +5,22 @@
   if (!form) return;
   const isGoal = form.hasAttribute("data-goal-draft-scope");
   const family = isGoal ? "goal" : "income";
-  const taskLabel = isGoal ? "消费目标" : "收入计划";
-  const listPath = isGoal ? "/web/goals" : "/web/income-plans";
+  const definition = {
+    goal: {label: "消费目标", list: "/web/goals", amount: "target_amount_yuan",
+      create: ["ledger_id", "home_currency_code", "month", "name", "target_amount_yuan", "category"],
+      edit: ["ledger_id", "home_currency_code", "month", "name", "target_amount_yuan", "category",
+        "public_id", "expected_row_version", "return_category", "return_month"]},
+    income: {label: "收入计划", list: "/web/income-plans", amount: "amount_yuan",
+      create: ["ledger_id", "home_currency_code", "intent_month", "label", "source_type", "frequency",
+        "income_month", "income_month_year", "income_month_number", "amount_yuan", "pay_day"],
+      edit: ["ledger_id", "home_currency_code", "intent_month", "public_id", "expected_row_version",
+        "label", "source_type", "frequency", "income_month", "amount_yuan", "pay_day"]},
+  }[family];
+  const taskLabel = definition.label, listPath = definition.list;
   const selector = suffix => "[data-" + family + "-" + suffix + "]";
   const data = suffix => form.dataset[family + suffix];
   const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
-  const createNames = isGoal ? ["ledger_id", "home_currency_code", "month", "name", "target_amount_yuan", "category"] :
-    ["ledger_id", "home_currency_code", "intent_month", "label", "source_type", "frequency",
-    "income_month", "income_month_year", "income_month_number", "amount_yuan", "pay_day"];
-  const editNames = isGoal ? [...createNames, "public_id", "expected_row_version", "return_category", "return_month"] :
-    ["ledger_id", "home_currency_code", "intent_month", "public_id", "expected_row_version",
-    "label", "source_type", "frequency", "income_month", "amount_yuan", "pay_day"];
+  const createNames = definition.create, editNames = definition.edit;
   const planId = data("PlanId") || "";
   const names = planId ? editNames : createNames;
   const createStore = window.TicketboxDraftStore.createStore({prefix: "ticketbox:" + family + "-create-draft:v1:",
@@ -34,7 +39,7 @@
   if (!submit) return;
   const nativeLabel = submit.textContent;
   const nativeRef = form.elements.namedItem("idempotency_key").value;
-  const amount = form.elements.namedItem(isGoal ? "target_amount_yuan" : "amount_yuan");
+  const amount = form.elements.namedItem(definition.amount);
   const shelf = document.querySelector(selector("draft-shelf"));
   const review = form.querySelector(selector("review"));
   const discard = form.querySelector(selector("discard"));
@@ -183,6 +188,13 @@
       notice((result.message || "暂未确认提交结果。") + " 原稿仍保留，可沿原提交核实；需要修改时先核对已有计划。");
       return;
     }
+    const next = receiptDestination(result, record);
+    accepted = true;
+    if (!store.acknowledge(result.ack)) throw Error("original_not_acknowledged");
+    notice(taskLabel + "已保存，正在返回…");
+    window.location.assign(next.href);
+  }
+  function receiptDestination(result, record) {
     if (!result.receipt?.public_id || (planId && result.receipt.public_id !== planId) ||
         result.ack?.clientRef !== ref || !store.matches(result.ack.scope, scope)) {
       throw Error("unconfirmed_receipt");
@@ -191,10 +203,7 @@
     const categoryReturn = isGoal && planId && record.values.return_category && next.pathname === "/web/categories";
     if (next.origin !== window.location.origin || (next.pathname !== listPath && !categoryReturn) ||
         next.searchParams.get("ledger_id") !== scope.ledgerId) throw Error("invalid_receipt_destination");
-    accepted = true;
-    if (!store.acknowledge(result.ack)) throw Error("original_not_acknowledged");
-    notice(taskLabel + "已保存，正在返回…");
-    window.location.assign(next.href);
+    return next;
   }
   form.addEventListener("input", capture);
   form.addEventListener("change", capture);

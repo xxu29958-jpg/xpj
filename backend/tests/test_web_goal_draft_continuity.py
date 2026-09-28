@@ -162,8 +162,10 @@ def test_goal_pre_binding_form_can_prepare_explicit_correction_without_writing(i
     refused = browser.post(action, data=fields, headers=origin)
     assert refused.status_code == 409, refused.text
     retained = hidden_post_forms(refused.text)[action]
-    for name in ("ledger_id", "month", "home_currency_code", "idempotency_key"):
+    for name in ("ledger_id", "home_currency_code", "idempotency_key"):
         assert retained[name] == fields[name]
+    # Creation keeps month hidden; the editor exposes it as a native month input.
+    assert re.search(r'name="month"\s+value="' + re.escape(fields["month"]) + r'"', refused.text)
     assert retained["draft_scope"] == "" and 'value="350.25"' in refused.text
     assert _facts() == before
     review_name = "review_new" if kind == "create" else "review_latest"

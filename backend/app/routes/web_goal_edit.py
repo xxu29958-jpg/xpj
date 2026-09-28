@@ -140,19 +140,7 @@ def web_goal_save(
             values.update(expected_row_version=str(goal.row_version), idempotency_key=str(uuid4()))
         return _render_editor(request, db, options, selected_id, goal, values=values, draft_result="prepared")
     try:
-        version = parse_form_row_version_token(expected_row_version)
-        if version is None:
-            raise AppError("state_conflict", status_code=409)
-        currency = normalize_currency_code(home_currency_code)
-        if currency != goal.home_currency_code:
-            raise AppError("goal_currency_conflict", "原输入币种与目标不一致。输入已保留，请核对当前目标。", status_code=409)
-        payload = GoalUpdateRequest(
-            name=name, month=month, category=category.strip() or None,
-            home_currency_code=currency,
-            target_amount_cents=_parse_amount_yuan(
-                target_amount_yuan, currency_code=currency,
-            ), expected_row_version=version,
-        )
+        payload = _goal_edit_payload(values, goal.home_currency_code)
         result = update_goal_idempotently(
             db, tenant_id=selected_id, public_id=public_id, payload=payload,
             idempotency_key=idempotency_key, timezone_name=get_settings().ocr_default_timezone,
@@ -165,6 +153,18 @@ def web_goal_save(
         "/web/goals", selected_id, month=result.month, msg="目标修改已保存。")
     return draft_ack_response(request, draft_scope=draft_scope, idempotency_key=idempotency_key,
         receipt=result.model_dump(mode="json"), next_href=redirect.headers["location"]) or redirect
+
+
+def _goal_edit_payload(values, saved_currency):
+    version = parse_form_row_version_token(values["expected_row_version"])
+    if version is None:
+        raise AppError("state_conflict", status_code=409)
+    currency = normalize_currency_code(values["home_currency_code"])
+    if currency != saved_currency:
+        raise AppError("goal_currency_conflict", "原输入币种与目标不一致。输入已保留，请核对当前目标。", status_code=409)
+    return GoalUpdateRequest(name=values["name"], month=values["month"], category=values["category"].strip() or None,
+        home_currency_code=currency, expected_row_version=version,
+        target_amount_cents=_parse_amount_yuan(values["target_amount_yuan"], currency_code=currency))
 
 
 def _edit_refusal(request, db, options, selected_id, public_id, values, exc):
