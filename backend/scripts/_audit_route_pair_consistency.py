@@ -97,6 +97,9 @@ WEB_ONLY_ROUTES: dict[str, str] = {
     ),
     "POST /web/auth/local": "installed loopback browser enrollment ceremony — no public API surface",
     "POST /web/auth/logout": "browser session teardown — web session is web-only",
+    "POST /web/saved-views": "Library saved-query creation; Web is the current query-management consumer",
+    "POST /web/saved-views/{public_id}/rename": "Library saved-query editing; no current API consumer",
+    "POST /web/saved-views/{public_id}/delete": "Library saved-query deletion; no current API consumer",
 }
 
 

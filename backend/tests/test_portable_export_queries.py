@@ -64,7 +64,7 @@ def test_export_covers_retained_domains_without_screen_limits_or_orm_entities():
         "debt_adjustments", "debt_forgivenesses", "member_repayment_proposals", "repayment_drafts",
         "merchant_catalog", "merchant_aliases", "category_preferences", "tags", "category_rules",
         "rule_application_batches", "rule_application_changes", "tag_mutation_undo_groups",
-        "tag_mutation_undo_items", "ocr_facts", "algorithm_decisions", "ledger_learning_events",
+        "tag_mutation_undo_items", "saved_views", "ocr_facts", "algorithm_decisions", "ledger_learning_events",
         "ledger_calendar_revisions", "accepted_operations"} <= queries.keys()
     for statement in queries.values():
         assert statement._limit_clause is None
@@ -98,6 +98,28 @@ def test_budget_history_export_keeps_saved_snapshots_and_excludes_another_ledger
     rows = _rows(records, "budget_revisions")
     assert len(rows) == 1
     assert (rows[0]["budget_id"], rows[0]["row_version"], rows[0]["snapshot"]) == (1, 4, snapshot)
+
+
+def test_saved_view_export_keeps_ledger_query_configuration_and_stable_tag_reference(records):
+    for id_, ledger in ((1, "selected"), (2, "other")):
+        _seed(records, m.SavedView, id=id_, public_id=f"view-{id_}", tenant_id=ledger,
+            name="九月旅行", name_key="九月旅行", month_mode="fixed", month="2026-09",
+            filter="", tag_public_id="stable-tag-id", home_currency_code="JPY",
+            created_by_account_id=7, created_at="2026-09-28 00:00:00",
+            updated_at="2026-09-28 00:00:00", row_version=1)
+        _seed(records, m.ApiIdempotencyKey, id=id_, tenant_id=ledger, resource_type="saved_view",
+            resource_id=f"view-{id_}", operation="create_saved_view", idempotency_key="original-view-key",
+            status="succeeded", response_body=json.dumps({"public_id": f"view-{id_}",
+                "name": "首次保存名称", "row_version": 1, "tag_public_id": "stable-tag-id"}))
+    rows = _rows(records, "saved_views")
+    assert len(rows) == 1
+    assert (rows[0]["tenant_id"], rows[0]["month"], rows[0]["tag_public_id"],
+            rows[0]["home_currency_code"]) == ("selected", "2026-09", "stable-tag-id", "JPY")
+    accepted = _rows(records, "accepted_operations")
+    assert len(accepted) == 1
+    assert (accepted[0]["idempotency_key"], accepted[0]["resource_id"], accepted[0]["response_body"]) == (
+        "original-view-key", "view-1", {"public_id": "view-1", "name": "首次保存名称",
+                                        "row_version": 1, "tag_public_id": "stable-tag-id"})
 
 
 def test_arrangement_export_retains_explicit_zero_history_and_accepted_receipt_in_ledger_scope(records):

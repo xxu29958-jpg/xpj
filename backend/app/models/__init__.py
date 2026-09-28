@@ -93,6 +93,7 @@ from app.models.ocr_facts import OcrFact
 from app.models.recurring import RecurringItem
 from app.models.recurring_item_revision import RecurringItemRevision
 from app.models.recurring_occurrence import RecurringOccurrence, RecurringOccurrenceRevision
+from app.models.saved_view import SavedView
 from app.models.system import (
     BootstrapSecretConsumption,
     InstallationOwnerClaim,
@@ -176,6 +177,7 @@ __all__ = [
     "SessionRefreshAttempt",
     "RuleApplicationBatch",
     "RuleApplicationChange",
+    "SavedView",
     "SchedulerLease",
     "SchemaMigration",
     "Tag",

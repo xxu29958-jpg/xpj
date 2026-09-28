@@ -6,6 +6,8 @@ import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.local.AppDatabase
 import com.ticketbox.data.local.LocalSettingsStore
 import com.ticketbox.data.local.PendingMutationType
+import com.ticketbox.data.local.ExpenseDao
+import com.ticketbox.data.local.StatsProjectionCacheEntity
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.DebtDto
 import com.ticketbox.data.remote.dto.DebtListResponseDto
@@ -35,6 +37,57 @@ import kotlin.test.assertTrue
 @Config(application = Application::class, sdk = [35])
 @SQLiteMode(SQLiteMode.Mode.NATIVE)
 class DebtAcceptedReadRoomTest {
+    @Test fun parallelUnknownRepaymentRecoveryKeepsOneReadProtectionSnapshotAcrossReaders() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), AppDatabase::class.java).build()
+        try {
+            val canonical = RepaymentResponseLossProbe().current.copy(remainingAmountCents = 35_000,
+                paidAmountCents = 15_000, rowVersion = 4)
+            var offline = false
+            val reads = java.util.concurrent.atomic.AtomicInteger()
+            val dao = db.expenseDao()
+            val fixture = GoalReadFixture(decorateDao = { dao }, decorate = { api -> object : ApiService by api {
+                override suspend fun debt(publicId: String): DebtDto {
+                    if (offline) throw ConnectException("offline after repayment recovery")
+                    reads.incrementAndGet()
+                    return canonical.copy(publicId = publicId)
+                }
+                override suspend fun recordDebtRepayment(publicId: String, request: RepaymentCreateRequestDto,
+                    idempotencyKey: String?): DebtRepaymentReceiptDto = error("A canonical recovery cannot resend the repayment")
+            } })
+            val key = logicalBindingAdapter.toJson(fixture.binding)
+            dao.saveStatsProjection(StatsProjectionCacheEntity(key, fixture.binding.ledgerId,
+                "debt_outbox_read_barrier", "", "", "", "UTC", "original-key:unknown", "2026-09-01T00:00:00Z"))
+            val metadataCaptured = CompletableDeferred<Unit>()
+            val release = CompletableDeferred<Unit>()
+            var pause = true
+            val pausedDao = object : ExpenseDao by dao {
+                override suspend fun debtResourceDenials(bindingKey: String): List<StatsProjectionCacheEntity> {
+                    val denials = dao.debtResourceDenials(bindingKey)
+                    if (pause) { pause = false; metadataCaptured.complete(Unit); release.await() }
+                    return denials
+                }
+            }
+            val delayed = DebtQueryReader(fixture.provider, pausedDao, fixture.coordinator)
+            val competing = DebtQueryReader(fixture.provider, dao, fixture.coordinator)
+            val late = async(Dispatchers.IO) { delayed.detail(fixture.binding, "d1") }
+            try {
+                kotlinx.coroutines.withTimeout(10_000) { metadataCaptured.await() }
+                assertEquals(35_000L, competing.detail(fixture.binding, "other").getOrThrow().value.remainingAmountCents)
+                assertEquals("1", dao.debtReadEpoch(key))
+                assertEquals(null, dao.debtOutboxReadBarrier(key))
+            } finally { release.complete(Unit) }
+            val recovered = late.await().getOrThrow()
+            assertEquals(35_000L, recovered.value.remainingAmountCents)
+            assertEquals(4L, recovered.value.rowVersion)
+            assertFalse(recovered.fromCache)
+            assertEquals(3, reads.get(), "A competing repair discards the first wire and issues one current canonical GET")
+            offline = true
+            val reopened = DebtQueryReader(fixture.provider, dao, fixture.coordinator)
+            assertEquals(recovered.copy(fromCache = true), reopened.detail(fixture.binding, "d1").getOrThrow())
+            assertEquals(35_000L, reopened.detail(fixture.binding, "other").getOrThrow().value.remainingAmountCents)
+        } finally { db.close() }
+    }
+
     @Test fun missingDebtSurvivesRoomWriteFailureAndDatabaseReopenWhileOtherFactsRemainReadable() = runBlocking {
         val app = RuntimeEnvironment.getApplication()
         val name = "debt-missing-${java.util.UUID.randomUUID()}.db"

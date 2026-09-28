@@ -16,6 +16,7 @@ import app.routes.web_expense_offsets as web_expense_offsets
 import app.routes.web_family as web_family
 import app.routes.web_invitation_join as web_invitation_join
 import app.routes.web_library as web_library
+import app.routes.web_saved_views as web_saved_views
 from app.auth import get_current_app_context
 from app.config import DATA_ROOT, get_settings
 from app.database import get_db, init_db, wait_for_db
@@ -407,6 +408,7 @@ app.include_router(web_monthly_arrangement.router, prefix="/web/budget-advise")
 app.include_router(web_income_plans.router)
 app.include_router(web_income_edit.router)
 app.include_router(web_library.router)
+app.include_router(web_saved_views.router)
 app.include_router(web_reports.router)
 app.include_router(web_goals.router)
 app.include_router(web_goal_edit.router)

@@ -286,6 +286,12 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("POST", "/web/rules/{rule_id}/undo"): "writer-only",
     ("POST", "/web/rules/apply-pending"): "writer-only",
     ("POST", "/web/rules/apply-confirmed"): "writer-only",
+    # Library saved query definitions
+    ("GET", "/web/saved-views"): "local-only-rendering",
+    ("GET", "/web/saved-views/{public_id}/open"): "local-only-rendering",
+    ("POST", "/web/saved-views"): "writer-only",
+    ("POST", "/web/saved-views/{public_id}/rename"): "writer-only",
+    ("POST", "/web/saved-views/{public_id}/delete"): "writer-only",
     # Search
     ("GET", "/web/search"): "local-only-rendering",
     # Tags (ADR-0043 slice C)

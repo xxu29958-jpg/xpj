@@ -92,6 +92,7 @@ RESTORE_TABLE_SECURITY: Mapping[str, RestoreTableSecurity] = MappingProxyType(
         "repayments": "preserve",
         "rule_application_batches": "preserve",
         "rule_application_changes": "preserve",
+        "saved_views": "preserve",
         "schema_migrations": "preserve",
         "tag_mutation_undo_groups": "preserve",
         "tag_mutation_undo_items": "preserve",
