@@ -495,7 +495,7 @@ def test_income_edit_keeps_original_draft_beside_current_facts_in_real_edge(tmp_
             "source_type": "salary", "frequency": "monthly", "income_month": "",
             "amount_yuan": "800" if peer else "9999" if newer else "1000", "pay_day": "10",
             "expected_row_version": "2" if peer else "8" if newer else "7"}
-        plan = {**current, "public_id": public_id, "status": "active", "home_currency_code": "JPY",
+        plan = {**current, "public_id": public_id, "status": "archived" if posts else "active", "home_currency_code": "JPY",
             "row_version": int(current["expected_row_version"])}
         requests.append({"public_id": public_id, "month": month, "key": key})
         return template.render(plan=plan, current=current,
@@ -528,6 +528,9 @@ def test_income_edit_keeps_original_draft_beside_current_facts_in_real_edge(tmp_
             if parsed.path in {"/web/income-plans/income-original/edit", "/web/income-plans/income-peer/edit"}:
                 self.reply(editor_body(parsed.path.split("/")[-2], parse_qs(parsed.query)["intent_month"][0]))
                 return
+            if parsed.path == "/web/income-plans":
+                self.reply(b"<!doctype html><html><body>Income list after acknowledgement</body></html>")
+                return
             if parsed.path == "/probe.js":
                 self.reply((_REPO_ROOT / "backend/tests/fixtures/income_edit_draft_refresh_probe.js").read_bytes(),
                     content_type="text/javascript")
@@ -541,8 +544,19 @@ def test_income_edit_keeps_original_draft_beside_current_facts_in_real_edge(tmp_
             self.reply(b"not found", status=404)
 
         def do_POST(self):
-            posts.append(self.path)
-            self.reply(b'{"error":"unexpected_submission"}', content_type="application/json", status=409)
+            raw = self.rfile.read(int(self.headers["Content-Length"]))
+            message = BytesParser(policy=policy.default).parsebytes(
+                f'Content-Type: {self.headers["Content-Type"]}\r\nMIME-Version: 1.0\r\n\r\n'.encode() + raw)
+            fields = {part.get_param("name", header="content-disposition"): part.get_payload(decode=True).decode("utf-8")
+                for part in message.iter_parts()}
+            posts.append({"path": self.path, "fields": fields})
+            if len(posts) == 1:
+                self.reply(b'{"message":"Receipt unavailable"}', content_type="application/json", status=503)
+                return
+            body = {"ack": {"scope": scope, "clientRef": original_key},
+                "receipt": {"public_id": "income-original", "row_version": 8, "amount_cents": 1200},
+                "next": "/web/income-plans?ledger_id=income-ledger"}
+            self.reply(json.dumps(body).encode(), content_type="application/json")
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -561,7 +575,7 @@ def test_income_edit_keeps_original_draft_beside_current_facts_in_real_edge(tmp_
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
-    assert missing_resources == [] and posts == [], (missing_resources, posts)
+    assert missing_resources == [], missing_resources
     assert isinstance(probe, dict) and probe.get("error") is None, probe
     expected = {"label": "九月调薪原稿", "amount_yuan": " 001200 ", "source_type": "freelance",
         "frequency": "monthly", "income_month": "2026-11", "pay_day": "23", "intent_month": "2026-09",
@@ -576,7 +590,16 @@ def test_income_edit_keeps_original_draft_beside_current_facts_in_real_edge(tmp_
         "frequency": "monthly", "income_month": "", "pay_day": "10", "intent_month": "2026-10",
         "expected_row_version": "2", "idempotency_key": peer_key}, probe
     assert probe["originalAfterPeer"]["fields"] == expected, probe
+    submitted = {**expected, "amount_yuan": "1200"}
+    assert probe["unknown"]["fields"] == submitted and probe["frozen"], probe
+    assert probe["archived"] and probe["archivedOriginal"]["fields"] == submitted, probe
+    assert probe["accepted"] and probe["remainingOriginal"] is None, probe
+    assert len(posts) == 2 and posts[0] == posts[1], posts
+    assert posts[0]["path"] == "/web/income-plans/income-original/edit"
+    assert posts[0]["fields"] == {**submitted, "ledger_id": "income-ledger", "home_currency_code": "JPY",
+        "public_id": "income-original", "csrf_token": "synthetic-not-a-credential", "draft_scope": json.dumps(scope, separators=(",", ":"))}
     assert requests == [{"public_id": "income-original", "month": "2026-09", "key": original_key},
         {"public_id": "income-original", "month": "2026-09", "key": newer_key},
         {"public_id": "income-original", "month": "2026-10", "key": newer_key},
-        {"public_id": "income-peer", "month": "2026-10", "key": peer_key}], requests
+        {"public_id": "income-peer", "month": "2026-10", "key": peer_key},
+        {"public_id": "income-original", "month": "2026-10", "key": newer_key}], requests

@@ -87,6 +87,28 @@
     await until(() => !field(peer, 'label').readOnly && !field(peer, 'source_type').disabled);
     result.peer = snapshot(peer);
     result.originalAfterPeer = snapshot(frame);
+
+    stage = 'submit the original correction without a receipt';
+    field(frame, 'amount_yuan').value = '1200';
+    field(frame, 'amount_yuan').dispatchEvent(new frame.contentWindow.Event('input', {bubbles: true}));
+    form(frame).requestSubmit(form(frame).querySelector('[type="submit"]:not([name])'));
+    await until(() => form(frame).dataset.incomeDraftPhase === 'blocked');
+    result.unknown = snapshot(frame);
+    result.frozen = field(frame, 'label').readOnly && field(frame, 'source_type').disabled;
+    stage = 'reopen an unresolved correction after the plan was archived';
+    loading = loaded(frame);
+    frame.contentWindow.location.reload();
+    await loading;
+    await until(() => form(frame).dataset.incomeDraftPhase === 'blocked' &&
+      !form(frame).querySelector('[type="submit"]:not([name])').disabled);
+    result.archivedOriginal = snapshot(frame);
+    result.archived = form(frame).dataset.incomeArchived === 'true';
+    stage = 'verify the same original and retire it only on matching acknowledgement';
+    loading = loaded(frame);
+    form(frame).requestSubmit(form(frame).querySelector('[type="submit"]:not([name])'));
+    await loading;
+    result.accepted = frame.contentWindow.location.pathname === '/web/income-plans';
+    result.remainingOriginal = window.localStorage.getItem('ticketbox:income-edit-draft:v1:' + result.before.fields.idempotency_key);
   } catch (error) {
     result.error = {stage, message: String(error?.message || error)};
   }

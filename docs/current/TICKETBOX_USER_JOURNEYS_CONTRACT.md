@@ -259,10 +259,24 @@ before retiring the browser draft. Explicitly preparing another plan preserves
 the inputs under a fresh key without writing a plan or deleting the unresolved
 original. Explicit local discard requires the matching identity and snapshot,
 and warns that it does not undo a sent request or a saved plan; closing and
-refreshing are never discard. The native no-script form remains supported. PR #458 is qualifying
-this Web continuation; its browser transport fixture and real PostgreSQL
-business evidence are distinct, and neither claims full browser/OS lifecycle
-qualification.
+refreshing are never discard. The native no-script form remains supported. PR #458
+merged this Web creation continuation; source and independent main qualification
+have passed as recorded in the product map. Its browser transport
+fixture and real PostgreSQL business evidence are distinct, and neither claims
+full browser/OS lifecycle qualification.
+
+Web income editing retains that same task boundary. The original target plan,
+raw input, currency, intent month, OCC version and command key survive reload
+and reopening; another plan cannot adopt them. The current saved facts remain
+visible separately. Read-only membership allows inspecting the saved plan and
+retaining the original draft, but cannot publish a revision. Permission recovery
+resumes that original; explicit review alone prepares a fresh key and current
+version/month without writing or retiring an unresolved original. An accepted
+edit's receipt remains stable after later changes or archival; matching identity
+and ACK are required before local retirement. #460 reuses the existing draft,
+binding and income command owners for this consumer. Real PostgreSQL and Edge
+counterexamples are recorded in the map; final implementation qualification is
+still pending.
 
 Creation admission errors remain attached to the same raw draft through reopening and
 system saved-state restoration. An unknown or abandoned original row must not retire

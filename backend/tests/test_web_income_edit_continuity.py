@@ -201,7 +201,9 @@ def _installed_edit_form(installed):
     action = f"/web/income-plans/{public_id}/edit"
     editor = browser.get(action, params={"intent_month": original["intent_month"]})
     assert editor.status_code == 200, editor.text
-    fields = {**hidden_post_forms(editor.text)[action], "draft_scope": json.dumps(scope),
+    captured = hidden_post_forms(editor.text)[action]
+    assert json.loads(captured["draft_scope"]) == scope
+    fields = {**captured,
         "label": "原稿调薪", "source_type": "salary", "frequency": "monthly",
         "amount_yuan": "2000.25", "pay_day": "10", "income_month": ""}
     return browser, action, fields, scope, public_id
@@ -236,6 +238,19 @@ def test_bound_income_edit_replays_its_original_ack_after_a_later_revision(insta
     assert replayed.status_code == 200 and replayed.json() == original_result, replayed.text
     assert _revisions(public_id) == before + [(2, fields["intent_month"] + "-01", 200025),
         (3, fields["intent_month"] + "-01", 300050)]
+    archive_action = f"/web/income-plans/{public_id}/archive"
+    listing = browser.get("/web/income-plans")
+    archive = hidden_post_forms(listing.text)[archive_action]
+    archived = browser.post(archive_action, data=archive, headers={"Origin": headers["Origin"]}, follow_redirects=False)
+    assert archived.status_code == 303, archived.text
+    after_archive = _revisions(public_id)
+    assert len(after_archive) == 4
+    with SessionLocal() as db:
+        plan, = list(db.scalars(select(MonthlyIncomePlan)))
+        assert (plan.status, plan.row_version, plan.amount_cents) == ("archived", 4, 300050)
+    recovered = browser.post(action, data=fields, headers=headers)
+    assert recovered.status_code == 200 and recovered.json() == original_result, recovered.text
+    assert _revisions(public_id) == after_archive
 
 
 @pytest.mark.real_db
@@ -262,3 +277,79 @@ def test_income_edit_from_another_browser_identity_cannot_publish_a_revision(ins
         plan, = list(db.scalars(select(MonthlyIncomePlan)))
         assert (plan.public_id, plan.label, plan.amount_cents, plan.row_version) == (public_id, "原工资计划", 100000, 1)
     assert refused.status_code == 409 and refused.json()["error"] == "session_binding_changed", refused.text
+    reviewed = browser.post(action, data={**fields, "review_latest": "true"},
+        headers={"Origin": str(browser.base_url).rstrip("/"), "Accept": "application/json"})
+    assert reviewed.status_code == 409 and reviewed.json()["error"] == "session_binding_changed", reviewed.text
+    assert _revisions(public_id) == before
+
+
+@pytest.mark.real_db
+@pytest.mark.currency_binding_unbound
+def test_bound_income_edit_survives_read_only_reopening_then_saves_the_original_once(installed_income_editor):
+    installed = installed_income_editor
+    browser, action, fields, scope, public_id = _installed_edit_form(installed)
+    before = _revisions(public_id)
+    with SessionLocal() as db:
+        member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == installed.shared_ledger_id,
+            LedgerMember.account_id == installed.installation_account_id))
+        assert member is not None
+        original_role = member.role
+        member.role = "viewer"
+        db.commit()
+    reopened = browser.get(action, params={"intent_month": fields["intent_month"]})
+    assert reopened.status_code == 200 and "当前角色为只读" in reopened.text, reopened.text
+    current = hidden_post_forms(reopened.text)[action]
+    assert json.loads(current["draft_scope"]) == scope
+    assert current["expected_row_version"] == fields["expected_row_version"]
+    assert 'data-income-can-write="false"' in reopened.text
+    assert "当前已保存" in reopened.text and "原工资计划" in reopened.text
+    fields["csrf_token"] = current["csrf_token"]
+    headers = {"Origin": str(browser.base_url).rstrip("/"), "Accept": "application/json"}
+    refused = browser.post(action, data=fields, headers=headers)
+    assert refused.status_code == 403 and refused.json()["error"] == "permission_denied", refused.text
+    assert _revisions(public_id) == before
+    with SessionLocal() as db:
+        member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == installed.shared_ledger_id,
+            LedgerMember.account_id == installed.installation_account_id))
+        member.role = original_role
+        db.commit()
+    accepted = browser.post(action, data=fields, headers=headers)
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["ack"] == {"scope": scope, "clientRef": fields["idempotency_key"]}
+    replayed = browser.post(action, data=fields, headers=headers)
+    assert replayed.status_code == 200 and replayed.json() == accepted.json()
+    assert _revisions(public_id) == before + [(2, fields["intent_month"] + "-01", 200025)]
+
+
+@pytest.mark.real_db
+@pytest.mark.currency_binding_unbound
+def test_pre_binding_income_edit_requires_explicit_non_writing_review(installed_income_editor):
+    browser, action, fields, scope, public_id = _installed_edit_form(installed_income_editor)
+    fields.pop("draft_scope")
+    before = _revisions(public_id)
+    origin = {"Origin": str(browser.base_url).rstrip("/")}
+    refused = browser.post(action, data=fields, headers=origin)
+    assert refused.status_code == 409, refused.text
+    retained = hidden_post_forms(refused.text)[action]
+    for name in ("ledger_id", "intent_month", "expected_row_version", "idempotency_key"):
+        assert retained[name] == fields[name]
+    assert retained["draft_scope"] == ""
+    assert 'value="2000.25"' in refused.text and 'value="原稿调薪"' in refused.text
+    assert "核对</button>" in refused.text
+    assert _revisions(public_id) == before
+    prepared = browser.post(action, data={**fields, **retained, "review_latest": "true"}, headers=origin)
+    assert prepared.status_code == 200, prepared.text
+    proposed = hidden_post_forms(prepared.text)[action]
+    assert proposed["idempotency_key"] != fields["idempotency_key"]
+    assert proposed["expected_row_version"] == fields["expected_row_version"]
+    assert json.loads(proposed["draft_scope"]) == scope
+    assert 'value="2000.25"' in prepared.text and 'value="原稿调薪"' in prepared.text
+    assert _revisions(public_id) == before, "Explicit review prepares a new bound intent without publishing it"
+    headers = {**origin, "Accept": "application/json"}
+    accepted = browser.post(action, data={**fields, **proposed}, headers=headers)
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["ack"] == {"scope": scope, "clientRef": proposed["idempotency_key"]}
+    replayed = browser.post(action, data={**fields, **proposed}, headers=headers)
+    assert replayed.status_code == 200 and replayed.json() == accepted.json()
+    assert browser.post(action, data=fields, headers=headers).status_code == 409
+    assert _revisions(public_id) == before + [(2, proposed["intent_month"] + "-01", 200025)]
