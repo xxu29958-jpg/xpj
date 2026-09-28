@@ -222,13 +222,15 @@ private fun LazyListScope.incomePlanSections(
     onEditPlan: (IncomePlan) -> Unit,
 ) {
     item(key = "income-plan-active") {
+        val emptyTitle = stringResource(if (state.archivedPlans.isNotEmpty()) R.string.income_plan_archived_only_title else R.string.income_plan_empty_title)
+        val emptyBody = stringResource(if (state.archivedPlans.isNotEmpty()) R.string.income_plan_archived_only_body else R.string.income_plan_empty_body_compact)
         AppListStateContent(
             state = AppListStateSpec(
                 isEmpty = state.activePlans.isEmpty(),
                 loading = state.isLoading,
-                emptyText = stringResource(R.string.income_plan_empty_body_compact),
-                emptyTitle = stringResource(R.string.income_plan_empty_title),
-                emptyBody = stringResource(R.string.income_plan_empty_body_compact),
+                emptyText = emptyBody,
+                emptyTitle = emptyTitle,
+                emptyBody = emptyBody,
             ),
         ) {
             SectionEyebrow(stringResource(R.string.income_plan_section_active))

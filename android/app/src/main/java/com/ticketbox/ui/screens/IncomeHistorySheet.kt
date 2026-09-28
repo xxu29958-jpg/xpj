@@ -2,11 +2,13 @@ package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyDisplay
@@ -24,7 +26,7 @@ import com.ticketbox.viewmodel.IncomeHistoryState
 @Composable
 internal fun IncomeHistorySheet(state: IncomeHistoryState, onRetry: () -> Unit, onMore: () -> Unit, onDismiss: () -> Unit) {
     AppBusyGuardedSheet(isSubmitting = false, onDismiss = onDismiss, skipPartiallyExpanded = true) {
-        AppSheetScaffold(title = stringResource(R.string.income_history_title)) {
+        AppSheetScaffold(title = stringResource(R.string.income_history_title), modifier = Modifier.fillMaxHeight()) {
             Text(stringResource(R.string.income_history_explanation))
             IncomeReadSource(state.fetchedAt, state.fromCache)
             state.items.forEach { IncomeHistoryEntry(it) }

@@ -201,28 +201,52 @@ class IncomeQueryContinuityRoomTest {
         assertTrue(fixture.stored().isEmpty())
     }
 
-    @Test fun concurrentOverviewAndManagementReadsBothRecoverWithoutAnOlderReplyReplacingTheNewMonth() = runBlocking {
+    @Test fun concurrentReadersKeepTheNewestConfirmedMonthWithoutCompetingRetriesOrFalseOfflineLabels() = runBlocking {
         val repo = fixture.reopen().incomePlanRepository
         val binding = requireNotNull(repo.observeActiveLedgerAccess().first()).binding
         val old = fixture.network.service.listIncomePlans("active")
         val new = old.copy(month = "2026-10", expectedAmountCents = 12_000)
         val started = CompletableDeferred<Unit>()
+        val secondStarted = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
-        var calls = 0
+        val calls = java.util.concurrent.atomic.AtomicInteger()
         fixture.network.listing = {
-            if (++calls == 1) { started.complete(Unit); release.await(); old } else new
+            when (calls.incrementAndGet()) {
+                1 -> { started.complete(Unit); release.await(); old }
+                2 -> { secondStarted.complete(Unit); release.await(); old }
+                else -> new
+            }
         }
         val overview = async { repo.listActive(binding) }
         started.await()
-        val management = repo.listActive(binding).getOrThrow()
+        val management = async { repo.listActive(binding) }
+        secondStarted.await()
+        val confirmed = repo.listActive(binding).getOrThrow()
+        fixture.network.failReads = true
         release.complete(Unit)
         val recovered = overview.await().getOrThrow()
-        assertEquals("2026-10", management.month)
-        assertEquals(management.plans, recovered.plans)
-        assertEquals(management.month, recovered.month)
+        assertEquals("2026-10", confirmed.month)
+        assertEquals(confirmed, management.await().getOrThrow())
+        assertEquals(confirmed, recovered)
         assertEquals(12_000L, recovered.expectedAmountCents)
-        assertEquals(3, calls)
-        fixture.network.failReads = true
+        assertFalse(recovered.fromCache)
         assertEquals(recovered.copy(fromCache = true), fixture.reopen().incomePlanRepository.listActive(binding).getOrThrow())
+    }
+
+    @Test fun lateHistoryReplyCannotRestoreAPageRejectedByANewerRead() = runBlocking {
+        val repo = fixture.reopen().incomePlanRepository
+        val binding = requireNotNull(repo.observeActiveLedgerAccess().first()).binding
+        val known = fixture.network.service.incomePlanHistory("income-1", 20, null)
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        fixture.network.history = { started.complete(Unit); release.await(); known }
+        val late = async { repo.history(binding, "income-1", null) }
+        started.await()
+        fixture.network.readFailure = HttpException(Response.error<Any>(404, """{"error":"not_found"}""".toResponseBody()))
+        assertTrue(repo.history(binding, "income-1", null).isFailure)
+        release.complete(Unit)
+        assertTrue(late.await().isFailure)
+        fixture.network.failReads = true
+        assertTrue(fixture.reopen().incomePlanRepository.history(binding, "income-1", null).isFailure)
     }
 }

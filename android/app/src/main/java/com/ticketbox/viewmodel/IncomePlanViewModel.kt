@@ -199,7 +199,7 @@ class IncomePlanViewModel(
                     val archivedError = archived.exceptionOrNull()?.toUiText(R.string.income_plan_archived_load_failed)
                     _state.value.copy(
                         isLoading = false,
-                        loadState = IncomePlanLoadState.Loaded,
+                        loadState = if (archived.isSuccess) IncomePlanLoadState.Loaded else IncomePlanLoadState.Failed,
                         canModify = activeCanModify,
                         activePlans = listing.plans,
                         archivedPlans = archivedRead?.value ?: _state.value.archivedPlans,

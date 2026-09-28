@@ -72,7 +72,10 @@ class IncomePlanViewModelLoadStateTest {
         )
         advanceUntilIdle()
 
-        assertEquals(IncomePlanLoadState.Loaded, archivedFailure.state.value.loadState)
+        assertEquals(IncomePlanLoadState.Failed, archivedFailure.state.value.loadState)
+        assertEquals(com.ticketbox.ui.screens.IncomePlanBodyState.LoadFailed,
+            com.ticketbox.ui.screens.incomePlanBodyState(archivedFailure.state.value.loadState,
+                archivedFailure.state.value.activePlans.size, archivedFailure.state.value.archivedPlans.size))
         assertNotNull(archivedFailure.state.value.error)
     }
 
