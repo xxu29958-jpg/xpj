@@ -356,7 +356,7 @@ class GoalOfflineReadingConnectedTest {
             TicketboxTheme(skin = AppSkin.Default) {
                 CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models,
                     LocalCurrencyDisplay provides CurrencyDisplay(CurrencyCode.CNY)) {
-                    if (mounted.value) SpendingGoalsRoute(factory, onBack = {}, creationOwner = harness.models)
+                    if (mounted.value) SpendingGoalsRoute(factory, onBack = {}, context = SpendingGoalRouteContext(harness.models))
                 }
             }
         }

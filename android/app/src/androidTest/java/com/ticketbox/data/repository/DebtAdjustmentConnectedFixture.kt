@@ -95,7 +95,7 @@ internal class DebtAdjustmentConnectedFixture(private val context: Context, priv
 
     fun setStoredMutationStatus(id: Long, status: String) {
         requireNotNull(database).openHelper.writableDatabase.execSQL(
-            "UPDATE pending_mutations SET status = ? WHERE id = ?", arrayOf(status, id))
+            "UPDATE pending_mutations SET status = ? WHERE id = ?", arrayOf<Any>(status, id))
     }
 
     suspend fun drain(maxAttempts: Int = 10) = OutboxDrainEngine(outbox,

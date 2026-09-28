@@ -33,10 +33,10 @@ internal fun NavGraphBuilder.addPlanRoutes(
                 runtime.navController.getBackStackEntry(MAIN_ROUTE)
             }
             SpendingGoalsRoute(
-                creationOwner = creationOwner,
-                originalCreationId = entry.arguments?.getString("create")?.toLongOrNull(),
-                originalGoalPublicId = entry.arguments?.getString("goal"),
-                financialDataRevision = shellState.financialDataRevision,
+                context = SpendingGoalRouteContext(creationOwner,
+                    originalCreationId = entry.arguments?.getString("create")?.toLongOrNull(),
+                    originalGoalPublicId = entry.arguments?.getString("goal"),
+                    financialDataRevision = shellState.financialDataRevision),
                 screenFactory = screenFactory, onBack = onBack,
             )
         }
