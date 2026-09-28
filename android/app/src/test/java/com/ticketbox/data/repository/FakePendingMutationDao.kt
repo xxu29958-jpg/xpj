@@ -17,6 +17,7 @@ class FakePendingMutationDao : PendingMutationDao {
     var beforeInsert: (suspend () -> Unit)? = null
     var replacePayloadError: Throwable? = null
     private var nextId = 1L
+    private val incomeCreationAcceptance = Mutex()
     private val queueDepth = MutableStateFlow(0)
     private val originalCommandTransaction = Mutex()
 
@@ -61,6 +62,10 @@ class FakePendingMutationDao : PendingMutationDao {
     ): List<PendingMutationEntity> = rows.values
         .filter { it.ownerKey == ownerKey && it.ledgerId == ledgerId && it.type == type && it.idempotencyKey in keys }
         .sortedWith(compareBy({ it.createdAt }, { it.id }))
+
+    override suspend fun insertOriginalIncomeCreation(row: PendingMutationEntity): Long = incomeCreationAcceptance.withLock {
+        super.insertOriginalIncomeCreation(row)
+    }
 
     override suspend fun allRows(): List<PendingMutationEntity> = rows.values.sortedWith(compareBy({ it.createdAt }, { it.id }))
 

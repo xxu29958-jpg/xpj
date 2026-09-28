@@ -5,7 +5,6 @@ import androidx.lifecycle.viewModelScope
 import com.squareup.moshi.JsonClass
 import com.ticketbox.R
 import com.ticketbox.data.repository.IncomePlanActions
-import com.ticketbox.data.repository.IncomePlanDraft
 import com.ticketbox.data.repository.PendingIncomePlanSubmission
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.domain.model.CurrencyCode
@@ -24,13 +23,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import java.time.YearMonth
 
-/**
- * v1.1 income plan screen state + actions.
- *
- * UI pattern follows the Android secondary-page guidance: summary →
- * row groups → bottom-sheet add form. ViewModel keeps draft + validation
- * state so the bottom sheet stays a pure render.
- */
+/** Income plan listing, forecast and durable submission recovery. */
 data class IncomePlanUiState(
     val isLoading: Boolean = false,
     val loadState: IncomePlanLoadState = IncomePlanLoadState.Unknown,
@@ -47,11 +40,7 @@ data class IncomePlanUiState(
     val binding: LogicalSessionBinding? = null,
     val currentMonthSummary: IncomePlanMonthSummary = IncomePlanMonthSummary(),
     val error: UiText? = null,
-    val addDraft: IncomePlanDraftUi = IncomePlanDraftUi(intentMonth = "", incomeMonthInput = ""),
-    val isSubmitting: Boolean = false,
     val flashMessage: UiText? = null,
-    /** The editor closes only after the original creation is durable in Room. */
-    val addSubmitted: Boolean = false,
 )
 
 enum class IncomePlanLoadState {
@@ -104,33 +93,6 @@ data class IncomePlanDraftUi(
         val text = incomeMonthInput.trim()
         return runCatching { YearMonth.parse(text).toString() }.getOrNull()
     }
-}
-
-internal fun IncomePlanDraftUi.withAmountValidation(): IncomePlanDraftUi = copy(
-    validationError = if (homeCurrency != null && amountYuanInput.isNotBlank() && parsedAmountCents() == null) {
-        UiText.res(R.string.expense_edit_amount_invalid)
-    } else null,
-)
-
-private fun IncomePlanDraftUi.toRepositoryDraftOrNull(): IncomePlanDraft? {
-    if (intentMonth.isEmpty()) return null
-    val cleanLabel = label.trim().takeIf(String::isNotEmpty) ?: return null
-    val amount = parsedAmountCents() ?: return null
-    val payDay = parsedPayDay() ?: return null
-    val incomeMonth = when (frequency) {
-        IncomeFrequency.MONTHLY -> null
-        IncomeFrequency.ONE_TIME -> parsedIncomeMonth() ?: return null
-    }
-    return IncomePlanDraft(
-        intentMonth = intentMonth,
-        homeCurrencyCode = homeCurrency?.storageKey ?: return null,
-        label = cleanLabel,
-        sourceType = sourceType,
-        frequency = frequency,
-        incomeMonth = incomeMonth,
-        amountCents = amount,
-        payDay = payDay,
-    )
 }
 
 class IncomePlanViewModel(
@@ -217,13 +179,6 @@ class IncomePlanViewModel(
                         forecastCurrencyCode = listing.homeCurrencyCode,
                         missingCurrencyCodes = listing.missingCurrencyCodes,
                         referenceRates = listing.referenceRates,
-                        addDraft = _state.value.addDraft.let { draft ->
-                            draft.copy(intentMonth = draft.intentMonth.ifEmpty { listing.month },
-                                incomeMonthInput = if (draft.intentMonth.isEmpty()) {
-                                    draft.incomeMonthInput.ifEmpty { listing.month }
-                                } else draft.incomeMonthInput,
-                                homeCurrency = draft.homeCurrency ?: CurrencyCode.fromStorageKeyOrNull(listing.homeCurrencyCode))
-                        },
                         currentMonthSummary = IncomePlanMonthSummary(listing.effectivePlanCount, listing.expectedAmountCents),
                         error = archivedError,
                     )
@@ -239,119 +194,6 @@ class IncomePlanViewModel(
             if (binding == bindingGeneration && refresh == refreshGeneration) {
                 _state.value = nextState
             }
-        }
-    }
-
-    fun updateDraftSource(value: IncomeSourceType) {
-        _state.update { it.copy(addDraft = it.addDraft.copy(sourceType = value)) }
-    }
-
-    fun updateDraftFrequency(value: IncomeFrequency) {
-        _state.update {
-            it.copy(addDraft = it.addDraft.copy(frequency = value, validationError = null))
-        }
-    }
-
-    fun updateDraftField(field: IncomePlanDraftField, value: String) {
-        _state.update { state ->
-            val draft = state.addDraft
-            val nextDraft = when (field) {
-                IncomePlanDraftField.Label -> draft.copy(label = value)
-                IncomePlanDraftField.IncomeMonth -> draft.copy(incomeMonthInput = value)
-                IncomePlanDraftField.Amount -> {
-                    // R14-2：币种已注入时即时报解析失败（JPY 下输 "12.50" 不再静默 isValid=false）。
-                    val parseFailed = draft.homeCurrency != null && value.isNotBlank() &&
-                        parseAmountCents(value, draft.homeCurrency) == null
-                    return@update state.copy(
-                        addDraft = draft.copy(
-                            amountYuanInput = value,
-                            validationError = if (parseFailed) UiText.res(R.string.expense_edit_amount_invalid) else null,
-                        ),
-                    )
-                }
-                IncomePlanDraftField.PayDay -> draft.copy(payDayInput = value)
-            }
-            state.copy(addDraft = nextDraft.copy(validationError = null))
-        }
-    }
-
-    fun shiftDraftIncomeMonth(deltaMonths: Long) {
-        _state.update { state ->
-            val current = runCatching {
-                YearMonth.parse(state.addDraft.incomeMonthInput.trim())
-            }.getOrElse {
-                state.forecastMonth?.let { month -> runCatching { YearMonth.parse(month) }.getOrNull() }
-                    ?: return@update state
-            }
-            state.copy(
-                addDraft = state.addDraft.copy(
-                    incomeMonthInput = current.plusMonths(deltaMonths).toString(),
-                    validationError = null,
-                ),
-            )
-        }
-    }
-
-    fun resetDraft() {
-        _state.update { it.copy(addDraft = IncomePlanDraftUi(intentMonth = it.forecastMonth.orEmpty(),
-            incomeMonthInput = it.forecastMonth.orEmpty(), homeCurrency = CurrencyCode.fromStorageKeyOrNull(it.forecastCurrencyCode)),
-            isSubmitting = false, addSubmitted = false) }
-    }
-
-    fun submitDraft() {
-        val expectedBinding = activeBinding ?: return
-        if (_state.value.isSubmitting || !activeCanModify) return
-        if (_state.value.addDraft.homeCurrency == null) {
-            // R12-D：币种未确认禁写（不落 CNY 兜底）。
-            _state.update {
-                it.copy(
-                    addDraft = it.addDraft.copy(
-                        validationError = UiText.res(R.string.currency_unconfirmed_write_blocked),
-                    ),
-                )
-            }
-            return
-        }
-        val draft = _state.value.addDraft.toRepositoryDraftOrNull()
-        if (draft == null) {
-            _state.update {
-                it.copy(
-                    addDraft = it.addDraft.copy(
-                        validationError = UiText.res(R.string.income_plan_validation_error),
-                    ),
-                )
-            }
-            return
-        }
-        val binding = bindingGeneration
-        _state.update { it.copy(isSubmitting = true) }
-        viewModelScope.launch {
-            val result = repository.create(expectedBinding, draft)
-            if (binding != bindingGeneration) return@launch
-            result.fold(
-                onSuccess = { rowId ->
-                    _state.update {
-                        it.copy(
-                            selectedSubmissionId = rowId,
-                            isSubmitting = false,
-                            addDraft = IncomePlanDraftUi(intentMonth = it.forecastMonth.orEmpty(),
-                                incomeMonthInput = it.forecastMonth.orEmpty(), homeCurrency = it.addDraft.homeCurrency),
-                            flashMessage = UiText.res(R.string.income_plan_submission_saved),
-                            addSubmitted = true,
-                        )
-                    }
-                },
-                onFailure = { err ->
-                    _state.update {
-                        it.copy(
-                            isSubmitting = false,
-                            addDraft = it.addDraft.copy(
-                                validationError = err.toUiText(R.string.income_plan_add_failed),
-                            ),
-                        )
-                    }
-                },
-            )
         }
     }
 

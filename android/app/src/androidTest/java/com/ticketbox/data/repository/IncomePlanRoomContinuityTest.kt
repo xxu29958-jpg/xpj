@@ -25,6 +25,7 @@ import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.ui.screens.IncomePlanScreen
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.IncomePlanEditViewModel
+import com.ticketbox.viewmodel.IncomePlanCreateViewModel
 import com.ticketbox.viewmodel.IncomePlanLoadState
 import com.ticketbox.viewmodel.IncomePlanViewModel
 import com.ticketbox.viewmodel.incomePlanEditViewModelFactory
@@ -39,8 +40,9 @@ class IncomePlanRoomContinuityTest {
     @get:Rule val compose = createComposeRule()
     private val fixture = IncomePlanConnectedFixture(InstrumentationRegistry.getInstrumentation().targetContext)
     private val model = mutableStateOf<IncomePlanViewModel?>(null)
+    private val creator = mutableStateOf<IncomePlanCreateViewModel?>(null)
     private val editor = mutableStateOf<IncomePlanEditViewModel?>(null)
-    private var editorStateOwner: IncomeEditorStateOwner? = null
+    private var editorStateOwner: IncomeDraftStateOwner? = null
     private var editorSavedState: Bundle? = null
 
     @After
@@ -52,7 +54,8 @@ class IncomePlanRoomContinuityTest {
         compose.setContent {
             val current = model.value ?: return@setContent
             val edit = editor.value ?: return@setContent
-            TicketboxTheme(skin = AppSkin.Paper) { IncomePlanScreen(current, edit, {}) }
+            val create = creator.value ?: return@setContent
+            TicketboxTheme(skin = AppSkin.Paper) { IncomePlanScreen(current, edit, create, {}) }
         }
         compose.waitUntil(10_000) { model.value?.state?.value?.activePlans?.size == 1 }
         compose.onNodeWithText("九月工资计划").performScrollTo().performClick()
@@ -112,7 +115,8 @@ class IncomePlanRoomContinuityTest {
         val graph = fixture.reopen()
         compose.runOnIdle {
             model.value = IncomePlanViewModel(graph.incomePlanRepository)
-            val owner = IncomeEditorStateOwner(editorSavedState).also { editorStateOwner = it }
+            creator.value = IncomePlanCreateViewModel(graph.incomePlanRepository)
+            val owner = IncomeDraftStateOwner(editorSavedState).also { editorStateOwner = it }
             val extras = MutableCreationExtras().apply {
                 set(SAVED_STATE_REGISTRY_OWNER_KEY, owner)
                 set(VIEW_MODEL_STORE_OWNER_KEY, owner)
@@ -125,6 +129,7 @@ class IncomePlanRoomContinuityTest {
 
     private fun stopModels() = compose.runOnIdle {
         model.value?.viewModelScope?.cancel()
+        creator.value?.viewModelScope?.cancel()
         editorStateOwner?.let {
             editorSavedState = it.save()
             it.viewModelStore.clear()
@@ -133,7 +138,7 @@ class IncomePlanRoomContinuityTest {
 }
 
 /** Exercises the production SavedStateHandle factory with Android's registry save/restore. */
-private class IncomeEditorStateOwner(restored: Bundle?) : SavedStateRegistryOwner, ViewModelStoreOwner {
+internal class IncomeDraftStateOwner(restored: Bundle?) : SavedStateRegistryOwner, ViewModelStoreOwner {
     override val lifecycle = LifecycleRegistry(this)
     override val viewModelStore = ViewModelStore()
     private val controller = SavedStateRegistryController.create(this)

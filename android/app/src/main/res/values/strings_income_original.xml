@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="income_plan_creation_recovery_required">无法确认原收入提交是否已保存。请先核对收入计划和原提交记录；当前输入已保留。</string>
+    <string name="income_plan_creation_check_original">核对原提交</string>
+    <string name="income_plan_creation_discard">放弃草稿</string>
+    <string name="income_plan_creation_discard_confirm">确认放弃</string>
+    <string name="income_plan_creation_discard_explanation">这会移除当前草稿，不会撤销已保存的收入。若此前保存结果不明，请先核对收入计划和原提交记录，避免重复创建。</string>
     <string name="income_plan_submission_saved">原收入提交已保存在本机，可在下方查看同步结果。</string>
     <string name="income_plan_submission_done">原收入提交已获服务器确认。</string>
     <string name="income_plan_submission_review">原收入提交结果待核对。旧记录没有可验证的服务器回执，请刷新核对当前计划；原提交不会自动重试。</string>
