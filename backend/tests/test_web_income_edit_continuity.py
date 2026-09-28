@@ -1,5 +1,6 @@
 """Native income editing must retain the rendered month and immutable intent."""
 
+import json
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -12,6 +13,9 @@ from app.models import IncomePlanRevision, LedgerMember, MonthlyIncomePlan
 from app.routes import income_plans, web_income_edit, web_income_plans
 from app.routes.web_app import _require_local as _web_require_local
 from app.services import income_plan_service
+from app.services.identity_service import authenticate_web_session_token
+from app.services.manual_expense_draft_presenter import manual_draft_scope
+from tests._local_web_identity_support import _connect_local_session, installed_web_setup
 from tests._runtime_protocol import negotiated_headers
 from tests._web_native_form_support import hidden_post_forms
 
@@ -167,3 +171,94 @@ def test_permission_refusal_keeps_the_original_form_and_resumes_once_after_month
     assert client.post(action, data=resumed, follow_redirects=False).status_code == 303
     assert client.post(action, data=resumed, follow_redirects=False).status_code == 303
     assert _revisions(plan["public_id"]) == before + [(plan["row_version"] + 1, "2026-09-01", 200025)]
+
+
+@pytest.fixture
+def installed_income_editor():
+    yield from installed_web_setup()
+
+
+def _installed_edit_form(installed):
+    token = _connect_local_session(installed)
+    browser = installed.browser
+    browser.base_url = browser.base_url.copy_with(scheme="https")
+    with SessionLocal() as db:
+        auth = authenticate_web_session_token(db, token, ttl_seconds=8 * 60 * 60).auth
+        scope = manual_draft_scope(db, auth)
+    page = browser.get("/web/income-plans")
+    assert page.status_code == 200, page.text
+    create_action = "/web/income-plans/create"
+    original = {**hidden_post_forms(page.text)[create_action], "draft_scope": json.dumps(scope),
+        "label": "原工资计划", "source_type": "salary", "frequency": "monthly",
+        "amount_yuan": "1000.00", "pay_day": "10"}
+    created = browser.post(create_action, data=original,
+        headers={"Origin": str(browser.base_url).rstrip("/")}, follow_redirects=False)
+    assert created.status_code == 303, created.text
+    with SessionLocal() as db:
+        plan, = list(db.scalars(select(MonthlyIncomePlan)))
+        public_id = plan.public_id
+        assert (plan.tenant_id, plan.amount_cents, plan.row_version) == (installed.shared_ledger_id, 100000, 1)
+    action = f"/web/income-plans/{public_id}/edit"
+    editor = browser.get(action, params={"intent_month": original["intent_month"]})
+    assert editor.status_code == 200, editor.text
+    fields = {**hidden_post_forms(editor.text)[action], "draft_scope": json.dumps(scope),
+        "label": "原稿调薪", "source_type": "salary", "frequency": "monthly",
+        "amount_yuan": "2000.25", "pay_day": "10", "income_month": ""}
+    return browser, action, fields, scope, public_id
+
+
+@pytest.mark.real_db
+@pytest.mark.currency_binding_unbound
+def test_bound_income_edit_replays_its_original_ack_after_a_later_revision(installed_income_editor):
+    browser, action, fields, scope, public_id = _installed_edit_form(installed_income_editor)
+    before = _revisions(public_id)
+    headers = {"Origin": str(browser.base_url).rstrip("/"), "Accept": "application/json"}
+    accepted = browser.post(action, data=fields, headers=headers, follow_redirects=False)
+    assert accepted.status_code in {200, 303}, accepted.text
+    with SessionLocal() as db:
+        plan, = list(db.scalars(select(MonthlyIncomePlan)))
+        assert (plan.public_id, plan.label, plan.home_currency_code, plan.amount_cents, plan.row_version) == (
+            public_id, "原稿调薪", "CNY", 200025, 2)
+    assert _revisions(public_id) == before + [(2, fields["intent_month"] + "-01", 200025)]
+    assert accepted.status_code == 200, "An accepted edit must acknowledge the captured original, not redirect it away"
+    original_result = accepted.json()
+    assert original_result["ack"] == {"scope": scope, "clientRef": fields["idempotency_key"]}
+    assert (original_result["receipt"]["public_id"], original_result["receipt"]["row_version"],
+        original_result["receipt"]["amount_cents"]) == (public_id, 2, 200025)
+
+    later_page = browser.get(action, params={"intent_month": fields["intent_month"]})
+    assert later_page.status_code == 200, later_page.text
+    later = {**fields, **hidden_post_forms(later_page.text)[action], "label": "后来调薪", "amount_yuan": "3000.50"}
+    assert later["idempotency_key"] != fields["idempotency_key"] and later["expected_row_version"] == "2"
+    changed = browser.post(action, data=later, headers={"Origin": headers["Origin"]}, follow_redirects=False)
+    assert changed.status_code == 303, changed.text
+    replayed = browser.post(action, data=fields, headers=headers, follow_redirects=False)
+    assert replayed.status_code == 200 and replayed.json() == original_result, replayed.text
+    assert _revisions(public_id) == before + [(2, fields["intent_month"] + "-01", 200025),
+        (3, fields["intent_month"] + "-01", 300050)]
+
+
+@pytest.mark.real_db
+@pytest.mark.currency_binding_unbound
+def test_income_edit_from_another_browser_identity_cannot_publish_a_revision(installed_income_editor):
+    browser, action, fields, scope, public_id = _installed_edit_form(installed_income_editor)
+    before = _revisions(public_id)
+    browser.base_url = browser.base_url.copy_with(scheme="http")
+    replacement = _connect_local_session(installed_income_editor)
+    browser.base_url = browser.base_url.copy_with(scheme="https")
+    with SessionLocal() as db:
+        auth = authenticate_web_session_token(db, replacement, ttl_seconds=8 * 60 * 60).auth
+        current_scope = manual_draft_scope(db, auth)
+    assert current_scope["accountId"] == scope["accountId"] and current_scope["ledgerId"] == scope["ledgerId"]
+    assert current_scope["deviceId"] != scope["deviceId"]
+    current_page = browser.get(action, params={"intent_month": fields["intent_month"]})
+    assert current_page.status_code == 200, current_page.text
+    fields["csrf_token"] = hidden_post_forms(current_page.text)[action]["csrf_token"]
+    refused = browser.post(action, data=fields,
+        headers={"Origin": str(browser.base_url).rstrip("/"), "Accept": "application/json"},
+        follow_redirects=False)
+    assert _revisions(public_id) == before, "The replacement device must not publish the former device's draft"
+    with SessionLocal() as db:
+        plan, = list(db.scalars(select(MonthlyIncomePlan)))
+        assert (plan.public_id, plan.label, plan.amount_cents, plan.row_version) == (public_id, "原工资计划", 100000, 1)
+    assert refused.status_code == 409 and refused.json()["error"] == "session_binding_changed", refused.text
