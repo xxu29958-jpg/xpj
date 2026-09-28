@@ -19,6 +19,7 @@ import urllib.request
 from pathlib import Path
 
 from scripts.planning_journey_android import PlanningAndroid, wait_for
+from scripts.planning_journey_recovery import PlanningRecovery
 from scripts.test_postgres_contract import TEST_POSTGRES_CONTRACT
 from scripts.test_postgres_database import dedicated_test_database_lease
 
@@ -30,7 +31,7 @@ def _facts(ledger_id: str) -> dict:
     from sqlalchemy import func, select
 
     from app.database import SessionLocal
-    from app.models import Budget, Expense, Goal, IncomePlanRevision, MonthlyIncomePlan
+    from app.models import Budget, Expense, Goal, GoalRevision, IncomePlanRevision, MonthlyIncomePlan
 
     with SessionLocal() as db:
         income = db.scalar(select(MonthlyIncomePlan).where(MonthlyIncomePlan.tenant_id == ledger_id))
@@ -43,6 +44,7 @@ def _facts(ledger_id: str) -> dict:
             "goal_id": goal.public_id if goal else None,
             "goal_amount": goal.target_amount_cents if goal else None,
             "goal_status": goal.status if goal else None,
+            "goal_revisions": db.scalar(select(func.count()).select_from(GoalRevision)),
             "expenses": db.scalar(select(func.count()).select_from(Expense)),
             "budgets": db.scalar(select(func.count()).select_from(Budget)),
         }
@@ -83,6 +85,22 @@ def _web_capture(page, evidence: Path, name: str):
     page.screenshot(path=evidence / f"web-{name}.png", full_page=True)
 
 
+def _web_appearance(page, evidence, month):
+    for theme in ("paper", "midnight"):
+        page.set_viewport_size({"width": 1280, "height": 960})
+        page.goto(BASE_URL + "/web/income-plans")
+        page.locator("#appearance > summary").click()
+        page.locator(f'#appearance [data-theme-mode="{theme}"]').click()
+        page.wait_for_function("theme => document.documentElement.dataset.theme === theme", arg=theme)
+        page.locator("#appearance > summary").click()
+        for width in (1280, 390):
+            page.set_viewport_size({"width": width, "height": 960})
+            for name, path in (("income", "/web/income-plans"), ("goals", f"/web/goals?month={month}")):
+                page.goto(BASE_URL + path)
+                assert page.locator("html").get_attribute("data-theme") == theme
+                _web_capture(page, evidence, f"{name}-{width}-{theme}")
+
+
 def _journey(page, native: PlanningAndroid, fixture, evidence: Path):
     page.goto(f"{BASE_URL}/web/auth/local?next=/web/income-plans")
     page.locator(f'input[name="ledger_id"][value="{fixture.ledger_id}"]').check()
@@ -92,14 +110,14 @@ def _journey(page, native: PlanningAndroid, fixture, evidence: Path):
     income_form.locator('[name="label"]').fill("联动工资")
     income_form.locator('[name="amount_yuan"]').fill("5000.00")
     month = income_form.locator('[name="intent_month"]').input_value()
-    income_form.locator('button[type="submit"]').click()
+    income_form.locator('button[type="submit"]:not([name])').click()
     wait_for(lambda: _facts(fixture.ledger_id)["income_amount"] == 500000, "Web income was not committed")
 
     page.goto(f"{BASE_URL}/web/goals?month={month}")
     goal_form = _form(page, "/web/goals/create")
     goal_form.locator('[name="name"]').fill("联动消费提醒")
     goal_form.locator('[name="target_amount_yuan"]').fill("2000.00")
-    goal_form.locator('button[type="submit"]').click()
+    goal_form.locator('button[type="submit"]:not([name])').click()
     wait_for(lambda: _facts(fixture.ledger_id)["goal_amount"] == 200000, "Web goal was not committed")
     native.bind(fixture.pairing_code, PORT)
     native.open_income()
@@ -116,7 +134,7 @@ def _journey(page, native: PlanningAndroid, fixture, evidence: Path):
     page.goto(f"{BASE_URL}/web/goals/{facts['goal_id']}/edit?ledger_id={fixture.ledger_id}")
     goal_form = _form(page, f"/web/goals/{facts['goal_id']}/edit")
     goal_form.locator('[name="target_amount_yuan"]').fill("2200.00")
-    goal_form.locator('button[type="submit"]').click()
+    goal_form.locator('button[type="submit"]:not([name])').click()
     wait_for(lambda: _facts(fixture.ledger_id)["goal_amount"] == 220000, "The Web goal edit did not commit")
 
     native.plan_home()
@@ -126,19 +144,16 @@ def _journey(page, native: PlanningAndroid, fixture, evidence: Path):
     wait_for(lambda: native.has("2,200") or native.has("2200"), "The native detail did not show the Web-edited amount")
     native.capture("goal-after-web-edit")
     native.click("定义历史")
+    wait_for(lambda: native.has("2,000") or native.has("2000"), "The original goal definition is not visible")
     native.capture("goal-history")
     native.back()
 
-    for width in (1280, 390):
-        page.set_viewport_size({"width": width, "height": 960})
-        for scheme in ("light", "dark"):
-            page.emulate_media(color_scheme=scheme)
-            for name, path in (("income", "/web/income-plans"), ("goals", f"/web/goals?month={month}")):
-                page.goto(BASE_URL + path)
-                _web_capture(page, evidence, f"{name}-{width}-{scheme}")
+    PlanningRecovery(page, native, fixture, evidence, _facts, BASE_URL).run()
+    _web_appearance(page, evidence, month)
     result = _facts(fixture.ledger_id)
     assert result["expenses"] == result["budgets"] == 0, "A prediction or reminder created financial facts"
-    assert result["income_amount"] == 600000 and result["goal_amount"] == 220000
+    assert result["income_amount"] == 620000 and result["goal_amount"] == 240000
+    assert result["income_status"] == result["goal_status"] == "active"
     return result
 
 
@@ -175,14 +190,18 @@ def main() -> int:
                     with sync_playwright() as driver:
                         browser = driver.chromium.launch()
                         page = browser.new_page(viewport={"width": 1280, "height": 960})
-                        result = _journey(page, native, fixture, args.evidence)
+                        try:
+                            result = _journey(page, native, fixture, args.evidence)
+                        except Exception:
+                            page.screenshot(path=args.evidence / "web-failure.png", full_page=True)
+                            raise
                         browser.close()
                     result["checkout_sha"] = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
                     result["source_sha"] = os.environ["TICKETBOX_JOURNEY_SOURCE_SHA"]
                     result["apk_sha256"] = hashlib.sha256(args.apk.read_bytes()).hexdigest()
-                    result["verified_leg"] = "Web creation, native income edit, Web history and goal edit, native goal history"
+                    result["verified_leg"] = "Web/native creation, cross-client edits, reply loss, offline restart and resumption, both recycle bins and retained history"
                     (args.evidence / "business-result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
-                    print("The Web/native creation, cross-client edit and history leg completed")
+                    print("The actual Web/native planning recovery journey completed")
                 except Exception:
                     try:
                         native.capture("failure", redact=fixture.pairing_code)

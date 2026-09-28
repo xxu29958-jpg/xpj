@@ -104,6 +104,44 @@ class PlanningAndroid:
         self.click("收入计划")
         wait_for(lambda: self.has("联动工资"), "The Web-created income did not reach the actual native consumer")
 
+    def open_goal(self):
+        self.plan_home()
+        self.click("消费目标")
+        self.click("联动消费提醒")
+
+    def connection(self, port: int, *, online: bool):
+        if online:
+            self.adb("reverse", f"tcp:{port}", f"tcp:{port}")
+        else:
+            self.adb("reverse", "--remove", f"tcp:{port}")
+
+    def restart(self):
+        self.adb("shell", "am", "force-stop", "com.ticketbox")
+        self.adb("shell", "am", "start", "-n", "com.ticketbox/.MainActivity")
+        wait_for(lambda: self.has("计划"), "The saved native identity did not reopen")
+
+    def recycle_bin(self):
+        self.plan_home()
+        self.click("流水", bottom=True)
+        self.click("账本工具")
+        self.click("资料库")
+        self.click("回收站")
+
+    def click_within(self, anchor: str, action: str):
+        def locate():
+            root = self.tree()
+            candidates = []
+            for parent in root.iter("node"):
+                descendants = list(parent.iter("node"))
+                if not any(anchor == node.attrib.get("text") for node in descendants):
+                    continue
+                actions = [node for node in descendants if action in (node.attrib.get("text"), node.attrib.get("content-desc"))]
+                if len(actions) == 1:
+                    candidates.append((len(descendants), actions[0]))
+            return min(candidates, key=lambda candidate: candidate[0])[1] if candidates else None
+        node = wait_for(lambda: (found := locate()) is not None and [found], f"The action {action} is not within {anchor}")[0]
+        self.tap(node)
+
     def plan_home(self):
         for _ in range(5):
             if any(node.attrib.get("text") == "计划" for node in self.tree().iter("node")):
