@@ -46,6 +46,7 @@ import com.ticketbox.viewmodel.DebtGoalViewModel
 import com.ticketbox.viewmodel.DebtListViewModel
 import com.ticketbox.viewmodel.DebtActivityViewModel
 import com.ticketbox.viewmodel.IncomePlanEditViewModel
+import com.ticketbox.viewmodel.IncomePlanCreateViewModel
 import com.ticketbox.viewmodel.IncomePlanViewModel
 import com.ticketbox.viewmodel.MemberRepaymentProposalViewModel
 import com.ticketbox.viewmodel.ReceivablesViewModel
@@ -57,6 +58,7 @@ import com.ticketbox.viewmodel.debtGoalViewModelFactory
 import com.ticketbox.viewmodel.debtActivityViewModelFactory
 import com.ticketbox.viewmodel.debtViewModelFactory
 import com.ticketbox.viewmodel.incomePlanEditViewModelFactory
+import com.ticketbox.viewmodel.incomePlanCreateViewModelFactory
 import com.ticketbox.viewmodel.incomePlanViewModelFactory
 import com.ticketbox.viewmodel.memberRepaymentProposalViewModelFactory
 import com.ticketbox.viewmodel.receivablesViewModelFactory
@@ -68,6 +70,7 @@ import kotlinx.coroutines.withContext
 
 internal const val IncomePlanViewModelKey = "income-plans"
 internal const val IncomePlanEditViewModelKey = "income-plan-edit"
+internal const val IncomePlanCreateViewModelKey = "income-plan-create"
 internal const val DebtGoalViewModelKey = "debt-goals"
 internal const val CreateDebtGoalViewModelKey = "create-debt-goal"
 internal const val DebtListViewModelKey = "debts"
@@ -166,6 +169,11 @@ internal fun IncomePlanRoute(
             onDataChanged = onDataChanged,
         ),
     )
+    val incomePlanCreateViewModel: IncomePlanCreateViewModel = viewModel(
+        viewModelStoreOwner = context.editOwner,
+        key = IncomePlanCreateViewModelKey,
+        factory = incomePlanCreateViewModelFactory(screenFactory.incomePlanRepository),
+    )
     LaunchedEffect(incomePlanViewModel, context.originalSubmissionId) {
         context.originalSubmissionId?.let(incomePlanViewModel::openSubmission)
     }
@@ -175,6 +183,7 @@ internal fun IncomePlanRoute(
     IncomePlanScreen(
         viewModel = incomePlanViewModel,
         editViewModel = incomePlanEditViewModel,
+        createViewModel = incomePlanCreateViewModel,
         onBack = onBack,
     )
 }

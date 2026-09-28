@@ -68,6 +68,21 @@ interface PendingMutationDao {
         keys: Collection<String>,
     ): List<PendingMutationEntity>
 
+    /** An uncertain local acceptance must resolve to one immutable original, including retained DONE rows. */
+    @Transaction
+    suspend fun insertOriginalIncomeCreation(row: PendingMutationEntity): Long {
+        require(row.type == PendingMutationType.CreateIncomePlan.wireValue && !row.idempotencyKey.isNullOrBlank())
+        val originals = findByIdempotencyKeys(requireNotNull(row.ownerKey), row.ledgerId, row.type,
+            listOf(requireNotNull(row.idempotencyKey)))
+        if (originals.isEmpty()) return insert(row)
+        val original = originals.single()
+        require(original.serverUrl == row.serverUrl && original.targetId == row.targetId &&
+            original.payload == row.payload && original.expectedRowVersion == row.expectedRowVersion) {
+            "原收入创建内容或归属已变化，请先核对原提交。"
+        }
+        return original.id
+    }
+
     /** Reference proof must include other bindings, null owners and unrecognized raw types/statuses. */
     @Query("SELECT * FROM pending_mutations ORDER BY createdAt ASC, id ASC")
     suspend fun allRows(): List<PendingMutationEntity>

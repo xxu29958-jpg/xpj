@@ -87,7 +87,6 @@ private class LoadStateIncomePlanRepository(
     override suspend fun recoverSubmission(expectedBinding: LogicalSessionBinding,
         pending: com.ticketbox.data.repository.PendingIncomePlanSubmission, drop: Boolean) = Result.success(Unit)
 
-    override fun canModifyLedger(): Boolean = true
 
     override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> =
         flowOf(LedgerAccessContext(loadStateBinding(), canModify = true))
@@ -101,9 +100,13 @@ private class LoadStateIncomePlanRepository(
         status: IncomePlanStatus,
     ): Result<List<IncomePlan>> = archivedResult
 
+    override suspend fun originalCreation(expectedBinding: LogicalSessionBinding,
+        creationKey: String): Result<com.ticketbox.data.repository.PendingIncomePlanSubmission?> = Result.success(null)
+
     override suspend fun create(
         expectedBinding: LogicalSessionBinding,
         draft: IncomePlanDraft,
+        creationKey: String,
     ): Result<Long> = Result.success(1L)
 
     override suspend fun enqueueUpdate(expectedBinding: LogicalSessionBinding, baseline: IncomePlan,

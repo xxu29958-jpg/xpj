@@ -171,7 +171,7 @@ submitted-command receipt is a complete query snapshot. Offline reads do not
 confer permission or prove current governance/tool health, nor promise that every
 page works offline.
 
-Income editing continuation is being qualified in #447. Same-identity role
+Income editing continuation is merged and main-qualified in #447. Same-identity role
 changes retain the original raw input, currency, month and OCC; read-only access
 blocks new writes without swallowing an in-flight original result. Android Back
 or swipe retains the edit, while explicit Cancel discards it. Saved-state restore
@@ -184,6 +184,34 @@ new facts. Native saved-state registry restoration and actual Room recovery are
 distinct from an OS process-kill qualification. Unsubmitted income-creation and
 goal drafts, Web refresh/session draft durability and other cross-client return
 paths remain in the atlas; this edit slice does not declare them complete.
+
+Income creation must retain a distinct unsubmitted task across closing and real
+route exit/reentry, including raw name/amount, source/frequency, original currency
+and intended month. Closing is not an explicit discard. Same-binding role loss
+must prevent submission while preserving the task; a replacement binding must
+not receive the old intent. Once the existing Room owner accepts that creation,
+continuation refers to the original key/body and receipt instead of creating a
+second command. Two deliberately separate plans with identical fields remain
+two creations; body equality is not task identity. Frozen source `d59498cf`
+executed the actual pop/reentry and failed on the restored name being empty
+(Connected `36359132642`, native job `108732697844`, line 155). The #450 candidate
+moves creation input out of the route-owned listing into the existing outer
+MAIN_ROUTE and SavedState mechanism. Stable-key acceptance is atomic in the
+original Room owner, including retained completed submissions. An older system
+snapshot first rejoins the matching original key and complete binding even if
+the accepted input is newer; it must not resubmit the old input. An unresolved
+publication keeps raw input and offers original-submission recovery. Current
+candidate runtime qualification remains pending; this does not claim OS kill
+qualification or completion of other goal and Web draft journeys.
+
+Creation admission errors remain attached to the same raw draft through reopening and
+system saved-state restoration. An unknown or abandoned original row must not retire
+the input into a list that cannot display it. If the original submission can no longer
+be found, the user can explicitly confirm discarding only the local draft; this does
+not cancel a server-accepted income or automatically submit another plan. The income
+creation form opens fully expanded so its retained month and currency are reachable
+without first expanding a partially visible form. These candidate changes await their
+own cloud runtime qualification.
 
 ## Unused tag cleanup
 

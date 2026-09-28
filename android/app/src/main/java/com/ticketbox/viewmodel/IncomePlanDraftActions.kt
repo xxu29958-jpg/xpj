@@ -1,7 +1,11 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.R
+import com.ticketbox.data.repository.IncomePlanDraft
 import com.ticketbox.data.repository.IncomePlanPatch
 import com.ticketbox.domain.model.IncomeFrequency
+import com.ticketbox.domain.model.IncomeSourceType
+import com.ticketbox.domain.model.UiText
 
 enum class IncomePlanDraftField {
     Label,
@@ -10,16 +14,16 @@ enum class IncomePlanDraftField {
     PayDay,
 }
 
-fun IncomePlanViewModel.updateDraftLabel(value: String) =
+fun IncomePlanCreateViewModel.updateDraftLabel(value: String) =
     updateDraftField(IncomePlanDraftField.Label, value)
 
-fun IncomePlanViewModel.updateDraftIncomeMonth(value: String) =
+fun IncomePlanCreateViewModel.updateDraftIncomeMonth(value: String) =
     updateDraftField(IncomePlanDraftField.IncomeMonth, value)
 
-fun IncomePlanViewModel.updateDraftAmount(value: String) =
+fun IncomePlanCreateViewModel.updateDraftAmount(value: String) =
     updateDraftField(IncomePlanDraftField.Amount, value)
 
-fun IncomePlanViewModel.updateDraftPayDay(value: String) =
+fun IncomePlanCreateViewModel.updateDraftPayDay(value: String) =
     updateDraftField(IncomePlanDraftField.PayDay, value)
 
 /**
@@ -38,6 +42,36 @@ internal fun IncomePlanDraftUi.toPatchOrNull(expectedRowVersion: Long): IncomePl
     return IncomePlanPatch(
         intentMonth = intentMonth,
         expectedRowVersion = expectedRowVersion,
+        label = cleanLabel,
+        sourceType = sourceType,
+        frequency = frequency,
+        incomeMonth = incomeMonth,
+        amountCents = amount,
+        payDay = payDay,
+    )
+}
+
+fun IncomePlanCreateViewModel.updateDraftSource(value: IncomeSourceType) = updateDraftChoice(source = value)
+fun IncomePlanCreateViewModel.updateDraftFrequency(value: IncomeFrequency) = updateDraftChoice(frequency = value)
+
+internal fun IncomePlanDraftUi.withAmountValidation(): IncomePlanDraftUi = copy(
+    validationError = if (homeCurrency != null && amountYuanInput.isNotBlank() && parsedAmountCents() == null) {
+        UiText.res(R.string.expense_edit_amount_invalid)
+    } else null,
+)
+
+internal fun IncomePlanDraftUi.toRepositoryDraftOrNull(): IncomePlanDraft? {
+    if (intentMonth.isEmpty()) return null
+    val cleanLabel = label.trim().takeIf(String::isNotEmpty) ?: return null
+    val amount = parsedAmountCents() ?: return null
+    val payDay = parsedPayDay() ?: return null
+    val incomeMonth = when (frequency) {
+        IncomeFrequency.MONTHLY -> null
+        IncomeFrequency.ONE_TIME -> parsedIncomeMonth() ?: return null
+    }
+    return IncomePlanDraft(
+        intentMonth = intentMonth,
+        homeCurrencyCode = homeCurrency?.storageKey ?: return null,
         label = cleanLabel,
         sourceType = sourceType,
         frequency = frequency,

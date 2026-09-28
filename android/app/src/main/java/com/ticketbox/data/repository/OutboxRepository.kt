@@ -377,6 +377,28 @@ class OutboxRepository private constructor(
         }
     }
 
+    /** Room, rather than this instance's binding mutex, owns the original create's atomic acceptance. */
+    internal suspend fun enqueueIncomeCreation(boundRequest: BoundLedgerRequest, intent: PendingMutationIntent): Long {
+        require(intent.type == PendingMutationType.CreateIncomePlan)
+        val id = withActiveBinding(boundRequest) { binding ->
+            binding.requireReadyForEnqueue()
+            dao.insertOriginalIncomeCreation(intent.toEntity(binding, nowIso()))
+        }
+        schedulePending()
+        return id
+    }
+
+    internal suspend fun originalIncomeCreation(boundRequest: BoundLedgerRequest, key: String): OutboxRow? =
+        withActiveBinding(boundRequest) { binding ->
+            val rows = dao.findByIdempotencyKeys(binding.ownerStorageKey, binding.ledgerId,
+                PendingMutationType.CreateIncomePlan.wireValue, listOf(key))
+            val row = rows.singleOrNull()
+            require(rows.size <= 1 && (row == null || row.serverUrl == binding.serverUrl)) {
+                "原收入创建归属无法确认，请先核对原提交。"
+            }
+            row?.toDomain()
+        }
+
     /** Save+confirm and ready-bulk preserve every original before any worker may send. */
     internal suspend fun enqueueExpenseBatch(
         boundRequest: BoundLedgerRequest,

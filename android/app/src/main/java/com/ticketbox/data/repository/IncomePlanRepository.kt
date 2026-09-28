@@ -17,14 +17,14 @@ import kotlinx.coroutines.flow.map
 
 /** Income management and the server's month-specific forecast; edits publish durable intent first. */
 interface IncomePlanActions {
-    fun canModifyLedger(): Boolean
     fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?>
     fun observeSubmissions(expectedBinding: LogicalSessionBinding): Flow<List<PendingIncomePlanSubmission>>
     fun describeSubmission(row: OutboxRow): PendingIncomePlanSubmission?
     suspend fun recoverSubmission(expectedBinding: LogicalSessionBinding, pending: PendingIncomePlanSubmission, drop: Boolean): Result<Unit>
     suspend fun listActive(expectedBinding: LogicalSessionBinding): Result<IncomePlanListing>
     suspend fun listIncluding(expectedBinding: LogicalSessionBinding, status: IncomePlanStatus): Result<List<IncomePlan>>
-    suspend fun create(expectedBinding: LogicalSessionBinding, draft: IncomePlanDraft): Result<Long>
+    suspend fun create(expectedBinding: LogicalSessionBinding, draft: IncomePlanDraft, creationKey: String): Result<Long>
+    suspend fun originalCreation(expectedBinding: LogicalSessionBinding, creationKey: String): Result<PendingIncomePlanSubmission?>
     suspend fun enqueueUpdate(expectedBinding: LogicalSessionBinding, baseline: IncomePlan,
         patch: IncomePlanPatch, currency: CurrencyCode): Result<Long>
     suspend fun archive(expectedBinding: LogicalSessionBinding, publicId: String,
@@ -55,7 +55,7 @@ class IncomePlanRepository(
         statusMessages = mapOf(404 to "收入计划不存在。", 409 to "计划已发生变化，请刷新后核对。",
             422 to "请检查计划月份、金额和预计日期。"))
 
-    override fun canModifyLedger(): Boolean = ledgerRoleCanModify(apiProvider.currentLedgerRole())
+    private val canModify: Boolean get() = ledgerRoleCanModify(apiProvider.currentLedgerRole())
     override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> = apiProvider.observeActiveLedgerAccess()
 
     override fun describeSubmission(row: OutboxRow): PendingIncomePlanSubmission? {
@@ -78,7 +78,7 @@ class IncomePlanRepository(
         val current = observeSubmissions(expectedBinding).first().firstOrNull { it.row.id == pending.row.id }?.row
         require(current == pending.row) { "原收入提交状态已变化，请重新核对。" }
         val original = requireNotNull(describeSubmission(requireNotNull(current)))
-        require(if (drop) original.canDrop else original.canRetry && canModifyLedger()) { "请先核对原收入提交。" }
+        require(if (drop) original.canDrop else original.canRetry && canModify) { "请先核对原收入提交。" }
         val changed = when (current.status) {
             PendingMutationStatus.Done -> outbox.discardCompletedOriginalSubmission(bound, current)
             PendingMutationStatus.Conflict -> outbox.resolveConflict(current.id, ConflictResolution.DropMine, bound)
@@ -108,22 +108,38 @@ class IncomePlanRepository(
         guard.bindExact(expectedBinding).call { it.listIncomePlans(status = status.wireValue).items.map { row -> row.toDomain() } }
     }
 
-    override suspend fun create(expectedBinding: LogicalSessionBinding, draft: IncomePlanDraft): Result<Long> = errors.safeCall {
-        require(canModifyLedger()) { "当前角色为只读，无法修改账本。" }
+    override suspend fun originalCreation(expectedBinding: LogicalSessionBinding,
+        creationKey: String): Result<PendingIncomePlanSubmission?> = errors.safeCall {
+        require(creationKey.isNotBlank()) { "收入创建标识无法确认，请重新打开创建任务。" }
+        val bound = guard.bindExact(expectedBinding)
+        val row = outbox.originalIncomeCreation(bound, creationKey)
+        bound.requireStillActive()
+        if (row == null) return@safeCall null
+        val original = requireNotNull(describeSubmission(row)) { "原收入创建归属无法确认，请先核对原提交。" }
+        val intent = requireNotNull(original.intent)
+        require(original.hasSupportedIntent && intent.originSessionGeneration == expectedBinding.sessionGeneration &&
+            intent.originBindingRevision == expectedBinding.bindingRevision) {
+            "原收入创建归属无法确认，请先核对原提交。"
+        }
+        original
+    }
+
+    override suspend fun create(expectedBinding: LogicalSessionBinding, draft: IncomePlanDraft,
+        creationKey: String): Result<Long> = errors.safeCall {
+        require(canModify) { "当前角色为只读，无法修改账本。" }
+        require(creationKey.isNotBlank()) { "收入创建标识无法确认，请重新打开创建任务。" }
         val bound = guard.bindExact(expectedBinding)
         val request = draft.toCreateRequest()
         val payload = IncomePlanSubmissionPayload(INCOME_PLAN_CREATE_PAYLOAD_REVISION, "", request.label,
             request.amountCents, request.homeCurrencyCode, expectedBinding.sessionGeneration, expectedBinding.bindingRevision,
             IncomePlanUpdateRequestDto(request.intentMonth, 0, request.label, request.sourceType, request.frequency,
                 request.incomeMonth, request.amountCents, request.payDay))
-        val key = UUID.randomUUID().toString()
-        outbox.enqueue(boundRequest = bound, intent = payload.toMutationIntent(incomePlanSubmissionAdapter, 0, key),
-            validateTargetRows = ::requireIncomeTargetSettled)
+        outbox.enqueueIncomeCreation(bound, payload.toMutationIntent(incomePlanSubmissionAdapter, 0, creationKey))
     }
 
     override suspend fun enqueueUpdate(expectedBinding: LogicalSessionBinding, baseline: IncomePlan,
         patch: IncomePlanPatch, currency: CurrencyCode): Result<Long> = errors.safeCall {
-        if (!canModifyLedger()) throw RepositoryException("当前角色为只读，无法修改账本。")
+        if (!canModify) throw RepositoryException("当前角色为只读，无法修改账本。")
         val bound = guard.bindExact(expectedBinding)
         require(baseline.rowVersion > 0) { "请刷新计划后重新核对修改。" }
         if (outbox.activeForTarget(bound, incomePlanTarget(baseline.publicId)).isNotEmpty()) {
@@ -140,7 +156,7 @@ class IncomePlanRepository(
 
     override suspend fun archive(expectedBinding: LogicalSessionBinding, publicId: String,
         expectedRowVersion: Long, intentMonth: String): Result<IncomePlan> = errors.safeCall {
-        if (!canModifyLedger()) throw RepositoryException("当前角色为只读，无法修改账本。")
+        if (!canModify) throw RepositoryException("当前角色为只读，无法修改账本。")
         val bound = guard.bindExact(expectedBinding)
         requireIncomeTargetSettled(outbox.activeForTarget(bound, incomePlanTarget(publicId)))
         bound.call {
@@ -150,7 +166,7 @@ class IncomePlanRepository(
 
     override suspend fun restore(expectedBinding: LogicalSessionBinding, publicId: String,
         expectedRowVersion: Long, intentMonth: String): Result<IncomePlan> = errors.safeCall {
-        if (!canModifyLedger()) throw RepositoryException("当前角色为只读，无法修改账本。")
+        if (!canModify) throw RepositoryException("当前角色为只读，无法修改账本。")
         val bound = guard.bindExact(expectedBinding)
         requireIncomeTargetSettled(outbox.activeForTarget(bound, incomePlanTarget(publicId)))
         bound.call {
