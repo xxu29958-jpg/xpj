@@ -95,6 +95,9 @@ class LedgerRepository(
         sessionCoordinator = sessionCoordinator,
     )
 
+    internal var restoreWithReadProtection:
+        suspend (LogicalSessionBinding, RecycleBinItem, suspend () -> String) -> String = { _, _, restore -> restore() }
+
     private fun unauthenticatedApi() = apiProvider.unauthenticated(
         requireNotNull(apiProvider.currentSession()?.serverUrl) {
             "账本地址未绑定"
@@ -364,11 +367,12 @@ class LedgerRepository(
     }
 
     suspend fun refreshRecycleBin(): Result<RecycleBinSnapshot> = wrap {
-        val targetLedgerId = requireActiveLedger(activeLedgerId())
-        val response = requestGuard.guardedCall(expectedLedgerId = targetLedgerId) { api ->
+        val bound = requestGuard.bind()
+        val response = bound.call { api ->
             api.recycleBin()
         }
-        val items = response.items.map { it.toRecycleBinItem() }
+        val sourceBindingKey = logicalBindingAdapter.toJson(bound.logicalBinding)
+        val items = response.items.map { it.toRecycleBinItem().copy(sourceBindingKey = sourceBindingKey) }
         RecycleBinSnapshot(
             items = items,
             shortWindowCount = response.shortWindowCount.coerceIn(0, items.size),
@@ -376,16 +380,21 @@ class LedgerRepository(
     }
 
     suspend fun restoreRecycleBinItem(item: RecycleBinItem): Result<String> = wrap {
-        val targetLedgerId = requireActiveLedger(activeLedgerId())
-        requestGuard.guardedCall(expectedLedgerId = targetLedgerId) { api ->
-            api.restoreRecycleBinItem(
-                RecycleBinRestoreRequestDto(
-                    kind = item.kind,
-                    resourceId = item.resourceId,
-                    expectedRowVersion = item.expectedRowVersion,
-                    intentMonth = item.restoreIntentMonth,
-                ),
-            ).message
+        val bound = requestGuard.bind()
+        require(item.sourceBindingKey == logicalBindingAdapter.toJson(bound.logicalBinding)) {
+            "连接或身份已变化，请重新读取回收站后恢复。"
+        }
+        restoreWithReadProtection(bound.logicalBinding, item) {
+            bound.call { api ->
+                api.restoreRecycleBinItem(
+                    RecycleBinRestoreRequestDto(
+                        kind = item.kind,
+                        resourceId = item.resourceId,
+                        expectedRowVersion = item.expectedRowVersion,
+                        intentMonth = item.restoreIntentMonth,
+                    ),
+                ).message
+            }
         }
     }
 

@@ -102,7 +102,7 @@ class ReportsRepository(
     override suspend fun goalHistory(publicId: String, beforeVersion: Long?, binding: LogicalSessionBinding) =
         goalQueries.history(publicId, beforeVersion, binding)
     override val readAccessDenials = sessionCoordinator.snapshotAccessDenials.filterNotNull()
-    private val goalQueries = GoalQueryReader(apiProvider, expenseDao, sessionCoordinator)
+    internal val goalQueries = GoalQueryReader(apiProvider, expenseDao, sessionCoordinator)
     private val ledgerRequestGuard = LedgerRequestGuard(apiProvider)
     private val errorHandler = NetworkErrorHandler(
         serverUrlProvider = { apiProvider.currentSession()?.serverUrl },

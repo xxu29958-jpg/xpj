@@ -96,7 +96,7 @@ class RecycleBinViewModelTest {
                 recycleBinRestoreResult = RecycleBinRestoreResponseDto(message = "收入计划已恢复。")
             }
             val vm = harness(api)
-            val item = recycleItem().toDomain()
+            val item = readItem(vm, api)
 
             vm.restore(item)
             val state = vm.uiState.first { it.message != null }
@@ -104,7 +104,7 @@ class RecycleBinViewModelTest {
             assertEquals("income_plan", api.recycleBinRestoreRequests.single().kind)
             assertEquals("r1", api.recycleBinRestoreRequests.single().resourceId)
             assertEquals(2, api.recycleBinRestoreRequests.single().expectedRowVersion)
-            assertEquals(1, api.recycleBinRefreshCount.size)
+            assertEquals(2, api.recycleBinRefreshCount.size)
             assertEquals(emptyList(), state.items)
             assertEquals(UiText.raw("收入计划已恢复。"), state.message)
             assertEquals(MessageTone.Success, state.messageTone)
@@ -129,7 +129,7 @@ class RecycleBinViewModelTest {
                 recycleBinRestoreResult = RecycleBinRestoreResponseDto(message = "标签改动已撤销。")
             }
             val vm = harness(api)
-            val item = recycleItem(kind = "tag_mutation").toDomain()
+            val item = readItem(vm, api, recycleItem(kind = "tag_mutation"))
 
             vm.restore(item)
             val state = vm.uiState.first { it.message != null }
@@ -159,9 +159,9 @@ class RecycleBinViewModelTest {
             val vm = harness(api)
 
             vm.refresh()
-            vm.uiState.first { it.items.size == 2 }
+            val original = vm.uiState.first { it.items.size == 2 }.items.single { it.resourceId == "r1" }
             api.recycleBinError = RuntimeException("offline")
-            vm.restore(restoredItem.toDomain())
+            vm.restore(original)
             val state = vm.uiState.first { it.loadFailed && it.busyItemKey == null }
 
             assertEquals(2, api.recycleBinRefreshCount.size)
@@ -183,7 +183,7 @@ class RecycleBinViewModelTest {
             val api = StubApi()
             val vm = harness(api, role = "viewer")
 
-            vm.restore(recycleItem().toDomain())
+            vm.restore(readItem(vm, api))
 
             assertTrue(api.recycleBinRestoreRequests.isEmpty())
             assertEquals(0, vm.uiState.value.changedRevision)
@@ -219,7 +219,7 @@ class RecycleBinViewModelTest {
             val api = StubApi().apply { recycleBinRestoreError = RuntimeException("boom") }
             val vm = harness(api)
 
-            vm.restore(recycleItem().toDomain())
+            vm.restore(readItem(vm, api))
             val state = vm.uiState.first { it.message != null }
 
             assertEquals(1, api.recycleBinRestoreRequests.size)
@@ -231,14 +231,13 @@ class RecycleBinViewModelTest {
         }
     }
 
-    private fun RecycleBinItemDto.toDomain() = com.ticketbox.domain.model.RecycleBinItem(
-        kind = kind,
-        kindLabel = kindLabel,
-        resourceId = resourceId,
-        title = title,
-        detail = detail,
-        removedAt = removedAt,
-        retentionLabel = retentionLabel,
-        expectedRowVersion = expectedRowVersion,
-    )
+    private suspend fun readItem(vm: RecycleBinViewModel, api: StubApi, item: RecycleBinItemDto = recycleItem()):
+        com.ticketbox.domain.model.RecycleBinItem {
+        val afterRestore = api.recycleBinResult
+        api.recycleBinResult = RecycleBinListResponseDto(listOf(item), 1)
+        vm.refresh()
+        val original = vm.uiState.first { !it.loading && it.items.isNotEmpty() }.items.single()
+        api.recycleBinResult = afterRestore
+        return original
+    }
 }

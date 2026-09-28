@@ -10,6 +10,8 @@ data class RecycleBinItem(
     val retentionLabel: String,
     val expectedRowVersion: Int?,
     val restoreIntentMonth: String? = null,
+    // Opaque identity of the session that actually read this item; never an API input.
+    val sourceBindingKey: String? = null,
 )
 
 data class RecycleBinSnapshot(

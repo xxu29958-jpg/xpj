@@ -206,11 +206,15 @@ class IncomePlanDraftNavigationRoomTest {
         enterIncome()
         compose.onNodeWithText("2026-09 预计收入").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("包含离线保留的读取", substring = true).performScrollTo().assertIsDisplayed()
+        com.ticketbox.ui.saveConsumerArtPreview("income-retained-month", requireNotNull(
+            androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
         compose.onNodeWithText(context.getString(R.string.income_history_action)).performScrollTo().performClick()
         compose.waitUntil(10_000) { compose.onAllNodesWithText("八月工资预测").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("八月工资预测").performScrollTo().assertIsDisplayed()
         compose.onNode(hasText("包含离线保留的读取", substring = true) and hasAnyAncestor(isDialog()))
             .performScrollTo().assertIsDisplayed()
+        com.ticketbox.ui.saveConsumerArtPreview("income-history-offline", requireNotNull(
+            androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
         assertEquals(listOf("income-1"), income.network.historyCalls)
         pressBack()
         compose.waitForIdle()

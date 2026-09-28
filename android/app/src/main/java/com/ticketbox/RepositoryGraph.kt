@@ -1,6 +1,9 @@
 package com.ticketbox
 
 import com.ticketbox.data.local.AppDatabase
+import com.ticketbox.data.repository.directWrite
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiClient
 import com.ticketbox.data.repository.ApiServiceProvider
@@ -188,6 +191,20 @@ internal class RepositoryGraph(
         expenseDao = database.expenseDao(),
         sessionCoordinator = ledgerSessionCoordinator,
     )
+
+    init {
+        ledgerRepository.restoreWithReadProtection = { binding, item, restore ->
+            when (item.kind) {
+                "income_plan" -> incomePlanRepository.reads.queries.directWrite(binding) { restore() }
+                "goal" -> {
+                    val result = restore()
+                    withContext(NonCancellable) { reportsRepository.goalQueries.invalidate(binding) }
+                    result
+                }
+                else -> restore()
+            }
+        }
+    }
 
     val ruleRepository = RuleRepository(
         binding = serverSessionBinding,
