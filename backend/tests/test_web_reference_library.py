@@ -8,7 +8,8 @@ user-facing hierarchy.
 from __future__ import annotations
 
 import re
-from html import escape, unescape
+from html import unescape
+from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
 import pytest
@@ -315,8 +316,10 @@ def test_referenced_category_removal_explains_the_required_next_step(
 
     # A rejection must lead to the actual blocking object, not leave the user
     # searching every rule and plan. Resolve it through the shipped editor.
-    editor_url = f"/web/rules/{rule_id}/edit?ledger_id=owner"
-    assert f'href="{editor_url}"' in response.text
+    editor_links = [unescape(href) for href in re.findall(r'href="([^"]+)"', response.text)
+        if unescape(href).startswith(f"/web/rules/{rule_id}/edit?ledger_id=owner")]
+    assert len(editor_links) == 1
+    editor_url = editor_links[0]
     editor = web_client.get(editor_url)
     assert editor.status_code == 200, editor.text
     assert 'value="bakery"' in editor.text
@@ -326,7 +329,12 @@ def test_referenced_category_removal_explains_the_required_next_step(
         "keyword": "bakery", "category": "餐饮", "priority": "10"}, follow_redirects=False)
     assert changed.status_code in (302, 303), changed.text
 
-    returned = web_client.get("/web/categories?ledger_id=owner")
+    return_url = urlsplit(changed.headers["location"])
+    assert return_url.path == "/web/categories"
+    assert parse_qs(return_url.query)["ledger_id"] == ["owner"]
+    assert return_url.fragment == f"category-{public_id}"
+    returned = web_client.get(changed.headers["location"])
+    assert f'id="category-{public_id}"' in returned.text
     remove_action = f"/web/categories/preferences/{public_id}/delete"
     current_form = hidden_post_forms(returned.text)[remove_action]
     removed = web_client.post(remove_action, data=current_form, follow_redirects=False)
@@ -374,7 +382,10 @@ def test_category_plan_reference_opens_the_saved_editor_and_returns_to_removal(
     form = hidden_post_forms(categories.text)[form_action]
     rejected = web_client.post(form_action, data=form, follow_redirects=False)
     assert rejected.status_code == 422, rejected.text
-    assert rejected.text.count(f'href="{escape(editor_url, quote=True)}"') == 1
+    editor_links = [unescape(href) for href in re.findall(r'href="([^"]+)"', rejected.text)
+        if unescape(href).startswith(editor_url)]
+    assert len(editor_links) == 1
+    editor_url = editor_links[0]
     assert web_client.get(read_url, headers=identity.app_headers).json() == original_plan
     if source == "goal":
         assert goal_name in unescape(rejected.text)
@@ -401,7 +412,13 @@ def test_category_plan_reference_opens_the_saved_editor_and_returns_to_removal(
     else:
         assert changed_plan["category"] == "餐饮"
         assert changed_plan["target_amount_cents"] == 5000
-    returned = web_client.get("/web/categories?ledger_id=owner")
+    preference_id = form_action.split("/")[-2]
+    return_url = urlsplit(changed.headers["location"])
+    assert return_url.path == "/web/categories"
+    assert parse_qs(return_url.query)["ledger_id"] == ["owner"]
+    assert return_url.fragment == f"category-{preference_id}"
+    returned = web_client.get(changed.headers["location"])
+    assert f'id="category-{preference_id}"' in returned.text
     removed = web_client.post(form_action, data=hidden_post_forms(returned.text)[form_action], follow_redirects=False)
     assert removed.status_code in (302, 303), removed.text
     with SessionLocal() as db:
