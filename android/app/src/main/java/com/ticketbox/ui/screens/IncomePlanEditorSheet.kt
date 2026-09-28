@@ -37,6 +37,7 @@ internal fun IncomePlanEditSheetHost(
     AppBusyGuardedSheet(
         isSubmitting = state.isSubmitting,
         onDismiss = editViewModel::dismiss,
+        skipPartiallyExpanded = true,
     ) {
         EditIncomePlanSheet(
             state = state,
