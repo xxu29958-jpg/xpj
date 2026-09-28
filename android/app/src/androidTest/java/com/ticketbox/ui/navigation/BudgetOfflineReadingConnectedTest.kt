@@ -31,6 +31,8 @@ import com.ticketbox.data.remote.dto.DashboardCardDto
 import com.ticketbox.data.remote.dto.DashboardCardsResponseDto
 import com.ticketbox.data.remote.dto.MonthsDto
 import com.ticketbox.data.repository.newTaskMonth
+import com.ticketbox.data.repository.budgetHistoryPage
+import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.AppThemeMode
 import com.ticketbox.domain.model.CurrencyCode
@@ -136,6 +138,51 @@ class BudgetOfflineReadingConnectedTest {
         saveConsumerArtPreview(name, requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
     }
 
+    @Test fun realBudgetHistoryReopensOfflineWithItsOriginalTimeAndOlderPages() {
+        val calendars = harness.fixture.ledgerCalendarRepository
+        val month = runBlocking {
+            calendars.refresh(requireNotNull(calendars.currentBinding())).getOrThrow()
+            calendars.newTaskMonth()
+        }
+        transport.uiMonth = month
+        showPlans()
+        waitForAmount()
+        openBudgetHistory()
+        val originalTime = readTime("budget-history-read-source")
+        assertNotNull(originalTime)
+        compose.onNodeWithText(context.getString(R.string.budget_history_more)).performScrollTo().performClick()
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText("餐饮 · ¥50")).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("餐饮 · ¥50").performScrollTo().assertIsDisplayed()
+        val pending = harness.fixture.stored()
+        compose.runOnIdle { mounted.value = false; harness.models.viewModelStore.clear() }
+        compose.waitForIdle()
+        transport.offline = true
+        harness.fixture.reopen()
+        compose.runOnIdle { mounted.value = true }
+        compose.waitForIdle()
+        compose.runOnIdle { harness.shell.selectPrimaryDomain(PrimaryDomain.Plans.key) }
+        waitForAmount()
+        openBudgetHistory()
+        assertEquals(originalTime, readTime("budget-history-read-source"))
+        assertTrue(sourceText("budget-history-read-source").contains("本机保留"))
+        compose.onNodeWithText(context.getString(R.string.budget_history_more)).performScrollTo().performClick()
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText("餐饮 · ¥50")).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("餐饮 · ¥50").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("budget-history-read-source").performScrollTo().assertIsDisplayed()
+        assertEquals("Every retained revision must identify its original currency", 3,
+            compose.onAllNodes(hasText("JPY") and hasAnyAncestor(hasTestTag("budget-history"))).fetchSemanticsNodes().size)
+        preview("budget-history-offline-reopened")
+        assertEquals(pending, harness.fixture.stored())
+    }
+
+    private fun openBudgetHistory() {
+        compose.onNodeWithTag("plan_destination_budget").performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.budget_history_title)).performScrollTo().performClick()
+        compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("budget-history-read-source"))
+            .fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("budget-history-read-source").performScrollTo().assertIsDisplayed()
+    }
+
     private fun showPlans() {
         compose.setContent {
             if (mounted.value) CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models) {
@@ -168,13 +215,13 @@ class BudgetOfflineReadingConnectedTest {
         ), harness.screenFactory.viewModelFactories)
     }
 
-    private fun sourceText(): String = compose.onAllNodes(
-        hasTestTag("budget-read-source") or hasAnyAncestor(hasTestTag("budget-read-source")), useUnmergedTree = true,
+    private fun sourceText(tag: String = "budget-read-source"): String = compose.onAllNodes(
+        hasTestTag(tag) or hasAnyAncestor(hasTestTag(tag)), useUnmergedTree = true,
     ).fetchSemanticsNodes().flatMap { it.config.getOrNull(SemanticsProperties.Text).orEmpty() }
         .joinToString(" ") { it.text }
 
-    private fun readTime(): String? = Regex("\\d{4}年\\d{1,2}月\\d{1,2}日 \\d{2}:\\d{2}")
-        .find(sourceText())?.value
+    private fun readTime(tag: String = "budget-read-source"): String? = Regex("\\d{4}年\\d{1,2}月\\d{1,2}日 \\d{2}:\\d{2}")
+        .find(sourceText(tag))?.value
 
     private fun waitForAmount() = compose.waitUntil(5_000) {
         compose.onAllNodes(hasText("¥789")).fetchSemanticsNodes().isNotEmpty()
@@ -193,6 +240,11 @@ internal class OfflineBudgetTransport {
     var original = offlineBudget()
 
     fun wrap(delegate: ApiService): ApiService = object : ApiService by delegate {
+        override suspend fun budgetHistory(month: String, beforeVersion: Long?): com.ticketbox.data.remote.dto.BudgetHistoryDto {
+            if (denied) throw HttpException(Response.error<Any>(403, "{}".toResponseBody()))
+            if (offline) throw ConnectException("Synthetic unavailable budget history transport")
+            return budgetHistoryPage(month, beforeVersion)
+        }
         override suspend fun months(timezone: String?) = MonthsDto(listOf(uiMonth ?: original.month))
         override suspend fun monthlyStats(month: String?, tag: String?, timezone: String?, homeCurrencyCode: String?) =
             delegate.monthlyStats(month, tag, timezone, homeCurrencyCode).copy(month = month ?: uiMonth ?: original.month)

@@ -43,6 +43,7 @@ internal class BudgetQueryReader(
     private val minimumRevisions = mutableMapOf<String, Long>()
     // Unconfigured reads have no revision; only responses started after acceptance may replace the saved budget.
     private val saveGenerations = mutableMapOf<String, Long>()
+    val history = BudgetHistoryQueries(apiProvider, dao, coordinator, ::recoverReadRefresh)
 
     suspend fun invalidate(row: OutboxRow, acceptedRevision: Long?) {
         val binding = requireNotNull(guard.captureLogicalBinding()) { "请重新绑定账本。" }
@@ -58,6 +59,7 @@ internal class BudgetQueryReader(
             val minimum = maxOf(minimumRevisions[monthKey] ?: 0L, acceptedRevision ?: (row.expectedRowVersion + 1))
             minimumRevisions[monthKey] = minimum
             saveGenerations[monthKey] = (saveGenerations[monthKey] ?: 0L) + 1
+            history.invalidate(bindingKey, month, minimum, retireUnconditionally = acceptedRevision == null)
             dao.budgetSnapshotsForMonth(bindingKey, month).forEach { saved ->
                 val cached = readCached(saved)
                 if (acceptedRevision == null || cached == null || (cached.rowVersion ?: 0L) < minimum) dao.deleteStatsProjection(saved)

@@ -7,6 +7,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.BudgetRevision
@@ -21,8 +23,13 @@ import com.ticketbox.viewmodel.BudgetHistoryState
 @Composable
 fun BudgetHistorySheet(state: BudgetHistoryState, onRetry: () -> Unit, onMore: () -> Unit, onDismiss: () -> Unit) {
     AppBusyGuardedSheet(isSubmitting = false, onDismiss = onDismiss, skipPartiallyExpanded = true) {
-        AppSheetScaffold(title = stringResource(R.string.budget_history_title), subtitle = state.month) {
+        AppSheetScaffold(title = stringResource(R.string.budget_history_title), subtitle = state.month,
+            modifier = Modifier.testTag("budget-history")) {
             Text(stringResource(R.string.budget_history_explanation))
+            state.fetchedAt?.let { readAt ->
+                Text(stringResource(if (state.fromCache) R.string.budget_history_cached else R.string.budget_history_read_at,
+                    displayDateTime(readAt)), modifier = Modifier.testTag("budget-history-read-source"))
+            }
             state.items.forEach { entry -> BudgetHistoryEntry(entry) }
             if (state.loading) Text(stringResource(R.string.budget_history_loading))
             if (state.failed) {
@@ -47,6 +54,7 @@ private fun BudgetHistoryEntry(entry: BudgetRevision) {
         HorizontalDivider()
         Text(stringResource(historyTitle(entry.changeKind)), style = MaterialTheme.typography.titleMedium)
         Text(displayDateTime(entry.recordedAt), style = MaterialTheme.typography.bodySmall)
+        snapshot.homeCurrencyCode?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         if (entry.changeKind == "baseline") Text(stringResource(R.string.budget_history_baseline_note))
         if (snapshot.archived) Text(stringResource(R.string.budget_history_archived))
         Text(stringResource(R.string.budget_history_total, historyAmount(snapshot.totalAmountCents, snapshot.homeCurrencyCode)))

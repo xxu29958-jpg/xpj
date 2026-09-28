@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.repository.BudgetHistoryReader
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.RepositoryException
+import com.ticketbox.data.repository.ReadSnapshot
+import com.ticketbox.domain.model.BudgetHistoryPage
 import com.ticketbox.domain.model.BudgetRevision
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,6 +21,8 @@ data class BudgetHistoryState(
     val nextBeforeVersion: Long? = null,
     val loading: Boolean = false,
     val failed: Boolean = false,
+    val fetchedAt: String? = null,
+    val fromCache: Boolean = false,
 )
 
 class BudgetHistoryViewModel(private val repository: BudgetHistoryReader) : ViewModel() {
@@ -29,6 +33,15 @@ class BudgetHistoryViewModel(private val repository: BudgetHistoryReader) : View
     private var failedCursor: Long? = null
 
     init {
+        viewModelScope.launch {
+            repository.observeReadAccessDenials().collect { denial ->
+                if (denial.binding == binding) {
+                    ++sequence
+                    failedCursor = null
+                    mutableState.value = BudgetHistoryState(month = mutableState.value.month, failed = true)
+                }
+            }
+        }
         viewModelScope.launch {
             repository.observeActiveLedgerAccess().map { it?.binding }.distinctUntilChanged().collect {
                 binding = it
@@ -68,20 +81,26 @@ class BudgetHistoryViewModel(private val repository: BudgetHistoryReader) : View
         viewModelScope.launch {
             val result = repository.history(expectedBinding, month, cursor)
             if (request != sequence || binding != expectedBinding) return@launch
-            result.onSuccess { page ->
-                mutableState.value = BudgetHistoryState(month = month,
-                    items = if (cursor == null) page.items else mutableState.value.items + page.items,
-                    nextBeforeVersion = page.nextBeforeVersion)
-            }.onFailure { error ->
-                failedCursor = cursor
-                val refused = (error as? RepositoryException)?.httpStatusCode?.let { it in 400..499 } == true
-                if (refused) failedCursor = null
-                mutableState.value = mutableState.value.copy(
-                    items = if (refused) emptyList() else mutableState.value.items,
-                    nextBeforeVersion = if (refused) null else mutableState.value.nextBeforeVersion,
-                    loading = false, failed = true)
-            }
+            result.onSuccess { acceptPage(month, cursor, it) }.onFailure { failPage(cursor, it) }
         }
+    }
+
+    private fun acceptPage(month: String, cursor: Long?, snapshot: ReadSnapshot<BudgetHistoryPage>) {
+        val previous = mutableState.value
+        val page = snapshot.value
+        mutableState.value = BudgetHistoryState(month = month,
+            items = if (cursor == null) page.items else previous.items + page.items,
+            nextBeforeVersion = page.nextBeforeVersion,
+            fetchedAt = if (cursor == null) snapshot.fetchedAt
+                else listOfNotNull(previous.fetchedAt, snapshot.fetchedAt).minOrNull(),
+            fromCache = snapshot.fromCache || (cursor != null && previous.fromCache))
+    }
+
+    private fun failPage(cursor: Long?, error: Throwable) {
+        val refused = (error as? RepositoryException)?.httpStatusCode?.let { it in 400..499 } == true
+        failedCursor = if (refused) null else cursor
+        mutableState.value = if (refused) BudgetHistoryState(month = mutableState.value.month, failed = true)
+            else mutableState.value.copy(loading = false, failed = true)
     }
 }
 

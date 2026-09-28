@@ -66,7 +66,6 @@ class BudgetRepository internal constructor(
     MonthlyArrangementActions by MonthlyArrangementRepository(apiProvider, outbox, localStorage.arrangementDao,
         adapters, adviceCallStore::noteAdviceInputSnapshot, sessionCoordinator),
     BudgetAdviceInputsActions by BudgetAdviceInputsRepository(apiProvider, adviceCallStore, budgetNetworkErrors(apiProvider)) {
-    private val errorHandler = budgetNetworkErrors(apiProvider)
     private val ledgerRequestGuard = LedgerRequestGuard(apiProvider)
     private val budgetQueries = localStorage.queries
     private val readAccessDenials = sessionCoordinator.snapshotAccessDenials.filterNotNull()
@@ -75,12 +74,7 @@ class BudgetRepository internal constructor(
     override fun canModifyLedger(): Boolean = ledgerRoleCanModify(apiProvider.currentLedgerRole())
 
     override suspend fun history(binding: LogicalSessionBinding, month: String, beforeVersion: Long?) =
-        errorHandler.safeCall {
-            val cleanMonth = validatedBudgetMonth(month).getOrThrow()
-            ledgerRequestGuard.bindExact(binding).call { it.budgetHistory(cleanMonth, beforeVersion) }
-                .also { require(it.ledgerId == binding.ledgerId && it.month == cleanMonth) }
-                .toDomain()
-        }
+        budgetQueries.history.read(binding, month, beforeVersion)
 
 
     override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> =
