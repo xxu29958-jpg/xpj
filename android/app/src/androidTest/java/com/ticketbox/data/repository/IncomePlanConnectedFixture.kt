@@ -91,7 +91,7 @@ internal class IncomeConnectedNetwork {
     val historyCalls = mutableListOf<String>()
     val service = object : ApiService by incomeProxy<ApiService>({ error("Unexpected remote method: $it") }) {
         override suspend fun incomePlanHistory(publicId: String, limit: Int, beforeVersion: Long?): IncomeHistoryResponseDto {
-            if (failReads) throw IOException("Synthetic unavailable history read")
+            if (failReads) throw java.net.UnknownHostException("Synthetic unavailable history read")
             check(publicId == current.publicId && limit == 20 && beforeVersion == null)
             historyCalls += publicId
             return IncomeHistoryResponseDto("income-ledger", publicId, listOf(IncomeRevisionDto(2, "edit",
@@ -100,7 +100,7 @@ internal class IncomeConnectedNetwork {
         }
 
         override suspend fun listIncomePlans(status: String): IncomePlanListResponseDto {
-            if (failReads) throw IOException("Synthetic unavailable management read")
+            if (failReads) throw java.net.UnknownHostException("Synthetic unavailable management read")
             return IncomePlanListResponseDto(if (status == "active") listOf(current) else emptyList(),
                 current.amountCents, month, current.amountCents, 1, current.amountCents, homeCurrencyCode = forecastCurrencyCode)
         }
