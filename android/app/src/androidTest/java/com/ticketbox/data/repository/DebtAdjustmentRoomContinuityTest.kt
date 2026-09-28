@@ -68,6 +68,7 @@ class DebtAdjustmentRoomContinuityTest {
         val originalQueries = fixture.cachedDebtDetails()
         assertEquals("The displayed canonical debt must also be retained for offline re-entry", 1, originalQueries.size)
         assertEquals(originalDebt.publicId, originalQueries.single()["tag"])
+        fixture.network.readFailure = java.net.SocketException("Synthetic offline debt read")
         fixture.network.failReads = true
         compose.onNodeWithText(context.getString(R.string.debt_kind_edit)).performScrollTo().performClick()
         compose.onNodeWithText(context.getString(R.string.debt_kind_revolving)).performClick()

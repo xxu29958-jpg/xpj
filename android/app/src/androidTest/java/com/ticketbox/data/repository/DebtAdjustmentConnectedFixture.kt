@@ -124,6 +124,7 @@ internal class DebtAdjustmentConnectedNetwork {
         homeCurrencyCode = "CNY", createdAt = "2026-09-01T00:00:00Z", updatedAt = "2026-09-01T00:00:00Z", rowVersion = 2,
     )
     var failReads = false
+    var readFailure: IOException = IOException("Synthetic unavailable debt read")
     var readGate: CompletableDeferred<Unit>? = null
     var loseResponse = true
     val calls = mutableListOf<Pair<DebtAdjustmentCreateRequestDto, String>>()
@@ -221,7 +222,7 @@ internal class DebtAdjustmentConnectedNetwork {
         val snapshot = current
         val unavailable = failReads
         readGate?.await()
-        if (unavailable) throw IOException("Synthetic unavailable debt read")
+        if (unavailable) throw readFailure
         return snapshot
     }
 }
