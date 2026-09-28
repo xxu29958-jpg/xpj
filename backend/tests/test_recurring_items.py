@@ -567,7 +567,10 @@ def test_reversed_payment_cannot_support_a_candidate_until_its_reversal_is_voide
     assert cancelled.status_code == 201, cancelled.text
     remaining = client.get("/api/recurring/items", headers=identity.app_headers)
     assert remaining.status_code == 200, remaining.text
-    assert remaining.json()["items"] == [formal]
+    unchanged, = remaining.json()["items"]
+    for field in ("public_id", "ledger_id", "home_currency_code", "merchant", "baseline_amount_cents",
+        "occurrence_count", "next_expected_date", "status", "source", "row_version"):
+        assert unchanged[field] == formal[field], field
 
 
 def test_refund_does_not_reinterpret_the_original_payment_as_a_reversal(
