@@ -30,6 +30,9 @@ internal class FakeIncomePlanCreateRepository(
     canModify: Boolean = true,
     var createResult: Result<Long>? = null,
 ) : IncomePlanActions {
+    override suspend fun history(binding: LogicalSessionBinding, publicId: String, beforeVersion: Long?):
+        Result<com.ticketbox.domain.model.IncomeHistoryPage> = error("History is not requested in this fixture")
+
     val activeAccessFlow = MutableStateFlow<LedgerAccessContext?>(editAccess(canModify = canModify))
     val creationCalls = mutableListOf<IncomePlanCreateCall>()
     val lookups = mutableListOf<Pair<LogicalSessionBinding, String>>()

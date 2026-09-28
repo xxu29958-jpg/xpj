@@ -81,6 +81,9 @@ private class LoadStateIncomePlanRepository(
     private val activeResult: Result<IncomePlanListing> = Result.success(IncomePlanListing(emptyList(), 0L, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0, homeCurrencyCode = "CNY")),
     private val archivedResult: Result<List<IncomePlan>> = Result.success(emptyList()),
 ) : IncomePlanActions {
+    override suspend fun history(binding: LogicalSessionBinding, publicId: String, beforeVersion: Long?):
+        Result<com.ticketbox.domain.model.IncomeHistoryPage> = error("History is not requested in this fixture")
+
     override fun describeSubmission(row: com.ticketbox.data.repository.OutboxRow): com.ticketbox.data.repository.PendingIncomePlanSubmission? = null
     override fun observeSubmissions(expectedBinding: LogicalSessionBinding) =
         kotlinx.coroutines.flow.flowOf(emptyList<com.ticketbox.data.repository.PendingIncomePlanSubmission>())

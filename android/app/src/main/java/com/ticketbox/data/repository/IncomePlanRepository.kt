@@ -17,6 +17,8 @@ import kotlinx.coroutines.flow.map
 
 /** Income management and the server's month-specific forecast; edits publish durable intent first. */
 interface IncomePlanActions {
+    suspend fun history(binding: LogicalSessionBinding, publicId: String, beforeVersion: Long?):
+        Result<com.ticketbox.domain.model.IncomeHistoryPage>
     fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?>
     fun observeSubmissions(expectedBinding: LogicalSessionBinding): Flow<List<PendingIncomePlanSubmission>>
     fun describeSubmission(row: OutboxRow): PendingIncomePlanSubmission?
@@ -57,6 +59,13 @@ class IncomePlanRepository(
 
     private val canModify: Boolean get() = ledgerRoleCanModify(apiProvider.currentLedgerRole())
     override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> = apiProvider.observeActiveLedgerAccess()
+
+    override suspend fun history(binding: LogicalSessionBinding, publicId: String, beforeVersion: Long?) = errors.safeCall {
+        require(publicId.isNotBlank() && (beforeVersion == null || beforeVersion > 0)) { "收入历史范围不正确。" }
+        guard.bindExact(binding).call { api ->
+            api.incomePlanHistory(publicId, 20, beforeVersion).also { it.validateIncomeHistory(binding, publicId, beforeVersion) }.toDomain()
+        }
+    }
 
     override fun describeSubmission(row: OutboxRow): PendingIncomePlanSubmission? {
         val binding = guard.captureLogicalBinding() ?: return null

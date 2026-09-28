@@ -287,6 +287,9 @@ class IncomePlanViewModelTest {
         private val archived: List<IncomePlan> = emptyList(),
         private val canModify: Boolean = true,
     ) : IncomePlanActions {
+        override suspend fun history(binding: LogicalSessionBinding, publicId: String, beforeVersion: Long?):
+            Result<com.ticketbox.domain.model.IncomeHistoryPage> = error("History is not requested in this fixture")
+
         val activeAccessFlow = MutableStateFlow<LedgerAccessContext?>(
             incomePlanAccess(canModify = canModify),
         )

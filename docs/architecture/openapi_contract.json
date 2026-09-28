@@ -14702,6 +14702,120 @@
         "title": "IncomePlanCreateRequest",
         "type": "object"
       },
+      "IncomePlanDefinition": {
+        "properties": {
+          "amount_cents": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "Amount Cents",
+            "type": "integer"
+          },
+          "frequency": {
+            "enum": [
+              "monthly",
+              "one_time"
+            ],
+            "title": "Frequency",
+            "type": "string"
+          },
+          "home_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Currency Code"
+          },
+          "income_month": {
+            "anyOf": [
+              {
+                "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Income Month"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "pay_day": {
+            "maximum": 31.0,
+            "minimum": 1.0,
+            "title": "Pay Day",
+            "type": "integer"
+          },
+          "source_type": {
+            "title": "Source Type",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "archived"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "source_type",
+          "frequency",
+          "income_month",
+          "amount_cents",
+          "home_currency_code",
+          "pay_day",
+          "status"
+        ],
+        "title": "IncomePlanDefinition",
+        "type": "object"
+      },
+      "IncomePlanHistoryResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/IncomePlanRevisionResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "ledger_id": {
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "next_before_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Before Version"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ledger_id",
+          "public_id",
+          "items",
+          "next_before_version"
+        ],
+        "title": "IncomePlanHistoryResponse",
+        "type": "object"
+      },
       "IncomePlanListResponse": {
         "properties": {
           "effective_plan_count": {
@@ -14909,6 +15023,67 @@
           "archived_at"
         ],
         "title": "IncomePlanResponse",
+        "type": "object"
+      },
+      "IncomePlanRevisionResponse": {
+        "properties": {
+          "change_kind": {
+            "enum": [
+              "baseline",
+              "create",
+              "edit",
+              "archive",
+              "restore"
+            ],
+            "title": "Change Kind",
+            "type": "string"
+          },
+          "effective_month": {
+            "anyOf": [
+              {
+                "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Month"
+          },
+          "intent_month": {
+            "anyOf": [
+              {
+                "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intent Month"
+          },
+          "recorded_at": {
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "row_version": {
+            "minimum": 1.0,
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/IncomePlanDefinition"
+          }
+        },
+        "required": [
+          "row_version",
+          "change_kind",
+          "recorded_at",
+          "intent_month",
+          "effective_month",
+          "snapshot"
+        ],
+        "title": "IncomePlanRevisionResponse",
         "type": "object"
       },
       "IncomePlanTokenRequest": {
@@ -35259,6 +35434,119 @@
         ]
       }
     },
+    "/api/income-plans/{public_id}/history": {
+      "get": {
+        "operationId": "plan_history_api_income_plans__public_id__history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before_version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Version"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncomePlanHistoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Plan History",
+        "tags": [
+          "income-plans"
+        ]
+      }
+    },
     "/api/income-plans/{public_id}/restore": {
       "post": {
         "operationId": "restore_plan_api_income_plans__public_id__restore_post",
@@ -50992,6 +51280,87 @@
           }
         },
         "summary": "Web Income Save",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/income-plans/{public_id}/history": {
+      "get": {
+        "operationId": "web_income_history_web_income_plans__public_id__history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Ledger Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before_version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Version"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Income History",
         "tags": [
           "web"
         ]

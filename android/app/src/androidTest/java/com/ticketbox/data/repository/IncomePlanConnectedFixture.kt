@@ -15,6 +15,9 @@ import com.ticketbox.data.remote.dto.IncomePlanDto
 import com.ticketbox.data.remote.dto.IncomePlanCreateRequestDto
 import com.ticketbox.data.remote.dto.IncomePlanListResponseDto
 import com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto
+import com.ticketbox.data.remote.dto.IncomeHistoryResponseDto
+import com.ticketbox.data.remote.dto.IncomeRevisionDto
+import com.ticketbox.data.remote.dto.IncomeDefinitionDto
 import com.ticketbox.security.LocalSessionIdentity
 import com.ticketbox.security.LocalSessionRecord
 import com.ticketbox.security.LocalSessionStore
@@ -85,7 +88,16 @@ internal class IncomeConnectedNetwork {
     val results = mutableMapOf<String, IncomePlanDto>()
     val creationCalls = mutableListOf<Pair<IncomePlanCreateRequestDto, String>>()
     val creationReceipts = mutableMapOf<String, IncomePlanDto>()
+    val historyCalls = mutableListOf<String>()
     val service = object : ApiService by incomeProxy<ApiService>({ error("Unexpected remote method: $it") }) {
+        override suspend fun incomePlanHistory(publicId: String, limit: Int, beforeVersion: Long?): IncomeHistoryResponseDto {
+            check(publicId == current.publicId && limit == 20 && beforeVersion == null)
+            historyCalls += publicId
+            return IncomeHistoryResponseDto("income-ledger", publicId, listOf(IncomeRevisionDto(2, "edit",
+                "2026-08-28T10:00:00Z", "2026-08", "2026-08", IncomeDefinitionDto("八月工资预测", "salary",
+                    "monthly", null, 8000, "CNY", 31, "active"))), null)
+        }
+
         override suspend fun listIncomePlans(status: String): IncomePlanListResponseDto {
             if (failReads) throw IOException("Synthetic unavailable management read")
             return IncomePlanListResponseDto(if (status == "active") listOf(current) else emptyList(),

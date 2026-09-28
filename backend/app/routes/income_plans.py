@@ -21,6 +21,7 @@ from app.schemas import (
     IncomePlanTokenRequest,
     IncomePlanUpdateRequest,
 )
+from app.schemas._income_history import IncomePlanHistoryResponse
 from app.services.income_plan_service import (
     archive_income_plan,
     income_forecast,
@@ -28,6 +29,7 @@ from app.services.income_plan_service import (
     restore_income_plan,
 )
 from app.services.income_plan_service._delivery import create_income_plan_idempotently, update_income_plan_idempotently
+from app.services.income_plan_service._history import income_plan_history
 from app.services.ledger_calendar_service import current_ledger_month
 from app.tenants import AuthContext
 
@@ -84,6 +86,16 @@ def list_plans(
         scheduled_amount_cents=forecast.scheduled_amount_cents,
         effective_plan_count=len(forecast.entries),
     )
+
+
+@router.get("/{public_id}/history", response_model=IncomePlanHistoryResponse)
+def plan_history(
+    public_id: str, before_version: int | None = Query(default=None, ge=1),
+    limit: int = Query(default=20, ge=1, le=100),
+    auth: AuthContext = Depends(get_current_app_context), db: Session = Depends(get_db),
+) -> IncomePlanHistoryResponse:
+    return income_plan_history(db, tenant_id=auth.tenant_id, public_id=public_id,
+        before_version=before_version, limit=limit)
 
 
 @router.post("", response_model=IncomePlanResponse, status_code=201)

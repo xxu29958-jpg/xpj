@@ -130,6 +130,9 @@ fun IncomePlanScreen(
         onDismiss = { showAddSheet = false },
     )
     IncomePlanEditSheetHost(state = editState, editViewModel = editViewModel)
+    if (state.history.publicId != null) {
+        IncomeHistorySheet(state.history, viewModel::retryHistory, viewModel::moreHistory, viewModel::dismissHistory)
+    }
 }
 
 @Composable
@@ -232,6 +235,7 @@ private fun LazyListScope.incomePlanSections(
             state.activePlans.forEach { plan ->
                 IncomePlanRow(
                     plan = plan,
+                    onHistory = { viewModel.openHistory(plan.publicId) },
                     // 行本体即编辑入口；归档收进编辑器（W2-C）。
                     onClick = if (state.canModify && state.pendingSubmissions.none { it.row.targetId == "income_plan:${plan.publicId}" && it.row.status != PendingMutationStatus.Done })
                         ({ onEditPlan(plan) }) else null,
@@ -245,6 +249,7 @@ private fun LazyListScope.incomePlanSections(
         items(state.archivedPlans, key = { "archived-${it.publicId}" }) { plan ->
             IncomePlanRow(
                 plan = plan,
+                onHistory = { viewModel.openHistory(plan.publicId) },
                 trailingAction = if (state.canModify && state.pendingSubmissions.none {
                     it.row.targetId == "income_plan:${plan.publicId}" && it.row.status != PendingMutationStatus.Done }) {
                     IncomePlanRowAction(
@@ -346,6 +351,7 @@ private fun IncomeTotalSummary(state: IncomePlanUiState) {
 @Composable
 private fun IncomePlanRow(
     plan: IncomePlan,
+    onHistory: () -> Unit,
     dimmed: Boolean = false,
     onClick: (() -> Unit)? = null,
     trailingAction: IncomePlanRowAction? = null,
@@ -385,6 +391,7 @@ private fun IncomePlanRow(
                 )
             }
         }
+        androidx.compose.material3.TextButton(onClick = onHistory) { Text(stringResource(R.string.income_history_action)) }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
     }
 }

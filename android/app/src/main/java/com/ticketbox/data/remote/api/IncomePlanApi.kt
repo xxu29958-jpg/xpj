@@ -10,6 +10,13 @@ import retrofit2.http.Path
 import retrofit2.http.Query
 
 interface IncomePlanApi {
+    @GET("api/income-plans/{publicId}/history")
+    suspend fun incomePlanHistory(
+        @Path("publicId") publicId: String,
+        @Query("limit") limit: Int = 20,
+        @Query("before_version") beforeVersion: Long? = null,
+    ): com.ticketbox.data.remote.dto.IncomeHistoryResponseDto
+
     // v1.1 income plans (PR-7 routes) + budget advisor (PR-7 + PR-8)
     @GET("api/income-plans")
     suspend fun listIncomePlans(

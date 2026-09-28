@@ -29,6 +29,7 @@ from app.schemas import IncomePlanUpdateRequest
 from app.services.currency_common import minor_amount_value
 from app.services.income_plan_service import get_income_plan
 from app.services.income_plan_service._delivery import update_income_plan_idempotently
+from app.services.income_plan_service._history import income_plan_history
 from app.services.ledger_calendar_service import current_ledger_month
 from app.services.manual_expense_draft_presenter import manual_draft_scope
 
@@ -73,6 +74,20 @@ def _render_editor(
     return templates.TemplateResponse(
         request=request, name="income_edit.html", context=ctx, status_code=status_code,
     )
+
+
+@router.get("/{public_id}/history", response_class=HTMLResponse)
+def web_income_history(
+    request: Request, public_id: str, ledger_id: str = "",
+    before_version: int | None = Query(default=None, ge=1), limit: int = Query(default=20, ge=1, le=100),
+    _local: None = LocalOnly, db: Session = Depends(get_db),
+) -> HTMLResponse:
+    options = _list_ledger_options(db)
+    selected = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
+    history = income_plan_history(db, tenant_id=selected, public_id=public_id, before_version=before_version, limit=limit)
+    ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected)
+    ctx.update(history=history, before_version=before_version, limit=limit, minor_amount_value=minor_amount_value)
+    return templates.TemplateResponse(request=request, name="income_history.html", context=ctx)
 
 
 @router.get("/{public_id}/edit", response_class=HTMLResponse)

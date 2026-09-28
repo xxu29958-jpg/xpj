@@ -531,3 +531,20 @@ Source checks are not runtime proof. Final implementation source/main and the
 extended native reopen/lost-reply/current-query journey remain to be qualified.
 The full relationship and cross-ledger goal boundary remains in the product
 map; this bounded correction does not declare that larger capability complete.
+
+### Income revision reading (2026-09-28, qualification pending)
+
+Active and archived income rows expose revision history to readers on Web and
+Android. The existing IncomePlanRevision rows remain the only record owner;
+before-version paging preserves earlier windows after later edits. Definitions
+retain their original currency, amount, schedule, status and recorded time.
+Intent month and forecast recalculation month are distinct from a one-time
+scheduled month. Baseline unknown months remain unknown. Reading cannot publish
+an income plan, actual receipt, expense, budget or Outbox intent.
+
+Web native history links and the editor's separate history window preserve the
+original form. Android paging retries keep previously read definitions; changed
+bindings and confirmed access denial retire the history. Existing creation/edit
+drafts remain independent. Persistent income-query reads and the complete group
+journey remain separate pending work, alongside the already scoped goal draft
+continuation; this history reader does not declare the group or RC complete.
