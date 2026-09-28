@@ -1,16 +1,28 @@
-/* Income-create consumer of the shared bound draft store and original command receipt. */
+/* Income form consumers of the shared bound draft store and original command receipts. */
 (function (window, document) {
   "use strict";
   const form = document.querySelector("[data-income-draft-scope]");
   if (!form) return;
   const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
-  const names = ["ledger_id", "home_currency_code", "intent_month", "label", "source_type", "frequency",
+  const createNames = ["ledger_id", "home_currency_code", "intent_month", "label", "source_type", "frequency",
     "income_month", "income_month_year", "income_month_number", "amount_yuan", "pay_day"];
-  const store = window.TicketboxDraftStore.createStore({prefix: "ticketbox:income-create-draft:v1:",
-    fields: [...names, "amount_placeholder", "amount_inputmode"], validRef: uuid});
+  const editNames = ["ledger_id", "home_currency_code", "intent_month", "public_id", "expected_row_version",
+    "label", "source_type", "frequency", "income_month", "amount_yuan", "pay_day"];
+  const planId = form.dataset.incomePlanId || "";
+  const names = planId ? editNames : createNames;
+  const createStore = window.TicketboxDraftStore.createStore({prefix: "ticketbox:income-create-draft:v1:",
+    fields: [...createNames, "amount_placeholder", "amount_inputmode"], validRef: uuid});
+  const editStore = window.TicketboxDraftStore.createStore({prefix: "ticketbox:income-edit-draft:v1:",
+    fields: [...editNames, "amount_placeholder", "amount_inputmode"], validRef: uuid});
+  const store = planId ? editStore : createStore;
+  const anchor = planId ? "#income-edit-" : "#income-create-";
+  const reviewName = planId ? "review_latest" : "review_new";
+  const canWrite = form.dataset.incomeCanWrite !== "false";
+  const archived = form.dataset.incomeArchived === "true";
+  const editsAllowed = canWrite && !archived;
   const scope = JSON.parse(form.dataset.incomeDraftScope);
   const status = form.querySelector("[data-income-draft-status]");
-  const submit = form.querySelector('[type="submit"]:not([name="review_new"])');
+  const submit = form.querySelector('[type="submit"]:not([name="review_new"]):not([name="review_latest"])');
   if (!submit) return;
   const nativeLabel = submit.textContent;
   const nativeRef = form.elements.namedItem("idempotency_key").value;
@@ -23,22 +35,34 @@
   let leaseVersion = 0;
 
   function field(name) { return form.elements.namedItem(name); }
+  function belongsToForm(record) { return !planId || record.values.public_id === planId; }
+  function freshHref() {
+    if (planId) return form.action + "?ledger_id=" + encodeURIComponent(scope.ledgerId) +
+      "&intent_month=" + encodeURIComponent(form.dataset.incomeReviewMonth) + "&new_income=1";
+    return "/web/income-plans?ledger_id=" + encodeURIComponent(scope.ledgerId) + "&new_income=1#add-income";
+  }
   function values() {
     return {...Object.fromEntries(names.map(name => [name, field(name)?.value || ""])),
       amount_placeholder: amount.placeholder, amount_inputmode: amount.inputMode};
   }
   function notice(message) { status.hidden = false; status.textContent = message; }
+  function fieldsEditable() {
+    return editsAllowed && !blocked && phase === "editing" && (held || onlineOnly);
+  }
+  function commandAllowed() { return canWrite && (!archived || phase !== "editing"); }
+  function actionUnavailable() { return blocked || busy || accepted || (!held && !onlineOnly); }
   function controls() {
-    const editing = !blocked && phase === "editing" && (held || onlineOnly);
+    const editing = fieldsEditable();
     names.forEach(name => {
       const input = field(name);
       if (!input) return;
       if (input.tagName === "SELECT") input.disabled = !editing;
       else input.readOnly = !editing;
     });
-    submit.disabled = blocked || busy || accepted || (!held && !onlineOnly);
+    submit.hidden = archived && phase === "editing";
+    submit.disabled = !commandAllowed() || actionUnavailable();
     submit.textContent = phase === "editing" ? nativeLabel : "核实原收入计划";
-    review.hidden = blocked || phase === "editing";
+    review.hidden = !editsAllowed || blocked || phase === "editing";
     review.disabled = busy || accepted;
     discard.hidden = blocked || !retained;
     discard.disabled = busy || accepted || !held;
@@ -47,8 +71,8 @@
   }
   function stop(message) { blocked = true; controls(); notice(message); }
   function restore(record) {
-    if (!store.matches(record.scope, scope, false)) {
-      stop("这份原稿属于其他账本或账户，请回到原账本继续。"); return false;
+    if (!store.matches(record.scope, scope, false) || !belongsToForm(record)) {
+      stop("这份原稿属于另一项收入任务，请从保留的收入计划打开原任务。"); return false;
     }
     const saved = record.values;
     names.forEach(name => {
@@ -71,7 +95,7 @@
     }
     amount.placeholder = saved.amount_placeholder;
     amount.inputMode = saved.amount_inputmode;
-    form.querySelector('label[for="income-create-amount"]').textContent =
+    form.querySelector('[data-income-amount-label]').textContent =
       "预计金额（" + (saved.home_currency_code || "币种待确认") + "）";
     form.querySelector("[data-income-intent]").textContent =
       "本次每月计划从 " + (saved.intent_month || "待确认月份") + " 生效。失败重试保留原月份和金额。";
@@ -82,18 +106,23 @@
     field("draft_scope").value = JSON.stringify(record.scope);
     return true;
   }
-  function pointTo() { window.history.replaceState(null, "", "#income-create-" + ref); }
+  function pointTo() { window.history.replaceState(null, "", anchor + ref); }
   function renderShelf() {
-    const records = store.list(scope), list = shelf.querySelector("[data-income-draft-list]");
+    const creates = createStore.list(scope), edits = editStore.list(scope);
+    const records = (planId ? edits : creates).filter(belongsToForm);
+    const list = shelf.querySelector("[data-income-draft-list]");
     list.replaceChildren();
-    records.forEach(record => {
+    [...creates, ...edits].forEach(record => {
       const item = document.createElement("li"), link = document.createElement("a");
-      link.href = "/web/income-plans?ledger_id=" + encodeURIComponent(scope.ledgerId) + "#income-create-" + record.clientRef;
-      link.textContent = (record.values.label || "未命名收入计划") + " · " +
+      link.href = record.values.public_id ? "/web/income-plans/" + encodeURIComponent(record.values.public_id) +
+        "/edit?ledger_id=" + encodeURIComponent(scope.ledgerId) + "&intent_month=" +
+        encodeURIComponent(record.values.intent_month) + "#income-edit-" + record.clientRef :
+        "/web/income-plans?ledger_id=" + encodeURIComponent(scope.ledgerId) + "#income-create-" + record.clientRef;
+      link.textContent = (record.values.public_id ? "修改 · " : "新建 · ") + (record.values.label || "未命名收入计划") + " · " +
         (!store.matches(record.scope, scope) ? "原浏览器身份，待核对" : record.phase === "editing" ? "未提交" : "结果待核对");
       item.append(link); list.append(item);
     });
-    shelf.hidden = records.length === 0;
+    shelf.hidden = creates.length + edits.length === 0;
     return records;
   }
   function persist(nextPhase) {
@@ -107,7 +136,7 @@
     return record;
   }
   function capture() {
-    if (!held || busy || accepted || blocked || phase !== "editing") return;
+    if (!editsAllowed || !held || busy || accepted || blocked || phase !== "editing") return;
     try { persist("editing"); controls(); notice("输入已保留在此浏览器，尚未提交。"); }
     catch (_) { notice("最新输入未能保留，请暂勿关闭此页；恢复浏览器存储后可继续提交。"); }
   }
@@ -130,7 +159,8 @@
       notice((result.message || "暂未确认提交结果。") + " 原稿仍保留，可沿原提交核实；需要修改时先核对已有计划。");
       return;
     }
-    if (!result.receipt?.public_id || result.ack?.clientRef !== ref || !store.matches(result.ack.scope, scope)) {
+    if (!result.receipt?.public_id || (planId && result.receipt.public_id !== planId) ||
+        result.ack?.clientRef !== ref || !store.matches(result.ack.scope, scope)) {
       throw Error("unconfirmed_receipt");
     }
     const next = new URL(result.next, window.location.href);
@@ -154,18 +184,18 @@
         throw Error("original_changed");
       }
       accepted = true; controls();
-      window.location.assign("/web/income-plans?ledger_id=" + encodeURIComponent(scope.ledgerId) + "&new_income=1#add-income");
+      window.location.assign(freshHref());
     } catch (_) { notice("原稿未能移除，请保留页面并检查浏览器存储。"); }
   });
   form.addEventListener("submit", async event => {
     if (onlineOnly) return;
     // The existing explicit review prepares a fresh form without submitting a plan.
-    if (event.submitter?.name === "review_new" && held && !busy && !blocked) {
+    if (event.submitter?.name === reviewName && editsAllowed && held && !busy && !blocked) {
       names.forEach(name => { if (field(name)?.tagName === "SELECT") field(name).disabled = false; });
       return;
     }
     event.preventDefault();
-    if (!held || busy || accepted || blocked) return;
+    if (!commandAllowed() || !held || busy || accepted || blocked) return;
     busy = true; controls(); notice("正在提交原收入计划…");
     try { await send(); }
     catch (_) { notice(accepted ? "收入计划已保存，本地原稿暂未收起；请核对列表。" :
@@ -173,12 +203,18 @@
     finally { busy = false; controls(); renderShelf(); }
   });
   function allowOnline() {
-    if (window.location.hash.startsWith("#income-create-") || retained) {
+    if (window.location.hash.startsWith(anchor) || retained) {
       stop("浏览器暂时无法安全恢复这份原稿。请恢复存储能力后继续，原稿不会被覆盖。");
       return;
     }
     onlineOnly = true; controls();
     notice("此浏览器无法持久保留输入，仍可在本页在线提交；关闭或刷新前请先保存。");
+  }
+  function activationNotice(record) {
+    if (!canWrite) { notice(record ? "当前角色为只读，原稿仍保留；恢复编辑权限后可继续。" : "当前角色为只读，可核对已保存的计划。"); return; }
+    if (archived && phase === "editing") { notice(record ? "计划已归档，原输入仍保留；请先恢复计划再核对修改。" : "计划已归档，请先恢复计划再修改。"); return; }
+    notice(record ? phase === "editing" ? "已恢复原收入计划，保留原币种、生效月份和目标版本。" :
+      "原提交结果尚未确认。核实会沿用原内容和编号。" : "输入会保留在此浏览器，尚未提交。");
   }
   function activate() {
     const currentLease = ++leaseVersion;
@@ -186,11 +222,11 @@
     if (!window.navigator.locks) { allowOnline(); return; }
     try {
       const records = renderShelf();
-      const wanted = /^#income-create-(.+)$/.exec(window.location.hash);
+      const wanted = window.location.hash.startsWith(anchor) ? window.location.hash.slice(anchor.length) : "";
       const explicitNew = new URL(window.location.href).searchParams.get("new_income") === "1";
       const nativeResult = form.dataset.incomeNativeResult;
       const preferred = records.find(record => record.phase !== "editing") || records[0];
-      ref = nativeResult ? nativeRef : wanted ? wanted[1] : !explicitNew && preferred ? preferred.clientRef : nativeRef;
+      ref = nativeResult ? nativeRef : wanted || (!explicitNew && preferred ? preferred.clientRef : nativeRef);
       if (!uuid.test(ref)) { stop("原稿编号无法核对，请从保留的收入计划重新打开。"); return; }
       window.navigator.locks.request(store.key(ref), {ifAvailable: true}, async lock => {
         if (currentLease !== leaseVersion) return;
@@ -210,8 +246,7 @@
         }
         if (!record && nativeResult) persist(phase);
         controls();
-        notice(record ? phase === "editing" ? "已恢复原收入计划，保留原币种和生效月份。" :
-          "原提交结果尚未确认。核实会沿用原内容和编号。" : "输入会保留在此浏览器，尚未提交。");
+        activationNotice(record);
         return new Promise(resolve => { release = resolve; });
       }).catch(() => { if (!held) allowOnline(); else stop("原稿暂时无法恢复，请保留此页并检查浏览器存储。"); });
     } catch (_) { allowOnline(); }
@@ -219,7 +254,7 @@
   window.addEventListener("pagehide", () => { leaseVersion += 1; held = false; if (release) release(); release = null; });
   window.addEventListener("pageshow", event => { if (event.persisted && !accepted) activate(); });
   window.addEventListener("hashchange", () => {
-    if (window.location.hash.startsWith("#income-create-")) window.location.reload();
+    if (window.location.hash.startsWith(anchor)) window.location.reload();
   });
   activate();
 })(window, document);

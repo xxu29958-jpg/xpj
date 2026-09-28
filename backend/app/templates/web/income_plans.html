@@ -5,7 +5,7 @@
 {% block page_scripts %}
 {% if income_draft_scope %}
 <script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
-<script defer src="/static/web/income-create-entry.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/income-plan-entry.js?v={{ asset_version }}"></script>
 {% endif %}
 {% endblock %}
 
@@ -172,7 +172,7 @@
         {% endif %}
       </fieldset>
       <div class="product-field">
-        <label for="income-create-amount">预计金额（{{ draft.get('home_currency_code') or '币种待确认' }}）</label>
+        <label for="income-create-amount" data-income-amount-label>预计金额（{{ draft.get('home_currency_code') or '币种待确认' }}）</label>
         <input id="income-create-amount" class="product-input" type="text" name="amount_yuan" placeholder="{{ income_form_currency.amount_placeholder or '请输入金额' }}" inputmode="{{ income_form_currency.inputmode or 'decimal' }}" value="{{ draft.get('amount_yuan', '') }}" required>
       </div>
       <div class="product-field">
