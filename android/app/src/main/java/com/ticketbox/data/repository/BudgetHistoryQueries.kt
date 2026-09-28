@@ -11,6 +11,8 @@ import com.ticketbox.data.remote.dto.BudgetHistoryDto
 import com.ticketbox.domain.model.BudgetHistoryPage
 import java.io.IOException
 import java.time.Instant
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import retrofit2.HttpException
@@ -26,7 +28,7 @@ private data class AcceptedBudgetHistory(val page: BudgetHistoryDto, val query: 
 
 /** BudgetQueryReader's history pages share its Room store, access coordinator and accepted-save invalidation. */
 internal class BudgetHistoryQueries(
-    apiProvider: ApiServiceProvider,
+    private val apiProvider: ApiServiceProvider,
     private val dao: ExpenseDao,
     private val coordinator: LocalLedgerSessionCoordinator,
     private val prepareRead: suspend (BoundLedgerRequest, String) -> Unit,
@@ -38,6 +40,10 @@ internal class BudgetHistoryQueries(
     private val mutex = Mutex()
     private val accepted = mutableMapOf<String, AcceptedBudgetHistory>()
     private val minimumRevisions = mutableMapOf<String, Long>()
+
+    override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> = apiProvider.observeActiveLedgerAccess()
+
+    override fun observeReadAccessDenials(): Flow<SnapshotAccessDenial> = coordinator.snapshotAccessDenials.filterNotNull()
 
     suspend fun invalidate(bindingKey: String, month: String, minimumRevision: Long, retireUnconditionally: Boolean) = mutex.withLock {
         minimumRevisions["$bindingKey|$month"] = maxOf(minimumRevisions["$bindingKey|$month"] ?: 0L, minimumRevision)
