@@ -11,7 +11,8 @@
     {kind:'recurring-edit', action:'/web/recurring/series-one/edit', values:{merchant:'原编辑方案',
       baseline_amount_yuan:'001800',next_expected_date:'2026-10-09'}}
   ];
-  const read = f => [...new FormData(f).entries()].filter(([n])=>n!=='csrf_token');
+  const read = f => [...new FormData(f).entries()].filter(([n])=>n!=='csrf_token').map(([n,v])=>
+    [n,n==='draft_scope' ? JSON.stringify(Object.entries(JSON.parse(v)).sort(([a],[b])=>a.localeCompare(b))) : v]);
   const load = async (frame,url) => {
     const loaded = new Promise(r=>frame.onload=r); frame.src=url; await loaded; await pause(150);
   };

@@ -12,6 +12,14 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.errors import AppError
 from app.money_contract import projection_sum_to_int
+from app.routes._web_draft_binding import (
+    browser_draft_scope,
+    draft_ack_response,
+    draft_error_response,
+    draft_refusal_result,
+    require_draft_binding,
+    reviewed_draft_scope,
+)
 from app.routes._web_session_common import resolve_web_actor_account_id
 from app.routes.web_common import (
     LocalOnly,
@@ -21,7 +29,6 @@ from app.routes.web_common import (
     _list_ledger_options,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
-    _web_redirect,
     _with_ledger,
     category_return_url,
     parse_form_row_version_token,
@@ -257,6 +264,7 @@ def _render_budgets(
     error: str | None = None,
     status_code: int = 200,
     draft: dict | None = None,
+    draft_result: str = "",
     return_category: str = "", return_month: str = "",
 ) -> HTMLResponse:
     timezone_name = _budget_timezone_name()
@@ -275,6 +283,9 @@ def _render_budgets(
         selected_month=month,
     )
     ctx["month"] = month
+    scope = browser_draft_scope(db, request)
+    binding_required = scope is not None and draft is not None and not draft.get("draft_scope")
+    ctx.update(budget_draft_scope=None if binding_required else scope, budget_draft_result=draft_result)
     budget_view = _budget_view(
         budget,
         currency_code=budget.home_currency_code,
@@ -314,7 +325,7 @@ def _render_budgets(
     ctx["category_return_url"] = category_return_url(selected_id, origin.get("return_category", ""), origin.get("return_month", ""))
     ctx["current_edit_url"] = _with_ledger("/web/budgets", selected_id, month=month,
         return_category=origin.get("return_category", ""), return_month=origin.get("return_month", ""))
-    ctx["budget_conflict"] = bool(draft is not None and draft.get("conflict"))
+    ctx["budget_conflict"] = binding_required or bool(draft is not None and draft.get("conflict"))
     ctx["budget_currency_changed"] = bool(draft is not None and budget.configured and
         draft["home_currency_code"] != budget.home_currency_code)
     return templates.TemplateResponse(
@@ -400,6 +411,7 @@ def web_budgets_save(
     category_budget_category: list[str] = Form(default=[]), category_budget_amount_yuan: list[str] = Form(default=[]),
     category_budget_remove: list[int] = Form(default=[]), review_latest: bool = Form(default=False),
     return_category: str = Form(""), return_month: str = Form(""),
+    draft_scope: str = Form(""),
     _local: None = LocalOnly, db: Session = Depends(get_db),
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
@@ -410,15 +422,17 @@ def web_budgets_save(
         "excluded_category": excluded_category, "excluded_categories": excluded_categories,
         "category_budget_category": category_budget_category, "category_budget_amount_yuan": category_budget_amount_yuan,
         "category_budget_remove": set(category_budget_remove),
-        "return_category": return_category, "return_month": return_month}
+        "return_category": return_category, "return_month": return_month, "draft_scope": draft_scope}
     retained = preserve_original_ledger_form(request, db, options=options, selected=selected,
         fields={**draft, "ledger_id": ledger_id, "month": month, "review_latest": review_latest,
             "category_budget_remove": category_budget_remove}, task="保存月度预算")
     if retained is not None:
-        return retained
-    _require_selected_ledger_write(options, selected)
+        return draft_error_response(request, AppError("session_binding_changed", "账本已切换，原稿仍保留。", status_code=409)) or retained
     target_month = clean_month(month)
+    _require_selected_ledger_write(options, selected)
     try:
+        draft["draft_scope"] = reviewed_draft_scope(db, request, draft_scope, review=review_latest)
+        require_draft_binding(db, request, ledger_id=selected, draft_scope=draft["draft_scope"], require_session=False)
         if review_latest:
             accepted = review_monthly_budget_save(db, tenant_id=selected, month=target_month, idempotency_key=idempotency_key)
             latest = get_monthly_budget(db, tenant_id=selected, month=target_month, timezone_name=_budget_timezone_name())
@@ -429,15 +443,15 @@ def web_budgets_save(
             if accepted:
                 draft["idempotency_key"] = str(uuid4())
             return _render_budgets(request=request, db=db, selected_id=selected, options=options,
-                month=target_month, draft=draft, message="已保留输入并载入当前版本，请核对后再保存。")
-        save_monthly_budget(db, tenant_id=selected, month=target_month, payload=_budget_payload_from_draft(draft),
+                month=target_month, draft=draft, draft_result="prepared", message="已保留输入并载入当前版本，请核对后再保存。")
+        receipt = save_monthly_budget(db, tenant_id=selected, month=target_month, payload=_budget_payload_from_draft(draft),
             actor_account_id=resolve_web_actor_account_id(db, request, selected), idempotency_key=idempotency_key,
             timezone_name=_budget_timezone_name())
     except AppError as exc:
         draft["conflict"] = exc.error in {"state_conflict", "budget_currency_conflict", "idempotency_key_reused"}
-        return _render_budgets(request=request, db=db, selected_id=selected, options=options,
-            month=target_month, error=exc.message, status_code=exc.status_code, draft=draft)
+        return draft_error_response(request, exc) or _render_budgets(request=request, db=db, selected_id=selected, options=options,
+            month=target_month, error=exc.message, status_code=exc.status_code, draft=draft, draft_result=draft_refusal_result(exc))
     target = category_return_url(selected, return_category, return_month, message="预算已保存，可以继续整理原分类。")
-    if target:
-        return RedirectResponse(target, status_code=303)
-    return _web_redirect("/web/budgets", selected, month=target_month, msg="预算已保存。")
+    target = target or _with_ledger("/web/budgets", selected, month=target_month, msg="预算已保存。")
+    return draft_ack_response(request, draft_scope=draft_scope, idempotency_key=idempotency_key,
+        receipt=receipt, next_href=target) or RedirectResponse(target, status_code=303)

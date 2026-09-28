@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% import '_planning_drafts.html' as drafts %}
+{% block page_scripts %}{{ drafts.scripts(asset_version) }}{% endblock %}
 {% set page_title = '固定支出' %}
 {% set product_body_domain = 'plans' %}
 {% block title %}固定支出 · 小票夹{% endblock %}
@@ -13,6 +15,7 @@
      只读语义 / 409 引导链接全部保留; 行内编辑用 <details class="plan-edit">,
      open 仍由 open_edit_id 驱动。 #}
 {% block content %}
+{{ drafts.shelf('recurring', '固定支出', recurring_draft_scope) }}
 {% set history_month = request.query_params.get('month', '') %}
 <header class="product-page-header">
   <div class="product-page-heading">
@@ -148,13 +151,17 @@
         <span class="readonly-inline">只读</span>
         {% endif %}
       </div>
-      {% if can_write and (item.status != 'archived' or draft_public_id == item.public_id) %}
+      {% if can_write and (item.status != 'archived' or draft_public_id == item.public_id or open_edit_id == item.public_id) %}
       {% for edit_form in [item.edit_form] + ([item.current_edit_form] if item.current_edit_form else []) %}
       {% set edit_input = edit_form.currency_input %}
+      {% set edit_scope = recurring_draft_scope if edit_form.get('draft_scope') != '' else none %}
       {% set edit_dom_id = item.public_id ~ '-' ~ loop.index0 %}
       <details class="plan-edit"{% if open_edit_id == item.public_id or draft_public_id == item.public_id %} open{% endif %}>
         <summary class="product-button product-button--quiet product-button--small">{{ '编辑当前记录' if not loop.first else '编辑' }}</summary>
-        <form method="post" action="/web/recurring/{{ item.public_id }}/edit" class="budget-form">
+        <form method="post" action="/web/recurring/{{ item.public_id }}/edit" class="budget-form"
+          {% if edit_scope %}data-recurring-draft-scope="{{ edit_scope | tojson | forceescape }}" data-recurring-plan-id="{{ item.public_id }}" data-recurring-archived="{{ 'true' if item.status == 'archived' else 'false' }}" data-recurring-new-draft="{{ 'false' if loop.first else 'true' }}" data-recurring-native-result="{{ recurring_draft_result if loop.first and draft_public_id == item.public_id else '' }}"{% endif %}>
+          <input type="hidden" name="public_id" value="{{ item.public_id }}">
+          {% if recurring_draft_scope %}<input type="hidden" name="draft_scope" value="{{ edit_form.get('draft_scope', recurring_draft_scope | tojson) | forceescape }}">{% endif %}
           <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
           <input type="hidden" name="home_currency_code" value="{{ edit_form.home_currency_code or '' }}">
           <input type="hidden" name="expected_row_version" value="{{ edit_form.expected_row_version }}">
@@ -171,7 +178,7 @@
               {% endif %}
             </div>
             <div class="product-field">
-              <label for="rc-edit-amount-{{ edit_dom_id }}">每月金额（{{ edit_input.currency_code or '币种待确认' }}，{{ edit_input.amount_input_hint }}）</label>
+              <label for="rc-edit-amount-{{ edit_dom_id }}">每月金额（<span data-plan-currency>{{ edit_input.currency_code or '币种待确认' }}</span>，{{ edit_input.amount_input_hint }}）</label>
               <input class="product-input" id="rc-edit-amount-{{ edit_dom_id }}" type="{{ 'number' if edit_input else 'text' }}" name="baseline_amount_yuan"
                      step="{{ edit_input.amount_step or 'any' }}" min="{{ edit_input.positive_amount_min }}"
                      inputmode="{{ edit_input.inputmode }}" value="{{ edit_form.baseline_amount_yuan }}" required>
@@ -190,12 +197,14 @@
           <div class="budget-actions">
             {% if edit_form.currency_conflict %}
             <p class="hint">原填写和币种已保留，尚未保存。请在“编辑当前记录”中核对金额；原填写不会自动套用到另一币种。</p>
-            {% elif edit_form.review_required %}
+            {% elif edit_form.review_required and not edit_scope %}
             <button class="product-button" type="submit" name="review_latest" value="true" formnovalidate>核对已保存记录，保留填写继续</button>
             {% endif %}
-            <button class="product-button product-button--primary" type="submit"{% if edit_form.review_required %} disabled{% endif %}>保存修改</button>
+            <button class="product-button product-button--primary" type="submit" data-recurring-submit{% if edit_form.review_required %} disabled{% endif %}>保存修改</button>
           </div>
           {% endif %}
+          {% if item.status == 'archived' and edit_scope %}<button class="product-button" type="submit" data-recurring-submit hidden>核实原修改</button>{% endif %}
+          {{ drafts.controls('recurring', '固定支出', edit_scope) }}
         </form>
       </details>
       {% endfor %}
@@ -253,7 +262,12 @@
     <h2 class="product-panel-title">添加固定支出</h2>
     <p class="product-panel-subtitle">手动记下每月固定开销，只做提醒。</p>
   </div>
-  <form method="post" action="/web/recurring/create" class="budget-form">
+  {% set create_scope = recurring_draft_scope if create_form.get('draft_scope') != '' else none %}
+  <form method="post" action="/web/recurring/create" class="budget-form"
+    {% if create_scope %}data-recurring-draft-scope="{{ create_scope | tojson | forceescape }}" data-recurring-native-result="{{ recurring_draft_result if not draft_public_id else '' }}"{% endif %}>
+    <input type="hidden" name="public_id" value="">
+    <input type="hidden" name="expected_row_version" value="">
+    {% if recurring_draft_scope %}<input type="hidden" name="draft_scope" value="{{ create_form.get('draft_scope', recurring_draft_scope | tojson) | forceescape }}">{% endif %}
     {% set create_input = create_form.currency_input %}
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
     <input type="hidden" name="idempotency_key" value="{{ create_form.idempotency_key }}">
@@ -290,11 +304,12 @@
     <div class="budget-actions">
       {% if create_form.currency_conflict %}
       <p class="hint">原填写已保留，但缺少可确认的币种。请复制原填写，刷新页面后按显示的币种重新核对金额。</p>
-      {% elif create_form.review_required %}
+      {% elif create_form.review_required and not create_scope %}
       <button class="product-button" type="submit" name="review_latest" value="true" formnovalidate>保留填写，准备重新保存</button>
       {% endif %}
-      <button class="product-button product-button--primary" type="submit"{% if create_form.review_required %} disabled{% endif %}>保存固定支出</button>
+      <button class="product-button product-button--primary" type="submit" data-recurring-submit{% if create_form.review_required %} disabled{% endif %}>保存固定支出</button>
     </div>
+    {{ drafts.controls('recurring', '固定支出', create_scope) }}
   </form>
   {% endif %}
 </section>

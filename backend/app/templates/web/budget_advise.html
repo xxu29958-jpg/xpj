@@ -1,7 +1,9 @@
 {% extends "base.html" %}
+{% import '_planning_drafts.html' as drafts %}
 {% set page_title = '本月安排' %}
 {% set product_body_domain = 'plans' %}
 {% block title %}本月安排 · 小票夹{% endblock %}
+{% block page_scripts %}{{ drafts.scripts(asset_version) }}{% endblock %}
 
 {% macro money(value, subtract=false) %}{% if value is none %}{{ '待核对输入' if form_error or undated_expense_count else '待补汇率' }}{% else %}{% if subtract %}− {% endif %}{{ currency_input.currency_symbol }}{{ value }}{% endif %}{% endmacro %}
 {% block content %}
@@ -53,7 +55,10 @@
     <a class="product-button product-button--quiet" href="/web/budget-advise/history?ledger_id={{ selected_ledger_id|urlencode }}&month={{ month|urlencode }}">查看修改记录</a>
     {% else %}<p class="hint">这个月尚未设置，计算暂按零预留。保存为零也会保留一条明确安排。</p>{% endif %}
     {% if is_trial %}<p class="product-feedback" role="status">正在查看临时试算，尚未保存。</p>{% endif %}
-    <form method="post" action="/web/budget-advise" class="budget-form">
+    {{ drafts.shelf('arrangement', '本月安排', arrangement_draft_scope) }}
+    <form method="post" action="/web/budget-advise" class="budget-form"
+      {% if arrangement_draft_scope and can_write %}data-arrangement-draft-scope="{{ arrangement_draft_scope | tojson | forceescape }}" data-arrangement-plan-id="{{ month }}" data-arrangement-native-result="{{ arrangement_draft_result | default('') }}"{% endif %}>
+      {% if arrangement_draft_scope %}<input type="hidden" name="draft_scope" value="{{ (draft_scope if draft_scope is defined and draft_scope is not none else arrangement_draft_scope | tojson) | forceescape }}">{% endif %}
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       <input type="hidden" name="month" value="{{ month }}">
       <input type="hidden" name="expected_row_version" value="{{ expected_row_version }}">
@@ -70,21 +75,22 @@
       {% else %}<input type="hidden" name="arrangement_currency_code" value="{{ editor_currency.currency_code }}">{% endif %}
       {{ csrf_field|safe }}
       <div class="product-field">
-        <label for="advise-savings">计划储蓄（{{ '原币种待选' if currency_choice_required else editor_currency.currency_code }}）</label>
+        <label for="advise-savings">计划储蓄（<span data-plan-currency>{{ '原币种待选' if currency_choice_required else editor_currency.currency_code }}</span>）</label>
         <input id="advise-savings" class="product-input" type="text" name="savings_target_yuan" inputmode="{{ editor_currency.inputmode }}" placeholder="{{ editor_currency.amount_placeholder }}" value="{{ savings_target_yuan }}">
       </div>
       <div class="product-field">
-        <label for="advise-reserved">备用金（{{ '原币种待选' if currency_choice_required else editor_currency.currency_code }}）</label>
+        <label for="advise-reserved">备用金（<span data-plan-currency>{{ '原币种待选' if currency_choice_required else editor_currency.currency_code }}</span>）</label>
         <input id="advise-reserved" class="product-input" type="text" name="reserved_buffer_yuan" inputmode="{{ editor_currency.inputmode }}" placeholder="{{ editor_currency.amount_placeholder }}" value="{{ reserved_buffer_yuan }}">
       </div>
       <div class="budget-actions">
-        <button class="product-button" type="submit">试算，不保存</button>
-        {% if can_write %}<button class="product-button product-button--primary" type="submit" formaction="/web/budget-advise/save">保存本月安排</button>{% endif %}
-        {% if save_conflict and can_write %}<button class="product-button" type="submit" formaction="/web/budget-advise/save" name="review_latest" value="true">保留输入，核对当前版本</button>{% endif %}
+        <button class="product-button" type="submit" data-plan-preview>试算，不保存</button>
+        {% if can_write %}<button class="product-button product-button--primary" type="submit" formaction="/web/budget-advise/save" data-arrangement-submit{% if arrangement_binding_required %} disabled{% endif %}>保存本月安排</button>{% endif %}
+        {% if save_conflict and can_write and not arrangement_draft_scope %}<button class="product-button" type="submit" formaction="/web/budget-advise/save" name="review_latest" value="true">保留输入，核对当前版本</button>{% endif %}
         {% if advisor_can_request and not missing_rates and not form_error and not undated_expense_count %}
-        <button class="product-button" type="submit" name="run_advise" value="true">获取智能建议</button>
+        <button class="product-button" type="submit" name="run_advise" value="true" data-plan-preview>获取智能建议</button>
         {% endif %}
       </div>
+      {% if can_write %}{{ drafts.controls('arrangement', '本月安排', arrangement_draft_scope, '/web/budget-advise/save') }}{% endif %}
     </form>
     <div class="budget-actions">
       <a href="/web/budgets?ledger_id={{ selected_ledger_id|urlencode }}&month={{ month|urlencode }}">月度支出预算</a>

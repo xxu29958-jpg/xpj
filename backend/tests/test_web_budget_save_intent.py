@@ -53,6 +53,8 @@ def test_review_keeps_an_unresolved_original_key_when_no_receipt_exists():
 
 
 def test_different_currency_review_keeps_original_basis_and_key(monkeypatch):
+    from starlette.requests import Request
+
     monkeypatch.setattr(web, "_list_ledger_options", lambda db: [])
     monkeypatch.setattr(web, "_resolve_selected_ledger_id", lambda *args, **kwargs: "owner")
     monkeypatch.setattr(web, "_require_selected_ledger_write", lambda *args: None)
@@ -60,8 +62,9 @@ def test_different_currency_review_keeps_original_basis_and_key(monkeypatch):
     monkeypatch.setattr(web, "get_monthly_budget", lambda *args, **kwargs:
         SimpleNamespace(configured=True, home_currency_code="CNY", row_version=3))
     monkeypatch.setattr(web, "_render_budgets", lambda **kwargs: kwargs)
-    original = _draft(idempotency_key="accepted-jpy-key")
-    result = web.web_budgets_save(Mock(), ledger_id="owner", month="2026-09", review_latest=True,
+    original = _draft(idempotency_key="accepted-jpy-key", draft_scope="")
+    request = Request({"type": "http", "method": "POST", "path": "/web/budgets/save", "headers": []})
+    result = web.web_budgets_save(request, ledger_id="owner", month="2026-09", review_latest=True,
         _local=None, db=Mock(), **original)
     assert result["draft"] == original
     assert "币种不同" in result["message"]

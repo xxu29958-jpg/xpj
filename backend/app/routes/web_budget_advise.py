@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
+from app.routes._web_draft_binding import browser_draft_scope, require_draft_binding
 from app.routes.web_budget_fx import router as rates_router
 from app.routes.web_common import (
     LocalOnly,
@@ -90,6 +91,7 @@ def page_budget_advise_run(
     arrangement_currency_code: str | None = Form(default=None),
     expected_row_version: str = Form(default=""),
     idempotency_key: str = Form(default=""),
+    draft_scope: str = Form(default=""),
     db: Session = Depends(get_db),
     _local: None = LocalOnly,
 ) -> HTMLResponse:
@@ -106,6 +108,7 @@ def page_budget_advise_run(
         arrangement_currency_code=arrangement_currency_code,
         expected_row_version=expected_row_version,
         idempotency_key=idempotency_key,
+        draft_scope=draft_scope,
     )
 
 
@@ -127,6 +130,8 @@ def _render_budget_advise(
     save_conflict: bool = False,
     response_status: int | None = None,
     arrangement_currency_code: str | None = None,
+    draft_scope: str | None = None,
+    draft_result: str = "",
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected = _resolve_selected_ledger_id(db, ledger_id, options=options, request=request)
@@ -136,9 +141,15 @@ def _render_budget_advise(
                 "arrangement_currency_code": arrangement_currency_code,
                 "savings_target_yuan": savings_target_yuan, "reserved_buffer_yuan": reserved_buffer_yuan,
                 "run_advise": run_advise, "expected_row_version": expected_row_version,
-                "idempotency_key": idempotency_key}, task="查看本月安排")
+                "idempotency_key": idempotency_key, "draft_scope": draft_scope}, task="查看本月安排")
         if retained is not None:
             return retained
+        if not draft_result:
+            try:
+                require_draft_binding(db, request, ledger_id=selected, draft_scope=draft_scope or "", require_session=False)
+            except AppError as exc:
+                save_error, response_status, draft_result = exc.message, exc.status_code, "blocked"
+                run_advise, allow_outbound = False, False
     readiness_ctx = _advisor_readiness_context(request, selected=selected, options=options)
     month_label = month or current_ledger_month(db, ledger_id=selected)
     home = normalize_currency_code(home_currency_code or require_runtime_home_currency_code(db))
@@ -162,6 +173,11 @@ def _render_budget_advise(
     home = projection.home_currency_code
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected, page_title="本月安排")
     ctx.update(readiness_ctx)
+    scope = browser_draft_scope(db, request)
+    binding_required = scope is not None and draft_scope == ""
+    ctx.update(arrangement_draft_scope=None if binding_required else scope, draft_scope=draft_scope,
+        arrangement_binding_required=binding_required,
+        arrangement_draft_result=draft_result)
     ctx.update(_projection_context(projection, form_error=form_error))
     ctx.update(_arrangement_context(projection, savings=savings_target_yuan, reserved=reserved_buffer_yuan,
         expected_row_version=expected_row_version, idempotency_key=idempotency_key, original_currency=arrangement_currency_code))
@@ -177,7 +193,7 @@ def _render_budget_advise(
         currency_codes=sorted(supported_currency_codes()),
         message=message,
         save_error=save_error,
-        save_conflict=save_conflict,
+        save_conflict=save_conflict or binding_required,
     )
     status = 409 if currency_choice_required else 422 if form_error else 200
     return templates.TemplateResponse(request=request, name="budget_advise.html", context=ctx,
