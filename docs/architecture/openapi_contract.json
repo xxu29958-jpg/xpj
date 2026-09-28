@@ -2018,6 +2018,11 @@
             ],
             "title": "Arrangement Currency Code"
           },
+          "draft_scope": {
+            "default": "",
+            "title": "Draft Scope",
+            "type": "string"
+          },
           "expected_row_version": {
             "default": "",
             "title": "Expected Row Version",
@@ -2593,6 +2598,11 @@
             },
             "title": "Category Budget Remove",
             "type": "array"
+          },
+          "draft_scope": {
+            "default": "",
+            "title": "Draft Scope",
+            "type": "string"
           },
           "excluded_categories": {
             "default": "",
@@ -5034,6 +5044,11 @@
             "title": "Baseline Amount Yuan",
             "type": "string"
           },
+          "draft_scope": {
+            "default": "",
+            "title": "Draft Scope",
+            "type": "string"
+          },
           "home_currency_code": {
             "default": "",
             "title": "Home Currency Code",
@@ -5073,6 +5088,11 @@
           "baseline_amount_yuan": {
             "default": "",
             "title": "Baseline Amount Yuan",
+            "type": "string"
+          },
+          "draft_scope": {
+            "default": "",
+            "title": "Draft Scope",
             "type": "string"
           },
           "expected_row_version": {
@@ -17523,6 +17543,11 @@
           "arrangement_currency_code": {
             "default": "",
             "title": "Arrangement Currency Code",
+            "type": "string"
+          },
+          "draft_scope": {
+            "default": "",
+            "title": "Draft Scope",
             "type": "string"
           },
           "expected_row_version": {
@@ -52515,6 +52540,22 @@
                 }
               ],
               "title": "Review"
+            }
+          },
+          {
+            "in": "query",
+            "name": "edit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Edit"
             }
           }
         ],

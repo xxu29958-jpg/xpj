@@ -90,7 +90,8 @@ def test_budget_jpy_draft_survives_validation_under_cny_default(web_client):
     assert refused.status_code == 422, refused.text
     assert 'name="home_currency_code" value="JPY"' in refused.text
     assert 'name="total_amount_yuan" value="1.5"' in refused.text
-    assert 'type="submit">保存预算</button>' in refused.text
+    save = re.search(r'<button([^>]*type="submit"[^>]*)>保存预算</button>', refused.text)
+    assert save is not None and "disabled" not in save.group(1)
     accepted = web_client.post("/web/budgets/save", data={**form, "total_amount_yuan": "1200"}, follow_redirects=False)
     assert accepted.status_code == 303, accepted.text
     with SessionLocal() as db:
@@ -111,7 +112,8 @@ def test_budget_currency_conflict_offers_new_editor_without_relabelling_draft(we
         assert f'name="idempotency_key" value="{key}"' in response.text
         assert 'name="total_amount_yuan" value="1200"' in response.text
         assert 'target="_blank" rel="noopener">打开当前预算重新编辑</a>' in response.text
-        assert 'type="submit">保存预算</button>' not in response.text
+        save = re.search(r'<button([^>]*type="submit"[^>]*)>保存预算</button>', response.text)
+        assert save is None or "disabled" in save.group(1)
         assert _owner_budget_total() == 100000
 
 

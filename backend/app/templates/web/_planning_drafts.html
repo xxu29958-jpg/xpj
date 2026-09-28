@@ -1,0 +1,18 @@
+{% macro scripts(asset_version) -%}
+<script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/plan-entry.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/planning-entry.js?v={{ asset_version }}"></script>
+{%- endmacro %}
+
+{% macro shelf(family, label, scope) -%}
+{% if scope %}<div data-{{ family }}-draft-shelf hidden><p class="meta">此浏览器保留的{{ label }}</p><ul data-{{ family }}-draft-list></ul></div>{% endif %}
+{%- endmacro %}
+
+{% macro controls(family, label, scope, action='') -%}
+{% if scope %}
+<p class="product-feedback" data-{{ family }}-draft-status role="status" aria-live="polite" hidden></p>
+<p class="meta" data-{{ family }}-review-note hidden>请先核对已保存的{{ label }}。原提交未确认前仍保留在此浏览器，不会自动另存。</p>
+<button class="product-button product-button--quiet" type="submit" name="review_latest" value="true" data-{{ family }}-review{% if action %} formaction="{{ action }}"{% endif %} formnovalidate hidden>已核对，保留输入继续修改</button>
+<button class="product-button product-button--quiet" type="button" data-{{ family }}-discard hidden>放弃此浏览器的原稿</button>
+{% endif %}
+{%- endmacro %}

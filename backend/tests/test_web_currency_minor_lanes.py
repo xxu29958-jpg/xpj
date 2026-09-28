@@ -188,8 +188,9 @@ def test_budget_advise_render_follows_zero_decimal_home(jpy_env, web_client: Tes
         r"<small>\s*储蓄目标\s*</small>\s*<strong>\s*−\s*¥12\.00\s*</strong>",
         page.text,
     )
-    assert "计划储蓄（JPY）" in page.text
-    assert "备用金（JPY）" in page.text
+    rendered_text = re.sub(r"<[^>]+>", "", page.text)
+    assert "计划储蓄（JPY）" in rendered_text
+    assert "备用金（JPY）" in rendered_text
     assert "计划储蓄（元）" not in page.text
     assert "备用金（元）" not in page.text
     assert 'name="savings_target_yuan" inputmode="numeric"' in page.text
@@ -281,7 +282,7 @@ def test_zero_fraction_no_js_forms_and_dashboard_share_input_contract(
 
     budgets = web_client.get("/web/budgets?ledger_id=owner&month=2026-05")
     assert budgets.status_code == 200, budgets.text
-    assert "月度总预算（JPY · ¥，仅支持整数）" in budgets.text
+    assert "月度总预算（JPY · ¥，仅支持整数）" in re.sub(r"<[^>]+>", "", budgets.text)
     assert 'name="total_amount_yuan" value="1200" min="0" step="1"' in budgets.text
     assert "预算（元）" not in budgets.text
     assert 'class="dt-pill danger">超支 ¥0' not in budgets.text
