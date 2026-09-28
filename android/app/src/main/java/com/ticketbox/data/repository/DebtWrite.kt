@@ -6,8 +6,9 @@ import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.domain.model.Debt
 
 internal val DEBT_WRITE_TYPES = setOf(PendingMutationType.RecordDebtAdjustment, PendingMutationType.RecordDebtRepayment,
-    PendingMutationType.VoidDebt, PendingMutationType.VoidDebtRepayment)
+    PendingMutationType.VoidDebt, PendingMutationType.VoidDebtRepayment, PendingMutationType.SetDebtKind)
 internal const val DEBT_VOID_ORIGINAL_REQUIRES_REVIEW = "debt_void_original_requires_review"
+internal const val DEBT_KIND_ORIGINAL_REQUIRES_REVIEW = "debt_kind_original_requires_review"
 
 @JsonClass(generateAdapter = true)
 data class DebtWriteSubject(val publicId: String, val label: String?, val homeCurrencyCode: String)
@@ -27,9 +28,11 @@ data class PendingDebtWrite(val row: OutboxRow, val intent: DebtWriteIntent?, va
     val repayment: DebtRepaymentPayload? get() = intent as? DebtRepaymentPayload
     val debtVoid: DebtVoidPayload? get() = intent as? DebtVoidPayload
     val repaymentVoid: DebtRepaymentVoidPayload? get() = intent as? DebtRepaymentVoidPayload
+    val kind: DebtKindPayload? get() = intent as? DebtKindPayload
     val isVoid: Boolean get() = row.type in setOf(PendingMutationType.VoidDebt, PendingMutationType.VoidDebtRepayment)
     val legacyVoidAccepted: Boolean get() = isVoid && row.lastError == DEBT_VOID_ORIGINAL_REQUIRES_REVIEW
-    val requiresReview: Boolean get() = legacyVoidAccepted && !isTerminal
+    val legacyKindAccepted: Boolean get() = row.type == PendingMutationType.SetDebtKind && row.lastError == DEBT_KIND_ORIGINAL_REQUIRES_REVIEW
+    val requiresReview: Boolean get() = (legacyVoidAccepted || legacyKindAccepted) && !isTerminal
     val isTerminal: Boolean get() = row.status == PendingMutationStatus.Done || row.status == PendingMutationStatus.Abandoned
     val isUnresolved: Boolean get() = row.status in setOf(PendingMutationStatus.Pending,
         PendingMutationStatus.InFlight, PendingMutationStatus.Failed, PendingMutationStatus.Conflict)

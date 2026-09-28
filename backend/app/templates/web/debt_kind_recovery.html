@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block page_scripts %}
+<script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/repayment-entry.js?v={{ asset_version }}"></script>
+{% endblock %}
+{% block content %}
+<h1>核对原偿还方式更正</h1>
+{% include '_debt_kind_form.html' %}
+<p class="product-feedback product-feedback--warning" role="status">{{ kind_detail_error }}</p>
+<a href="/web/debts/{{ kind_form.public_id }}?ledger_id={{ selected_ledger_id }}">重新读取原欠款</a>
+{% endblock %}

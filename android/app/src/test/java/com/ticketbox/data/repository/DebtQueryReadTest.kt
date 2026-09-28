@@ -4,12 +4,14 @@ import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.DebtDto
 import com.ticketbox.data.remote.dto.DebtListResponseDto
 import com.ticketbox.data.remote.dto.DebtKindSetRequestDto
+import com.ticketbox.data.remote.dto.MemberRepaymentProposalConfirmRequestDto
 import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
 import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalListResponseDto
 import com.ticketbox.data.local.StatsProjectionCacheEntity
 import com.ticketbox.domain.model.DebtListLens
+import com.ticketbox.domain.model.Debt
 import android.database.sqlite.SQLiteException
 import com.ticketbox.data.local.ExpenseDao
 import java.net.ConnectException
@@ -179,7 +181,7 @@ class DebtQueryReadTest {
 
     @Test fun directMissingDebtRetiresOnlyThatResourceAndCannotReopenItsOriginalSnapshot() = runTest {
         for (code in listOf("debt_not_found", "proposal_not_found")) {
-            val api = DebtReadApi()
+            val api = DebtReadApi(memberDebt = true)
             val fixture = GoalReadFixture { api }
             fun reader() = DebtQueryReader(fixture.provider, fixture.dao, fixture.coordinator)
             val repository = DebtRepository(fixture.provider, reader())
@@ -187,7 +189,7 @@ class DebtQueryReadTest {
             val other = repository.getDebt("other-debt").getOrThrow()
             repository.listDebts().getOrThrow()
             api.commandFailure = HttpException(Response.error<Any>(404, """{"error":"$code"}""".toResponseBody()))
-            assertEquals(code, (repository.setDebtKind("jpy-debt", 4, "installment").exceptionOrNull() as RepositoryException).errorCode)
+            assertEquals(code, (repository.confirmOriginalProposal(fixture.binding).exceptionOrNull() as RepositoryException).errorCode)
             api.offline = true
             assertEquals(other.copy(fromCache = true), reader().detail(fixture.binding, "other-debt").getOrThrow())
             if (code == "debt_not_found") {
@@ -245,7 +247,7 @@ class DebtQueryReadTest {
     }
 
     @Test fun aReadRefusalDuringDirectDispatchCannotTurnTheOriginalRealAckIntoFailureOrRestoreOldReads() = runTest {
-        val api = DebtReadApi()
+        val api = DebtReadApi(memberDebt = true)
         val fixture = GoalReadFixture { api }
         val reader = DebtQueryReader(fixture.provider, fixture.dao, fixture.coordinator)
         val repository = DebtRepository(fixture.provider, reader)
@@ -259,7 +261,7 @@ class DebtQueryReadTest {
         val postStarted = CompletableDeferred<Unit>()
         val ack = CompletableDeferred<Unit>()
         api.commandReplyGate = { postStarted.complete(Unit); ack.await() }
-        val post = async { repository.setDebtKind("jpy-debt", 4, "installment") }
+        val post = async { repository.confirmOriginalProposal(fixture.binding) }
         postStarted.await()
         refuseGet.complete(Unit)
         assertEquals(403, (get.await().exceptionOrNull() as RepositoryException).httpStatusCode)
@@ -276,7 +278,7 @@ class DebtQueryReadTest {
 
     @Test fun directUnauthorizedPersistsSharedRefusalWhileWriteOnlyForbiddenAndConflictKeepTheOriginalRead() = runTest {
         for (status in listOf(401, 403, 409)) {
-            val api = DebtReadApi()
+            val api = DebtReadApi(memberDebt = true)
             val fixture = GoalReadFixture { api }
             val settings = boundSettingsStore()
             val dao = object : ExpenseDao by fixture.dao {
@@ -286,7 +288,7 @@ class DebtQueryReadTest {
             val repository = DebtRepository(fixture.provider, DebtQueryReader(fixture.provider, dao, coordinator()))
             val original = repository.getDebt("jpy-debt").getOrThrow()
             api.commandFailure = HttpException(Response.error<Any>(status, """{"error":"write_refused"}""".toResponseBody()))
-            assertEquals(status, (repository.setDebtKind("jpy-debt", 4, "installment").exceptionOrNull() as RepositoryException).httpStatusCode)
+            assertEquals(status, (repository.confirmOriginalProposal(fixture.binding).exceptionOrNull() as RepositoryException).httpStatusCode)
             api.offline = true
             val result = DebtQueryReader(fixture.provider, dao, coordinator()).detail(fixture.binding, "jpy-debt")
             if (status == 401) assertTrue(result.isFailure)
@@ -296,7 +298,7 @@ class DebtQueryReadTest {
     }
 
     @Test fun anotherReaderCannotConsumeAStillExecutingDirectTokenBeforeItsAckAndFailedCleanup() = runTest {
-        val api = DebtReadApi()
+        val api = DebtReadApi(memberDebt = true)
         val fixture = GoalReadFixture { api }
         var cleanupFails = false
         val queryDao = object : ExpenseDao by fixture.dao {
@@ -310,7 +312,7 @@ class DebtQueryReadTest {
         val started = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         api.commandReplyGate = { started.complete(Unit); release.await() }
-        val write = async { first.setDebtKind("jpy-debt", 4, "installment") }
+        val write = async { first.confirmOriginalProposal(fixture.binding) }
         started.await()
         val second = DebtRepository(fixture.provider, DebtQueryReader(fixture.provider, queryDao, fixture.coordinator))
         assertEquals(5L, second.getDebt("jpy-debt").getOrThrow().value.rowVersion)
@@ -327,14 +329,15 @@ class DebtQueryReadTest {
     }
 
     @Test fun getStartedBeforeDirectAcceptanceCannotReconcileItsFailedCleanupWithAnOldDebt() = runTest {
-        val api = DebtReadApi()
+        val api = DebtReadApi(memberDebt = true)
         val postStarted = CompletableDeferred<Unit>()
         val accept = CompletableDeferred<Unit>()
         val fixture = GoalReadFixture { object : ApiService by api {
-            override suspend fun setDebtKind(publicId: String, request: DebtKindSetRequestDto, idempotencyKey: String?): DebtDto {
+            override suspend fun confirmRepaymentProposal(publicId: String, proposalPublicId: String,
+                request: MemberRepaymentProposalConfirmRequestDto, idempotencyKey: String?): DebtDto {
                 postStarted.complete(Unit)
                 accept.await()
-                return api.setDebtKind(publicId, request, idempotencyKey)
+                return api.confirmRepaymentProposal(publicId, proposalPublicId, request, idempotencyKey)
             }
         } }
         var cleanupFails = false
@@ -346,23 +349,23 @@ class DebtQueryReadTest {
         }
         fun repository() = DebtRepository(fixture.provider, DebtQueryReader(fixture.provider, dao, fixture.coordinator))
         repository().getDebt("jpy-debt").getOrThrow()
-        val post = async { repository().setDebtKind("jpy-debt", 4, "installment") }
+        val post = async { repository().confirmOriginalProposal(fixture.binding) }
         postStarted.await()
         val getStarted = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
-        api.detail = { val old = readDebt(); getStarted.complete(Unit); release.await(); old }
+        api.detail = { val old = memberReadDebt(); getStarted.complete(Unit); release.await(); old }
         val old = async { repository().getDebt("jpy-debt") }
         getStarted.await()
         cleanupFails = true
         try { accept.complete(Unit); assertEquals(5L, post.await().getOrThrow().rowVersion) }
         finally { release.complete(Unit) }
-        assertTrue(old.await().isFailure, "A GET issued before the type change committed cannot consume its later accepted barrier")
+        assertTrue(old.await().isFailure, "A GET issued before proposal confirmation committed cannot consume its later accepted barrier")
         api.offline = true
         assertTrue(repository().getDebt("jpy-debt").isFailure)
         cleanupFails = false
         api.offline = false
         val current = repository().getDebt("jpy-debt").getOrThrow()
-        assertEquals("installment", current.value.debtKind)
+        assertEquals(600L, current.value.remainingAmountCents)
         assertEquals("JPY", current.value.homeCurrencyCode)
         assertFalse(current.fromCache)
         assertEquals(1, api.commands)
@@ -477,7 +480,9 @@ class DebtQueryReadTest {
         try {
             api.offline = false
             val other = DebtRepository(fixture.provider, DebtQueryReader(fixture.provider, fixture.dao, fixture.coordinator))
-            assertEquals("installment", other.setDebtKind("jpy-debt", original.value.rowVersion, "installment").getOrThrow().debtKind)
+            val command = DebtKindReadCommands(fixture, other)
+            command.save(original.value)
+            assertEquals(1, command.dispatch().done)
         } finally { release.complete(Unit) }
         assertTrue(old.await().isFailure, "A retrieved old cache row cannot outlive another owner's accepted type change")
         pauseCachedRead = false
@@ -493,22 +498,28 @@ class DebtQueryReadTest {
         val api = DebtReadApi()
         val fixture = GoalReadFixture { api }
         val reader = DebtQueryReader(fixture.provider, fixture.dao, fixture.coordinator)
-        reader.detail(fixture.binding, "jpy-debt").getOrThrow()
+        val original = reader.detail(fixture.binding, "jpy-debt").getOrThrow()
         val started = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         api.detail = { val captured = readDebt(); started.complete(Unit); release.await(); captured }
         val old = async { reader.detail(fixture.binding, "jpy-debt") }
         started.await()
-        DebtQueryReader(fixture.provider, fixture.dao, fixture.coordinator).invalidate(fixture.binding)
+        val other = DebtRepository(fixture.provider, DebtQueryReader(fixture.provider, fixture.dao, fixture.coordinator))
+        val command = DebtKindReadCommands(fixture, other)
+        command.save(original.value)
+        assertEquals(1, command.dispatch().done)
         release.complete(Unit)
         assertTrue(old.await().isFailure)
         api.offline = true
         val reopened = DebtQueryReader(fixture.provider, fixture.dao, fixture.coordinator)
         assertTrue(reopened.detail(fixture.binding, "jpy-debt").isFailure)
         api.offline = false
-        api.detail = { readDebt().copy(rowVersion = 5, remainingAmountCents = 600) }
+        api.detail = { readDebt().copy(rowVersion = 6, remainingAmountCents = 600, paidAmountCents = 600, debtKind = "installment") }
         val fresh = reopened.detail(fixture.binding, "jpy-debt").getOrThrow()
         assertEquals(600L, fresh.value.remainingAmountCents)
+        assertEquals(6L, fresh.value.rowVersion)
+        assertEquals("installment", fresh.value.debtKind)
+        assertEquals(1, api.commands)
         api.offline = true
         assertEquals(fresh.fetchedAt, reopened.detail(fixture.binding, "jpy-debt").getOrThrow().fetchedAt)
     }
@@ -542,7 +553,7 @@ class DebtQueryReadTest {
     }
 
     @Test fun acceptedDirectWriteWithFailedCleanupCannotReviveOldDebtAfterRecreationAndFreshReadRepairsOnlyTheQuery() = runTest {
-        val api = DebtReadApi()
+        val api = DebtReadApi(memberDebt = true)
         val fixture = GoalReadFixture { api }
         var cleanupFails = true
         val queryDao = object : ExpenseDao by fixture.dao {
@@ -554,7 +565,7 @@ class DebtQueryReadTest {
         val reader = DebtQueryReader(fixture.provider, queryDao, fixture.coordinator)
         val repository = DebtRepository(fixture.provider, reader)
         repository.getDebt("jpy-debt").getOrThrow()
-        assertEquals(5L, repository.setDebtKind("jpy-debt", 4, "installment").getOrThrow().rowVersion)
+        assertEquals(5L, repository.confirmOriginalProposal(fixture.binding).getOrThrow().rowVersion)
         assertEquals(1, api.commands)
         api.offline = true
         val reopened = DebtRepository(fixture.provider, DebtQueryReader(fixture.provider, queryDao, fixture.coordinator))
@@ -565,40 +576,51 @@ class DebtQueryReadTest {
         val restored = reopened.getDebt("jpy-debt").getOrThrow()
         assertFalse(restored.fromCache)
         assertEquals(5L, restored.value.rowVersion)
-        assertEquals("installment", restored.value.debtKind)
+        assertEquals(600L, restored.value.remainingAmountCents)
         api.offline = true
         assertEquals(restored.fetchedAt, reopened.getDebt("jpy-debt").getOrThrow().fetchedAt)
         assertEquals(1, api.commands)
     }
 
-    @Test fun definitiveDirectRejectionKeepsTheOriginalReadButUnknownAcceptanceRequiresFreshQueryRepair() = runTest {
+    @Test fun definitiveKindRejectionKeepsTheOriginalReadButUnknownAcceptanceRequiresFreshQueryRepair() = runTest {
         val api = DebtReadApi()
         val fixture = GoalReadFixture { api }
         val repository = DebtRepository(fixture.provider, DebtQueryReader(fixture.provider, fixture.dao, fixture.coordinator))
         val original = repository.getDebt("jpy-debt").getOrThrow()
+        val command = DebtKindReadCommands(fixture, repository)
         api.commandFailure = HttpException(Response.error<Any>(409, """{"error":"state_conflict"}""".toResponseBody()))
-        assertTrue(repository.setDebtKind("jpy-debt", 4, "installment").isFailure)
+        val rejectedId = command.save(original.value)
+        assertEquals(1, command.dispatch().conflicts)
+        val rejected = command.pending(rejectedId)
+        assertEquals(PendingMutationStatus.Conflict, rejected.row.status)
         api.offline = true
         assertEquals(original.fetchedAt, repository.getDebt("jpy-debt").getOrThrow().fetchedAt)
+        command.writes.recover(fixture.binding, rejected, drop = true).getOrThrow()
         api.offline = false
         api.commandFailure = ConnectException("ACK lost")
         api.acceptBeforeFailure = true
-        assertTrue(repository.setDebtKind("jpy-debt", 4, "installment").isFailure)
+        val uncertainId = command.save(original.value)
+        assertEquals(1, command.dispatch().failures)
+        val uncertain = command.pending(uncertainId)
+        assertTrue(uncertain.canRetry)
+        val saved = uncertain.row
         api.offline = true
         val reopened = DebtRepository(fixture.provider, DebtQueryReader(fixture.provider, fixture.dao, fixture.coordinator))
         assertTrue(reopened.getDebt("jpy-debt").isFailure)
         api.offline = false
         assertEquals(5L, reopened.getDebt("jpy-debt").getOrThrow().value.rowVersion)
+        assertEquals(saved, command.pending(uncertainId).row, "A fresh query cannot rewrite the original uncertain command")
         assertEquals(2, api.commands)
     }
 }
 
-private class DebtReadApi : ApiService by FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0) {
+private class DebtReadApi(memberDebt: Boolean = false) : ApiService by FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0) {
+    private val originalDebt = if (memberDebt) memberReadDebt() else readDebt()
     var offline = false
     var failure: Throwable? = null
-    var detail: suspend () -> DebtDto = { readDebt() }
+    var detail: suspend () -> DebtDto = { originalDebt }
     var list: suspend () -> DebtListResponseDto = {
-        DebtListResponseDto(listOf(readDebt(), readDebt().copy(publicId = "other-debt")), "JPY")
+        DebtListResponseDto(listOf(originalDebt, originalDebt.copy(publicId = "other-debt")), "JPY")
     }
     var commands = 0
     var commandFailure: Throwable? = null
@@ -618,6 +640,17 @@ private class DebtReadApi : ApiService by FakeApiService(mutableListOf(), confir
         commandFailure?.let { throw it }
         return accepted
     }
+    override suspend fun confirmRepaymentProposal(publicId: String, proposalPublicId: String,
+        request: MemberRepaymentProposalConfirmRequestDto, idempotencyKey: String?): DebtDto {
+        check(proposalPublicId == "original-proposal" && !idempotencyKey.isNullOrBlank())
+        commands++
+        val accepted = originalDebt.copy(publicId = publicId, rowVersion = request.expectedRowVersion + 1,
+            remainingAmountCents = 600, paidAmountCents = 600)
+        if (acceptBeforeFailure || commandFailure == null) detail = { accepted }
+        commandReplyGate?.invoke()
+        commandFailure?.let { throw it }
+        return accepted
+    }
     override suspend fun debt(publicId: String): DebtDto { checkTransport(); return detail().copy(publicId = publicId) }
     override suspend fun debts(lens: String?): DebtListResponseDto {
         checkTransport()
@@ -629,6 +662,30 @@ private class DebtReadApi : ApiService by FakeApiService(mutableListOf(), confir
     }
     private fun checkTransport() { failure?.let { throw it }; if (offline) throw ConnectException("offline") }
 }
+
+private suspend fun DebtRepository.confirmOriginalProposal(binding: LogicalSessionBinding): Result<Debt> =
+    proposals.submit(DebtTask(binding, "jpy-debt"), MemberSettlementCommand.Confirm("original-proposal", 4, null),
+        "original-member-confirmation").map { (it as MemberSettlementResult.DebtChanged).value }
+
+private class DebtKindReadCommands(fixture: GoalReadFixture, queries: DebtRepository) {
+    private val binding = fixture.binding
+    private val adapters = OutboxAdapterGraph()
+    private val provider = fixture.provider
+    private val pendingDao = FakePendingMutationDao()
+    private val outbox = testOutboxRepository(pendingDao, bindingProvider = { provider.currentSession().toOutboxBinding() }).apply {
+        onDebtDispatchPreparing = queries::prepareReadsBeforeDispatch
+        onDebtDispatchFinished = queries::finishReadDispatch
+        onDebtAccepted = queries::invalidateReadsAfterAccepted
+    }
+    val writes = DebtWriteRepository(provider, outbox, adapters)
+    suspend fun save(debt: Debt) = writes.saveKind(binding, debt, "installment").getOrThrow()
+    suspend fun pending(id: Long) = writes.observeWrites(binding, "jpy-debt").first().single { it.row.id == id }
+    suspend fun dispatch() = OutboxDrainEngine(outbox, listOf(SetDebtKindDispatcher(LedgerRequestGuard(provider),
+        adapters.debtKindAdapter, adapters.debtVoidReceiptAdapter)), maxAttempts = 1).drainOnce()
+}
+
+private fun memberReadDebt() = readDebt().copy(direction = "owed_to_me", counterpartyType = "member",
+    counterpartyAccountId = "member-debtor", viewerIsDebtor = false)
 
 private fun readDebt() = DebtDto(publicId = "jpy-debt", ledgerId = "owner", direction = "i_owe",
     counterpartyType = "external", counterpartyLabel = "原日元往来", principalAmountCents = 1200,

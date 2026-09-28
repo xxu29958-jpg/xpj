@@ -40,20 +40,25 @@ internal fun DebtWriteIntentSummary(pending: PendingDebtWrite) {
     pending.adjustment?.let { Text(it.request.reason) }
     pending.repayment?.let { Text(stringResource(R.string.debt_repayment_original_date, displayDateTime(it.request.paidAt))) }
     pending.debtVoid?.let { Text(stringResource(R.string.debt_action_void_title)); Text(it.request.reason) }
+    pending.kind?.let { Text(stringResource(R.string.debt_kind_pending_value, stringResource(debtKindLabelRes(it.request.debtKind)))) }
     pending.repaymentVoid?.let {
         Text(stringResource(R.string.debt_action_repayment_void_title))
         Text(stringResource(R.string.debt_void_original_repayment, it.request.repaymentPublicId))
         Text(it.request.reason)
     }
     if (pending.reductionRejected) Text(stringResource(R.string.debt_adjustment_reduction_rejected))
-    if (pending.requiresReview) Text(stringResource(R.string.debt_void_original_requires_review))
+    if (pending.requiresReview) Text(stringResource(if (pending.legacyKindAccepted) R.string.debt_kind_original_requires_review
+        else R.string.debt_void_original_requires_review))
 }
 
 @Composable
 private fun DebtWriteRecoveryContext(pending: PendingDebtWrite) {
     if (pending.row.status == PendingMutationStatus.Abandoned) {
-        Text(stringResource(if (pending.legacyVoidAccepted) R.string.debt_void_accepted_locally_stopped
-            else R.string.debt_write_stopped_body))
+        Text(stringResource(when {
+            pending.legacyVoidAccepted -> R.string.debt_void_accepted_locally_stopped
+            pending.legacyKindAccepted -> R.string.debt_kind_accepted_locally_stopped
+            else -> R.string.debt_write_stopped_body
+        }))
     }
     if (pending.originalBindingChanged && !pending.isTerminal) Text(stringResource(R.string.debt_write_original_binding_changed))
 }
@@ -90,8 +95,7 @@ private fun DebtPendingWrite(pending: PendingDebtWrite, canModify: Boolean, reco
     if (confirmDrop) AlertDialog(
         onDismissRequest = { confirmDrop = false },
         title = { Text(stringResource(R.string.debt_write_drop)) },
-        text = { Text(stringResource(if (pending.requiresReview) R.string.debt_void_review_stop_explanation
-            else R.string.debt_write_drop_explanation)) },
+        text = { Text(stringResource(debtWriteStopExplanation(pending))) },
         confirmButton = { TextButton(onClick = { confirmDrop = false; recover(pending, true) }) {
             Text(stringResource(R.string.debt_write_drop))
         } },
@@ -101,9 +105,20 @@ private fun DebtPendingWrite(pending: PendingDebtWrite, canModify: Boolean, reco
 
 @androidx.annotation.StringRes
 private fun debtPendingWriteTitle(pending: PendingDebtWrite): Int = when {
-    pending.requiresReview -> R.string.debt_void_review_title
-    pending.row.status == PendingMutationStatus.Done -> if (pending.isVoid) R.string.debt_void_confirmed else R.string.debt_repayment_confirmed
+    pending.requiresReview -> if (pending.legacyKindAccepted) R.string.debt_kind_review_title else R.string.debt_void_review_title
+    pending.row.status == PendingMutationStatus.Done -> when {
+        pending.kind != null -> R.string.debt_kind_confirmed
+        pending.isVoid -> R.string.debt_void_confirmed
+        else -> R.string.debt_repayment_confirmed
+    }
     pending.row.status == PendingMutationStatus.Abandoned -> R.string.debt_write_stopped
     pending.canStop -> R.string.debt_write_attention
     else -> R.string.debt_write_waiting
+}
+
+@androidx.annotation.StringRes
+internal fun debtWriteStopExplanation(pending: PendingDebtWrite?): Int = when {
+    pending?.legacyKindAccepted == true -> R.string.debt_kind_review_stop_explanation
+    pending?.requiresReview == true -> R.string.debt_void_review_stop_explanation
+    else -> R.string.debt_write_drop_explanation
 }

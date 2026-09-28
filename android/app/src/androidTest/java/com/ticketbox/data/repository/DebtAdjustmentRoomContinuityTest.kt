@@ -87,6 +87,34 @@ class DebtAdjustmentRoomContinuityTest {
         assertEquals(originalDebt.debtKind, detail.value?.state?.value?.debt?.debtKind)
         compose.onNodeWithText(context.getString(R.string.debt_kind_revolving), substring = true)
             .performScrollTo().assertIsDisplayed()
+        settleOriginalKindAfterReopen(original)
+    }
+
+    private fun settleOriginalKindAfterReopen(original: Map<String, String?>) {
+        fixture.network.failReads = false
+        assertEquals(1, runBlocking { fixture.drain(maxAttempts = 1) }.failures)
+        val accepted = fixture.network.current
+        fixture.network.current = accepted.copy(debtKind = "installment", rowVersion = accepted.rowVersion + 1)
+        fixture.network.failReads = true
+        stopModels()
+        installModels()
+        compose.waitUntil(10_000) { detail.value?.state?.value?.pendingWrites?.singleOrNull()?.canRetry == true }
+        fixture.network.loseResponse = false
+        fixture.network.failReads = false
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        compose.onNodeWithText(context.getString(R.string.debt_write_retry)).performScrollTo().performClick()
+        compose.waitUntil(10_000) { fixture.stored().single()["status"] == "pending" }
+        assertEquals(1, runBlocking { fixture.drain() }.done)
+        compose.waitUntil(10_000) { detail.value?.state?.value?.debt?.debtKind == "installment" }
+        val completed = fixture.stored().single()
+        for (column in listOf("payload", "idempotencyKey", "expectedRowVersion", "ownerKey", "ledgerId")) {
+            assertEquals(original[column], completed[column])
+        }
+        val receipt = com.ticketbox.OutboxAdapterGraph().debtVoidReceiptAdapter.fromJson(requireNotNull(completed["receiptJson"]))
+        assertEquals(accepted, receipt)
+        assertEquals(1, fixture.network.kindResults.size)
+        assertTrue(fixture.network.kindCalls.all { it == fixture.network.kindCalls.first() })
+        compose.onNodeWithText(context.getString(R.string.debt_kind_confirmed)).performScrollTo().assertIsDisplayed()
     }
 
     @Test

@@ -103,7 +103,8 @@ internal class DebtAdjustmentConnectedFixture(private val context: Context, priv
         listOf(RecordDebtAdjustmentDispatcher(LedgerRequestGuard(apiProvider), adapters.debtAdjustmentAdapter),
             RecordDebtRepaymentDispatcher(LedgerRequestGuard(apiProvider), adapters.debtRepaymentAdapter, adapters.debtRepaymentReceiptAdapter),
             VoidDebtDispatcher(LedgerRequestGuard(apiProvider), adapters.debtVoidAdapter, adapters.debtVoidReceiptAdapter),
-            VoidDebtRepaymentDispatcher(LedgerRequestGuard(apiProvider), adapters.debtRepaymentVoidAdapter, adapters.debtVoidReceiptAdapter)),
+            VoidDebtRepaymentDispatcher(LedgerRequestGuard(apiProvider), adapters.debtRepaymentVoidAdapter, adapters.debtVoidReceiptAdapter),
+            SetDebtKindDispatcher(LedgerRequestGuard(apiProvider), adapters.debtKindAdapter, adapters.debtVoidReceiptAdapter)),
         maxAttempts = maxAttempts, now = clock::millis).drainOnce()
 
     fun close() { database?.close(); context.deleteDatabase(name) }
@@ -121,14 +122,22 @@ internal class DebtAdjustmentConnectedNetwork {
     var loseResponse = true
     val calls = mutableListOf<Pair<DebtAdjustmentCreateRequestDto, String>>()
     val kindCalls = mutableListOf<Pair<DebtKindSetRequestDto, String>>()
+    val kindResults = mutableMapOf<String, Pair<DebtKindSetRequestDto, DebtDto>>()
     val results = mutableMapOf<String, DebtDto>()
     val repaymentCalls = mutableListOf<Pair<RepaymentCreateRequestDto, String>>()
     val repaymentResults = mutableMapOf<String, Pair<RepaymentCreateRequestDto, DebtRepaymentReceiptDto>>()
     val service = object : ApiService by debtAdjustmentProxy<ApiService>({ error("Unexpected remote method: $it") }) {
         override suspend fun setDebtKind(publicId: String, request: DebtKindSetRequestDto, idempotencyKey: String?): DebtDto {
             check(publicId == current.publicId)
-            kindCalls += request to requireNotNull(idempotencyKey)
-            throw IOException("Synthetic offline classification write")
+            val key = requireNotNull(idempotencyKey)
+            kindCalls += request to key
+            if (failReads) throw IOException("Synthetic offline classification write")
+            kindResults[key]?.let { (original, receipt) -> check(original == request); return receipt }
+            check(request.expectedRowVersion == current.rowVersion)
+            current = current.copy(debtKind = request.debtKind, rowVersion = current.rowVersion + 1)
+            kindResults[key] = request to current
+            if (loseResponse) throw IOException("Synthetic classification reply lost after acceptance")
+            return current
         }
 
         override suspend fun debt(publicId: String): DebtDto {

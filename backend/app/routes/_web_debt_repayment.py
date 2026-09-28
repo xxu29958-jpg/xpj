@@ -91,4 +91,8 @@ def render_repayment_recovery(
         request, db, selected_id=selected_id, public_id=public_id, kind=kind,
         can_recover=ctx["repayment_form"]["can_recover"],
     ) for kind in ("debt-void", "repayment-void")]
+    from app.routes._web_debt_kind import kind_context
+
+    ctx["kind_form"] = kind_context(request, db, selected_id=selected_id, public_id=public_id,
+        can_recover=ctx["repayment_form"]["can_recover"])
     return templates.TemplateResponse(request=request, name="debt_repayment_recovery.html", context=ctx, status_code=status_code)

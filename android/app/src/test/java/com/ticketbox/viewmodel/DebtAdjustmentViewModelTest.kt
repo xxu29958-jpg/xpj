@@ -47,7 +47,7 @@ class DebtAdjustmentViewModelTest {
             }
             viewModel.selectKind("installment")
             advanceUntilIdle()
-            assertTrue(repository.mutations.isEmpty())
+            assertTrue(writes.kindCalls.isEmpty())
             assertTrue(writes.saveCalls.isEmpty())
             assertEquals(listOf(pendingAdjustment(status = status)), viewModel.state.value.pendingWrites)
         }
@@ -70,7 +70,7 @@ class DebtAdjustmentViewModelTest {
             viewModel.submit()
             advanceUntilIdle()
 
-            assertTrue(repository.mutations.isEmpty(), "$action must not send against the old fold")
+            assertTrue(writes.kindCalls.isEmpty(), "$action must not publish against the old fold")
             assertTrue(writes.saveCalls.isEmpty())
             assertEquals(7L, viewModel.state.value.debt?.rowVersion)
             assertEquals(listOf(pendingAdjustment(status = PendingMutationStatus.InFlight)),
@@ -103,7 +103,7 @@ class DebtAdjustmentViewModelTest {
         }
         viewModel.selectKind("installment")
         advanceUntilIdle()
-        assertTrue(repository.mutations.isEmpty())
+        assertTrue(writes.kindCalls.isEmpty())
         assertEquals(PendingMutationStatus.Done, writes.rows.value.single().row.status)
 
         repository.getGate = null

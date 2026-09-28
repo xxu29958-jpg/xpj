@@ -194,7 +194,7 @@ def test_open_member_debt_owner_can_reach_kind_correction(
         },
     )
     assert changed.status_code == 200
-    assert "还款类型已更新" in changed.text
+    assert "原偿还方式更正已接受" in changed.text
     with SessionLocal() as db:
         stored = db.scalar(select(Debt).where(Debt.public_id == public_id))
         assert stored is not None

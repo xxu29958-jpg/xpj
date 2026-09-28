@@ -1,0 +1,39 @@
+<div data-repayment-container>
+<details class="debt-action-panel" id="debt-action-panel-kind" data-repayment-panel{% if not kind_form.visible %} hidden{% endif %}{% if kind_form.result or kind_form.error %} open{% endif %}>
+  <summary>修改{{ kind_term | default('偿还方式') }}</summary>
+  <form class="debt-action-form" method="post" action="/web/debts/{{ kind_form.public_id }}/kind"
+        data-repayment-kind="debt-kind" data-repayment-scope="{{ kind_form.scope | tojson | forceescape }}"
+        data-repayment-target="{{ kind_form.public_id }}" data-repayment-result="{{ kind_form.result }}"
+        data-void-rejected="{{ 'true' if kind_form.rejected else 'false' }}"
+        data-repayment-can-create="{{ 'true' if kind_form.can_create else 'false' }}"
+        data-repayment-can-recover="{{ 'true' if kind_form.can_recover else 'false' }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    {% for name in ['debt_public_id', 'ledger_id', 'origin_binding', 'expected_row_version', 'idempotency_key'] %}
+    <input type="hidden" name="{{ name }}" value="{{ kind_form['values'][name] }}">
+    {% endfor %}
+    {% if kind_form.error %}<p id="debt-action-error-kind" class="product-feedback product-feedback--danger" role="alert">{{ kind_form.error }}</p>{% endif %}
+    {% if kind_hint | default('') %}<p class="hint">{{ kind_hint }}</p>{% endif %}
+    <label for="debt-kind-select">新的{{ kind_term | default('偿还方式') }}</label>
+    <select id="debt-kind-select" class="product-input" name="debt_kind" required{% if kind_form.error %} aria-invalid="true" aria-describedby="debt-action-error-kind"{% endif %}>
+    {% for value, label in [('one_off', '一次结清'), ('revolving', '循环往来'), ('installment', '分期偿还'), ('unspecified', '暂不指定')] %}
+      <option value="{{ value }}"{% if kind_form['values']['debt_kind'] == value %} selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+    {% if kind_form['values']['debt_kind'] not in ['one_off', 'revolving', 'installment', 'unspecified'] %}
+      <option value="{{ kind_form['values']['debt_kind'] }}" selected>原输入：{{ kind_form['values']['debt_kind'] }}</option>
+    {% endif %}
+    </select>
+    <p data-repayment-status role="status" hidden></p>
+    <button class="product-button product-button--quiet" type="submit" data-repayment-submit{% if not kind_form.can_recover or kind_form.result == 'accepted-review' or kind_form.rejected %} disabled{% endif %}>{{ '继续核实原更正' if kind_form.result else '保存偿还方式' }}</button>
+    <div data-void-rejection-review{% if not kind_form.rejected %} hidden{% endif %}>
+      <a href="/web/debts/{{ kind_form.public_id }}?ledger_id={{ selected_ledger_id }}">核对原记录</a>
+      <button type="button" data-void-finish-rejected>已核对，结束这次未接受的更正</button>
+    </div>
+    {% if kind_form.result == 'accepted-review' %}
+      <a href="/web/debts/{{ kind_form.public_id }}?ledger_id={{ selected_ledger_id }}">核对原记录</a>
+      <button type="button" data-void-finish-review>已核对原记录，结束本地恢复</button>
+    {% endif %}
+  </form>
+</details>
+<section class="product-panel product-panel--padded" data-repayment-shelf hidden><h2>此浏览器保留的偿还方式更正</h2><ul data-repayment-list></ul></section>
+{% if kind_form.ack %}<p class="product-feedback" role="status" data-repayment-ack="{{ kind_form.ack | tojson | forceescape }}">原偿还方式更正已接受：{{ {'one_off':'一次结清', 'revolving':'循环往来', 'installment':'分期偿还', 'unspecified':'暂不指定'}[kind_form.ack.debtKind] }}。本金、已还与剩余金额不因此改变。<span data-repayment-ack-status></span></p>{% endif %}
+</div>

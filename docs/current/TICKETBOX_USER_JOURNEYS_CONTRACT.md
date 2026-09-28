@@ -433,7 +433,7 @@ selected debt set must be refused without altering the accepted original.
 Frozen source `1788f1b3` executed three business failures in CI `36376017160`,
 job `108781938777`: the API bypassed Web's existing idempotent service, retry
 created another goal and changed name/selection each returned success; that job
-also passed 2757 other cases. The candidate API now shares that service and
+also passed 2757 other cases. The API now shares that service and
 atomically stores the original creation receipt with its goal/link rows. A
 retry returns that receipt after real repayments or target-date changes, while
 ordinary GET returns current facts. Legacy keyless clients retain nonmonetary
@@ -443,11 +443,11 @@ the initial result from current facts.
 
 Android's unsubmitted name/selection reset executed at frozen source `ecfe2aca`:
 CI `36379287818`, Android fast `108791533108` ran 2804 tests with only the new
-`returningToCreationRetainsRawNameAndSelectionForExplicitReview` failing. The candidate moves debt-goal
+`returningToCreationRetainsRawNameAndSelectionForExplicitReview` failing. The implementation moves debt-goal
 creation from the Reports direct writer into the existing Goal command owner,
 Room acceptance and dispatcher. MAIN_ROUTE/system SavedState retain the raw
 name, selected debt identities, complete binding and stable task key. Inspecting
-another original cannot consume that independent draft. Candidate refresh keeps
+another original cannot consume that independent draft. Candidate-list refresh keeps
 unavailable selections visible for explicit removal instead of silently dropping
 or replacing them. Readonly users can inspect retained input and stop an eligible
 local original; retry still requires write authority. Unknown or stopped
@@ -462,6 +462,41 @@ its original name and selected debts, without money or month fields. The old
 Reports creation writer is retired with its direct consumers migrated. Native
 route destruction/reentry, system registry restoration over reopened Room,
 ACK-loss/receipt continuity and same-key concurrent acceptance have dedicated
-candidate regressions; runtime and exact source/main qualification remain
-pending. They do not claim an OS kill, replace the existing goal lifecycle or
-declare the whole planning domain complete.
+regressions. Final source `1d39287c` passed CI `36382723032`, CodeQL
+`36382722963` and Connected `36382722976`; merged main `21b19358` independently
+passed CI `36383946603`, CodeQL `36383946752` and Connected `36383946642`,
+including every actual native shard. This does not claim an OS kill, replace
+the existing goal lifecycle or declare the whole planning domain complete.
+
+## Repayment-kind correction continuity
+
+Changing a repayment kind changes rhythm/classification, not principal, paid,
+remaining or settlement facts. The original choice, full binding, key and OCC
+must survive an uncertain reply. Later classifications or repayments must not
+rewrite the first acceptance receipt; GET remains the current fact query.
+Existing external/member, source, historical-currency and role capabilities
+remain applicable. Metadata admission must not inherit monetary-write limits.
+
+Frozen source `29a5ad52` produced actual business failures: CI `36384219928`,
+backend job `108806166653` failed the original-receipt and native-form-key
+cases; Connected `36384220082`, native job `108806209669` executed the new
+actual-picker case and found zero original Room tasks after the offline choice.
+The separate old expense-correction test at job `108806209639` observed the
+Room commit before enqueue scheduling finished. Its wait now includes the
+existing saving-complete state; the original schedule, body and receipt
+assertions remain unchanged. That timing failure is not this slice's RED.
+
+The candidate freezes the receipt in the existing kind transaction, preserving
+legacy accepted-without-receipt as explicit review. Web uses the existing draft
+store, original binding, lease and ACK path; a retained select is disabled with
+one hidden original value for native POST. Confirmed acceptance and a failed
+current-detail refresh are separate outcomes. Android uses the existing Debt
+write owner, Room, Outbox and read-retirement callbacks, with detail/global
+recovery; the old direct setter is retired. Local acceptance does not claim a
+changed server fact. The original choice stays inspectable after Room reopen,
+lost ACK, later remote change, retry or permitted local stop.
+
+Source checks are not runtime proof. Final implementation source/main and the
+extended native reopen/lost-reply/current-query journey remain to be qualified.
+The full relationship and cross-ledger goal boundary remains in the product
+map; this bounded correction does not declare that larger capability complete.

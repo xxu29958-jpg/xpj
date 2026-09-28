@@ -5,6 +5,8 @@ import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.ReadSnapshot
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtListPage
+import com.ticketbox.data.repository.LedgerAccessContext
+import com.ticketbox.domain.model.DebtKinds
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtBillSuggestion
 import com.ticketbox.domain.model.DebtCounterpartyTypes
@@ -62,6 +64,39 @@ class DebtDetailViewModelLoadSwitchTest {
         advanceUntilIdle()
         assertEquals("B", viewModel.state.value.debt?.publicId)
     }
+
+    @Test
+    fun delayedLocalKindAcceptanceCannotAttachItsSuccessOrFailureToAnotherBinding() = runTest(dispatcher) {
+        for (result in listOf(Result.success(1L), Result.failure<Long>(IllegalStateException("original save failed")))) {
+            val original = switchDebt("A").copy(rowVersion = 8L, homeCurrencyCode = "JPY")
+            val repository = SwitchingDebtActions(Result.success(original))
+            val gate = CompletableDeferred<Unit>()
+            val writes = FakeDebtWriteActions().apply { saveResult = result; saveGate = gate }
+            val model = DebtDetailViewModel(repository, writes)
+            model.loadDebt("A")
+            advanceUntilIdle()
+            model.selectKind(DebtKinds.INSTALLMENT)
+            runCurrent()
+            assertEquals(KindSaveCall(adjustmentBinding(), original, DebtKinds.INSTALLMENT), writes.kindCalls.single())
+            assertEquals(original, model.state.value.debt)
+            assertTrue(model.state.value.isSubmitting)
+            val nextBinding = adjustmentBinding().copy(ledgerId = "other", bindingRevision = "selected-other")
+            writes.access.value = LedgerAccessContext(nextBinding, canModify = true)
+            runCurrent()
+            val next = switchDebt("B").copy(ledgerId = "other", rowVersion = 3L)
+            repository.getResult = Result.success(next)
+            model.loadDebt("B")
+            advanceUntilIdle()
+            gate.complete(Unit)
+            advanceUntilIdle()
+            assertEquals(nextBinding, model.state.value.binding)
+            assertEquals(next, model.state.value.debt)
+            assertNull(model.state.value.flashMessage)
+            assertNull(model.state.value.error)
+            assertNull(model.state.value.locallyAcceptedWriteId)
+            assertTrue(model.state.value.pendingWrites.isEmpty())
+        }
+    }
 }
 
 private class SwitchingDebtActions(
@@ -90,8 +125,6 @@ private class SwitchingDebtActions(
 
 
 
-    override suspend fun setDebtKind(publicId: String, expectedRowVersion: Long, debtKind: String): Result<Debt> =
-        Result.success(switchDebt(publicId))
 }
 
 private fun switchDebt(publicId: String): Debt = Debt(

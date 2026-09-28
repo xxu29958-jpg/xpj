@@ -1,5 +1,8 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.R
+import com.ticketbox.data.local.PendingMutationStatus
+import com.ticketbox.domain.model.UiText
 import com.ticketbox.data.repository.LogicalSessionBinding
 
 import com.ticketbox.data.repository.ReadSnapshot
@@ -428,48 +431,74 @@ class DebtDetailViewModelTest {
     // ── ADR-0049 §7.0 / 8e-6e 还款类型纠正 ──────────────────────────────────
 
     @Test
-    fun selectKindSendsOccKindAndSwapsFold() = runTest(dispatcher) {
-        val repo = FakeDebtDetailActions(getResult = Result.success(sampleDebt("d1", rowVersion = 5L)))
-        repo.setKindResult = Result.success(sampleDebt("d1", rowVersion = 6L).copy(debtKind = DebtKinds.REVOLVING))
-        val viewModel = DebtDetailViewModel(repo, FakeDebtWriteActions())
+    fun localKindAcceptanceKeepsOriginalFactsUntilDoneRequeriesAndLateOldReadCannotRevertThem() = runTest(dispatcher) {
+        val original = sampleDebt("d1", rowVersion = 5L).copy(homeCurrencyCode = "JPY")
+        val repo = FakeDebtDetailActions(getResult = Result.success(original))
+        val writes = FakeDebtWriteActions()
+        val viewModel = DebtDetailViewModel(repo, writes)
         viewModel.loadDebt("d1")
         advanceUntilIdle()
 
         viewModel.selectKind(DebtKinds.REVOLVING)
         advanceUntilIdle()
 
-        val call = repo.setKindCalls.single()
-        assertEquals("d1", call.publicId)
-        // OCC carrier = the loaded Debt's row_version.
-        assertEquals(5L, call.expectedRowVersion)
-        assertEquals(DebtKinds.REVOLVING, call.kind)
-        // Fold-after Debt swapped in (row_version advanced, new kind) + success flash.
-        assertEquals(6L, viewModel.state.value.debt?.rowVersion)
-        assertEquals(DebtKinds.REVOLVING, viewModel.state.value.debt?.debtKind)
-        assertTrue(viewModel.state.value.flashMessage != null)
+        assertEquals(KindSaveCall(adjustmentBinding(), original, DebtKinds.REVOLVING), writes.kindCalls.single())
+        assertEquals(original, viewModel.state.value.debt)
+        assertEquals(UiText.res(R.string.debt_kind_saved), viewModel.state.value.flashMessage)
+        assertEquals(1L, viewModel.state.value.locallyAcceptedWriteId)
+        assertEquals(listOf("d1"), repo.getCalls, "Local acceptance does not invent a canonical query result")
         assertNull(viewModel.state.value.error)
+        val pending = pendingKind(original, DebtKinds.REVOLVING)
+        writes.rows.value = listOf(pending)
+        advanceUntilIdle()
+        assertEquals(listOf(pending), viewModel.state.value.pendingWrites)
+        assertFalse(viewModel.state.value.canWriteActions)
+        val oldRead = CompletableDeferred<Unit>()
+        repo.getGate = oldRead
+        viewModel.refresh()
+        runCurrent()
+        val fresh = original.copy(rowVersion = 6L, debtKind = DebtKinds.REVOLVING)
+        repo.getGate = null
+        repo.getResult = Result.success(fresh)
+        val done = pending.copy(row = pending.row.copy(status = PendingMutationStatus.Done,
+            completedAt = "2026-09-06T08:01:00Z", receiptJson = """{"public_id":"d1","row_version":6,"debt_kind":"revolving"}"""))
+        writes.rows.value = listOf(done)
+        advanceUntilIdle()
+        assertEquals(fresh, viewModel.state.value.debt)
+        assertEquals(listOf(done), viewModel.state.value.pendingWrites, "The original kind receipt remains readable")
+        assertTrue(viewModel.state.value.canWriteActions)
+        assertNull(viewModel.state.value.locallyAcceptedWriteId)
+        oldRead.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(fresh, viewModel.state.value.debt)
+        assertEquals(original.remainingAmountCents, viewModel.state.value.debt?.remainingAmountCents)
+        assertEquals(original.createdAt, viewModel.state.value.debt?.createdAt)
+        assertEquals(1, writes.kindCalls.size)
     }
 
     @Test
-    fun selectSameKindIsNoOpWithoutWrite() = runTest(dispatcher) {
-        // Selecting the already-current kind sends no request (avoids an idle row_version bump).
-        val repo = FakeDebtDetailActions(getResult = Result.success(sampleDebt("d1")))
-        val viewModel = DebtDetailViewModel(repo, FakeDebtWriteActions())
-        viewModel.loadDebt("d1")
-        advanceUntilIdle()
-
-        viewModel.selectKind(DebtKinds.UNSPECIFIED)
-        advanceUntilIdle()
-
-        assertTrue(repo.setKindCalls.isEmpty())
-        assertNull(viewModel.state.value.flashMessage)
+    fun sameKindAndReadOnlySelectionKeepFactsWithoutPublishingAnOriginal() = runTest(dispatcher) {
+        for ((canModify, kind) in listOf(true to DebtKinds.UNSPECIFIED, false to DebtKinds.INSTALLMENT)) {
+            val original = sampleDebt("d1")
+            val repo = FakeDebtDetailActions(canModify = canModify, getResult = Result.success(original))
+            val writes = FakeDebtWriteActions()
+            val viewModel = DebtDetailViewModel(repo, writes)
+            viewModel.loadDebt("d1")
+            advanceUntilIdle()
+            viewModel.selectKind(kind)
+            advanceUntilIdle()
+            assertTrue(writes.kindCalls.isEmpty())
+            assertEquals(original, viewModel.state.value.debt)
+            assertNull(viewModel.state.value.flashMessage)
+            assertNull(viewModel.state.value.locallyAcceptedWriteId)
+        }
     }
 
     @Test
     fun selectKindFailureSurfacesErrorBannerLeavingDebtUnchanged() = runTest(dispatcher) {
         val repo = FakeDebtDetailActions(getResult = Result.success(sampleDebt("d1", rowVersion = 5L)))
-        repo.setKindResult = Result.failure(RuntimeException("boom"))
-        val viewModel = DebtDetailViewModel(repo, FakeDebtWriteActions())
+        val writes = FakeDebtWriteActions().apply { saveResult = Result.failure(RuntimeException("boom")) }
+        val viewModel = DebtDetailViewModel(repo, writes)
         viewModel.loadDebt("d1")
         advanceUntilIdle()
 
@@ -480,6 +509,8 @@ class DebtDetailViewModelTest {
         assertTrue(viewModel.state.value.error != null)
         assertEquals(DebtKinds.UNSPECIFIED, viewModel.state.value.debt?.debtKind)
         assertEquals(5L, viewModel.state.value.debt?.rowVersion)
+        assertNull(viewModel.state.value.locallyAcceptedWriteId)
+        assertNull(viewModel.state.value.flashMessage)
     }
 
     // ADR-0049 §5.2 (slice 8e-4) 两清庆祝边沿检测。
@@ -717,14 +748,11 @@ class DebtDetailViewModelTest {
 
 }
 
-private data class KindArgs(val publicId: String, val expectedRowVersion: Long, val kind: String)
-
 private class FakeDebtDetailActions(
     private val canModify: Boolean = true,
     var getResult: Result<Debt> = Result.success(sampleDebt("d1")),
 ) : DebtActions {
-    val setKindCalls = mutableListOf<KindArgs>()
-    var setKindResult: Result<Debt> = Result.success(sampleDebt("d1"))
+    val getCalls = mutableListOf<String>()
 
     /** When set, getDebt() stalls until completed — used to interleave a slow load. */
     var getGate: CompletableDeferred<Unit>? = null
@@ -735,6 +763,7 @@ private class FakeDebtDetailActions(
         Result.success(debtReadSnapshot(DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = null)))
 
     override suspend fun getDebt(publicId: String): Result<ReadSnapshot<Debt>> {
+        getCalls += publicId
         // Capture the result at entry so a stalled load returns the snapshot it started with, even
         // if a newer load swaps getResult in the meantime.
         val captured = getResult
@@ -751,14 +780,6 @@ private class FakeDebtDetailActions(
     ): Result<DebtBillSuggestion> = Result.failure(UnsupportedOperationException())
 
 
-    override suspend fun setDebtKind(
-        publicId: String,
-        expectedRowVersion: Long,
-        debtKind: String,
-    ): Result<Debt> {
-        setKindCalls += KindArgs(publicId, expectedRowVersion, debtKind)
-        return setKindResult
-    }
 }
 
 private fun sampleDebt(

@@ -58,7 +58,8 @@ class ExpenseCorrectionRoomContinuityTest {
         compose.onAllNodes(hasSetTextAction())[0].performScrollTo().performTextReplacement("核对原小票")
         compose.onNode(hasSetTextAction() and hasText("10.00")).performScrollTo().performTextReplacement("12.00")
         compose.onNodeWithText("保存更正").performScrollTo().performClick()
-        compose.waitUntil(10_000) { fixture.stored().size == 1 && model.value?.uiState?.value?.corrections?.size == 1 }
+        compose.waitUntil(10_000) { fixture.stored().size == 1 && model.value?.uiState?.value?.corrections?.size == 1 &&
+            model.value?.uiState?.value?.correction?.saving == false }
         val original = fixture.stored().single()
         assertEquals(0, fixture.network.calls.size)
         assertEquals(1, fixture.schedules)

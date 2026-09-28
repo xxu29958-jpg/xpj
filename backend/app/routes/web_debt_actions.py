@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -33,7 +34,6 @@ from app.routes.web_debts import _render_debt_detail, _web_viewer_account_id
 from app.schemas import (
     DebtAdjustmentCreateRequest,
     DebtForgiveCreateRequest,
-    DebtKindSetRequest,
     DebtResponse,
     DebtVoidCreateRequest,
     RepaymentCreateRequest,
@@ -372,64 +372,25 @@ def web_void_debt(
 
 @router.post("/{public_id}/kind")
 def web_set_debt_kind(
-    request: Request,
-    public_id: str,
-    ledger_id: str = Form(default=""),
-    debt_kind: str = Form(default=""),
-    expected_row_version: str = Form(default=""),
-    idempotency_key: str = Form(default=""),
-    csrf_token: str = Form(default=""),
-    _local: None = LocalOnly,
-    db: Session = Depends(get_db),
+    request: Request, public_id: str, ledger_id: str = Form(default=""),
+    debt_kind: str = Form(default=""), expected_row_version: str = Form(default=""),
+    idempotency_key: str = Form(default=""), csrf_token: str = Form(default=""),
+    debt_public_id: str = Form(default=""), origin_binding: str = Form(default=""),
+    _local: None = LocalOnly, db: Session = Depends(get_db),
 ) -> Response:
+    from app.routes._web_debt_kind import submit_kind
+
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(
-        db,
-        ledger_id,
-        options,
-        request=request,
-    )
-    _require_selected_ledger_write(options, selected_id)
-    expected = parse_form_row_version_token(expected_row_version)
-    if expected is None:
-        return _action_redirect(
-            public_id,
-            selected_id,
-            message=_STALE_MESSAGE,
-            success=False,
-        )
-    try:
-        payload = DebtKindSetRequest(
-            debt_kind=(debt_kind or "").strip(),
-            expected_row_version=expected,
-        )
-        set_debt_kind_idempotently(
-            db,
-            tenant_id=selected_id,
-            actor_account_id=_actor_account_id(request, db, selected_id),
-            public_id=public_id,
-            payload=payload,
-            idempotency_key=(idempotency_key or "").strip() or None,
-        )
-    except (AppError, ValidationError) as exc:
-        message = _error_message(exc) if isinstance(exc, AppError) else "请选择正确的还款类型。"
-        return _render_action_error(
-            request,
-            db,
-            options=options,
-            selected_id=selected_id,
-            public_id=public_id,
-            kind="kind",
-            message=message,
-            draft={"debt_kind": debt_kind},
-            status_code=exc.status_code if isinstance(exc, AppError) else 422,
-        )
-    return _action_redirect(
-        public_id,
-        selected_id,
-        message="还款类型已更新。",
-        success=True,
-    )
+    selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
+    # Older native forms had neither binding field. Preserve that current-writer
+    # path; new bound forms must present their actual original binding.
+    if not debt_public_id and not origin_binding:
+        origin_binding = json.dumps(repayment_scope(request, db), ensure_ascii=False, sort_keys=True)
+    return submit_kind(request, db, options=options, selected_id=selected_id, public_id=public_id,
+        actor_account_id=lambda: _actor_account_id(request, db, selected_id), writer=set_debt_kind_idempotently,
+        values={"ledger_id": ledger_id, "debt_public_id": debt_public_id or public_id,
+            "origin_binding": origin_binding, "debt_kind": debt_kind,
+            "expected_row_version": expected_row_version, "idempotency_key": idempotency_key})
 
 
 @router.post("/{public_id}/forgive")

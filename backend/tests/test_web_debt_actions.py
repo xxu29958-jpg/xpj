@@ -437,7 +437,7 @@ def test_web_debt_kind_and_repayment_void_restore_canonical_fold(
         ),
     )
     assert kind.status_code == 200
-    assert "还款类型已更新" in kind.text
+    assert "原偿还方式更正已接受" in kind.text
     assert re.search(
         r'<option(?=[^>]*\bvalue="one_off")(?=[^>]*\bselected\b)[^>]*>',
         kind.text,
