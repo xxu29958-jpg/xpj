@@ -64,6 +64,10 @@ class DebtAdjustmentRoomContinuityTest {
         }
         compose.waitUntil(10_000) { detail.value?.state?.value?.canWriteActions == true }
         val originalDebt = fixture.network.current
+        val originalBinding = requireNotNull(detail.value?.state?.value?.binding)
+        val originalQueries = fixture.cachedDebtDetails()
+        assertEquals("The displayed canonical debt must also be retained for offline re-entry", 1, originalQueries.size)
+        assertEquals(originalDebt.publicId, originalQueries.single()["tag"])
         fixture.network.failReads = true
         compose.onNodeWithText(context.getString(R.string.debt_kind_edit)).performScrollTo().performClick()
         compose.onNodeWithText(context.getString(R.string.debt_kind_revolving)).performClick()
@@ -80,8 +84,11 @@ class DebtAdjustmentRoomContinuityTest {
         assertEquals(originalDebt, fixture.network.current)
         assertTrue(fixture.network.kindCalls.isEmpty())
         assertEquals(originalDebt.debtKind, detail.value?.state?.value?.debt?.debtKind)
+        assertEquals("An unsent classification intent must preserve the last canonical read", originalQueries, fixture.cachedDebtDetails())
         stopModels()
         installModels()
+        assertEquals(originalBinding, detail.value?.state?.value?.binding)
+        assertEquals("Reopening Room must retain the same bound canonical read", originalQueries, fixture.cachedDebtDetails())
         compose.waitUntil(10_000) {
             detail.value?.state?.value?.let { it.pendingWrites.size == 1 && !it.isLoading } == true
         }

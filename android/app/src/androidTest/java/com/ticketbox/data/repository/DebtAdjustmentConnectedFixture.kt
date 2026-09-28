@@ -94,6 +94,12 @@ internal class DebtAdjustmentConnectedFixture(private val context: Context, priv
             while (cursor.moveToNext()) add(cursor.columnNames.mapIndexed { index, column -> column to cursor.getString(index) }.toMap())
         } }
 
+    fun cachedDebtDetails(): List<Map<String, String?>> = requireNotNull(database).openHelper.readableDatabase
+        .query("SELECT * FROM stats_projection_cache WHERE kind = 'debt_detail' ORDER BY bindingKey, tag, homeCurrencyCode")
+        .use { cursor -> buildList {
+            while (cursor.moveToNext()) add(cursor.columnNames.mapIndexed { index, column -> column to cursor.getString(index) }.toMap())
+        } }
+
     fun setStoredMutationStatus(id: Long, status: String) {
         requireNotNull(database).openHelper.writableDatabase.execSQL(
             "UPDATE pending_mutations SET status = ? WHERE id = ?", arrayOf<Any>(status, id))
