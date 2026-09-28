@@ -90,6 +90,7 @@
     <p><strong>{{ current.label }}</strong> · {{ source_type_labels.get(current.source_type, '原类型') }}</p>
     <p>{{ plan.home_currency_code }} {{ current.amount_yuan }} · {% if current.frequency == 'one_time' %}单次预计 {{ current.income_month }}{% else %}每月固定{% endif %} · {{ current.pay_day }} 号</p>
     <p class="product-panel-subtitle">上方输入再次保存成功后，才会发布计划修改。已有版本保留。</p>
+    <a class="product-button product-button--quiet" target="_blank" rel="noopener" href="/web/income-plans/{{ plan.public_id }}/history?ledger_id={{ selected_ledger_id|urlencode }}">在新窗口查看修改记录</a>
   </section>
 </div>
 {% endblock %}

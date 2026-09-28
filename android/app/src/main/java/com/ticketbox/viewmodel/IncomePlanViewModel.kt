@@ -25,6 +25,7 @@ import java.time.YearMonth
 
 /** Income plan listing, forecast and durable submission recovery. */
 data class IncomePlanUiState(
+    val history: IncomeHistoryState = IncomeHistoryState(),
     val isLoading: Boolean = false,
     val loadState: IncomePlanLoadState = IncomePlanLoadState.Unknown,
     val canModify: Boolean = true,
@@ -108,6 +109,16 @@ class IncomePlanViewModel(
     private var activeCanModify = false
     private var queueJob: Job? = null
     private var requestedSubmissionId: Long? = null
+    private val history = IncomeHistoryTask(repository::history, viewModelScope, { activeBinding }) { result ->
+        _state.update { it.copy(history = result) }
+    }
+
+    fun openHistory(publicId: String) {
+        if ((_state.value.activePlans + _state.value.archivedPlans).any { it.publicId == publicId }) history.open(publicId)
+    }
+    fun dismissHistory() = history.dismiss()
+    fun moreHistory() = history.more()
+    fun retryHistory() = history.retry()
 
     init {
         viewModelScope.launch {
@@ -122,6 +133,7 @@ class IncomePlanViewModel(
                     val selected = requestedSubmissionId.takeIf { activeBinding == null }
                     requestedSubmissionId = null
                     activeBinding = access?.binding
+                    history.dismiss()
                     bindingGeneration += 1
                     _state.value = IncomePlanUiState(canModify = activeCanModify, binding = activeBinding,
                         selectedSubmissionId = selected)
@@ -150,6 +162,7 @@ class IncomePlanViewModel(
 
     fun refresh() {
         val expectedBinding = activeBinding ?: return
+        history.refresh()
         val binding = bindingGeneration
         val refresh = ++refreshGeneration
         _state.update {

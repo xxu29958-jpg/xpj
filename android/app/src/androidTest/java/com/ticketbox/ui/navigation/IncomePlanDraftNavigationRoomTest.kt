@@ -181,6 +181,29 @@ class IncomePlanDraftNavigationRoomTest {
         assertTrue(income.network.creationCalls.isEmpty())
     }
 
+    @Test fun historyFromRealIncomeRowPreservesIndependentCreationDraftWithoutEnqueueingAnything() {
+        showRoutes()
+        enterIncome()
+        compose.onNodeWithText(context.getString(R.string.income_plan_add_action_short)).performScrollTo().performClick()
+        compose.onAllNodes(hasSetTextAction())[0].performScrollTo().performTextReplacement("尚未提交的原稿")
+        closeSoftKeyboard()
+        compose.waitForIdle()
+        pressBack()
+        compose.waitForIdle()
+        compose.onNodeWithText(context.getString(R.string.income_history_action)).performScrollTo().performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("八月工资预测").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText(context.getString(R.string.income_history_title)).assertIsDisplayed()
+        compose.onNodeWithText("八月工资预测").performScrollTo().assertIsDisplayed()
+        assertEquals(listOf("income-1"), income.network.historyCalls)
+        pressBack()
+        compose.waitForIdle()
+        compose.onNodeWithText(context.getString(R.string.income_plan_add_action_short)).performScrollTo().performClick()
+        compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("尚未提交的原稿")
+        assertTrue(income.stored().isEmpty())
+        assertTrue(income.network.creationCalls.isEmpty())
+        assertTrue(income.network.calls.isEmpty())
+    }
+
     private fun showRoutes() {
         compose.setContent {
             if (mounted.value) CompositionLocalProvider(LocalViewModelStoreOwner provides base.models) {

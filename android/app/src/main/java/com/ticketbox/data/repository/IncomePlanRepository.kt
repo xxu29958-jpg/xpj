@@ -8,7 +8,6 @@ import com.ticketbox.data.remote.dto.IncomePlanDto
 import com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.IncomePlan
-import com.ticketbox.domain.model.IncomePlanStatus
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
@@ -16,13 +15,11 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 /** Income management and the server's month-specific forecast; edits publish durable intent first. */
-interface IncomePlanActions {
+interface IncomePlanActions : IncomePlanReads {
     fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?>
     fun observeSubmissions(expectedBinding: LogicalSessionBinding): Flow<List<PendingIncomePlanSubmission>>
     fun describeSubmission(row: OutboxRow): PendingIncomePlanSubmission?
     suspend fun recoverSubmission(expectedBinding: LogicalSessionBinding, pending: PendingIncomePlanSubmission, drop: Boolean): Result<Unit>
-    suspend fun listActive(expectedBinding: LogicalSessionBinding): Result<IncomePlanListing>
-    suspend fun listIncluding(expectedBinding: LogicalSessionBinding, status: IncomePlanStatus): Result<List<IncomePlan>>
     suspend fun create(expectedBinding: LogicalSessionBinding, draft: IncomePlanDraft, creationKey: String): Result<Long>
     suspend fun originalCreation(expectedBinding: LogicalSessionBinding, creationKey: String): Result<PendingIncomePlanSubmission?>
     suspend fun enqueueUpdate(expectedBinding: LogicalSessionBinding, baseline: IncomePlan,
@@ -49,7 +46,8 @@ class IncomePlanRepository(
     private val outbox: OutboxRepository,
     private val incomePlanSubmissionAdapter: JsonAdapter<IncomePlanSubmissionPayload>,
     private val incomePlanReceiptAdapter: JsonAdapter<IncomePlanDto>,
-) : IncomePlanActions {
+    private val reads: IncomePlanReadRepository = IncomePlanReadRepository(apiProvider),
+) : IncomePlanActions, IncomePlanReads by reads {
     private val guard = LedgerRequestGuard(apiProvider)
     private val errors = NetworkErrorHandler(serverUrlProvider = { null }, context = "IncomePlan",
         statusMessages = mapOf(404 to "收入计划不存在。", 409 to "计划已发生变化，请刷新后核对。",
@@ -87,26 +85,10 @@ class IncomePlanRepository(
         check(changed) { "原收入提交状态已变化，请重新核对。" }
     }
 
-    override suspend fun listActive(expectedBinding: LogicalSessionBinding): Result<IncomePlanListing> = errors.safeCall {
-        guard.bindExact(expectedBinding).call { api ->
-            val response = api.listIncomePlans(status = "active")
-            IncomePlanListing(response.items.map { it.toDomain() }, response.expectedAmountCents,
-                response.month, response.scheduledAmountCents, response.effectivePlanCount,
-                response.homeCurrencyCode, response.missingCurrencyCodes, response.referenceRates.map { it.toDomain() })
-        }
-    }.onSuccess { listing ->
-        onActivePlansSnapshot("m=${listing.month};home=${listing.homeCurrencyCode};total=${listing.expectedAmountCents};" +
-            "n=${listing.plans.size};rv=${listing.plans.maxOfOrNull(IncomePlan::rowVersion) ?: 0};" +
-            "ua=${listing.plans.maxOfOrNull(IncomePlan::updatedAt).orEmpty()}")
-    }
-
-    /** Invalidates advice on a changed confirmed forecast or management snapshot. */
-    var onActivePlansSnapshot: (stamp: String) -> Unit = {}
-
-    override suspend fun listIncluding(expectedBinding: LogicalSessionBinding,
-        status: IncomePlanStatus): Result<List<IncomePlan>> = errors.safeCall {
-        guard.bindExact(expectedBinding).call { it.listIncomePlans(status = status.wireValue).items.map { row -> row.toDomain() } }
-    }
+    /** Invalidates advice only after a confirmed income read. */
+    var onActivePlansSnapshot: (stamp: String) -> Unit
+        get() = reads.onActivePlansSnapshot
+        set(value) { reads.onActivePlansSnapshot = value }
 
     override suspend fun originalCreation(expectedBinding: LogicalSessionBinding,
         creationKey: String): Result<PendingIncomePlanSubmission?> = errors.safeCall {

@@ -649,6 +649,7 @@ internal class StubApi(
         idempotencyKey: String?,
     ): BudgetMonthlyDto = ledgerUnsupported()
     override suspend fun listIncomePlans(status: String): com.ticketbox.data.remote.dto.IncomePlanListResponseDto = ledgerUnsupported()
+    override suspend fun incomePlanHistory(publicId: String, limit: Int, beforeVersion: Long?): com.ticketbox.data.remote.dto.IncomeHistoryResponseDto = ledgerUnsupported()
     override suspend fun createIncomePlan(request: com.ticketbox.data.remote.dto.IncomePlanCreateRequestDto, idempotencyKey: String): com.ticketbox.data.remote.dto.IncomePlanDto = ledgerUnsupported()
     override suspend fun updateIncomePlan(publicId: String, request: com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto, idempotencyKey: String?): com.ticketbox.data.remote.dto.IncomePlanDto = ledgerUnsupported()
     override suspend fun archiveIncomePlan(publicId: String, request: com.ticketbox.data.remote.dto.IncomePlanTokenRequestDto): com.ticketbox.data.remote.dto.IncomePlanDto = ledgerUnsupported()

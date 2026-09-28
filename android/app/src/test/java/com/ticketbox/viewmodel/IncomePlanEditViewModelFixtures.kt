@@ -52,7 +52,8 @@ internal data class IncomePlanArchiveCall(
 internal class FakeIncomePlanEditRepository(
     var active: IncomePlanListing = IncomePlanListing(emptyList(), 0L, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0, homeCurrencyCode = "CNY"),
     canModify: Boolean = true,
-) : IncomePlanActions {
+) : IncomePlanTestActions() {
+
     val activeAccessFlow = MutableStateFlow<LedgerAccessContext?>(editAccess(canModify = canModify))
     val updateCalls = mutableListOf<IncomePlanUpdateCall>()
     val archiveCalls = mutableListOf<IncomePlanArchiveCall>()

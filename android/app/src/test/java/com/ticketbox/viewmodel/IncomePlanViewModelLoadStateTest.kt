@@ -80,7 +80,8 @@ class IncomePlanViewModelLoadStateTest {
 private class LoadStateIncomePlanRepository(
     private val activeResult: Result<IncomePlanListing> = Result.success(IncomePlanListing(emptyList(), 0L, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0, homeCurrencyCode = "CNY")),
     private val archivedResult: Result<List<IncomePlan>> = Result.success(emptyList()),
-) : IncomePlanActions {
+) : IncomePlanTestActions() {
+
     override fun describeSubmission(row: com.ticketbox.data.repository.OutboxRow): com.ticketbox.data.repository.PendingIncomePlanSubmission? = null
     override fun observeSubmissions(expectedBinding: LogicalSessionBinding) =
         kotlinx.coroutines.flow.flowOf(emptyList<com.ticketbox.data.repository.PendingIncomePlanSubmission>())

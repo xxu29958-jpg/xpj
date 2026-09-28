@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="income_history_action">修改记录</string>
+    <string name="income_history_title">收入计划修改记录</string>
+    <string name="income_history_create">建立计划</string>
+    <string name="income_history_edit">修改计划</string>
+    <string name="income_history_archive">归档计划</string>
+    <string name="income_history_restore">恢复计划</string>
+    <string name="income_history_explanation">回看每次保存的预计收入与所用月份，不代表实际到账或账户余额。</string>
+    <string name="income_history_failed">暂时无法读取收入计划修改记录。已读内容保留，可重试。</string>
+    <string name="income_history_empty">没有可回看的记录，更早的修改及发生时间未知。</string>
+    <string name="income_history_one_time">单次预计 %1$s · %2$d 号（短月取月末）</string>
+    <string name="income_history_monthly">每月固定 · %1$d 号（短月取月末）</string>
+    <string name="income_history_months">变更所用月份 %1$s · 预测重算起月 %2$s</string>
+    <string name="income_history_unknown">未知</string>
+</resources>

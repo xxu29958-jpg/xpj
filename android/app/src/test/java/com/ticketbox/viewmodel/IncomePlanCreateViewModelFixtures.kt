@@ -29,7 +29,8 @@ internal class FakeIncomePlanCreateRepository(
         scheduledAmountCents = 0, effectivePlanCount = 0, homeCurrencyCode = "CNY"),
     canModify: Boolean = true,
     var createResult: Result<Long>? = null,
-) : IncomePlanActions {
+) : IncomePlanTestActions() {
+
     val activeAccessFlow = MutableStateFlow<LedgerAccessContext?>(editAccess(canModify = canModify))
     val creationCalls = mutableListOf<IncomePlanCreateCall>()
     val lookups = mutableListOf<Pair<LogicalSessionBinding, String>>()

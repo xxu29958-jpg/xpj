@@ -51,7 +51,7 @@
 {% if plans %}
 <div class="plan-goal-list">
   {% for plan in plans %}
-  <div class="plan-goal{% if action == 'restore' %} is-archived{% endif %}">
+  <div id="income-{{ plan.public_id }}" class="plan-goal{% if action == 'restore' %} is-archived{% endif %}">
     <div class="plan-goal-header">
       <div>
         <strong>{{ plan.label }}</strong>
@@ -67,6 +67,7 @@
           已归档 · 恢复后回到在用列表
         {% endif %}
       </span>
+      <a class="product-button product-button--quiet product-button--small" href="/web/income-plans/{{ plan.public_id }}/history?ledger_id={{ selected_ledger_id|urlencode }}">修改记录</a>
       {% if can_write %}
       {% if action == 'archive' %}<a class="product-button product-button--quiet product-button--small" href="/web/income-plans/{{ plan.public_id }}/edit?ledger_id={{ selected_ledger_id }}&intent_month={{ intent_month }}">编辑计划</a>{% endif %}
       <form method="post" action="/web/income-plans/{{ plan.public_id }}/{{ action }}" class="product-inline-form">
