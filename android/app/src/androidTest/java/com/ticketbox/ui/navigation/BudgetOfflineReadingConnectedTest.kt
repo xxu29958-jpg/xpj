@@ -169,6 +169,8 @@ class BudgetOfflineReadingConnectedTest {
         compose.waitUntil(5_000) { compose.onAllNodes(hasText("餐饮 · ¥50")).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("餐饮 · ¥50").performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag("budget-history-read-source").performScrollTo().assertIsDisplayed()
+        assertEquals("Every retained revision must identify its original currency", 3,
+            compose.onAllNodes(hasText("JPY") and hasAnyAncestor(hasTestTag("budget-history"))).fetchSemanticsNodes().size)
         preview("budget-history-offline-reopened")
         assertEquals(pending, harness.fixture.stored())
     }
