@@ -347,13 +347,16 @@ class GoalOfflineReadingConnectedTest {
             list = ViewModelProvider(harness.models, viewModelFactory {
                 initializer { SpendingGoalsViewModel(graph.reportsRepository, graph.goalEditRepository, "2026-09") }
             })["spending-goals", SpendingGoalsViewModel::class.java]
+            ViewModelProvider(harness.models, viewModelFactory {
+                initializer { com.ticketbox.viewmodel.CreateSpendingGoalViewModel(graph.goalEditRepository) }
+            })["create-spending-goal", com.ticketbox.viewmodel.CreateSpendingGoalViewModel::class.java]
             mounted.value = true
         }
         compose.setContent {
             TicketboxTheme(skin = AppSkin.Default) {
                 CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models,
                     LocalCurrencyDisplay provides CurrencyDisplay(CurrencyCode.CNY)) {
-                    if (mounted.value) SpendingGoalsRoute(factory, onBack = {})
+                    if (mounted.value) SpendingGoalsRoute(factory, onBack = {}, creationOwner = harness.models)
                 }
             }
         }

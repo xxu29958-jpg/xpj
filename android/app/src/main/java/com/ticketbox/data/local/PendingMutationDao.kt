@@ -46,6 +46,14 @@ interface PendingMutationDao {
         return id
     }
 
+    @Query(
+        "SELECT * FROM pending_mutations WHERE serverUrl = :serverUrl AND ownerKey = :ownerKey " +
+            "AND ledgerId = :ledgerId AND type = :type AND idempotencyKey = :idempotencyKey ORDER BY id",
+    )
+    fun observeOriginalCommand(
+        serverUrl: String, ownerKey: String, ledgerId: String, type: String, idempotencyKey: String,
+    ): Flow<List<PendingMutationEntity>>
+
     @Transaction
     suspend fun deleteAndPublish(id: Long, ownerKey: String, ledgerId: String, status: String, publish: suspend () -> Unit): Boolean {
         val deleted = deleteIfStatus(id, ownerKey, ledgerId, status) > 0
@@ -70,15 +78,16 @@ interface PendingMutationDao {
 
     /** An uncertain local acceptance must resolve to one immutable original, including retained DONE rows. */
     @Transaction
-    suspend fun insertOriginalIncomeCreation(row: PendingMutationEntity): Long {
-        require(row.type == PendingMutationType.CreateIncomePlan.wireValue && !row.idempotencyKey.isNullOrBlank())
+    suspend fun insertOriginalCreation(row: PendingMutationEntity): Long {
+        require(row.type in setOf(PendingMutationType.CreateIncomePlan.wireValue, PendingMutationType.CreateGoal.wireValue) &&
+            !row.idempotencyKey.isNullOrBlank())
         val originals = findByIdempotencyKeys(requireNotNull(row.ownerKey), row.ledgerId, row.type,
             listOf(requireNotNull(row.idempotencyKey)))
         if (originals.isEmpty()) return insert(row)
         val original = originals.single()
         require(original.serverUrl == row.serverUrl && original.targetId == row.targetId &&
             original.payload == row.payload && original.expectedRowVersion == row.expectedRowVersion) {
-            "原收入创建内容或归属已变化，请先核对原提交。"
+            "原创建内容或归属已变化，请先核对原提交。"
         }
         return original.id
     }

@@ -13,7 +13,9 @@ import com.ticketbox.domain.model.GoalUpdate
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.CancellationException
 
 interface GoalEditActions {
     fun currentAccess(): LedgerAccessContext?
@@ -23,9 +25,9 @@ interface GoalEditActions {
     fun observeEdits(binding: LogicalSessionBinding, publicId: String): Flow<List<PendingGoalEdit>>
     suspend fun save(binding: LogicalSessionBinding, goal: Goal, update: GoalUpdate): Result<Long>
     suspend fun recover(binding: LogicalSessionBinding, pending: PendingGoalEdit, drop: Boolean): Result<Unit>
-    suspend fun create(binding: LogicalSessionBinding, draft: GoalDraft): Result<Long>
+    suspend fun create(binding: LogicalSessionBinding, draft: GoalDraft, creationKey: String): Result<Long>
     fun describeCreation(row: OutboxRow): PendingGoalCreation?
-    fun observeCreations(binding: LogicalSessionBinding): Flow<List<PendingGoalCreation>>
+    fun observeCreations(binding: LogicalSessionBinding, originalKey: String? = null): Flow<List<PendingGoalCreation>>
     suspend fun recoverCreation(binding: LogicalSessionBinding, pending: PendingGoalCreation, drop: Boolean): Result<Unit>
 }
 
@@ -106,14 +108,14 @@ class GoalEditRepository(
             }
         }
 
-    override suspend fun create(binding: LogicalSessionBinding, draft: GoalDraft): Result<Long> = errors.safeCall {
+    override suspend fun create(binding: LogicalSessionBinding, draft: GoalDraft, creationKey: String): Result<Long> = errors.safeCall {
         val bound = guard.bindExact(binding)
         require(currentAccess()?.canModify == true) { "当前角色为只读，无法修改账本。" }
+        require(creationKey.isNotBlank() && creationKey.length <= 64) { "原创建标识无法确认，请保留草稿并重新打开。" }
         val clean = draft.validatedGoalDraft().getOrThrow()
-        val key = UUID.randomUUID().toString()
-        outbox.enqueue(boundRequest = bound, intent = PendingMutationIntent(
-            type = PendingMutationType.CreateGoal, targetId = "goal_create:$key", expectedRowVersion = 0,
-            payloadJson = createAdapter.toJson(clean.toRequest()), idempotencyKey = key,
+        outbox.enqueueOriginalCreation(boundRequest = bound, intent = PendingMutationIntent(
+            type = PendingMutationType.CreateGoal, targetId = "goal_create:$creationKey", expectedRowVersion = 0,
+            payloadJson = createAdapter.toJson(clean.toRequest()), idempotencyKey = creationKey,
         ))
     }
 
@@ -126,10 +128,13 @@ class GoalEditRepository(
         return PendingGoalCreation(row, request, receipt?.takeIf { request?.acceptsGoalCreationReceipt(row, it) == true }?.toDomain())
     }
 
-    override fun observeCreations(binding: LogicalSessionBinding): Flow<List<PendingGoalCreation>> =
-        outbox.observeActiveByTypes(setOf(PendingMutationType.CreateGoal), includeCompleted = true).map { rows ->
+    override fun observeCreations(binding: LogicalSessionBinding, originalKey: String?): Flow<List<PendingGoalCreation>> {
+        val originals = if (originalKey == null) outbox.observeActiveByTypes(setOf(PendingMutationType.CreateGoal), includeCompleted = true)
+            else outbox.observeOriginalCommand(PendingMutationType.CreateGoal, originalKey)
+        return originals.map { rows ->
             if (guard.captureLogicalBinding() != binding) emptyList() else rows.mapNotNull(::describeCreation)
         }
+    }
 
     override suspend fun recoverCreation(binding: LogicalSessionBinding, pending: PendingGoalCreation, drop: Boolean): Result<Unit> =
         errors.safeCall {
@@ -139,6 +144,20 @@ class GoalEditRepository(
             }
         }
 }
+
+/** Reads only this task's original; callers retain the complete captured binding alongside its random key. */
+suspend fun GoalEditActions.originalCreation(binding: LogicalSessionBinding, creationKey: String): Result<PendingGoalCreation?> =
+    try {
+        require(creationKey.isNotBlank() && creationKey.length <= 64) { "原创建标识无法确认，请保留草稿并重新打开。" }
+        require(currentAccess()?.binding == binding) { "账本已切换，请重新操作。" }
+        val originals = observeCreations(binding, creationKey).first().filter { it.row.idempotencyKey == creationKey }
+        require(currentAccess()?.binding == binding) { "账本已切换，请重新操作。" }
+        Result.success(originals.takeIf { it.isNotEmpty() }?.single())
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: Exception) {
+        Result.failure(error)
+    }
 
 private suspend fun recoverGoalSubmission(outbox: OutboxRepository, bound: BoundLedgerRequest, row: OutboxRow,
     drop: Boolean, permitted: (OutboxRow) -> Boolean) {

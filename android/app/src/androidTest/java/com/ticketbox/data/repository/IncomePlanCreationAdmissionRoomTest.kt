@@ -100,14 +100,14 @@ class IncomePlanCreationAdmissionRoomTest {
             val start = CompletableDeferred<Unit>()
             val acceptances = listOf(fixture.outbox, anotherOutbox).map { outbox -> async(Dispatchers.IO) {
                 start.await()
-                outbox.enqueueIncomeCreation(bound, intent)
+                outbox.enqueueOriginalCreation(bound, intent)
             } }
             start.complete(Unit)
             val ids = acceptances.awaitAll()
             assertEquals(ids.first(), ids.last())
             assertEquals(2, fixture.stored().size)
             assertEquals(1, fixture.stored().count { it["idempotencyKey"] == key })
-            val changedOcc = runCatching { anotherOutbox.enqueueIncomeCreation(bound, intent.copy(expectedRowVersion = 1)) }
+            val changedOcc = runCatching { anotherOutbox.enqueueOriginalCreation(bound, intent.copy(expectedRowVersion = 1)) }
             assertTrue(changedOcc.isFailure)
             assertEquals(2, fixture.stored().size)
         } finally {

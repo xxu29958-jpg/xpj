@@ -185,6 +185,45 @@ distinct from an OS process-kill qualification. Unsubmitted income-creation and
 goal drafts, Web refresh/session draft durability and other cross-client return
 paths remain in the atlas; this edit slice does not declare them complete.
 
+## Spending goal creation continuity
+
+Returning from a chosen future-month draft to the list and then reopening Create
+must preserve the complete unsubmitted name, raw amount, category, currency and
+chosen month. The list's currently displayed month is a default for a genuinely
+new task, not authority to reset the existing task. Existing pending creations
+remain discoverable through original-submission recovery; the Create entry must
+not silently select the first unfinished command and replace an independent
+draft. Explicitly inspecting an original and then returning to the draft must
+preserve both original command identity and the unsubmitted input. Frozen source
+`9eadd407` executed these counterexamples: CI `36362109478`, Android fast job
+`108741221635` completed 2766 tests with exactly these two new failures at lines
+114 and 138. Compilation or environment failure is not the claimed RED.
+
+The #451 candidate retains the creation owner at MAIN_ROUTE and restores its
+complete binding, task key and raw input through the system saved-state registry.
+A readonly role retains the current binding's draft and its Continue entry;
+another binding never inherits it. Explicit original-submission inspection is
+separate from that draft. A user-confirmed draft discard removes only the local
+input, never stops a Room command or reverses an accepted target.
+
+The existing Room creation transaction shared with income accepts a stable task key once and preserves its
+immutable body and receipt. Two independent keys with identical content remain
+two intended creations. An older system snapshot rejoins its own original key,
+including a retained completion; unknown or abandoned originals remain evidence
+instead of being filtered into an apparently new task. Their retained raw input
+remains visible but cannot submit; the page distinguishes an unreadable status
+or stopped original from a command waiting to sync. Publishing without a
+recoverable original requires reconciliation or explicit local discard, never
+automatic reinterpretation under the current month or currency. The existing
+bare command payload, legacy explicit recovery and sole dispatcher stay in use.
+
+Actual route destruction/reentry, registry save/restore and Room continuity are
+separate checks; none is described as OS process-kill qualification. Candidate
+runtime and exact main qualification remain pending. Debt-goal drafts and Web
+refresh/session durability remain separate gaps in the full product map.
+
+## Income creation continuity
+
 Income creation must retain a distinct unsubmitted task across closing and real
 route exit/reentry, including raw name/amount, source/frequency, original currency
 and intended month. Closing is not an explicit discard. Same-binding role loss
@@ -337,7 +376,7 @@ Neither finding opens Windows lifecycle work or blocks an unrelated current
 consumer slice by itself. The historical review subjects remain in the evidence
 archive. Fresh G2 stays CLOSED and the Goal's Windows HOLD boundary is unchanged.
 
-## Saved financial views (#449 candidate)
+## Saved financial views (#449 merged)
 
 Under the Goal's delegated product-design scope and product contract 6.9, saved
 views are named, ledger-shared query configurations. The UI states this sharing
@@ -364,7 +403,7 @@ OCC conflicts and the existing complete portable outlet are part of delivery.
 
 The frozen `38175eb` browser journey ran against PostgreSQL and failed because
 the confirmed stream had no save entry (CI 36354760118, job 108720371992).
-The candidate adds one SavedView persistence/query owner, its schema migration,
+The implementation adds one SavedView persistence/query owner, its schema migration,
 native confirmed/Library forms and the existing portable outlet. Invalid or
 refused forms retain original inputs and key/OCC; switching the current ledger
 cannot retarget an old form. An unavailable tag remains selected until explicitly
@@ -373,9 +412,10 @@ repaired. The shared product shell covers both desktop and narrow Web navigation
 Direct regressions cover current/fixed months, new facts after reopening,
 cross-ledger and revoked membership, Viewer write refusal/recovery, stable retry
 receipts after rename/delete, OCC and name conflicts, real tag rename/merge,
-schema preservation and export scope. This is candidate behavior pending exact
-runtime qualification, not delivered capability. It does not gate unrelated
-Income/Library work, replace the full Goal or reopen Windows lifecycle work.
+schema preservation and export scope. Final source `f61bb93d` and merged main
+`609448a9` independently passed CI, CodeQL and all three actual Android Connected
+shards. This does not claim a daily installation update, replace the full Goal or
+reopen Windows lifecycle work.
 
 ## Debt-goal creation continuity
 
@@ -388,8 +428,10 @@ selected debt set must be refused without altering the accepted original.
 
 The API currently bypasses the existing idempotent debt-goal creation service,
 although Web already consumes that service. The frozen API counterexamples check
-actual goals, versioned membership and repayment facts; they are not yet executed
-business RED. Android also resets the unsubmitted name/selection on reentry and
+actual goals, versioned membership and repayment facts. Frozen source `1788f1b3`
+executed three business failures in CI `36376017160`, job `108781938777`: retry
+created another goal and changed name/selection each returned success; that job
+also passed 2757 other cases. Android resets the unsubmitted name/selection on reentry and
 submits through the direct Reports writer. The correction must follow those real
 consumers and preserve candidate refresh, unavailable-selection review, complete
 binding, permissions and the existing goal lifecycle. It does not inherit the

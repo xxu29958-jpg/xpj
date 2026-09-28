@@ -134,7 +134,7 @@ class IncomePlanRepository(
             request.amountCents, request.homeCurrencyCode, expectedBinding.sessionGeneration, expectedBinding.bindingRevision,
             IncomePlanUpdateRequestDto(request.intentMonth, 0, request.label, request.sourceType, request.frequency,
                 request.incomeMonth, request.amountCents, request.payDay))
-        outbox.enqueueIncomeCreation(bound, payload.toMutationIntent(incomePlanSubmissionAdapter, 0, creationKey))
+        outbox.enqueueOriginalCreation(bound, payload.toMutationIntent(incomePlanSubmissionAdapter, 0, creationKey))
     }
 
     override suspend fun enqueueUpdate(expectedBinding: LogicalSessionBinding, baseline: IncomePlan,
