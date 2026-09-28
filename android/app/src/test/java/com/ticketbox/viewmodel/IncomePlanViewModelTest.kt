@@ -314,10 +314,8 @@ class IncomePlanViewModelTest {
         var active: IncomePlanListing = IncomePlanListing(emptyList(), 0L, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0, homeCurrencyCode = "CNY"),
         private val archived: List<IncomePlan> = emptyList(),
         private val canModify: Boolean = true,
-    ) : IncomePlanActions {
+    ) : IncomePlanTestActions() {
         override val readAccessDenials = kotlinx.coroutines.flow.MutableSharedFlow<com.ticketbox.data.repository.SnapshotAccessDenial>()
-        override suspend fun history(binding: LogicalSessionBinding, publicId: String, beforeVersion: Long?):
-            Result<com.ticketbox.data.repository.ReadSnapshot<com.ticketbox.domain.model.IncomeHistoryPage>> = error("History is not requested in this fixture")
 
         val activeAccessFlow = MutableStateFlow<LedgerAccessContext?>(
             incomePlanAccess(canModify = canModify),

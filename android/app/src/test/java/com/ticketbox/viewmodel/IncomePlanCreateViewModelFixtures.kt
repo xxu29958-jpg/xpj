@@ -29,10 +29,8 @@ internal class FakeIncomePlanCreateRepository(
         scheduledAmountCents = 0, effectivePlanCount = 0, homeCurrencyCode = "CNY"),
     canModify: Boolean = true,
     var createResult: Result<Long>? = null,
-) : IncomePlanActions {
+) : IncomePlanTestActions() {
     override val readAccessDenials = kotlinx.coroutines.flow.MutableSharedFlow<com.ticketbox.data.repository.SnapshotAccessDenial>()
-    override suspend fun history(binding: LogicalSessionBinding, publicId: String, beforeVersion: Long?):
-        Result<com.ticketbox.data.repository.ReadSnapshot<com.ticketbox.domain.model.IncomeHistoryPage>> = error("History is not requested in this fixture")
 
     val activeAccessFlow = MutableStateFlow<LedgerAccessContext?>(editAccess(canModify = canModify))
     val creationCalls = mutableListOf<IncomePlanCreateCall>()
