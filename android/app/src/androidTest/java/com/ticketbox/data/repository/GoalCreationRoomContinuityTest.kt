@@ -123,11 +123,12 @@ class GoalCreationRoomContinuityTest {
         } }
         compose.waitUntil(10_000) { model.state.value.editable && model.state.value.ledgerCurrency?.storageKey == "JPY" }
         compose.onAllNodes(hasSetTextAction())[0].performScrollTo().performTextReplacement("  旅行原稿  ")
-        compose.onAllNodes(hasSetTextAction())[1].performScrollTo().performTextReplacement("01200")
+        compose.onAllNodes(hasSetTextAction())[1].performScrollTo().performTextReplacement("1200.0")
         closeSoftKeyboard()
         compose.waitForIdle()
         val originalKey = model.state.value.creationKey
         val beforeSave = compose.runOnIdle { requireNotNull(stateOwner).save() }
+        assertTrue(model.state.value.canSubmit)
         compose.onNodeWithText(context.getString(R.string.spending_goal_create_save)).performClick()
         compose.waitUntil(10_000) { fixture.stored().size == 1 && model.state.value.isSubmitting }
         val acceptedRow = fixture.stored().single()
@@ -160,11 +161,12 @@ class GoalCreationRoomContinuityTest {
         } }
         compose.waitUntil(10_000) { model.state.value.editable && model.state.value.ledgerCurrency?.storageKey == "JPY" }
         compose.onAllNodes(hasSetTextAction())[0].performScrollTo().performTextReplacement("  旅行原稿  ")
-        compose.onAllNodes(hasSetTextAction())[1].performScrollTo().performTextReplacement("01200")
+        compose.onAllNodes(hasSetTextAction())[1].performScrollTo().performTextReplacement("1200.0")
         closeSoftKeyboard()
         compose.waitForIdle()
         val originalKey = model.state.value.creationKey
         val beforeSave = compose.runOnIdle { requireNotNull(stateOwner).save() }
+        assertTrue(model.state.value.canSubmit)
         compose.onNodeWithText(context.getString(R.string.spending_goal_create_save)).performClick()
         compose.waitUntil(10_000) { fixture.stored().size == 1 && model.state.value.isSubmitting }
         val acceptedRow = fixture.stored().single()
@@ -177,7 +179,7 @@ class GoalCreationRoomContinuityTest {
         compose.waitUntil(10_000) { model.state.value.pending?.row?.status == PendingMutationStatus.Unknown }
         compose.onNodeWithText(context.getString(R.string.goal_creation_unrecognized)).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("  旅行原稿  ").performScrollTo().assertIsDisplayed().assertIsNotEnabled()
-        compose.onNodeWithText("01200").performScrollTo().assertIsDisplayed().assertIsNotEnabled()
+        compose.onNodeWithText("1200.0").performScrollTo().assertIsDisplayed().assertIsNotEnabled()
         compose.onNodeWithText(context.getString(R.string.spending_goal_create_save)).assertIsNotEnabled()
         assertEquals(originalKey, model.state.value.creationKey)
         assertEquals("JPY", model.state.value.ledgerCurrency?.storageKey)
