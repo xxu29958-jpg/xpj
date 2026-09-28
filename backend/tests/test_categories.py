@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
+from uuid import uuid4
 
 import pytest
 from api_contract_helpers import web_save_expense
@@ -21,7 +22,7 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.main import app
-from app.models import CategoryRule, Expense
+from app.models import CategoryRule, Expense, Ledger
 from app.routes.web_app import _require_local as _web_require_local
 from app.services.category_preference_service import ensure_category_preference_for_name
 from app.services.category_service import (
@@ -361,18 +362,24 @@ def test_delete_category_preference_rejects_active_rule_reference(
     with SessionLocal() as db:
         now = now_utc()
         ensure_category_preference_for_name(db, tenant_id="owner", name="咖啡")
-        db.add(
-            CategoryRule(
-                tenant_id="owner",
-                keyword="coffee",
-                category="咖啡",
-                enabled=True,
-                priority=10,
-                created_at=now,
-                updated_at=now,
-            )
+        rule = CategoryRule(
+            tenant_id="owner", keyword="coffee", category="咖啡",
+            enabled=True, priority=10, created_at=now, updated_at=now,
         )
+        db.add(rule)
+        owner_id = db.scalar(select(Ledger.owner_account_id).where(Ledger.ledger_id == "owner"))
+        db.add(Ledger(ledger_id="category-reference-other", name="另一本账本", owner_account_id=owner_id))
+        db.flush()
+        db.add_all([
+            CategoryRule(tenant_id="owner", keyword="disabled-coffee", category="咖啡",
+                enabled=False, priority=10, created_at=now, updated_at=now),
+            CategoryRule(tenant_id="owner", keyword="deleted-coffee", category="咖啡",
+                enabled=True, priority=10, created_at=now, updated_at=now, deleted_at=now),
+            CategoryRule(tenant_id="category-reference-other", keyword="其他账本的私人规则", category="咖啡",
+                enabled=True, priority=10, created_at=now, updated_at=now),
+        ])
         db.commit()
+        rule_id = rule.id
 
     deleted = client.post(
         f"/api/expenses/categories/preferences/{preference['public_id']}/delete",
@@ -381,6 +388,41 @@ def test_delete_category_preference_rejects_active_rule_reference(
     )
     assert deleted.status_code == 409
     assert deleted.json()["error"] == "state_conflict"
+    assert deleted.json().get("category_references") == [
+        {"kind": "rule", "id": str(rule_id), "label": "规则「coffee」"},
+    ], "only active references in this ledger may be exposed as a blocker"
+    assert _category_preference(client, identity=identity, name="咖啡") == preference
+
+
+@pytest.mark.parametrize("source", ["budget_category", "budget_exclusion", "spending_goal"])
+def test_category_rejection_identifies_the_saved_plan_without_changing_it(client: TestClient, identity, source: str) -> None:
+    _create_manual_category(client, identity=identity, category="咖啡", client_ref=f"category-plan-{source}")
+    preference = _category_preference(client, identity=identity, name="咖啡")
+    headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
+    if source == "spending_goal":
+        created = client.post("/api/goals", headers=headers, json={"home_currency_code": "CNY",
+            "name": "十月咖啡安排", "month": "2026-10", "category": "咖啡", "target_amount_cents": 5000})
+        assert created.status_code == 201, created.text
+        kind, identifier = "goal", created.json()["public_id"]
+        read_url = f"/api/goals/{identifier}"
+    else:
+        created = client.put("/api/budgets/monthly/2026-10", headers=headers,
+            json={"home_currency_code": "CNY", "expected_row_version": None, "total_amount_cents": 50000,
+                "excluded_categories": ["咖啡"] if source == "budget_exclusion" else [],
+                "category_budgets": [{"category": "咖啡", "amount_cents": 5000}] if source == "budget_category" else []})
+        assert created.status_code == 200, created.text
+        kind, identifier = "budget", "2026-10"
+        read_url = "/api/budgets/monthly?month=2026-10"
+
+    original = client.get(read_url, headers=identity.app_headers).json()
+    rejected = client.post(f"/api/expenses/categories/preferences/{preference['public_id']}/delete",
+        headers=identity.app_headers, json={"expected_row_version": preference["row_version"]})
+    assert rejected.status_code == 409, rejected.text
+    references = rejected.json().get("category_references", [])
+    assert [(item["kind"], item["id"]) for item in references] == [(kind, identifier)]
+    assert "十月咖啡安排" in references[0]["label"] if kind == "goal" else "2026-10" in references[0]["label"]
+    assert client.get(read_url, headers=identity.app_headers).json() == original
+    assert _category_preference(client, identity=identity, name="咖啡") == preference
 
 
 def test_web_uncategorized_lists_only_uncategorized(web_client: TestClient, *, identity) -> None:

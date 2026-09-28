@@ -19,6 +19,7 @@ from app.models import CategoryPreference, CategoryRule, Expense, Ledger, Ledger
 from app.services.category_preference_service import list_category_preferences
 from app.services.saved_view_service import create_view
 from app.services.time_service import now_utc
+from tests._web_native_form_support import hidden_post_forms
 
 
 def _sidebar(body: str) -> str:
@@ -281,18 +282,18 @@ def test_referenced_category_removal_explains_the_required_next_step(
         )
         assert preference is not None
         now = now_utc()
-        db.add(
-            CategoryRule(
-                tenant_id="owner",
-                keyword="bakery",
-                category="烘焙",
-                enabled=True,
-                priority=10,
-                created_at=now,
-                updated_at=now,
-            )
+        rule = CategoryRule(
+            tenant_id="owner",
+            keyword="bakery",
+            category="烘焙",
+            enabled=True,
+            priority=10,
+            created_at=now,
+            updated_at=now,
         )
+        db.add(rule)
         db.commit()
+        rule_id = rule.id
         public_id = preference.public_id
         row_version = preference.row_version
 
@@ -310,3 +311,29 @@ def test_referenced_category_removal_explains_the_required_next_step(
     assert "请先处理相关配置" in response.text
     assert f'data-category-key="{public_id}"' in response.text
     assert f'value="{row_version}"' in response.text
+
+    # A rejection must lead to the actual blocking object, not leave the user
+    # searching every rule and plan. Resolve it through the shipped editor.
+    editor_url = f"/web/rules/{rule_id}/edit?ledger_id=owner"
+    assert f'href="{editor_url}"' in response.text
+    editor = web_client.get(editor_url)
+    assert editor.status_code == 200, editor.text
+    assert 'value="bakery"' in editor.text
+    edit_action = f"/web/rules/{rule_id}/edit"
+    original_form = hidden_post_forms(editor.text)[edit_action]
+    changed = web_client.post(edit_action, data={**original_form,
+        "keyword": "bakery", "category": "餐饮", "priority": "10"}, follow_redirects=False)
+    assert changed.status_code in (302, 303), changed.text
+
+    returned = web_client.get("/web/categories?ledger_id=owner")
+    remove_action = f"/web/categories/preferences/{public_id}/delete"
+    current_form = hidden_post_forms(returned.text)[remove_action]
+    removed = web_client.post(remove_action, data=current_form, follow_redirects=False)
+    assert removed.status_code in (302, 303), removed.text
+    with SessionLocal() as db:
+        original_expense = db.scalar(select(Expense).where(Expense.public_id == created.json()["public_id"]))
+        assert original_expense.category == "烘焙"
+        assert original_expense.amount_cents == 3200
+        assert db.scalar(select(CategoryRule).where(CategoryRule.id == rule_id)).category == "餐饮"
+        preference = db.scalar(select(CategoryPreference).where(CategoryPreference.public_id == public_id))
+        assert preference.deleted_at is not None
