@@ -3,24 +3,40 @@
 {% set page_title = '编辑收入计划' %}
 {% set product_body_domain = 'plans' %}
 {% block title %}编辑收入计划 · 小票夹{% endblock %}
+{% block page_scripts %}
+{% if income_draft_scope %}
+<script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/income-plan-entry.js?v={{ asset_version }}"></script>
+{% endif %}
+{% endblock %}
 {% block content %}
 <header class="product-page-header">
   <div class="product-page-heading">
     <span class="product-eyebrow">计划 / 收入</span>
     <h1 class="page-title">编辑收入计划</h1>
-    <p class="product-page-summary">每月计划从 {{ values.intent_month }} 生效，单次计划使用预计月份。计划不代表实际到账。</p>
+    <p class="product-page-summary">核对计划和生效月份后发布修改，已有版本保留。计划不代表实际到账。</p>
   </div>
   <a class="product-button product-button--quiet" href="/web/income-plans?ledger_id={{ selected_ledger_id }}">返回收入计划</a>
 </header>
 <div class="plan-flow">
   {% if error %}<div class="product-feedback product-feedback--danger" role="alert">{{ error }}</div>{% endif %}
+  {% if can_write is defined and not can_write %}<div class="product-feedback" role="status">当前角色为只读，可以核对计划；已保留的原修改可在权限恢复后继续。</div>{% endif %}
   {% if plan.status == 'archived' %}<div class="product-feedback" role="status">计划已归档。请返回收入计划恢复后再修改。</div>{% endif %}
   <section class="product-panel product-panel--padded" aria-label="编辑收入计划">
     <h2 class="product-panel-title">计划设置</h2>
-    <form method="post" action="/web/income-plans/{{ plan.public_id }}/edit" class="budget-form">
+    {% if income_draft_scope %}<div data-income-draft-shelf hidden><p class="meta">此浏览器保留的收入任务</p><ul data-income-draft-list></ul></div>{% endif %}
+    <form method="post" action="/web/income-plans/{{ plan.public_id }}/edit" class="budget-form"
+      {% if income_draft_scope %}data-income-draft-scope="{{ income_draft_scope | tojson | forceescape }}"
+      data-income-plan-id="{{ plan.public_id }}" data-income-native-result="{{ income_draft_result | default('') }}"
+      data-income-can-write="{{ 'true' if can_write else 'false' }}" data-income-archived="{{ 'true' if plan.status == 'archived' else 'false' }}"
+      data-income-review-month="{{ review_month }}"{% endif %}>
       {{ csrf_field|safe }}
+      {% if income_draft_scope %}<input type="hidden" name="draft_scope" value="{{ values.get('draft_scope', income_draft_scope | tojson) | forceescape }}">{% endif %}
       {% for key in ['intent_month', 'expected_row_version', 'idempotency_key'] %}<input type="hidden" name="{{ key }}" value="{{ values[key] }}">{% endfor %}
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      <input type="hidden" name="public_id" value="{{ plan.public_id }}">
+      <input type="hidden" name="home_currency_code" value="{{ plan.home_currency_code or '' }}">
+      <p class="meta" data-income-intent>本次每月计划从 {{ values.intent_month }} 生效，单次计划使用所选预计月份。失败重试保留原月份和金额。</p>
       <div class="product-form-grid">
         <div class="product-field">
           <label for="income-edit-label">名称</label>
@@ -46,8 +62,8 @@
           <p id="income-edit-month-impact" class="hint">单次计划影响所选预计月份；修改月份会同时更正原月份和新月份的预测。</p>
         </div>
         <div class="product-field">
-          <label for="income-edit-amount">预计金额（{{ currency_input.currency_code }} · {{ currency_input.currency_symbol }}，{{ currency_input.amount_input_hint }}）</label>
-          <input id="income-edit-amount" class="product-input" type="text" name="amount_yuan" value="{{ values.amount_yuan }}" inputmode="{{ currency_input.inputmode }}" required>
+          <label for="income-edit-amount" data-income-amount-label>预计金额（{{ currency_input.currency_code }} · {{ currency_input.currency_symbol }}，{{ currency_input.amount_input_hint }}）</label>
+          <input id="income-edit-amount" class="product-input" type="text" name="amount_yuan" value="{{ values.amount_yuan }}" placeholder="{{ currency_input.amount_placeholder }}" inputmode="{{ currency_input.inputmode }}" required>
         </div>
         <div class="product-field">
           <label for="income-edit-day">预计收入日（1–31，短月取月末）</label>
@@ -59,8 +75,14 @@
           {% if permission_refused %}<button class="product-button product-button--primary" type="submit" {% if values.review_latest %}name="review_latest" value="true" formnovalidate{% endif %}>权限恢复后重试{% if values.review_latest %}核对{% else %}保存{% endif %}</button>
           {% elif conflict %}<button class="product-button product-button--primary" type="submit" name="review_latest" value="true" formnovalidate>保留输入，按 {{ review_month }} 核对</button>
           {% else %}<button class="product-button product-button--primary" type="submit">保存修改</button>{% endif %}
-        {% endif %}
+        {% elif income_draft_scope %}<button class="product-button" type="submit" disabled hidden>核实原收入修改</button>{% endif %}
       </div>
+      {% if income_draft_scope %}
+      <p class="product-feedback" data-income-draft-status role="status" aria-live="polite" hidden></p>
+      <p class="meta" data-income-review-note hidden>请先核对下方已保存的计划。按 {{ review_month }} 重新核对只准备新修改；原提交仍保留，不会再次保存。</p>
+      <button class="product-button product-button--quiet" type="submit" name="review_latest" value="true" data-income-review formnovalidate hidden>已核对，保留输入准备修改</button>
+      <button class="product-button product-button--quiet" type="button" data-income-discard hidden>放弃此浏览器的原稿</button>
+      {% endif %}
     </form>
   </section>
   <section class="product-panel product-panel--padded" aria-label="当前已保存的收入计划">
