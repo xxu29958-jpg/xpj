@@ -74,7 +74,8 @@ class PlanningAndroid:
         def locate():
             nonlocal scrolls
             nodes = list(self.tree().iter("node"))
-            matches = [node for node in nodes if text in (node.attrib.get("text"), node.attrib.get("content-desc"))]
+            matches = [node for node in nodes if node.attrib.get("enabled") != "false" and
+                       text in (node.attrib.get("text"), node.attrib.get("content-desc"))]
             scrollable = [node for node in nodes if node.attrib.get("scrollable") == "true"]
             if not matches and scrollable and scrolls < 4:
                 left, top, right, end = self.bounds(max(scrollable, key=lambda node: self.bounds(node)[3] - self.bounds(node)[1]))
@@ -98,6 +99,7 @@ class PlanningAndroid:
             root = self.tree()
             fields = self.labeled_fields(root, label) if label else [
                 node for node in root.iter("node") if node.attrib.get("class") == "android.widget.EditText"]
+            fields = [node for node in fields if node.attrib.get("enabled") != "false"]
             return [node for node in fields if re.fullmatch(previous, node.attrib.get("text", ""))] if previous is not None else fields
         fields = wait_for(locate, "The native input did not finish loading")
         if len(fields) != 1:
