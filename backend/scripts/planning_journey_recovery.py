@@ -140,6 +140,7 @@ class PlanningRecovery:
         api_kind = "income_plan" if kind == "income" else "goal"
         key = f"{api_kind}:{self.facts()[kind + '_id']}"
         self.page.locator(f'[data-restore-key="{key}"] button[type="submit"]').click()
+        self.page.locator('#tb-confirm-modal[open]').get_by_role("button", name="确认", exact=True).click()
         wait_for(lambda: self.facts()[kind + "_status"] == "active", "Web recycle-bin restore did not commit")
 
     def native_restore(self, kind, label):
@@ -161,6 +162,8 @@ class PlanningRecovery:
         native.click("联动工资")
         native.click("归档")
         wait_for(lambda: self.facts()["income_status"] == "archived", "Native income archive did not commit")
+        wait_for(lambda: native.has("暂无在用的收入计划"), "The archived-only list incorrectly claims there are no income plans")
+        native.capture("income-archived-after-native-edit")
         self.web_restore("income")
         self.web_archive("income")
         self.native_restore("income", "联动工资")

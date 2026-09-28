@@ -14,6 +14,8 @@
     <string name="income_plan_card_payday">每月预计 %1$d 号</string>
     <string name="income_plan_card_one_time_day">预计 %1$s · %2$d 号</string>
     <string name="income_plan_empty_title">还没有收入计划</string>
+    <string name="income_plan_archived_only_title">暂无在用的收入计划</string>
+    <string name="income_plan_archived_only_body">已归档的计划保留在下方，可继续查看历史。</string>
     <string name="income_plan_empty_body">先补一笔本月工资或其它到账，「本月可自由支配」才会扣掉已有花销重新算。</string>
     <string name="income_plan_sheet_title">添加收入计划</string>
     <string name="income_plan_sheet_label_name">名称</string>
