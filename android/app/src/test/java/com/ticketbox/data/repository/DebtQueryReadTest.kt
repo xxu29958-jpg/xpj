@@ -685,7 +685,7 @@ private class DebtKindReadCommands(fixture: GoalReadFixture, queries: DebtReposi
 }
 
 private fun memberReadDebt() = readDebt().copy(direction = "owed_to_me", counterpartyType = "member",
-    counterpartyAccountId = "member-debtor", viewerIsDebtor = false)
+    counterpartyAccountId = 2L, viewerIsDebtor = false)
 
 private fun readDebt() = DebtDto(publicId = "jpy-debt", ledgerId = "owner", direction = "i_owe",
     counterpartyType = "external", counterpartyLabel = "原日元往来", principalAmountCents = 1200,
