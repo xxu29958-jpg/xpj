@@ -93,6 +93,11 @@ internal class DebtAdjustmentConnectedFixture(private val context: Context, priv
             while (cursor.moveToNext()) add(cursor.columnNames.mapIndexed { index, column -> column to cursor.getString(index) }.toMap())
         } }
 
+    fun setStoredMutationStatus(id: Long, status: String) {
+        requireNotNull(database).openHelper.writableDatabase.execSQL(
+            "UPDATE pending_mutations SET status = ? WHERE id = ?", arrayOf(status, id))
+    }
+
     suspend fun drain(maxAttempts: Int = 10) = OutboxDrainEngine(outbox,
         listOf(RecordDebtAdjustmentDispatcher(LedgerRequestGuard(apiProvider), adapters.debtAdjustmentAdapter),
             RecordDebtRepaymentDispatcher(LedgerRequestGuard(apiProvider), adapters.debtRepaymentAdapter, adapters.debtRepaymentReceiptAdapter),

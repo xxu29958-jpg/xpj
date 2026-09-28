@@ -7,6 +7,8 @@ import java.util.Collections
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** In-memory [PendingMutationDao] preserving bound FIFO, original row identity and atomic batch changes. */
 class FakePendingMutationDao : PendingMutationDao {
@@ -16,6 +18,7 @@ class FakePendingMutationDao : PendingMutationDao {
     var replacePayloadError: Throwable? = null
     private var nextId = 1L
     private val queueDepth = MutableStateFlow(0)
+    private val originalCommandTransaction = Mutex()
 
     override suspend fun insert(row: PendingMutationEntity): Long {
         beforeInsert?.invoke()
@@ -36,6 +39,22 @@ class FakePendingMutationDao : PendingMutationDao {
         refreshObservables()
         return additions.keys.toList()
     }
+
+    override suspend fun originalCommand(
+        serverUrl: String, ownerKey: String, ledgerId: String, type: String, idempotencyKey: String,
+    ): List<PendingMutationEntity> = rows.values.filter {
+        it.serverUrl == serverUrl && it.ownerKey == ownerKey && it.ledgerId == ledgerId &&
+            it.type == type && it.idempotencyKey == idempotencyKey
+    }.sortedBy { it.id }
+
+    override fun observeOriginalCommand(
+        serverUrl: String, ownerKey: String, ledgerId: String, type: String, idempotencyKey: String,
+    ): Flow<List<PendingMutationEntity>> = queueDepth.map {
+        originalCommand(serverUrl, ownerKey, ledgerId, type, idempotencyKey)
+    }
+
+    override suspend fun insertOriginalAndPublish(row: PendingMutationEntity, publish: suspend () -> Unit): Long =
+        originalCommandTransaction.withLock { super.insertOriginalAndPublish(row, publish) }
 
     override suspend fun findByIdempotencyKeys(
         ownerKey: String, ledgerId: String, type: String, keys: Collection<String>,

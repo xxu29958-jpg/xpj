@@ -43,6 +43,7 @@ internal data class SpendingGoalsScreenActions(
 internal fun SpendingGoalsScreen(
     viewModel: SpendingGoalsViewModel,
     actions: SpendingGoalsScreenActions,
+    hasRetainedDraft: Boolean = false,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     AppSecondaryScrollableContent(
@@ -64,8 +65,8 @@ internal fun SpendingGoalsScreen(
         ),
         slots = AppSecondaryPageSlots(
             status = { SpendingGoalsStatus(state) },
-            bottomBar = if (state.canModify) {
-                { SpendingGoalsFooter(actions.onCreate) }
+            bottomBar = if (state.canModify || hasRetainedDraft) {
+                { SpendingGoalsFooter(actions.onCreate, hasRetainedDraft) }
             } else {
                 null
             },
@@ -145,10 +146,10 @@ private fun SpendingGoalsBody(
 }
 
 @Composable
-private fun SpendingGoalsFooter(onCreate: () -> Unit) {
+private fun SpendingGoalsFooter(onCreate: () -> Unit, hasRetainedDraft: Boolean) {
     AppFloatingActionBar {
         AppPrimaryButton(
-            text = stringResource(R.string.spending_goals_create_action),
+            text = stringResource(if (hasRetainedDraft) R.string.goal_draft_continue else R.string.spending_goals_create_action),
             icon = Icons.Filled.Add,
             modifier = Modifier.fillMaxWidth(),
             onClick = onCreate,

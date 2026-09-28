@@ -223,13 +223,16 @@ fun createDebtGoalViewModelFactory(
     }
 }
 
-@Suppress("UNCHECKED_CAST")
 fun createSpendingGoalViewModelFactory(
     edits: com.ticketbox.data.repository.GoalEditActions,
     calendars: com.ticketbox.data.repository.LedgerCalendarReader? = null,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return CreateSpendingGoalViewModel(edits, calendars) as T
+        return modelClass.cast(CreateSpendingGoalViewModel(edits, calendars))
+    }
+    override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T {
+        return modelClass.cast(CreateSpendingGoalViewModel(edits, calendars,
+            savedStateHandle = extras.createSavedStateHandle()))
     }
 }
 

@@ -12,6 +12,7 @@ import com.ticketbox.domain.model.ExpenseCorrectionDraft
 import com.ticketbox.domain.model.GoalDraft
 import com.ticketbox.domain.model.GoalUpdate
 import java.net.ConnectException
+import java.util.UUID
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -71,7 +72,8 @@ class GoalQueryCommandRoomTest {
         val graph = fixture.reopen()
         val binding = requireNotNull(graph.reportsRepository.dashboardAccess()).binding
         graph.reportsRepository.goals("2026-09").getOrThrow()
-        val id = if (create) graph.goalEditRepository.create(binding, GoalDraft("新目标", "2026-09", 2400, null, "JPY")).getOrThrow()
+        val id = if (create) graph.goalEditRepository.create(binding, GoalDraft("新目标", "2026-09", 2400, null, "JPY"),
+            UUID.randomUUID().toString()).getOrThrow()
         else graph.goalEditRepository.save(binding, originalGoal().toDomain(),
             GoalUpdate(2, targetAmountCents = 2400, homeCurrencyCode = "JPY")).getOrThrow()
         val original = fixture.stored().single { it["id"] == id.toString() }

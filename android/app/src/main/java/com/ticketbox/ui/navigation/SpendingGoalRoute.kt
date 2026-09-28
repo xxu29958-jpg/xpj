@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.ui.screens.CreateSpendingGoalScreen
 import com.ticketbox.ui.screens.plan.SpendingGoalDetailScreen
@@ -40,6 +41,7 @@ private data class SpendingGoalRouteModels(
 internal fun SpendingGoalsRoute(
     screenFactory: MainScreenFactory,
     onBack: () -> Unit,
+    creationOwner: ViewModelStoreOwner,
     originalCreationId: Long? = null,
     originalGoalPublicId: String? = null,
     financialDataRevision: Int = 0,
@@ -56,6 +58,7 @@ internal fun SpendingGoalsRoute(
                 factory = spendingGoalDetailViewModelFactory(screenFactory.reportsRepository, screenFactory.goalEditRepository),
             ),
             create = viewModel(
+                viewModelStoreOwner = creationOwner,
                 key = CreateSpendingGoalViewModelKey,
                 factory = createSpendingGoalViewModelFactory(screenFactory.goalEditRepository, screenFactory.repositories.ledgerCalendarRepository),
             ),
@@ -102,6 +105,7 @@ private fun SpendingGoalRouteContent(
     when (page) {
         SpendingGoalPage.List -> SpendingGoalsScreen(
             viewModel = models.list,
+            hasRetainedDraft = models.create.state.collectAsStateWithLifecycle().value.hasDraft,
             actions = SpendingGoalsScreenActions(
                 onBack = onBack,
                 onCreate = {

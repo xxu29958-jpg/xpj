@@ -98,7 +98,7 @@ class CreateSpendingGoalViewModelTest {
 
     @Test fun missingSelectedCreationCannotSwitchToAnotherPendingOriginal() = runTest(dispatcher) {
         val edits = RecordingGoalEdits()
-        edits.create(edits.currentAccess()!!.binding, com.ticketbox.domain.model.GoalDraft("Other", "2026-09", 1200, homeCurrencyCode = "JPY"))
+        edits.create(edits.currentAccess()!!.binding, com.ticketbox.domain.model.GoalDraft("Other", "2026-09", 1200, homeCurrencyCode = "JPY"), "other-original")
         val vm = model(edits)
         vm.reset("2026-08", originalId = 999)
         advanceUntilIdle()
@@ -138,7 +138,7 @@ class CreateSpendingGoalViewModelTest {
     @Test fun newDraftAndExplicitOriginalRecoveryDoNotConsumeEachOther() = runTest(dispatcher) {
         val edits = RecordingGoalEdits()
         edits.create(requireNotNull(edits.currentAccess()).binding,
-            com.ticketbox.domain.model.GoalDraft("九月原目标", "2026-09", 1200, homeCurrencyCode = "JPY"))
+            com.ticketbox.domain.model.GoalDraft("九月原目标", "2026-09", 1200, homeCurrencyCode = "JPY"), "separate-original")
         val original = edits.creations.value.single()
         val vm = model(edits)
         vm.reset("2026-10")
