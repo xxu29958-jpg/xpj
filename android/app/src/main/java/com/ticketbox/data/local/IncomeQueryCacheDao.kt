@@ -33,22 +33,22 @@ interface IncomeQueryCacheDao {
     @Transaction
     suspend fun beginWrite(barrier: StatsProjectionCacheEntity): Boolean {
         val existed = read(barrier.bindingKey, barrier.kind, barrier.tag) != null
-        advance(barrier)
+        advance(barrier, retireValues = false)
         save(barrier)
         return existed
     }
 
     @Transaction
-    suspend fun finishWrite(barrier: StatsProjectionCacheEntity) {
-        advance(barrier)
+    suspend fun finishWrite(barrier: StatsProjectionCacheEntity, accepted: Boolean = true) {
+        advance(barrier, retireValues = accepted)
         remove(barrier.bindingKey, "income_write_barrier", barrier.tag)
     }
 
     @Transaction
-    suspend fun advance(basis: StatsProjectionCacheEntity) {
+    suspend fun advance(basis: StatsProjectionCacheEntity, retireValues: Boolean = true) {
         val current = read(basis.bindingKey, "income_read_epoch", "")?.responseJson?.toLong() ?: 0L
         save(basis.copy(kind = "income_read_epoch", tag = "", responseJson = Math.addExact(current, 1).toString()))
-        clearValues(basis.bindingKey)
+        if (retireValues) clearValues(basis.bindingKey)
     }
 
     @Transaction

@@ -6,6 +6,7 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.platform.app.InstrumentationRegistry
@@ -46,6 +47,20 @@ import org.junit.Test
 class PlanningDestinationsNavigationTest {
     @get:Rule
     val composeRule = createComposeRule()
+
+    @Test fun retainedIncomeForecastKeepsItsMonthAndSourceEvenWhenNoCurrentManagementHeadRemains() {
+        composeRule.setContent {
+            TicketboxTheme(skin = AppSkin.Paper) {
+                com.ticketbox.ui.screens.plan.PlanFixedArrangementsSection(RecurringUiState(),
+                    IncomePlanUiState(loadState = com.ticketbox.viewmodel.IncomePlanLoadState.Loaded,
+                        activePlans = emptyList(), forecastMonth = "2026-09", forecastCurrencyCode = "CNY",
+                        currentMonthSummary = com.ticketbox.viewmodel.IncomePlanMonthSummary(1, 10_000),
+                        fetchedAt = "2026-09-28T10:00:00Z", fromCache = true), {}, {})
+            }
+        }
+        composeRule.onNodeWithText("2026-09 · 1 项有效 · 预计", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("包含离线保留的读取", substring = true).assertIsDisplayed()
+    }
 
     @Test
     fun planDomainShowsPlanningDestinationsAndDispatchesActions() {

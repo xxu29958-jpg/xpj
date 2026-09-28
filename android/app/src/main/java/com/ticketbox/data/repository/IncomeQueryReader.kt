@@ -14,6 +14,8 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.flow.filterNotNull
 import retrofit2.HttpException
 
+private class IncomeQueryReplaced : IllegalStateException("已有更新的收入读取，请重试。")
+
 /** IncomePlan's canonical reads. Neither a draft nor a command receipt is a query snapshot. */
 internal class IncomeQueryReader(
     apiProvider: ApiServiceProvider,
@@ -34,9 +36,19 @@ internal class IncomeQueryReader(
 
     suspend fun history(binding: LogicalSessionBinding, publicId: String, before: Long?): Result<ReadSnapshot<IncomeHistoryResponseDto>> =
         read(binding, "income_history", "$publicId:20:$before", historyAdapter,
-            { it.validateIncomeHistory(binding, publicId, before) }) { api -> api.incomePlanHistory(publicId, 20, before) }
+            { it.validateIncomeHistory(binding, publicId, before) }) { api ->
+            require(publicId.isNotBlank() && (before == null || before > 0)) { "收入历史范围不正确。" }
+            api.incomePlanHistory(publicId, 20, before)
+        }
 
     private suspend fun <T> read(binding: LogicalSessionBinding, kind: String, tag: String, adapter: JsonAdapter<T>,
+        validate: (T) -> Unit, fetch: suspend (ApiService) -> T): Result<ReadSnapshot<T>> {
+        val result = readOnce(binding, kind, tag, adapter, validate, fetch)
+        // Overview and management can request the same projection together; restore the superseded reader once.
+        return if (result.exceptionOrNull()?.cause is IncomeQueryReplaced) readOnce(binding, kind, tag, adapter, validate, fetch) else result
+    }
+
+    private suspend fun <T> readOnce(binding: LogicalSessionBinding, kind: String, tag: String, adapter: JsonAdapter<T>,
         validate: (T) -> Unit, fetch: suspend (ApiService) -> T): Result<ReadSnapshot<T>> = errors.safeCall {
         val bound = guard.bindExact(binding)
         val key = logicalBindingAdapter.toJson(binding)
@@ -55,7 +67,7 @@ internal class IncomeQueryReader(
         } catch (error: Exception) {
             if (!error.isReadTransportUnavailable()) throw error
             return@safeCall coordinator.acceptSnapshotRead(ticket, bound, fromCache = true) {
-                check(latest[queryKey] == ticket.sequence) { "已有更新的收入读取，请重试。" }
+                if (latest[queryKey] != ticket.sequence) throw IncomeQueryReplaced()
                 val saved = dao.cached(key, kind, tag, protection) ?: throw error
                 check(saved.ledgerId == binding.ledgerId)
                 val cached = requireNotNull(adapter.fromJson(saved.responseJson))
@@ -65,7 +77,7 @@ internal class IncomeQueryReader(
         }
         validate(value)
         coordinator.acceptSnapshotRead(ticket, bound, fromCache = false) { cacheAllowed ->
-            check(latest[queryKey] == ticket.sequence) { "已有更新的收入读取，请重试。" }
+            if (latest[queryKey] != ticket.sequence) throw IncomeQueryReplaced()
             requireNoActiveIncomeWrite(key, protection.barriers.map { it.tag })
             val fetchedAt = Instant.now().toString()
             val row = StatsProjectionCacheEntity(key, binding.ledgerId, kind, "", tag, "", "UTC", adapter.toJson(value), fetchedAt)

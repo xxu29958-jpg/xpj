@@ -36,14 +36,17 @@ internal suspend fun <T> IncomeQueryReader.directWrite(binding: LogicalSessionBi
     val protection = beginWrite(binding, "direct:${UUID.randomUUID()}")
     try {
         val result = protection.bound.call { action(it) }
-        withContext(NonCancellable) { dao.finishWrite(protection.row) }
+        withContext(NonCancellable) {
+            try { dao.finishWrite(protection.row) }
+            catch (_: SQLiteException) { /* The accepted result stays real; the durable barrier protects older reads. */ }
+        }
         return result
     } catch (error: HttpException) {
         val failure = errors.httpFailure(error)
         withContext(NonCancellable) {
-            coordinator.rejectSnapshotAccess(protection.bound, protection.row.bindingKey, failure)
+            if (error.code() == 401) coordinator.rejectSnapshotAccess(protection.bound, protection.row.bindingKey, failure)
             if (error.code() in 400..499 && error.code() != 408) {
-                try { dao.finishWrite(protection.row) } catch (_: SQLiteException) { /* A fresh query can reconcile it. */ }
+                try { dao.finishWrite(protection.row, accepted = false) } catch (_: SQLiteException) { /* A fresh query can reconcile it. */ }
             }
         }
         throw failure
@@ -70,7 +73,7 @@ internal suspend fun IncomeQueryReader.finishDispatch(row: OutboxRow, result: Di
         }
         val rejected = result is DispatchResult.Conflict || result is DispatchResult.Discarded ||
             (result is DispatchResult.Failure && result.definitelyRejected)
-        if (rejected && !protection.hadUnresolved) dao.finishWrite(protection.row)
+        if (rejected && !protection.hadUnresolved) dao.finishWrite(protection.row, accepted = false)
     } catch (_: SQLiteException) { /* Keep durable protection until a complete current query succeeds. */ }
     finally { release(protection) }
 }

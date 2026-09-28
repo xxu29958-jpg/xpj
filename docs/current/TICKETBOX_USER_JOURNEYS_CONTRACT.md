@@ -559,6 +559,15 @@ an income plan, actual receipt, expense, budget or Outbox intent.
 Web native history links and the editor's separate history window preserve the
 original form. Android paging retries keep previously read definitions; changed
 bindings and confirmed access denial retire the history. Existing creation/edit
-drafts remain independent. Persistent income-query reads and the complete group
-journey remain separate pending work, alongside the already scoped goal draft
-continuation; this history reader does not declare the group or RC complete.
+drafts remain independent. PR #463 extends the same income query owner to disk
+snapshots for overview, active/archived lists, history and editor rereads. The
+actual Room reopen failures are frozen at a89aa046 (Connected 36443834598);
+implementation qualification is still pending. Sources, fetched time and the
+server's original forecast month stay explicit. Unknown/accepted writes must
+retire prior reads without consuming drafts, original commands or receipts.
+
+The complete income/spending-goal exit includes reading, history, creation/edit,
+original-submission and lifecycle recovery, plus real Web/Android task use on
+the integrated version. PR #461 source and independent main c6c8c1c checks and
+the installed-session PostgreSQL journey have passed. Those layers do not prove
+shared-ledger cross-client use or final visual acceptance; both remain open.

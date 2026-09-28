@@ -200,4 +200,29 @@ class IncomeQueryContinuityRoomTest {
         assertEquals(known.copy(fromCache = true), retained)
         assertTrue(fixture.stored().isEmpty())
     }
+
+    @Test fun concurrentOverviewAndManagementReadsBothRecoverWithoutAnOlderReplyReplacingTheNewMonth() = runBlocking {
+        val repo = fixture.reopen().incomePlanRepository
+        val binding = requireNotNull(repo.observeActiveLedgerAccess().first()).binding
+        val old = fixture.network.service.listIncomePlans("active")
+        val new = old.copy(month = "2026-10", expectedAmountCents = 12_000)
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        var calls = 0
+        fixture.network.listing = {
+            if (++calls == 1) { started.complete(Unit); release.await(); old } else new
+        }
+        val overview = async { repo.listActive(binding) }
+        started.await()
+        val management = repo.listActive(binding).getOrThrow()
+        release.complete(Unit)
+        val recovered = overview.await().getOrThrow()
+        assertEquals("2026-10", management.month)
+        assertEquals(management.plans, recovered.plans)
+        assertEquals(management.month, recovered.month)
+        assertEquals(12_000L, recovered.expectedAmountCents)
+        assertEquals(3, calls)
+        fixture.network.failReads = true
+        assertEquals(recovered.copy(fromCache = true), fixture.reopen().incomePlanRepository.listActive(binding).getOrThrow())
+    }
 }
