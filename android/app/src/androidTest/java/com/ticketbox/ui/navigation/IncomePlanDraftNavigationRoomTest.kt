@@ -3,6 +3,7 @@ package com.ticketbox.ui.navigation
 import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
@@ -169,8 +170,8 @@ class IncomePlanDraftNavigationRoomTest {
         compose.onNodeWithText(context.getString(R.string.common_cancel)).performScrollTo().performClick()
         compose.onNodeWithText(context.getString(R.string.income_plan_add_action_short))
             .performScrollTo().performClick()
-        compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("")
-        compose.onAllNodes(hasSetTextAction())[1].assertTextEquals("")
+        assertEquals("", compose.onAllNodes(hasSetTextAction())[0].fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
+        assertEquals("", compose.onAllNodes(hasSetTextAction())[1].fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
         assertTrue(income.stored().isEmpty())
         assertTrue(income.network.creationCalls.isEmpty())
     }

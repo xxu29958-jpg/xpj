@@ -2,6 +2,7 @@ package com.ticketbox.data.repository
 
 import android.os.Bundle
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -117,7 +118,7 @@ class IncomePlanCreationRoomTest {
         compose.onNodeWithText("旅行补贴 · 2026-09").performScrollTo().assertIsDisplayed()
     }
 
-    @Test fun removedCompletedRecordRequiresExplicitDraftDiscardWithoutRepeatingTheAcceptedIncome() {
+    @Test fun collectedCompletedRecordRequiresExplicitDraftDiscardWithoutRepeatingTheAcceptedIncome() {
         creationAck = CompletableDeferred()
         installModels()
         showModels()
@@ -135,11 +136,12 @@ class IncomePlanCreationRoomTest {
         stopModels() // The system retains Publishing before the local acknowledgement reaches its owner.
         compose.runOnIdle { model.value = null }
         compose.waitForIdle()
+        fixture.advanceToOctober()
         val graph = fixture.reopen()
         runBlocking {
             val pending = requireNotNull(graph.incomePlanRepository.originalCreation(original.binding, original.creationKey).getOrThrow())
             assertTrue(pending.isConfirmed)
-            graph.incomePlanRepository.recoverSubmission(original.binding, pending, drop = true).getOrThrow()
+            assertEquals(1, fixture.outbox.gcCompleted(retentionMillis = 0))
         }
         assertTrue(fixture.stored().isEmpty())
         val acceptedIncome = fixture.network.creationReceipts.toMap()
@@ -154,8 +156,8 @@ class IncomePlanCreationRoomTest {
         compose.onNodeWithText("放弃草稿").performScrollTo().performClick()
         compose.onNodeWithText("确认放弃").performClick()
         compose.onNodeWithText("添加").performScrollTo().performClick()
-        compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("")
-        compose.onAllNodes(hasSetTextAction())[1].assertTextEquals("")
+        assertEquals("", compose.onAllNodes(hasSetTextAction())[0].fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
+        assertEquals("", compose.onAllNodes(hasSetTextAction())[1].fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
         assertNotEquals(original.creationKey, creator.value?.state?.value?.session?.creationKey)
         assertEquals(acceptedIncome, fixture.network.creationReceipts)
         assertEquals(1, fixture.network.creationCalls.size)
