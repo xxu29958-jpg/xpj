@@ -53,6 +53,7 @@ internal class FakeIncomePlanEditRepository(
     var active: IncomePlanListing = IncomePlanListing(emptyList(), 0L, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0, homeCurrencyCode = "CNY"),
     canModify: Boolean = true,
 ) : IncomePlanTestActions() {
+    override val readAccessDenials = kotlinx.coroutines.flow.MutableSharedFlow<com.ticketbox.data.repository.SnapshotAccessDenial>()
 
     val activeAccessFlow = MutableStateFlow<LedgerAccessContext?>(editAccess(canModify = canModify))
     val updateCalls = mutableListOf<IncomePlanUpdateCall>()
@@ -83,9 +84,9 @@ internal class FakeIncomePlanEditRepository(
     override suspend fun listIncluding(
         expectedBinding: LogicalSessionBinding,
         status: IncomePlanStatus,
-    ): Result<List<IncomePlan>> {
+    ): Result<com.ticketbox.data.repository.ReadSnapshot<List<IncomePlan>>> {
         listGate?.invoke()
-        return Result.success(active.plans.filter { it.status == status })
+        return Result.success(com.ticketbox.data.repository.ReadSnapshot(active.plans.filter { it.status == status }, "2026-09-28T10:00:00Z", false))
     }
 
     override suspend fun originalCreation(expectedBinding: LogicalSessionBinding,

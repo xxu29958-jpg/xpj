@@ -158,7 +158,7 @@ internal class IncomeCreationFixture {
         override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = api
     }, session)
     val binding = requireNotNull(LedgerRequestGuard(provider).captureLogicalBinding())
-    val repository = IncomePlanRepository(provider, outbox, adapters.incomePlanSubmissionAdapter, adapters.incomePlanReceiptAdapter)
+    val repository = testIncomePlanRepository(provider, outbox, adapters.incomePlanSubmissionAdapter, adapters.incomePlanReceiptAdapter)
     suspend fun pending(id: Long) = repository.observeSubmissions(binding).first().single { it.row.id == id }
     fun dispatcher() = IncomePlanDispatcher(PendingMutationType.CreateIncomePlan, { api },
         adapters.incomePlanSubmissionAdapter, adapters.incomePlanReceiptAdapter)

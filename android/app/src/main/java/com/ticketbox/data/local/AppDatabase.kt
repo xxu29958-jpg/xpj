@@ -17,6 +17,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun expenseDao(): ExpenseDao
     abstract fun pendingMutationDao(): PendingMutationDao
     abstract fun monthlyArrangementCacheDao(): MonthlyArrangementCacheDao
+    abstract fun incomeQueryCacheDao(): IncomeQueryCacheDao
 
     companion object {
         @Volatile

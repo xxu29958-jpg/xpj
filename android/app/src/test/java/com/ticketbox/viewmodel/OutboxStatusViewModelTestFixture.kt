@@ -10,6 +10,7 @@ import com.ticketbox.data.repository.FakeExpenseDao
 import com.ticketbox.data.repository.FakePendingMutationDao
 import com.ticketbox.data.repository.TestSessionFixture
 import com.ticketbox.data.repository.OutboxRepository
+import com.ticketbox.data.repository.testIncomePlanRepository
 import com.ticketbox.data.repository.IncomePlanRepository
 import com.ticketbox.data.repository.testOutboxRepository
 import com.ticketbox.data.repository.testApiServiceProvider
@@ -30,7 +31,7 @@ internal fun outboxStatusHarness(onEnqueued: () -> Unit = {}): OutboxStatusHarne
         debtCreation = DebtCreationRepository(
             testApiServiceProvider(api, tokenStore), outbox, OutboxAdapterGraph().debtCreateAdapter,
         ),
-        incomePlans = IncomePlanRepository(testApiServiceProvider(api, tokenStore), outbox,
+        incomePlans = testIncomePlanRepository(testApiServiceProvider(api, tokenStore), outbox,
             OutboxAdapterGraph().incomePlanSubmissionAdapter, OutboxAdapterGraph().incomePlanReceiptAdapter),
         debtWrites = DebtWriteRepository(testApiServiceProvider(api, tokenStore), outbox,
             OutboxAdapterGraph()),

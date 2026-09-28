@@ -75,12 +75,25 @@ class IncomePlanViewModelLoadStateTest {
         assertEquals(IncomePlanLoadState.Loaded, archivedFailure.state.value.loadState)
         assertNotNull(archivedFailure.state.value.error)
     }
+
+    @Test fun knownArchivedReadRemainsUsableWhenCurrentForecastCannotBeReadWithoutInventingZero() = runTest(dispatcher) {
+        val archived = plan("known", IncomePlanStatus.ARCHIVED)
+        val vm = IncomePlanViewModel(LoadStateIncomePlanRepository(activeResult = Result.failure(RuntimeException("offline")),
+            archivedResult = Result.success(listOf(archived))))
+        advanceUntilIdle()
+        assertEquals(listOf(archived), vm.state.value.archivedPlans)
+        assertNull(vm.state.value.forecastMonth)
+        assertNull(vm.state.value.currentMonthSummary.expectedAmountCents)
+        assertNotNull(vm.state.value.archivedFetchedAt)
+        assertEquals(IncomePlanLoadState.Failed, vm.state.value.loadState)
+    }
 }
 
 private class LoadStateIncomePlanRepository(
     private val activeResult: Result<IncomePlanListing> = Result.success(IncomePlanListing(emptyList(), 0L, month = "2026-09", scheduledAmountCents = 0, effectivePlanCount = 0, homeCurrencyCode = "CNY")),
     private val archivedResult: Result<List<IncomePlan>> = Result.success(emptyList()),
 ) : IncomePlanTestActions() {
+    override val readAccessDenials = kotlinx.coroutines.flow.MutableSharedFlow<com.ticketbox.data.repository.SnapshotAccessDenial>()
 
     override fun describeSubmission(row: com.ticketbox.data.repository.OutboxRow): com.ticketbox.data.repository.PendingIncomePlanSubmission? = null
     override fun observeSubmissions(expectedBinding: LogicalSessionBinding) =
@@ -99,7 +112,7 @@ private class LoadStateIncomePlanRepository(
     override suspend fun listIncluding(
         expectedBinding: LogicalSessionBinding,
         status: IncomePlanStatus,
-    ): Result<List<IncomePlan>> = archivedResult
+    ): Result<com.ticketbox.data.repository.ReadSnapshot<List<IncomePlan>>> = archivedResult.map { com.ticketbox.data.repository.ReadSnapshot(it, "2026-09-28T10:00:00Z", false) }
 
     override suspend fun originalCreation(expectedBinding: LogicalSessionBinding,
         creationKey: String): Result<com.ticketbox.data.repository.PendingIncomePlanSubmission?> = Result.success(null)

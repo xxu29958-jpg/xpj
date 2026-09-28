@@ -50,7 +50,7 @@ interface ExpenseDao {
 
     @Query("DELETE FROM stats_projection_cache WHERE bindingKey = :bindingKey " +
         "AND kind NOT IN ('recurring_direct_barrier', 'recurring_outbox_read_barrier', 'recurring_read_epoch', " +
-        "'debt_direct_barrier', 'debt_outbox_read_barrier', 'debt_read_epoch')")
+        "'debt_direct_barrier', 'debt_outbox_read_barrier', 'debt_read_epoch', 'income_write_barrier', 'income_read_epoch')")
     suspend fun clearStatsProjectionsForBinding(bindingKey: String)
 
     @Query("SELECT * FROM stats_projection_cache WHERE bindingKey = :bindingKey AND kind = 'budget' AND month = :month")
@@ -281,12 +281,12 @@ interface ExpenseDao {
 
     @Query("DELETE FROM stats_projection_cache " +
         "WHERE kind NOT IN ('recurring_direct_barrier', 'recurring_outbox_read_barrier', 'recurring_read_epoch', " +
-        "'debt_direct_barrier', 'debt_outbox_read_barrier', 'debt_read_epoch')")
+        "'debt_direct_barrier', 'debt_outbox_read_barrier', 'debt_read_epoch', 'income_write_barrier', 'income_read_epoch')")
     suspend fun clearStatsProjections()
 
     @Query("DELETE FROM stats_projection_cache WHERE ledgerId = :ledgerId " +
         "AND kind NOT IN ('recurring_direct_barrier', 'recurring_outbox_read_barrier', 'recurring_read_epoch', " +
-        "'debt_direct_barrier', 'debt_outbox_read_barrier', 'debt_read_epoch')")
+        "'debt_direct_barrier', 'debt_outbox_read_barrier', 'debt_read_epoch', 'income_write_barrier', 'income_read_epoch')")
     suspend fun clearStatsProjectionsForLedger(ledgerId: String)
 
     @Query(

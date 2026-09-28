@@ -7,5 +7,5 @@ import com.ticketbox.domain.model.IncomeHistoryPage
 /** Creation, editing and listing fixtures must not accidentally request revision history. */
 internal abstract class IncomePlanTestActions : IncomePlanActions {
     override suspend fun history(binding: LogicalSessionBinding, publicId: String, beforeVersion: Long?):
-        Result<IncomeHistoryPage> = error("History is not requested in this fixture")
+        Result<com.ticketbox.data.repository.ReadSnapshot<IncomeHistoryPage>> = error("History is not requested in this fixture")
 }

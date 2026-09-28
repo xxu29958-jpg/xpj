@@ -223,6 +223,7 @@ internal fun PlanFixedArrangementsSection(
                 onClick = onOpenIncomePlans,
             ),
         )
+        com.ticketbox.ui.screens.IncomeReadSource(income.fetchedAt, income.fromCache)
     }
 }
 
@@ -339,16 +340,17 @@ private fun planRecurringSummary(state: RecurringUiState): String {
 
 @Composable
 private fun planIncomeSummary(state: IncomePlanUiState): String = when {
-    state.loadState == IncomePlanLoadState.Failed && state.activePlans.isEmpty() ->
+    state.forecastMonth == null && state.loadState == IncomePlanLoadState.Failed ->
         state.error?.asString() ?: stringResource(R.string.plan_income_error)
     (state.loadState == IncomePlanLoadState.Unknown || state.loadState == IncomePlanLoadState.Loading) &&
-        state.activePlans.isEmpty() -> stringResource(R.string.plan_income_loading)
-    state.activePlans.isEmpty() -> stringResource(R.string.plan_income_empty)
+        state.forecastMonth == null -> stringResource(R.string.plan_income_loading)
+    state.forecastMonth == null -> stringResource(R.string.plan_income_empty)
     else -> stringResource(
         R.string.plan_income_summary,
         state.currentMonthSummary.effectivePlanCount,
         state.currentMonthSummary.expectedAmountCents?.let {
             formatDisplayAmount(it, CurrencyDisplay.forRecord(state.forecastCurrencyCode))
         } ?: stringResource(R.string.income_plan_conversion_pending),
+        state.forecastMonth,
     )
 }

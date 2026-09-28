@@ -4,6 +4,7 @@ import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.IncomeDefinition
 import com.ticketbox.domain.model.IncomeHistoryPage
+import com.ticketbox.data.repository.ReadSnapshot
 import com.ticketbox.domain.model.IncomeRevision
 import java.io.IOException
 import kotlinx.coroutines.CompletableDeferred
@@ -52,7 +53,7 @@ class IncomeHistoryTaskTest {
     }
 
     @Test fun replacementSessionRejectsLateOriginalResponseEvenWhenTransportCannotCancel() = runTest {
-        val pending = CompletableDeferred<Result<IncomeHistoryPage>>()
+        val pending = CompletableDeferred<Result<ReadSnapshot<IncomeHistoryPage>>>()
         var current = binding
         var state = IncomeHistoryState()
         val task = IncomeHistoryTask({ captured, _, _ ->
@@ -85,7 +86,7 @@ class IncomeHistoryTaskTest {
     }
 }
 
-private fun page(version: Long, next: Long?) = IncomeHistoryPage(listOf(IncomeRevision(
+private fun page(version: Long, next: Long?) = ReadSnapshot(IncomeHistoryPage(listOf(IncomeRevision(
     version, "edit", "2026-09-28T10:00:00Z", "2026-09", "2026-09",
     IncomeDefinition("原收入预测", "salary", "monthly", null, 1200, "JPY", 31, "active"),
-)), next)
+)), next), "2026-09-28T10:00:00Z", false)

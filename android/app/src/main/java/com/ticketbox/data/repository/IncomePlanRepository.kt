@@ -39,6 +39,8 @@ data class IncomePlanListing(
     val homeCurrencyCode: String? = null,
     val missingCurrencyCodes: List<String> = emptyList(),
     val referenceRates: List<com.ticketbox.domain.model.CurrencyReferenceRate> = emptyList(),
+    val fetchedAt: String? = null,
+    val fromCache: Boolean = false,
 )
 
 class IncomePlanRepository(
@@ -46,7 +48,7 @@ class IncomePlanRepository(
     private val outbox: OutboxRepository,
     private val incomePlanSubmissionAdapter: JsonAdapter<IncomePlanSubmissionPayload>,
     private val incomePlanReceiptAdapter: JsonAdapter<IncomePlanDto>,
-    private val reads: IncomePlanReadRepository = IncomePlanReadRepository(apiProvider),
+    internal val reads: IncomePlanReadRepository,
 ) : IncomePlanActions, IncomePlanReads by reads {
     private val guard = LedgerRequestGuard(apiProvider)
     private val errors = NetworkErrorHandler(serverUrlProvider = { null }, context = "IncomePlan",
@@ -141,7 +143,7 @@ class IncomePlanRepository(
         if (!canModify) throw RepositoryException("当前角色为只读，无法修改账本。")
         val bound = guard.bindExact(expectedBinding)
         requireIncomeTargetSettled(outbox.activeForTarget(bound, incomePlanTarget(publicId)))
-        bound.call {
+        reads.queries.directWrite(expectedBinding) {
             it.archiveIncomePlan(publicId, IncomePlanTokenRequestDto(expectedRowVersion, intentMonth)).toDomain()
         }
     }
@@ -151,7 +153,7 @@ class IncomePlanRepository(
         if (!canModify) throw RepositoryException("当前角色为只读，无法修改账本。")
         val bound = guard.bindExact(expectedBinding)
         requireIncomeTargetSettled(outbox.activeForTarget(bound, incomePlanTarget(publicId)))
-        bound.call {
+        reads.queries.directWrite(expectedBinding) {
             it.restoreIncomePlan(publicId, IncomePlanTokenRequestDto(expectedRowVersion, intentMonth)).toDomain()
         }
     }

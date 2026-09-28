@@ -1,6 +1,9 @@
 package com.ticketbox
 
 import com.ticketbox.data.local.AppDatabase
+import com.ticketbox.data.repository.directWrite
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiClient
 import com.ticketbox.data.repository.ApiServiceProvider
@@ -138,6 +141,8 @@ internal class RepositoryGraph(
         outbox = outbox,
         incomePlanSubmissionAdapter = outboxAdapters.incomePlanSubmissionAdapter,
         incomePlanReceiptAdapter = outboxAdapters.incomePlanReceiptAdapter,
+        reads = com.ticketbox.data.repository.IncomePlanReadRepository(apiServiceProvider,
+            database.incomeQueryCacheDao(), ledgerSessionCoordinator),
     )
 
     val debtRepository = DebtRepository(
@@ -170,6 +175,12 @@ internal class RepositoryGraph(
         outbox.onDebtAccepted = debtRepository::invalidateReadsAfterAccepted
     }
 
+    init {
+        outbox.onIncomeDispatchPreparing = incomePlanRepository.reads::prepareReadsBeforeDispatch
+        outbox.onIncomeDispatchFinished = incomePlanRepository.reads::finishReadDispatch
+        outbox.onIncomeAccepted = incomePlanRepository.reads::invalidateReadsAfterAccepted
+    }
+
     val goalEditRepository = com.ticketbox.data.repository.GoalEditRepository(
         apiServiceProvider, outbox, outboxAdapters.goalUpdateAdapter, outboxAdapters.goalReceiptAdapter,
         outboxAdapters.goalCreateAdapter,
@@ -180,6 +191,20 @@ internal class RepositoryGraph(
         expenseDao = database.expenseDao(),
         sessionCoordinator = ledgerSessionCoordinator,
     )
+
+    init {
+        ledgerRepository.restoreWithReadProtection = { binding, item, restore ->
+            when (item.kind) {
+                "income_plan" -> incomePlanRepository.reads.queries.directWrite(binding) { restore() }
+                "goal" -> {
+                    val result = restore()
+                    withContext(NonCancellable) { reportsRepository.goalQueries.invalidate(binding) }
+                    result
+                }
+                else -> restore()
+            }
+        }
+    }
 
     val ruleRepository = RuleRepository(
         binding = serverSessionBinding,

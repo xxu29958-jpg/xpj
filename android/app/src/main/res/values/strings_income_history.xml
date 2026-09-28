@@ -13,4 +13,6 @@
     <string name="income_history_monthly">每月固定 · %1$d 号（短月取月末）</string>
     <string name="income_history_months">变更所用月份 %1$s · 预测重算起月 %2$s</string>
     <string name="income_history_unknown">未知</string>
+    <string name="income_read_cached">包含离线保留的读取 · %1$s。按当时的月份和状态展示，联网后可刷新。</string>
+    <string name="income_read_fresh">读取于 %1$s</string>
 </resources>

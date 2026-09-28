@@ -99,7 +99,7 @@ private class IncomeIntentFixture {
     val scheduledDepths = mutableListOf<Int>()
     val adapter = OutboxAdapterGraph().incomePlanSubmissionAdapter
     val outbox = newOutbox(clock)
-    val repository = IncomePlanRepository(provider, outbox, adapter, OutboxAdapterGraph().incomePlanReceiptAdapter)
+    val repository = testIncomePlanRepository(provider, outbox, adapter, OutboxAdapterGraph().incomePlanReceiptAdapter)
 
     suspend fun enqueue() = repository.enqueueUpdate(binding, incomeIntentDto().toDomain(),
         IncomePlanPatch(expectedRowVersion = 3, intentMonth = "2026-09", amountCents = 120_000), CurrencyCode.CNY)
