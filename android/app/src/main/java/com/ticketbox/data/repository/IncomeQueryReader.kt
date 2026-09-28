@@ -16,6 +16,7 @@ import retrofit2.HttpException
 
 private class IncomeQueryReplaced : IllegalStateException("已有更新的收入读取，请重试。")
 private data class IncomeReadQuery(val kind: String, val tag: String)
+private data class IncomePublishedRead(val sequence: Long, val result: Result<StatsProjectionCacheEntity>)
 
 /** IncomePlan's canonical reads. Neither a draft nor a command receipt is a query snapshot. */
 internal class IncomeQueryReader(
@@ -28,7 +29,7 @@ internal class IncomeQueryReader(
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
     private val listingAdapter = moshi.adapter(IncomePlanListResponseDto::class.java)
     private val historyAdapter = moshi.adapter(IncomeHistoryResponseDto::class.java)
-    private val latest = ConcurrentHashMap<String, Long>()
+    private val latest = ConcurrentHashMap<String, IncomePublishedRead>()
     internal val dispatches = ConcurrentHashMap<Long, IncomeWriteProtection>()
     val accessDenials = coordinator.snapshotAccessDenials.filterNotNull()
 
@@ -45,7 +46,7 @@ internal class IncomeQueryReader(
     private suspend fun <T> read(binding: LogicalSessionBinding, query: IncomeReadQuery, adapter: JsonAdapter<T>,
         validate: (T) -> Unit, fetch: suspend (ApiService) -> T): Result<ReadSnapshot<T>> {
         val result = readOnce(binding, query, adapter, validate, fetch)
-        // Overview and management can request the same projection together; restore the superseded reader once.
+        // Retry only when a newer accepted GET could not be retained in the projection store.
         return if (result.exceptionOrNull()?.cause is IncomeQueryReplaced) readOnce(binding, query, adapter, validate, fetch) else result
     }
 
@@ -56,7 +57,6 @@ internal class IncomeQueryReader(
         val key = logicalBindingAdapter.toJson(binding)
         val ticket = coordinator.beginSnapshotRead()
         val queryKey = "$key|$kind|$tag"
-        latest[queryKey] = ticket.sequence
         val protection = dao.protection(key)
         requireNoActiveIncomeWrite(key, protection.barriers.map { it.tag })
         val value = try {
@@ -64,12 +64,17 @@ internal class IncomeQueryReader(
         } catch (error: HttpException) {
             val failure = errors.httpFailure(error)
             coordinator.rejectSnapshotAccess(bound, key, failure)
-            if (error.code() == 404 && bound.isStillActive()) dao.remove(key, kind, tag)
+            if (error.code() == 404) coordinator.acceptSnapshotRead(ticket, bound, fromCache = false) {
+                if (ticket.sequence >= (latest[queryKey]?.sequence ?: 0)) {
+                    latest[queryKey] = IncomePublishedRead(ticket.sequence, Result.failure(failure))
+                    dao.remove(key, kind, tag)
+                }
+            }
             throw failure
         } catch (error: Exception) {
             if (!error.isReadTransportUnavailable()) throw error
             return@safeCall coordinator.acceptSnapshotRead(ticket, bound, fromCache = true) {
-                if (latest[queryKey] != ticket.sequence) throw IncomeQueryReplaced()
+                latest[queryKey]?.result?.exceptionOrNull()?.let { throw it }
                 val saved = dao.cached(key, kind, tag, protection) ?: throw error
                 check(saved.ledgerId == binding.ledgerId)
                 val cached = requireNotNull(adapter.fromJson(saved.responseJson))
@@ -79,14 +84,26 @@ internal class IncomeQueryReader(
         }
         validate(value)
         coordinator.acceptSnapshotRead(ticket, bound, fromCache = false) { cacheAllowed ->
-            if (latest[queryKey] != ticket.sequence) throw IncomeQueryReplaced()
             requireNoActiveIncomeWrite(key, protection.barriers.map { it.tag })
+            val published = latest[queryKey]
+            if (published != null && published.sequence > ticket.sequence) {
+                // Concurrent consumers share the newer confirmed GET. Starting another request must
+                // not invalidate a successful reader or create a chain of competing retries.
+                val acceptedRow = published.result.getOrThrow()
+                val saved = dao.cached(key, kind, tag, protection) ?: throw IncomeQueryReplaced()
+                if (saved != acceptedRow) throw IncomeQueryReplaced()
+                check(saved.ledgerId == binding.ledgerId)
+                val accepted = requireNotNull(adapter.fromJson(saved.responseJson))
+                validate(accepted)
+                return@acceptSnapshotRead ReadSnapshot(accepted, saved.fetchedAt, fromCache = false)
+            }
             val fetchedAt = Instant.now().toString()
             val row = StatsProjectionCacheEntity(key, binding.ledgerId, kind, "", tag, "", "UTC", adapter.toJson(value), fetchedAt)
             // A complete current listing reconciles interrupted writes; a historical page cannot do so.
             val settled = if (kind == "income_list") protection.barriers.map { it.tag }.toSet() else emptySet()
             try { dao.acceptFresh(row, protection, settled, cacheAllowed) }
             catch (_: SQLiteException) { /* A storage failure cannot erase an authorized fresh GET. */ }
+            latest[queryKey] = IncomePublishedRead(ticket.sequence, Result.success(row))
             ReadSnapshot(value, fetchedAt, fromCache = false)
         }
     }
