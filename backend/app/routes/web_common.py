@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 from fastapi import Request
 from fastapi.responses import HTMLResponse
@@ -68,7 +68,7 @@ from app.services.ledger_calendar_service import current_ledger_month
 from app.services.money_projection_service import ordered_projection_gaps
 from app.services.spending_contract_service import count_undated_expenses, default_accounting_timezone_name
 from app.services.stats_service import monthly_stats
-from app.services.time_service import now_utc
+from app.services.time_service import normalize_month_label, now_utc
 from app.services.time_service import to_iso as _datetime_to_iso
 from app.tenants import AuthContext
 from app.version import BACKEND_VERSION, STATIC_ASSET_VERSION
@@ -96,6 +96,7 @@ __all__ = [
     "_require_local",
     "_require_selected_ledger_write",
     "preserve_original_ledger_form",
+    "category_return_url",
     "_resolve_selected_ledger_id",
     "_safe_same_site_redirect_path",
     "_selected_option",
@@ -112,6 +113,15 @@ templates = Jinja2Templates(
     context_processors=[csrf_context],
 )
 templates.env.filters["to_iso"] = _datetime_to_iso
+
+
+def category_return_url(ledger_id: str, category_id: str, month: str, *, message: str = "") -> str:
+    """Return only to the originating category row, never to a supplied path."""
+    if not category_id:
+        return ""
+    return _with_ledger("/web/categories", ledger_id, month=normalize_month_label(month) or "", msg=message) + (
+        "#category-" + quote(category_id, safe="")
+    )
 
 
 def preserve_original_ledger_form(request, db, *, options, selected, fields, task) -> HTMLResponse | None:

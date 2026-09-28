@@ -85,11 +85,13 @@ def _render_categories(
     reference_links = []
     for reference in category_references or []:
         identifier = quote(reference["id"], safe="")
-        query = urlencode({"ledger_id": selected_id})
+        origin = {"ledger_id": selected_id, "return_category": category_error_public_id, "return_month": target_month}
+        query = urlencode(origin)
         if reference["kind"] == "rule":
             href = f"/web/rules/{identifier}/edit?{query}"
         elif reference["kind"] == "budget":
-            href = "/web/budgets?" + urlencode({"ledger_id": selected_id, "month": reference["id"]})
+            href = "/web/budgets?" + urlencode({"ledger_id": selected_id, "month": reference["id"],
+                "return_category": category_error_public_id, "return_month": target_month})
         elif reference["kind"] == "goal":
             href = f"/web/goals/{identifier}/edit?{query}"
         else:
@@ -160,6 +162,7 @@ def web_category_preference_delete(
     public_id: str,
     ledger_id: str = Form(""),
     expected_row_version: str = Form(""),
+    month: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> Response:
@@ -178,6 +181,7 @@ def web_category_preference_delete(
             db,
             options=options,
             selected_id=selected_id,
+            month=month,
             category_error="页面已过期，请使用当前分类状态重试。",
             category_error_public_id=public_id,
             status_code=422,
@@ -201,6 +205,7 @@ def web_category_preference_delete(
             db,
             options=options,
             selected_id=selected_id,
+            month=month,
             category_error=message,
             category_error_public_id=public_id,
             category_references=(exc.details or {}).get("category_references", []),
@@ -209,6 +214,7 @@ def web_category_preference_delete(
     return _web_redirect(
         "/web/categories",
         selected_id,
+        month=month,
         msg=(
             f"已从可选分类移除「{removed.name}」；历史流水不会改写，"
             "需要时可从回收站恢复。"

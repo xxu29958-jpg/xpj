@@ -299,14 +299,10 @@ def test_referenced_category_removal_explains_the_required_next_step(
         public_id = preference.public_id
         row_version = preference.row_version
 
-    response = web_client.post(
-        f"/web/categories/preferences/{public_id}/delete",
-        data={
-            "ledger_id": "owner",
-            "expected_row_version": str(row_version),
-        },
-        follow_redirects=False,
-    )
+    category_page = web_client.get("/web/categories?ledger_id=owner&month=2026-02")
+    remove_action = f"/web/categories/preferences/{public_id}/delete"
+    response = web_client.post(remove_action,
+        data=hidden_post_forms(category_page.text)[remove_action], follow_redirects=False)
 
     assert response.status_code == 422
     assert "仍被规则、预算或目标使用" in response.text
@@ -325,13 +321,27 @@ def test_referenced_category_removal_explains_the_required_next_step(
     assert 'value="bakery"' in editor.text
     edit_action = f"/web/rules/{rule_id}/edit"
     original_form = hidden_post_forms(editor.text)[edit_action]
-    changed = web_client.post(edit_action, data={**original_form,
-        "keyword": "bakery", "category": "餐饮", "priority": "10"}, follow_redirects=False)
+    assert original_form["return_category"] == public_id
+    assert original_form["return_month"] == "2026-02"
+    assert f'#category-{public_id}">返回分类继续移除</a>' in editor.text
+    changes = {"keyword": "bakery", "category": "餐饮", "priority": "10"}
+    refused = web_client.post(edit_action, data={**original_form, **changes, "priority": "无效"}, follow_redirects=False)
+    assert refused.status_code == 422, refused.text
+    retry_form = hidden_post_forms(refused.text)[edit_action]
+    for field in ("return_category", "return_month", "idempotency_key", "expected_row_version"):
+        assert retry_form[field] == original_form[field]
+    reviewed = web_client.post(edit_action, data={**retry_form, **changes, "review_latest": "true"})
+    assert reviewed.status_code == 200, reviewed.text
+    ready_form = hidden_post_forms(reviewed.text)[edit_action]
+    assert ready_form["return_category"] == public_id
+    assert ready_form["return_month"] == "2026-02"
+    changed = web_client.post(edit_action, data={**ready_form, **changes}, follow_redirects=False)
     assert changed.status_code in (302, 303), changed.text
 
     return_url = urlsplit(changed.headers["location"])
     assert return_url.path == "/web/categories"
     assert parse_qs(return_url.query)["ledger_id"] == ["owner"]
+    assert parse_qs(return_url.query)["month"] == ["2026-02"]
     assert return_url.fragment == f"category-{public_id}"
     returned = web_client.get(changed.headers["location"])
     assert f'id="category-{public_id}"' in returned.text
@@ -376,9 +386,10 @@ def test_category_plan_reference_opens_the_saved_editor_and_returns_to_removal(
         editor_url = f"{edit_action}?ledger_id=owner"
         read_url = f"/api/goals/{goal_id}"
     original_plan = web_client.get(read_url, headers=identity.app_headers).json()
-    categories = web_client.get("/web/categories?ledger_id=owner")
+    categories = web_client.get("/web/categories?ledger_id=owner&month=2026-02")
     form_action = next(action for action in hidden_post_forms(categories.text)
         if action.startswith("/web/categories/preferences/"))
+    preference_id = form_action.split("/")[-2]
     form = hidden_post_forms(categories.text)[form_action]
     rejected = web_client.post(form_action, data=form, follow_redirects=False)
     assert rejected.status_code == 422, rejected.text
@@ -394,6 +405,9 @@ def test_category_plan_reference_opens_the_saved_editor_and_returns_to_removal(
     editor = web_client.get(editor_url)
     assert editor.status_code == 200, editor.text
     original_form = hidden_post_forms(editor.text)[edit_action]
+    assert original_form["return_category"] == preference_id
+    assert original_form["return_month"] == "2026-02"
+    assert f'#category-{preference_id}">返回分类继续移除</a>' in editor.text
     assert 'name="month" value="2026-10"' in editor.text
     if source == "budget":
         changes = {"total_amount_yuan": "500.00", "rollover_amount_yuan": "0.00",
@@ -402,7 +416,19 @@ def test_category_plan_reference_opens_the_saved_editor_and_returns_to_removal(
             "category_budget_remove": ["0"]}
     else:
         changes = {"name": goal_name, "month": "2026-10", "category": "餐饮", "target_amount_yuan": "50.00"}
-    changed = web_client.post(edit_action, data={**original_form, **changes}, follow_redirects=False)
+    amount_field = "total_amount_yuan" if source == "budget" else "target_amount_yuan"
+    refused = web_client.post(edit_action, data={**original_form, **changes, amount_field: "无效"}, follow_redirects=False)
+    assert refused.status_code in (400, 422), refused.text
+    retry_form = hidden_post_forms(refused.text)[edit_action]
+    for field in ("return_category", "return_month", "idempotency_key", "expected_row_version"):
+        assert retry_form[field] == original_form[field]
+    assert web_client.get(read_url, headers=identity.app_headers).json() == original_plan
+    reviewed = web_client.post(edit_action, data={**retry_form, **changes, "review_latest": "true"})
+    assert reviewed.status_code == 200, reviewed.text
+    ready_form = hidden_post_forms(reviewed.text)[edit_action]
+    assert ready_form["return_category"] == preference_id
+    assert ready_form["return_month"] == "2026-02"
+    changed = web_client.post(edit_action, data={**ready_form, **changes}, follow_redirects=False)
     assert changed.status_code in (302, 303), changed.text
     changed_plan = web_client.get(read_url, headers=identity.app_headers).json()
     if source == "budget":
@@ -416,6 +442,7 @@ def test_category_plan_reference_opens_the_saved_editor_and_returns_to_removal(
     return_url = urlsplit(changed.headers["location"])
     assert return_url.path == "/web/categories"
     assert parse_qs(return_url.query)["ledger_id"] == ["owner"]
+    assert parse_qs(return_url.query)["month"] == ["2026-02"]
     assert return_url.fragment == f"category-{preference_id}"
     returned = web_client.get(changed.headers["location"])
     assert f'id="category-{preference_id}"' in returned.text

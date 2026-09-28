@@ -127,7 +127,7 @@
       <tbody>
         {% for item in category_preferences %}
         {% set _row_error = category_error and category_error_public_id == item.public_id %}
-        <tr data-category-key="{{ item.public_id }}"{% if _row_error %} aria-invalid="true" aria-describedby="category-preference-error"{% endif %}>
+        <tr id="category-{{ item.public_id }}" data-category-key="{{ item.public_id }}"{% if _row_error %} aria-invalid="true" aria-describedby="category-preference-error"{% endif %}>
           <td>{{ item.name }}</td>
           <td>
             {% if item.usage_count %}<span class="meta">已被 {{ item.usage_count }} 笔流水使用，移除不影响这些流水</span>
@@ -146,6 +146,7 @@
             <form method="post" action="/web/categories/preferences/{{ item.public_id }}/delete"
                   data-confirm="把「{{ item.name }}」从可选分类移除？历史流水保持不变，需要时可从回收站恢复。">
               <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+              <input type="hidden" name="month" value="{{ target_month }}">
               <input type="hidden" name="expected_row_version" value="{{ item.row_version }}">
               <button type="submit" class="product-button product-button--small product-button--danger">移除</button>
             </form>

@@ -5,7 +5,7 @@ from __future__ import annotations
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
@@ -22,6 +22,8 @@ from app.routes.web_common import (
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _web_redirect,
+    _with_ledger,
+    category_return_url,
     parse_form_row_version_token,
     templates,
 )
@@ -254,6 +256,7 @@ def _render_budgets(
     error: str | None = None,
     status_code: int = 200,
     draft: dict | None = None,
+    return_category: str = "", return_month: str = "",
 ) -> HTMLResponse:
     timezone_name = _budget_timezone_name()
     budget = get_monthly_budget(
@@ -304,7 +307,12 @@ def _render_budgets(
         "home_currency_code": budget.home_currency_code,
         "expected_row_version": str(budget.row_version) if budget.row_version is not None else "null",
         "idempotency_key": str(uuid4()),
+        "return_category": return_category, "return_month": return_month,
     }
+    origin = ctx["save_intent"]
+    ctx["category_return_url"] = category_return_url(selected_id, origin.get("return_category", ""), origin.get("return_month", ""))
+    ctx["current_edit_url"] = _with_ledger("/web/budgets", selected_id, month=month,
+        return_category=origin.get("return_category", ""), return_month=origin.get("return_month", ""))
     ctx["budget_conflict"] = bool(draft is not None and draft.get("conflict"))
     ctx["budget_currency_changed"] = bool(draft is not None and budget.configured and
         draft["home_currency_code"] != budget.home_currency_code)
@@ -322,6 +330,7 @@ def web_budgets(
     ledger_id: str | None = None,
     month: str | None = None,
     msg: str | None = None,
+    return_category: str = "", return_month: str = "",
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -335,6 +344,7 @@ def web_budgets(
         options=options,
         month=target_month,
         message=msg,
+        return_category=return_category, return_month=return_month,
     )
 
 
@@ -388,6 +398,7 @@ def web_budgets_save(
     excluded_category: list[str] = Form(default=[]), excluded_categories: str = Form(default=""),
     category_budget_category: list[str] = Form(default=[]), category_budget_amount_yuan: list[str] = Form(default=[]),
     category_budget_remove: list[int] = Form(default=[]), review_latest: bool = Form(default=False),
+    return_category: str = Form(""), return_month: str = Form(""),
     _local: None = LocalOnly, db: Session = Depends(get_db),
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
@@ -399,7 +410,8 @@ def web_budgets_save(
         "rollover_amount_yuan": rollover_amount_yuan, "non_monthly_amount_yuan": non_monthly_amount_yuan,
         "excluded_category": excluded_category, "excluded_categories": excluded_categories,
         "category_budget_category": category_budget_category, "category_budget_amount_yuan": category_budget_amount_yuan,
-        "category_budget_remove": set(category_budget_remove)}
+        "category_budget_remove": set(category_budget_remove),
+        "return_category": return_category, "return_month": return_month}
     try:
         if review_latest:
             accepted = review_monthly_budget_save(db, tenant_id=selected, month=target_month, idempotency_key=idempotency_key)
@@ -419,4 +431,7 @@ def web_budgets_save(
         draft["conflict"] = exc.error in {"state_conflict", "budget_currency_conflict", "idempotency_key_reused"}
         return _render_budgets(request=request, db=db, selected_id=selected, options=options,
             month=target_month, error=exc.message, status_code=exc.status_code, draft=draft)
+    target = category_return_url(selected, return_category, return_month, message="预算已保存，可以继续整理原分类。")
+    if target:
+        return RedirectResponse(target, status_code=303)
     return _web_redirect("/web/budgets", selected, month=target_month, msg="预算已保存。")
