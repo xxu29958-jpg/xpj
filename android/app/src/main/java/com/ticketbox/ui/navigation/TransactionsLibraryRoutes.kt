@@ -8,6 +8,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraphBuilder
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
@@ -179,9 +180,10 @@ private fun CategoryRulesLibraryRoute(
     screenFactory: MainScreenFactory,
     onVocabularyChanged: () -> Unit,
     onTransactionRowsChanged: () -> Unit,
-    originalSubmissionId: Long?,
-    originalRuleId: Long?,
+    entry: NavBackStackEntry,
 ) {
+    val originalSubmissionId = entry.arguments?.getString("submission")?.toLongOrNull()
+    val originalRuleId = entry.arguments?.getString("rule")?.toLongOrNull()
     val viewModel: CategoryRulesViewModel = viewModel(
         key = transactionsLibraryViewModelKey("category-rules", screenFactory.ledgerRepository.activeLedgerId()),
         factory = screenFactory.categoryRulesViewModelFactory,
@@ -325,8 +327,7 @@ private fun NavGraphBuilder.categoryRulesDestination(
             screenFactory = screenFactory,
             onVocabularyChanged = onVocabularyChanged,
             onTransactionRowsChanged = onTransactionRowsChanged,
-            originalSubmissionId = entry.arguments?.getString("submission")?.toLongOrNull(),
-            originalRuleId = entry.arguments?.getString("rule")?.toLongOrNull(),
+            entry = entry,
         )
     }
 }
