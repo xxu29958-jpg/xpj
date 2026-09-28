@@ -143,7 +143,7 @@ def representative_response(monkeypatch):
                              actor_is_you=False, actor_display_name="家人", repayment=fact),
     ]
     listing = _page(items)
-    debt = stub_debt(public_id="debt-one", counterparty_type="member", counterparty_label="一起出行的家人",
+    debt = stub_debt(public_id="debt-one", ledger_id="my-ledger", counterparty_type="member", counterparty_label="一起出行的家人",
                      viewer_is_debtor=False, paid_amount_cents=4000, remaining_amount_cents=46000)
     request = Request({"type": "http", "method": "GET", "scheme": "http", "server": ("testserver", 80),
                        "path": "/web/debts/debt-one", "query_string": b"ledger_id=my-ledger&activity_page=2",

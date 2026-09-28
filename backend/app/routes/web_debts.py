@@ -425,7 +425,7 @@ def _render_debt_detail(
         )
     )
     ctx["today"] = now_utc().astimezone(accounting_zone()).strftime("%Y-%m-%d")
-    from app.routes._web_debt_kind import add_kind_detail_context
+    from app.routes._web_debt_kind_forms import add_kind_detail_context
 
     add_kind_detail_context(request, db, ctx=ctx, debt=debt, selected_id=selected_id, public_id=public_id,
         kind=action_kind, values=action_draft, error=action_error, result=kind_result, ack=kind_ack, rejected=kind_rejected)

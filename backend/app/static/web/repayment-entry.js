@@ -5,6 +5,10 @@
     "expected_row_version", "amount_major", "paid_at", "paid_at_timezone"];
   const voidNames = ["debt_public_id", "ledger_id", "origin_binding", "expected_row_version", "reason", "repayment_public_id"];
   const kindNames = ["debt_public_id", "ledger_id", "origin_binding", "expected_row_version", "debt_kind"];
+  const fieldNames = {repayment:repaymentNames, "debt-void":voidNames, "repayment-void":voidNames,
+    "debt-kind":kindNames, "split-change":["debt_public_id", "ledger_id", "origin_binding", "home_currency_code", "command",
+      "proposal_public_id", "expected_row_version", "expected_return_row_version", "new_share_amount_major",
+      "settlement_net_amount_major", "reason", "supersedes_proposal_public_id"]};
   function initialize(form) {
   const surface = form.closest("[data-repayment-container]");
   if (!surface) return;
@@ -12,11 +16,8 @@
   const splitChange = form.dataset.repaymentKind === "split-change";
   const kindCorrection = form.dataset.repaymentKind === "debt-kind";
   const typedCorrection = voidCommand || kindCorrection;
-  const names = kindCorrection ? kindNames : voidCommand ? voidNames : splitChange ? ["debt_public_id", "ledger_id", "origin_binding", "home_currency_code", "command",
-    "proposal_public_id", "expected_row_version", "expected_return_row_version", "new_share_amount_major",
-    "settlement_net_amount_major", "reason", "supersedes_proposal_public_id"] :
-    repaymentNames;
-  const namespace = typedCorrection ? form.dataset.repaymentKind : splitChange ? "split-change" : "repayment";
+  const namespace = Object.hasOwn(fieldNames, form.dataset.repaymentKind) ? form.dataset.repaymentKind : "repayment";
+  const names = fieldNames[namespace];
   const kindLabels = {one_off:"一次结清", revolving:"循环往来", installment:"分期偿还", unspecified:"暂不指定"};
   const commandLabels = {create:"发送新约定", accept:"接受这份约定", reject:"拒绝这份约定", withdraw:"撤回我的约定"};
   const axes = ["datasetId", "clientGeneration", "accountId", "ledgerId", "deviceId"];
@@ -134,11 +135,12 @@
     items.forEach(record => {
       const item = document.createElement("li"), link = document.createElement("a");
       link.href = window.location.pathname + window.location.search + "#" + namespace + "-" + record.clientRef;
-      link.textContent = kindCorrection ? [kindLabels[record.values.debt_kind] || record.values.debt_kind,
-        !drafts.matches(record.scope, scope) ? "旧身份，待核对" : record.phase === "submitted" ? "结果待确认" : record.phase === "blocked" ? "待核对" : "未提交"].join(" · ") : [record.values.home_currency_code,
+      const stateLabel = !drafts.matches(record.scope, scope) ? "旧身份，待核对" :
+        record.phase === "submitted" ? "结果待确认" : record.phase === "blocked" ? "待核对" : "未提交";
+      const description = kindCorrection ? [kindLabels[record.values.debt_kind] || record.values.debt_kind] : [record.values.home_currency_code,
         voidCommand ? record.values.reason || "未填原因" : splitChange ? commandLabels[record.values.command] : record.values.amount_major || "未填金额",
-        voidCommand ? record.values.repayment_public_id || record.values.debt_public_id : splitChange ? record.values.new_share_amount_major : record.values.paid_at, !drafts.matches(record.scope, scope) ? "旧身份，待核对" :
-          record.phase === "submitted" ? "结果待确认" : record.phase === "blocked" ? "待核对" : "未提交"].join(" · ");
+        voidCommand ? record.values.repayment_public_id || record.values.debt_public_id : splitChange ? record.values.new_share_amount_major : record.values.paid_at];
+      link.textContent = [...description, stateLabel].join(" · ");
       item.append(link);
       list.appendChild(item);
     });
@@ -169,7 +171,7 @@
   function anotherDebtSubmission() {
     return ["repayment", "debt-void", "repayment-void", "debt-kind"].some(kind => {
       const store = window.TicketboxDraftStore.createStore({prefix:"ticketbox:" + kind + "-draft:v1:",
-        fields:kind === "debt-kind" ? kindNames : kind === "repayment" ? repaymentNames : voidNames, validRef:uuid});
+        fields:fieldNames[kind], validRef:uuid});
       return store.list(scope).some(record => record.values.debt_public_id === target &&
         (kind !== namespace || record.clientRef !== currentRef) && record.phase !== "editing");
     });

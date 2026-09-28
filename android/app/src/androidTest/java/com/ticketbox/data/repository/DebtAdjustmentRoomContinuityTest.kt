@@ -82,9 +82,12 @@ class DebtAdjustmentRoomContinuityTest {
         assertEquals(originalDebt.debtKind, detail.value?.state?.value?.debt?.debtKind)
         stopModels()
         installModels()
-        compose.waitUntil(10_000) { detail.value?.state?.value?.pendingWrites?.size == 1 }
+        compose.waitUntil(10_000) {
+            detail.value?.state?.value?.let { it.pendingWrites.size == 1 && !it.isLoading } == true
+        }
         assertEquals(listOf(original), fixture.stored())
         assertEquals(originalDebt.debtKind, detail.value?.state?.value?.debt?.debtKind)
+        assertTrue(detail.value?.state?.value?.fromCache == true)
         compose.onNodeWithText(context.getString(R.string.debt_kind_revolving), substring = true)
             .performScrollTo().assertIsDisplayed()
         settleOriginalKindAfterReopen(original)

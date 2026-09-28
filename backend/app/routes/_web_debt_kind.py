@@ -2,51 +2,20 @@
 
 from __future__ import annotations
 
-import json
-from uuid import uuid4
-
 from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.errors import AppError
+from app.routes._web_debt_kind_forms import render_kind_recovery
 from app.routes._web_debt_repayment import require_repayment_binding
-from app.routes._web_debt_write import _debt_write_gate, repayment_scope
+from app.routes._web_debt_write import repayment_scope
 from app.routes.web_common import (
-    _base_ctx,
     _require_selected_ledger_write,
     parse_form_row_version_token,
-    templates,
 )
 from app.schemas import DebtKindSetRequest
 
 KIND_FIELDS = ("debt_public_id", "ledger_id", "origin_binding", "expected_row_version", "debt_kind")
-
-
-def kind_context(request, db, *, selected_id, public_id, expected="", debt_kind="unspecified",
-                 can_create=False, can_recover=False, values=None, error="", result="", ack=None, rejected=False):
-    scope = repayment_scope(request, db)
-    initial = {"debt_public_id": public_id, "ledger_id": selected_id,
-        "origin_binding": json.dumps(scope, ensure_ascii=False, sort_keys=True),
-        "expected_row_version": expected, "debt_kind": debt_kind,
-        "idempotency_key": str(uuid4()) if can_create else ""}
-    if values is not None:
-        initial.update(values)
-    return {"public_id": public_id, "scope": scope, "values": initial, "visible": can_create or values is not None,
-        "can_create": can_create, "can_recover": can_recover, "error": error, "result": result,
-        "ack": ack, "rejected": rejected}
-
-
-def add_kind_detail_context(request, db, *, ctx, debt, selected_id, public_id, kind, values, error, result, ack, rejected):
-    can_view_original = not ctx["debt"]["is_member"] or debt.ledger_id is not None and debt.viewer_is_debtor is True
-    ctx["kind_form"] = kind_context(request, db, selected_id=selected_id, public_id=public_id,
-        expected=str(debt.row_version), debt_kind=debt.debt_kind,
-        can_create=ctx["can_write"] and ((not ctx["debt"]["is_member"] and debt.status == "open") or ctx["can_change_member_kind"]),
-        can_recover=ctx["can_write"] and can_view_original,
-        values=values if kind == "kind" else None,
-        error=error if kind == "kind" else "", result=result, ack=ack, rejected=rejected)
-    ctx["kind_form"]["can_view_original"] = can_view_original
-    if kind == "kind":
-        ctx["action_form"]["fallback"] = False
 
 
 def kind_outcome(request, db, *, options, selected_id, public_id, values=None,
@@ -59,12 +28,9 @@ def kind_outcome(request, db, *, options, selected_id, public_id, values=None,
             kind_result=result, kind_ack=ack, kind_rejected=rejected, status_code=status_code)
     except (AppError, SQLAlchemyError):
         db.rollback()
-        ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id, page_title="核对原偿还方式")
-        ctx["kind_form"] = kind_context(request, db, selected_id=selected_id, public_id=public_id,
-            can_recover=_debt_write_gate(options, selected_id), values=values,
-            error=error, result=result, ack=ack, rejected=rejected)
-        ctx["kind_detail_error"] = "当前详情暂时无法刷新，请稍后重新读取；原提交结果和输入仍保留在此页。"
-        return templates.TemplateResponse(request=request, name="debt_kind_recovery.html", context=ctx, status_code=status_code)
+        return render_kind_recovery(request, db, options=options, selected_id=selected_id,
+            public_id=public_id, values=values, error=error, result=result, ack=ack,
+            rejected=rejected, status_code=status_code)
 
 
 def _kind_error(exc, *, attempted):
