@@ -22,7 +22,6 @@ data class ConfirmedStreamSnapshot(
 )
 
 data class DebtReadProtection(val epoch: Long, val directTokens: Set<String>, val outboxToken: String?)
-data class BudgetReadState(val epoch: Long, val barrier: StatsProjectionCacheEntity?)
 
 /**
  * v0.4-alpha1 multi-ledger contract:
@@ -33,7 +32,7 @@ data class BudgetReadState(val epoch: Long, val barrier: StatsProjectionCacheEnt
  * different ledger's cached row.
  */
 @Dao
-interface ExpenseDao {
+interface ExpenseDao : BudgetReadProtectionDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun saveGoalSnapshots(snapshots: List<GoalQueryCacheEntity>)
 
@@ -56,10 +55,10 @@ interface ExpenseDao {
     suspend fun clearStatsProjectionsForBinding(bindingKey: String)
 
     @Query("SELECT * FROM stats_projection_cache WHERE bindingKey = :bindingKey AND kind = 'budget' AND month = :month")
-    suspend fun budgetSnapshotsForMonth(bindingKey: String, month: String): List<StatsProjectionCacheEntity>
+    override suspend fun budgetSnapshotsForMonth(bindingKey: String, month: String): List<StatsProjectionCacheEntity>
 
     @Delete
-    suspend fun deleteStatsProjection(snapshot: StatsProjectionCacheEntity)
+    override suspend fun deleteStatsProjection(snapshot: StatsProjectionCacheEntity)
 
     @Transaction
     suspend fun clearReadSnapshotsForBinding(bindingKey: String) {
@@ -69,63 +68,7 @@ interface ExpenseDao {
     }
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun saveStatsProjection(snapshot: StatsProjectionCacheEntity)
-
-    @Transaction
-    suspend fun budgetReadState(bindingKey: String, month: String) = BudgetReadState(
-        statsProjections(bindingKey, "budget_read_epoch", month, "", "UTC").singleOrNull()?.responseJson?.toLong() ?: 0L,
-        statsProjections(bindingKey, "budget_restore_barrier", month, "", "UTC").singleOrNull(),
-    )
-
-    @Transaction
-    suspend fun clearCurrentBudgetSnapshots(bindingKey: String, month: String) {
-        budgetSnapshotsForMonth(bindingKey, month).forEach { deleteStatsProjection(it) }
-        statsProjections(bindingKey, "budget_history", month, "", "UTC").forEach { deleteStatsProjection(it) }
-    }
-
-    @Transaction
-    suspend fun advanceBudgetReadEpoch(basis: StatsProjectionCacheEntity) {
-        val epoch = budgetReadState(basis.bindingKey, basis.month).epoch
-        saveStatsProjection(basis.copy(kind = "budget_read_epoch", responseJson = Math.addExact(epoch, 1L).toString()))
-    }
-
-    @Transaction
-    suspend fun beginBudgetRestore(barrier: StatsProjectionCacheEntity) {
-        check(budgetReadState(barrier.bindingKey, barrier.month).barrier == null) { "原预算恢复结果尚需联网核对，请先重新读取预算。" }
-        advanceBudgetReadEpoch(barrier)
-        saveStatsProjection(barrier)
-    }
-
-    @Transaction
-    suspend fun finishBudgetRestore(barrier: StatsProjectionCacheEntity, accepted: Boolean) {
-        check(budgetReadState(barrier.bindingKey, barrier.month).barrier == barrier) { "预算恢复状态已变化，请重新读取。" }
-        if (accepted) clearCurrentBudgetSnapshots(barrier.bindingKey, barrier.month)
-        advanceBudgetReadEpoch(barrier)
-        deleteStatsProjection(barrier)
-    }
-
-    @Transaction
-    suspend fun budgetSnapshotIfCurrent(query: StatsProjectionCacheEntity, expected: BudgetReadState,
-        requireSettled: Boolean): StatsProjectionCacheEntity? {
-        check(budgetReadState(query.bindingKey, query.month) == expected) { "预算已变化，请重新读取。" }
-        if (expected.barrier != null && (query.kind == "budget" || query.tag.isEmpty())) {
-            check(!requireSettled) { "预算恢复结果尚需联网核对，请重新读取。" }
-            return null
-        }
-        return statsProjections(query.bindingKey, query.kind, query.month, query.tag, query.timezone).singleOrNull()
-    }
-
-    /** A complete monthly GET can settle an unknown restore; an individual history page cannot. */
-    @Transaction
-    suspend fun acceptBudgetSnapshot(query: StatsProjectionCacheEntity, expected: BudgetReadState): Boolean {
-        check(budgetReadState(query.bindingKey, query.month) == expected) { "预算已变化，请重新读取。" }
-        expected.barrier?.let {
-            if (query.kind == "budget") finishBudgetRestore(it, accepted = true)
-            else if (query.tag.isEmpty()) return false
-        }
-        saveStatsProjection(query)
-        return true
-    }
+    override suspend fun saveStatsProjection(snapshot: StatsProjectionCacheEntity)
 
     @Query("SELECT responseJson FROM stats_projection_cache WHERE bindingKey = :bindingKey " +
         "AND kind = 'debt_read_epoch' AND month = '' AND tag = '' AND homeCurrencyCode = '' AND timezone = 'UTC'")
@@ -333,7 +276,7 @@ interface ExpenseDao {
           AND timezone = :timezone
         ORDER BY fetchedAt DESC
     """)
-    suspend fun statsProjections(
+    override suspend fun statsProjections(
         bindingKey: String, kind: String, month: String, tag: String, timezone: String,
     ): List<StatsProjectionCacheEntity>
 
