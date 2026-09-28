@@ -9,6 +9,9 @@ import com.ticketbox.data.repository.PendingGoalCreation
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -92,6 +95,10 @@ class DebtGoalCreationSavedStateTest {
         first.viewModelScope.cancel()
         debts.listResult = Result.success(emptyList())
         val restored = CreateDebtGoalViewModel(edits, debts, FakeDebtWriteActions(), earlier)
+        val observed = mutableListOf<CreateDebtGoalUiState>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            restored.state.collect { observed += it }
+        }
         restored.reload(); advanceUntilIdle()
         assertEquals(original.row, restored.state.value.pending?.row)
         assertEquals(key, restored.state.value.creationKey)
@@ -102,6 +109,14 @@ class DebtGoalCreationSavedStateTest {
         restored.submit(); advanceUntilIdle()
         assertEquals(1, edits.keys.size)
         assertEquals(original, edits.rows.value.single())
+        restored.reload(); advanceUntilIdle()
+        val acceptedStates = observed.filter { it.pending?.row?.id == original.row.id }
+        assertTrue(acceptedStates.isNotEmpty())
+        acceptedStates.forEach { accepted ->
+            assertEquals("实际接受的任务", accepted.name)
+            assertEquals(setOf("b"), accepted.selectedDebtIds)
+            assertEquals(key, accepted.creationKey)
+        }
         restored.viewModelScope.cancel()
     }
 
