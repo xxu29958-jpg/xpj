@@ -86,7 +86,8 @@ def test_income_create_original_form_draft_survives_refresh_in_real_edge(tmp_pat
             if path == "/":
                 self.reply(b'<!doctype html><html><head><meta charset="utf-8"></head><body>'
                            b'<script src="/probe.js"></script></body></html>')
-            elif path == "/web/income-plans":
+                return
+            if path == "/web/income-plans":
                 refreshed = bool(requests)
                 currency, month, key = ("CNY", "2026-10", "aa740c64-6e8d-45e8-80fd-5dd26a2f7126") if refreshed else (
                     "JPY", "2026-09", "19793a9e-7861-4c02-ae44-1cb35c5a1cdd")
@@ -108,18 +109,18 @@ def test_income_create_original_form_draft_survives_refresh_in_real_edge(tmp_pat
                     csrf_field='<input type="hidden" name="csrf_token" value="synthetic-not-a-credential">',
                 )
                 self.reply(body.encode("utf-8"))
-            elif path == "/probe.js":
+                return
+            if path == "/probe.js":
                 self.reply((_REPO_ROOT / "backend/tests/fixtures/income_create_draft_refresh_probe.js").read_bytes(),
                            content_type="text/javascript")
-            elif path.startswith("/static/"):
+                return
+            if path.startswith("/static/"):
                 resource = (static / path.removeprefix("/static/")).resolve()
                 if resource.is_relative_to(static) and resource.is_file():
                     self.reply(resource.read_bytes(), content_type="text/javascript")
-                else:
-                    missing_resources.append(path)
-                    self.reply(b"not found", status=404)
-            else:
-                self.reply(b"not found", status=404)
+                    return
+                missing_resources.append(path)
+            self.reply(b"not found", status=404)
 
         def do_POST(self) -> None:
             if urlsplit(self.path).path != "/web/income-plans/create":
@@ -185,7 +186,8 @@ def test_income_create_original_form_draft_survives_refresh_in_real_edge(tmp_pat
     assert probe["after"]["amountInputmode"] == "numeric", probe
     assert "2026-09" in probe["after"]["intentNotice"], probe
     assert "2026-10" not in probe["after"]["intentNotice"], probe
-    assert probe["unknown"]["fields"] == expected, probe
+    submitted = {**expected, "amount_yuan": "1200"}
+    assert probe["unknown"]["fields"] == submitted, probe
     assert probe["unknown"]["frozen"] is True, probe
     assert probe["unknown"]["record"]["clientRef"] == expected["idempotency_key"], probe
     assert probe["unknown"]["record"]["phase"] == "blocked", probe
@@ -200,7 +202,7 @@ def test_income_create_original_form_draft_survives_refresh_in_real_edge(tmp_pat
     ], requests
     assert len(posts) == 2, posts
     assert posts[0] == posts[1], posts
-    for name, value in expected.items():
+    for name, value in submitted.items():
         assert posts[0][name] == value, posts
     assert posts[0]["ledger_id"] == scope["ledgerId"], posts
     assert json.loads(posts[0]["draft_scope"]) == scope, posts

@@ -83,6 +83,10 @@
       return;
     }
     const originalRef = result.before.fields.idempotency_key;
+    stage = 'correct raw amount without replacing the restored task';
+    field('amount_yuan').value = '1200';
+    field('amount_yuan').dispatchEvent(new frame.contentWindow.Event('input', {bubbles: true}));
+    await pause(50);
     stage = 'submit original form to synthetic unavailable response';
     await until(() => submit(frame) && !submit(frame).disabled);
     submit(frame).click();

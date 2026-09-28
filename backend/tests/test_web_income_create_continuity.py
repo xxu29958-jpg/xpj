@@ -108,7 +108,7 @@ def _installed_income_form(installed):
     assert page.status_code == 200, page.text
     fields = {**hidden_post_forms(page.text)[ACTION], "draft_scope": json.dumps(scope),
         "label": "原收入计划", "source_type": "salary", "frequency": "monthly",
-        "amount_yuan": " 001500.00 ", "pay_day": "10", "income_month_year": "2026", "income_month_number": "9"}
+        "amount_yuan": "1500.00", "pay_day": "10", "income_month_year": "2026", "income_month_number": "9"}
     return browser, fields, scope
 
 
@@ -118,6 +118,7 @@ def test_browser_income_ack_replays_original_result_after_later_edit(installed_i
     browser, fields, scope = _installed_income_form(installed_income_browser)
     headers = {"Origin": str(browser.base_url).rstrip("/"), "Accept": "application/json"}
     accepted = browser.post(ACTION, data=fields, headers=headers, follow_redirects=False)
+    assert accepted.status_code in {200, 303}, accepted.text
     with SessionLocal() as db:
         plan, = list(db.scalars(select(MonthlyIncomePlan)))
         public_id = plan.public_id
@@ -170,3 +171,35 @@ def test_income_draft_cannot_follow_a_replacement_browser_identity(installed_inc
         assert db.scalar(select(func.count()).select_from(IncomePlanRevision)) == 0
     assert refused.status_code == 409, refused.text
     assert refused.json()["error"] == "session_binding_changed"
+
+
+@pytest.mark.real_db
+@pytest.mark.currency_binding_unbound
+def test_browser_income_refusal_can_prepare_correction_without_writing(installed_income_browser):
+    browser, fields, scope = _installed_income_form(installed_income_browser)
+    fields.update(pay_day="32")
+    origin = str(browser.base_url).rstrip("/")
+    refused = browser.post(ACTION, data=fields, headers={"Origin": origin, "Accept": "application/json"})
+    assert refused.status_code == 422, refused.text
+    assert refused.json()["draft_result"] == "blocked"
+    prepared = browser.post(ACTION, data={**fields, "review_new": "true"},
+        headers={"Origin": origin}, follow_redirects=False)
+    assert prepared.status_code == 200, prepared.text
+    next_fields = hidden_post_forms(prepared.text)[ACTION]
+    assert next_fields["idempotency_key"] != fields["idempotency_key"]
+    for name in ("ledger_id", "draft_scope", "intent_month", "home_currency_code"):
+        assert next_fields[name] == fields[name]
+    assert 'value="1500.00"' in prepared.text and 'value="32"' in prepared.text
+    assert 'data-income-native-result="prepared"' in prepared.text
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(MonthlyIncomePlan)) == 0
+        assert db.scalar(select(func.count()).select_from(IncomePlanRevision)) == 0
+    accepted = browser.post(ACTION, data={**fields, **next_fields, "pay_day": "12"},
+        headers={"Origin": origin, "Accept": "application/json"})
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["ack"] == {"scope": scope, "clientRef": next_fields["idempotency_key"]}
+    with SessionLocal() as db:
+        plan, = list(db.scalars(select(MonthlyIncomePlan)))
+        assert (plan.tenant_id, plan.label, plan.amount_cents, plan.pay_day, plan.row_version) == (
+            installed_income_browser.shared_ledger_id, "原收入计划", 150000, 12, 1)
+        assert db.scalar(select(func.count()).select_from(IncomePlanRevision)) == 1
