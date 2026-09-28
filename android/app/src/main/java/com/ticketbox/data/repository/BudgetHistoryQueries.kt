@@ -4,6 +4,7 @@ import android.database.sqlite.SQLiteException
 import com.squareup.moshi.JsonDataException
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import com.ticketbox.data.local.BudgetReadState
 import com.ticketbox.data.local.ExpenseDao
 import com.ticketbox.data.local.StatsProjectionCacheEntity
 import com.ticketbox.data.remote.dto.BudgetHistoryDto
@@ -15,7 +16,7 @@ import kotlinx.coroutines.sync.withLock
 import retrofit2.HttpException
 
 private data class AcceptedBudgetHistory(val page: BudgetHistoryDto, val query: StatsProjectionCacheEntity,
-    val ticket: SnapshotReadTicket) {
+    val ticket: SnapshotReadTicket, val readState: BudgetReadState) {
     fun precedes(other: AcceptedBudgetHistory): Boolean {
         val revision = page.items.firstOrNull()?.rowVersion ?: 0L
         val otherRevision = other.page.items.firstOrNull()?.rowVersion ?: 0L
@@ -29,6 +30,7 @@ internal class BudgetHistoryQueries(
     private val dao: ExpenseDao,
     private val coordinator: LocalLedgerSessionCoordinator,
     private val prepareRead: suspend (BoundLedgerRequest, String) -> Unit,
+    private val readProtection: BudgetReadProtection,
 ) {
     private val guard = LedgerRequestGuard(apiProvider)
     private val errors = NetworkErrorHandler({ apiProvider.currentSession()?.serverUrl }, "BudgetHistory")
@@ -52,6 +54,9 @@ internal class BudgetHistoryQueries(
             prepareRead(bound, clean)
             val ticket = coordinator.beginSnapshotRead()
             val key = logicalBindingAdapter.toJson(binding)
+            val readState = readProtection.beginRead(key, clean)
+            val queryScope = StatsProjectionCacheEntity(key, binding.ledgerId, "budget_history", clean,
+                before?.toString().orEmpty(), "", "UTC", "", "")
             val page = try {
                 bound.call { it.budgetHistory(clean, before) }
             } catch (error: HttpException) {
@@ -62,8 +67,7 @@ internal class BudgetHistoryQueries(
                 if (!error.isReadTransportUnavailable()) throw error
                 return@safeCall coordinator.acceptSnapshotRead(ticket, bound, fromCache = true) {
                     mutex.withLock {
-                        val saved = dao.statsProjections(key, "budget_history", clean, before?.toString().orEmpty(), "UTC")
-                            .singleOrNull() ?: throw error
+                        val saved = dao.budgetSnapshotIfCurrent(queryScope, readState, requireSettled = true) ?: throw error
                         val cached = requireNotNull(decode(saved)) { "已读预算历史暂时无法恢复，请联网重新读取。" }
                         cached.validateHistory(binding.ledgerId, clean, before)
                         requireCurrent(key, cached, before)
@@ -72,15 +76,15 @@ internal class BudgetHistoryQueries(
                 }
             }
             page.validateHistory(binding.ledgerId, clean, before)
-            val query = StatsProjectionCacheEntity(key, binding.ledgerId, "budget_history", clean,
-                before?.toString().orEmpty(), "", "UTC", adapter.toJson(page), Instant.now().toString())
+            val query = queryScope.copy(responseJson = adapter.toJson(page), fetchedAt = Instant.now().toString())
             coordinator.acceptSnapshotRead(ticket, bound, fromCache = false) { cacheAllowed ->
                 mutex.withLock {
+                    readProtection.requireCurrent(key, clean, readState)
                     if (!cacheAllowed) {
                         requireCurrent(key, page, before)
                         return@withLock ReadSnapshot(page.toDomain(), query.fetchedAt, fromCache = false)
                     }
-                    publish(AcceptedBudgetHistory(page, query, ticket), before)
+                    publish(AcceptedBudgetHistory(page, query, ticket, readState), before)
                 }
             }
         }
@@ -88,22 +92,21 @@ internal class BudgetHistoryQueries(
     private suspend fun publish(incoming: AcceptedBudgetHistory, before: Long?): ReadSnapshot<BudgetHistoryPage> {
         val query = incoming.query
         val cacheKey = "${query.bindingKey}|${query.month}|${query.tag}"
-        val previous = accepted[cacheKey]?.takeIf { it.ticket.generation == incoming.ticket.generation }
+        val previous = accepted[cacheKey]?.takeIf { it.ticket.generation == incoming.ticket.generation && it.readState == incoming.readState }
         var selected = previous?.takeUnless { it.precedes(incoming) } ?: incoming
-        val saved = try { dao.statsProjections(query.bindingKey, query.kind, query.month, query.tag, query.timezone).singleOrNull() }
+        val saved = try { dao.budgetSnapshotIfCurrent(query, incoming.readState, requireSettled = false) }
             catch (_: SQLiteException) { null }
         val cached = saved?.let(::decode)?.takeIf {
             runCatching { it.validateHistory(query.ledgerId, query.month, before) }.isSuccess
         }
         if (saved != null && cached != null) {
-            val stored = AcceptedBudgetHistory(cached, saved, incoming.ticket.copy(sequence = 0L))
+            val stored = AcceptedBudgetHistory(cached, saved, incoming.ticket.copy(sequence = 0L), incoming.readState)
             if (selected.precedes(stored)) selected = stored
         }
         requireCurrent(query.bindingKey, selected.page, before)
         accepted[cacheKey] = selected
         if (selected.query != saved) {
-            try { dao.saveStatsProjection(selected.query) }
-            catch (_: SQLiteException) { /* A valid GET remains usable without publishing a local snapshot. */ }
+            readProtection.publish(selected.query, incoming.readState)
         }
         return ReadSnapshot(selected.page.toDomain(), selected.query.fetchedAt, fromCache = selected.ticket.sequence == 0L)
     }
