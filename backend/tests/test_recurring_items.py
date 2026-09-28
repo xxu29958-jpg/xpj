@@ -494,3 +494,96 @@ def test_recurring_anomaly_ignores_unrelated_same_merchant_large_purchase(client
     assert current["public_id"] == item["public_id"]
     assert current["anomaly_status"] == "none"
     assert current["current_month_amount_cents"] == 20000
+
+
+def _record_two_candidate_payments(client: TestClient, identity) -> list[dict]:
+    payments = []
+    for month in (5, 6):
+        response = client.post("/api/expenses/manual", headers=identity.app_headers, json={
+            "client_ref": str(uuid4()), "home_currency_code": "CNY", "amount_cents": 20000,
+            "merchant": "候选订阅", "category": "AI订阅", "expense_time": f"2026-{month:02d}-05T12:00:00Z",
+        })
+        assert response.status_code == 200, response.text
+        payments.append(response.json())
+    return payments
+
+
+def test_reversed_payment_cannot_support_a_candidate_until_its_reversal_is_voided(
+    client: TestClient, *, identity,
+) -> None:
+    payments = _record_two_candidate_payments(client, identity)
+    before = client.get("/api/insights/recurring-candidates?timezone=UTC", headers=identity.app_headers)
+    assert before.status_code == 200, before.text
+    candidate, = before.json()["items"]
+    assert candidate["merchant"] == "候选订阅"
+    assert candidate["occurrence_count"] == 2
+    assert candidate["amount_cents"] == 20000
+    original = payments[0]
+    reversal = client.post(f"/api/expenses/{original['id']}/offsets",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())}, json={
+            "kind": "reversal", "accounting_date": "2026-06-07", "reason": "重复登记的原交易无效",
+            "expected_row_version": original["row_version"],
+        })
+    assert reversal.status_code == 201, reversal.text
+    bundle = reversal.json()
+    assert bundle["root"]["status"] == "confirmed"
+    assert bundle["root"]["amount_cents"] == 20000
+    assert bundle["financial_summary"]["lineage_home_net_cents"] == 0
+    after = client.get("/api/insights/recurring-candidates?timezone=UTC", headers=identity.app_headers)
+    assert after.status_code == 200, after.text
+    assert after.json()["items"] == []
+    payload = {key: candidate[key] for key in (
+        "merchant", "home_currency_code", "amount_cents", "occurrence_count", "last_seen_at", "confidence",
+    )}
+    stale = client.post("/api/recurring/from-candidate?timezone=UTC", headers=identity.app_headers, json=payload)
+    assert stale.status_code == 404, stale.text
+    assert stale.json()["error"] == "recurring_candidate_not_found"
+    listed = client.get("/api/recurring/items", headers=identity.app_headers)
+    assert listed.status_code == 200, listed.text
+    assert listed.json()["items"] == []
+
+    offset, = bundle["active_offsets"]
+    restored = client.post(f"/api/expenses/{original['id']}/offsets/{offset['public_id']}/voids",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())}, json={
+            "void_reason": "核实确有这次付款", "expected_row_version": offset["row_version"],
+        })
+    assert restored.status_code == 201, restored.text
+    assert restored.json()["active_offsets"] == []
+    assert restored.json()["financial_summary"]["lineage_home_net_cents"] == 20000
+    candidates = client.get("/api/insights/recurring-candidates?timezone=UTC", headers=identity.app_headers)
+    assert candidates.status_code == 200, candidates.text
+    assert candidates.json()["items"] == [candidate]
+    accepted = client.post("/api/recurring/from-candidate?timezone=UTC", headers=identity.app_headers, json=payload)
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["occurrence_count"] == 2
+    assert accepted.json()["baseline_amount_cents"] == 20000
+    formal = accepted.json()
+    other = payments[1]
+    cancelled = client.post(f"/api/expenses/{other['id']}/offsets",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())}, json={
+            "kind": "reversal", "accounting_date": "2026-06-08", "reason": "另一期登记无效",
+            "expected_row_version": other["row_version"],
+        })
+    assert cancelled.status_code == 201, cancelled.text
+    remaining = client.get("/api/recurring/items", headers=identity.app_headers)
+    assert remaining.status_code == 200, remaining.text
+    assert remaining.json()["items"] == [formal]
+
+
+def test_refund_does_not_reinterpret_the_original_payment_as_a_reversal(
+    client: TestClient, *, identity,
+) -> None:
+    original = _record_two_candidate_payments(client, identity)[0]
+    before = client.get("/api/insights/recurring-candidates?timezone=UTC", headers=identity.app_headers)
+    assert before.status_code == 200, before.text
+    assert len(before.json()["items"]) == 1
+    refund = client.post(f"/api/expenses/{original['id']}/offsets",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())}, json={
+            "kind": "refund", "original_amount_minor": 20000, "accounting_date": "2026-06-07",
+            "reason": "本次服务退款", "expected_row_version": original["row_version"],
+        })
+    assert refund.status_code == 201, refund.text
+    assert refund.json()["financial_summary"]["lineage_home_net_cents"] == 0
+    after = client.get("/api/insights/recurring-candidates?timezone=UTC", headers=identity.app_headers)
+    assert after.status_code == 200, after.text
+    assert after.json()["items"] == before.json()["items"]
