@@ -25,6 +25,7 @@ from app.routes.web_common import (
     _with_ledger,
     category_return_url,
     parse_form_row_version_token,
+    preserve_original_ledger_form,
     templates,
 )
 from app.schemas import BudgetCategoryRequest, BudgetMonthlyResponse, BudgetMonthlyUpdateRequest
@@ -403,8 +404,6 @@ def web_budgets_save(
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
-    _require_selected_ledger_write(options, selected)
-    target_month = clean_month(month)
     draft = {"home_currency_code": home_currency_code, "expected_row_version": expected_row_version,
         "idempotency_key": idempotency_key, "total_amount_yuan": total_amount_yuan,
         "rollover_amount_yuan": rollover_amount_yuan, "non_monthly_amount_yuan": non_monthly_amount_yuan,
@@ -412,6 +411,13 @@ def web_budgets_save(
         "category_budget_category": category_budget_category, "category_budget_amount_yuan": category_budget_amount_yuan,
         "category_budget_remove": set(category_budget_remove),
         "return_category": return_category, "return_month": return_month}
+    retained = preserve_original_ledger_form(request, db, options=options, selected=selected,
+        fields={**draft, "ledger_id": ledger_id, "month": month, "review_latest": review_latest,
+            "category_budget_remove": category_budget_remove}, task="保存月度预算")
+    if retained is not None:
+        return retained
+    _require_selected_ledger_write(options, selected)
+    target_month = clean_month(month)
     try:
         if review_latest:
             accepted = review_monthly_budget_save(db, tenant_id=selected, month=target_month, idempotency_key=idempotency_key)
