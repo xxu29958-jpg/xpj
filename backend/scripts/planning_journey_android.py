@@ -26,6 +26,7 @@ class PlanningAndroid:
         self.serial = serial
         self.evidence = evidence
         self.bound = False
+        self.pairing_code = ""
         if self.adb("shell", "getprop", "ro.kernel.qemu").strip() != "1":
             raise RuntimeError("The selected target is not an emulator")
 
@@ -37,8 +38,18 @@ class PlanningAndroid:
         return result.stdout if binary else result.stdout.decode("utf-8", errors="replace")
 
     def tree(self):
-        self.adb("shell", "uiautomator", "dump", "/sdcard/planning-journey.xml")
-        return ET.fromstring(self.adb("exec-out", "cat", "/sdcard/planning-journey.xml"))
+        def read_tree():
+            dump = self.adb("shell", "uiautomator", "dump", "/sdcard/planning-journey.xml")
+            raw = self.adb("exec-out", "cat", "/sdcard/planning-journey.xml")
+            try:
+                return [ET.fromstring(raw)]
+            except ET.ParseError:
+                diagnostic = dump + "\n" + raw
+                if self.pairing_code:
+                    diagnostic = diagnostic.replace(self.pairing_code, "[temporary pairing code removed]")
+                (self.evidence / "android-tree-diagnostic.txt").write_text(diagnostic, encoding="utf-8")
+                return None
+        return wait_for(read_tree, "The emulator did not provide a valid UI hierarchy", 45)[0]
 
     @staticmethod
     def bounds(node):
@@ -80,9 +91,10 @@ class PlanningAndroid:
     def fill(self, value: str, *, previous: str | None = None):
         if not re.fullmatch(r"[A-Za-z0-9.:/_-]+", value):
             raise ValueError("This journey types only its numeric or ASCII inputs")
-        fields = [node for node in self.tree().iter("node") if node.attrib.get("class") == "android.widget.EditText"]
-        if previous is not None:
-            fields = [node for node in fields if re.fullmatch(previous, node.attrib.get("text", ""))]
+        def locate():
+            fields = [node for node in self.tree().iter("node") if node.attrib.get("class") == "android.widget.EditText"]
+            return [node for node in fields if re.fullmatch(previous, node.attrib.get("text", ""))] if previous is not None else fields
+        fields = wait_for(locate, "The native input did not finish loading")
         if len(fields) != 1:
             raise AssertionError("The native input cannot be identified from its actual value")
         self.tap(fields[0])
@@ -94,6 +106,7 @@ class PlanningAndroid:
         self.adb("reverse", f"tcp:{port}", f"tcp:{port}")
         self.adb("shell", "am", "start", "-n", "com.ticketbox/.MainActivity")
         wait_for(lambda: self.has("绑定账本"), "The native binding screen did not open")
+        self.pairing_code = code
         self.fill(code)
         self.click("绑定账本")
         wait_for(lambda: self.has("计划"), "The native application did not reach the bound product")
@@ -151,13 +164,13 @@ class PlanningAndroid:
         raise AssertionError("The real navigation did not return to the planning entry")
 
     def capture(self, name: str, redact: str | None = None):
+        if self.bound or not self.pairing_code:
+            (self.evidence / f"android-{name}.png").write_bytes(self.adb("exec-out", "screencap", "-p", binary=True))
         tree = ET.tostring(self.tree(), encoding="unicode")
-        if redact:
-            tree = tree.replace(redact, "[temporary pairing code removed]")
+        secret = redact or self.pairing_code
+        if secret:
+            tree = tree.replace(secret, "[temporary pairing code removed]")
         (self.evidence / f"android-{name}.xml").write_text(tree, encoding="utf-8")
-        if not self.bound:
-            return
-        (self.evidence / f"android-{name}.png").write_bytes(self.adb("exec-out", "screencap", "-p", binary=True))
 
     def back(self):
         self.adb("shell", "input", "keyevent", "4")

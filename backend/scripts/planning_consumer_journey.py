@@ -16,10 +16,12 @@ import sys
 import tempfile
 import urllib.error
 import urllib.request
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from scripts.planning_journey_android import PlanningAndroid, wait_for
 from scripts.planning_journey_recovery import PlanningRecovery
+from scripts.planning_journey_roles import verify_roles
 from scripts.test_postgres_contract import TEST_POSTGRES_CONTRACT
 from scripts.test_postgres_database import dedicated_test_database_lease
 
@@ -149,12 +151,64 @@ def _journey(page, native: PlanningAndroid, fixture, evidence: Path):
     native.back()
 
     PlanningRecovery(page, native, fixture, evidence, _facts, BASE_URL).run()
+    verify_roles(page, native, fixture, evidence, _facts, BASE_URL)
     _web_appearance(page, evidence, month)
     result = _facts(fixture.ledger_id)
     assert result["expenses"] == result["budgets"] == 0, "A prediction or reminder created financial facts"
-    assert result["income_amount"] == 620000 and result["goal_amount"] == 240000
+    assert result["income_amount"] == 630000 and result["goal_amount"] == 250000
     assert result["income_status"] == result["goal_status"] == "active"
     return result
+
+
+def _browser_run(args, native, fixture):
+    from playwright.sync_api import Error as PlaywrightError
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as driver:
+        browser = driver.chromium.launch()
+        page = browser.new_page(viewport={"width": 1280, "height": 960})
+        completed = False
+        try:
+            result = _journey(page, native, fixture, args.evidence)
+            completed = True
+            return result
+        finally:
+            if not completed:
+                try:
+                    page.screenshot(path=args.evidence / "web-failure.png", full_page=True)
+                except PlaywrightError:
+                    print("The browser was unavailable for a failure capture")
+            browser.close()
+
+
+def _run_consumers(args, native, fixture):
+    native.adb("install", "-r", str(args.apk.resolve()))
+    native.adb("shell", "pm", "grant", "com.ticketbox", "android.permission.POST_NOTIFICATIONS")
+    with (args.evidence / "server.log").open("w", encoding="utf-8") as server_log:
+        server = subprocess.Popen([sys.executable, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1",
+            "--port", str(PORT), "--no-access-log"], stdout=server_log, stderr=subprocess.STDOUT)
+        result = None
+        try:
+            wait_for(_ready, "The real backend did not become ready")
+            result = _browser_run(args, native, fixture)
+        finally:
+            if result is None:
+                _native_failure(native, fixture.pairing_code)
+            server.terminate()
+            server.wait(timeout=20)
+    result["checkout_sha"] = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+    result["source_sha"] = os.environ["TICKETBOX_JOURNEY_SOURCE_SHA"]
+    result["apk_sha256"] = hashlib.sha256(args.apk.read_bytes()).hexdigest()
+    result["verified_leg"] = "Web/native creation, cross-client edits/OCC, reply loss, offline restart and resumption, both recycle bins, retained history, member edits and viewer reads"
+    (args.evidence / "business-result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+    print("The actual Web/native planning recovery journey completed")
+
+
+def _native_failure(native, pairing_code):
+    try:
+        native.capture("failure", redact=pairing_code)
+    except (AssertionError, RuntimeError, OSError, ValueError, ET.ParseError, subprocess.SubprocessError):
+        print("Native failure capture was unavailable")
 
 
 def main() -> int:
@@ -178,39 +232,7 @@ def main() -> int:
         with dedicated_test_database_lease(database_url, expected_database=TEST_POSTGRES_CONTRACT.smoke_database,
             reset=True, cluster_identity=os.environ["XPJ_TEST_CLUSTER_IDENTITY"], passfile=os.environ["PGPASSFILE"]):
             fixture = _seed()
-            native.adb("install", "-r", str(args.apk.resolve()))
-            native.adb("shell", "pm", "grant", "com.ticketbox", "android.permission.POST_NOTIFICATIONS")
-            with (args.evidence / "server.log").open("w", encoding="utf-8") as server_log:
-                server = subprocess.Popen([sys.executable, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1",
-                    "--port", str(PORT), "--no-access-log"], stdout=server_log, stderr=subprocess.STDOUT)
-                try:
-                    wait_for(_ready, "The real backend did not become ready")
-                    from playwright.sync_api import sync_playwright
-
-                    with sync_playwright() as driver:
-                        browser = driver.chromium.launch()
-                        page = browser.new_page(viewport={"width": 1280, "height": 960})
-                        try:
-                            result = _journey(page, native, fixture, args.evidence)
-                        except Exception:
-                            page.screenshot(path=args.evidence / "web-failure.png", full_page=True)
-                            raise
-                        browser.close()
-                    result["checkout_sha"] = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
-                    result["source_sha"] = os.environ["TICKETBOX_JOURNEY_SOURCE_SHA"]
-                    result["apk_sha256"] = hashlib.sha256(args.apk.read_bytes()).hexdigest()
-                    result["verified_leg"] = "Web/native creation, cross-client edits, reply loss, offline restart and resumption, both recycle bins and retained history"
-                    (args.evidence / "business-result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
-                    print("The actual Web/native planning recovery journey completed")
-                except Exception:
-                    try:
-                        native.capture("failure", redact=fixture.pairing_code)
-                    except Exception:
-                        print("Native failure capture was unavailable")
-                    raise
-                finally:
-                    server.terminate()
-                    server.wait(timeout=20)
+            _run_consumers(args, native, fixture)
     return 0
 
 

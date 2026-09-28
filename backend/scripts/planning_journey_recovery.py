@@ -52,6 +52,7 @@ class PlanningRecovery:
 
     def native_offline_edits(self):
         native = self.native
+        income_original = self.hold_editor("income", "6300.00", "amount_yuan")
         native.restart()
         native.open_income()
         native.click("联动工资")
@@ -68,7 +69,9 @@ class PlanningRecovery:
         if native.has("重试原提交"):
             native.click("重试原提交")
         wait_for(lambda: self.facts()["income_amount"] == 620000, "The income original could not resume", 90)
+        self.reject_stale_editor("income", income_original)
 
+        goal_original = self.hold_editor("goal", "2500.00", "target_amount_yuan")
         native.restart()
         native.open_goal()
         native.click("编辑目标")
@@ -85,6 +88,33 @@ class PlanningRecovery:
         if native.has("重试原提交"):
             native.click("重试原提交")
         wait_for(lambda: self.facts()["goal_amount"] == 240000, "The goal original could not resume", 90)
+        self.reject_stale_editor("goal", goal_original)
+
+    def hold_editor(self, kind, amount, field):
+        family = "income-plans" if kind == "income" else "goals"
+        path = f"/web/{family}/{self.facts()[kind + '_id']}/edit"
+        self.page.goto(f"{self.base_url}{path}?ledger_id={self.ledger_id}")
+        form = self.page.locator(f'form[action="{path}"]')
+        form.locator(f'[name="{field}"]').fill(amount)
+        original = {name: form.locator(f'[name="{name}"]').input_value()
+                    for name in ("idempotency_key", "expected_row_version", field)}
+        return path, original
+
+    def reject_stale_editor(self, kind, saved):
+        path, original = saved
+        before = self.facts()
+        form = self.page.locator(f'form[action="{path}"]')
+        with self.page.expect_response(lambda response: response.url == self.base_url + path and response.request.method == "POST") as reply:
+            form.locator('button[type="submit"]:not([name])').click()
+        assert reply.value.status == 409, "The stale browser editor overwrote the native change"
+        self.page.wait_for_function("kind => document.querySelector('[data-' + kind + '-draft-phase]').dataset[kind + 'DraftPhase'] === 'blocked'", arg=kind)
+        self.page.reload()
+        for name, value in original.items():
+            assert form.locator(f'[name="{name}"]').input_value() == value, "Conflict reread replaced the original draft"
+        assert self.facts() == before, "A rejected conflict changed stored facts or revisions"
+        self.page.screenshot(path=self.evidence / f"web-{kind}-conflict-after-native-edit.png", full_page=True)
+        form.locator(f'[data-{kind}-discard]').click()
+        self.page.wait_for_url(f"**new_{kind}=1*")
 
     def web_archive(self, kind):
         facts = self.facts()
