@@ -111,6 +111,10 @@ def test_switched_session_keeps_original_form_before_any_object_read_or_command(
         if field in values:
             assert re.findall(rf'name="{field}" value="([^"]*)"', html) == [str(value) for value in values[field]]
     assert "切回原账本" in html
+    if module is web_budgets:
+        assert "<dt>月度预算</dt><dd>1200</dd>" in html
+        assert "<dt>结转金额</dt><dd>-20</dd>" in html
+        assert "<dt>非月度预留</dt><dd>100</dd>" in html
     assert all(not spy.called for spy in stopped)
 
 
