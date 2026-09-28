@@ -11,7 +11,7 @@
   <p class="product-feedback" role="alert">{% if original_ledger_id %}账本已切换。本次提交没有在当前账本执行，请切回原账本后继续。{% else %}这份表单的原账本无法确认，尚未执行。请核对下方输入，再打开对应任务准备新提交。{% endif %}</p>
   <p>输入保持原样；这不会撤销可能已在服务端完成的原提交。</p>
   <dl>
-    {% for field, label in [('name', '名称'), ('label', '名称'), ('merchant', '商家'), ('keyword', '关键词'), ('category', '分类'), ('amount_yuan', '预计金额'), ('target_amount_yuan', '目标金额'), ('baseline_amount_yuan', '预计金额'), ('amount_min_yuan', '金额下限'), ('amount_max_yuan', '金额上限'), ('home_currency_code', '币种'), ('month', '月份'), ('intent_month', '生效月份'), ('income_month', '预计月份'), ('next_expected_date', '预计日期'), ('pay_day', '预计收入日')] %}
+    {% for field, label in [('name', '名称'), ('label', '名称'), ('merchant', '商家'), ('keyword', '关键词'), ('category', '分类'), ('amount_yuan', '预计金额'), ('target_amount_yuan', '目标金额'), ('baseline_amount_yuan', '预计金额'), ('total_amount_yuan', '月度预算'), ('rollover_amount_yuan', '结转金额'), ('non_monthly_amount_yuan', '非月度预留'), ('amount_min_yuan', '金额下限'), ('amount_max_yuan', '金额上限'), ('home_currency_code', '币种'), ('month', '月份'), ('intent_month', '生效月份'), ('income_month', '预计月份'), ('next_expected_date', '预计日期'), ('pay_day', '预计收入日')] %}
     {% if original_fields.get(field) %}<dt>{{ label }}</dt><dd>{{ original_fields[field] }}</dd>{% endif %}
     {% endfor %}
   </dl>

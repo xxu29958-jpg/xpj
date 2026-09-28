@@ -21,6 +21,7 @@ from app.services.currency_common import normalize_currency_code
 from app.services.ledger_calendar_service import current_calendar
 from app.services.merchant_service import normalize_merchant
 from app.services.money_projection_service import project_recorded_amount
+from app.services.recurring_occurrence_query import eligible_payment_query
 from app.services.spending_contract_service import stat_sort_time_expr
 from app.services.time_service import ensure_utc, now_utc, strict_zone
 
@@ -84,9 +85,7 @@ def _confirmed_expenses_for_recurring(
     since = _candidate_lookback_start(current_calendar(db, ledger_id=tenant_id).timezone_name)
     return list(
         db.scalars(
-            select(Expense)
-            .where(Expense.tenant_id == tenant_id)
-            .where(Expense.status == "confirmed")
+            eligible_payment_query(tenant_id=tenant_id)
             .where(Expense.merchant.is_not(None))
             .where(Expense.accounting_date >= since)
             .order_by(Expense.accounting_date, stat_sort_time_expr(), Expense.id)
