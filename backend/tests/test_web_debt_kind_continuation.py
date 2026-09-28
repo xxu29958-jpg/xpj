@@ -12,6 +12,8 @@ from app.database import SessionLocal
 from app.errors import AppError
 from app.models import ApiIdempotencyKey
 from tests._web_native_form_support import hidden_post_forms
+from tests.debt_repayment_goal_helpers import _clear_debt
+from tests.test_debt_kind_setter import _set_owner_ledger_role
 from tests.test_web_debt_actions import _create_debt, _detail, _form
 
 
@@ -21,6 +23,20 @@ def test_kind_native_select_keeps_exact_original_value_when_disabled_and_reopene
         str(root / "app/static/web/manual-drafts.js"), str(root / "app/static/web/repayment-entry.js")],
         capture_output=True, text=True, encoding="utf-8", timeout=10)
     assert result.returncode == 0, result.stderr
+
+
+def test_terminal_debt_still_mounts_original_kind_input_when_same_identity_becomes_viewer(web_client, identity):
+    debt = _create_debt(web_client, identity=identity)
+    _clear_debt(web_client, identity.app_headers, debt)
+    _set_owner_ledger_role("viewer")
+    page = web_client.get(f"/web/debts/{debt['public_id']}?ledger_id=owner")
+    assert page.status_code == 200, page.text
+    action = f"/web/debts/{debt['public_id']}/kind"
+    recovery = hidden_post_forms(page.text)[action]
+    assert recovery["idempotency_key"] == ""
+    assert 'data-repayment-kind="debt-kind"' in page.text
+    assert 'data-repayment-can-create="false"' in page.text
+    assert 'data-repayment-can-recover="false"' in page.text
 
 
 def test_kind_acceptance_is_not_reported_as_failure_when_detail_read_fails(web_client, identity, monkeypatch):

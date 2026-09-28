@@ -15,6 +15,7 @@ from starlette.responses import Response
 from app.database import get_db
 from app.errors import AppError
 from app.routes import _web_debt_write
+from app.routes._web_debt_kind import submit_kind
 from app.routes._web_debt_money import parse_web_debt_major_minor
 from app.routes._web_debt_repayment import (
     render_repayment_recovery,
@@ -378,8 +379,6 @@ def web_set_debt_kind(
     debt_public_id: str = Form(default=""), origin_binding: str = Form(default=""),
     _local: None = LocalOnly, db: Session = Depends(get_db),
 ) -> Response:
-    from app.routes._web_debt_kind import submit_kind
-
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
     # Older native forms had neither binding field. Preserve that current-writer

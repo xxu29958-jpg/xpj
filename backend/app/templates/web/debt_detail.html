@@ -307,7 +307,7 @@
 </section>
 {% endif %}
 
-{% if not kind_form.can_create and (can_write or action_form.kind == 'kind') %}{% include '_debt_kind_form.html' %}{% endif %}
+{% if not kind_form.can_create and (kind_form.can_view_original or action_form.kind == 'kind') %}{% include '_debt_kind_form.html' %}{% endif %}
 
 {% if split_agreement %}{% with agreement=split_agreement %}{% include '_split_agreement_facts.html' %}{% endwith %}{% endif %}
 {% include '_debt_activity.html' %}

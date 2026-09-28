@@ -150,7 +150,7 @@ def representative_response(monkeypatch):
                        "headers": []})
     monkeypatch.setattr(csrf, "_csrf_secret", lambda: b"fictional-render-test-secret")
     context = {
-        "request": request, "debt": route._detail_view(debt), "can_write": False,
+        "request": request, "debt": route._detail_view(debt), "can_write": False, "can_change_member_kind": False,
         "debt_open": True, "action_keys": {}, "proposals": None, "pending_proposal": None,
         "viewer_is_debtor": False, "currency_input": route._currency_input_view("CNY"),
         "expected_row_version": 7, "selected_ledger_id": "my-ledger", "ledger_options": [],

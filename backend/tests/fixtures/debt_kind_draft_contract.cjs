@@ -30,6 +30,13 @@ function kindPage(env, overrides = {}) {
   assert.equal(resumed.fields.idempotency_key.value, original);
   assert.equal(resumed.store.read(fresh), null, 'unknown original cannot mint a fresh intent');
   resumed.window.fire('pagehide'); await tick();
+  const viewer = kindPage(env, {canCreate:false, canRecover:false, ref:''});
+  viewer.start(); await tick();
+  assert.deepEqual(viewer.snapshot(), values, 'same identity becoming readonly still shows original input');
+  assert.equal(viewer.panel.hidden, false);
+  assert.equal(viewer.fields.idempotency_key.value, original);
+  assert.equal(viewer.form.fire('submit').defaultPrevented, true, 'viewer may read but cannot resubmit');
+  viewer.window.fire('pagehide'); await tick();
   for (const debtKind of ['installment', 'revolving']) {
     const receipt = kindPage(env, {canCreate:false, ref:'',
       ack:{scope, clientRef:original, resultPublicId:target, values, debtKind}});
