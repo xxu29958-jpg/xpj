@@ -114,7 +114,7 @@ class IncomePlanCreatePublicationTest {
         assertEquals(original.creationKey, owner.state.value.session?.creationKey)
         assertEquals("  原稿  ", owner.state.value.session?.draft?.label)
         assertEquals("100.00", owner.state.value.session?.draft?.amountYuanInput)
-        assertEquals(UiText.raw("Room拒绝"), owner.state.value.session?.draft?.validationError)
+        assertEquals(UiText.raw("Room拒绝"), owner.state.value.session?.admissionFailure?.asUiText())
         repo.createResult = Result.success(53L)
         owner.submit()
         advanceUntilIdle()
@@ -150,8 +150,9 @@ class IncomePlanCreatePublicationTest {
     }
 
     @Test
-    fun everyRetainedOriginalStatusSettlesItsKeyWithoutInventingConfirmedFinancialFacts() = runTest(dispatcher) {
-        for (status in PendingMutationStatus.entries) {
+    fun everyVisibleOriginalStatusSettlesItsKeyWithoutInventingConfirmedFinancialFacts() = runTest(dispatcher) {
+        for (status in listOf(PendingMutationStatus.Pending, PendingMutationStatus.InFlight,
+            PendingMutationStatus.Failed, PendingMutationStatus.Conflict, PendingMutationStatus.Done)) {
             val saved = SavedStateHandle()
             val original = retainedCreation(saved, phase = IncomePlanCreationPhase.Publishing)
             val repo = FakeIncomePlanCreateRepository()

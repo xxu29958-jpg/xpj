@@ -3,6 +3,7 @@ package com.ticketbox.data.repository
 import android.os.Bundle
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.hasSetTextAction
@@ -21,6 +22,7 @@ import com.ticketbox.ui.screens.IncomePlanScreen
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.IncomePlanEditViewModel
 import com.ticketbox.viewmodel.IncomePlanCreateViewModel
+import com.ticketbox.viewmodel.IncomePlanCreationPhase
 import com.ticketbox.viewmodel.incomePlanCreateViewModelFactory
 import com.ticketbox.viewmodel.IncomePlanViewModel
 import kotlinx.coroutines.cancel
@@ -28,6 +30,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -112,6 +115,51 @@ class IncomePlanCreationRoomTest {
         assertEquals(listOf(accepted), fixture.stored())
         assertTrue(fixture.network.creationCalls.isEmpty())
         compose.onNodeWithText("旅行补贴 · 2026-09").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test fun removedCompletedRecordRequiresExplicitDraftDiscardWithoutRepeatingTheAcceptedIncome() {
+        creationAck = CompletableDeferred()
+        installModels()
+        showModels()
+        compose.waitUntil(10_000) { model.value?.state?.value?.forecastMonth == "2026-09" }
+        compose.onNodeWithText("添加").performScrollTo().performClick()
+        compose.onAllNodes(hasSetTextAction())[0].performScrollTo().performTextInput("已保存的补贴")
+        compose.onAllNodes(hasSetTextAction())[1].performScrollTo().performTextInput("120.00")
+        closeSoftKeyboard()
+        compose.waitForIdle()
+        compose.onNodeWithText("保存").performScrollTo().performClick()
+        compose.waitUntil(10_000) { fixture.stored().size == 1 && creator.value?.state?.value?.isSubmitting == true }
+        val original = requireNotNull(creator.value?.state?.value?.session)
+        fixture.network.loseResponse = false
+        assertEquals(1, runBlocking { fixture.drain() }.done)
+        stopModels() // The system retains Publishing before the local acknowledgement reaches its owner.
+        compose.runOnIdle { model.value = null }
+        compose.waitForIdle()
+        val graph = fixture.reopen()
+        runBlocking {
+            val pending = requireNotNull(graph.incomePlanRepository.originalCreation(original.binding, original.creationKey).getOrThrow())
+            assertTrue(pending.isConfirmed)
+            graph.incomePlanRepository.recoverSubmission(original.binding, pending, drop = true).getOrThrow()
+        }
+        assertTrue(fixture.stored().isEmpty())
+        val acceptedIncome = fixture.network.creationReceipts.toMap()
+        assertEquals(1, acceptedIncome.size)
+        installModels()
+        compose.waitUntil(10_000) { creator.value?.state?.value?.session?.phase == IncomePlanCreationPhase.NeedsRecovery }
+        compose.onNodeWithText("添加").performScrollTo().performClick()
+        compose.onNodeWithText("放弃草稿").performScrollTo().performClick()
+        compose.onNodeWithText("取消").performClick()
+        compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("已保存的补贴")
+        assertEquals(original.creationKey, creator.value?.state?.value?.session?.creationKey)
+        compose.onNodeWithText("放弃草稿").performScrollTo().performClick()
+        compose.onNodeWithText("确认放弃").performClick()
+        compose.onNodeWithText("添加").performScrollTo().performClick()
+        compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("")
+        compose.onAllNodes(hasSetTextAction())[1].assertTextEquals("")
+        assertNotEquals(original.creationKey, creator.value?.state?.value?.session?.creationKey)
+        assertEquals(acceptedIncome, fixture.network.creationReceipts)
+        assertEquals(1, fixture.network.creationCalls.size)
+        assertTrue(fixture.stored().isEmpty())
     }
 
     private fun showModels() {

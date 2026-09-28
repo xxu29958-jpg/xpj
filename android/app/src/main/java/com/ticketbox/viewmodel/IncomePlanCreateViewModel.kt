@@ -89,10 +89,11 @@ class IncomePlanCreateViewModel(
         }
     }
 
-    fun cancel() {
+    fun cancel(discardUnresolved: Boolean = false) {
         val current = _state.value
         val session = current.session ?: return
-        if (current.isSubmitting || current.isRestoring || session.phase != IncomePlanCreationPhase.Draft) return
+        if (current.isSubmitting || current.isRestoring || session.phase == IncomePlanCreationPhase.Publishing) return
+        if (session.phase != IncomePlanCreationPhase.Draft && !discardUnresolved) return
         draftStore.remove(session)
         _state.update { it.copy(session = null, publishedRowId = null) }
     }
@@ -108,7 +109,7 @@ class IncomePlanCreateViewModel(
                 R.string.currency_unconfirmed_write_blocked else R.string.income_plan_validation_error)) }
             return
         }
-        val publishing = session.copy(phase = IncomePlanCreationPhase.Publishing)
+        val publishing = session.copy(phase = IncomePlanCreationPhase.Publishing, admissionFailure = null)
         draftStore.write(publishing)
         inFlight[session.binding] = publishing
         _state.update { it.copy(session = publishing, isSubmitting = true) }
@@ -162,8 +163,7 @@ class IncomePlanCreateViewModel(
 
     private fun settleCreation(session: IncomePlanCreateSession, result: Result<Long>) {
         inFlight.remove(session.binding)
-        val failed = session.copy(draft = session.draft.copy(
-            validationError = result.exceptionOrNull()?.toUiText(R.string.income_plan_add_failed)))
+        val failed = session.copy(admissionFailure = result.exceptionOrNull()?.let(IncomePlanAdmissionFailure::from))
         if (result.isSuccess) draftStore.remove(session) else draftStore.replaceOriginal(failed)
         if (_state.value.binding != session.binding || _state.value.session?.creationKey != session.creationKey) return
         _state.update { it.copy(isSubmitting = false, session = if (result.isSuccess) null else failed,

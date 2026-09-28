@@ -174,7 +174,7 @@ class IncomePlanCreateViewModelTest {
         viewModel.updateDraftPayDay("1")
         viewModel.submit()
         advanceUntilIdle()
-        assertEquals(UiText.raw("网络异常"), viewModel.state.value.session?.draft?.validationError)
+        assertEquals(UiText.raw("网络异常"), viewModel.state.value.session?.admissionFailure?.asUiText())
         assertFalse(viewModel.state.value.isSubmitting)
     }
 
@@ -198,7 +198,7 @@ class IncomePlanCreateViewModelTest {
     @Test
     fun publicationFailureLeavesOriginalRowAckEmpty() = runTest(dispatcher) {
         // A backend failure must NOT signal the screen to close — the sheet stays open with its
-        // validationError instead of vanishing while the user believes the plan was created.
+        // retained admission failure instead of vanishing while the user believes the plan was created.
         val repo = FakeIncomePlanCreateRepository(createResult = Result.failure(RuntimeException("网络异常")))
         val viewModel = IncomePlanCreateViewModel(repo)
         advanceUntilIdle()

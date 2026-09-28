@@ -204,6 +204,15 @@ publication keeps raw input and offers original-submission recovery. Current
 candidate runtime qualification remains pending; this does not claim OS kill
 qualification or completion of other goal and Web draft journeys.
 
+Creation admission errors remain attached to the same raw draft through reopening and
+system saved-state restoration. An unknown or abandoned original row must not retire
+the input into a list that cannot display it. If the original submission can no longer
+be found, the user can explicitly confirm discarding only the local draft; this does
+not cancel a server-accepted income or automatically submit another plan. The income
+creation form opens fully expanded so its retained month and currency are reachable
+without first expanding a partially visible form. These candidate changes await their
+own cloud runtime qualification.
+
 ## Unused tag cleanup
 
 The Library tag page offers all/unused views within the selected ledger. The

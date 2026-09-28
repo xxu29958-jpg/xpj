@@ -2,10 +2,15 @@ package com.ticketbox.ui.screens
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
@@ -87,7 +92,7 @@ internal fun IncomePlanAddSheetHost(
     onDismiss: () -> Unit,
 ) {
     if (!showAddSheet || state.session == null) return
-    AppBusyGuardedSheet(isSubmitting = state.isSubmitting, onDismiss = onDismiss) {
+    AppBusyGuardedSheet(isSubmitting = state.isSubmitting, onDismiss = onDismiss, skipPartiallyExpanded = true) {
         AddIncomePlanSheet(state, viewModel, onDismiss)
     }
 }
@@ -99,12 +104,12 @@ private fun AddIncomePlanSheet(
     onDismiss: () -> Unit,
 ) {
     val session = state.session ?: return
-    val recovery = session.phase in setOf(IncomePlanCreationPhase.DraftNeedsRecovery, IncomePlanCreationPhase.NeedsRecovery)
     val busy = state.isSubmitting || state.isRestoring
     val editable = session.phase == IncomePlanCreationPhase.Draft && state.canModify
     AppSheetScaffold(title = stringResource(R.string.income_plan_sheet_title)) {
         if (!state.canModify) Text(stringResource(R.string.common_readonly_ledger))
         state.flashMessage?.let { AppStatusBanner(message = it, tone = MessageTone.Info) }
+        session.admissionFailure?.let { AppStatusBanner(message = it.asUiText(), tone = MessageTone.Danger) }
         IncomePlanDraftForm(
             state = IncomePlanDraftFormState(
                 draft = session.draft,
@@ -122,21 +127,48 @@ private fun AddIncomePlanSheet(
                 onFrequency = viewModel::updateDraftFrequency,
             ),
         )
-        AppSheetActionRow(
-            primary = AppAction(
-                text = when {
-                    busy -> stringResource(R.string.income_plan_sheet_submitting)
-                    recovery -> stringResource(R.string.income_plan_creation_check_original)
-                    else -> stringResource(R.string.income_plan_sheet_save)
-                },
-                onClick = if (recovery) viewModel::retryPublicationRecovery else viewModel::submit,
-                enabled = !busy && (recovery || editable),
-            ),
-            secondary = AppAction(
-                text = stringResource(R.string.common_cancel),
-                onClick = { viewModel.cancel(); onDismiss() },
-                enabled = !busy && session.phase == IncomePlanCreationPhase.Draft,
-            ),
-        )
+        IncomePlanCreationActions(state, viewModel, onDismiss)
     }
+}
+
+@Composable
+private fun IncomePlanCreationActions(
+    state: IncomePlanCreateUiState,
+    viewModel: IncomePlanCreateViewModel,
+    onDismiss: () -> Unit,
+) {
+    val session = state.session ?: return
+    val recovery = session.phase in setOf(IncomePlanCreationPhase.DraftNeedsRecovery, IncomePlanCreationPhase.NeedsRecovery)
+    val busy = state.isSubmitting || state.isRestoring
+    val editable = session.phase == IncomePlanCreationPhase.Draft && state.canModify
+    var confirmDiscard by rememberSaveable(session.binding, session.creationKey) { mutableStateOf(false) }
+    AppSheetActionRow(
+        primary = AppAction(
+            text = when {
+                busy -> stringResource(R.string.income_plan_sheet_submitting)
+                recovery -> stringResource(R.string.income_plan_creation_check_original)
+                else -> stringResource(R.string.income_plan_sheet_save)
+            },
+            onClick = if (recovery) viewModel::retryPublicationRecovery else viewModel::submit,
+            enabled = !busy && (recovery || editable),
+        ),
+        secondary = AppAction(
+            text = stringResource(if (recovery) R.string.income_plan_creation_discard else R.string.common_cancel),
+            onClick = {
+                if (recovery) confirmDiscard = true else { viewModel.cancel(); onDismiss() }
+            },
+            enabled = !busy && session.phase != IncomePlanCreationPhase.Publishing,
+        ),
+    )
+    if (confirmDiscard) AlertDialog(
+        onDismissRequest = { confirmDiscard = false },
+        title = { Text(stringResource(R.string.income_plan_creation_discard)) },
+        text = { Text(stringResource(R.string.income_plan_creation_discard_explanation)) },
+        confirmButton = { TextButton(enabled = !busy, onClick = {
+            viewModel.cancel(discardUnresolved = true)
+            confirmDiscard = false
+            onDismiss()
+        }) { Text(stringResource(R.string.income_plan_creation_discard_confirm)) } },
+        dismissButton = { TextButton(onClick = { confirmDiscard = false }) { Text(stringResource(R.string.common_cancel)) } },
+    )
 }

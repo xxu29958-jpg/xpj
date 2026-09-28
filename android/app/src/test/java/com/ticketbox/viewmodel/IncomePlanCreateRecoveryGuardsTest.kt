@@ -3,6 +3,8 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.SavedStateHandle
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.PendingIncomePlanSubmission
+import com.ticketbox.data.local.PendingMutationStatus
+import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -17,6 +19,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -125,6 +128,79 @@ class IncomePlanCreateRecoveryGuardsTest {
         assertNull(owner.state.value.session)
         assertEquals(original.creationKey, repo.creationCalls.single().creationKey)
         assertEquals("核对后继续填写", repo.creationCalls.single().draft.label)
+    }
+
+    @Test
+    fun invisibleOriginalStatusesKeepRawInputInsteadOfRetiringItIntoAnEmptyRecoveryList() = runTest(dispatcher) {
+        for (status in listOf(PendingMutationStatus.Unknown, PendingMutationStatus.Abandoned)) {
+            val saved = SavedStateHandle()
+            val original = retainedCreation(saved, IncomePlanCreationPhase.Publishing)
+            val call = IncomePlanCreateCall(original.binding, requireNotNull(original.draft.toRepositoryDraftOrNull()), original.creationKey)
+            val row = createSubmission(call, 97L, status)
+            val repo = FakeIncomePlanCreateRepository().apply { originals[original.binding to original.creationKey] = row }
+            val owner = IncomePlanCreateViewModel(repo, saved)
+            advanceUntilIdle()
+            assertEquals(original.creationKey, owner.state.value.session?.creationKey)
+            assertEquals(original.draft, owner.state.value.session?.draft?.copy(validationError = null))
+            assertEquals(IncomePlanCreationPhase.NeedsRecovery, owner.state.value.session?.phase)
+            assertNull(owner.state.value.publishedRowId)
+            owner.submit()
+            advanceUntilIdle()
+            assertEquals(row, repo.originals.values.single())
+            assertTrue(repo.creationCalls.isEmpty())
+        }
+    }
+
+    @Test
+    fun admissionFailureSurvivesReopeningAndSavedStateUntilTheSameTaskIsAccepted() = runTest(dispatcher) {
+        val saved = SavedStateHandle()
+        val repo = FakeIncomePlanCreateRepository(createResult = Result.failure(IllegalStateException("存储空间不足")))
+        val owner = IncomePlanCreateViewModel(repo, saved)
+        advanceUntilIdle()
+        owner.openOriginal(repo)
+        owner.updateDraftLabel("  保留原稿  ")
+        owner.updateDraftAmount("100.00")
+        val original = assertNotNull(owner.state.value.session)
+        owner.submit()
+        advanceUntilIdle()
+        owner.openOriginal(repo)
+        advanceUntilIdle()
+        assertEquals(UiText.raw("存储空间不足"), owner.state.value.session?.admissionFailure?.asUiText())
+        val restored = IncomePlanCreateViewModel(repo, createStateSnapshot(saved))
+        advanceUntilIdle()
+        assertEquals(original.creationKey, restored.state.value.session?.creationKey)
+        assertEquals(original.draft, restored.state.value.session?.draft)
+        assertEquals(UiText.raw("存储空间不足"), restored.state.value.session?.admissionFailure?.asUiText())
+        repo.createResult = Result.success(98L)
+        restored.submit()
+        advanceUntilIdle()
+        assertNull(restored.state.value.session)
+        assertEquals(98L, restored.state.value.publishedRowId)
+        assertEquals(listOf(original.creationKey, original.creationKey), repo.creationCalls.map { it.creationKey })
+    }
+
+    @Test
+    fun onlyExplicitDiscardCanLeaveAMissingPublishedOriginalAndStartANewTask() = runTest(dispatcher) {
+        val saved = SavedStateHandle()
+        val original = retainedCreation(saved, IncomePlanCreationPhase.Publishing)
+        val repo = FakeIncomePlanCreateRepository()
+        val owner = IncomePlanCreateViewModel(repo, saved)
+        advanceUntilIdle()
+        owner.cancel()
+        owner.submit()
+        advanceUntilIdle()
+        assertEquals(original.creationKey, owner.state.value.session?.creationKey)
+        assertTrue(repo.creationCalls.isEmpty())
+        owner.cancel(discardUnresolved = true)
+        assertNull(owner.state.value.session)
+        val restored = IncomePlanCreateViewModel(repo, createStateSnapshot(saved))
+        advanceUntilIdle()
+        assertNull(restored.state.value.session)
+        restored.openOriginal(repo)
+        assertNotEquals(original.creationKey, restored.state.value.session?.creationKey)
+        assertEquals("", restored.state.value.session?.draft?.label)
+        assertTrue(repo.creationCalls.isEmpty())
+        assertTrue(repo.originals.isEmpty())
     }
 
     @Test
