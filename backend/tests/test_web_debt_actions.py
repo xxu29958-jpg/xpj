@@ -13,6 +13,7 @@ import app.routes.web_debt_create as web_debt_create_routes
 import app.routes.web_debts as web_debts_routes
 import app.services.debt_command_service as debt_command_service
 from app.database import SessionLocal
+from app.errors import AppError
 from app.models import Account, Debt, LedgerMember, Repayment
 from app.services.spending_contract_service import accounting_zone
 from tests._runtime_protocol import negotiated_headers
@@ -382,6 +383,39 @@ def test_web_external_debt_create_validation_preserves_fields(
             )
             is None
         )
+
+
+def test_kind_reply_failure_keeps_the_original_form_and_does_not_apply_the_correction_twice(
+    web_client: TestClient, *, identity, monkeypatch,
+) -> None:
+    debt = _create_debt(web_client, identity=identity)
+    action = f"/web/debts/{debt['public_id']}/kind"
+    page = web_client.get(f"/web/debts/{debt['public_id']}?ledger_id=owner")
+    assert page.status_code == 200
+    original = {**hidden_post_forms(page.text)[action], "debt_kind": "revolving"}
+
+    def lose_reply_after_commit(*args, **kwargs):
+        debt_command_service.set_debt_kind_idempotently(*args, **kwargs)
+        raise AppError("temporary_unavailable", "原操作结果暂未收到，请核对原提交。", status_code=503)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(web_debt_action_routes, "set_debt_kind_idempotently", lose_reply_after_commit)
+        uncertain = web_client.post(action, data=original)
+    assert uncertain.status_code == 503
+    accepted = _detail(web_client, identity=identity, public_id=debt["public_id"])
+    assert accepted["debt_kind"] == "revolving"
+    assert accepted["row_version"] == 2
+    retained = hidden_post_forms(uncertain.text)[action]
+    assert retained["idempotency_key"] == original["idempotency_key"]
+    assert retained["expected_row_version"] == original["expected_row_version"]
+    assert retained["ledger_id"] == original["ledger_id"]
+    recovered = web_client.post(action, data={**retained, "debt_kind": original["debt_kind"]})
+    assert recovered.status_code == 200, recovered.text
+    current = _detail(web_client, identity=identity, public_id=debt["public_id"])
+    assert current["row_version"] == 2
+    assert current["debt_kind"] == "revolving"
+    for field in ("principal_amount_cents", "paid_amount_cents", "remaining_amount_cents"):
+        assert current[field] == debt[field]
 
 
 def test_web_debt_kind_and_repayment_void_restore_canonical_fold(
