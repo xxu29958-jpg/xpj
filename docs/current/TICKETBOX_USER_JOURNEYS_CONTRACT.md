@@ -192,9 +192,17 @@ must prevent submission while preserving the task; a replacement binding must
 not receive the old intent. Once the existing Room owner accepts that creation,
 continuation refers to the original key/body and receipt instead of creating a
 second command. Two deliberately separate plans with identical fields remain
-two creations; body equality is not task identity. The native navigation
-counterexample is prepared for cloud execution; these are required outcomes,
-not a claim that the current creation form already satisfies them.
+two creations; body equality is not task identity. Frozen source `d59498cf`
+executed the actual pop/reentry and failed on the restored name being empty
+(Connected `36359132642`, native job `108732697844`, line 155). The #450 candidate
+moves creation input out of the route-owned listing into the existing outer
+MAIN_ROUTE and SavedState mechanism. Stable-key acceptance is atomic in the
+original Room owner, including retained completed submissions. An older system
+snapshot first rejoins the matching original key and complete binding even if
+the accepted input is newer; it must not resubmit the old input. An unresolved
+publication keeps raw input and offers original-submission recovery. Current
+candidate runtime qualification remains pending; this does not claim OS kill
+qualification or completion of other goal and Web draft journeys.
 
 ## Unused tag cleanup
 
