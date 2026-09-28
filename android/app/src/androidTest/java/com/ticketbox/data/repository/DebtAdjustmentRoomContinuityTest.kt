@@ -55,6 +55,41 @@ class DebtAdjustmentRoomContinuityTest {
     fun close() { stopModels(); fixture.close() }
 
     @Test
+    fun offlineKindSelectionSurvivesRoomReopenWithoutClaimingAChangedDebt() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        installModels()
+        compose.setContent {
+            val model = detail.value ?: return@setContent
+            TicketboxTheme(skin = AppSkin.Paper) { DebtDetailScreen(model, proposals, history, {}) }
+        }
+        compose.waitUntil(10_000) { detail.value?.state?.value?.canWriteActions == true }
+        val originalDebt = fixture.network.current
+        fixture.network.failReads = true
+        compose.onNodeWithText(context.getString(R.string.debt_kind_edit)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.debt_kind_revolving)).performClick()
+        compose.waitUntil(10_000) {
+            detail.value?.state?.value?.isSubmitting == false &&
+                (fixture.stored().isNotEmpty() || detail.value?.state?.value?.error != null)
+        }
+        assertEquals("The selected classification must remain a recoverable task while offline", 1, fixture.stored().size)
+        val original = fixture.stored().single()
+        assertEquals("debt:${originalDebt.publicId}", original["targetId"])
+        assertEquals(originalDebt.rowVersion.toString(), original["expectedRowVersion"])
+        assertTrue(!original["idempotencyKey"].isNullOrBlank())
+        assertTrue(original["payload"].orEmpty().contains("revolving"))
+        assertEquals(originalDebt, fixture.network.current)
+        assertTrue(fixture.network.kindCalls.isEmpty())
+        assertEquals(originalDebt.debtKind, detail.value?.state?.value?.debt?.debtKind)
+        stopModels()
+        installModels()
+        compose.waitUntil(10_000) { detail.value?.state?.value?.pendingWrites?.size == 1 }
+        assertEquals(listOf(original), fixture.stored())
+        assertEquals(originalDebt.debtKind, detail.value?.state?.value?.debt?.debtKind)
+        compose.onNodeWithText(context.getString(R.string.debt_kind_revolving), substring = true)
+            .performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
     fun actualSaveAndRetryKeepTheOriginalAdjustmentAcrossRoomReopenAndFailedDetailRead() {
         installModels()
         compose.setContent {

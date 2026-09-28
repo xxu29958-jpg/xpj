@@ -18,6 +18,7 @@ import com.ticketbox.data.remote.dto.DebtRepaymentEvaluationDto
 import com.ticketbox.data.remote.dto.DebtGoalLinkViewDto
 import com.ticketbox.data.remote.dto.DebtListResponseDto
 import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
+import com.ticketbox.data.remote.dto.DebtKindSetRequestDto
 import com.ticketbox.data.remote.dto.DebtRepaymentReceiptDto
 import com.ticketbox.data.remote.dto.RepaymentCreateRequestDto
 import com.ticketbox.data.remote.dto.RepaymentFactDto
@@ -119,10 +120,17 @@ internal class DebtAdjustmentConnectedNetwork {
     var readGate: CompletableDeferred<Unit>? = null
     var loseResponse = true
     val calls = mutableListOf<Pair<DebtAdjustmentCreateRequestDto, String>>()
+    val kindCalls = mutableListOf<Pair<DebtKindSetRequestDto, String>>()
     val results = mutableMapOf<String, DebtDto>()
     val repaymentCalls = mutableListOf<Pair<RepaymentCreateRequestDto, String>>()
     val repaymentResults = mutableMapOf<String, Pair<RepaymentCreateRequestDto, DebtRepaymentReceiptDto>>()
     val service = object : ApiService by debtAdjustmentProxy<ApiService>({ error("Unexpected remote method: $it") }) {
+        override suspend fun setDebtKind(publicId: String, request: DebtKindSetRequestDto, idempotencyKey: String?): DebtDto {
+            check(publicId == current.publicId)
+            kindCalls += request to requireNotNull(idempotencyKey)
+            throw IOException("Synthetic offline classification write")
+        }
+
         override suspend fun debt(publicId: String): DebtDto {
             check(publicId == current.publicId)
             return readCanonicalDebt()
