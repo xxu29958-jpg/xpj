@@ -64,12 +64,7 @@ internal class IncomeQueryReader(
         } catch (error: HttpException) {
             val failure = errors.httpFailure(error)
             coordinator.rejectSnapshotAccess(bound, key, failure)
-            if (error.code() == 404) coordinator.acceptSnapshotRead(ticket, bound, fromCache = false) {
-                if (ticket.sequence >= (latest[queryKey]?.sequence ?: 0)) {
-                    latest[queryKey] = IncomePublishedRead(ticket.sequence, Result.failure(failure))
-                    dao.remove(key, kind, tag)
-                }
-            }
+            if (error.code() == 404) retireMissingQuery(ticket, bound, key, query, failure)
             throw failure
         } catch (error: Exception) {
             if (!error.isReadTransportUnavailable()) throw error
@@ -105,6 +100,17 @@ internal class IncomeQueryReader(
             catch (_: SQLiteException) { /* A storage failure cannot erase an authorized fresh GET. */ }
             latest[queryKey] = IncomePublishedRead(ticket.sequence, Result.success(row))
             ReadSnapshot(value, fetchedAt, fromCache = false)
+        }
+    }
+
+    private suspend fun retireMissingQuery(ticket: SnapshotReadTicket, bound: BoundLedgerRequest, key: String,
+        query: IncomeReadQuery, failure: RepositoryException) {
+        coordinator.acceptSnapshotRead(ticket, bound, fromCache = false) {
+            val queryKey = "$key|${query.kind}|${query.tag}"
+            if (ticket.sequence >= (latest[queryKey]?.sequence ?: 0)) {
+                latest[queryKey] = IncomePublishedRead(ticket.sequence, Result.failure(failure))
+                dao.remove(key, query.kind, query.tag)
+            }
         }
     }
 }

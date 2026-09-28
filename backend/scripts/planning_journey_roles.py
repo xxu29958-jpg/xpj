@@ -43,6 +43,10 @@ def _edit(page, base_url, ledger_id, path, field, value):
 def verify_roles(page, native, fixture, evidence, facts, base_url):
     ledger_id = fixture.ledger_id
     current = facts(ledger_id)
+    # Only 127.0.0.1:PORT is the fixture's installed loopback Host. The localhost
+    # alias reaches the same server through its public Web cookie-session gate,
+    # so a family member is not mistaken for the installation Account.
+    base_url = base_url.replace("127.0.0.1", "localhost")
     with closing(page.context.browser.new_context()) as context:
         member = context.new_page()
         _connect(member, base_url, ledger_id, "member")
