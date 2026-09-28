@@ -37,14 +37,18 @@ private data class SpendingGoalRouteModels(
     val create: CreateSpendingGoalViewModel,
 )
 
+internal data class SpendingGoalRouteContext(
+    val creationOwner: ViewModelStoreOwner,
+    val originalCreationId: Long? = null,
+    val originalGoalPublicId: String? = null,
+    val financialDataRevision: Int = 0,
+)
+
 @Composable
 internal fun SpendingGoalsRoute(
     screenFactory: MainScreenFactory,
     onBack: () -> Unit,
-    creationOwner: ViewModelStoreOwner,
-    originalCreationId: Long? = null,
-    originalGoalPublicId: String? = null,
-    financialDataRevision: Int = 0,
+    context: SpendingGoalRouteContext,
 ) {
     SpendingGoalRouteContent(
         models = SpendingGoalRouteModels(
@@ -58,15 +62,15 @@ internal fun SpendingGoalsRoute(
                 factory = spendingGoalDetailViewModelFactory(screenFactory.reportsRepository, screenFactory.goalEditRepository),
             ),
             create = viewModel(
-                viewModelStoreOwner = creationOwner,
+                viewModelStoreOwner = context.creationOwner,
                 key = CreateSpendingGoalViewModelKey,
                 factory = createSpendingGoalViewModelFactory(screenFactory.goalEditRepository, screenFactory.repositories.ledgerCalendarRepository),
             ),
         ),
         onBack = onBack,
-        originalCreationId = originalCreationId,
-        originalGoalPublicId = originalGoalPublicId,
-        financialDataRevision = financialDataRevision,
+        originalCreationId = context.originalCreationId,
+        originalGoalPublicId = context.originalGoalPublicId,
+        financialDataRevision = context.financialDataRevision,
     )
 }
 
