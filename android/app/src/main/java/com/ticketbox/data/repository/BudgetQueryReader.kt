@@ -122,7 +122,7 @@ internal class BudgetQueryReader(
                 }
                 val saved = try { dao.budgetSnapshotIfCurrent(queryScope, readState, requireSettled = false) }
                     catch (_: SQLiteException) { null }
-                val snapshot = acceptWire(wire, query, ticket, saveGeneration, saved, readState)
+                val snapshot = acceptWire(AcceptedBudgetRead(wire, query, ticket, saveGeneration, readState), saved)
                 if (freshOnly) {
                     // Room keeps its newer query; this independent GET still supplies a fresh result.
                     ReadSnapshot(wire.toDomain(), query.fetchedAt, fromCache = false)
@@ -143,11 +143,10 @@ internal class BudgetQueryReader(
         }
     }
 
-    private suspend fun acceptWire(wire: BudgetMonthlyDto, query: StatsProjectionCacheEntity,
-        ticket: SnapshotReadTicket, saveGeneration: Long, saved: StatsProjectionCacheEntity?, readState: BudgetReadState): ReadSnapshot<BudgetMonthly> {
+    private suspend fun acceptWire(incoming: AcceptedBudgetRead, saved: StatsProjectionCacheEntity?): ReadSnapshot<BudgetMonthly> {
+        val (wire, query, ticket, saveGeneration, readState) = incoming
         requireAcceptedRevision(query.bindingKey, wire, saveGeneration)
         val cacheKey = "${query.bindingKey}|${wire.month}|${query.timezone}"
-        val incoming = AcceptedBudgetRead(wire, query, ticket, saveGeneration, readState)
         val previous = latestAcceptedReads[cacheKey]?.takeIf {
             it.ticket.generation == ticket.generation && it.readState == readState && acceptsRevision(query.bindingKey, it.wire, it.saveGeneration)
         }
