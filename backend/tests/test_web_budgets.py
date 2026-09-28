@@ -15,6 +15,8 @@ from app.models import Budget, LedgerMember
 from app.routes.web_app import _require_local as _web_require_local
 from app.routes.web_budgets import _category_form_rows
 from app.schemas import BudgetCategoryResponse, BudgetMonthlyResponse
+from tests._local_web_identity_support import _connect_local_session, installed_web_setup
+from tests._web_native_form_support import hidden_post_forms
 
 
 @pytest.fixture()
@@ -438,3 +440,55 @@ def test_web_budgets_combines_exclusions_and_removes_marked_category(
         r'name="excluded_category"[^>]+value="自定义"[^>]+checked',
         page.text,
     )
+
+
+@pytest.fixture
+def installed_budget_browser():
+    yield from installed_web_setup()
+
+
+@pytest.mark.real_db
+@pytest.mark.currency_binding_unbound
+@pytest.mark.parametrize("review", [False, True], ids=["save", "review"])
+def test_budget_original_form_survives_a_real_ledger_switch_and_resumes_once(installed_budget_browser, review):
+    installed = installed_budget_browser
+    _connect_local_session(installed)
+    browser = installed.browser
+    browser.base_url = browser.base_url.copy_with(scheme="https")
+    origin = {"Origin": str(browser.base_url).rstrip("/")}
+    action = "/web/budgets/save"
+    month = "2026-02"
+    page = browser.get(f"/web/budgets?month={month}")
+    assert page.status_code == 200, page.text
+    original = {**hidden_post_forms(page.text)[action], "total_amount_yuan": "1500.00",
+        "rollover_amount_yuan": "20.00", "non_monthly_amount_yuan": "30.00",
+        "excluded_category": "医疗", "excluded_categories": "报销",
+        "category_budget_category": "餐饮", "category_budget_amount_yuan": "100.00"}
+    assert original["ledger_id"] == installed.shared_ledger_id
+    assert original["expected_row_version"] == "null"
+    switched = browser.post("/web/auth/ledgers", data={"csrf_token": original["csrf_token"], "ledger_id": "owner"},
+        headers=origin, follow_redirects=False)
+    assert switched.status_code == 303, switched.text
+    refused = browser.post(action, data={**original, "review_latest": str(review).lower()},
+        headers=origin, follow_redirects=False)
+    assert refused.status_code == 409, refused.text
+    assert "切回原账本" in refused.text
+    retained = hidden_post_forms(refused.text)[action]
+    for field, value in original.items():
+        assert retained[field] == value, field
+    with SessionLocal() as db:
+        assert list(db.scalars(select(Budget).where(Budget.month == month))) == []
+    back = browser.post("/web/auth/ledgers", data={"csrf_token": retained["csrf_token"],
+        "ledger_id": installed.shared_ledger_id}, headers=origin, follow_redirects=False)
+    assert back.status_code == 303, back.text
+    for _ in range(2):
+        accepted = browser.post(action, data={**retained, "review_latest": "false"},
+            headers=origin, follow_redirects=False)
+        assert accepted.status_code == 303, accepted.text
+    with SessionLocal() as db:
+        budget, = list(db.scalars(select(Budget).where(Budget.month == month)))
+        assert budget.tenant_id == installed.shared_ledger_id
+        assert budget.total_amount_cents == 150000
+        assert budget.rollover_amount_cents == 2000
+        assert budget.non_monthly_amount_cents == 3000
+        assert budget.row_version == 1
