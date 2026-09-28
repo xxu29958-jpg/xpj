@@ -15,11 +15,20 @@ internal fun CreateDebtGoalViewModel.isCurrentDebtTask(original: DebtGoalCreatio
         task?.creationKey == original.creationKey && task?.viewingOriginalId == original.viewingOriginalId
 
 internal fun CreateDebtGoalViewModel.presentDebtDraft(draft: DebtGoalCreationDraft) {
-    _state.update { it.copy(name = draft.name, selectedDebtIds = draft.selectedIds.toSet(),
+    _state.update { it.withDebtDraft(draft, edits.currentAccess()?.canModify == true) }
+}
+
+private fun CreateDebtGoalUiState.withDebtDraft(draft: DebtGoalCreationDraft, canModify: Boolean,
+    original: PendingGoalCreation? = pending): CreateDebtGoalUiState {
+    val request = original?.request?.takeIf { it.goalType == "debt_repayment" }
+    val showAccepted = original?.let(draft::needsAcceptedDefinition) == true
+    return copy(name = if (showAccepted) request?.name ?: draft.name else draft.name,
+        selectedDebtIds = if (showAccepted) request?.debtPublicIds?.toSet() ?: draft.selectedIds.toSet() else draft.selectedIds.toSet(),
         formError = (if (draft.viewingOriginalId == null) draft.failure else draft.viewFailure)?.text(),
-        canModify = edits.currentAccess()?.canModify == true, creationKey = draft.creationKey,
-        hasDraft = draft.hasDraft, originalSubmissionId = draft.viewingOriginalId ?: draft.acceptedId,
-        isViewingOriginal = draft.viewingOriginalId != null) }
+        canModify = canModify, pending = original,
+        creationKey = if (draft.viewingOriginalId != null) original?.row?.idempotencyKey ?: draft.creationKey else draft.creationKey,
+        hasDraft = draft.hasDraft, originalSubmissionId = original?.row?.id ?: draft.viewingOriginalId ?: draft.acceptedId,
+        isViewingOriginal = draft.viewingOriginalId != null)
 }
 
 internal fun CreateDebtGoalViewModel.activateDebtGoalDraft() {
@@ -31,11 +40,14 @@ internal fun CreateDebtGoalViewModel.activateDebtGoalDraft() {
         return
     }
     val current = store.read(origin) ?: DebtGoalCreationDraft(origin).also(store::write)
+    val previous = task
+    val continuation = _state.value.takeIf { previous != null && previous.binding == current.binding &&
+        previous.creationKey == current.creationKey && previous.viewingOriginalId == current.viewingOriginalId }
     task = current
-    _state.value = CreateDebtGoalUiState()
-    presentDebtDraft(current)
-    _state.update { it.copy(isSubmitting = current.viewingOriginalId == null &&
-        submittingKey == current.creationKey && submitJob?.isActive == true) }
+    _state.value = (continuation ?: CreateDebtGoalUiState())
+        .withDebtDraft(current, edits.currentAccess()?.canModify == true)
+        .copy(isSubmitting = current.viewingOriginalId == null &&
+            submittingKey == current.creationKey && submitJob?.isActive == true)
     observeDebtGoalCreations()
     if (current.viewingOriginalId == null) lookupDebtGoalCreation()
 }
@@ -54,16 +66,11 @@ internal fun CreateDebtGoalViewModel.applyDebtGoalOriginal(original: DebtGoalCre
     } else store.read(original.binding)
     if (!isCurrentDebtTask(original) || saved == null) return
     task = saved
-    presentDebtDraft(saved)
     val request = pending.request?.takeIf { it.goalType == "debt_repayment" }
-    val showAccepted = saved.needsAcceptedDefinition(pending)
     val confirmed = pending.confirmed?.takeIf {
         pending.isDone && request?.isSupportedGoalCreation(pending.row) == true && it.isDebtRepayment
     }
-    _state.update { it.copy(pending = pending, originalSubmissionId = pending.row.id,
-        name = if (showAccepted) request?.name ?: it.name else saved.name,
-        selectedDebtIds = if (showAccepted) request?.debtPublicIds?.toSet() ?: it.selectedDebtIds else saved.selectedIds.toSet(),
-        creationKey = if (original.viewingOriginalId != null) pending.row.idempotencyKey else saved.creationKey,
+    _state.update { it.withDebtDraft(saved, edits.currentAccess()?.canModify == true, pending).copy(
         checkingOriginal = false, acceptanceUncertain = false, createdPublicId = confirmed?.publicId,
         isSubmitting = original.viewingOriginalId == null && submittingKey == original.creationKey && submitJob?.isActive == true) }
 }
@@ -133,4 +140,3 @@ internal fun CreateDebtGoalViewModel.settleDebtGoalFailure(original: DebtGoalCre
     presentDebtDraft(saved)
     _state.update { it.copy(checkingOriginal = false, acceptanceUncertain = true) }
 }
-
