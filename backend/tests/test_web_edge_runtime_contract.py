@@ -56,6 +56,8 @@ def test_income_create_original_form_draft_survives_refresh_in_real_edge(tmp_pat
     environment = Environment(
         loader=ChoiceLoader([
             DictLoader({"base.html": '<!doctype html><html><head><meta charset="utf-8">'
+                        '<script>window.__incomeScriptErrors=[];'
+                        'window.addEventListener("error",e=>window.__incomeScriptErrors.push(e.message));</script>'
                         '{% block page_scripts %}{% endblock %}</head><body>'
                         '{% block content %}{% endblock %}</body></html>'}),
             FileSystemLoader(templates),

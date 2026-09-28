@@ -34,7 +34,14 @@
       amountInputmode: field('amount_yuan').inputMode,
       intentNotice: form().querySelector('p.meta')?.textContent.trim(),
       hash: frame.contentWindow.location.hash,
-      navigationType: frame.contentWindow.performance.getEntriesByType('navigation')[0]?.type
+      navigationType: frame.contentWindow.performance.getEntriesByType('navigation')[0]?.type,
+      draftStatus: doc.querySelector('[data-income-draft-status]')?.textContent,
+      draftPhase: form().dataset.incomeDraftPhase,
+      draftScope: form().elements.namedItem('draft_scope')?.value,
+      hasStore: !!frame.contentWindow.TicketboxDraftStore,
+      hasLocks: !!frame.contentWindow.navigator.locks,
+      scriptErrors: frame.contentWindow.__incomeScriptErrors || [],
+      savedDraft: record(field('idempotency_key').value)
     };
   }
   function documentLoaded(target = frame) {
