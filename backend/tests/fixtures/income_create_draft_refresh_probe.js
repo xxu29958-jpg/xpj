@@ -1,5 +1,5 @@
 (async function () {
-  const result = {before: null, after: null, error: null};
+  const result = {before: null, after: null, unknown: null, duplicate: null, completed: null, error: null};
   let stage = 'open original income form';
   const names = [
     'label', 'amount_yuan', 'source_type', 'frequency', 'pay_day',
@@ -9,6 +9,17 @@
   const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
   const frame = document.createElement('iframe');
   const form = () => frame.contentDocument.querySelector('form[action="/web/income-plans/create"]');
+  const submit = target => target.contentDocument.querySelector('form[action="/web/income-plans/create"] [type="submit"]:not([name="review_new"])');
+  const storageKey = ref => 'ticketbox:income-create-draft:v1:' + ref;
+  const record = ref => JSON.parse(window.localStorage.getItem(storageKey(ref)));
+  async function until(predicate) {
+    const deadline = performance.now() + 1500;
+    while (performance.now() < deadline) {
+      if (predicate()) return;
+      await pause(25);
+    }
+    throw Error('business state did not settle: ' + stage);
+  }
   function field(name) {
     const input = form()?.elements.namedItem(name);
     if (!input) throw Error('original income form missing field: ' + name);
@@ -26,10 +37,10 @@
       navigationType: frame.contentWindow.performance.getEntriesByType('navigation')[0]?.type
     };
   }
-  function documentLoaded() {
+  function documentLoaded(target = frame) {
     return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(Error('income document load timed out')), 2500);
-      frame.addEventListener('load', () => {clearTimeout(timeout); resolve();}, {once: true});
+      const timeout = setTimeout(() => reject(Error('income document load timed out: ' + stage)), 2500);
+      target.addEventListener('load', () => {clearTimeout(timeout); resolve();}, {once: true});
     });
   }
   try {
@@ -66,6 +77,48 @@
       result.after = snapshot();
       if (names.every(name => result.after.fields[name] === result.before.fields[name])) break;
     } while (performance.now() < deadline);
+    if (!names.every(name => result.after.fields[name] === result.before.fields[name])) {
+      // Keep the first business RED at the observed lost fields, before attempting the rest of the chain.
+      window.__incomeDraftRefreshProbe = result;
+      return;
+    }
+    const originalRef = result.before.fields.idempotency_key;
+    stage = 'submit original form to synthetic unavailable response';
+    await until(() => submit(frame) && !submit(frame).disabled);
+    submit(frame).click();
+    await until(() => record(originalRef)?.phase === 'blocked' && !submit(frame).disabled);
+    result.unknown = {
+      ...snapshot(), record: record(originalRef),
+      frozen: names.filter(name => field(name).type !== 'hidden').every(name =>
+        field(name).tagName === 'SELECT' ? field(name).disabled : field(name).readOnly)
+    };
+
+    stage = 'open same original draft in a second tab';
+    const duplicate = document.createElement('iframe');
+    const duplicateLoaded = documentLoaded(duplicate);
+    duplicate.src = '/web/income-plans?ledger_id=income-ledger#income-create-' + originalRef;
+    document.body.append(duplicate);
+    await duplicateLoaded;
+    await pause(100);
+    submit(duplicate).click();
+    await pause(100);
+    result.duplicate = {submitDisabled: submit(duplicate).disabled, record: record(originalRef)};
+    duplicate.remove();
+
+    stage = 'retry original submission and consume matched synthetic receipt';
+    const acknowledged = documentLoaded();
+    submit(frame).click();
+    await acknowledged;
+    stage = 'verify matched ACK retires original and enables fresh form';
+    await until(() => submit(frame) && !submit(frame).disabled);
+    result.completed = {
+      originalRemoved: window.localStorage.getItem(storageKey(originalRef)) === null,
+      newFormAvailable: field('label').value === '' && field('amount_yuan').value === '' &&
+        !field('label').readOnly && !field('source_type').disabled && !submit(frame).disabled,
+      newKey: field('idempotency_key').value,
+      location: frame.contentWindow.location.pathname + frame.contentWindow.location.search,
+      hash: frame.contentWindow.location.hash
+    };
   } catch (error) {
     result.error = {stage, message: String(error?.message || error)};
   }

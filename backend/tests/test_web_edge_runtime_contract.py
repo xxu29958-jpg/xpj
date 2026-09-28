@@ -10,14 +10,17 @@ from __future__ import annotations
 
 import html
 import importlib.util
+import json
 import os
 import shutil
 import sys
 import threading
+from email import policy
+from email.parser import BytesParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from types import ModuleType
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from jinja2 import ChoiceLoader, DictLoader, Environment, FileSystemLoader, select_autoescape
@@ -63,6 +66,7 @@ def test_income_create_original_form_draft_survives_refresh_in_real_edge(tmp_pat
     scope = {"datasetId": "income-dataset", "clientGeneration": "income-generation",
              "accountId": "income-account", "ledgerId": "income-ledger", "deviceId": "income-device"}
     requests: list[dict[str, str]] = []
+    posts: list[dict[str, str]] = []
     missing_resources: list[str] = []
 
     class Handler(BaseHTTPRequestHandler):
@@ -117,12 +121,38 @@ def test_income_create_original_form_draft_survives_refresh_in_real_edge(tmp_pat
             else:
                 self.reply(b"not found", status=404)
 
+        def do_POST(self) -> None:
+            if urlsplit(self.path).path != "/web/income-plans/create":
+                self.reply(b"not found", status=404)
+                return
+            raw = self.rfile.read(int(self.headers["Content-Length"]))
+            content_type = self.headers.get("Content-Type", "")
+            if content_type.startswith("multipart/form-data"):
+                message = BytesParser(policy=policy.default).parsebytes(
+                    f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n".encode() + raw)
+                fields = {part.get_param("name", header="content-disposition"):
+                          part.get_payload(decode=True).decode("utf-8") for part in message.iter_parts()}
+            else:
+                fields = {name: values[0] for name, values in parse_qs(raw.decode(), keep_blank_values=True).items()}
+            posts.append(fields)
+            if len(posts) == 1:
+                # Synthetic unavailable response: no ACK and no financial database claim.
+                self.reply(json.dumps({"message": "synthetic unknown result"}).encode(),
+                           content_type="application/json", status=503)
+                return
+            self.reply(json.dumps({
+                "ack": {"scope": scope, "clientRef": fields["idempotency_key"]},
+                "receipt": {"public_id": "synthetic-income-receipt"},
+                "next": "/web/income-plans?ledger_id=income-ledger",
+            }).encode(), content_type="application/json")
+
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
 
     def prepare_url(_attempt: int) -> str:
         requests.clear()
+        posts.clear()
         missing_resources.clear()
         return f"http://127.0.0.1:{server.server_port}/"
 
@@ -139,7 +169,7 @@ def test_income_create_original_form_draft_survives_refresh_in_real_edge(tmp_pat
     assert missing_resources == [], f"actual template script failed to load: {missing_resources}"
     assert isinstance(probe, dict)
     assert probe.get("error") is None, probe
-    assert requests == [
+    assert requests[:2] == [
         {"currency": "JPY", "month": "2026-09", "key": "19793a9e-7861-4c02-ae44-1cb35c5a1cdd"},
         {"currency": "CNY", "month": "2026-10", "key": "aa740c64-6e8d-45e8-80fd-5dd26a2f7126"},
     ]
@@ -155,6 +185,25 @@ def test_income_create_original_form_draft_survives_refresh_in_real_edge(tmp_pat
     assert probe["after"]["amountInputmode"] == "numeric", probe
     assert "2026-09" in probe["after"]["intentNotice"], probe
     assert "2026-10" not in probe["after"]["intentNotice"], probe
+    assert probe["unknown"]["fields"] == expected, probe
+    assert probe["unknown"]["frozen"] is True, probe
+    assert probe["unknown"]["record"]["clientRef"] == expected["idempotency_key"], probe
+    assert probe["unknown"]["record"]["phase"] == "blocked", probe
+    assert probe["duplicate"]["submitDisabled"] is True, probe
+    assert probe["duplicate"]["record"] == probe["unknown"]["record"], probe
+    assert probe["completed"] == {"originalRemoved": True, "newFormAvailable": True,
+                                  "newKey": "aa740c64-6e8d-45e8-80fd-5dd26a2f7126",
+                                  "location": "/web/income-plans?ledger_id=income-ledger", "hash": ""}, probe
+    assert requests[2:] == [
+        {"currency": "CNY", "month": "2026-10", "key": "aa740c64-6e8d-45e8-80fd-5dd26a2f7126"},
+        {"currency": "CNY", "month": "2026-10", "key": "aa740c64-6e8d-45e8-80fd-5dd26a2f7126"},
+    ], requests
+    assert len(posts) == 2, posts
+    assert posts[0] == posts[1], posts
+    for name, value in expected.items():
+        assert posts[0][name] == value, posts
+    assert posts[0]["ledger_id"] == scope["ledgerId"], posts
+    assert json.loads(posts[0]["draft_scope"]) == scope, posts
 
 
 def test_drawer_fx_status_and_retry_keep_draft_until_explicit_load_in_real_edge(tmp_path: Path) -> None:
