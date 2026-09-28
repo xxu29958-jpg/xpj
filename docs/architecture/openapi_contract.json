@@ -4047,6 +4047,11 @@
             "title": "Category",
             "type": "string"
           },
+          "draft_scope": {
+            "default": "",
+            "title": "Draft Scope",
+            "type": "string"
+          },
           "expected_row_version": {
             "default": "",
             "title": "Expected Row Version",
@@ -4124,6 +4129,11 @@
             "title": "Category",
             "type": "string"
           },
+          "draft_scope": {
+            "default": "",
+            "title": "Draft Scope",
+            "type": "string"
+          },
           "home_currency_code": {
             "default": "",
             "title": "Home Currency Code",
@@ -4148,6 +4158,11 @@
             "default": "",
             "title": "Name",
             "type": "string"
+          },
+          "review_new": {
+            "default": false,
+            "title": "Review New",
+            "type": "boolean"
           },
           "target_amount_yuan": {
             "default": "",

@@ -275,8 +275,22 @@ version/month without writing or retiring an unresolved original. An accepted
 edit's receipt remains stable after later changes or archival; matching identity
 and ACK are required before local retirement. #460 reuses the existing draft,
 binding and income command owners for this consumer. Real PostgreSQL and Edge
-counterexamples are recorded in the map; final implementation qualification is
-still pending.
+counterexamples and the qualified source `34c02aef` / merged main `4e611a87`
+are recorded in the map. This closes the Web income continuation, not the full RC.
+
+
+Web spending-goal creation and editing follow the same browser continuation
+owner as income: original raw amount/category/month/currency/key/OCC and category
+return location survive reload and reopening. A replacement browser cannot
+publish or prepare the old identity's task. Read-only membership retains the
+draft and current facts; restored permission can resume the same command. The
+existing Goal command supplies the first receipt, even after later changes or
+archive. Only a matching bound ACK retires the original. Explicit review prepares
+a separate proposal without writing or deleting unresolved work. The native
+form remains usable. PR #461 supplies this consumer and retires the former
+income-only script while retaining its stored record format; cloud qualification
+is pending. The integrated income/goal journey must keep predictions and spending
+reminders distinct from confirmed financial facts and budget configuration.
 
 Creation admission errors remain attached to the same raw draft through reopening and
 system saved-state restoration. An unknown or abandoned original row must not retire

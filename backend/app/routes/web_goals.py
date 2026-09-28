@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+import json
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
 from app.errors import AppError
+from app.routes._web_draft_binding import draft_ack_response, require_draft_binding
+from app.routes._web_session_common import resolve_web_actor_account_id
 from app.routes.web_common import (
     LocalOnly,
     _amount_yuan,
@@ -33,6 +36,7 @@ from app.services.goal_create_command import create_spending_goal_idempotently
 from app.services.goal_history_service import goal_history
 from app.services.goal_service import archive_goal, list_goals
 from app.services.ledger_calendar_service import current_ledger_month
+from app.services.manual_expense_draft_presenter import manual_draft_scope
 
 router = APIRouter(prefix="/web/goals", tags=["web"])
 
@@ -92,6 +96,7 @@ def _render_goals(
     error: str | None = None,
     values: dict[str, str] | None = None,
     status_code: int = 200,
+    draft_result: str = "",
 ) -> HTMLResponse:
     timezone_name = get_settings().ocr_default_timezone
     goals = list_goals(
@@ -126,7 +131,9 @@ def _render_goals(
         form_currency = currency_input_metadata(values.get("home_currency_code"))
     except AppError:
         form_currency = {}
-    ctx.update(values=values, form_currency=form_currency)
+    auth = getattr(request.state, "web_session_auth", None)
+    ctx.update(values=values, form_currency=form_currency, goal_draft_result=draft_result,
+        goal_draft_scope=manual_draft_scope(db, auth) if auth is not None else None)
     return templates.TemplateResponse(request=request, name="goals.html", context=ctx, status_code=status_code)
 
 
@@ -164,21 +171,32 @@ def web_goals_create(
     category: str = Form(default=""),
     home_currency_code: str = Form(default=""),
     idempotency_key: str = Form(default=""),
+    draft_scope: str = Form(default=""), review_new: bool = Form(default=False),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
-) -> HTMLResponse:
+) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     timezone_name = get_settings().ocr_default_timezone
     target_month = (month or "").strip() or current_ledger_month(db, ledger_id=selected_id)
     values = {"name": name, "month": month, "target_amount_yuan": target_amount_yuan,
-        "category": category, "home_currency_code": home_currency_code, "idempotency_key": idempotency_key}
+        "category": category, "home_currency_code": home_currency_code, "idempotency_key": idempotency_key,
+        "draft_scope": draft_scope}
     retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
         fields={**values, "ledger_id": ledger_id}, task="添加支出目标")
     if retained is not None:
         return retained
-    _require_selected_ledger_write(options, selected_id)
     try:
+        auth = getattr(request.state, "web_session_auth", None)
+        if review_new and auth is not None and not draft_scope:
+            values["draft_scope"] = json.dumps(manual_draft_scope(db, auth))
+        require_draft_binding(db, request, ledger_id=selected_id,
+            draft_scope=values["draft_scope"], require_session=False)
+        _require_selected_ledger_write(options, selected_id)
+        if review_new:
+            values.update(idempotency_key=str(uuid4()), month=target_month)
+            return _render_goals(request=request, db=db, options=options, selected_id=selected_id,
+                month=target_month, include_archived=False, values=values, draft_result="prepared")
         presentation_currency = normalize_currency_code(home_currency_code)
         payload = GoalCreateRequest(
             name=name,
@@ -190,22 +208,25 @@ def web_goals_create(
             ),
             category=category.strip() or None,
         )
-        create_spending_goal_idempotently(db, tenant_id=selected_id, payload=payload,
-            idempotency_key=idempotency_key, timezone_name=timezone_name)
+        receipt = create_spending_goal_idempotently(db, tenant_id=selected_id, payload=payload,
+            idempotency_key=idempotency_key, timezone_name=timezone_name,
+            actor_account_id=resolve_web_actor_account_id(db, request, selected_id))
     except (AppError, ValidationError) as exc:
-        db.rollback()
-        return _render_goals(
-            request=request,
-            db=db,
-            options=options,
-            selected_id=selected_id,
-            month=target_month,
-            include_archived=False,
-            error=exc.message if isinstance(exc, AppError) else "请检查目标名称、月份、金额和币种。输入已保留。",
-            values=values,
-            status_code=exc.status_code if isinstance(exc, AppError) else 422,
-        )
-    return _web_redirect("/web/goals", selected_id, month=target_month, msg="目标已保存。")
+        return _create_refusal(request, db, options, selected_id, target_month, values, exc)
+    redirect = _web_redirect("/web/goals", selected_id, month=receipt.month, msg="目标已保存。")
+    return draft_ack_response(request, draft_scope=draft_scope, idempotency_key=idempotency_key,
+        receipt=receipt.model_dump(mode="json"), next_href=redirect.headers["location"]) or redirect
+
+
+def _create_refusal(request, db, options, selected_id, month, values, exc):
+    db.rollback()
+    message = exc.message if isinstance(exc, AppError) else "请检查目标名称、月份、金额和币种。输入已保留。"
+    status = exc.status_code if isinstance(exc, AppError) else 422
+    if "application/json" in request.headers.get("accept", ""):
+        return JSONResponse({"error": exc.error if isinstance(exc, AppError) else "invalid_request",
+            "message": message, "draft_result": "blocked"}, status_code=status, headers={"Cache-Control": "no-store"})
+    return _render_goals(request=request, db=db, options=options, selected_id=selected_id,
+        month=month, include_archived=False, values=values, error=message, status_code=status, draft_result="blocked")
 
 
 @router.post("/{public_id}/archive")

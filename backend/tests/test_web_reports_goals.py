@@ -361,6 +361,7 @@ def test_web_goals_create_archive_and_viewer_guard(web_client: TestClient, *, id
             "name": "只读目标",
             "target_amount_yuan": "100.00",
         },
+        headers={"Accept": "application/json"},
     )
     assert denied.status_code == 403
     assert denied.json()["error"] == "permission_denied"
