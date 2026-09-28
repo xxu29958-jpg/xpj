@@ -466,3 +466,112 @@ def test_drawer_save_resynchronizes_selected_row_occ_consumers_in_real_edge(
         "selectedCount": "1",
     }
     _assert_review_keyboard_behaves_in_real_edge(tmp_path)
+
+
+@pytest.mark.parametrize("kind", ["create", "edit"])
+def test_goal_original_input_survives_reload_and_reopening_in_real_edge(tmp_path: Path, kind: str) -> None:
+    """Real goal templates and storage; current projections cannot replace intent."""
+    static = (_REPO_ROOT / "backend/app/static").resolve()
+    environment = Environment(loader=ChoiceLoader([
+        DictLoader({"base.html": '<!doctype html><html><head><meta charset="utf-8">'
+            '{% block page_scripts %}{% endblock %}</head><body>{% block content %}{% endblock %}</body></html>'}),
+        FileSystemLoader(_REPO_ROOT / "backend/app/templates/web"),
+    ]), autoescape=select_autoescape(["html"]))
+    template = environment.get_template("goals.html" if kind == "create" else "goal_edit.html")
+    scope = {"datasetId": "goal-dataset", "clientGeneration": "goal-generation", "accountId": "goal-account",
+        "ledgerId": "goal-ledger", "deviceId": "goal-device"}
+    original_key, newer_key = "091b6930-3f0c-4070-b8ef-5b0f1a1d0022", "ff626aac-4e4b-407a-91e2-ec188f112866"
+    path = "/web/goals" if kind == "create" else "/web/goals/goal-original/edit"
+    action = "/web/goals/create" if kind == "create" else path
+    fields = ["name", "target_amount_yuan", "category", "month", "home_currency_code", "idempotency_key"]
+    if kind == "edit":
+        fields += ["expected_row_version", "return_category", "return_month"]
+    spec = {"kind": kind, "action": action, "fields": fields,
+        "open": path + "?ledger_id=goal-ledger&return_category=food&return_month=2026-09",
+        "reopen": path + "?ledger_id=goal-ledger&month=2026-10",
+        "input": {"name": "九月原目标", "target_amount_yuan": " 001200 ", "category": "原分类"}}
+    visits, posts, missing = [], [], []
+
+    def goal_page(query):
+        newer = bool(visits)
+        visits.append(path)
+        currency = "CNY" if newer and kind == "create" else "JPY"
+        current = {"name": "另一端已修改" if newer else "已有目标", "month": "2026-10" if newer else "2026-09",
+            "category": "交通", "target_amount_yuan": "9999" if newer else "1000",
+            "home_currency_code": currency, "expected_row_version": "8" if newer else "7"}
+        if kind == "create":
+            current.update(name="", category="", target_amount_yuan="")
+        values = {**current, "idempotency_key": newer_key if newer else original_key,
+            "return_category": query.get("return_category", [""])[0], "return_month": query.get("return_month", [""])[0]}
+        return template.render(values=values, current=current, month=current["month"], goals=[], include_archived=False,
+            goal={"public_id": "goal-original", "status": "active"}, can_write=True, currency_matches=True,
+            form_currency={"currency_code": currency, "amount_input_hint": "整数日元" if currency == "JPY" else "两位小数",
+                "inputmode": "numeric" if currency == "JPY" else "decimal", "amount_example": "0"},
+            selected_ledger_id=scope["ledgerId"], goal_draft_scope=scope, goal_draft_result="",
+            category_return_url="", current_edit_url=path, error=None, message=None, conflict=False,
+            asset_version="goal-continuation", csrf_field='<input type="hidden" name="csrf_token" value="synthetic">').encode()
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *_args):
+            pass
+
+        def reply(self, body, *, content_type="text/html; charset=utf-8", status=200):
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            requested = urlsplit(self.path).path
+            if requested == "/":
+                self.reply(b'<!doctype html><html><head><meta charset="utf-8"></head><body><script src="/probe.js"></script></body></html>')
+                return
+            if requested == path:
+                self.reply(goal_page(parse_qs(urlsplit(self.path).query)))
+                return
+            if requested == "/probe.js":
+                self.reply(('window.__goalDraftCase=' + json.dumps(spec) + ';\n').encode() +
+                    (_REPO_ROOT / "backend/tests/fixtures/goal_draft_refresh_probe.js").read_bytes(), content_type="text/javascript")
+                return
+            if requested.startswith("/static/"):
+                resource = (static / requested.removeprefix("/static/")).resolve()
+                if resource.is_relative_to(static) and resource.is_file():
+                    self.reply(resource.read_bytes(), content_type="text/javascript")
+                    return
+                missing.append(requested)
+            self.reply(b"not found", status=404)
+
+        def do_POST(self):
+            posts.append(self.path)
+            self.reply(b"unexpected write", status=409)
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    def prepare_url(_attempt):
+        visits.clear()
+        posts.clear()
+        missing.clear()
+        return f"http://127.0.0.1:{server.server_port}/"
+
+    try:
+        probe = _edge_cdp().evaluate_page(_discover_edge(), profile=tmp_path / ("edge-goal-" + kind),
+            prepare_url=prepare_url, width=1024, height=768, expression="window.__goalDraftProbe || undefined")
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+    assert posts == [] and missing == [], (posts, missing)
+    assert isinstance(probe, dict) and probe.get("error") is None, probe
+    expected = {**spec["input"], "month": "2026-09", "home_currency_code": "JPY", "idempotency_key": original_key}
+    if kind == "edit":
+        expected.update(expected_row_version="7", return_category="food", return_month="2026-09")
+    assert probe["before"]["fields"] == expected, probe
+    assert probe["after"]["fields"] == expected, f"reload replaced the original {kind} goal: {probe}"
+    assert probe["after"]["navigationType"] == "reload", probe
+    assert probe["reopened"]["fields"] == expected and "JPY" in probe["reopened"]["amountLabel"], probe
+    if kind == "edit":
+        assert "另一端已修改" in probe["reopened"]["current"], probe
