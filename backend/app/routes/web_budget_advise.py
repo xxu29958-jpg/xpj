@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
-from app.routes._web_draft_binding import browser_draft_scope, require_draft_binding
+from app.routes._web_draft_binding import rendered_draft_scope, require_draft_binding
 from app.routes.web_budget_fx import router as rates_router
 from app.routes.web_common import (
     LocalOnly,
@@ -112,6 +112,16 @@ def page_budget_advise_run(
     )
 
 
+def _trial_binding_failure(db, request, selected, draft_scope, draft_result):
+    if draft_result:
+        return None
+    try:
+        require_draft_binding(db, request, ledger_id=selected, draft_scope=draft_scope or "", require_session=False)
+    except AppError as exc:
+        return exc
+    return None
+
+
 def _render_budget_advise(
     request: Request,
     *,
@@ -144,12 +154,9 @@ def _render_budget_advise(
                 "idempotency_key": idempotency_key, "draft_scope": draft_scope}, task="查看本月安排")
         if retained is not None:
             return retained
-        if not draft_result:
-            try:
-                require_draft_binding(db, request, ledger_id=selected, draft_scope=draft_scope or "", require_session=False)
-            except AppError as exc:
-                save_error, response_status, draft_result = exc.message, exc.status_code, "blocked"
-                run_advise, allow_outbound = False, False
+        if refusal := _trial_binding_failure(db, request, selected, draft_scope, draft_result):
+            save_error, response_status, draft_result = refusal.message, refusal.status_code, "blocked"
+            run_advise, allow_outbound = False, False
     readiness_ctx = _advisor_readiness_context(request, selected=selected, options=options)
     month_label = month or current_ledger_month(db, ledger_id=selected)
     home = normalize_currency_code(home_currency_code or require_runtime_home_currency_code(db))
@@ -173,9 +180,8 @@ def _render_budget_advise(
     home = projection.home_currency_code
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected, page_title="本月安排")
     ctx.update(readiness_ctx)
-    scope = browser_draft_scope(db, request)
-    binding_required = scope is not None and draft_scope == ""
-    ctx.update(arrangement_draft_scope=None if binding_required else scope, draft_scope=draft_scope,
+    scope, binding_required = rendered_draft_scope(db, request, draft_scope)
+    ctx.update(arrangement_draft_scope=scope, draft_scope=draft_scope,
         arrangement_binding_required=binding_required,
         arrangement_draft_result=draft_result)
     ctx.update(_projection_context(projection, form_error=form_error))

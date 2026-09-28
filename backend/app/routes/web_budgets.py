@@ -13,10 +13,10 @@ from app.database import get_db
 from app.errors import AppError
 from app.money_contract import projection_sum_to_int
 from app.routes._web_draft_binding import (
-    browser_draft_scope,
     draft_ack_response,
     draft_error_response,
     draft_refusal_result,
+    rendered_draft_scope,
     require_draft_binding,
     reviewed_draft_scope,
 )
@@ -283,9 +283,8 @@ def _render_budgets(
         selected_month=month,
     )
     ctx["month"] = month
-    scope = browser_draft_scope(db, request)
-    binding_required = scope is not None and draft is not None and not draft.get("draft_scope")
-    ctx.update(budget_draft_scope=None if binding_required else scope, budget_draft_result=draft_result)
+    scope, binding_required = rendered_draft_scope(db, request, draft.get("draft_scope", "") if draft is not None else None)
+    ctx.update(budget_draft_scope=scope, budget_draft_result=draft_result)
     budget_view = _budget_view(
         budget,
         currency_code=budget.home_currency_code,

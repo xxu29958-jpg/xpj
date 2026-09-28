@@ -17,6 +17,13 @@ def browser_draft_scope(db: Session, request: Request) -> dict | None:
     return manual_expense_draft_presenter.manual_draft_scope(db, auth) if auth is not None else None
 
 
+def rendered_draft_scope(db: Session, request: Request, captured_scope: str | None) -> tuple[dict | None, bool]:
+    """A native form without captured identity exposes review before browser draft enhancement."""
+    scope = browser_draft_scope(db, request)
+    binding_required = scope is not None and captured_scope == ""
+    return (None if binding_required else scope), binding_required
+
+
 def reviewed_draft_scope(db: Session, request: Request, draft_scope: str, *, review: bool) -> str:
     """An older native form acquires identity only through explicit, non-writing review."""
     if review and not draft_scope and (current := browser_draft_scope(db, request)) is not None:

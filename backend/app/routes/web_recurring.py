@@ -122,6 +122,13 @@ def _recurring_hero(db, *, selected_id, items, currency_code, due_dates):
     return hero_view(active, currency_code=currency_code, total_cents=total, due_dates=due_dates)
 
 
+def _visible_recurring_items(items, status, open_edit_id, draft):
+    if status:
+        return [item for item in items if item.status == status]
+    return [item for item in items if item.status != "archived" or item.public_id == open_edit_id or
+        (draft and item.public_id == draft.get("public_id"))]
+
+
 def _render_recurring(
     *,
     request: Request,
@@ -158,11 +165,7 @@ def _render_recurring(
     currency_code = ctx["home_currency_code"]
     ctx["currency_options"] = [currency_code, *sorted(supported_currency_codes() - {currency_code})]
     # 列表按状态筛选, 默认「全部」不带归档尸体; hero 与筛选解耦, 始终全体 active。
-    if status:
-        visible = [item for item in all_items if item.status == status]
-    else:
-        visible = [item for item in all_items if item.status != "archived" or item.public_id == open_edit_id or
-            (draft and item.public_id == draft.get("public_id"))]
+    visible = _visible_recurring_items(all_items, status, open_edit_id, draft)
     due_dates = next_due_dates(db, tenant_id=selected_id, items=all_items)
     ctx["items"] = [
         item_view(

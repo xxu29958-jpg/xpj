@@ -81,6 +81,19 @@ def _retained_response(request, db, form, *, error=None, message=None, conflict=
         draft_scope=form.draft_scope, draft_result=draft_result)
 
 
+def _review_arrangement_form(request, db, form, selected, month):
+    accepted = review_monthly_arrangement_save(db, tenant_id=selected, month=month,
+        idempotency_key=form.idempotency_key)
+    latest = read_monthly_arrangement(db, tenant_id=selected, month=month)
+    if latest and latest.home_currency_code != (form.arrangement_currency_code or form.home_currency_code):
+        return _retained_response(request, db, form, error="当前安排与原输入币种不同，原金额已保留。请打开当前安排重新编辑。",
+            conflict=True, status_code=409)
+    form.expected_row_version = str(latest.row_version) if latest else "null"
+    if accepted:
+        form.idempotency_key = str(uuid4())
+    return _retained_response(request, db, form, draft_result="prepared", message="已保留输入并载入当前版本，请核对后再保存。")
+
+
 @router.post("/save", response_class=HTMLResponse)
 def save_arrangement_form(request: Request, form: MonthlyArrangementForm = Form(),
     db: Session = Depends(get_db), _local: None = LocalOnly) -> HTMLResponse:
@@ -96,16 +109,7 @@ def save_arrangement_form(request: Request, form: MonthlyArrangementForm = Form(
         form.draft_scope = reviewed_draft_scope(db, request, form.draft_scope, review=form.review_latest)
         require_draft_binding(db, request, ledger_id=selected, draft_scope=form.draft_scope, require_session=False)
         if form.review_latest:
-            accepted = review_monthly_arrangement_save(db, tenant_id=selected, month=month,
-                idempotency_key=form.idempotency_key)
-            latest = read_monthly_arrangement(db, tenant_id=selected, month=month)
-            if latest and latest.home_currency_code != (form.arrangement_currency_code or form.home_currency_code):
-                return _retained_response(request, db, form, error="当前安排与原输入币种不同，原金额已保留。请打开当前安排重新编辑。",
-                    conflict=True, status_code=409)
-            form.expected_row_version = str(latest.row_version) if latest else "null"
-            if accepted:
-                form.idempotency_key = str(uuid4())
-            return _retained_response(request, db, form, draft_result="prepared", message="已保留输入并载入当前版本，请核对后再保存。")
+            return _review_arrangement_form(request, db, form, selected, month)
         receipt = save_monthly_arrangement(db, tenant_id=selected, month=month, payload=arrangement_payload(form),
             actor_account_id=resolve_web_actor_account_id(db, request, selected), idempotency_key=form.idempotency_key)
     except AppError as exc:

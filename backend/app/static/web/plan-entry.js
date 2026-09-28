@@ -235,17 +235,20 @@
         window.location.assign(freshHref());
       } catch (_) { notice("原稿未能移除，请保留页面并检查浏览器存储。"); }
     });
-    form.addEventListener("submit", async event => {
-      if (onlineOnly) return;
-      if (event.submitter?.hasAttribute("data-plan-preview") && fieldsEditable() && !busy) {
-        capture(); return;
+    function allowNativeSubmission(submitter) {
+      if (submitter?.hasAttribute("data-plan-preview") && fieldsEditable() && !busy) {
+        capture(); return true;
       }
       // The existing explicit review prepares a fresh form without submitting a plan.
-      if (event.submitter?.name === reviewName && editsAllowed && held && !busy && !blocked &&
+      if (submitter?.name === reviewName && editsAllowed && held && !busy && !blocked &&
           (!definition.reviewRequiresRejection || reviewable)) {
         [...form.elements].forEach(input => { if (input.tagName === "SELECT" || input.type === "checkbox") input.disabled = false; });
-        return;
+        return true;
       }
+      return false;
+    }
+    form.addEventListener("submit", async event => {
+      if (onlineOnly || allowNativeSubmission(event.submitter)) return;
       event.preventDefault();
       if (!commandAllowed() || !held || busy || accepted || blocked) return;
       busy = true; controls(); notice("正在提交原" + taskLabel + "…");
@@ -268,20 +271,42 @@
       notice(record ? phase === "editing" ? "已恢复原" + taskLabel + "，保留原币种、月份和目标版本。" :
         "原提交结果尚未确认。核实会沿用原内容和编号。" : "输入会保留在此浏览器，尚未提交。");
     }
+    function selectDraft(records, nativeResult) {
+      let wanted = window.location.hash.startsWith(anchor) ? window.location.hash.slice(anchor.length) : "";
+      if (definition.multiple && wanted && !belongsToForm(store.read(wanted) || {values: {}})) wanted = "";
+      const separateNewForm = data("NewDraft") === "true";
+      if (separateNewForm) wanted = "";
+      const explicitNew = separateNewForm || new URL(window.location.href).searchParams.get("new_" + family) === "1";
+      const preferred = records.find(record => record.phase !== "editing") || records[0];
+      return {wanted, ref: nativeResult ? nativeRef : wanted || (!explicitNew && preferred ? preferred.clientRef : nativeRef)};
+    }
+    function resumeDraft(record, nativeResult) {
+      if (record && nativeResult === "prepared" && record.serverResult === "rejected") {
+        store.save(scope, ref, "editing", values(), "rejected");
+        phase = "editing"; pointTo();
+      } else if (record) {
+        if (!restore(record)) return false;
+      } else if (["blocked", "rejected"].includes(nativeResult)) {
+        phase = "blocked"; reviewable = nativeResult === "rejected";
+      }
+      if (!store.matches(JSON.parse(field("draft_scope").value), scope)) {
+        stop("身份或账本已切换，原输入仍保留；请恢复原身份后继续。"); return false;
+      }
+      if (!record && nativeResult) persist(phase, nativeResult === "rejected" ? "rejected" : "");
+      if (record && definition.multiple && form.closest("details")) form.closest("details").open = true;
+      controls();
+      activationNotice(record);
+      return true;
+    }
     function activate() {
       const currentLease = ++leaseVersion;
       blocked = false; controls();
       if (!window.navigator.locks) { allowOnline(); return; }
       try {
-        const records = renderShelf();
-        let wanted = window.location.hash.startsWith(anchor) ? window.location.hash.slice(anchor.length) : "";
-        if (definition.multiple && wanted && !belongsToForm(store.read(wanted) || {values: {}})) wanted = "";
-        const separateNewForm = data("NewDraft") === "true";
-        if (separateNewForm) wanted = "";
-        const explicitNew = separateNewForm || new URL(window.location.href).searchParams.get("new_" + family) === "1";
         const nativeResult = data("NativeResult");
-        const preferred = records.find(record => record.phase !== "editing") || records[0];
-        ref = nativeResult ? nativeRef : wanted || (!explicitNew && preferred ? preferred.clientRef : nativeRef);
+        const selected = selectDraft(renderShelf(), nativeResult);
+        const wanted = selected.wanted;
+        ref = selected.ref;
         if (!uuid.test(ref)) { stop("原稿编号无法核对，请从保留的" + taskLabel + "重新打开。"); return; }
         window.navigator.locks.request(store.key(ref), {ifAvailable: true}, async lock => {
           if (currentLease !== leaseVersion) return;
@@ -291,21 +316,7 @@
           retained = !!record;
           held = true;
           field("idempotency_key").value = ref;
-          if (record && nativeResult === "prepared" && record.serverResult === "rejected") {
-            store.save(scope, ref, "editing", values(), "rejected");
-            phase = "editing"; pointTo();
-          } else if (record) {
-            if (!restore(record)) return;
-          } else if (["blocked", "rejected"].includes(nativeResult)) {
-            phase = "blocked"; reviewable = nativeResult === "rejected";
-          }
-          if (!store.matches(JSON.parse(field("draft_scope").value), scope)) {
-            stop("身份或账本已切换，原输入仍保留；请恢复原身份后继续。"); return;
-          }
-          if (!record && nativeResult) persist(phase, nativeResult === "rejected" ? "rejected" : "");
-          if (record && definition.multiple && form.closest("details")) form.closest("details").open = true;
-          controls();
-          activationNotice(record);
+          if (!resumeDraft(record, nativeResult)) return;
           return new Promise(resolve => { release = resolve; });
         }).catch(() => { if (!held) allowOnline(); else stop("原稿暂时无法恢复，请保留此页并检查浏览器存储。"); });
       } catch (_) { allowOnline(); }
