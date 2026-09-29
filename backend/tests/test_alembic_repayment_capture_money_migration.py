@@ -13,7 +13,7 @@ from tests._infra.c07_money_migration import reset_schema, run_alembic, seed_own
 from tests._infra.currency import activate_test_currency_authority
 
 pytestmark = [pytest.mark.real_db, pytest.mark.currency_binding_unbound]
-_PARENT = "20260927_0002"
+_PARENT = "20260928_0001"
 _HEAD = "20260930_0001"
 
 

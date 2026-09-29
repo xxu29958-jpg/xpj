@@ -381,32 +381,32 @@ def list_repayment_draft_audit_for_account(
         elif draft.status == "confirmed" and draft.committed_debt_public_id is not None:
             referenced.add(draft.committed_debt_public_id)
     labels = _debt_counterparty_labels(db, referenced)
-    rows: list[RepaymentDraftAuditRow] = []
-    for draft in drafts:
-        suggested_id = suggested_by_draft.get(draft.id)
-        committed_id = draft.committed_debt_public_id if draft.status == "confirmed" else None
-        rows.append(
-            RepaymentDraftAuditRow(
-                source=draft.source,
-                amount_cents=draft.amount_cents,
-                home_currency_code=draft.home_currency_code,
-                original_currency_code=draft.original_currency_code or draft.home_currency_code,
-                original_amount_minor=draft.original_amount_minor if draft.original_amount_minor is not None else draft.amount_cents,
-                merchant_label=draft.merchant_label,
-                captured_at=draft.captured_at,
-                status=draft.status,
-                linked_debt_label=labels.get(committed_id) if committed_id else None,
-                has_suggestion=suggested_id is not None,
-                suggested_debt_label=labels.get(suggested_id) if suggested_id else None,
-                public_id=draft.public_id,
-                suggested_debt_public_id=suggested_id,
-                target_debts=tuple(
-                    candidate
-                    for candidate in candidates_by_tenant.get(draft.tenant_id, [])
-                    if draft.amount_cents is None or candidate.remaining_amount_cents >= draft.amount_cents
-                )
-                if draft.status == "pending"
-                else (),
-            )
-        )
-    return rows
+    return [
+        _repayment_audit_row(draft, suggested_by_draft.get(draft.id), labels,
+            candidates_by_tenant.get(draft.tenant_id, []))
+        for draft in drafts
+    ]
+
+
+def _repayment_audit_row(draft: RepaymentDraft, suggested_id: str | None, labels: dict[str, str | None],
+    candidates: list[RepaymentMatchCandidate]) -> RepaymentDraftAuditRow:
+    """Project captured money separately from eligible targets and a resolved fact's label."""
+    committed_id = draft.committed_debt_public_id if draft.status == "confirmed" else None
+    return RepaymentDraftAuditRow(
+        source=draft.source,
+        amount_cents=draft.amount_cents,
+        home_currency_code=draft.home_currency_code,
+        original_currency_code=draft.original_currency_code or draft.home_currency_code,
+        original_amount_minor=draft.original_amount_minor if draft.original_amount_minor is not None else draft.amount_cents,
+        merchant_label=draft.merchant_label,
+        captured_at=draft.captured_at,
+        status=draft.status,
+        linked_debt_label=labels.get(committed_id) if committed_id else None,
+        has_suggestion=suggested_id is not None,
+        suggested_debt_label=labels.get(suggested_id) if suggested_id else None,
+        public_id=draft.public_id,
+        suggested_debt_public_id=suggested_id,
+        target_debts=tuple(candidate for candidate in candidates
+            if draft.amount_cents is None or candidate.remaining_amount_cents >= draft.amount_cents)
+            if draft.status == "pending" else (),
+    )
