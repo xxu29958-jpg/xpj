@@ -78,7 +78,7 @@ class BudgetJourney:
         target.goto(f"{self.base_url}{path}{join}ledger_id={self.ledger_id}&month={self.month}")
 
     def form(self, action, *, page=None):
-        form = (page or self.page).locator(f'form[action="{action}"]')
+        form = (page or self.page).locator(f'form[method="post"][action="{action}"]')
         if not form.is_visible():
             form.locator("xpath=ancestor::details").locator("summary").click()
         return form
@@ -183,8 +183,10 @@ class BudgetJourney:
         self.native.click("打开账户与设置")
         self.native.click("外观与主题")
         self.native.click("玄夜")
-        for kind in PAGES:
+        for kind, values in (("budget", ("11,500", "11500")), ("arrangement", ("1,150", "1150")),
+                             ("series", ("1,450", "1450"))):
             self.open_native(kind)
+            self.native.reveal_any(*values)
             self.native.capture(kind + "-midnight")
 
     def run(self):
