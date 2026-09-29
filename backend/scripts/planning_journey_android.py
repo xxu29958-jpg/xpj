@@ -70,10 +70,11 @@ class PlanningAndroid:
         return any(text in node.attrib.get("text", "") or text in node.attrib.get("content-desc", "")
                    for node in self.tree().iter("node"))
 
-    def click(self, text: str, *, bottom: bool = False):
+    def click(self, text: str, *, bottom: bool = False, stable: bool = False):
         scrolls = 0
+        previous_bounds = None
         def locate():
-            nonlocal scrolls
+            nonlocal scrolls, previous_bounds
             nodes = list(self.tree().iter("node"))
             matches = [node for node in nodes if node.attrib.get("enabled") != "false" and
                        text in (node.attrib.get("text"), node.attrib.get("content-desc"))]
@@ -84,6 +85,12 @@ class PlanningAndroid:
                 self.adb("shell", "input", "swipe", center, str(top + (end - top) * 4 // 5),
                     center, str(top + (end - top) // 4), "350")
                 scrolls += 1
+            if stable:
+                bounds = [node.attrib.get("bounds") for node in matches]
+                unchanged = bool(matches) and bounds == previous_bounds
+                previous_bounds = bounds
+                if not unchanged:
+                    return []
             return matches
         matches = wait_for(locate, f"Native action is not reachable: {text}")
         if bottom:

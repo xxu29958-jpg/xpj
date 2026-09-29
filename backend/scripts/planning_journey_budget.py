@@ -93,7 +93,9 @@ class BudgetJourney:
 
     def open_native(self, kind):
         self.native.plan_home()
-        self.native.click(CARDS[kind])
+        self.native.click(CARDS[kind], stable=True)
+        if kind == "arrangement":
+            wait_for(lambda: self.native.has("月度安排与试算"), "The actual monthly arrangement page did not open")
         if kind == "series":
             wait_for(lambda: self.native.has("固定支出暂时打不开") or any(
                 re.fullmatch(r"活跃 \d+", node.attrib.get("text", "")) for node in self.native.tree().iter("node")),
