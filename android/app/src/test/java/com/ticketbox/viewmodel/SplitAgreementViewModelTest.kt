@@ -1,5 +1,6 @@
 package com.ticketbox.viewmodel
 
+import androidx.lifecycle.SavedStateHandle
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
@@ -39,6 +40,130 @@ class SplitAgreementViewModelTest {
     private val dispatcher = StandardTestDispatcher()
     @BeforeTest fun setup() { Dispatchers.setMain(dispatcher) }
     @AfterTest fun teardown() { Dispatchers.resetMain() }
+
+    @Test fun changingShareAndPreviewingAgainKeepsTheExplicitSettlementAndReason() = runTest(dispatcher) {
+        val repo = SplitProbe()
+        val model = SplitAgreementViewModel(repo)
+        model.load(memberDebtTask("original")); advanceUntilIdle()
+        model.editDraft(settlement = "-3.00", reason = "双方另行同意只返还三元")
+        model.editDraft(share = "12.00")
+        model.refresh(); advanceUntilIdle()
+
+        assertEquals("12.00", model.state.value.shareInput)
+        assertEquals("-3.00", model.state.value.settlementInput)
+        assertEquals("双方另行同意只返还三元", model.state.value.reason)
+        assertFalse(model.state.value.confirmed)
+        assertTrue(repo.commands.isEmpty(), "previewing a revised share must not publish a settlement")
+    }
+
+    @Test fun recreatedModelRecoversBothRawDraftsOfflineWithoutFactsOrConfirmation() = runTest(dispatcher) {
+        val repo = SplitProbe()
+        val saved = SavedStateHandle()
+        val model = SplitAgreementViewModel(repo, saved)
+        val original = memberDebtTask("original")
+        val returned = original.copy(debtPublicId = "return")
+        model.load(original); advanceUntilIdle()
+        model.editDraft(share = "12.00", settlement = "-3.00", reason = "原往来尚未提交")
+        model.confirm(true)
+        model.load(returned); advanceUntilIdle()
+        model.editDraft(share = "13.00", settlement = "-2.00", reason = "返还入口尚未提交")
+        model.confirm(true)
+
+        repo.fail = true
+        val restored = SplitAgreementViewModel(repo, recreateSavedState(saved))
+        restored.load(original); advanceUntilIdle()
+        assertEquals("12.00", restored.state.value.shareInput)
+        assertEquals("-3.00", restored.state.value.settlementInput)
+        assertEquals("原往来尚未提交", restored.state.value.reason)
+        assertEquals("CNY", restored.state.value.draftCurrencyCode)
+        assertEquals(null, restored.state.value.agreement)
+        assertFalse(restored.state.value.previewReady)
+        assertFalse(restored.state.value.confirmed)
+        restored.propose(); advanceUntilIdle()
+        assertTrue(repo.commands.isEmpty())
+        restored.load(returned); advanceUntilIdle()
+        assertEquals("13.00", restored.state.value.shareInput)
+        assertEquals("-2.00", restored.state.value.settlementInput)
+        assertEquals("返还入口尚未提交", restored.state.value.reason)
+        assertFalse(restored.state.value.confirmed)
+    }
+
+    @Test fun restoredRawYenDraftNeverMovesAcrossAnyLogicalIdentityDimension() = runTest(dispatcher) {
+        val repo = SplitProbe().apply { value = splitTestAgreement().let {
+            it.copy(homeCurrencyCode = "JPY", originalDebt = it.originalDebt.copy(homeCurrencyCode = "JPY"),
+                returnDebt = it.returnDebt?.copy(homeCurrencyCode = "JPY"))
+        } }
+        val saved = SavedStateHandle()
+        val task = memberDebtTask("original")
+        val model = SplitAgreementViewModel(repo, saved)
+        model.load(task); advanceUntilIdle()
+        model.editDraft(share = "0012", settlement = "-3", reason = "保留未完成的日元原输入")
+        repo.fail = true
+        val restored = SplitAgreementViewModel(repo, recreateSavedState(saved))
+        val binding = task.binding
+        for (other in listOf(binding.copy(serverUrl = "https://other.example"), binding.copy(ledgerId = "other"),
+            binding.copy(ownerKey = "other"), binding.copy(sessionGeneration = "another-generation"),
+            binding.copy(bindingRevision = "another-device"))) {
+            restored.load(task.copy(binding = other)); advanceUntilIdle()
+            assertFalse(restored.state.value.hasDraft)
+            assertEquals("", restored.state.value.reason)
+        }
+        restored.load(task); advanceUntilIdle()
+        assertEquals("0012", restored.state.value.shareInput)
+        assertEquals("-3", restored.state.value.settlementInput)
+        assertEquals("JPY", restored.state.value.draftCurrencyCode)
+        assertEquals("保留未完成的日元原输入", restored.state.value.reason)
+        assertFalse(restored.state.value.canPropose)
+        assertTrue(repo.commands.isEmpty())
+    }
+
+    @Test fun invalidRestoredShareCanReadFactsWithoutReplacingRawInputOrSettlement() = runTest(dispatcher) {
+        val repo = SplitProbe()
+        val saved = SavedStateHandle()
+        val task = memberDebtTask("original")
+        val model = SplitAgreementViewModel(repo, saved)
+        model.load(task); advanceUntilIdle()
+        model.editDraft(share = "", settlement = "-3.00", reason = "份额尚未填完")
+        val restored = SplitAgreementViewModel(repo, recreateSavedState(saved))
+        restored.load(task); advanceUntilIdle()
+        assertNotNull(restored.state.value.agreement)
+        assertEquals("", restored.state.value.shareInput)
+        assertEquals("-3.00", restored.state.value.settlementInput)
+        assertEquals("份额尚未填完", restored.state.value.reason)
+        assertFalse(restored.state.value.previewReady)
+        assertFalse(restored.state.value.canPropose)
+        restored.editDraft(share = "12.00"); restored.refresh(); advanceUntilIdle()
+        assertTrue(restored.state.value.previewReady)
+        assertFalse(restored.state.value.confirmed)
+        restored.confirm(true); restored.propose(); advanceUntilIdle()
+        assertEquals(1200L, repo.commands.single().create?.newShareAmountCents)
+        assertEquals(-300L, repo.commands.single().create?.settlementNetAmountCents)
+    }
+
+    @Test fun restoredReplacementMustRecheckTheSamePendingProposalBeforeItCanBeSent() = runTest(dispatcher) {
+        val repo = SplitProbe().apply { value = splitTestAgreement().copy(pendingProposal = splitTestProposal()) }
+        val saved = SavedStateHandle()
+        val task = memberDebtTask("return")
+        val model = SplitAgreementViewModel(repo, saved)
+        model.load(task); advanceUntilIdle()
+        model.beginReplacement()
+        model.editDraft(share = "12.00", settlement = "-3.00", reason = "替换旧提议的原稿")
+        model.confirm(true)
+        repo.gate = CompletableDeferred()
+        repo.value = repo.value.copy(pendingProposal = splitTestProposal().copy(publicId = "proposal-new"))
+        val restored = SplitAgreementViewModel(repo, recreateSavedState(saved))
+        restored.load(task); runCurrent()
+        assertEquals("proposal", restored.state.value.replacingProposalPublicId)
+        assertFalse(restored.state.value.confirmed)
+        assertFalse(restored.state.value.canPropose)
+        requireNotNull(repo.gate).complete(Unit); advanceUntilIdle()
+        assertEquals(null, restored.state.value.replacingProposalPublicId)
+        assertEquals("12.00", restored.state.value.shareInput)
+        assertEquals("-3.00", restored.state.value.settlementInput)
+        assertEquals("替换旧提议的原稿", restored.state.value.reason)
+        restored.confirm(true); restored.propose(); advanceUntilIdle()
+        assertTrue(repo.commands.isEmpty())
+    }
 
     @Test fun draftsSurviveOriginalReturnRoundTripButNeverCrossBinding() = runTest(dispatcher) {
         val repo = SplitProbe()
@@ -232,6 +357,9 @@ class SplitAgreementViewModelTest {
         assertEquals(null, parseSplitSettlement("-1.23", CurrencyCode.JPY))
     }
 }
+
+private fun recreateSavedState(value: SavedStateHandle) =
+    SavedStateHandle(value.keys().associateWith { value.get<Any?>(it) })
 
 private class SplitProbe : SplitAgreementActions {
     var value = splitTestAgreement()

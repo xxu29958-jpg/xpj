@@ -43,6 +43,10 @@ internal fun SplitAgreementSection(
                     SplitAgreementProposal(state, model, display)
                 }
             }
+            if (state.agreement == null && state.hasDraft) {
+                Text(stringResource(R.string.split_agreement_retained_draft))
+                SplitAgreementForm(state, model, CurrencyDisplay.forRecord(state.draftCurrencyCode ?: "UNKNOWN"))
+            }
             SplitAgreementSubmissions(state, model)
         }
     }
@@ -50,17 +54,18 @@ internal fun SplitAgreementSection(
 
 @Composable
 private fun SplitAgreementForm(state: SplitAgreementUiState, model: SplitAgreementViewModel, display: CurrencyDisplay) {
-    val agreement = state.agreement ?: return
-    AppTextInput(AppTextInputState(stringResource(R.string.split_agreement_share_input, agreement.homeCurrencyCode),
+    val agreement = state.agreement
+    val currency = state.draftCurrencyCode ?: agreement?.homeCurrencyCode ?: return
+    AppTextInput(AppTextInputState(stringResource(R.string.split_agreement_share_input, currency),
         state.shareInput, enabled = !state.busy),
         AppTextInputActions(onValueChange = { model.editDraft(share = it) }))
     QuietOutlinedButton(text = stringResource(R.string.split_agreement_preview),
         onClick = model::refresh, enabled = !state.busy && !state.loading)
-    if (state.previewReady) {
-        if (agreement.preview.requiresExplicitSettlement) {
+    if (state.previewReady || state.hasDraft) {
+        if (state.previewReady && agreement?.preview?.requiresExplicitSettlement == true) {
             Text(stringResource(R.string.split_agreement_explicit_settlement_warning))
         }
-        agreement.preview.cashBasedSettlementNetAmountCents?.let {
+        agreement?.preview?.cashBasedSettlementNetAmountCents?.takeIf { state.previewReady }?.let {
             Text(stringResource(R.string.split_agreement_cash_reference, splitSettlementLabel(it, display)))
         }
         AppTextInput(AppTextInputState(stringResource(R.string.split_agreement_settlement_input), state.settlementInput,
@@ -81,7 +86,8 @@ private fun SplitAgreementForm(state: SplitAgreementUiState, model: SplitAgreeme
 @Composable
 private fun SplitSettlementConfirmation(state: SplitAgreementUiState, model: SplitAgreementViewModel) {
     Row {
-        Checkbox(checked = state.confirmed, onCheckedChange = model::confirm, enabled = !state.busy && !state.loading)
+        Checkbox(checked = state.confirmed, onCheckedChange = model::confirm,
+            enabled = state.previewReady && !state.busy && !state.loading)
         Text(stringResource(R.string.split_agreement_confirmation))
     }
 }

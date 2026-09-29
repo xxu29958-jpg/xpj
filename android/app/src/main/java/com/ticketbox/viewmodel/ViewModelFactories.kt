@@ -24,9 +24,18 @@ import com.ticketbox.data.repository.RecurringRepository
 import com.ticketbox.data.repository.RepaymentDraftActions
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.data.repository.RuleRepository
+import com.ticketbox.data.repository.SplitAgreementActions
 import com.ticketbox.data.repository.TagActions
 import com.ticketbox.data.repository.UploadIntentActions
 import com.ticketbox.domain.model.DebtListLens
+
+fun splitAgreementViewModelFactory(repository: SplitAgreementActions): ViewModelProvider.Factory =
+    object : ViewModelProvider.Factory {
+        override fun <T : ViewModel> create(modelClass: Class<T>): T =
+            requireNotNull(modelClass.cast(SplitAgreementViewModel(repository)))
+        override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T =
+            requireNotNull(modelClass.cast(SplitAgreementViewModel(repository, extras.createSavedStateHandle())))
+    }
 
 @Suppress("UNCHECKED_CAST")
 fun appViewModelFactory(

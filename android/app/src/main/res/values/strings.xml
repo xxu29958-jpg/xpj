@@ -257,6 +257,7 @@
     <string name="split_agreement_end_submission">结束这次本地提交</string>
     <string name="split_agreement_error_invalid_share">请填写有效的新份额。</string>
     <string name="split_agreement_error_load_failed">新约定暂时无法读取，请重试。</string>
+    <string name="split_agreement_retained_draft">原输入已保留。联网重新核对双方约定后，再明确确认并提交。</string>
     <string name="split_agreement_error_invalid_settlement">请填写有效结算金额和不超过 500 字的原因。</string>
     <string name="split_agreement_submission_saved">原提交已保存，等待同步。</string>
     <string name="split_agreement_submission_save_failed">原提交未保存，请核对连接与待处理提交后重试。</string>
