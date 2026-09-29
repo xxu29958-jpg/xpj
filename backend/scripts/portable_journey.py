@@ -151,7 +151,7 @@ class PortableJourney:
         self.native.bind(pairing_code(self.account), self.port)
         self.native_entry()
         self.native_download("native-active", archived=False)
-        with desktop_browser(self.page.context.browser, self.base_url, LEDGER) as (desktop, origin):
+        with desktop_browser(self.page.context.browser, self.base_url, LEDGER, self.evidence) as (desktop, origin):
             self.page.goto(self.public_url + "/web/exports")
             self.web_download(self.page, "web-active", archived=False)
             desktop.goto(origin + "/web/exports")

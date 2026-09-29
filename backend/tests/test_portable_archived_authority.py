@@ -79,7 +79,10 @@ def test_archived_nonowners_and_disabled_members_cannot_list_or_download(client,
         member.role = role
         member.disabled_at = now_utc() if disabled else None
         db.commit()
-    assert client.get("/api/exports/ledgers", headers=identity.app_headers).json()["ledgers"] == []
+    listed = client.get("/api/exports/ledgers", headers=identity.app_headers)
+    assert listed.status_code == 200
+    assert auth.ledger_id not in {row["ledger_id"] for row in listed.json()["ledgers"]}
+    assert "tester_1" in {row["ledger_id"] for row in listed.json()["ledgers"]}
     assert client.get("/api/exports/portable", headers=identity.app_headers,
         params={"ledger_id": auth.ledger_id}).status_code == 403
 
