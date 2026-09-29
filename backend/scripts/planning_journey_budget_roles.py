@@ -40,7 +40,7 @@ def viewer(j, page, base):
         history = f"/web/recurring/{j.facts()['series_id']}/history" if kind == "series" else path + "/history"
         page.locator(f'a[href^="{history}?"]').click()
         original = {"budget": "10000.00", "arrangement": "1000.00", "series": "1200.00"}[kind]
-        assert original in page.inner_text("main"), "The viewer did not read the original definition"
+        assert original in page.inner_text("main").replace(",", ""), "The viewer did not read the original definition"
         j.capture("viewer-" + kind + "-history", page=page)
 
 
