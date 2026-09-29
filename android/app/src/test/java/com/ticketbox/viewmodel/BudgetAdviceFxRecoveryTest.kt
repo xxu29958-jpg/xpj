@@ -32,7 +32,7 @@ class BudgetAdviceFxRecoveryTest {
     }
 
     @Test fun missingRatesAndRateSubmissionOnlyReadTheOriginalMonthWithoutCallingAdvisor() = budgetTest {
-        val fake = FakeBudgetActions(budget()).apply { inputResponse = missingInputs() }
+        val fake = FakeBudgetActions(budget()).apply { inputs.response = missingInputs() }
         val vm = BudgetAdviceViewModel(fake, initialMonth = "2026-09")
         advanceUntilIdle()
         vm.requestAdvice()
@@ -45,10 +45,10 @@ class BudgetAdviceFxRecoveryTest {
         assertEquals("JPY", fake.rates.writes.single().second.currencyCode)
         assertEquals("2026-09-01", fake.rates.writes.single().second.rateDate)
         assertTrue(fake.adviceMonths.isEmpty())
-        fake.inputResponse = missingInputs().copy(breakdown = DiscretionaryResponseDto(10000, 1000, 2000, 0, 0, 7000), missingRates = emptyList())
+        fake.inputs.response = missingInputs().copy(breakdown = DiscretionaryResponseDto(10000, 1000, 2000, 0, 0, 7000), missingRates = emptyList())
         vm.refreshInputs()
         advanceUntilIdle()
-        assertTrue(fake.inputMonths.all { it == "2026-09" })
+        assertTrue(fake.inputs.months.all { it == "2026-09" })
         assertTrue(fake.adviceMonths.isEmpty())
         vm.requestAdvice()
         advanceUntilIdle()
@@ -56,7 +56,7 @@ class BudgetAdviceFxRecoveryTest {
     }
 
     @Test fun unknownSourceOrDateCannotInventAManualRateIdentity() = budgetTest {
-        val fake = FakeBudgetActions(budget()).apply { inputResponse = missingInputs() }
+        val fake = FakeBudgetActions(budget()).apply { inputs.response = missingInputs() }
         val vm = BudgetAdviceViewModel(fake, initialMonth = "2026-09")
         advanceUntilIdle()
         vm.openRate(gap.copy(sourceCurrencyCode = null))
@@ -69,7 +69,7 @@ class BudgetAdviceFxRecoveryTest {
     @Test fun bindingReplacementClearsRateEditorAndPreventsOriginalSave() = budgetTest {
         val binding = LogicalSessionBinding("https://example.test", "owner", "identity", "session", "revision")
         val access = MutableStateFlow<LedgerAccessContext?>(LedgerAccessContext(binding, true))
-        val fake = FakeBudgetActions(budget(), activeAccessFlow = access).apply { inputResponse = missingInputs() }
+        val fake = FakeBudgetActions(budget(), activeAccessFlow = access).apply { inputs.response = missingInputs() }
         val vm = BudgetAdviceViewModel(fake, initialMonth = "2026-09")
         advanceUntilIdle()
         vm.openRate(gap)
