@@ -81,6 +81,10 @@ class RelationshipJourney:
     def open_native(self, *, returned=False):
         self.native.plan_home()
         self.native.click("往来", bottom=True)
+        self.native.reveal_any("我欠", "欠我", "拆账约定与结算", toward_start=True)
+        if self.native.has("拆账约定与结算"):
+            self.native.back()
+            self.native.reveal_any("我欠", "欠我", toward_start=True)
         self.native.click("欠我" if returned else "我欠")
         self.native.reveal_any("联动验证账户")
         self.native.click("联动验证账户", stable=True)
