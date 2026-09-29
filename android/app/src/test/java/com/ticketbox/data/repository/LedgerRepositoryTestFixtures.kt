@@ -121,6 +121,9 @@ internal data class LedgerStubApiState(
 internal class StubApi(
     private val state: LedgerStubApiState = LedgerStubApiState(),
 ) : ApiService {
+    override suspend fun portableExportLedgers(): LedgerListResponseDto = error("Portable export not configured")
+    override fun portableExport(ledgerId: String, download: com.ticketbox.data.remote.PortableDownloadRequest): retrofit2.Call<ResponseBody> =
+        error("Portable export not configured")
     override suspend fun originalHealth(id: Long): com.ticketbox.data.remote.dto.OriginalHealthDto = error("Original health not configured")
     override suspend fun verifyOriginal(id: Long, body: com.ticketbox.data.remote.dto.OriginalVerificationRequestDto, idempotencyKey: String): com.ticketbox.data.remote.dto.OriginalCommandReceiptDto = error("Original verification not configured")
     override suspend fun replenishOriginal(id: Long, file: okhttp3.MultipartBody.Part, expectedRowVersion: Long, expectedSha256: String, idempotencyKey: String): com.ticketbox.data.remote.dto.OriginalCommandReceiptDto = error("Original replenishment not configured")

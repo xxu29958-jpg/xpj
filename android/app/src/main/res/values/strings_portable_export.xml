@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="portable_export_title">带走账本数据</string>
+    <string name="portable_export_scope">保存服务器已有的记录、历史与可用原件。未提交的离线草稿不在包内；这不是安装恢复包。</string>
+    <string name="portable_export_archived">已归档 · 当前拥有者可下载</string>
+    <string name="portable_export_empty">当前账户没有可下载的账本。</string>
+    <string name="portable_export_loading">正在核对可下载的账本…</string>
+    <string name="portable_export_refresh">重新核对账本</string>
+    <string name="portable_export_save">下载并保存完整数据包</string>
+    <string name="portable_export_preparing">正在准备数据包，可以取消…</string>
+    <string name="portable_export_progress">已写入 %1$d KB</string>
+    <string name="portable_export_choosing">请选择保存位置</string>
+    <string name="portable_export_cancelled">已取消下载。</string>
+    <string name="portable_export_saved">完整数据包已保存。</string>
+    <string name="portable_export_failed">数据包未保存，请重新下载或选择其他位置。</string>
+    <string name="portable_export_partial">数据包未保存完整，且无法移除残留文件。请删除本次不完整文件后重新下载。</string>
+</resources>

@@ -84,6 +84,7 @@ fun DataExportScreen(
     onBack: () -> Unit,
     onSync: () -> Unit,
     onClearCache: () -> Unit,
+    portableDownload: @Composable () -> Unit,
 ) {
     var showClearCacheDialog by remember { mutableStateOf(false) }
 
@@ -119,6 +120,7 @@ fun DataExportScreen(
         onBack = onBack,
         status = { AppStatusBanner(message = state.message, tone = state.messageTone) },
     ) {
+        portableDownload()
         SettingsSection(
             title = stringResource(R.string.settings_data_export_section_refresh_cache),
             icon = Icons.Filled.FileDownload,

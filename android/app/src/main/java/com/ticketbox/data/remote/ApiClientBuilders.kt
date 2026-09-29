@@ -48,6 +48,7 @@ internal fun buildApiHttpClient(
             ),
         )
         .addInterceptor(RuntimeNegotiationInterceptor())
+        .addInterceptor(portableDownloadInterceptor())
         .addInterceptor(NonVpnGetFallbackInterceptor(routeProvider))
         .addInterceptor(GetIoRetryInterceptor(GET_IO_RETRY_COUNT, GET_IO_RETRY_DELAY_MS))
         .addInterceptor(retryableGetStatusInterceptor())

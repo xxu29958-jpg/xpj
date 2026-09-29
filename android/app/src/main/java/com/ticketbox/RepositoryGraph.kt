@@ -54,6 +54,7 @@ internal class RepositoryGraph(
     private val sessionStore = dependencies.sessionStore
     private val credentials = dependencies.credentials
     private val apiServiceProvider = dependencies.apiServiceProvider
+    val portableExports = com.ticketbox.data.repository.PortableExportRepository(apiServiceProvider)
     private val outbox = dependencies.outbox.repository
     private val outboxAdapters = dependencies.outbox.adapters
     private val serverSessionBinding = ServerSessionBinding(
