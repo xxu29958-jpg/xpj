@@ -59,7 +59,8 @@ class RelationshipRecovery:
             route.abort("connectionclosed")
 
         page.route("**" + path, lose_reply)
-        form.locator("[data-repayment-submit]").click()
+        with page.expect_event("requestfailed", predicate=lambda request: request.url.endswith(path)):
+            form.locator("[data-repayment-submit]").click()
         j.expect("agreed_share", 1200)
         assert delivered == [True]
         page.unroute("**" + path, lose_reply)
