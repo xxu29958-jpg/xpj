@@ -7,7 +7,7 @@ from unittest.mock import Mock
 import pytest
 
 from app.errors import AppError
-from app.routes._web_accounting_time import parse_web_accounting_time, time_form_values
+from app.routes._web_accounting_time import parse_web_accounting_time, time_form_projection, time_form_values
 
 
 def fields(**changes):
@@ -43,6 +43,18 @@ def test_later_fold_edit_keeps_exact_instant_and_subsecond_evidence():
     assert parsed.instant_utc == instant
     assert parsed.calendar_revision == 1
     assert parsed.source_utc_offset_seconds == -18000
+
+
+@pytest.mark.parametrize("fraction,input_type", [(0, "datetime-local"), (123000, "text"), (123456, "text")])
+def test_projection_keeps_subseconds_and_fold_in_a_browser_representable_control(fraction, input_type):
+    instant = datetime(2026, 11, 1, 6, 30, 15, fraction, tzinfo=UTC)
+    expense = SimpleNamespace(expense_time=instant, source_timezone="America/New_York",
+        source_utc_offset_seconds=-18000, calendar_revision=1)
+    form = time_form_projection(time_form_values(expense, SimpleNamespace(timezone_name="Asia/Shanghai", revision=2)))
+    assert form["wall_input_type"] == input_type
+    parsed = parse_web_accounting_time(form["wall_time"], form)
+    assert parsed.instant_utc == instant and parsed.source_utc_offset_seconds == -18000
+    assert parsed.calendar_revision == 1
 
 
 def test_old_form_without_time_evidence_remains_absent():

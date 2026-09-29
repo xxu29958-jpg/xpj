@@ -49,35 +49,26 @@ _EDGE_CDP: ModuleType | None = None
 
 
 def test_accounting_time_subseconds_survive_the_actual_browser_control(tmp_path: Path) -> None:
-    from datetime import UTC, datetime
-    from types import SimpleNamespace
-
-    from app.routes._web_accounting_time import parse_web_accounting_time, time_form_projection, time_form_values
-
     template = Environment(loader=FileSystemLoader(_REPO_ROOT / "backend/app/templates/web"),
         autoescape=select_autoescape(["html"])).get_template("_accounting_time_fields.html")
-    instants = [datetime(2026, 11, 1, 6, 30, 15, fraction, tzinfo=UTC) for fraction in (0, 123000, 123456)]
+    walls = ["2026-11-01T01:30:15", "2026-11-01T01:30:15.123000", "2026-11-01T01:30:15.123456"]
     forms = []
-    for index, instant in enumerate(instants):
-        expense = SimpleNamespace(expense_time=instant, source_timezone="America/New_York",
-            source_utc_offset_seconds=-18000, calendar_revision=1)
-        values = time_form_values(expense, SimpleNamespace(timezone_name="Asia/Shanghai", revision=2))
-        forms.append('<form>' + template.render(time_form=time_form_projection(values),
+    for index, wall in enumerate(walls):
+        values = {"wall_time": wall, "wall_input_type": "datetime-local" if index == 0 else "text",
+            "time_precision": "instant", "source_timezone": "America/New_York", "source_utc_offset_seconds": "-18000",
+            "calendar_revision": "1", "user_local_date": "2026-11-01", "accounting_date": "", "offset_options": []}
+        forms.append('<form>' + template.render(time_form=values,
             time_prefix=f"exact-{index}", time_name="expense_time", time_disabled=False) + '</form>')
     page = _write_fixture(tmp_path, "exact-time.html", '<meta charset="utf-8">' + ''.join(forms) +
         '<script>window.__webConsumerProbe={forms:Array.from(document.forms,'
         'form=>Object.fromEntries(new FormData(form).entries()))};</script>')
     probe = _evaluate_fixture(tmp_path, page=page, width=390, height=960, profile_name="edge-exact-time")
-    for instant, values in zip(instants, probe["forms"], strict=True):
-        assert values["expense_time"], "The real browser discarded a known instant before any user edit"
-        parsed = parse_web_accounting_time(values.pop("expense_time"), values)
-        assert parsed.instant_utc == instant and parsed.source_utc_offset_seconds == -18000
-        assert parsed.calendar_revision == 1
+    for wall, values in zip(walls, probe["forms"], strict=True):
+        assert values["expense_time"] == wall, "The real browser discarded a known instant before any user edit"
+        assert values["source_utc_offset_seconds"] == "-18000" and values["calendar_revision"] == "1"
 
 
 def test_manual_original_subseconds_survive_real_draft_restoration(tmp_path: Path) -> None:
-    from app.routes._web_accounting_time import time_form_projection
-
     scope = {"datasetId": "dataset", "clientGeneration": "generation", "accountId": "account", "ledgerId": "ledger", "deviceId": "device"}
     raw = "2026-11-01T01:30:15.123456"
     time_values = {"time_precision": "instant", "calendar_revision": "1", "user_local_date": "2026-11-01",
@@ -95,7 +86,7 @@ def test_manual_original_subseconds_survive_real_draft_restoration(tmp_path: Pat
     body = environment.get_template("expense_new.html").render(manual_draft_scope=scope, manual_draft_result="",
         form_ledger_id="ledger", form_device_public_id="device", form_home_currency_code="CNY", client_ref="b" * 32,
         values={"currency_code": "CNY"}, currency_options=["CNY"], category_options=[], edit_return_fields={},
-        time_form=time_form_projection({**time_values, "wall_time": "2026-11-01T01:30:15"}),
+        time_form={**time_values, "wall_time": "2026-11-01T01:30:15", "wall_input_type": "datetime-local", "offset_options": []},
         csrf_token="synthetic", currency_input={}, asset_version="time-contract")
     for name in ("manual-drafts.js", "manual-entry.js"):
         body = body.replace(f'/static/web/{name}?v=time-contract', (_REPO_ROOT / "backend/app/static/web" / name).as_uri())
