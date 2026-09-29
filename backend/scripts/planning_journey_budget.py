@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+import re
+
 from scripts.planning_journey_android import wait_for
 
 SERIES = "联动房租"
@@ -92,6 +95,19 @@ class BudgetJourney:
         self.native.plan_home()
         self.native.click(CARDS[kind])
         if kind == "series":
+            wait_for(lambda: self.native.has("固定支出暂时打不开") or any(
+                re.fullmatch(r"活跃 \d+", node.attrib.get("text", "")) for node in self.native.tree().iter("node")),
+                "The fixed-expense list did not settle")
+            if self.native.has("固定支出暂时打不开"):
+                self.native.capture("series-read-before-visible-retry")
+                log = self.native.adb("logcat", "-d", "-v", "brief")
+                # Record only these fixed read-protection messages, never a raw device log.
+                reasons = ("固定支出已有更新的读取，请重新读取。", "固定支出已接受修改，请重新读取。",
+                    "固定支出操作正在提交，请稍后重新读取。", "固定支出操作已改变，请重新读取。")
+                observed = [reason for reason in reasons if reason in log]
+                (self.evidence / "series-read-retry-reasons.json").write_text(
+                    json.dumps(observed, ensure_ascii=False), encoding="utf-8")
+                self.native.click("重试")
             self.native.click_counted_tab("活跃")
 
     def login(self):
