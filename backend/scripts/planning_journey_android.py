@@ -110,10 +110,12 @@ class PlanningAndroid:
             inputs = [node for node in self.tree().iter("node") if
                 node.attrib.get("class") == "android.widget.EditText" and node.attrib.get("focused") == "true"]
             return inputs[0].attrib.get("text", "") if len(inputs) == 1 else None
-        wait_for(lambda: focused_value() is not None, "The actual native field did not receive focus")
-        self.adb("shell", "input", "keycombination", "113", "29")
-        self.adb("shell", "input", "keyevent", "67")
-        wait_for(lambda: focused_value() == "", "The selected native input was not cleared")
+        original = wait_for(lambda: (text := focused_value()) is not None and [text],
+            "The actual native field did not receive focus")[0]
+        self.adb("shell", "input", "keyevent", "123")
+        for end in range(len(original) - 1, -1, -1):
+            self.adb("shell", "input", "keyevent", "67")
+            wait_for(lambda end=end: focused_value() == original[:end], "The native input did not remove the selected character")
         for end, character in enumerate(value, start=1):
             self.adb("shell", "input", "text", character)
             wait_for(lambda end=end: focused_value() == value[:end], "The native input did not retain the typed text")
