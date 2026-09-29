@@ -28,7 +28,7 @@
   const submit = form.querySelector("[data-repayment-submit]");
   const replace = form.querySelector("[data-repayment-replace]");
   const preview = form.querySelector("[data-repayment-preview]");
-  const settlementExplicit = splitChange ? form.elements.namedItem("settlement_explicit") : null;
+  const settlementExplicit = form.elements.namedItem("settlement_explicit");
   const optionalNames = splitChange ? ["settlement_explicit", "settlement_suggestion"] : [];
   const hints = optionalNames.map(name => form.elements.namedItem(name)).filter(Boolean);
   const finishReview = form.querySelector("[data-void-finish-review]");
