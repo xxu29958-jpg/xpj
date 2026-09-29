@@ -60,7 +60,7 @@ def advisor_consumers(j):
     assert "暂不可用" in j.page.inner_text("main") and not j.advisor.inputs
     _consent(j, True)
     j.goto("/web/budget-advise")
-    form = j.page.locator('form[action="/web/budget-advise"]')
+    form = j.page.locator('form[method="post"][action="/web/budget-advise"]')
     form.get_by_role("button", name="获取智能建议", exact=True).click()
     j.page.get_by_text("合成协议样例：仅供人工核对", exact=True).wait_for()
     assert len(j.advisor.inputs) == 1
