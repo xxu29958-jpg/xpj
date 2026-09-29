@@ -38,6 +38,14 @@ def test_owner_with_no_active_ledger_downloads_records_and_original_without_swit
     browser.cookies.set(SESSION_COOKIE_NAME, mint_session(client, identity=identity), domain=PUBLIC_HOST, path="/")
     desktop = _mint_principal()
     auth = _archive(identity)
+    # The shared identity fixture also owns tester_1. Establish the promised
+    # no-active-ledger condition without changing the retained download identity.
+    with SessionLocal() as db:
+        for member in db.scalars(select(LedgerMember).where(
+            LedgerMember.account_id == auth.account_id, LedgerMember.ledger_id != auth.ledger_id,
+        )):
+            member.disabled_at = now_utc()
+        db.commit()
     headers = identity.app_headers
     assert client.get("/api/ledgers", headers=headers).json()["ledgers"] == []
     choices = client.get("/api/exports/ledgers", headers=headers)

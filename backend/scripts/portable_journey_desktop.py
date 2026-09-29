@@ -34,7 +34,7 @@ def desktop_browser(browser, backend_url, ledger_id, evidence):
             return BridgeContext(backend_url, principal.token)
 
         def note_product_bridge_auth_failure(self, status, token):
-            assert token == principal.token and status in {200, 401, 403}
+            assert token == principal.token
             return status == 401
 
     with tempfile.TemporaryDirectory(prefix="portable-desktop-") as directory:

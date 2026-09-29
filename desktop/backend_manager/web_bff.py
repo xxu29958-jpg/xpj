@@ -178,6 +178,35 @@ def _response_headers(response: HTTPResponse) -> tuple[tuple[str, str], ...]:
     return tuple(accepted)
 
 
+def _bridge_response(response: HTTPResponse, download: BridgeDownload | None, method: str) -> BridgeResponse:
+    streaming = download is not None and method == "GET" and response.status in {200, 206}
+    if streaming and response.length is None:
+        raise WebBridgeError(502, "下载响应缺少完整文件长度，请重新下载。")
+    payload = b"" if streaming or method == "HEAD" else response.read()
+    return BridgeResponse(response.status, response.reason, _response_headers(response), payload,
+        download if streaming else None)
+
+
+def _request_headers(context: BridgeContext, backend_host: str, target_path: str, client_headers) -> dict[str, str]:
+    backend_origin = context.backend_origin.rstrip("/")
+    headers = {name: value for name, value in client_headers.items() if name.casefold() in _CLIENT_HEADER_ALLOWLIST}
+    headers.update(
+        {
+            "Host": backend_host,
+            "Authorization": f"Bearer {context.app_token}",
+            BRIDGE_HEADER: BRIDGE_VERSION,
+            "Origin": backend_origin,
+            "Referer": backend_origin + target_path,
+            "Sec-Fetch-Site": "same-origin",
+            "Connection": "close",
+        }
+    )
+    cookie = _filtered_cookie(client_headers.get("Cookie"))
+    if cookie:
+        headers["Cookie"] = cookie
+    return headers
+
+
 def relay(
     context: BridgeContext,
     *,
@@ -199,22 +228,7 @@ def relay(
         connection.timeout = DOWNLOAD_TIMEOUT_SECONDS
     download = None
     handed_off = False
-    backend_origin = context.backend_origin.rstrip("/")
-    headers = {name: value for name, value in client_headers.items() if name.casefold() in _CLIENT_HEADER_ALLOWLIST}
-    headers.update(
-        {
-            "Host": backend_host,
-            "Authorization": f"Bearer {context.app_token}",
-            BRIDGE_HEADER: BRIDGE_VERSION,
-            "Origin": backend_origin,
-            "Referer": backend_origin + target.path,
-            "Sec-Fetch-Site": "same-origin",
-            "Connection": "close",
-        }
-    )
-    cookie = _filtered_cookie(client_headers.get("Cookie"))
-    if cookie:
-        headers["Cookie"] = cookie
+    headers = _request_headers(context, backend_host, target.path, client_headers)
     try:
         connection.request(
             method.upper(),
@@ -227,19 +241,9 @@ def relay(
         response: HTTPResponse = connection.getresponse()
         if download is not None:
             download.response = response
-        streaming = portable and method.upper() == "GET" and response.status in {200, 206}
-        if streaming and response.length is None:
-            raise WebBridgeError(502, "下载响应缺少完整文件长度，请重新下载。")
-        payload = b"" if streaming or method.upper() == "HEAD" else response.read()
-        response_headers = _response_headers(response)
-        handed_off = streaming
-        return BridgeResponse(
-            response.status,
-            response.reason,
-            response_headers,
-            payload,
-            download if streaming else None,
-        )
+        result = _bridge_response(response, download, method.upper())
+        handed_off = result.download is not None
+        return result
     except (OSError, http.client.HTTPException) as exc:
         if download is not None and download.cancelled.is_set():
             raise WebBridgeError(499, "下载已取消。") from exc

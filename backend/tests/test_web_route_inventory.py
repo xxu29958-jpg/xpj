@@ -30,6 +30,10 @@ axes:
   installation claim account; authorization is exercised by the currency
   adoption product tests.
 
+- ``principal-read`` — requires a current account/device identity and checks
+  selected data access in its service, including owned archived ledgers;
+  does not require or select an active ledger for the session.
+
 This file is the **single source of truth** for that classification. The
 tests below assert:
 
@@ -67,6 +71,7 @@ Classification = Literal[
     "auth",
     "owner-live-provider",
     "desktop-installation-owner",
+    "principal-read",
 ]
 
 
@@ -208,7 +213,8 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("GET", "/web/expenses/{expense_id}/thumbnail"): "media",
     # CSV export
     ("GET", "/web/export.csv"): "local-only-rendering",
-    ("GET", "/web/export/portable"): "local-only-rendering",
+    ("GET", "/web/export/portable"): "principal-read",
+    ("GET", "/web/exports"): "principal-read",
     # Family members and invitations
     ("GET", "/web/family"): "local-only-rendering",
     ("POST", "/web/family/invitations"): "writer-only",
