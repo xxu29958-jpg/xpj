@@ -158,6 +158,7 @@ def native_read_recovery(j):
             native_current_share(native, "14.00")
             native.capture(f"relationship-{'return' if returned else 'original'}-{'offline' if offline else 'fresh'}-facts")
             native.reveal_any("往来历史")
+            assert not native.has("这件事你们已经两清"), "A settled leg was presented as the entire bilateral settlement"
             native.reveal_any("提出拆账新约定", "新约定提议已处理", "达成拆账新约定")
             native.capture(f"relationship-{'return' if returned else 'original'}-{'offline' if offline else 'fresh'}-history")
             # Native's 50 expanded rows include amounts and settlement evidence.

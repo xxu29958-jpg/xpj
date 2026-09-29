@@ -71,7 +71,10 @@ internal fun MemberProposalSection(
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap)) {
         when {
             debt.isVoided -> DebtNoteCard(stringResource(R.string.debt_proposal_voided_note))
-            debt.isCleared -> DebtNoteCard(stringResource(R.string.debt_proposal_cleared_note))
+            debt.isCleared -> DebtNoteCard(stringResource(
+                if (debt.sourceType in setOf("bill_split", "bill_split_return")) R.string.split_agreement_leg_cleared
+                else R.string.debt_proposal_cleared_note,
+            ))
             state.task == null -> Unit
             !state.canModify -> DebtNoteCard(stringResource(R.string.debt_proposal_readonly_note))
             debt.viewerIsDebtor == null -> DebtNoteCard(stringResource(R.string.debt_proposal_not_party_note))
