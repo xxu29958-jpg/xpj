@@ -56,6 +56,7 @@ def web_history(j, public_id, name):
         following.click()
     else:
         raise AssertionError("The bounded relationship history did not finish within four pages")
+    assert 50 < len(rows) <= 100, "The journey must exercise native's real 50-row history boundary"
     assert pages >= 2 and len({row["id"] for row in rows}) == len(rows), "History paging lost or duplicated a record"
     text = "\n".join(row["text"] for row in rows)
     assert all(title in text for title in ("提出新约定", "处理约定提议", "双方接受新约定"))
@@ -159,10 +160,12 @@ def native_read_recovery(j):
             native.reveal_any("往来历史")
             native.reveal_any("提出拆账新约定", "新约定提议已处理", "达成拆账新约定")
             native.capture(f"relationship-{'return' if returned else 'original'}-{'offline' if offline else 'fresh'}-history")
-            # A page has 20 expanded financial-history rows, each with amounts
-            # and settlement evidence; the default form search covers 8 swipes.
-            native.reveal_any("较早记录", max_scrolls=20)
+            # Native's 50 expanded rows include amounts and settlement evidence.
+            native.reveal_any("较早记录", max_scrolls=55)
             native.click("较早记录")
+            # This oldest record is beyond page one on both legs. Checking it
+            # after restart also proves the second page survives in Room.
+            native.reveal_any("建立往来", toward_start=True, max_scrolls=8)
             native.capture(f"relationship-{'return' if returned else 'original'}-{'offline' if offline else 'fresh'}-older-history")
     native.connection(j.port, online=True)
 

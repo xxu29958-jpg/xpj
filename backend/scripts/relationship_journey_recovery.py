@@ -128,8 +128,9 @@ class RelationshipRecovery:
         j.native.click("拒绝提议")
         j.expect("pending_id", None)
         assert j.facts()["proposals"][-1]["status"] == "rejected"
-        # A bounded set of real decisions makes the existing 20-row history cross a page boundary.
-        for index in range(4):
+        # Web reads 20 rows per page, while native uses the API default of 50.
+        # Both legs must cross the larger boundary through actual UI decisions.
+        for index in range(17):
             j.propose_web("14.00", "-1.00", f"保留原历史的撤回 {index + 1}")
             form = j.agreement_form(command="withdraw")
             form.locator("[data-repayment-submit]").click()
