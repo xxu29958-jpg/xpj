@@ -27,7 +27,7 @@ def advisor_wire_fixture():
         def log_message(self, *_args):
             pass
 
-        def do_POST(self):  # noqa: N802 - stdlib HTTP handler contract.
+        def do_POST(self):
             assert self.path == "/v1/chat/completions"
             length = int(self.headers["Content-Length"])
             assert 0 < length < 100_000
@@ -50,7 +50,7 @@ def advisor_wire_fixture():
             self.end_headers()
             self.wfile.write(content)
 
-        def do_GET(self):  # noqa: N802 - stdlib HTTP handler contract.
+        def do_GET(self):
             # A bounded failure switch in front of the real dated quote provider.
             parts = urlsplit(self.path)
             assert parts.path in {"/fx/latest", "/fx/2025-01-12"}
