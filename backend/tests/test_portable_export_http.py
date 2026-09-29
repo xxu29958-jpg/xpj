@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import Ledger, LedgerMember
+from app.models import Account, Ledger, LedgerMember
 from app.routes.web_auth import SESSION_COOKIE_NAME
 from tests._web_public_session_support import PUBLIC_HOST, mint_session, public_client
 from tests.test_original_attachment_api import _bill, _financial_snapshot
@@ -42,6 +42,12 @@ def test_api_and_real_browser_viewer_download_without_filters_or_cross_ledger_di
         member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "owner",
                                                     LedgerMember.account_id == ledger.owner_account_id))
         member.role = "viewer"
+        unrelated = Account(display_name="Unrelated export owner")
+        db.add(unrelated)
+        db.flush()
+        db.add(Ledger(ledger_id="export-private", name="Private ledger", owner_account_id=unrelated.id))
+        db.flush()
+        db.add(LedgerMember(ledger_id="export-private", account_id=unrelated.id, role="owner"))
         db.commit()
     assert client.get("/api/exports/portable").status_code == 401
     api = client.get("/api/exports/portable", headers=identity.app_headers, params={"month": "1999-01"})
@@ -52,7 +58,14 @@ def test_api_and_real_browser_viewer_download_without_filters_or_cross_ledger_di
     assert 'action="/web/export.csv"' in page.text
     web = browser.get("/web/export/portable?ledger_id=owner&month=1999-01")
     _assert_bill_and_unverified_original(web, expense_id, source.read_bytes())
-    assert browser.get("/web/export/portable?ledger_id=tester_1").status_code == 403
+    assert browser.get("/web/export/portable?ledger_id=export-private").status_code == 403
+    assert client.get("/api/exports/portable", headers=identity.app_headers,
+                      params={"ledger_id": "export-private"}).status_code == 403
+    selected = browser.get("/web/export/portable?ledger_id=tester_1")
+    assert selected.status_code == 200
+    with ZipFile(BytesIO(selected.content)) as package:
+        assert json.loads(package.read("manifest.json"))["ledger_id"] == "tester_1"
+        assert package.read("records/expenses.jsonl") == b""
     other = client.get("/api/exports/portable", headers=identity.gray_app_headers)
     assert other.status_code == 200, other.text
     with ZipFile(BytesIO(other.content)) as package:

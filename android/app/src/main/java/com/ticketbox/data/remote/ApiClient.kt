@@ -181,7 +181,7 @@ internal class GetIoRetryInterceptor(
             try {
                 return chain.proceed(request)
             } catch (error: IOException) {
-                if (!shouldRetryGetIOException(request.method, attempt, maxRetries)) {
+                if (chain.call().isCanceled() || !shouldRetryGetIOException(request.method, attempt, maxRetries)) {
                     throw error
                 }
                 val sleepMs = retryBackoffMs(attempt = attempt, baseDelayMs = baseDelayMs, random = randomSource)
@@ -239,6 +239,7 @@ internal class NonVpnGetFallbackInterceptor(
         try {
             return chain.proceed(request)
         } catch (defaultNetworkError: IOException) {
+            if (chain.call().isCanceled()) throw defaultNetworkError
             if (defaultNetworkError.isNetworkSelectionDenied()) {
                 networkProvider?.disableNonVpnRouting()
                 return executeFallbackCall(
@@ -275,6 +276,7 @@ internal class NonVpnGetFallbackInterceptor(
 
     private fun baseFallbackClientBuilder(): OkHttpClient.Builder {
         return OkHttpClient.Builder()
+            .addInterceptor(portableDownloadInterceptor())
             .retryOnConnectionFailure(true)
             .proxy(Proxy.NO_PROXY)
             .protocols(listOf(Protocol.HTTP_1_1))
@@ -290,7 +292,7 @@ internal class NonVpnGetFallbackInterceptor(
         client: OkHttpClient,
     ): Response {
         return try {
-            client.newCall(request).execute()
+            client.newCall(request).also { request.tag(PortableDownloadRequest::class.java)?.attach(it) }.execute()
         } catch (fallbackError: IOException) {
             fallbackError.addSuppressed(originalError)
             throw fallbackError

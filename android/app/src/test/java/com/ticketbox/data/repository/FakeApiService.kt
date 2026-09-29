@@ -86,6 +86,10 @@ internal class FakeApiService(
     private val serverSettingsResult: ServerSettingsDto? = null,
     private val merchantApi: FakeMerchantApi = FakeMerchantApi(),
 ) : ApiService {
+    override suspend fun portableExportLedgers(): com.ticketbox.data.remote.dto.LedgerListResponseDto =
+        error("Portable export not configured")
+    override fun portableExport(ledgerId: String, download: com.ticketbox.data.remote.PortableDownloadRequest): retrofit2.Call<ResponseBody> =
+        error("Portable export not configured")
     override suspend fun originalHealth(id: Long): com.ticketbox.data.remote.dto.OriginalHealthDto = error("Original health not configured")
     override suspend fun verifyOriginal(id: Long, body: com.ticketbox.data.remote.dto.OriginalVerificationRequestDto, idempotencyKey: String): com.ticketbox.data.remote.dto.OriginalCommandReceiptDto = error("Original verification not configured")
     override suspend fun replenishOriginal(id: Long, file: okhttp3.MultipartBody.Part, expectedRowVersion: Long, expectedSha256: String, idempotencyKey: String): com.ticketbox.data.remote.dto.OriginalCommandReceiptDto = error("Original replenishment not configured")

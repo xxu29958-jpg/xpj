@@ -11,7 +11,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.auth import get_current_app_context
+from app.auth import get_current_app_principal
 from app.database import get_db
 from app.errors import add_exception_handlers
 from app.tenants import AuthContext
@@ -43,11 +43,13 @@ def test_api_portable_requires_identity_and_allows_viewer_without_filters(monkey
 
     owner = Mock(return_value=archive)
     monkeypatch.setattr(exports, "create_portable_ledger_export", owner)
+    selection = Mock(return_value=AUTH)
+    monkeypatch.setattr(exports, "resolve_portable_export_context", selection)
     app = _app(exports.router)
     with TestClient(app) as client:
         assert client.get("/api/exports/portable").status_code == 401
         owner.assert_not_called()
-        app.dependency_overrides[get_current_app_context] = lambda: AUTH
+        app.dependency_overrides[get_current_app_principal] = lambda: "verified-principal"
         response = client.get("/api/exports/portable?ledger_id=other&month=1999-01&page=7")
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/zip"
@@ -55,6 +57,8 @@ def test_api_portable_requires_identity_and_allows_viewer_without_filters(monkey
     assert response.headers["content-disposition"] == 'attachment; filename="ticketbox-portable.zip"'
     assert ZipFile(BytesIO(response.content)).read("README.txt").startswith(b"Persisted authorized")
     assert owner.call_args.kwargs["auth"] == AUTH
+    assert selection.call_args.args[1] == "verified-principal"
+    assert selection.call_args.kwargs == {"ledger_id": "other"}
     assert callable(owner.call_args.kwargs["cancel_requested"])
     archive.close.assert_called_once()
     assert not archive.path.exists()
@@ -79,6 +83,8 @@ def test_download_releases_request_read_before_claiming_snapshot_capacity(monkey
 
     route = exports if surface == "api" else web_import_export
     monkeypatch.setattr(route, "create_portable_ledger_export", snapshot)
+    monkeypatch.setattr(exports, "resolve_portable_export_context", lambda *_args, **_kwargs: AUTH)
+    monkeypatch.setattr(web_import_export, "resolve_portable_export_context", lambda *_args, **_kwargs: AUTH)
     try:
         with Session(engine) as request_db:
             # Exercise the real pool and Session lifecycle; no product DB schema
@@ -86,9 +92,10 @@ def test_download_releases_request_read_before_claiming_snapshot_capacity(monkey
             request_db.execute(select(1))
             request = Request({"type": "http", "method": "GET", "path": f"/{surface}/export/portable"})
             if surface == "api":
-                response = exports.export_portable(request, auth=AUTH, db=request_db)
+                response = exports.export_portable(request, principal="verified-principal", db=request_db,
+                    x_ticketbox_ledger_id=None)
             else:
-                request.state.web_session_auth = AUTH
+                request.state.web_session_principal = "verified-principal"
                 response = web_import_export.web_export_portable(request, ledger_id=AUTH.ledger_id, db=request_db)
             response.archive.close()
             assert engine.pool.checkedout() == 0
@@ -103,12 +110,13 @@ def test_web_portable_uses_actual_selected_session_or_refuses_before_export(monk
 
     owner = Mock(return_value=archive)
     monkeypatch.setattr(web_import_export, "create_portable_ledger_export", owner)
+    monkeypatch.setattr(web_import_export, "resolve_portable_export_context", lambda *_args, **_kwargs: AUTH)
     app = _app(web_import_export.router)
     app.dependency_overrides[_require_local] = lambda: None
 
     @app.middleware("http")
     async def session(request, call_next):
-        request.state.web_session_auth = auth
+        request.state.web_session_principal = auth
         return await call_next(request)
 
     with TestClient(app) as client:

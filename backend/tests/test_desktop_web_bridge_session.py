@@ -455,13 +455,13 @@ def test_desktop_bridge_database_error_returns_503(
     assert response.json()["error"] == "server_error"
 
 
-def test_desktop_bridge_membership_loss_is_a_dead_credential_not_a_mismatch(
+@pytest.mark.parametrize("loss", ["membership", "archive"])
+def test_desktop_ledger_loss_refuses_ordinary_reads_without_killing_account_identity(
     desktop_bridge_client: TestClient,
+    loss: str,
 ) -> None:
-    """Losing the bound membership retires the desktop credential (401), so
-    the Manager's 401 cleanup path can re-pair — this is NOT the ?ledger_id=
-    mismatch case, which stays 403."""
-    principal = _mint_principal(role="member")
+    """Account-level recovery/export uses the same still-live desktop identity."""
+    principal = _mint_principal(role="owner" if loss == "archive" else "member")
     with SessionLocal() as db:
         membership = db.scalar(
             select(LedgerMember)
@@ -469,7 +469,10 @@ def test_desktop_bridge_membership_loss_is_a_dead_credential_not_a_mismatch(
             .where(LedgerMember.account_id == principal.account_id)
         )
         assert membership is not None
-        membership.disabled_at = now_utc()
+        if loss == "archive":
+            db.scalar(select(Ledger).where(Ledger.ledger_id == principal.ledger_id)).archived_at = now_utc()
+        else:
+            membership.disabled_at = now_utc()
         db.commit()
 
     response = desktop_bridge_client.get(
@@ -478,18 +481,22 @@ def test_desktop_bridge_membership_loss_is_a_dead_credential_not_a_mismatch(
         follow_redirects=False,
     )
 
-    assert response.status_code == 401
-    assert response.json()["error"] == "invalid_token"
-    # The death is durable server-side: a later membership re-enable cannot
-    # resurrect bearer copies the legitimate client already discarded.
+    assert response.status_code == 403
+    assert response.json()["error"] == "ledger_forbidden"
     stored = _auth_token(principal.token)
-    assert stored.revoked_at is not None
+    assert stored.revoked_at is None
     assert stored.grace_until is None
 
+    from app.services.identity_service import authenticate_desktop_session_principal
+
+    with SessionLocal() as db:
+        retained = authenticate_desktop_session_principal(db, principal.token)
+    assert (retained.account_id, retained.device_id) == (principal.account_id, principal.device_id)
+
     # The distinct ?ledger_id= mismatch case still answers 403.
-    mismatched = _mint_principal(role="member")
+    mismatched = _mint_principal(ledger_id="tester_1", role="member")
     mismatch_response = desktop_bridge_client.get(
-        "/web/pending?ledger_id=tester_1",
+        "/web/pending?ledger_id=owner",
         headers=_principal_headers(mismatched.token),
         follow_redirects=False,
     )

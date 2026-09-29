@@ -47,6 +47,7 @@ internal class FactEntryNavigationHarness(private val context: Context,
             outboxRepository = fixture.outbox,
             tagRepository = graph.tagRepository,
             categoryPreferenceRepository = graph.categoryPreferenceRepository,
+            portableExports = graph.portableExports,
         ),
         MainScreenViewModelFactories(
             settingsViewModelFactory = settingsViewModelFactory(graph.expenseRepository, fixture.settingsStore),

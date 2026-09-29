@@ -127,6 +127,7 @@ internal data class SettingsRouteActions(
 )
 
 internal data class SettingsRouteRepositories(
+    val portableExports: com.ticketbox.data.repository.PortableExportActions,
     val ledgerRepository: LedgerRepository,
     val expenseRepository: ExpenseRepository,
     val outboxRepository: OutboxRepository,
@@ -298,6 +299,7 @@ internal fun SettingsDestinationHost(
             onBack = { route = SettingsDestination.Root },
             onSync = actions.onSync,
             onClearCache = actions.onClearCache,
+            portableDownload = { PortableExportDestination(repositories.portableExports) },
         )
 
         SettingsDestination.NotificationPreferences -> NotificationPreferencesScreen(

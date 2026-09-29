@@ -850,6 +850,70 @@ def _bootstrap_cookie_header(server: ControlServer, tmp_path) -> str:
     return "; ".join(cookie.partition(";")[0] for cookie in cookies)
 
 
+def test_lost_ledger_reaches_download_selection_through_the_same_desktop_identity(tmp_path) -> None:
+    from backend_manager.web_bff import BridgeContext
+
+    observed = []
+
+    class Backend(BaseHTTPRequestHandler):
+        def log_message(self, *_args):
+            pass
+
+        def do_GET(self):
+            observed.append((self.path, self.headers.get("Authorization")))
+            selected = self.path == "/web/exports"
+            body = b"download-ledger-selection" if selected else b'{"error":"ledger_forbidden"}'
+            self.send_response(200 if selected else 403)
+            self.send_header("Content-Type", "text/html" if selected else "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+    backend = ThreadingHTTPServer(("127.0.0.1", 0), Backend)
+    backend_thread = threading.Thread(target=backend.serve_forever)
+
+    class Controller:
+        def product_bridge_context(self):
+            return BridgeContext(f"http://127.0.0.1:{backend.server_address[1]}", "retained-desktop-token")
+
+        def note_product_bridge_auth_failure(self, status_code, failed_token):
+            assert status_code in {200, 403} and failed_token == "retained-desktop-token"
+            return False
+
+        def is_manager_shutting_down(self):
+            return False
+
+    ui = tmp_path / "ui.html"
+    ui.write_text("token=__CONTROL_TOKEN__", encoding="utf-8")
+    server = ControlServer("127.0.0.1", 0, controller=Controller(), token=_TOKEN,
+        instance_secret=_INSTANCE_SECRET, ui_html=ui)
+    thread = threading.Thread(target=server.serve_forever)
+    backend_thread.start()
+    thread.start()
+    try:
+        cookie = _bootstrap_cookie_header(server, tmp_path)
+        connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=2)
+        connection.request("GET", "/web", headers={"Cookie": cookie})
+        refusal = connection.getresponse()
+        assert refusal.status == 403
+        assert 'href="/web/exports"' in refusal.read().decode()
+        connection.close()
+        connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=2)
+        connection.request("GET", "/web/exports", headers={"Cookie": cookie})
+        selection = connection.getresponse()
+        assert selection.status == 200 and selection.read() == b"download-ledger-selection"
+        connection.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+        backend.shutdown()
+        backend.server_close()
+        thread.join(timeout=2)
+        backend_thread.join(timeout=2)
+    assert observed == [("/web", "Bearer retained-desktop-token"),
+                        ("/web/exports", "Bearer retained-desktop-token")]
+
+
 def test_unpaired_bootstrap_recovery_page_routes_back_to_manager(tmp_path) -> None:
     """P1-1: bootstrap lands on /web, but the address-bar-less window must
     still reach the manager UI: the recovery page carries the way back."""

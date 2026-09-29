@@ -150,6 +150,7 @@ internal class DataQualityConnectedHarness : AutoCloseable {
             outboxRepository = outbox,
             tagRepository = TagRepository(apiProvider),
             categoryPreferenceRepository = CategoryPreferenceRepository(apiProvider),
+            portableExports = com.ticketbox.data.repository.PortableExportRepository(apiProvider),
         )
         screenFactory = MainScreenFactory(
             repositories = repositories,

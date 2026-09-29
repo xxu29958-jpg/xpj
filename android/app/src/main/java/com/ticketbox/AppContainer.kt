@@ -84,6 +84,7 @@ class AppContainer(context: Context) {
     private val database = AppDatabase.getDatabase(appContext)
     private val apiClient = ApiClient(appContext)
     private val apiServiceProvider = ApiServiceProvider(apiClient, sessionStore, credentials)
+    val portableExportRepository get() = repositories.portableExports
     private val outboxRequestGuard = LedgerRequestGuard(apiServiceProvider)
     val ledgerCalendarRepository = com.ticketbox.data.repository.LedgerCalendarRepository(
         outboxRequestGuard, appContext.getSharedPreferences("ticketbox.calendar.rules", Context.MODE_PRIVATE),

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from app.services.identity_service._auth import (
     UPLOAD_LINK_INVALID_MESSAGE,
+    authenticate_desktop_session_principal,
     authenticate_desktop_session_token,
     authenticate_session_principal,
     authenticate_session_token,
@@ -124,6 +125,7 @@ __all__ = [
     "active_auth_token_count",
     "authenticated_session_credential_state",
     "connect_installation_web_identity",
+    "authenticate_desktop_session_principal",
     "authenticate_desktop_session_token",
     "authenticate_session_principal",
     "authenticate_session_token",
