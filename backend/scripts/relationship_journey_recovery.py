@@ -34,10 +34,8 @@ class RelationshipRecovery:
         native.reveal_any("原提交原因：native-reopen-12")
         native.capture("relationship-original-after-restart")
         native.connection(j.port, online=True)
-        if j.facts()["pending_id"] is None:
-            native.reveal_any("重试原提交")
-            if j.facts()["pending_id"] is None:
-                native.click("重试原提交")
+        if j.facts()["pending_id"] is None and native.has("重试原提交"):
+            native.click("重试原提交")
         wait_for(lambda: j.facts()["pending_id"], "The original Room intent did not resume", 90)
         submitted = j.facts()["proposals"][-1]
         assert (submitted["reason"], submitted["new_share_amount_cents"], submitted["settlement_net_amount_cents"]) == (
