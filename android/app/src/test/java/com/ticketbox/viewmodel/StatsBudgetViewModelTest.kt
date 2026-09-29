@@ -137,6 +137,9 @@ private class FakeStatsBudgetActions(
         LogicalSessionBinding("https://example.test", "ledger-1", "owner", "session", "binding"), true))
     val requestedBindings = mutableListOf<LogicalSessionBinding>()
     var responder: (suspend (String) -> BudgetMonthly)? = null
+    override suspend fun archiveBudget(binding: com.ticketbox.data.repository.LogicalSessionBinding, month: String, expectedVersion: Long): Result<Unit> =
+        Result.failure(UnsupportedOperationException("Archive is not arranged by this fixture"))
+
     override fun canModifyLedger(): Boolean = true
 
     override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> = access

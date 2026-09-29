@@ -35,7 +35,7 @@ internal class RecurringQueryReader(
     private val historyAdapter = moshi.adapter(RecurringHistoryPageDto::class.java)
     private val occurrenceAdapter = moshi.adapter(RecurringOccurrenceDto::class.java)
     private val mutex = Mutex()
-    private val latestRequests = mutableMapOf<String, Long>()
+    private val publishedReads = mutableMapOf<String, Long>()
     private val localInvalidation = AtomicLong()
     private val retiredBindings = ConcurrentHashMap.newKeySet<String>()
     private data class DispatchReadProtection(val binding: LogicalSessionBinding, val token: String, val hadUnresolved: Boolean, val bound: BoundLedgerRequest)
@@ -238,7 +238,6 @@ internal class RecurringQueryReader(
         requireInactiveDirect(barrier)
         requireInactiveDirect(publicationPending)
         val key = "${query.bindingKey}|${query.kind}|${query.month}|${query.tag}|${query.timezone}"
-        mutex.withLock { latestRequests[key] = ticket.sequence }
         val wire = try {
             bound.call { fetch(it) }
         } catch (error: HttpException) {
@@ -249,7 +248,6 @@ internal class RecurringQueryReader(
             if (!error.isReadTransportUnavailable()) throw error
             return@safeCall coordinator.acceptSnapshotRead(ticket, bound, fromCache = true) {
                 mutex.withLock {
-                    requireLatest(latestRequests, key, ticket)
                     check(query.bindingKey !in retiredBindings) { "固定支出读取已失效，请联网重新读取。" }
                     check(barrier == null && dao.recurringDirectBarrier(query.bindingKey) == null) {
                         "原固定支出操作结果尚需联网核对，请重新读取。"
@@ -268,13 +266,17 @@ internal class RecurringQueryReader(
         validate(wire)
         coordinator.acceptSnapshotRead(ticket, bound, fromCache = false) { cacheAllowed ->
             mutex.withLock {
-                requireLatest(latestRequests, key, ticket)
                 check(localInvalidation.get() == generation) {
                     "固定支出已接受修改，请重新读取。"
                 }
                 val settled = requireBarrierUnchanged(dao, binding, barrier, publicationPending, epoch)
                 val fetchedAt = Instant.now().toString()
-                if (cacheAllowed && (settled || publicationPending != null)) publishSnapshot(dao, retiredBindings, query.copy(responseJson = adapter.toJson(wire), fetchedAt = fetchedAt), epoch, barrier to publicationPending)
+                // Independent overview and definition consumers may read together. Their ViewModels
+                // own request replacement; only shared cache publication is ordered here.
+                if (cacheAllowed && (settled || publicationPending != null) && ticket.sequence > (publishedReads[key] ?: 0L)) {
+                    publishSnapshot(dao, retiredBindings, query.copy(responseJson = adapter.toJson(wire), fetchedAt = fetchedAt), epoch, barrier to publicationPending)
+                    publishedReads[key] = ticket.sequence
+                }
                 ReadSnapshot(wire, fetchedAt, fromCache = false)
             }
         }
@@ -310,10 +312,6 @@ private fun originalRecurringBinding(guard: LedgerRequestGuard, row: OutboxRow):
         "原固定支出提交不属于当前连接。"
     }
     return binding
-}
-
-private fun requireLatest(latestRequests: Map<String, Long>, key: String, ticket: SnapshotReadTicket) {
-    check(latestRequests[key] == ticket.sequence) { "固定支出已有更新的读取，请重新读取。" }
 }
 
 private fun recurringScope(binding: LogicalSessionBinding, kind: String, month: String, tag: String, timezone: String) =

@@ -11,6 +11,8 @@ import com.ticketbox.data.remote.dto.BudgetHistoryDto
 import com.ticketbox.domain.model.BudgetHistoryPage
 import java.io.IOException
 import java.time.Instant
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import retrofit2.HttpException
@@ -26,18 +28,22 @@ private data class AcceptedBudgetHistory(val page: BudgetHistoryDto, val query: 
 
 /** BudgetQueryReader's history pages share its Room store, access coordinator and accepted-save invalidation. */
 internal class BudgetHistoryQueries(
-    apiProvider: ApiServiceProvider,
+    private val apiProvider: ApiServiceProvider,
     private val dao: ExpenseDao,
     private val coordinator: LocalLedgerSessionCoordinator,
     private val prepareRead: suspend (BoundLedgerRequest, String) -> Unit,
     private val readProtection: BudgetReadProtection,
-) {
+) : BudgetHistoryReader {
     private val guard = LedgerRequestGuard(apiProvider)
     private val errors = NetworkErrorHandler({ apiProvider.currentSession()?.serverUrl }, "BudgetHistory")
     private val adapter = Moshi.Builder().add(KotlinJsonAdapterFactory()).build().adapter(BudgetHistoryDto::class.java)
     private val mutex = Mutex()
     private val accepted = mutableMapOf<String, AcceptedBudgetHistory>()
     private val minimumRevisions = mutableMapOf<String, Long>()
+
+    override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> = apiProvider.observeActiveLedgerAccess()
+
+    override fun observeReadAccessDenials(): Flow<SnapshotAccessDenial> = coordinator.snapshotAccessDenials.filterNotNull()
 
     suspend fun invalidate(bindingKey: String, month: String, minimumRevision: Long, retireUnconditionally: Boolean) = mutex.withLock {
         minimumRevisions["$bindingKey|$month"] = maxOf(minimumRevisions["$bindingKey|$month"] ?: 0L, minimumRevision)
@@ -46,8 +52,9 @@ internal class BudgetHistoryQueries(
         if (saved != null && (retireUnconditionally || revision < minimumRevision)) dao.deleteStatsProjection(saved)
     }
 
-    suspend fun read(binding: LogicalSessionBinding, month: String, before: Long?): Result<ReadSnapshot<BudgetHistoryPage>> =
+    override suspend fun history(binding: LogicalSessionBinding, month: String, beforeVersion: Long?): Result<ReadSnapshot<BudgetHistoryPage>> =
         errors.safeCall {
+            val before = beforeVersion
             val clean = validatedBudgetMonth(month).getOrThrow()
             require(before == null || before > 0)
             val bound = guard.bindExact(binding)

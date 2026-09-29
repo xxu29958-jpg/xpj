@@ -16,6 +16,7 @@ import java.time.YearMonth
 import java.util.TimeZone
 
 interface BudgetActions : BudgetSaveActions, ManualRateActions, MonthlyArrangementActions, BudgetAdviceInputsActions {
+    suspend fun archiveBudget(binding: LogicalSessionBinding, month: String, expectedVersion: Long): Result<Unit>
     fun canModifyLedger(): Boolean
     fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?>
     fun observeReadAccessDenials(): Flow<SnapshotAccessDenial> = emptyFlow()
@@ -59,7 +60,7 @@ class BudgetRepository internal constructor(
     localStorage: BudgetLocalStorage,
     sessionCoordinator: LocalLedgerSessionCoordinator,
     internal val adviceCallStore: BudgetAdviceCallStore = BudgetAdviceCallStore(LedgerRequestGuard(apiProvider), budgetNetworkErrors(apiProvider)),
-) : BudgetActions, BudgetHistoryReader,
+) : BudgetActions, BudgetHistoryReader by localStorage.queries.history,
     BudgetSaveActions by BudgetSaveRepository(apiProvider, outbox, adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter,
         localStorage.queries::read),
     ManualRateActions by ManualExchangeRateRepository(apiProvider, outbox, adapters.manualRateAdapter, adapters.manualRateReceiptAdapter),
@@ -73,9 +74,18 @@ class BudgetRepository internal constructor(
 
     override fun canModifyLedger(): Boolean = ledgerRoleCanModify(apiProvider.currentLedgerRole())
 
-    override suspend fun history(binding: LogicalSessionBinding, month: String, beforeVersion: Long?) =
-        budgetQueries.history.read(binding, month, beforeVersion)
-
+    override suspend fun archiveBudget(binding: LogicalSessionBinding, month: String, expectedVersion: Long): Result<Unit> =
+        budgetNetworkErrors(apiProvider).safeCall {
+            val clean = validatedBudgetMonth(month).getOrThrow()
+            require(expectedVersion > 0) { "请先读取这月预算。" }
+            val bound = ledgerRequestGuard.bindExact(binding)
+            if (!canModifyLedger()) throw RepositoryException("permission_denied", errorCode = "permission_denied")
+            budgetQueries.directMutation(binding, clean) {
+                bound.call { it.archiveMonthlyBudget(clean,
+                    com.ticketbox.data.remote.dto.BudgetMonthlyArchiveRequestDto(expectedVersion)) }
+            }
+            invalidateBudgetAdvice()
+        }
 
     override fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?> =
         apiProvider.observeActiveLedgerAccess()

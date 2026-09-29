@@ -139,7 +139,7 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # main. See ``_audit_pr_delta_metrics.py`` docstring for what each
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
-    "mutate_token_carriers": 137,  # Main's 135 + saved-view edit/delete; retired Owner route stays retired.
+    "mutate_token_carriers": 138,  # + Web budget archive with its captured expected row version.
     "mutate_token_exempted": 129,
     "mutate_token_reason_admin_single_writer": 10,
     "mutate_token_reason_append_only_fact": 3,

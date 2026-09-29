@@ -5,7 +5,7 @@ from __future__ import annotations
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
@@ -13,6 +13,7 @@ from app.database import get_db
 from app.errors import AppError
 from app.money_contract import projection_sum_to_int
 from app.routes._web_draft_binding import (
+    browser_draft_scope,
     draft_ack_response,
     draft_error_response,
     draft_refusal_result,
@@ -38,7 +39,7 @@ from app.routes.web_common import (
 from app.schemas import BudgetCategoryRequest, BudgetMonthlyResponse, BudgetMonthlyUpdateRequest
 from app.services.budget_command_service import review_monthly_budget_save, save_monthly_budget
 from app.services.budget_history_service import budget_history
-from app.services.budget_service import get_monthly_budget
+from app.services.budget_service import archive_monthly_budget, get_monthly_budget
 from app.services.category_service import list_ledger_category_options
 from app.services.currency_common import major_amount_to_minor, minor_amount_label, normalize_currency_code
 from app.services.ledger_calendar_service import current_ledger_month
@@ -306,6 +307,8 @@ def _render_budgets(
     category_options = list_ledger_category_options(db, tenant_id=selected_id)
     category_options.extend(category for category in selected_exclusions if category not in category_options)
     ctx["budget"] = budget_view
+    ctx["budget_archive_version"] = budget.row_version
+    ctx["budget_archive_scope"] = browser_draft_scope(db, request)
     ctx["excluded_category_options"] = [
         {"name": category, "selected": category in selected_exclusions} for category in category_options
     ]
@@ -357,6 +360,33 @@ def web_budgets(
         message=msg,
         return_category=return_category, return_month=return_month,
     )
+
+
+@router.post("/archive", response_class=HTMLResponse)
+def web_budget_archive(request: Request, month: str = Form(...), ledger_id: str = Form(...),
+    expected_row_version: str = Form(...), draft_scope: str = Form(""),
+    _local: None = LocalOnly, db: Session = Depends(get_db)) -> Response:
+    options = _list_ledger_options(db)
+    selected = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
+    target_month = clean_month(month)
+    retained = preserve_original_ledger_form(request, db, options=options, selected=selected,
+        fields={"ledger_id": ledger_id, "month": month, "expected_row_version": expected_row_version,
+            "draft_scope": draft_scope}, task="将月度预算移入回收站")
+    if retained is not None:
+        return retained
+    try:
+        _require_selected_ledger_write(options, selected)
+        require_draft_binding(db, request, ledger_id=selected, draft_scope=draft_scope, require_session=False)
+        version = parse_form_row_version_token(expected_row_version)
+        if version is None or version < 1:
+            raise AppError("invalid_request", "请刷新并核对这月预算后，再移入回收站。", status_code=422)
+        archive_monthly_budget(db, tenant_id=selected, month=target_month, expected_row_version=version,
+            actor_account_id=resolve_web_actor_account_id(db, request, selected))
+    except AppError as exc:
+        return _render_budgets(request=request, db=db, selected_id=selected, options=options,
+            month=target_month, error=exc.message, status_code=exc.status_code)
+    return RedirectResponse(_with_ledger("/web/budgets", selected, month=target_month,
+        msg="本月预算已移入回收站。原支出和修改记录保留，可在回收站恢复。"), status_code=303)
 
 
 @router.get("/history", response_class=HTMLResponse)

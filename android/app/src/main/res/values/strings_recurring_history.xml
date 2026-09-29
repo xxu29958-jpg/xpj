@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="recurring_history_title">定义历史</string>
+    <string name="recurring_history_create">建立固定支出</string>
+    <string name="recurring_history_edit">修改固定支出</string>
     <string name="recurring_history_explanation">这里保存固定支出的计划定义；实际支出、本期预留和下次提醒请看当前计划，不代表保存时的执行结果。</string>
     <string name="recurring_history_failed">无法读取定义历史，请重试。</string>
     <string name="recurring_history_read_pages">仅保留本次已读页面；未读记录需要联网，关闭后需重新读取。</string>

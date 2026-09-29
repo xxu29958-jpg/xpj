@@ -32,7 +32,7 @@ private fun BudgetSaveStatus(pending: PendingBudgetSave, canModify: Boolean, rec
     var confirmDrop by rememberSaveable(pending.row.id) { mutableStateOf(false) }
     HorizontalDivider()
     Text(stringResource(when (pending.row.status) {
-        PendingMutationStatus.Done -> if (pending.requiresReadRefresh) R.string.budget_saved_read_pending else R.string.budget_message_saved
+        PendingMutationStatus.Done -> if (pending.requiresReadRefresh) R.string.budget_saved_read_pending else R.string.budget_original_submission_saved
         PendingMutationStatus.Pending, PendingMutationStatus.InFlight -> R.string.budget_message_queued
         else -> R.string.budget_save_attention
     }))

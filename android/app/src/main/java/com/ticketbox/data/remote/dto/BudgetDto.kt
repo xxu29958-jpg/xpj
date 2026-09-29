@@ -4,6 +4,12 @@ import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 
 @JsonClass(generateAdapter = true)
+data class BudgetMonthlyArchiveRequestDto(@param:Json(name = "expected_row_version") val expectedRowVersion: Long)
+
+@JsonClass(generateAdapter = true)
+data class BudgetMonthlyArchiveResponseDto(val message: String)
+
+@JsonClass(generateAdapter = true)
 data class BudgetCategoryRequestDto(
     val category: String,
     @param:Json(name = "amount_cents")

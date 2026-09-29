@@ -48,6 +48,7 @@ data class BudgetScreenActions(
     val onRemoveCategoryRow: (Int) -> Unit,
     val onSave: () -> Unit,
     val onRecoverSave: (PendingBudgetSave, Boolean) -> Unit,
+    val onArchive: (Long) -> Unit,
 )
 
 @Composable
@@ -126,6 +127,7 @@ private fun BudgetScreenContent(
             )
         }
         budgetExecutionSections(decision, currencyDisplay)
+        item { com.ticketbox.ui.screens.budget.BudgetArchiveAction(state, actions.onArchive) }
     }
 }
 

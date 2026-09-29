@@ -2573,6 +2573,34 @@
         "title": "Body_save_correction_rate_web_expenses__expense_id__correction_rate_post",
         "type": "object"
       },
+      "Body_web_budget_archive_web_budgets_archive_post": {
+        "properties": {
+          "draft_scope": {
+            "default": "",
+            "title": "Draft Scope",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "ledger_id": {
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "month": {
+            "title": "Month",
+            "type": "string"
+          }
+        },
+        "required": [
+          "month",
+          "ledger_id",
+          "expected_row_version"
+        ],
+        "title": "Body_web_budget_archive_web_budgets_archive_post",
+        "type": "object"
+      },
       "Body_web_budgets_save_web_budgets_save_post": {
         "properties": {
           "category_budget_amount_yuan": {
@@ -45788,6 +45816,47 @@
           }
         },
         "summary": "Web Budgets",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/budgets/archive": {
+      "post": {
+        "operationId": "web_budget_archive_web_budgets_archive_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_budget_archive_web_budgets_archive_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Budget Archive",
         "tags": [
           "web"
         ]
