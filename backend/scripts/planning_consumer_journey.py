@@ -63,7 +63,8 @@ def _seed(group):
         fixture = bootstrap_installation_owner(db, operation_id="planning-consumer-journey",
             installation_id="planning-consumer-journey", bootstrap_secret=secrets.token_urlsafe(32),
             account_name="联动验证账户", ledger_name={"income-goals": "收入与目标验证账本",
-                "budget-recurring": "预算与固定支出验证账本", "relationships": "往来来源验证账本"}[group], device_name="隔离浏览器")
+                "budget-recurring": "预算与固定支出验证账本", "relationships": "往来来源验证账本",
+                "portable-downloads": "数据出口验证账本"}[group], device_name="隔离浏览器")
         activate_test_currency_authority(db, "CNY")
         db.commit()
         return fixture
