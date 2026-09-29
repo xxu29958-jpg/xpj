@@ -34,6 +34,7 @@ internal fun SplitAgreementSection(
             state.error?.let { Text(it.asString(), color = MaterialTheme.colorScheme.error) }
             state.message?.let { Text(it.asString()) }
             if (state.loading) Text(stringResource(R.string.split_agreement_loading))
+            DebtReadSource(state.fetchedAt, state.fromCache, state.loading, testTag = "split-agreement-read-source")
             QuietOutlinedButton(text = stringResource(R.string.split_agreement_refresh),
                 onClick = model::refresh, enabled = !state.loading)
             state.agreement?.let { agreement ->

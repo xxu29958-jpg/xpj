@@ -9,7 +9,10 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 interface SplitAgreementActions {
+    suspend fun read(task: DebtTask): Result<ReadSnapshot<BillSplitAgreementDto>>
     suspend fun load(task: DebtTask, share: Long? = null): Result<BillSplitAgreementDto>
+    fun observeReadAccessDenials(): Flow<SnapshotAccessDenial>
+    fun observeResourceDenials(): Flow<DebtReadResourceDenial>
     suspend fun submit(task: DebtTask, intent: SplitAgreementPayload): Result<Long>
     fun describe(row: OutboxRow): SplitAgreementPayload?
     fun observe(task: DebtTask): Flow<List<OutboxRow>>
@@ -24,6 +27,10 @@ class SplitAgreementRepository internal constructor(
 ) : SplitAgreementActions {
     private val guard = LedgerRequestGuard(apiProvider)
     private val errors = NetworkErrorHandler(serverUrlProvider = { null }, context = "SplitAgreement")
+
+    override suspend fun read(task: DebtTask): Result<ReadSnapshot<BillSplitAgreementDto>> = queryReader.agreement(task)
+    override fun observeReadAccessDenials() = queryReader.readAccessDenials
+    override fun observeResourceDenials() = queryReader.readResourceDenials
 
     override suspend fun load(task: DebtTask, share: Long?): Result<BillSplitAgreementDto> =
         queryReader.freshQuery(task) { splitAgreement(task.debtPublicId, share) }

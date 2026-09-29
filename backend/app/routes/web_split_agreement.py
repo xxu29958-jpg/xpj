@@ -41,7 +41,7 @@ _CHANGE_FORM_OPENAPI = {
                                  "command", "expected_row_version", "idempotency_key", "csrf_token"],
                     "properties": {
                         field: {"type": "string"}
-                        for field in (*CHANGE_FIELDS, "idempotency_key", "csrf_token")
+                        for field in (*CHANGE_FIELDS, "idempotency_key", "csrf_token", "settlement_explicit", "settlement_suggestion")
                     },
                 }
             }
@@ -82,7 +82,8 @@ def web_split_agreement(request: Request, public_id: str, ledger_id: str = "", c
 
 async def _form(request):
     form = await request.form()
-    return {field: str(form.get(field, "")) for field in (*CHANGE_FIELDS, "idempotency_key")}
+    return {field: str(form.get(field, "")) for field in
+            (*CHANGE_FIELDS, "idempotency_key", "settlement_explicit", "settlement_suggestion")}
 
 
 def _versions(values):
@@ -191,8 +192,14 @@ async def web_preview_split_change(request: Request, public_id: str, _local: Non
         current = _read(db, selected_id=selected_id, actor=actor, public_id=public_id)
         amount = major_amount_to_minor(values["new_share_amount_major"], current.home_currency_code)
         agreement = _read(db, selected_id=selected_id, actor=actor, public_id=public_id, new_share=amount)
-        values["settlement_net_amount_major"] = _minor_amount_value(
+        current_default = _minor_amount_value(current.preview.default_settlement_net_amount_cents, current.home_currency_code)
+        previous_suggestion = values.get("settlement_suggestion") or current_default
+        explicit = values.get("settlement_explicit") != "false" or values["settlement_net_amount_major"] != previous_suggestion
+        values["settlement_suggestion"] = _minor_amount_value(
             agreement.preview.default_settlement_net_amount_cents, agreement.home_currency_code)
+        if not explicit:
+            values["settlement_net_amount_major"] = values["settlement_suggestion"]
+        values["settlement_explicit"] = "true" if explicit else "false"
         fresh = initial_values(request, db, selected_id=selected_id, public_id=public_id, agreement=agreement)
         for key in ("expected_row_version", "expected_return_row_version"):
             values[key] = fresh[key]

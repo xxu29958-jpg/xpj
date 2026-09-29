@@ -38,7 +38,10 @@ import com.ticketbox.viewmodel.SplitAgreementViewModel
 import com.ticketbox.viewmodel.DebtDetailUiState
 import com.ticketbox.viewmodel.MemberProposalUiState
 import com.ticketbox.viewmodel.splitAgreementViewModelFactory
-import java.io.IOException
+import java.net.ConnectException
+import okhttp3.ResponseBody.Companion.toResponseBody
+import retrofit2.HttpException
+import retrofit2.Response
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -58,10 +61,14 @@ class SplitAgreementDraftConnectedTest {
         direction = "owed_to_me", principalAmountCents = 1000, remainingAmountCents = 1000,
         paidAmountCents = 0, status = "open", rowVersion = 8)
     private var failReads = false
+    private var missingReturn = false
     private val service = object : ApiService by network.service {
         override suspend fun splitAgreement(publicId: String, newShareAmountCents: Long?): BillSplitAgreementDto {
             check(publicId in setOf(original.publicId, returned.publicId))
-            if (failReads) throw IOException("Synthetic disconnected agreement read")
+            if (failReads) throw ConnectException("Synthetic disconnected agreement read")
+            if (missingReturn && publicId == returned.publicId) {
+                throw HttpException(Response.error<Any>(404, """{"error":"debt_not_found"}""".toResponseBody()))
+            }
             return BillSplitAgreementDto("agreement-invitation", "CNY", 4000, 2000, original, returned, true,
                 3000, 0, 1000, 0, -1000,
                 preview = BillSplitSettlementPreviewDto(newShareAmountCents ?: 2000, -1000, -1000, true))
@@ -84,7 +91,7 @@ class SplitAgreementDraftConnectedTest {
         val saved = stop()
         failReads = true
         install(saved, original.publicId)
-        compose.waitUntil(10_000) { model.value?.state?.value?.error != null }
+        compose.waitUntil(10_000) { model.value?.state?.value?.fromCache == true && model.value?.state?.value?.loading == false }
         compose.onNodeWithText("12.00").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("-3.00").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("双方明确返还三元").performScrollTo().assertIsDisplayed()
@@ -106,7 +113,7 @@ class SplitAgreementDraftConnectedTest {
         stop()
         failReads = true
         install(saved, original.publicId)
-        compose.waitUntil(10_000) { model.value?.state?.value?.rows?.size == 1 && model.value?.state?.value?.error != null }
+        compose.waitUntil(10_000) { model.value?.state?.value?.rows?.size == 1 && model.value?.state?.value?.fromCache == true }
         assertEquals(admitted, fixture.stored().single())
         compose.onNodeWithText("12.00").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("-3.00").performScrollTo().assertIsDisplayed()
@@ -147,6 +154,57 @@ class SplitAgreementDraftConnectedTest {
         showForm(readOnly = true)
         compose.waitUntil(10_000) { model.value?.state?.value?.agreement != null && model.value?.state?.value?.loading == false }
         compose.onNodeWithText("20.00").performScrollTo().assertIsDisplayed().assertIsNotEnabled()
+        assertTrue(fixture.stored().isEmpty())
+    }
+
+    @Test fun bothReadEntriesSurviveDiskReopenWithTheirTimeAndWithoutAnActionablePreview() {
+        install(null, original.publicId)
+        showForm()
+        compose.waitUntil(10_000) { model.value?.state?.value?.previewReady == true }
+        val originalTime = requireNotNull(model.value).state.value.fetchedAt
+        compose.onNodeWithText(context.getString(R.string.split_agreement_open_return_debt)).performScrollTo().performClick()
+        compose.waitUntil(10_000) { model.value?.state?.value?.task?.debtPublicId == returned.publicId &&
+            model.value?.state?.value?.previewReady == true }
+        val returnTime = requireNotNull(model.value).state.value.fetchedAt
+        stop()
+        failReads = true
+        install(null, returned.publicId)
+        compose.waitUntil(10_000) { model.value?.state?.value?.fromCache == true }
+        assertEquals(returnTime, requireNotNull(model.value).state.value.fetchedAt)
+        assertFalse(requireNotNull(model.value).state.value.previewReady)
+        compose.onNodeWithText(context.getString(R.string.split_agreement_open_original_debt)).performScrollTo().performClick()
+        compose.waitUntil(10_000) { model.value?.state?.value?.task?.debtPublicId == original.publicId &&
+            model.value?.state?.value?.fromCache == true }
+        val restored = requireNotNull(model.value).state.value
+        assertEquals(originalTime, restored.fetchedAt)
+        assertEquals(3000L, restored.agreement?.originalPaidAmountCents)
+        assertEquals(1000L, restored.agreement?.originalForgivenAmountCents)
+        assertEquals(-1000L, restored.agreement?.settlementNetAmountCents)
+        assertFalse(restored.previewReady)
+        assertFalse(restored.confirmed)
+        assertFalse(restored.canPropose)
+        assertTrue(fixture.stored().isEmpty())
+    }
+
+    @Test fun aMissingReturnDebtRetiresBothRoomSnapshotsWhileTheOriginalDraftSurvives() {
+        install(null, original.publicId)
+        showForm()
+        edit("12.00", "-3.00", "尚未发出的原稿")
+        compose.onNodeWithText(context.getString(R.string.split_agreement_open_return_debt)).performScrollTo().performClick()
+        compose.waitUntil(10_000) { model.value?.state?.value?.task?.debtPublicId == returned.publicId &&
+            model.value?.state?.value?.previewReady == true }
+        missingReturn = true
+        compose.onNodeWithText(context.getString(R.string.split_agreement_refresh)).performScrollTo().performClick()
+        compose.waitUntil(10_000) { model.value?.state?.value?.agreement == null && model.value?.state?.value?.error != null }
+        val saved = stop()
+        failReads = true
+        install(saved, original.publicId)
+        compose.waitUntil(10_000) { model.value?.state?.value?.loading == false && model.value?.state?.value?.error != null }
+        assertEquals(null, requireNotNull(model.value).state.value.agreement)
+        assertFalse(requireNotNull(model.value).state.value.previewReady)
+        compose.onNodeWithText("12.00").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("-3.00").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("尚未发出的原稿").performScrollTo().assertIsDisplayed()
         assertTrue(fixture.stored().isEmpty())
     }
 

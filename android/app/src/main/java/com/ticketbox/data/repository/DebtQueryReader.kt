@@ -8,6 +8,9 @@ import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.data.local.ExpenseDao
 import com.ticketbox.data.local.StatsProjectionCacheEntity
 import com.ticketbox.data.local.PendingMutationType
+import com.ticketbox.data.local.DebtQueryCachePayload
+import com.ticketbox.data.local.debtCachePayload
+import com.ticketbox.data.local.debtQueryCacheAdapter
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.DebtActivityListDto
 import com.ticketbox.data.remote.dto.DebtDto
@@ -34,8 +37,7 @@ internal val DEBT_QUERY_MUTATION_TYPES = setOf(PendingMutationType.CreateDebt, P
     PendingMutationType.RecordDebtAdjustment, PendingMutationType.VoidDebt, PendingMutationType.VoidDebtRepayment,
     PendingMutationType.SplitAgreement, PendingMutationType.SetDebtKind)
 
-private data class StoredDebtQuery(val epoch: Long, val sequence: Long, val response: String, val readOwner: String)
-private data class AcceptedDebtQuery(val query: StatsProjectionCacheEntity, val stored: StoredDebtQuery, val accessGeneration: Long)
+private data class AcceptedDebtQuery(val query: StatsProjectionCacheEntity, val stored: DebtQueryCachePayload, val accessGeneration: Long)
 private val activeDebtDirectTokens = ConcurrentHashMap.newKeySet<String>()
 internal data class DebtQueryScope(val row: StatsProjectionCacheEntity, val publicId: String? = null, val directTokens: Set<String> = emptySet())
 private data class DebtReadRequest(val binding: LogicalSessionBinding, val scope: DebtQueryScope,
@@ -62,8 +64,7 @@ internal class DebtQueryReader(
     private val debtAdapter = moshi.adapter(DebtDto::class.java)
     internal val listAdapter = moshi.adapter(DebtListResponseDto::class.java)
     private val activityAdapter = moshi.adapter(DebtActivityListDto::class.java)
-    private val storedAdapter = moshi.adapter(StoredDebtQuery::class.java)
-    private val readOwner = UUID.randomUUID().toString()
+    private val readOwner = coordinator.readSequenceOwner
     private val mutex = Mutex()
     internal val generation = AtomicLong()
     internal val activeDirect = activeDebtDirectTokens
@@ -184,7 +185,7 @@ internal class DebtQueryReader(
         val denied = deniedResources(query.bindingKey)
         check(request.scope.publicId == null || request.scope.publicId !in denied) { "没有找到这笔欠款。" }
         val saved = dao.debtSnapshotIfCurrent(query, request.epoch) ?: throw error
-        val stored = requireNotNull(storedAdapter.readStored(saved))
+        val stored = requireNotNull(saved.debtCachePayload())
         check(stored.epoch == request.epoch)
         val value = requireNotNull(spec.adapter.fromJson(stored.response))
         spec.validate(value)
@@ -214,12 +215,13 @@ internal class DebtQueryReader(
         if (!cacheAllowed || unpublished != null) {
             return@withLock ReadSnapshot(fresh, Instant.now().toString(), fromCache = false)
         }
-        val stored = StoredDebtQuery(request.epoch, request.ticket.sequence, spec.adapter.toJson(fresh), readOwner)
-        val incoming = AcceptedDebtQuery(query.copy(responseJson = storedAdapter.toJson(stored), fetchedAt = Instant.now().toString()),
+        val stored = DebtQueryCachePayload(request.epoch, request.ticket.sequence, spec.adapter.toJson(fresh), readOwner,
+            spec.publicIds(fresh) + listOfNotNull(publicId))
+        val incoming = AcceptedDebtQuery(query.copy(responseJson = debtQueryCacheAdapter.toJson(stored), fetchedAt = Instant.now().toString()),
             stored, request.ticket.generation)
         val key = "${query.bindingKey}|${query.kind}|${query.tag}"
         val previous = accepted[key]?.takeIf { it.stored.epoch == request.epoch && it.accessGeneration == request.ticket.generation } ?: try {
-            dao.debtSnapshotIfCurrent(query, request.epoch)?.let { row -> storedAdapter.readStored(row)?.let {
+            dao.debtSnapshotIfCurrent(query, request.epoch)?.let { row -> row.debtCachePayload()?.let {
                 AcceptedDebtQuery(row, it, request.ticket.generation) } }
         } catch (_: SQLiteException) { null }
         val selected = selectDebtRead(previous.takeIf { restoring.isEmpty() }, incoming, spec)
@@ -276,7 +278,7 @@ private fun <T> restorableDebtResources(request: DebtReadRequest, spec: DebtRead
     return denied.filter { it.key in returned && request.resourceFences[it.key] == it.value }
 }
 
-private fun validateDebt(debt: DebtDto, binding: LogicalSessionBinding, publicId: String?, allowShell: Boolean) {
+internal fun validateDebt(debt: DebtDto, binding: LogicalSessionBinding, publicId: String?, allowShell: Boolean) {
     require(debt.publicId.isNotBlank() && (publicId == null || debt.publicId == publicId) && debt.rowVersion > 0 &&
         (debt.ledgerId == binding.ledgerId || (allowShell && debt.ledgerId == null && debt.counterpartyType == "member" &&
             debt.viewerIsDebtor != null))) { "往来所属范围不匹配。" }
@@ -285,9 +287,6 @@ private fun validateDebt(debt: DebtDto, binding: LogicalSessionBinding, publicId
 private suspend fun <T> fetchDebtNetwork(bound: BoundLedgerRequest, fetch: suspend ApiService.() -> T,
     refused: suspend (HttpException) -> RepositoryException): T = try { bound.call { fetch(it) } }
     catch (error: HttpException) { throw refused(error) }
-
-private fun JsonAdapter<StoredDebtQuery>.readStored(query: StatsProjectionCacheEntity): StoredDebtQuery? =
-    try { fromJson(query.responseJson) } catch (_: IOException) { null } catch (_: JsonDataException) { null }
 
 private fun <T> selectDebtRead(previous: AcceptedDebtQuery?, incoming: AcceptedDebtQuery, spec: DebtReadSpec<T>): AcceptedDebtQuery {
     if (previous == null || previous.stored.epoch != incoming.stored.epoch) return incoming
@@ -298,7 +297,7 @@ private fun <T> selectDebtRead(previous: AcceptedDebtQuery?, incoming: AcceptedD
         previous.stored.sequence > incoming.stored.sequence && !spec.isNewer(old, fresh))) previous else incoming
 }
 
-private fun debtScope(binding: LogicalSessionBinding, kind: String, tag: String) = StatsProjectionCacheEntity(
+internal fun debtScope(binding: LogicalSessionBinding, kind: String, tag: String) = StatsProjectionCacheEntity(
     logicalBindingAdapter.toJson(binding), binding.ledgerId, kind, "", tag, "", "UTC", "", "")
 
 /** Only the existing direct writer invokes this guard; the original command and key remain its own. */

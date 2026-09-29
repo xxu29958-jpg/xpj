@@ -386,6 +386,11 @@ private fun recreateSavedState(value: SavedStateHandle) =
 private fun SplitAgreementViewModel.loadAsWriter(task: DebtTask?) = load(task, canModify = true)
 
 private class SplitProbe : SplitAgreementActions {
+    override fun observeReadAccessDenials() = kotlinx.coroutines.flow.emptyFlow<com.ticketbox.data.repository.SnapshotAccessDenial>()
+    override fun observeResourceDenials() = kotlinx.coroutines.flow.emptyFlow<com.ticketbox.data.repository.DebtReadResourceDenial>()
+    override suspend fun read(task: DebtTask) = load(task, null).map {
+        com.ticketbox.data.repository.ReadSnapshot(it, "2026-09-29T00:00:00Z", false)
+    }
     var value = splitTestAgreement()
     var fail = false
     var gate: CompletableDeferred<Unit>? = null

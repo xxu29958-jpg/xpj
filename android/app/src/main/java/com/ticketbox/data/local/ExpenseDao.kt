@@ -87,7 +87,7 @@ interface ExpenseDao : BudgetReadProtectionDao {
     )
 
     @Query("DELETE FROM stats_projection_cache WHERE bindingKey = :bindingKey " +
-        "AND kind IN ('debt_list', 'debt_detail', 'debt_activity')")
+        "AND kind IN ('debt_list', 'debt_detail', 'debt_activity', 'debt_agreement')")
     suspend fun clearDebtSnapshots(bindingKey: String)
 
     @Transaction
@@ -168,7 +168,19 @@ interface ExpenseDao : BudgetReadProtectionDao {
 
     @Query("DELETE FROM stats_projection_cache WHERE bindingKey = :bindingKey AND " +
         "((kind = 'debt_detail' AND tag = :publicId) OR (kind = 'debt_activity' AND substr(tag, 1, length(:publicId) + 1) = :publicId || ':'))")
-    suspend fun clearDebtResourceSnapshots(bindingKey: String, publicId: String)
+    suspend fun clearDebtEntrySnapshots(bindingKey: String, publicId: String)
+
+    @Query("SELECT * FROM stats_projection_cache WHERE bindingKey = :bindingKey AND kind = 'debt_agreement'")
+    suspend fun debtAgreementSnapshots(bindingKey: String): List<StatsProjectionCacheEntity>
+
+    @Transaction
+    suspend fun clearDebtResourceSnapshots(bindingKey: String, publicId: String) {
+        clearDebtEntrySnapshots(bindingKey, publicId)
+        for (snapshot in debtAgreementSnapshots(bindingKey)) {
+            val dependencies = snapshot.debtCachePayload()?.resources
+            if (dependencies == null || publicId in dependencies) deleteStatsProjection(snapshot)
+        }
+    }
 
     @Query("DELETE FROM stats_projection_cache WHERE bindingKey = :bindingKey AND kind = 'debt_list'")
     suspend fun clearDebtListSnapshots(bindingKey: String)
