@@ -49,7 +49,8 @@ class PlanningAndroid:
             except ET.ParseError:
                 diagnostic = dump + "\n" + raw
                 if self.pairing_code:
-                    diagnostic = diagnostic.replace(self.pairing_code, "[temporary pairing code removed]")
+                    diagnostic = (diagnostic.replace(self.pairing_code, "[temporary pairing code removed]")
+                        if self.bound else "The unparsed binding hierarchy was withheld")
                 (self.evidence / "android-tree-diagnostic.txt").write_text(diagnostic, encoding="utf-8")
                 return None
         return wait_for(read_tree, "The emulator did not provide a valid UI hierarchy", 45)[0]
@@ -69,12 +70,14 @@ class PlanningAndroid:
         return any(text in node.attrib.get("text", "") or text in node.attrib.get("content-desc", "")
                    for node in self.tree().iter("node"))
 
-    def click(self, text: str, *, bottom: bool = False):
+    def click(self, text: str, *, bottom: bool = False, stable: bool = False):
         scrolls = 0
+        previous_bounds = None
         def locate():
-            nonlocal scrolls
+            nonlocal scrolls, previous_bounds
             nodes = list(self.tree().iter("node"))
-            matches = [node for node in nodes if text in (node.attrib.get("text"), node.attrib.get("content-desc"))]
+            matches = [node for node in nodes if node.attrib.get("enabled") != "false" and
+                       text in (node.attrib.get("text"), node.attrib.get("content-desc"))]
             scrollable = [node for node in nodes if node.attrib.get("scrollable") == "true"]
             if not matches and scrollable and scrolls < 4:
                 left, top, right, end = self.bounds(max(scrollable, key=lambda node: self.bounds(node)[3] - self.bounds(node)[1]))
@@ -82,6 +85,12 @@ class PlanningAndroid:
                 self.adb("shell", "input", "swipe", center, str(top + (end - top) * 4 // 5),
                     center, str(top + (end - top) // 4), "350")
                 scrolls += 1
+            if stable:
+                bounds = [node.attrib.get("bounds") for node in matches]
+                unchanged = bool(matches) and bounds == previous_bounds
+                previous_bounds = bounds
+                if not unchanged:
+                    return []
             return matches
         matches = wait_for(locate, f"Native action is not reachable: {text}")
         if bottom:
@@ -91,22 +100,54 @@ class PlanningAndroid:
                 raise AssertionError(f"Native action is ambiguous: {text}")
             self.tap(matches[0])
 
-    def fill(self, value: str, *, previous: str | None = None):
+    def fill(self, value: str, *, previous: str | None = None, label: str | None = None):
         if not re.fullmatch(r"[A-Za-z0-9.:/_-]+", value):
             raise ValueError("This journey types only its numeric or ASCII inputs")
         def locate():
-            fields = [node for node in self.tree().iter("node") if node.attrib.get("class") == "android.widget.EditText"]
+            root = self.tree()
+            fields = self.labeled_fields(root, label) if label else [
+                node for node in root.iter("node") if node.attrib.get("class") == "android.widget.EditText"]
+            fields = [node for node in fields if node.attrib.get("enabled") != "false"]
             return [node for node in fields if re.fullmatch(previous, node.attrib.get("text", ""))] if previous is not None else fields
         fields = wait_for(locate, "The native input did not finish loading")
         if len(fields) != 1:
             raise AssertionError("The native input cannot be identified from its actual value")
         self.tap(fields[0])
-        self.adb("shell", "input", "keycombination", "113", "29")
-        self.adb("shell", "input", "text", value)
+        def focused_value():
+            inputs = [node for node in self.tree().iter("node") if
+                node.attrib.get("class") == "android.widget.EditText" and node.attrib.get("focused") == "true"]
+            return inputs[0].attrib.get("text", "") if len(inputs) == 1 else None
+        original = wait_for(lambda: (text := focused_value()) is not None and [text],
+            "The actual native field did not receive focus")[0]
+        self.adb("shell", "input", "keyevent", "123")
+        for end in range(len(original) - 1, -1, -1):
+            self.adb("shell", "input", "keyevent", "67")
+            wait_for(lambda end=end: focused_value() == original[:end], "The native input did not remove the selected character")
+        for end, character in enumerate(value, start=1):
+            self.adb("shell", "input", "text", character)
+            wait_for(lambda end=end: focused_value() == value[:end], "The native input did not retain the typed text")
         self.adb("shell", "input", "keyevent", "4")
 
-    def reveal_any(self, *texts: str):
-        for attempt in range(8):
+    def click_counted_tab(self, label: str):
+        def locate():
+            return [node for node in self.tree().iter("node")
+                    if re.fullmatch(re.escape(label) + r" \d+", node.attrib.get("text", ""))]
+        nodes = wait_for(locate, f"The actual counted tab is not visible: {label}")
+        assert len(nodes) == 1, "The actual counted tab is ambiguous"
+        self.tap(nodes[0])
+
+    @staticmethod
+    def labeled_fields(root, label):
+        candidates = []
+        for parent in root.iter("node"):
+            nodes = list(parent.iter("node"))
+            fields = [node for node in nodes if node.attrib.get("class") == "android.widget.EditText"]
+            if len(fields) == 1 and any(node.attrib.get("text") == label for node in nodes):
+                candidates.append((len(nodes), fields))
+        return min(candidates, key=lambda item: item[0])[1] if candidates else []
+
+    def reveal_any(self, *texts: str, toward_start: bool = False):
+        for _ in range(8):
             nodes = list(self.tree().iter("node"))
             if any(text in node.attrib.get("text", "") for node in nodes for text in texts):
                 return
@@ -115,10 +156,15 @@ class PlanningAndroid:
             if scrollable:
                 left, top, right, bottom = self.bounds(max(scrollable, key=lambda node: self.bounds(node)[3] - self.bounds(node)[1]))
                 x, start, end = (left + right) // 2, top + (bottom - top) * 4 // 5, top + (bottom - top) // 5
-            elif handles and attempt == 0:
+                if toward_start:
+                    start, end = end, start
+            elif handles:
                 left, top, right, bottom = self.bounds(handles[0])
                 window_bottom = self.bounds(nodes[0])[3]
                 x, start, end = (left + right) // 2, (top + bottom) // 2, window_bottom // 8
+                if start <= end:
+                    time.sleep(0.3)
+                    continue
             else:
                 time.sleep(0.3)
                 continue
@@ -194,7 +240,12 @@ class PlanningAndroid:
     def capture(self, name: str, redact: str | None = None):
         if self.bound or not self.pairing_code:
             (self.evidence / f"android-{name}.png").write_bytes(self.adb("exec-out", "screencap", "-p", binary=True))
-        tree = ET.tostring(self.tree(), encoding="unicode")
+        root = self.tree()
+        if self.pairing_code and not self.bound:
+            for node in root.iter("node"):
+                if node.attrib.get("class") == "android.widget.EditText":
+                    node.attrib["text"] = "[temporary binding input removed]"
+        tree = ET.tostring(root, encoding="unicode")
         secret = redact or self.pairing_code
         if secret:
             tree = tree.replace(secret, "[temporary pairing code removed]")

@@ -11,13 +11,13 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import retrofit2.HttpException
 
-/** Budget queries and history share the existing projection store's durable restore protection. */
+/** Budget queries and history share the existing projection store's durable direct-write protection. */
 internal class BudgetReadProtection(private val dao: ExpenseDao) {
     companion object {
         private val active = ConcurrentHashMap.newKeySet<String>()
         private fun requireInactive(state: BudgetReadState) {
             val token = state.barrier?.responseJson
-            check(token == null || token !in active) { "预算正在恢复，请稍后重新读取。" }
+            check(token == null || token !in active) { "预算正在处理，请稍后重新读取。" }
         }
     }
 
@@ -34,15 +34,15 @@ internal class BudgetReadProtection(private val dao: ExpenseDao) {
         catch (_: SQLiteException) { false } // A valid GET remains usable; failed settlement leaves the barrier durable.
     }
 
-    suspend fun <T> restore(binding: LogicalSessionBinding, month: String, send: suspend () -> T): T {
+    suspend fun <T> directMutation(binding: LogicalSessionBinding, month: String, send: suspend () -> T): T {
         val token = UUID.randomUUID().toString()
         val barrier = StatsProjectionCacheEntity(logicalBindingAdapter.toJson(binding), binding.ledgerId,
             "budget_restore_barrier", month, "", "", "UTC", token, Instant.now().toString())
         active.add(token)
         try {
-            try { dao.beginBudgetRestore(barrier) }
+            try { dao.beginBudgetDirectMutation(barrier) }
             catch (error: SQLiteException) {
-                throw RepositoryException("预算恢复尚未发送：本地读取保护无法保存，请稍后再试。", cause = error)
+                throw RepositoryException("预算操作尚未发送：本地读取保护无法保存，请稍后再试。", cause = error)
             }
             val result = try { send() } catch (error: HttpException) {
                 if (error.code() in setOf(400, 401, 403, 404, 405, 409, 410, 412, 422)) settle(barrier, accepted = false)
@@ -54,7 +54,7 @@ internal class BudgetReadProtection(private val dao: ExpenseDao) {
     }
 
     private suspend fun settle(barrier: StatsProjectionCacheEntity, accepted: Boolean) = withContext(NonCancellable) {
-        try { dao.finishBudgetRestore(barrier, accepted) }
+        try { dao.finishBudgetDirectMutation(barrier, accepted) }
         catch (_: SQLiteException) { /* Preserve the original result; the persisted barrier still protects old reads. */ }
     }
 }

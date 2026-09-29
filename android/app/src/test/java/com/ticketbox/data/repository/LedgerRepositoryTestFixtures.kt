@@ -640,6 +640,7 @@ internal class StubApi(
         request: DashboardCardsUpdateRequestDto,
         surface: String,
     ): DashboardCardsResponseDto = ledgerUnsupported()
+    override suspend fun archiveMonthlyBudget(month: String, request: com.ticketbox.data.remote.dto.BudgetMonthlyArchiveRequestDto): com.ticketbox.data.remote.dto.BudgetMonthlyArchiveResponseDto = ledgerUnsupported()
     override suspend fun monthlyBudget(month: String, timezone: String?): BudgetMonthlyDto = ledgerUnsupported()
     override suspend fun budgetHistory(month: String, beforeVersion: Long?): com.ticketbox.data.remote.dto.BudgetHistoryDto = ledgerUnsupported()
     override suspend fun updateMonthlyBudget(

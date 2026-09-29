@@ -21,6 +21,10 @@
   if(getForm().dataset.arrangementDraftPhase!=="editing" || JSON.parse(localStorage.getItem(key)).phase!=="editing")throw Error("Trial submitted a financial intent");
   getForm().requestSubmit(save());
   await until(()=>getForm().dataset.arrangementDraftPhase==="blocked" && !save().disabled,"refusal not retained");
+  const beforeReload=frame.contentDocument;
+  frame.src="/fixture?kind=arrangement"+frame.contentWindow.location.hash;
+  await until(()=>frame.contentDocument!==beforeReload && ready(),"refused original did not reopen");
+  if(!getForm().querySelector("[data-arrangement-draft-status]").textContent.includes("服务器已拒绝"))throw Error("A known refusal became an unknown outcome after reload");
   const review=getForm().querySelector("[data-arrangement-review]");
   if(review.hidden)throw Error("Explicitly rejected proposal cannot be reviewed");
   const beforeReview=frame.contentDocument;

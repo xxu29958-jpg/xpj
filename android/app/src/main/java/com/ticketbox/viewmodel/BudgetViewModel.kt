@@ -239,6 +239,26 @@ class BudgetViewModel(
         })
     }
 
+    fun archive(expectedVersion: Long) {
+        val state = _uiState.value
+        val binding = activeBinding ?: return
+        if (state.saving || state.hasPendingSave || !state.canModify || !repository.canModifyLedger()) return
+        val generation = requestGeneration
+        refreshGeneration += 1
+        _uiState.update { it.copy(saving = true, loading = false, message = null) }
+        viewModelScope.launch {
+            val result = repository.archiveBudget(binding, state.month, expectedVersion)
+            if (result.isSuccess) onDataChanged()
+            if (!isCurrent(generation, state.month)) return@launch
+            // The original edit/Outbox stays intact. A fresh query determines accepted or unknown results.
+            _uiState.update { it.copy(saving = false, budget = null, fetchedAt = null, fromCache = false,
+                message = result.exceptionOrNull()?.toUiText(R.string.budget_archive_failed)
+                    ?: UiText.res(R.string.budget_archive_done),
+                messageTone = if (result.isSuccess) MessageTone.Success else MessageTone.Danger) }
+            refresh()
+        }
+    }
+
     fun recoverSave(pending: PendingBudgetSave, drop: Boolean) {
         if (pending.requiresReadRefresh) {
             if (!drop && _uiState.value.saves.any { it.row.id == pending.row.id }) refresh()

@@ -47,11 +47,11 @@ internal class BudgetQueryReader(
     private val readProtection = BudgetReadProtection(dao)
     val history = BudgetHistoryQueries(apiProvider, dao, coordinator, ::recoverReadRefresh, readProtection)
 
-    suspend fun <T> directRestore(binding: LogicalSessionBinding, month: String, send: suspend () -> T): T {
+    suspend fun <T> directMutation(binding: LogicalSessionBinding, month: String, send: suspend () -> T): T {
         val clean = validatedBudgetMonth(month).getOrThrow()
         val bound = guard.bindExact(binding)
         bound.requireStillActive()
-        return try { readProtection.restore(binding, clean, send) }
+        return try { readProtection.directMutation(binding, clean, send) }
         catch (error: HttpException) {
             if (error.code() == 401) coordinator.rejectSnapshotAccess(bound, bindingAdapter.toJson(binding), errors.httpFailure(error))
             throw error

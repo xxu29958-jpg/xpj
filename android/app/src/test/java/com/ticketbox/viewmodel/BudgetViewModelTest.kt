@@ -1056,7 +1056,9 @@ internal class FakeBudgetActions(
     private val activeAccessFlow: Flow<LedgerAccessContext?> = flowOf(planAccess(canModify = canModify)),
     val commands: FakeBudgetSaveActions = FakeBudgetSaveActions(),
     val rates: FakeManualRateActions = FakeManualRateActions(),
-) : BudgetActions, com.ticketbox.data.repository.MonthlyArrangementActions by FakeMonthlyArrangementActions(), BudgetSaveActions by commands, com.ticketbox.data.repository.ManualRateActions by rates {
+    val inputs: FakeBudgetAdviceInputsActions = FakeBudgetAdviceInputsActions(),
+) : BudgetActions, com.ticketbox.data.repository.MonthlyArrangementActions by FakeMonthlyArrangementActions(), BudgetSaveActions by commands, com.ticketbox.data.repository.ManualRateActions by rates,
+    com.ticketbox.data.repository.BudgetAdviceInputsActions by inputs {
     val loadedMonths = mutableListOf<String>()
     val adviceMonths = mutableListOf<String>()
     val cachedAdviceMonths = mutableListOf<String>()
@@ -1065,15 +1067,9 @@ internal class FakeBudgetActions(
     var monthlyBudgetResponder: (suspend (String) -> Result<BudgetMonthly>)? = null
     var adviceResponder: (suspend (String) -> Result<BudgetAdviceResult>)? = null
 
-    val inputMonths = mutableListOf<String>()
-    var inputResponse: com.ticketbox.data.remote.dto.BudgetAdviceInputsDto? = null
-    override suspend fun trialAdviceInputs(binding: LogicalSessionBinding, month: String, request: com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest, reportingHomeCurrencyCode: String?): Result<com.ticketbox.data.remote.dto.BudgetAdviceInputsDto> = error("Unexpected trial read")
-    override suspend fun requestTrialAdvice(binding: LogicalSessionBinding, month: String, request: com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest, reportingHomeCurrencyCode: String?): Result<BudgetAdviceResult> = error("Unexpected trial AI call")
-    override suspend fun adviceInputs(expectedBinding: LogicalSessionBinding, month: String, homeCurrencyCode: String?): Result<com.ticketbox.data.remote.dto.BudgetAdviceInputsDto> {
-        inputMonths += month
-        return Result.success(inputResponse ?: com.ticketbox.data.remote.dto.BudgetAdviceInputsDto(month, homeCurrencyCode ?: "CNY",
-            com.ticketbox.data.remote.dto.DiscretionaryResponseDto(10000, 1000, 2000, 0, 0, 7000), emptyList()))
-    }
+    override suspend fun archiveBudget(binding: com.ticketbox.data.repository.LogicalSessionBinding, month: String, expectedVersion: Long): Result<Unit> =
+        Result.failure(UnsupportedOperationException("Archive is not arranged by this fixture"))
+
     override fun canModifyLedger(): Boolean = canModify
 
     override suspend fun cachedBudgetAdvice(month: String, homeCurrencyCode: String?): BudgetAdviceResult? {
@@ -1130,6 +1126,18 @@ internal class FakeBudgetActions(
         month: String,
     ): Result<ReadSnapshot<BudgetMonthly>> = monthlyBudget(month)
 
+}
+
+internal class FakeBudgetAdviceInputsActions : com.ticketbox.data.repository.BudgetAdviceInputsActions {
+    val months = mutableListOf<String>()
+    var response: com.ticketbox.data.remote.dto.BudgetAdviceInputsDto? = null
+    override suspend fun trialAdviceInputs(binding: LogicalSessionBinding, month: String, request: com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest, reportingHomeCurrencyCode: String?): Result<com.ticketbox.data.remote.dto.BudgetAdviceInputsDto> = error("Unexpected trial read")
+    override suspend fun requestTrialAdvice(binding: LogicalSessionBinding, month: String, request: com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest, reportingHomeCurrencyCode: String?): Result<BudgetAdviceResult> = error("Unexpected trial AI call")
+    override suspend fun adviceInputs(expectedBinding: LogicalSessionBinding, month: String, homeCurrencyCode: String?): Result<com.ticketbox.data.remote.dto.BudgetAdviceInputsDto> {
+        months += month
+        return Result.success(response ?: com.ticketbox.data.remote.dto.BudgetAdviceInputsDto(month, homeCurrencyCode ?: "CNY",
+            com.ticketbox.data.remote.dto.DiscretionaryResponseDto(10000, 1000, 2000, 0, 0, 7000), emptyList()))
+    }
 }
 
 internal class FakeBudgetSaveActions : BudgetSaveActions {

@@ -5,6 +5,7 @@ import com.ticketbox.data.remote.dto.BudgetMonthlyUpdateRequestDto
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
+import retrofit2.http.HTTP
 import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.PUT
@@ -12,6 +13,10 @@ import retrofit2.http.Query
 import retrofit2.http.QueryMap
 
 interface BudgetApi {
+    @HTTP(method = "DELETE", path = "api/budgets/monthly/{month}", hasBody = true)
+    suspend fun archiveMonthlyBudget(@Path("month") month: String,
+        @Body request: com.ticketbox.data.remote.dto.BudgetMonthlyArchiveRequestDto): com.ticketbox.data.remote.dto.BudgetMonthlyArchiveResponseDto
+
     @GET("api/budget/arrangements/{month}")
     suspend fun monthlyArrangement(@Path("month") month: String): com.ticketbox.data.remote.dto.MonthlyArrangementResponseDto
 

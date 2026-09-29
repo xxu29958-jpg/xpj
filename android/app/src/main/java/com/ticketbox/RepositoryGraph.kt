@@ -198,7 +198,7 @@ internal class RepositoryGraph(
     init {
         ledgerRepository.restoreWithReadProtection = { binding, item, restore ->
             when (item.kind) {
-                "monthly_budget" -> budgetQueries.directRestore(binding, item.resourceId) { restore() }
+                "monthly_budget" -> budgetQueries.directMutation(binding, item.resourceId) { restore() }
                 "recurring_item" -> recurringQueries.directMutation(binding) { restore() }
                 "income_plan" -> incomePlanRepository.reads.queries.directWrite(binding) { restore() }
                 "goal" -> {
