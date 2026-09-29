@@ -186,15 +186,9 @@ def resolve_artifact_state(
         urllib.parse.quote(part, safe="") for part in repository.split("/")
     )
     encoded_workflow = urllib.parse.quote(workflow, safe="")
-    query = urllib.parse.urlencode(
-        {
-            "branch": branch,
-            # Validate conclusions and event types below; GitHub's combined
-            # conclusion/PR search indexes can omit recent producer runs.
-            "status": "completed",
-            "per_page": "20",
-        }
-    )
+    # Fetch the recent runs directly. GitHub's filtered search can omit fresh
+    # runs; _trusted_run below owns every provenance, status and freshness check.
+    query = urllib.parse.urlencode({"per_page": "20"})
     runs_url = (
         f"{api_url.rstrip('/')}/repos/{encoded_repo}/actions/workflows/"
         f"{encoded_workflow}/runs?{query}"
