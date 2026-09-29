@@ -32,9 +32,11 @@ class BudgetRecovery:
         native.capture("arrangement-original-after-offline-restart")
         assert j.facts()["savings"] == 100000
         native.connection(j.port, online=True)
-        native.click("按原键继续重试")
+        # The actual outbox resumes its retained command automatically after reconnection.
         j.expect_fact("savings", 110000)
         assert j.facts()["buffer"] == 60000 and j.facts()["arrangement_revisions"] == 2
+        native.reveal_any("服务器已确认原提交")
+        native.capture("arrangement-original-confirmed-after-reconnect")
         self.reject_stale(form, original)
 
     def reject_stale(self, form, original):
