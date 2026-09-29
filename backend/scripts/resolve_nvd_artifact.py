@@ -189,8 +189,9 @@ def resolve_artifact_state(
     query = urllib.parse.urlencode(
         {
             "branch": branch,
-            "status": "success",
-            "exclude_pull_requests": "true",
+            # Validate conclusions and event types below; GitHub's combined
+            # conclusion/PR search indexes can omit recent producer runs.
+            "status": "completed",
             "per_page": "20",
         }
     )

@@ -117,6 +117,22 @@ def test_resolver_does_not_accept_another_database_compatibility_channel() -> No
     assert _resolve(get_json) is None
 
 
+def test_search_indexes_cannot_hide_a_recent_successful_producer() -> None:
+    # The live API returned only old runs with the conclusion/PR search filters;
+    # branch=main&status=completed included the fresh successful producer.
+    def get_json(url: str) -> dict[str, Any]:
+        if "/workflows/" in url:
+            if "status=success" in url or "exclude_pull_requests=" in url:
+                return {"workflow_runs": [_run(2, age=timedelta(hours=49))]}
+            failed = _run(5)
+            failed["conclusion"] = "failure"
+            return {"workflow_runs": [failed, _run(4, event="repository_dispatch")]}
+        assert "/runs/4/" in url
+        return {"artifacts": [_artifact(4)]}
+
+    assert _resolve(get_json) == resolver.ArtifactReference(run_id=4, artifact_id=40)
+
+
 def test_resolver_rejects_a_run_older_than_the_freshness_window() -> None:
     def get_json(url: str) -> dict[str, Any]:
         assert "/workflows/" in url
