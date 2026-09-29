@@ -6,7 +6,7 @@ from scripts.planning_journey_android import wait_for
 
 SERIES = "联动房租"
 PAGES = {"budget": "/web/budgets", "arrangement": "/web/budget-advise", "series": "/web/recurring"}
-CARDS = {"budget": "月度预算", "arrangement": "本月储蓄与备用金", "series": "固定支出"}
+CARDS = {"budget": "本月预算剩余", "arrangement": "本月储蓄与备用金", "series": "固定支出"}
 
 
 def facts(ledger_id):
