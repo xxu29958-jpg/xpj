@@ -90,8 +90,8 @@ def _index_names() -> set[str]:
 
 def _assert_full_shape(*, c07: bool, account_scoped: bool, original_money: bool = False) -> None:
     cols = _columns()
-    nullable = _NULLABLE_COLUMNS | ({"amount_cents", "original_currency_code", "original_amount_minor"} if original_money else set())
-    for name in _NOT_NULL_COLUMNS - nullable:
+    nullable = set(_NULLABLE_COLUMNS) | ({"amount_cents", "original_currency_code", "original_amount_minor"} if original_money else set())
+    for name in set(_NOT_NULL_COLUMNS) - nullable:
         assert name in cols, f"{name} missing from repayment_drafts"
         assert cols[name]["nullable"] is False, f"{name} should be NOT NULL"
     for name in nullable:
