@@ -18,6 +18,8 @@ from scripts.planning_journey_android import wait_for
 
 @contextmanager
 def desktop_browser(browser, backend_url, ledger_id, evidence):
+    from playwright.sync_api import Error as PlaywrightError
+
     from tests.test_desktop_web_bridge_session import _mint_principal
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "desktop"))
@@ -46,6 +48,7 @@ def desktop_browser(browser, backend_url, ledger_id, evidence):
         thread = threading.Thread(target=manager.serve_forever)
         thread.start()
         context = browser.new_context(viewport={"width": 1280, "height": 960})
+        completed, page = False, None
         try:
             page = context.new_page()
             page.goto(manager.prepare_web_bootstrap(root / "bootstrap.html"))
@@ -58,16 +61,20 @@ def desktop_browser(browser, backend_url, ledger_id, evidence):
                     for cookie in context.cookies(origin + "/web"))
             wait_for(browser_bound, "The actual browser did not receive its Manager session", 30)
             yield page, origin
-        except Exception:
-            current = urlsplit(page.url)
-            (evidence / "desktop-navigation.json").write_text(json.dumps({
-                "scheme": current.scheme, "host": current.netloc,
-                "path": "bootstrap-file" if current.scheme == "file" else current.path,
-            }), encoding="utf-8")
-            page.screenshot(path=evidence / "desktop-failure.png", full_page=True)
-            raise
+            completed = True
         finally:
-            context.close()
-            manager.shutdown()
-            manager.server_close()
-            thread.join(timeout=5)
+            try:
+                if not completed and page is not None:
+                    current = urlsplit(page.url)
+                    (evidence / "desktop-navigation.json").write_text(json.dumps({
+                        "scheme": current.scheme, "host": current.netloc,
+                        "path": "bootstrap-file" if current.scheme == "file" else current.path,
+                    }), encoding="utf-8")
+                    page.screenshot(path=evidence / "desktop-failure.png", full_page=True)
+            except (PlaywrightError, OSError):
+                print("Desktop failure capture was unavailable")
+            finally:
+                context.close()
+                manager.shutdown()
+                manager.server_close()
+                thread.join(timeout=5)

@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
+import com.ticketbox.R
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.viewmodel.PortableExportDestination
 import java.io.OutputStream
@@ -11,6 +12,7 @@ import java.io.OutputStream
 /** Only ACTION_CREATE_DOCUMENT results owned by unfinished downloads enter this journal. */
 internal class PortableExportDocuments(context: Context, private val active: MutableSet<String> = activeDocuments) {
     private val resolver = context.applicationContext.contentResolver
+    private val unavailableMessage = context.getString(R.string.portable_export_destination_unavailable)
     private val preferences = context.applicationContext.getSharedPreferences("ticketbox_portable_exports", Context.MODE_PRIVATE)
 
     fun document(uri: Uri): PortableExportDestination = object : PortableExportDestination {
@@ -25,9 +27,9 @@ internal class PortableExportDocuments(context: Context, private val active: Mut
         }
 
         override fun open(): OutputStream = try {
-            resolver.openOutputStream(uri, "wt") ?: throw RepositoryException("无法写入所选位置，请重新选择。")
+            resolver.openOutputStream(uri, "wt") ?: throw RepositoryException(unavailableMessage)
         } catch (error: SecurityException) {
-            throw RepositoryException("无法写入所选位置，请重新选择。", cause = error)
+            throw RepositoryException(unavailableMessage, cause = error)
         }
 
         override fun complete() = forget(uri)

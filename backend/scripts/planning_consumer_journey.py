@@ -169,6 +169,19 @@ def _journey(page, native: PlanningAndroid, fixture, evidence: Path):
     return result
 
 
+def _run_group(args, page, native, fixture):
+    if args.group == "relationships":
+        from scripts.relationship_journey import RelationshipJourney
+        return RelationshipJourney(page, native, fixture, args.evidence, BASE_URL).run()
+    if args.group == "budget-recurring":
+        from scripts.planning_journey_budget import BudgetJourney
+        return BudgetJourney(page, native, fixture, args.evidence, BASE_URL).run()
+    if args.group == "portable-downloads":
+        from scripts.portable_journey import PortableJourney
+        return PortableJourney(page, native, fixture, args.evidence, BASE_URL).run()
+    return _journey(page, native, fixture, args.evidence)
+
+
 def _browser_run(args, native, fixture):
     from playwright.sync_api import Error as PlaywrightError
     from playwright.sync_api import sync_playwright
@@ -178,17 +191,7 @@ def _browser_run(args, native, fixture):
         page = browser.new_page(viewport={"width": 1280, "height": 960})
         completed = False
         try:
-            if args.group == "relationships":
-                from scripts.relationship_journey import RelationshipJourney
-                result = RelationshipJourney(page, native, fixture, args.evidence, BASE_URL).run()
-            elif args.group == "budget-recurring":
-                from scripts.planning_journey_budget import BudgetJourney
-                result = BudgetJourney(page, native, fixture, args.evidence, BASE_URL).run()
-            elif args.group == "portable-downloads":
-                from scripts.portable_journey import PortableJourney
-                result = PortableJourney(page, native, fixture, args.evidence, BASE_URL).run()
-            else:
-                result = _journey(page, native, fixture, args.evidence)
+            result = _run_group(args, page, native, fixture)
             completed = True
             return result
         finally:
