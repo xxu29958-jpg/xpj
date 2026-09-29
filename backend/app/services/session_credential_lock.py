@@ -192,15 +192,13 @@ def lock_and_revalidate_credential_mint_context(
     return None if auth is None else revalidate_session_context(db, auth)
 
 
-def lock_and_revalidate_session_principal(
+def revalidate_session_principal(
     db: Session,
-    principal: SessionPrincipal | None,
-) -> SessionPrincipal | None:
-    """Lock and revalidate a ledger-independent Account/Device principal."""
-
-    lock_bootstrap_owner_transaction(db)
-    if principal is None:
-        return None
+    principal: SessionPrincipal,
+) -> SessionPrincipal:
+    """Read the exact Account/Device credential without ledger access or writes."""
+    if not principal.credential_id or not principal.credential_hash:
+        raise AppError("invalid_token", status_code=401)
     token = db.scalar(
         select(AuthToken)
         .where(AuthToken.id == principal.credential_id)
@@ -214,6 +212,15 @@ def lock_and_revalidate_session_principal(
     if not _same_session_binding(refreshed, principal):
         raise AppError("invalid_token", status_code=401)
     return refreshed
+
+
+def lock_and_revalidate_session_principal(
+    db: Session,
+    principal: SessionPrincipal | None,
+) -> SessionPrincipal | None:
+    """Lock and revalidate a ledger-independent Account/Device principal."""
+    lock_bootstrap_owner_transaction(db)
+    return None if principal is None else revalidate_session_principal(db, principal)
 
 
 def lock_and_revalidate_mutation_actor(

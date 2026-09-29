@@ -51,7 +51,7 @@ def test_export_reads_one_snapshot_and_does_not_commit_its_callers_work(identity
     auth = _auth(identity)
     expense_id = _expense(auth)
     archive_writer = service.create_portable_archive
-    validate = service.revalidate_session_context
+    validate = service.revalidate_portable_export_context
     snapshot_settings = []
 
     def observe_read_transaction(db, auth):
@@ -72,7 +72,7 @@ def test_export_reads_one_snapshot_and_does_not_commit_its_callers_work(identity
         return archive_writer(**kwargs)
 
     monkeypatch.setattr(service, "create_portable_archive", change_after_snapshot)
-    monkeypatch.setattr(service, "revalidate_session_context", observe_read_transaction)
+    monkeypatch.setattr(service, "revalidate_portable_export_context", observe_read_transaction)
     with SessionLocal() as caller:
         caller.add(Expense(tenant_id=auth.ledger_id, amount_cents=111, merchant="Uncommitted"))
         with service.create_portable_ledger_export(caller, auth=auth) as archive, ZipFile(archive.path) as package:
