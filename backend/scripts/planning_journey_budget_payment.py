@@ -53,9 +53,10 @@ def native_link(j, payment_date):
                if node.attrib.get("text", "").startswith(payment_date + " · " + SERIES)]
     assert len(matches) == 1, "The actual native payment picker did not offer the prior-month payment"
     native.click(matches[0])
+    native.reveal_any("保存本期提交", toward_start=True)
     native.click("保存本期提交")
     j.expect_fact("linked_expense_id", j.facts()["expense_id"])
-    native.reveal_any("本期已履约")
+    native.reveal_any("本期已履约", toward_start=True)
     native.capture("cross-month-payment-linked")
     native.back()
 

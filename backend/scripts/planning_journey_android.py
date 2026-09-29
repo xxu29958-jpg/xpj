@@ -139,8 +139,8 @@ class PlanningAndroid:
                 candidates.append((len(nodes), fields))
         return min(candidates, key=lambda item: item[0])[1] if candidates else []
 
-    def reveal_any(self, *texts: str):
-        for attempt in range(8):
+    def reveal_any(self, *texts: str, toward_start: bool = False):
+        for _ in range(8):
             nodes = list(self.tree().iter("node"))
             if any(text in node.attrib.get("text", "") for node in nodes for text in texts):
                 return
@@ -149,7 +149,9 @@ class PlanningAndroid:
             if scrollable:
                 left, top, right, bottom = self.bounds(max(scrollable, key=lambda node: self.bounds(node)[3] - self.bounds(node)[1]))
                 x, start, end = (left + right) // 2, top + (bottom - top) * 4 // 5, top + (bottom - top) // 5
-            elif handles and attempt == 0:
+                if toward_start:
+                    start, end = end, start
+            elif handles:
                 left, top, right, bottom = self.bounds(handles[0])
                 window_bottom = self.bounds(nodes[0])[3]
                 x, start, end = (left + right) // 2, (top + bottom) // 2, window_bottom // 8
