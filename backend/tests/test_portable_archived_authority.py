@@ -12,7 +12,7 @@ from app.main import app
 from app.models import AuthToken, Ledger, LedgerMember
 from app.routes.web_auth import SESSION_COOKIE_NAME
 from app.services import portable_export_service as service
-from app.services.identity_service import authenticate_session_token
+from app.services.identity_service import authenticate_session_token, hash_secret
 from app.services.time_service import now_utc
 from tests._web_public_session_support import PUBLIC_HOST, mint_session, public_client
 from tests.test_desktop_web_bridge_session import LOOPBACK_BASE_URL, _mint_principal, _principal_headers
@@ -68,13 +68,17 @@ def test_owner_with_no_active_ledger_downloads_records_and_original_without_swit
         _assert_bill_and_unverified_original(bridge.get("/web/export/portable?ledger_id=owner", headers=desktop_headers),
             expense_id, source.read_bytes())
     assert client.get("/api/auth/check", headers=headers).status_code == 403
-    assert client.get("/api/exports/portable", headers=identity.gray_app_headers,
-        params={"ledger_id": auth.ledger_id}).status_code == 403
+    # This is the same owner's second device, originally bound to tester_1.
+    # Explicit selection must reach its owned archive without retargeting that token.
+    _assert_bill_and_unverified_original(client.get("/api/exports/portable", headers=identity.gray_app_headers,
+        params={"ledger_id": auth.ledger_id}), expense_id, source.read_bytes())
     with SessionLocal() as db:
         assert db.scalar(select(Ledger.archived_at).where(Ledger.ledger_id == auth.ledger_id)) is not None
         token = db.get(AuthToken, auth.credential_id)
         assert (token.ledger_id, token.account_id, token.device_id, token.token_hash) == (
             auth.ledger_id, auth.account_id, auth.device_id, auth.credential_hash)
+        other_token = db.scalar(select(AuthToken).where(AuthToken.token_hash == hash_secret(identity.tenant_app_token)))
+        assert other_token.ledger_id == "tester_1" and other_token.account_id == auth.account_id
     assert _financial_snapshot(expense_id) == before
 
 
