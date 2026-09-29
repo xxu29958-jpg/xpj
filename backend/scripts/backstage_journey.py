@@ -7,12 +7,13 @@ from scripts.planning_journey_android import wait_for
 
 
 class BackstageJourney:
-    def __init__(self, page, native, fixture, evidence, base_url, advisor):
+    def __init__(self, page, native, fixture, evidence, base_url, advisor, restart_backend):
         self.page, self.native, self.fixture = page, native, fixture
         self.evidence, self.base_url = evidence, base_url
         self.ledger_id = fixture.ledger_id
         self.port = int(base_url.rsplit(":", 1)[1])
         self.advisor = advisor
+        self.restart_backend = restart_backend
 
     def facts(self):
         return facts(self.ledger_id)
@@ -88,7 +89,10 @@ class BackstageJourney:
         self.native.connection(self.port, online=False)
         try:
             self.native.click("刷新")
-            wait_for(lambda: self.native.has("刷新暂时没成功"), "Offline task read lost its recovery explanation", 90)
+            # This emulator uses adb reverse with loopback; the shared network mapper
+            # reports its existing phone-address diagnostic after the reverse is removed.
+            wait_for(lambda: self.native.has("请填写可在手机上访问的地址"),
+                     "The isolated route failure was not presented", 90)
             assert self.native.has("小票识别") and self.native.has("打开原账单")
             self.native.capture("backstage-offline-retained")
         finally:
@@ -126,6 +130,7 @@ class BackstageJourney:
             assert original_retry.locator('[name="expected_row_version"]').input_value() == original_version
             self.capture("ocr-failure-original-request", page=result)
             self.configure_ocr()
+            self.restart_backend()
             original_retry.get_by_role("button", name="重试原识别请求", exact=True).click()
             result.wait_for_url("**/edit?*")
             assert result.locator('[name="amount_yuan"]').input_value() == "18.51"
@@ -169,15 +174,19 @@ class BackstageJourney:
 
     def run(self):
         from scripts.backstage_journey_advisor import advisor_consumers
+        from scripts.backstage_journey_fx import fx_consumers
         from scripts.backstage_journey_native import native_upload_and_ocr
+        from scripts.backstage_journey_ocr_recovery import drawer_lost_ocr_reply
 
         self.upload_web()
         self.task_read_recovery()
         self.retry_web()
+        drawer_lost_ocr_reply(self)
         self.native_review()
         self.appearances()
         native_upload_and_ocr(self)
         advisor = advisor_consumers(self)
+        fx_consumers(self)
         result = self.facts()
         result["advisor"] = advisor
         result["verified_leg"] = "Real RapidOCR, Owner hot configuration, Web/Android image upload, durable task and source, native read denial/recovery/restart, same-key Web OCR retry, native explicit OCR with automatic recognition disabled, raw drafts retained until explicit review, human native confirmation"

@@ -46,6 +46,10 @@ def _roles(j):
             page.wait_for_url("**/web/budget-advise*")
             assert page.get_by_role("button", name="获取智能建议", exact=True).count() == 0
             j.capture("ai-" + role + "-read-only-advice", page=page)
+            page.goto(f"{base}/web/pending?ledger_id={j.ledger_id}")
+            page.locator("#recognition > summary").click()
+            assert page.locator("[data-recognition-task-id]").count() == 0, "Another account's task history leaked"
+            j.capture("tasks-" + role + "-account-scope", page=page)
     assert len(j.advisor.inputs) == count, "A non-Owner consumer invoked the live provider"
 
 

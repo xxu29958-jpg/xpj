@@ -23,6 +23,10 @@ def facts(ledger_id):
             expenses.append({"id": expense.id, "amount": expense.amount_cents,
                 "merchant": expense.merchant, "status": expense.status,
                 "version": expense.row_version, "fact_revision": expense.fact_revision,
+                "original_currency": expense.original_currency_code,
+                "original_amount": expense.original_amount_minor, "home_currency": expense.home_currency_code,
+                "fx_status": expense.fx_status, "rate": str(expense.fx_rate) if expense.fx_rate else None,
+                "rate_date": expense.fx_rate_date.isoformat() if expense.fx_rate_date else None,
                 "note": expense.note, "original_sha256": digest,
                 "expense_time": expense.expense_time.isoformat() if expense.expense_time else None})
         tasks = [{"id": task.public_id, "type": task.task_type, "status": task.status,
@@ -59,14 +63,14 @@ def denied_membership(ledger_id):
             db.commit()
 
 
-def synthetic_receipt(path, *, amount="18.51"):
+def synthetic_receipt(path, *, amount="18.51", date_text="2026年9月28日"):
     from PIL import Image, ImageDraw, ImageFont
 
     canvas = Image.new("RGB", (1050, 640), "white")
     draw = ImageDraw.Draw(canvas)
     font = ImageFont.truetype("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", 38)
     for index, line in enumerate(("合成测试小票（非真实凭证）", "星河便利店",
-                                 "交易时间：2026年9月28日 12:34:56", "商品：饮用水",
+                                 f"交易时间：{date_text} 12:34:56", "商品：饮用水",
                                  f"交易金额：{amount}（人民币）", "仅用于隔离验证")):
         draw.text((45, 35 + index * 95), line, fill="black", font=font)
     canvas.save(path)

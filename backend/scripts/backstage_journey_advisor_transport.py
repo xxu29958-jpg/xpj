@@ -6,12 +6,17 @@ import threading
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.error import URLError
+from urllib.parse import urlsplit
+from urllib.request import urlopen
 
 
 @dataclass
 class AdvisorWireEvidence:
     inputs: list[dict] = field(default_factory=list)
     fail_next: bool = False
+    fx_available: bool = False
+    fx_requests: list[str] = field(default_factory=list)
 
 
 @contextmanager
@@ -45,13 +50,34 @@ def advisor_wire_fixture():
             self.end_headers()
             self.wfile.write(content)
 
+        def do_GET(self):  # noqa: N802 - stdlib HTTP handler contract.
+            # A bounded failure switch in front of the real dated quote provider.
+            parts = urlsplit(self.path)
+            assert parts.path in {"/fx/latest", "/fx/2025-01-12"}
+            state.fx_requests.append(parts.path)
+            content, status = b"temporarily unavailable for recovery verification", 503
+            if state.fx_available:
+                target = "https://api.frankfurter.dev/v1/" + parts.path.rsplit("/", 1)[1] + "?" + parts.query
+                try:
+                    with urlopen(target, timeout=10) as response:
+                        content, status = response.read(), response.status
+                except (URLError, OSError):
+                    pass
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(content)))
+            self.end_headers()
+            self.wfile.write(content)
+
     server = ThreadingHTTPServer(("127.0.0.1", 18881), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     values = {"BUDGET_ADVISOR_PROVIDER": "openai_compat",
               "BUDGET_ADVISOR_BASE_URL": "http://127.0.0.1:18881/v1",
               "BUDGET_ADVISOR_MODEL": "synthetic-ui-protocol-fixture",
               "BUDGET_ADVISOR_API_KEY": "", "BUDGET_ADVISOR_OWNER_CONFIRMED": "false",
-              "BUDGET_ADVISOR_LIVE_MIN_INTERVAL_SECONDS": "0"}
+              "BUDGET_ADVISOR_LIVE_MIN_INTERVAL_SECONDS": "0",
+              "FX_RATE_SOURCE": "frankfurter", "FX_RATE_AUTO_SYNC_ENABLED": "true",
+              "FX_RATE_FRANKFURTER_URL": "http://127.0.0.1:18881/fx/latest?base=EUR"}
     original = {key: os.environ.get(key) for key in values}
     os.environ.update(values)
     thread.start()

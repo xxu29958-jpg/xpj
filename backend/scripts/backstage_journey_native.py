@@ -8,7 +8,7 @@ from scripts.planning_journey_android import wait_for
 
 def share_synthetic_receipt(j):
     path = j.evidence / "synthetic-receipt-native.png"
-    synthetic_receipt(path, amount="23.45")
+    synthetic_receipt(path, amount="23.45", date_text="2025年1月12日")
     device_path = "/sdcard/Pictures/backstage-native.png"
     j.native.adb("push", str(path), device_path)
     j.native.adb("shell", "am", "broadcast", "-a", "android.intent.action.MEDIA_SCANNER_SCAN_FILE",
