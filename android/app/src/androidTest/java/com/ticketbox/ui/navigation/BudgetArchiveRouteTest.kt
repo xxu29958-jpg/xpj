@@ -72,7 +72,8 @@ class BudgetArchiveRouteTest {
                 }
             }
         }
-        compose.waitUntil(5_000) { compose.onAllNodes(hasText("预算设置")).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("budget_total_amount"))
+            .fetchSemanticsNodes().isNotEmpty() }
     }
 
     private fun openArchive() {
@@ -92,6 +93,7 @@ class BudgetArchiveRouteTest {
 
     @Test fun confirmedArchiveUsesTheReadVersionAndRetainsAnUnsavedOriginalDraft() {
         show()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("budget_total_amount"))
         val field = compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("budget_total_amount")), useUnmergedTree = true)
         field.performScrollTo().performTextReplacement("1500")
         closeSoftKeyboard()
@@ -101,6 +103,7 @@ class BudgetArchiveRouteTest {
         assertEquals(7L, archives.single().second)
         compose.waitUntil(5_000) { compose.onAllNodes(hasText("预算已移入回收站，原支出和修改记录保留。"))
             .fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("budget_total_amount"))
         field.performScrollTo().assertTextEquals("1500")
         assertTrue(runBlocking { harness.fixture.pendingDao.allRows().isEmpty() })
     }

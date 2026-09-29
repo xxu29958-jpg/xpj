@@ -29,13 +29,14 @@ def record_payment(j, path, payment_date):
     if not accounting.is_visible():
         accounting.locator("xpath=ancestor::details[1]").locator(":scope > summary").click()
     accounting.fill(payment_date)
-    form.locator("[data-manual-submit]").click()
+    assert j.facts()["expenses"] == 0, "Entering payment details created a financial fact before submission"
+    form.get_by_role("button", name="记下这笔支出", exact=True).click()
     j.expect_fact("expenses", 1)
-    assert j.facts()["expense_status"] == "pending" and j.facts()["linked_expense_id"] is None
-    page.get_by_role("button", name="确认入账", exact=True).click()
+    # Manual entry confirms the explicitly submitted payment; imported suggestions use pending review.
     j.expect_fact("expense_status", "confirmed")
-    page.wait_for_url("**/occurrence?*")
     assert j.facts()["expense_date"] == payment_date and j.facts()["linked_expense_id"] is None
+    page.get_by_role("link", name="返回本期固定支出", exact=True).click()
+    page.wait_for_url("**/occurrence?*")
     j.capture("confirmed-payment-awaiting-explicit-link")
 
 
