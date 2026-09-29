@@ -84,13 +84,9 @@ internal fun SyncStatusDropDialog(
 private fun dropConfirmationText(selection: SyncStatusDropSelection): DropConfirmationText {
     val row = selection.row
     return when {
-        row.type == PendingMutationType.CreateExpense -> DropConfirmationText(
-            stringResource(R.string.manual_submission_stop), stringResource(R.string.manual_submission_stop_body),
-            stringResource(R.string.manual_submission_stop),
-        )
-        row.type == PendingMutationType.SaveManualExchangeRate -> DropConfirmationText(
-            stringResource(R.string.advice_rate_stop), stringResource(R.string.advice_rate_stop_body), stringResource(R.string.advice_rate_stop),
-        )
+        row.type in originalCreationStopLabels -> originalCreationStopLabels.getValue(row.type).let { (title, body) ->
+            DropConfirmationText(stringResource(title), stringResource(body), stringResource(title))
+        }
         row.type in com.ticketbox.viewmodel.categoryRuleSubmissionTypes -> DropConfirmationText(
             stringResource(R.string.category_rule_submission_stop), stringResource(R.string.category_rule_submission_stop_body),
             stringResource(R.string.category_rule_submission_stop),
@@ -129,6 +125,12 @@ private fun dropConfirmationText(selection: SyncStatusDropSelection): DropConfir
         else -> legacyDropConfirmationText(selection)
     }
 }
+
+private val originalCreationStopLabels = mapOf(
+    PendingMutationType.SaveManualExchangeRate to (R.string.advice_rate_stop to R.string.advice_rate_stop_body),
+    PendingMutationType.CreateExpense to (R.string.manual_submission_stop to R.string.manual_submission_stop_body),
+    PendingMutationType.CapturePaymentNotification to (R.string.notification_capture_stop to R.string.notification_capture_stop_explanation),
+)
 
 @Composable
 private fun legacyDropConfirmationText(selection: SyncStatusDropSelection): DropConfirmationText {

@@ -15,7 +15,6 @@ import com.ticketbox.domain.model.ExpenseSplitDraft
 import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.ItemsSumStatus
-import com.ticketbox.domain.model.NotificationDraft
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.RepaymentDraft
 import java.io.IOException
@@ -467,19 +466,6 @@ internal class ExpenseDetailRepository(
             mismatchCents = mismatch,
             splits = projected,
         )
-    }
-
-    suspend fun createNotificationDraft(
-        draft: NotificationDraft,
-        expectedBinding: LogicalSessionBinding,
-        notificationKey: String? = null,
-    ): Result<Expense> = core.errorHandler.safeCall {
-        // PR#255 R11：通知金额按 CNY 分解析（PaymentNotificationParser 无 FX 路径），非 CNY
-        // 安装时服务端以 notification_draft_currency_unsupported 拒绝捕获 —— 这是有意 fail
-        // closed（跨币种捕获契约挂账 D9），不是同步失败 bug；一次性 safeCall，无重试调度。
-        val bound = core.ledgerRequestGuard.bindExact(expectedBinding)
-        val created = bound.call { it.createNotificationDraft(draft.toRequest(notificationKey)) }
-        core.cacheServerExpense(created, bound).toDomain()
     }
 
     suspend fun createRepaymentDraftFromExpense(

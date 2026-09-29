@@ -87,7 +87,8 @@ interface PendingMutationDao {
     /** An uncertain local acceptance must resolve to one immutable original, including retained DONE rows. */
     @Transaction
     suspend fun insertOriginalCreation(row: PendingMutationEntity): Long {
-        require(row.type in setOf(PendingMutationType.CreateIncomePlan.wireValue, PendingMutationType.CreateGoal.wireValue) &&
+        require(row.type in setOf(PendingMutationType.CreateIncomePlan.wireValue, PendingMutationType.CreateGoal.wireValue,
+            PendingMutationType.CapturePaymentNotification.wireValue) &&
             !row.idempotencyKey.isNullOrBlank())
         val originals = findByIdempotencyKeys(requireNotNull(row.ownerKey), row.ledgerId, row.type,
             listOf(requireNotNull(row.idempotencyKey)))
