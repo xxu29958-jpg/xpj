@@ -8,13 +8,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,6 +29,7 @@ import com.ticketbox.domain.model.ExpenseLineageStatus
 import com.ticketbox.domain.model.filterConfirmedStreamItems
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.asString
+import com.ticketbox.ui.components.AppBusyGuardedSheet
 import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.RecurringOccurrenceUiState
@@ -60,7 +58,6 @@ data class OccurrenceSheetActions(
     val onRetirePriorOrigin: () -> Unit = {},
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RecurringOccurrenceSheet(
     state: RecurringOccurrenceUiState,
@@ -69,7 +66,7 @@ fun RecurringOccurrenceSheet(
     origin: OccurrencePaymentGuard = OccurrencePaymentGuard(),
 ) {
     val item = state.item ?: return
-    ModalBottomSheet(onDismissRequest = actions.onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+    AppBusyGuardedSheet(isSubmitting = state.saving, onDismiss = actions.onDismiss, skipPartiallyExpanded = true) {
         AppSheetScaffold(title = item.merchant, subtitle = stringResource(R.string.occurrence_subtitle),
             modifier = Modifier.fillMaxHeight()) {
             OccurrencePeriodControls(state, actions)

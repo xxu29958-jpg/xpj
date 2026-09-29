@@ -155,6 +155,9 @@ class PlanningAndroid:
                 left, top, right, bottom = self.bounds(handles[0])
                 window_bottom = self.bounds(nodes[0])[3]
                 x, start, end = (left + right) // 2, (top + bottom) // 2, window_bottom // 8
+                if start <= end:
+                    time.sleep(0.3)
+                    continue
             else:
                 time.sleep(0.3)
                 continue
