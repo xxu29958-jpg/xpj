@@ -2,6 +2,7 @@
 
 import json
 from contextlib import closing
+from urllib.parse import parse_qs, urlsplit
 
 from scripts.planning_journey_android import wait_for
 
@@ -63,14 +64,30 @@ def web_history(j, public_id, name):
         json.dumps({"pages": pages, "rows": rows}, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def role_boundaries(j):
-    current = j.facts()
+def private_expense_boundary(j, current):
     j.goto(f"/web/debts/{current['return_id']}")
     assert j.identity.receiver_ledger not in j.page.inner_text("main")
     assert "接收方私有流水" not in j.page.inner_text("main")
     assert j.page.locator(f'a[href*="/web/expenses/{current["received_id"]}/edit"]').count() == 0
-    response = j.goto(f"/web/expenses/{current['received_id']}/edit")
-    assert response.status == 404, "A bilateral relationship exposed the other party's private expense"
+    path = f"/web/expenses/{current['received_id']}/edit"
+    response = j.goto(path)
+    # Full-page stale/cross-ledger links return to the current ledger with an
+    # explanation; the drawer endpoint retains the underlying 404 status.
+    final = urlsplit(j.page.url)
+    assert response.status == 200 and final.path == "/web/confirmed"
+    assert parse_qs(final.query).get("ledger_id") == [j.identity.sender_ledger]
+    assert "没有找到这笔账单。" in j.page.inner_text("main")
+    assert j.page.locator(f'a[href*="{path}"]').count() == 0
+    j.capture("private-expense-refused")
+    fragment = j.page.request.get(f"{j.base_url}{path}?fragment=1&ledger_id={j.identity.sender_ledger}")
+    assert fragment.status == 404 and "没有找到这笔账单。" in fragment.text()
+    foreign_ledger = j.page.request.get(f"{j.base_url}{path}?fragment=1&ledger_id={j.identity.receiver_ledger}")
+    assert foreign_ledger.status == 403, "The sender entered the other party's private ledger"
+
+
+def role_boundaries(j):
+    current = j.facts()
+    private_expense_boundary(j, current)
     for account, role in ((j.identity.observer_account, "unrelated-member"), (j.identity.viewer_account, "viewer")):
         with closing(j.page.context.browser.new_context(viewport={"width": 390, "height": 960})) as context:
             reader = context.new_page()
