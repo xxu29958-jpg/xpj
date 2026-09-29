@@ -11,6 +11,7 @@ import com.ticketbox.domain.model.ProtectedImage
 
 /** Actions consumed by the pending editor and its existing item/split editors. */
 interface ExpenseEditActions {
+    val readAccessDenials: kotlinx.coroutines.flow.Flow<SnapshotAccessDenial> get() = kotlinx.coroutines.flow.emptyFlow()
     fun canModifyLedger(): Boolean = true
     fun captureDeferredLedgerBinding(): LogicalSessionBinding?
     suspend fun fetchExpenseFx(binding: LogicalSessionBinding, id: Long): Result<com.ticketbox.domain.model.BackgroundTask?>

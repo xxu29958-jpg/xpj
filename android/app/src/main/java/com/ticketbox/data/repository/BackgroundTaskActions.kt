@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.Flow
 interface BackgroundTaskActions {
     fun currentAccess(): LedgerAccessContext?
     fun observeAccess(): Flow<LedgerAccessContext?>
+    fun observeReadAccessDenials(): Flow<SnapshotAccessDenial> = kotlinx.coroutines.flow.emptyFlow()
     suspend fun fetchBackgroundTasks(binding: LogicalSessionBinding): Result<List<BackgroundTask>>
     suspend fun cancelBackgroundTask(binding: LogicalSessionBinding, publicId: String): Result<BackgroundTask>
 }
@@ -18,6 +19,8 @@ class ExpenseRepositoryBackgroundTaskActions(
     }
 
     override fun observeAccess(): Flow<LedgerAccessContext?> = repository.observeLedgerAccess()
+
+    override fun observeReadAccessDenials(): Flow<SnapshotAccessDenial> = repository.readAccessDenials
 
     override suspend fun fetchBackgroundTasks(binding: LogicalSessionBinding): Result<List<BackgroundTask>> =
         repository.fetchBackgroundTasks(binding)

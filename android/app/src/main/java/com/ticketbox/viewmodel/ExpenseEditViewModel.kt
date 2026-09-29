@@ -148,6 +148,7 @@ class ExpenseEditViewModel(
 
     init {
         observeExpenseCommands()
+        observeFxReadAccess()
         loadExpense()
     }
 

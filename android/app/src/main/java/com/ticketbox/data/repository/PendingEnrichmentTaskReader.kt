@@ -17,8 +17,7 @@ internal class ExpensePendingEnrichmentRepository(
         publicId: String,
         expectedBinding: LogicalSessionBinding,
     ): Result<PendingEnrichmentTask> =
-        core.errorHandler.safeCall {
-            val bound = core.ledgerRequestGuard.bindExact(expectedBinding)
-            bound.call { it.getBackgroundTask(publicId) }.toPendingEnrichmentTask()
+        core.readBackgroundTask(expectedBinding) {
+            it.getBackgroundTask(publicId).toPendingEnrichmentTask()
         }
 }

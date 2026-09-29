@@ -36,6 +36,15 @@ class BackgroundTasksViewModel(
 
     init {
         viewModelScope.launch { repository.observeAccess().collect(::acceptAccess) }
+        viewModelScope.launch {
+            repository.observeReadAccessDenials().collect { denial ->
+                _uiState.update {
+                    if (it.access?.binding != denial.binding) it else it.copy(tasks = emptyList(),
+                        message = denial.failure.toUiText(R.string.background_tasks_message_load_failed),
+                        messageTone = MessageTone.Danger)
+                }
+            }
+        }
     }
 
     private fun acceptAccess(updated: LedgerAccessContext?) {
@@ -72,13 +81,15 @@ class BackgroundTasksViewModel(
                 }
                 .onFailure { err ->
                     _uiState.update {
-                        val fallback = if (it.tasks.isEmpty()) {
+                        val visibleTasks = if (err.isReadAccessDenied()) emptyList() else it.tasks
+                        val fallback = if (visibleTasks.isEmpty()) {
                             R.string.background_tasks_message_load_failed
                         } else {
                             R.string.background_tasks_message_refresh_failed_with_data
                         }
                         it.copy(
                             loading = false,
+                            tasks = visibleTasks,
                             message = err.toUiText(fallback),
                             messageTone = MessageTone.Danger,
                         )
