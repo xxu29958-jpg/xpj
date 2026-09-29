@@ -1,7 +1,8 @@
 """A real browser and Android app share one ephemeral PostgreSQL installation.
 
-The fixture creates only its installation identity and initial currency adoption.
-All business commands must come from the actual product consumers.
+The fixture supplies installation identities and initial currency adoption.
+Financial commands come from the actual product consumers. Download qualification
+also prepares a known original and invokes the existing archive command.
 """
 
 from __future__ import annotations
@@ -179,6 +180,9 @@ def _browser_run(args, native, fixture):
             if args.group == "budget-recurring":
                 from scripts.planning_journey_budget import BudgetJourney
                 result = BudgetJourney(page, native, fixture, args.evidence, BASE_URL).run()
+            elif args.group == "portable-downloads":
+                from scripts.portable_journey import PortableJourney
+                result = PortableJourney(page, native, fixture, args.evidence, BASE_URL).run()
             else:
                 result = _journey(page, native, fixture, args.evidence)
             completed = True
@@ -196,7 +200,8 @@ def _run_consumers(args, native, fixture):
     native.adb("install", "-r", str(args.apk.resolve()))
     native.adb("shell", "pm", "grant", "com.ticketbox", "android.permission.POST_NOTIFICATIONS")
     with (args.evidence / "server.log").open("w", encoding="utf-8") as server_log:
-        server = subprocess.Popen([sys.executable, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1",
+        application = "scripts.portable_journey_transport:app" if args.group == "portable-downloads" else "app.main:app"
+        server = subprocess.Popen([sys.executable, "-m", "uvicorn", application, "--host", "127.0.0.1",
             "--port", str(PORT), "--no-access-log"], stdout=server_log, stderr=subprocess.STDOUT)
         result = None
         try:
@@ -228,7 +233,7 @@ def main() -> int:
     parser.add_argument("--serial", required=True)
     parser.add_argument("--apk", type=Path, required=True)
     parser.add_argument("--evidence", type=Path, required=True)
-    parser.add_argument("--group", choices=("income-goals", "budget-recurring"), default="income-goals")
+    parser.add_argument("--group", choices=("income-goals", "budget-recurring", "portable-downloads"), default="income-goals")
     args = parser.parse_args()
     if os.environ.get("GITHUB_ACTIONS") != "true":
         raise RuntimeError("Run this sustained PostgreSQL/native journey in the isolated cloud job")
