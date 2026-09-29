@@ -77,9 +77,21 @@ class BackstageJourney:
         self.capture("original-pending")
 
     def open_tasks(self):
-        self.native.plan_home()
-        self.native.click("打开账户与设置")
-        self.native.click("后台任务")
+        for _ in range(6):
+            nodes = list(self.native.tree().iter("node"))
+            texts = {node.attrib.get("text") for node in nodes}
+            descriptions = {node.attrib.get("content-desc") for node in nodes}
+            if "后台任务" in texts and "返回设置" in descriptions:
+                self.native.click("刷新")
+                break
+            if "打开账户与设置" in descriptions:
+                self.native.click("打开账户与设置", stable=True)
+            elif "后台任务" in texts:
+                self.native.click("后台任务", stable=True)
+            else:
+                self.native.back()
+        else:
+            raise AssertionError("The actual navigation did not reach background tasks")
         wait_for(lambda: self.native.has("小票识别"), "Native did not rediscover the durable OCR task")
 
     def owner_results_navigation(self):
