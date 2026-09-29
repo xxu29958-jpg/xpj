@@ -79,10 +79,24 @@ def private_expense_boundary(j, current):
     assert "没有找到这笔账单。" in j.page.inner_text("main")
     assert j.page.locator(f'a[href*="{path}"]').count() == 0
     j.capture("private-expense-refused")
-    fragment = j.page.request.get(f"{j.base_url}{path}?fragment=1&ledger_id={j.identity.sender_ledger}")
-    assert fragment.status == 404 and "没有找到这笔账单。" in fragment.text()
-    foreign_ledger = j.page.request.get(f"{j.base_url}{path}?fragment=1&ledger_id={j.identity.receiver_ledger}")
-    assert foreign_ledger.status == 403, "The sender entered the other party's private ledger"
+    # The installed browser carries a Secure __Host-session on loopback HTTP.
+    # Exercise its own fetch context rather than the separate APIRequest client.
+    refusals = j.page.evaluate("""async paths => {
+        const results = [];
+        for (const path of paths) {
+            const response = await fetch(path, {credentials: 'same-origin'});
+            const body = await response.text();
+            results.push({status: response.status, path: new URL(response.url).pathname,
+                missing: body.includes('没有找到这笔账单。')});
+        }
+        return results;
+    }""", [f"{path}?fragment=1&ledger_id={j.identity.sender_ledger}",
+           f"{path}?fragment=1&ledger_id={j.identity.receiver_ledger}"])
+    (j.evidence / "web-relationship-private-read-refusals.json").write_text(
+        json.dumps(refusals, ensure_ascii=False, indent=2), encoding="utf-8")
+    fragment, foreign_ledger = refusals
+    assert fragment["status"] == 404 and fragment["missing"], fragment
+    assert foreign_ledger["status"] == 403, foreign_ledger
 
 
 def role_boundaries(j):
