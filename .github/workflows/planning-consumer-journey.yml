@@ -8,7 +8,7 @@ on:
       group:
         description: Actual consumer group to exercise
         type: choice
-        options: [budget-recurring, income-goals]
+        options: [budget-recurring, income-goals, relationships]
         default: budget-recurring
   pull_request:
     branches: [main]

@@ -79,7 +79,7 @@ internal class RuntimeNegotiationInterceptor : Interceptor {
     }
 
     private fun Request.requiresRuntimeNegotiation(incomeForecastRead: Boolean, requiresCapabilityEvidence: Boolean): Boolean =
-        requiresCapabilityEvidence || ((incomeForecastRead || method in MUTATING_HTTP_METHODS) &&
+        requiresCapabilityEvidence || ((incomeForecastRead || isDebtGoalRead() || method in MUTATING_HTTP_METHODS) &&
             header("Authorization") != null && !url.encodedPath.startsWith("/api/auth/") &&
             header(TICKETBOX_API_VERSION_HEADER) == null)
 
@@ -115,6 +115,11 @@ private fun Request.hasAccountingTimeInput(): Boolean = tag(Invocation::class.ja
 
 private fun Request.isDebtActivityRead(): Boolean =
     method == "GET" && Regex("^/api/debts/[^/]+/activity$").matches(url.encodedPath)
+
+/** A writer's first read after clearance latches achievement using the server's currency fence. */
+private fun Request.isDebtGoalRead(): Boolean = method == "GET" &&
+    ((url.encodedPath == "/api/goals" && url.queryParameter("goal_type") == "debt_repayment") ||
+        Regex("^/api/goals/[^/]+$").matches(url.encodedPath))
 
 private fun incompatibleProtocolResponse(request: Request): Response =
     Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(409)

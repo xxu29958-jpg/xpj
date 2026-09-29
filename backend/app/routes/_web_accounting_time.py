@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta, timezone
 
 from fastapi import Request
@@ -119,7 +120,19 @@ def time_form_projection(values: dict[str, str]) -> dict:
                 options = (exc.details or {}).get("utc_offset_seconds_options", [])
         except ValueError:
             pass
-    return {**values, "offset_options": options}
+    return {**values, "offset_options": options, "wall_input_type": _wall_input_type(raw)}
+
+
+def _wall_input_type(raw: str) -> str:
+    """Native date controls support milliseconds; other raw evidence stays editable."""
+    if not raw:
+        return "datetime-local"
+    try:
+        datetime.fromisoformat(raw)
+    except ValueError:
+        return "text"
+    native = re.fullmatch(r"\d{4,}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?", raw)
+    return "datetime-local" if native else "text"
 
 
 def changed_time_input(

@@ -144,32 +144,62 @@ class PlanningAndroid:
             fields = [node for node in nodes if node.attrib.get("class") == "android.widget.EditText"]
             if len(fields) == 1 and any(node.attrib.get("text") == label for node in nodes):
                 candidates.append((len(nodes), fields))
-        return min(candidates, key=lambda item: item[0])[1] if candidates else []
+        return (min(candidates, key=lambda item: item[0])[1] if candidates
+                else PlanningAndroid.adjacent_labeled_fields(root, label))
 
-    def reveal_any(self, *texts: str, toward_start: bool = False):
-        for _ in range(8):
-            nodes = list(self.tree().iter("node"))
-            if any(text in node.attrib.get("text", "") for node in nodes for text in texts):
-                return
-            scrollable = [node for node in nodes if node.attrib.get("scrollable") == "true"]
-            handles = [node for node in nodes if node.attrib.get("content-desc") == "Drag handle"]
-            if scrollable:
-                left, top, right, bottom = self.bounds(max(scrollable, key=lambda node: self.bounds(node)[3] - self.bounds(node)[1]))
-                x, start, end = (left + right) // 2, top + (bottom - top) * 4 // 5, top + (bottom - top) // 5
-                if toward_start:
-                    start, end = end, start
-            elif handles:
-                left, top, right, bottom = self.bounds(handles[0])
-                window_bottom = self.bounds(nodes[0])[3]
-                x, start, end = (left + right) // 2, (top + bottom) // 2, window_bottom // 8
-                if start <= end:
-                    time.sleep(0.3)
+    @staticmethod
+    def adjacent_labeled_fields(root, label):
+        # Compose can expose a form's labels and inputs as siblings, without field containers.
+        matches = []
+        for parent in root.iter("node"):
+            children = list(parent)
+            for index, node in enumerate(children):
+                if node.attrib.get("text") != label:
                     continue
-            else:
-                time.sleep(0.3)
-                continue
-            self.adb("shell", "input", "swipe", str(x), str(start), str(x), str(end), "450")
+                field = next((child for child in children[index + 1:]
+                              if child.attrib.get("class") == "android.widget.EditText"), None)
+                if field is not None:
+                    matches.append(field)
+        return matches
+
+    def reveal_any(self, *texts: str, toward_start: bool = False, max_scrolls: int = 8):
+        # A refreshed LazyColumn or a shorter history page may move the target
+        # above the current viewport. Search both directions, within a fixed budget.
+        for reverse in (False, True):
+            previous = None
+            for step in range(max_scrolls + 1):
+                root = self.tree()
+                nodes = list(root.iter("node"))
+                if any(text in node.attrib.get("text", "") for node in nodes for text in texts):
+                    if reverse:
+                        self.capture(f"scroll-recovered-{self.tree_attempt}")
+                    return
+                signature = ET.tostring(root, encoding="unicode")
+                if step == max_scrolls or signature == previous:
+                    break
+                previous = signature if self.scroll_viewport(nodes, toward_start != reverse) else None
         raise AssertionError(f"The actual native content is not reachable after scrolling: {texts}")
+
+    def scroll_viewport(self, nodes, toward_start: bool):
+        scrollable = [node for node in nodes if node.attrib.get("scrollable") == "true"]
+        handles = [node for node in nodes if node.attrib.get("content-desc") == "Drag handle"]
+        if scrollable:
+            left, top, right, bottom = self.bounds(max(scrollable, key=lambda node: self.bounds(node)[3] - self.bounds(node)[1]))
+            x, start, end = (left + right) // 2, top + (bottom - top) * 4 // 5, top + (bottom - top) // 5
+            if toward_start:
+                start, end = end, start
+        elif handles:
+            left, top, right, bottom = self.bounds(handles[0])
+            window_bottom = self.bounds(nodes[0])[3]
+            x, start, end = (left + right) // 2, (top + bottom) // 2, window_bottom // 8
+        else:
+            time.sleep(0.3)
+            return False
+        if handles and not scrollable and start <= end:
+            time.sleep(0.3)
+            return False
+        self.adb("shell", "input", "swipe", str(x), str(start), str(x), str(end), "450")
+        return True
 
     def bind(self, code: str, port: int):
         self.adb("reverse", f"tcp:{port}", f"tcp:{port}")
