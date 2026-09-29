@@ -23,6 +23,7 @@ import com.ticketbox.viewmodel.OutboxStatusUiState
 
 @Composable
 internal fun SyncStatusOriginalIntentSummary(row: OutboxRow, state: OutboxStatusUiState, actions: SyncStatusActions) {
+    NotificationCaptureIntentSummary(row)
     OffsetRateRecovery(row, state, actions)
     ArrangementOriginalRecovery(row, state, actions)
     state.manualRates[row.id]?.let { original ->
@@ -266,6 +267,10 @@ internal fun friendlyLastError(raw: String?, fallback: String): String {
 }
 
 internal val syncStatusExactErrorMessageResources = mapOf(
+    "notification_capture_connection_interrupted" to R.string.notification_capture_waiting,
+    "notification_capture_binding_changed" to R.string.notification_capture_waiting,
+    "notification_capture_response_unverified" to R.string.notification_capture_check_original,
+    "notification_capture_payload_unsupported" to R.string.sync_status_error_protocol_mismatch,
     "manual_create_original_unverified" to R.string.ledger_manual_original_unverified,
     "budget_currency_conflict" to R.string.budget_save_currency_conflict,
     "budget_save_unsupported" to R.string.budget_save_unsupported,

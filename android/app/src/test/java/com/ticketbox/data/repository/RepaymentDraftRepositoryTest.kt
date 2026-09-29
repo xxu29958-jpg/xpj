@@ -8,9 +8,7 @@ import com.ticketbox.data.remote.dto.RepaymentDraftConfirmRequestDto
 import com.ticketbox.data.remote.dto.RepaymentDraftCreateRequestDto
 import com.ticketbox.data.remote.dto.RepaymentDraftDto
 import com.ticketbox.data.remote.dto.RepaymentDraftListResponseDto
-import com.ticketbox.domain.model.RepaymentDraftSource
 import com.ticketbox.domain.model.RepaymentDraftStatuses
-import com.ticketbox.domain.model.RepaymentNotificationDraft
 import com.ticketbox.security.LocalSessionIdentity
 import kotlinx.coroutines.test.runTest
 import okhttp3.MediaType.Companion.toMediaType
@@ -55,50 +53,6 @@ class RepaymentDraftRepositoryTest {
         }
 
         assertTrue(repository(handler).listPendingDrafts().isFailure)
-    }
-
-    @Test
-    fun createDraftPostsCapturePayloadBoundToPostTimeLedger() = runTest {
-        val handler = RepaymentDraftApiHandler()
-        val repository = repository(handler)
-
-        val created = repository.createDraft(
-            draft = RepaymentNotificationDraft(
-                source = RepaymentDraftSource.Alipay,
-                amountCents = 50_000,
-                merchantLabel = "  花呗  ",
-                capturedAt = "2026-06-17T08:00:00Z",
-            ),
-            expectedBinding = assertNotNull(repository.captureDeferredLedgerBinding()),
-            notificationKey = "key-1",
-        ).getOrThrow()
-
-        val call = handler.createCalls.single()
-        assertEquals("alipay", call.source)
-        assertEquals(50_000L, call.amountCents)
-        // The repository trims the label before the request leaves the client.
-        assertEquals("花呗", call.merchantLabel)
-        assertEquals("2026-06-17T08:00:00Z", call.capturedAt)
-        assertEquals("key-1", call.notificationKey)
-        assertEquals("created", created.publicId)
-    }
-
-    @Test
-    fun createDraftRejectedWhenLedgerSwitchedSincePost() = runTest {
-        val handler = RepaymentDraftApiHandler()
-        val repository = repository(handler)
-        val bindingAtPost = assertNotNull(repository.captureDeferredLedgerBinding())
-
-        // The post-time ledger no longer matches the active ledger → reject rather than capture into
-        // the wrong book (mirrors createNotificationDraft). The API must not be hit.
-        val result = repository.createDraft(
-            draft = RepaymentNotificationDraft(RepaymentDraftSource.Alipay, 50_000, null, "2026-06-17T08:00:00Z"),
-            expectedBinding = bindingAtPost.copy(ledgerId = "another-ledger"),
-            notificationKey = "key-1",
-        )
-
-        assertTrue(result.isFailure)
-        assertTrue(handler.createCalls.isEmpty())
     }
 
     @Test

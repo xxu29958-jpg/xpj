@@ -24,7 +24,6 @@ import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.LifestyleStats
 import com.ticketbox.domain.model.MonthlyStats
-import com.ticketbox.domain.model.NotificationDraft
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.RepaymentDraft
 import com.ticketbox.domain.model.ServerSettings
@@ -313,12 +312,6 @@ class ExpenseRepository internal constructor(
         tags: String?,
         reason: String,
     ): Result<BatchApplyResult> = ledgerRepository.applyConfirmedBatch(expenses, category, tags, reason)
-
-    internal suspend fun createNotificationDraft(
-        draft: NotificationDraft,
-        expectedBinding: LogicalSessionBinding,
-        notificationKey: String? = null,
-    ): Result<Expense> = detailRepository.createNotificationDraft(draft, expectedBinding, notificationKey)
 
     override fun captureDeferredLedgerBinding(): LogicalSessionBinding? =
         core.ledgerRequestGuard.captureLogicalBinding()

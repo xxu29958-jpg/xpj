@@ -167,7 +167,7 @@ internal class RepositoryGraph(
         payloadAdapter = outboxAdapters.debtCreateAdapter,
     )
 
-    // ADR-0049 §杠杆③ (slice 3a): NLS 还款捕获复核箱仓库。direct-only online；NLS service 路由还款草稿到它。
+    // Personal repayment review uses the existing debt query owner; capture is dispatched by Outbox.
     val repaymentDraftRepository = RepaymentDraftRepository(
         apiProvider = apiServiceProvider,
         queryReader = debtQueries,

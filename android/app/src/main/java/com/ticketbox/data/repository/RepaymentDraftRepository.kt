@@ -3,23 +3,10 @@ package com.ticketbox.data.repository
 import com.ticketbox.data.remote.dto.RepaymentDraftDismissRequestDto
 import com.ticketbox.domain.model.RepaymentDraft
 import com.ticketbox.domain.model.RepaymentDraftStatuses
-import com.ticketbox.domain.model.RepaymentNotificationDraft
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import java.util.UUID
 
-/**
- * ADR-0049 §杠杆③ (slice 3a) repayment-capture inbox repository.
- *
- * - [createDraft] is the NLS path: it posts a PENDING capture (never auto-records, §8) and is bound to
- *   the complete session authority captured at notification-post time, so a server, principal, device,
- *   ledger, or session transition before IO is rejected. The capture is content+identity deduped
- *   server-side, so it carries no idempotency key.
- * - [listPendingDrafts] / [confirmDraft] / [dismissDraft] drive the in-app review inbox.
- *
- * Direct-only online (no offline outbox). Writes short-circuit on the viewer role before the network
- * (the server also 403s). Confirm is the only fold-changing op (carries the chosen Debt's OCC token +
- * an ADR-0042 intent-time idempotency key); dismiss is a status-guarded terminal flip (no token).
- */
+/** Reviews personal repayment captures. Durable capture is owned by NotificationCaptureRepository. */
 interface RepaymentDraftActions {
     fun canModifyLedger(): Boolean
     suspend fun listPendingDrafts(expectedBinding: LogicalSessionBinding? = null): Result<List<RepaymentDraft>>
@@ -52,19 +39,6 @@ class RepaymentDraftRepository internal constructor(
 
     internal fun captureDeferredLedgerBinding(): LogicalSessionBinding? =
         ledgerRequestGuard.captureLogicalBinding()
-
-    internal suspend fun createDraft(
-        draft: RepaymentNotificationDraft,
-        expectedBinding: LogicalSessionBinding,
-        notificationKey: String?,
-    ): Result<RepaymentDraft> = errorHandler.safeCall {
-        val bound = ledgerRequestGuard.bindExact(expectedBinding)
-        bound.call { api ->
-            // No idempotency key: the route is content+identity deduped server-side (notificationKey is
-            // the primary axis), and the capture is not part of the offline outbox.
-            api.createRepaymentDraft(draft.toCreateRequest(notificationKey)).toDomain()
-        }
-    }
 
     override suspend fun listPendingDrafts(expectedBinding: LogicalSessionBinding?): Result<List<RepaymentDraft>> =
         errorHandler.safeCall {

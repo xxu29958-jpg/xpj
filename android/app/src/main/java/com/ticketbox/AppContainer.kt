@@ -1,5 +1,7 @@
 package com.ticketbox
 
+import com.ticketbox.data.repository.toDomain
+
 import com.ticketbox.data.local.PendingMutationType
 
 import android.content.Context
@@ -145,6 +147,8 @@ class AppContainer(context: Context) {
             row.bindingOrNull()
                 ?: throw IllegalStateException("Outbox row has no verified owner binding."),
         )
+
+    internal val notificationCaptureRepository = com.ticketbox.data.repository.NotificationCaptureRepository(apiServiceProvider, outboxRepository)
 
     internal suspend fun outboxWriteCompatibility(): RuntimeWriteCompatibility =
         outboxRequestGuard.guardedCall { api ->
@@ -365,6 +369,12 @@ class AppContainer(context: Context) {
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.debtCreateAdapter,
             ),
+            com.ticketbox.data.repository.NotificationCaptureDispatcher(outboxRequestGuard,
+                    onExpense = { binding, created ->
+                        publishExpenseSnapshot(binding.ledgerId, created)
+                        notifier.onDraftCreated(created.toDomain(), binding)
+                    },
+                    onRepayment = { binding, created -> notifier.onRepaymentDraftCreated(created.toDomain(), binding) }),
             com.ticketbox.data.repository.CreateBillSplitDispatcher(
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.billSplitCreateAdapter,

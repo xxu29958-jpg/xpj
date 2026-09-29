@@ -207,6 +207,7 @@ class TicketboxNotifier(
     private val appContext = context.applicationContext
 
     fun onDraftCreated(expense: Expense, binding: LogicalSessionBinding) {
+        if (expense.status != "pending") return
         val preferences = settingsStore.notificationPreferences()
         val decision = decideDraftNotification(
             pendingEnabled = preferences.pendingDraftReminders,
