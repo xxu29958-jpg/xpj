@@ -61,8 +61,8 @@ def _seed(group):
     with SessionLocal() as db:
         fixture = bootstrap_installation_owner(db, operation_id="planning-consumer-journey",
             installation_id="planning-consumer-journey", bootstrap_secret=secrets.token_urlsafe(32),
-            account_name="联动验证账户", ledger_name=("收入与目标验证账本" if group == "income-goals"
-                else "预算与固定支出验证账本"), device_name="隔离浏览器")
+            account_name="联动验证账户", ledger_name={"income-goals": "收入与目标验证账本",
+                "budget-recurring": "预算与固定支出验证账本", "relationships": "往来来源验证账本"}[group], device_name="隔离浏览器")
         activate_test_currency_authority(db, "CNY")
         db.commit()
         return fixture
@@ -176,7 +176,10 @@ def _browser_run(args, native, fixture):
         page = browser.new_page(viewport={"width": 1280, "height": 960})
         completed = False
         try:
-            if args.group == "budget-recurring":
+            if args.group == "relationships":
+                from scripts.relationship_journey import RelationshipJourney
+                result = RelationshipJourney(page, native, fixture, args.evidence, BASE_URL).run()
+            elif args.group == "budget-recurring":
                 from scripts.planning_journey_budget import BudgetJourney
                 result = BudgetJourney(page, native, fixture, args.evidence, BASE_URL).run()
             else:
@@ -204,7 +207,7 @@ def _run_consumers(args, native, fixture):
             result = _browser_run(args, native, fixture)
         finally:
             if result is None:
-                _native_failure(native, fixture.pairing_code)
+                _native_failure(native, native.pairing_code or fixture.pairing_code)
             server.terminate()
             server.wait(timeout=20)
     result["checkout_sha"] = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
@@ -228,7 +231,7 @@ def main() -> int:
     parser.add_argument("--serial", required=True)
     parser.add_argument("--apk", type=Path, required=True)
     parser.add_argument("--evidence", type=Path, required=True)
-    parser.add_argument("--group", choices=("income-goals", "budget-recurring"), default="income-goals")
+    parser.add_argument("--group", choices=("income-goals", "budget-recurring", "relationships"), default="income-goals")
     args = parser.parse_args()
     if os.environ.get("GITHUB_ACTIONS") != "true":
         raise RuntimeError("Run this sustained PostgreSQL/native journey in the isolated cloud job")
