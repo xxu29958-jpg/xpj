@@ -7,11 +7,12 @@ from scripts.planning_journey_android import wait_for
 
 
 class BackstageJourney:
-    def __init__(self, page, native, fixture, evidence, base_url):
+    def __init__(self, page, native, fixture, evidence, base_url, advisor):
         self.page, self.native, self.fixture = page, native, fixture
         self.evidence, self.base_url = evidence, base_url
         self.ledger_id = fixture.ledger_id
         self.port = int(base_url.rsplit(":", 1)[1])
+        self.advisor = advisor
 
     def facts(self):
         return facts(self.ledger_id)
@@ -26,7 +27,7 @@ class BackstageJourney:
 
     def configure_ocr(self, *, provider="rapidocr", automatic=True):
         # Only the existing Owner form changes the isolated runtime configuration.
-        owner = self.page.context.new_page()
+        owner = self.page.context.browser.new_page()
         try:
             owner.goto(self.base_url + "/owner/settings/recognition")
             form = owner.locator('form[action="/owner/settings/recognition"]')
@@ -167,11 +168,17 @@ class BackstageJourney:
         self.native.capture("backstage-task-midnight")
 
     def run(self):
+        from scripts.backstage_journey_advisor import advisor_consumers
+        from scripts.backstage_journey_native import native_upload_and_ocr
+
         self.upload_web()
         self.task_read_recovery()
         self.retry_web()
         self.native_review()
         self.appearances()
+        native_upload_and_ocr(self)
+        advisor = advisor_consumers(self)
         result = self.facts()
-        result["verified_leg"] = "Real RapidOCR, Owner hot configuration, Web upload, durable task and source, native read denial/recovery/restart, same-key Web OCR retry with original draft retained, human native confirmation"
+        result["advisor"] = advisor
+        result["verified_leg"] = "Real RapidOCR, Owner hot configuration, Web/Android image upload, durable task and source, native read denial/recovery/restart, same-key Web OCR retry, native explicit OCR with automatic recognition disabled, raw drafts retained until explicit review, human native confirmation"
         return result

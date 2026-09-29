@@ -172,7 +172,7 @@ def _journey(page, native: PlanningAndroid, fixture, evidence: Path):
 def _run_group(args, page, native, fixture):
     if args.group == "backstage":
         from scripts.backstage_journey import BackstageJourney
-        return BackstageJourney(page, native, fixture, args.evidence, BASE_URL).run()
+        return BackstageJourney(page, native, fixture, args.evidence, BASE_URL, args.backstage_advisor).run()
     if args.group == "relationships":
         from scripts.relationship_journey import RelationshipJourney
         return RelationshipJourney(page, native, fixture, args.evidence, BASE_URL).run()
@@ -260,7 +260,12 @@ def main() -> int:
         with dedicated_test_database_lease(database_url, expected_database=TEST_POSTGRES_CONTRACT.smoke_database,
             reset=True, cluster_identity=os.environ["XPJ_TEST_CLUSTER_IDENTITY"], passfile=os.environ["PGPASSFILE"]):
             fixture = _seed(args.group)
-            _run_consumers(args, native, fixture)
+            if args.group == "backstage":
+                from scripts.backstage_journey_advisor_transport import advisor_wire_fixture
+                with advisor_wire_fixture() as args.backstage_advisor:
+                    _run_consumers(args, native, fixture)
+            else:
+                _run_consumers(args, native, fixture)
     return 0
 
 
