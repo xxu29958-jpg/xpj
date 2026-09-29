@@ -146,7 +146,7 @@ class SplitAgreementDraftConnectedTest {
         fixture.session = fixture.session.copy(identity = fixture.session.identity.copy(role = "viewer"))
         showForm(readOnly = true)
         compose.waitUntil(10_000) { model.value?.state?.value?.agreement != null && model.value?.state?.value?.loading == false }
-        compose.onAllNodes(hasSetTextAction())[0].performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("20.00").performScrollTo().assertIsDisplayed().assertIsNotEnabled()
         assertTrue(fixture.stored().isEmpty())
     }
 
