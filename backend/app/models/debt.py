@@ -515,9 +515,8 @@ class RepaymentDraft(Base):
     (reusing :func:`record_repayment` — same §2.1 lock + overpay + OCC guards) and
     latches the draft ``confirmed``; dismiss latches ``dismissed``. Both flips serialize
     on the draft row (``SELECT ... FOR UPDATE`` + status guard) so two confirms can't
-    each record a repayment. The amount is home-currency minor units (CNY notifications
-    are already home-currency — no [[0027]] FX freeze on the draft; the confirmed
-    ``Repayment`` is plain ``amount_cents``).
+    each record a repayment. The captured original is retained without inventing
+    home money. Confirmation uses the repayment fact service's currency handling.
 
     Dedup mirrors the expense notification-draft path (``_notification_draft_key``): a
     per-account ``draft_idempotency_key`` (unique together with tenant +
@@ -537,6 +536,12 @@ class RepaymentDraft(Base):
         ),
         CheckConstraint(
             "length(home_currency_code) = 3", name="ck_repayment_drafts_home_currency_format"
+        ),
+        CheckConstraint(
+            "(original_currency_code IS NULL AND original_amount_minor IS NULL AND amount_cents IS NOT NULL) "
+            "OR (original_currency_code IS NOT NULL AND length(original_currency_code) = 3 "
+            "AND original_amount_minor IS NOT NULL)",
+            name="ck_repayment_drafts_captured_money",
         ),
         # Backstop: committed_repayment_public_id set IFF confirmed (confirm sets both
         # committed_* together; pending/dismissed leave them NULL).
@@ -574,10 +579,12 @@ class RepaymentDraft(Base):
         nullable=False,
     )
 
-    # --- captured payment (home-currency; CNY notifications carry no FX) ----------
+    # Captured originals are immutable review input. Unknown home money stays NULL.
     source: Mapped[str] = mapped_column(String(32), nullable=False)
-    amount_cents: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    amount_cents: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     home_currency_code: Mapped[str] = mapped_column(String(3), nullable=False)
+    original_currency_code: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    original_amount_minor: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     merchant_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 

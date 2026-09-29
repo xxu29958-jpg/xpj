@@ -34,6 +34,13 @@ from app.money_contract_types import (
 from app.money_contract_types import (
     RemovedMoneyCheck as RemovedMoneyCheck,
 )
+from app.repayment_capture_money_contract import REPAYMENT_CAPTURE_MONEY_COLUMNS
+
+MONEY_COLUMNS_CURRENT = tuple(sorted(
+    tuple(column for column in MONEY_COLUMNS_V1 if column.table != "repayment_drafts")
+    + REPAYMENT_CAPTURE_MONEY_COLUMNS,
+    key=lambda column: (column.table, column.column),
+))
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +65,7 @@ def c07_entry_bounds(sign: MoneySign) -> tuple[int, int]:
 
 
 def money_columns_for_table(table: str) -> tuple[MoneyColumn, ...]:
-    return tuple(column for column in MONEY_COLUMNS_V1 if column.table == table)
+    return tuple(column for column in MONEY_COLUMNS_CURRENT if column.table == table)
 
 
 def money_check_constraints_for_table(table: str) -> tuple[CheckConstraint, ...]:

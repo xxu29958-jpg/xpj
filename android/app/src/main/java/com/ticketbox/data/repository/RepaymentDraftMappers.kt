@@ -20,13 +20,16 @@ fun RepaymentDraftDto.toDomain(): RepaymentDraft = RepaymentDraft(
     committedRepaymentPublicId = committedRepaymentPublicId,
     createdAt = createdAt,
     resolvedAt = resolvedAt,
+    originalCurrencyCode = originalCurrencyCode,
+    originalAmountMinor = originalAmountMinor,
 )
 
 /** The NLS-captured repayment as a create-request body (home-currency only; §杠杆③). */
 fun RepaymentNotificationDraft.toCreateRequest(notificationKey: String?): RepaymentDraftCreateRequestDto =
     RepaymentDraftCreateRequestDto(
         source = source.apiValue,
-        amountCents = amountCents,
+        originalCurrency = "CNY",
+        originalAmount = java.math.BigDecimal.valueOf(amountCents, 2).toPlainString(),
         merchantLabel = merchantLabel?.trim()?.ifBlank { null },
         capturedAt = capturedAt,
         notificationKey = notificationKey,

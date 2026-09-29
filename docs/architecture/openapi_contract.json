@@ -20318,6 +20318,32 @@
             "title": "Expected Row Version",
             "type": "integer"
           },
+          "original_amount": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "pattern": "^(?:[1-9][0-9]*(?:\\.[0-9]+)?|0\\.[0-9]*[1-9][0-9]*)$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Amount"
+          },
+          "original_currency": {
+            "anyOf": [
+              {
+                "maxLength": 3,
+                "minLength": 3,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Currency"
+          },
           "target_debt_public_id": {
             "maxLength": 36,
             "minLength": 1,
@@ -20334,14 +20360,21 @@
       },
       "RepaymentDraftCreateRequest": {
         "additionalProperties": false,
-        "description": "Post one NLS-captured repayment as a pending review draft (ADR-0049 §杠杆③).\n\n``source`` is the capturing channel (alipay / jd / meituan / wechat / bank_sms /\nbank_app / other — validated server-side). ``amount_cents`` is home-currency minor\nunits — the capture is home-currency ONLY (CNY notifications carry no FX), so the\ndraft's home currency is set SERVER-SIDE from the configured home currency, NOT taken\nas a client input (a field whose only legal value is the constant home currency would\nfake multi-currency support it doesn't have; a real foreign-currency capture would add\n``original_currency`` + ``original_amount`` — the record_repayment shape — instead).\n``notification_key`` is the per-post identity hash\n(SHA-256(``sbn.key`` | ``postTime``), 64 hex chars; absent → content+window dedup\nonly) — the PRIMARY dedup axis so a re-posted notification does not twin the draft.",
+        "description": "Post one NLS-captured repayment as a pending review draft (ADR-0049 §杠杆③).\n\n``source`` is the capturing channel (alipay / jd / meituan / wechat / bank_sms /\nbank_app / other — validated server-side). ``original_currency`` and\n``original_amount`` carry captured money. Legacy ``amount_cents`` means CNY\nminor units, regardless of installation currency. The two forms are exclusive.\n``notification_key`` is the per-post identity hash\n(SHA-256(``sbn.key`` | ``postTime``), 64 hex chars; absent → content+window dedup\nonly) — the PRIMARY dedup axis so a re-posted notification does not twin the draft.",
         "properties": {
           "amount_cents": {
-            "format": "int64",
-            "maximum": 9000000000000.0,
-            "minimum": 1.0,
-            "title": "Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Cents"
           },
           "captured_at": {
             "anyOf": [
@@ -20379,6 +20412,32 @@
             ],
             "title": "Notification Key"
           },
+          "original_amount": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "pattern": "^(?:[1-9][0-9]*(?:\\.[0-9]+)?|0\\.[0-9]*[1-9][0-9]*)$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Amount"
+          },
+          "original_currency": {
+            "anyOf": [
+              {
+                "maxLength": 3,
+                "minLength": 3,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Currency"
+          },
           "source": {
             "maxLength": 32,
             "minLength": 1,
@@ -20387,8 +20446,7 @@
           }
         },
         "required": [
-          "source",
-          "amount_cents"
+          "source"
         ],
         "title": "RepaymentDraftCreateRequest",
         "type": "object"
@@ -20419,11 +20477,18 @@
       "RepaymentDraftResponse": {
         "properties": {
           "amount_cents": {
-            "format": "int64",
-            "maximum": 9000000000000.0,
-            "minimum": 1.0,
-            "title": "Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Cents"
           },
           "captured_at": {
             "anyOf": [
@@ -20484,6 +20549,17 @@
             ],
             "title": "Merchant Label"
           },
+          "original_amount_minor": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 1.0,
+            "title": "Original Amount Minor",
+            "type": "integer"
+          },
+          "original_currency_code": {
+            "title": "Original Currency Code",
+            "type": "string"
+          },
           "public_id": {
             "title": "Public Id",
             "type": "string"
@@ -20524,6 +20600,8 @@
           "source",
           "amount_cents",
           "home_currency_code",
+          "original_currency_code",
+          "original_amount_minor",
           "captured_at",
           "status",
           "created_at"
@@ -40635,6 +40713,12 @@
             "required": false,
             "schema": {
               "default": "pending",
+              "enum": [
+                "pending",
+                "confirmed",
+                "dismissed",
+                "all"
+              ],
               "title": "Status",
               "type": "string"
             }
@@ -40794,6 +40878,90 @@
           }
         },
         "summary": "Post Repayment Draft",
+        "tags": [
+          "repayment-drafts"
+        ]
+      }
+    },
+    "/api/repayment-drafts/{public_id}": {
+      "get": {
+        "operationId": "get_repayment_draft_api_repayment_drafts__public_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepaymentDraftResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Get Repayment Draft",
         "tags": [
           "repayment-drafts"
         ]

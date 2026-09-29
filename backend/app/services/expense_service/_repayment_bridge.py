@@ -106,6 +106,8 @@ def create_repayment_draft_from_expense(
         source="other",
         amount_cents=expense.amount_cents,
         home_currency_code=expense.home_currency_code,
+        original_currency_code=expense.original_currency_code or expense.home_currency_code,
+        original_amount_minor=expense.original_amount_minor or expense.amount_cents,
         merchant_label=_expense_repayment_label(expense),
         captured_at=captured_at,
         draft_idempotency_key=idempotency_key,

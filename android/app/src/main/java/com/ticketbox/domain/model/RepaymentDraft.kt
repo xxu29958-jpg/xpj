@@ -5,7 +5,7 @@ package com.ticketbox.domain.model
  *
  * NLS 把一条「信用卡 / 花呗 / 借呗 / 白条 / 美团月付」**还款**通知分类后，落成一条 PENDING 的
  * [RepaymentDraft]（永不自动记账，§8）。用户在复核箱里选一笔 open 的 external/manual 欠款 confirm
- * （记一笔 `Repayment`）或 dismiss。捕获是本位币（CNY 通知不带 FX）。
+ * （记一笔 `Repayment`）或 dismiss。捕获保留原币；人工确认时才由服务端冻结适用汇率。
  *
  * 三类值对象：
  * - [RepaymentDraftSource]：NLS 分类出的捕获渠道（与后端 `REPAYMENT_DRAFT_SOURCE_LABELS` 的键一一对应）。
@@ -35,8 +35,8 @@ enum class RepaymentDraftSource(val apiValue: String) {
 }
 
 /**
- * NLS 抠出、即将 POST 到 `/api/repayment-drafts` 的还款捕获载荷。本位币（CNY 通知无 FX），故只有
- * [amountCents]（本位币分）；[capturedAt] 是通知投递时刻（confirm 时透传成 `Repayment.paid_at`，
+ * NLS 抠出的还款通知金额明确按人民币分解析，mapper 会发送 CNY 原币及十进制金额。
+ * [capturedAt] 是通知投递时刻（confirm 时透传成 `Repayment.paid_at`，
  * 让晚几天复核也不把还款时间回填到复核时刻）。[merchantLabel] 是尽力抠出的卡 / 平台标签（尾号 /
  * 花呗 / 白条…），用于 ③b 模糊匹配与展示，可为空（③a 用户手动选债，匹配不到也无妨）。
  */
@@ -61,7 +61,7 @@ object RepaymentDraftStatuses {
 data class RepaymentDraft(
     val publicId: String,
     val source: String,
-    val amountCents: Long,
+    val amountCents: Long?,
     val homeCurrencyCode: String,
     val merchantLabel: String?,
     val capturedAt: String,
@@ -77,6 +77,8 @@ data class RepaymentDraft(
     val committedRepaymentPublicId: String?,
     val createdAt: String,
     val resolvedAt: String?,
+    val originalCurrencyCode: String = homeCurrencyCode,
+    val originalAmountMinor: Long = requireNotNull(amountCents),
 ) {
     val isPending: Boolean get() = status == RepaymentDraftStatuses.PENDING
 }

@@ -124,7 +124,9 @@
     </div>
     <div class="ra-cell ra-date-cell"><span class="rd-meta">{{ r.captured_label }}</span></div>
     <div class="ra-cell ra-side-cell">
+      <span class="text-meta">采集金额</span>
       <strong class="rd-amount">{{ r.amount_label }}</strong>
+      {% if r.conversion_pending %}<span class="text-meta">原币金额；确认时按还款日期换算 {{ r.home_currency_code }}</span>{% endif %}
       <span class="product-status {{ _tone.get(r.status_tone, '') }}">{{ r.status_label }}</span>
     </div>
   </article>

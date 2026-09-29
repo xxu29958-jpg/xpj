@@ -196,7 +196,7 @@ def test_currency_payload_has_no_binding_bypass_parameter() -> None:
     assert "binding_checked" not in signature(apply_currency_payload).parameters
 
 
-def test_repayment_draft_capture_rejected_on_non_cny_installation(client: TestClient, monkeypatch, *, identity) -> None:
+def test_repayment_capture_keeps_cny_original_on_non_cny_installation(client: TestClient, monkeypatch, *, identity) -> None:
     # PR#255 R10③：Android 通知解析器按 CNY 分声明 amount_cents（无 FX 路径）——非 CNY
     # 安装把该整数按 home minor 盖章即 100× 错账，故后端整体拒建（跨币种捕获契约
     # 挂账 D9）。CNY 放行路径见 test_repayment_drafts.py 的 capture 钉。
@@ -211,8 +211,12 @@ def test_repayment_draft_capture_rejected_on_non_cny_installation(client: TestCl
             headers=identity.app_headers,
             json={"source": "alipay", "amount_cents": 120000},
         )
-        assert response.status_code == 422, response.json()
-        assert response.json()["error"] == "repayment_draft_currency_unsupported"
+        assert response.status_code == 201, response.json()
+        assert response.json()["amount_cents"] is None
+        assert response.json()["home_currency_code"] == "JPY"
+        assert response.json()["original_currency_code"] == "CNY"
+        assert response.json()["original_amount_minor"] == 120000
+        assert response.json()["status"] == "pending"
     finally:
         monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
         get_settings.cache_clear()
@@ -249,8 +253,12 @@ def test_legacy_cny_repayment_capture_cannot_reinterpret_a_jpy_binding(
             headers=identity.app_headers,
             json={"source": "alipay", "amount_cents": 120000},
         )
-        assert response.status_code == 422, response.json()
-        assert response.json()["error"] == "repayment_draft_currency_unsupported"
+        assert response.status_code == 201, response.json()
+        assert response.json()["amount_cents"] is None
+        assert response.json()["home_currency_code"] == "JPY"
+        assert response.json()["original_currency_code"] == "CNY"
+        assert response.json()["original_amount_minor"] == 120000
+        assert response.json()["status"] == "pending"
     finally:
         monkeypatch.delenv("FX_HOME_CURRENCY_CODE", raising=False)
         get_settings.cache_clear()

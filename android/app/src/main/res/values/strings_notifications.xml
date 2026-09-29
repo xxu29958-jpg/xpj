@@ -25,6 +25,7 @@
     <string name="notification_large_amount_title">这笔有点大：%1$s %2$s</string>
     <string name="notification_draft_created_body">%1$s %2$s，核对后才会入账。</string>
     <string name="notification_draft_created_body_with_original">%1$s %2$s（原币 %3$s），核对后才会入账。</string>
+    <string name="notification_draft_created_body_pending_fx">%1$s 原币 %2$s，本位币金额待确认；核对后才会入账。</string>
     <string name="notification_draft_created_merchant_missing">未填写商家</string>
 
     <!-- TicketboxNotifier：固定支出提醒（PR-2）。标题 %1$s=固定支出名/商家。 -->

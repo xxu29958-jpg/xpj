@@ -19,6 +19,8 @@ captured draft lands pending and the user's confirm is the authoritative act.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy.orm import Session
 
@@ -34,6 +36,7 @@ from app.schemas import (
 from app.services.debt_service import (
     create_repayment_draft,
     dismiss_repayment_draft,
+    get_repayment_draft_response,
     list_repayment_drafts,
     repayment_draft_response,
 )
@@ -50,11 +53,22 @@ router = APIRouter(
 
 @router.get("", response_model=RepaymentDraftListResponse)
 def get_repayment_drafts(
-    status: str = Query(default="pending"),
+    status: Literal["pending", "confirmed", "dismissed", "all"] = Query(default="pending"),
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> RepaymentDraftListResponse:
-    return list_repayment_drafts(db, tenant_id=auth.tenant_id, actor_account_id=auth.account_id, status=status)
+    return list_repayment_drafts(db, tenant_id=auth.tenant_id, actor_account_id=auth.account_id,
+        status=None if status == "all" else status)
+
+
+@router.get("/{public_id}", response_model=RepaymentDraftResponse)
+def get_repayment_draft(
+    public_id: str,
+    auth: AuthContext = Depends(get_current_app_context),
+    db: Session = Depends(get_db),
+) -> RepaymentDraftResponse:
+    return get_repayment_draft_response(db, tenant_id=auth.tenant_id, actor_account_id=auth.account_id,
+        public_id=public_id)
 
 
 @router.post("", response_model=RepaymentDraftResponse, status_code=201)

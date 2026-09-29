@@ -6,10 +6,9 @@ import com.squareup.moshi.Json
  * ADR-0049 §杠杆③ (slice 3a) — Android contract for the NLS repayment-capture inbox.
  *
  * Mirrors backend `RepaymentDraftResponse` / `RepaymentDraftListResponse` / the create/confirm/dismiss
- * request bodies in the committed OpenAPI snapshot (gated by `OpenApiContractGateTest`). Money is
- * home-currency minor units (cents); the capture is home-currency ONLY (CNY notifications carry no FX),
- * so there is no original-currency surface here. `status` / `home_currency_code` / the committed ids are
- * server-derived — never an editable local truth.
+ * request bodies in the committed OpenAPI snapshot (gated by `OpenApiContractGateTest`).
+ * Originals remain captured input; unknown converted home money is null. Status and committed
+ * identities come from the server. Human review can submit distinct money without rewriting capture.
  */
 data class RepaymentDraftDto(
     @param:Json(name = "public_id")
@@ -17,7 +16,7 @@ data class RepaymentDraftDto(
     // alipay / jd / meituan / wechat / bank_sms / bank_app / other (the capturing channel).
     val source: String,
     @param:Json(name = "amount_cents")
-    val amountCents: Long,
+    val amountCents: Long?,
     @param:Json(name = "home_currency_code")
     val homeCurrencyCode: String,
     @param:Json(name = "merchant_label")
@@ -39,6 +38,10 @@ data class RepaymentDraftDto(
     val createdAt: String,
     @param:Json(name = "resolved_at")
     val resolvedAt: String? = null,
+    @param:Json(name = "original_currency_code")
+    val originalCurrencyCode: String = homeCurrencyCode,
+    @param:Json(name = "original_amount_minor")
+    val originalAmountMinor: Long = requireNotNull(amountCents),
 )
 
 data class RepaymentDraftListResponseDto(
@@ -48,9 +51,8 @@ data class RepaymentDraftListResponseDto(
 /**
  * Body for `POST /api/repayment-drafts` — capture one NLS repayment as a pending draft (§杠杆③).
  *
- * Home-currency only: there is no `amount` currency field — `home_currency_code` is set SERVER-SIDE
- * from the configured home currency, never a client input (a field whose only legal value is the
- * constant home currency would fake multi-currency support it doesn't have). [notificationKey] is the
+ * Original currency and decimal amount are explicit; legacy amountCents denotes CNY minor units.
+ * The installation currency is server-owned. [notificationKey] is the
  * per-post identity hash (`notificationIdentityKey(sbn.key, sbn.postTime)`), the PRIMARY dedup axis so
  * a re-posted notification does not twin the draft (Moshi drops nulls → absent = content+window dedup).
  * The backend marks this body `additionalProperties=false`, so the DTO field set must stay a subset of
@@ -59,13 +61,17 @@ data class RepaymentDraftListResponseDto(
 data class RepaymentDraftCreateRequestDto(
     val source: String,
     @param:Json(name = "amount_cents")
-    val amountCents: Long,
+    val amountCents: Long? = null,
     @param:Json(name = "merchant_label")
     val merchantLabel: String? = null,
     @param:Json(name = "captured_at")
     val capturedAt: String? = null,
     @param:Json(name = "notification_key")
     val notificationKey: String? = null,
+    @param:Json(name = "original_currency")
+    val originalCurrency: String? = null,
+    @param:Json(name = "original_amount")
+    val originalAmount: String? = null,
 )
 
 /**
@@ -88,6 +94,10 @@ data class RepaymentDraftConfirmRequestDto(
     val targetDebtPublicId: String,
     @param:Json(name = "expected_row_version")
     val expectedRowVersion: Long,
+    @param:Json(name = "original_currency")
+    val originalCurrency: String? = null,
+    @param:Json(name = "original_amount")
+    val originalAmount: String? = null,
 )
 
 /**

@@ -7,8 +7,8 @@ service face:
 
 * :func:`create_repayment_draft` — content+identity-deduped capture (mirrors the
   expense ``create_notification_draft``: a re-posted notification returns the
-  existing draft, never a twin). Home-currency only — CNY notifications carry no
-  [[0027]] FX freeze.
+  existing draft, never a twin). Original currency is retained; conversion is
+  deferred to explicit confirmation.
 * :func:`list_repayment_drafts` — the review inbox (optionally filtered by status).
 * :func:`confirm_repayment_draft` — records ONE ``Repayment`` on a user-chosen open
   external/manual Debt via :func:`record_repayment` (so the §2.1 parent-row lock,
@@ -54,11 +54,14 @@ from app.schemas import (
     RepaymentDraftResponse,
 )
 from app.services.currency_binding_service import assert_currency_binding_consistent, require_runtime_home_currency_code
+from app.services.currency_common import normalize_currency_code
+from app.services.debt_service._money import validate_home_amount_command
 from app.services.debt_service._repayment_draft_match import (
     RepaymentMatchCandidate,
     list_repayment_match_candidates,
     suggest_debt_for_draft,
 )
+from app.services.exchange_rate_service import amount_major_to_minor
 from app.services.time_service import ensure_utc, now_utc
 
 # Capture channels (display label is the /web source label, not the dedup axis).
@@ -145,6 +148,8 @@ def repayment_draft_response(
         source=draft.source,
         amount_cents=draft.amount_cents,
         home_currency_code=draft.home_currency_code,
+        original_currency_code=draft.original_currency_code or draft.home_currency_code,
+        original_amount_minor=draft.original_amount_minor if draft.original_amount_minor is not None else draft.amount_cents,
         merchant_label=draft.merchant_label,
         captured_at=draft.captured_at,
         status=draft.status,
@@ -190,25 +195,27 @@ def create_repayment_draft(
     the first-check and the race re-check filter ``created_by_account_id`` so a
     co-member's same-key capture is neither returned (leak) nor collided with.
     """
-    amount_cents = ensure_money_minor(
-        payload.amount_cents,
+    validate_home_amount_command(amount_cents=payload.amount_cents,
+        original_currency=payload.original_currency, original_amount=payload.original_amount)
+    original_currency = normalize_currency_code(payload.original_currency or DEFAULT_HOME_CURRENCY_CODE)
+    original_amount = ensure_money_minor(
+        amount_major_to_minor(payload.original_amount, original_currency)
+        if payload.original_currency is not None else payload.amount_cents,
         sign=MoneySign.POSITIVE,
-        label="repayment_draft.amount_cents",
+        label="repayment_draft.original_amount_minor",
     )
     now = now_utc()
     source = _clean_repayment_source(payload.source)
-    # This legacy notification payload declares CNY minor units without FX.
-    # Stamp it only when that matches the confirmed installation currency.
+    # Capture retains the original; only explicit human confirmation freezes FX.
     home_currency = require_runtime_home_currency_code(db)
-    if home_currency != DEFAULT_HOME_CURRENCY_CODE:
-        raise AppError("repayment_draft_currency_unsupported", status_code=422)
     assert_currency_binding_consistent(db, home_currency)
+    amount_cents = original_amount if original_currency == home_currency else None
     captured_at = ensure_utc(payload.captured_at) if payload.captured_at else now
     idempotency_key = _repayment_draft_key(
         source=source,
         merchant=payload.merchant_label,
-        amount_cents=amount_cents,
-        home_currency=home_currency,
+        amount_cents=original_amount,
+        home_currency=original_currency,
         captured_at=captured_at,
         notification_key=payload.notification_key,
     )
@@ -226,6 +233,8 @@ def create_repayment_draft(
         source=source,
         amount_cents=amount_cents,
         home_currency_code=home_currency,
+        original_currency_code=original_currency,
+        original_amount_minor=original_amount,
         merchant_label=_clean_optional_text(payload.merchant_label),
         captured_at=captured_at,
         draft_idempotency_key=idempotency_key,
@@ -280,7 +289,7 @@ def list_repayment_drafts(
                         amount_cents=draft.amount_cents,
                         candidates=candidates,
                     )
-                    if draft.status == "pending"
+                    if draft.status == "pending" and draft.amount_cents is not None
                     else None
                 ),
             )
@@ -302,7 +311,7 @@ class RepaymentDraftAuditRow:
     UI copy)."""
 
     source: str
-    amount_cents: int
+    amount_cents: int | None
     home_currency_code: str
     merchant_label: str | None
     captured_at: datetime
@@ -313,6 +322,8 @@ class RepaymentDraftAuditRow:
     public_id: str = ""
     suggested_debt_public_id: str | None = None
     target_debts: tuple[RepaymentMatchCandidate, ...] = ()
+    original_currency_code: str | None = None
+    original_amount_minor: int | None = None
 
 
 def _debt_counterparty_labels(db: Session, public_ids: set[str]) -> dict[str, str | None]:
@@ -363,7 +374,7 @@ def list_repayment_draft_audit_for_account(
                 merchant_label=draft.merchant_label,
                 amount_cents=draft.amount_cents,
                 candidates=candidates_by_tenant[draft.tenant_id],
-            )
+            ) if draft.amount_cents is not None else None
             suggested_by_draft[draft.id] = suggested
             if suggested is not None:
                 referenced.add(suggested)
@@ -379,6 +390,8 @@ def list_repayment_draft_audit_for_account(
                 source=draft.source,
                 amount_cents=draft.amount_cents,
                 home_currency_code=draft.home_currency_code,
+                original_currency_code=draft.original_currency_code or draft.home_currency_code,
+                original_amount_minor=draft.original_amount_minor if draft.original_amount_minor is not None else draft.amount_cents,
                 merchant_label=draft.merchant_label,
                 captured_at=draft.captured_at,
                 status=draft.status,
@@ -390,7 +403,7 @@ def list_repayment_draft_audit_for_account(
                 target_debts=tuple(
                     candidate
                     for candidate in candidates_by_tenant.get(draft.tenant_id, [])
-                    if candidate.remaining_amount_cents >= draft.amount_cents
+                    if draft.amount_cents is None or candidate.remaining_amount_cents >= draft.amount_cents
                 )
                 if draft.status == "pending"
                 else (),
