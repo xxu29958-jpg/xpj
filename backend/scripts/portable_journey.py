@@ -39,7 +39,8 @@ class PortableJourney:
         page.wait_for_url("**/web/expenses/new*")
         form = page.locator('form[action="/web/expenses/new"]')
         form.locator('[name="amount_major"]').fill("100.00")
-        form.locator("details.manual-expense-options > summary").click()
+        if not form.locator('[name="merchant"]').is_visible():
+            form.locator("details.manual-expense-options > summary").click()
         form.locator('[name="merchant"]').fill("下载核对原流水")
         form.get_by_role("button", name="记下这笔支出", exact=True).click()
         wait_for(lambda: facts().get("amount_cents") == 10000, "The original expense was not created")
