@@ -66,6 +66,54 @@ The existing ledger Owner can restore access through unarchive; taking data away
 without that state change remains an explicit usability gap on the product atlas,
 not a prerequisite to merging this currently authorized outlet.
 
+### Next group: complete download consumers and archived-owner access
+
+Prequalified on 2026-09-29; implementation and integrated qualification remain
+OPEN. The existing #425 snapshot, archive, original-file evidence and active-ledger
+read authorization remain the baseline. This group carries those data packages
+through actual Web, Desktop and Android use, including a narrowly authorized way
+to take an owned archived ledger away without unarchiving it.
+
+- An unrevoked Account/Device identity may list and download an archived ledger
+  only while its current, enabled membership in that exact ledger is `owner`.
+  Ordinary members, viewers, former owners and unrelated accounts gain no archived
+  access. Active-ledger downloads retain their existing read-role permissions.
+  Recheck the exact credential and owner membership inside the read snapshot and
+  before handing out the completed package; a failed final check destroys the
+  request-owned temporary package. The selected ledger remains archived and no
+  ordinary read/write, ledger switch or private cross-ledger authority is granted.
+- The owner entry must remain reachable when no active ledger can be selected.
+  Reuse the existing ledger-independent session principal and account/ledger
+  recovery entries. A link confined to a normal active-ledger page is insufficient.
+  Web cookie identity, the Desktop bridge principal and Android's retained identity
+  must each reach their authorized selection without minting a replacement identity
+  or discarding drafts and Outbox rows.
+- Web keeps its complete-download and analytical CSV entries. Android's existing
+  Data and Export screen must offer the actual complete package, with explicit
+  ledger/state selection and the system save destination; its existing CSV and
+  cache actions remain available. Complete ZIP/original data must not be loaded
+  as one unbounded in-memory byte array. Do not export unsubmitted device intents
+  as accepted server facts.
+- Desktop must actually deliver the same authorized package through its existing
+  bridge. A small isolated probe of the current relay returned 503 after about
+  15 seconds while an otherwise valid ZIP response was prepared for 16 seconds.
+  This is a confirmed slow-download transport failure, separate from snapshot
+  correctness. Bound the download and clean up on cancellation or failure without
+  requiring installation, identity or Windows lifecycle changes.
+- Preserve the existing single snapshot/archive owner, complete structured data,
+  per-original integrity outcomes, private-record boundaries and open file formats.
+  A revoked identity, changed owner, interrupted transfer or failed destination
+  must not produce a successful or silently truncated package. Preserve prior
+  successfully saved user files and clean only this attempt's temporary output.
+
+Exit evidence must cover active read roles, archived current-owner success and
+non-owner refusal, an account with no active ledger, revocation/ownership change
+during generation, actual Web/Desktop/Android download and save, cancellation,
+large or delayed delivery, and reopening the saved ZIP with its records, history
+and original-file manifest checked. Existing financial/private-record tests are
+reused where their scope is unchanged. This group does not qualify installation
+restore, upgrade, repair or any other held Windows lifecycle.
+
 The package distinguishes ledger records from explicitly named `account_*`
 relationship snapshots. The latter retain the exporter's account-wide split inbox
 and authorized cross-ledger debt/repayment/proposal views without revealing the
