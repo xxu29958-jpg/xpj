@@ -8,7 +8,7 @@ from scripts.planning_journey_android import wait_for
 
 def share_synthetic_receipt(j):
     path = j.evidence / "synthetic-receipt-native.png"
-    synthetic_receipt(path, amount="23.45", date_text="2025年1月12日")
+    digest = synthetic_receipt(path, amount="23.45", date_text="2025年1月12日")
     device_path = "/sdcard/Pictures/backstage-native.png"
     j.native.adb("push", str(path), device_path)
     j.native.adb("shell", "am", "broadcast", "-a", "android.intent.action.MEDIA_SCANNER_SCAN_FILE",
@@ -23,9 +23,13 @@ def share_synthetic_receipt(j):
         return matches[0].group(1) if matches and matches[0] else None
 
     image_id = wait_for(media_id, "The emulator did not admit the synthetic shared image")
+    uri = f"content://media/external/images/media/{image_id}"
+    # Shell-started intents do not perform an app sender's EXTRA_STREAM -> ClipData
+    # handoff. Put the same URI in data so its explicit read grant has a target.
     j.native.adb("shell", "am", "start", "-a", "android.intent.action.SEND", "-t", "image/png",
-                 "--eu", "android.intent.extra.STREAM", f"content://media/external/images/media/{image_id}",
+                 "-d", uri, "--eu", "android.intent.extra.STREAM", uri,
                  "--grant-read-uri-permission", "-n", "com.ticketbox/.MainActivity")
+    return digest
 
 
 def open_latest_source(j):
@@ -41,12 +45,13 @@ def open_latest_source(j):
 def native_upload_and_ocr(j):
     j.configure_ocr(automatic=False)
     count = len(j.facts()["expenses"])
-    share_synthetic_receipt(j)
+    digest = share_synthetic_receipt(j)
     wait_for(lambda: len(j.facts()["expenses"]) == count + 1, "Android did not upload its actual shared original", 90)
     wait_for(lambda: j.facts()["tasks"][-1]["status"] == "completed", "The automatic-disabled task did not settle")
     original = j.facts()["expenses"][-1]
     original_task = j.facts()["tasks"][-1]
     assert original["amount"] is None and original["status"] == "pending"
+    assert original["original_sha256"] == digest, "The actual share did not preserve its synthetic original"
     assert original_task["expense_id"] == original["id"] and original_task["result"]["outcome"] == "no_result"
     open_latest_source(j)
     j.native.fill("27.00", label="金额")

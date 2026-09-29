@@ -82,6 +82,29 @@ class BackstageJourney:
         self.native.click("后台任务")
         wait_for(lambda: self.native.has("小票识别"), "Native did not rediscover the durable OCR task")
 
+    def owner_results_navigation(self):
+        # Management navigation must enter the signed-in person's existing task query.
+        before = self.facts()
+        self.page.goto(self.base_url + "/owner/diagnostics")
+        with self.page.expect_popup() as popup:
+            self.page.get_by_role("link", name="查看我的近期上传识别", exact=True).click()
+        result = popup.value
+        try:
+            result.wait_for_url("**/web/pending*")
+            history = result.locator("#recognition")
+            if history.get_attribute("open") is None:
+                history.locator("summary").click()
+            task = result.locator(f'[data-recognition-task-id="{self.task_id}"]')
+            assert result.locator("[data-recognition-task-id]").count() == 1
+            assert "已完成" in task.inner_text()
+            self.capture("owner-to-personal-task", page=result)
+            task.get_by_role("link", name=f"打开原单 #{self.expense_id}", exact=True).click()
+            assert result.locator('[name="amount_yuan"]').input_value() == "18.51"
+            self.capture("owner-to-original", page=result)
+            assert self.facts() == before
+        finally:
+            result.close()
+
     def task_read_recovery(self):
         self.native.bind(self.fixture.pairing_code, self.port)
         self.open_tasks()
@@ -179,6 +202,7 @@ class BackstageJourney:
         from scripts.backstage_journey_ocr_recovery import drawer_lost_ocr_reply
 
         self.upload_web()
+        self.owner_results_navigation()
         self.task_read_recovery()
         self.retry_web()
         drawer_lost_ocr_reply(self)
@@ -189,5 +213,5 @@ class BackstageJourney:
         fx_consumers(self)
         result = self.facts()
         result["advisor"] = advisor
-        result["verified_leg"] = "Real RapidOCR, Owner hot configuration, Web/Android image upload, durable task and source, native read denial/recovery/restart, same-key Web OCR retry, native explicit OCR with automatic recognition disabled, raw drafts retained until explicit review, human native confirmation"
+        result["verified_leg"] = "Real RapidOCR and dated FX; Owner configuration and personal-result navigation; Web/Android image intake; task/source read refusal, recovery and restart; same-key OCR recovery after restart and lost reply; native OCR with auto mode disabled; explicit review preserving raw input/OCC; human confirmation; advisor consent, roles and audit with labelled synthetic upstream"
         return result
