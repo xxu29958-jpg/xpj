@@ -107,7 +107,7 @@ class BudgetJourney:
                 observed = [reason for reason in reasons if reason in log]
                 (self.evidence / "series-read-retry-reasons.json").write_text(
                     json.dumps(observed, ensure_ascii=False), encoding="utf-8")
-                self.native.click("重试")
+                raise AssertionError("The actual fixed-expense consumer failed its current read; see the retained diagnostic")
             self.native.click_counted_tab("活跃")
 
     def login(self):
