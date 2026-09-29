@@ -88,7 +88,8 @@ class RelationshipJourney:
 
     def native_confirmation(self):
         self.native.reveal_any(CONFIRM)
-        checkboxes = [node for node in self.native.tree().iter("node") if node.attrib.get("checkable") == "true"]
+        checkboxes = [node for node in self.native.tree().iter("node")
+                      if node.attrib.get("class") == "android.widget.CheckBox"]
         assert len(checkboxes) == 1, "The current agreement confirmation must be unambiguous"
         assert checkboxes[0].attrib.get("enabled") == "true", "A fresh relationship cannot be confirmed"
         if checkboxes[0].attrib.get("checked") != "true":
