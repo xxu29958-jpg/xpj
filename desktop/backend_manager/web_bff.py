@@ -6,10 +6,13 @@ import hashlib
 import hmac
 import http.client
 import ipaddress
+import socket
 import urllib.parse
 from collections.abc import Collection
 from dataclasses import dataclass
 from http.client import HTTPResponse
+
+from backend_manager.web_download import DOWNLOAD_TIMEOUT_SECONDS, BridgeDownload
 
 BRIDGE_HEADER = "X-Ticketbox-Desktop-Bridge"
 BRIDGE_VERSION = "v1"
@@ -59,6 +62,11 @@ class BridgeResponse:
     reason: str
     headers: tuple[tuple[str, str], ...]
     body: bytes
+    download: BridgeDownload | None = None
+
+    def close(self) -> None:
+        if self.download is not None:
+            self.download.close()
 
 
 def allowed_target(raw_target: str, method: str) -> urllib.parse.SplitResult | None:
@@ -153,6 +161,23 @@ def _connection(context: BridgeContext) -> tuple[http.client.HTTPConnection, str
     return http.client.HTTPConnection(parsed.hostname, parsed.port, timeout=15), parsed.netloc
 
 
+def _response_headers(response: HTTPResponse) -> tuple[tuple[str, str], ...]:
+    accepted = []
+    for name, value in response.getheaders():
+        lower = name.casefold()
+        if lower in _SAFE_RESPONSE_HEADERS:
+            if lower == "location":
+                location = urllib.parse.urlsplit(value)
+                if location.scheme or location.netloc or not (
+                    location.path == "/web" or location.path.startswith("/web/")
+                ):
+                    raise WebBridgeError(502, "后端返回了不安全的跳转。")
+            accepted.append((name, value))
+        elif lower == "set-cookie" and value.partition("=")[0].strip() in _COOKIE_ALLOWLIST:
+            accepted.append(("Set-Cookie", value.replace("Path=/", "Path=/web")))
+    return tuple(accepted)
+
+
 def relay(
     context: BridgeContext,
     *,
@@ -161,6 +186,7 @@ def relay(
     client_headers,
     body: bytes,
     manager_origin: str,
+    client_socket: socket.socket | None = None,
 ) -> BridgeResponse:
     target = allowed_target(raw_target, method)
     if target is None:
@@ -168,6 +194,11 @@ def relay(
     if len(body) > MAX_REQUEST_BYTES:
         raise WebBridgeError(413, "request too large")
     connection, backend_host = _connection(context)
+    portable = target.path == "/web/export/portable" and method.upper() in {"GET", "HEAD"}
+    if portable:
+        connection.timeout = DOWNLOAD_TIMEOUT_SECONDS
+    download = None
+    handed_off = False
     backend_origin = context.backend_origin.rstrip("/")
     headers = {name: value for name, value in client_headers.items() if name.casefold() in _CLIENT_HEADER_ALLOWLIST}
     headers.update(
@@ -191,32 +222,31 @@ def relay(
             body=body or None,
             headers=headers,
         )
+        if portable:
+            download = BridgeDownload(connection, client_socket)
         response: HTTPResponse = connection.getresponse()
-        payload = b"" if method.upper() == "HEAD" else response.read()
-        response_headers: list[tuple[str, str]] = []
-        for name, value in response.getheaders():
-            lower = name.casefold()
-            if lower in _SAFE_RESPONSE_HEADERS:
-                if lower == "location":
-                    location = urllib.parse.urlsplit(value)
-                    if (
-                        location.scheme
-                        or location.netloc
-                        or not (location.path == "/web" or location.path.startswith("/web/"))
-                    ):
-                        raise WebBridgeError(502, "后端返回了不安全的跳转。")
-                response_headers.append((name, value))
-            elif lower == "set-cookie":
-                cookie_name = value.partition("=")[0].strip()
-                if cookie_name in _COOKIE_ALLOWLIST:
-                    response_headers.append(("Set-Cookie", value.replace("Path=/", "Path=/web")))
+        if download is not None:
+            download.response = response
+        streaming = portable and method.upper() == "GET" and response.status in {200, 206}
+        if streaming and response.length is None:
+            raise WebBridgeError(502, "下载响应缺少完整文件长度，请重新下载。")
+        payload = b"" if streaming or method.upper() == "HEAD" else response.read()
+        response_headers = _response_headers(response)
+        handed_off = streaming
         return BridgeResponse(
             response.status,
             response.reason,
-            tuple(response_headers),
+            response_headers,
             payload,
+            download if streaming else None,
         )
     except (OSError, http.client.HTTPException) as exc:
+        if download is not None and download.cancelled.is_set():
+            raise WebBridgeError(499, "下载已取消。") from exc
         raise WebBridgeError(503, "小票夹后端尚未就绪。") from exc
     finally:
-        connection.close()
+        if not handed_off:
+            if download is not None:
+                download.close()
+            else:
+                connection.close()

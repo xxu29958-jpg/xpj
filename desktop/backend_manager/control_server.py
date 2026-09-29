@@ -21,6 +21,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import html
+import http.client
 import ipaddress
 import json
 import os
@@ -45,6 +46,7 @@ from backend_manager.web_bff import (
     ASSET_SESSION_COOKIE,
     MAX_REQUEST_BYTES,
     SESSION_COOKIE,
+    BridgeResponse,
     WebBridgeError,
     browser_session_valid,
     relay,
@@ -503,6 +505,7 @@ class _Handler(BaseHTTPRequestHandler):
                 client_headers=self.headers,
                 body=body,
                 manager_origin=srv.expected_origin,
+                client_socket=self.connection,
             )
         except ProductDataError as exc:
             message = (
@@ -517,7 +520,8 @@ class _Handler(BaseHTTPRequestHandler):
             )
             return
         except WebBridgeError as exc:
-            self._send(exc.status, str(exc).encode("utf-8"), "text/plain; charset=utf-8")
+            if exc.status != 499:
+                self._send(exc.status, str(exc).encode("utf-8"), "text/plain; charset=utf-8")
             return
         # A bridged 401 means the presented credential is dead: clear it
         # BEFORE rendering — but only when it is still the stored one, so a
@@ -540,6 +544,16 @@ class _Handler(BaseHTTPRequestHandler):
                         "当前账本已归档或不再允许访问。你仍可核对账户有权下载的账本。",
                         portable_available=True), "text/html; charset=utf-8")
                     return
+        try:
+            self._deliver_web_bridge(response)
+        except (OSError, http.client.HTTPException):
+            # Headers may already be sent. Closing preserves a failed/truncated
+            # download; never append an HTML success/error page to archive bytes.
+            self.close_connection = True
+        finally:
+            response.close()
+
+    def _deliver_web_bridge(self, response: BridgeResponse) -> None:
         self._web_bridge_response = True
         self.send_response(response.status, response.reason)
         saw_length = False
@@ -549,7 +563,7 @@ class _Handler(BaseHTTPRequestHandler):
             saw_length = saw_length or lower == "content-length"
             saw_csp = saw_csp or lower == "content-security-policy"
             self.send_header(name, value)
-        if not saw_length:
+        if not saw_length and response.download is None:
             self.send_header("Content-Length", str(len(response.body)))
         if not saw_csp:
             self.send_header(
@@ -560,7 +574,11 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
         if self.command != "HEAD":
-            self.wfile.write(response.body)
+            if response.download is None:
+                self.wfile.write(response.body)
+            else:
+                for chunk in response.download.chunks():
+                    self.wfile.write(chunk)
 
     def _host_allowed(self) -> bool:
         srv: ControlServer = self.server  # type: ignore[assignment]
