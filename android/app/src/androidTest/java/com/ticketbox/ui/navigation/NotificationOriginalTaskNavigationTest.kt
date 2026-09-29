@@ -14,6 +14,7 @@ import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
@@ -62,7 +63,7 @@ class NotificationOriginalTaskNavigationTest {
         }
         waitForMonth("2026-08")
         assertEquals(listOf("2026-07", "2026-08"), transport.budgetReads.toList())
-        compose.onNodeWithText(context.getString(R.string.budget_back_to_stats)).performClick()
+        compose.onNodeWithContentDescription(context.getString(R.string.budget_back_to_stats)).performClick()
         waitForMonth("2026-07")
         compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("budget_total_amount")))
             .performScrollTo().assertTextEquals("321.09")
