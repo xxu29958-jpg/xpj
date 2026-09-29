@@ -254,6 +254,22 @@ body {
     line-height: var(--type-caption-line);
 }
 
+.auth-foot a {
+    display: inline-flex;
+    align-items: center;
+    min-block-size: 2.75rem;
+    max-inline-size: 100%;
+    color: var(--brand-primary);
+    font-size: var(--type-body-size);
+    text-underline-offset: 0.2em;
+}
+
+.auth-foot a:focus-visible {
+    outline: var(--space-1) solid var(--brand-focus-ring);
+    outline-offset: var(--space-1);
+    border-radius: var(--radius-sm);
+}
+
 /* ── 窄屏：单栏，叙事压缩为页头 ───────────────────────────── */
 
 @media (max-width: 48rem) {
