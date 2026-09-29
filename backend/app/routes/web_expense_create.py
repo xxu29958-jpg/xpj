@@ -92,7 +92,7 @@ def _manual_expense_context(
     if draft_result:
         time_values = submitted_time_form_values(current_values, wall_time_field="spent_at")
     else:
-        time_values = time_form_values(SimpleNamespace(expense_time=now_utc()),
+        time_values = time_form_values(SimpleNamespace(expense_time=now_utc().replace(microsecond=0)),
             current_calendar(db, ledger_id=selected_id))
         # A new instant has no user-selected accounting-date override.
         time_values["accounting_date"] = ""

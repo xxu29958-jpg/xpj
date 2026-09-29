@@ -56,6 +56,7 @@ class RelationshipJourney:
         if not form.locator('[name="merchant"]').is_visible():
             options.locator(":scope > summary").click()
         form.locator('[name="merchant"]').fill("往来联动原单")
+        assert form.locator('[name="spent_at"]').input_value(), "The actual new form lost its default occurrence time"
         form.get_by_role("button", name="记下这笔支出", exact=True).click()
         self.expect("source_amount", 10000)
         source = self.facts()["source_id"]

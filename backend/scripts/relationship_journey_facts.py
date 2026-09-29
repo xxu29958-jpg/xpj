@@ -66,10 +66,10 @@ def facts(identity):
         original = db.scalar(select(Debt).where(Debt.source_type == "bill_split"))
         received = db.scalar(select(Expense).where(Expense.tenant_id == identity.receiver_ledger))
         result = {
-            "source_id": source.id if source else None, "source_amount": source.amount_cents if source else None,
-            "received_id": received.id if received else None, "received_amount": received.amount_cents if received else None,
-            "invitation_id": invitation.public_id if invitation else None,
-            "invitation_status": invitation.status if invitation else None,
+            "source_id": getattr(source, "id", None), "source_amount": getattr(source, "amount_cents", None),
+            "received_id": getattr(received, "id", None), "received_amount": getattr(received, "amount_cents", None),
+            "invitation_id": getattr(invitation, "public_id", None),
+            "invitation_status": getattr(invitation, "status", None),
             "expenses": db.scalar(select(func.count()).select_from(Expense)),
             "offsets": db.scalar(select(func.count()).select_from(ExpenseOffsetFact)),
             "source_refund": db.scalar(select(func.coalesce(func.sum(ExpenseOffsetFact.amount_cents), 0)).where(

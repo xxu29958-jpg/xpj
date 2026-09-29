@@ -39,7 +39,12 @@
 
   function showValues(saved) {
     controls.forEach(control => {
-      control.value = saved[control.name] ?? "";
+      const value = saved[control.name] ?? "";
+      control.value = value;
+      if (control.type === "datetime-local" && value && !control.value) {
+        control.type = "text";
+        control.value = value;
+      }
       const absent = drafts.optionalFields.includes(control.name) && saved[control.name] === undefined;
       if (absent) omitted.add(control.name); else omitted.delete(control.name);
       control.disabled = absent;

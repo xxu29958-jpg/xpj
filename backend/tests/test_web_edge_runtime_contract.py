@@ -48,6 +48,67 @@ _SHELL_KEYBOARD_JS = (
 _EDGE_CDP: ModuleType | None = None
 
 
+def test_accounting_time_subseconds_survive_the_actual_browser_control(tmp_path: Path) -> None:
+    from datetime import UTC, datetime
+    from types import SimpleNamespace
+
+    from app.routes._web_accounting_time import parse_web_accounting_time, time_form_projection, time_form_values
+
+    template = Environment(loader=FileSystemLoader(_REPO_ROOT / "backend/app/templates/web"),
+        autoescape=select_autoescape(["html"])).get_template("_accounting_time_fields.html")
+    instants = [datetime(2026, 11, 1, 6, 30, 15, fraction, tzinfo=UTC) for fraction in (0, 123000, 123456)]
+    forms = []
+    for index, instant in enumerate(instants):
+        expense = SimpleNamespace(expense_time=instant, source_timezone="America/New_York",
+            source_utc_offset_seconds=-18000, calendar_revision=1)
+        values = time_form_values(expense, SimpleNamespace(timezone_name="Asia/Shanghai", revision=2))
+        forms.append('<form>' + template.render(time_form=time_form_projection(values),
+            time_prefix=f"exact-{index}", time_name="expense_time", time_disabled=False) + '</form>')
+    page = _write_fixture(tmp_path, "exact-time.html", '<meta charset="utf-8">' + ''.join(forms) +
+        '<script>window.__webConsumerProbe={forms:Array.from(document.forms,'
+        'form=>Object.fromEntries(new FormData(form).entries()))};</script>')
+    probe = _evaluate_fixture(tmp_path, page=page, width=390, height=960, profile_name="edge-exact-time")
+    for instant, values in zip(instants, probe["forms"], strict=True):
+        assert values["expense_time"], "The real browser discarded a known instant before any user edit"
+        parsed = parse_web_accounting_time(values.pop("expense_time"), values)
+        assert parsed.instant_utc == instant and parsed.source_utc_offset_seconds == -18000
+        assert parsed.calendar_revision == 1
+
+
+def test_manual_original_subseconds_survive_real_draft_restoration(tmp_path: Path) -> None:
+    from app.routes._web_accounting_time import time_form_projection
+
+    scope = {"datasetId": "dataset", "clientGeneration": "generation", "accountId": "account", "ledgerId": "ledger", "deviceId": "device"}
+    raw = "2026-11-01T01:30:15.123456"
+    time_values = {"time_precision": "instant", "calendar_revision": "1", "user_local_date": "2026-11-01",
+        "source_timezone": "America/New_York", "source_utc_offset_seconds": "-18000", "accounting_date": ""}
+    original = dict(amount_major="100.00", currency_code="CNY", home_currency_code="CNY", merchant="原提交商家",
+        category="其他", spent_at=raw, note="原填写", return_to="", return_month="", return_recurring_public_id="",
+        return_payment_expense_id="", **time_values)
+    ref = "a" * 32
+    record = {"version": 1, "scope": scope, "clientRef": ref, "phase": "submitted", "values": original, "updatedAt": 1}
+    seed = '<script>localStorage.setItem(' + json.dumps("ticketbox:manual-draft:v1:" + ref) + ',' + \
+        json.dumps(json.dumps(record)) + ');location.hash="#manual-' + ref + '";</script>'
+    environment = Environment(loader=ChoiceLoader([DictLoader({"base.html": '<html><head><meta charset="utf-8">' +
+        seed + '{% block page_scripts %}{% endblock %}</head><body>{% block content %}{% endblock %}</body></html>'}),
+        FileSystemLoader(_REPO_ROOT / "backend/app/templates/web")]), autoescape=select_autoescape(["html"]))
+    body = environment.get_template("expense_new.html").render(manual_draft_scope=scope, manual_draft_result="",
+        form_ledger_id="ledger", form_device_public_id="device", form_home_currency_code="CNY", client_ref="b" * 32,
+        values={"currency_code": "CNY"}, currency_options=["CNY"], category_options=[], edit_return_fields={},
+        time_form=time_form_projection({**time_values, "wall_time": "2026-11-01T01:30:15"}),
+        csrf_token="synthetic", currency_input={}, asset_version="time-contract")
+    for name in ("manual-drafts.js", "manual-entry.js"):
+        body = body.replace(f'/static/web/{name}?v=time-contract', (_REPO_ROOT / "backend/app/static/web" / name).as_uri())
+    body += '<script>const timer=setInterval(()=>{const form=document.querySelector("[data-manual-draft-scope]");' + \
+        'if(form.dataset.manualDraftState==="submitted"){clearInterval(timer);window.__webConsumerProbe={' + \
+        'values:Object.fromEntries(new FormData(form).entries()),record:JSON.parse(localStorage.getItem(' + \
+        json.dumps("ticketbox:manual-draft:v1:" + ref) + '))};}},25);</script>'
+    page = _write_fixture(tmp_path, "original-time.html", body)
+    probe = _evaluate_fixture(tmp_path, page=page, width=390, height=960, profile_name="edge-original-time")
+    assert probe["values"]["spent_at"] == raw, "Reopening changed the original command's known instant"
+    assert probe["values"]["client_ref"] == ref and probe["record"] == record
+
+
 def test_income_create_original_form_draft_survives_refresh_in_real_edge(tmp_path: Path) -> None:
     """Real template consumer only; financial creation is a separate PostgreSQL gate."""
     edge = _discover_edge()
