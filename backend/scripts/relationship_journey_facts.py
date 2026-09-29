@@ -72,8 +72,8 @@ def facts(identity):
             "invitation_status": getattr(invitation, "status", None),
             "expenses": db.scalar(select(func.count()).select_from(Expense)),
             "offsets": db.scalar(select(func.count()).select_from(ExpenseOffsetFact)),
-            "source_refund": db.scalar(select(func.coalesce(func.sum(ExpenseOffsetFact.amount_cents), 0)).where(
-                ExpenseOffsetFact.tenant_id == identity.sender_ledger, ExpenseOffsetFact.status == "active")),
+            "source_refund": int(db.scalar(select(func.coalesce(func.sum(ExpenseOffsetFact.amount_cents), 0)).where(
+                ExpenseOffsetFact.tenant_id == identity.sender_ledger, ExpenseOffsetFact.status == "active"))),
             "repayments": db.scalar(select(func.count()).select_from(Repayment)),
             "return_count": db.scalar(select(func.count()).select_from(Debt).where(Debt.source_type == "bill_split_return")),
             "changes": [{field: getattr(row, field) for field in ("public_id", "new_share_amount_cents",
