@@ -217,6 +217,13 @@ ERROR_MESSAGES = {
     "ai_advisor_owner_required": "只有账本拥有者可以调用外部 AI 预算建议。",
     "ai_advisor_rate_limited": "AI 预算助手调用过于频繁，请稍后再试。",
     "ai_advisor_daily_limit_exceeded": "AI 预算助手今日调用次数已达上限。",
+    "ai_advisor_no_advice": "这次未能生成可用建议。填写已保留，可稍后重试；本地试算和保存仍可用。",
+    "ai_advisor_provider_empty": "智能建议未开启。填写已保留，本地试算和保存仍可用。",
+    "ai_advisor_payload_invalid": "本次建议输入未通过检查，请联系服务拥有者核对。填写已保留，本地试算和保存仍可用。",
+    "ai_advisor_provider_call_failed": "智能建议服务暂时不可用。填写已保留，可稍后重试；本地试算和保存仍可用。",
+    "ai_advisor_provider_unexpected_error": "智能建议服务暂时不可用。填写已保留，可稍后重试；本地试算和保存仍可用。",
+    "ai_advisor_response_parse_failed": "这次返回的建议无法使用。填写已保留，可重新生成；本地试算和保存仍可用。",
+    "ai_advisor_response_unexpected_error": "这次返回的建议无法使用。填写已保留，可重新生成；本地试算和保存仍可用。",
 }
 
 

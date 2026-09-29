@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.errors import AppError
+from app.errors import ERROR_MESSAGES, AppError
 from app.routes._web_draft_binding import rendered_draft_scope, require_draft_binding
 from app.routes.web_budget_fx import router as rates_router
 from app.routes.web_common import (
@@ -309,7 +309,9 @@ def _budget_advice_response(
         return None, exc.message or exc.error, provider_name, None
 
     advice = result.advice
-    advise_error = result.reason_code if advice is None and result.reason_code else None
+    advise_error = ERROR_MESSAGES.get(
+        result.reason_code or "", ERROR_MESSAGES["ai_advisor_no_advice"],
+    ) if advice is None else None
     return advice, advise_error, result.provider_name, result.inputs
 
 

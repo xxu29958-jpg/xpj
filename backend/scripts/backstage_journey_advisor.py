@@ -65,10 +65,19 @@ def advisor_consumers(j):
     j.page.get_by_text("合成协议样例：仅供人工核对", exact=True).wait_for()
     assert len(j.advisor.inputs) == 1
     j.capture("ai-web-reference")
+    form.locator('[name="savings_target_yuan"]').fill("12.34")
+    form.locator('[name="reserved_buffer_yuan"]').fill("56.78")
+    original = {name: form.locator(f'[name="{name}"]').input_value() for name in (
+        "ledger_id", "month", "savings_target_yuan", "reserved_buffer_yuan",
+        "home_currency_code", "arrangement_currency_code", "idempotency_key", "expected_row_version")}
     j.advisor.fail_next = True
     form.get_by_role("button", name="获取智能建议", exact=True).click()
     wait_for(lambda: len(_audit(j.ledger_id)["rows"]) == 2, "The failed provider call was not audited")
     assert not _audit(j.ledger_id)["rows"][-1]["success"]
+    assert all(form.locator(f'[name="{name}"]').input_value() == value for name, value in original.items())
+    assert "智能建议服务暂时不可用" in j.page.inner_text("main")
+    assert "填写已保留" in j.page.inner_text("main")
+    assert "ai_advisor_provider_call_failed" not in j.page.inner_text("main")
     j.capture("ai-web-outage")
     j.native.plan_home()
     j.native.click("本月储蓄与备用金", stable=True)
