@@ -166,7 +166,11 @@ def native_read_recovery(j):
             native.click("较早记录")
             # This oldest record is beyond page one on both legs. Checking it
             # after restart also proves the second page survives in Room.
-            native.reveal_any("建立往来", toward_start=True, max_scrolls=8)
+            # Replacing fifty expanded rows can move the LazyColumn viewport.
+            # Normalize at the visible agreement before reading the short page.
+            native_current_share(native, "14.00")
+            native.reveal_any("往来历史")
+            native.reveal_any("建立往来")
             native.capture(f"relationship-{'return' if returned else 'original'}-{'offline' if offline else 'fresh'}-older-history")
     native.connection(j.port, online=True)
 
