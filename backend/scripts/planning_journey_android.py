@@ -163,29 +163,43 @@ class PlanningAndroid:
         return matches
 
     def reveal_any(self, *texts: str, toward_start: bool = False, max_scrolls: int = 8):
-        for _ in range(max_scrolls):
-            nodes = list(self.tree().iter("node"))
-            if any(text in node.attrib.get("text", "") for node in nodes for text in texts):
-                return
-            scrollable = [node for node in nodes if node.attrib.get("scrollable") == "true"]
-            handles = [node for node in nodes if node.attrib.get("content-desc") == "Drag handle"]
-            if scrollable:
-                left, top, right, bottom = self.bounds(max(scrollable, key=lambda node: self.bounds(node)[3] - self.bounds(node)[1]))
-                x, start, end = (left + right) // 2, top + (bottom - top) * 4 // 5, top + (bottom - top) // 5
-                if toward_start:
-                    start, end = end, start
-            elif handles:
-                left, top, right, bottom = self.bounds(handles[0])
-                window_bottom = self.bounds(nodes[0])[3]
-                x, start, end = (left + right) // 2, (top + bottom) // 2, window_bottom // 8
-                if start <= end:
-                    time.sleep(0.3)
-                    continue
-            else:
-                time.sleep(0.3)
-                continue
-            self.adb("shell", "input", "swipe", str(x), str(start), str(x), str(end), "450")
+        # A refreshed LazyColumn or a shorter history page may move the target
+        # above the current viewport. Search both directions, within a fixed budget.
+        for reverse in (False, True):
+            previous = None
+            for step in range(max_scrolls + 1):
+                root = self.tree()
+                nodes = list(root.iter("node"))
+                if any(text in node.attrib.get("text", "") for node in nodes for text in texts):
+                    if reverse:
+                        self.capture(f"scroll-recovered-{self.tree_attempt}")
+                    return
+                signature = ET.tostring(root, encoding="unicode")
+                if step == max_scrolls or signature == previous:
+                    break
+                previous = signature if self.scroll_viewport(nodes, toward_start != reverse) else None
         raise AssertionError(f"The actual native content is not reachable after scrolling: {texts}")
+
+    def scroll_viewport(self, nodes, toward_start: bool):
+        scrollable = [node for node in nodes if node.attrib.get("scrollable") == "true"]
+        handles = [node for node in nodes if node.attrib.get("content-desc") == "Drag handle"]
+        if scrollable:
+            left, top, right, bottom = self.bounds(max(scrollable, key=lambda node: self.bounds(node)[3] - self.bounds(node)[1]))
+            x, start, end = (left + right) // 2, top + (bottom - top) * 4 // 5, top + (bottom - top) // 5
+            if toward_start:
+                start, end = end, start
+        elif handles:
+            left, top, right, bottom = self.bounds(handles[0])
+            window_bottom = self.bounds(nodes[0])[3]
+            x, start, end = (left + right) // 2, (top + bottom) // 2, window_bottom // 8
+        else:
+            time.sleep(0.3)
+            return False
+        if handles and not scrollable and start <= end:
+            time.sleep(0.3)
+            return False
+        self.adb("shell", "input", "swipe", str(x), str(start), str(x), str(end), "450")
+        return True
 
     def bind(self, code: str, port: int):
         self.adb("reverse", f"tcp:{port}", f"tcp:{port}")
