@@ -68,9 +68,9 @@ def test_accounting_time_subseconds_survive_the_actual_browser_control(tmp_path:
         assert values["source_utc_offset_seconds"] == "-18000" and values["calendar_revision"] == "1"
 
 
-def test_manual_original_subseconds_survive_real_draft_restoration(tmp_path: Path) -> None:
+@pytest.mark.parametrize("raw", ["2026-11-01T01:30:15.123456", "2026-11-01 01:30:15"])
+def test_manual_original_time_survives_real_draft_restoration(tmp_path: Path, raw: str) -> None:
     scope = {"datasetId": "dataset", "clientGeneration": "generation", "accountId": "account", "ledgerId": "ledger", "deviceId": "device"}
-    raw = "2026-11-01T01:30:15.123456"
     time_values = {"time_precision": "instant", "calendar_revision": "1", "user_local_date": "2026-11-01",
         "source_timezone": "America/New_York", "source_utc_offset_seconds": "-18000", "accounting_date": ""}
     original = dict(amount_major="100.00", currency_code="CNY", home_currency_code="CNY", merchant="原提交商家",

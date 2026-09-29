@@ -41,7 +41,7 @@
     controls.forEach(control => {
       const value = saved[control.name] ?? "";
       control.value = value;
-      if (control.type === "datetime-local" && value && !control.value) {
+      if (control.type === "datetime-local" && control.value !== value) {
         control.type = "text";
         control.value = value;
       }
