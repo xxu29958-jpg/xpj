@@ -128,7 +128,9 @@ def native_read_recovery(j):
             native.reveal_any("往来历史")
             native.reveal_any("提出拆账新约定", "新约定提议已处理", "达成拆账新约定")
             native.capture(f"relationship-{'return' if returned else 'original'}-{'offline' if offline else 'fresh'}-history")
-            native.reveal_any("较早记录")
+            # A page has 20 expanded financial-history rows, each with amounts
+            # and settlement evidence; the default form search covers 8 swipes.
+            native.reveal_any("较早记录", max_scrolls=20)
             native.click("较早记录")
             native.capture(f"relationship-{'return' if returned else 'original'}-{'offline' if offline else 'fresh'}-older-history")
     native.connection(j.port, online=True)
