@@ -157,7 +157,8 @@
         const item = document.createElement("li"), link = document.createElement("a");
         link.href = recordHref(record);
         link.textContent = (record.values[definition.idField || "public_id"] ? "修改 · " : "新建 · ") + (record.values[definition.titleField || (isGoal ? "name" : "label")] || "未命名" + taskLabel) + " · " +
-          (!store.matches(record.scope, scope) ? "原浏览器身份，待核对" : record.phase === "editing" ? "未提交" : "结果待核对");
+          (!store.matches(record.scope, scope) ? "原浏览器身份，待核对" : record.phase === "editing" ? "未提交" :
+            record.serverResult === "rejected" ? "已拒绝，待核对" : "结果待核对");
         item.append(link); list.append(item);
       });
       shelf.hidden = creates.length + edits.length === 0;
@@ -268,6 +269,9 @@
     function activationNotice(record) {
       if (!canWrite) { notice(record ? "当前角色为只读，原稿仍保留；恢复编辑权限后可继续。" : "当前角色为只读，可核对已保存的计划。"); return; }
       if (archived && phase === "editing") { notice(record ? "计划已归档，原输入仍保留；请先恢复计划再核对修改。" : "计划已归档，请先恢复计划再修改。"); return; }
+      if (record && phase !== "editing" && reviewable) {
+        notice("服务器已拒绝这次原提交，原输入仍保留。核对已保存的计划后，可保留输入继续修改。"); return;
+      }
       notice(record ? phase === "editing" ? "已恢复原" + taskLabel + "，保留原币种、月份和目标版本。" :
         "原提交结果尚未确认。核实会沿用原内容和编号。" : "输入会保留在此浏览器，尚未提交。");
     }

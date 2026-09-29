@@ -70,8 +70,8 @@ internal fun RecurringDefinitionContent(plan: RecurringDefinitionDto) {
 
 private fun recurringHistoryKind(kind: String): Int = when (kind) {
     "baseline" -> R.string.budget_history_baseline
-    "create" -> R.string.budget_history_create
-    "edit" -> R.string.budget_history_edit
+    "create" -> R.string.recurring_history_create
+    "edit" -> R.string.recurring_history_edit
     "pause" -> R.string.recurring_action_pause_description
     "resume" -> R.string.recurring_action_resume_description
     "archive" -> R.string.budget_history_archive

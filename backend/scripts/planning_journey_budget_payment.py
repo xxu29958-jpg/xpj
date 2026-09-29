@@ -21,13 +21,13 @@ def record_payment(j, path, payment_date):
     form.locator('[name="amount_major"]').fill("1400.00")
     options = form.locator("details.manual-expense-options")
     if not options.get_attribute("open") and not form.locator('[name="merchant"]').is_visible():
-        options.locator("summary").click()
+        options.locator(":scope > summary").click()
     form.locator('[name="merchant"]').fill(SERIES)
     form.locator('[name="time_precision"]').select_option("date_only")
     form.locator('[name="user_local_date"]').fill(payment_date)
     accounting = form.locator('[name="accounting_date"]')
     if not accounting.is_visible():
-        accounting.locator("xpath=ancestor::details").locator("summary").click()
+        accounting.locator("xpath=ancestor::details[1]").locator(":scope > summary").click()
     accounting.fill(payment_date)
     form.locator("[data-manual-submit]").click()
     j.expect_fact("expenses", 1)

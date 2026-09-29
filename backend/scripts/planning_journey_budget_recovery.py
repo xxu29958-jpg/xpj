@@ -50,6 +50,7 @@ class BudgetRecovery:
         page.wait_for_function("document.querySelector('[data-arrangement-draft-phase]').dataset.arrangementDraftPhase === 'blocked'")
         page.reload()
         assert_original(form, original)
+        assert "服务器已拒绝" in form.locator("[data-arrangement-draft-status]").inner_text()
         assert j.facts() == before, "Rejecting an old arrangement changed the stored definition"
         j.capture("arrangement-retained-stale-original")
         page.on("dialog", lambda dialog: dialog.accept())
