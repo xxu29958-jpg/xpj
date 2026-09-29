@@ -51,9 +51,10 @@ internal fun NavGraphBuilder.addPlanRoutes(
             )
         }
         composable(
-            route = budgetRoute("{month}"),
-            arguments = listOf(navArgument("month") { type = NavType.StringType; nullable = true; defaultValue = null }),
-        ) {
+            route = budgetRoute("{month}") + "&$NOTIFICATION_QUERY",
+            arguments = listOf(navArgument("month") { type = NavType.StringType; nullable = true; defaultValue = null }, notificationArgument),
+        ) { entry ->
+            NotificationTaskBoundary(entry, screenFactory, onBack) {
             BudgetRoute(
                 screenFactory = screenFactory, onBack = onBack,
                 // The monthly-budget row is NOT an advisor input
@@ -63,6 +64,7 @@ internal fun NavGraphBuilder.addPlanRoutes(
                 backText = if (navController.previousBackStackEntry?.destination?.route == TRANSACTIONS_LIBRARY_CATEGORIES_ROUTE)
                     stringResource(R.string.category_directory_back) else null,
             )
+            }
         }
         composable("${ProductSecondaryPage.BudgetAdvice.route}?submission={submission}&report={report}&arrangement={arrangement}",
             arguments = listOf(navArgument("submission") { type = NavType.StringType; nullable = true; defaultValue = null },
@@ -74,15 +76,27 @@ internal fun NavGraphBuilder.addPlanRoutes(
                 reportContext = readReportRateContext(entry.arguments?.getString("report")),
             )
         }
-        composable(ProductSecondaryPage.Recurring.route) {
+        addRecurringRoute(dependencies, onAdviceInputChanged)
+        addIncomePlanRoute(dependencies, onAdviceInputChanged)
+    }
+}
+
+private fun NavGraphBuilder.addRecurringRoute(dependencies: MainProductRouteDependencies, onDataChanged: () -> Unit) {
+    with(dependencies) {
+        composable("${ProductSecondaryPage.Recurring.route}?$NOTIFICATION_QUERY", arguments = listOf(notificationArgument)) { entry ->
+            NotificationTaskBoundary(entry, screenFactory, onBack) {
             RecurringRoute(
                 screenFactory = screenFactory, onBack = onBack,
-                onDataChanged = onAdviceInputChanged,
-                expenseNavigation = recurringExpenseNavigation(runtime),
+                onDataChanged = onDataChanged,
+                expenseNavigation = RecurringExpenseNavigation(
+                    onOpenExpense = runtime.navController::openExpense,
+                    onRecordPayment = { runtime.navController.navigate(recurringPaymentRoute(it)) },
+                    onOpenSubmission = { runtime.navController.navigate(manualExpenseSubmissionRoute(it)) },
+                ),
                 financialDataRevision = shellState.financialDataRevision,
             )
+            }
         }
-        addIncomePlanRoute(dependencies, onAdviceInputChanged)
     }
 }
 
@@ -108,12 +122,6 @@ private fun NavGraphBuilder.addIncomePlanRoute(
         }
     }
 }
-
-private fun recurringExpenseNavigation(runtime: MainNavigationRuntime) = RecurringExpenseNavigation(
-    onOpenExpense = runtime.navController::openExpense,
-    onRecordPayment = { runtime.navController.navigate(recurringPaymentRoute(it)) },
-    onOpenSubmission = { runtime.navController.navigate(manualExpenseSubmissionRoute(it)) },
-)
 
 /** Plan-write refresh composition: every plan save invalidates financial reads;
  *  only saves that feed the budget-advisor inputs (income plans, recurring —

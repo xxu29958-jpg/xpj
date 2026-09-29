@@ -2,8 +2,6 @@ package com.ticketbox.data.remote
 
 import com.ticketbox.data.repository.toDomain
 import com.ticketbox.domain.model.toBudgetProgress
-import com.ticketbox.notification.budget.BudgetOverspendDispatchOutcome
-import com.ticketbox.notification.budget.NotifierBudgetOverspendDispatcher
 import com.ticketbox.notification.budget.evaluateBudgetOverspend
 import kotlinx.coroutines.test.runTest
 import okhttp3.OkHttpClient
@@ -29,13 +27,9 @@ class ApiClientBudgetMoneyResponseTest {
     @Test
     fun notificationKeepsRecordedYenMinorUnits() = runTest {
         val budget = budgetMoneyApi(unknown = false).monthlyBudget("2026-09").toDomain()
-        var amount: String? = null
-        val notifier = NotifierBudgetOverspendDispatcher { value, _ ->
-            amount = value
-            BudgetOverspendDispatchOutcome.SENT
-        }
-        notifier.dispatch(assertNotNull(evaluateBudgetOverspend("owner", budget)))
-        assertEquals("¥1,200", amount)
+        val decision = assertNotNull(evaluateBudgetOverspend("owner", budget))
+        assertEquals("JPY", decision.homeCurrencyCode)
+        assertEquals(1200L, decision.overspentCents)
     }
 }
 

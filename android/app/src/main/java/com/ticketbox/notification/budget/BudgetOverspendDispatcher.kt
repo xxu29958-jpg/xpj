@@ -1,7 +1,5 @@
 package com.ticketbox.notification.budget
 
-import com.ticketbox.ui.components.formatDisplayAmount
-import com.ticketbox.domain.model.CurrencyDisplay
 
 /**
  * 一次预算超支提醒投递的结果。**只有 [SENT] 允许调用 store.markSent(key)**（镜像 recurring 的
@@ -26,22 +24,5 @@ enum class BudgetOverspendDispatchOutcome {
  * 实现不得：拉 API、判超支、维护 sent-key（那是 source / policy / store 的事）。
  */
 fun interface BudgetOverspendDispatcher {
-    fun dispatch(decision: BudgetOverspendDecision): BudgetOverspendDispatchOutcome
-}
-
-/**
- * 生产实现：把超出金额格式化成本位币串（[formatDisplayAmount]，不散写 ÷100），委托
- * [TicketboxNotifier.onBudgetOverspent][com.ticketbox.notification.TicketboxNotifier.onBudgetOverspent]。
- *
- * 依赖窄函数接缝 `(overspentAmount, dedupeTag) -> outcome` 而非具体 notifier（镜像
- * [NotifierRecurringReminderDispatcher][com.ticketbox.notification.recurring.NotifierRecurringReminderDispatcher]）：
- * AppContainer 用方法引用 `notifier::onBudgetOverspent` 接线；测试注 lambda 直测
- * 「格式化 + key 透传」而不必构造需要 Context 的 notifier（本模块无 Robolectric）。
- * 开关 / 权限门（→ SENT / SKIPPED_*）是 Android 绑定逻辑，集中在 notifier 一处。
- */
-class NotifierBudgetOverspendDispatcher(
-    private val onBudgetOverspent: (overspentAmount: String, dedupeTag: String) -> BudgetOverspendDispatchOutcome,
-) : BudgetOverspendDispatcher {
-    override fun dispatch(decision: BudgetOverspendDecision): BudgetOverspendDispatchOutcome =
-        onBudgetOverspent(formatDisplayAmount(decision.overspentCents, CurrencyDisplay.forRecord(decision.homeCurrencyCode)), decision.key)
+    fun dispatch(decision: BudgetOverspendDecision, binding: com.ticketbox.data.repository.LogicalSessionBinding): BudgetOverspendDispatchOutcome
 }

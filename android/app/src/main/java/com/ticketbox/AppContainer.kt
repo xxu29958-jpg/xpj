@@ -412,7 +412,6 @@ class AppContainer(context: Context) {
         NotificationRuntimeDependencies(
             appContext = appContext,
             settingsStore = settingsStore,
-            sessionStore = sessionStore,
             apiServiceProvider = apiServiceProvider,
             recurringRepository = recurringRepository,
             budgetRepository = budgetRepository,

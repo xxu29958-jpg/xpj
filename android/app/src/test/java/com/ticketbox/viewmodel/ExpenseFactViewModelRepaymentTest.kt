@@ -84,8 +84,8 @@ internal class ExpenseFactViewModelRepaymentTest : ExpenseFactViewModelTestBase(
         val cachedBeforeCorrection = fake.baseExpense
         var holdRefresh = false
         val repository = object : ExpenseFactActions by fake {
-            override suspend fun fetchExpenseFromLocalCache(id: Long): Result<Expense> = Result.success(cachedBeforeCorrection)
-            override suspend fun fetchExpense(id: Long): Result<Expense> =
+            override suspend fun fetchExpenseFromLocalCache(id: Long, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?): Result<Expense> = Result.success(cachedBeforeCorrection)
+            override suspend fun fetchExpense(id: Long, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?): Result<Expense> =
                 if (holdRefresh) refresh.await() else fake.fetchExpense(id)
         }
         fake.repaymentDraftResult = { Result.success(fake.repaymentDraft()) }

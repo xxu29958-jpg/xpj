@@ -99,6 +99,7 @@ internal data class SettingsDestinationNavigation(
     val onSecondaryActiveChange: (Boolean) -> Unit = {},
     val onCloseRoot: () -> Unit = {},
     val onOpenArrangement: (String) -> Unit = {},
+    val initialDestination: SettingsDestination = SettingsDestination.Root,
 )
 
 internal data class SettingsRouteActions(
@@ -150,7 +151,7 @@ internal fun SettingsDestinationHost(
     actions: SettingsRouteActions,
     repositories: SettingsRouteRepositories,
 ) {
-    var route by rememberSaveable { mutableStateOf(SettingsDestination.Root) }
+    var route by rememberSaveable { mutableStateOf(navigation.initialDestination) }
     val appVersionName = stringResource(R.string.app_version_name)
     val appVersionCode = integerResource(R.integer.app_version_code)
 

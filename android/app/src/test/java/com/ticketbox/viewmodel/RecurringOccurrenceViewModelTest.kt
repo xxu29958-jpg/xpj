@@ -288,7 +288,7 @@ private class OccurrenceChoiceDebts(
     var fail: Boolean = false,
     var debts: List<Debt> = emptyList(),
 ) : DebtActions by unsupportedOccurrenceDebtActions() {
-    override suspend fun listDebts(lens: DebtListLens): Result<com.ticketbox.data.repository.ReadSnapshot<DebtListPage>> {
+    override suspend fun listDebts(lens: DebtListLens, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?): Result<com.ticketbox.data.repository.ReadSnapshot<DebtListPage>> {
         if (fail) return Result.failure(IllegalStateException("debts are offline"))
         return Result.success(debtReadSnapshot(DebtListPage(debts = debts, ledgerHomeCurrencyCode = ledgerHomeCurrencyCode)))
     }

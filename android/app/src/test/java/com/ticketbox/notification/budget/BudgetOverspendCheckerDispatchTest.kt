@@ -1,5 +1,6 @@
 package com.ticketbox.notification.budget
 
+import com.ticketbox.notification.boundReminderKey
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -17,9 +18,10 @@ class BudgetOverspendCheckerDispatchTest {
         val harness = CheckerHarness()
         harness.checker.checkNow("ledger-1")
         assertEquals(1, harness.dispatched.size)
-        assertEquals("v1:budget:ledger-1:2026-06", harness.dispatched.single().key)
+        assertEquals(boundReminderKey(requireNotNull(harness.binding), "v1:budget:ledger-1:2026-06"),
+            harness.dispatched.single().key)
         assertEquals(5_000L, harness.dispatched.single().overspentCents)
-        assertTrue("v1:budget:ledger-1:2026-06" in harness.store.sent)
+        assertTrue(boundReminderKey(requireNotNull(harness.binding), "v1:budget:ledger-1:2026-06") in harness.store.sent)
     }
 
     @Test

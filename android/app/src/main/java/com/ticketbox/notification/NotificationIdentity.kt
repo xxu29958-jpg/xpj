@@ -1,5 +1,6 @@
 package com.ticketbox.notification
 
+import com.ticketbox.data.repository.LogicalSessionBinding
 import java.security.MessageDigest
 
 /**
@@ -14,6 +15,14 @@ import java.security.MessageDigest
 internal fun notificationIdentityKey(rawKey: String?, postTimeMillis: Long): String {
     val material = "${rawKey.orEmpty()}|$postTimeMillis"
     return MessageDigest.getInstance("SHA-256")
+        .digest(material.toByteArray(Charsets.UTF_8))
+        .joinToString("") { "%02x".format(it) }
+}
+
+/** The same task stays deduplicated across token refresh, but never across its original authority. */
+internal fun boundReminderKey(binding: LogicalSessionBinding, taskKey: String): String {
+    val material = listOf(binding.serverUrl, binding.ownerKey, taskKey).joinToString("\u0000")
+    return "v2:" + MessageDigest.getInstance("SHA-256")
         .digest(material.toByteArray(Charsets.UTF_8))
         .joinToString("") { "%02x".format(it) }
 }

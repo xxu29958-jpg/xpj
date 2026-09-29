@@ -69,9 +69,13 @@ internal fun NavGraphBuilder.addWorkspaceRoute(
     dependencies: MainProductRouteDependencies,
 ) {
     with(dependencies) {
-        composable(WORKSPACE_ROUTE) {
+        composable("$WORKSPACE_ROUTE?$NOTIFICATION_QUERY", arguments = listOf(notificationArgument)) { entry ->
+            NotificationTaskBoundary(entry, screenFactory, onBack) {
             SettingsRoute(
-                navigation = SettingsDestinationNavigation(onOpenExpense = runtime.navController::openExpense,
+                navigation = SettingsDestinationNavigation(
+                    initialDestination = if (LocalNotificationTask.current?.destination == com.ticketbox.notification.NotificationDestination.Backup)
+                        com.ticketbox.ui.screens.settings.SettingsRoute.Server else com.ticketbox.ui.screens.settings.SettingsRoute.Root,
+                    onOpenExpense = runtime.navController::openExpense,
                     onOpenInbox = { shellState.openPrimaryDomainRoot(PrimaryDomain.Inbox) },
                     onOpenBudget = { month -> navController.navigate(budgetRoute(month)) },
                     onOpenArrangement = { month -> navController.navigate(monthlyArrangementRoute(month)) },
@@ -86,6 +90,7 @@ internal fun NavGraphBuilder.addWorkspaceRoute(
                 preferenceControls = workspaceControls.preferences,
                 onBindingCleared = workspaceControls.onBindingCleared,
             )
+            }
         }
     }
 }
@@ -175,8 +180,8 @@ internal fun NavGraphBuilder.addObligationRoutes(
         }
         addObligationSyncRoute(dependencies)
         composable(
-            route = REPAYMENT_DRAFT_ROUTE,
-            arguments = listOf(
+            route = "$REPAYMENT_DRAFT_ROUTE&$NOTIFICATION_QUERY",
+            arguments = listOf(notificationArgument,
                 navArgument(REPAYMENT_DRAFT_FOCUS_ARG) {
                     type = NavType.StringType
                     nullable = true
@@ -184,11 +189,13 @@ internal fun NavGraphBuilder.addObligationRoutes(
                 },
             ),
         ) { entry ->
+            NotificationTaskBoundary(entry, screenFactory, onBack) {
             RepaymentDraftRoute(
                 screenFactory = screenFactory,
                 focusedDraftPublicId = entry.arguments?.getString(REPAYMENT_DRAFT_FOCUS_ARG),
                 onBack = onBack,
             )
+            }
         }
     }
 }

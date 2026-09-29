@@ -155,7 +155,7 @@ internal class ExpenseCorrectionConnectedFixture(
         ledgerCalendarRepository = LedgerCalendarRepository(LedgerRequestGuard(provider), calendarPreferences)
         graph = RepositoryGraph(RepositoryGraphDependencies(db, ApiClient(), settingsStore, sessions, credentials,
             provider, RepositoryGraphOutbox(outbox, adapters)))
-        notificationDependencies = NotificationRuntimeDependencies(context, settingsStore, sessions, provider,
+        notificationDependencies = NotificationRuntimeDependencies(context, settingsStore, provider,
             graph.recurringRepository, graph.budgetRepository, ledgerCalendarRepository)
         uploadIntents = UploadIntentRepository(provider, outbox, UploadIntentFileStore(context),
             adapters.uploadPayloadAdapter, adapters.uploadReceiptAdapter, settingsStore)

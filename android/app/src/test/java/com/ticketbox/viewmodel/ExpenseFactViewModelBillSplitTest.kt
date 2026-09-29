@@ -285,8 +285,8 @@ private suspend fun assertInvitationActionsRespectCorrection(scope: TestScope, f
     val refresh = CompletableDeferred<Result<Expense>>()
     var holdRefresh = false
     val repository = object : ExpenseFactActions by fake {
-        override suspend fun fetchExpenseFromLocalCache(id: Long): Result<Expense> = Result.failure(RepositoryException("Cache unavailable"))
-        override suspend fun fetchExpense(id: Long): Result<Expense> =
+        override suspend fun fetchExpenseFromLocalCache(id: Long, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?): Result<Expense> = Result.failure(RepositoryException("Cache unavailable"))
+        override suspend fun fetchExpense(id: Long, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?): Result<Expense> =
             if (holdRefresh) refresh.await() else fake.fetchExpense(id)
     }
     val vm = ExpenseFactViewModel(expenseId = fake.baseExpense.id, repository = repository)

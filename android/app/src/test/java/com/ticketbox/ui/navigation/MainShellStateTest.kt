@@ -118,7 +118,7 @@ class MainShellStateTest {
         state.syncDestination(MainProductDestination.Domain(PrimaryDomain.Transactions))
 
         state.openAccount()
-        assertEquals(MainNavigationRequest.OpenWorkspace, state.consumeNavigationRequest())
+        assertEquals(MainNavigationRequest.OpenWorkspace(), state.consumeNavigationRequest())
         state.syncDestination(MainProductDestination.Workspace)
         assertTrue(state.accountOpen)
         assertEquals(SurfaceRole.Settings, state.surfaceRole(currentRoute = MAIN_ROUTE))

@@ -1,5 +1,6 @@
 package com.ticketbox.notification.budget
 
+import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.domain.model.BudgetMonthly
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -15,6 +16,10 @@ internal class CheckerHarness(
 ) {
     var enabled = true
     var activeLedgerId: String? = "ledger-1"
+    var serverUrl = "https://example.test"
+    var ownerKey = "owner"
+    val binding: LogicalSessionBinding?
+        get() = activeLedgerId?.let { LogicalSessionBinding(serverUrl, it, ownerKey, "session", "revision") }
     var month = "2026-06"
     var nowMillis = 0L
     var sourceCalls = 0
@@ -27,15 +32,15 @@ internal class CheckerHarness(
             budgetResult()
         },
         store = store,
-        dispatcher = { decision ->
+        dispatcher = { decision, _ ->
             dispatched += decision
             dispatchOutcome
         },
         runtime = BudgetOverspendRuntime(
             budgetOverspendAlertsEnabled = { enabled },
-            activeLedgerId = { activeLedgerId },
             currentMonth = { month },
             monotonicNowMillis = { nowMillis },
+            activeBinding = { binding },
         ),
         scope = CoroutineScope(Dispatchers.Unconfined),
     )

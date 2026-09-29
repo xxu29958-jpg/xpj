@@ -57,8 +57,9 @@ private data class RecurringPaymentRetirementRefs(
 )
 
 @Composable
-internal fun recurringOccurrenceModel(factory: MainScreenFactory, onChanged: () -> Unit): RecurringOccurrenceViewModel =
-    viewModel(factory = viewModelFactory {
+internal fun recurringOccurrenceModel(factory: MainScreenFactory, onChanged: () -> Unit): RecurringOccurrenceViewModel {
+    val originalBinding = LocalNotificationTask.current?.binding
+    return viewModel(factory = viewModelFactory {
         initializer {
             RecurringOccurrenceViewModel(
                 factory.recurringRepository.occurrences,
@@ -66,9 +67,11 @@ internal fun recurringOccurrenceModel(factory: MainScreenFactory, onChanged: () 
                 factory.debtRepository,
                 onChanged,
                 createSavedStateHandle(),
+                originalBinding,
             )
         }
     })
+}
 
 @Composable
 internal fun RecurringOccurrenceHost(

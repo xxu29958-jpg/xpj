@@ -1,5 +1,8 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.repository.admitsTaskBinding
+import kotlinx.coroutines.flow.filter
+
 import androidx.lifecycle.ViewModel
 import com.ticketbox.data.repository.LedgerCalendarReader
 import com.ticketbox.data.repository.newTaskMonth
@@ -70,6 +73,7 @@ class BudgetViewModel(
     private val onDataChanged: () -> Unit = {},
     private val savedStateHandle: SavedStateHandle = SavedStateHandle(),
     private val calendars: LedgerCalendarReader? = null,
+    private val originalBinding: LogicalSessionBinding? = null,
 ) : ViewModel() {
     private val drafts = BudgetDraftStore(savedStateHandle)
     private val _uiState = MutableStateFlow(BudgetUiState(month = savedStateHandle["month"] ?: initialMonth ?: YearMonth.now().toString()))
@@ -85,7 +89,7 @@ class BudgetViewModel(
 
     init {
         viewModelScope.launch {
-            repository.observeActiveLedgerAccess().distinctUntilChanged().collect { access ->
+            repository.observeActiveLedgerAccess().filter { originalBinding.admitsTaskBinding(it?.binding) }.distinctUntilChanged().collect { access ->
                 if (activeBinding == access?.binding) {
                     _uiState.update { it.copy(canModify = access?.canModify == true) }
                 } else {

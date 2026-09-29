@@ -25,6 +25,7 @@ import com.ticketbox.data.repository.toDomain
 import com.ticketbox.domain.model.NotificationPreferences
 import com.ticketbox.domain.model.BudgetMonthlyUpdate
 import com.ticketbox.notification.TicketboxNotifier
+import com.ticketbox.notification.boundReminderKey
 import com.ticketbox.notification.budget.BudgetOverspendDispatchOutcome
 import com.ticketbox.notification.budget.SharedPrefsBudgetOverspendStore
 import com.ticketbox.notification.budget.budgetOverspendSentKey
@@ -207,7 +208,8 @@ class BudgetOfflineSnapshotConnectedTest {
             object : TicketboxSettingsStore by fixture.settingsStore {
                 override fun notificationPreferences() = NotificationPreferences(budgetOverspendAlerts = true)
             }))
-        val key = budgetOverspendSentKey("correction-ledger", month)
+        val key = boundReminderKey(requireNotNull(calendars.currentBinding()),
+            budgetOverspendSentKey("correction-ledger", month))
         val preferences = context.getSharedPreferences(SharedPrefsBudgetOverspendStore.PREFS_NAME, Context.MODE_PRIVATE)
         val originalValue = if (preferences.contains(key)) preferences.getBoolean(key, false) else null
         preferences.edit().remove(key).commit()
@@ -219,7 +221,9 @@ class BudgetOfflineSnapshotConnectedTest {
                     context.packageName, Manifest.permission.POST_NOTIFICATIONS)
             }
             // Prove a decision would reach SENT; disabled OS delivery must not make this test falsely green.
-            assertEquals(BudgetOverspendDispatchOutcome.SENT, runtime.notifier.onBudgetOverspent("¥300", probeTag))
+            assertEquals(BudgetOverspendDispatchOutcome.SENT, runtime.notifier.onBudgetOverspent(
+                com.ticketbox.notification.budget.BudgetOverspendDecision(probeTag, "correction-ledger", month, 30000, "CNY"),
+                requireNotNull(calendars.currentBinding())))
             val previousReads = transport.reads.size
             runtime.budgetOverspendChecker.checkNow("correction-ledger")
             assertEquals("The real graph must attempt its live budget query", previousReads + 1, transport.reads.size)

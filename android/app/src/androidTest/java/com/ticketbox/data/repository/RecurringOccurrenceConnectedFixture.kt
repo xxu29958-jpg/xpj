@@ -45,7 +45,7 @@ internal class RecurringOccurrenceConnectedFixture(private val context: Context)
     var failReplacePayload: Throwable? = null
     val confirmedStream = MutableStateFlow(listOf(occurrenceConnectedPayment()))
     val debts: DebtActions = object : DebtActions by occurrenceProxy<DebtActions>({ method, _ -> error("Unexpected debt method: $method") }) {
-        override suspend fun listDebts(lens: DebtListLens) =
+        override suspend fun listDebts(lens: DebtListLens, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?) =
             Result.success(ReadSnapshot(DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "CNY"),
                 "2026-09-27T01:00:00Z", false))
     }

@@ -4,6 +4,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.notification.NotificationTask
+import com.ticketbox.notification.readNotificationTask
+import com.ticketbox.notification.savedFields
 import java.util.TimeZone
 import java.util.UUID
 
@@ -42,6 +45,8 @@ sealed interface LaunchIntentRequest {
 
     /** 启动器静态 shortcut 指定的导航目标。 */
     data class Navigate(val target: ShortcutTarget) : LaunchIntentRequest
+
+    data class OpenNotification(val task: NotificationTask) : LaunchIntentRequest
 }
 
 /** A hot share is another original selection; navigation cannot discard an unaccepted share. */
@@ -69,6 +74,7 @@ internal fun LaunchIntentRequest.savedFields(): ArrayList<String> = ArrayList(wh
         expectedBinding?.serverUrl.orEmpty(), expectedBinding?.ledgerId.orEmpty(), expectedBinding?.ownerKey.orEmpty(),
         expectedBinding?.sessionGeneration.orEmpty(), expectedBinding?.bindingRevision.orEmpty(), timezone) + uris
     is LaunchIntentRequest.Navigate -> listOf("navigate", target.id)
+    is LaunchIntentRequest.OpenNotification -> listOf("notification") + task.savedFields()
     is LaunchIntentRequest.JoinInvitation -> error("Invitation input retains its original Intent lifetime")
 })
 
@@ -77,6 +83,7 @@ internal fun restoreLaunchRequest(fields: List<String>): LaunchIntentRequest = w
         if (fields[2].isNotEmpty()) freezeBinding(LogicalSessionBinding(fields[2], fields[3], fields[4], fields[5], fields[6]))
     }
     "navigate" -> LaunchIntentRequest.Navigate(requireNotNull(resolveShortcutTarget(fields[1])))
+    "notification" -> LaunchIntentRequest.OpenNotification(requireNotNull(readNotificationTask(fields.drop(1))))
     else -> error("Unsupported saved launch request")
 }
 

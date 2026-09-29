@@ -24,7 +24,7 @@ import java.nio.charset.StandardCharsets
 
 internal const val MAIN_ROUTE = "main"
 internal const val EXPENSE_ID_ARG = "expenseId"
-internal const val EXPENSE_ROUTE = "expense/{$EXPENSE_ID_ARG}"
+internal const val EXPENSE_ROUTE = "expense/{$EXPENSE_ID_ARG}?$NOTIFICATION_QUERY"
 internal const val REPAYMENT_DRAFT_BASE_ROUTE = "product/obligations/repayment-review"
 internal const val REPAYMENT_DRAFT_FOCUS_ARG = "focusedDraftPublicId"
 internal const val REPAYMENT_DRAFT_ROUTE =
@@ -97,8 +97,9 @@ internal sealed interface MainNavigationRequest {
     data class OpenSecondary(
         val page: ProductSecondaryPage,
         val route: String = page.route,
+        val singleTop: Boolean = true,
     ) : MainNavigationRequest
-    data object OpenWorkspace : MainNavigationRequest
+    data class OpenWorkspace(val route: String = WORKSPACE_ROUTE) : MainNavigationRequest
     data object Back : MainNavigationRequest
 }
 
@@ -172,8 +173,8 @@ internal class MainShellState(val launchAction: LaunchActionState = LaunchAction
             }
     }
 
-    fun openSecondaryPage(page: ProductSecondaryPage) {
-        navigationRequest = MainNavigationRequest.OpenSecondary(page)
+    fun openSecondaryPage(page: ProductSecondaryPage, route: String = page.route, singleTop: Boolean = true) {
+        navigationRequest = MainNavigationRequest.OpenSecondary(page, route, singleTop)
     }
 
     fun openBudget(month: String) {
@@ -193,8 +194,8 @@ internal class MainShellState(val launchAction: LaunchActionState = LaunchAction
         navigationRequest = MainNavigationRequest.Back
     }
 
-    fun openAccount() {
-        navigationRequest = MainNavigationRequest.OpenWorkspace
+    fun openAccount(route: String = WORKSPACE_ROUTE) {
+        navigationRequest = MainNavigationRequest.OpenWorkspace(route)
     }
 
     fun closeAccount() {
@@ -307,7 +308,7 @@ internal fun mainProductDestination(route: String?): MainProductDestination? =
                 route?.startsWith("${page.route}?") == true
         }
             ?.let { MainProductDestination.Secondary(it) }
-        ?: if (route == WORKSPACE_ROUTE) MainProductDestination.Workspace else null
+        ?: if (route == WORKSPACE_ROUTE || route?.startsWith("$WORKSPACE_ROUTE?") == true) MainProductDestination.Workspace else null
 
 @Composable
 internal fun PrimaryDomain.toPrimaryNavItem(): AppPrimaryNavItem = AppPrimaryNavItem(

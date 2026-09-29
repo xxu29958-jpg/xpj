@@ -1,6 +1,8 @@
 package com.ticketbox.notification.backup
 
+import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.domain.model.ServerBackupHealth
+import com.ticketbox.notification.boundReminderKey
 import java.time.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -22,6 +24,7 @@ class BackupStaleEngineTest {
     ) {
         var enabled = true
         var sessionReady = true
+        val binding = LogicalSessionBinding("https://example.test", "", "owner", "session", "revision")
         var today: LocalDate = LocalDate.of(2026, 6, 13)
         var sourceCalls = 0
         val dispatched = mutableListOf<BackupStaleDecision>()
@@ -38,13 +41,13 @@ class BackupStaleEngineTest {
                     sent += key
                 }
             },
-            dispatcher = { decision ->
+            dispatcher = { decision, _ ->
                 dispatched += decision
                 dispatchOutcome
             },
             runtime = BackupStaleRuntime(
                 backupStaleAlertsEnabled = { enabled },
-                sessionReady = { sessionReady },
+                activeBinding = { binding.takeIf { sessionReady } },
                 today = { today },
             ),
         )
@@ -55,9 +58,9 @@ class BackupStaleEngineTest {
         val harness = Harness()
         val outcome = harness.engine.checkAndNotify()
         assertEquals(BackupStaleRunOutcome.Success(BackupStaleRunOutcome.Detail.SENT), outcome)
-        assertEquals("v1:backup:2026-06-13", harness.dispatched.single().key)
+        assertEquals(boundReminderKey(harness.binding, "v1:backup:2026-06-13"), harness.dispatched.single().key)
         assertEquals(72, harness.dispatched.single().ageHours)
-        assertTrue("v1:backup:2026-06-13" in harness.sent)
+        assertTrue(boundReminderKey(harness.binding, "v1:backup:2026-06-13") in harness.sent)
     }
 
     @Test
@@ -105,7 +108,7 @@ class BackupStaleEngineTest {
     fun alreadySentTodaySkipsDispatchButNextDayFiresAgain() = runTest {
         // 日级粒度契约:同一天去重,次日仍 stale 则再响(备份链断要催,区别于预算的一月一响)。
         val harness = Harness()
-        harness.sent += "v1:backup:2026-06-13"
+        harness.sent += boundReminderKey(harness.binding, "v1:backup:2026-06-13")
         assertEquals(
             BackupStaleRunOutcome.Success(BackupStaleRunOutcome.Detail.SKIPPED_ALREADY_SENT),
             harness.engine.checkAndNotify(),
@@ -116,7 +119,7 @@ class BackupStaleEngineTest {
             BackupStaleRunOutcome.Success(BackupStaleRunOutcome.Detail.SENT),
             harness.engine.checkAndNotify(),
         )
-        assertEquals("v1:backup:2026-06-14", harness.dispatched.single().key)
+        assertEquals(boundReminderKey(harness.binding, "v1:backup:2026-06-14"), harness.dispatched.single().key)
     }
 
     @Test

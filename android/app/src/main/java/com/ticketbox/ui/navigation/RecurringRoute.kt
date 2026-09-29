@@ -3,6 +3,9 @@ package com.ticketbox.ui.navigation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.ui.screens.RecurringCandidateActions
@@ -24,6 +27,7 @@ internal fun RecurringRoute(
 ) {
     val recurringViewModel: RecurringViewModel = viewModel(
         factory = recurringViewModelFactory(
+            originalBinding = LocalNotificationTask.current?.binding,
             repository = screenFactory.recurringRepository,
             onDataChanged = onDataChanged,
         ),
@@ -40,7 +44,7 @@ internal fun RecurringRoute(
         }
     }
     RecurringScreen(
-        state = state,
+        state = notifiedRecurringPeriodState(state, occurrenceModel),
         actions = RecurringScreenActions(
             onRefresh = { recurringViewModel.refresh() },
             items = RecurringItemActions(
@@ -76,4 +80,31 @@ internal fun RecurringRoute(
         state.history, recurringViewModel.historyTask::retry, recurringViewModel.historyTask::more,
         recurringViewModel.historyTask::dismiss,
     )
+}
+
+/** Uses the original period even if the reminder is opened in a later month. */
+@Composable
+private fun notifiedRecurringPeriodState(
+    state: com.ticketbox.viewmodel.RecurringUiState,
+    model: com.ticketbox.viewmodel.RecurringOccurrenceViewModel,
+): com.ticketbox.viewmodel.RecurringUiState {
+    val notification = LocalNotificationTask.current?.destination as? com.ticketbox.notification.NotificationDestination.Recurring
+    val occurrence by model.uiState.collectAsStateWithLifecycle()
+    var opened by rememberSaveable { mutableStateOf(false) }
+    var missing by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(notification, state.items, state.itemsLoadState, occurrence.access) {
+        val target = notification ?: return@LaunchedEffect
+        if (opened || state.itemsLoadState != com.ticketbox.viewmodel.RecurringListLoadState.Loaded ||
+            occurrence.access == null) return@LaunchedEffect
+        val item = state.items.singleOrNull { it.publicId == target.publicId }
+        missing = item == null
+        if (item != null) {
+            model.open(item, java.time.YearMonth.from(java.time.LocalDate.parse(target.expectedDate)).toString())
+            opened = true
+        }
+    }
+    return if (missing) state.copy(
+        message = com.ticketbox.domain.model.UiText.res(com.ticketbox.R.string.notification_recurring_unavailable),
+        messageTone = com.ticketbox.domain.model.MessageTone.Danger,
+    ) else state
 }

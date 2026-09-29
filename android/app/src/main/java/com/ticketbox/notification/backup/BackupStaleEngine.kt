@@ -1,6 +1,8 @@
 package com.ticketbox.notification.backup
 
+import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.domain.model.ServerBackupHealth
+import com.ticketbox.notification.boundReminderKey
 import java.time.LocalDate
 
 /**
@@ -28,6 +30,7 @@ sealed interface BackupStaleRunOutcome {
         SKIPPED_FRESH,
         SKIPPED_ALREADY_SENT,
         SKIPPED_DISPATCH,
+        SKIPPED_BINDING_CHANGED,
     }
 
     data class Success(val detail: Detail) : BackupStaleRunOutcome
@@ -40,14 +43,13 @@ sealed interface BackupStaleRunOutcome {
  * 打包使 engine 构造 ≤6 参)。
  *
  * @property backupStaleAlertsEnabled 「备份超龄提醒」开关现读(关 → 不拉、不发、不 markSent)。
- * @property sessionReady 已绑定 token + server 地址(status/private 是 server 级,
- *   **不要求 active ledger**——这点与 recurring 的 sessionReady 不同)。
+ * @property activeBinding 原请求身份；status/private 是 server 级，不要求 active ledger。
  * @property today 设备本地当天(日级 sent-key 锚点,可注入钉边界)。
  * @property logWarning 轻量日志注入:source 失败记 error class,不记 token / 时间明细。
  */
 class BackupStaleRuntime(
     val backupStaleAlertsEnabled: () -> Boolean,
-    val sessionReady: () -> Boolean,
+    val activeBinding: () -> LogicalSessionBinding?,
     val today: () -> LocalDate,
     val logWarning: (String, Throwable?) -> Unit = { _, _ -> },
 )
@@ -75,20 +77,25 @@ class BackupStaleEngine(
         if (!runtime.backupStaleAlertsEnabled()) {
             return BackupStaleRunOutcome.Success(BackupStaleRunOutcome.Detail.SKIPPED_DISABLED)
         }
-        if (!runtime.sessionReady()) {
-            return BackupStaleRunOutcome.Success(BackupStaleRunOutcome.Detail.SKIPPED_NO_SESSION)
-        }
+        val binding = runtime.activeBinding()
+            ?: return BackupStaleRunOutcome.Success(BackupStaleRunOutcome.Detail.SKIPPED_NO_SESSION)
         val health = source.backupHealth().getOrElse { error ->
             runtime.logWarning("backup health fetch failed: ${error::class.java.simpleName}", error)
             return BackupStaleRunOutcome.TransientFailure(error::class.java.simpleName)
         }
         if (!health.stale) return BackupStaleRunOutcome.Success(BackupStaleRunOutcome.Detail.SKIPPED_FRESH)
-        val key = backupStaleSentKey(runtime.today())
+        val key = boundReminderKey(binding, backupStaleSentKey(runtime.today()))
         if (store.wasSent(key)) {
             return BackupStaleRunOutcome.Success(BackupStaleRunOutcome.Detail.SKIPPED_ALREADY_SENT)
         }
+        if (runtime.activeBinding() != binding) {
+            return BackupStaleRunOutcome.Success(BackupStaleRunOutcome.Detail.SKIPPED_BINDING_CHANGED)
+        }
+        if (!runtime.backupStaleAlertsEnabled()) {
+            return BackupStaleRunOutcome.Success(BackupStaleRunOutcome.Detail.SKIPPED_DISABLED)
+        }
         val decision = BackupStaleDecision(key = key, ageHours = health.ageHours)
-        return when (dispatcher.dispatch(decision)) {
+        return when (dispatcher.dispatch(decision, binding)) {
             BackupStaleDispatchOutcome.SENT -> {
                 store.markSent(key)
                 BackupStaleRunOutcome.Success(BackupStaleRunOutcome.Detail.SENT)

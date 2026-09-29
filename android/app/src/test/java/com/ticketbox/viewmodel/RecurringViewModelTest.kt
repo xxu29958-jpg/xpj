@@ -185,7 +185,7 @@ class RecurringViewModelMutationTest {
         val rows = MutableStateFlow<List<RecurringPendingIntent>>(emptyList())
         val fake = FakeRecurringActions(manual = FakeRecurringManualActions(pendingIntentsFlow = rows))
         var invalidations = 0
-        val vm = RecurringViewModel(fake) { invalidations += 1 }
+        val vm = RecurringViewModel(fake, onDataChanged = { invalidations += 1 })
         advanceUntilIdle()
         val published = item(merchant = "月票")
         fake.itemsResult = Result.success(listOf(published))

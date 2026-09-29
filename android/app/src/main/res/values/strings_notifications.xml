@@ -8,6 +8,12 @@
          逐字对齐设置页提醒开关标题（strings_settings_family.xml 的待确认提醒 / 大额提醒 / 固定支出提醒），
          让系统通知分类与 App 内开关一一对应。 -->
     <string name="notification_channel_drafts_name">待确认提醒</string>
+    <string name="notification_channel_repayments_name">还款待核对</string>
+    <string name="notification_repayment_title">有一笔还款待核对</string>
+    <string name="notification_repayment_body">%1$s，选择对应欠款后再确认。</string>
+    <string name="notification_public_repayment_summary">有新的还款草稿待核对。</string>
+    <string name="notification_original_binding_required">这条提醒属于原来的服务器、账号或账本，请切回后再打开。当前填写会保留。</string>
+    <string name="notification_recurring_unavailable">暂时无法读取提醒对应的固定支出，请刷新或检查原账本。</string>
     <string name="notification_channel_alerts_name">大额提醒</string>
     <string name="notification_channel_recurring_name">固定支出提醒</string>
     <string name="notification_channel_budget_name">预算超支提醒</string>
@@ -53,4 +59,6 @@
          （大额副标题原在 strings_settings_family.xml，本 PR 改值并随通知文案包迁入本文件。） -->
     <string name="notification_preferences_system_permission_hint">系统通知权限未开启，提醒不会展示。</string>
     <string name="notification_preferences_reminder_large_amount_subtitle">金额达到 ¥500 时提醒，仍需手动确认。</string>
+    <string name="notification_original_task_title">打开原提醒</string>
+    <string name="notification_original_task_back">返回当前任务</string>
 </resources>

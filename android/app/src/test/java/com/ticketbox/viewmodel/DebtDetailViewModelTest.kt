@@ -759,7 +759,7 @@ private class FakeDebtDetailActions(
 
     override fun canModifyLedger(): Boolean = canModify
 
-    override suspend fun listDebts(lens: com.ticketbox.domain.model.DebtListLens): Result<ReadSnapshot<DebtListPage>> =
+    override suspend fun listDebts(lens: com.ticketbox.domain.model.DebtListLens, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?): Result<ReadSnapshot<DebtListPage>> =
         Result.success(debtReadSnapshot(DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = null)))
 
     override suspend fun getDebt(publicId: String): Result<ReadSnapshot<Debt>> {

@@ -1,5 +1,8 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.repository.admitsTaskBinding
+import kotlinx.coroutines.flow.filter
+
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
@@ -57,6 +60,7 @@ enum class RecurringListLoadState {
 class RecurringViewModel(
     private val repository: RecurringActions,
     private val onDataChanged: () -> Unit = {},
+    private val originalBinding: LogicalSessionBinding? = null,
 ) : ViewModel() {
     private val editorRuntimeId = UUID.randomUUID().toString()
     private val _uiState = MutableStateFlow(
@@ -89,7 +93,7 @@ class RecurringViewModel(
             }
         }
         viewModelScope.launch {
-            repository.observeActiveLedgerAccess()
+            repository.observeActiveLedgerAccess().filter { originalBinding.admitsTaskBinding(it?.binding) }
                 .distinctUntilChanged()
                 .collect { access ->
                     val nextBinding = access?.binding

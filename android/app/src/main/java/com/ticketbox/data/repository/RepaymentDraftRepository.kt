@@ -22,14 +22,14 @@ import java.util.UUID
  */
 interface RepaymentDraftActions {
     fun canModifyLedger(): Boolean
-    suspend fun listPendingDrafts(): Result<List<RepaymentDraft>>
+    suspend fun listPendingDrafts(expectedBinding: LogicalSessionBinding? = null): Result<List<RepaymentDraft>>
     suspend fun confirmDraft(
         draftPublicId: String,
         targetDebtPublicId: String,
         expectedRowVersion: Long,
         expectedBinding: LogicalSessionBinding,
     ): Result<RepaymentDraft>
-    suspend fun dismissDraft(draftPublicId: String): Result<RepaymentDraft>
+    suspend fun dismissDraft(draftPublicId: String, expectedBinding: LogicalSessionBinding? = null): Result<RepaymentDraft>
 }
 
 class RepaymentDraftRepository internal constructor(
@@ -66,9 +66,9 @@ class RepaymentDraftRepository internal constructor(
         }
     }
 
-    override suspend fun listPendingDrafts(): Result<List<RepaymentDraft>> =
+    override suspend fun listPendingDrafts(expectedBinding: LogicalSessionBinding?): Result<List<RepaymentDraft>> =
         errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
+            (expectedBinding?.let(ledgerRequestGuard::bindExact) ?: ledgerRequestGuard.bind()).call { api ->
                 api.repaymentDrafts(status = RepaymentDraftStatuses.PENDING).items.map { it.toDomain() }
             }
         }
@@ -95,10 +95,10 @@ class RepaymentDraftRepository internal constructor(
         }
     }
 
-    override suspend fun dismissDraft(draftPublicId: String): Result<RepaymentDraft> {
+    override suspend fun dismissDraft(draftPublicId: String, expectedBinding: LogicalSessionBinding?): Result<RepaymentDraft> {
         if (!canModifyLedger()) return Result.failure(RepositoryException(REPAYMENT_DRAFT_VIEWER_READONLY))
         return errorHandler.safeCall {
-            ledgerRequestGuard.guardedCall { api ->
+            (expectedBinding?.let(ledgerRequestGuard::bindExact) ?: ledgerRequestGuard.bind()).call { api ->
                 api.dismissRepaymentDraft(
                     publicId = draftPublicId,
                     request = RepaymentDraftDismissRequestDto(),

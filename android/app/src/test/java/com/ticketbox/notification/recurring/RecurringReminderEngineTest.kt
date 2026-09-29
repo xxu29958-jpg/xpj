@@ -1,5 +1,7 @@
 package com.ticketbox.notification.recurring
 
+import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.notification.boundReminderKey
 import kotlinx.coroutines.test.runTest
 import java.io.IOException
 import java.time.LocalDate
@@ -14,6 +16,7 @@ import kotlin.test.assertTrue
 class RecurringReminderEngineTest {
 
     private val today = LocalDate.parse("2026-06-10")
+    private val binding = LogicalSessionBinding("https://example.test", "L", "owner", "session", "revision")
 
     private fun engine(
         source: RecurringReminderSource,
@@ -28,7 +31,7 @@ class RecurringReminderEngineTest {
         dispatcher = dispatcher,
         runtime = RecurringReminderRuntime(
             recurringRemindersEnabled = { enabled },
-            sessionReady = { sessionReady },
+            activeBinding = { binding.takeIf { sessionReady } },
             today = { today },
         ),
     )
@@ -88,7 +91,7 @@ class RecurringReminderEngineTest {
     fun policyNoneIsNeitherCheckedNorMarked() = runTest {
         // 全部窗口外（today+30）→ policy NONE：不 dispatch、不写 sent key。
         val source = FakeRecurringReminderSource.of(
-            recurringItemFixture(publicId = "a", nextExpectedDate = "2026-07-10"),
+            recurringItemFixture(publicId = "a", ledgerId = "L", nextExpectedDate = "2026-07-10"),
         )
         val store = InMemoryRecurringReminderStore()
         val dispatcher = FakeRecurringReminderDispatcher()
@@ -104,7 +107,8 @@ class RecurringReminderEngineTest {
     @Test
     fun alreadySentItemIsNotDispatchedAgain() = runTest {
         val item = recurringItemFixture(publicId = "a", ledgerId = "L", nextExpectedDate = "2026-06-12")
-        val key = recurringReminderSentKey("L", "a", LocalDate.parse("2026-06-12"), RecurringReminderKind.DUE_SOON)
+        val key = boundReminderKey(binding,
+            recurringReminderSentKey("L", "a", LocalDate.parse("2026-06-12"), RecurringReminderKind.DUE_SOON))
         val store = InMemoryRecurringReminderStore(initial = setOf(key))
         val dispatcher = FakeRecurringReminderDispatcher()
         val outcome = engine(
@@ -143,7 +147,8 @@ class RecurringReminderEngineTest {
     @Test
     fun dispatchSentMarksSent() = runTest {
         val item = recurringItemFixture(publicId = "a", ledgerId = "L", nextExpectedDate = "2026-06-12")
-        val key = recurringReminderSentKey("L", "a", LocalDate.parse("2026-06-12"), RecurringReminderKind.DUE_SOON)
+        val key = boundReminderKey(binding,
+            recurringReminderSentKey("L", "a", LocalDate.parse("2026-06-12"), RecurringReminderKind.DUE_SOON))
         val store = InMemoryRecurringReminderStore()
         val outcome = engine(
             source = FakeRecurringReminderSource.of(item),
@@ -199,8 +204,10 @@ class RecurringReminderEngineTest {
 
         val success2 = outcome2 as RecurringReminderRunOutcome.Success
         assertEquals(1, success2.sent)
-        val dueSoonKey = recurringReminderSentKey("L", "a", LocalDate.parse("2026-06-12"), RecurringReminderKind.DUE_SOON)
-        val overdueKey = recurringReminderSentKey("L", "a", LocalDate.parse("2026-06-09"), RecurringReminderKind.OVERDUE)
+        val dueSoonKey = boundReminderKey(binding,
+            recurringReminderSentKey("L", "a", LocalDate.parse("2026-06-12"), RecurringReminderKind.DUE_SOON))
+        val overdueKey = boundReminderKey(binding,
+            recurringReminderSentKey("L", "a", LocalDate.parse("2026-06-09"), RecurringReminderKind.OVERDUE))
         assertTrue(store.wasSent(dueSoonKey))
         assertTrue(store.wasSent(overdueKey))
     }

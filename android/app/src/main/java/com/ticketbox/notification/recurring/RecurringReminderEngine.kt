@@ -1,6 +1,8 @@
 package com.ticketbox.notification.recurring
 
+import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.domain.model.RecurringItem
+import com.ticketbox.notification.boundReminderKey
 import java.time.LocalDate
 
 /**
@@ -33,7 +35,7 @@ sealed interface RecurringReminderRunOutcome {
  * 打包成一个值对象，使 [RecurringReminderEngine] 构造参数 ≤6（detekt LongParameterList）。
  *
  * @property recurringRemindersEnabled 「固定支出提醒」开关现读（关 → engine 不拉 source、不发、不 markSent）。
- * @property sessionReady 已登录 + 有 active ledger + server 地址（否则 safe success；Contract 8/11）。
+ * @property activeBinding 原请求身份；需要 active ledger，读取及投递期间不得变更。
  * @property today 可注入当天（设备本地日期），便于测试钉边界。
  * @property logWarning 轻量日志注入：单条 item 异常 / source 失败时记 error class，**不记** token /
  *   header / 完整商户明细 / 通知原文（Contract 8）。注入而非直接 android.util.Log 是为了纯 JVM 测试
@@ -41,7 +43,7 @@ sealed interface RecurringReminderRunOutcome {
  */
 class RecurringReminderRuntime(
     val recurringRemindersEnabled: () -> Boolean,
-    val sessionReady: () -> Boolean,
+    val activeBinding: () -> LogicalSessionBinding?,
     val today: () -> LocalDate,
     val logWarning: (String, Throwable?) -> Unit = { _, _ -> },
 )
@@ -77,28 +79,33 @@ class RecurringReminderEngine(
      */
     suspend fun checkAndNotify(): RecurringReminderRunOutcome {
         if (!runtime.recurringRemindersEnabled()) return RecurringReminderRunOutcome.EMPTY_SUCCESS
-        if (!runtime.sessionReady()) return RecurringReminderRunOutcome.EMPTY_SUCCESS
+        val binding = runtime.activeBinding()?.takeIf { it.ledgerId.isNotBlank() }
+            ?: return RecurringReminderRunOutcome.EMPTY_SUCCESS
 
         val items = source.activeItems().getOrElse { error ->
             // source 失败 → 瞬时失败，worker 退避重试，不 mark sent。401/403 在仓库的
             // NetworkErrorHandler 里与网络故障同折叠为 RepositoryException，此处刻意不再
             // 区分（Contract 8 的「session 失效路径」分支）：常见失效态（token 已清）已被
-            // sessionReady 前置门拦成 safe-success；存活但被撤销的 token 至多触发
+            // activeBinding 前置门拦成 safe-success；存活但被撤销的 token 至多触发
             // WorkManager 有界退避 + 下个 24h 周期，不构成无限 retry。
             runtime.logWarning("recurring source failed: ${error::class.java.simpleName}", error)
             return RecurringReminderRunOutcome.TransientFailure(error::class.java.simpleName)
         }
 
-        return scanItems(items, runtime.today())
+        if (runtime.activeBinding() != binding) return RecurringReminderRunOutcome.EMPTY_SUCCESS
+        return scanItems(items, runtime.today(), binding)
     }
 
     /** 遍历 items 累计计数。单条 item 异常被隔离（跳过 + 轻量日志），不让整轮失败（Contract 8）。 */
-    private fun scanItems(items: List<RecurringItem>, todayDate: LocalDate): RecurringReminderRunOutcome.Success {
+    private fun scanItems(items: List<RecurringItem>, todayDate: LocalDate,
+        binding: LogicalSessionBinding): RecurringReminderRunOutcome.Success {
         val tally = Tally()
         for (item in items) {
+            if (runtime.activeBinding() != binding || !runtime.recurringRemindersEnabled()) break
             tally.scanned++
+            if (item.ledgerId != binding.ledgerId) continue
             try {
-                processItem(item, todayDate, tally)
+                processItem(item, todayDate, binding, tally)
             } catch (error: Exception) {
                 // 防御：policy 本身不抛，但 dispatch 等理论上可能。隔离单条，不污染其它 item。
                 runtime.logWarning("recurring item skipped: ${error::class.java.simpleName}", error)
@@ -108,14 +115,16 @@ class RecurringReminderEngine(
     }
 
     /** 单条 item：policy 判定 → 已提醒则跳过 → 否则 dispatch → SENT 才 markSent。 */
-    private fun processItem(item: RecurringItem, todayDate: LocalDate, tally: Tally) {
-        val decision = policy.evaluate(todayDate, item) ?: return
+    private fun processItem(item: RecurringItem, todayDate: LocalDate, binding: LogicalSessionBinding, tally: Tally) {
+        val evaluated = policy.evaluate(todayDate, item) ?: return
+        val decision = evaluated.copy(key = boundReminderKey(binding, evaluated.key))
         tally.due++
         if (store.wasSent(decision.key)) {
             tally.skippedAlreadySent++
             return
         }
-        when (dispatcher.dispatch(decision)) {
+        if (runtime.activeBinding() != binding || !runtime.recurringRemindersEnabled()) return
+        when (dispatcher.dispatch(decision, binding)) {
             RecurringReminderDispatchOutcome.SENT -> {
                 store.markSent(decision.key)
                 tally.sent++

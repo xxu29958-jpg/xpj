@@ -1,5 +1,6 @@
 package com.ticketbox.notification.budget
 
+import com.ticketbox.notification.boundReminderKey
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -39,7 +40,7 @@ class BudgetOverspendCheckerTest {
     @Test
     fun alreadySentMonthShortCircuitsBeforeSource() = runTest {
         val harness = CheckerHarness()
-        harness.store.sent += "v1:budget:ledger-1:2026-06"
+        harness.store.sent += boundReminderKey(requireNotNull(harness.binding), "v1:budget:ledger-1:2026-06")
         harness.checker.checkNow("ledger-1")
         assertEquals(0, harness.sourceCalls)
         assertEquals(0, harness.dispatched.size)

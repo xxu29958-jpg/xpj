@@ -109,7 +109,7 @@ internal class ExpenseFactViewModelRefreshRecoveryTest : ExpenseFactViewModelTes
     fun liveDeliveryAdoptsTheCachedResponseWhenSubsequentReadsAreOffline() = edit { fake ->
         var cached = fake.baseExpense
         val repository = object : ExpenseFactActions by fake {
-            override suspend fun fetchExpenseFromLocalCache(id: Long): Result<Expense> = Result.success(cached)
+            override suspend fun fetchExpenseFromLocalCache(id: Long, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?): Result<Expense> = Result.success(cached)
         }
         val vm = ExpenseFactViewModel(fake.baseExpense.id, repository)
         try {
@@ -144,7 +144,7 @@ internal class ExpenseFactViewModelRefreshRecoveryTest : ExpenseFactViewModelTes
         for (cacheMissing in listOf(false, true)) {
             val fake = FakeExpenseFactActions()
             val repository = object : ExpenseFactActions by fake {
-                override suspend fun fetchExpenseFromLocalCache(id: Long): Result<Expense> =
+                override suspend fun fetchExpenseFromLocalCache(id: Long, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?): Result<Expense> =
                     if (cacheMissing) Result.failure(RepositoryException("Cache retired")) else Result.success(fake.baseExpense)
             }
             val vm = ExpenseFactViewModel(fake.baseExpense.id, repository)
@@ -177,7 +177,7 @@ internal class ExpenseFactViewModelRefreshRecoveryTest : ExpenseFactViewModelTes
         val cache = CompletableDeferred<Result<Expense>>()
         val repository = object : ExpenseFactActions by fake {
             override fun observeCorrections() = fake.correctionObservations
-            override suspend fun fetchExpenseFromLocalCache(id: Long): Result<Expense> {
+            override suspend fun fetchExpenseFromLocalCache(id: Long, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?): Result<Expense> {
                 started.complete(Unit)
                 return cache.await()
             }
@@ -223,7 +223,7 @@ internal class ExpenseFactViewModelRefreshRecoveryTest : ExpenseFactViewModelTes
             val response = CompletableDeferred<Result<Expense>>()
             var rootReads = 0
             val repository = object : ExpenseFactActions by fake {
-                override suspend fun fetchExpense(id: Long): Result<Expense> {
+                override suspend fun fetchExpense(id: Long, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?): Result<Expense> {
                     rootReads++
                     if (rootReads > 1) return Result.failure(RepositoryException("Connection lost after the first read"))
                     if (acknowledgeWhileReading) fake.clearRefreshRequirement()
@@ -261,7 +261,7 @@ internal class ExpenseFactViewModelRefreshRecoveryTest : ExpenseFactViewModelTes
         fake.fetchExpenseFailure = RepositoryException("Offline")
         var cachedRoot = fake.baseExpense
         val repository = object : ExpenseFactActions by fake {
-            override suspend fun fetchExpenseFromLocalCache(id: Long): Result<Expense> = Result.success(cachedRoot)
+            override suspend fun fetchExpenseFromLocalCache(id: Long, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?): Result<Expense> = Result.success(cachedRoot)
         }
         val vm = ExpenseFactViewModel(fake.baseExpense.id, repository, preferLocalCache = true)
         advanceUntilIdle()
@@ -317,7 +317,7 @@ internal class ExpenseFactViewModelRefreshRecoveryTest : ExpenseFactViewModelTes
     fun aRetiredInitialCacheRequiresARealReadAndRemainsBlockedWhenThatReadFails() = edit { fake ->
         fake.fetchExpenseFailure = RepositoryException("Offline")
         val repository = object : ExpenseFactActions by fake {
-            override suspend fun fetchExpenseFromLocalCache(id: Long): Result<Expense> =
+            override suspend fun fetchExpenseFromLocalCache(id: Long, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?): Result<Expense> =
                 Result.failure(RepositoryException("The confirmed cache was retired"))
         }
         val initial = fake.baseExpense
@@ -346,7 +346,7 @@ internal class ExpenseFactViewModelRefreshRecoveryTest : ExpenseFactViewModelTes
         val cache = CompletableDeferred<Result<Expense>>()
         val repository = object : ExpenseFactActions by fake {
             override fun observeCorrections() = fake.correctionObservations
-            override suspend fun fetchExpenseFromLocalCache(id: Long): Result<Expense> {
+            override suspend fun fetchExpenseFromLocalCache(id: Long, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?): Result<Expense> {
                 started.complete(Unit)
                 return cache.await()
             }

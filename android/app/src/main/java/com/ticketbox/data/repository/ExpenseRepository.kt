@@ -152,11 +152,11 @@ class ExpenseRepository internal constructor(
     override suspend fun fetchExpenseForFxReview(binding: LogicalSessionBinding, id: Long): Result<Expense> =
         backgroundTaskRepository.fetchExpenseForFxReview(binding, id)
 
-    override suspend fun fetchExpense(id: Long): Result<Expense> =
-        detailRepository.fetchExpense(id)
+    override suspend fun fetchExpense(id: Long, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?): Result<Expense> =
+        detailRepository.fetchExpense(id, expectedBinding)
 
-    override suspend fun fetchExpenseFromLocalCache(id: Long): Result<Expense> =
-        detailRepository.fetchExpenseFromLocalCache(id)
+    override suspend fun fetchExpenseFromLocalCache(id: Long, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?): Result<Expense> =
+        detailRepository.fetchExpenseFromLocalCache(id, expectedBinding)
 
     override suspend fun fetchExpenseRevisions(
         id: Long,

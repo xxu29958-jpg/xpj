@@ -27,7 +27,7 @@ internal class CapabilityDebtActions(
 
     override fun canModifyLedger(): Boolean = canModify
 
-    override suspend fun listDebts(lens: com.ticketbox.domain.model.DebtListLens): Result<ReadSnapshot<DebtListPage>> {
+    override suspend fun listDebts(lens: com.ticketbox.domain.model.DebtListLens, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?): Result<ReadSnapshot<DebtListPage>> {
         listCalls += 1
         listDebtsGate?.invoke()
         return Result.success(debtReadSnapshot(page))

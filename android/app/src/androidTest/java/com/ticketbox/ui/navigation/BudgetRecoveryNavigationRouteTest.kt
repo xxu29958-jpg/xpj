@@ -221,7 +221,7 @@ class BudgetRecoveryNavigationRouteTest {
     }
 }
 
-private class BudgetNavigationTransport(private val currentMonth: String, private val originalMonth: String) {
+internal class BudgetNavigationTransport(private val currentMonth: String, private val originalMonth: String) {
     val budgetReads = CopyOnWriteArrayList<String>()
     val arrangementReads = CopyOnWriteArrayList<String>()
 

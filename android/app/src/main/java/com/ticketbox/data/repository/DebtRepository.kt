@@ -24,7 +24,7 @@ interface DebtActions {
     fun observeReadAccessDenials(): Flow<SnapshotAccessDenial> = emptyFlow()
     fun observeResourceDenials(): Flow<DebtReadResourceDenial> = emptyFlow()
     fun canModifyLedger(): Boolean
-    suspend fun listDebts(lens: DebtListLens = DebtListLens.Ledger): Result<ReadSnapshot<DebtListPage>>
+    suspend fun listDebts(lens: DebtListLens = DebtListLens.Ledger, expectedBinding: LogicalSessionBinding? = null): Result<ReadSnapshot<DebtListPage>>
     suspend fun getDebt(publicId: String): Result<ReadSnapshot<Debt>>
     suspend fun parseDebtBillImage(expectedBinding: LogicalSessionBinding, fileName: String,
         contentType: String?, bytes: ByteArray): Result<DebtBillSuggestion>
@@ -90,8 +90,8 @@ class DebtRepository internal constructor(
 
     override fun canModifyLedger(): Boolean = ledgerRoleCanModify(apiProvider.currentLedgerRole())
 
-    override suspend fun listDebts(lens: DebtListLens): Result<ReadSnapshot<DebtListPage>> {
-        val binding = ledgerRequestGuard.captureLogicalBinding() ?: return Result.failure(RepositoryException("请重新绑定账本。"))
+    override suspend fun listDebts(lens: DebtListLens, expectedBinding: LogicalSessionBinding?): Result<ReadSnapshot<DebtListPage>> {
+        val binding = expectedBinding ?: ledgerRequestGuard.captureLogicalBinding() ?: return Result.failure(RepositoryException("请重新绑定账本。"))
         return queryReader.list(binding, lens)
     }
 
