@@ -42,23 +42,53 @@ from app.services.csv_import_batch_service import (
     list_csv_import_rows,
     list_imported_expenses,
 )
+from app.services.portable_export_access import list_portable_ledgers, resolve_portable_export_context
 from app.services.portable_export_service import create_portable_ledger_export
 from app.services.spending_contract_service import accounting_datetime_label
 from app.services.stats_service import export_confirmed_csv
 from app.services.tag_service import list_tags
+from app.tenants import SessionPrincipal
+from app.version import BACKEND_VERSION, STATIC_ASSET_VERSION
 
 router = APIRouter(prefix="/web", tags=["web"])
 
 
-@router.get("/export/portable", include_in_schema=False)
-def web_export_portable(request: Request, ledger_id: str = "", _local: None = LocalOnly,
-                        db: Session = Depends(get_db)) -> PortableFileResponse:
-    if getattr(request.state, "web_session_auth", None) is None:
+def _portable_principal(request: Request) -> SessionPrincipal:
+    principal = getattr(request.state, "web_session_principal", None)
+    if principal is None:
         raise AppError("invalid_token", "请先确认本机浏览器身份，再下载当前账本的数据包。", status_code=401)
-    selected = _resolve_selected_ledger_id(db, ledger_id or None, request=request)
-    auth = request.state.web_session_auth
-    if auth.ledger_id != selected:
-        raise AppError("permission_denied", status_code=403)
+    return principal
+
+
+@router.get("/exports", response_class=HTMLResponse, include_in_schema=False)
+def web_portable_selection(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
+    from app.routes.web_common import _read_ui_theme
+
+    principal = _portable_principal(request)
+    ledgers = list_portable_ledgers(db, principal)
+    return templates.TemplateResponse(request=request, name="auth/local.html", context={
+        "identity": {"account_name": principal.account_name, "ledgers": ledgers,
+            "selected_ledger_id": ledgers[0].ledger_id if ledgers else ""},
+        "page_title": "带走账本数据", "story_aria_label": "关于账本数据包",
+        "story_title_line_one": "账本里的记录，", "story_title_line_two": "随时留一份在手边",
+        "steps": ("选择有权下载的账本", "保留记录、历史与可用原件", "保存后直接查看"),
+        "card_aria_label": "下载账本数据", "card_title": "选择要带走的账本",
+        "hint_prefix": "当前账户是", "hint_suffix": "。已归档账本仅向当前拥有者提供下载。",
+        "form_action": "/web/export/portable", "download_mode": True,
+        "submit_label": "下载所选账本（ZIP）",
+        "footnote": "包含服务器已保存的数据，尚未提交的离线草稿不在包内。数据包不是安装恢复包；下载不会取消归档。",
+        "error_message": "" if ledgers else "当前账户没有可下载的账本。",
+        "backend_version": BACKEND_VERSION, "asset_version": STATIC_ASSET_VERSION,
+        "ui_theme": _read_ui_theme(request),
+        "return_url": "/" if getattr(request.state, "web_session_platform", "") == "desktop" else "/web/auth/ledgers",
+        "return_label": "返回系统管理" if getattr(request.state, "web_session_platform", "") == "desktop" else "返回账本选择",
+    })
+
+
+@router.get("/export/portable", include_in_schema=False)
+def web_export_portable(request: Request, ledger_id: str = "",
+                        db: Session = Depends(get_db)) -> PortableFileResponse:
+    auth = resolve_portable_export_context(db, _portable_principal(request), ledger_id=ledger_id or None)
     # Scope resolution is complete; don't hold its read connection throughout
     # the independently authorized snapshot and archive build.
     db.close()

@@ -343,17 +343,19 @@ def is_authorized(
     return origin is None or (expected_origin_tuple is not None and _origin_tuple(origin) == expected_origin_tuple)
 
 
-def _recovery_page(message: str) -> bytes:
+def _recovery_page(message: str, *, portable_available: bool = False) -> bytes:
     """Recovery state with an authenticated route back to the manager UI.
 
     The Edge app window has no address bar, so the recovery page must carry
     the way back itself; `/` is gated by the same control cookie the
     bootstrap issued.
     """
+    portable_link = '<p><a href="/web/exports">下载有权访问的账本数据</a></p>' if portable_available else ""
     return (
         "<!doctype html><meta charset=utf-8>"
         "<title>小票夹需要恢复</title><h1>暂时无法打开账本</h1>"
         f"<p>{html.escape(message)}</p>"
+        f"{portable_link}"
         '<p><a href="/">打开系统管理</a></p>'
     ).encode()
 
@@ -530,6 +532,14 @@ class _Handler(BaseHTTPRequestHandler):
                     "text/html; charset=utf-8",
                 )
                 return
+        if response.status == 403 and self.command == "GET":
+            with suppress(ValueError, UnicodeError):
+                refusal = json.loads(response.body)
+                if isinstance(refusal, dict) and refusal.get("error") == "ledger_forbidden":
+                    self._send(403, _recovery_page(
+                        "当前账本已归档或不再允许访问。你仍可核对账户有权下载的账本。",
+                        portable_available=True), "text/html; charset=utf-8")
+                    return
         self._web_bridge_response = True
         self.send_response(response.status, response.reason)
         saw_length = False

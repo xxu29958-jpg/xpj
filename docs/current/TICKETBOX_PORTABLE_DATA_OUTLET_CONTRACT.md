@@ -88,6 +88,11 @@ to take an owned archived ledger away without unarchiving it.
   Web cookie identity, the Desktop bridge principal and Android's retained identity
   must each reach their authorized selection without minting a replacement identity
   or discarding drafts and Outbox rows.
+  The existing Desktop adapter currently revokes an otherwise live credential
+  when its selected ledger becomes inaccessible. This group separates that 403
+  ledger refusal from Account/Device credential death so the same identity can
+  reach its authorized downloads. Actual revocation, expiry, wrong platform/scope
+  and disabled identity remain refused; already revoked credentials stay revoked.
 - Web keeps its complete-download and analytical CSV entries. Android's existing
   Data and Export screen must offer the actual complete package, with explicit
   ledger/state selection and the system save destination; its existing CSV and

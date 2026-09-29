@@ -3,14 +3,19 @@
 from zipfile import ZipFile
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.errors import AppError
+from app.main import app
 from app.models import AuthToken, Ledger, LedgerMember
+from app.routes.web_auth import SESSION_COOKIE_NAME
 from app.services import portable_export_service as service
 from app.services.identity_service import authenticate_session_token
 from app.services.time_service import now_utc
+from tests._web_public_session_support import PUBLIC_HOST, mint_session, public_client
+from tests.test_desktop_web_bridge_session import LOOPBACK_BASE_URL, _mint_principal, _principal_headers
 from tests.test_original_attachment_api import _bill, _financial_snapshot
 from tests.test_portable_export_http import _assert_bill_and_unverified_original
 
@@ -29,6 +34,9 @@ def _archive(identity):
 def test_owner_with_no_active_ledger_downloads_records_and_original_without_switching(client, identity):
     expense_id, _, source = _bill(client, identity, legacy=True)
     before = _financial_snapshot(expense_id)
+    browser = public_client()
+    browser.cookies.set(SESSION_COOKIE_NAME, mint_session(client, identity=identity), domain=PUBLIC_HOST, path="/")
+    desktop = _mint_principal()
     auth = _archive(identity)
     headers = identity.app_headers
     assert client.get("/api/ledgers", headers=headers).json()["ledgers"] == []
@@ -38,6 +46,19 @@ def test_owner_with_no_active_ledger_downloads_records_and_original_without_swit
     assert choices.json()["ledgers"][0]["archived_at"]
     downloaded = client.get("/api/exports/portable", headers=headers, params={"ledger_id": auth.ledger_id})
     _assert_bill_and_unverified_original(downloaded, expense_id, source.read_bytes())
+    picker = browser.get("/web/pending")
+    assert picker.status_code == 409 and 'href="/web/exports"' in picker.text
+    selection = browser.get("/web/exports")
+    assert selection.status_code == 200 and "已归档" in selection.text
+    _assert_bill_and_unverified_original(browser.get("/web/export/portable?ledger_id=owner"),
+        expense_id, source.read_bytes())
+    with TestClient(app, base_url=LOOPBACK_BASE_URL, client=("127.0.0.1", 51001)) as bridge:
+        desktop_headers = _principal_headers(desktop.token)
+        assert bridge.get("/web/pending", headers=desktop_headers).status_code == 403
+        selection = bridge.get("/web/exports", headers=desktop_headers)
+        assert selection.status_code == 200 and "已归档" in selection.text
+        _assert_bill_and_unverified_original(bridge.get("/web/export/portable?ledger_id=owner", headers=desktop_headers),
+            expense_id, source.read_bytes())
     assert client.get("/api/auth/check", headers=headers).status_code == 403
     assert client.get("/api/exports/portable", headers=identity.gray_app_headers,
         params={"ledger_id": auth.ledger_id}).status_code == 403

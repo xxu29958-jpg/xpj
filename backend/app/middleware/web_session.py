@@ -51,6 +51,7 @@ from app.routes.web_auth import (
 )
 from app.services.identity_service import (
     WebSessionAuthResult,
+    authenticate_desktop_session_principal,
     authenticate_desktop_session_token,
     authenticate_web_session_principal,
     authenticate_web_session_token,
@@ -62,6 +63,11 @@ from app.tenants import AuthContext, SessionPrincipal
 DESKTOP_BRIDGE_HEADER = "X-Ticketbox-Desktop-Bridge"
 DESKTOP_BRIDGE_VERSION = "v1"
 _DESKTOP_ONLY_WEB_PATHS = frozenset({"/web/currency-adoption", "/web/currency-adoption/change"})
+_PORTABLE_WEB_PATHS = frozenset({"/web/exports", "/web/export/portable"})
+
+
+def _is_portable_request(request: Request) -> bool:
+    return request.method.upper() in {"GET", "HEAD"} and request.url.path in _PORTABLE_WEB_PATHS
 
 
 def _request_id(request: Request) -> str | None:
@@ -166,9 +172,15 @@ def _desktop_bridge_authenticate(token: str) -> AuthContext:
         return authenticate_desktop_session_token(db, token)
 
 
+def _desktop_principal_authenticate(token: str) -> SessionPrincipal:
+    with SessionLocal() as db:
+        return authenticate_desktop_session_principal(db, token)
+
+
 def _browser_cookie_authenticate(
     token: str,
     required_account_id: int | None,
+    *, principal_only: bool = False,
 ) -> _BrowserCookieOutcome:
     with SessionLocal() as db:
         principal = authenticate_web_session_principal(
@@ -178,6 +190,8 @@ def _browser_cookie_authenticate(
         )
         if required_account_id is not None and principal.account_id != required_account_id:
             return _BrowserCookieOutcome(kind="account_mismatch")
+        if principal_only:
+            return _BrowserCookieOutcome(kind="ok", principal=principal)
         try:
             result = authenticate_web_session_token(
                 db,
@@ -257,7 +271,8 @@ async def _desktop_bridge_session_gate(
         )
 
     try:
-        auth = await run_in_threadpool(_desktop_bridge_authenticate, token)
+        authenticate = _desktop_principal_authenticate if _is_portable_request(request) else _desktop_bridge_authenticate
+        auth = await run_in_threadpool(authenticate, token)
     except AppError as exc:
         return _app_error_response(request, exc)
     except SQLAlchemyError:
@@ -268,8 +283,11 @@ async def _desktop_bridge_session_gate(
             request_id=_request_id(request),
         )
 
-    request.state.web_session_auth = auth
     request.state.web_session_platform = "desktop"
+    if _is_portable_request(request):
+        request.state.web_session_principal = auth
+        return await call_next(request)
+    request.state.web_session_auth = auth
     ledger_error = _ledger_binding_error(request, auth.ledger_id)
     if ledger_error is not None:
         return ledger_error
@@ -292,6 +310,7 @@ async def _browser_cookie_session_gate(
             _browser_cookie_authenticate,
             token,
             required_account_id,
+            principal_only=_is_portable_request(request),
         )
     except AppError:
         redirect = RedirectResponse(url=login_url, status_code=303)
@@ -309,13 +328,17 @@ async def _browser_cookie_session_gate(
         redirect = RedirectResponse(url=login_url, status_code=303)
         clear_session_cookie(redirect)
         return redirect
-    if outcome.kind == "ledger_picker" or outcome.principal is None or outcome.result is None:
+    if outcome.kind == "ledger_picker" or outcome.principal is None:
         return RedirectResponse(
             url=_ledger_picker_redirect_url(request),
             status_code=303,
         )
 
     request.state.web_session_principal = outcome.principal
+    if _is_portable_request(request):
+        return await call_next(request)
+    if outcome.result is None:
+        return RedirectResponse(url=_ledger_picker_redirect_url(request), status_code=303)
     request.state.web_session_auth = outcome.result.auth
     ledger_error = _ledger_binding_error(request, outcome.result.auth.ledger_id)
     if ledger_error is not None:

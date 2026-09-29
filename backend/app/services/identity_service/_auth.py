@@ -259,8 +259,8 @@ def authenticate_session_principal(
     return principal
 
 
-def authenticate_desktop_session_token(db: Session, token_value: str) -> AuthContext:
-    """Authenticate the app bearer used by the loopback Desktop Web bridge.
+def _load_desktop_session_token(db: Session, token_value: str) -> AuthToken:
+    """Load the live app bearer used by the loopback Desktop Web bridge.
 
     The bridge is a distinct principal entry point: accepting an arbitrary app
     token would let an Android or browser credential cross into the Desktop
@@ -288,18 +288,33 @@ def authenticate_desktop_session_token(db: Session, token_value: str) -> AuthCon
         token.grace_until = None
         db.commit()
         raise AppError("invalid_token", status_code=401)
+    return token
+
+
+def authenticate_desktop_session_principal(db: Session, token_value: str) -> SessionPrincipal:
+    """Prove the Desktop Account/Device without admitting any ledger read."""
+    token = _load_desktop_session_token(db, token_value)
+    try:
+        principal, device = _principal_from_token(db, token)
+    except AppError:
+        token.revoked_at, token.grace_until = now_utc(), None
+        db.commit()
+        raise
+    _refresh_token_activity(db, token, device, now=now_utc())
+    return principal
+
+
+def authenticate_desktop_session_token(db: Session, token_value: str) -> AuthContext:
+    """Admit the selected ledger while preserving a live Account/Device identity."""
+    token = _load_desktop_session_token(db, token_value)
     try:
         return _context_from_token(db, token)
     except AppError as exc:
-        if exc.error in {"invalid_token", "ledger_forbidden"}:
-            # Death is durable on every liveness failure — disabled account or
-            # device, archived ledger, lost membership (ledger_forbidden): a
-            # later re-enable must not resurrect a bearer the legitimate
-            # client already discarded. Persist the revocation, then report
-            # death (401), never an authorization mismatch; the ?ledger_id=
-            # mismatch case lives in the middleware's own check and stays 403.
+        if exc.error == "invalid_token":
+            # Account/Device death stays durable. A ledger's archive or lost
+            # membership only refuses that ledger and must not kill identity.
             if token.revoked_at is None:
-                token.revoked_at = now
+                token.revoked_at = now_utc()
                 token.grace_until = None
                 db.commit()
             raise AppError("invalid_token", status_code=401) from exc

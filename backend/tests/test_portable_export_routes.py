@@ -84,6 +84,7 @@ def test_download_releases_request_read_before_claiming_snapshot_capacity(monkey
     route = exports if surface == "api" else web_import_export
     monkeypatch.setattr(route, "create_portable_ledger_export", snapshot)
     monkeypatch.setattr(exports, "resolve_portable_export_context", lambda *_args, **_kwargs: AUTH)
+    monkeypatch.setattr(web_import_export, "resolve_portable_export_context", lambda *_args, **_kwargs: AUTH)
     try:
         with Session(engine) as request_db:
             # Exercise the real pool and Session lifecycle; no product DB schema
@@ -94,7 +95,7 @@ def test_download_releases_request_read_before_claiming_snapshot_capacity(monkey
                 response = exports.export_portable(request, principal="verified-principal", db=request_db,
                     x_ticketbox_ledger_id=None)
             else:
-                request.state.web_session_auth = AUTH
+                request.state.web_session_principal = "verified-principal"
                 response = web_import_export.web_export_portable(request, ledger_id=AUTH.ledger_id, db=request_db)
             response.archive.close()
             assert engine.pool.checkedout() == 0
@@ -109,12 +110,13 @@ def test_web_portable_uses_actual_selected_session_or_refuses_before_export(monk
 
     owner = Mock(return_value=archive)
     monkeypatch.setattr(web_import_export, "create_portable_ledger_export", owner)
+    monkeypatch.setattr(web_import_export, "resolve_portable_export_context", lambda *_args, **_kwargs: AUTH)
     app = _app(web_import_export.router)
     app.dependency_overrides[_require_local] = lambda: None
 
     @app.middleware("http")
     async def session(request, call_next):
-        request.state.web_session_auth = auth
+        request.state.web_session_principal = auth
         return await call_next(request)
 
     with TestClient(app) as client:
