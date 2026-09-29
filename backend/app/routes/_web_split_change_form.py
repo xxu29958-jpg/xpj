@@ -29,12 +29,14 @@ def initial_values(request, db, *, selected_id, public_id, agreement, command="c
     initial = dict.fromkeys(CHANGE_FIELDS, "")
     initial.update(debt_public_id=public_id, ledger_id=selected_id,
         origin_binding=json.dumps(repayment_scope(request, db), ensure_ascii=False, sort_keys=True),
-        command=command, home_currency_code=code, idempotency_key=str(uuid4()), supersedes_proposal_public_id=supersedes)
+        command=command, home_currency_code=code, idempotency_key=str(uuid4()), supersedes_proposal_public_id=supersedes,
+        settlement_explicit="false", settlement_suggestion="")
     if agreement:
         initial.update(expected_row_version=str(agreement.original_debt.row_version),
             expected_return_row_version=str(agreement.return_debt.row_version) if agreement.return_debt else "",
             new_share_amount_major=_minor_amount_value(agreement.preview.new_share_amount_cents, code),
-            settlement_net_amount_major=_minor_amount_value(agreement.preview.default_settlement_net_amount_cents, code))
+            settlement_net_amount_major=_minor_amount_value(agreement.preview.default_settlement_net_amount_cents, code),
+            settlement_suggestion=_minor_amount_value(agreement.preview.default_settlement_net_amount_cents, code))
     if command != "create" and pending:
         initial.update(proposal_public_id=pending.public_id, reason=pending.reason,
             new_share_amount_major=_minor_amount_value(pending.new_share_amount_cents, code),

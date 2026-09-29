@@ -47853,7 +47853,13 @@
                   "reason": {
                     "type": "string"
                   },
+                  "settlement_explicit": {
+                    "type": "string"
+                  },
                   "settlement_net_amount_major": {
+                    "type": "string"
+                  },
+                  "settlement_suggestion": {
                     "type": "string"
                   },
                   "supersedes_proposal_public_id": {
@@ -47966,7 +47972,13 @@
                   "reason": {
                     "type": "string"
                   },
+                  "settlement_explicit": {
+                    "type": "string"
+                  },
                   "settlement_net_amount_major": {
+                    "type": "string"
+                  },
+                  "settlement_suggestion": {
                     "type": "string"
                   },
                   "supersedes_proposal_public_id": {

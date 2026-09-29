@@ -16,7 +16,8 @@ import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.viewmodel.DebtDetailUiState
 
 @Composable
-internal fun DebtReadSource(fetchedAt: String?, fromCache: Boolean, isLoading: Boolean = false) {
+internal fun DebtReadSource(fetchedAt: String?, fromCache: Boolean, isLoading: Boolean = false,
+    testTag: String = "debt-read-source") {
     if (fetchedAt == null) {
         if (isLoading) AppDataAuthorityStrip(DataAuthorityTone.Refreshing)
         return
@@ -26,7 +27,7 @@ internal fun DebtReadSource(fetchedAt: String?, fromCache: Boolean, isLoading: B
         body = stringResource(if (fromCache) R.string.debt_read_cached_body else R.string.debt_read_body,
             displayDateTime(fetchedAt)),
         tone = if (fromCache) DataAuthorityTone.LocalCache else DataAuthorityTone.Backend,
-        modifier = Modifier.testTag("debt-read-source"),
+        modifier = Modifier.testTag(testTag),
     )
 }
 

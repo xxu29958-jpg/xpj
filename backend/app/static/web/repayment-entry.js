@@ -28,6 +28,9 @@
   const submit = form.querySelector("[data-repayment-submit]");
   const replace = form.querySelector("[data-repayment-replace]");
   const preview = form.querySelector("[data-repayment-preview]");
+  const settlementExplicit = form.elements.namedItem("settlement_explicit");
+  const optionalNames = splitChange ? ["settlement_explicit", "settlement_suggestion"] : [];
+  const hints = optionalNames.map(name => form.elements.namedItem(name)).filter(Boolean);
   const finishReview = form.querySelector("[data-void-finish-review]");
   const finishRejected = form.querySelector("[data-void-finish-rejected]");
   const rejectionReview = form.querySelector("[data-void-rejection-review]");
@@ -52,7 +55,9 @@
   let release = null, epoch = 0, leaseFinished = Promise.resolve(), ready = Promise.resolve(), pageActive = true;
 
   function values() {
-    return Object.fromEntries(controls.map(control => [control.name, control.value]));
+    const result = Object.fromEntries(controls.map(control => [control.name, control.value]));
+    hints.forEach(control => { if (control.value !== "") result[control.name] = control.value; });
+    return result;
   }
   function sameValues(left, right) {
     return names.every(name => typeof left[name] === "string" && left[name] === right[name]);
@@ -78,6 +83,7 @@
   }
   function showValues(saved) {
     controls.forEach(control => { control.value = saved[control.name]; });
+    hints.forEach(control => { control.value = saved[control.name] ?? ""; });
     if (splitChange) {
       if (!commandLabels[saved.command]) throw Error("invalid_original_command");
       const base = "/web/debts/" + encodeURIComponent(saved.debt_public_id) + "/split-changes";
@@ -307,8 +313,9 @@
     }
   }
 
-  form.addEventListener("input", function () {
+  form.addEventListener("input", function (event) {
     if (!held || phase !== "editing") return;
+    if (settlementExplicit && event.target?.name === "settlement_net_amount_major") settlementExplicit.value = "true";
     try { persist("editing"); notice("输入已保留，尚未提交。", "editing"); }
     catch (_) { notice("最新输入未能保留。请勿关闭本页，恢复存储后再提交。", "storage-error"); }
   });
@@ -417,7 +424,8 @@
     scope = JSON.parse(form.dataset.repaymentScope);
     if (!axes.every(axis => typeof scope[axis] === "string" && scope[axis] && scope[axis].length <= 256) ||
         !window.navigator.locks) throw Error("binding_or_locking_unavailable");
-    drafts = window.TicketboxDraftStore.createStore({prefix:"ticketbox:" + namespace + "-draft:v1:", fields:names, validRef:uuid});
+    drafts = window.TicketboxDraftStore.createStore({prefix:"ticketbox:" + namespace + "-draft:v1:", fields:names,
+      optionalFields:optionalNames, validRef:uuid});
     leaseKey = "ticketbox:" + namespace + "-lease:v1:" + JSON.stringify([...axes.map(axis => scope[axis]), target]);
     replacement = form.dataset.repaymentReplacement ? JSON.parse(form.dataset.repaymentReplacement) : null;
     ready = acknowledge();

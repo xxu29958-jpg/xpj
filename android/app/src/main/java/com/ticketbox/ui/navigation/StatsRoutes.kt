@@ -365,10 +365,7 @@ private fun DebtDetailHost(
         if (relatedTrail.size > 1) relatedTrail = relatedTrail.dropLast(1) else onBack()
     }
     val splitModel: com.ticketbox.viewmodel.SplitAgreementViewModel? = splitAgreement?.let { repository ->
-        viewModel(key = "split-agreement:$openDebtId", factory = object : androidx.lifecycle.ViewModelProvider.Factory {
-            override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T =
-                modelClass.cast(com.ticketbox.viewmodel.SplitAgreementViewModel(repository))!!
-        })
+        viewModel(key = "split-agreement:$openDebtId", factory = com.ticketbox.viewmodel.splitAgreementViewModelFactory(repository))
     }
     androidx.activity.compose.BackHandler { returnFromDetail() }
     LaunchedEffect(displayedDebtId) { detailViewModel.loadDebt(displayedDebtId) }

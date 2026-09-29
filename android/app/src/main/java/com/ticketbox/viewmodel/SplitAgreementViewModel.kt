@@ -1,6 +1,7 @@
 package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
@@ -11,6 +12,9 @@ import com.ticketbox.data.repository.DebtTask
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.SplitAgreementActions
 import com.ticketbox.data.repository.SplitAgreementPayload
+import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.ReadSnapshot
+import com.ticketbox.data.repository.debtPublicIds
 import com.ticketbox.data.repository.SPLIT_ACCEPT
 import com.ticketbox.data.repository.SPLIT_CREATE
 import com.ticketbox.data.repository.SPLIT_REJECT
@@ -27,10 +31,15 @@ import kotlinx.coroutines.launch
 
 data class SplitAgreementUiState(
     val task: DebtTask? = null,
+    val canModify: Boolean = false,
     val agreement: BillSplitAgreementDto? = null,
+    val fetchedAt: String? = null,
+    val fromCache: Boolean = false,
     val shareInput: String = "",
     val settlementInput: String = "",
     val reason: String = "",
+    val hasDraft: Boolean = false,
+    val draftCurrencyCode: String? = null,
     val settlementEdited: Boolean = false,
     val confirmed: Boolean = false,
     val previewReady: Boolean = false,
@@ -46,30 +55,53 @@ data class SplitAgreementUiState(
 ) {
     val busy: Boolean get() = submitting || rows.any { it.status != PendingMutationStatus.Done }
     val agreementCurrent: Boolean get() = agreementRevision == acknowledgedRevision
-    val commandsEnabled: Boolean get() = agreementCurrent && !busy && !loading
+    val commandsEnabled: Boolean get() = canModify && agreementCurrent && !busy && !loading
     val canPropose: Boolean get() = agreement?.viewerIsParty == true &&
         (agreement.pendingProposal == null || agreement.pendingProposal.publicId == replacingProposalPublicId) &&
         agreement.pendingRepaymentDebtPublicIds.isEmpty() && previewReady && confirmed && commandsEnabled
 }
 
 /** Drafts are scoped to the entire logical task, including origin, principal and binding generation. */
-class SplitAgreementViewModel(private val repository: SplitAgreementActions) : ViewModel() {
+class SplitAgreementViewModel(
+    private val repository: SplitAgreementActions,
+    savedStateHandle: SavedStateHandle = SavedStateHandle(),
+) : ViewModel() {
     private val _state = MutableStateFlow(SplitAgreementUiState())
     val state = _state.asStateFlow()
     private val retained = mutableMapOf<DebtTask, SplitAgreementUiState>()
+    private val drafts = SplitAgreementDraftStore(savedStateHandle)
     private var queryGeneration = 0L
     private var observation: Job? = null
     private var observedTask: DebtTask? = null
     private val completedIds = mutableSetOf<Pair<DebtTask, Long>>()
 
-    fun load(task: DebtTask?) {
+    init {
+        fun retireRead(binding: LogicalSessionBinding, publicId: String?) {
+            fun affected(state: SplitAgreementUiState) = state.task?.binding == binding &&
+                (publicId == null || publicId == state.task.debtPublicId || publicId in state.agreement?.debtPublicIds().orEmpty())
+            retained.replaceAll { _, state -> if (affected(state)) state.withoutRead() else state }
+            if (affected(_state.value)) {
+                queryGeneration++
+                _state.update { it.withoutRead() }
+            }
+        }
+        viewModelScope.launch {
+            repository.observeReadAccessDenials().collect { retireRead(it.binding, null) }
+        }
+        viewModelScope.launch {
+            repository.observeResourceDenials().collect { retireRead(it.binding, it.debtPublicId) }
+        }
+    }
+
+    fun load(task: DebtTask?, canModify: Boolean) {
         if (_state.value.task != task) {
             _state.value.task?.let { retained[it] = _state.value.copy(submitting = false, loading = false) }
             observation?.cancel()
             observedTask = null
             queryGeneration++
-            _state.value = task?.let { retained[it] ?: SplitAgreementUiState(task = it) } ?: SplitAgreementUiState()
+            _state.value = task?.let { retained[it] ?: drafts.read(it) ?: SplitAgreementUiState(task = it) } ?: SplitAgreementUiState()
         }
+        _state.update { it.copy(canModify = canModify, confirmed = false) }
         if (task != null) {
             observeOriginal(task)
             refresh()
@@ -77,63 +109,71 @@ class SplitAgreementViewModel(private val repository: SplitAgreementActions) : V
     }
 
     fun editDraft(share: String? = null, settlement: String? = null, reason: String? = null) {
+        if (!_state.value.canModify) return
         if (share != null) queryGeneration++
         _state.update {
             it.copy(
                 shareInput = share ?: it.shareInput,
                 settlementInput = settlement ?: it.settlementInput,
                 reason = reason ?: it.reason,
-                settlementEdited = when {
-                    settlement != null -> true
-                    share != null -> false
-                    else -> it.settlementEdited
-                },
+                hasDraft = true,
+                settlementEdited = settlement != null || it.settlementEdited,
                 previewReady = if (share != null) false else it.previewReady,
                 confirmed = false,
                 loading = if (share != null) false else it.loading,
             )
         }
+        drafts.write(_state.value)
     }
-    fun confirm(value: Boolean) = _state.update { it.copy(confirmed = value) }
+    fun confirm(value: Boolean) = _state.update { it.copy(confirmed = value && it.commandsEnabled && it.previewReady) }
 
     fun beginReplacement() {
         _state.update { state ->
             val agreement = state.agreement
             val proposal = agreement?.pendingProposal
             if (proposal == null || !agreement.viewerIsParty || !state.commandsEnabled) state
-            else state.copy(replacingProposalPublicId = proposal.publicId, confirmed = false)
+            else state.copy(replacingProposalPublicId = proposal.publicId, confirmed = false, hasDraft = true)
         }
+        drafts.write(_state.value)
     }
 
     fun cancelReplacement() {
         _state.update { it.copy(replacingProposalPublicId = null, confirmed = false) }
+        drafts.write(_state.value)
     }
 
     fun refresh() {
         val current = _state.value
         val task = current.task ?: return
-        val currency = current.agreement?.homeCurrencyCode?.let(CurrencyCode::fromStorageKeyOrNull)
+        val currency = (current.draftCurrencyCode ?: current.agreement?.homeCurrencyCode)?.let(CurrencyCode::fromStorageKeyOrNull)
         val share = if (current.shareInput.isBlank()) null else currency?.let { parseAmountCents(current.shareInput, it) }
-        if (current.shareInput.isNotBlank() && share == null) {
+        val invalidShare = (current.hasDraft || current.shareInput.isNotBlank()) && share == null
+        if (invalidShare && current.agreement != null) {
             _state.update { it.copy(error = UiText.res(R.string.split_agreement_error_invalid_share), previewReady = false) }
             return
         }
         val request = ++queryGeneration
         _state.update { it.copy(loading = true, error = null, previewReady = false, confirmed = false) }
         viewModelScope.launch {
-            val result = repository.load(task, share)
-            if (request != queryGeneration || _state.value.task != task) return@launch
-            result.fold(onSuccess = { agreement ->
-                val code = CurrencyCode.fromStorageKeyOrNull(agreement.homeCurrencyCode)
-                _state.update { it.copy(agreement = agreement, loading = false,
-                    shareInput = code?.let { c -> formatAmountInput(agreement.preview.newShareAmountCents, c) }.orEmpty(),
-                    settlementInput = if (it.settlementEdited) it.settlementInput else
-                        code?.let { c -> formatAmountInput(agreement.preview.defaultSettlementNetAmountCents, c) }.orEmpty(),
-                    previewReady = code != null,
-                    replacingProposalPublicId = it.replacingProposalPublicId
-                        ?.takeIf { proposalId -> agreement.pendingProposal?.publicId == proposalId },
-                    agreementRevision = it.acknowledgedRevision) }
-                observeOriginal(task.copy(debtPublicId = agreement.originalDebt.publicId))
+            suspend fun preview(share: Long) {
+                val result = repository.load(task, share)
+                if (request != queryGeneration) return
+                result.fold(onSuccess = { value ->
+                    _state.update { it.refreshedAgreement(ReadSnapshot(value, java.time.Instant.now().toString(), false), false) }
+                    drafts.write(_state.value)
+                }, onFailure = {
+                    _state.update { it.copy(loading = false, previewReady = false,
+                        error = UiText.res(R.string.split_agreement_error_load_failed)) }
+                })
+            }
+            val result = repository.read(task)
+            if (request != queryGeneration) return@launch
+            result.fold(onSuccess = { snapshot ->
+                val needsPreview = snapshot.needsPreview(share, invalidShare)
+                _state.update { it.refreshedAgreement(snapshot, invalidShare, needsPreview) }
+                drafts.write(_state.value)
+                observeOriginal(task.copy(debtPublicId = snapshot.value.originalDebt.publicId))
+                if (needsPreview) preview(requireNotNull(share))
             }, onFailure = {
                 _state.update { it.copy(loading = false, error = UiText.res(R.string.split_agreement_error_load_failed)) }
             })
@@ -206,7 +246,7 @@ class SplitAgreementViewModel(private val repository: SplitAgreementActions) : V
     fun recover(row: OutboxRow, drop: Boolean) {
         val state = _state.value
         val task = state.task ?: return
-        if (state.submitting || state.rows.none { it == row }) return
+        if (!state.canRecover(row, drop)) return
         val intent = state.intents[row.id]
         val draft = if (drop) restorableCreateDraft(state, intent) else null
         if (drop && intent?.operation == SPLIT_CREATE && draft == null) {
@@ -221,8 +261,9 @@ class SplitAgreementViewModel(private val repository: SplitAgreementActions) : V
             result.fold(onSuccess = {
                 _state.update { current -> draft?.let { (share, settlement, reason) ->
                     current.copy(shareInput = share, settlementInput = settlement, reason = reason,
-                        settlementEdited = true, confirmed = false, submitting = false)
+                        settlementEdited = true, hasDraft = true, confirmed = false, submitting = false)
                 } ?: current.copy(submitting = false) }
+                drafts.write(_state.value)
                 if (drop) refresh()
             }, onFailure = {
                 _state.update { it.copy(submitting = false,
@@ -230,6 +271,38 @@ class SplitAgreementViewModel(private val repository: SplitAgreementActions) : V
             })
         }
     }
+}
+
+private fun SplitAgreementUiState.canRecover(row: OutboxRow, drop: Boolean): Boolean =
+    !submitting && row in rows && (canModify || drop)
+
+private fun SplitAgreementUiState.withoutRead() = copy(agreement = null, fetchedAt = null, fromCache = false,
+    loading = false, previewReady = false, confirmed = false, error = UiText.res(R.string.split_agreement_error_load_failed))
+
+private fun SplitAgreementUiState.refreshedAgreement(snapshot: ReadSnapshot<BillSplitAgreementDto>, invalidShare: Boolean,
+    needsPreview: Boolean = false): SplitAgreementUiState {
+    val value = snapshot.value
+    val currency = CurrencyCode.fromStorageKeyOrNull(value.homeCurrencyCode)
+    val changedCurrency = draftCurrencyCode != null && draftCurrencyCode != value.homeCurrencyCode
+    val failure = when {
+        currency == null || changedCurrency -> UiText.res(R.string.currency_unconfirmed_write_blocked)
+        invalidShare -> UiText.res(R.string.split_agreement_error_invalid_share)
+        else -> null
+    }
+    return copy(agreement = value, fetchedAt = snapshot.fetchedAt, fromCache = snapshot.fromCache,
+        loading = needsPreview, draftCurrencyCode = draftCurrencyCode ?: value.homeCurrencyCode,
+        previewReady = failure == null && !snapshot.fromCache && !needsPreview, error = failure,
+        replacingProposalPublicId = if (snapshot.fromCache) replacingProposalPublicId else
+            replacingProposalPublicId?.takeIf { it == value.pendingProposal?.publicId },
+        agreementRevision = acknowledgedRevision).applyPreviewDefaults(currency)
+}
+
+private fun SplitAgreementUiState.applyPreviewDefaults(currency: CurrencyCode?): SplitAgreementUiState {
+    if (currency == null) return this
+    val facts = requireNotNull(agreement)
+    return copy(shareInput = if (hasDraft) shareInput else formatAmountInput(facts.agreedShareAmountCents, currency),
+        settlementInput = if (settlementEdited || !previewReady) settlementInput else
+            formatAmountInput(facts.preview.defaultSettlementNetAmountCents, currency))
 }
 
 private fun restorableCreateDraft(
@@ -256,3 +329,6 @@ private fun splitSubmissionMessage(rows: List<OutboxRow>): UiText? = when {
         UiText.res(R.string.split_agreement_submission_received)
     else -> null
 }
+
+private fun ReadSnapshot<BillSplitAgreementDto>.needsPreview(share: Long?, invalidShare: Boolean): Boolean =
+    !fromCache && !invalidShare && share != null && share != value.preview.newShareAmountCents

@@ -7,6 +7,35 @@ const values = {debt_public_id:target, ledger_id:'ledger', origin_binding:JSON.s
   reason:'商家部分退款，双方重新约定', supersedes_proposal_public_id:''};
 const options = {splitChange:true, fieldNames:Object.keys(values), draftPrefix:'ticketbox:split-change-draft:v1:', values};
 const cases = {
+  async explicit_settlement_and_legacy_submission() {
+    const env = environment(), page = env.page(options);
+    page.fields.settlement_explicit = {name:'settlement_explicit', value:'false'};
+    page.start(); await tick();
+    page.form.fire('input', {target:page.fields.settlement_net_amount_major});
+    page.fields.new_share_amount_major.value = '12.00';
+    page.form.fire('input', {target:page.fields.new_share_amount_major});
+    assert.equal(page.store.read(fresh).values.settlement_explicit, 'true');
+    page.window.fire('pagehide'); await tick();
+    const restored = env.page(options);
+    restored.fields.settlement_explicit = {name:'settlement_explicit', value:'false'};
+    restored.start(); await tick();
+    assert.equal(restored.fields.settlement_explicit.value, 'true');
+    assert.equal(restored.fields.settlement_net_amount_major.value, '-10.00');
+    assert.equal(restored.form.fire('submit').defaultPrevented, false);
+    const financial = {...restored.store.read(fresh).values}; delete financial.settlement_explicit;
+    restored.window.fire('pagehide'); await tick();
+    const ack = env.page({...options, ack:{scope, clientRef:fresh, resultPublicId:repaymentId, values:financial}});
+    ack.start(); await tick();
+    assert.equal(ack.store.read(fresh), null, 'The same accepted command closes its draft even without UI metadata in the receipt');
+    ack.window.fire('pagehide'); await tick();
+    const legacy = env.page(options);
+    legacy.fields.settlement_explicit = {name:'settlement_explicit', value:'false'};
+    legacy.store.save(scope, original, 'submitted', values);
+    legacy.start(); await tick();
+    assert.equal(legacy.fields.idempotency_key.value, original);
+    assert.equal(legacy.form.fire('submit').defaultPrevented, false);
+    assert.deepEqual({...legacy.store.read(original).values}, values, 'Old submitted snapshots acquire no new metadata or body');
+  },
   async pending_retained_draft() {
     const env = environment(), page = env.page({...options, canCreate:false});
     page.store.save(scope, original, 'editing', values); page.start(); await tick();

@@ -246,6 +246,60 @@ def test_signed_settlement_and_both_versions_reach_command_payload(native_task):
     assert payload.expected_row_version == 7 and payload.expected_return_row_version == 3
 
 
+@pytest.mark.parametrize("explicit", ["true", "false", ""])
+@pytest.mark.parametrize("raw_settlement", ["-3.00", "", "还要核对"])
+def test_preview_keeps_the_explicit_settlement_and_reason(native_task, monkeypatch, raw_settlement, explicit):
+    import asyncio
+
+    request, db, form, route = native_task
+    values = form.initial_values(request, db, selected_id="my-ledger", public_id="original", agreement=agreement())
+    values.update(new_share_amount_major="12.00", settlement_net_amount_major=raw_settlement,
+                  reason="双方另行约定返还三元", settlement_explicit=explicit)
+    original_key = values["idempotency_key"]
+
+    async def retained_form(_request):
+        return values
+
+    monkeypatch.setattr(route, "_form", retained_form)
+    response = asyncio.run(route.web_preview_split_change(request, "original", db=db))
+    assert response.status_code == 200
+    assert values["settlement_net_amount_major"] == raw_settlement
+    assert values["reason"] == "双方另行约定返还三元"
+    assert values["idempotency_key"] == original_key
+
+
+def test_preview_updates_an_untouched_suggestion_without_treating_it_as_an_explicit_settlement(native_task, monkeypatch):
+    import asyncio
+
+    request, db, form, route = native_task
+    values = form.initial_values(request, db, selected_id="my-ledger", public_id="original", agreement=agreement())
+    values.update(new_share_amount_major="12.00")
+
+    async def retained_form(_request):
+        return values
+
+    def read(*_args, **kwargs):
+        current = agreement()
+        if kwargs.get("new_share") is None:
+            return current
+        return current.model_copy(update={"preview": current.preview.model_copy(
+            update={"new_share_amount_cents": kwargs["new_share"],
+                    "default_settlement_net_amount_cents": kwargs["new_share"] - 3000})})
+
+    monkeypatch.setattr(route, "_form", retained_form)
+    monkeypatch.setattr(route, "_read", read)
+    response = asyncio.run(route.web_preview_split_change(request, "original", db=db))
+    assert response.status_code == 200
+    assert values["settlement_net_amount_major"] == "-18.00"
+    assert values["settlement_explicit"] == "false"
+
+    values["new_share_amount_major"] = "15.00"
+    response = asyncio.run(route.web_preview_split_change(request, "original", db=db))
+    assert response.status_code == 200
+    assert values["settlement_net_amount_major"] == "-15.00"
+    assert values["settlement_explicit"] == "false"
+
+
 def test_mismatched_command_is_retained_without_error_page_crash(native_task, monkeypatch):
     import asyncio
 
@@ -288,7 +342,7 @@ def test_currency_mismatch_explains_refusal_and_keeps_original_submission(native
 
 
 @pytest.mark.parametrize("scenario", ["preview", "command_replacement", "ack_and_repayment",
-                                      "pending_retained_draft", "replacement_context"])
+                                      "pending_retained_draft", "replacement_context", "explicit_settlement_and_legacy_submission"])
 def test_split_original_browser_submission(scenario):
     import shutil
     import subprocess

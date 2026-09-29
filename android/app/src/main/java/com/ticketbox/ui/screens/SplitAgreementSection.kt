@@ -34,6 +34,7 @@ internal fun SplitAgreementSection(
             state.error?.let { Text(it.asString(), color = MaterialTheme.colorScheme.error) }
             state.message?.let { Text(it.asString()) }
             if (state.loading) Text(stringResource(R.string.split_agreement_loading))
+            DebtReadSource(state.fetchedAt, state.fromCache, state.loading, testTag = "split-agreement-read-source")
             QuietOutlinedButton(text = stringResource(R.string.split_agreement_refresh),
                 onClick = model::refresh, enabled = !state.loading)
             state.agreement?.let { agreement ->
@@ -43,6 +44,10 @@ internal fun SplitAgreementSection(
                     SplitAgreementProposal(state, model, display)
                 }
             }
+            if (state.agreement == null && state.hasDraft) {
+                Text(stringResource(R.string.split_agreement_retained_draft))
+                SplitAgreementForm(state, model, CurrencyDisplay.forRecord(state.draftCurrencyCode ?: "UNKNOWN"))
+            }
             SplitAgreementSubmissions(state, model)
         }
     }
@@ -50,23 +55,24 @@ internal fun SplitAgreementSection(
 
 @Composable
 private fun SplitAgreementForm(state: SplitAgreementUiState, model: SplitAgreementViewModel, display: CurrencyDisplay) {
-    val agreement = state.agreement ?: return
-    AppTextInput(AppTextInputState(stringResource(R.string.split_agreement_share_input, agreement.homeCurrencyCode),
-        state.shareInput, enabled = !state.busy),
+    val agreement = state.agreement
+    val currency = state.draftCurrencyCode ?: agreement?.homeCurrencyCode ?: return
+    AppTextInput(AppTextInputState(stringResource(R.string.split_agreement_share_input, currency),
+        state.shareInput, enabled = state.canModify && !state.busy),
         AppTextInputActions(onValueChange = { model.editDraft(share = it) }))
     QuietOutlinedButton(text = stringResource(R.string.split_agreement_preview),
         onClick = model::refresh, enabled = !state.busy && !state.loading)
-    if (state.previewReady) {
-        if (agreement.preview.requiresExplicitSettlement) {
+    if (state.previewReady || state.hasDraft) {
+        if (state.previewReady && agreement?.preview?.requiresExplicitSettlement == true) {
             Text(stringResource(R.string.split_agreement_explicit_settlement_warning))
         }
-        agreement.preview.cashBasedSettlementNetAmountCents?.let {
+        agreement?.preview?.cashBasedSettlementNetAmountCents?.takeIf { state.previewReady }?.let {
             Text(stringResource(R.string.split_agreement_cash_reference, splitSettlementLabel(it, display)))
         }
         AppTextInput(AppTextInputState(stringResource(R.string.split_agreement_settlement_input), state.settlementInput,
-            enabled = !state.busy), AppTextInputActions(onValueChange = { model.editDraft(settlement = it) }))
+            enabled = state.canModify && !state.busy), AppTextInputActions(onValueChange = { model.editDraft(settlement = it) }))
         AppTextInput(AppTextInputState(stringResource(R.string.split_agreement_reason_input), state.reason,
-            enabled = !state.busy, singleLine = false),
+            enabled = state.canModify && !state.busy, singleLine = false),
             AppTextInputActions(onValueChange = { model.editDraft(reason = it) }))
         SplitSettlementConfirmation(state, model)
         QuietOutlinedButton(text = stringResource(if (state.replacingProposalPublicId == null) {
@@ -81,7 +87,8 @@ private fun SplitAgreementForm(state: SplitAgreementUiState, model: SplitAgreeme
 @Composable
 private fun SplitSettlementConfirmation(state: SplitAgreementUiState, model: SplitAgreementViewModel) {
     Row {
-        Checkbox(checked = state.confirmed, onCheckedChange = model::confirm, enabled = !state.busy && !state.loading)
+        Checkbox(checked = state.confirmed, onCheckedChange = model::confirm,
+            enabled = state.canModify && state.previewReady && !state.busy && !state.loading)
         Text(stringResource(R.string.split_agreement_confirmation))
     }
 }
@@ -148,7 +155,7 @@ private fun SplitAgreementProposal(state: SplitAgreementUiState, model: SplitAgr
             Text(stringResource(R.string.split_agreement_replacement_notice))
             SplitAgreementForm(state, model, display)
             QuietOutlinedButton(text = stringResource(R.string.split_agreement_cancel_replacement),
-                onClick = model::cancelReplacement, enabled = !state.busy)
+                onClick = model::cancelReplacement, enabled = state.canModify && !state.busy)
         } else {
             if (!proposal.proposedByYou) {
                 SplitSettlementConfirmation(state, model)
@@ -191,7 +198,7 @@ private fun SplitAgreementSubmissions(state: SplitAgreementUiState, model: Split
         }))
         if (row.status == PendingMutationStatus.Failed && row.lastError !in com.ticketbox.data.repository.SPLIT_SHARE_REFUSALS) {
             QuietOutlinedButton(text = stringResource(R.string.split_agreement_retry_submission),
-                onClick = { model.recover(row, false) })
+                onClick = { model.recover(row, false) }, enabled = state.canModify)
         }
         if (row.status in setOf(PendingMutationStatus.Failed, PendingMutationStatus.Conflict)) {
             QuietOutlinedButton(text = stringResource(R.string.split_agreement_end_submission),

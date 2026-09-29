@@ -29,7 +29,9 @@ internal fun SplitAgreementDetailPanel(
     val debt = detail.debt
     val eligible = debt?.sourceType in setOf("bill_split", "bill_split_return")
     val task = if (eligible) detail.binding?.let { DebtTask(it, requireNotNull(debt).publicId) } else null
-    LaunchedEffect(task, debt?.rowVersion, proposal.acknowledgedCommandRevision) { model.load(task) }
+    LaunchedEffect(task, debt?.rowVersion, proposal.acknowledgedCommandRevision, detail.canModify) {
+        model.load(task, canModify = detail.canModify)
+    }
     LaunchedEffect(observed.task, observed.acknowledgedRevision) {
         if (observed.task == task && observed.acknowledgedRevision > 0) {
             onAccepted()

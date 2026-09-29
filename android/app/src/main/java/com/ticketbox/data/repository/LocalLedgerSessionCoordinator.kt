@@ -88,6 +88,7 @@ class LocalLedgerSessionCoordinator(
     private val mutex = Mutex()
     private var readGeneration = 0L
     private var readSequence = 0L
+    internal val readSequenceOwner: String = java.util.UUID.randomUUID().toString()
     private var readInvalidation = RepositoryException("读取结果已失效，请重新读取。")
     private val accessDenials = MutableStateFlow(settingsStore.restoreSnapshotAccessDenial(sessionStore))
     private var pendingAccessCleanupBindingKey: String? = accessDenials.value?.let { logicalBindingAdapter.toJson(it.binding) }

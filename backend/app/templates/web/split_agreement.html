@@ -52,6 +52,8 @@
         {% if change.replacement %}data-repayment-replacement="{{ change.replacement | tojson | forceescape }}"{% endif %}>
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="idempotency_key" value="{{ change['values'].idempotency_key }}">
+    <input type="hidden" name="settlement_explicit" value="{{ change['values'].settlement_explicit }}">
+    <input type="hidden" name="settlement_suggestion" value="{{ change['values'].settlement_suggestion }}">
     {% for name in change.fields if name not in ['new_share_amount_major', 'settlement_net_amount_major', 'reason'] %}
     <input type="hidden" name="{{ name }}" value="{{ change['values'][name] }}">
     {% endfor %}
