@@ -84,7 +84,7 @@ class RelationshipJourney:
         self.native.click("欠我" if returned else "我欠")
         self.native.reveal_any("联动验证账户")
         self.native.click("联动验证账户", stable=True)
-        self.native.reveal_any("看看账")
+        self.native.reveal_any("拆账约定与结算", toward_start=True)
 
     def native_confirmation(self):
         self.native.reveal_any(CONFIRM)
