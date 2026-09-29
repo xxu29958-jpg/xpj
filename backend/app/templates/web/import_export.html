@@ -110,6 +110,7 @@
   <p>ZIP 中含敏感财务资料，请保存在你控制的位置。可直接阅读包内说明与记录；这不是安装恢复包，也不能通过上方 CSV 表单还原安装。</p>
   {% if portable_export_available %}
   <a class="product-button product-button--primary" href="/web/export/portable{{ q }}">下载账本数据包（ZIP）</a>
+  <a class="product-button" href="/web/exports">选择其他账本或已归档账本</a>
   {% else %}
   <p class="import-export-note">下载完整数据包需要确认当前浏览器身份；现有 CSV 导出仍可使用。</p>
   <a class="product-button" href="/web/auth/local?next={{ ('/web/import' ~ q) | urlencode }}">确认本机浏览器身份后继续</a>

@@ -71,6 +71,7 @@ internal fun SettingsRoute(
             onLedgerSwitched = settingsViewModel::sync,
         ),
         repositories = SettingsRouteRepositories(
+            portableExports = screenFactory.repositories.portableExports,
             ledgerRepository = screenFactory.ledgerRepository,
             expenseRepository = screenFactory.repository,
             outboxRepository = screenFactory.outboxRepository,

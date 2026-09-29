@@ -34,9 +34,11 @@
       <div class="auth-error" role="alert">{{ error_message }}</div>
       {% endif %}
 
-      <form method="post" action="{{ form_action }}">
+      <form method="{{ 'get' if download_mode else 'post' }}" action="{{ form_action }}">
+        {% if not download_mode %}
         {{ csrf_field|safe }}
         <input type="hidden" name="next" value="{{ next_url }}">
+        {% endif %}
         <fieldset class="auth-ledger-list">
           <legend>选择账本</legend>
           {% for ledger in identity.ledgers %}
@@ -45,7 +47,7 @@
             <input type="radio" name="ledger_id" value="{{ ledger.ledger_id }}"{% if ledger.ledger_id == identity.selected_ledger_id %} checked{% endif %}>
             <span class="auth-ledger-copy">
               <strong>{{ ledger.name }}</strong>
-              <span>{{ role_zh }}</span>
+              <span>{{ role_zh }}{% if ledger.archived_at %} · 已归档{% endif %}</span>
             </span>
           </label>
           {% endfor %}
@@ -54,6 +56,8 @@
       </form>
 
       <p class="auth-foot">{{ footnote }}</p>
+      {% if portable_export_url %}<p class="auth-foot"><a href="{{ portable_export_url }}">下载账本数据，包括拥有的已归档账本</a></p>{% endif %}
+      {% if return_url %}<p class="auth-foot"><a href="{{ return_url }}">{{ return_label }}</a></p>{% endif %}
     </section>
   </main>
 </body>

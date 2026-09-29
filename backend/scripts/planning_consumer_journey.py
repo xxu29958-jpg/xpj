@@ -1,7 +1,8 @@
 """A real browser and Android app share one ephemeral PostgreSQL installation.
 
-The fixture creates only its installation identity and initial currency adoption.
-All business commands must come from the actual product consumers.
+The fixture supplies installation identities and initial currency adoption.
+Financial commands come from the actual product consumers. Download qualification
+also prepares a known original and invokes the existing archive command.
 """
 
 from __future__ import annotations
@@ -62,7 +63,8 @@ def _seed(group):
         fixture = bootstrap_installation_owner(db, operation_id="planning-consumer-journey",
             installation_id="planning-consumer-journey", bootstrap_secret=secrets.token_urlsafe(32),
             account_name="联动验证账户", ledger_name={"income-goals": "收入与目标验证账本",
-                "budget-recurring": "预算与固定支出验证账本", "relationships": "往来来源验证账本"}[group], device_name="隔离浏览器")
+                "budget-recurring": "预算与固定支出验证账本", "relationships": "往来来源验证账本",
+                "portable-downloads": "数据出口验证账本"}[group], device_name="隔离浏览器")
         activate_test_currency_authority(db, "CNY")
         db.commit()
         return fixture
@@ -167,6 +169,19 @@ def _journey(page, native: PlanningAndroid, fixture, evidence: Path):
     return result
 
 
+def _run_group(args, page, native, fixture):
+    if args.group == "relationships":
+        from scripts.relationship_journey import RelationshipJourney
+        return RelationshipJourney(page, native, fixture, args.evidence, BASE_URL).run()
+    if args.group == "budget-recurring":
+        from scripts.planning_journey_budget import BudgetJourney
+        return BudgetJourney(page, native, fixture, args.evidence, BASE_URL).run()
+    if args.group == "portable-downloads":
+        from scripts.portable_journey import PortableJourney
+        return PortableJourney(page, native, fixture, args.evidence, BASE_URL).run()
+    return _journey(page, native, fixture, args.evidence)
+
+
 def _browser_run(args, native, fixture):
     from playwright.sync_api import Error as PlaywrightError
     from playwright.sync_api import sync_playwright
@@ -176,14 +191,7 @@ def _browser_run(args, native, fixture):
         page = browser.new_page(viewport={"width": 1280, "height": 960})
         completed = False
         try:
-            if args.group == "relationships":
-                from scripts.relationship_journey import RelationshipJourney
-                result = RelationshipJourney(page, native, fixture, args.evidence, BASE_URL).run()
-            elif args.group == "budget-recurring":
-                from scripts.planning_journey_budget import BudgetJourney
-                result = BudgetJourney(page, native, fixture, args.evidence, BASE_URL).run()
-            else:
-                result = _journey(page, native, fixture, args.evidence)
+            result = _run_group(args, page, native, fixture)
             completed = True
             return result
         finally:
@@ -199,7 +207,8 @@ def _run_consumers(args, native, fixture):
     native.adb("install", "-r", str(args.apk.resolve()))
     native.adb("shell", "pm", "grant", "com.ticketbox", "android.permission.POST_NOTIFICATIONS")
     with (args.evidence / "server.log").open("w", encoding="utf-8") as server_log:
-        server = subprocess.Popen([sys.executable, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1",
+        application = "scripts.portable_journey_transport:app" if args.group == "portable-downloads" else "app.main:app"
+        server = subprocess.Popen([sys.executable, "-m", "uvicorn", application, "--host", "127.0.0.1",
             "--port", str(PORT), "--no-access-log"], stdout=server_log, stderr=subprocess.STDOUT)
         result = None
         try:
@@ -231,7 +240,7 @@ def main() -> int:
     parser.add_argument("--serial", required=True)
     parser.add_argument("--apk", type=Path, required=True)
     parser.add_argument("--evidence", type=Path, required=True)
-    parser.add_argument("--group", choices=("income-goals", "budget-recurring", "relationships"), default="income-goals")
+    parser.add_argument("--group", choices=("income-goals", "budget-recurring", "relationships", "portable-downloads"), default="income-goals")
     args = parser.parse_args()
     if os.environ.get("GITHUB_ACTIONS") != "true":
         raise RuntimeError("Run this sustained PostgreSQL/native journey in the isolated cloud job")

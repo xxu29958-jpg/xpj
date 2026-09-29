@@ -11,9 +11,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
+from app.services.portable_export_access import revalidate_portable_export_context
 from app.services.portable_export_archive import PortableArchive, PortableExportCancelledError, create_portable_archive
 from app.services.portable_export_queries import portable_original_history_query, portable_projections, portable_queries
-from app.services.session_credential_lock import revalidate_session_context
 from app.tenants import AuthContext
 
 
@@ -61,7 +61,7 @@ def create_portable_ledger_export(db: Session, *, auth: AuthContext,
                 isolation_level="REPEATABLE READ", postgresql_readonly=True,
             ) as connection, Session(bind=connection, autoflush=False) as snapshot:
                 snapshot.execute(select(func.set_config("statement_timeout", "30000ms", True)))
-                current = revalidate_session_context(snapshot, auth)
+                current = revalidate_portable_export_context(snapshot, auth)
                 snapshot_at = snapshot.scalar(select(func.transaction_timestamp()))
                 queries = portable_queries(current)
                 sections = chain(((name, _rows(snapshot, query, cancel_requested)) for name, query in queries),
@@ -79,7 +79,7 @@ def create_portable_ledger_export(db: Session, *, auth: AuthContext,
                 abort.callback(archive.close)
             with Session(bind=engine, autoflush=False) as current_read:
                 _raise_if_cancelled(cancel_requested)
-                revalidate_session_context(current_read, auth)
+                revalidate_portable_export_context(current_read, auth)
             abort.pop_all()
             return archive
     except (SQLAlchemyError, OSError) as exc:
