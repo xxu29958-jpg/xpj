@@ -137,10 +137,12 @@ class PortableJourney:
             wait_for(lambda: self.native.has("已写入"), "The interrupted download never began")
             self.native.restart()
             self.native_entry()
+            self.native.reveal_any("上次下载已中断，未完成文件已移除。请重新下载。", toward_start=True)
             self.native.capture("portable-after-process-stop")
             assert not self.native.has("完整数据包已保存。"), "A stopped transfer was reported as complete"
             wait_for(lambda: not self.saved_paths("native-interrupted"),
                 "Restart silently left an incomplete ZIP in the system destination", 15)
+            assert len(self.saved_paths("native-no-active-ledger")) == 1, "Restart cleanup removed a previously completed package"
         finally:
             gate.unlink(missing_ok=True)
 

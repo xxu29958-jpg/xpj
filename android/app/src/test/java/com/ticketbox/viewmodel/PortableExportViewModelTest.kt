@@ -48,9 +48,11 @@ class PortableExportViewModelTest {
         assertFalse(vm.chooseLocation())
         val document = ExportDocument()
         vm.save(document); advanceUntilIdle()
+        vm.state.first { it.stage == PortableExportStage.Idle }
         assertEquals("archive", exports.requests.single().ledgerId)
         assertEquals(4, document.bytes.size())
         assertTrue(document.closed)
+        assertTrue(document.completed)
         assertEquals(0, document.discards)
         assertEquals(UiText.res(R.string.portable_export_saved), vm.state.value.message)
         assertEquals(MessageTone.Success, vm.state.value.tone)
@@ -62,6 +64,7 @@ class PortableExportViewModelTest {
         advanceUntilIdle(); assertTrue(vm.chooseLocation())
         val partial = ExportDocument()
         vm.save(partial); runCurrent()
+        vm.state.first { it.bytesWritten == 2L }
         assertEquals(PortableExportStage.Downloading, vm.state.value.stage)
         vm.cancel(); runCurrent()
         vm.state.first { it.stage == PortableExportStage.Idle }
@@ -72,6 +75,7 @@ class PortableExportViewModelTest {
         assertTrue(vm.chooseLocation())
         val complete = ExportDocument()
         vm.save(complete); advanceUntilIdle()
+        vm.state.first { it.stage == PortableExportStage.Idle }
         assertEquals(0, complete.discards)
         assertEquals(UiText.res(R.string.portable_export_saved), vm.state.value.message)
     }
@@ -97,6 +101,7 @@ class PortableExportViewModelTest {
         advanceUntilIdle(); assertTrue(vm.chooseLocation())
         val document = ExportDocument()
         vm.save(document); runCurrent()
+        vm.state.first { it.bytesWritten == 2L }
         exports.binding.value = exports.binding.value!!.copy(sessionGeneration = "replacement")
         advanceUntilIdle()
         document.discarded.await()
@@ -115,6 +120,18 @@ class PortableExportViewModelTest {
         vm.state.first { it.stage == PortableExportStage.Idle }
         assertEquals(1, document.discards)
         assertEquals(UiText.res(R.string.portable_export_partial), vm.state.value.message)
+        assertEquals(MessageTone.Danger, vm.state.value.tone)
+    }
+
+    @Test fun failingToRecordCompletionCannotLeaveASuccessThatRestartWouldDelete() = runTest(dispatcher) {
+        val vm = model(ExportActions())
+        advanceUntilIdle(); assertTrue(vm.chooseLocation())
+        val document = ExportDocument().apply { canComplete = false }
+        vm.save(document); runCurrent()
+        vm.state.first { it.stage == PortableExportStage.Idle }
+        assertTrue(document.closed)
+        assertEquals(1, document.discards)
+        assertEquals(UiText.res(R.string.portable_export_failed), vm.state.value.message)
         assertEquals(MessageTone.Danger, vm.state.value.tone)
     }
 }
@@ -150,7 +167,17 @@ private class ExportDocument : PortableExportDestination {
     var closed = false
     var discards = 0
     var canDiscard = true
+    var canComplete = true
+    var prepared = false
+    var completed = false
+    override fun prepare() { prepared = true }
+    override fun complete() {
+        check(closed)
+        if (!canComplete) throw IOException("Cannot record completion")
+        completed = true
+    }
     override fun open(): OutputStream {
+        check(prepared)
         opened = true
         return object : OutputStream() {
             override fun write(value: Int) = bytes.write(value)

@@ -11,6 +11,7 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import java.io.OutputStream
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,7 +35,9 @@ data class PortableExportUiState(
 
 /** Only the new document chosen for this request can be discarded after failure. */
 interface PortableExportDestination {
+    fun prepare()
     fun open(): OutputStream
+    fun complete()
     fun discard(): Boolean
 }
 
@@ -108,9 +111,14 @@ class PortableExportViewModel(private val exports: PortableExportActions) : View
             mutable.update { it.copy(stage = PortableExportStage.Downloading) }
             var result: Result<Long>? = null
             try {
+                withContext(Dispatchers.IO) { destination.prepare() }
                 result = exports.download(request, destination::open) { count ->
                     mutable.update { if (it.binding == request.binding) it.copy(bytesWritten = count) else it }
                 }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                result = Result.failure(error)
             } finally {
                 finish(destination, result, cancelled = result == null, binding = request.binding)
             }
@@ -126,7 +134,9 @@ class PortableExportViewModel(private val exports: PortableExportActions) : View
 
     private suspend fun finish(destination: PortableExportDestination, result: Result<Long>?,
         cancelled: Boolean, binding: LogicalSessionBinding?) = withContext(NonCancellable) {
-        val complete = result?.isSuccess == true
+        val complete = result?.isSuccess == true && withContext(Dispatchers.IO) {
+            runCatching { destination.complete() }.isSuccess
+        }
         val discarded = complete || withContext(Dispatchers.IO) {
             try { destination.discard() } catch (_: Exception) { false }
         }

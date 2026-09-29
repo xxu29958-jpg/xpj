@@ -110,6 +110,11 @@ to take an owned archived ledger away without unarchiving it.
   A revoked identity, changed owner, interrupted transfer or failed destination
   must not produce a successful or silently truncated package. Preserve prior
   successfully saved user files and clean only this attempt's temporary output.
+  Android records only the system document URI created for an unfinished save,
+  before requesting the package. Completion removes that record. Reentering the
+  export screen after process restart cleans recorded unfinished documents through
+  retained write grants and reports provider refusal. Completed files stay outside
+  this cleanup.
 
 Exit evidence must cover active read roles, archived current-owner success and
 non-owner refusal, an account with no active ledger, revocation/ownership change

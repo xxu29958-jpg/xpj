@@ -14,4 +14,5 @@
     <string name="portable_export_saved">完整数据包已保存。</string>
     <string name="portable_export_failed">数据包未保存，请重新下载或选择其他位置。</string>
     <string name="portable_export_partial">数据包未保存完整，且无法移除残留文件。请删除本次不完整文件后重新下载。</string>
+    <string name="portable_export_interrupted">上次下载已中断，未完成文件已移除。请重新下载。</string>
 </resources>
