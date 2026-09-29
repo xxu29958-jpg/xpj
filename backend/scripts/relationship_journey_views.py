@@ -18,8 +18,8 @@ def goal_entry(j, *, create=False):
     native.click("还债目标")
     native.reveal_any("跟踪这笔原始往来")
     native.click("跟踪这笔原始往来")
-    native.reveal_any("联动验证账户")
-    native.click("联动验证账户", stable=True)
+    native.reveal_any("家庭成员")
+    native.click("家庭成员", stable=True)
     native.reveal_any("当前约定")
     current = [node.attrib.get("text", "").split("当前约定", 1)[1]
         for node in native.tree().iter("node") if "当前约定" in node.attrib.get("text", "")]

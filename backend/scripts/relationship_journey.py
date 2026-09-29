@@ -82,8 +82,8 @@ class RelationshipJourney:
         self.native.plan_home()
         self.native.click("往来", bottom=True)
         self.native.click("欠我" if returned else "我欠")
-        self.native.reveal_any("联动验证账户")
-        self.native.click("联动验证账户", stable=True)
+        self.native.reveal_any("家庭成员")
+        self.native.click("家庭成员", stable=True)
         self.native.reveal_any("看看账")
 
     def native_confirmation(self):
