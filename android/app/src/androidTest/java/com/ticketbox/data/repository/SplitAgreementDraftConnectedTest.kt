@@ -21,6 +21,7 @@ import androidx.lifecycle.SAVED_STATE_REGISTRY_OWNER_KEY
 import androidx.lifecycle.VIEW_MODEL_STORE_OWNER_KEY
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.MutableCreationExtras
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso.closeSoftKeyboard
@@ -39,6 +40,8 @@ import com.ticketbox.viewmodel.DebtDetailUiState
 import com.ticketbox.viewmodel.MemberProposalUiState
 import com.ticketbox.viewmodel.splitAgreementViewModelFactory
 import java.net.ConnectException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.runBlocking
 import okhttp3.ResponseBody.Companion.toResponseBody
 import retrofit2.HttpException
 import retrofit2.Response
@@ -79,8 +82,7 @@ class SplitAgreementDraftConnectedTest {
     private var owner: IncomeDraftStateOwner? = null
 
     @After fun close() {
-        compose.runOnIdle { owner?.viewModelStore?.clear(); model.value = null }
-        compose.waitForIdle()
+        if (model.value != null) stop()
         fixture.close()
     }
 
@@ -251,7 +253,20 @@ class SplitAgreementDraftConnectedTest {
         }
     }
 
-    private fun stop(): Bundle = compose.runOnIdle {
-        requireNotNull(owner).save().also { owner?.viewModelStore?.clear(); model.value = null }
+    private fun stop(): Bundle {
+        val (saved, completion) = compose.runOnIdle {
+            val currentOwner = requireNotNull(owner)
+            val current = requireNotNull(model.value)
+            val completion = requireNotNull(current.viewModelScope.coroutineContext[Job])
+            val saved = currentOwner.save()
+            currentOwner.viewModelStore.clear()
+            model.value = null
+            saved to completion
+        }
+        // A process restart releases its old readers before opening the same disk database.
+        // ViewModel.clear requests cancellation; wait for its Room work to actually finish.
+        runBlocking { completion.join() }
+        compose.waitForIdle()
+        return saved
     }
 }

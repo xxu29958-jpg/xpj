@@ -5,6 +5,7 @@ import threading
 from email import policy
 from email.parser import BytesParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from itertools import zip_longest
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
@@ -191,7 +192,9 @@ def test_four_planning_entries_retain_original_inputs_and_command_identity_after
     assert not result.get("error"), result
     assert not MISSING and not POSTS, (MISSING, POSTS)
     assert set(HITS) == {"budget", "arrangement", "recurring-create", "recurring-edit"}
-    assert all(row["retained"] for row in result["results"]), result["results"]
+    for row in result["results"]:
+        differences = [(before, after) for before, after in zip_longest(row["before"], row["after"]) if before != after]
+        assert row["retained"], (row["entry"], differences)
 
 
 def test_four_planning_entries_replay_original_body_after_unknown_reply_and_reload(tmp_path: Path):

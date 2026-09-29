@@ -13,15 +13,20 @@
   ];
   const read = f => [...new FormData(f).entries()].filter(([n])=>n!=='csrf_token').map(([n,v])=>
     [n,n==='draft_scope' ? JSON.stringify(Object.entries(JSON.parse(v)).sort(([a],[b])=>a.localeCompare(b))) : v]);
-  const load = async (frame,url) => {
-    const loaded = new Promise(r=>frame.onload=r); frame.src=url; await loaded; await pause(150);
+  const load = async (frame,url,spec) => {
+    const loaded = new Promise(r=>frame.onload=r); frame.src=url; await loaded;
+    for (let attempt=0; attempt<160; attempt++) {
+      const form=frame.contentDocument.querySelector('form[method="post"][action="'+spec.action+'"]');
+      const submit=form?.querySelector('[data-'+spec.kind.split('-')[0]+'-submit]');
+      if (submit && !submit.disabled) return form;
+      await pause(25);
+    }
+    throw Error('actual draft lease unavailable: '+spec.kind);
   };
   for (const spec of specs) {
     const frame = document.createElement('iframe'); document.body.append(frame);
     const url = '/fixture?kind='+spec.kind;
-    await load(frame,url);
-    let f = frame.contentDocument.querySelector('form[method="post"][action="'+spec.action+'"]');
-    if (!f) throw Error('real form not found: '+spec.kind);
+    let f = await load(frame,url,spec);
     const set = (input,value) => {input.value=value; input.dispatchEvent(new frame.contentWindow.Event('input',{bubbles:true}));};
     for (const [n,v] of Object.entries(spec.values)) set(f.elements.namedItem(n),v);
     for (const [n,vs] of Object.entries(spec.repeated || {})) {
@@ -33,9 +38,8 @@
       const input=f.querySelector('[name="'+n+'"]'); input.checked=true;
       input.dispatchEvent(new frame.contentWindow.Event('change',{bubbles:true}));
     }
-    await pause(150); const before=read(f);
-    await load(frame,url);
-    f=frame.contentDocument.querySelector('form[method="post"][action="'+spec.action+'"]');
+    const before=read(f);
+    f=await load(frame,url,spec);
     const after=read(f);
     results.push({entry:spec.kind,before,after,retained:JSON.stringify(before)===JSON.stringify(after)});
     frame.remove();

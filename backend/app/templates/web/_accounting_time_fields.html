@@ -8,7 +8,7 @@
     <option value="date_only" {% if time_form.time_precision == 'date_only' %}selected{% endif %}>只有日期</option>
   </select>
   <label for="{{ time_prefix }}-wall">当地发生时刻（知道时刻时填写）</label>
-  <input id="{{ time_prefix }}-wall" name="{{ time_name }}" type="datetime-local" step="any" value="{{ time_form.wall_time }}">
+  <input id="{{ time_prefix }}-wall" name="{{ time_name }}" type="{{ time_form.wall_input_type | default('datetime-local') }}" step="any" value="{{ time_form.wall_time }}" placeholder="年-月-日 时:分:秒">
   {% if time_name == 'expense_time' %}<span class="meta">选择“日期和时刻”后，{% if correction_mode %}留空可清除已知时刻{% else %}留空表示不修改时刻{% endif %}；只有日期请选“只有日期”。</span>{% endif %}
   <label for="{{ time_prefix }}-date">原始发生日期（只有日期时填写）</label>
   <input id="{{ time_prefix }}-date" name="user_local_date" type="date" value="{{ time_form.user_local_date }}">
