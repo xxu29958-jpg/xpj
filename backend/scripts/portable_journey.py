@@ -169,6 +169,9 @@ class PortableJourney:
             self.native_entry()
             self.native.reveal_any("已归档")
             self.native_download("native-no-active-ledger", archived=True)
+            self.native.reveal_any("当前账本与本机副本")
+            self.native.capture("portable-daily-ledger-feedback")
+            self.native.reveal_any("下载并保存完整数据包", toward_start=True)
             self.interrupted_destinations()
         assert facts() == self.expected, "Taking data away changed the financial facts or their history"
         return {"ledger_id": LEDGER, "financial_facts": facts(), "packages": self.packages,

@@ -118,13 +118,13 @@ fun DataExportScreen(
         title = stringResource(R.string.settings_data_export_page_title),
         subtitle = stringResource(R.string.settings_data_export_page_subtitle),
         onBack = onBack,
-        status = { AppStatusBanner(message = state.message, tone = state.messageTone) },
     ) {
         portableDownload()
         SettingsSection(
             title = stringResource(R.string.settings_data_export_section_refresh_cache),
             icon = Icons.Filled.FileDownload,
         ) {
+            AppStatusBanner(message = state.message, tone = state.messageTone)
             DataExportScopeSection()
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium))
             DataExportActions(
