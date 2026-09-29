@@ -22,6 +22,7 @@ class BudgetRecovery:
         native.fill("1100.00", previous=r"1,?000(?:\.00)?")
         native.fill("600.00", previous=r"500(?:\.00)?")
         native.click("试算，不保存")
+        native.reveal_any("本次试算：尚未保存")
         assert j.facts()["arrangement_revisions"] == 1, "Native trial saved a definition"
         native.connection(j.port, online=False)
         native.click("明确保存本月安排")
