@@ -49,7 +49,8 @@ class PlanningAndroid:
             except ET.ParseError:
                 diagnostic = dump + "\n" + raw
                 if self.pairing_code:
-                    diagnostic = diagnostic.replace(self.pairing_code, "[temporary pairing code removed]")
+                    diagnostic = (diagnostic.replace(self.pairing_code, "[temporary pairing code removed]")
+                        if self.bound else "The unparsed binding hierarchy was withheld")
                 (self.evidence / "android-tree-diagnostic.txt").write_text(diagnostic, encoding="utf-8")
                 return None
         return wait_for(read_tree, "The emulator did not provide a valid UI hierarchy", 45)[0]
@@ -225,7 +226,12 @@ class PlanningAndroid:
     def capture(self, name: str, redact: str | None = None):
         if self.bound or not self.pairing_code:
             (self.evidence / f"android-{name}.png").write_bytes(self.adb("exec-out", "screencap", "-p", binary=True))
-        tree = ET.tostring(self.tree(), encoding="unicode")
+        root = self.tree()
+        if self.pairing_code and not self.bound:
+            for node in root.iter("node"):
+                if node.attrib.get("class") == "android.widget.EditText":
+                    node.attrib["text"] = "[temporary binding input removed]"
+        tree = ET.tostring(root, encoding="unicode")
         secret = redact or self.pairing_code
         if secret:
             tree = tree.replace(secret, "[temporary pairing code removed]")
