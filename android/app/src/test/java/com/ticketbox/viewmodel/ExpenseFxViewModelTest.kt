@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.data.remote.dto.BackgroundTaskDto
 import com.ticketbox.data.repository.toDomain
+import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.PendingPrimaryReviewAction
@@ -19,6 +20,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertSame
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import java.io.IOException
 
@@ -76,6 +78,26 @@ class ExpenseFxViewModelTest {
                 assertEquals(originalItems, vm.uiState.value.expenseItems)
                 assertEquals(originalSplits, vm.uiState.value.expenseSplits)
             }
+            fake.fxTaskResult = Result.success(task("completed"))
+            vm.refreshFx()
+            advanceUntilIdle()
+            fake.fxTaskResult = Result.failure(RepositoryException("读取权限已撤销。", httpStatusCode = 403))
+            // Losing write permission alone does not revoke an existing readable result.
+            vm.retryFx()
+            advanceUntilIdle()
+            assertEquals(task("completed"), vm.uiState.value.fx.task)
+            assertSame(pending, vm.uiState.value.expense)
+            vm.refreshFx()
+            advanceUntilIdle()
+            assertNull(vm.uiState.value.fx.task, "A denied FX read still presents the previous task result")
+            assertSame(pending, vm.uiState.value.expense)
+            assertEquals(originalItems, vm.uiState.value.expenseItems)
+            assertEquals(originalSplits, vm.uiState.value.expenseSplits)
+
+            fake.fxTaskResult = Result.success(task("completed"))
+            vm.refreshFx()
+            advanceUntilIdle()
+            assertEquals(task("completed"), vm.uiState.value.fx.task)
             vm.loadFxReview(preserveDraft = false)
             advanceUntilIdle()
             assertEquals(fresh, vm.uiState.value.expense)

@@ -148,6 +148,13 @@ class ExpenseEditViewModel(
 
     init {
         observeExpenseCommands()
+        viewModelScope.launch {
+            repository.readAccessDenials.collect { denial ->
+                if (denial.binding == fxBinding) _uiState.update {
+                    it.copy(fx = it.fx.copy(task = null, message = denial.failure.toUiText(R.string.expense_fx_read_failed)))
+                }
+            }
+        }
         loadExpense()
     }
 

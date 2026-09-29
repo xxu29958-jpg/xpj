@@ -2,11 +2,32 @@
 
 /* K3: 页头原生上传表单 (multipart, 无 JS 可用); file input 的呈现由
    components.css 的 file-picker primitive 承担。 */
+.inbox-page-header {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+}
+
+.inbox-page-header .product-page-actions {
+    align-items: start;
+    justify-content: space-between;
+}
+
 .inbox-upload-form {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
+    flex: 1 1 26rem;
+    min-width: 0;
+    max-width: 42rem;
     gap: var(--space-3);
+}
+
+.inbox-upload-form > [data-attachment-status] {
+    grid-column: 1 / -1;
+    margin: 0;
+    color: var(--text-muted);
+    font-size: var(--type-caption-size);
+    line-height: var(--type-caption-line);
 }
 
 .inbox-empty {

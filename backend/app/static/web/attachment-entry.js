@@ -207,6 +207,7 @@
           const url = new URL(form.action);
           url.searchParams.set("timezone", Intl.DateTimeFormat().resolvedOptions().timeZone || "");
           form.action = url.href;
+          notice("请选择小票图片。上传后仍需核对确认。");
         }
         controls(record);
         button.disabled = (!record && form.dataset.attachmentAvailable === "false") ||

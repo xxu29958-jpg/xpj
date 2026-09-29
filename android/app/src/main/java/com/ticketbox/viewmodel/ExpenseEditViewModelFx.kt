@@ -37,7 +37,9 @@ private fun ExpenseEditViewModel.requestExpenseFx(retry: Boolean) {
         result.onSuccess { task ->
             _uiState.update { it.copy(fx = ExpenseFxUiState(task = task)) }
         }.onFailure { error ->
-            _uiState.update { it.copy(fx = it.fx.copy(loading = false, message = error.toUiText(R.string.expense_fx_read_failed))) }
+            _uiState.update { it.copy(fx = it.fx.copy(
+                task = it.fx.task.takeUnless { !retry && error.isReadAccessDenied() },
+                loading = false, message = error.toUiText(R.string.expense_fx_read_failed))) }
         }
     }
 }
@@ -98,7 +100,9 @@ private fun ExpenseEditViewModel.publishFxReviewMessage(message: Int) {
 private fun ExpenseEditViewModel.failFxReview(error: Throwable) {
     if (error is CancellationException) throw error
     _uiState.update {
-        it.copy(expenseLoading = false, fx = it.fx.copy(loading = false, message = error.toUiText(R.string.expense_fx_read_failed)))
+        it.copy(expenseLoading = false, fx = it.fx.copy(
+            task = it.fx.task.takeUnless { error.isReadAccessDenied() },
+            loading = false, message = error.toUiText(R.string.expense_fx_read_failed)))
     }
 }
 

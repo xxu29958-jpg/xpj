@@ -64,7 +64,7 @@ def _seed(group):
             installation_id="planning-consumer-journey", bootstrap_secret=secrets.token_urlsafe(32),
             account_name="联动验证账户", ledger_name={"income-goals": "收入与目标验证账本",
                 "budget-recurring": "预算与固定支出验证账本", "relationships": "往来来源验证账本",
-                "portable-downloads": "数据出口验证账本"}[group], device_name="隔离浏览器")
+                "portable-downloads": "数据出口验证账本", "backstage": "后台识别验证账本"}[group], device_name="隔离浏览器")
         activate_test_currency_authority(db, "CNY")
         db.commit()
         return fixture
@@ -170,6 +170,10 @@ def _journey(page, native: PlanningAndroid, fixture, evidence: Path):
 
 
 def _run_group(args, page, native, fixture):
+    if args.group == "backstage":
+        from scripts.backstage_journey import BackstageJourney
+        return BackstageJourney(page, native, fixture, args.evidence, BASE_URL,
+                                args.backstage_advisor, args.restart_backend).run()
     if args.group == "relationships":
         from scripts.relationship_journey import RelationshipJourney
         return RelationshipJourney(page, native, fixture, args.evidence, BASE_URL).run()
@@ -210,6 +214,17 @@ def _run_consumers(args, native, fixture):
         application = "scripts.portable_journey_transport:app" if args.group == "portable-downloads" else "app.main:app"
         server = subprocess.Popen([sys.executable, "-m", "uvicorn", application, "--host", "127.0.0.1",
             "--port", str(PORT), "--no-access-log"], stdout=server_log, stderr=subprocess.STDOUT)
+
+        def restart_backend():
+            nonlocal server
+            # This process belongs to the isolated cloud journey, never the daily installation.
+            server.terminate()
+            server.wait(timeout=20)
+            server = subprocess.Popen([sys.executable, "-m", "uvicorn", application, "--host", "127.0.0.1",
+                "--port", str(PORT), "--no-access-log"], stdout=server_log, stderr=subprocess.STDOUT)
+            wait_for(_ready, "The isolated backend did not restart with its original data and identity")
+
+        args.restart_backend = restart_backend
         result = None
         try:
             wait_for(_ready, "The real backend did not become ready")
@@ -240,7 +255,7 @@ def main() -> int:
     parser.add_argument("--serial", required=True)
     parser.add_argument("--apk", type=Path, required=True)
     parser.add_argument("--evidence", type=Path, required=True)
-    parser.add_argument("--group", choices=("income-goals", "budget-recurring", "relationships", "portable-downloads"), default="income-goals")
+    parser.add_argument("--group", choices=("income-goals", "budget-recurring", "relationships", "portable-downloads", "backstage"), default="income-goals")
     args = parser.parse_args()
     if os.environ.get("GITHUB_ACTIONS") != "true":
         raise RuntimeError("Run this sustained PostgreSQL/native journey in the isolated cloud job")
@@ -257,7 +272,12 @@ def main() -> int:
         with dedicated_test_database_lease(database_url, expected_database=TEST_POSTGRES_CONTRACT.smoke_database,
             reset=True, cluster_identity=os.environ["XPJ_TEST_CLUSTER_IDENTITY"], passfile=os.environ["PGPASSFILE"]):
             fixture = _seed(args.group)
-            _run_consumers(args, native, fixture)
+            if args.group == "backstage":
+                from scripts.backstage_journey_advisor_transport import advisor_wire_fixture
+                with advisor_wire_fixture() as args.backstage_advisor:
+                    _run_consumers(args, native, fixture)
+            else:
+                _run_consumers(args, native, fixture)
     return 0
 
 
