@@ -86,6 +86,7 @@ class BackstageJourney:
                 break
             if "打开账户与设置" in descriptions:
                 self.native.click("打开账户与设置", stable=True)
+                self.native.click("后台任务", stable=True)
             elif "后台任务" in texts:
                 self.native.click("后台任务", stable=True)
             else:
