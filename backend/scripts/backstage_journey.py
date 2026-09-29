@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from scripts.backstage_journey_facts import denied_membership, facts, synthetic_receipt
 from scripts.planning_journey_android import wait_for
 
@@ -223,7 +225,12 @@ class BackstageJourney:
         self.appearances()
         native_upload_and_ocr(self)
         advisor = advisor_consumers(self)
-        fx_consumers(self)
+        try:
+            fx_consumers(self)
+        finally:
+            (self.evidence / "fx-consumer-observation.json").write_text(json.dumps({
+                "facts": self.facts(), "provider_requests": self.advisor.fx_requests,
+            }, ensure_ascii=False, indent=2), encoding="utf-8")
         result = self.facts()
         result["advisor"] = advisor
         result["verified_leg"] = "Real RapidOCR and dated FX; Owner configuration and personal-result navigation; Web/Android image intake; task/source read refusal, recovery and restart; same-key OCR recovery after restart and lost reply; native OCR with auto mode disabled; explicit review preserving raw input/OCC; human confirmation; advisor consent, roles and audit with labelled synthetic upstream"

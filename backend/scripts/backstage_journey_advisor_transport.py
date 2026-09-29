@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.error import URLError
 from urllib.parse import urlsplit
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 
 @dataclass
@@ -16,7 +16,7 @@ class AdvisorWireEvidence:
     inputs: list[dict] = field(default_factory=list)
     fail_next: bool = False
     fx_available: bool = False
-    fx_requests: list[str] = field(default_factory=list)
+    fx_requests: list[dict] = field(default_factory=list)
 
 
 @contextmanager
@@ -54,15 +54,21 @@ def advisor_wire_fixture():
             # A bounded failure switch in front of the real dated quote provider.
             parts = urlsplit(self.path)
             assert parts.path in {"/fx/latest", "/fx/2025-01-12"}
-            state.fx_requests.append(parts.path)
+            record = {"path": parts.path, "available": state.fx_available}
             content, status = b"temporarily unavailable for recovery verification", 503
             if state.fx_available:
                 target = "https://api.frankfurter.dev/v1/" + parts.path.rsplit("/", 1)[1] + "?" + parts.query
+                # Preserve the production provider's explicit client identity;
+                # the upstream rejects urllib's default Python User-Agent.
+                request = Request(target, headers={"User-Agent": self.headers["User-Agent"]})
                 try:
-                    with urlopen(target, timeout=10) as response:
+                    with urlopen(request, timeout=10) as response:
                         content, status = response.read(), response.status
-                except (URLError, OSError):
-                    pass
+                except (URLError, OSError) as error:
+                    record["upstream_error"] = type(error).__name__
+                    record["upstream_status"] = getattr(error, "code", None)
+            record["status"] = status
+            state.fx_requests.append(record)
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(content)))
