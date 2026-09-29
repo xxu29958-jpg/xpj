@@ -9,6 +9,8 @@ concurrent resolution, single transaction).
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -16,6 +18,7 @@ from app.ledger_scope import ledger_scoped_select
 from app.models import Debt, RepaymentDraft
 from app.schemas import RepaymentCreateRequest
 from app.services.currency_binding_service import resolve_write_capability
+from app.services.currency_common import minor_amount_value
 from app.services.debt_service._repayment import record_repayment
 from app.services.time_service import now_utc
 
@@ -45,6 +48,8 @@ def confirm_repayment_draft(
     target_debt_public_id: str,
     expected_row_version: int,
     idempotency_key: str,
+    original_currency: str | None = None,
+    original_amount: Decimal | None = None,
     commit: bool = False,
 ) -> RepaymentDraft:
     """Confirm a pending draft → record one ``Repayment`` on the chosen Debt (§杠杆③).
@@ -71,13 +76,21 @@ def confirm_repayment_draft(
     if target_home is not None and target_home != draft.home_currency_code:
         raise AppError("currency_binding_drift", status_code=409)
 
+    if original_currency is not None or original_amount is not None:
+        money = {"original_currency": original_currency, "original_amount": original_amount}
+    elif draft.amount_cents is not None:
+        # Existing home captures (including Expense bridges) keep their known amount.
+        money = {"amount_cents": draft.amount_cents}
+    else:
+        money = {"original_currency": draft.original_currency_code,
+            "original_amount": Decimal(minor_amount_value(draft.original_amount_minor, draft.original_currency_code))}
     result = record_repayment(
         db,
         tenant_id=tenant_id,
         public_id=target_debt_public_id,
         actor_account_id=actor_account_id,
         payload=RepaymentCreateRequest(
-            amount_cents=draft.amount_cents,
+            **money,
             # The whole point of NLS capture is that it knows WHEN the repayment happened
             # (captured_at = the notification post time). Confirm may be days later, so pass
             # captured_at through as the repayment's paid_at instead of letting

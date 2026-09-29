@@ -88,12 +88,13 @@ def _index_names() -> set[str]:
     return {ix["name"] for ix in inspect(engine).get_indexes("repayment_drafts")}
 
 
-def _assert_full_shape(*, c07: bool, account_scoped: bool) -> None:
+def _assert_full_shape(*, c07: bool, account_scoped: bool, original_money: bool = False) -> None:
     cols = _columns()
-    for name in _NOT_NULL_COLUMNS:
+    nullable = set(_NULLABLE_COLUMNS) | ({"amount_cents", "original_currency_code", "original_amount_minor"} if original_money else set())
+    for name in set(_NOT_NULL_COLUMNS) - nullable:
         assert name in cols, f"{name} missing from repayment_drafts"
         assert cols[name]["nullable"] is False, f"{name} should be NOT NULL"
-    for name in _NULLABLE_COLUMNS:
+    for name in nullable:
         assert name in cols, f"{name} missing from repayment_drafts"
         assert cols[name]["nullable"] is True, f"{name} should be nullable"
     amount_type = str(cols["amount_cents"]["type"]).lower()
@@ -109,6 +110,8 @@ def _assert_full_shape(*, c07: bool, account_scoped: bool) -> None:
         f"missing CHECK(s): {expected_checks - _check_names()}"
     )
     assert absent_check not in _check_names()
+    if original_money:
+        assert {"ck_repayment_drafts_captured_money", "ck_repayment_drafts_original_amount_minor_money_bounds"} <= _check_names()
     assert "uq_repayment_drafts_idem" in _unique_names(), "missing dedup unique constraint"
     # Issue #224 (C3): the dedup unique is ACCOUNT-scoped — assert the column set, not
     # just the name, so a tenant-wide regression fails here.
@@ -150,7 +153,7 @@ def test_add_repayment_drafts_round_trips_on_postgres() -> None:
     _drop_alembic_version()
     try:
         Base.metadata.create_all(bind=engine)
-        _assert_full_shape(c07=True, account_scoped=True)
+        _assert_full_shape(c07=True, account_scoped=True, original_money=True)
 
         _run_alembic(command.stamp, "20260617_0001")
         _run_alembic(command.downgrade, "20260616_0002")
@@ -170,7 +173,7 @@ def test_add_repayment_drafts_round_trips_on_postgres() -> None:
         _run_alembic(command.upgrade, _C07_SOURCE_REVISION)
         _assert_full_shape(c07=False, account_scoped=True)
         _run_alembic(command.upgrade, "head")
-        _assert_full_shape(c07=True, account_scoped=True)
+        _assert_full_shape(c07=True, account_scoped=True, original_money=True)
     finally:
         _reset_empty_database()
         _drop_alembic_version()

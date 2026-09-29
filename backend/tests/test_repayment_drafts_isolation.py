@@ -116,6 +116,8 @@ def test_cross_ledger_draft_is_isolated(client: TestClient, *, identity) -> None
     # (b) ledger B's inbox never returns ledger A's draft.
     listing = client.get("/api/repayment-drafts", headers=other).json()
     assert all(d["public_id"] != draft["public_id"] for d in listing["items"])
+    hidden = client.get(f"/api/repayment-drafts/{draft['public_id']}", headers=other)
+    assert (hidden.status_code, hidden.json()["error"]) == (404, "repayment_draft_not_found")
 
     # (a) ledger B cannot confirm or dismiss ledger A's draft → existence-hidden 404.
     confirm = client.post(
@@ -210,6 +212,9 @@ def test_same_ledger_drafts_are_account_scoped_both_directions(
     assert member_draft["public_id"] not in owner_ids  # owner does NOT see the member's capture
     assert member_draft["public_id"] in member_ids
     assert owner_draft["public_id"] not in member_ids  # member does NOT see the owner's capture
+    assert client.get(f"/api/repayment-drafts/{owner_draft['public_id']}", headers=identity.app_headers).status_code == 200
+    assert client.get(f"/api/repayment-drafts/{owner_draft['public_id']}", headers=member).status_code == 404
+    assert client.get(f"/api/repayment-drafts/{member_draft['public_id']}", headers=identity.app_headers).status_code == 404
 
 
 def test_same_ledger_other_member_cannot_confirm_my_draft(

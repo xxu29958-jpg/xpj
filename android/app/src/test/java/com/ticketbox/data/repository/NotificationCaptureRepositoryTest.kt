@@ -73,7 +73,8 @@ class NotificationCaptureRepositoryTest {
         assertEquals(originals, f.dao.rows.values.associate { it.id to (it.payload to it.idempotencyKey) })
         assertEquals(2, f.dao.rows.values.count { it.status == "done" && it.receiptJson != null })
         assertEquals(listOf("expense:pending", "repayment:pending"), f.published)
-        assertEquals(2680L, f.api.repaymentRequests.single().amountCents)
+        assertEquals("26.80", f.api.repaymentRequests.single().originalAmount)
+        assertEquals("CNY", f.api.repaymentRequests.single().originalCurrency)
         assertEquals("CNY", f.api.expenseRequests.single().originalCurrency)
         assertEquals("26.80", f.api.expenseRequests.single().originalAmount)
     }
@@ -181,7 +182,8 @@ private class CaptureResponseProbe : ApiService by FakeApiService(mutableListOf(
         accepted += "repayment:${request.notificationKey}"
         repaymentRequests += request
         if (loseReply) throw IOException("reply lost after commit")
-        return RepaymentDraftDto("draft-original", request.source, request.amountCents, "CNY", request.merchantLabel,
+        val capturedMinor = requireNotNull(request.originalAmount).toBigDecimal().movePointRight(2).longValueExact()
+        return RepaymentDraftDto("draft-original", request.source, capturedMinor, "CNY", request.merchantLabel,
             requireNotNull(request.capturedAt), "pending", createdAt = requireNotNull(request.capturedAt))
     }
 

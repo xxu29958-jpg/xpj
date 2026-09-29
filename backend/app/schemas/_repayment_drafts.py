@@ -7,8 +7,8 @@ against a chosen open external/manual Debt (commits one ``Repayment`` — fold-c
 so the confirm request carries ``expected_row_version``, the §2.1 stale-intent fence +
 §3.6 fingerprint) or DISMISSES it.
 
-CNY notifications carry the amount in home-currency minor units already, so there is no
-[[0027]] FX freeze here (unlike ``RepaymentCreateRequest`` / ``DebtCreateRequest``).
+Capture preserves original money. Human confirmation delegates FX freezing to
+the existing repayment fact service using the captured payment time.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
-from app.schemas._money import PositiveMoneyMinor
+from app.schemas._money import PositiveCanonicalDecimalInput, PositiveMoneyMinor
 from app.services.time_service import to_iso
 
 __all__ = [
@@ -33,12 +33,9 @@ class RepaymentDraftCreateRequest(BaseModel):
     """Post one NLS-captured repayment as a pending review draft (ADR-0049 §杠杆③).
 
     ``source`` is the capturing channel (alipay / jd / meituan / wechat / bank_sms /
-    bank_app / other — validated server-side). ``amount_cents`` is home-currency minor
-    units — the capture is home-currency ONLY (CNY notifications carry no FX), so the
-    draft's home currency is set SERVER-SIDE from the configured home currency, NOT taken
-    as a client input (a field whose only legal value is the constant home currency would
-    fake multi-currency support it doesn't have; a real foreign-currency capture would add
-    ``original_currency`` + ``original_amount`` — the record_repayment shape — instead).
+    bank_app / other — validated server-side). ``original_currency`` and
+    ``original_amount`` carry captured money. Legacy ``amount_cents`` means CNY
+    minor units, regardless of installation currency. The two forms are exclusive.
     ``notification_key`` is the per-post identity hash
     (SHA-256(``sbn.key`` | ``postTime``), 64 hex chars; absent → content+window dedup
     only) — the PRIMARY dedup axis so a re-posted notification does not twin the draft.
@@ -47,7 +44,10 @@ class RepaymentDraftCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     source: str = Field(min_length=1, max_length=32)
-    amount_cents: PositiveMoneyMinor
+    # Legacy notification bodies explicitly denote CNY minor units.
+    amount_cents: PositiveMoneyMinor | None = None
+    original_currency: str | None = Field(default=None, min_length=3, max_length=3)
+    original_amount: PositiveCanonicalDecimalInput | None = None
     merchant_label: str | None = Field(default=None, max_length=255)
     captured_at: datetime | None = None
     notification_key: str | None = Field(default=None, max_length=512)
@@ -66,6 +66,8 @@ class RepaymentDraftConfirmRequest(BaseModel):
 
     target_debt_public_id: str = Field(min_length=1, max_length=36)
     expected_row_version: int
+    original_currency: str | None = Field(default=None, min_length=3, max_length=3)
+    original_amount: PositiveCanonicalDecimalInput | None = None
 
 
 class RepaymentDraftDismissRequest(BaseModel):
@@ -82,8 +84,10 @@ class RepaymentDraftDismissRequest(BaseModel):
 class RepaymentDraftResponse(BaseModel):
     public_id: str
     source: str
-    amount_cents: PositiveMoneyMinor
+    amount_cents: PositiveMoneyMinor | None
     home_currency_code: str
+    original_currency_code: str
+    original_amount_minor: PositiveMoneyMinor
     merchant_label: str | None = None
     captured_at: datetime
     status: str

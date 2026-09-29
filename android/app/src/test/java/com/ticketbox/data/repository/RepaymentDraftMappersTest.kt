@@ -72,7 +72,9 @@ class RepaymentDraftMappersTest {
         ).toCreateRequest(notificationKey = "key-1")
 
         assertEquals("jd", request.source)
-        assertEquals(120_000L, request.amountCents)
+        assertNull(request.amountCents)
+        assertEquals("CNY", request.originalCurrency)
+        assertEquals("1200.00", request.originalAmount)
         // The repository trims the label before the request leaves the client.
         assertEquals("白条", request.merchantLabel)
         assertEquals("2026-06-17T08:00:00Z", request.capturedAt)

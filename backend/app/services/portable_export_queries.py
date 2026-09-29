@@ -169,7 +169,8 @@ def _ledger_relationships(auth: AuthContext) -> tuple[tuple[str, Select], ...]:
         ("debt_goal_links", _record(m.DebtGoalLink, "id goal_id goal_version debt_id created_at",
             m.DebtGoalLink.goal_id.in_(select(m.Goal.id).where(m.Goal.tenant_id == auth.ledger_id)))),
         ("repayment_drafts", _record(m.RepaymentDraft, "id public_id tenant_id created_by_account_id source "
-            "amount_cents home_currency_code merchant_label captured_at draft_idempotency_key status "
+            "amount_cents home_currency_code original_currency_code original_amount_minor "
+            "merchant_label captured_at draft_idempotency_key status "
             "committed_debt_public_id committed_repayment_public_id resolved_at resolved_by_account_id created_at",
             _owned_drafts(auth))),
     )

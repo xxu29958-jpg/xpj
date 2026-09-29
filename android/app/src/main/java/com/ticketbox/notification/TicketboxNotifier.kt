@@ -13,6 +13,7 @@ import com.ticketbox.R
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.domain.model.CurrencyDisplay
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.RepaymentDraft
 import com.ticketbox.notification.backup.BackupStaleDecision
@@ -32,10 +33,10 @@ import com.ticketbox.ui.components.formatMinorAmount
 enum class DraftNotificationDecision { NONE, DRAFT, LARGE }
 
 /**
- * 大额提醒阈值：50_000 分 = ¥500，本位币（人民币）最小单位。
+ * 大额提醒阈值：50_000 人民币分 = ¥500。
  *
- * 比较输入是后端汇率换算后的本位币金额（[Expense.homeAmountCents]），
- * 外币票天然按折算后的人民币金额参与比较，无需另设外币阈值。
+ * CNY 原始支付金额直接参与比较；其它原币只在本位币为 CNY 且金额已知时参与。
+ * 不能把非 CNY 本位币的最小单位拿来与人民币阈值比较。
  * 改阈值时同步改 strings_notifications.xml 里写明「¥500」的大额副标题文案。
  */
 const val LARGE_AMOUNT_THRESHOLD_CENTS = 50_000L
@@ -109,17 +110,22 @@ fun draftNotificationContentSpec(
     merchant: String,
     homeAmount: String,
     originalAmount: String?,
+    homePending: Boolean = false,
 ): NotificationContentSpec {
     require(decision != DraftNotificationDecision.NONE) {
         "draftNotificationContentSpec 不接受 NONE：NONE 应在上游短路，不出通知。"
     }
     val isLarge = decision == DraftNotificationDecision.LARGE
-    val bodyRes = if (originalAmount != null) {
+    val bodyRes = if (homePending) {
+        R.string.notification_draft_created_body_pending_fx
+    } else if (originalAmount != null) {
         R.string.notification_draft_created_body_with_original
     } else {
         R.string.notification_draft_created_body
     }
-    val bodyArgs = if (originalAmount != null) {
+    val bodyArgs = if (homePending) {
+        listOf(merchant, originalAmount ?: homeAmount)
+    } else if (originalAmount != null) {
         listOf(merchant, homeAmount, originalAmount)
     } else {
         listOf(merchant, homeAmount)
@@ -128,7 +134,7 @@ fun draftNotificationContentSpec(
         channelId = if (isLarge) TicketboxNotifier.CHANNEL_ALERTS else TicketboxNotifier.CHANNEL_DRAFTS,
         titleRes = if (isLarge) R.string.notification_large_amount_title else R.string.notification_draft_created_title,
         // 大额标题「这笔有点大：%1$s %2$s」带商家+金额；草稿标题无 arg。
-        titleArgs = if (isLarge) listOf(merchant, homeAmount) else emptyList(),
+        titleArgs = if (isLarge) listOf(merchant, if (homePending) originalAmount ?: homeAmount else homeAmount) else emptyList(),
         bodyRes = bodyRes,
         bodyArgs = bodyArgs,
         publicSummaryRes = R.string.notification_public_draft_summary,
@@ -212,7 +218,11 @@ class TicketboxNotifier(
         val decision = decideDraftNotification(
             pendingEnabled = preferences.pendingDraftReminders,
             largeEnabled = preferences.largeAmountAlerts,
-            amountCents = expense.homeAmountCents ?: expense.amountCents,
+            amountCents = when {
+                expense.originalCurrencyCode == CurrencyCode.CNY && expense.originalAmountMinor != null -> expense.originalAmountMinor
+                expense.homeCurrency == CurrencyCode.CNY -> expense.homeAmountCents ?: expense.amountCents
+                else -> null
+            },
             notificationsAllowed = NotificationManagerCompat.from(appContext).areNotificationsEnabled(),
         )
         if (decision == DraftNotificationDecision.NONE) return
@@ -221,6 +231,7 @@ class TicketboxNotifier(
             merchant = merchantOrFallback(expense),
             homeAmount = formatAmount(expense.homeAmountCents ?: expense.amountCents, expense.homeCurrency),
             originalAmount = originalAmountOrNull(expense),
+            homePending = expense.homeAmountCents == null && expense.amountCents == null,
         )
         publish(spec, boundReminderKey(binding, "expense:${binding.ledgerId}:${expense.publicId}"),
             NotificationTask(binding, NotificationDestination.Expense(expense.id)))
@@ -228,7 +239,7 @@ class TicketboxNotifier(
 
     fun onRepaymentDraftCreated(draft: RepaymentDraft, binding: LogicalSessionBinding) {
         if (!settingsStore.notificationPreferences().pendingDraftReminders || !draft.isPending) return
-        val amount = formatDisplayAmount(draft.amountCents, CurrencyDisplay.forRecord(draft.homeCurrencyCode))
+        val amount = formatDisplayAmount(draft.originalAmountMinor, CurrencyDisplay.forRecord(draft.originalCurrencyCode))
         val spec = NotificationContentSpec(CHANNEL_REPAYMENTS, R.string.notification_repayment_title, emptyList(),
             R.string.notification_repayment_body, listOf(amount), R.string.notification_public_repayment_summary,
             R.string.notification_action_review)

@@ -11,8 +11,11 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.NotificationRuntimeGraph
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.repository.ExpenseCorrectionConnectedFixture
+import com.ticketbox.data.repository.toDomain
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.NotificationPreferences
 import com.ticketbox.notification.TicketboxNotifier
+import com.ticketbox.notification.boundReminderKey
 import com.ticketbox.notification.budget.BudgetOverspendDispatchOutcome
 import com.ticketbox.notification.budget.BudgetOverspendDecision
 import kotlinx.coroutines.delay
@@ -21,6 +24,7 @@ import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -30,6 +34,42 @@ class NotificationTaskIntentConnectedTest {
     private val fixture = ExpenseCorrectionConnectedFixture(context)
 
     @After fun close() = fixture.close()
+
+    @Test fun largeOriginalCnyCaptureStillExplainsPendingHomeMoney() = runBlocking {
+        fixture.reopen()
+        val runtime = NotificationRuntimeGraph(fixture.notificationDependencies.copy(settingsStore =
+            object : TicketboxSettingsStore by fixture.settingsStore {
+                override fun notificationPreferences() = NotificationPreferences(largeAmountAlerts = true)
+            }))
+        val binding = requireNotNull(fixture.notificationDependencies.ledgerCalendarRepository.currentBinding())
+        val capture = fixture.network.current.toDomain().copy(status = "pending", amountCents = null,
+            homeAmountCents = null, homeCurrency = CurrencyCode.USD, homeCurrencyCode = "USD",
+            originalCurrency = CurrencyCode.CNY, originalCurrencyCode = CurrencyCode.CNY,
+            originalCurrencyCodeRaw = "CNY", originalAmountMinor = 60_000, fxStatus = "pending")
+        val manager = context.getSystemService(NotificationManager::class.java)
+        val tag = boundReminderKey(binding, "expense:${binding.ledgerId}:${capture.publicId}")
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                InstrumentationRegistry.getInstrumentation().uiAutomation.grantRuntimePermission(
+                    context.packageName, Manifest.permission.POST_NOTIFICATIONS)
+            }
+            runtime.notifier.onDraftCreated(capture, binding)
+            val posted = withTimeout(5_000) {
+                var notification = manager.activeNotifications.singleOrNull { it.tag == tag }
+                while (notification == null) {
+                    delay(50)
+                    notification = manager.activeNotifications.singleOrNull { it.tag == tag }
+                }
+                notification.notification
+            }
+            assertEquals(TicketboxNotifier.CHANNEL_ALERTS, posted.channelId)
+            val body = posted.extras.getCharSequence(Notification.EXTRA_TEXT).toString()
+            assertTrue(body, body.contains("¥600.00") && body.contains("本位币金额待确认"))
+            assertTrue(posted.extras.getCharSequence(Notification.EXTRA_TITLE).toString().contains("¥600.00"))
+        } finally {
+            manager.cancel(tag, TicketboxNotifier.DRAFT_NOTIFICATION_ID)
+        }
+    }
 
     @Test fun differentBudgetTasksKeepSeparateSystemOpenActions() = runBlocking {
         fixture.reopen()

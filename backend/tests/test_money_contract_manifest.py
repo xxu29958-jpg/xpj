@@ -154,7 +154,9 @@ def test_manifest_sign_semantics() -> None:
 
 
 def test_current_money_columns_have_explicit_frozen_or_projection_contracts() -> None:
-    contract_keys = {(column.table, column.column) for column in MONEY_COLUMNS_V1}
+    from app.money_contract import MONEY_COLUMNS_CURRENT
+
+    contract_keys = {(column.table, column.column) for column in MONEY_COLUMNS_CURRENT}
     contract_tables = {table for table, _column in contract_keys}
     metadata_keys = {
         (table.name, column.name)
@@ -169,7 +171,9 @@ def test_current_money_columns_have_explicit_frozen_or_projection_contracts() ->
 
 
 def test_orm_shape_matches_frozen_c07_manifest() -> None:
-    for column_contract in MONEY_COLUMNS_V1:
+    from app.money_contract import MONEY_COLUMNS_CURRENT
+
+    for column_contract in MONEY_COLUMNS_CURRENT:
         table = Base.metadata.tables[column_contract.table]
         column = table.columns[column_contract.column]
         assert isinstance(column.type, BigInteger)

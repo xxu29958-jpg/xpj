@@ -171,7 +171,7 @@ def test_source_server_default_blocks_before_rewrite() -> None:
 
 def test_target_server_default_is_not_accepted_as_completed_shape() -> None:
     reset_schema()
-    run_alembic(command.upgrade, "head")
+    run_alembic(command.upgrade, HEAD_REVISION)
     with engine.begin() as connection:
         connection.execute(
             text(
@@ -209,7 +209,7 @@ def test_target_non_base_storage_semantics_are_refused(
     storage_kind: str,
 ) -> None:
     reset_schema()
-    run_alembic(command.upgrade, "head")
+    run_alembic(command.upgrade, HEAD_REVISION)
     with engine.begin() as connection:
         _mutate_money_storage(connection, storage_kind)
 
@@ -226,7 +226,7 @@ def test_target_non_base_storage_semantics_are_refused(
 )
 def test_same_name_wrong_or_unvalidated_check_is_refused(mode: str) -> None:
     reset_schema()
-    run_alembic(command.upgrade, "head")
+    run_alembic(command.upgrade, HEAD_REVISION)
     name = "ck_expenses_amount_cents_money_bounds"
     with engine.begin() as connection:
         connection.execute(text(f"ALTER TABLE expenses DROP CONSTRAINT {name}"))
@@ -243,7 +243,7 @@ def test_same_name_wrong_or_unvalidated_check_is_refused(mode: str) -> None:
 
 def test_all_int8_rerun_adds_only_missing_permanent_check() -> None:
     reset_schema()
-    run_alembic(command.upgrade, "head")
+    run_alembic(command.upgrade, HEAD_REVISION)
     before = {table: relfilenode(table) for table in {column.table for column in MONEY_COLUMNS_V1}}
     name = "ck_expenses_amount_cents_money_bounds"
     with engine.begin() as connection:

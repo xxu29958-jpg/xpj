@@ -76,6 +76,8 @@ def confirm_repayment_draft_idempotently(
         target_debt_public_id=payload.target_debt_public_id,
         expected_row_version=payload.expected_row_version,
         idempotency_key=idempotency_key or "",
+        original_currency=payload.original_currency,
+        original_amount=payload.original_amount,
         commit=False,
     )
     mark_idempotency_succeeded(

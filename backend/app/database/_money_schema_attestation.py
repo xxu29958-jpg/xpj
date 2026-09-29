@@ -9,8 +9,7 @@ from sqlalchemy import inspect, text
 from sqlalchemy.engine import Connection
 
 from app.money_contract import (
-    MONEY_COLUMNS_V1,
-    MONEY_FINAL_CHECKS_V1,
+    MONEY_COLUMNS_CURRENT,
     MONEY_REMOVED_LEGACY_CHECKS_V1,
 )
 
@@ -203,7 +202,7 @@ def read_money_schema_shape(connection: Connection) -> dict[str, object]:
     inspector = inspect(connection)
     columns = [
         _column_shape(connection, inspector, contract)
-        for contract in MONEY_COLUMNS_V1
+        for contract in MONEY_COLUMNS_CURRENT
     ]
     checks = [
         _check_shape(
@@ -212,7 +211,7 @@ def read_money_schema_shape(connection: Connection) -> dict[str, object]:
             name=check.name,
             predicate=check.predicate,
         )
-        for contract in MONEY_COLUMNS_V1
+        for contract in MONEY_COLUMNS_CURRENT
         for check in contract.checks
     ]
     absent_checks = [
@@ -224,8 +223,8 @@ def read_money_schema_shape(connection: Connection) -> dict[str, object]:
         for check in MONEY_REMOVED_LEGACY_CHECKS_V1
     ]
     if (
-        len(columns) != len(MONEY_COLUMNS_V1)
-        or len(checks) != len(MONEY_FINAL_CHECKS_V1)
+        len(columns) != len(MONEY_COLUMNS_CURRENT)
+        or len(checks) != sum(len(contract.checks) for contract in MONEY_COLUMNS_CURRENT)
         or len(absent_checks) != len(MONEY_REMOVED_LEGACY_CHECKS_V1)
     ):
         raise MoneySchemaAttestationError("money schema manifest cardinality drifted")

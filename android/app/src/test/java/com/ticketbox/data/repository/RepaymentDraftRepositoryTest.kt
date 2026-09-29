@@ -173,7 +173,7 @@ private class RepaymentDraftApiFactory(private val handler: RepaymentDraftApiHan
 
 private data class CreateDraftCall(
     val source: String,
-    val amountCents: Long,
+    val amountCents: Long?,
     val merchantLabel: String?,
     val capturedAt: String?,
     val notificationKey: String?,

@@ -271,7 +271,7 @@ private fun resolveSuggestions(
     val byPublicId = repayable.associateBy { it.publicId }
     return drafts.mapNotNull { draft ->
         val debt = draft.suggestedDebtPublicId?.let(byPublicId::get) ?: return@mapNotNull null
-        if (debt.remainingAmountCents < draft.amountCents) return@mapNotNull null
+        if (draft.amountCents == null || debt.remainingAmountCents < draft.amountCents) return@mapNotNull null
         draft.publicId to debt
     }.toMap()
 }

@@ -114,7 +114,11 @@ def _audit_row_view(
         "public_id": row.public_id,
         "source_label": REPAYMENT_DRAFT_SOURCE_LABELS.get(row.source, row.source),
         "merchant": (row.merchant_label or "").strip() or None,
-        "amount_label": _home_amount_label(row.amount_cents, row.home_currency_code),
+        "amount_label": _home_amount_label(
+            row.original_amount_minor if row.original_amount_minor is not None else row.amount_cents,
+            row.original_currency_code or row.home_currency_code),
+        "conversion_pending": row.status == "pending" and row.amount_cents is None,
+        "home_currency_code": row.home_currency_code,
         "captured_label": _day_label(row.captured_at),
         "status_label": _STATUS_LABELS.get(row.status, _STATUS_LABELS["pending"]),
         "status_tone": _STATUS_TONE.get(row.status, ""),
