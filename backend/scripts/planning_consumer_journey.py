@@ -64,7 +64,7 @@ def _seed(group):
             installation_id="planning-consumer-journey", bootstrap_secret=secrets.token_urlsafe(32),
             account_name="联动验证账户", ledger_name={"income-goals": "收入与目标验证账本",
                 "budget-recurring": "预算与固定支出验证账本", "relationships": "往来来源验证账本",
-                "portable-downloads": "数据出口验证账本"}[group], device_name="隔离浏览器")
+                "portable-downloads": "数据出口验证账本", "backstage": "后台识别验证账本"}[group], device_name="隔离浏览器")
         activate_test_currency_authority(db, "CNY")
         db.commit()
         return fixture
@@ -170,6 +170,9 @@ def _journey(page, native: PlanningAndroid, fixture, evidence: Path):
 
 
 def _run_group(args, page, native, fixture):
+    if args.group == "backstage":
+        from scripts.backstage_journey import BackstageJourney
+        return BackstageJourney(page, native, fixture, args.evidence, BASE_URL).run()
     if args.group == "relationships":
         from scripts.relationship_journey import RelationshipJourney
         return RelationshipJourney(page, native, fixture, args.evidence, BASE_URL).run()
@@ -240,7 +243,7 @@ def main() -> int:
     parser.add_argument("--serial", required=True)
     parser.add_argument("--apk", type=Path, required=True)
     parser.add_argument("--evidence", type=Path, required=True)
-    parser.add_argument("--group", choices=("income-goals", "budget-recurring", "relationships", "portable-downloads"), default="income-goals")
+    parser.add_argument("--group", choices=("income-goals", "budget-recurring", "relationships", "portable-downloads", "backstage"), default="income-goals")
     args = parser.parse_args()
     if os.environ.get("GITHUB_ACTIONS") != "true":
         raise RuntimeError("Run this sustained PostgreSQL/native journey in the isolated cloud job")

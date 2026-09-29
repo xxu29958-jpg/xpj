@@ -8,7 +8,7 @@ on:
       group:
         description: Actual consumer group to exercise
         type: choice
-        options: [budget-recurring, income-goals, relationships, portable-downloads]
+        options: [budget-recurring, income-goals, relationships, portable-downloads, backstage]
         default: budget-recurring
   pull_request:
     branches: [main]
@@ -90,6 +90,12 @@ jobs:
           python -m venv .ci-venv
           ./.ci-venv/bin/python -m pip install -r requirements-dev.txt playwright==1.58.0
           ./.ci-venv/bin/python -m playwright install --with-deps chromium
+      - name: Install the actual OCR provider for the Backstage journey
+        if: ${{ env.TICKETBOX_JOURNEY_GROUP == 'backstage' }}
+        working-directory: backend
+        run: |
+          ./.ci-venv/bin/python -m pip install -r requirements-ocr.txt
+          sudo apt-get install -y fonts-noto-cjk
       - name: Prepare the existing sealed smoke database
         working-directory: backend
         env:
