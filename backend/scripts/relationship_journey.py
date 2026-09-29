@@ -96,6 +96,8 @@ class RelationshipJourney:
             self.native.tap(checkboxes[0])
 
     def native_accept(self, expected_share):
+        from scripts.relationship_journey_views import native_current_share
+
         self.native.restart()
         self.open_native()
         self.native.reveal_any("重新核对约定")
@@ -103,6 +105,7 @@ class RelationshipJourney:
         self.native_confirmation()
         self.native.click("接受新约定")
         self.expect("agreed_share", expected_share)
+        native_current_share(self.native, f"{expected_share / 100:.2f}")
         self.native.capture("accepted-agreement")
 
     def partial_payment_and_refund(self):

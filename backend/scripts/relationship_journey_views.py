@@ -3,6 +3,19 @@
 import json
 from contextlib import closing
 
+from scripts.planning_journey_android import wait_for
+
+
+def native_current_share(native, expected):
+    native.reveal_any("当前约定")
+
+    def current_matches():
+        current = [node.attrib.get("text", "").split("当前约定", 1)[1]
+            for node in native.tree().iter("node") if "当前约定" in node.attrib.get("text", "")]
+        return any(value.strip() == f"¥{expected}" for value in current)
+
+    wait_for(current_matches, f"The actual native detail did not read the current agreement {expected}")
+
 
 def goal_entry(j, *, create=False):
     if create:
@@ -20,11 +33,7 @@ def goal_entry(j, *, create=False):
     native.click("跟踪这笔原始往来")
     native.reveal_any("家庭成员")
     native.click("家庭成员", stable=True)
-    native.reveal_any("当前约定")
-    current = [node.attrib.get("text", "").split("当前约定", 1)[1]
-        for node in native.tree().iter("node") if "当前约定" in node.attrib.get("text", "")]
-    expected = "40.00" if create else "14.00"
-    assert any(expected in value for value in current), "The linked goal detail did not read the current agreement"
+    native_current_share(native, "40.00" if create else "14.00")
     native.capture("relationship-goal-linked-" + ("initial" if create else "after-agreements"))
 
 
