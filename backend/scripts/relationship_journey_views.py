@@ -7,7 +7,9 @@ from scripts.planning_journey_android import wait_for
 
 
 def native_current_share(native, expected):
-    native.reveal_any("当前约定")
+    # The agreement is the first detail item; its async insertion can leave
+    # the viewport anchored to a later item that was already on screen.
+    native.reveal_any("当前约定", toward_start=True)
 
     def current_matches():
         current = [node.attrib.get("text", "").split("当前约定", 1)[1]
@@ -106,7 +108,7 @@ def appearances(j):
     native.click("玄夜")
     for returned in (False, True):
         j.open_native(returned=returned)
-        native.reveal_any("当前约定")
+        native_current_share(native, "14.00")
         native.capture("relationship-" + ("return" if returned else "original") + "-midnight")
 
 
@@ -121,7 +123,7 @@ def native_read_recovery(j):
             native.reveal_any("拆账约定与结算")
             if offline:
                 native.reveal_any("离线保存")
-            native.reveal_any("当前约定")
+            native_current_share(native, "14.00")
             native.capture(f"relationship-{'return' if returned else 'original'}-{'offline' if offline else 'fresh'}-facts")
             native.reveal_any("往来历史")
             native.reveal_any("提出拆账新约定", "新约定提议已处理", "达成拆账新约定")
