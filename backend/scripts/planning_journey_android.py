@@ -144,7 +144,23 @@ class PlanningAndroid:
             fields = [node for node in nodes if node.attrib.get("class") == "android.widget.EditText"]
             if len(fields) == 1 and any(node.attrib.get("text") == label for node in nodes):
                 candidates.append((len(nodes), fields))
-        return min(candidates, key=lambda item: item[0])[1] if candidates else []
+        return (min(candidates, key=lambda item: item[0])[1] if candidates
+                else PlanningAndroid.adjacent_labeled_fields(root, label))
+
+    @staticmethod
+    def adjacent_labeled_fields(root, label):
+        # Compose can expose a form's labels and inputs as siblings, without field containers.
+        matches = []
+        for parent in root.iter("node"):
+            children = list(parent)
+            for index, node in enumerate(children):
+                if node.attrib.get("text") != label:
+                    continue
+                field = next((child for child in children[index + 1:]
+                              if child.attrib.get("class") == "android.widget.EditText"), None)
+                if field is not None:
+                    matches.append(field)
+        return matches
 
     def reveal_any(self, *texts: str, toward_start: bool = False):
         for _ in range(8):
