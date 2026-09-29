@@ -105,8 +105,17 @@ class PlanningAndroid:
         if len(fields) != 1:
             raise AssertionError("The native input cannot be identified from its actual value")
         self.tap(fields[0])
+        def focused_value():
+            inputs = [node for node in self.tree().iter("node") if
+                node.attrib.get("class") == "android.widget.EditText" and node.attrib.get("focused") == "true"]
+            return inputs[0].attrib.get("text", "") if len(inputs) == 1 else None
+        wait_for(lambda: focused_value() is not None, "The actual native field did not receive focus")
         self.adb("shell", "input", "keycombination", "113", "29")
-        self.adb("shell", "input", "text", value)
+        self.adb("shell", "input", "keyevent", "67")
+        wait_for(lambda: focused_value() == "", "The selected native input was not cleared")
+        for end, character in enumerate(value, start=1):
+            self.adb("shell", "input", "text", character)
+            wait_for(lambda end=end: focused_value() == value[:end], "The native input did not retain the typed text")
         self.adb("shell", "input", "keyevent", "4")
 
     def click_counted_tab(self, label: str):
