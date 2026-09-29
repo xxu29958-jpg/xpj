@@ -1,6 +1,7 @@
 package com.ticketbox.notification.budget
 
 import com.ticketbox.domain.model.BudgetMonthly
+import com.ticketbox.notification.boundReminderKey
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -19,7 +20,7 @@ fun interface BudgetOverspendSource {
  * [RecurringReminderRuntime][com.ticketbox.notification.recurring.RecurringReminderRuntime]）。
  *
  * @property budgetOverspendAlertsEnabled 「预算超支提醒」开关现读（关 → 不拉预算、不发、不 markSent）。
- * @property activeLedgerId 当前 active ledger（拉取前后各验一次，账本切换竞态时丢弃）。
+ * @property activeBinding 原完整身份（含账本）；拉取前后核对，切换后的结果不得发布。
  * @property currentMonth 从当前账本规则捕获检测月 `yyyy-MM`；同次检测的查询、节流与提醒键共用。
  * @property monotonicNowMillis 单调毫秒时钟（throttle 用，生产传 `SystemClock.elapsedRealtime`，
  *   不用墙钟避免改时间穿越 throttle）。
@@ -28,11 +29,10 @@ fun interface BudgetOverspendSource {
  */
 class BudgetOverspendRuntime(
     val budgetOverspendAlertsEnabled: () -> Boolean,
-    val activeLedgerId: () -> String?,
     val currentMonth: suspend () -> String,
     val monotonicNowMillis: () -> Long,
     val logWarning: (String, Throwable?) -> Unit = { _, _ -> },
-    val activeBinding: () -> com.ticketbox.data.repository.LogicalSessionBinding? = { null },
+    val activeBinding: () -> com.ticketbox.data.repository.LogicalSessionBinding?,
 )
 
 /**
@@ -58,7 +58,7 @@ class BudgetOverspendChecker(
     private val runtime: BudgetOverspendRuntime,
     private val scope: CoroutineScope,
 ) {
-    /** key = `ledgerId:month` → 上次真正拉预算的单调毫秒。进程内即可（重启重查一次无害）。 */
+    /** 原主体和预算月份 → 上次真正拉预算的单调毫秒；重启后重新读取。 */
     private val lastCheckedAtMillis = ConcurrentHashMap<String, Long>()
 
     /** 确认链路上的 fire-and-forget 入口：立即返回，检测在 [scope] 上异步跑。 */
@@ -70,12 +70,12 @@ class BudgetOverspendChecker(
     suspend fun checkNow(ledgerId: String) {
         if (ledgerId.isBlank()) return
         if (!runtime.budgetOverspendAlertsEnabled()) return
-        if (runtime.activeLedgerId() != ledgerId) return
-        val binding = runtime.activeBinding()
+        val binding = runtime.activeBinding()?.takeIf { it.ledgerId == ledgerId } ?: return
         val month = runtime.currentMonth()
-        if (runtime.activeLedgerId() != ledgerId || runtime.activeBinding() != binding) return
-        if (store.wasSent(budgetOverspendSentKey(ledgerId, month))) return
-        if (!claimThrottleSlot(ledgerId, month)) return
+        if (runtime.activeBinding() != binding) return
+        val key = boundReminderKey(binding, budgetOverspendSentKey(ledgerId, month))
+        if (store.wasSent(key)) return
+        if (!claimThrottleSlot(key)) return
         val budget = source.monthlyBudget(month).getOrElse { error ->
             runtime.logWarning("budget overspend check failed: ${error::class.java.simpleName}", error)
             return
@@ -83,8 +83,9 @@ class BudgetOverspendChecker(
         // 响应月与请求月不一致（不该发生）→ 丢弃，保证 sent-key 与查询 key 永不错位。
         if (budget.month != month) return
         // 拉取期间切了账本 → monthlyBudget 绑的是新 active ledger 的数据，丢弃。
-        if (runtime.activeLedgerId() != ledgerId || runtime.activeBinding() != binding) return
-        val decision = evaluateBudgetOverspend(ledgerId, budget) ?: return
+        if (runtime.activeBinding() != binding) return
+        if (!runtime.budgetOverspendAlertsEnabled()) return
+        val decision = evaluateBudgetOverspend(ledgerId, budget)?.copy(key = key) ?: return
         if (dispatcher.dispatch(decision) == BudgetOverspendDispatchOutcome.SENT) {
             store.markSent(decision.key)
         }
@@ -94,10 +95,10 @@ class BudgetOverspendChecker(
      * 原子占坑：距上次拉取不足 [CHECK_THROTTLE_MILLIS] → false（本次跳过）。
      * compute 的原子性保证并发确认只放行一个检测（其余拿到刚写入的时间戳）。
      */
-    private fun claimThrottleSlot(ledgerId: String, month: String): Boolean {
+    private fun claimThrottleSlot(key: String): Boolean {
         val now = runtime.monotonicNowMillis()
         var claimed = false
-        lastCheckedAtMillis.compute("$ledgerId:$month") { _, last ->
+        lastCheckedAtMillis.compute(key) { _, last ->
             if (last != null && now - last < CHECK_THROTTLE_MILLIS) {
                 last
             } else {

@@ -26,7 +26,6 @@ import com.ticketbox.notification.recurring.RecurringReminderRuntime
 import com.ticketbox.notification.recurring.RepositoryRecurringReminderSource
 import com.ticketbox.notification.recurring.SharedPrefsRecurringReminderStore
 import com.ticketbox.notification.recurring.WorkManagerRecurringReminderScheduler
-import com.ticketbox.security.LocalSessionStore
 import java.time.LocalDate
 import com.ticketbox.data.repository.LedgerCalendarRepository
 import com.ticketbox.data.repository.newTaskMonth
@@ -37,7 +36,6 @@ import kotlinx.coroutines.SupervisorJob
 internal data class NotificationRuntimeDependencies(
     val appContext: Context,
     val settingsStore: TicketboxSettingsStore,
-    val sessionStore: LocalSessionStore,
     val apiServiceProvider: ApiServiceProvider,
     val recurringRepository: RecurringRepository,
     val budgetRepository: BudgetRepository,
@@ -64,9 +62,7 @@ internal class NotificationRuntimeGraph(
             recurringRemindersEnabled = {
                 dependencies.settingsStore.notificationPreferences().recurringReminders
             },
-            sessionReady = {
-                dependencies.sessionStore.currentSession() != null
-            },
+            activeBinding = dependencies.ledgerCalendarRepository::currentBinding,
             today = { LocalDate.now() },
         ),
     )
@@ -84,9 +80,6 @@ internal class NotificationRuntimeGraph(
         runtime = BudgetOverspendRuntime(
             budgetOverspendAlertsEnabled = {
                 dependencies.settingsStore.notificationPreferences().budgetOverspendAlerts
-            },
-            activeLedgerId = {
-                dependencies.sessionStore.currentSession()?.identity?.ledgerId
             },
             currentMonth = { dependencies.ledgerCalendarRepository.newTaskMonth() },
             activeBinding = dependencies.ledgerCalendarRepository::currentBinding,
@@ -109,9 +102,7 @@ internal class NotificationRuntimeGraph(
             backupStaleAlertsEnabled = {
                 dependencies.settingsStore.notificationPreferences().backupStaleAlerts
             },
-            sessionReady = {
-                dependencies.sessionStore.currentSession() != null
-            },
+            activeBinding = dependencies.ledgerCalendarRepository::currentBinding,
             today = { LocalDate.now() },
         ),
     )

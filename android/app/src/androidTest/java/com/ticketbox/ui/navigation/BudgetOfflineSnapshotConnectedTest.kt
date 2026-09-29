@@ -25,6 +25,7 @@ import com.ticketbox.data.repository.toDomain
 import com.ticketbox.domain.model.NotificationPreferences
 import com.ticketbox.domain.model.BudgetMonthlyUpdate
 import com.ticketbox.notification.TicketboxNotifier
+import com.ticketbox.notification.boundReminderKey
 import com.ticketbox.notification.budget.BudgetOverspendDispatchOutcome
 import com.ticketbox.notification.budget.SharedPrefsBudgetOverspendStore
 import com.ticketbox.notification.budget.budgetOverspendSentKey
@@ -207,7 +208,8 @@ class BudgetOfflineSnapshotConnectedTest {
             object : TicketboxSettingsStore by fixture.settingsStore {
                 override fun notificationPreferences() = NotificationPreferences(budgetOverspendAlerts = true)
             }))
-        val key = budgetOverspendSentKey("correction-ledger", month)
+        val key = boundReminderKey(requireNotNull(calendars.currentBinding()),
+            budgetOverspendSentKey("correction-ledger", month))
         val preferences = context.getSharedPreferences(SharedPrefsBudgetOverspendStore.PREFS_NAME, Context.MODE_PRIVATE)
         val originalValue = if (preferences.contains(key)) preferences.getBoolean(key, false) else null
         preferences.edit().remove(key).commit()

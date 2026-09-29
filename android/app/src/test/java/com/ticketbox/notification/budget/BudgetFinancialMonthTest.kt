@@ -4,6 +4,7 @@ import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.MonthCalendarFixture
 import com.ticketbox.data.repository.calendar
 import com.ticketbox.data.repository.newTaskMonth
+import com.ticketbox.notification.boundReminderKey
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
@@ -24,14 +25,14 @@ class BudgetFinancialMonthTest {
             source = { month -> requested += month; Result.success(budgetOf(overspentCents = 5_000).copy(month = month)) },
             store = store,
             dispatcher = { BudgetOverspendDispatchOutcome.SENT },
-            runtime = BudgetOverspendRuntime({ true }, { binding.ledgerId },
+            runtime = BudgetOverspendRuntime({ true },
                 { calendars.newTaskMonth(binding, clock) }, { 0L }, activeBinding = calendars::currentBinding),
             scope = this,
         )
         checker.checkNow(binding.ledgerId)
         checker.checkNow(binding.ledgerId)
         assertEquals(listOf("2026-05"), requested)
-        assertEquals(setOf("v1:budget:ledger-1:2026-05"), store.sent)
+        assertEquals(setOf(boundReminderKey(binding, "v1:budget:ledger-1:2026-05")), store.sent)
     }
 
     @Test fun sameLedgerReplacementDuringRuleReadCannotNotifyUnderNewPrincipal() = runTest {
@@ -42,7 +43,7 @@ class BudgetFinancialMonthTest {
             source = { calls += 1; Result.success(budgetOf(overspentCents = 5_000)) },
             store = store,
             dispatcher = { BudgetOverspendDispatchOutcome.SENT },
-            runtime = BudgetOverspendRuntime({ true }, { active.ledgerId },
+            runtime = BudgetOverspendRuntime({ true },
                 { active = binding.copy(bindingRevision = "replacement"); "2026-06" }, { 0L }, activeBinding = { active }),
             scope = this,
         )
