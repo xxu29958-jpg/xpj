@@ -77,7 +77,8 @@ private class OffsetPublicationFixture(
             assertEquals(1, replay.engine.drainOnce().done)
             assertEquals(1L, replay.outbox.acceptedReplayRevision.value, "UI refresh is a separate accepted-result consumer")
             assertEquals(1, budget.sourceCalls, "The registered offset publisher must trigger the fresh budget query")
-            assertEquals("v1:budget:owner:2026-09", budget.dispatched.single().key)
+            assertEquals(com.ticketbox.notification.boundReminderKey(requireNotNull(budget.binding),
+                "v1:budget:owner:2026-09"), budget.dispatched.single().key)
             assertEquals(200L, budget.dispatched.single().overspentCents)
             assertOriginalDone(replay)
             assertEquals(0, replay.engine.drainOnce().attempted)

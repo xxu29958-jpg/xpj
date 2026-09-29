@@ -91,12 +91,13 @@ fun budgetViewModelFactory(
     repository: BudgetActions,
     onDataChanged: () -> Unit = {},
     calendars: com.ticketbox.data.repository.LedgerCalendarReader? = null,
+    originalBinding: com.ticketbox.data.repository.LogicalSessionBinding? = null,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return BudgetViewModel(repository, onDataChanged = onDataChanged, calendars = calendars) as T
+        return BudgetViewModel(repository, originalBinding = originalBinding, onDataChanged = onDataChanged, calendars = calendars) as T
     }
     override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T {
-        return BudgetViewModel(repository, onDataChanged = onDataChanged, savedStateHandle = extras.createSavedStateHandle(), calendars = calendars) as T
+        return BudgetViewModel(repository, originalBinding = originalBinding, onDataChanged = onDataChanged, savedStateHandle = extras.createSavedStateHandle(), calendars = calendars) as T
     }
 }
 
@@ -118,9 +119,10 @@ fun budgetAdviceViewModelFactory(
 fun recurringViewModelFactory(
     repository: RecurringRepository,
     onDataChanged: () -> Unit = {},
+    originalBinding: com.ticketbox.data.repository.LogicalSessionBinding? = null,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return RecurringViewModel(repository, onDataChanged = onDataChanged) as T
+        return RecurringViewModel(repository, originalBinding = originalBinding, onDataChanged = onDataChanged) as T
     }
 }
 
@@ -223,9 +225,10 @@ fun repaymentDraftInboxViewModelFactory(
     drafts: RepaymentDraftActions,
     debts: DebtActions,
     writes: com.ticketbox.data.repository.DebtWriteActions,
+    originalBinding: com.ticketbox.data.repository.LogicalSessionBinding? = null,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return RepaymentDraftInboxViewModel(drafts, debts, writes) as T
+        return RepaymentDraftInboxViewModel(drafts, debts, writes, originalBinding) as T
     }
 }
 
@@ -308,9 +311,10 @@ fun appearanceViewModelFactory(
 fun expenseEditViewModelFactory(
     expenseId: Long,
     repository: ExpenseRepository,
+    originalBinding: com.ticketbox.data.repository.LogicalSessionBinding? = null,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return ExpenseEditViewModel(expenseId, repository) as T
+        return ExpenseEditViewModel(expenseId, repository, originalBinding) as T
     }
 }
 
@@ -323,9 +327,10 @@ fun expenseFactViewModelFactory(
     expenseId: Long,
     repository: ExpenseFactActions,
     preferLocalCache: Boolean = false,
+    originalBinding: com.ticketbox.data.repository.LogicalSessionBinding? = null,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return ExpenseFactViewModel(expenseId, repository, preferLocalCache) as T
+        return ExpenseFactViewModel(expenseId, repository, preferLocalCache, originalBinding) as T
     }
 }
 

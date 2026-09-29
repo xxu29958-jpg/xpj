@@ -284,9 +284,10 @@ internal class CorrectExpenseDispatcherTest : ExpensePendingRepositoryOutboxTest
             onConfirmedCommitted = budget.checker::checkAfterConfirmedWrite)
         assertEquals(DispatchResult.Success(8, cacheRefreshVersion = 8), dispatcher.dispatch(originalRow))
         assertEquals(1, budget.sourceCalls)
-        assertEquals("v1:budget:owner:2026-06", budget.dispatched.single().key)
+        val sentKey = com.ticketbox.notification.boundReminderKey(requireNotNull(budget.binding), "v1:budget:owner:2026-06")
+        assertEquals(sentKey, budget.dispatched.single().key)
         assertEquals(5_000L, budget.dispatched.single().overspentCents)
-        assertEquals(setOf("v1:budget:owner:2026-06"), budget.store.sent)
+        assertEquals(setOf(sentKey), budget.store.sent)
         assertEquals(7L, stub.lastRequest?.expectedRowVersion)
         assertEquals(1, stub.calls)
     }

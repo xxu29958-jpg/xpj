@@ -24,8 +24,8 @@ import java.util.UUID
 internal class ExpenseDetailRepository(
     private val core: ExpenseRepositoryCore,
 ) {
-    suspend fun fetchExpense(id: Long): Result<Expense> = core.errorHandler.safeCall {
-        val bound = core.ledgerRequestGuard.bind()
+    suspend fun fetchExpense(id: Long, expectedBinding: LogicalSessionBinding?): Result<Expense> = core.errorHandler.safeCall {
+        val bound = expectedBinding?.let(core.ledgerRequestGuard::bindExact) ?: core.ledgerRequestGuard.bind()
         core.fetchAuthoritativeExpense(bound, id).toDomain()
     }
 
@@ -40,13 +40,15 @@ internal class ExpenseDetailRepository(
      * is genuinely gone (cache cleared / re-pair). A positive domain id is the
      * server id used by already-synced confirmed rows.
      */
-    suspend fun fetchExpenseFromLocalCache(domainId: Long): Result<Expense> = core.errorHandler.safeCall {
-        val ledgerId = core.activeLedgerIdOrLegacy()
+    suspend fun fetchExpenseFromLocalCache(domainId: Long, expectedBinding: LogicalSessionBinding?): Result<Expense> = core.errorHandler.safeCall {
+        val bound = expectedBinding?.let(core.ledgerRequestGuard::bindExact)
+        val ledgerId = bound?.ledgerId ?: core.activeLedgerIdOrLegacy()
         val cached = if (domainId > 0) {
             core.expenseDao.findByServerId(ledgerId, domainId)
         } else {
             core.expenseDao.getConfirmed(ledgerId).firstOrNull { it.id == -domainId }
         }
+        bound?.requireStillActive()
         cached?.takeIf { it.status == "pending" || it.status == "confirmed" }?.toDomain()
             ?: throw RepositoryException("本地没有这笔账单，请联网后重试。")
     }

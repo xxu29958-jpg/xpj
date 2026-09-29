@@ -304,10 +304,9 @@ private fun MainShell(
     val shellState = rememberMainShellState()
     val navController = rememberNavController()
 
-    LaunchRequestEffect(launchConsumer.request, shellState, navController, launchConsumer.onHandled)
-
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    LaunchRequestEffect(launchConsumer.request, shellState, navController, launchConsumer.onHandled)
     val screenFactory = remember(
         dependencies.repositories,
         dependencies.viewModelFactories.mainScreenFactories,
@@ -431,6 +430,11 @@ internal fun LaunchRequestEffect(
 ) {
     LaunchedEffect(launchRequest) {
         val request = launchRequest ?: return@LaunchedEffect
+        if (request is LaunchIntentRequest.OpenNotification) {
+            openNotificationTask(request.task, shellState, navController)
+            onLaunchRequestHandled(request)
+            return@LaunchedEffect
+        }
         if (request !is LaunchIntentRequest.JoinInvitation) {
             // An external task must leave the unfinished editor available on Back.
             navController.navigate(MAIN_ROUTE) { launchSingleTop = true }
@@ -478,6 +482,7 @@ private fun dispatchLaunchRequest(request: LaunchIntentRequest, shellState: Main
         }
         is LaunchIntentRequest.Navigate -> dispatchShortcutNavigation(request.target, shellState)
         is LaunchIntentRequest.JoinInvitation -> Unit
+        is LaunchIntentRequest.OpenNotification -> Unit
     }
 }
 

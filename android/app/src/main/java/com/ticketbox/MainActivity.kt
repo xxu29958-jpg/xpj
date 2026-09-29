@@ -12,6 +12,9 @@ import androidx.fragment.app.FragmentActivity
 import com.ticketbox.data.local.BackgroundImageStore
 import com.ticketbox.data.repository.LocalBackgroundImageRepository
 import com.ticketbox.security.BiometricAuthManager
+import com.ticketbox.notification.ACTION_NOTIFICATION_TASK
+import com.ticketbox.notification.EXTRA_NOTIFICATION_TASK
+import com.ticketbox.notification.readNotificationTask
 import com.ticketbox.ui.navigation.EXTRA_SHORTCUT_TARGET
 import com.ticketbox.ui.navigation.LaunchIntentRequest
 import com.ticketbox.ui.navigation.LaunchSharedContent
@@ -88,6 +91,10 @@ class MainActivity : FragmentActivity() {
      */
     private fun parseLaunchIntent(intent: Intent?): LaunchIntentRequest? {
         intent ?: return null
+        if (intent.action == ACTION_NOTIFICATION_TASK) {
+            return readNotificationTask(intent.getStringArrayListExtra(EXTRA_NOTIFICATION_TASK).orEmpty())
+                ?.let(LaunchIntentRequest::OpenNotification)
+        }
         return resolveLaunchIntent(
             action = intent.action,
             mimeType = intent.type,

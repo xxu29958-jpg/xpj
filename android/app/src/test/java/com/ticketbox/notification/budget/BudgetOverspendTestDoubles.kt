@@ -32,7 +32,7 @@ internal class CheckerHarness(
             budgetResult()
         },
         store = store,
-        dispatcher = { decision ->
+        dispatcher = { decision, _ ->
             dispatched += decision
             dispatchOutcome
         },

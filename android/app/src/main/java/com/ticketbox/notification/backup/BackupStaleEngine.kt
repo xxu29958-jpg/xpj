@@ -95,7 +95,7 @@ class BackupStaleEngine(
             return BackupStaleRunOutcome.Success(BackupStaleRunOutcome.Detail.SKIPPED_DISABLED)
         }
         val decision = BackupStaleDecision(key = key, ageHours = health.ageHours)
-        return when (dispatcher.dispatch(decision)) {
+        return when (dispatcher.dispatch(decision, binding)) {
             BackupStaleDispatchOutcome.SENT -> {
                 store.markSent(key)
                 BackupStaleRunOutcome.Success(BackupStaleRunOutcome.Detail.SENT)

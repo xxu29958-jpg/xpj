@@ -24,7 +24,7 @@ class BackupReminderIdentityTest {
                 override fun wasSent(key: String): Boolean = key in sent
                 override fun markSent(key: String) { sent += key }
             },
-            dispatcher = {
+            dispatcher = { _, _ ->
                 notified += activeServer
                 BackupStaleDispatchOutcome.SENT
             },
@@ -61,7 +61,7 @@ class BackupReminderIdentityTest {
                 }
                 override fun markSent(key: String) { sent += key }
             },
-            dispatcher = { notifications++; BackupStaleDispatchOutcome.SENT },
+            dispatcher = { _, _ -> notifications++; BackupStaleDispatchOutcome.SENT },
             runtime = BackupStaleRuntime({ true }, { current }, { LocalDate.of(2026, 9, 30) }),
         )
 

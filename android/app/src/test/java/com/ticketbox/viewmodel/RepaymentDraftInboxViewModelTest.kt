@@ -615,7 +615,7 @@ private class FakeRepaymentDraftActions(
 
     override fun canModifyLedger(): Boolean = canModify
 
-    override suspend fun listPendingDrafts(): Result<List<RepaymentDraft>> {
+    override suspend fun listPendingDrafts(expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?): Result<List<RepaymentDraft>> {
         listCalls++
         // Capture at entry so a stalled load returns the snapshot it started with.
         val captured = listResult
@@ -636,7 +636,7 @@ private class FakeRepaymentDraftActions(
         return captured
     }
 
-    override suspend fun dismissDraft(draftPublicId: String): Result<RepaymentDraft> {
+    override suspend fun dismissDraft(draftPublicId: String, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?): Result<RepaymentDraft> {
         dismissCalls += draftPublicId
         return dismissResult
     }
@@ -656,7 +656,7 @@ private class FakeRepayableDebtActions(
     var listGate: CompletableDeferred<Unit>? = null
 
     override fun canModifyLedger(): Boolean = canModify
-    override suspend fun listDebts(lens: com.ticketbox.domain.model.DebtListLens): Result<ReadSnapshot<DebtListPage>> {
+    override suspend fun listDebts(lens: com.ticketbox.domain.model.DebtListLens, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?): Result<ReadSnapshot<DebtListPage>> {
         // Capture at entry so a stalled load returns the snapshot it started with.
         val captured = listResult.map { ReadSnapshot(DebtListPage(it, null), fetchedAt, fromCache) }
         listGate?.await()

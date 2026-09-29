@@ -41,7 +41,7 @@ class BackupStaleEngineTest {
                     sent += key
                 }
             },
-            dispatcher = { decision ->
+            dispatcher = { decision, _ ->
                 dispatched += decision
                 dispatchOutcome
             },

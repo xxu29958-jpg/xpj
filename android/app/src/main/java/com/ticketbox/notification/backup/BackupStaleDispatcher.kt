@@ -27,25 +27,5 @@ enum class BackupStaleDispatchOutcome {
  * 维护 sent-key。
  */
 fun interface BackupStaleDispatcher {
-    fun dispatch(decision: BackupStaleDecision): BackupStaleDispatchOutcome
-}
-
-/**
- * 生产实现:把备份年龄折算成「天」字符串(stale 阈值=48h,故 stale 时恒 ≥2 天;
- * [BackupStaleDecision.ageHours]=null 表示从未有备份,传 null 让 notifier 选
- * 「还没有任何备份」文案变体),委托
- * [TicketboxNotifier.onBackupStale][com.ticketbox.notification.TicketboxNotifier.onBackupStale]。
- *
- * 窄函数接缝 `(daysText, dedupeTag) -> outcome`(镜像 budget / recurring 适配器):
- * AppContainer 用 `notifier::onBackupStale` 接线,测试注 lambda 直测折算与透传。
- */
-class NotifierBackupStaleDispatcher(
-    private val onBackupStale: (daysText: String?, dedupeTag: String) -> BackupStaleDispatchOutcome,
-) : BackupStaleDispatcher {
-    override fun dispatch(decision: BackupStaleDecision): BackupStaleDispatchOutcome =
-        onBackupStale(decision.ageHours?.let { (it / HOURS_PER_DAY).toString() }, decision.key)
-
-    private companion object {
-        const val HOURS_PER_DAY = 24
-    }
+    fun dispatch(decision: BackupStaleDecision, binding: com.ticketbox.data.repository.LogicalSessionBinding): BackupStaleDispatchOutcome
 }

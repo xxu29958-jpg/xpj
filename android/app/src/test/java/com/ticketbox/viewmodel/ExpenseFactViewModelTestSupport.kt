@@ -274,13 +274,13 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
 
     override fun currentTimezoneId(): String = "Asia/Shanghai"
 
-    override suspend fun fetchExpense(id: Long): Result<Expense> {
+    override suspend fun fetchExpense(id: Long, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?): Result<Expense> {
         fetchExpenseCalls++
         fetchExpenseFailure?.let { return Result.failure(it) }
         return Result.success(baseExpense)
     }
 
-    override suspend fun fetchExpenseFromLocalCache(id: Long): Result<Expense> =
+    override suspend fun fetchExpenseFromLocalCache(id: Long, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?): Result<Expense> =
         Result.success(baseExpense)
 
     override suspend fun categories(): Result<List<String>> = Result.success(listOf("餐饮", "居家"))

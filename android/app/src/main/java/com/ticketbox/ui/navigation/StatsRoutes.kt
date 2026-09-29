@@ -98,6 +98,7 @@ internal fun BudgetRoute(
 ) {
     val budgetViewModel: BudgetViewModel = viewModel(
         factory = budgetViewModelFactory(
+            originalBinding = LocalNotificationTask.current?.binding,
             repository = screenFactory.budgetRepository,
             calendars = screenFactory.repositories.ledgerCalendarRepository,
             onDataChanged = onDataChanged,
@@ -463,6 +464,7 @@ internal fun RepaymentDraftRoute(
     val viewModel: RepaymentDraftInboxViewModel = viewModel(
         key = RepaymentDraftInboxViewModelKey,
         factory = repaymentDraftInboxViewModelFactory(
+            originalBinding = LocalNotificationTask.current?.binding,
             drafts = screenFactory.repaymentDraftRepository,
             debts = screenFactory.debtRepository,
             writes = screenFactory.debtWriteRepository,

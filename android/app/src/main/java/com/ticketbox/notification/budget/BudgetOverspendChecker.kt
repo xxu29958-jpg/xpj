@@ -86,7 +86,7 @@ class BudgetOverspendChecker(
         if (runtime.activeBinding() != binding) return
         if (!runtime.budgetOverspendAlertsEnabled()) return
         val decision = evaluateBudgetOverspend(ledgerId, budget)?.copy(key = key) ?: return
-        if (dispatcher.dispatch(decision) == BudgetOverspendDispatchOutcome.SENT) {
+        if (dispatcher.dispatch(decision, binding) == BudgetOverspendDispatchOutcome.SENT) {
             store.markSent(decision.key)
         }
     }

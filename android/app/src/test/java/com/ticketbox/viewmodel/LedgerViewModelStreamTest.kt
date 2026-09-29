@@ -259,7 +259,7 @@ private class StreamLedgerActions(
 private class StreamDebtActions : DebtActions by unsupportedStreamDebtActions() {
     override fun canModifyLedger(): Boolean = true
 
-    override suspend fun listDebts(lens: com.ticketbox.domain.model.DebtListLens): Result<ReadSnapshot<DebtListPage>> =
+    override suspend fun listDebts(lens: com.ticketbox.domain.model.DebtListLens, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?): Result<ReadSnapshot<DebtListPage>> =
         Result.success(debtReadSnapshot(DebtListPage(debts = emptyList(), ledgerHomeCurrencyCode = "CNY")))
 }
 

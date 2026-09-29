@@ -15,11 +15,9 @@ import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.RepaymentDraft
 
 /** Read side of the confirmed-fact consumer; pending editing is intentionally absent. */
-interface ExpenseFactReadActions {
+interface ExpenseFactReadActions : ExpenseRootReadActions {
     /** Existing client timezone owner used by every ledger query/command. */
     fun currentTimezoneId(): String
-    suspend fun fetchExpense(id: Long): Result<Expense>
-    suspend fun fetchExpenseFromLocalCache(id: Long): Result<Expense>
     suspend fun categories(): Result<List<String>>
     suspend fun fetchThumbnail(id: Long): Result<ProtectedImage>
     suspend fun fetchImage(id: Long): Result<ProtectedImage>

@@ -160,6 +160,7 @@ class ExpenseFactViewModel(
     internal val expenseId: Long,
     internal val repository: ExpenseFactActions,
     preferLocalCache: Boolean = false,
+    internal val originalBinding: com.ticketbox.data.repository.LogicalSessionBinding? = null,
 ) : ViewModel() {
 
     internal var correctionOriginalItems: ExpenseItems? = null
@@ -219,7 +220,7 @@ class ExpenseFactViewModel(
         }
         viewModelScope.launch {
             if (generation != expenseLoadGeneration) return@launch
-            repository.fetchExpense(expenseId)
+            repository.fetchExpense(expenseId, _uiState.value.correctionAccess?.binding)
                 .onSuccess { expense ->
                     if (generation != expenseLoadGeneration) return@onSuccess
                     _uiState.update {
@@ -268,7 +269,7 @@ class ExpenseFactViewModel(
         }
         // 离线兜底：本地缓存有就展示缓存事实（徽标/时间线可能缺席，
         // 但读取面不空）；没有才进入可重试的错误态。
-        repository.fetchExpenseFromLocalCache(expenseId)
+        repository.fetchExpenseFromLocalCache(expenseId, _uiState.value.correctionAccess?.binding)
             .onSuccess { cached ->
                 if (generation != expenseLoadGeneration) return@onSuccess
                 _uiState.update {

@@ -78,7 +78,7 @@
     <ID>TooManyFunctions:CategoryRulesViewModel.kt:CategoryRulesViewModel : ViewModel</ID>
     <ID>TooManyFunctions:ExpenseDao.kt:ExpenseDao : BudgetReadProtectionDao</ID>
     <ID>TooManyFunctions:ExpenseDetailRepository.kt:ExpenseDetailRepository</ID>
-    <ID>TooManyFunctions:ExpenseEditActions.kt:ExpenseEditActions</ID>
+    <ID>TooManyFunctions:ExpenseEditActions.kt:ExpenseEditActions : ExpenseRootReadActions</ID>
     <ID>TooManyFunctions:ExpenseEditV1Details.kt:com.ticketbox.ui.screens.expense.ExpenseEditV1Details.kt</ID>
     <ID>TooManyFunctions:ExpenseEditViewModel.kt:ExpenseEditViewModel : ViewModel</ID>
     <ID>TooManyFunctions:ExpenseMappers.kt:com.ticketbox.data.repository.ExpenseMappers.kt</ID>

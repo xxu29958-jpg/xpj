@@ -688,10 +688,10 @@ internal class FakeExpenseEditActions : ExpenseEditActions {
     }
     override fun canModifyLedger(): Boolean = canModifyLedgerFlag
 
-    override suspend fun fetchExpense(id: Long): Result<Expense> =
+    override suspend fun fetchExpense(id: Long, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?): Result<Expense> =
         fetchExpenseResponder?.invoke(id) ?: Result.success(baseExpense)
 
-    override suspend fun fetchExpenseFromLocalCache(id: Long): Result<Expense> {
+    override suspend fun fetchExpenseFromLocalCache(id: Long, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?): Result<Expense> {
         localCacheCalls += 1
         return localCacheResponder?.invoke(id) ?: Result.success(baseExpense)
     }

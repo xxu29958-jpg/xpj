@@ -146,7 +146,7 @@ private fun sheetQueries(): DebtActions {
         override fun canModifyLedger() = true
         override fun observeReadAccessDenials() = kotlinx.coroutines.flow.emptyFlow<com.ticketbox.data.repository.SnapshotAccessDenial>()
         override fun observeResourceDenials() = kotlinx.coroutines.flow.emptyFlow<com.ticketbox.data.repository.DebtReadResourceDenial>()
-        override suspend fun listDebts(lens: DebtListLens) = Result.success(
+        override suspend fun listDebts(lens: DebtListLens, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?) = Result.success(
             com.ticketbox.data.repository.ReadSnapshot(DebtListPage(emptyList(), "CNY"), "2026-09-27T01:00:00Z", false))
     }
 }

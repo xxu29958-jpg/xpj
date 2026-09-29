@@ -24,7 +24,7 @@ class BudgetFinancialMonthTest {
         val checker = BudgetOverspendChecker(
             source = { month -> requested += month; Result.success(budgetOf(overspentCents = 5_000).copy(month = month)) },
             store = store,
-            dispatcher = { BudgetOverspendDispatchOutcome.SENT },
+            dispatcher = { _, _ -> BudgetOverspendDispatchOutcome.SENT },
             runtime = BudgetOverspendRuntime({ true },
                 { calendars.newTaskMonth(binding, clock) }, { 0L }, activeBinding = calendars::currentBinding),
             scope = this,
@@ -42,7 +42,7 @@ class BudgetFinancialMonthTest {
         val checker = BudgetOverspendChecker(
             source = { calls += 1; Result.success(budgetOf(overspentCents = 5_000)) },
             store = store,
-            dispatcher = { BudgetOverspendDispatchOutcome.SENT },
+            dispatcher = { _, _ -> BudgetOverspendDispatchOutcome.SENT },
             runtime = BudgetOverspendRuntime({ true },
                 { active = binding.copy(bindingRevision = "replacement"); "2026-06" }, { 0L }, activeBinding = { active }),
             scope = this,

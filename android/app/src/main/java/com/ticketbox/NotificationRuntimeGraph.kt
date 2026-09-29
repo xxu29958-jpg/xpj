@@ -11,15 +11,15 @@ import com.ticketbox.notification.TicketboxNotifier
 import com.ticketbox.notification.backup.BackupStaleEngine
 import com.ticketbox.notification.backup.BackupStaleRuntime
 import com.ticketbox.notification.backup.BackupStaleSource
-import com.ticketbox.notification.backup.NotifierBackupStaleDispatcher
+import com.ticketbox.notification.backup.BackupStaleDispatcher
 import com.ticketbox.notification.backup.SharedPrefsBackupStaleStore
 import com.ticketbox.notification.backup.WorkManagerBackupStaleScheduler
 import com.ticketbox.notification.budget.BudgetOverspendChecker
 import com.ticketbox.notification.budget.BudgetOverspendRuntime
 import com.ticketbox.notification.budget.BudgetOverspendSource
-import com.ticketbox.notification.budget.NotifierBudgetOverspendDispatcher
+import com.ticketbox.notification.budget.BudgetOverspendDispatcher
 import com.ticketbox.notification.budget.SharedPrefsBudgetOverspendStore
-import com.ticketbox.notification.recurring.NotifierRecurringReminderDispatcher
+import com.ticketbox.notification.recurring.RecurringReminderDispatcher
 import com.ticketbox.notification.recurring.RecurringReminderEngine
 import com.ticketbox.notification.recurring.RecurringReminderPolicy
 import com.ticketbox.notification.recurring.RecurringReminderRuntime
@@ -49,6 +49,7 @@ internal class NotificationRuntimeGraph(
     val notifier = TicketboxNotifier(
         context = dependencies.appContext,
         settingsStore = dependencies.settingsStore,
+        currentBinding = dependencies.ledgerCalendarRepository::currentBinding,
     )
 
     val recurringReminderScheduler = WorkManagerRecurringReminderScheduler()
@@ -57,7 +58,7 @@ internal class NotificationRuntimeGraph(
         source = RepositoryRecurringReminderSource(dependencies.recurringRepository),
         policy = RecurringReminderPolicy(),
         store = SharedPrefsRecurringReminderStore(dependencies.appContext),
-        dispatcher = NotifierRecurringReminderDispatcher(notifier::onRecurringDue),
+        dispatcher = RecurringReminderDispatcher(notifier::onRecurringDue),
         runtime = RecurringReminderRuntime(
             recurringRemindersEnabled = {
                 dependencies.settingsStore.notificationPreferences().recurringReminders
@@ -76,7 +77,7 @@ internal class NotificationRuntimeGraph(
             ).map { it.value }
         },
         store = SharedPrefsBudgetOverspendStore(dependencies.appContext),
-        dispatcher = NotifierBudgetOverspendDispatcher(notifier::onBudgetOverspent),
+        dispatcher = BudgetOverspendDispatcher(notifier::onBudgetOverspent),
         runtime = BudgetOverspendRuntime(
             budgetOverspendAlertsEnabled = {
                 dependencies.settingsStore.notificationPreferences().budgetOverspendAlerts
@@ -97,7 +98,7 @@ internal class NotificationRuntimeGraph(
     val backupStaleEngine = BackupStaleEngine(
         source = BackupStaleSource { serverStatusRepository.backupHealth() },
         store = SharedPrefsBackupStaleStore(dependencies.appContext),
-        dispatcher = NotifierBackupStaleDispatcher(notifier::onBackupStale),
+        dispatcher = BackupStaleDispatcher(notifier::onBackupStale),
         runtime = BackupStaleRuntime(
             backupStaleAlertsEnabled = {
                 dependencies.settingsStore.notificationPreferences().backupStaleAlerts

@@ -116,13 +116,14 @@ internal fun MainNavGraph(
         addCorrectionRateRoute(runtime.screenFactory) { runtime.navController.popBackStack() }
         composable(
             route = EXPENSE_ROUTE,
-            arguments = listOf(navArgument(EXPENSE_ID_ARG) { type = NavType.LongType }),
+            arguments = listOf(navArgument(EXPENSE_ID_ARG) { type = NavType.LongType }, notificationArgument),
             enterTransition = { expenseEditEnter() },
             exitTransition = { expenseEditExit() },
             popEnterTransition = { expenseEditEnter() },
             popExitTransition = { expenseEditExit() },
         ) { backStackEntry ->
             val expenseId = backStackEntry.arguments?.getLong(EXPENSE_ID_ARG) ?: return@composable
+            NotificationTaskBoundary(backStackEntry, runtime.screenFactory, { runtime.navController.popBackStack() }) {
             ExpenseEditRoute(
                 expenseId = expenseId,
                 screenFactory = runtime.screenFactory,
@@ -146,6 +147,7 @@ internal fun MainNavGraph(
                     runtime.navController.popBackStack()
                 }, onRepairRate = { binding, gap -> runtime.navController.navigate(correctionRateRoute(binding, gap)) }),
             )
+            }
         }
     }
 }
@@ -227,7 +229,7 @@ private fun MainProductScaffold(
                     onQuickAction = { target ->
                         dispatchShortcutNavigation(target, runtime.shellState)
                     },
-                    onOpenWorkspace = runtime.shellState::openAccount,
+                    onOpenWorkspace = { runtime.shellState.openAccount() },
                 )
             }
         },
@@ -365,12 +367,12 @@ private fun MainProductNavigationSync(
             }
             is MainNavigationRequest.OpenSecondary -> {
                 navController.navigate(request.route) {
-                    launchSingleTop = true
+                    launchSingleTop = request.singleTop
                 }
             }
-            MainNavigationRequest.OpenWorkspace -> {
-                navController.navigate(WORKSPACE_ROUTE) {
-                    launchSingleTop = true
+            is MainNavigationRequest.OpenWorkspace -> {
+                navController.navigate(request.route) {
+                    launchSingleTop = request.route == WORKSPACE_ROUTE
                 }
             }
             MainNavigationRequest.Back -> {

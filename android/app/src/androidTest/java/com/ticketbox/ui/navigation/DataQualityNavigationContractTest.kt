@@ -383,12 +383,12 @@ private fun ContractNavigationSync(
             }
             is MainNavigationRequest.OpenSecondary -> {
                 navController.navigate(request.route) {
-                    launchSingleTop = true
+                    launchSingleTop = request.singleTop
                 }
             }
-            MainNavigationRequest.OpenWorkspace -> {
-                navController.navigate(WORKSPACE_ROUTE) {
-                    launchSingleTop = true
+            is MainNavigationRequest.OpenWorkspace -> {
+                navController.navigate(request.route) {
+                    launchSingleTop = request.route == WORKSPACE_ROUTE
                 }
             }
             MainNavigationRequest.Back -> {

@@ -75,7 +75,7 @@ class ManualCreationRouteRoomTest {
                         NavHost(nav, startDestination = "manual-ledger") {
                             composable("manual-ledger") { LedgerRoute(nav, harness.shell, harness.screenFactory) }
                             addManualExpenseSubmissionRoute(MainNavigationRuntime(nav, harness.shell, harness.screenFactory))
-                            composable(EXPENSE_ROUTE, arguments = listOf(navArgument(EXPENSE_ID_ARG) { type = NavType.LongType })) { entry ->
+                            composable(EXPENSE_ROUTE, arguments = listOf(navArgument(EXPENSE_ID_ARG) { type = NavType.LongType }, notificationArgument)) { entry ->
                                 ExpenseEditRoute(requireNotNull(entry.arguments).getLong(EXPENSE_ID_ARG), harness.screenFactory,
                                     ExpenseEditExitActions({ nav.popBackStack() }, { nav.popBackStack() }), ExpenseFactNavigation({}, { _, _ -> }))
                             }

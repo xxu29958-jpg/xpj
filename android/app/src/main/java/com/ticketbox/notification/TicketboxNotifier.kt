@@ -1,9 +1,7 @@
 package com.ticketbox.notification
 
 import android.Manifest
-import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.annotation.StringRes
@@ -11,14 +9,20 @@ import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
-import com.ticketbox.MainActivity
 import com.ticketbox.R
 import com.ticketbox.data.local.TicketboxSettingsStore
+import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.domain.model.RepaymentDraft
+import com.ticketbox.notification.backup.BackupStaleDecision
 import com.ticketbox.notification.backup.BackupStaleDispatchOutcome
 import com.ticketbox.notification.budget.BudgetOverspendDispatchOutcome
+import com.ticketbox.notification.budget.BudgetOverspendDecision
 import com.ticketbox.notification.recurring.RecurringReminderDispatchOutcome
+import com.ticketbox.notification.recurring.RecurringReminderDecision
 import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.components.formatMinorAmount
 
 /**
@@ -149,8 +153,7 @@ fun recurringNotificationContentSpec(merchant: String): NotificationContentSpec 
 
 /**
  * 纯 JVM 构造预算超支提醒的内容规格。正文带超出金额（本位币，调用方已格式化），
- * 锁屏 public 用预算脱敏摘要（不带金额）。action 用中性的「去查看」——点击同样进 App
- * （无预算页深链基建，与其他通知共用 contentIntent）。
+ * 锁屏 public 用预算脱敏摘要（不带金额）。action 用中性的「去查看」，打开原月份预算。
  */
 fun budgetOverspendNotificationContentSpec(overspentAmount: String): NotificationContentSpec =
     NotificationContentSpec(
@@ -184,30 +187,26 @@ fun backupStaleNotificationContentSpec(daysText: String?): NotificationContentSp
     )
 
 /**
- * 通知闭环 PR-1/PR-2：把「通知监听 → 待确认草稿」「固定支出到期」的结果按设置页提醒开关
- * （待确认提醒 / 大额提醒 / 固定支出提醒）转成系统通知。NLS 与 App 同进程，进程内直发。
+ * 把已采集草稿及各提醒 engine 的结果按设置页开关转成系统通知。
  *
  * - 决策交给顶层纯函数（[decideDraftNotification] / [draftNotificationContentSpec] /
  *   [recurringNotificationContentSpec]，可单测）；本类只做 Android 绑定：读 [TicketboxSettingsStore]
  *   开关、[NotificationManagerCompat.areNotificationsEnabled] 守卫、惰性建 channel、把内容规格
  *   解析成 [NotificationCompat] 并发出。
  * - 锁屏 public 版（[NotificationCompat.Builder.setPublicVersion]）只放脱敏摘要，不带商家/金额。
- * - 每条通知带「去核对」action（进待确认页），与 contentIntent 同目标，给锁屏一个快捷入口。
+ * - 每条通知的 action 与 contentIntent 打开同一原任务，携带原身份但不携带凭据。
  * - 正文金额走 ui/components/Formatters 的 [formatAmount]/[formatMinorAmount]，不散写 ÷100。
  *
- * 固定支出提醒判定源（ADR-0046，PR-2 时缺、本批补齐）：channel + 文案 + [onRecurringDue] 出口由
- * PR-2 落地；ADR-0046 补上检测源——WorkManager 周期 worker 唤醒
- * [com.ticketbox.notification.recurring.RecurringReminderEngine]，由它读 active recurring item、
- * 按 next_expected_date 判 due/overdue、本地去重后调用本类 [onRecurringDue]。本类仍只是 dispatcher
- * （Contract 7）：不拉 API、不判 due、不维护 sent-key。
+ * 业务判定和持久去重仍由原 engine 负责；本类只负责系统投递，并如实返回拒绝结果。
  */
 class TicketboxNotifier(
     context: Context,
     private val settingsStore: TicketboxSettingsStore,
+    private val currentBinding: () -> LogicalSessionBinding?,
 ) {
     private val appContext = context.applicationContext
 
-    fun onDraftCreated(expense: Expense) {
+    fun onDraftCreated(expense: Expense, binding: LogicalSessionBinding) {
         val preferences = settingsStore.notificationPreferences()
         val decision = decideDraftNotification(
             pendingEnabled = preferences.pendingDraftReminders,
@@ -222,7 +221,18 @@ class TicketboxNotifier(
             homeAmount = formatAmount(expense.homeAmountCents ?: expense.amountCents, expense.homeCurrency),
             originalAmount = originalAmountOrNull(expense),
         )
-        publish(spec, dedupeTag = expense.publicId)
+        publish(spec, boundReminderKey(binding, "expense:${binding.ledgerId}:${expense.publicId}"),
+            NotificationTask(binding, NotificationDestination.Expense(expense.id)))
+    }
+
+    fun onRepaymentDraftCreated(draft: RepaymentDraft, binding: LogicalSessionBinding) {
+        if (!settingsStore.notificationPreferences().pendingDraftReminders || !draft.isPending) return
+        val amount = formatDisplayAmount(draft.amountCents, CurrencyDisplay.forRecord(draft.homeCurrencyCode))
+        val spec = NotificationContentSpec(CHANNEL_REPAYMENTS, R.string.notification_repayment_title, emptyList(),
+            R.string.notification_repayment_body, listOf(amount), R.string.notification_public_repayment_summary,
+            R.string.notification_action_review)
+        publish(spec, boundReminderKey(binding, "repayment:${binding.ledgerId}:${draft.publicId}"),
+            NotificationTask(binding, NotificationDestination.Repayment(draft.publicId)))
     }
 
     /**
@@ -235,20 +245,24 @@ class TicketboxNotifier(
      * 让上游（engine）能据此决定「只有 SENT 才 markSent」，使「权限/开关关闭不 mark sent」可测。
      * 商家为空走「未填写商家」fallback 文案照常 SENT（不算 SKIPPED_INVALID_INPUT）。
      *
-     * @param merchant 固定支出名 / 商家，进标题占位符。
-     * @param dedupeTag 同一提醒的去重 tag（同 tag 覆盖、不同 tag 各保留一条）。
+     * @param decision 原项目、预期日、商家与去重键。
+     * @param binding 业务读取时捕获的身份；迟到结果不能发布给另一身份。
      * @return 投递结果：SENT / SKIPPED_DISABLED / SKIPPED_PERMISSION_DENIED。
      */
-    fun onRecurringDue(merchant: String, dedupeTag: String): RecurringReminderDispatchOutcome {
+    fun onRecurringDue(decision: RecurringReminderDecision, binding: LogicalSessionBinding): RecurringReminderDispatchOutcome {
+        if (decision.ledgerId != binding.ledgerId || decision.itemPublicId.isBlank()) {
+            return RecurringReminderDispatchOutcome.SKIPPED_INVALID_INPUT
+        }
         val preferences = settingsStore.notificationPreferences()
         if (!preferences.recurringReminders) return RecurringReminderDispatchOutcome.SKIPPED_DISABLED
         if (!NotificationManagerCompat.from(appContext).areNotificationsEnabled()) {
             return RecurringReminderDispatchOutcome.SKIPPED_PERMISSION_DENIED
         }
-        val resolved = merchant.trim().takeIf { it.isNotEmpty() }
+        val resolved = decision.merchant.trim().takeIf { it.isNotEmpty() }
             ?: appContext.getString(R.string.notification_draft_created_merchant_missing)
-        publish(recurringNotificationContentSpec(resolved), dedupeTag = dedupeTag)
-        return RecurringReminderDispatchOutcome.SENT
+        val task = NotificationTask(binding, NotificationDestination.Recurring(decision.itemPublicId, decision.expectedDate.toString()))
+        return if (publish(recurringNotificationContentSpec(resolved), decision.key, task)) RecurringReminderDispatchOutcome.SENT
+        else RecurringReminderDispatchOutcome.SKIPPED_PERMISSION_DENIED
     }
 
     /**
@@ -260,17 +274,19 @@ class TicketboxNotifier(
      * 返回 outcome 而非 Unit，让上游能据此决定「只有 SENT 才 markSent」——权限/开关关闭不得
      * 写假「已提醒」（否则用户打开开关后整月收不到）。
      *
-     * @param overspentAmount 已格式化的超出金额（本位币），进正文占位符。
-     * @param dedupeTag 通知栏覆盖 tag（同账本同月覆盖）。
+     * @param decision 原月份、超支金额、币种与去重键。
+     * @param binding 业务读取时捕获的身份。
      */
-    fun onBudgetOverspent(overspentAmount: String, dedupeTag: String): BudgetOverspendDispatchOutcome {
+    fun onBudgetOverspent(decision: BudgetOverspendDecision, binding: LogicalSessionBinding): BudgetOverspendDispatchOutcome {
         val preferences = settingsStore.notificationPreferences()
         if (!preferences.budgetOverspendAlerts) return BudgetOverspendDispatchOutcome.SKIPPED_DISABLED
         if (!NotificationManagerCompat.from(appContext).areNotificationsEnabled()) {
             return BudgetOverspendDispatchOutcome.SKIPPED_PERMISSION_DENIED
         }
-        publish(budgetOverspendNotificationContentSpec(overspentAmount), dedupeTag = dedupeTag)
-        return BudgetOverspendDispatchOutcome.SENT
+        val amount = formatDisplayAmount(decision.overspentCents, CurrencyDisplay.forRecord(decision.homeCurrencyCode))
+        val task = NotificationTask(binding, NotificationDestination.Budget(decision.month))
+        return if (publish(budgetOverspendNotificationContentSpec(amount), decision.key, task)) BudgetOverspendDispatchOutcome.SENT
+        else BudgetOverspendDispatchOutcome.SKIPPED_PERMISSION_DENIED
     }
 
     /**
@@ -279,20 +295,22 @@ class TicketboxNotifier(
      * 去重后调用本方法。本方法仍是纯 dispatcher（Contract 7 同款）：只按「备份超龄提醒」
      * 开关 + 系统通知权限决定是否出一条提醒。返回 outcome——SENT 才 markSent。
      *
-     * @param daysText 备份年龄折算的「天」字符串；null=还没有任何备份（换文案变体）。
-     * @param dedupeTag 通知栏覆盖 tag（同一天覆盖）。
+     * @param decision 发布记录年龄与去重键；年龄为空表示尚无备份。
+     * @param binding 原服务器及主体身份；不要求有可用账本。
      */
-    fun onBackupStale(daysText: String?, dedupeTag: String): BackupStaleDispatchOutcome {
+    fun onBackupStale(decision: BackupStaleDecision, binding: LogicalSessionBinding): BackupStaleDispatchOutcome {
         val preferences = settingsStore.notificationPreferences()
         if (!preferences.backupStaleAlerts) return BackupStaleDispatchOutcome.SKIPPED_DISABLED
         if (!NotificationManagerCompat.from(appContext).areNotificationsEnabled()) {
             return BackupStaleDispatchOutcome.SKIPPED_PERMISSION_DENIED
         }
-        publish(backupStaleNotificationContentSpec(daysText), dedupeTag = dedupeTag)
-        return BackupStaleDispatchOutcome.SENT
+        val task = NotificationTask(binding, NotificationDestination.Backup)
+        val spec = backupStaleNotificationContentSpec(decision.ageHours?.let { (it / HOURS_PER_DAY).toString() })
+        return if (publish(spec, decision.key, task)) BackupStaleDispatchOutcome.SENT
+        else BackupStaleDispatchOutcome.SKIPPED_PERMISSION_DENIED
     }
 
-    private fun publish(spec: NotificationContentSpec, dedupeTag: String) {
+    private fun publish(spec: NotificationContentSpec, dedupeTag: String, task: NotificationTask): Boolean {
         // API 33+ 的显式权限检查：行为上已被 areNotificationsEnabled() 守卫覆盖
         // （T+ 上未授权即返回 false），这里再查一次是 notify() 的
         // @RequiresPermission(POST_NOTIFICATIONS) lint 契约要求的可识别形态。
@@ -302,11 +320,14 @@ class TicketboxNotifier(
                 Manifest.permission.POST_NOTIFICATIONS,
             ) != PackageManager.PERMISSION_GRANTED
         ) {
-            return
+            return false
         }
         val manager = NotificationManagerCompat.from(appContext)
         ensureChannels(manager)
-        val reviewIntent = reviewPendingIntent()
+        if (!manager.areNotificationsEnabled() ||
+            manager.getNotificationChannelCompat(spec.channelId)?.importance == NotificationManagerCompat.IMPORTANCE_NONE ||
+            currentBinding() != task.binding) return false
+        val reviewIntent = notificationTaskPendingIntent(appContext, task)
         // 锁屏 public 版：只带脱敏摘要 + 同一「去核对」action，不带商家/金额。
         val publicVersion = NotificationCompat.Builder(appContext, spec.channelId)
             .setSmallIcon(R.drawable.ic_notification_receipt)
@@ -327,7 +348,13 @@ class TicketboxNotifier(
             .setAutoCancel(true)
             .build()
         // tag=去重键：同一草稿/提醒覆盖，不同的各自保留一条。
-        manager.notify(dedupeTag, DRAFT_NOTIFICATION_ID, notification)
+        if (currentBinding() != task.binding) return false
+        return try {
+            manager.notify(dedupeTag, DRAFT_NOTIFICATION_ID, notification)
+            true
+        } catch (_: SecurityException) {
+            false
+        }
     }
 
     private fun merchantOrFallback(expense: Expense): String =
@@ -345,6 +372,9 @@ class TicketboxNotifier(
             listOf(
                 NotificationChannelCompat.Builder(CHANNEL_DRAFTS, NotificationManagerCompat.IMPORTANCE_DEFAULT)
                     .setName(appContext.getString(R.string.notification_channel_drafts_name))
+                    .build(),
+                NotificationChannelCompat.Builder(CHANNEL_REPAYMENTS, NotificationManagerCompat.IMPORTANCE_DEFAULT)
+                    .setName(appContext.getString(R.string.notification_channel_repayments_name))
                     .build(),
                 NotificationChannelCompat.Builder(CHANNEL_ALERTS, NotificationManagerCompat.IMPORTANCE_HIGH)
                     .setName(appContext.getString(R.string.notification_channel_alerts_name))
@@ -364,23 +394,10 @@ class TicketboxNotifier(
         )
     }
 
-    /** 「去核对」/ 通知点击：进 App（待确认页是首屏入口）。immutable 满足 API 31+ 要求。 */
-    private fun reviewPendingIntent(): PendingIntent {
-        val intent = Intent(appContext, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                Intent.FLAG_ACTIVITY_SINGLE_TOP
-        }
-        return PendingIntent.getActivity(
-            appContext,
-            0,
-            intent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        )
-    }
-
     internal companion object {
+        private const val HOURS_PER_DAY = 24
         const val CHANNEL_DRAFTS = "ticketbox.drafts"
+        const val CHANNEL_REPAYMENTS = "ticketbox.repayments"
         const val CHANNEL_ALERTS = "ticketbox.alerts"
         const val CHANNEL_RECURRING = "ticketbox.recurring"
         const val CHANNEL_BUDGET = "ticketbox.budget"

@@ -1,5 +1,7 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.repository.admitsTaskBinding
+
 import android.util.Log
 import com.ticketbox.BuildConfig
 import com.ticketbox.R
@@ -133,12 +135,13 @@ class ExpenseEditViewModel(
     // tests can fake the repository facade; `internal` so the items / splits
     // editor extension files (same package) reach it.
     internal val repository: ExpenseEditActions,
+    private val originalBinding: com.ticketbox.data.repository.LogicalSessionBinding? = null,
 ) : ViewModel() {
     private companion object {
         const val IMAGE_LOG_TAG = "TicketboxImage"
     }
 
-    internal val fxBinding = repository.captureDeferredLedgerBinding()
+    internal val fxBinding = repository.captureDeferredLedgerBinding().takeIf { originalBinding.admitsTaskBinding(it) }
     internal var commandObservation: ExpenseCommandObservation? = null
 
     internal val _uiState = MutableStateFlow(
@@ -163,6 +166,10 @@ class ExpenseEditViewModel(
     }
 
     private fun loadExpense() {
+        if (originalBinding != null && fxBinding == null) {
+            _uiState.update { it.copy(expenseLoading = false, message = UiText.res(R.string.notification_original_binding_required)) }
+            return
+        }
         viewModelScope.launch {
             _uiState.update {
                 it.copy(expenseLoading = true, message = null, messageTone = MessageTone.Neutral)
@@ -171,12 +178,13 @@ class ExpenseEditViewModel(
             // local id the server can't resolve — load it from the local cache.
             var cachedFallback = false
             val loaded = if (expenseId < 0) {
-                repository.fetchExpenseFromLocalCache(expenseId)
+                repository.fetchExpenseFromLocalCache(expenseId, fxBinding)
             } else {
-                repository.fetchExpense(expenseId).let { remote ->
-                    if (remote.isSuccess) remote else {
+                repository.fetchExpense(expenseId, fxBinding).let { remote ->
+                    val status = (remote.exceptionOrNull() as? com.ticketbox.data.repository.RepositoryException)?.httpStatusCode
+                    if (remote.isSuccess || status in setOf(401, 403, 404, 410)) remote else {
                         cachedFallback = true
-                        repository.fetchExpenseFromLocalCache(expenseId)
+                        repository.fetchExpenseFromLocalCache(expenseId, fxBinding)
                     }
                 }
             }

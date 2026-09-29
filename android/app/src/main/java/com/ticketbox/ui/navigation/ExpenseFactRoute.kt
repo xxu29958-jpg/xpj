@@ -35,6 +35,7 @@ internal fun ExpenseFactRoute(
             expenseId = expenseId,
             repository = screenFactory.repository,
             preferLocalCache = true,
+            originalBinding = LocalNotificationTask.current?.binding,
         ),
     )
     val factState by factViewModel.uiState.collectAsStateWithLifecycle()

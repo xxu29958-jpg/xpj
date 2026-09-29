@@ -26,29 +26,5 @@ enum class RecurringReminderDispatchOutcome {
  * 实现不得：拉 API、读 recurring 列表、判断 due/overdue、维护 sent-key（那是 source/policy/store 的事）。
  */
 fun interface RecurringReminderDispatcher {
-    fun dispatch(decision: RecurringReminderDecision): RecurringReminderDispatchOutcome
-}
-
-/**
- * 生产实现：委托 [TicketboxNotifier.onRecurringDue][com.ticketbox.notification.TicketboxNotifier.onRecurringDue]（Slice 1 已改为返回 outcome）。
- *
- * 依赖的是一个窄函数接缝 `(merchant, dedupeTag) -> outcome` 而非具体 TicketboxNotifier：
- * [AppContainer][com.ticketbox.AppContainer] 用方法引用 `notifier::onRecurringDue` 接线；
- * 测试可注 lambda 直测本类的「结构性空值短路 + 委托透传」而不必构造需要 Context 的 notifier
- * （本模块无 Robolectric）。notifier 的开关 / 权限门（→ SENT / SKIPPED_DISABLED /
- * SKIPPED_PERMISSION_DENIED）是 Android 绑定逻辑，集中在 notifier 一处、由实机/模拟器覆盖。
- *
- * 结构性空值（ledgerId / itemPublicId 空白）在这里短路成 [RecurringReminderDispatchOutcome.SKIPPED_INVALID_INPUT]，
- * 不进 notifier——这类 decision 本不该被 policy 产出（policy 的 item 来自后端、字段非空），属防御。
- * 商家为空**不**在此短路：交给 notifier 用「未填写商家」fallback 文案出通知（与草稿通知口径一致）。
- */
-class NotifierRecurringReminderDispatcher(
-    private val onRecurringDue: (merchant: String, dedupeTag: String) -> RecurringReminderDispatchOutcome,
-) : RecurringReminderDispatcher {
-    override fun dispatch(decision: RecurringReminderDecision): RecurringReminderDispatchOutcome {
-        if (decision.ledgerId.isBlank() || decision.itemPublicId.isBlank()) {
-            return RecurringReminderDispatchOutcome.SKIPPED_INVALID_INPUT
-        }
-        return onRecurringDue(decision.merchant, decision.key)
-    }
+    fun dispatch(decision: RecurringReminderDecision, binding: com.ticketbox.data.repository.LogicalSessionBinding): RecurringReminderDispatchOutcome
 }

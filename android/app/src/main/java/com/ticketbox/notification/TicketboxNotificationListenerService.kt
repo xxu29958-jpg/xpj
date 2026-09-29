@@ -45,9 +45,7 @@ class TicketboxNotificationListenerService : NotificationListenerService() {
      * 通知闭环；还款走新 `/api/repayment-drafts`（§8 永不自动记账，落 pending 草稿等用户复核选债）。
      * 任一失败都释放去重占位，让下次重发可重试。
      *
-     * 还款草稿**不发系统通知**：通知默认关闭、且既有「去核对」通知点击进的是待确认页（无还款复核箱深链），
-     * 强发会把用户引到错屏；还款复核箱从「规划」菜单进，与消费草稿落 pending 默认静默同构。还款通知闭环
-     * （独立 channel + 深链）是单独后续切片，与预算/备份提醒走过的「通知闭环」分片同理。
+     * 开启待核对提醒后，消费和还款各自返回原草稿；通知不执行确认、选债或记账。
      */
     private suspend fun dispatch(
         container: com.ticketbox.AppContainer,
@@ -60,13 +58,13 @@ class TicketboxNotificationListenerService : NotificationListenerService() {
                 result.draft,
                 expectedBinding = bindingAtPost,
                 notificationKey = notificationKey,
-            ).onSuccess { created -> container.notifier.onDraftCreated(created) }
+            ).onSuccess { created -> container.notifier.onDraftCreated(created, bindingAtPost) }
 
             is PaymentNotificationResult.Repayment -> container.repaymentDraftRepository.createDraft(
                 result.draft,
                 expectedBinding = bindingAtPost,
                 notificationKey = notificationKey,
-            )
+            ).onSuccess { created -> container.notifier.onRepaymentDraftCreated(created, bindingAtPost) }
         }
         if (outcome.isFailure) {
             draftDeduper.release(result, notificationKey)

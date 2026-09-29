@@ -76,7 +76,7 @@ internal fun ExpenseEditRoute(
 ) {
     val editViewModel: ExpenseEditViewModel = viewModel(
         key = "expense-edit-$expenseId",
-        factory = expenseEditViewModelFactory(expenseId, screenFactory.repository),
+        factory = expenseEditViewModelFactory(expenseId, screenFactory.repository, LocalNotificationTask.current?.binding),
     )
     val editState by editViewModel.uiState.collectAsStateWithLifecycle()
     val expense = editState.expense

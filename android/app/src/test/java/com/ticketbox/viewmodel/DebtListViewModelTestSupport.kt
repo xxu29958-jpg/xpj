@@ -56,7 +56,7 @@ internal class FakeDebtActions(
 
     override fun canModifyLedger(): Boolean = canModify
 
-    override suspend fun listDebts(lens: DebtListLens): Result<ReadSnapshot<DebtListPage>> {
+    override suspend fun listDebts(lens: DebtListLens, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?): Result<ReadSnapshot<DebtListPage>> {
         listCalls++
         listLenses += lens
         // Capture the result at entry so a stalled load returns the snapshot it started with, even

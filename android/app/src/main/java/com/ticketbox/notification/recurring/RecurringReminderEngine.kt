@@ -124,7 +124,7 @@ class RecurringReminderEngine(
             return
         }
         if (runtime.activeBinding() != binding || !runtime.recurringRemindersEnabled()) return
-        when (dispatcher.dispatch(decision)) {
+        when (dispatcher.dispatch(decision, binding)) {
             RecurringReminderDispatchOutcome.SENT -> {
                 store.markSent(decision.key)
                 tally.sent++

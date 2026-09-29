@@ -1,5 +1,9 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.repository.admitsTaskBinding
+import com.ticketbox.data.repository.LogicalSessionBinding
+import kotlinx.coroutines.flow.filter
+
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -61,9 +65,11 @@ class RecurringOccurrenceViewModel(
     private val debts: DebtActions,
     private val onChanged: () -> Unit = {},
     savedStateHandle: SavedStateHandle = SavedStateHandle(),
+    private val originalBinding: LogicalSessionBinding? = null,
 ) : ViewModel() {
     internal val savedState: SavedStateHandle = savedStateHandle
-    private val mutableState = MutableStateFlow(RecurringOccurrenceUiState(access = repository.currentAccess()))
+    private val mutableState = MutableStateFlow(RecurringOccurrenceUiState(
+        access = repository.currentAccess().takeIf { originalBinding.admitsTaskBinding(it?.binding) }))
     val uiState = mutableState.asStateFlow()
     private var epoch = 0L
 
@@ -74,7 +80,7 @@ class RecurringOccurrenceViewModel(
             }
         }
         viewModelScope.launch {
-            repository.observeAccess().collectLatest { access ->
+            repository.observeAccess().filter { originalBinding.admitsTaskBinding(it?.binding) }.collectLatest { access ->
                 if (mutableState.value.access?.binding != access?.binding) {
                     epoch++
                     mutableState.value = RecurringOccurrenceUiState(access = access)

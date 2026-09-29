@@ -59,7 +59,7 @@ class FakeRecurringReminderDispatcher(
 ) : RecurringReminderDispatcher {
     val dispatchedKeys = mutableListOf<String>()
 
-    override fun dispatch(decision: RecurringReminderDecision): RecurringReminderDispatchOutcome {
+    override fun dispatch(decision: RecurringReminderDecision, binding: com.ticketbox.data.repository.LogicalSessionBinding): RecurringReminderDispatchOutcome {
         dispatchedKeys.add(decision.key)
         return outcomeFor(decision)
     }

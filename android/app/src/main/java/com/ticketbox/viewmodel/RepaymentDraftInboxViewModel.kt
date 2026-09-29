@@ -1,5 +1,8 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.repository.admitsTaskBinding
+import kotlinx.coroutines.flow.filter
+
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
@@ -50,9 +53,10 @@ class RepaymentDraftInboxViewModel(
     private val drafts: RepaymentDraftActions,
     private val debts: DebtActions,
     private val writes: DebtWriteActions,
+    private val originalBinding: LogicalSessionBinding? = null,
 ) : ViewModel() {
 
-    private var adjustmentBinding = writes.currentAccess()?.binding
+    private var adjustmentBinding = writes.currentAccess()?.binding.takeIf { originalBinding.admitsTaskBinding(it) }
     private var adjustmentSnapshotReady = false
     private var adjustmentSnapshot: DebtWriteObservation? = null
 
@@ -91,7 +95,7 @@ class RepaymentDraftInboxViewModel(
             }
         }
         viewModelScope.launch {
-            writes.observeWrites().collect { change ->
+            writes.observeWrites().filter { originalBinding.admitsTaskBinding(it.binding) }.collect { change ->
                 val changedBinding = adjustmentBinding != change.binding
                 adjustmentBinding = change.binding
                 adjustmentSnapshotReady = change.binding != null
@@ -134,16 +138,18 @@ class RepaymentDraftInboxViewModel(
             _state.update { it.copy(isLoading = writes.currentAccess() != null) }
             return
         }
+        val binding = adjustmentBinding ?: return
+        if (!ownsAdjustmentBinding(binding)) return
         val gen = ++loadGeneration
         _state.update { it.copy(isLoading = true, targetDebts = emptyList(), suggestedDebtByDraftId = emptyMap(),
             targetsFetchedAt = null, targetsFromCache = false, error = null) }
         viewModelScope.launch {
-            val draftResult = drafts.listPendingDrafts()
-            val debtSnapshot = debts.listDebts().getOrNull()
+            val draftResult = drafts.listPendingDrafts(binding)
+            val debtSnapshot = debts.listDebts(expectedBinding = binding).getOrNull()
             val repayable = debtSnapshot?.value?.debts?.filter(::isRepayableDebt)
                 ?.filter { adjustmentSnapshot?.acceptsCanonical(it) == true }
             // Drop a load superseded by a newer refresh (which set isLoading and owns clearing it).
-            if (gen != loadGeneration) return@launch
+            if (gen != loadGeneration || !ownsAdjustmentBinding(binding)) return@launch
             _state.update { current ->
                 draftResult.fold(
                     onSuccess = { pending ->
@@ -213,9 +219,12 @@ class RepaymentDraftInboxViewModel(
 
     fun dismiss(draftPublicId: String) {
         if (_state.value.pendingActionDraftId != null || !_state.value.canModify) return
+        val binding = adjustmentBinding ?: return
+        if (!ownsAdjustmentBinding(binding)) return
         _state.update { it.copy(pendingActionDraftId = draftPublicId, error = null) }
         viewModelScope.launch {
-            val result = drafts.dismissDraft(draftPublicId)
+            val result = drafts.dismissDraft(draftPublicId, binding)
+            if (!ownsAdjustmentBinding(binding)) return@launch
             finishAction(result, R.string.repayment_draft_dismiss_done, R.string.repayment_draft_dismiss_failed)
         }
     }

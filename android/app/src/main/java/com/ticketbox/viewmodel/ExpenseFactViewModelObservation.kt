@@ -1,5 +1,7 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.repository.admitsTaskBinding
+
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.repository.ExpenseCorrectionObservation
@@ -22,6 +24,7 @@ internal fun ExpenseFactViewModel.observeFactSubmissions(onBindingSnapshot: () -
         combine(repository.observeCorrections(), repository.observeExpenseOutboxStatus()) { corrections, status ->
             corrections to status
         }.collect { (observation, status) ->
+            if (!originalBinding.admitsTaskBinding(observation.access?.binding)) return@collect
             reconcileFactSubmissions(observation, status, onBindingSnapshot)
         }
     }

@@ -221,7 +221,9 @@ class BudgetOfflineSnapshotConnectedTest {
                     context.packageName, Manifest.permission.POST_NOTIFICATIONS)
             }
             // Prove a decision would reach SENT; disabled OS delivery must not make this test falsely green.
-            assertEquals(BudgetOverspendDispatchOutcome.SENT, runtime.notifier.onBudgetOverspent("¥300", probeTag))
+            assertEquals(BudgetOverspendDispatchOutcome.SENT, runtime.notifier.onBudgetOverspent(
+                com.ticketbox.notification.budget.BudgetOverspendDecision(probeTag, "correction-ledger", month, 30000, "CNY"),
+                requireNotNull(calendars.currentBinding())))
             val previousReads = transport.reads.size
             runtime.budgetOverspendChecker.checkNow("correction-ledger")
             assertEquals("The real graph must attempt its live budget query", previousReads + 1, transport.reads.size)

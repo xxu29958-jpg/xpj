@@ -436,7 +436,7 @@ internal class FakeCreateDebtActions(
     override fun observeReadAccessDenials() = denials
     override fun observeResourceDenials() = resourceDenials
     override fun canModifyLedger(): Boolean = canModify
-    override suspend fun listDebts(lens: com.ticketbox.domain.model.DebtListLens): Result<ReadSnapshot<DebtListPage>> {
+    override suspend fun listDebts(lens: com.ticketbox.domain.model.DebtListLens, expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding?): Result<ReadSnapshot<DebtListPage>> {
         val captured = listResult.map { ReadSnapshot(DebtListPage(it, null), fetchedAt, fromCache) }
         listGate?.await()
         return captured
