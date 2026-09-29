@@ -108,6 +108,9 @@ class SplitAgreementDraftConnectedTest {
         install(saved, original.publicId)
         compose.waitUntil(10_000) { model.value?.state?.value?.rows?.size == 1 && model.value?.state?.value?.error != null }
         assertEquals(admitted, fixture.stored().single())
+        compose.onNodeWithText("12.00").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("-3.00").performScrollTo().assertIsDisplayed()
+        assertFalse(requireNotNull(model.value).state.value.confirmed)
         compose.onNodeWithText(context.getString(R.string.split_agreement_propose)).performScrollTo().assertIsNotEnabled()
         assertTrue(requireNotNull(model.value).state.value.busy)
         assertEquals(1, fixture.scheduleCalls)
@@ -138,8 +141,9 @@ class SplitAgreementDraftConnectedTest {
     }
 
     @Test fun viewerCannotEditAnAgreementThroughTheActualReadOnlyDetailPanel() {
-        fixture.session = fixture.session.copy(identity = fixture.session.identity.copy(role = "viewer"))
         install(null, original.publicId)
+        // The retained model saw writer access; the current detail now belongs to a viewer.
+        fixture.session = fixture.session.copy(identity = fixture.session.identity.copy(role = "viewer"))
         showForm(readOnly = true)
         compose.waitUntil(10_000) { model.value?.state?.value?.agreement != null && model.value?.state?.value?.loading == false }
         compose.onAllNodes(hasSetTextAction())[0].performScrollTo().assertIsNotEnabled()
@@ -155,7 +159,9 @@ class SplitAgreementDraftConnectedTest {
                     SplitAgreementDetailPanel(DebtDetailUiState(binding = state.task?.binding, debt = original.toDomain(),
                         canModify = false), MemberProposalUiState(), SplitAgreementPanel(current, {}), {})
                 } else {
-                    SplitAgreementSection(state, current) { id -> current.load(requireNotNull(state.task).copy(debtPublicId = id)) }
+                    SplitAgreementSection(state, current) { id ->
+                        current.load(requireNotNull(state.task).copy(debtPublicId = id), canModify = state.canModify)
+                    }
                 }
             }
         }
@@ -173,14 +179,16 @@ class SplitAgreementDraftConnectedTest {
     private fun install(saved: Bundle?, publicId: String) {
         val actions = requireNotNull(fixture.reopen().debtRepository.splitAgreement)
         compose.runOnIdle {
-            val restored = IncomeDraftStateOwner(saved).also { owner = it }
+            // Registry restoration consumes nested state; each recreation receives the same frozen snapshot.
+            val restored = IncomeDraftStateOwner(saved?.deepCopy()).also { owner = it }
             val extras = MutableCreationExtras().apply {
                 set(SAVED_STATE_REGISTRY_OWNER_KEY, restored)
                 set(VIEW_MODEL_STORE_OWNER_KEY, restored)
             }
             val provider = ViewModelProvider(restored.viewModelStore, splitAgreementViewModelFactory(actions), extras)
             model.value = provider["split-agreement", SplitAgreementViewModel::class.java].also {
-                    it.load(DebtTask(requireNotNull(fixture.session.toBoundSessionSnapshotOrNull()).logicalBinding, publicId))
+                    it.load(DebtTask(requireNotNull(fixture.session.toBoundSessionSnapshotOrNull()).logicalBinding, publicId),
+                        canModify = com.ticketbox.domain.model.ledgerRoleCanModify(fixture.session.identity.role))
                 }
         }
     }

@@ -28,6 +28,7 @@ import kotlinx.coroutines.launch
 
 data class SplitAgreementUiState(
     val task: DebtTask? = null,
+    val canModify: Boolean = false,
     val agreement: BillSplitAgreementDto? = null,
     val shareInput: String = "",
     val settlementInput: String = "",
@@ -49,7 +50,7 @@ data class SplitAgreementUiState(
 ) {
     val busy: Boolean get() = submitting || rows.any { it.status != PendingMutationStatus.Done }
     val agreementCurrent: Boolean get() = agreementRevision == acknowledgedRevision
-    val commandsEnabled: Boolean get() = agreementCurrent && !busy && !loading
+    val commandsEnabled: Boolean get() = canModify && agreementCurrent && !busy && !loading
     val canPropose: Boolean get() = agreement?.viewerIsParty == true &&
         (agreement.pendingProposal == null || agreement.pendingProposal.publicId == replacingProposalPublicId) &&
         agreement.pendingRepaymentDebtPublicIds.isEmpty() && previewReady && confirmed && commandsEnabled
@@ -69,7 +70,7 @@ class SplitAgreementViewModel(
     private var observedTask: DebtTask? = null
     private val completedIds = mutableSetOf<Pair<DebtTask, Long>>()
 
-    fun load(task: DebtTask?) {
+    fun load(task: DebtTask?, canModify: Boolean) {
         if (_state.value.task != task) {
             _state.value.task?.let { retained[it] = _state.value.copy(submitting = false, loading = false) }
             observation?.cancel()
@@ -77,6 +78,7 @@ class SplitAgreementViewModel(
             queryGeneration++
             _state.value = task?.let { retained[it] ?: drafts.read(it) ?: SplitAgreementUiState(task = it) } ?: SplitAgreementUiState()
         }
+        _state.update { it.copy(canModify = canModify, confirmed = false) }
         if (task != null) {
             observeOriginal(task)
             refresh()
@@ -84,6 +86,7 @@ class SplitAgreementViewModel(
     }
 
     fun editDraft(share: String? = null, settlement: String? = null, reason: String? = null) {
+        if (!_state.value.canModify) return
         if (share != null) queryGeneration++
         _state.update {
             it.copy(
@@ -99,7 +102,7 @@ class SplitAgreementViewModel(
         }
         drafts.write(_state.value)
     }
-    fun confirm(value: Boolean) = _state.update { it.copy(confirmed = value) }
+    fun confirm(value: Boolean) = _state.update { it.copy(confirmed = value && it.commandsEnabled && it.previewReady) }
 
     fun beginReplacement() {
         _state.update { state ->
@@ -207,7 +210,7 @@ class SplitAgreementViewModel(
     fun recover(row: OutboxRow, drop: Boolean) {
         val state = _state.value
         val task = state.task ?: return
-        if (state.submitting || state.rows.none { it == row }) return
+        if (!state.canRecover(row, drop)) return
         val intent = state.intents[row.id]
         val draft = if (drop) restorableCreateDraft(state, intent) else null
         if (drop && intent?.operation == SPLIT_CREATE && draft == null) {
@@ -233,6 +236,9 @@ class SplitAgreementViewModel(
         }
     }
 }
+
+private fun SplitAgreementUiState.canRecover(row: OutboxRow, drop: Boolean): Boolean =
+    !submitting && row in rows && (canModify || drop)
 
 private fun SplitAgreementUiState.refreshedAgreement(value: BillSplitAgreementDto, invalidShare: Boolean): SplitAgreementUiState {
     val currency = CurrencyCode.fromStorageKeyOrNull(value.homeCurrencyCode)
