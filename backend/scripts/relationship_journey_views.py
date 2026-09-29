@@ -154,7 +154,7 @@ def native_read_recovery(j):
             j.open_native(returned=returned)
             native.reveal_any("拆账约定与结算")
             if offline:
-                native.reveal_any("离线保存")
+                native.reveal_any("本地已读记录")
             native_current_share(native, "14.00")
             native.capture(f"relationship-{'return' if returned else 'original'}-{'offline' if offline else 'fresh'}-facts")
             native.reveal_any("往来历史")
