@@ -4,6 +4,30 @@ import json
 from contextlib import closing
 
 
+def goal_entry(j, *, create=False):
+    if create:
+        j.goto("/web/debt-goals", receiver=True)
+        j.receiver.get_by_text("新建还债目标", exact=True).click()
+        form = j.receiver.locator('form[action="/web/debt-goals/create"]')
+        form.locator('[name="name"]').fill("跟踪这笔原始往来")
+        form.locator(f'[name="debt_public_ids"][value="{j.facts()["original_id"]}"]').check()
+        form.get_by_role("button", name="创建目标", exact=True).click()
+        j.receiver.locator('.plan-debt-goal[aria-label="还债目标：跟踪这笔原始往来"]').wait_for()
+    native = j.native
+    native.plan_home()
+    native.click("还债目标")
+    native.reveal_any("跟踪这笔原始往来")
+    native.click("跟踪这笔原始往来")
+    native.reveal_any("联动验证账户")
+    native.click("联动验证账户", stable=True)
+    native.reveal_any("当前约定")
+    current = [node.attrib.get("text", "").split("当前约定", 1)[1]
+        for node in native.tree().iter("node") if "当前约定" in node.attrib.get("text", "")]
+    expected = "40.00" if create else "14.00"
+    assert any(expected in value for value in current), "The linked goal detail did not read the current agreement"
+    native.capture("relationship-goal-linked-" + ("initial" if create else "after-agreements"))
+
+
 def web_history(j, public_id, name):
     j.goto(f"/web/debts/{public_id}")
     rows, pages = [], 0
@@ -100,6 +124,7 @@ def native_read_recovery(j):
 
 
 def verify_views(j):
+    goal_entry(j)
     for name, public_id in (("original", j.facts()["original_id"]), ("return", j.facts()["return_id"])):
         web_history(j, public_id, name)
     role_boundaries(j)

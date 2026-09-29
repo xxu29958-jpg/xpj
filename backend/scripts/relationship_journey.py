@@ -176,10 +176,12 @@ class RelationshipJourney:
 
     def run(self):
         from scripts.relationship_journey_recovery import RelationshipRecovery
+        from scripts.relationship_journey_views import goal_entry
 
         with closing(self.page.context.browser.new_context(viewport={"width": 1280, "height": 960})) as context:
             self.receiver = context.new_page()
             self.create_relationship()
+            goal_entry(self, create=True)
             self.partial_payment_and_refund()
             self.propose_web("20.00", "-3.00", "保留已付款和免除，明确返还三元")
             self.native_accept(2000)
