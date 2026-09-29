@@ -2,6 +2,7 @@ package com.ticketbox.ui.screens.recurring
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -69,7 +70,8 @@ fun RecurringOccurrenceSheet(
 ) {
     val item = state.item ?: return
     ModalBottomSheet(onDismissRequest = actions.onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-        AppSheetScaffold(title = item.merchant, subtitle = stringResource(R.string.occurrence_subtitle)) {
+        AppSheetScaffold(title = item.merchant, subtitle = stringResource(R.string.occurrence_subtitle),
+            modifier = Modifier.fillMaxHeight()) {
             OccurrencePeriodControls(state, actions)
             RecurringReadSource(state.fetchedAt, state.fromCache, state.loading)
             if (state.fromCache && state.requestedPeriod == "current") {
