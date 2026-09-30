@@ -158,12 +158,18 @@ class NotificationJourney:
         self.capture("unsubmitted-restored")
 
         def lose_reply(route):
-            response = route.fetch()
-            assert response.status == 200
+            response = route.fetch(max_redirects=0)
+            assert response.status == 200 and "data-repayment-ack=" in response.text()
             route.abort("connectionclosed")
 
         self.page.route("**" + action, lose_reply, times=1)
-        form.locator('[data-repayment-submit]').click(no_wait_after=True)
+        # Keep the browser event loop dispatching the intercepted POST, then let
+        # its failed navigation finish before reopening the original record.
+        with (
+            self.page.expect_event("domcontentloaded"),
+            self.page.expect_event("requestfailed", predicate=lambda request: request.url.endswith(action)),
+        ):
+            form.locator('[data-repayment-submit]').click()
         wait_for(lambda: len(self.facts()["payments"]) == 2, "Web review did not reach the shared repayment owner")
         self.goto("/web/repayment-drafts/" + pending["id"])
         wait_for(lambda: form.locator('[name="idempotency_key"]').input_value() == key, "The unresolved original disappeared after response loss")

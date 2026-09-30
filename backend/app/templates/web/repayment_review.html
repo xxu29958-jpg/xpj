@@ -10,7 +10,7 @@
   <div class="product-page-heading">
     <a class="product-eyebrow" href="/web/repayment-drafts?ledger_id={{ selected_ledger_id }}">往来 / 还款采集</a>
     <h1 class="page-title page-title--compact">核对这笔还款</h1>
-    <p class="product-page-summary">核对金额和对应欠款后再记账。采集原文金额与本次填写分别保留。</p>
+    <p class="product-page-summary">核对金额和对应欠款后再记账。原始采集金额与本次填写分别保留。</p>
   </div>
 </header>
 {% if read_error %}<p class="product-feedback" role="status">{{ read_error }}</p>{% endif %}
@@ -26,7 +26,7 @@
 </section>
 {% endif %}
 {% if not can_write %}<p class="product-feedback">当前角色只可查看；原输入保留，处理需要写权限。</p>{% endif %}
-<div data-repayment-container>
+<div class="debt-section" data-repayment-container>
   {% if review.ack %}<p class="product-feedback" role="status" data-repayment-ack="{{ review.ack | tojson | forceescape }}">{{ '原确认已接受，已记入一笔还款。' if review.ack.status == 'confirmed' else '原忽略已完成，没有新增还款。' }}<span data-repayment-ack-status></span></p>{% endif %}
   <section class="product-panel product-panel--padded" data-repayment-panel{% if not review.visible %} hidden{% endif %}>
     <h2>本次处理</h2>
