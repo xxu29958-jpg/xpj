@@ -182,6 +182,7 @@ class NotificationJourney:
 
     def appearances(self):
         for theme in ("paper", "midnight"):
+            self.page.set_viewport_size({"width": 1280, "height": 960})
             self.goto("/web/repayment-drafts")
             self.page.locator("#appearance > summary").click()
             self.page.locator(f'#appearance [data-theme-mode="{theme}"]').click()
