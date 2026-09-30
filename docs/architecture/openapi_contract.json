@@ -2332,6 +2332,16 @@
             "title": "Category",
             "type": "string"
           },
+          "draft_client_ref": {
+            "default": "",
+            "title": "Draft Client Ref",
+            "type": "string"
+          },
+          "draft_scope": {
+            "default": "",
+            "title": "Draft Scope",
+            "type": "string"
+          },
           "expected_row_version": {
             "default": "",
             "title": "Expected Row Version",
@@ -2347,6 +2357,11 @@
               }
             ],
             "title": "Expense Time"
+          },
+          "fact_basis": {
+            "default": "",
+            "title": "Fact Basis",
+            "type": "string"
           },
           "idempotency_key": {
             "default": "",
@@ -3033,6 +3048,16 @@
             "title": "Category",
             "type": "string"
           },
+          "draft_client_ref": {
+            "default": "",
+            "title": "Draft Client Ref",
+            "type": "string"
+          },
+          "draft_scope": {
+            "default": "",
+            "title": "Draft Scope",
+            "type": "string"
+          },
           "expected_row_version": {
             "default": "",
             "title": "Expected Row Version",
@@ -3048,6 +3073,11 @@
               }
             ],
             "title": "Expense Time"
+          },
+          "fact_basis": {
+            "default": "",
+            "title": "Fact Basis",
+            "type": "string"
           },
           "idempotency_key": {
             "default": "",
@@ -3227,6 +3257,11 @@
             "title": "Return To",
             "type": "string"
           },
+          "review_latest": {
+            "default": false,
+            "title": "Review Latest",
+            "type": "boolean"
+          },
           "split_amount_yuan": {
             "default": [],
             "items": {
@@ -3357,6 +3392,16 @@
             "title": "Accounting Date",
             "type": "string"
           },
+          "draft_client_ref": {
+            "default": "",
+            "title": "Draft Client Ref",
+            "type": "string"
+          },
+          "draft_scope": {
+            "default": "",
+            "title": "Draft Scope",
+            "type": "string"
+          },
           "expected_row_version": {
             "default": "",
             "title": "Expected Row Version",
@@ -3380,6 +3425,11 @@
           "original_amount": {
             "default": "",
             "title": "Original Amount",
+            "type": "string"
+          },
+          "original_currency_code": {
+            "default": "",
+            "title": "Original Currency Code",
             "type": "string"
           },
           "reason": {
@@ -3460,6 +3510,16 @@
           "return_to": {
             "default": "",
             "title": "Return To",
+            "type": "string"
+          },
+          "review_currency": {
+            "default": "",
+            "title": "Review Currency",
+            "type": "string"
+          },
+          "review_latest": {
+            "default": "",
+            "title": "Review Latest",
             "type": "string"
           }
         },
@@ -6940,6 +7000,16 @@
       },
       "Body_web_void_expense_offset_web_expenses__expense_id__offsets__offset_public_id__voids_post": {
         "properties": {
+          "draft_client_ref": {
+            "default": "",
+            "title": "Draft Client Ref",
+            "type": "string"
+          },
+          "draft_scope": {
+            "default": "",
+            "title": "Draft Scope",
+            "type": "string"
+          },
           "expected_row_version": {
             "default": "",
             "title": "Expected Row Version",
@@ -6953,6 +7023,11 @@
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
+            "type": "string"
+          },
+          "original_currency_code": {
+            "default": "",
+            "title": "Original Currency Code",
             "type": "string"
           },
           "return_filter": {
@@ -7028,6 +7103,16 @@
           "return_to": {
             "default": "",
             "title": "Return To",
+            "type": "string"
+          },
+          "review_currency": {
+            "default": "",
+            "title": "Review Currency",
+            "type": "string"
+          },
+          "review_latest": {
+            "default": "",
+            "title": "Review Latest",
             "type": "string"
           },
           "void_reason": {

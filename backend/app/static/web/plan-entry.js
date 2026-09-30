@@ -162,7 +162,9 @@
       return true;
     }
     function pointTo() {
-      const next = new URL(window.location.href);
+      // Multiple fact forms need the same target-aware address used by their shelf.
+      // A voided target may disappear from the next current-fact read.
+      const next = new URL(definition.multiple ? recordHref(store.read(ref)) : window.location.href);
       if (definition.idField === "month") next.searchParams.set("month", field("month").value);
       next.hash = anchor + ref;
       window.history.replaceState(null, "", next.href);

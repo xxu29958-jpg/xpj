@@ -7,7 +7,7 @@
   };
   const results = [];
   for (const [id, kind] of [[10, "money"], [11, "reversal"], [12, "offset-original"]]) {
-    const url = "/web/expenses/" + id + "/edit?ledger_id=owner" + (id === 12 ? "&continue_offset_id=offset-original" : "");
+    const url = "/web/expenses/" + id + "/edit?ledger_id=owner";
     const loaded = new Promise(resolve => { frame.onload = resolve; }); frame.src = url; await loaded;
     let form = await wait(() => {
       const node = frame.contentDocument.querySelector('[data-offset-plan-id="' + id + ':' + kind + '"]');
@@ -26,7 +26,7 @@
     await wait(() => form.dataset.offsetDraftPhase === "blocked" && !form.querySelector('[data-offset-submit]').disabled);
     const frozen = form.elements.namedItem(id === 12 ? "void_reason" : "reason").readOnly &&
       [...form.querySelectorAll('[type="radio"]')].every(input => input.disabled);
-    const reloaded = new Promise(resolve => { frame.onload = resolve; }); frame.contentWindow.location.href = url; await reloaded;
+    const reloaded = new Promise(resolve => { frame.onload = resolve; }); frame.contentWindow.location.reload(); await reloaded;
     form = await wait(() => {
       const node = frame.contentDocument.querySelector('[data-offset-plan-id="' + id + ':' + kind + '"]');
       return node?.dataset.offsetDraftPhase === "blocked" && !node.querySelector('[data-offset-submit]').disabled ? node : null;
