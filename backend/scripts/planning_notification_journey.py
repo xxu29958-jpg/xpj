@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from scripts.planning_journey_android import wait_for
 from scripts.planning_notification_reminders import NotificationReminders
-from scripts.planning_notification_source import SystemPaymentSources
+from scripts.planning_notification_source import SystemPaymentSources, notification_control
 
 
 class NotificationJourney:
@@ -63,9 +63,14 @@ class NotificationJourney:
         self.native.adb("shell", "cmd", "statusbar", "expand-notifications")
         self.native.reveal_any(amount)
         self.native.capture(f"notification-tap-{amount}")
-        matches = [node for node in self.native.tree().iter("node") if amount in node.attrib.get("text", "")]
-        assert len(matches) == 1, "The original system reminder must be distinguishable"
-        self.native.tap(matches[0])
+        action, control = notification_control(self.native.tree(), amount)
+        if action == "expand":
+            self.native.tap(control)
+            self.native.reveal_any(amount)
+            self.native.capture(f"notification-expanded-{amount}")
+            action, control = notification_control(self.native.tree(), amount)
+        assert action == "open", "The actual individual reminder is still collapsed"
+        self.native.tap(control)
         self.native.reveal_any(expected)
 
     def background_process_death(self):

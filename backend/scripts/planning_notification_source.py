@@ -19,6 +19,27 @@ SOURCES = ("com.eg.android.AlipayGphone", "com.jingdong.app.mall", "ticketbox.jo
 RECEIVER = "ticketbox.journey.PaymentSampleReceiver"
 
 
+def notification_control(root, label: str):
+    """A collapsed group's preview is not its individual notification action."""
+    matches = [node for node in root.iter("node") if label in node.attrib.get("text", "")]
+    assert len(matches) == 1, "The original system reminder must be distinguishable"
+    parents = {child: parent for parent in root.iter("node") for child in parent}
+    node, rows = matches[0], []
+    while node in parents:
+        node = parents[node]
+        if node.attrib.get("resource-id") == "com.android.systemui:id/expandableNotificationRow":
+            rows.append(node)
+    assert rows, "The reminder is not inside an actual Android notification row"
+    if rows[0].attrib.get("clickable") == "true":
+        return "open", matches[0]
+    groups = [row for row in rows[1:] if row.attrib.get("clickable") == "true"]
+    assert groups, "The collapsed reminder has no containing notification group"
+    controls = [node for node in groups[0].iter("node") if
+        node.attrib.get("resource-id") == "android:id/expand_button" and node.attrib.get("content-desc") == "Expand"]
+    assert len(controls) == 1, "The containing notification group has no unique expand control"
+    return "expand", controls[0]
+
+
 class SystemPaymentSources:
     def __init__(self, native, output: Path):
         self.native = native
