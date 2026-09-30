@@ -25,6 +25,7 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppAmountInput
 import com.ticketbox.ui.components.AppAmountInputActions
 import com.ticketbox.ui.components.AppAmountInputState
+import com.ticketbox.ui.components.AppAmountText
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryRefreshState
@@ -72,12 +73,8 @@ private fun RepaymentReviewInputs(state: RepaymentDraftInboxUiState, model: Repa
     val pending = state.drafts.any { it.publicId == input.draftPublicId && it.isPending }
     val unsubmitted = pending && input.submittedAction == null
     val editable = unsubmitted && !state.review.bindingChanged && state.canModify && state.pendingActionDraftId == null
-    var choosingCurrency by rememberSaveable { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        AppAmountInput(AppAmountInputState(stringResource(R.string.repayment_review_amount),
-            CurrencyCode.fromStorageKey(input.currency), input.amountText, "0", editable),
-            AppAmountInputActions(onValueChange = { model.reviewEditor.updateReviewMoney(input.currency, it) },
-                onCurrencyClick = { choosingCurrency = true }.takeIf { editable }))
+        RepaymentReviewMoney(input.currency, input.amountText, editable, model.reviewEditor::updateReviewMoney)
         Text(input.debtLabel ?: stringResource(R.string.repayment_review_no_target), style = MaterialTheme.typography.titleMedium)
         if (editable) TextButton(onClick = chooseDebt) { Text(stringResource(R.string.repayment_review_select)) }
         Text(stringResource(R.string.repayment_review_money_note), style = MaterialTheme.typography.bodySmall)
@@ -92,8 +89,22 @@ private fun RepaymentReviewInputs(state: RepaymentDraftInboxUiState, model: Repa
             }
         }
     }
-    if (choosingCurrency) RepaymentReviewCurrencyDialog(onClose = { choosingCurrency = false }) { currency ->
-        model.reviewEditor.updateReviewMoney(currency.storageKey, input.amountText)
+}
+
+@Composable
+private fun RepaymentReviewMoney(currency: String, amount: String, editable: Boolean, onChange: (String, String) -> Unit) {
+    var choosingCurrency by rememberSaveable { mutableStateOf(false) }
+    if (editable) {
+        AppAmountInput(AppAmountInputState(stringResource(R.string.repayment_review_amount),
+            CurrencyCode.fromStorageKey(currency), amount, "0"),
+            AppAmountInputActions(onValueChange = { onChange(currency, it) },
+                onCurrencyClick = { choosingCurrency = true }))
+    } else {
+        Text(stringResource(R.string.repayment_review_amount), style = MaterialTheme.typography.labelMedium)
+        AppAmountText("$currency $amount")
+    }
+    if (choosingCurrency) RepaymentReviewCurrencyDialog(onClose = { choosingCurrency = false }) { selected ->
+        onChange(selected.storageKey, amount)
         choosingCurrency = false
     }
 }
