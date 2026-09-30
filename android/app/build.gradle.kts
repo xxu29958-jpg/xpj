@@ -5,7 +5,7 @@ import java.util.concurrent.TimeUnit
 val ticketboxVersionCode = 10200000
 val ticketboxVersionName = "1.2.0"
 // Invoked explicitly by the isolated PG/Web/native journey, not the Connected suite.
-val ticketboxCloudJourneyFixture = "com.ticketbox.ui.navigation.NotificationPaymentJourneyInputTest"
+val ticketboxCloudJourneyFixture = "com.ticketbox.ui.navigation.NotificationJourneyRuntimeTest"
 val ticketboxJavaLanguageVersion =
     rootProject.file(".java-version").readText().trim().toIntOrNull()
         ?: error("android/.java-version must contain one Java major version.")

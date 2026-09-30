@@ -3,6 +3,7 @@ package com.ticketbox.data.repository
 import com.ticketbox.domain.model.ConnectionDiagnostics
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ServerSettings
+import com.ticketbox.domain.model.ServerBackupHealth
 import kotlinx.coroutines.flow.Flow
 
 data class LocalBindingInfo(
@@ -23,6 +24,7 @@ interface SettingsActions {
     fun lastUploadAt(): String?
     suspend fun runConnectionDiagnostics(binding: LogicalSessionBinding): Result<ConnectionDiagnostics>
     suspend fun serverSettings(): Result<ServerSettings>
+    suspend fun backupHealth(): Result<ServerBackupHealth>
     suspend fun syncConfirmed(
         month: String?,
         category: String?,
@@ -33,6 +35,7 @@ interface SettingsActions {
 
 class ExpenseRepositorySettingsActions(
     private val repository: ExpenseRepository,
+    private val backupSource: suspend () -> Result<ServerBackupHealth>,
 ) : SettingsActions {
     override fun localBinding(): LocalBindingInfo? = repository.localBinding()
 
@@ -51,6 +54,8 @@ class ExpenseRepositorySettingsActions(
 
     override suspend fun serverSettings(): Result<ServerSettings> =
         repository.serverSettings()
+
+    override suspend fun backupHealth(): Result<ServerBackupHealth> = backupSource()
 
     override suspend fun syncConfirmed(
         month: String?,

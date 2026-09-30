@@ -69,6 +69,25 @@ class SettingsConnectionViewModelTest {
     }
 
     @Test
+    fun backupReminderLandingReadsThePublishedRecordAndDoesNotKeepARefusedSnapshot() = runTest(dispatcher) {
+        val repo = FakeSettingsActions().apply {
+            backupHealthValue = com.ticketbox.domain.model.ServerBackupHealth("2026-09-20T12:00:00Z", 180, true)
+        }
+        val vm = SettingsViewModel(repo, boundSettingsStore())
+        runCurrent()
+        vm.refreshServerSettings()
+        runCurrent()
+        assertEquals(repo.backupHealthValue, vm.uiState.value.backupHealth)
+
+        repo.backupFailure = java.io.IOException("offline")
+        vm.refreshServerSettings()
+        runCurrent()
+        assertEquals(null, vm.uiState.value.backupHealth)
+        assertTrue(vm.uiState.value.backupError != null)
+        assertFalse(vm.uiState.value.backupLoading)
+    }
+
+    @Test
     fun runDiagnosticsShowsDangerToneWithFailedChecks() = runTest(dispatcher) {
         val diagnostics = ConnectionDiagnostics(
             checks = listOf(
@@ -148,6 +167,36 @@ class SettingsConnectionViewModelTest {
         assertEquals(null, vm.uiState.value.diagnostics)
         assertFalse(vm.uiState.value.serverSettingsFresh)
         assertEquals(null, vm.uiState.value.message)
+        assertEquals(null, vm.uiState.value.backupHealth)
+    }
+
+    @Test
+    fun aLateBackupRecordCannotDescribeTheReplacementServer() = runTest(dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        val repo = FakeSettingsActions().apply { backupGate = gate }
+        val vm = SettingsViewModel(repo, boundSettingsStore())
+        runCurrent()
+        assertTrue(vm.uiState.value.backupLoading)
+        repo.binding = repo.binding.copy(serverUrl = "https://replacement.example.com")
+        runCurrent()
+        gate.complete(Unit)
+        runCurrent()
+        assertEquals(null, vm.uiState.value.backupHealth)
+        assertFalse(vm.uiState.value.backupLoading)
+        assertEquals("https://replacement.example.com", vm.uiState.value.serverUrl)
+    }
+
+    @Test
+    fun syncingWhileTheInitialBackupReadWaitsDoesNotLeaveItsIndicatorRunning() = runTest(dispatcher) {
+        val repo = FakeSettingsActions().apply { backupGate = CompletableDeferred() }
+        val vm = SettingsViewModel(repo, boundSettingsStore())
+        runCurrent()
+        assertTrue(vm.uiState.value.backupLoading)
+        vm.sync()
+        runCurrent()
+        assertFalse(vm.uiState.value.backupLoading)
+        assertFalse(vm.uiState.value.busy)
+        assertEquals(null, vm.uiState.value.backupHealth)
     }
 
     @Test

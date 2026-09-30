@@ -265,9 +265,10 @@ fun createSpendingGoalViewModelFactory(
 fun settingsViewModelFactory(
     repository: ExpenseRepository,
     settingsStore: TicketboxSettingsStore,
+    serverStatus: com.ticketbox.data.repository.ServerStatusRepository,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return SettingsViewModel(ExpenseRepositorySettingsActions(repository), settingsStore) as T
+        return SettingsViewModel(ExpenseRepositorySettingsActions(repository, serverStatus::backupHealth), settingsStore) as T
     }
 }
 

@@ -1,16 +1,10 @@
-"""Real Web/native review and OS taps after controlled payment-notification input.
-
-The input bridge supplies three notification samples. It uses the installed app's
-parser, disk Outbox, HTTP dispatch and notifier. Review commands below come from
-the real interfaces; the database is read only to check their business results.
-"""
+"""Real payment sources, Android notification access and original Web/native tasks."""
 
 from __future__ import annotations
 
-import subprocess
-from pathlib import Path
-
 from scripts.planning_journey_android import wait_for
+from scripts.planning_notification_reminders import NotificationReminders
+from scripts.planning_notification_source import SystemPaymentSources
 
 
 class NotificationJourney:
@@ -58,26 +52,30 @@ class NotificationJourney:
         self.native.click("通知与提醒")
         self.native.set_switch("待确认提醒", True)
         self.native.capture("notification-configured")
-        test_apk = Path("../android/app/build/outputs/apk/androidTest/gray/debug/app-gray-debug-androidTest.apk").resolve()
-        assert test_apk.is_file(), "The exact installed app needs its test-only notification input bridge"
-        self.native.adb("install", "-r", str(test_apk))
-        result = subprocess.run(["adb", "-s", self.native.serial, "shell", "am", "instrument", "-w",
-            "-e", "class", "com.ticketbox.ui.navigation.NotificationPaymentJourneyInputTest",
-            "-e", "ticketboxPaymentJourney", "isolated-cloud", "com.ticketbox.test/androidx.test.runner.AndroidJUnitRunner"],
-            capture_output=True, text=True, timeout=120, check=False)
-        (self.evidence / "notification-input-result.txt").write_text(result.stdout + result.stderr, encoding="utf-8")
-        assert result.returncode == 0 and "OK (1 test)" in result.stdout, "The actual notification pipeline did not complete"
+        self.sources = SystemPaymentSources(self.native, self.evidence.parent / "notification-input-apks")
+        self.sources.capture_payments(self.facts)
         wait_for(lambda: len(self.facts()["captures"]) == 2 and self.facts()["expenses"] == 1,
             "Controlled notifications did not reach their correct original owners")
         assert self.facts()["payments"] == [], "Capture must not automatically record repayment"
+        self.background_process_death()
 
-    def tap_notification(self, amount):
+    def tap_notification(self, amount, expected="还款采集"):
         self.native.adb("shell", "cmd", "statusbar", "expand-notifications")
         self.native.reveal_any(amount)
         matches = [node for node in self.native.tree().iter("node") if amount in node.attrib.get("text", "")]
         assert len(matches) == 1, "The original system reminder must be distinguishable"
         self.native.tap(matches[0])
-        self.native.reveal_any("还款采集")
+        self.native.reveal_any(expected)
+
+    def background_process_death(self):
+        self.native.adb("shell", "input", "keyevent", "3")
+        original_pid = self.native.adb("shell", "pidof", "com.ticketbox").strip()
+        assert original_pid.isdigit(), "The original application process is ambiguous"
+        # A live notification listener can keep the process above am-kill's OOM
+        # threshold. Signal only this debuggable app's own UID after Home saves state.
+        self.native.adb("shell", "run-as", "com.ticketbox", "kill", "-9", original_pid)
+        wait_for(lambda: not any(line.split()[-1:] == ["com.ticketbox"] and line.split()[1] == original_pid
+            for line in self.native.adb("shell", "ps", "-A").splitlines()), "The original process did not stop")
 
     def native_original(self):
         self.tap_notification("100.00")
@@ -100,10 +98,7 @@ class NotificationJourney:
         self.native.reveal_any("原提交")
         assert self.facts()["payments"] == []
         self.native.capture("notification-offline-original")
-        self.native.adb("shell", "input", "keyevent", "3")
-        self.native.adb("shell", "am", "kill", "com.ticketbox")
-        wait_for(lambda: not any(line.split()[-1:] == ["com.ticketbox"]
-            for line in self.native.adb("shell", "ps", "-A").splitlines()), "The background process did not stop")
+        self.background_process_death()
         self.native.adb("shell", "am", "start", "-n", "com.ticketbox/.MainActivity")
         self.native.reveal_any("核对这笔还款")
         self.native.reveal_any("90.00")
@@ -159,13 +154,37 @@ class NotificationJourney:
                     self.goto("/web/repayment-drafts/" + capture["id"])
                     assert "已记账" in self.page.inner_text("main")
                     self.capture(f"original-{capture['original']}-{width}-{theme}")
+        for theme, label in (("paper", "晨纸"), ("midnight", "玄夜")):
+            self.native.plan_home()
+            self.native.click("打开账户与设置")
+            self.native.click("外观与主题")
+            self.native.click(label)
+            self.native.plan_home()
+            self.native.click("打开账户与设置")
+            self.native.click("通知与提醒")
+            self.native.capture("notification-preferences-" + theme)
+            self.native.plan_home()
+            self.native.click("往来", bottom=True)
+            self.native.click("还款复核")
+            self.native.click("已处理 2")
+            self.native.reveal_any("花呗")
+            self.native.capture("notification-native-history-" + theme)
+            self.native.click_within("花呗", "查看原处理记录")
+            self.native.reveal_any("90.00")
+            self.native.capture("notification-native-original-" + theme)
 
     def run(self):
+        from scripts.planning_notification_context import identity_changes
+
         self.prepare()
         self.native_original()
         self.web_original()
+        reminders = NotificationReminders(self).run()
         self.appearances()
+        identity = identity_changes(self)
         result = self.facts()
-        assert sorted(item["original"] for item in result["captures"]) == [8000, 10000]
-        result["verified_leg"] = "Controlled payment input through real native parser/Outbox/HTTP/notifier; cold and warm OS taps; native offline process restoration; Web retained edit and lost receipt; original money and one repayment per confirmation"
+        result["reminders"] = reminders
+        result["identity"] = identity
+        assert sorted(item["original"] for item in result["captures"]) == [6000, 6100, 8000, 10000]
+        result["verified_leg"] = "Actual Android notification-access grant and isolated source apps; application off/on and source allowlist; real native NLS/parser/Outbox/HTTP/notifier; cold and warm OS taps; native offline process restoration; Web retained edit and lost receipt; original money and one repayment per confirmation; real Expense confirmation; three fresh-source reminder channels refused then restored; original Budget/Backup/Recurring taps; retained unfinished input and original image share; actual ledger/account switches require the original identity; light/dark native history and original review plus wide/narrow Web"
         return result

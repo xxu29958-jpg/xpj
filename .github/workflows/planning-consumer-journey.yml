@@ -113,7 +113,7 @@ jobs:
       - name: Build the actual native app
         working-directory: android
         run: ./gradlew --no-daemon --max-workers=2 :app:assembleGrayDebug
-      - name: Build the notification journey input fixture
+      - name: Build the notification journey runtime probe
         if: ${{ env.TICKETBOX_JOURNEY_GROUP == 'notifications' }}
         working-directory: android
         run: ./gradlew --no-daemon --max-workers=2 :app:assembleGrayDebugAndroidTest

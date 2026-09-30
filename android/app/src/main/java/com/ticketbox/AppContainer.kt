@@ -439,6 +439,7 @@ class AppContainer(context: Context) {
     val budgetOverspendChecker = notificationRuntimes.budgetOverspendChecker
     val backupStaleScheduler = notificationRuntimes.backupStaleScheduler
     val backupStaleEngine = notificationRuntimes.backupStaleEngine
+    val serverStatusRepository = notificationRuntimes.serverStatusRepository
 
     val incomePlanRepository = repositories.incomePlanRepository
     val debtRepository = repositories.debtRepository

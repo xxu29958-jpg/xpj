@@ -196,6 +196,7 @@ class MainActivity : FragmentActivity() {
                 settingsViewModelFactory = settingsViewModelFactory(
                     repository = expenseRepository,
                     settingsStore = settingsStore,
+                    serverStatus = serverStatusRepository,
                 ),
                 categoryRulesViewModelFactory = categoryRulesViewModelFactory(
                     ruleRepository = ruleRepository,

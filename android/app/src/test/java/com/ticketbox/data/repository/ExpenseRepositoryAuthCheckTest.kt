@@ -375,7 +375,9 @@ private fun settingsViewModel(
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
             SettingsViewModel(
-                ExpenseRepositorySettingsActions(repository),
+                ExpenseRepositorySettingsActions(repository) {
+                    Result.success(com.ticketbox.domain.model.ServerBackupHealth(null, null, false))
+                },
                 settingsStore,
             ) as T
     },
