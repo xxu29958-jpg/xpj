@@ -10,6 +10,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.domain.model.ManagedTag
+import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.viewmodel.TagManagementUiState
 import com.ticketbox.viewmodel.TagManagementViewModel
@@ -29,22 +30,36 @@ fun TagManagementScreen(
     var deleting by remember { mutableStateOf<ManagedTag?>(null) }
     var preselectedMergeTarget by remember { mutableStateOf<ManagedTag?>(null) }
     val rowActions = rememberTagRowActions(
-        onRename = { tag -> renaming = tag },
+        onRename = { tag ->
+            viewModel.dismissMessage()
+            renaming = tag
+        },
         onMerge = { tag ->
+            viewModel.dismissMessage()
             preselectedMergeTarget = null
             merging = tag
         },
-        onDelete = { tag -> deleting = tag },
+        onDelete = { tag ->
+            viewModel.dismissMessage()
+            deleting = tag
+        },
     )
 
     // After a committed tag mutation, refresh stats filters that may still show old names.
     LaunchedEffect(state.tagsChangedRevision) {
-        if (state.tagsChangedRevision > 0) onTagsChanged()
+        if (state.tagsChangedRevision > 0) {
+            renaming = null
+            merging = null
+            deleting = null
+            preselectedMergeTarget = null
+            onTagsChanged()
+        }
     }
 
     // Rename collisions become an explicit user-confirmed merge.
     LaunchedEffect(state.mergeSuggestion) {
         state.mergeSuggestion?.let { suggestion ->
+            renaming = null
             preselectedMergeTarget = suggestion.target
             merging = suggestion.source
             viewModel.consumeMergeSuggestion()
@@ -59,21 +74,13 @@ fun TagManagementScreen(
             tags = state.tags,
             preselectedMergeTarget = preselectedMergeTarget,
             busy = state.busy,
+            message = state.message,
+            messageTone = state.messageTone,
         ),
         actions = TagManagementDialogActions(
-            onRenameConfirm = { tag, newName ->
-                viewModel.renameTag(tag, newName)
-                renaming = null
-            },
-            onMergeConfirm = { source, target ->
-                viewModel.mergeTags(source, target)
-                merging = null
-                preselectedMergeTarget = null
-            },
-            onDeleteConfirm = { tag ->
-                deleting = null
-                viewModel.deleteTag(tag)
-            },
+            onRenameConfirm = viewModel::renameTag,
+            onMergeConfirm = viewModel::mergeTags,
+            onDeleteConfirm = viewModel::deleteTag,
             onDismissRename = { renaming = null },
             onDismissMerge = {
                 merging = null
@@ -91,6 +98,7 @@ fun TagManagementScreen(
             rowActions = rowActions,
             onUndo = viewModel::undo,
             onDismissUndo = viewModel::dismissUndo,
+            onReload = viewModel::loadTags,
         ),
         chrome = chrome,
     )
@@ -101,6 +109,7 @@ private data class TagManagementPageActions(
     val rowActions: TagRowActions,
     val onUndo: () -> Unit,
     val onDismissUndo: () -> Unit,
+    val onReload: () -> Unit,
 )
 
 @Composable
@@ -125,7 +134,7 @@ private fun TagManagementPageContent(
         ),
         onBack = actions.onBack,
         status = {
-            if (bodyState != TagManagementBodyState.LoadFailed) {
+            if (bodyState != TagManagementBodyState.LoadFailed || state.messageTone != MessageTone.Danger) {
                 AppStatusBanner(message = state.message, tone = state.messageTone)
             }
         },
@@ -154,6 +163,7 @@ private fun TagManagementPageContent(
                 busy = state.busy,
             ),
             actions = actions.rowActions,
+            onReload = actions.onReload,
         )
     }
 }

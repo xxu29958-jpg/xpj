@@ -136,6 +136,11 @@ internal class FakeApiService(
         set(value) {
             merchantApi.merchantCatalogUpdateFailure = value
         }
+    var merchantAliasesFailure
+        get() = merchantApi.merchantAliasesFailure
+        set(value) {
+            merchantApi.merchantAliasesFailure = value
+        }
     val itemFetchIds = mutableListOf<Long>()
     val itemReplaceIds = mutableListOf<String>()
     val itemReplaceRequests = mutableListOf<ExpenseItemReplaceRequestDto>()

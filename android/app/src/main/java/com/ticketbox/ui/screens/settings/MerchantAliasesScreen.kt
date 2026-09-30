@@ -44,6 +44,8 @@ import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.viewmodel.MerchantCatalogMergeSuggestion
+import com.ticketbox.viewmodel.MerchantEditorCompletion
+import com.ticketbox.viewmodel.MerchantEditorKind
 import kotlinx.coroutines.delay
 
 @Composable
@@ -52,24 +54,19 @@ fun MerchantAliasesScreen(
     actions: MerchantAliasesScreenActions,
     chrome: ManagementPageChrome = ManagementPageChrome(),
 ) {
-    var catalogName by remember { mutableStateOf("") }
-    var canonicalMerchant by remember { mutableStateOf("") }
-    var aliasText by remember { mutableStateOf("") }
-    var catalogMessage by remember { mutableStateOf<String?>(null) }
-    var aliasMessage by remember { mutableStateOf<String?>(null) }
-    var activeCreateTool by remember { mutableStateOf<MerchantCreateTool?>(null) }
-    val catalogDialogController = rememberMerchantCatalogDialogController()
-    var deletingCatalog by remember { mutableStateOf<MerchantCatalog?>(null) }
-    var deletingAlias by remember { mutableStateOf<MerchantAlias?>(null) }
+    val editors = remember { MerchantEditors() }
+    val catalogDialogController = editors.catalogDialogs
     // Resolve strings before non-composable click handlers need them.
     val catalogValidationMessage = stringResource(R.string.merchant_catalog_create_validation)
     val createValidationMessage = stringResource(R.string.merchant_aliases_create_validation)
 
+    LaunchedEffect(state.editorCompletion) {
+        state.editorCompletion?.let(editors::complete)
+    }
+
     MerchantCatalogDialogHost(
         controller = catalogDialogController,
-        catalog = state.catalog,
-        busy = state.busy,
-        mergeSuggestion = state.mergeSuggestion,
+        state = state,
         actions = MerchantCatalogDialogHostActions(
             onRename = actions.catalog.onRename,
             onMerge = actions.catalog.onMerge,
@@ -77,61 +74,56 @@ fun MerchantAliasesScreen(
         ),
     )
 
-    deletingCatalog?.let { item ->
+    editors.deletingCatalog?.let { item ->
         AlertDialog(
-            onDismissRequest = { deletingCatalog = null },
+            onDismissRequest = { if (!state.busy) editors.deletingCatalog = null },
             title = { Text(stringResource(R.string.merchant_catalog_delete_dialog_title)) },
             text = {
-                Text(
-                    stringResource(
-                        R.string.merchant_catalog_delete_dialog_text,
-                        item.displayName,
-                    ),
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+                    Text(
+                        stringResource(R.string.merchant_catalog_delete_dialog_text, item.displayName),
+                    )
+                    AppStatusBanner(message = state.message, tone = state.messageTone)
+                }
             },
             confirmButton = {
                 TextButton(
-                    onClick = {
-                        deletingCatalog = null
-                        actions.catalog.onDelete(item)
-                    },
+                    enabled = !state.busy,
+                    onClick = { actions.catalog.onDelete(item) },
                 ) {
                     Text(stringResource(R.string.merchant_catalog_delete_dialog_confirm), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { deletingCatalog = null }) {
+                TextButton(enabled = !state.busy, onClick = { editors.deletingCatalog = null }) {
                     Text(stringResource(R.string.common_cancel))
                 }
             },
         )
     }
 
-    deletingAlias?.let { item ->
+    editors.deletingAlias?.let { item ->
         AlertDialog(
-            onDismissRequest = { deletingAlias = null },
+            onDismissRequest = { if (!state.busy) editors.deletingAlias = null },
             title = { Text(stringResource(R.string.merchant_aliases_delete_dialog_title)) },
             text = {
-                Text(
-                    stringResource(
-                        R.string.merchant_aliases_delete_dialog_text,
-                        item.alias,
-                        item.canonicalMerchant,
-                    ),
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+                    Text(
+                        stringResource(R.string.merchant_aliases_delete_dialog_text, item.alias, item.canonicalMerchant),
+                    )
+                    AppStatusBanner(message = state.message, tone = state.messageTone)
+                }
             },
             confirmButton = {
                 TextButton(
-                    onClick = {
-                        deletingAlias = null
-                        actions.alias.onDelete(item)
-                    },
+                    enabled = !state.busy,
+                    onClick = { actions.alias.onDelete(item) },
                 ) {
                     Text(stringResource(R.string.merchant_aliases_delete_dialog_confirm), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { deletingAlias = null }) {
+                TextButton(enabled = !state.busy, onClick = { editors.deletingAlias = null }) {
                     Text(stringResource(R.string.common_cancel))
                 }
             },
@@ -168,7 +160,9 @@ fun MerchantAliasesScreen(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Spacer(Modifier.width(AppSpacing.compactGap))
-                    TextButton(onClick = actions.undo.onUndoDelete) { Text(stringResource(R.string.merchant_aliases_undo_button)) }
+                    TextButton(enabled = !state.busy, onClick = actions.undo.onUndoDelete) {
+                        Text(stringResource(R.string.merchant_aliases_undo_button))
+                    }
                 }
             }
         }
@@ -183,104 +177,134 @@ fun MerchantAliasesScreen(
         if (!state.readOnly) {
             MerchantManagementToolsSection(
                 state = MerchantManagementToolState(
-                    activeTool = activeCreateTool,
-                    catalogName = catalogName,
+                    activeTool = editors.activeCreateTool,
+                    catalogName = editors.catalogName,
                     aliasDraft = MerchantAliasDraft(
-                        canonicalMerchant = canonicalMerchant,
-                        aliasText = aliasText,
+                        canonicalMerchant = editors.canonicalMerchant,
+                        aliasText = editors.aliasText,
                     ),
                     busy = state.busy,
-                    catalogMessage = catalogMessage,
-                    aliasMessage = aliasMessage,
+                    catalogMessage = editors.catalogMessage,
+                    aliasMessage = editors.aliasMessage,
                 ),
                 actions = MerchantManagementToolActions(
                     onStartCatalog = {
-                        activeCreateTool = MerchantCreateTool.Catalog
-                        catalogMessage = null
-                        aliasMessage = null
+                        actions.onStartEditing()
+                        editors.activeCreateTool = MerchantCreateTool.Catalog
+                        editors.catalogMessage = null
+                        editors.aliasMessage = null
                     },
                     onStartAlias = {
-                        activeCreateTool = MerchantCreateTool.Alias
-                        catalogMessage = null
-                        aliasMessage = null
+                        actions.onStartEditing()
+                        editors.activeCreateTool = MerchantCreateTool.Alias
+                        editors.catalogMessage = null
+                        editors.aliasMessage = null
                     },
-                    onCatalogNameChange = { catalogName = it },
+                    onCatalogNameChange = { editors.catalogName = it },
                     onAliasDraftChange = {
-                        canonicalMerchant = it.canonicalMerchant
-                        aliasText = it.aliasText
+                        editors.canonicalMerchant = it.canonicalMerchant
+                        editors.aliasText = it.aliasText
                     },
                     onSubmitCatalog = {
-                        if (catalogName.isBlank()) {
-                            catalogMessage = catalogValidationMessage
+                        if (editors.catalogName.isBlank()) {
+                            editors.catalogMessage = catalogValidationMessage
                         } else {
-                            catalogMessage = null
-                            actions.catalog.onCreate(catalogName)
-                            catalogName = ""
-                            activeCreateTool = null
+                            editors.catalogMessage = null
+                            actions.catalog.onCreate(editors.catalogName)
                         }
                     },
                     onSubmitAlias = {
-                        if (canonicalMerchant.isBlank() || aliasText.isBlank()) {
-                            aliasMessage = createValidationMessage
+                        if (editors.canonicalMerchant.isBlank() || editors.aliasText.isBlank()) {
+                            editors.aliasMessage = createValidationMessage
                         } else {
-                            aliasMessage = null
-                            actions.alias.onCreate(canonicalMerchant, aliasText)
-                            canonicalMerchant = ""
-                            aliasText = ""
-                            activeCreateTool = null
+                            editors.aliasMessage = null
+                            actions.alias.onCreate(editors.canonicalMerchant, editors.aliasText)
                         }
                     },
                     onCancel = {
-                        activeCreateTool = null
-                        catalogMessage = null
-                        aliasMessage = null
+                        editors.activeCreateTool = null
+                        editors.catalogMessage = null
+                        editors.aliasMessage = null
                     },
                 ),
             )
         }
 
-        if (state.catalog.isEmpty() && state.aliases.isEmpty()) {
-            SettingsInlineEmpty(
-                title = stringResource(R.string.merchant_aliases_empty_combined_title),
-                body = stringResource(R.string.merchant_aliases_empty_combined_body),
-            )
-        } else {
-            MerchantCatalogListSection(
-                catalog = state.catalog,
-                readOnly = state.readOnly,
-                busy = state.busy,
-                actions = MerchantCatalogListActions(
-                    onRename = catalogDialogController::openRename,
-                    onToggle = actions.catalog.onToggle,
-                    onMerge = catalogDialogController::openMerge,
-                    onDelete = { deletingCatalog = it },
-                ),
-            )
+        MerchantReferenceLists(state, actions, editors)
+    }
+}
 
-            MerchantAliasListSection(
-                aliases = state.aliases,
-                readOnly = state.readOnly,
-                busy = state.busy,
-                onToggleAlias = actions.alias.onToggle,
-                onDeleteAlias = { deletingAlias = it },
+@Composable
+private fun MerchantReferenceLists(
+    state: MerchantAliasesScreenState,
+    actions: MerchantAliasesScreenActions,
+    editors: MerchantEditors,
+) {
+    if (state.catalog.isEmpty() && state.aliases.isEmpty() && !state.aliasesLoadFailed) {
+        SettingsInlineEmpty(
+            title = stringResource(R.string.merchant_aliases_empty_combined_title),
+            body = stringResource(R.string.merchant_aliases_empty_combined_body),
+        )
+    } else {
+        MerchantCatalogListSection(
+            catalog = state.catalog,
+            readOnly = state.readOnly,
+            busy = state.busy,
+            actions = MerchantCatalogListActions(
+                onRename = {
+                    actions.onStartEditing()
+                    editors.catalogDialogs.openRename(it)
+                },
+                onToggle = actions.catalog.onToggle,
+                onMerge = {
+                    actions.onStartEditing()
+                    editors.catalogDialogs.openMerge(it)
+                },
+                onDelete = {
+                    actions.onStartEditing()
+                    editors.deletingCatalog = it
+                },
+            ),
+        )
+
+        if (state.aliasesLoadFailed) {
+            SettingsInlineEmpty(
+                title = stringResource(R.string.merchant_alias_load_failed),
+                body = stringResource(R.string.merchant_aliases_reload_hint),
             )
-        }
+            TextButton(enabled = !state.busy, onClick = actions.onReloadAliases) {
+                Text(stringResource(R.string.merchant_aliases_reload_button))
+            }
+        } else MerchantAliasListSection(
+            aliases = state.aliases,
+            readOnly = state.readOnly,
+            busy = state.busy,
+            onToggleAlias = actions.alias.onToggle,
+            onDeleteAlias = {
+                actions.onStartEditing()
+                editors.deletingAlias = it
+            },
+        )
     }
 }
 
 data class MerchantAliasesScreenState(
     val catalog: List<MerchantCatalog>,
     val aliases: List<MerchantAlias>,
+    val aliasesLoadFailed: Boolean,
     val busy: Boolean,
     val readOnly: Boolean,
     val message: UiText?,
     val messageTone: MessageTone = MessageTone.Neutral,
     val undoableAlias: MerchantAlias?,
     val mergeSuggestion: MerchantCatalogMergeSuggestion?,
+    val editorCompletion: MerchantEditorCompletion?,
 )
 
 data class MerchantAliasesScreenActions(
     val onBack: () -> Unit,
+    val onStartEditing: () -> Unit,
+    val onReloadAliases: () -> Unit,
     val catalog: MerchantAliasesCatalogActions,
     val alias: MerchantAliasesAliasActions,
     val mergeSuggestion: MerchantAliasesMergeSuggestionActions,
@@ -309,6 +333,47 @@ data class MerchantAliasesUndoActions(
     val onUndoDelete: () -> Unit,
     val onDismiss: () -> Unit,
 )
+
+
+private class MerchantEditors {
+    var catalogName by mutableStateOf("")
+    var canonicalMerchant by mutableStateOf("")
+    var aliasText by mutableStateOf("")
+    var catalogMessage by mutableStateOf<String?>(null)
+    var aliasMessage by mutableStateOf<String?>(null)
+    var activeCreateTool by mutableStateOf<MerchantCreateTool?>(null)
+    var deletingCatalog by mutableStateOf<MerchantCatalog?>(null)
+    var deletingAlias by mutableStateOf<MerchantAlias?>(null)
+    val catalogDialogs = MerchantCatalogDialogController()
+
+    fun complete(completed: MerchantEditorCompletion) {
+        when (completed.kind) {
+            MerchantEditorKind.CreateCatalog -> {
+                catalogName = ""
+                catalogMessage = null
+                if (activeCreateTool == MerchantCreateTool.Catalog) activeCreateTool = null
+            }
+            MerchantEditorKind.CreateAlias -> {
+                canonicalMerchant = ""
+                aliasText = ""
+                aliasMessage = null
+                if (activeCreateTool == MerchantCreateTool.Alias) activeCreateTool = null
+            }
+            MerchantEditorKind.RenameCatalog -> {
+                if (catalogDialogs.renamingCatalog?.publicId == completed.publicId) catalogDialogs.closeRename()
+            }
+            MerchantEditorKind.MergeCatalog -> {
+                if (catalogDialogs.mergingCatalog?.publicId == completed.publicId) catalogDialogs.closeMerge()
+            }
+            MerchantEditorKind.DeleteCatalog -> {
+                if (deletingCatalog?.publicId == completed.publicId) deletingCatalog = null
+            }
+            MerchantEditorKind.DeleteAlias -> {
+                if (deletingAlias?.publicId == completed.publicId) deletingAlias = null
+            }
+        }
+    }
+}
 
 private enum class MerchantCreateTool {
     Catalog,

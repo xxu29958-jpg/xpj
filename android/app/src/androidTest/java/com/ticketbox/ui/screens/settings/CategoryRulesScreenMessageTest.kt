@@ -82,11 +82,13 @@ class CategoryRulesScreenMessageTest {
                 onToggle = {},
                 onDelete = {},
                 onRecoverSubmission = { _, _ -> },
+                onReload = {},
             ),
             applications = CategoryRulesApplicationActions(
                 onPreviewApplyConfirmedRules = {},
                 onConfirmApplyConfirmedRules = {},
                 onRollbackRuleApplication = {},
+                onReload = {},
             ),
             undo = CategoryRulesUndoActions(
                 onUndoDelete = {},

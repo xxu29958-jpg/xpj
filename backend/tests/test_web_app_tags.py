@@ -78,13 +78,9 @@ def test_unused_tag_actions_cannot_rewrite_a_bill_that_reused_the_source_after_r
               "name": "办公", "target": f"{target['public_id']}:{target['row_version']}"},
         follow_redirects=False,
     )
-    if action == "rename":
-        assert response.status_code == 422
-        returned = response
-    else:
-        assert response.status_code == 303
-        assert parse_qs(urlsplit(response.headers["location"]).query)["unused"] == ["1"]
-        returned = web_client.get(response.headers["location"])
+    assert response.status_code == 422
+    returned = response
+    assert "当前没有未使用的标签" in returned.text
     assert "已被使用" in returned.text and 'role="alert"' in returned.text
     assert expense_row("随后使用标签的账单") == (accepted["id"], accepted["row_version"], "工作")
     assert tag_links(accepted["id"]) == ["工作"]
@@ -121,7 +117,7 @@ def test_unused_cleanup_native_form_and_undo_preserve_the_same_view(web_client: 
 def _row_version_for(page_text: str, public_id: str, action: str) -> str:
     """Pull the hidden expected_row_version from the {action} form of a tag row."""
     m = _re.search(
-        rf"/web/tags/{public_id}/{action}.*?expected_row_version\"\s*value=\"([^\"]+)\"",
+        rf"/web/tags/{public_id}/{action}.*?expected_row_version\"\s*value=\"([^\"]*)\"",
         page_text,
         flags=_re.DOTALL,
     )
@@ -354,10 +350,17 @@ def test_unused_tag_failed_mutation_keeps_filter(
               "target": f'{used["public_id"]}:{used["row_version"]}'},
         follow_redirects=False,
     )
-    assert response.status_code == 303
-    assert parse_qs(urlsplit(response.headers["location"]).query)["unused"] == ["1"]
+    if action == "merge":
+        assert response.status_code == 422
+        returned = response
+        assert 'name="unused" value="1"' in returned.text
+        assert _row_version_for(returned.text, unused["public_id"], "merge") == token
+        assert f'value="{used["public_id"]}:{used["row_version"]}" selected' in returned.text
+    else:
+        assert response.status_code == 303
+        assert parse_qs(urlsplit(response.headers["location"]).query)["unused"] == ["1"]
+        returned = web_client.get(response.headers["location"])
     assert tag_index(web_client, identity.app_headers)["工作"] == unused
-    returned = web_client.get(response.headers["location"])
     assert f'data-tag-key="{unused["public_id"]}"' in returned.text
     assert 'product-feedback--error' in returned.text and 'role="alert"' in returned.text
 

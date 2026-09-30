@@ -96,10 +96,12 @@ class CategoryRulesViewModelTest {
 
     @Test
     fun initRuleLoadFailureClearsLoadingAndShowsMessage() = rulesTest {
+        var rejectRead = true
         val vm = harness(
             object : ApiService by FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0) {
                 override suspend fun categoryRules(): List<CategoryRuleDto> {
-                    throw RepositoryException("")
+                    if (rejectRead) throw RepositoryException("")
+                    return listOf(categoryRuleDto())
                 }
             },
         )
@@ -107,8 +109,16 @@ class CategoryRulesViewModelTest {
         val state = awaitInitialLoads(vm)
 
         assertFalse(state.categoryRulesLoading)
+        assertTrue(state.categoryRulesLoadFailed)
         assertEquals(UiText.res(R.string.category_rules_load_failed), state.message)
         assertEquals(MessageTone.Danger, state.messageTone)
+
+        rejectRead = false
+        vm.loadCategoryRules()
+        val recovered = vm.uiState.first { it.categoryRules.isNotEmpty() }
+        assertFalse(recovered.categoryRulesLoadFailed)
+        assertEquals(0, recovered.changedRevision)
+        assertEquals(0, recovered.submittedRevision)
     }
 
     @Test
@@ -192,6 +202,8 @@ class CategoryRulesViewModelTest {
     fun rollbackWithChangesBumpsApplicationRevisionOnly() = rulesTest {
         val vm = harness(FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0))
         val application = awaitInitialLoads(vm).ruleApplications.single()
+        vm.previewApplyConfirmedRules()
+        vm.uiState.first { it.confirmedRulesPreview != null }
 
         vm.rollbackRuleApplication(application)
         val state = vm.uiState.first { it.applicationRevision > 0 }
@@ -200,6 +212,42 @@ class CategoryRulesViewModelTest {
         assertEquals(1, state.applicationRevision)
         assertEquals(0, state.changedRevision)
         assertEquals(MessageTone.Success, state.messageTone)
+        assertEquals(null, state.confirmedRulesPreview, "A rollback changes the facts used by the old preview")
+    }
+
+    @Test
+    fun acceptedRollbackDoesNotLeaveTheOldActionWhenHistoryReadFails() = rulesTest {
+        var rejectHistory = false
+        var rollbackCalls = 0
+        val vm = harness(object : ApiService by FakeApiService(mutableListOf(), 0) {
+            override suspend fun ruleApplications(limit: Int): RuleApplicationListDto {
+                if (rejectHistory) throw RepositoryException("")
+                val row = ruleApplicationDto()
+                return RuleApplicationListDto(listOf(if (rollbackCalls == 0) row else row.copy(
+                    status = "rollback_partial", rolledBackAt = "2026-05-01T00:15:00Z")))
+            }
+
+            override suspend fun rollbackRuleApplication(publicId: String): RuleApplicationRollbackDto {
+                rollbackCalls += 1
+                rejectHistory = true
+                return RuleApplicationRollbackDto(publicId, "rollback_partial", 1, 1, "2026-05-01T00:15:00Z")
+            }
+        })
+        val original = awaitInitialLoads(vm).ruleApplications.single()
+        vm.rollbackRuleApplication(original)
+        val accepted = vm.uiState.first { it.applicationRevision == 1 }
+        assertEquals(UiText.res(R.string.category_rules_rollback_done, 1, 1), accepted.message)
+        assertEquals(MessageTone.Success, accepted.messageTone)
+        assertTrue(accepted.ruleApplications.isEmpty(), "A completed rollback must not leave its old actionable batch")
+        assertTrue(accepted.ruleApplicationsLoadFailed)
+
+        rejectHistory = false
+        vm.loadRuleApplications()
+        val recovered = vm.uiState.first { it.ruleApplications.singleOrNull()?.status == "rollback_partial" }
+        assertEquals(1, rollbackCalls)
+        assertEquals(1, recovered.applicationRevision)
+        assertTrue(recovered.ruleApplications.single().isRolledBack)
+        assertFalse(recovered.ruleApplicationsLoadFailed)
     }
 
     @Test

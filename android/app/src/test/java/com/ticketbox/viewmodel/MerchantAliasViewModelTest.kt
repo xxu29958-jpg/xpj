@@ -195,6 +195,32 @@ class MerchantAliasViewModelTest {
         assertEquals(0, harness.vm.uiState.value.changedRevision)
     }
 
+    @Test
+    fun acceptedMergeWithFailedAliasReadCanRecoverWithoutMergingAgain() = merchantAlias {
+        val harness = harness {
+            merchantCatalogItems = listOf(
+                merchantCatalogDto(publicId = "catalog-1", displayName = "星巴克", rowVersion = 1L),
+                merchantCatalogDto(publicId = "catalog-2", displayName = "蓝瓶咖啡", rowVersion = 4L),
+            )
+        }
+        val initial = harness.vm.uiState.first { it.merchantCatalog.size == 2 && it.merchantAliases.isNotEmpty() }
+        harness.api.merchantAliasesFailure = java.io.IOException("Read failed after accepted merge")
+        harness.vm.mergeMerchantCatalog(initial.merchantCatalog[0], initial.merchantCatalog[1],
+            MerchantCatalogAliasPolicy.CreateSourceAlias)
+        val accepted = harness.vm.uiState.first { it.changedRevision == 1 }
+        assertTrue(accepted.merchantAliases.isEmpty(), "The incomplete alias query must not masquerade as the current list")
+        assertTrue(accepted.aliasesLoadFailed)
+        assertEquals(MessageTone.Success, accepted.messageTone)
+        assertEquals(1, accepted.changedRevision)
+
+        harness.api.merchantAliasesFailure = null
+        harness.vm.loadMerchantAliases()
+        val recovered = harness.vm.uiState.first { it.merchantAliases.any { alias -> alias.publicId == "alias-created-by-merge" } }
+        assertEquals(false, recovered.aliasesLoadFailed)
+        assertEquals(accepted.editorCompletion, recovered.editorCompletion)
+        assertEquals(1, harness.api.merchantCatalogMergeRequests.size)
+    }
+
     private fun harness(
         role: String = "owner",
         configureApi: FakeApiService.() -> Unit = {},

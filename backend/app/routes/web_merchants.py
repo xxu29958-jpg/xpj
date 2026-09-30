@@ -82,6 +82,8 @@ def _render_merchants(
     catalog_create_recycle: bool = False,
     alias_create_error: str = "",
     alias_create_draft: dict[str, str] | None = None,
+    merge_error: str = "",
+    merge_draft: dict[str, str] | None = None,
     status_code: int = 200,
 ) -> HTMLResponse:
     ctx = _base_ctx(
@@ -107,6 +109,8 @@ def _render_merchants(
         catalog_create_recycle=catalog_create_recycle,
         alias_create_error=alias_create_error,
         alias_create_draft=alias_create_draft or {},
+        merge_error=merge_error,
+        merge_draft=merge_draft or {},
         q="?ledger_id=" + selected_id,
     )
     return templates.TemplateResponse(
@@ -242,20 +246,28 @@ def web_merchant_catalog_merge(
     expected_row_version: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
-) -> RedirectResponse:
+) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     source_rv = parse_form_row_version_token(expected_row_version)
     target_public_id, _, target_rv_raw = target.rpartition(":")
     target_rv = parse_form_row_version_token(target_rv_raw)
+    draft = {
+        "public_id": public_id, "target": target, "expected_row_version": expected_row_version,
+        "alias_policy": alias_policy,
+    }
     if (
         source_rv is None
         or not target_public_id
         or target_rv is None
         or alias_policy not in {"none", "create_source_alias"}
     ):
-        return _stale_catalog_redirect(selected_id)
+        db.rollback()
+        return _render_merchants(
+            request, db, options=options, selected_id=selected_id,
+            merge_error="页面已过期，请核对当前商家、合并目标和别名处理。", merge_draft=draft, status_code=422,
+        )
     try:
         result = merge_merchant_catalog(
             db,
@@ -268,7 +280,11 @@ def web_merchant_catalog_merge(
             rewrite_historical_expenses=False,
         )
     except AppError as exc:
-        return _web_redirect("/web/merchants", selected_id, msg=_catalog_conflict_message(exc))
+        db.rollback()
+        return _render_merchants(
+            request, db, options=options, selected_id=selected_id,
+            merge_error=_catalog_conflict_message(exc), merge_draft=draft, status_code=422,
+        )
     alias_msg = (
         "已创建来源别名，后续规则会折叠到目标商家。"
         if result.created_alias_public_id

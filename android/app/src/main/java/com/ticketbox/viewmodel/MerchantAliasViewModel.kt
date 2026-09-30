@@ -24,6 +24,7 @@ import kotlinx.coroutines.launch
 data class MerchantAliasUiState(
     val merchantCatalog: List<MerchantCatalog> = emptyList(),
     val merchantAliases: List<MerchantAlias> = emptyList(),
+    val aliasesLoadFailed: Boolean = false,
     val busy: Boolean = false,
     val message: UiText? = null,
     val messageTone: MessageTone = MessageTone.Neutral,
@@ -34,7 +35,13 @@ data class MerchantAliasUiState(
     // the screen opens a user-confirmed merge dialog with the target preselected.
     val mergeSuggestion: MerchantCatalogMergeSuggestion? = null,
     val changedRevision: Int = 0,
+    val editorCompletion: MerchantEditorCompletion? = null,
 )
+
+enum class MerchantEditorKind { CreateCatalog, CreateAlias, RenameCatalog, MergeCatalog, DeleteCatalog, DeleteAlias }
+
+/** Identifies only the editor whose command was accepted; other unsent forms stay intact. */
+data class MerchantEditorCompletion(val kind: MerchantEditorKind, val publicId: String, val revision: Int)
 
 data class MerchantCatalogMergeSuggestion(
     val source: MerchantCatalog,
@@ -77,17 +84,30 @@ class MerchantAliasViewModel(
     }
 
     fun loadMerchantAliases(clearMessage: Boolean = true) {
+        if (clearMessage && _uiState.value.busy) return
+        if (clearMessage) _uiState.update { it.copy(busy = true) }
         viewModelScope.launch {
             if (clearMessage) {
                 _uiState.update { it.copy(message = null, messageTone = MessageTone.Neutral) }
             }
             merchantRepository.merchantAliases()
-                .onSuccess { aliases -> _uiState.update { it.copy(merchantAliases = aliases.sortedMerchantAliases()) } }
+                .onSuccess { aliases ->
+                    _uiState.update {
+                        it.copy(
+                            merchantAliases = aliases.sortedMerchantAliases(),
+                            aliasesLoadFailed = false,
+                            busy = if (clearMessage) false else it.busy,
+                        )
+                    }
+                }
                 .onFailure { error ->
                     _uiState.update {
                         it.copy(
                             message = error.toUiText(R.string.merchant_alias_load_failed),
                             messageTone = MessageTone.Danger,
+                            merchantAliases = emptyList(),
+                            aliasesLoadFailed = true,
+                            busy = if (clearMessage) false else it.busy,
                         )
                     }
                 }
@@ -95,6 +115,7 @@ class MerchantAliasViewModel(
     }
 
     fun createMerchantCatalog(displayName: String) {
+        if (_uiState.value.busy) return
         if (!canModifyCurrentLedger()) {
             _uiState.update {
                 it.copy(
@@ -116,6 +137,9 @@ class MerchantAliasViewModel(
                             message = UiText.res(R.string.merchant_catalog_added),
                             messageTone = MessageTone.Success,
                             changedRevision = state.changedRevision + 1,
+                            editorCompletion = MerchantEditorCompletion(
+                                MerchantEditorKind.CreateCatalog, created.publicId, state.changedRevision + 1,
+                            ),
                         )
                     }
                 }
@@ -140,7 +164,7 @@ class MerchantAliasViewModel(
             return
         }
         viewModelScope.launch {
-            _uiState.update { it.copy(message = null, messageTone = MessageTone.Neutral) }
+            _uiState.update { it.copy(busy = true, message = null, messageTone = MessageTone.Neutral) }
             val nextStatus = if (item.isActive) "hidden" else "active"
             merchantRepository.updateMerchantCatalog(
                 publicId = item.publicId,
@@ -153,6 +177,7 @@ class MerchantAliasViewModel(
                             merchantCatalog = state.merchantCatalog
                                 .map { if (it.publicId == updated.publicId) updated else it }
                                 .sortedMerchantCatalog(),
+                            busy = false,
                             message = if (updated.isActive) {
                                 UiText.res(R.string.merchant_catalog_visible)
                             } else {
@@ -164,7 +189,7 @@ class MerchantAliasViewModel(
                     }
                 }
                 .onFailure { error ->
-                    _uiState.update { it.copy(message = catalogErrorMessage(error), messageTone = MessageTone.Danger) }
+                    _uiState.update { it.copy(busy = false, message = catalogErrorMessage(error), messageTone = MessageTone.Danger) }
                 }
         }
     }
@@ -198,6 +223,9 @@ class MerchantAliasViewModel(
                             message = UiText.res(R.string.merchant_catalog_renamed, updated.displayName),
                             messageTone = MessageTone.Success,
                             changedRevision = state.changedRevision + 1,
+                            editorCompletion = MerchantEditorCompletion(
+                                MerchantEditorKind.RenameCatalog, item.publicId, state.changedRevision + 1,
+                            ),
                         )
                     }
                 }
@@ -225,6 +253,10 @@ class MerchantAliasViewModel(
     /** The screen consumed the merge suggestion and opened the dialog. */
     fun consumeMergeSuggestion() {
         _uiState.update { it.copy(mergeSuggestion = null) }
+    }
+
+    fun dismissMessage() {
+        _uiState.update { it.copy(message = null, messageTone = MessageTone.Neutral) }
     }
 
     fun mergeMerchantCatalog(
@@ -266,7 +298,7 @@ class MerchantAliasViewModel(
         aliasPolicy: MerchantCatalogAliasPolicy,
     ) {
         val refreshedAliases = if (result.createdAliasPublicId != null) {
-            merchantRepository.merchantAliases().getOrNull()?.sortedMerchantAliases()
+            merchantRepository.merchantAliases()
         } else {
             null
         }
@@ -281,7 +313,9 @@ class MerchantAliasViewModel(
                         }
                     }
                     .sortedMerchantCatalog(),
-                merchantAliases = refreshedAliases ?: state.merchantAliases,
+                merchantAliases = refreshedAliases?.getOrDefault(emptyList())?.sortedMerchantAliases()
+                    ?: state.merchantAliases,
+                aliasesLoadFailed = refreshedAliases?.isFailure ?: state.aliasesLoadFailed,
                 busy = false,
                 message = if (aliasPolicy == MerchantCatalogAliasPolicy.CreateSourceAlias) {
                     UiText.res(R.string.merchant_catalog_merged_with_alias, source.displayName, target.displayName)
@@ -290,6 +324,9 @@ class MerchantAliasViewModel(
                 },
                 messageTone = MessageTone.Success,
                 changedRevision = state.changedRevision + 1,
+                editorCompletion = MerchantEditorCompletion(
+                    MerchantEditorKind.MergeCatalog, source.publicId, state.changedRevision + 1,
+                ),
             )
         }
     }
@@ -303,7 +340,7 @@ class MerchantAliasViewModel(
             return
         }
         viewModelScope.launch {
-            _uiState.update { it.copy(message = null, messageTone = MessageTone.Neutral) }
+            _uiState.update { it.copy(busy = true, message = null, messageTone = MessageTone.Neutral) }
             merchantRepository.deleteMerchantCatalog(
                 publicId = item.publicId,
                 expectedRowVersion = item.rowVersion,
@@ -312,9 +349,13 @@ class MerchantAliasViewModel(
                     _uiState.update { state ->
                         state.copy(
                             merchantCatalog = state.merchantCatalog.filterNot { it.publicId == item.publicId },
+                            busy = false,
                             message = UiText.res(R.string.merchant_catalog_deleted),
                             messageTone = MessageTone.Success,
                             changedRevision = state.changedRevision + 1,
+                            editorCompletion = MerchantEditorCompletion(
+                                MerchantEditorKind.DeleteCatalog, item.publicId, state.changedRevision + 1,
+                            ),
                         )
                     }
                 }
@@ -322,6 +363,7 @@ class MerchantAliasViewModel(
                     _uiState.update {
                         it.copy(
                             message = catalogErrorMessage(error, R.string.merchant_catalog_delete_failed),
+                            busy = false,
                             messageTone = MessageTone.Danger,
                         )
                     }
@@ -330,6 +372,7 @@ class MerchantAliasViewModel(
     }
 
     fun createMerchantAlias(canonicalMerchant: String, alias: String) {
+        if (_uiState.value.busy) return
         if (!canModifyCurrentLedger()) {
             _uiState.update {
                 it.copy(
@@ -351,6 +394,9 @@ class MerchantAliasViewModel(
                             message = UiText.res(R.string.merchant_alias_added),
                             messageTone = MessageTone.Success,
                             changedRevision = state.changedRevision + 1,
+                            editorCompletion = MerchantEditorCompletion(
+                                MerchantEditorKind.CreateAlias, created.publicId, state.changedRevision + 1,
+                            ),
                         )
                     }
                 }
@@ -367,6 +413,7 @@ class MerchantAliasViewModel(
     }
 
     fun toggleMerchantAlias(alias: MerchantAlias) {
+        if (_uiState.value.busy) return
         if (!canModifyCurrentLedger()) {
             _uiState.update {
                 it.copy(message = UiText.res(R.string.common_readonly_ledger), messageTone = MessageTone.Danger)
@@ -378,7 +425,7 @@ class MerchantAliasViewModel(
             // enqueue + MerchantAliasSaveOutcome.Queued (optimistic
             // flipped enabled); chained POST not used by this VM so
             // it's safe to route through outbox.
-            _uiState.update { it.copy(message = null, messageTone = MessageTone.Neutral) }
+            _uiState.update { it.copy(busy = true, message = null, messageTone = MessageTone.Neutral) }
             merchantRepository.updateMerchantAliasAllowingOffline(
                 baseline = alias,
                 enabled = !alias.enabled,
@@ -407,6 +454,7 @@ class MerchantAliasViewModel(
                             merchantAliases = state.merchantAliases
                                 .map { if (it.publicId == outcome.alias.publicId) outcome.alias else it }
                                 .sortedMerchantAliases(),
+                            busy = false,
                             message = message,
                             messageTone = tone,
                             changedRevision = state.changedRevision + 1,
@@ -417,6 +465,7 @@ class MerchantAliasViewModel(
                     _uiState.update {
                         it.copy(
                             message = error.toUiText(R.string.merchant_alias_update_failed),
+                            busy = false,
                             messageTone = MessageTone.Danger,
                         )
                     }
@@ -425,6 +474,7 @@ class MerchantAliasViewModel(
     }
 
     fun deleteMerchantAlias(alias: MerchantAlias) {
+        if (_uiState.value.busy) return
         if (!canModifyCurrentLedger()) {
             _uiState.update {
                 it.copy(message = UiText.res(R.string.common_readonly_ledger), messageTone = MessageTone.Danger)
@@ -435,7 +485,7 @@ class MerchantAliasViewModel(
             // ADR-0038 PR-2g.5: offline-aware DELETE. IOException →
             // enqueue + DeleteOutcome.Queued; row removed from UI
             // either way (synced vs queued only changes the message).
-            _uiState.update { it.copy(message = null, messageTone = MessageTone.Neutral) }
+            _uiState.update { it.copy(busy = true, message = null, messageTone = MessageTone.Neutral) }
             merchantRepository.deleteMerchantAliasAllowingOffline(alias)
                 .onSuccess { outcome ->
                     val message = when (outcome) {
@@ -453,10 +503,14 @@ class MerchantAliasViewModel(
                     _uiState.update { state ->
                         state.copy(
                             merchantAliases = state.merchantAliases.filterNot { it.publicId == alias.publicId },
+                            busy = false,
                             message = message,
                             messageTone = tone,
                             undoableAlias = undoable,
                             changedRevision = state.changedRevision + 1,
+                            editorCompletion = MerchantEditorCompletion(
+                                MerchantEditorKind.DeleteAlias, alias.publicId, state.changedRevision + 1,
+                            ),
                         )
                     }
                 }
@@ -464,6 +518,7 @@ class MerchantAliasViewModel(
                     _uiState.update {
                         it.copy(
                             message = error.toUiText(R.string.merchant_alias_delete_failed),
+                            busy = false,
                             messageTone = MessageTone.Danger,
                         )
                     }
@@ -472,14 +527,16 @@ class MerchantAliasViewModel(
     }
 
     fun undoDelete() {
+        if (_uiState.value.busy) return
         val target = _uiState.value.undoableAlias ?: return
         viewModelScope.launch {
-            _uiState.update { it.copy(message = null, messageTone = MessageTone.Neutral) }
+            _uiState.update { it.copy(busy = true, message = null, messageTone = MessageTone.Neutral) }
             merchantRepository.undoMerchantAlias(target.publicId)
                 .onSuccess { restored ->
                     _uiState.update { state ->
                         state.copy(
                             merchantAliases = (state.merchantAliases + restored).sortedMerchantAliases(),
+                            busy = false,
                             message = UiText.res(R.string.merchant_alias_restored),
                             messageTone = MessageTone.Success,
                             undoableAlias = null,
@@ -491,6 +548,7 @@ class MerchantAliasViewModel(
                     _uiState.update {
                         it.copy(
                             message = error.toUiText(R.string.merchant_alias_restore_failed),
+                            busy = false,
                             messageTone = MessageTone.Danger,
                             undoableAlias = null,
                         )

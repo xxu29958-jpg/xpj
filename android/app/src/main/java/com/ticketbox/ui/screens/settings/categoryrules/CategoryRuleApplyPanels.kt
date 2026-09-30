@@ -48,7 +48,8 @@ internal fun ConfirmedRuleApplyPanel(
             AppActionRow(
                 primary = AppAction(
                     text = stringResource(R.string.category_rule_apply_confirm_button),
-                    enabled = !busy && !readOnly && (preview?.changedCount ?: 0) > 0,
+                    enabled = !busy && !readOnly && preview?.dryRun == true &&
+                        !preview.previewToken.isNullOrBlank() && preview.changedCount > 0,
                     onClick = onConfirm,
                 ),
                 secondary = AppAction(
@@ -105,7 +106,7 @@ internal fun RuleApplicationHistory(
 private fun ConfirmedRulePreviewSummary(result: RuleApplyConfirmedResult) {
     Text(
         text = stringResource(
-            R.string.category_rule_apply_preview_summary,
+            if (result.dryRun) R.string.category_rule_apply_preview_summary else R.string.category_rule_apply_accepted_summary,
             result.confirmedScanned,
             result.changedCount,
             result.noMatchCount,
@@ -173,11 +174,12 @@ private fun RuleApplicationRow(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(
-                    text = if (application.isRolledBack) {
-                        stringResource(R.string.category_rule_apply_history_status_rolled_back)
-                    } else {
-                        stringResource(R.string.category_rule_apply_history_status_applied)
-                    },
+                    text = stringResource(when {
+                        application.status == "rollback_partial" -> R.string.category_rule_apply_history_status_partial
+                        application.status == "rollback_skipped" -> R.string.category_rule_apply_history_status_skipped
+                        application.isRolledBack -> R.string.category_rule_apply_history_status_rolled_back
+                        else -> R.string.category_rule_apply_history_status_applied
+                    }),
                     style = MaterialTheme.typography.titleSmall,
                 )
                 Text(
