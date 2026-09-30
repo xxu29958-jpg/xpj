@@ -1,5 +1,6 @@
 package com.ticketbox.ui.navigation
 
+import android.app.Notification
 import android.app.NotificationManager
 import android.os.Build
 import androidx.test.core.app.ApplicationProvider
@@ -57,9 +58,12 @@ class NotificationJourneyRuntimeTest {
         assertEquals("A refused notification is not an already-delivered reminder", enabled,
             SharedPrefsBudgetOverspendStore(context).wasSent(key))
 
-        fun deliveries() = manager.activeNotifications.filter { it.notification.channelId in channels }.associate { it.tag to it.postTime }
+        fun deliveries() = manager.activeNotifications.filter {
+            it.notification.channelId in channels && it.notification.flags and Notification.FLAG_GROUP_SUMMARY == 0
+        }.associate { it.tag to (it.notification.channelId to it.postTime) }
         withTimeout(10_000) { while (deliveries().size != if (enabled) 3 else 0) delay(100) }
         val originals = deliveries()
+        assertEquals(if (enabled) channels else emptySet<String>(), originals.values.map { it.first }.toSet())
         container.recurringReminderEngine.checkAndNotify()
         container.backupStaleEngine.checkAndNotify()
         container.budgetOverspendChecker.checkNow(binding.ledgerId)

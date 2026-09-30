@@ -60,7 +60,13 @@ class NotificationJourney:
         self.background_process_death()
 
     def tap_notification(self, amount, expected="还款采集"):
-        self.native.adb("shell", "cmd", "statusbar", "expand-notifications")
+        def show_shade():
+            self.native.adb("shell", "cmd", "statusbar", "expand-notifications")
+            return any(node.attrib.get("resource-id") == "com.android.systemui:id/notification_stack_scroller"
+                for node in self.native.tree().iter("node"))
+
+        wait_for(show_shade, "Android did not display the actual notification shade")
+        self.native.capture(f"notification-shade-{amount}")
         self.native.reveal_any(amount)
         self.native.capture(f"notification-tap-{amount}")
         action, control = notification_control(self.native.tree(), amount)

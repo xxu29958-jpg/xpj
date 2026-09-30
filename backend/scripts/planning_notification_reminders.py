@@ -130,12 +130,13 @@ class NotificationReminders:
         assert self.facts()["expected_date"] == self.expected_date, "Opening a reminder advanced the fixed-expense due date"
         assert len(self.facts()["expenses"]) == 1, "A reminder created an automatic payment"
         self.native.back()
-        self.native.reveal_any("停止余下上传", "重试上传")
+        self.native.reveal_any("重试上传")
         self.j.background_process_death()
         self.native.adb("shell", "am", "start", "-n", "com.ticketbox/.MainActivity")
-        self.native.reveal_any("停止余下上传", "重试上传")
+        self.native.reveal_any("重试上传")
         self.native.capture("notification-return-to-original-share")
         self.native.connection(self.j.port, online=True)
+        self.native.click("重试上传")
         self.shared_original = wait_for(lambda: shared_original_result(self.j, digest),
             "The saved image did not continue after returning from its reminder", 120)
 
