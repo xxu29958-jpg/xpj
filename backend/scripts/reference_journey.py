@@ -37,6 +37,29 @@ class ReferenceJourney:
         self.native.click("资料库")
         self.native.click(label)
 
+    def native_row_action(self, label, action):
+        # Compose exposes these list labels as siblings in one panel, not row
+        # ancestors. Match the live touch bounds of the button beside the label.
+        def locate():
+            root = self.native.tree()
+            parents = {child: parent for parent in root.iter() for child in parent}
+            labels = [node for node in root.iter("node") if node.get("text") == label]
+            matches = []
+            for node in root.iter("node"):
+                if node.get("content-desc") != action:
+                    continue
+                button = parents.get(node, node)
+                if button.get("enabled") == "false":
+                    continue
+                left, top, _, bottom = self.native.bounds(button)
+                for text in labels:
+                    _, y1, right, y2 = self.native.bounds(text)
+                    if right <= left and top <= (y1 + y2) // 2 <= bottom:
+                        matches.append(button)
+            return matches if len(matches) == 1 else None
+        button = wait_for(locate, f"The visible {action} beside {label} cannot be identified")[0]
+        self.native.tap(button)
+
     def tag(self, name):
         return next(row for row in self.facts()["tags"] if row["name"] == name)
 
@@ -87,7 +110,7 @@ class ReferenceJourney:
         stale.locator('[name="name"]').fill("WebDraft")
         self.native_open("标签")
         native.reveal_any("Trip")
-        native.click_within("Trip", "标签操作")
+        self.native_row_action("Trip", "标签操作")
         native.click("重命名")
         native.fill("TripNew", previous="Trip")
         native.connection(self.port, online=False)
@@ -120,7 +143,7 @@ class ReferenceJourney:
         original_target = f'{target["id"]}:{target["row_version"]}'
         original_version = merge.locator('[name="expected_row_version"]').input_value()
         merge.locator('[name="target"]').select_option(original_target)
-        native.click_within("Monthly", "标签操作")
+        self.native_row_action("Monthly", "标签操作")
         native.click("重命名")
         native.fill("MonthlyNew", previous="Monthly")
         native.click("保存")

@@ -174,7 +174,7 @@ def test_web_merchant_alias_same_target_conflict_is_neutral_and_truthful(
     assert "已指向其他商家" not in conflict.text
 
 
-def test_web_merchant_catalog_merge_creates_alias_without_rewriting_history(
+def test_web_merchant_catalog_merge_retains_choice_after_conflict_then_creates_alias(
     web_client: TestClient,
 ) -> None:
     import re as _re
@@ -186,6 +186,26 @@ def test_web_merchant_catalog_merge_creates_alias_without_rewriting_history(
     target_id = _catalog_public_id_for_name(page.text, "New Shop", _re)
     source_rv = _catalog_action_token(page.text, source_id, "merge", _re)
     target_rv = _catalog_action_token(page.text, target_id, "rename", _re)
+
+    renamed = web_client.post(
+        f"/web/merchants/catalog/{target_id}/rename",
+        data={"ledger_id": "owner", "expected_row_version": target_rv, "display_name": "New Shop Updated"},
+    )
+    assert renamed.status_code == 200
+    original_choice = f"{target_id}:{target_rv}"
+    conflict = web_client.post(
+        f"/web/merchants/catalog/{source_id}/merge",
+        data={"ledger_id": "owner", "expected_row_version": source_rv,
+              "target": original_choice, "alias_policy": "create_source_alias"},
+        follow_redirects=False,
+    )
+    assert conflict.status_code == 422
+    assert f'value="{original_choice}" selected' in conflict.text
+    assert 'value="create_source_alias" selected' in conflict.text
+    assert _catalog_action_token(conflict.text, source_id, "merge", _re) == source_rv
+    assert f"/web/merchants/catalog/{source_id}/rename" in conflict.text, "The refused merge changed its source"
+    assert "还没有商家别名" in conflict.text, "The refused merge created an alias"
+    target_rv = _catalog_action_token(conflict.text, target_id, "rename", _re)
 
     merged = web_client.post(
         f"/web/merchants/catalog/{source_id}/merge",
@@ -205,7 +225,7 @@ def test_web_merchant_catalog_merge_creates_alias_without_rewriting_history(
     assert "Old Shop" in merged.text
     assert "New Shop" in merged.text
     assert "<code>old shop</code>" in merged.text
-    assert "<code>new shop</code>" in merged.text
+    assert "<code>new shop updated</code>" in merged.text
     assert f"/web/merchants/catalog/{source_id}/toggle" not in merged.text
     assert f"/web/merchants/catalog/{source_id}/rename" not in merged.text
 

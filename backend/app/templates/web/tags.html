@@ -20,6 +20,10 @@
   </div>
 </header>
 
+{% with merge_items=merge_targets, merge_kind='tag' %}
+{% include 'partials/reference_merge_recovery.html' %}
+{% endwith %}
+
 {% if not can_write %}
 <div class="product-feedback" role="status">只读角色可以查看标签，但不能重命名、合并或删除。</div>
 {% endif %}
@@ -112,7 +116,7 @@
                 <input type="text" name="name" value="{% if _row_error %}{{ rename_error_value }}{% else %}{{ item.name }}{% endif %}" required maxlength="64" aria-label="重命名标签"{% if _row_error %} aria-invalid="true"{% endif %}>
                 <button type="submit" class="product-button product-button--small">重命名</button>
               </form>
-              {% if merge_targets|length > 1 %}
+              {% if merge_targets|length > 1 and (not merge_draft or merge_draft.public_id != item.public_id) %}
               <form method="post" action="/web/tags/{{ item.public_id }}/merge"
                     data-confirm="把标签「{{ item.name }}」合并到所选标签？该标签下的账单会改用目标标签。">
                 <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">

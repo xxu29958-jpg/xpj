@@ -4,8 +4,15 @@ from scripts.planning_journey_android import wait_for
 
 
 def organize_rules(j):
-    native, page = j.native, j.page
     initial_categories = [row["category"] for row in j.facts()["expenses"]]
+    category = create_rule(j, initial_categories)
+    resume_rule_edit(j, initial_categories)
+    preview_apply_and_rollback(j, initial_categories)
+    restore_rule_and_category(j, category)
+
+
+def create_rule(j, initial_categories):
+    page = j.page
     j.goto("/web/rules")
     create = j.form("/web/rules/create")
     create.locator('[name="keyword"]').fill("RefShop")
@@ -20,10 +27,14 @@ def organize_rules(j):
     assert "Library" in page.inner_text("main") and "规则" in page.inner_text("main")
     assert not next(row for row in j.facts()["categories"] if row["id"] == category["id"])["deleted"]
     j.capture("category-reference-blocks-delete")
+    return category
 
+
+def resume_rule_edit(j, initial_categories):
+    native = j.native
     j.native_open("自动规则")
     native.reveal_any("RefShop")
-    native.click_within("RefShop", "分类规则操作")
+    j.native_row_action("RefShop", "分类规则操作")
     native.click("编辑")
     native.fill("101", label="优先级")
     native.connection(j.port, online=False)
@@ -43,6 +54,9 @@ def organize_rules(j):
     j.expect(lambda state: state["rules"][0]["priority"] == 101, "The original persisted rule edit did not resume")
     assert len(j.facts()["rules"]) == 1 and [row["category"] for row in j.facts()["expenses"]] == initial_categories
 
+
+def preview_apply_and_rollback(j, initial_categories):
+    native, page = j.native, j.page
     native.reveal_any("已入账应用")
     native.click("预览")
     native.reveal_any("可更新 2 笔")
@@ -71,6 +85,9 @@ def organize_rules(j):
     assert "部分回滚" in page.inner_text("main")
     j.capture("rule-partial-rollback-from-native")
 
+
+def restore_rule_and_category(j, category):
+    native, page = j.native, j.page
     rule = j.facts()["rules"][0]
     j.confirm(j.form(f'/web/rules/{rule["id"]}/delete'))
     j.expect(lambda state: state["rules"][0]["deleted"], "The Web rule delete did not commit")

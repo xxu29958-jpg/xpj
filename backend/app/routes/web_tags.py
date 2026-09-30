@@ -6,8 +6,9 @@ undo. Tags are created implicitly when an expense is tagged, so there is NO
 create form here — only governance of existing tags.
 
 Every mutate form carries the hidden ``expected_row_version`` (OCC); a stale
-token surfaces as a "页面已过期/已在其它端修改" redirect instead of clobbering a
-stale snapshot. rename colliding with an existing key returns 409 ``tag_conflict``
+token refuses the mutation instead of clobbering a stale snapshot. Rename and
+merge keep the submitted editor for explicit review. Rename colliding with an
+existing key returns 409 ``tag_conflict``
 — the operator is told to use 合并 (契约 5). delete/merge soft-delete the source
 tag and offer a 5s 撤销 affordance that POSTs to the undo route with the
 mutation's handle + the soft-deleted tag's undo token (契约 2).
@@ -86,6 +87,8 @@ def _render_tags(
     rename_error: str = "",
     rename_error_public_id: str = "",
     rename_error_value: str = "",
+    merge_error: str = "",
+    merge_draft: dict[str, str] | None = None,
     status_code: int = 200,
 ) -> HTMLResponse:
     ctx = _base_ctx(
@@ -106,6 +109,8 @@ def _render_tags(
         rename_error=rename_error,
         rename_error_public_id=rename_error_public_id,
         rename_error_value=rename_error_value,
+        merge_error=merge_error,
+        merge_draft=merge_draft or {},
     )
     return templates.TemplateResponse(
         request=request,
@@ -252,7 +257,7 @@ def web_tag_merge(
     unused: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
-) -> RedirectResponse:
+) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
@@ -262,8 +267,13 @@ def web_tag_merge(
     # a UUID public_id has no colon, so this is unambiguous.
     target_public_id, _, target_rv_raw = target.rpartition(":")
     target_rv = parse_form_row_version_token(target_rv_raw)
+    draft = {"public_id": public_id, "target": target, "expected_row_version": expected_row_version}
     if source_rv is None or not target_public_id or target_rv is None:
-        return _stale_redirect(selected_id, unused)
+        db.rollback()
+        return _render_tags(
+            request, db, options=options, selected_id=selected_id, unused=unused,
+            merge_error="页面已过期，请核对当前标签和合并目标。", merge_draft=draft, status_code=422,
+        )
     actor_account_id, actor_device_id = resolve_web_actor(db, request, selected_id)
     try:
         result = merge_tags(
@@ -278,7 +288,11 @@ def web_tag_merge(
             require_orphan=unused == "1",
         )
     except AppError as exc:
-        return _web_redirect("/web/tags", selected_id, unused=unused, msg=_conflict_message(exc, unused), flash_type="error")
+        db.rollback()
+        return _render_tags(
+            request, db, options=options, selected_id=selected_id, unused=unused,
+            merge_error=_conflict_message(exc, unused), merge_draft=draft, status_code=422,
+        )
     return _web_redirect(
         "/web/tags",
         selected_id,
