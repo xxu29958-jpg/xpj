@@ -70,6 +70,7 @@ data class ExpenseFactUiState(
     val revisionsOlderLoading: Boolean = false,
     val revisionsOlderLoadFailed: Boolean = false,
     val revisionsRefreshFailed: Boolean = false,
+    val revisionsCachedAt: String? = null,
     /** null means the current member directory could not be read. */
     val revisionMemberNames: Map<Long, String>? = null,
     val timelineExpanded: Boolean = false,
@@ -80,11 +81,17 @@ data class ExpenseFactUiState(
     val correctionRecoveryBusy: Boolean = false,
     // 更正流（correction 扩展拥有全部逻辑）。
     val correction: CorrectionFormState = CorrectionFormState(),
+    val factInputsReady: Boolean = true,
+    val factInputKeys: Set<String> = emptySet(),
+    val factInputError: UiText? = null,
+    val factInputWriting: Boolean = false,
+    val factInputBusy: Boolean = false,
     // 退回与冲销（offsets 扩展拥有逻辑；bundle = 服务端原子事实包，pending 只是
     // 会话内待提交表达，持久队列归 Outbox；command 不依赖 bundle 是否可读）。
     val factBundle: ExpenseFactBundle? = null,
     val factBundleLoadState: ExpenseDetailDataLoadState = ExpenseDetailDataLoadState.Unknown,
     val factBundleMessage: UiText? = null,
+    val factBundleCachedAt: String? = null,
     val offsetForm: OffsetFormState = OffsetFormState(),
     val voidOffsetForm: VoidOffsetFormState = VoidOffsetFormState(),
     /** A 409 raised this root's OCC gate; only an adopted authoritative bundle clears it. */
@@ -148,9 +155,11 @@ data class CorrectionFormState(
     val submitError: UiText? = null,
     val itemsEditorOpen: Boolean = false,
     val itemDrafts: List<EditableItem> = emptyList(),
+    val itemDraftsInitialized: Boolean = false,
     val itemsTouched: Boolean = false,
     val splitEditorOpen: Boolean = false,
     val splitDrafts: List<EditableSplit> = emptyList(),
+    val splitDraftsInitialized: Boolean = false,
     val splitMembersLoading: Boolean = false,
     val splitsTouched: Boolean = false,
     val saving: Boolean = false,
@@ -164,6 +173,8 @@ class ExpenseFactViewModel(
 ) : ViewModel() {
 
     internal var correctionOriginalItems: ExpenseItems? = null
+    internal var factInputSession: ExpenseFactInputSession? = null
+    internal var factInputLoadGeneration = 0L
     internal var correctionOriginalSplits: ExpenseSplits? = null
     internal var correctionBaseline: Expense? = null
     internal var correctionBinding: com.ticketbox.data.repository.LogicalSessionBinding? = null
@@ -184,9 +195,11 @@ class ExpenseFactViewModel(
     val uiState: StateFlow<ExpenseFactUiState> = _uiState.asStateFlow()
 
     init {
+        observeFactReadDenials()
         observeBillSplitSubmissions()
         var verifyInitialCache = preferLocalCache
         observeFactSubmissions {
+            loadFactOriginalInputs()
             if (verifyInitialCache) {
                 verifyInitialCache = false
                 verifyInitialExpenseFromCache { loadExpense(initialLoad = true) }
@@ -238,6 +251,7 @@ class ExpenseFactViewModel(
                         )
                     }
                     loadThumbnailFor(expense)
+                    if (factInputSession == null && !_uiState.value.factInputsReady) loadFactOriginalInputs()
                     // confirmed 才能发起拆账邀请（domain 门）；满足才拉取，避免无谓请求。
                     if (_uiState.value.expense?.canInitiateBillSplit(_uiState.value.readOnly) == true) {
                         loadBillSplitSent(onlyIfUnknown = initialLoad)
@@ -254,6 +268,7 @@ class ExpenseFactViewModel(
 
     private suspend fun resolveExpenseRefreshFailure(refreshError: Throwable, generation: Long) {
         if (generation != expenseLoadGeneration) return
+        if (retireDeniedFactReads(refreshError)) return
         if (_uiState.value.expense != null) {
             _uiState.update {
                 it.copy(

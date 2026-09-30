@@ -61,13 +61,14 @@ internal enum class FactHeroCaption {
 }
 
 internal fun factHeroCaptionKind(expense: Expense, bundle: ExpenseFactBundle?): FactHeroCaption {
-    if (factHeroShowsNet(bundle)) return FactHeroCaption.Net
+    val summary = bundle?.takeIf { it.matchesRoot(expense) }
+    if (factHeroShowsNet(summary)) return FactHeroCaption.Net
     val showsOriginal = factHeroShowsOriginal(expense, showsNet = false)
     return when {
         // bundle 未载（离线/首读）：只能保证根账单金额，标「原账金额」口径，
         // 不虚构退款/净额；普通无退回账单（bundle 已知 Confirmed）保持干净。
-        bundle == null && showsOriginal -> FactHeroCaption.GrossOriginal
-        bundle == null -> FactHeroCaption.Gross
+        summary == null && showsOriginal -> FactHeroCaption.GrossOriginal
+        summary == null -> FactHeroCaption.Gross
         showsOriginal -> FactHeroCaption.Original
         else -> FactHeroCaption.None
     }
@@ -85,7 +86,8 @@ internal fun FactSummarySection(
     onOpenCorrection: () -> Unit,
 ) {
     val display = expense.recordCurrencyDisplay()
-    val showsNet = factHeroShowsNet(state.factBundle)
+    val bundle = state.factBundle?.takeIf { it.matchesRoot(expense) }
+    val showsNet = factHeroShowsNet(bundle)
     val empty = stringResource(R.string.expense_fact_value_empty)
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -102,7 +104,7 @@ internal fun FactSummarySection(
         Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
             StatusPill(text = stringResource(R.string.expense_fact_status_confirmed))
             if (showsNet) {
-                val chipRes = when (state.factBundle?.financialSummary?.status) {
+                val chipRes = when (bundle?.financialSummary?.status) {
                     ExpenseLineageStatus.PartiallyRefunded -> R.string.ledger_lineage_partially_refunded
                     ExpenseLineageStatus.FullyRefunded -> R.string.ledger_lineage_fully_refunded
                     else -> R.string.ledger_lineage_reversed
@@ -116,7 +118,7 @@ internal fun FactSummarySection(
                 )
             }
         }
-        FactHeroAmount(expense = expense, state = state, showsNet = showsNet, homeDisplay = display)
+        FactHeroAmount(expense = expense, bundle = bundle, showsNet = showsNet, homeDisplay = display)
         FactMetaLine(expense = expense)
     }
 
@@ -142,11 +144,10 @@ internal fun FactSummarySection(
 @Composable
 private fun FactHeroAmount(
     expense: Expense,
-    state: ExpenseFactUiState,
+    bundle: ExpenseFactBundle?,
     showsNet: Boolean,
     homeDisplay: CurrencyDisplay,
 ) {
-    val bundle = state.factBundle
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
         Text(
             text = if (showsNet && bundle != null) {

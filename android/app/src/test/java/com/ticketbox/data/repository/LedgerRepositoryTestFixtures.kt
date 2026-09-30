@@ -855,7 +855,8 @@ internal fun existingOwnerSessionFixture(
     ),
 ).apply { saveToken(token) }
 
-internal class LedgerFakeDao : ExpenseDao {
+internal class LedgerFakeDao : ExpenseDao, com.ticketbox.data.local.ExpenseFactQueryCacheDao by com.ticketbox.data.local.ExpenseFactQueryCacheFake(),
+    com.ticketbox.data.local.ExpenseFactInputDao by com.ticketbox.data.local.ExpenseFactInputFake() {
     private val statsCache = com.ticketbox.data.local.StatsProjectionCacheFake()
     override suspend fun clearDebtEntrySnapshots(bindingKey: String, publicId: String) {
         statsCache.byKind(bindingKey, "debt_detail").filter { it.tag == publicId }.forEach(statsCache::delete)

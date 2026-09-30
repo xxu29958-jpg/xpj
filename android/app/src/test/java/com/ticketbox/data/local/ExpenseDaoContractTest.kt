@@ -450,7 +450,7 @@ class ExpenseDaoContractTest {
  * Room: queries always filter by ledgerId, and `upsertAllByServerIdForLedger`
  * rejects mixed-ledger batches.
  */
-private class FakeExpenseDao : ExpenseDao {
+private class FakeExpenseDao : ExpenseDao, ExpenseFactQueryCacheDao by ExpenseFactQueryCacheFake(), ExpenseFactInputDao by ExpenseFactInputFake() {
     private val statsCache = com.ticketbox.data.local.StatsProjectionCacheFake()
     override suspend fun clearDebtEntrySnapshots(bindingKey: String, publicId: String) {
         statsCache.byKind(bindingKey, "debt_detail").filter { it.tag == publicId }.forEach(statsCache::delete)

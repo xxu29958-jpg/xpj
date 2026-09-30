@@ -32,7 +32,7 @@ data class DebtReadProtection(val epoch: Long, val directTokens: Set<String>, va
  * different ledger's cached row.
  */
 @Dao
-interface ExpenseDao : BudgetReadProtectionDao {
+interface ExpenseDao : BudgetReadProtectionDao, ExpenseFactQueryCacheDao, ExpenseFactInputDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun saveGoalSnapshots(snapshots: List<GoalQueryCacheEntity>)
 
@@ -65,6 +65,15 @@ interface ExpenseDao : BudgetReadProtectionDao {
         // Cache cleanup retires payloads; each query owner alone settles its dispatch proof and epoch.
         clearGoalSnapshotsForBinding(bindingKey)
         clearStatsProjectionsForBinding(bindingKey)
+        clearFactSnapshotsForBinding(bindingKey)
+    }
+
+    /** A missing confirmed fact retires only its rebuildable reads, never local input or Outbox. */
+    @Transaction
+    suspend fun retireExpenseFactRead(bindingKey: String, ledgerId: String, expenseId: Long) {
+        clearFactSnapshotsForExpense(bindingKey, expenseId)
+        deleteConfirmedByServerIds(ledgerId, listOf(expenseId))
+        deleteConfirmedStreamOffsetsForRoot(ledgerId, expenseId)
     }
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -575,6 +584,7 @@ interface ExpenseDao : BudgetReadProtectionDao {
         clearConfirmedStreamOffsets()
         clearStatsProjections()
         clearGoalSnapshots()
+        clearFactSnapshots()
         clearMonthlyReadSnapshots()
     }
 
@@ -584,6 +594,7 @@ interface ExpenseDao : BudgetReadProtectionDao {
         clearConfirmedStreamOffsetsForLedger(ledgerId)
         clearStatsProjectionsForLedger(ledgerId)
         clearGoalSnapshotsForLedger(ledgerId)
+        clearFactSnapshotsForLedger(ledgerId)
         clearMonthlyReadSnapshotsForLedger(ledgerId)
     }
 

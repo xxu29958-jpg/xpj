@@ -46,6 +46,42 @@ class ExpenseCorrectionRoomContinuityTest {
     @After fun close() { stopModel(); compose.runOnIdle { global?.viewModelScope?.cancel() }; fixture.close() }
 
     @Test
+    fun unfinishedCorrectionCanCloseAndReopenFromDiskDuringReadFailure() {
+        installModel()
+        compose.setContent {
+            val vm = model.value ?: return@setContent
+            val state by vm.uiState.collectAsState()
+            TicketboxTheme(skin = AppSkin.Midnight) { ExpenseFactScreen(state, vm, {}, { _, _ -> }) }
+        }
+        compose.waitUntil(10_000) { model.value?.uiState?.value?.factInputsReady == true &&
+            model.value?.uiState?.value?.authoritativeRootReady == true }
+        compose.onNodeWithText("更正这笔账单").performScrollTo().performClick()
+        compose.onAllNodes(hasSetTextAction())[0].performScrollTo().performTextReplacement("  核对原小票  ")
+        compose.onNode(hasSetTextAction() and hasText("10.00")).performScrollTo().performTextReplacement(" 00012.00 ")
+        compose.onNodeWithText("保留原稿并关闭").performScrollTo().performClick()
+        compose.waitUntil(10_000) { model.value?.uiState?.value?.factInputWriting == false &&
+            model.value?.uiState?.value?.correction?.open == false }
+        val original = runBlocking {
+            val access = requireNotNull(fixture.graph.expenseRepository.observeCorrections().first().access)
+            fixture.graph.expenseRepository.loadFactInputs(access.binding, fixture.network.current.id).getOrThrow().single()
+        }
+        stopModel()
+        fixture.network.failReads = true
+        installModel()
+        compose.waitUntil(10_000) { model.value?.uiState?.value?.factInputKeys?.contains("correction") == true &&
+            model.value?.uiState?.value?.expense != null }
+        compose.onNodeWithText("继续更正账单").performScrollTo().performClick()
+        compose.onNode(hasSetTextAction() and hasText("  核对原小票  ")).performScrollTo().assertIsDisplayed()
+        compose.onNode(hasSetTextAction() and hasText(" 00012.00 ")).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("保存更正").performScrollTo().assertIsNotEnabled()
+        assertEquals(original, runBlocking {
+            fixture.graph.expenseRepository.loadFactInputs(original.binding, original.expenseId).getOrThrow().single()
+        })
+        assertTrue(fixture.stored().isEmpty())
+        assertTrue(fixture.network.calls.isEmpty())
+    }
+
+    @Test
     fun realDetailSaveReopensOriginalSubmissionAndRetriesLostResponseWithoutForgingFact() {
         installModel()
         compose.setContent {
@@ -302,7 +338,7 @@ class ExpenseCorrectionRoomContinuityTest {
         compose.onNodeWithText("重试原提交").assertDoesNotExist()
         compose.onNodeWithText("刷新并核对当前事实").performScrollTo().performClick()
         assertEquals(42L, opened)
-        assertEquals(1_200L, graph.expenseRepository.fetchExpenseFactBundle(42).getOrThrow().root.amountCents)
+        assertEquals(1_200L, graph.expenseRepository.fetchExpenseFactBundle(42).getOrThrow().value.root.amountCents)
         assertTrue(requireNotNull(fixture.stored().single()["lastError"]).startsWith("correction_refresh_required:"))
         assertTrue(graph.expenseRepository.fetchExpense(42).isFailure)
         assertEquals("done", fixture.stored().single()["status"])

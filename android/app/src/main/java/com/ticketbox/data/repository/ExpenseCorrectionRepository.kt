@@ -7,7 +7,6 @@ import com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto
 import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseCorrectionDraft
-import com.ticketbox.domain.model.ExpenseRevisionPage
 import java.util.UUID
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -18,6 +17,7 @@ import kotlinx.coroutines.flow.map
 
 internal class ExpenseCorrectionRepository(
     private val core: ExpenseRepositoryCore,
+    private val inputs: ExpenseFactInputRepository,
     private val outbox: OutboxRepository,
     private val adapter: JsonAdapter<ExpenseCorrectionPayload>,
     private val legacyAdapter: JsonAdapter<ExpenseCorrectionRequestDto>,
@@ -27,11 +27,6 @@ internal class ExpenseCorrectionRepository(
         bound.serviceFor(row.bindingOrNull() ?: throw RepositoryException("原提交身份不可核对。"))
         core.syncConfirmedFromService(bound, requiredCorrection = expense)
     }
-
-    suspend fun fetchRevisions(id: Long, page: Int, pageSize: Int, snapshotRevision: Long? = null): Result<ExpenseRevisionPage> =
-        core.errorHandler.safeCall {
-            core.ledgerRequestGuard.bind().call { it.expenseRevisions(id, page, pageSize, snapshotRevision) }.toDomain()
-        }
 
     @OptIn(ExperimentalCoroutinesApi::class)
     fun observe(): Flow<ExpenseCorrectionObservation> = core.apiProvider.observeActiveLedgerAccess().flatMapLatest { access ->
@@ -47,7 +42,8 @@ internal class ExpenseCorrectionRepository(
         }
     }
 
-    suspend fun submit(expectedBinding: LogicalSessionBinding, expense: Expense, correction: ExpenseCorrectionDraft): Result<Long> =
+    suspend fun submit(expectedBinding: LogicalSessionBinding, expense: Expense, correction: ExpenseCorrectionDraft,
+        originalInput: ExpenseFactOriginalInput?): Result<Long> =
         core.errorHandler.safeCall {
             if (!core.canModifyLedger()) throw RepositoryException("当前角色为只读，无法更正账本。")
             if (expense.status != "confirmed" || expense.pendingSync || expense.id <= 0 || expense.rowVersion <= 0) {
@@ -61,14 +57,14 @@ internal class ExpenseCorrectionRepository(
                 correction.toRequest(expense.rowVersion))
             outbox.enqueue(boundRequest = bound, intent = PendingMutationIntent(
                 type = PendingMutationType.CorrectExpense, targetId = target, payloadJson = adapter.toJson(payload),
-                expectedRowVersion = expense.rowVersion, idempotencyKey = UUID.randomUUID().toString()),
+                expectedRowVersion = expense.rowVersion, idempotencyKey = originalInput?.originalKey ?: UUID.randomUUID().toString()),
                 validateTargetRows = { rows ->
                     requireExpenseRefreshComplete(rows)
                     if (rows.any { row -> row.status != PendingMutationStatus.Done ||
                         (row.type == PendingMutationType.CorrectExpense &&
                             (adapter.readSupportedCorrection(row) == null || row.lastError?.startsWith(EXPENSE_REFRESH_PREFIX) == true))
                     }) throw RepositoryException("这笔账单有待处理的提交，请先查看原提交。")
-                })
+                }, afterPersisted = { inputs.consume(originalInput, expectedBinding, expense.id, "correction") })
         }
 
     suspend fun recover(expectedBinding: LogicalSessionBinding, rowId: Long, drop: Boolean): Result<Unit> = core.errorHandler.safeCall {

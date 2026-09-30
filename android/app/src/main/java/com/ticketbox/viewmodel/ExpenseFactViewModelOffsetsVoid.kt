@@ -16,7 +16,8 @@ import kotlinx.coroutines.launch
  */
 
 fun ExpenseFactViewModel.openVoidOffsetSheet(offset: ExpenseOffsetFact) {
-    if (blockReadOnlyWrite()) return
+    if (blockReadOnlyWrite() || factInputUnavailable()) return
+    if (restoreVoidInput(offset)) return
     _uiState.update { state ->
         state.copy(
             voidOffsetForm = VoidOffsetFormState(
@@ -25,22 +26,41 @@ fun ExpenseFactViewModel.openVoidOffsetSheet(offset: ExpenseOffsetFact) {
             ),
         )
     }
+    keepVoidInput()
 }
 
 fun ExpenseFactViewModel.closeVoidOffsetSheet() {
-    _uiState.update { it.copy(voidOffsetForm = VoidOffsetFormState()) }
+    if (_uiState.value.voidOffsetForm.saving) return
+    _uiState.update { it.copy(voidOffsetForm = it.voidOffsetForm.copy(open = false)) }
 }
 
 fun ExpenseFactViewModel.updateVoidOffsetReason(value: String) {
+    if (!canEditFactInput("void:${_uiState.value.voidOffsetForm.target?.publicId}")) return
     _uiState.update {
         it.copy(voidOffsetForm = it.voidOffsetForm.copy(reason = value, submitError = null))
     }
+    keepVoidInput()
+}
+
+fun ExpenseFactViewModel.reviewVoidOffsetDraft() {
+    if (blockUnreadyFactWrite() || factInputOperationBusy()) return
+    val state = _uiState.value
+    val form = state.voidOffsetForm
+    if (!form.open || state.factBundleLoadState != ExpenseDetailDataLoadState.Loaded) return
+    val target = state.factBundle?.activeOffsets?.singleOrNull { it.publicId == form.target?.publicId } ?: return
+    _uiState.update { it.copy(voidOffsetForm = form.copy(target = target, submitError = null)) }
+    keepVoidInput(review = true)
 }
 
 fun ExpenseFactViewModel.canSubmitVoidOffset(): Boolean {
     val state = _uiState.value
     val form = state.voidOffsetForm
-    if (!form.open || form.saving) return false
+    if (!form.open || factInputOperationBusy()) return false
+    if (state.readOnly || !state.authoritativeRootReady) return false
+    if (factInputSession?.original("void:${form.target?.publicId}")?.binding != state.correctionAccess?.binding) return false
+    if (state.factBundleLoadState == ExpenseDetailDataLoadState.Loaded && state.factBundle?.activeOffsets?.none {
+        it.publicId == form.target?.publicId && it.rowVersion == form.target.rowVersion
+    } == true) return false
     return form.target != null && form.reason.isNotBlank()
 }
 
@@ -50,6 +70,7 @@ fun ExpenseFactViewModel.submitVoidOffset() {
     val expense = state.expense ?: return
     val binding = state.correctionAccess?.binding ?: return
     val form = state.voidOffsetForm
+    if (!form.open || factInputOperationBusy()) return
     val target = form.target ?: return
     if (form.reason.isBlank()) {
         _uiState.update {
@@ -61,13 +82,19 @@ fun ExpenseFactViewModel.submitVoidOffset() {
         }
         return
     }
+    if (!canSubmitVoidOffset()) return
+    val session = factInputSession ?: return
+    val inputKey = "void:${target.publicId}"
+    _uiState.update { it.copy(voidOffsetForm = it.voidOffsetForm.copy(saving = true)) }
     viewModelScope.launch {
         if (_uiState.value.correctionAccess?.binding != binding || blockReadOnlyWrite()) return@launch
         _uiState.update { it.copy(voidOffsetForm = it.voidOffsetForm.copy(saving = true)) }
-        repository.voidExpenseOffsetAllowingOffline(binding, expense, target, form.reason.trim())
+        session.ready(inputKey).fold(onSuccess = { repository.voidExpenseOffsetAllowingOffline(binding, expense, target, form.reason.trim(), it) },
+            onFailure = { Result.failure(it) })
             .onSuccess {
+                session.forget(inputKey)
                 if (_uiState.value.correctionAccess?.binding != binding) return@onSuccess
-                publishOffsetQueued()
+                publishOffsetQueued(isVoid = true)
             }
             .onFailure { error ->
                 if (_uiState.value.correctionAccess?.binding == binding) publishOffsetFailure(error, isVoid = true)

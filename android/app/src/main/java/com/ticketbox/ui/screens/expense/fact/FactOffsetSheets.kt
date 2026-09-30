@@ -41,6 +41,11 @@ import com.ticketbox.viewmodel.OffsetFormState
 import com.ticketbox.viewmodel.VoidOffsetFormState
 import com.ticketbox.viewmodel.canSubmitOffset
 import com.ticketbox.viewmodel.reviewOffsetDraft
+import com.ticketbox.viewmodel.reviewVoidOffsetDraft
+import com.ticketbox.viewmodel.canEditFactInput
+import com.ticketbox.viewmodel.inputKey
+import com.ticketbox.viewmodel.retryFactInputSave
+import com.ticketbox.viewmodel.loadExpenseFactBundle
 import com.ticketbox.viewmodel.canSubmitVoidOffset
 import com.ticketbox.viewmodel.closeOffsetSheet
 import com.ticketbox.viewmodel.closeVoidOffsetSheet
@@ -121,8 +126,9 @@ private fun OffsetFormContent(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
     ) {
+        FactInputSaveStatus(state, viewModel::retryFactInputSave)
         form.submitError?.let { AppStatusBanner(message = it, tone = MessageTone.Danger) }
-        if (!form.matchesRoot(state.expense)) {
+        if (!form.matchesRoot(state.expense) || !viewModel.canEditFactInput(form.inputKey())) {
             OffsetDraftReview(state = state, viewModel = viewModel)
         }
         if (reversal) {
@@ -134,7 +140,7 @@ private fun OffsetFormContent(
         } else {
             OffsetKindSegmented(
                 kind = form.kind,
-                enabled = !form.saving,
+                enabled = viewModel.canEditFactInput(form.inputKey()),
                 onSelect = viewModel::updateOffsetKind,
             )
             OffsetAmountField(state = state, viewModel = viewModel)
@@ -155,7 +161,7 @@ private fun OffsetFormContent(
                 onClick = viewModel::submitOffset,
             ),
             secondary = AppSheetAction(
-                text = stringResource(R.string.common_cancel),
+                text = stringResource(R.string.expense_fact_input_close),
                 enabled = !form.saving,
                 onClick = viewModel::closeOffsetSheet,
             ),
@@ -206,7 +212,7 @@ private fun OffsetAmountField(
             value = form.amountText,
             isError = form.amountError != null,
             emphasis = AppTextInputEmphasis.Amount,
-            enabled = !form.saving,
+            enabled = viewModel.canEditFactInput(form.inputKey()),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
         ),
         actions = AppTextInputActions(
@@ -243,7 +249,7 @@ private fun OffsetTextFields(
             value = form.accountingDate,
             placeholder = stringResource(R.string.expense_offset_date_placeholder),
             isError = form.dateError != null,
-            enabled = !form.saving,
+            enabled = viewModel.canEditFactInput(form.inputKey()),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
         ),
         actions = AppTextInputActions(
@@ -265,7 +271,7 @@ private fun OffsetTextFields(
             label = stringResource(R.string.expense_offset_reason_label),
             value = form.reason,
             placeholder = reasonPlaceholder,
-            enabled = !form.saving,
+            enabled = viewModel.canEditFactInput(form.inputKey()),
             singleLine = false,
             minLines = 2,
         ),
@@ -303,6 +309,17 @@ private fun FactVoidOffsetSheet(
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
             ) {
                 form.submitError?.let { AppStatusBanner(message = it, tone = MessageTone.Danger) }
+                FactInputSaveStatus(state, viewModel::retryFactInputSave)
+                if (!viewModel.canEditFactInput("void:${target.publicId}") ||
+                    state.factBundle?.activeOffsets?.none { it.publicId == target.publicId && it.rowVersion == target.rowVersion } == true) {
+                    Text(stringResource(R.string.expense_fact_void_review), style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = viewModel::reviewVoidOffsetDraft,
+                        enabled = state.authoritativeRootReady && state.factBundleLoadState == ExpenseDetailDataLoadState.Loaded &&
+                            state.factBundle?.activeOffsets?.any { it.publicId == target.publicId } == true) {
+                        Text(stringResource(R.string.expense_correction_review_adopt))
+                    }
+                    TextButton(onClick = viewModel::loadExpenseFactBundle) { Text(stringResource(R.string.expense_fact_refresh_current)) }
+                }
                 VoidOffsetEcho(target = target)
                 VoidOffsetReasonInput(form = form, viewModel = viewModel)
                 AppSheetActionRow(
@@ -318,7 +335,7 @@ private fun FactVoidOffsetSheet(
                         onClick = viewModel::submitVoidOffset,
                     ),
                     secondary = AppSheetAction(
-                        text = stringResource(R.string.common_cancel),
+                        text = stringResource(R.string.expense_fact_input_close),
                         enabled = !form.saving,
                         onClick = viewModel::closeVoidOffsetSheet,
                     ),
@@ -335,7 +352,7 @@ private fun VoidOffsetReasonInput(form: VoidOffsetFormState, viewModel: ExpenseF
             label = stringResource(R.string.expense_offset_void_reason_label),
             value = form.reason,
             placeholder = stringResource(R.string.expense_offset_void_reason_placeholder),
-            enabled = !form.saving,
+            enabled = viewModel.canEditFactInput("void:${form.target?.publicId}"),
             singleLine = false,
             minLines = 2,
         ),

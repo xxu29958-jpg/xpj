@@ -1,16 +1,13 @@
 package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.PendingMutationType
-import com.ticketbox.data.remote.dto.ExpenseFactBundleDto
 import com.ticketbox.data.remote.dto.ExpenseOffsetCreateRequestDto
 import com.ticketbox.domain.model.Expense
-import com.ticketbox.domain.model.ExpenseFactBundle
 import com.ticketbox.domain.model.ExpenseOffsetDraft
 import com.ticketbox.domain.model.ExpenseOffsetFact
 import com.ticketbox.domain.model.ExpenseOffsetIntentKind
 import com.ticketbox.domain.model.ExpenseOffsetMutationOutcome
 import com.ticketbox.domain.model.PendingExpenseOffsetIntent
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import java.time.LocalDate
 import java.time.format.DateTimeParseException
@@ -19,18 +16,13 @@ import java.util.UUID
 internal class ExpenseOffsetRepository(
     private val core: ExpenseRepositoryCore,
     private val corrections: ExpenseCorrectionRepository,
+    private val inputs: ExpenseFactInputRepository,
 ) {
-    suspend fun fetch(expenseId: Long): Result<ExpenseFactBundle> = core.errorHandler.safeCall {
-        val bound = core.ledgerRequestGuard.bind()
-        val dto = bound.call { it.expenseFactBundle(expenseId.toString()) }
-        publish(dto, bound)
-        dto.toDomain()
-    }
-
     suspend fun createAllowingOffline(
         expectedBinding: LogicalSessionBinding,
         expense: Expense,
         draft: ExpenseOffsetDraft,
+        originalInput: ExpenseFactOriginalInput?,
     ): Result<ExpenseOffsetMutationOutcome> = core.errorHandler.safeCall {
         val bound = core.ledgerRequestGuard.bindExact(expectedBinding)
         requireMutableRoot(expense)
@@ -52,8 +44,12 @@ internal class ExpenseOffsetRepository(
             reason = reason,
             expectedRowVersion = expense.rowVersion,
         )
-        val key = UUID.randomUUID().toString()
-        enqueueCreate(bound, expenseOutboxTargetId(expense), request, key)
+        val key = originalInput?.originalKey ?: UUID.randomUUID().toString()
+        enqueue(bound, PendingMutationIntent(type = PendingMutationType.CreateExpenseOffset,
+            targetId = expenseOutboxTargetId(expense), payloadJson = requireNotNull(core.offsetCreateAdapter).toJson(request),
+            expectedRowVersion = request.expectedRowVersion, idempotencyKey = key)) {
+            inputs.consume(originalInput, expectedBinding, expense.id, if (draft.kind.isMoneyEvent) "refund" else "reversal")
+        }
         queuedCreate(draft, reason)
     }
 
@@ -62,14 +58,19 @@ internal class ExpenseOffsetRepository(
         expense: Expense,
         offset: ExpenseOffsetFact,
         reason: String,
+        originalInput: ExpenseFactOriginalInput?,
     ): Result<ExpenseOffsetMutationOutcome> = core.errorHandler.safeCall {
         val bound = core.ledgerRequestGuard.bindExact(expectedBinding)
         requireMutableRoot(expense)
         if (offset.rowVersion <= 0) throw RepositoryException("这条退款事实还不能撤销。")
         val cleanReason = requiredReason(reason)
         val outboxPayload = ExpenseOffsetVoidOutboxPayload(offset.publicId, cleanReason)
-        val key = UUID.randomUUID().toString()
-        enqueueVoid(bound, expenseOutboxTargetId(expense), outboxPayload, offset.rowVersion, key)
+        val key = originalInput?.originalKey ?: UUID.randomUUID().toString()
+        enqueue(bound, PendingMutationIntent(type = PendingMutationType.VoidExpenseOffset,
+            targetId = expenseOutboxTargetId(expense), payloadJson = requireNotNull(core.offsetVoidAdapter).toJson(outboxPayload),
+            expectedRowVersion = offset.rowVersion, idempotencyKey = key)) {
+            inputs.consume(originalInput, expectedBinding, expense.id, "void:${offset.publicId}")
+        }
         queuedVoid(offset, cleanReason)
     }
 
@@ -94,64 +95,16 @@ internal class ExpenseOffsetRepository(
             }) throw RepositoryException("这笔账单有待处理的提交，请先查看原提交。")
     }
 
-    private suspend fun publish(response: ExpenseFactBundleDto, bound: BoundLedgerRequest): Boolean {
-        return try {
-            val projection = response.toCacheProjection(bound.ledgerId)
-            core.withActiveBindingCommit(bound) {
-                core.expenseDao.applyExpenseFactBundle(
-                    ledgerId = bound.ledgerId,
-                    root = projection.root,
-                    activeOffsets = projection.activeOffsets,
-                )
-            }
-            true
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (bindingError: RepositoryException) {
-            throw bindingError
-        } catch (_: Exception) {
-            false
-        }
-    }
-
-    private suspend fun enqueueCreate(
+    private suspend fun enqueue(
         bound: BoundLedgerRequest,
-        targetId: String,
-        request: ExpenseOffsetCreateRequestDto,
-        key: String,
+        intent: PendingMutationIntent,
+        consume: suspend () -> Unit,
     ) {
         requireNotNull(core.outbox).enqueue(
             boundRequest = bound,
-            intent = PendingMutationIntent(
-                type = PendingMutationType.CreateExpenseOffset,
-                targetId = targetId,
-                payloadJson = requireNotNull(core.offsetCreateAdapter)
-                    .toJson(request),
-                expectedRowVersion = request.expectedRowVersion,
-                idempotencyKey = key,
-            ),
+            intent = intent,
             validateTargetRows = ::requireExpenseRefreshComplete,
-        )
-    }
-
-    private suspend fun enqueueVoid(
-        bound: BoundLedgerRequest,
-        targetId: String,
-        payload: ExpenseOffsetVoidOutboxPayload,
-        expectedRowVersion: Long,
-        key: String,
-    ) {
-        requireNotNull(core.outbox).enqueue(
-            boundRequest = bound,
-            intent = PendingMutationIntent(
-                type = PendingMutationType.VoidExpenseOffset,
-                targetId = targetId,
-                payloadJson = requireNotNull(core.offsetVoidAdapter)
-                    .toJson(payload),
-                expectedRowVersion = expectedRowVersion,
-                idempotencyKey = key,
-            ),
-            validateTargetRows = ::requireExpenseRefreshComplete,
+            afterPersisted = consume,
         )
     }
 }

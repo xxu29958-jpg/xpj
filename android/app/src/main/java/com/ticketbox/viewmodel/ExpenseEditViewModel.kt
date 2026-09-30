@@ -33,6 +33,7 @@ import kotlinx.coroutines.launch
  * raw text the user types (in yuan, magnitude only); the sign is derived from
  * [kind] on save (discount → negative, per ADR-0035) and parsed to cents.
  */
+@com.squareup.moshi.JsonClass(generateAdapter = true)
 data class EditableItem(
     val name: String = "",
     val amountText: String = "",
@@ -45,6 +46,8 @@ data class EditableItem(
     val confidence: Double? = null,
     /** Original signed minor value, used to preserve unsupported-currency rows. */
     val baselineAmountCents: Long? = null,
+    /** Identifies a retained confirmed receipt line during an explicit correction review. */
+    val sourcePublicId: String? = null,
 )
 
 /**
@@ -54,6 +57,7 @@ data class EditableItem(
  * already on a split render greyed read-only so historical attribution isn't
  * dropped — they can't be toggled or edited but keep their existing amount.
  */
+@com.squareup.moshi.JsonClass(generateAdapter = true)
 data class EditableSplit(
     val memberId: Long,
     val displayName: String,

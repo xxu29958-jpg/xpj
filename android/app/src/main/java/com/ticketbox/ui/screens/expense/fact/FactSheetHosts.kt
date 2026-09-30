@@ -22,6 +22,8 @@ import com.ticketbox.viewmodel.adoptCorrectionItems
 import com.ticketbox.viewmodel.adoptCorrectionSplits
 import com.ticketbox.viewmodel.addCorrectionItemRow
 import com.ticketbox.viewmodel.correctionAvailability
+import com.ticketbox.viewmodel.reviewCorrectionDraft
+import com.ticketbox.viewmodel.retryFactInputSave
 import com.ticketbox.viewmodel.refreshCorrectionFact
 import com.ticketbox.viewmodel.cancelBillSplitInvitation
 import com.ticketbox.viewmodel.closeBillSplitInviteSheet
@@ -100,6 +102,7 @@ private fun FactCorrectionHost(
     if (!state.correction.open) return
     ExpenseCorrectionSheet(
         state = state,
+        basis = viewModel.correctionBaseline ?: return,
         availability = viewModel.correctionAvailability(),
         actions = ExpenseCorrectionSheetActions(
             onReasonChange = { viewModel.updateCorrectionField(CorrectionScalarField.Reason, it) },
@@ -115,6 +118,8 @@ private fun FactCorrectionHost(
             onOpenItems = viewModel::openCorrectionItemsEditor,
             onOpenSplits = viewModel::openCorrectionSplitsEditor,
             onRefreshFact = viewModel::refreshCorrectionFact,
+            onReview = viewModel::reviewCorrectionDraft,
+            onRetryInputSave = viewModel::retryFactInputSave,
             onSubmit = viewModel::submitCorrection,
             onDismiss = viewModel::closeCorrectionSheet,
         ),

@@ -96,7 +96,7 @@ class LocalLedgerSessionCoordinator(
 
     internal suspend fun beginSnapshotRead(): SnapshotReadTicket = mutex.withLock {
         val restored = settingsStore.restoreSnapshotAccessDenial(sessionStore)
-        if (restored != null && (accessDenials.value?.binding != restored.binding || pendingAccessCleanupBindingKey == null)) {
+        if (restored != null && accessDenials.value?.binding != restored.binding) {
             accessDenials.value = restored.copy(generation = readGeneration)
             pendingAccessCleanupBindingKey = logicalBindingAdapter.toJson(restored.binding)
         }
@@ -111,17 +111,17 @@ class LocalLedgerSessionCoordinator(
     ): T = mutex.withLock {
         bound.requireStillActive()
         if (ticket.generation != readGeneration) throw readInvalidation
-        val pending = accessDenials.value?.takeIf {
-            it.binding == bound.logicalBinding && pendingAccessCleanupBindingKey != null
-        }
-        if (fromCache && pending != null) throw pending.failure
-        val cacheAllowed = pending == null || (expenseDao.clearDeniedSnapshotCaches(bound.logicalBinding,
-            requireNotNull(pendingAccessCleanupBindingKey)) &&
-            settingsStore.persistSnapshotAccessDenial(bound.logicalBinding, requireNotNull(pendingAccessCleanupBindingKey), null))
+        val denied = accessDenials.value?.takeIf { it.binding == bound.logicalBinding }
+        val pending = denied?.takeIf { pendingAccessCleanupBindingKey != null }
+        if (fromCache && denied != null) throw denied.failure
+        val cacheAllowed = pending == null || expenseDao.clearDeniedSnapshotCaches(bound.logicalBinding,
+            requireNotNull(pendingAccessCleanupBindingKey))
         if (cacheAllowed && pending != null) pendingAccessCleanupBindingKey = null
         val outboxRef = outbox
         val result = if (outboxRef == null) block(cacheAllowed) else outboxRef.withActiveBinding(bound) { block(cacheAllowed) }
-        if (!fromCache && cacheAllowed && accessDenials.value?.binding == bound.logicalBinding) accessDenials.value = null
+        if (!fromCache && cacheAllowed && accessDenials.value?.binding == bound.logicalBinding &&
+            settingsStore.persistSnapshotAccessDenial(bound.logicalBinding, logicalBindingAdapter.toJson(bound.logicalBinding), null)
+        ) accessDenials.value = null
         result
     }
 
@@ -134,8 +134,8 @@ class LocalLedgerSessionCoordinator(
             pendingAccessCleanupBindingKey = bindingKey
             accessDenials.value = denial
             settingsStore.persistSnapshotAccessDenial(bound.logicalBinding, bindingKey, failure.httpStatusCode)
-            if (expenseDao.clearDeniedSnapshotCaches(bound.logicalBinding, bindingKey) &&
-                settingsStore.persistSnapshotAccessDenial(bound.logicalBinding, bindingKey, null)) pendingAccessCleanupBindingKey = null
+            // Cache deletion does not establish renewed access. A successful authorized read does.
+            if (expenseDao.clearDeniedSnapshotCaches(bound.logicalBinding, bindingKey)) pendingAccessCleanupBindingKey = null
         }
     }
 

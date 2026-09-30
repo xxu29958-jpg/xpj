@@ -14,6 +14,7 @@ import com.ticketbox.domain.model.ExpenseOffsetMutationOutcome
 import com.ticketbox.domain.model.ExpenseOffsetStatus
 import com.ticketbox.domain.model.StreamOffsetKind
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import java.io.IOException
 import kotlin.test.Test
@@ -23,6 +24,108 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 internal class ExpenseOffsetRepositoryTest : ExpensePendingRepositoryOutboxTestBase() {
+    @Test
+    fun coldHistoryPagesKeepTheirOriginalAnchorAndNeverBorrowPagesFromANewerRevision() = runTest {
+        var offline = false
+        var latest = 51L
+        val dao = FakeExpenseDao()
+        val api = object : ApiService by FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0) {
+            override suspend fun expenseRevisions(id: Long, page: Int, pageSize: Int, snapshotRevision: Long?):
+                com.ticketbox.data.remote.dto.ExpenseRevisionPageDto {
+                if (offline) throw java.net.ConnectException("offline")
+                val anchor = snapshotRevision ?: latest
+                val numbers = (anchor downTo 1).drop((page - 1) * pageSize).take(pageSize)
+                return com.ticketbox.data.remote.dto.ExpenseRevisionPageDto(numbers.map { revision ->
+                    com.ticketbox.data.remote.dto.ExpenseRevisionDto("revision-$revision", revision, "corrected", "核对 $revision",
+                        listOf("note"), after = mapOf("note" to "历史 $revision"), createdAt = "2026-09-30T00:00:00Z")
+                }, page, pageSize, anchor.toInt(), anchor)
+            }
+        }
+        val original = buildRepository(api, dao)
+        val first = original.fetchExpenseRevisions(9).getOrThrow()
+        val older = original.fetchExpenseRevisions(9, 2, 50, first.value.snapshotRevision).getOrThrow()
+        offline = true
+        val reopened = buildRepository(api, dao)
+        val restored = reopened.fetchExpenseRevisions(9).getOrThrow()
+        assertTrue(restored.fromCache)
+        assertEquals(first.value, restored.value)
+        assertEquals(older.value, reopened.fetchExpenseRevisions(9, 2, 50, restored.value.snapshotRevision).getOrThrow().value)
+        assertEquals(51, (restored.value.items + older.value.items).map { it.publicId }.toSet().size)
+        assertTrue(reopened.fetchExpenseRevisions(10).isFailure)
+        offline = false
+        latest = 52
+        assertEquals(52L, reopened.fetchExpenseRevisions(9).getOrThrow().value.snapshotRevision)
+        offline = true
+        assertTrue(buildRepository(api, dao).fetchExpenseRevisions(9, 2, 50, 52).isFailure,
+            "An unread page from the new snapshot must not be filled from the old prefix")
+    }
+
+    @Test
+    fun refusedFactReadRetiresKnownHistoryInsteadOfReopeningItAsOfflineSuccess() = runTest {
+        for (status in listOf(403, 404)) {
+            var failure: Throwable? = null
+            val dao = FakeExpenseDao()
+            val api = object : ApiService by FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0) {
+                override suspend fun expenseFactBundle(id: String): ExpenseFactBundleDto {
+                    failure?.let { throw it }
+                    return expenseFactBundleDtoFixture()
+                }
+            }
+            val repository = buildRepository(api, dao)
+            repository.fetchExpenseFactBundle(9).getOrThrow()
+            failure = retrofit2.HttpException(retrofit2.Response.error<Any>(status,
+                okhttp3.ResponseBody.create(null, "")))
+            assertTrue(repository.fetchExpenseFactBundle(9).isFailure)
+            assertTrue(repository.fetchExpenseFromLocalCache(9).isFailure,
+                "A known $status must also retire the fact page's independent root-cache entry")
+            failure = java.net.ConnectException("offline")
+            assertTrue(buildRepository(api, dao).fetchExpenseFactBundle(9).isFailure)
+        }
+    }
+
+    @Test
+    fun anOldResponseCannotRepopulateHistoryAfterTheFactWasRefused() = runTest {
+        val started = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+        var calls = 0
+        val dao = FakeExpenseDao()
+        val api = object : ApiService by FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0) {
+            override suspend fun expenseFactBundle(id: String): ExpenseFactBundleDto {
+                when (++calls) {
+                    1 -> { started.complete(Unit); release.await() }
+                    2 -> throw retrofit2.HttpException(retrofit2.Response.error<Any>(404, okhttp3.ResponseBody.create(null, "")))
+                    else -> throw java.net.ConnectException("offline")
+                }
+                return expenseFactBundleDtoFixture()
+            }
+        }
+        val repository = buildRepository(api, dao)
+        val old = async { repository.fetchExpenseFactBundle(9) }
+        started.await()
+        assertTrue(repository.fetchExpenseFactBundle(9).isFailure)
+        release.complete(Unit)
+        assertTrue(old.await().isFailure)
+        assertTrue(buildRepository(api, dao).fetchExpenseFactBundle(9).isFailure)
+    }
+
+    @Test
+    fun reopeningOfflineRetainsThePreviouslyReadRefundHistory() = runTest {
+        val dao = FakeExpenseDao()
+        val dto = expenseFactBundleDtoFixture()
+        val online = OffsetApiService(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0), createResponse = dto)
+        val known = buildRepository(online, dao).fetchExpenseFactBundle(9).getOrThrow()
+        val offline = object : ApiService by online {
+            override suspend fun expenseFactBundle(id: String): ExpenseFactBundleDto = throw java.net.UnknownHostException("offline")
+        }
+
+        val reopened = buildRepository(offline, dao).fetchExpenseFactBundle(9).getOrThrow()
+
+        assertEquals(known.value, reopened.value, "A new repository must read known refund history from persistent storage")
+        assertTrue(reopened.fromCache)
+        assertEquals(known.fetchedAt, reopened.fetchedAt)
+        assertEquals("refund-1", reopened.value.activeOffsets.single().publicId)
+    }
+
     @Test
     fun persistedRefundBlocksCurrencyCorrectionAndCannotBeRebasedByTokenPropagation() = runTest {
         val mutationDao = FakePendingMutationDao()
@@ -176,7 +279,7 @@ internal class ExpenseOffsetRepositoryTest : ExpensePendingRepositoryOutboxTestB
         var writes = 0
         repository.onConfirmedCommitted = { writes += 1 }
 
-        repeat(2) { assertEquals(bundle.toDomain(), repository.fetchExpenseFactBundle(9).getOrThrow()) }
+        repeat(2) { assertEquals(bundle.toDomain(), repository.fetchExpenseFactBundle(9).getOrThrow().value) }
 
         assertEquals(0, writes)
         assertNotNull(dao.findByServerId("owner", 9))

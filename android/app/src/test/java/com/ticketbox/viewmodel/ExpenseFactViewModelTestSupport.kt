@@ -64,6 +64,22 @@ internal abstract class ExpenseFactViewModelTestBase {
 /** Shared real-shape repository fake for the confirmed fact ViewModel tests. */
 @Suppress("TooManyFunctions")
 internal class FakeExpenseFactActions : ExpenseFactActions {
+    val originalInputs = mutableListOf<com.ticketbox.data.repository.ExpenseFactOriginalInput>()
+    override suspend fun loadFactInputs(binding: LogicalSessionBinding, id: Long) = Result.success(originalInputs.filter {
+        it.binding.ownerKey == binding.ownerKey && it.binding.ledgerId == binding.ledgerId && it.expenseId == id
+    })
+    override suspend fun saveFactInput(expected: com.ticketbox.data.repository.ExpenseFactOriginalInput?,
+        input: com.ticketbox.data.repository.ExpenseFactOriginalInput): Result<Unit> = runCatching {
+        val current = originalInputs.singleOrNull { it.binding.ownerKey == input.binding.ownerKey &&
+            it.binding.ledgerId == input.binding.ledgerId && it.expenseId == input.expenseId && it.formKey == input.formKey }
+        check(current == expected)
+        originalInputs.remove(current)
+        originalInputs.add(input)
+    }.map { Unit }
+    override suspend fun discardFactInput(binding: LogicalSessionBinding, input: com.ticketbox.data.repository.ExpenseFactOriginalInput): Result<Unit> =
+        runCatching { check(originalInputs.remove(input)) }
+    override val factReadAccessDenials = kotlinx.coroutines.flow.MutableSharedFlow<com.ticketbox.data.repository.SnapshotAccessDenial>()
+    var factHistoryFromCache = false
     var canModifyLedgerFlag: Boolean = true
 
     var baseExpense: Expense = Expense(
@@ -302,11 +318,12 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
         page: Int,
         pageSize: Int,
         snapshotRevision: Long?,
-    ): Result<ExpenseRevisionPage> {
+        expectedBinding: LogicalSessionBinding?,
+    ): Result<com.ticketbox.data.repository.ReadSnapshot<ExpenseRevisionPage>> {
         fetchRevisionsCalls++
         revisionRequests += page to pageSize
         revisionSnapshots += snapshotRevision
-        return revisionsResult(page, pageSize)
+        return revisionsResult(page, pageSize).map { com.ticketbox.data.repository.ReadSnapshot(it, "2026-09-30T00:00:00Z", factHistoryFromCache) }
     }
 
     override fun observeCorrections(): Flow<ExpenseCorrectionObservation> {
@@ -317,10 +334,11 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
     override fun observeExpenseOutboxStatus(): Flow<OutboxStatus> = expenseOutboxStatus
 
     override suspend fun submitCorrection(expectedBinding: LogicalSessionBinding, expense: Expense,
-        correction: ExpenseCorrectionDraft): Result<Long> {
+        correction: ExpenseCorrectionDraft, originalInput: com.ticketbox.data.repository.ExpenseFactOriginalInput?): Result<Long> {
         correctCalls++
         lastCorrectionDraft = correction
         return correctResult(expense, correction).onSuccess { id ->
+            originalInputs.remove(originalInput)
             val intent = ExpenseCorrectionPayload(1, expense.id, expense.merchant,
                 expense.originalCurrencyCodeRaw ?: expense.originalCurrencyCode.storageKey, expense.originalAmountMinor,
                 expense.homeCurrencyCode ?: expense.homeCurrency.storageKey, expectedBinding.ownerKey, expectedBinding.ledgerId,
@@ -385,22 +403,23 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
     override suspend fun cancelBillSplitInvitation(binding: LogicalSessionBinding, publicId: String): Result<BillSplitSent> =
         cancelBillSplitResult(publicId)
 
-    override suspend fun fetchExpenseFactBundle(id: Long): Result<ExpenseFactBundle> {
+    override suspend fun fetchExpenseFactBundle(id: Long, expectedBinding: LogicalSessionBinding?): Result<com.ticketbox.data.repository.ReadSnapshot<ExpenseFactBundle>> {
         fetchFactBundleCalls++
-        return factBundleResult(id)
+        return factBundleResult(id).map { com.ticketbox.data.repository.ReadSnapshot(it, "2026-09-30T00:00:00Z", factHistoryFromCache) }
     }
 
     override suspend fun createExpenseOffsetAllowingOffline(
         expectedBinding: LogicalSessionBinding,
         expense: Expense,
         draft: ExpenseOffsetDraft,
+        originalInput: com.ticketbox.data.repository.ExpenseFactOriginalInput?,
     ): Result<ExpenseOffsetMutationOutcome> {
         if (expectedBinding != correctionObservations.value.access?.binding) {
             return Result.failure(RepositoryException("The offset belongs to an obsolete binding"))
         }
         createOffsetCalls++
         lastOffsetDraft = draft
-        return createOffsetResult(expense, draft)
+        return createOffsetResult(expense, draft).onSuccess { originalInputs.remove(originalInput) }
     }
 
     override suspend fun voidExpenseOffsetAllowingOffline(
@@ -408,6 +427,7 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
         expense: Expense,
         offset: ExpenseOffsetFact,
         reason: String,
+        originalInput: com.ticketbox.data.repository.ExpenseFactOriginalInput?,
     ): Result<ExpenseOffsetMutationOutcome> {
         if (expectedBinding != correctionObservations.value.access?.binding) {
             return Result.failure(RepositoryException("The void belongs to an obsolete binding"))
@@ -415,6 +435,6 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
         voidOffsetCalls++
         lastVoidOffset = offset
         lastVoidReason = reason
-        return voidOffsetResult(expense, offset, reason)
+        return voidOffsetResult(expense, offset, reason).onSuccess { originalInputs.remove(originalInput) }
     }
 }
