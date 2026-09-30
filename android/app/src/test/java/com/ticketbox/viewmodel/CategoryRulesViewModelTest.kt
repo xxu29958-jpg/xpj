@@ -202,6 +202,8 @@ class CategoryRulesViewModelTest {
     fun rollbackWithChangesBumpsApplicationRevisionOnly() = rulesTest {
         val vm = harness(FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0))
         val application = awaitInitialLoads(vm).ruleApplications.single()
+        vm.previewApplyConfirmedRules()
+        vm.uiState.first { it.confirmedRulesPreview != null }
 
         vm.rollbackRuleApplication(application)
         val state = vm.uiState.first { it.applicationRevision > 0 }
@@ -210,6 +212,7 @@ class CategoryRulesViewModelTest {
         assertEquals(1, state.applicationRevision)
         assertEquals(0, state.changedRevision)
         assertEquals(MessageTone.Success, state.messageTone)
+        assertEquals(null, state.confirmedRulesPreview, "A rollback changes the facts used by the old preview")
     }
 
     @Test

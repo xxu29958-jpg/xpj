@@ -9,6 +9,7 @@ def organize_rules(j):
     category, rule = create_rule(j, initial_categories, original_rules)
     resume_rule_edit(j, initial_categories, rule)
     preview_apply_and_rollback(j, initial_categories)
+    apply_and_rollback_from_native(j)
     restore_rule_and_category(j, category, rule)
     assert [row for row in j.facts()["rules"] if row["id"] != rule["id"]] == original_rules, "The journey changed an existing rule"
 
@@ -103,6 +104,29 @@ def preview_apply_and_rollback(j, initial_categories):
     j.goto("/web/rules")
     assert "部分回滚" in page.inner_text("main")
     j.capture("rule-partial-rollback-from-native")
+
+
+def apply_and_rollback_from_native(j):
+    native = j.native
+    native.reveal_any("已入账应用", toward_start=True, max_scrolls=16)
+    native.click("预览")
+    native.reveal_any("可更新 1 笔")
+    native.click("确认应用")
+    j.expect(lambda state: len(state["applications"]) == 2, "The actual native application was not recorded")
+    assert [row["category"] for row in j.facts()["expenses"]] == ["Manual", "Library", "Library"]
+    native.reveal_any("已更新 1 笔")
+    native.reveal_any("确认应用")
+    controls = [node for node in native.tree().iter("node") if node.get("clickable") == "true" and
+                any(child.get("text") == "确认应用" for child in node.iter("node"))]
+    assert len(controls) == 1 and controls[0].get("enabled") == "false", "An accepted result still offers its old confirmation"
+    native.capture("reference-rule-native-accepted")
+    native.reveal_any("最近应用记录", max_scrolls=16)
+    native.click("回退")
+    native.click_within("回退这次应用？", "回退")
+    j.expect(lambda state: state["applications"][1]["status"] == "rolled_back", "The native application could not be rolled back")
+    assert [row["category"] for row in j.facts()["expenses"]] == ["Manual", "其他", "Library"]
+    native.reveal_any("已回退")
+    native.capture("reference-rule-native-application-rolled-back")
 
 
 def restore_rule_and_category(j, category, rule):

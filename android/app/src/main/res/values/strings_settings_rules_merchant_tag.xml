@@ -57,6 +57,7 @@
     <string name="category_rule_apply_history_loading_body">会显示最近的规则应用和回退记录。</string>
     <string name="category_rule_apply_history_empty">还没有应用记录。</string>
     <string name="category_rule_apply_preview_summary">扫描 %1$d 笔 · 可更新 %2$d 笔 · 未命中 %3$d 笔</string>
+    <string name="category_rule_apply_accepted_summary">扫描 %1$d 笔 · 已更新 %2$d 笔 · 未命中 %3$d 笔</string>
     <string name="category_rule_apply_preview_scan_limit">本次只扫描前 %1$d 笔。</string>
     <string name="category_rule_apply_preview_no_merchant">未填写商家</string>
     <string name="category_rule_apply_preview_mapping">%1$s → %2$s · %3$s</string>

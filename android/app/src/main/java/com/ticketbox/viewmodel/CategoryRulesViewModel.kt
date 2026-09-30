@@ -355,6 +355,7 @@ class CategoryRulesViewModel(
                     _uiState.update {
                         it.withRuleHistory(history).copy(
                             busy = false,
+                            confirmedRulesPreview = null,
                             message = UiText.res(R.string.category_rules_rollback_done, rollback.changed, rollback.skipped),
                             messageTone = MessageTone.Success,
                             applicationRevision = if (rollback.changed > 0) {
