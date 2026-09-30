@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import re
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
+from tests._web_native_form_support import hidden_post_forms
 from tests.web_expense_fact_test_support import create_confirmed, row_version
 
 
@@ -16,6 +18,13 @@ def _fact_bundle(client: TestClient, expense_id: int, identity) -> dict:
     )
     assert response.status_code == 200, response.text
     return response.json()
+
+
+def _money_fields(html, expense_id):
+    action = f"/web/expenses/{expense_id}/offsets"
+    form = next(match.group() for match in re.finditer(r"<form\b[^>]*>.*?</form>", html, re.S)
+        if f'action="{action}"' in match.group() and 'id="offset-amount"' in match.group())
+    return hidden_post_forms(form)[action]
 
 
 def test_web_refund_replay_then_void_keeps_one_authoritative_fact(
@@ -74,7 +83,7 @@ def test_web_refund_replay_then_void_keeps_one_authoritative_fact(
     assert refreshed["recent_history"][0]["change_kind"] == "void"
 
 
-def test_web_offset_conflict_keeps_draft_and_returns_fresh_root_token(
+def test_web_offset_conflict_keeps_original_until_explicit_nonwriting_review(
     web_client: TestClient,
     *,
     identity,
@@ -96,9 +105,7 @@ def test_web_offset_conflict_keeps_draft_and_returns_fresh_root_token(
     )
     assert first.status_code == 303, first.text
 
-    conflict = web_client.post(
-        f"/web/expenses/{expense_id}/offsets",
-        data={
+    original = {
             "ledger_id": "owner",
             "kind": "chargeback",
             "original_amount": "2.00",
@@ -106,14 +113,30 @@ def test_web_offset_conflict_keeps_draft_and_returns_fresh_root_token(
             "reason": "银行卡争议仍需重试",
             "expected_row_version": str(stale_version),
             "idempotency_key": str(uuid4()),
-        },
-    )
+            "original_currency_code": "CNY",
+        }
+    action = f"/web/expenses/{expense_id}/offsets"
+    conflict = web_client.post(action, data=original)
 
     assert conflict.status_code == 409, conflict.text
     assert "银行卡争议仍需重试" in conflict.text
     assert "其它端" in conflict.text
     fresh_version = row_version(web_client, expense_id, identity)
-    assert f'name="expected_row_version" value="{fresh_version}"' in conflict.text
+    retained = _money_fields(conflict.text, expense_id)
+    assert retained["expected_row_version"] == str(stale_version)
+    assert retained["idempotency_key"] == original["idempotency_key"]
+    before = _fact_bundle(web_client, expense_id, identity)
+    reviewed = web_client.post(action, data={**original, "review_latest": "true"})
+    assert reviewed.status_code == 200, reviewed.text
+    prepared = _money_fields(reviewed.text, expense_id)
+    assert prepared["expected_row_version"] == str(fresh_version)
+    assert prepared["idempotency_key"] != original["idempotency_key"]
+    assert prepared["draft_client_ref"] == original["idempotency_key"]
+    assert _fact_bundle(web_client, expense_id, identity) == before
+    assert web_client.post(action, data={**original, **prepared}, follow_redirects=False).status_code == 303
+    after = _fact_bundle(web_client, expense_id, identity)
+    assert len(after["active_offsets"]) == 2
+    assert after["financial_summary"]["active_refunded_original_minor"] == 300
 
 
 def test_web_reversal_has_no_amount_and_invalid_refund_keeps_input(
@@ -246,6 +269,8 @@ def test_web_void_race_conflict_surfaces_page_feedback(
         },
     )
     assert stale.status_code == 409, stale.text
-    assert "已载入最新事实" in stale.text
+    assert "原输入仍保留" in stale.text
     action = f'action="/web/expenses/{expense_id}/offsets/{offset["public_id"]}/voids"'
-    assert action not in stale.text
+    assert action in stale.text
+    assert 'value="迟到的重复撤销"' in stale.text
+    assert 'data-offset-archived="true"' in stale.text

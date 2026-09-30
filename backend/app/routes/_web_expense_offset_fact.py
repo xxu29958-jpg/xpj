@@ -7,6 +7,7 @@ from uuid import uuid4
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
+from app.routes._web_draft_binding import browser_draft_scope
 from app.routes._web_money_views import _minor_amount_label
 from app.routes._web_relationship_links import authorized_debt_hrefs
 from app.routes._web_session_common import resolve_web_actor_account_id
@@ -55,6 +56,7 @@ def _active_offset_rows(bundle: ExpenseFactBundleResponse) -> list[dict[str, obj
             "reason": offset.reason,
             "row_version": offset.row_version,
             "void_idempotency_key": str(uuid4()),
+            "active": True,
         }
         for offset in bundle.active_offsets
     ]
@@ -165,6 +167,7 @@ def offset_fact_view(
             "accounting_date": now_utc().astimezone(accounting_zone()).date().isoformat(),
             "reason": "",
             "expected_row_version": root.row_version,
+            "original_currency_code": root.original_currency_code,
             "idempotency_key": str(uuid4()),
             "error": "",
             "conflict": False,
@@ -178,6 +181,7 @@ def offset_fact_view(
             "error": "",
             "conflict": False,
         },
+        "offset_reversal_key": str(uuid4()),
     }
 
 
@@ -190,6 +194,12 @@ def expense_offset_fact_view(
 ) -> dict[str, object]:
     bundle = expense_fact_bundle(db, tenant_id=tenant_id, expense_id=expense_id)
     view = offset_fact_view(bundle, can_write=can_write)
+    view["offset_draft_scope"] = browser_draft_scope(db, request)
+    target = request.query_params.get("continue_offset_id", "")
+    if target and not any(row["public_id"] == target for row in view["active_offsets"]):
+        # Only a continuation surface; no amount, version or fact is invented.
+        view["offset_retained_target"] = {"public_id": target, "active": False,
+            "kind_label": "原退回或冲销", "void_idempotency_key": str(uuid4()), "row_version": ""}
     accepted = view["offset_relationship_impacts"]["accepted"]
     if accepted:
         try:

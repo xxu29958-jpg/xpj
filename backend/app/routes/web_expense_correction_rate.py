@@ -11,6 +11,7 @@ from app.routes._web_correction_form import (
     correction_original_fields,
 )
 from app.routes._web_correction_page import correction_form_error_response
+from app.routes._web_draft_binding import require_draft_binding
 from app.routes._web_rate_recovery import _RATE_FIELDS, submit_recovery_rate
 from app.routes.web_common import (
     LocalOnly,
@@ -39,6 +40,7 @@ def save_correction_rate(
     if retained is not None:
         return retained
     _require_selected_ledger_write(options, selected)
+    require_draft_binding(db, request, ledger_id=str(raw.get("ledger_id", "")), draft_scope=form.draft_scope, require_session=False)
     get_expense(db, expense_id, selected)
     values = {key: str(raw.get(f"fx_{key}", "")) for key in _RATE_FIELDS}
     result = submit_recovery_rate(db, request, selected, values,

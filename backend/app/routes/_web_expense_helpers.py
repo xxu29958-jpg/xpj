@@ -223,6 +223,8 @@ def web_edit_context(
     time_values = time_form_values(expense, rule)
     expense_view["expense_time_local"] = time_values["wall_time"]
     current_expense_view = expense_view.copy()
+    ctx["current_expense"] = current_expense_view
+    ctx["current_time_form"] = time_values.copy()
     _overlay_submitted_expense_values(expense_view, form_values)
     if form_values is not None:
         time_values = submitted_time_form_values(form_values, wall_time_field="expense_time")

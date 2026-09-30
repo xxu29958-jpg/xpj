@@ -128,7 +128,8 @@ def test_composite_correction_closes_scalar_items_and_splits(web_client: TestCli
     assert 'aria-label="拆账第 3 行：成员"' in form.text
     assert 'data-label="金额"' in form.text
     # 更正页币种可变，不能让初始币种的 step 在浏览器层拦截合法的新币种金额。
-    assert 'step="any" inputmode="decimal"' in form.text
+    assert 'type="text" name="amount_yuan"' in form.text
+    assert 'inputmode="decimal"' in form.text
     resp = web_client.post(
         f"/web/expenses/{expense_id}/corrections",
         data={
@@ -334,7 +335,7 @@ def test_web_correction_preserves_absent_and_clears_blank_time_and_scores(web_cl
     assert current.json()["regret_score"] is None
 
 
-def test_correction_stale_token_shows_conflict_with_fresh_values(web_client: TestClient, *, identity) -> None:
+def test_correction_conflict_keeps_original_input_and_version_until_explicit_review(web_client: TestClient, *, identity) -> None:
     expense_id = _create_confirmed(web_client, identity=identity)
     stale_token = _row_version(web_client, expense_id, identity)
     # Two pages own distinct commands against the same original version.
@@ -368,17 +369,26 @@ def test_correction_stale_token_shows_conflict_with_fresh_values(web_client: Tes
     )
     assert conflict.status_code == 409
     assert "刚在其它端被修改" in conflict.text
-    # 冲突页不能把过期标量与服务器最新 token 组合起来，否则二次提交会
-    # 静默覆盖另一端事实。表单回到 current fact，并要求用户重新应用修改。
-    assert 'value="第一次的值"' in conflict.text
-    assert 'value="过期页面提交的值"' not in conflict.text
-    assert "表单已载入最新基本信息" in conflict.text
+    # The raw form keeps its old version; the peer fact is shown separately for review.
+    assert "第一次的值" in conflict.text
+    assert 'value="过期页面提交的值"' in conflict.text
+    assert "原输入仍保留" in conflict.text
     assert 'value="拿着旧页面再改"' in conflict.text
     assert _hidden_input(conflict.text, "return_to") == "search"
     assert _hidden_input(conflict.text, "return_query") == "上下文咖啡"
     fresh_token = _row_version(web_client, expense_id, identity)
-    assert f'name="expected_row_version" value="{fresh_token}"' in conflict.text
-    assert f'name="expected_row_version" value="{stale_token}"' not in conflict.text
+    assert f'name="expected_row_version" value="{fresh_token}"' not in conflict.text
+    assert f'name="expected_row_version" value="{stale_token}"' in conflict.text
+    reviewed = web_client.post(f"/web/expenses/{expense_id}/corrections", data={
+        "ledger_id": "owner", "reason": "拿着旧页面再改", "merchant": "过期页面提交的值",
+        "expected_row_version": str(stale_token), "idempotency_key": stale_key,
+        "review_latest": "true", "review_scalars_choice": "keep"}, follow_redirects=False)
+    assert reviewed.status_code == 200, reviewed.text
+    assert f'name="expected_row_version" value="{fresh_token}"' in reviewed.text
+    assert 'value="过期页面提交的值"' in reviewed.text
+    assert _hidden_input(reviewed.text, "idempotency_key") != stale_key
+    unchanged = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()
+    assert unchanged["row_version"] == fresh_token and unchanged["merchant"] == "第一次的值"
 
 
 def test_web_correction_replay_hits_claim_before_current_state_diff(web_client: TestClient, *, identity) -> None:

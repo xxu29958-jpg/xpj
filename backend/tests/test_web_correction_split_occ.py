@@ -215,8 +215,8 @@ def test_command_conflict_renders_split_replaced_after_parse(
     assert conflict.status_code == 409, conflict.text
     current = web_client.get(f"/api/expenses/{expense_id}/splits", headers=identity.app_headers)
     current_split = current.json()["splits"][0]
-    assert f'value="{current_split["public_id"]}"' in conflict.text
-    assert f'value="{old_split["public_id"]}"' not in conflict.text
+    assert f'name="split_public_id" value="{current_split["public_id"]}"' not in conflict.text
+    assert f'name="split_public_id" value="{old_split["public_id"]}"' in conflict.text
     assert "parse 后的最新拆账" in conflict.text
 
 

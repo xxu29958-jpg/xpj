@@ -204,10 +204,10 @@ def test_web_item_correction_rejects_stale_row_identities_before_retry(
     current_items = current_items_response.json()["items"]
     assert len(current_items) == 1
     assert current_items[0]["name"] == "并发后的 B"
-    assert f'value="{current_items[0]["public_id"]}"' in conflict.text
+    assert f'name="item_public_id" value="{current_items[0]["public_id"]}"' not in conflict.text
     assert "并发后的 B" in conflict.text
     for old_item in old_items:
-        assert f'value="{old_item["public_id"]}"' not in conflict.text
+        assert f'name="item_public_id" value="{old_item["public_id"]}"' in conflict.text
 
     # Even with the refreshed parent token, the stale row identities may not be
     # rebound positionally to the concurrent writer's replacement rows.

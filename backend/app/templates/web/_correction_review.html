@@ -1,0 +1,35 @@
+{% if fact_review %}
+<section class="product-panel product-panel--padded" aria-label="核对当前账单">
+  <h2 class="product-panel-title">当前账单 · 版本 {{ fact_review.row_version }}</h2>
+  <dl class="offset-summary">
+    <div><dt>商家</dt><dd>{{ fact_review['values'].merchant or '未填写' }}</dd></div>
+    <div><dt>原币金额</dt><dd>{{ fact_review['values'].original_currency }} {{ fact_review['values'].amount_yuan }}</dd></div>
+    <div><dt>分类</dt><dd>{{ fact_review['values'].category or '待分类' }}</dd></div>
+    <div><dt>标签</dt><dd>{{ fact_review['values'].tags or '未填写' }}</dd></div>
+    <div><dt>备注</dt><dd>{{ fact_review['values'].note or '未填写' }}</dd></div>
+    <div><dt>发生时间</dt><dd>{{ fact_review['values'].expense_time or fact_review['values'].user_local_date or '未填写' }}</dd></div>
+  </dl>
+  {% for kind, label in [('items', '当前小票明细'), ('splits', '当前家庭拆账')] %}
+  <details><summary>{{ label }}</summary>
+    <ul>{% for row in fact_review[kind] %}{% if row.public_id %}<li>{{ row.name if kind == 'items' else (row.account_name or row.member_id) }} · {{ row.amount_yuan }}{% if row.note %} · {{ row.note }}{% endif %}</li>{% endif %}{% endfor %}</ul>
+  </details>
+  {% endfor %}
+  {% if fact_review_ready %}
+  <p class="product-feedback" role="status">已采用当前版本作为依据；你改过的输入仍保留，未改动的字段采用当前值。请检查下方表单，再保存更正。</p>
+  {% else %}
+  <p class="product-feedback product-feedback--warning" role="status">原输入仍保留。{% if fact_review_required %}请选择有变化的部分，再核对一次。{% else %}当前值供对照，请点击“核对当前账单”继续。{% endif %}这一步不会保存账单。</p>
+  {% for kind, label in [('scalars', '账单字段'), ('items', '小票明细'), ('splits', '家庭拆账')] %}
+    {% if fact_review_required[kind] %}
+    <fieldset class="product-field">
+      <legend>{{ label }}需要核对</legend>
+      {% if kind == 'scalars' %}<p class="meta">这份旧原稿没有可核对的完整依据，请明确选择字段来源。</p>
+      {% endif %}
+      <label><input type="radio" name="review_{{ kind }}_choice" value="keep">保留原稿中的整组{{ label }}</label>
+      <label><input type="radio" name="review_{{ kind }}_choice" value="current">采用当前{{ label }}</label>
+      <p class="meta">保留原稿会替换这一组的可编辑内容；服务端仍核对来源和受保护字段。</p>
+    </fieldset>
+    {% endif %}
+  {% endfor %}
+  {% endif %}
+</section>
+{% endif %}

@@ -1,0 +1,18 @@
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+<input type="hidden" name="expense_id" value="{{ expense.id }}">
+<input type="hidden" name="task_id" value="{{ expense.id }}:{{ offset_task }}">
+<input type="hidden" name="target_public_id" value="{{ row.public_id if offset_task not in ['money', 'reversal'] else '' }}">
+<input type="hidden" name="draft_scope" value='{{ draft.draft_scope if draft.draft_scope is defined else (offset_draft_scope | tojson if offset_draft_scope else "") }}'>
+<input type="hidden" name="draft_client_ref" value="{{ draft.draft_client_ref or draft.idempotency_key }}">
+<input type="hidden" name="idempotency_key" value="{{ draft.idempotency_key }}">
+<input type="hidden" name="expected_row_version" value="{{ draft.expected_row_version }}">
+<input type="hidden" name="original_currency_code" value="{{ draft.original_currency_code or expense.original_currency_code }}">
+{% for name, value in edit_return_fields.items() %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+<div class="product-feedback" data-offset-draft-status role="status" hidden></div>
+<p class="meta" data-offset-basis-note>原输入依据版本 {{ draft.expected_row_version }}，原币 {{ draft.original_currency_code or expense.original_currency_code }}。</p>
+{% if draft.error %}<p class="product-feedback product-feedback--danger" role="alert">{{ draft.error }}</p>{% endif %}
+{% if draft.currency_review %}
+<p class="product-feedback product-feedback--warning">原金额为 {{ draft.original_currency_code }} {{ draft.original_amount }}；当前账单已改为 {{ expense.original_currency_code }}。采用当前币种后，请重新核对数额。</p>
+<label><input type="checkbox" name="review_currency" value="true">明确采用当前账单币种</label>
+{% endif %}
