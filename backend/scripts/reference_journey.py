@@ -171,7 +171,9 @@ class ReferenceJourney:
         mutation = self.facts()["tag_mutations"][0]
         restore = page.locator(f'[data-restore-key="tag_mutation:{mutation["id"]}"] form')
         self.confirm(restore)
-        self.expect(lambda state: state["tag_mutations"][0]["consumed"], "The shared recycle bin did not restore the tag")
+        self.expect(lambda state: not state["tag_mutations"], "The shared recycle bin did not consume the undo snapshot")
+        assert not self.tag("TripNew")["deleted"], "The source tag was not restored"
+        assert "恢复 1 笔，跳过 1 笔已变更账单" in page.inner_text("main")
         records = self.facts()["expenses"]
         assert [row["tags"] for row in records] == ["Later", "TripNew", "MonthlyNew"], "Tag recovery overwrote a later edit"
         self.capture("tag-partial-recovery")
