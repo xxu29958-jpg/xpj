@@ -25,7 +25,7 @@ class RepaymentReviewRoomTest {
     private val capture = RepaymentDraftDto("review-original", "alipay", null, "JPY", "原采集", "2026-09-01T00:00:00Z",
         "pending", createdAt = "2026-09-01T00:00:01Z", originalCurrencyCode = "CNY", originalAmountMinor = 10000)
     private var loseReply = true
-    private var refuseDismiss = false
+    private var refuseReview = false
     private val accepted = mutableSetOf<String>()
     private val fixture = ExpenseCorrectionConnectedFixture(ApplicationProvider.getApplicationContext()) { api ->
         object : ApiService by api {
@@ -37,14 +37,14 @@ class RepaymentReviewRoomTest {
                 assertEquals(capture.publicId, publicId)
                 assertEquals("90.00", request.originalAmount)
                 assertEquals(7L, request.expectedRowVersion)
+                refuseReviewIfRequired()
                 accepted += requireNotNull(idempotencyKey)
                 if (loseReply) throw IOException("isolated lost reply")
                 return capture.copy(status = "confirmed", committedDebtPublicId = request.targetDebtPublicId, committedRepaymentPublicId = "original-repayment")
             }
             override suspend fun dismissRepaymentDraft(publicId: String, request: RepaymentDraftDismissRequestDto): RepaymentDraftDto {
                 assertEquals(capture.publicId, publicId)
-                if (refuseDismiss) throw retrofit2.HttpException(retrofit2.Response.error<Any>(403,
-                    okhttp3.ResponseBody.create(null, """{"error":"permission_denied"}""")))
+                refuseReviewIfRequired()
                 return capture.copy(status = "dismissed")
             }
         }
@@ -109,13 +109,23 @@ class RepaymentReviewRoomTest {
     }
 
     @Test fun globalSyncStopRetainsTheRejectedOriginalAndInput() = runBlocking {
+        for (dismiss in listOf(true, false)) stopRejectedOriginal(dismiss)
+        assertTrue(accepted.isEmpty())
+    }
+
+    private suspend fun stopRejectedOriginal(dismiss: Boolean) {
         val graph = fixture.reopen()
         val binding = requireNotNull(graph.reportsRepository.dashboardAccess()).binding
         graph.repaymentReviewRepository.open(binding, capture.toDomain()).getOrThrow()
-        graph.repaymentReviewRepository.submit(binding, capture.toDomain(), true).getOrThrow()
+        if (!dismiss) {
+            graph.repaymentReviewRepository.select(binding, capture.publicId, debt(binding)).getOrThrow()
+            graph.repaymentReviewRepository.money(binding, capture.publicId, "CNY", "90.00").getOrThrow()
+        }
+        graph.repaymentReviewRepository.submit(binding, capture.toDomain(), dismiss).getOrThrow()
         val original = fixture.stored().single()
-        refuseDismiss = true
+        refuseReview = true
         drain()
+        assertEquals("failed", fixture.stored().single()["status"])
         val model = withContext(Dispatchers.Main) {
             com.ticketbox.viewmodel.OutboxStatusViewModel(fixture.outbox, graph.expenseRepository,
                 com.ticketbox.viewmodel.OutboxRecoveryRepositories(graph.debtCreationRepository, graph.recurringRepository.occurrences,
@@ -125,13 +135,25 @@ class RepaymentReviewRoomTest {
         try {
             val state = withTimeout(5000) { model.uiState.first { it.bindingReady && it.status.failed.size == 1 } }
             withContext(Dispatchers.Main) { model.dropFailed(state.status.failed.single()) }
+            val recovery = withTimeout(5000) { model.uiState.first {
+                it.status.failed.isEmpty() || it.message != null
+            } }
+            check(recovery.message == null) { "Global recovery refused the retained original: ${recovery.message}" }
             val stopped = withTimeout(5000) { graph.repaymentReviewRepository.observe(binding, capture.publicId).first {
                 it.original?.status == com.ticketbox.data.local.PendingMutationStatus.Abandoned
             } }
             assertEquals(original["payload"], stopped.original?.payloadJson)
             assertEquals(original["idempotencyKey"], stopped.input?.originalKey)
             assertEquals(1, fixture.stored().size)
-        } finally { withContext(Dispatchers.Main) { model.viewModelScope.cancel() } }
+        } finally {
+            withContext(Dispatchers.Main) { model.viewModelScope.cancel() }
+            fixture.close()
+        }
+    }
+
+    private fun refuseReviewIfRequired() {
+        if (refuseReview) throw retrofit2.HttpException(retrofit2.Response.error<Any>(403,
+            okhttp3.ResponseBody.create(null, """{"error":"permission_denied"}""")))
     }
 
     private suspend fun drain() {

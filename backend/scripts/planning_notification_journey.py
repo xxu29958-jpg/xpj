@@ -56,8 +56,7 @@ class NotificationJourney:
         self.native.plan_home()
         self.native.click("打开账户与设置")
         self.native.click("通知与提醒")
-        self.native.reveal_any("待确认提醒")
-        self.native.click("待确认提醒")
+        self.native.set_switch("待确认提醒", True)
         self.native.capture("notification-configured")
         test_apk = Path("../android/app/build/outputs/apk/androidTest/gray/debug/app-gray-debug-androidTest.apk").resolve()
         assert test_apk.is_file(), "The exact installed app needs its test-only notification input bridge"

@@ -128,6 +128,23 @@ class PlanningAndroid:
             wait_for(lambda end=end: focused_value() == value[:end], "The native input did not retain the typed text")
         self.adb("shell", "input", "keyevent", "4")
 
+    def set_switch(self, label: str, checked: bool):
+        self.reveal_any(label)
+
+        def locate():
+            matches = [node for node in self.tree().iter("node") if
+                node.attrib.get("checkable") == "true" and node.attrib.get("enabled") != "false" and
+                label in (node.attrib.get("text", "") + "\n" + node.attrib.get("content-desc", ""))]
+            assert len(matches) <= 1, f"The native switch label is ambiguous: {label}"
+            return matches
+
+        matches = wait_for(locate, f"The actual native switch is not named: {label}")
+        expected = str(checked).lower()
+        if matches[0].attrib.get("checked") != expected:
+            self.tap(matches[0])
+        wait_for(lambda: bool(found := locate()) and found[0].attrib.get("checked") == expected,
+            f"The actual native switch did not change: {label}")
+
     def click_counted_tab(self, label: str):
         def locate():
             return [node for node in self.tree().iter("node")

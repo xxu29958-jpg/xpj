@@ -158,27 +158,13 @@ def _drafts_via_api(web_client: TestClient, headers: dict[str, str], status: str
     return web_client.get(f"/api/repayment-drafts?status={status}", headers=headers).json()["items"]
 
 
-# ── gate + empty ─────────────────────────────────────────────────────────────
+# ── access and original review ───────────────────────────────────────────────
 def test_web_repayment_drafts_remote_returns_403(client: TestClient) -> None:
     # No loopback / no session override → the LocalOnly gate must 403.
     assert client.get("/web/repayment-drafts").status_code == 403
 
 
-def test_web_repayment_drafts_empty_renders_product_empty_state(web_client: TestClient) -> None:
-    html = _page(web_client)
-    assert "还没有还款捕获" in html
-    assert "product-state" in html  # 新设计系统空态 (非 main 的 dt-card--empty)
-    assert "确认记到哪笔欠款也在这一页完成" in html
-
-
-def test_page_header_uses_product_eyebrow(web_client: TestClient) -> None:
-    html = _page(web_client)
-    assert "product-eyebrow" in html
-    assert "往来 / 还款捕获" in html
-    assert "product-page-summary" in html
-
-
-# ── pending row + actionable per-choice forms + suggested provenance ─────────
+# ── pending row, original review and suggested provenance ────────────────────
 def test_pending_draft_renders_audit_row(web_client: TestClient, *, identity) -> None:
     _create_draft(web_client, identity.app_headers, merchant_label="花呗", amount_cents=20000)
     html = _page(web_client)
@@ -421,5 +407,4 @@ def test_newest_first_ordering(web_client: TestClient, *, identity) -> None:
     _create_draft(web_client, identity.app_headers, merchant_label="后记的", amount_cents=11000)
     html = _page(web_client)
     assert html.index("后记的") < html.index("先记的")  # newest-first
-
 

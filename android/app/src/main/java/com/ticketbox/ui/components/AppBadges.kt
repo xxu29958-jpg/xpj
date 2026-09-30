@@ -69,7 +69,7 @@ fun StatusPill(
 @Composable
 fun AppSwitch(
     checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
+    onCheckedChange: ((Boolean) -> Unit)?,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     contentDescription: String? = null,
