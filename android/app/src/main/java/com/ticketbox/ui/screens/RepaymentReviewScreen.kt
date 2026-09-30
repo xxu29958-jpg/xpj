@@ -59,7 +59,12 @@ internal fun RepaymentReviewScreen(state: RepaymentDraftInboxUiState, model: Rep
         item { RepaymentReviewInputs(state, model) { choosingDebt = true } }
         item { RepaymentReviewDelivery(state, model) }
         state.drafts.find { it.publicId == state.reviewId && !it.isPending }?.let { capture ->
-            item { RepaymentDraftResolved(capture) { capture.committedDebtPublicId?.let(onOpenDebt) } }
+            item {
+                if (state.review.input != null && state.review.input.submittedAction == null) {
+                    Text(stringResource(R.string.repayment_review_unsubmitted_history))
+                }
+                RepaymentDraftResolved(capture) { capture.committedDebtPublicId?.let(onOpenDebt) }
+            }
         }
     }
     if (choosingDebt) RepaymentDraftTargetSheet(state, state.reviewId,
@@ -100,7 +105,7 @@ private fun RepaymentReviewMoney(currency: String, amount: String, editable: Boo
             AppAmountInputActions(onValueChange = { onChange(currency, it) },
                 onCurrencyClick = { choosingCurrency = true }))
     } else {
-        Text(stringResource(R.string.repayment_review_amount), style = MaterialTheme.typography.labelMedium)
+        Text(stringResource(R.string.repayment_review_stored_amount), style = MaterialTheme.typography.labelMedium)
         AppAmountText("$currency $amount")
     }
     if (choosingCurrency) RepaymentReviewCurrencyDialog(onClose = { choosingCurrency = false }) { selected ->

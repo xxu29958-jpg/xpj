@@ -20,6 +20,8 @@
     <string name="repayment_review_history">查看原处理记录</string>
     <string name="repayment_review_title">核对这笔还款</string>
     <string name="repayment_review_amount">核对金额</string>
+    <string name="repayment_review_stored_amount">本机保存的核对金额</string>
+    <string name="repayment_review_unsubmitted_history">这份本机输入没有提交；原采集已处理，请以下方处理记录为准。</string>
     <string name="repayment_review_currency">币种</string>
     <string name="repayment_review_select">选择要偿还的欠款</string>
     <string name="repayment_review_no_target">尚未选择对应欠款</string>

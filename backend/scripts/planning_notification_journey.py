@@ -148,8 +148,8 @@ class NotificationJourney:
         action = f"/web/repayment-drafts/{pending['id']}/review"
         form = self.page.locator(f'form[action="{action}"]')
         form.locator('[name="original_amount"]').fill("70.00")
-        choice = form.locator('[name="target_with_expected_row_version"] option').nth(1).get_attribute("value")
-        form.locator('[name="target_with_expected_row_version"]').select_option(choice)
+        choice = form.locator('select[name="target_with_expected_row_version"] option').nth(1).get_attribute("value")
+        form.locator('select[name="target_with_expected_row_version"]').select_option(choice)
         key = form.locator('[name="idempotency_key"]').input_value()
         self.page.reload()
         form.locator('[name="original_amount"]').wait_for()
@@ -167,7 +167,7 @@ class NotificationJourney:
         wait_for(lambda: len(self.facts()["payments"]) == 2, "Web review did not reach the shared repayment owner")
         self.goto("/web/repayment-drafts/" + pending["id"])
         wait_for(lambda: form.locator('[name="idempotency_key"]').input_value() == key, "The unresolved original disappeared after response loss")
-        assert form.locator('[name="target_with_expected_row_version"]').input_value() == choice
+        assert form.locator('select[name="target_with_expected_row_version"]').input_value() == choice
         assert form.locator('[name="original_amount"]').input_value() == "70.00"
         form.locator('[data-repayment-submit]').click()
         self.page.locator('[data-repayment-ack]').wait_for()
@@ -204,9 +204,19 @@ class NotificationJourney:
             self.native.click("已处理 2")
             self.native.reveal_any("花呗")
             self.native.capture("notification-native-history-" + theme)
-            self.native.click_within("花呗", "查看原处理记录")
-            self.native.reveal_any("90.00")
-            self.native.capture("notification-native-original-" + theme)
+            for merchant, amount in (("花呗", "90.00"), ("白条", "80.00")):
+                self.native.click_within(merchant, "查看原处理记录")
+                self.native.reveal_any(amount)
+                if merchant == "白条":
+                    self.native.reveal_any("这份本机输入没有提交")
+                self.native.capture(f"notification-native-original-{amount}-{theme}")
+                self.native.click("查看对应欠款与还款记录")
+                self.native.reveal_any("采集核对欠款")
+                self.native.capture(f"notification-native-linked-debt-{amount}-{theme}")
+                self.native.back()
+                self.native.reveal_any(amount)
+                self.native.back()
+                self.native.reveal_any("已处理 2")
 
     def run(self):
         from scripts.planning_notification_context import identity_changes
