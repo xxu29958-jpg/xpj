@@ -32,6 +32,18 @@
     const node = frame.contentDocument.querySelector(".correction-form");
     return node?.dataset.correctionNativeResult === "prepared" && !node.querySelector('[data-correction-submit]').disabled ? node : null;
   });
+  const preparedKey = form.elements.namedItem("idempotency_key").value;
+  const preparedShelf = frame.contentDocument.querySelector('[data-correction-draft-list]').textContent;
+  if (!preparedShelf.includes("未提交") || preparedShelf.includes("已拒绝")) {
+    throw Error("The reviewed editable input still appears as the rejected command: " + preparedShelf);
+  }
+  const reloaded = new Promise(resolve => { frame.onload = resolve; });
+  frame.contentWindow.location.reload(); await reloaded;
+  form = await wait(() => {
+    const node = frame.contentDocument.querySelector(".correction-form");
+    return node?.elements.namedItem("idempotency_key").value === preparedKey &&
+      !node.querySelector('[data-correction-submit]').disabled ? node : null;
+  });
   form.requestSubmit(form.querySelector('[data-correction-submit]'));
   await wait(() => frame.contentWindow.location.pathname.endsWith("/edit"));
   window.__financialReviewProbe = {originalRemoved: localStorage.getItem("ticketbox:correction-edit-draft:v1:" + ref) === null};

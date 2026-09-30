@@ -162,9 +162,12 @@
       return true;
     }
     function pointTo() {
-      // Multiple fact forms need the same target-aware address used by their shelf.
-      // A voided target may disappear from the next current-fact read.
-      const next = new URL(definition.multiple ? recordHref(store.read(ref)) : window.location.href);
+      // Reload must use the readable task address, including after a native review POST.
+      // The same address also retains a void target absent from the current active list.
+      const next = new URL(recordHref(store.read(ref)));
+      const current = new URL(window.location.href);
+      // A standard editor keeps its current read month beside the original intent month.
+      if (!definition.href && next.pathname === current.pathname) next.search = current.search;
       if (definition.idField === "month") next.searchParams.set("month", field("month").value);
       next.hash = anchor + ref;
       window.history.replaceState(null, "", next.href);
@@ -344,6 +347,7 @@
           store.save(scope, ref, phase, record.values, "rejected");
         }
       }
+      if (nativeResult) renderShelf();
       return true;
     }
     function resumeDraft(record, nativeResult) {
