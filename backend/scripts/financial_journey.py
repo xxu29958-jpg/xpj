@@ -48,7 +48,9 @@ class FinancialJourney:
 
     def native_open(self):
         self.native.domain_home("流水")
-        self.native.click(self.facts()["merchant"])
+        state = self.facts()
+        amount = f'¥{state["amount"] // 100}.{state["amount"] % 100:02d}'
+        self.native.click_within(amount, state["merchant"])
         wait_for(lambda: self.native.has("账单详情"), "The native fact did not open")
 
     def correction(self):
