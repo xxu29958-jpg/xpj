@@ -201,7 +201,13 @@ class FinancialJourney:
         native.capture("financial-ledger-after-explicit-peer-refresh")
         self.native_open()
         native.click("登记退款")
+        native.reveal_any("生效日期")
+        native.capture("financial-refund-default-day")
+        native.reveal_any("退回金额（CNY）", toward_start=True)
         native.fill("3.00", label="退回金额（CNY）")
+        native.reveal_any("生效日期")
+        native.fill(self.facts()["date"], label="生效日期")
+        native.reveal_any("原因（必填）")
         native.fill("NativeRefund", label="原因（必填）")
         native.click("保留原稿并关闭")
         native.connection(self.port, online=False)
@@ -224,6 +230,7 @@ class FinancialJourney:
         state = self.facts()
         assert state["offsets"][0]["amount"] == 300 and state["net"] == 1425
         assert state["offsets"][0]["reason"] == "NativeRefund"
+        assert state["offsets"][0]["date"] == state["date"], "The retained refund changed its explicitly selected day"
 
     def web_void_and_reversal(self):
         state = self.facts()

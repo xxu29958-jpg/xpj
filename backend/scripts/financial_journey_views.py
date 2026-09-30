@@ -42,7 +42,8 @@ def _original(j):
 def consumers(j, *, expected_net):
     _configure_plans(j)
     state = j.facts()
-    assert state["net"] == state["budget_spent"] == state["stats_spent"] == expected_net
+    assert state["net"] == state["budget_spent"] == state["stats_spent"] == expected_net, {
+        key: state[key] for key in ("month", "net", "budget_spent", "stats_spent", "offsets")}
     assert state["goals"] == [{"name": "FactCap", "spent": expected_net}]
     amount = f"{expected_net // 100}.{expected_net % 100:02d}"
     for path in ("budgets", "goals", "reports", "overview"):

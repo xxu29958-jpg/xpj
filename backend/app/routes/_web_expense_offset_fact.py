@@ -14,11 +14,10 @@ from app.routes._web_session_common import resolve_web_actor_account_id
 from app.schemas import ExpenseFactBundleResponse
 from app.services.currency_common import currency_input_metadata, minor_amount_value
 from app.services.expense_offset_service import expense_fact_bundle
+from app.services.ledger_calendar_service import current_ledger_date
 from app.services.spending_contract_service import (
     accounting_datetime_label,
-    accounting_zone,
 )
-from app.services.time_service import now_utc
 
 _KIND_LABELS = {
     "refund": "商家退款",
@@ -145,6 +144,8 @@ def offset_fact_view(
     bundle: ExpenseFactBundleResponse,
     *,
     can_write: bool,
+    db: Session,
+    tenant_id: str,
 ) -> dict[str, object]:
     root = bundle.root
     summary = bundle.financial_summary
@@ -164,7 +165,7 @@ def offset_fact_view(
             "open": False,
             "kind": "refund",
             "original_amount": "",
-            "accounting_date": now_utc().astimezone(accounting_zone()).date().isoformat(),
+            "accounting_date": current_ledger_date(db, ledger_id=tenant_id).isoformat() if can_write else "",
             "reason": "",
             "expected_row_version": root.row_version,
             "original_currency_code": root.original_currency_code,
@@ -193,7 +194,7 @@ def expense_offset_fact_view(
     request,
 ) -> dict[str, object]:
     bundle = expense_fact_bundle(db, tenant_id=tenant_id, expense_id=expense_id)
-    view = offset_fact_view(bundle, can_write=can_write)
+    view = offset_fact_view(bundle, can_write=can_write, db=db, tenant_id=tenant_id)
     view["offset_draft_scope"] = browser_draft_scope(db, request)
     target = request.query_params.get("continue_offset_id", "")
     if target and not any(row["public_id"] == target for row in view["active_offsets"]):

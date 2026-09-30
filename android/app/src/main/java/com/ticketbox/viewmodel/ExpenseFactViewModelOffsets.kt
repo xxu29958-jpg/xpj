@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
+import com.ticketbox.data.repository.newTaskDate
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseFactBundle
 import com.ticketbox.domain.model.ExpenseOffsetFact
@@ -15,6 +16,7 @@ import java.time.ZoneId
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineStart
 
 /**
  * Refund/Chargeback/Reversal 纵向片：退回与冲销的**状态与读取**（提交/撤销命令在
@@ -159,7 +161,7 @@ fun ExpenseFactViewModel.openOffsetSheet(kind: StreamOffsetKind) {
     // command 不依赖 read model（Product Owner 裁决）：bundle 缺席只意味着不预填
     // remaining，sheet 内明示「可退余额暂不可用」，登记照常可提交。
     val summary = _uiState.value.factBundle?.takeIf { it.matchesRoot(expense) }?.financialSummary
-    val today = LocalDate.now(ZoneId.of(repository.currentTimezoneId())).toString()
+    val today = if (calendars == null) LocalDate.now(clock.withZone(ZoneId.of(repository.currentTimezoneId()))).toString() else ""
     _uiState.update { state ->
         state.copy(
             offsetForm = OffsetFormState(
@@ -179,6 +181,21 @@ fun ExpenseFactViewModel.openOffsetSheet(kind: StreamOffsetKind) {
         )
     }
     keepOffsetInput()
+    resolveNewOffsetDate(_uiState.value.offsetForm)
+}
+
+private fun ExpenseFactViewModel.resolveNewOffsetDate(form: OffsetFormState) {
+    if (calendars == null) return
+    val session = factInputSession ?: return
+    val binding = _uiState.value.correctionAccess?.binding ?: return
+    viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
+        val date = calendars.newTaskDate(binding, clock) ?: return@launch
+        // A late rule must not overwrite typed input, a closed sheet or a replacement identity.
+        if (factInputSession !== session || _uiState.value.correctionAccess?.binding != binding ||
+            _uiState.value.offsetForm !== form) return@launch
+        _uiState.update { it.copy(offsetForm = form.copy(accountingDate = date.toString())) }
+        keepOffsetInput()
+    }
 }
 
 fun ExpenseFactViewModel.closeOffsetSheet() {
