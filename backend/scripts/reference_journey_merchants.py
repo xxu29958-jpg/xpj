@@ -28,7 +28,6 @@ def create_catalog_and_alias(j):
 
 
 def merge_after_target_changes(j):
-    native = j.native
     create = j.form("/web/merchants/catalog/create")
     create.locator('[name="display_name"]').fill("OldShop")
     create.get_by_role("button", name="添加商家", exact=True).click()
@@ -41,13 +40,7 @@ def merge_after_target_changes(j):
     original_version = merge.locator('[name="expected_row_version"]').input_value()
     merge.locator('[name="target"]').select_option(original_target)
     merge.locator('[name="alias_policy"]').select_option("none")
-    # A second consumer changes the target while the original Web form stays open.
-    # Hide/show preserves its name and the separate alias used by the rule journey.
-    for choice, status in (("隐藏", "hidden"), ("显示", "active")):
-        j.native_row_action("RefShop", "商家操作")
-        native.click(choice)
-        j.expect(lambda state, status=status: any(row["id"] == target["id"] and row["status"] == status for row in state["catalog"]),
-                 "The native target change did not commit")
+    change_catalog_visibility(j, target)
     j.confirm(merge)
     retained = j.form(action)
     assert retained.locator('[name="target"]').input_value() == original_target, "The failed merchant merge lost its target"
@@ -63,6 +56,16 @@ def merge_after_target_changes(j):
     assert len(j.facts()["aliases"]) == 1, "The no-alias choice silently created a new alias"
     assert all(row["merchant"] == "RefPay" for row in j.facts()["expenses"]), "The directory rewrote historical merchant facts"
     j.capture("merchant-merge-keeps-original-facts")
+
+
+def change_catalog_visibility(j, target):
+    # A second consumer changes the target while the original Web form stays open.
+    # Hide/show preserves its name and the separate alias used by the rule journey.
+    for choice, status in (("隐藏", "hidden"), ("显示", "active")):
+        j.native_row_action("RefShop", "商家操作")
+        j.native.click(choice)
+        j.expect(lambda state, status=status: any(row["id"] == target["id"] and row["status"] == status for row in state["catalog"]),
+                 "The native target change did not commit")
 
 
 def restore_alias(j):

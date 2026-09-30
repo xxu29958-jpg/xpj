@@ -25,7 +25,8 @@ class ReferenceJourney:
 
     def confirm(self, form):
         form.locator('button[type="submit"]').click()
-        self.page.locator('#tb-confirm-modal[open]').get_by_role("button", name="确认", exact=True).click()
+        with self.page.expect_navigation(wait_until="domcontentloaded"):
+            self.page.locator('#tb-confirm-modal[open]').get_by_role("button", name="确认", exact=True).click()
 
     def capture(self, name):
         assert not self.page.evaluate("document.documentElement.scrollWidth > innerWidth"), "The reference page overflows"

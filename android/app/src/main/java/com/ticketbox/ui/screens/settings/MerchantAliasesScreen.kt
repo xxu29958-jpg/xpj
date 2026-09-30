@@ -230,50 +230,68 @@ fun MerchantAliasesScreen(
             )
         }
 
-        if (state.catalog.isEmpty() && state.aliases.isEmpty()) {
-            SettingsInlineEmpty(
-                title = stringResource(R.string.merchant_aliases_empty_combined_title),
-                body = stringResource(R.string.merchant_aliases_empty_combined_body),
-            )
-        } else {
-            MerchantCatalogListSection(
-                catalog = state.catalog,
-                readOnly = state.readOnly,
-                busy = state.busy,
-                actions = MerchantCatalogListActions(
-                    onRename = {
-                        actions.onStartEditing()
-                        catalogDialogController.openRename(it)
-                    },
-                    onToggle = actions.catalog.onToggle,
-                    onMerge = {
-                        actions.onStartEditing()
-                        catalogDialogController.openMerge(it)
-                    },
-                    onDelete = {
-                        actions.onStartEditing()
-                        editors.deletingCatalog = it
-                    },
-                ),
-            )
+        MerchantReferenceLists(state, actions, editors)
+    }
+}
 
-            MerchantAliasListSection(
-                aliases = state.aliases,
-                readOnly = state.readOnly,
-                busy = state.busy,
-                onToggleAlias = actions.alias.onToggle,
-                onDeleteAlias = {
+@Composable
+private fun MerchantReferenceLists(
+    state: MerchantAliasesScreenState,
+    actions: MerchantAliasesScreenActions,
+    editors: MerchantEditors,
+) {
+    if (state.catalog.isEmpty() && state.aliases.isEmpty() && !state.aliasesLoadFailed) {
+        SettingsInlineEmpty(
+            title = stringResource(R.string.merchant_aliases_empty_combined_title),
+            body = stringResource(R.string.merchant_aliases_empty_combined_body),
+        )
+    } else {
+        MerchantCatalogListSection(
+            catalog = state.catalog,
+            readOnly = state.readOnly,
+            busy = state.busy,
+            actions = MerchantCatalogListActions(
+                onRename = {
                     actions.onStartEditing()
-                    editors.deletingAlias = it
+                    editors.catalogDialogs.openRename(it)
                 },
+                onToggle = actions.catalog.onToggle,
+                onMerge = {
+                    actions.onStartEditing()
+                    editors.catalogDialogs.openMerge(it)
+                },
+                onDelete = {
+                    actions.onStartEditing()
+                    editors.deletingCatalog = it
+                },
+            ),
+        )
+
+        if (state.aliasesLoadFailed) {
+            SettingsInlineEmpty(
+                title = stringResource(R.string.merchant_alias_load_failed),
+                body = stringResource(R.string.merchant_aliases_reload_hint),
             )
-        }
+            TextButton(enabled = !state.busy, onClick = actions.onReloadAliases) {
+                Text(stringResource(R.string.merchant_aliases_reload_button))
+            }
+        } else MerchantAliasListSection(
+            aliases = state.aliases,
+            readOnly = state.readOnly,
+            busy = state.busy,
+            onToggleAlias = actions.alias.onToggle,
+            onDeleteAlias = {
+                actions.onStartEditing()
+                editors.deletingAlias = it
+            },
+        )
     }
 }
 
 data class MerchantAliasesScreenState(
     val catalog: List<MerchantCatalog>,
     val aliases: List<MerchantAlias>,
+    val aliasesLoadFailed: Boolean,
     val busy: Boolean,
     val readOnly: Boolean,
     val message: UiText?,
@@ -286,6 +304,7 @@ data class MerchantAliasesScreenState(
 data class MerchantAliasesScreenActions(
     val onBack: () -> Unit,
     val onStartEditing: () -> Unit,
+    val onReloadAliases: () -> Unit,
     val catalog: MerchantAliasesCatalogActions,
     val alias: MerchantAliasesAliasActions,
     val mergeSuggestion: MerchantAliasesMergeSuggestionActions,

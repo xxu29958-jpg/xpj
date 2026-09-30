@@ -37,6 +37,7 @@ internal class FakeMerchantApi : MerchantApi {
         ),
     )
     var merchantCatalogUpdateFailure: Throwable? = null
+    var merchantAliasesFailure: Throwable? = null
 
     override suspend fun merchantCatalog(includeHidden: Boolean): MerchantCatalogListDto =
         MerchantCatalogListDto(items = merchantCatalogItems)
@@ -103,16 +104,19 @@ internal class FakeMerchantApi : MerchantApi {
         )
     }
 
-    override suspend fun merchantAliases(): MerchantAliasListDto = MerchantAliasListDto(
-        items = listOf(
-            fakeMerchantAliasDto(
-                publicId = "alias-1",
-                canonicalMerchant = "星巴克",
-                alias = "Starbucks",
-                enabled = true,
-            ),
-        ),
-    )
+    override suspend fun merchantAliases(): MerchantAliasListDto {
+        merchantAliasesFailure?.let { throw it }
+        return MerchantAliasListDto(
+            items = buildList {
+                add(fakeMerchantAliasDto(publicId = "alias-1", canonicalMerchant = "星巴克",
+                    alias = "Starbucks", enabled = true))
+                if (merchantCatalogMergeRequests.any { it.aliasPolicy == "create_source_alias" }) {
+                    add(fakeMerchantAliasDto(publicId = "alias-created-by-merge", canonicalMerchant = "蓝瓶咖啡",
+                        alias = "星巴克", enabled = true))
+                }
+            },
+        )
+    }
 
     override suspend fun createMerchantAlias(request: MerchantAliasRequest): MerchantAliasDto {
         merchantAliasRequests += request

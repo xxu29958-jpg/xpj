@@ -258,6 +258,7 @@ private fun MerchantDirectoryRoute(
         state = MerchantAliasesScreenState(
             catalog = state.merchantCatalog,
             aliases = state.merchantAliases,
+            aliasesLoadFailed = state.aliasesLoadFailed,
             busy = state.busy,
             readOnly = !screenFactory.repository.canModifyLedger(),
             message = state.message,
@@ -269,6 +270,7 @@ private fun MerchantDirectoryRoute(
         actions = MerchantAliasesScreenActions(
             onBack = navController::popBackStack,
             onStartEditing = viewModel::dismissMessage,
+            onReloadAliases = { viewModel.loadMerchantAliases() },
             catalog = MerchantAliasesCatalogActions(
                 onCreate = viewModel::createMerchantCatalog,
                 onRename = viewModel::renameMerchantCatalog,

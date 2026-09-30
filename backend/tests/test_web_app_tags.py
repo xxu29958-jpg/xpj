@@ -80,7 +80,7 @@ def test_unused_tag_actions_cannot_rewrite_a_bill_that_reused_the_source_after_r
     )
     assert response.status_code == 422
     returned = response
-    assert 'name="unused" value="1"' in returned.text
+    assert "当前没有未使用的标签" in returned.text
     assert "已被使用" in returned.text and 'role="alert"' in returned.text
     assert expense_row("随后使用标签的账单") == (accepted["id"], accepted["row_version"], "工作")
     assert tag_links(accepted["id"]) == ["工作"]
@@ -117,7 +117,7 @@ def test_unused_cleanup_native_form_and_undo_preserve_the_same_view(web_client: 
 def _row_version_for(page_text: str, public_id: str, action: str) -> str:
     """Pull the hidden expected_row_version from the {action} form of a tag row."""
     m = _re.search(
-        rf"/web/tags/{public_id}/{action}.*?expected_row_version\"\s*value=\"([^\"]+)\"",
+        rf"/web/tags/{public_id}/{action}.*?expected_row_version\"\s*value=\"([^\"]*)\"",
         page_text,
         flags=_re.DOTALL,
     )

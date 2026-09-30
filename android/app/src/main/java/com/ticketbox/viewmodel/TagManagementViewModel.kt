@@ -69,6 +69,7 @@ class TagManagementViewModel(
     }
 
     fun loadTags() {
+        if (_uiState.value.loading || _uiState.value.busy) return
         viewModelScope.launch {
             _uiState.update {
                 it.copy(
@@ -254,10 +255,13 @@ class TagManagementViewModel(
         undoable: TagUndoHandle? = null,
         tone: MessageTone = MessageTone.Success,
     ) {
-        val tags = tagRepository.tags().getOrNull()?.sortedByUsage() ?: _uiState.value.tags
+        val refreshed = tagRepository.tags()
         _uiState.update {
             it.copy(
-                tags = tags,
+                // The accepted mutation invalidates the old list, including its
+                // action tokens. Keep the result/undo, and retry only the read.
+                tags = refreshed.getOrDefault(emptyList()).sortedByUsage(),
+                loadFailed = refreshed.isFailure,
                 busy = false,
                 message = message,
                 messageTone = tone,

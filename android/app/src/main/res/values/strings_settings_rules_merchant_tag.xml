@@ -126,6 +126,8 @@
     <string name="merchant_aliases_list_empty_title">暂无别名</string>
     <string name="merchant_aliases_list_empty">还没有商家别名。添加后，分类规则可用标准商家命中不同写法的商家名。</string>
     <string name="merchant_aliases_empty_combined_title">还没有商家资料</string>
+    <string name="merchant_aliases_reload_hint">可重新读取查看最新结果，已完成的操作无需再次提交。</string>
+    <string name="merchant_aliases_reload_button">重新读取别名</string>
     <string name="merchant_aliases_empty_combined_body">新增商家或别名后，这里会帮你归并同一商家的不同写法。</string>
     <string name="merchant_aliases_delete_dialog_title">删除这个别名？</string>
     <string name="merchant_aliases_delete_dialog_text">删除后，「%1$s」不再自动归到「%2$s」。</string>
@@ -183,6 +185,7 @@
     <string name="tag_management_section_all">标签列表</string>
     <string name="tag_management_loading_title">正在读取标签</string>
     <string name="tag_management_loading_body">会从当前账本同步最新标签。</string>
+    <string name="tag_management_reload_button">重新读取标签</string>
     <string name="tag_management_list_empty">记账时给账单添加标签后，这里就能统一整理它们。</string>
     <string name="tag_management_delete_dialog_title">删除标签？</string>
     <string name="tag_management_delete_dialog_text_used">「%1$s」会从 %2$d 笔账单上移除。可立即撤销，或在资料库回收站的保留期内恢复；后来修改过的账单会跳过。</string>

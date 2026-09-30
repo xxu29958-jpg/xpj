@@ -24,6 +24,7 @@ import kotlinx.coroutines.launch
 data class MerchantAliasUiState(
     val merchantCatalog: List<MerchantCatalog> = emptyList(),
     val merchantAliases: List<MerchantAlias> = emptyList(),
+    val aliasesLoadFailed: Boolean = false,
     val busy: Boolean = false,
     val message: UiText? = null,
     val messageTone: MessageTone = MessageTone.Neutral,
@@ -83,17 +84,30 @@ class MerchantAliasViewModel(
     }
 
     fun loadMerchantAliases(clearMessage: Boolean = true) {
+        if (clearMessage && _uiState.value.busy) return
+        if (clearMessage) _uiState.update { it.copy(busy = true) }
         viewModelScope.launch {
             if (clearMessage) {
                 _uiState.update { it.copy(message = null, messageTone = MessageTone.Neutral) }
             }
             merchantRepository.merchantAliases()
-                .onSuccess { aliases -> _uiState.update { it.copy(merchantAliases = aliases.sortedMerchantAliases()) } }
+                .onSuccess { aliases ->
+                    _uiState.update {
+                        it.copy(
+                            merchantAliases = aliases.sortedMerchantAliases(),
+                            aliasesLoadFailed = false,
+                            busy = if (clearMessage) false else it.busy,
+                        )
+                    }
+                }
                 .onFailure { error ->
                     _uiState.update {
                         it.copy(
                             message = error.toUiText(R.string.merchant_alias_load_failed),
                             messageTone = MessageTone.Danger,
+                            merchantAliases = emptyList(),
+                            aliasesLoadFailed = true,
+                            busy = if (clearMessage) false else it.busy,
                         )
                     }
                 }
@@ -284,7 +298,7 @@ class MerchantAliasViewModel(
         aliasPolicy: MerchantCatalogAliasPolicy,
     ) {
         val refreshedAliases = if (result.createdAliasPublicId != null) {
-            merchantRepository.merchantAliases().getOrNull()?.sortedMerchantAliases()
+            merchantRepository.merchantAliases()
         } else {
             null
         }
@@ -299,7 +313,9 @@ class MerchantAliasViewModel(
                         }
                     }
                     .sortedMerchantCatalog(),
-                merchantAliases = refreshedAliases ?: state.merchantAliases,
+                merchantAliases = refreshedAliases?.getOrDefault(emptyList())?.sortedMerchantAliases()
+                    ?: state.merchantAliases,
+                aliasesLoadFailed = refreshedAliases?.isFailure ?: state.aliasesLoadFailed,
                 busy = false,
                 message = if (aliasPolicy == MerchantCatalogAliasPolicy.CreateSourceAlias) {
                     UiText.res(R.string.merchant_catalog_merged_with_alias, source.displayName, target.displayName)

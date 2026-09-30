@@ -339,6 +339,35 @@ class TagManagementViewModelTest {
         // the undo contribution from the delete that set up the handle).
         assertEquals(beforeUndo + 1, vm.uiState.value.tagsChangedRevision)
     }
+
+    @Test
+    fun acceptedDeleteWithFailedReloadKeepsItsResultAndRetriesOnlyReading() = runTest(dispatcher) {
+        val source = tag("a", "出差", 3)
+        val target = tag("b", "餐饮", 5)
+        val repo = FakeTagActions(listOf(source, target))
+        val vm = TagManagementViewModel(repo)
+        advanceUntilIdle()
+        repo.failNextRead = java.io.IOException("Read failed after accepted delete")
+
+        vm.deleteTag(source)
+        advanceUntilIdle()
+
+        val accepted = vm.uiState.value
+        assertTrue(accepted.loadFailed)
+        assertTrue(accepted.tags.isEmpty(), "The deleted source must not remain an actionable old row")
+        assertEquals(1, accepted.tagsChangedRevision)
+        assertEquals(MessageTone.Success, accepted.messageTone)
+        assertEquals("mut-delete", accepted.undoable?.mutationPublicId)
+
+        vm.loadTags()
+        advanceUntilIdle()
+
+        assertEquals(listOf(target), vm.uiState.value.tags)
+        assertEquals(false, vm.uiState.value.loadFailed)
+        assertEquals(1, repo.deleteCalls)
+        assertEquals(1, vm.uiState.value.tagsChangedRevision)
+        assertEquals(accepted.undoable, vm.uiState.value.undoable)
+    }
 }
 
 /** Stateful fake: successful mutations mutate [tags] so the VM's reload reflects them. */
@@ -347,6 +376,7 @@ private class FakeTagActions(initial: List<ManagedTag>) : TagActions {
     private var tags = initial.toMutableList()
     var canModify = true
     var failNext: Throwable? = null
+    var failNextRead: Throwable? = null
     var renameGate: CompletableDeferred<Unit>? = null
     var renameCalls = 0
     var deleteCalls = 0
@@ -361,6 +391,7 @@ private class FakeTagActions(initial: List<ManagedTag>) : TagActions {
 
     override suspend fun tags(): Result<List<ManagedTag>> {
         tagsGate?.await()
+        failNextRead?.let { failNextRead = null; return Result.failure(it) }
         consumeFailure()?.let { return Result.failure(it) }
         return Result.success(tags.toList())
     }

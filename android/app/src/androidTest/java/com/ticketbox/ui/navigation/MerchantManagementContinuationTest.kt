@@ -51,10 +51,14 @@ class MerchantManagementContinuationTest {
     @Volatile private var reject = true
     @Volatile private var catalog: MerchantCatalogDto? = null
     @Volatile private var alias: MerchantAliasDto? = null
+    @Volatile private var rejectAliasRead = false
     private val harness = FactEntryNavigationHarness(context) { delegate ->
         object : ApiService by delegate {
             override suspend fun merchantCatalog(includeHidden: Boolean) = MerchantCatalogListDto(listOfNotNull(catalog))
-            override suspend fun merchantAliases() = MerchantAliasListDto(listOfNotNull(alias))
+            override suspend fun merchantAliases(): MerchantAliasListDto {
+                if (rejectAliasRead) throw unavailable()
+                return MerchantAliasListDto(listOfNotNull(alias))
+            }
             override suspend fun createMerchantCatalog(request: MerchantCatalogCreateRequest): MerchantCatalogDto {
                 catalogRequests += request
                 if (reject) throw unavailable()
@@ -108,6 +112,24 @@ class MerchantManagementContinuationTest {
         compose.onNodeWithText("九月差旅商家").assertIsDisplayed()
         assertEquals(listOf(MerchantCatalogCreateRequest("九月差旅商家"), MerchantCatalogCreateRequest("九月差旅商家")),
             catalogRequests)
+    }
+
+    @Test fun failedAliasReadCanRetryWithoutClearingAnUnsentCatalogForm() {
+        alias = MerchantAliasDto("original-alias", "常用商家", "常用商家", "原始别名", "原始别名", true,
+            "2026-09-30T00:00:00Z", "2026-09-30T00:00:00Z", 1)
+        rejectAliasRead = true
+        showMerchants()
+        clickText(R.string.merchant_management_tools_add_catalog)
+        fill(R.string.merchant_catalog_name_label, "尚未提交商家")
+        waitForText(R.string.merchant_aliases_reload_button)
+
+        rejectAliasRead = false
+        clickText(R.string.merchant_aliases_reload_button)
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("原始别名").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("原始别名").performScrollTo().assertIsDisplayed()
+        compose.onNode(hasSetTextAction() and hasText("尚未提交商家")).performScrollTo().assertIsDisplayed()
+        assertEquals(emptyList<MerchantCatalogCreateRequest>(), catalogRequests)
+        assertEquals(emptyList<MerchantAliasRequest>(), aliasRequests)
     }
 
     @Test fun rejectedAliasCreationKeepsBothOriginalNamesUntilAccepted() {

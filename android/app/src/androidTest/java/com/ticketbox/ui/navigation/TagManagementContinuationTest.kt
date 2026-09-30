@@ -3,6 +3,7 @@ package com.ticketbox.ui.navigation
 import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasSetTextAction
@@ -53,14 +54,18 @@ class TagManagementContinuationTest {
     @Volatile private var collide = false
     @Volatile private var renamed = false
     @Volatile private var merged = false
+    @Volatile private var rejectReadAfterRename = false
     private val harness = FactEntryNavigationHarness(context) { delegate ->
         object : ApiService by delegate {
-            override suspend fun listManagedTags() = TagManagementListDto(
-                if (merged) listOf(target) else listOf(
-                    if (renamed) source.copy(name = "九月出差", rowVersion = 4) else source,
-                    target,
-                ),
-            )
+            override suspend fun listManagedTags(): TagManagementListDto {
+                if (renamed && rejectReadAfterRename) throw unavailable()
+                return TagManagementListDto(
+                    if (merged) listOf(target) else listOf(
+                        if (renamed) source.copy(name = "九月出差", rowVersion = 4) else source,
+                        target,
+                    ),
+                )
+            }
 
             override suspend fun renameTag(publicId: String, request: TagRenameRequest): TagDetailDto {
                 assertEquals(source.publicId, publicId)
@@ -141,6 +146,27 @@ class TagManagementContinuationTest {
         clickText(context.getString(R.string.tag_management_merge_dialog_confirm))
         waitForText(context.getString(R.string.tag_management_merged, source.name, target.name))
         assertEquals(listOf(TagMergeRequest(3, target.publicId, 9)), merges)
+    }
+
+    @Test fun acceptedRenameCanRecoverItsReadWithoutRepeatingTheWrite() {
+        showTags()
+        reject = false
+        rejectReadAfterRename = true
+        openSourceAction(R.string.tag_management_card_action_rename)
+        compose.onNode(hasSetTextAction() and hasText(source.name)).performTextReplacement("九月出差")
+        clickText(context.getString(R.string.tag_management_rename_dialog_confirm))
+        waitForText(context.getString(R.string.tag_management_reload_button))
+        compose.onNodeWithText(context.getString(R.string.tag_management_renamed, "九月出差")).assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.tag_management_rename_dialog_title)).assertDoesNotExist()
+        compose.onNodeWithText(source.name).assertDoesNotExist()
+        compose.onAllNodesWithContentDescription(context.getString(R.string.tag_management_actions_content_description))
+            .assertCountEquals(0)
+
+        rejectReadAfterRename = false
+        clickText(context.getString(R.string.tag_management_reload_button))
+        waitForText("九月出差")
+        compose.onNodeWithText("九月出差").assertIsDisplayed()
+        assertEquals(listOf(TagRenameRequest(3, "九月出差")), renames)
     }
 
     private fun showTags() {

@@ -106,6 +106,7 @@ internal fun TagSemanticsNote() {
 internal fun TagListSection(
     state: TagListState,
     actions: TagRowActions,
+    onReload: () -> Unit,
 ) {
     SettingsSection(
         title = stringResource(R.string.tag_management_section_all),
@@ -132,6 +133,11 @@ internal fun TagListSection(
                         null
                     },
                 )
+                if (state.bodyState == TagManagementBodyState.LoadFailed) {
+                    TextButton(enabled = !state.busy, onClick = onReload) {
+                        Text(stringResource(R.string.tag_management_reload_button))
+                    }
+                }
                 return@AppSolidCard
             }
             Column(
