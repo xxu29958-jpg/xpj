@@ -276,7 +276,7 @@ internal class RetainedAdjustmentConsumers(graph: RepositoryGraph) {
     val receivables = ReceivablesViewModel(graph.debtRepository, graph.debtWriteRepository)
     val goal = DebtGoalViewModel(graph.reportsRepository, graph.debtWriteRepository)
     val createGoal = CreateDebtGoalViewModel(graph.goalEditRepository, graph.debtRepository, graph.debtWriteRepository)
-    val inbox = RepaymentDraftInboxViewModel(graph.repaymentDraftRepository, graph.debtRepository, graph.debtWriteRepository)
+    val inbox = RepaymentDraftInboxViewModel(graph.repaymentDraftRepository, graph.debtRepository, graph.debtWriteRepository, graph.repaymentReviewRepository)
 
     fun balances(): List<Long?> = listOf(
         list.state.value.debts.singleOrNull()?.remainingAmountCents,

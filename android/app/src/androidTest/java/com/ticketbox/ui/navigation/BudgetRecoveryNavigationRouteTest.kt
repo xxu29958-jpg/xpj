@@ -222,10 +222,16 @@ class BudgetRecoveryNavigationRouteTest {
 }
 
 internal class BudgetNavigationTransport(private val currentMonth: String, private val originalMonth: String) {
+    var backupReads = 0
     val budgetReads = CopyOnWriteArrayList<String>()
     val arrangementReads = CopyOnWriteArrayList<String>()
 
     fun wrap(delegate: ApiService): ApiService = object : ApiService by delegate {
+        override suspend fun privateStatus(): com.ticketbox.data.remote.dto.StatusPrivateDto {
+            backupReads += 1
+            return com.ticketbox.data.remote.dto.StatusPrivateDto("ok", backupStale = true)
+        }
+
         override suspend fun monthlyArrangement(month: String): MonthlyArrangementResponseDto {
             arrangementReads += month
             return MonthlyArrangementResponseDto("correction-ledger", month,

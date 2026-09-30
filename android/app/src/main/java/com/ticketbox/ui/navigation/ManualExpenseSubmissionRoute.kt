@@ -69,7 +69,7 @@ internal fun ManualExpenseSubmissionRoute(
                 factory = outboxStatusViewModelFactory(screenFactory.outboxRepository, screenFactory.repository,
                     OutboxRecoveryRepositories(screenFactory.debtCreationRepository, screenFactory.recurringRepository.occurrences,
                         screenFactory.incomePlanRepository, screenFactory.debtWriteRepository, screenFactory.goalEditRepository,
-                        screenFactory.budgetRepository, screenFactory.recurringRepository, screenFactory.ruleRepository)))
+                        screenFactory.budgetRepository, screenFactory.recurringRepository, screenFactory.ruleRepository, repaymentReviews = screenFactory.repaymentReviewRepository)))
             SyncStatusScreen(vm, exit.onBack, manualClientRef = clientRef, navigation = SyncStatusNavigation(
                 onOpenExpense = { if (it > 0 && binding != null &&
                     binding == screenFactory.repository.captureDeferredLedgerBinding()) openedExpense = it },

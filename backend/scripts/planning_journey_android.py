@@ -128,6 +128,24 @@ class PlanningAndroid:
             wait_for(lambda end=end: focused_value() == value[:end], "The native input did not retain the typed text")
         self.adb("shell", "input", "keyevent", "4")
 
+    def set_switch(self, label: str, checked: bool):
+        self.reveal_any(label)
+
+        def locate():
+            matches = [node for node in self.tree().iter("node") if
+                node.attrib.get("checkable") == "true" and node.attrib.get("enabled") != "false" and
+                any(label in (part.attrib.get("text", "") + "\n" + part.attrib.get("content-desc", ""))
+                    for part in node.iter("node"))]
+            assert len(matches) <= 1, f"The native switch label is ambiguous: {label}"
+            return matches
+
+        matches = wait_for(locate, f"The actual native switch is not named: {label}")
+        expected = str(checked).lower()
+        if matches[0].attrib.get("checked") != expected:
+            self.tap(matches[0])
+        wait_for(lambda: bool(found := locate()) and found[0].attrib.get("checked") == expected,
+            f"The actual native switch did not change: {label}")
+
     def click_counted_tab(self, label: str):
         def locate():
             return [node for node in self.tree().iter("node")
@@ -202,6 +220,7 @@ class PlanningAndroid:
         return True
 
     def bind(self, code: str, port: int):
+        self.bound = False
         self.adb("reverse", f"tcp:{port}", f"tcp:{port}")
         self.adb("shell", "am", "start", "-n", "com.ticketbox/.MainActivity")
         wait_for(lambda: self.has("绑定账本"), "The native binding screen did not open")
@@ -260,12 +279,21 @@ class PlanningAndroid:
         self.tap(node)
 
     def plan_home(self):
+        self.domain_home("计划")
+
+    def domain_home(self, label: str):
         for _ in range(5):
-            if any(node.attrib.get("text") == "计划" for node in self.tree().iter("node")):
-                self.click("计划", bottom=True)
+            if any(node.attrib.get("text") == label for node in self.tree().iter("node")):
+                self.click(label, bottom=True)
+            else:
+                self.back()
+            # A domain switch can restore its last secondary page. Only the
+            # actual root has both its heading/tab and the account action.
+            nodes = list(self.tree().iter("node"))
+            if (sum(node.attrib.get("text") == label for node in nodes) >= 2 and
+                    any(node.attrib.get("content-desc") == "打开账户与设置" for node in nodes)):
                 return
-            self.back()
-        raise AssertionError("The real navigation did not return to the planning entry")
+        raise AssertionError(f"The real navigation did not return to the {label} entry")
 
     def capture(self, name: str, redact: str | None = None):
         if self.bound or not self.pairing_code:

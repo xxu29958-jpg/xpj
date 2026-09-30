@@ -79,8 +79,13 @@ QUERY_STRING_TOKEN_ROUTES: frozenset[str] = frozenset()
 # original financial command's token. Both are real owner-consumed fields.
 # Calendar governance compares its immutable rule revision under the ledger
 # lock; its token names that revision rather than an expense row version.
+# A capture review selects one Debt and its original OCC together. The native
+# SELECT posts "Debt public id:row version"; review_confirmation parses and
+# passes that version to the shared repayment owner. Dismissal uses the draft's
+# terminal-state guard and never writes a Debt fact.
 TOKEN_FIELD_NAMES = frozenset({
     "expected_row_version", "expected_row_version_by_id", "fx_expected_row_version", "expected_revision",
+    "target_with_expected_row_version",
 })
 
 

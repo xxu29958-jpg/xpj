@@ -27,7 +27,7 @@ internal class FakeExpenseDao(
     }
     override suspend fun debtReadEpoch(bindingKey: String) = statsCache.find(bindingKey, "debt_read_epoch", "", "", "UTC").singleOrNull()?.responseJson
     override suspend fun clearDebtListSnapshots(bindingKey: String) = statsCache.clearKinds(bindingKey, setOf("debt_list"))
-    override suspend fun clearDebtSnapshots(bindingKey: String) = statsCache.clearKinds(bindingKey, setOf("debt_list", "debt_detail", "debt_activity", "debt_agreement"))
+    override suspend fun clearDebtSnapshots(bindingKey: String) = statsCache.clearKinds(bindingKey, setOf("debt_list", "debt_detail", "debt_activity", "debt_agreement", "repayment_draft_list"))
     override suspend fun debtResourceDenials(bindingKey: String) = statsCache.byKind(bindingKey, "debt_resource_denial")
     override suspend fun clearDebtResourceDenial(bindingKey: String, publicId: String) {
         statsCache.byKind(bindingKey, "debt_resource_denial").filter { it.tag == publicId }.forEach(statsCache::delete)

@@ -147,6 +147,7 @@ internal class DataQualityConnectedHarness : AutoCloseable {
             debtWriteRepository = com.ticketbox.data.repository.DebtWriteRepository(apiProvider, outbox,
                 adapters),
             repaymentDraftRepository = RepaymentDraftRepository(apiProvider, debtQueries),
+            repaymentReviewRepository = com.ticketbox.data.repository.RepaymentReviewRepository(apiProvider, database, outbox, adapters),
             outboxRepository = outbox,
             tagRepository = TagRepository(apiProvider),
             categoryPreferenceRepository = CategoryPreferenceRepository(apiProvider),

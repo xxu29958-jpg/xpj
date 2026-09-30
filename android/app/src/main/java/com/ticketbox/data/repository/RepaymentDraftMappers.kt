@@ -1,6 +1,5 @@
 package com.ticketbox.data.repository
 
-import com.ticketbox.data.remote.dto.RepaymentDraftConfirmRequestDto
 import com.ticketbox.data.remote.dto.RepaymentDraftCreateRequestDto
 import com.ticketbox.data.remote.dto.RepaymentDraftDto
 import com.ticketbox.domain.model.RepaymentDraft
@@ -34,12 +33,3 @@ fun RepaymentNotificationDraft.toCreateRequest(notificationKey: String?): Repaym
         capturedAt = capturedAt,
         notificationKey = notificationKey,
     )
-
-/** Confirm body — pay the captured repayment down against the chosen Debt under its OCC token. */
-fun confirmRepaymentDraftRequest(
-    targetDebtPublicId: String,
-    expectedRowVersion: Long,
-): RepaymentDraftConfirmRequestDto = RepaymentDraftConfirmRequestDto(
-    targetDebtPublicId = targetDebtPublicId,
-    expectedRowVersion = expectedRowVersion,
-)

@@ -46,14 +46,12 @@ class MainActivity : FragmentActivity() {
         val biometricAuthManager = BiometricAuthManager(this)
         bindFromDebugIntentIfPresent(container)
         val appDependencies = container.ticketboxAppDependencies(biometricAuthManager)
-        launchRequests.value = if (savedInstanceState?.containsKey(SAVED_REQUEST_COUNT) == true) {
-            val restored = List(savedInstanceState.getInt(SAVED_REQUEST_COUNT)) { index ->
+        val restored = if (savedInstanceState?.containsKey(SAVED_REQUEST_COUNT) == true) {
+            List(savedInstanceState.getInt(SAVED_REQUEST_COUNT)) { index ->
                 restoreLaunchRequest(requireNotNull(savedInstanceState.getStringArrayList("$SAVED_REQUEST_COUNT.$index")))
             }
-            // Invitation text retains its existing OS-intent lifetime; do not add it to saved navigation state.
-            val invitation = parseLaunchIntent(intent) as? LaunchIntentRequest.JoinInvitation
-            listOfNotNull(invitation) + restored
-        } else listOfNotNull(parseLaunchIntent(intent))
+        } else null
+        launchRequests.value = initialLaunchRequests(restored, parseLaunchIntent(intent))
 
         setContent {
             TicketboxApp(
@@ -180,6 +178,7 @@ class MainActivity : FragmentActivity() {
         debtCreationRepository = debtCreationRepository,
         debtWriteRepository = debtWriteRepository,
         repaymentDraftRepository = repaymentDraftRepository,
+        repaymentReviewRepository = repaymentReviewRepository,
         outboxRepository = outboxRepository,
         tagRepository = tagRepository,
         categoryPreferenceRepository = categoryPreferenceRepository,
@@ -195,6 +194,7 @@ class MainActivity : FragmentActivity() {
                 settingsViewModelFactory = settingsViewModelFactory(
                     repository = expenseRepository,
                     settingsStore = settingsStore,
+                    serverStatus = serverStatusRepository,
                 ),
                 categoryRulesViewModelFactory = categoryRulesViewModelFactory(
                     ruleRepository = ruleRepository,
@@ -215,6 +215,20 @@ class MainActivity : FragmentActivity() {
         const val SAVED_REQUEST_COUNT = "ticketbox.launch.pending.count"
         const val DEBUG_SERVER_URL_EXTRA = "ticketbox.debug.server_url"
         const val DEBUG_SESSION_TOKEN_EXTRA = "ticketbox.debug.session_token"
+    }
+}
+
+/** A restored Activity receives its old task Intent; fresh deliveries enter onNewIntent. */
+internal fun initialLaunchRequests(
+    restored: List<LaunchIntentRequest>?,
+    incoming: LaunchIntentRequest?,
+): List<LaunchIntentRequest> = if (restored == null) {
+    listOfNotNull(incoming)
+} else {
+    when (incoming) {
+        // Invitation text keeps its existing OS-intent lifetime, outside saved state.
+        is LaunchIntentRequest.JoinInvitation -> listOf(incoming) + restored
+        else -> restored
     }
 }
 

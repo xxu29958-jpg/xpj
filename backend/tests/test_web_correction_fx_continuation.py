@@ -26,7 +26,7 @@ RETURN = {"return_to": "reports", "return_month": "2025-12", "return_home_curren
 class _NativeForm(HTMLParser):
     """Successful controls, including repeated rows and the clicked submit button."""
 
-    def __init__(self, html, action):
+    def __init__(self, html, action, *, identity_fields=("csrf_token", "expected_row_version", "idempotency_key")):
         super().__init__()
         self.action = action
         self.fields = {}
@@ -39,7 +39,7 @@ class _NativeForm(HTMLParser):
         assert self.fields, f"Missing native form: {action}"
         # Reuse the shared hidden-field reader for the original command identity.
         hidden = hidden_post_forms(html)[action]
-        for name in ("csrf_token", "expected_row_version", "idempotency_key"):
+        for name in identity_fields:
             assert self.one(name) == hidden[name]
 
     def one(self, name):

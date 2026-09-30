@@ -31,6 +31,7 @@ import com.ticketbox.notification.NotificationTask
 import com.ticketbox.ui.theme.TicketboxTheme
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -82,6 +83,16 @@ class NotificationOriginalTaskNavigationTest {
         waitForText(blocked)
         compose.onNodeWithText(blocked).assertIsDisplayed()
         assertEquals(emptyList<String>(), transport.budgetReads.toList())
+    }
+
+    @Test fun backupReminderOpensTheActualPublishedRecordAndItsNextStep() {
+        request.value = LaunchIntentRequest.OpenNotification(NotificationTask(binding, NotificationDestination.Backup))
+        show()
+        waitForText(context.getString(R.string.settings_backup_never))
+        compose.onNodeWithText(context.getString(R.string.settings_backup_title)).assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.settings_backup_next_step)).assertIsDisplayed()
+        assertTrue(transport.backupReads > 0)
+        assertEquals(0, kotlinx.coroutines.runBlocking { harness.fixture.stored().size })
     }
 
     private fun show(): StateRestorationTester {

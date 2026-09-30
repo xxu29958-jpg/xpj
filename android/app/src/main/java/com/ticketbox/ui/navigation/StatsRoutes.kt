@@ -466,6 +466,7 @@ internal fun RepaymentDraftRoute(
         factory = repaymentDraftInboxViewModelFactory(
             originalBinding = LocalNotificationTask.current?.binding,
             drafts = screenFactory.repaymentDraftRepository,
+            reviews = screenFactory.repaymentReviewRepository,
             debts = screenFactory.debtRepository,
             writes = screenFactory.debtWriteRepository,
         ),
@@ -473,8 +474,25 @@ internal fun RepaymentDraftRoute(
     LaunchedEffect(Unit) {
         viewModel.reload(launchFocusedDraftPublicId)
     }
-    RepaymentDraftInboxScreen(
-        viewModel = viewModel,
-        onBack = onBack,
-    )
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    // Linked debt detail replaces the entire inbox, so its selection belongs to this route.
+    var showHistory by rememberSaveable { mutableStateOf(false) }
+    val focused = state.drafts.find { it.publicId == state.focusedDraftPublicId }
+    LaunchedEffect(focused?.publicId, focused?.status) { if (focused != null) showHistory = !focused.isPending }
+    var linkedDebtId by rememberSaveable { mutableStateOf<String?>(null) }
+    val linked = linkedDebtId
+    if (linked == null) RepaymentDraftInboxScreen(viewModel, showHistory,
+        onHistoryChange = { showHistory = it }, onBack = onBack, onOpenDebt = { linkedDebtId = it })
+    else RepaymentDraftLinkedDebt(screenFactory, linked) { linkedDebtId = null; viewModel.refresh() }
+}
+
+@Composable
+private fun RepaymentDraftLinkedDebt(screenFactory: MainScreenFactory, publicId: String, onBack: () -> Unit) {
+    val detail: DebtDetailViewModel = viewModel(key = "repayment-capture-debt", factory =
+        debtDetailViewModelFactory(screenFactory.debtRepository, screenFactory.debtWriteRepository))
+    val proposal: MemberRepaymentProposalViewModel = viewModel(key = "repayment-capture-proposal", factory =
+        memberRepaymentProposalViewModelFactory(screenFactory.debtRepository.proposals))
+    val history: DebtActivityViewModel = viewModel(key = "repayment-capture-history", factory =
+        debtActivityViewModelFactory(screenFactory.debtActivityRepository))
+    DebtDetailHost(screenFactory.debtRepository.splitAgreement, publicId, DebtDetailHostModels(detail, proposal, history), onBack)
 }

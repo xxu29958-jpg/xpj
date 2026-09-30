@@ -82,6 +82,7 @@ internal class ExpenseCorrectionConnectedFixture(
     private val adapters = OutboxAdapterGraph()
     lateinit var outbox: OutboxRepository
     lateinit var graph: RepositoryGraph
+    lateinit var apiProvider: ApiServiceProvider
     lateinit var ledgerCalendarRepository: LedgerCalendarRepository
     lateinit var notificationDependencies: NotificationRuntimeDependencies
     lateinit var uploadIntents: UploadIntentRepository
@@ -151,7 +152,7 @@ internal class ExpenseCorrectionConnectedFixture(
         val factory = object : ApiServiceFactory {
             override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = service
         }
-        val provider = ApiServiceProvider(factory, sessions, credentials)
+        val provider = ApiServiceProvider(factory, sessions, credentials).also { apiProvider = it }
         ledgerCalendarRepository = LedgerCalendarRepository(LedgerRequestGuard(provider), calendarPreferences)
         graph = RepositoryGraph(RepositoryGraphDependencies(db, ApiClient(), settingsStore, sessions, credentials,
             provider, RepositoryGraphOutbox(outbox, adapters)))
@@ -202,6 +203,7 @@ internal class ExpenseCorrectionConnectedFixture(
     }
 
     fun role(value: String) { session.value = session.value.copy(identity = session.value.identity.copy(role = value)) }
+    fun renewBinding() { session.value = session.value.copy(bindingRevision = "renewed-binding") }
     fun switchLedger() { session.value = session.value.copy(bindingRevision = "another-binding",
         identity = session.value.identity.copy(ledgerId = "another-ledger")) }
     fun switchAccount() { session.value = session.value.copy(bindingRevision = "another-account-binding",

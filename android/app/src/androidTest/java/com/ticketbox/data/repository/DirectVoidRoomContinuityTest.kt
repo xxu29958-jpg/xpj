@@ -343,7 +343,7 @@ class DirectVoidRoomContinuityTest {
     private fun globalSync() = outboxStatusViewModelFactory(fixture.outbox, fixture.graph.expenseRepository,
         OutboxRecoveryRepositories(fixture.graph.debtCreationRepository, fixture.graph.recurringRepository.occurrences,
             fixture.graph.incomePlanRepository, fixture.graph.debtWriteRepository, fixture.graph.goalEditRepository,
-            fixture.graph.budgetRepository, fixture.graph.recurringRepository, fixture.graph.ruleRepository))
+            fixture.graph.budgetRepository, fixture.graph.recurringRepository, fixture.graph.ruleRepository, repaymentReviews = fixture.graph.repaymentReviewRepository))
         .create(OutboxStatusViewModel::class.java)
 
     private fun stopDetail() = compose.runOnIdle {

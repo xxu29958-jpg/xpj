@@ -84,6 +84,7 @@ internal fun SettingsRoute(
             budgetSaves = screenFactory.budgetRepository,
             recurringItems = screenFactory.recurringRepository,
             rules = screenFactory.ruleRepository,
+            repaymentReviewRepository = screenFactory.repaymentReviewRepository,
         ),
     )
 }

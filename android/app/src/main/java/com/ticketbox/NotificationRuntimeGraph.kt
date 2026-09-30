@@ -91,7 +91,7 @@ internal class NotificationRuntimeGraph(
 
     val backupStaleScheduler = WorkManagerBackupStaleScheduler()
 
-    private val serverStatusRepository = ServerStatusRepository(
+    val serverStatusRepository = ServerStatusRepository(
         apiProvider = dependencies.apiServiceProvider,
     )
 

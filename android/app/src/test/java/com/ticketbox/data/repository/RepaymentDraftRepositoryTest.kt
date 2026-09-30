@@ -25,24 +25,48 @@ import kotlin.test.assertTrue
 
 class RepaymentDraftRepositoryTest {
 
+    @Test fun originalCaptureRemainsReadableOfflineAfterTheConsumerIsRecreated() = runTest {
+        val handler = RepaymentDraftApiHandler().apply {
+            listResult = RepaymentDraftListResponseDto(listOf(draftDto(publicId = "original-capture")))
+        }
+        val createRepository = repositoryFactory(handler)
+        val original = createRepository().readDrafts().getOrThrow()
+        handler.listError = java.net.ConnectException("isolated offline transport")
+        val retained = createRepository().readDrafts().getOrThrow()
+        assertTrue(retained.fromCache)
+        assertEquals(original.value, retained.value)
+        assertEquals(original.fetchedAt, retained.fetchedAt)
+    }
+
+    @Test fun refusedOriginalReadsCannotReviveFromTheSavedPersonalCapture() = runTest {
+        val handler = RepaymentDraftApiHandler()
+        val createRepository = repositoryFactory(handler)
+        createRepository().readDrafts().getOrThrow()
+        handler.listError = HttpException(Response.error<Any>(403,
+            """{"error":"permission_denied","message":"no access"}""".toResponseBody("application/json".toMediaType())))
+        assertTrue(createRepository().readDrafts().isFailure)
+        handler.listError = java.net.ConnectException("isolated offline transport")
+        assertTrue(createRepository().readDrafts().isFailure)
+    }
+
     @Test
-    fun listPendingDraftsMapsDomainModelsAndPassesPendingStatus() = runTest {
+    fun readDraftsMapsOriginalsAndRequestsTheirProcessedHistory() = runTest {
         val handler = RepaymentDraftApiHandler().apply {
             listResult = RepaymentDraftListResponseDto(items = listOf(draftDto(publicId = "d1", amount = 50_000)))
         }
 
-        val drafts = repository(handler).listPendingDrafts().getOrThrow()
+        val drafts = repository(handler).readDrafts().getOrThrow().value
 
         assertEquals(1, drafts.size)
         assertEquals("d1", drafts.single().publicId)
         assertEquals(50_000L, drafts.single().amountCents)
         assertTrue(drafts.single().isPending)
-        // The inbox only ever lists pending drafts.
-        assertEquals(RepaymentDraftStatuses.PENDING, handler.listCalls.single())
+        // The original target remains available after it has been processed.
+        assertEquals("all", handler.listCalls.single())
     }
 
     @Test
-    fun listPendingDraftsErrorSurfacesAsFailure() = runTest {
+    fun readDraftsErrorSurfacesAsFailure() = runTest {
         val handler = RepaymentDraftApiHandler().apply {
             listError = HttpException(
                 Response.error<RepaymentDraftListResponseDto>(
@@ -52,87 +76,15 @@ class RepaymentDraftRepositoryTest {
             )
         }
 
-        assertTrue(repository(handler).listPendingDrafts().isFailure)
-    }
-
-    @Test
-    fun confirmDraftSendsTargetVersionAndKey() = runTest {
-        val handler = RepaymentDraftApiHandler().apply {
-            confirmResult = draftDto(publicId = "d1", status = RepaymentDraftStatuses.CONFIRMED)
-        }
-
-        val repository = repository(handler)
-        val confirmed = repository.confirmDraft(
-            draftPublicId = "d1",
-            targetDebtPublicId = "debt-9",
-            expectedRowVersion = 3L,
-            expectedBinding = assertNotNull(repository.captureDeferredLedgerBinding()),
-        ).getOrThrow()
-
-        val call = handler.confirmCalls.single()
-        assertEquals("d1", call.publicId)
-        assertEquals("debt-9", call.request.targetDebtPublicId)
-        assertEquals(3L, call.request.expectedRowVersion)
-        assertTrue(!call.idempotencyKey.isNullOrBlank())
-        assertTrue(!confirmed.isPending)
-    }
-
-    @Test
-    fun confirmDraftViewerShortCircuitsWithoutApiCall() = runTest {
-        val handler = RepaymentDraftApiHandler()
-
-        val repository = repository(handler, role = "viewer")
-        val result = repository.confirmDraft("d1", targetDebtPublicId = "debt-9", expectedRowVersion = 1L,
-            expectedBinding = assertNotNull(repository.captureDeferredLedgerBinding()))
-
-        assertTrue(result.isFailure)
-        assertEquals("当前角色为只读，无法修改账本。", result.exceptionOrNull()?.message)
-        assertTrue(handler.confirmCalls.isEmpty())
-    }
-
-    @Test
-    fun confirmDraftMintsFreshKeyPerCall() = runTest {
-        val handler = RepaymentDraftApiHandler()
-        val repository = repository(handler)
-
-        val binding = assertNotNull(repository.captureDeferredLedgerBinding())
-        repository.confirmDraft("d1", targetDebtPublicId = "debt-9", expectedRowVersion = 1L, expectedBinding = binding).getOrThrow()
-        repository.confirmDraft("d1", targetDebtPublicId = "debt-9", expectedRowVersion = 2L, expectedBinding = binding).getOrThrow()
-
-        val keys = handler.confirmCalls.mapNotNull { it.idempotencyKey }
-        assertEquals(2, keys.size)
-        assertEquals(2, keys.toSet().size)
-        assertTrue(repository.confirmDraft("d1", "debt-9", 2L, binding.copy(sessionGeneration = "previous-session")).isFailure)
-        assertEquals(2, handler.confirmCalls.size)
-    }
-
-    @Test
-    fun dismissDraftSendsBodyAndMapsResult() = runTest {
-        val handler = RepaymentDraftApiHandler().apply {
-            dismissResult = draftDto(publicId = "d1", status = RepaymentDraftStatuses.DISMISSED)
-        }
-
-        val dismissed = repository(handler).dismissDraft("d1").getOrThrow()
-
-        assertEquals("d1", handler.dismissCalls.single())
-        assertTrue(!dismissed.isPending)
-    }
-
-    @Test
-    fun dismissDraftViewerShortCircuitsWithoutApiCall() = runTest {
-        val handler = RepaymentDraftApiHandler()
-
-        val result = repository(handler, role = "viewer").dismissDraft("d1")
-
-        assertTrue(result.isFailure)
-        assertEquals("当前角色为只读，无法修改账本。", result.exceptionOrNull()?.message)
-        assertTrue(handler.dismissCalls.isEmpty())
+        assertTrue(repository(handler).readDrafts().isFailure)
     }
 
     private fun repository(
         handler: RepaymentDraftApiHandler,
         role: String = "owner",
-    ): RepaymentDraftRepository {
+    ): RepaymentDraftRepository = repositoryFactory(handler, role)()
+
+    private fun repositoryFactory(handler: RepaymentDraftApiHandler, role: String = "owner"): () -> RepaymentDraftRepository {
         val tokenStore = TestSessionFixture(
             identity = LocalSessionIdentity(
                 accountName = "我",
@@ -145,7 +97,9 @@ class RepaymentDraftRepositoryTest {
         ).apply { saveToken("session-token") }
         val apiClient = RepaymentDraftApiFactory(handler)
         val provider = testApiServiceProvider(apiClient, tokenStore)
-        return RepaymentDraftRepository(provider, debtReaderFixture(provider, tokenStore))
+        val dao = FakeExpenseDao()
+        val coordinator = LocalLedgerSessionCoordinator(boundSettingsStore(), tokenStore.sessionStore, dao)
+        return { RepaymentDraftRepository(provider, DebtQueryReader(provider, dao, coordinator)) }
     }
 }
 
@@ -207,7 +161,11 @@ private class RepaymentDraftApiHandler : InvocationHandler {
         val values = args.orEmpty()
         return when (method.name) {
             "repaymentDrafts" -> {
-                listError?.let { throw it }
+                listError?.let { failure ->
+                    val continuation = values.last() as kotlin.coroutines.Continuation<Any?>
+                    continuation.resumeWith(Result.failure(failure))
+                    return kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED
+                }
                 listCalls += values.getOrNull(0) as String?
                 listResult ?: RepaymentDraftListResponseDto(items = listOf(draftDto()))
             }

@@ -1,6 +1,9 @@
 package com.ticketbox.ui.navigation
 
+import com.ticketbox.initialLaunchRequests
 import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.notification.NotificationDestination
+import com.ticketbox.notification.NotificationTask
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -113,6 +116,48 @@ internal class LaunchShareHandoffTest {
         state.post(LaunchAction.OpenManualEntry)
         assertEquals(LaunchAction.OpenManualEntry, state.consume())
         assertEquals(first, state.pending)
+    }
+
+    @Test
+    fun launcherRestorationDoesNotReplayTheConsumedBudgetNotification() {
+        val originalTaskIntent = LaunchIntentRequest.OpenNotification(
+            NotificationTask(binding(), NotificationDestination.Budget("2026-07")),
+        )
+        // Android retains the ActivityRecord's original Intent after setIntent()
+        // clears the application instance's copy. The saved queue is already empty.
+        assertTrue(initialLaunchRequests(emptyList(), originalTaskIntent).isEmpty())
+        assertEquals(listOf(originalTaskIntent), initialLaunchRequests(null, originalTaskIntent))
+    }
+
+    @Test
+    fun restoredUnacceptedShareIsNotDisplacedByTheOriginalTaskNotification() {
+        val original = share("retained", "original-image").selection.apply { freezeBinding(binding()) }
+        val restored = restoreLaunchRequest(original.savedFields())
+        val originalTaskIntent = LaunchIntentRequest.OpenNotification(
+            NotificationTask(binding(), NotificationDestination.Budget("2026-07")),
+        )
+        assertEquals(listOf(restored), initialLaunchRequests(listOf(restored), originalTaskIntent))
+    }
+
+    @Test
+    fun aNewDeliveryAfterRestorationKeepsTheOriginalSharedSelection() {
+        val first = share("first", "original-image").selection.apply { freezeBinding(binding()) }
+        val restored = restoreLaunchRequest(first.savedFields()) as LaunchIntentRequest.ShareImages
+        val oldTaskIntent = LaunchIntentRequest.OpenNotification(
+            NotificationTask(binding(), NotificationDestination.Budget("2026-07")),
+        )
+        val notification = LaunchIntentRequest.OpenNotification(
+            NotificationTask(binding(), NotificationDestination.Repayment("newly-clicked-original")),
+        )
+        val resumed = initialLaunchRequests(listOf(restored), oldTaskIntent)
+        val pending = mergeLaunchRequest(resumed, notification)
+        assertEquals(listOf(notification, first), pending)
+        assertEquals(pending, initialLaunchRequests(pending, oldTaskIntent))
+        assertEquals(listOf(restored), remainingLaunchRequest(pending, notification))
+        assertEquals(binding(), restored.expectedBinding)
+        val parsedAgain = share("another-parse", "original-image").selection
+        assertEquals(listOf(restored), initialLaunchRequests(listOf(restored), parsedAgain))
+        assertTrue(initialLaunchRequests(emptyList(), parsedAgain).isEmpty())
     }
 
     private fun share(name: String, vararg uris: String) = LaunchAction.UploadSharedImages(

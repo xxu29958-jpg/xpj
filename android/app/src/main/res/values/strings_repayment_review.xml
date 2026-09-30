@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="repayment_review_reopen_unsubmitted">这些输入尚未提交。将重新读取当前身份下的原采集，保留金额，并请你重新选择欠款；旧版本不会直接发送。</string>
+    <string name="repayment_draft_original_money">原通知采集金额</string>
+    <string name="repayment_draft_read_cached">已保存的还款采集</string>
+    <string name="repayment_draft_read_current">本人还款采集与处理记录</string>
+    <string name="repayment_draft_read_time">读取于 %1$s</string>
+    <string name="repayment_draft_pending_count">待核对 %1$d</string>
+    <string name="repayment_draft_history_count">已处理 %1$d</string>
+    <string name="repayment_draft_original_missing_cache">已保存的记录中没有这条原通知采集，请联网刷新核对。</string>
+    <string name="repayment_draft_original_unavailable">当前记录中没有这条原通知采集；它可能已不可读取。其他采集仍可继续处理。</string>
+    <string name="repayment_draft_recorded">已记账</string>
+    <string name="repayment_draft_ignored">已忽略</string>
+    <string name="repayment_draft_unknown_status">当前版本无法识别此处理状态</string>
+    <string name="repayment_draft_open_record">查看对应欠款与还款记录</string>
+    <string name="repayment_draft_history_empty_title">还没有处理记录</string>
+    <string name="repayment_draft_history_empty_body">确认或忽略后，原采集及处理结果保留在这里。</string>
+    <string name="repayment_review_accepted">原提交已保存在本机，处理结果将在这里更新。</string>
+    <string name="repayment_review_open">核对并处理</string>
+    <string name="repayment_review_history">查看原处理记录</string>
+    <string name="repayment_review_title">核对这笔还款</string>
+    <string name="repayment_review_amount">核对金额</string>
+    <string name="repayment_review_stored_amount">本机保存的核对金额</string>
+    <string name="repayment_review_unsubmitted_history">这份本机输入没有提交；原采集已处理，请以下方处理记录为准。</string>
+    <string name="repayment_review_currency">币种</string>
+    <string name="repayment_review_select">选择要偿还的欠款</string>
+    <string name="repayment_review_no_target">尚未选择对应欠款</string>
+    <string name="repayment_review_saved">输入已保存在本机，返回或重启后可继续。</string>
+    <string name="repayment_review_money_note">通知原金额保持不变；确认按采集日期记还款。需要换算时，由服务端冻结汇率。</string>
+    <string name="repayment_review_confirm">确认记还款</string>
+    <string name="repayment_review_dismiss_command">忽略原还款采集</string>
+    <string name="repayment_review_interrupted">连接中断，原提交仍保留，将沿用原内容重试。</string>
+    <string name="repayment_review_unverified">尚未核实处理结果，请保留原提交并刷新核对。</string>
+    <string name="repayment_review_original">原提交</string>
+    <string name="repayment_review_waiting">已保存，等待确认结果</string>
+    <string name="repayment_review_done">已取得处理回执</string>
+    <string name="repayment_review_stopped">已停止本机追踪；这不会撤销服务端已经完成的处理。</string>
+    <string name="repayment_review_retry">重试原提交</string>
+    <string name="repayment_review_again">重新读取并核对</string>
+    <string name="repayment_review_receipt_missing">本机已保存原提交。请刷新读取服务端结果，勿重复提交。</string>
+</resources>

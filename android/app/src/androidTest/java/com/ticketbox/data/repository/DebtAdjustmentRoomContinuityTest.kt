@@ -204,7 +204,7 @@ class DebtAdjustmentRoomContinuityTest {
                 retained = RetainedAdjustmentConsumers(graph)
                 global = outboxStatusViewModelFactory(fixture.outbox, graph.expenseRepository,
                     OutboxRecoveryRepositories(graph.debtCreationRepository, graph.recurringRepository.occurrences,
-                        graph.incomePlanRepository, graph.debtWriteRepository, graph.goalEditRepository, graph.budgetRepository, graph.recurringRepository, graph.ruleRepository)).create(OutboxStatusViewModel::class.java)
+                        graph.incomePlanRepository, graph.debtWriteRepository, graph.goalEditRepository, graph.budgetRepository, graph.recurringRepository, graph.ruleRepository, repaymentReviews = graph.repaymentReviewRepository)).create(OutboxStatusViewModel::class.java)
             }
             val consumers = requireNotNull(retained)
             val sync = requireNotNull(global)
@@ -322,7 +322,7 @@ class DebtAdjustmentRoomContinuityTest {
             model to { model.state.value.candidates.singleOrNull()?.remainingAmountCents }
         }
         "repaymentDraft" -> {
-            val model = RepaymentDraftInboxViewModel(graph.repaymentDraftRepository, graph.debtRepository, graph.debtWriteRepository)
+            val model = RepaymentDraftInboxViewModel(graph.repaymentDraftRepository, graph.debtRepository, graph.debtWriteRepository, graph.repaymentReviewRepository)
             model to { model.state.value.targetDebts.singleOrNull()?.remainingAmountCents }
         }
         else -> error("Unknown retained consumer: $consumer")
@@ -382,7 +382,7 @@ class DebtAdjustmentRoomContinuityTest {
         compose.runOnIdle { sync = outboxStatusViewModelFactory(fixture.outbox, fixture.graph.expenseRepository,
             OutboxRecoveryRepositories(fixture.graph.debtCreationRepository, fixture.graph.recurringRepository.occurrences,
                 fixture.graph.incomePlanRepository, fixture.graph.debtWriteRepository, fixture.graph.goalEditRepository,
-                fixture.graph.budgetRepository, fixture.graph.recurringRepository, fixture.graph.ruleRepository))
+                fixture.graph.budgetRepository, fixture.graph.recurringRepository, fixture.graph.ruleRepository, repaymentReviews = fixture.graph.repaymentReviewRepository))
             .create(OutboxStatusViewModel::class.java) }
         try {
             compose.waitUntil(10_000) { sync.uiState.value.status.failed.size == 1 }

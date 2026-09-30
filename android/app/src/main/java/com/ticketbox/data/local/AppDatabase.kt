@@ -9,8 +9,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.ticketbox.domain.model.FxContract
 
 @Database(
-    entities = [ExpenseEntity::class, PendingMutationEntity::class, ExpenseOffsetStreamEntity::class, StatsProjectionCacheEntity::class, GoalQueryCacheEntity::class, MonthlyArrangementCacheEntity::class],
-    version = 22,
+    entities = [ExpenseEntity::class, PendingMutationEntity::class, ExpenseOffsetStreamEntity::class, StatsProjectionCacheEntity::class, GoalQueryCacheEntity::class, MonthlyArrangementCacheEntity::class, RepaymentReviewInputEntity::class],
+    version = 23,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -18,6 +18,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun pendingMutationDao(): PendingMutationDao
     abstract fun monthlyArrangementCacheDao(): MonthlyArrangementCacheDao
     abstract fun incomeQueryCacheDao(): IncomeQueryCacheDao
+    abstract fun repaymentReviewInputDao(): RepaymentReviewInputDao
 
     companion object {
         @Volatile
@@ -570,6 +571,13 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) { MIGRATION_21_22_STATEMENTS.forEach(db::execSQL) }
         }
 
+        internal val MIGRATION_22_23_STATEMENTS = listOf(
+            "CREATE TABLE IF NOT EXISTS repayment_review_inputs (ownerKey TEXT NOT NULL, ledgerId TEXT NOT NULL, draftPublicId TEXT NOT NULL, serverUrl TEXT NOT NULL, sessionGeneration TEXT NOT NULL, bindingRevision TEXT NOT NULL, originalKey TEXT NOT NULL, currency TEXT NOT NULL, amountText TEXT NOT NULL, debtPublicId TEXT, debtLabel TEXT, debtHomeCurrency TEXT, debtRowVersion INTEGER, submittedAction TEXT, PRIMARY KEY(ownerKey, ledgerId, draftPublicId))",
+        )
+        internal val Migration22To23 = object : Migration(22, 23) {
+            override fun migrate(db: SupportSQLiteDatabase) { MIGRATION_22_23_STATEMENTS.forEach(db::execSQL) }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -599,6 +607,7 @@ abstract class AppDatabase : RoomDatabase() {
                         Migration19To20,
                         Migration20To21,
                         Migration21To22,
+                        Migration22To23,
                     )
                     .build()
                     .also { instance = it }

@@ -96,11 +96,4 @@ class RepaymentDraftMappersTest {
         assertEquals("wechat", request.source)
     }
 
-    @Test
-    fun confirmRequestCarriesTargetAndRowVersion() {
-        val request = confirmRepaymentDraftRequest(targetDebtPublicId = "debt-3", expectedRowVersion = 7L)
-
-        assertEquals("debt-3", request.targetDebtPublicId)
-        assertEquals(7L, request.expectedRowVersion)
-    }
 }

@@ -11,6 +11,8 @@ import com.ticketbox.data.repository.DebtWriteObservation
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.RepaymentDraftActions
+import com.ticketbox.data.repository.RepaymentReviewActions
+import com.ticketbox.data.repository.RepaymentReviewState
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.RepaymentDraft
 import com.ticketbox.domain.model.UiText
@@ -25,7 +27,7 @@ import kotlinx.coroutines.launch
  * ADR-0049 §杠杆③ (slice 3a) NLS 还款捕获复核箱 —— 列 pending 还款草稿 → 选一笔 open 的外部/手动欠款
  * confirm（记一笔 Repayment）或 dismiss（忽略）。
  *
- * 同时拉两份服务端数据：pending 还款草稿（[RepaymentDraftActions.listPendingDrafts]）与可选的目标欠款
+ * 同时读取本人还款采集与处理历史（[RepaymentDraftActions.readDrafts]）和可选的目标欠款
  * （[DebtActions.listDebts] 过滤出 open + 外部手动——只有这类能直接记还款，镜像后端
  * `guard_direct_fact_writable`，否则 confirm 会 409）。两者都按账本作用域，overlay VM 跨账本存活，故
  * [reload] 进入时先清旧账本残留再拉（账本隔离，与 [DebtListViewModel] 同构）。confirm 用所选欠款的
@@ -35,6 +37,8 @@ data class RepaymentDraftInboxUiState(
     val isLoading: Boolean = false,
     val canModify: Boolean = true,
     val drafts: List<RepaymentDraft> = emptyList(),
+    val capturesFetchedAt: String? = null,
+    val capturesFromCache: Boolean = false,
     val targetDebts: List<Debt> = emptyList(),
     val targetsFetchedAt: String? = null,
     val targetsFromCache: Boolean = false,
@@ -47,13 +51,17 @@ data class RepaymentDraftInboxUiState(
     val error: UiText? = null,
     val pendingActionDraftId: String? = null,
     val flashMessage: UiText? = null,
+    val reviewId: String? = null,
+    val review: RepaymentReviewState = RepaymentReviewState(null),
 )
 
 class RepaymentDraftInboxViewModel(
     private val drafts: RepaymentDraftActions,
     private val debts: DebtActions,
     private val writes: DebtWriteActions,
+    private val reviews: RepaymentReviewActions,
     private val originalBinding: LogicalSessionBinding? = null,
+    savedStateHandle: androidx.lifecycle.SavedStateHandle = androidx.lifecycle.SavedStateHandle(),
 ) : ViewModel() {
 
     private var adjustmentBinding = writes.currentAccess()?.binding.takeIf { originalBinding.admitsTaskBinding(it) }
@@ -62,6 +70,8 @@ class RepaymentDraftInboxViewModel(
 
     private val _state = MutableStateFlow(RepaymentDraftInboxUiState(canModify = drafts.canModifyLedger()))
     val state: StateFlow<RepaymentDraftInboxUiState> = _state.asStateFlow()
+    internal val reviewEditor = RepaymentReviewEditor(reviews, viewModelScope,
+        RepaymentReviewEditorContext(_state, { adjustmentBinding }, ::ownsAdjustmentBinding, ::refresh, ::confirm), savedStateHandle)
 
     // Monotonic load token (mirrors DebtListViewModel): a refresh applies its result only if it is
     // still the latest. init + reload on overlay (re-)entry + the refresh after confirm/dismiss each
@@ -121,6 +131,8 @@ class RepaymentDraftInboxViewModel(
         _state.update {
             it.copy(
                 drafts = emptyList(),
+                capturesFetchedAt = null,
+                capturesFromCache = false,
                 targetDebts = emptyList(),
                 targetsFetchedAt = null,
                 targetsFromCache = false,
@@ -144,7 +156,7 @@ class RepaymentDraftInboxViewModel(
         _state.update { it.copy(isLoading = true, targetDebts = emptyList(), suggestedDebtByDraftId = emptyMap(),
             targetsFetchedAt = null, targetsFromCache = false, error = null) }
         viewModelScope.launch {
-            val draftResult = drafts.listPendingDrafts(binding)
+            val draftResult = drafts.readDrafts(binding)
             val debtSnapshot = debts.listDebts(expectedBinding = binding).getOrNull()
             val repayable = debtSnapshot?.value?.debts?.filter(::isRepayableDebt)
                 ?.filter { adjustmentSnapshot?.acceptsCanonical(it) == true }
@@ -152,16 +164,16 @@ class RepaymentDraftInboxViewModel(
             if (gen != loadGeneration || !ownsAdjustmentBinding(binding)) return@launch
             _state.update { current ->
                 draftResult.fold(
-                    onSuccess = { pending ->
+                    onSuccess = { snapshot ->
                         val focused = current.focusedDraftPublicId
-                        val orderedDrafts = prioritizeFocusedDraft(pending, focused)
+                        val orderedDrafts = prioritizeFocusedDraft(snapshot.value, focused)
                         current.copy(
                             isLoading = false,
                             canModify = drafts.canModifyLedger(),
                             drafts = orderedDrafts,
-                            focusedDraftPublicId = focused?.takeIf { id ->
-                                pending.any { it.publicId == id }
-                            },
+                            capturesFetchedAt = snapshot.fetchedAt,
+                            capturesFromCache = snapshot.fromCache,
+                            focusedDraftPublicId = focused,
                             // debt 拉取失败(repayable==null)时**清空**候选——绝不保留陈旧的 row_version,否则
                             // 下次对同一债 confirm 会用陈旧 OCC token 触发确定性 409;并报错让用户下拉刷新,
                             // 也避免空候选被误读成「没有欠款」（拉取成功但无可还款债时 repayable 是空列表、不报错）。
@@ -182,12 +194,14 @@ class RepaymentDraftInboxViewModel(
                     },
                 )
             }
+            reviewEditor.restoreIfNeeded()
         }
     }
 
     fun confirm(draftPublicId: String, debt: Debt) {
         val current = _state.value
         if (current.pendingActionDraftId != null || current.isLoading || !current.canModify) return
+        val captured = current.drafts.singleOrNull { it.publicId == draftPublicId && it.isPending } ?: return
         val target = current.targetDebts.singleOrNull { it.publicId == debt.publicId }
         if (target == null || target.rowVersion != debt.rowVersion) {
             _state.update { it.copy(error = UiText.res(R.string.repayment_draft_target_changed)) }
@@ -197,35 +211,28 @@ class RepaymentDraftInboxViewModel(
         val generation = loadGeneration
         _state.update { it.copy(pendingActionDraftId = draftPublicId, error = null) }
         viewModelScope.launch {
-            val rows = writes.observeWrites(binding, target.publicId).first()
+            val ready = originalTargetIsReady(binding, target.publicId, generation)
             if (!ownsAdjustmentBinding(binding)) return@launch
-            val knownTerminals = adjustmentSnapshot?.writes.orEmpty().filter { it.isTerminal }.map { it.row.id }
-            if (writes.currentAccess()?.canModify != true ||
-                generation != loadGeneration || rows.any { it.isUnresolved || it.isTerminal && it.row.id !in knownTerminals }
-            ) {
+            if (!ready) {
                 _state.update { it.copy(pendingActionDraftId = null, error = UiText.res(R.string.repayment_draft_target_changed)) }
                 return@launch
             }
-            val result = drafts.confirmDraft(
-                draftPublicId = draftPublicId,
-                targetDebtPublicId = debt.publicId,
-                expectedRowVersion = target.rowVersion,
-                expectedBinding = binding,
-            )
+            val result = reviews.publishReview(binding, captured, target)
             if (!ownsAdjustmentBinding(binding)) return@launch
-            finishAction(result, R.string.repayment_draft_confirm_done, R.string.repayment_draft_confirm_failed)
+            finishAction(result, R.string.repayment_review_accepted, R.string.repayment_draft_confirm_failed)
         }
     }
 
     fun dismiss(draftPublicId: String) {
         if (_state.value.pendingActionDraftId != null || !_state.value.canModify) return
+        val captured = _state.value.drafts.singleOrNull { it.publicId == draftPublicId && it.isPending } ?: return
         val binding = adjustmentBinding ?: return
         if (!ownsAdjustmentBinding(binding)) return
         _state.update { it.copy(pendingActionDraftId = draftPublicId, error = null) }
         viewModelScope.launch {
-            val result = drafts.dismissDraft(draftPublicId, binding)
+            val result = reviews.publishReview(binding, captured, null)
             if (!ownsAdjustmentBinding(binding)) return@launch
-            finishAction(result, R.string.repayment_draft_dismiss_done, R.string.repayment_draft_dismiss_failed)
+            finishAction(result, R.string.repayment_review_accepted, R.string.repayment_draft_dismiss_failed)
         }
     }
 
@@ -233,7 +240,7 @@ class RepaymentDraftInboxViewModel(
         _state.update { it.copy(flashMessage = null) }
     }
 
-    private fun finishAction(result: Result<RepaymentDraft>, successRes: Int, failureRes: Int) {
+    private fun finishAction(result: Result<Long>, successRes: Int, failureRes: Int) {
         result.fold(
             onSuccess = {
                 _state.update {
@@ -254,6 +261,19 @@ class RepaymentDraftInboxViewModel(
 
     private fun ownsAdjustmentBinding(binding: LogicalSessionBinding): Boolean =
         binding == adjustmentBinding && binding == writes.currentAccess()?.binding
+
+    private suspend fun originalTargetIsReady(binding: LogicalSessionBinding, publicId: String, generation: Long): Boolean {
+        val rows = writes.observeWrites(binding, publicId).first()
+        val knownTerminals = adjustmentSnapshot?.writes.orEmpty().filter { it.isTerminal }.map { it.row.id }
+        return writes.currentAccess()?.canModify == true && generation == loadGeneration &&
+            rows.none { it.isUnresolved || it.isTerminal && it.row.id !in knownTerminals }
+    }
+}
+
+private suspend fun RepaymentReviewActions.publishReview(binding: LogicalSessionBinding, capture: RepaymentDraft, debt: Debt?): Result<Long> {
+    open(binding, capture).exceptionOrNull()?.let { return Result.failure(it) }
+    if (debt != null) select(binding, capture.publicId, debt).exceptionOrNull()?.let { return Result.failure(it) }
+    return submit(binding, capture, dismiss = debt == null)
 }
 
 /**

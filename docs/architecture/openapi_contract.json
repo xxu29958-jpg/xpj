@@ -2727,37 +2727,6 @@
         "title": "Body_web_category_preference_delete_web_categories_preferences__public_id__delete_post",
         "type": "object"
       },
-      "Body_web_confirm_repayment_draft_web_repayment_drafts__public_id__confirm_post": {
-        "properties": {
-          "csrf_token": {
-            "default": "",
-            "title": "Csrf Token",
-            "type": "string"
-          },
-          "expected_row_version": {
-            "default": "",
-            "title": "Expected Row Version",
-            "type": "string"
-          },
-          "idempotency_key": {
-            "default": "",
-            "title": "Idempotency Key",
-            "type": "string"
-          },
-          "ledger_id": {
-            "default": "",
-            "title": "Ledger Id",
-            "type": "string"
-          },
-          "target_debt_public_id": {
-            "default": "",
-            "title": "Target Debt Public Id",
-            "type": "string"
-          }
-        },
-        "title": "Body_web_confirm_repayment_draft_web_repayment_drafts__public_id__confirm_post",
-        "type": "object"
-      },
       "Body_web_confirm_repayment_proposal_web_debts__public_id__repayment_proposals__proposal_public_id__confirm_post": {
         "properties": {
           "amount_major": {
@@ -3786,22 +3755,6 @@
           }
         },
         "title": "Body_web_debt_rate_web_debts_rate_post",
-        "type": "object"
-      },
-      "Body_web_dismiss_repayment_draft_web_repayment_drafts__public_id__dismiss_post": {
-        "properties": {
-          "csrf_token": {
-            "default": "",
-            "title": "Csrf Token",
-            "type": "string"
-          },
-          "ledger_id": {
-            "default": "",
-            "title": "Ledger Id",
-            "type": "string"
-          }
-        },
-        "title": "Body_web_dismiss_repayment_draft_web_repayment_drafts__public_id__dismiss_post",
         "type": "object"
       },
       "Body_web_duplicate_keep_web_duplicates__expense_id__keep_post": {
@@ -6768,6 +6721,57 @@
           }
         },
         "title": "Body_web_splits_save_web_expenses__expense_id__splits_save_post",
+        "type": "object"
+      },
+      "Body_web_submit_repayment_review_web_repayment_drafts__public_id__review_post": {
+        "properties": {
+          "csrf_token": {
+            "default": "",
+            "title": "Csrf Token",
+            "type": "string"
+          },
+          "draft_public_id": {
+            "default": "",
+            "title": "Draft Public Id",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "default": "",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "origin_binding": {
+            "default": "",
+            "title": "Origin Binding",
+            "type": "string"
+          },
+          "original_amount": {
+            "default": "",
+            "title": "Original Amount",
+            "type": "string"
+          },
+          "original_currency": {
+            "default": "",
+            "title": "Original Currency",
+            "type": "string"
+          },
+          "review_action": {
+            "default": "",
+            "title": "Review Action",
+            "type": "string"
+          },
+          "target_with_expected_row_version": {
+            "default": "",
+            "title": "Target With Expected Row Version",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_submit_repayment_review_web_repayment_drafts__public_id__review_post",
         "type": "object"
       },
       "Body_web_tag_delete_web_tags__public_id__delete_post": {
@@ -53799,9 +53803,67 @@
         ]
       }
     },
-    "/web/repayment-drafts/{public_id}/confirm": {
+    "/web/repayment-drafts/{public_id}": {
+      "get": {
+        "operationId": "web_repayment_review_web_repayment_drafts__public_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ledger Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Repayment Review",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/repayment-drafts/{public_id}/review": {
       "post": {
-        "operationId": "web_confirm_repayment_draft_web_repayment_drafts__public_id__confirm_post",
+        "operationId": "web_submit_repayment_review_web_repayment_drafts__public_id__review_post",
         "parameters": [
           {
             "in": "path",
@@ -53817,7 +53879,7 @@
           "content": {
             "application/x-www-form-urlencoded": {
               "schema": {
-                "$ref": "#/components/schemas/Body_web_confirm_repayment_draft_web_repayment_drafts__public_id__confirm_post"
+                "$ref": "#/components/schemas/Body_web_submit_repayment_review_web_repayment_drafts__public_id__review_post"
               }
             }
           }
@@ -53844,56 +53906,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Web Confirm Repayment Draft",
-        "tags": [
-          "web"
-        ]
-      }
-    },
-    "/web/repayment-drafts/{public_id}/dismiss": {
-      "post": {
-        "operationId": "web_dismiss_repayment_draft_web_repayment_drafts__public_id__dismiss_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "public_id",
-            "required": true,
-            "schema": {
-              "title": "Public Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/x-www-form-urlencoded": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_web_dismiss_repayment_draft_web_repayment_drafts__public_id__dismiss_post"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json; charset=utf-8": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Web Dismiss Repayment Draft",
+        "summary": "Web Submit Repayment Review",
         "tags": [
           "web"
         ]

@@ -13,6 +13,7 @@ import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.NotificationPreferences
 import com.ticketbox.domain.model.ServerSettings
+import com.ticketbox.domain.model.ServerBackupHealth
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -168,6 +169,9 @@ class SettingsViewModelTest {
         var diagnosticsFailure: Throwable? = null
         var serverSettingsValue: ServerSettings? = null
         var serverSettingsFailure: Throwable? = null
+        var backupHealthValue = ServerBackupHealth(null, null, true)
+        var backupFailure: Throwable? = null
+        var backupGate: CompletableDeferred<Unit>? = null
         var diagnosticsGate: CompletableDeferred<Unit>? = null
         var binding = LocalBindingInfo(
             "https://api.example.com", "Account", "owner", "Ledger", "Pixel", "owner", "2026-05-01T00:00:00Z",
@@ -198,6 +202,11 @@ class SettingsViewModelTest {
 
         override suspend fun serverSettings(): Result<ServerSettings> =
             serverSettingsFailure?.let { Result.failure(it) } ?: Result.success(serverSettingsValue ?: defaultServerSettings())
+
+        override suspend fun backupHealth(): Result<ServerBackupHealth> {
+            backupGate?.await()
+            return backupFailure?.let { Result.failure(it) } ?: Result.success(backupHealthValue)
+        }
 
         override suspend fun syncConfirmed(
             month: String?,

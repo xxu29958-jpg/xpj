@@ -15,6 +15,7 @@ import com.ticketbox.domain.model.DiagnosticStatus
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.NotificationPreferences
 import com.ticketbox.domain.model.ServerSettings
+import com.ticketbox.domain.model.ServerBackupHealth
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -45,6 +46,9 @@ data class SettingsUiState(
     val notificationPreferences: NotificationPreferences = NotificationPreferences(),
     val serverSettings: ServerSettings? = null,
     val serverSettingsFresh: Boolean = false,
+    val backupHealth: ServerBackupHealth? = null,
+    val backupLoading: Boolean = false,
+    val backupError: UiText? = null,
     val diagnostics: ConnectionDiagnostics? = null,
     val lastUploadAt: String? = null,
     val lastConfirmedSyncAt: String? = null,
@@ -90,6 +94,7 @@ class SettingsViewModel(
         val binding = _uiState.value.access?.binding ?: return
         if (_uiState.value.busy) return
         connectionJob?.cancel()
+        _uiState.update { it.copy(backupLoading = false) }
         if (showBusy) {
             _uiState.update { it.copy(busy = true, message = null, messageTone = MessageTone.Neutral) }
         }
@@ -165,10 +170,11 @@ class SettingsViewModel(
 
     fun cancelConnectionWork() {
         connectionJob?.cancel()
-        _uiState.update { it.copy(busy = false, message = null, messageTone = MessageTone.Neutral) }
+        _uiState.update { it.copy(busy = false, backupLoading = false, message = null, messageTone = MessageTone.Neutral) }
     }
 
     private fun loadServerSettings(showBusy: Boolean = false) = launchBound(showBusy) { binding ->
+        updateFor(binding) { it.copy(backupHealth = null, backupError = null, backupLoading = true) }
         repository.serverSettings()
             .onSuccess { settings ->
                 updateFor(binding) {
@@ -182,20 +188,25 @@ class SettingsViewModel(
                         lastUploadAt = settings.latestUploadAt,
                         message = null,
                         messageTone = MessageTone.Neutral,
-                        busy = false,
                     )
                 }
             }
             .onFailure { error ->
                 updateFor(binding) {
                     it.copy(
-                        busy = false,
                         serverSettingsFresh = false,
                         message = error.toUiText(R.string.settings_vm_server_settings_failed),
                         messageTone = MessageTone.Danger,
                     )
                 }
             }
+        refreshLocalBindingState()
+        if (_uiState.value.access?.binding != binding) return@launchBound
+        val backup = repository.backupHealth()
+        updateFor(binding) {
+            it.copy(busy = false, backupLoading = false, backupHealth = backup.getOrNull(),
+                backupError = backup.exceptionOrNull()?.toUiText(R.string.settings_backup_read_failed))
+        }
     }
 
     fun clearLocalCache() = launchBound { binding ->

@@ -82,6 +82,7 @@ class DebtWriteRepository internal constructor(
         val pending = when (row.type) {
             PendingMutationType.RecordDebtAdjustment -> row.describeDebtAdjustment(adapters.debtAdjustmentAdapter)
             PendingMutationType.RecordDebtRepayment -> row.describeDebtRepayment(adapters.debtRepaymentAdapter)
+            PendingMutationType.ConfirmRepaymentDraft -> row.describeRepaymentReview(adapters.repaymentReviewAdapter)
             PendingMutationType.VoidDebt -> row.describeDebtVoid(adapters.debtVoidAdapter)
             PendingMutationType.VoidDebtRepayment -> row.describeRepaymentVoid(adapters.debtRepaymentVoidAdapter)
             PendingMutationType.SetDebtKind -> row.describeDebtKind(adapters.debtKindAdapter)

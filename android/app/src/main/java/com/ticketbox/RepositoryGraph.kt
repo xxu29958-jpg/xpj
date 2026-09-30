@@ -173,6 +173,10 @@ internal class RepositoryGraph(
         queryReader = debtQueries,
     )
 
+    val repaymentReviewRepository = com.ticketbox.data.repository.RepaymentReviewRepository(
+        apiServiceProvider, database, outbox, outboxAdapters,
+    )
+
     init {
         outbox.onDebtDispatchPreparing = debtRepository::prepareReadsBeforeDispatch
         outbox.onDebtDispatchFinished = debtRepository::finishReadDispatch

@@ -763,6 +763,7 @@ internal class FakeApiService(
         request: com.ticketbox.data.remote.dto.MemberRepaymentProposalRejectRequestDto,
         idempotencyKey: String?,
     ): com.ticketbox.data.remote.dto.MemberRepaymentProposalDto = unsupported()
+    override suspend fun repaymentDraft(publicId: String): com.ticketbox.data.remote.dto.RepaymentDraftDto = unsupported()
     override suspend fun repaymentDrafts(
         status: String?,
     ): com.ticketbox.data.remote.dto.RepaymentDraftListResponseDto = unsupported()

@@ -2,6 +2,7 @@ package com.ticketbox.ui.screens.settings
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -16,6 +17,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppStatusBanner
+import com.ticketbox.ui.components.displayTime
 import com.ticketbox.viewmodel.SettingsUiState
 
 @Immutable
@@ -59,6 +61,7 @@ fun ServerSettingsScreen(
         onBack = actions.onBack,
         status = { AppStatusBanner(message = settings.message, tone = settings.messageTone) },
     ) {
+        BackupRecordSection(settings, actions.onRefreshServerSettings)
         AccountStatusCard(
             state = AccountStatusCardState(
                 serverSettings = settings.confirmedServerSettings(),
@@ -99,6 +102,31 @@ fun ServerSettingsScreen(
                     Text(stringResource(R.string.settings_server_button_refresh_settings))
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun BackupRecordSection(state: SettingsUiState, onRefresh: () -> Unit) {
+    SettingsSection(title = stringResource(R.string.settings_backup_title), icon = Icons.Filled.CloudDone) {
+        val health = state.backupHealth
+        when {
+            state.backupLoading -> Text(stringResource(R.string.settings_backup_loading))
+            state.backupError != null -> AppStatusBanner(message = state.backupError,
+                tone = com.ticketbox.domain.model.MessageTone.Danger)
+            health == null -> Text(stringResource(R.string.settings_backup_read_failed))
+            health.latestBackupAt == null -> Text(stringResource(R.string.settings_backup_never))
+            else -> {
+                Text(stringResource(R.string.settings_backup_latest, displayTime(health.latestBackupAt)))
+                health.ageHours?.let { Text(stringResource(R.string.settings_backup_age_hours, it)) }
+                Text(stringResource(if (health.stale) R.string.settings_backup_stale else R.string.settings_backup_recent))
+            }
+        }
+        Text(stringResource(R.string.settings_backup_next_step), style = MaterialTheme.typography.bodyMedium)
+        Text(stringResource(R.string.settings_backup_record_scope), style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        OutlinedButton(onClick = onRefresh, enabled = !state.busy && !state.backupLoading) {
+            Text(stringResource(R.string.settings_backup_refresh))
         }
     }
 }

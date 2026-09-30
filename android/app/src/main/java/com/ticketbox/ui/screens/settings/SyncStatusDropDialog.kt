@@ -130,6 +130,7 @@ private val originalCreationStopLabels = mapOf(
     PendingMutationType.SaveManualExchangeRate to (R.string.advice_rate_stop to R.string.advice_rate_stop_body),
     PendingMutationType.CreateExpense to (R.string.manual_submission_stop to R.string.manual_submission_stop_body),
     PendingMutationType.CapturePaymentNotification to (R.string.notification_capture_stop to R.string.notification_capture_stop_explanation),
+    PendingMutationType.DismissRepaymentDraft to (R.string.debt_write_drop to R.string.repayment_review_stopped),
 )
 
 @Composable

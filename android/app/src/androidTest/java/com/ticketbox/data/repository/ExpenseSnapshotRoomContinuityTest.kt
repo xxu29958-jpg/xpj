@@ -216,7 +216,7 @@ class ExpenseSnapshotRoomContinuityTest {
             global = outboxStatusViewModelFactory(fixture.outbox, graph.expenseRepository,
                 OutboxRecoveryRepositories(graph.debtCreationRepository, graph.recurringRepository.occurrences,
                     graph.incomePlanRepository, graph.debtWriteRepository, graph.goalEditRepository, graph.budgetRepository,
-                    graph.recurringRepository, graph.ruleRepository)).create(OutboxStatusViewModel::class.java)
+                    graph.recurringRepository, graph.ruleRepository, repaymentReviews = graph.repaymentReviewRepository)).create(OutboxStatusViewModel::class.java)
         }
         compose.setContent { TicketboxTheme(skin = AppSkin.Paper) {
             SyncStatusScreen(requireNotNull(global), {}, SyncStatusNavigation({}, {}, {}, {}, {}, {}, {}, {}, {},

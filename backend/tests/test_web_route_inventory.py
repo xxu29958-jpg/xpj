@@ -161,8 +161,8 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("POST", "/web/debt-goals/{public_id}/target-date"): "writer-only",
     # Repayment drafts (ADR-0049 债务域 web 面 slice C3 还款捕获可操作复核, account-scoped)
     ("GET", "/web/repayment-drafts"): "local-only-rendering",
-    ("POST", "/web/repayment-drafts/{public_id}/confirm"): "writer-only",
-    ("POST", "/web/repayment-drafts/{public_id}/dismiss"): "writer-only",
+    ("GET", "/web/repayment-drafts/{public_id}"): "local-only-rendering",
+    ("POST", "/web/repayment-drafts/{public_id}/review"): "writer-only",
     # Receivables (ADR-0049 债务域 web 面 ⑤c-3 欠我的/应收只读, account-scoped cross-ledger)
     ("GET", "/web/receivables"): "local-only-rendering",
     # Bilateral split changes retain native input; only the four commands write.

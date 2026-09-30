@@ -28,6 +28,9 @@ interface RepaymentDraftApi {
         @Body request: com.ticketbox.data.remote.dto.RepaymentDraftCreateRequestDto,
     ): com.ticketbox.data.remote.dto.RepaymentDraftDto
 
+    @GET("api/repayment-drafts/{publicId}")
+    suspend fun repaymentDraft(@Path("publicId") publicId: String): RepaymentDraftDto
+
     @POST("api/repayment-drafts/{publicId}/confirm")
     suspend fun confirmRepaymentDraft(
         @Path("publicId") publicId: String,
