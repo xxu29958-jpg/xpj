@@ -114,7 +114,7 @@ class MerchantManagementContinuationTest {
         showMerchants()
         clickText(R.string.merchant_management_tools_add_alias)
         fill(R.string.merchant_aliases_canonical_label, "差旅商家")
-        fill(R.string.merchant_aliases_alias_label, "PAY-差旅原始商家")
+        fill(R.string.merchant_aliases_alias_label, "PAY-差旅原始商家", index = 1)
         clickText(R.string.merchant_aliases_create_button)
         compose.waitUntil(5_000) { aliasRequests.size == 1 }
         compose.waitForIdle()
@@ -140,16 +140,19 @@ class MerchantManagementContinuationTest {
         fill(R.string.merchant_catalog_name_label, "尚未提交的新商家")
         compose.onNodeWithContentDescription(context.getString(R.string.merchant_catalog_actions_content_description))
             .performScrollTo().performTouchInput { click() }
-        clickText(R.string.merchant_catalog_card_action_rename)
+        compose.onNodeWithText(context.getString(R.string.merchant_catalog_card_action_rename))
+            .performTouchInput { click() }
         compose.onNode(hasSetTextAction() and hasText("原商家")).performTextReplacement("改名后的商家")
-        clickText(R.string.merchant_catalog_rename_dialog_confirm)
+        compose.onNodeWithText(context.getString(R.string.merchant_catalog_rename_dialog_confirm))
+            .performTouchInput { click() }
         compose.waitUntil(5_000) { updates.size == 1 }
         compose.waitForIdle()
         compose.onNode(hasSetTextAction() and hasText("改名后的商家")).assertIsDisplayed()
         assertEquals("原商家", catalog?.displayName)
 
         reject = false
-        clickText(R.string.merchant_catalog_rename_dialog_confirm)
+        compose.onNodeWithText(context.getString(R.string.merchant_catalog_rename_dialog_confirm))
+            .performTouchInput { click() }
         compose.waitUntil(5_000) { catalog?.displayName == "改名后的商家" }
         compose.waitForIdle()
         compose.onNodeWithText(context.getString(R.string.merchant_catalog_rename_dialog_title)).assertDoesNotExist()
@@ -185,8 +188,11 @@ class MerchantManagementContinuationTest {
     private fun clickText(label: Int) = compose.onNodeWithText(context.getString(label))
         .performScrollTo().performTouchInput { click() }
 
-    private fun fill(label: Int, value: String) = compose.onNode(hasSetTextAction() and hasText(context.getString(label)))
-        .performScrollTo().performTextReplacement(value)
+    private fun fill(label: Int, value: String, index: Int = 0) {
+        // AppTextInput exposes its label as a sibling, not as editable text.
+        compose.onNodeWithText(context.getString(label)).performScrollTo().assertIsDisplayed()
+        compose.onAllNodes(hasSetTextAction())[index].performTextReplacement(value)
+    }
 
     private fun waitForText(label: Int) = compose.waitUntil(5_000) {
         compose.onAllNodesWithText(context.getString(label)).fetchSemanticsNodes().isNotEmpty()
