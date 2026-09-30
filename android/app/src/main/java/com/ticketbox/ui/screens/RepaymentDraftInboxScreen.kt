@@ -18,9 +18,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -65,13 +62,12 @@ private enum class DraftRowAction { Idle, Busy, Disabled }
 @Composable
 fun RepaymentDraftInboxScreen(
     viewModel: RepaymentDraftInboxViewModel,
+    showHistory: Boolean,
+    onHistoryChange: (Boolean) -> Unit,
     onBack: () -> Unit,
     onOpenDebt: (String) -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    var showHistory by rememberSaveable { mutableStateOf(false) }
-    val focused = state.drafts.find { it.publicId == state.focusedDraftPublicId }
-    LaunchedEffect(focused?.publicId, focused?.status) { if (focused != null) showHistory = !focused.isPending }
     if (state.reviewId != null) {
         RepaymentReviewScreen(state, viewModel, onOpenDebt)
         return
@@ -102,7 +98,7 @@ fun RepaymentDraftInboxScreen(
         ),
     ) {
         item {
-            RepaymentDraftReadHeader(state, showHistory) { showHistory = it }
+            RepaymentDraftReadHeader(state, showHistory, onHistoryChange)
         }
         state.flashMessage?.let { msg ->
             item { AppStatusBanner(message = msg, tone = MessageTone.Success) }

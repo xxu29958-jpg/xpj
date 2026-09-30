@@ -474,9 +474,15 @@ internal fun RepaymentDraftRoute(
     LaunchedEffect(Unit) {
         viewModel.reload(launchFocusedDraftPublicId)
     }
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    // Linked debt detail replaces the entire inbox, so its selection belongs to this route.
+    var showHistory by rememberSaveable { mutableStateOf(false) }
+    val focused = state.drafts.find { it.publicId == state.focusedDraftPublicId }
+    LaunchedEffect(focused?.publicId, focused?.status) { if (focused != null) showHistory = !focused.isPending }
     var linkedDebtId by rememberSaveable { mutableStateOf<String?>(null) }
     val linked = linkedDebtId
-    if (linked == null) RepaymentDraftInboxScreen(viewModel, onBack, onOpenDebt = { linkedDebtId = it })
+    if (linked == null) RepaymentDraftInboxScreen(viewModel, showHistory,
+        onHistoryChange = { showHistory = it }, onBack = onBack, onOpenDebt = { linkedDebtId = it })
     else RepaymentDraftLinkedDebt(screenFactory, linked) { linkedDebtId = null; viewModel.refresh() }
 }
 
