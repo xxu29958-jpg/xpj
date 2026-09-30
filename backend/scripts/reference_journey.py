@@ -47,9 +47,9 @@ class ReferenceJourney:
             labels = [node for node in root.iter("node") if node.get("text") == label]
             matches = []
             for node in root.iter("node"):
-                if node.get("content-desc") != action:
+                if action not in (node.get("content-desc"), node.get("text")):
                     continue
-                button = parents.get(node, node)
+                button = node if node.get("clickable") == "true" else parents.get(node, node)
                 if button.get("enabled") == "false":
                     continue
                 left, top, _, bottom = self.native.bounds(button)

@@ -78,7 +78,7 @@ def restore_alias(j):
     j.native_open("回收站")
     native.reveal_any("RefPay")
     native.capture("reference-alias-in-shared-recycle")
-    native.click_within("RefPay", "恢复")
+    j.native_row_action("RefPay", "恢复")
     native.click_within("恢复项目？", "恢复")
     j.expect(lambda state: not state["aliases"][0]["deleted"], "The actual native recycle bin did not restore the alias")
     wait_for(lambda: not native.has("RefPay"), "The restored alias remained in the recycle bin")

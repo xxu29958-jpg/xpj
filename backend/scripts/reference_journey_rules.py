@@ -99,7 +99,7 @@ def restore_rule_and_category(j, category):
     j.native_open("回收站")
     for label in ("Library", "RefShop"):
         native.reveal_any(label)
-        native.click_within(label, "恢复")
+        j.native_row_action(label, "恢复")
         native.click_within("恢复项目？", "恢复")
         wait_for(lambda label=label: not native.has(label), "The restored reference remained in the actual recycle bin")
     assert not j.facts()["rules"][0]["deleted"]
