@@ -4,7 +4,6 @@
   const labels = {none: "没有关联原件", cleaned: "已按策略清理", missing: "文件缺失", corrupt: "内容不符",
     unverified: "尚未核验", verified: "原件一致", unreadable: "暂时无法读取"};
   const preview = document.querySelector("[data-original-preview]");
-  let imageUrl;
   if (preview) preview.addEventListener("click", async () => {
     const status = document.querySelector("[data-original-preview-status]");
     const image = document.querySelector("[data-original-reviewed-image]");
@@ -17,9 +16,12 @@
       const digest = /^"([a-f0-9]{64})"$/.exec(response.headers.get("etag") || "");
       if (!digest) throw Error("snapshot_digest_missing");
       const blob = await response.blob();
-      if (imageUrl) window.URL.revokeObjectURL(imageUrl);
-      imageUrl = window.URL.createObjectURL(blob);
-      image.src = imageUrl;
+      image.src = await new Promise((resolve, reject) => {
+        const reader = new window.FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(blob);
+      });
       await image.decode();
       image.hidden = false;
       status.textContent = "实际原图已打开，请核对图片是否属于这笔账单。";
@@ -34,7 +36,6 @@
       }
     } catch (_) { image.hidden = true; status.textContent = "实际原图未能打开，不能确认摘要。请稍后重试或补回原件。"; }
   });
-  window.addEventListener("pagehide", () => { if (imageUrl) window.URL.revokeObjectURL(imageUrl); });
   const scan = document.querySelector("[data-original-scan]");
   if (scan) scan.addEventListener("click", async () => {
     scan.disabled = true;
