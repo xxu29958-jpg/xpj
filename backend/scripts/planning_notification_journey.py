@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from scripts.planning_journey_android import wait_for
 from scripts.planning_notification_reminders import NotificationReminders
 from scripts.planning_notification_source import SystemPaymentSources, notification_control
@@ -81,6 +83,21 @@ class NotificationJourney:
 
     def background_process_death(self):
         self.native.adb("shell", "input", "keyevent", "3")
+        wait_for(lambda: any(node.attrib.get("package") == "com.google.android.apps.nexuslauncher"
+            for node in self.native.tree().iter("node")), "Android did not move the original task into the background")
+
+        def state_saved():
+            dump = self.native.adb("shell", "dumpsys", "activity", "-a", "-p", "com.ticketbox", "activities")
+            lines = [line.strip() for line in dump.splitlines()]
+            states = [line.split()[0] for line in lines if line.startswith("state=")]
+            bundles = [line for line in lines if line.startswith("mHaveState=")]
+            snapshot = {"activity_records": len(bundles), "stopped": states == ["state=STOPPED"],
+                "saved_bundle": len(bundles) == 1 and "mHaveState=true" in bundles[0] and "mIcicle=null" not in bundles[0]}
+            # Persist only lifecycle flags, never the framework Bundle or Intent contents.
+            (self.evidence / f"notification-background-{self.native.tree_attempt}.json").write_text(json.dumps(snapshot), encoding="utf-8")
+            return snapshot["stopped"] and snapshot["saved_bundle"]
+
+        wait_for(state_saved, "Android did not retain the stopped original Activity state")
         original_pid = self.native.adb("shell", "pidof", "com.ticketbox").strip()
         assert original_pid.isdigit(), "The original application process is ambiguous"
         # A live notification listener can keep the process above am-kill's OOM
@@ -88,6 +105,12 @@ class NotificationJourney:
         self.native.adb("shell", "run-as", "com.ticketbox", "kill", "-9", original_pid)
         wait_for(lambda: not any(line.split()[-1:] == ["com.ticketbox"] and line.split()[1] == original_pid
             for line in self.native.adb("shell", "ps", "-A").splitlines()), "The original process did not stop")
+
+    def reopen_original_task(self):
+        result = self.native.adb("shell", "am", "start", "-W", "-a", "android.intent.action.MAIN",
+            "-c", "android.intent.category.LAUNCHER", "-n", "com.ticketbox/.MainActivity")
+        (self.evidence / f"notification-launcher-return-{self.native.tree_attempt}.txt").write_text(result, encoding="utf-8")
+        assert "Status: ok" in result, "Android did not reopen the original launcher task"
 
     def native_original(self):
         self.tap_notification("100.00")
@@ -111,7 +134,7 @@ class NotificationJourney:
         assert self.facts()["payments"] == []
         self.native.capture("notification-offline-original")
         self.background_process_death()
-        self.native.adb("shell", "am", "start", "-n", "com.ticketbox/.MainActivity")
+        self.reopen_original_task()
         self.native.reveal_any("核对这笔还款")
         self.native.reveal_any("90.00")
         self.native.capture("notification-process-restored")

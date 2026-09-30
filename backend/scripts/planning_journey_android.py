@@ -220,6 +220,7 @@ class PlanningAndroid:
         return True
 
     def bind(self, code: str, port: int):
+        self.bound = False
         self.adb("reverse", f"tcp:{port}", f"tcp:{port}")
         self.adb("shell", "am", "start", "-n", "com.ticketbox/.MainActivity")
         wait_for(lambda: self.has("绑定账本"), "The native binding screen did not open")

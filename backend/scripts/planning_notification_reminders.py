@@ -132,7 +132,7 @@ class NotificationReminders:
         self.native.back()
         self.native.reveal_any("重试上传")
         self.j.background_process_death()
-        self.native.adb("shell", "am", "start", "-n", "com.ticketbox/.MainActivity")
+        self.j.reopen_original_task()
         self.native.reveal_any("重试上传")
         self.native.capture("notification-return-to-original-share")
         self.native.connection(self.j.port, online=True)
