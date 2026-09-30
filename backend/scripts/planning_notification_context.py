@@ -89,8 +89,8 @@ def identity_changes(journey):
         assert db.scalar(select(func.count()).select_from(Expense).where(Expense.tenant_id == other.ledger_id)) == 0
         assert db.scalar(select(func.count()).select_from(RepaymentDraft).where(RepaymentDraft.tenant_id == other.ledger_id)) == 0
     native.back()
-    native.click_within("通知原任务验证账本", "切换")
-    native.reveal_any("已切换到「通知原任务验证账本」")
+    native.click_within(journey.fixture.ledger_name, "切换")
+    native.reveal_any(f"已切换到「{journey.fixture.ledger_name}」")
     native.plan_home()
     native.click("打开账户与设置")
     native.click("安全与隐私")
