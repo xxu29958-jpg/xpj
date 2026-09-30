@@ -54,7 +54,10 @@ def consumers(j, *, expected_net):
     assert "WebFinal" in j.page.inner_text("main")
     j.capture(f"ledger-net-{expected_net}")
     j.goto("/web/data-quality")
-    assert "数据质量" in j.page.inner_text("main")
+    assert j.page.get_by_role("heading", name="数据体检", exact=True).is_visible()
+    for label in ("待确认总数", "未分类", "已确认无图"):
+        metric = j.page.locator(".quality-metric").filter(has=j.page.get_by_text(label, exact=True))
+        assert metric.locator(".quality-metric-value").inner_text() == "0", label
     j.capture(f"quality-after-{expected_net}")
     _original(j)
     assert j.facts() == state, "Reading downstream consumers mutated financial facts"
