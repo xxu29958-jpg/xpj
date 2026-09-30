@@ -22,6 +22,7 @@
     <string name="repayment_review_amount">核对金额</string>
     <string name="repayment_review_currency">币种</string>
     <string name="repayment_review_select">选择要偿还的欠款</string>
+    <string name="repayment_review_no_target">尚未选择对应欠款</string>
     <string name="repayment_review_saved">输入已保存在本机，返回或重启后可继续。</string>
     <string name="repayment_review_money_note">通知原金额保持不变；确认按采集日期记还款。需要换算时，由服务端冻结汇率。</string>
     <string name="repayment_review_confirm">确认记还款</string>

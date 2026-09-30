@@ -5,25 +5,52 @@ from __future__ import annotations
 import json
 from uuid import uuid4
 
+from fastapi import Request
+from fastapi.responses import HTMLResponse
 from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.routes._web_debt_money import parse_web_debt_major_minor
 from app.routes._web_debt_repayment import require_repayment_binding
-from app.routes._web_debt_write import _debt_write_gate, repayment_scope
+from app.routes._web_debt_write import _day_label, _debt_write_gate, repayment_scope
 from app.routes.web_common import (
     _base_ctx,
+    _home_amount_label,
     _minor_amount_value,
     _require_selected_ledger_write,
     parse_form_row_version_token,
     templates,
 )
+from app.routes.web_debts import _COUNTERPARTY_FALLBACK
 from app.schemas import RepaymentDraftConfirmRequest
 from app.services.currency_common import normalize_currency_code, supported_currency_codes
-from app.services.debt_service import dismiss_repayment_draft, list_repayment_draft_audit_for_account
-from app.services.debt_service._repayment_draft import get_repayment_draft_response
+from app.services.debt_service import (
+    RepaymentDraftAuditRow,
+    dismiss_repayment_draft,
+    list_repayment_draft_audit_for_account,
+)
+from app.services.debt_service._repayment_draft import REPAYMENT_DRAFT_SOURCE_LABELS, get_repayment_draft_response
 from app.services.repayment_draft_command_service import confirm_repayment_draft_idempotently
+
+_STATUS_LABELS = {"pending": "待复核", "confirmed": "已记账", "dismissed": "已忽略"}
+_STATUS_TONE = {"pending": "", "confirmed": "ok", "dismissed": "muted"}
+_SUGGESTION_PREFIX = "系统猜测对应:{}"
+_LINKED_PREFIX = "已记到:{}"
+_DRAFT_ERROR_MESSAGES = {
+    # 键必须与服务层真实抛出的错误码一致 (audit: 死键会让定制文案落空)。
+    "debt_not_found": "这笔欠款不存在或不在当前账本。",
+    "debt_overpay_rejected": "本次还款超过欠款剩余，请核对金额与目标。",
+    "direct_fact_requires_external": "还款捕获只能记到外部欠款。",
+    "direct_fact_requires_manual": "这笔往来需要走成员确认，不能直接记入还款。",
+    "state_conflict": "这条还款捕获或欠款刚被更新过，请刷新后重新确认。",
+    "idempotency_key_required": "页面凭据缺失，请刷新后重新提交。",
+    "idempotency_key_reused": "这个提交编号已用于其他内容，请核对原提交；当前不能认定本次处理成功。",
+    "idempotency_key_in_progress": "同一笔确认正在处理中，请稍候刷新查看。",
+    "repayment_draft_not_found": "这条采集不在当前账号和账本中。",
+}
+
 
 REVIEW_FIELDS = (
     "draft_public_id", "ledger_id", "origin_binding", "review_action",
@@ -44,10 +71,9 @@ def _initial_review_values(scope, selected_id, public_id, row, can_create):
     }
 
 
-def render_review(request, db, *, options, selected_id, public_id, account_id,
-                  values=None, error="", result="", rejected=False, ack=None, status_code=200):
-    from app.routes.web_repayment_drafts import _audit_row_view
-
+def render_review(request: Request, db: Session, *, options, selected_id: str, public_id: str, account_id: int,
+                  values: dict[str, str] | None = None, error: str = "", result: str = "",
+                  rejected: bool = False, ack: dict | None = None, status_code: int = 200) -> HTMLResponse:
     scope = repayment_scope(request, db)
     row, read_error = None, ""
     try:
@@ -94,8 +120,6 @@ def review_confirmation(values, captured):
 
 
 def _review_error(exc):
-    from app.routes.web_repayment_drafts import _error_message
-
     status, code, error = 422, "invalid_request", "请填写有效的币种、金额和欠款。"
     if isinstance(exc, AppError):
         status, code, error = exc.status_code, exc.error, _error_message(exc)
@@ -109,7 +133,8 @@ def _review_error(exc):
     return {"status_code": status, "error": error, "result": "submitted" if unknown else "blocked", "rejected": rejected}
 
 
-def submit_review(request, db, *, options, selected_id, public_id, account_id, values):
+def submit_review(request: Request, db: Session, *, options, selected_id: str, public_id: str,
+                  account_id: int, values: dict[str, str]) -> HTMLResponse:
     try:
         require_repayment_binding(request, db, values=values, public_id=public_id, target_field="draft_public_id")
         _require_selected_ledger_write(options, selected_id)
@@ -132,3 +157,57 @@ def submit_review(request, db, *, options, selected_id, public_id, account_id, v
         "values": {name: values[name] for name in REVIEW_FIELDS},
         "repaymentPublicId": receipt.committed_repayment_public_id, "status": receipt.status}
     return render_review(request, db, options=options, selected_id=selected_id, public_id=public_id, account_id=account_id, ack=ack)
+
+
+
+
+def _error_message(exc: AppError) -> str:
+    return _DRAFT_ERROR_MESSAGES.get(exc.error, exc.message)
+
+
+def _target_option(candidate, *, suggested_id: str | None) -> dict:
+    return {
+        "public_id": candidate.public_id,
+        "row_version": candidate.row_version,
+        "name": (candidate.counterparty_label or "").strip() or _COUNTERPARTY_FALLBACK["external"],
+        # 候选的 remaining 是折叠后的本位币额 (match 服务只产 home-folded 行) ——
+        # R13-8c 按候选 record 冻结币种渲染（不吃 env 兜底，与 confirm 的 R13-8b 同口径）。
+        "remaining_label": _home_amount_label(candidate.remaining_amount_cents, candidate.home_currency_code),
+        "is_suggested": candidate.public_id == suggested_id,
+    }
+
+
+def _audit_row_view(
+    row: RepaymentDraftAuditRow,
+) -> dict:
+    """Read projection; original commands belong to the single capture review form."""
+
+    view: dict = {
+        "public_id": row.public_id,
+        "source_label": REPAYMENT_DRAFT_SOURCE_LABELS.get(row.source, row.source),
+        "merchant": (row.merchant_label or "").strip() or None,
+        "amount_label": _home_amount_label(
+            row.original_amount_minor if row.original_amount_minor is not None else row.amount_cents,
+            row.original_currency_code or row.home_currency_code),
+        "conversion_pending": row.status == "pending" and row.amount_cents is None,
+        "home_currency_code": row.home_currency_code,
+        "captured_label": _day_label(row.captured_at),
+        "status_label": _STATUS_LABELS.get(row.status, _STATUS_LABELS["pending"]),
+        "status_tone": _STATUS_TONE.get(row.status, ""),
+        "recede": row.status == "dismissed",
+        "is_pending": row.status == "pending",
+        "committed_debt_public_id": row.committed_debt_public_id,
+        "resolved_label": _day_label(row.resolved_at),
+    }
+    if row.status == "confirmed":
+        name = row.linked_debt_label or _COUNTERPARTY_FALLBACK["external"]
+        view["linked_line"] = _LINKED_PREFIX.format(name)
+    elif row.status == "pending":
+        view["targets"] = [
+            _target_option(candidate, suggested_id=row.suggested_debt_public_id)
+            for candidate in row.target_debts
+        ]
+        if row.has_suggestion:
+            name = row.suggested_debt_label or _COUNTERPARTY_FALLBACK["external"]
+            view["provenance"] = _SUGGESTION_PREFIX.format(name)
+    return view

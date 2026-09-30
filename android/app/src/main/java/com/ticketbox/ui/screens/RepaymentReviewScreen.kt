@@ -78,14 +78,13 @@ private fun RepaymentReviewInputs(state: RepaymentDraftInboxUiState, model: Repa
             CurrencyCode.fromStorageKey(input.currency), input.amountText, "0", editable),
             AppAmountInputActions(onValueChange = { model.reviewEditor.updateReviewMoney(input.currency, it) },
                 onCurrencyClick = { choosingCurrency = true }.takeIf { editable }))
-        Text(input.debtLabel ?: stringResource(R.string.repayment_review_select), style = MaterialTheme.typography.titleMedium)
+        Text(input.debtLabel ?: stringResource(R.string.repayment_review_no_target), style = MaterialTheme.typography.titleMedium)
         if (editable) TextButton(onClick = chooseDebt) { Text(stringResource(R.string.repayment_review_select)) }
         Text(stringResource(R.string.repayment_review_money_note), style = MaterialTheme.typography.bodySmall)
         if (unsubmitted && state.review.bindingChanged) {
             RepaymentReviewReopenUnsubmitted(state.canModify, model.reviewEditor::reviewAgain)
         }
         if (unsubmitted) {
-            Text(stringResource(R.string.repayment_review_saved), style = MaterialTheme.typography.bodySmall)
             Button(onClick = model.reviewEditor::submitReview, enabled = editable && !state.isLoading,
                 modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.repayment_review_confirm)) }
             TextButton(onClick = { model.dismiss(input.draftPublicId) }, enabled = editable) {
