@@ -50,6 +50,7 @@ class TagManagementContinuationTest {
     private val renames = CopyOnWriteArrayList<TagRenameRequest>()
     private val merges = CopyOnWriteArrayList<TagMergeRequest>()
     @Volatile private var reject = true
+    @Volatile private var collide = false
     @Volatile private var renamed = false
     @Volatile private var merged = false
     private val harness = FactEntryNavigationHarness(context) { delegate ->
@@ -64,6 +65,9 @@ class TagManagementContinuationTest {
             override suspend fun renameTag(publicId: String, request: TagRenameRequest): TagDetailDto {
                 assertEquals(source.publicId, publicId)
                 renames += request
+                if (collide) throw HttpException(Response.error<Any>(409,
+                    """{"error":"tag_conflict","message":"已有同名标签，可改为合并。","conflict_tag_public_id":"monthly","conflict_tag_row_version":9}"""
+                        .toResponseBody("application/json".toMediaType())))
                 if (reject) throw unavailable()
                 renamed = true
                 return TagDetailDto(publicId, request.name, 4)
@@ -121,6 +125,22 @@ class TagManagementContinuationTest {
         compose.onNodeWithText(context.getString(R.string.tag_management_merge_dialog_title)).assertDoesNotExist()
         compose.onNodeWithText(source.name).assertDoesNotExist()
         assertEquals(listOf(TagMergeRequest(3, target.publicId, 7), TagMergeRequest(3, target.publicId, 7)), merges)
+    }
+
+    @Test fun renameCollisionOpensOnlyTheExplicitMergeWithFreshTargetVersion() {
+        collide = true
+        showTags()
+        openSourceAction(R.string.tag_management_card_action_rename)
+        compose.onNode(hasSetTextAction() and hasText(source.name)).performTextReplacement(target.name)
+        clickText(context.getString(R.string.tag_management_rename_dialog_confirm))
+        waitForText(context.getString(R.string.tag_management_merge_dialog_title))
+        compose.onNodeWithText(context.getString(R.string.tag_management_rename_dialog_title)).assertDoesNotExist()
+        assertEquals(emptyList<TagMergeRequest>(), merges)
+
+        reject = false
+        clickText(context.getString(R.string.tag_management_merge_dialog_confirm))
+        waitForText(context.getString(R.string.tag_management_merged, source.name, target.name))
+        assertEquals(listOf(TagMergeRequest(3, target.publicId, 9)), merges)
     }
 
     private fun showTags() {

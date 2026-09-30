@@ -264,9 +264,11 @@ private fun MerchantDirectoryRoute(
             messageTone = state.messageTone,
             undoableAlias = state.undoableAlias,
             mergeSuggestion = state.mergeSuggestion,
+            editorCompletion = state.editorCompletion,
         ),
         actions = MerchantAliasesScreenActions(
             onBack = navController::popBackStack,
+            onStartEditing = viewModel::dismissMessage,
             catalog = MerchantAliasesCatalogActions(
                 onCreate = viewModel::createMerchantCatalog,
                 onRename = viewModel::renameMerchantCatalog,

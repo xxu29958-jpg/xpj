@@ -185,7 +185,7 @@
     <string name="tag_management_loading_body">会从当前账本同步最新标签。</string>
     <string name="tag_management_list_empty">记账时给账单添加标签后，这里就能统一整理它们。</string>
     <string name="tag_management_delete_dialog_title">删除标签？</string>
-    <string name="tag_management_delete_dialog_text_used">「%1$s」会从 %2$d 笔账单上移除。5 秒内可撤销。</string>
+    <string name="tag_management_delete_dialog_text_used">「%1$s」会从 %2$d 笔账单上移除。可立即撤销，或在资料库回收站的保留期内恢复；后来修改过的账单会跳过。</string>
     <string name="tag_management_delete_dialog_text_unused">「%1$s」没有任何账单使用，可以安全删除。</string>
     <string name="tag_management_delete_dialog_confirm">确定删除</string>
     <string name="tag_management_card_usage_count">%1$d 笔</string>
@@ -198,7 +198,7 @@
     <string name="tag_management_rename_dialog_label">标签名</string>
     <string name="tag_management_rename_dialog_confirm">保存</string>
     <string name="tag_management_merge_dialog_title">合并标签</string>
-    <string name="tag_management_merge_dialog_text">把「%1$s」下的账单改用哪个标签？合并后「%1$s」会被删除，5 秒内可撤销。</string>
+    <string name="tag_management_merge_dialog_text">把「%1$s」下的账单改用哪个标签？合并后「%1$s」会被移除。可立即撤销，或在资料库回收站的保留期内恢复；后来修改过的账单会跳过。</string>
     <string name="tag_management_merge_dialog_target_with_count">%1$s（%2$d 笔）</string>
     <string name="tag_management_merge_dialog_confirm">合并</string>
 

@@ -162,6 +162,10 @@ class TagManagementViewModel(
         _uiState.update { it.copy(mergeSuggestion = null) }
     }
 
+    fun dismissMessage() {
+        _uiState.update { it.copy(message = null, messageTone = MessageTone.Neutral) }
+    }
+
     fun deleteTag(tag: ManagedTag) {
         if (_uiState.value.busy) return
         if (!tagRepository.canModifyLedger()) {

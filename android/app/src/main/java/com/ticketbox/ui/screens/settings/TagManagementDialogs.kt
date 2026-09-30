@@ -28,6 +28,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
 import com.ticketbox.domain.model.ManagedTag
+import com.ticketbox.domain.model.MessageTone
+import com.ticketbox.domain.model.UiText
+import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
 
 internal data class TagManagementDialogState(
@@ -37,6 +40,8 @@ internal data class TagManagementDialogState(
     val tags: List<ManagedTag>,
     val preselectedMergeTarget: ManagedTag?,
     val busy: Boolean,
+    val message: UiText?,
+    val messageTone: MessageTone,
 )
 
 internal data class TagManagementDialogActions(
@@ -56,7 +61,7 @@ internal fun TagManagementDialogHost(
     state.renaming?.let { tag ->
         RenameTagDialog(
             tag = tag,
-            busy = state.busy,
+            state = state,
             onConfirm = { newName -> actions.onRenameConfirm(tag, newName) },
             onDismiss = actions.onDismissRename,
         )
@@ -72,6 +77,8 @@ internal fun TagManagementDialogHost(
                 ),
                 initialTarget = state.preselectedMergeTarget,
                 busy = state.busy,
+                message = state.message,
+                messageTone = state.messageTone,
             ),
             actions = MergeTagDialogActions(
                 onConfirm = { target -> actions.onMergeConfirm(source, target) },
@@ -82,7 +89,7 @@ internal fun TagManagementDialogHost(
     state.deleting?.let { tag ->
         DeleteTagDialog(
             tag = tag,
-            busy = state.busy,
+            state = state,
             onConfirm = { actions.onDeleteConfirm(tag) },
             onDismiss = actions.onDismissDelete,
         )
@@ -92,24 +99,27 @@ internal fun TagManagementDialogHost(
 @Composable
 private fun DeleteTagDialog(
     tag: ManagedTag,
-    busy: Boolean,
+    state: TagManagementDialogState,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!state.busy) onDismiss() },
         title = { Text(stringResource(R.string.tag_management_delete_dialog_title)) },
         text = {
-            Text(
-                if (tag.usageCount > 0) {
-                    stringResource(R.string.tag_management_delete_dialog_text_used, tag.name, tag.usageCount)
-                } else {
-                    stringResource(R.string.tag_management_delete_dialog_text_unused, tag.name)
-                },
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+                Text(
+                    if (tag.usageCount > 0) {
+                        stringResource(R.string.tag_management_delete_dialog_text_used, tag.name, tag.usageCount)
+                    } else {
+                        stringResource(R.string.tag_management_delete_dialog_text_unused, tag.name)
+                    },
+                )
+                AppStatusBanner(message = state.message, tone = state.messageTone)
+            }
         },
         confirmButton = {
-            TextButton(enabled = !busy, onClick = onConfirm) {
+            TextButton(enabled = !state.busy, onClick = onConfirm) {
                 Text(
                     text = stringResource(R.string.tag_management_delete_dialog_confirm),
                     color = MaterialTheme.colorScheme.error,
@@ -117,7 +127,7 @@ private fun DeleteTagDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
+            TextButton(enabled = !state.busy, onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
         },
     )
 }
@@ -125,33 +135,36 @@ private fun DeleteTagDialog(
 @Composable
 private fun RenameTagDialog(
     tag: ManagedTag,
-    busy: Boolean,
+    state: TagManagementDialogState,
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var name by remember { mutableStateOf(tag.name) }
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!state.busy) onDismiss() },
         title = { Text(stringResource(R.string.tag_management_rename_dialog_title)) },
         text = {
-            SettingsDialogTextInput(
-                state = SettingsTextInputState(
-                    label = stringResource(R.string.tag_management_rename_dialog_label),
-                    value = name,
-                    enabled = !busy,
-                ),
-                onValueChange = { name = it },
-                modifier = Modifier.fillMaxWidth(),
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+                SettingsDialogTextInput(
+                    state = SettingsTextInputState(
+                        label = stringResource(R.string.tag_management_rename_dialog_label),
+                        value = name,
+                        enabled = !state.busy,
+                    ),
+                    onValueChange = { name = it },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                AppStatusBanner(message = state.message, tone = state.messageTone)
+            }
         },
         confirmButton = {
             TextButton(
-                enabled = !busy && name.trim().isNotBlank() && name.trim() != tag.name,
+                enabled = !state.busy && name.trim().isNotBlank() && name.trim() != tag.name,
                 onClick = { onConfirm(name) },
             ) { Text(stringResource(R.string.tag_management_rename_dialog_confirm)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
+            TextButton(enabled = !state.busy, onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
         },
     )
 }
@@ -161,6 +174,8 @@ private data class MergeTagDialogState(
     val targets: List<ManagedTag>,
     val initialTarget: ManagedTag?,
     val busy: Boolean,
+    val message: UiText?,
+    val messageTone: MessageTone,
 )
 
 private data class MergeTagDialogActions(
@@ -176,7 +191,7 @@ private fun MergeTagDialog(
     // Fresh per dialog open, so the contract preselected target seeds here without a remember key.
     var selected by remember { mutableStateOf(state.initialTarget) }
     AlertDialog(
-        onDismissRequest = actions.onDismiss,
+        onDismissRequest = { if (!state.busy) actions.onDismiss() },
         title = { Text(stringResource(R.string.tag_management_merge_dialog_title)) },
         text = {
             Column(
@@ -192,7 +207,13 @@ private fun MergeTagDialog(
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Spacer(Modifier.height(AppSpacing.tinyGap))
-                MergeTargetPicker(targets = state.targets, selected = selected, onSelected = { selected = it })
+                MergeTargetPicker(
+                    targets = state.targets,
+                    selected = selected,
+                    enabled = !state.busy,
+                    onSelected = { selected = it },
+                )
+                AppStatusBanner(message = state.message, tone = state.messageTone)
             }
         },
         confirmButton = {
@@ -202,7 +223,7 @@ private fun MergeTagDialog(
             ) { Text(stringResource(R.string.tag_management_merge_dialog_confirm)) }
         },
         dismissButton = {
-            TextButton(onClick = actions.onDismiss) { Text(stringResource(R.string.common_cancel)) }
+            TextButton(enabled = !state.busy, onClick = actions.onDismiss) { Text(stringResource(R.string.common_cancel)) }
         },
     )
 }
@@ -211,6 +232,7 @@ private fun MergeTagDialog(
 private fun MergeTargetPicker(
     targets: List<ManagedTag>,
     selected: ManagedTag?,
+    enabled: Boolean,
     onSelected: (ManagedTag) -> Unit,
 ) {
     targets.forEach { target ->
@@ -218,6 +240,7 @@ private fun MergeTargetPicker(
             modifier = Modifier
                 .fillMaxWidth()
                 .selectable(
+                    enabled = enabled,
                     selected = selected?.publicId == target.publicId,
                     onClick = { onSelected(target) },
                 )
@@ -225,6 +248,7 @@ private fun MergeTargetPicker(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             RadioButton(
+                enabled = enabled,
                 selected = selected?.publicId == target.publicId,
                 onClick = { onSelected(target) },
             )

@@ -29,22 +29,36 @@ fun TagManagementScreen(
     var deleting by remember { mutableStateOf<ManagedTag?>(null) }
     var preselectedMergeTarget by remember { mutableStateOf<ManagedTag?>(null) }
     val rowActions = rememberTagRowActions(
-        onRename = { tag -> renaming = tag },
+        onRename = { tag ->
+            viewModel.dismissMessage()
+            renaming = tag
+        },
         onMerge = { tag ->
+            viewModel.dismissMessage()
             preselectedMergeTarget = null
             merging = tag
         },
-        onDelete = { tag -> deleting = tag },
+        onDelete = { tag ->
+            viewModel.dismissMessage()
+            deleting = tag
+        },
     )
 
     // After a committed tag mutation, refresh stats filters that may still show old names.
     LaunchedEffect(state.tagsChangedRevision) {
-        if (state.tagsChangedRevision > 0) onTagsChanged()
+        if (state.tagsChangedRevision > 0) {
+            renaming = null
+            merging = null
+            deleting = null
+            preselectedMergeTarget = null
+            onTagsChanged()
+        }
     }
 
     // Rename collisions become an explicit user-confirmed merge.
     LaunchedEffect(state.mergeSuggestion) {
         state.mergeSuggestion?.let { suggestion ->
+            renaming = null
             preselectedMergeTarget = suggestion.target
             merging = suggestion.source
             viewModel.consumeMergeSuggestion()
@@ -59,21 +73,13 @@ fun TagManagementScreen(
             tags = state.tags,
             preselectedMergeTarget = preselectedMergeTarget,
             busy = state.busy,
+            message = state.message,
+            messageTone = state.messageTone,
         ),
         actions = TagManagementDialogActions(
-            onRenameConfirm = { tag, newName ->
-                viewModel.renameTag(tag, newName)
-                renaming = null
-            },
-            onMergeConfirm = { source, target ->
-                viewModel.mergeTags(source, target)
-                merging = null
-                preselectedMergeTarget = null
-            },
-            onDeleteConfirm = { tag ->
-                deleting = null
-                viewModel.deleteTag(tag)
-            },
+            onRenameConfirm = viewModel::renameTag,
+            onMergeConfirm = viewModel::mergeTags,
+            onDeleteConfirm = viewModel::deleteTag,
             onDismissRename = { renaming = null },
             onDismissMerge = {
                 merging = null

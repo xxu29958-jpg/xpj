@@ -30,9 +30,11 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.MerchantCatalog
 import com.ticketbox.domain.model.MerchantCatalogAliasPolicy
+import com.ticketbox.domain.model.MessageTone
+import com.ticketbox.domain.model.UiText
+import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
-import com.ticketbox.viewmodel.MerchantCatalogMergeSuggestion
 
 internal data class MerchantCatalogDialogHostActions(
     val onRename: (MerchantCatalog, String) -> Unit,
@@ -58,6 +60,7 @@ internal class MerchantCatalogDialogController {
     }
 
     fun openSuggestedMerge(source: MerchantCatalog, target: MerchantCatalog) {
+        renamingCatalog = null
         preselectedMergeTarget = target
         mergingCatalog = source
     }
@@ -73,19 +76,13 @@ internal class MerchantCatalogDialogController {
 }
 
 @Composable
-internal fun rememberMerchantCatalogDialogController(): MerchantCatalogDialogController =
-    remember { MerchantCatalogDialogController() }
-
-@Composable
 internal fun MerchantCatalogDialogHost(
     controller: MerchantCatalogDialogController,
-    catalog: List<MerchantCatalog>,
-    busy: Boolean,
-    mergeSuggestion: MerchantCatalogMergeSuggestion?,
+    state: MerchantAliasesScreenState,
     actions: MerchantCatalogDialogHostActions,
 ) {
-    LaunchedEffect(mergeSuggestion) {
-        mergeSuggestion?.let { suggestion ->
+    LaunchedEffect(state.mergeSuggestion) {
+        state.mergeSuggestion?.let { suggestion ->
             controller.openSuggestedMerge(suggestion.source, suggestion.target)
             actions.onDismissSuggestion()
         }
@@ -94,9 +91,8 @@ internal fun MerchantCatalogDialogHost(
     controller.renamingCatalog?.let { item ->
         RenameMerchantCatalogDialog(
             catalog = item,
-            busy = busy,
+            state = state,
             onConfirm = { newName ->
-                controller.closeRename()
                 actions.onRename(item, newName)
             },
             onDismiss = controller::closeRename,
@@ -105,7 +101,7 @@ internal fun MerchantCatalogDialogHost(
 
     controller.mergingCatalog?.let { source ->
         val freshTarget = controller.preselectedMergeTarget
-        val mergeTargets = catalog
+        val mergeTargets = state.catalog
             .filter { it.publicId != source.publicId && it.isActive }
             .map { if (freshTarget != null && it.publicId == freshTarget.publicId) freshTarget else it }
         MergeMerchantCatalogDialog(
@@ -113,11 +109,12 @@ internal fun MerchantCatalogDialogHost(
                 source = source,
                 targets = mergeTargets,
                 initialTarget = freshTarget?.takeIf { it.isActive },
-                busy = busy,
+                busy = state.busy,
+                message = state.message,
+                messageTone = state.messageTone,
             ),
             actions = MerchantCatalogMergeDialogActions(
                 onConfirm = { target, aliasPolicy ->
-                    controller.closeMerge()
                     actions.onMerge(source, target, aliasPolicy)
                 },
                 onDismiss = controller::closeMerge,
@@ -129,35 +126,38 @@ internal fun MerchantCatalogDialogHost(
 @Composable
 private fun RenameMerchantCatalogDialog(
     catalog: MerchantCatalog,
-    busy: Boolean,
+    state: MerchantAliasesScreenState,
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var name by remember(catalog.publicId) { mutableStateOf(catalog.displayName) }
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!state.busy) onDismiss() },
         title = { Text(stringResource(R.string.merchant_catalog_rename_dialog_title)) },
         text = {
-            SettingsDialogTextInput(
-                state = SettingsTextInputState(
-                    label = stringResource(R.string.merchant_catalog_rename_dialog_label),
-                    value = name,
-                    enabled = !busy,
-                ),
-                onValueChange = { name = it },
-                modifier = Modifier.fillMaxWidth(),
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+                SettingsDialogTextInput(
+                    state = SettingsTextInputState(
+                        label = stringResource(R.string.merchant_catalog_rename_dialog_label),
+                        value = name,
+                        enabled = !state.busy,
+                    ),
+                    onValueChange = { name = it },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                AppStatusBanner(message = state.message, tone = state.messageTone)
+            }
         },
         confirmButton = {
             TextButton(
-                enabled = !busy && name.trim().isNotBlank() && name.trim() != catalog.displayName,
+                enabled = !state.busy && name.trim().isNotBlank() && name.trim() != catalog.displayName,
                 onClick = { onConfirm(name) },
             ) {
                 Text(stringResource(R.string.merchant_catalog_rename_dialog_confirm))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
+            TextButton(enabled = !state.busy, onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
         },
     )
 }
@@ -167,6 +167,8 @@ private data class MerchantCatalogMergeDialogState(
     val targets: List<MerchantCatalog>,
     val initialTarget: MerchantCatalog?,
     val busy: Boolean,
+    val message: UiText?,
+    val messageTone: MessageTone,
 )
 
 private data class MerchantCatalogMergeDialogActions(
@@ -182,7 +184,7 @@ private fun MergeMerchantCatalogDialog(
     var selectedTarget by remember(state.source.publicId) { mutableStateOf(state.initialTarget) }
     var aliasPolicy by remember(state.source.publicId) { mutableStateOf<MerchantCatalogAliasPolicy?>(null) }
     AlertDialog(
-        onDismissRequest = actions.onDismiss,
+        onDismissRequest = { if (!state.busy) actions.onDismiss() },
         title = { Text(stringResource(R.string.merchant_catalog_merge_dialog_title)) },
         text = {
             MergeMerchantCatalogDialogContent(
@@ -191,6 +193,9 @@ private fun MergeMerchantCatalogDialog(
                     targets = state.targets,
                     selectedTarget = selectedTarget,
                     aliasPolicy = aliasPolicy,
+                    busy = state.busy,
+                    message = state.message,
+                    messageTone = state.messageTone,
                 ),
                 actions = MerchantCatalogMergeContentActions(
                     onSelectTarget = { selectedTarget = it },
@@ -211,7 +216,7 @@ private fun MergeMerchantCatalogDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = actions.onDismiss) { Text(stringResource(R.string.common_cancel)) }
+            TextButton(enabled = !state.busy, onClick = actions.onDismiss) { Text(stringResource(R.string.common_cancel)) }
         },
     )
 }
@@ -221,6 +226,9 @@ private data class MerchantCatalogMergeContentState(
     val targets: List<MerchantCatalog>,
     val selectedTarget: MerchantCatalog?,
     val aliasPolicy: MerchantCatalogAliasPolicy?,
+    val busy: Boolean,
+    val message: UiText?,
+    val messageTone: MessageTone,
 )
 
 private data class MerchantCatalogMergeContentActions(
@@ -245,8 +253,9 @@ private fun MergeMerchantCatalogDialogContent(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodyMedium,
         )
-        MerchantCatalogMergeTargetList(state.targets, state.selectedTarget, actions.onSelectTarget)
-        MerchantCatalogAliasPolicySection(state.aliasPolicy, actions.onSelectAliasPolicy)
+        MerchantCatalogMergeTargetList(state.targets, state.selectedTarget, !state.busy, actions.onSelectTarget)
+        MerchantCatalogAliasPolicySection(state.aliasPolicy, !state.busy, actions.onSelectAliasPolicy)
+        AppStatusBanner(message = state.message, tone = state.messageTone)
     }
 }
 
@@ -254,6 +263,7 @@ private fun MergeMerchantCatalogDialogContent(
 private fun MerchantCatalogMergeTargetList(
     targets: List<MerchantCatalog>,
     selectedTarget: MerchantCatalog?,
+    enabled: Boolean,
     onSelectTarget: (MerchantCatalog) -> Unit,
 ) {
     if (targets.isEmpty()) {
@@ -266,6 +276,7 @@ private fun MerchantCatalogMergeTargetList(
             MerchantCatalogMergeTargetRow(
                 target = target,
                 selected = selectedTarget?.publicId == target.publicId,
+                enabled = enabled,
                 onSelect = { onSelectTarget(target) },
             )
         }
@@ -275,6 +286,7 @@ private fun MerchantCatalogMergeTargetList(
 @Composable
 private fun MerchantCatalogAliasPolicySection(
     aliasPolicy: MerchantCatalogAliasPolicy?,
+    enabled: Boolean,
     onSelectAliasPolicy: (MerchantCatalogAliasPolicy) -> Unit,
 ) {
     Text(
@@ -286,11 +298,13 @@ private fun MerchantCatalogAliasPolicySection(
     MerchantCatalogAliasPolicyRow(
         label = stringResource(R.string.merchant_catalog_merge_alias_policy_none),
         selected = aliasPolicy == MerchantCatalogAliasPolicy.None,
+        enabled = enabled,
         onSelect = { onSelectAliasPolicy(MerchantCatalogAliasPolicy.None) },
     )
     MerchantCatalogAliasPolicyRow(
         label = stringResource(R.string.merchant_catalog_merge_alias_policy_create_source_alias),
         selected = aliasPolicy == MerchantCatalogAliasPolicy.CreateSourceAlias,
+        enabled = enabled,
         onSelect = { onSelectAliasPolicy(MerchantCatalogAliasPolicy.CreateSourceAlias) },
     )
     Text(
@@ -304,16 +318,17 @@ private fun MerchantCatalogAliasPolicySection(
 private fun MerchantCatalogMergeTargetRow(
     target: MerchantCatalog,
     selected: Boolean,
+    enabled: Boolean,
     onSelect: () -> Unit,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .selectable(selected = selected, onClick = onSelect)
+            .selectable(selected = selected, enabled = enabled, onClick = onSelect)
             .padding(vertical = AppSpacing.smallGap),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        RadioButton(selected = selected, onClick = onSelect)
+        RadioButton(selected = selected, enabled = enabled, onClick = onSelect)
         Spacer(Modifier.width(AppSpacing.smallGap))
         Text(
             text = if (target.usageCount > 0) {
@@ -331,16 +346,17 @@ private fun MerchantCatalogMergeTargetRow(
 private fun MerchantCatalogAliasPolicyRow(
     label: String,
     selected: Boolean,
+    enabled: Boolean,
     onSelect: () -> Unit,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .selectable(selected = selected, onClick = onSelect)
+            .selectable(selected = selected, enabled = enabled, onClick = onSelect)
             .padding(vertical = AppSpacing.tinyGap),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        RadioButton(selected = selected, onClick = onSelect)
+        RadioButton(selected = selected, enabled = enabled, onClick = onSelect)
         Spacer(Modifier.width(AppSpacing.smallGap))
         Text(text = label, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
