@@ -133,8 +133,9 @@ class NotificationReminders:
         self.native.reveal_any(SERIES)
         self.native.reveal_any(self.expected_date)
         self.native.capture("notification-original-fixed-occurrence")
-        assert self.facts()["expected_date"] == self.expected_date, "Opening a reminder advanced the fixed-expense due date"
-        assert len(self.facts()["expenses"]) == 1, "A reminder created an automatic payment"
+        reminder_facts = self.facts()
+        assert reminder_facts["expected_date"] == self.expected_date, "Opening a reminder advanced the fixed-expense due date"
+        assert len(reminder_facts["expenses"]) == 1, f"Opening a reminder changed the expected bill count: {reminder_facts['expenses']}"
         self.native.connection(self.j.port, online=False)
         self.native.back()
         self.native.reveal_any("添加固定支出")

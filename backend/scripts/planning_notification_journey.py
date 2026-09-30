@@ -195,6 +195,12 @@ class NotificationJourney:
                     self.goto("/web/repayment-drafts/" + capture["id"])
                     assert "已记账" in self.page.inner_text("main")
                     self.capture(f"original-{capture['original']}-{width}-{theme}")
+                    self.page.get_by_role("link", name="查看还款事实", exact=False).click()
+                    fact = self.page.locator("#repayment-" + capture["repayment"])
+                    fact.scroll_into_view_if_needed()
+                    paid = next(item["amount"] for item in self.facts()["payments"] if item["id"] == capture["repayment"])
+                    assert f"{paid // 100}.{paid % 100:02}" in fact.inner_text(), "The original link did not display its actual accepted repayment"
+                    self.capture(f"linked-repayment-{capture['original']}-{width}-{theme}")
         for theme, label in (("paper", "晨纸"), ("midnight", "玄夜")):
             self.native.plan_home()
             self.native.click("打开账户与设置")
@@ -210,7 +216,7 @@ class NotificationJourney:
             self.native.click("已处理 2")
             self.native.reveal_any("花呗")
             self.native.capture("notification-native-history-" + theme)
-            for merchant, amount in (("花呗", "90.00"), ("白条", "80.00")):
+            for merchant, amount, paid in (("花呗", "90.00", "90.00"), ("白条", "80.00", "70.00")):
                 self.native.click_within(merchant, "查看原处理记录")
                 self.native.reveal_any(amount)
                 if merchant == "白条":
@@ -218,6 +224,8 @@ class NotificationJourney:
                 self.native.capture(f"notification-native-original-{amount}-{theme}")
                 self.native.click("查看对应欠款与还款记录")
                 self.native.reveal_any("采集核对欠款")
+                self.native.reveal_any("往来历史")
+                self.native.reveal_any(paid)
                 self.native.capture(f"notification-native-linked-debt-{amount}-{theme}")
                 self.native.back()
                 self.native.reveal_any(amount)
