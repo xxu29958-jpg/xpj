@@ -126,6 +126,8 @@ class NotificationJourney:
         self.native.reveal_any("核对这笔还款")
         self.native.capture("notification-second-original")
         self.native.back()
+        self.native.reveal_any("还款采集")
+        self.native.capture("notification-second-returned-to-inbox")
         self.native.back()
         self.native.reveal_any("90.00")
         self.native.connection(self.port, online=False)
