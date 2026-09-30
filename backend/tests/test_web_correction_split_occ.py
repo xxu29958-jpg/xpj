@@ -146,7 +146,9 @@ def test_web_correction_rejects_stale_split_rows_before_scalar_retry(
     assert conflict.status_code == 409, conflict.text
     note_position = conflict.text.index('name="note"')
     assert "并发后的备注" in conflict.text, conflict.text[note_position : note_position + 300]
-    assert "旧页面备注" not in conflict.text
+    assert '>旧页面备注</textarea>' in conflict.text
+    assert f'name="expected_row_version" value="{seeded["expense"]["row_version"]}"' in conflict.text
+    assert 'name="idempotency_key" value="web-split-occ-retry"' in conflict.text
 
     stale_form["expected_row_version"] = str(concurrent.json()["expense"]["row_version"])
     stale_retry = web_client.post(

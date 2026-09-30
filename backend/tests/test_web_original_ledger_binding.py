@@ -170,7 +170,8 @@ def test_final_refund_after_rate_recovery_preserves_original_before_new_ledger_l
         "accounting_date": "2026-05-06", "reason": "Original refund",
         "expected_row_version": "7", "idempotency_key": "original-refund-key"}
     response = web_expense_offsets.web_create_expense_offset(17, _request("/web/expenses/17/offsets"),
-        **original, return_context=ExpenseReturnContext(return_to="reports", return_month="2026-05"), db=Mock(), _local=None)
+        **original, metadata=web_expense_offsets.OffsetDraft(),
+        return_context=ExpenseReturnContext(return_to="reports", return_month="2026-05"), db=Mock(), _local=None)
     assert response.status_code == 409
     saved = hidden_post_forms(response.body.decode())["/web/expenses/17/offsets"]
     assert all(saved[key] == value for key, value in original.items())

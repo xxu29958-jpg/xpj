@@ -407,10 +407,10 @@ def web_correct_post(
         fields=original_fields, task="保存原账单更正")
     if retained is not None:
         return retained
+    _require_selected_ledger_write(options, selected_id)
     form = replace(form, draft_scope=reviewed_draft_scope(db, request, form.draft_scope, review=review_latest))
     try:
         require_draft_binding(db, request, ledger_id=ledger_id, draft_scope=form.draft_scope, require_session=False)
-        _require_selected_ledger_write(options, selected_id)
     except AppError as exc:
         return _correction_error_response(db, request, options, selected_id, expense_id, form,
             correction_form_projection(form), message=exc.message, status_code=exc.status_code, error_code=exc.error)
