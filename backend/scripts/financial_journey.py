@@ -49,7 +49,7 @@ class FinancialJourney:
     def native_open(self):
         self.native.domain_home("流水")
         self.native.click(self.facts()["merchant"])
-        wait_for(lambda: self.native.has("更正这笔账单"), "The native fact did not open")
+        wait_for(lambda: self.native.has("账单详情"), "The native fact did not open")
 
     def correction(self):
         state = self.facts()
