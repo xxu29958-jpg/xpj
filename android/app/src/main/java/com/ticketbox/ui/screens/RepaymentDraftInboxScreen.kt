@@ -69,13 +69,13 @@ fun RepaymentDraftInboxScreen(
     onOpenDebt: (String) -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    var showHistory by rememberSaveable { mutableStateOf(false) }
+    val focused = state.drafts.find { it.publicId == state.focusedDraftPublicId }
+    LaunchedEffect(focused?.publicId, focused?.status) { if (focused != null) showHistory = !focused.isPending }
     if (state.reviewId != null) {
         RepaymentReviewScreen(state, viewModel, onOpenDebt)
         return
     }
-    var showHistory by rememberSaveable { mutableStateOf(false) }
-    val focused = state.drafts.find { it.publicId == state.focusedDraftPublicId }
-    LaunchedEffect(focused?.publicId, focused?.status) { if (focused != null) showHistory = !focused.isPending }
 
     LaunchedEffect(state.flashMessage) {
         if (state.flashMessage == null) return@LaunchedEffect
