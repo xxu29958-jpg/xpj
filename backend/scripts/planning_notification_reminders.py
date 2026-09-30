@@ -121,34 +121,50 @@ class NotificationReminders:
         self.native.reveal_any("321.09")
         self.native.capture("notification-back-to-original-budget-input")
         assert self.facts()["budget"] == 1000, "Opening another reminder silently submitted the user's budget input"
+        # Read the full list and original period through their real consumer.
+        # The active-only reminder source cannot seed these offline snapshots.
+        self.native.plan_home()
+        self.native.click("固定支出", stable=True)
+        self.native.reveal_any(SERIES)
+        self.native.click("查看本期")
+        self.native.reveal_any("履约月份")
+        self.native.reveal_any(self.expected_date)
+        self.native.capture("notification-fixed-read-before-share")
+        self.native.back()
+        self.native.back()
         self.native.connection(self.j.port, online=False)
         digest = share_original(self.j)
         self.j.tap_notification(SERIES, expected="固定支出")
-        # A fresh active-only reminder query is not a previously read full list
-        # or occurrence. Keep the original target through its first offline read.
-        self.native.reveal_any("固定支出暂时打不开")
-        self.native.capture("notification-fixed-first-read-offline")
-        self.native.connection(self.j.port, online=True)
-        self.native.click("重试")
         self.native.reveal_any(SERIES)
+        self.native.reveal_any("履约月份")
         self.native.reveal_any(self.expected_date)
         self.native.capture("notification-original-fixed-occurrence")
         reminder_facts = self.facts()
         assert reminder_facts["expected_date"] == self.expected_date, "Opening a reminder advanced the fixed-expense due date"
         assert len(reminder_facts["expenses"]) == 1, f"Opening a reminder changed the expected bill count: {reminder_facts['expenses']}"
-        self.native.connection(self.j.port, online=False)
         self.native.back()
         self.native.reveal_any("添加固定支出")
         self.native.back()
-        self.native.reveal_any("重试上传")
+        self.native.reveal_any("notification-shared-original.png")
         self.j.background_process_death()
         self.j.reopen_original_task()
-        self.native.reveal_any("重试上传")
+        self.native.reveal_any("notification-shared-original.png")
+        self.native.reveal_any("停止余下上传")
         self.native.capture("notification-return-to-original-share")
+        assert shared_original_result(self.j, digest) is None, "The isolated original was accepted while its server was unavailable"
         self.native.connection(self.j.port, online=True)
-        self.native.click("重试上传")
-        self.shared_original = wait_for(lambda: shared_original_result(self.j, digest),
+
+        def continue_original():
+            accepted = shared_original_result(self.j, digest)
+            if not accepted and self.native.has("重试上传"):
+                self.native.click("重试上传")
+            return accepted
+
+        # A queued original resumes automatically after the shared compatibility
+        # check; an attempted upload that failed retains its explicit retry.
+        self.shared_original = wait_for(continue_original,
             "The saved image did not continue after returning from its reminder", 120)
+        assert len(self.facts()["expenses"]) == 2 and self.facts()["occurrences"] == 0
 
     def run(self):
         self.create_plan_inputs()
