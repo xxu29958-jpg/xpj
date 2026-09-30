@@ -51,15 +51,15 @@
       <label for="review-amount">本次还款金额</label>
       <input class="product-input" id="review-amount" name="original_amount" inputmode="decimal" value="{{ review['values']['original_amount'] }}" autocomplete="off">
       <label for="review-target">对应欠款</label>
-      <select class="product-input" name="target_choice" id="review-target">
+      <select class="product-input" name="target_with_expected_row_version" id="review-target">
         <option value="">请选择欠款</option>
-        {% set selected = namespace(found=not review['values']['target_choice']) %}
+        {% set selected = namespace(found=not review['values']['target_with_expected_row_version']) %}
         {% for target in (row.targets if row and row.is_pending else []) %}
         {% set choice = target.public_id ~ ':' ~ target.row_version %}
-        {% if choice == review['values']['target_choice'] %}{% set selected.found = true %}{% endif %}
-        <option value="{{ choice }}"{% if choice == review['values']['target_choice'] %} selected{% endif %}>{{ target.name }} · 剩余 {{ target.remaining_label }}{{ ' · 建议' if target.is_suggested else '' }}</option>
+        {% if choice == review['values']['target_with_expected_row_version'] %}{% set selected.found = true %}{% endif %}
+        <option value="{{ choice }}"{% if choice == review['values']['target_with_expected_row_version'] %} selected{% endif %}>{{ target.name }} · 剩余 {{ target.remaining_label }}{{ ' · 建议' if target.is_suggested else '' }}</option>
         {% endfor %}
-        {% if not selected.found %}<option value="{{ review['values']['target_choice'] }}" selected>原选择（版本已变化，需核对）</option>{% endif %}
+        {% if not selected.found %}<option value="{{ review['values']['target_with_expected_row_version'] }}" selected>原选择（版本已变化，需核对）</option>{% endif %}
       </select>
       <p class="hint">忽略通知时无需选择欠款。输入保存在此浏览器，提交后会沿用同一份金额、选择和版本核实结果。</p>
       {% if row and row.is_pending and not row.targets %}<p>当前账本没有可对应的欠款。<a href="/web/debts?ledger_id={{ selected_ledger_id }}">去「欠款」建一笔</a>，或忽略这条通知。</p>{% endif %}

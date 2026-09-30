@@ -118,8 +118,8 @@ class NotificationJourney:
         action = f"/web/repayment-drafts/{pending['id']}/review"
         form = self.page.locator(f'form[action="{action}"]')
         form.locator('[name="original_amount"]').fill("70.00")
-        choice = form.locator('[name="target_choice"] option').nth(1).get_attribute("value")
-        form.locator('[name="target_choice"]').select_option(choice)
+        choice = form.locator('[name="target_with_expected_row_version"] option').nth(1).get_attribute("value")
+        form.locator('[name="target_with_expected_row_version"]').select_option(choice)
         key = form.locator('[name="idempotency_key"]').input_value()
         self.page.reload()
         form.locator('[name="original_amount"]').wait_for()
@@ -137,7 +137,7 @@ class NotificationJourney:
         wait_for(lambda: len(self.facts()["payments"]) == 2, "Web review did not reach the shared repayment owner")
         self.goto("/web/repayment-drafts/" + pending["id"])
         wait_for(lambda: form.locator('[name="idempotency_key"]').input_value() == key, "The unresolved original disappeared after response loss")
-        assert form.locator('[name="target_choice"]').input_value() == choice
+        assert form.locator('[name="target_with_expected_row_version"]').input_value() == choice
         assert form.locator('[name="original_amount"]').input_value() == "70.00"
         form.locator('[data-repayment-submit]').click()
         self.page.locator('[data-repayment-ack]').wait_for()

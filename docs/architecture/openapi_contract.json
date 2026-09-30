@@ -6765,9 +6765,9 @@
             "title": "Review Action",
             "type": "string"
           },
-          "target_choice": {
+          "target_with_expected_row_version": {
             "default": "",
-            "title": "Target Choice",
+            "title": "Target With Expected Row Version",
             "type": "string"
           }
         },

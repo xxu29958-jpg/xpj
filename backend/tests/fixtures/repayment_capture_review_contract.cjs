@@ -1,14 +1,14 @@
 /* Capture review uses the real shared form engine, store and exclusive leases. */
 const assert = require('node:assert/strict');
 const {environment, scope, original, fresh, target, repaymentId, tick} = require('./repayment_draft_contract.cjs');
-const fieldNames = ['draft_public_id', 'ledger_id', 'origin_binding', 'review_action', 'target_choice', 'original_currency', 'original_amount'];
+const fieldNames = ['draft_public_id', 'ledger_id', 'origin_binding', 'review_action', 'target_with_expected_row_version', 'original_currency', 'original_amount'];
 const draftPrefix = 'ticketbox:repayment-review-draft:v1:';
 const parent = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
 const values = {draft_public_id:target, ledger_id:scope.ledgerId, origin_binding:JSON.stringify(scope),
-  review_action:'confirm', target_choice:parent + ':7', original_currency:'CNY', original_amount:' 90.'};
+  review_action:'confirm', target_with_expected_row_version:parent + ':7', original_currency:'CNY', original_amount:' 90.'};
 function page(env, options = {}) {
   const result = env.page({kind:'repayment-review', fieldNames, draftPrefix, values, ...options});
-  for (const name of ['review_action', 'target_choice', 'original_currency']) {
+  for (const name of ['review_action', 'target_with_expected_row_version', 'original_currency']) {
     const control = result.fields[name];
     control.tagName = 'SELECT'; control.options = [{value:control.value}];
     control.appendChild = option => { control.options.push(option); };
@@ -22,20 +22,20 @@ async function continuity() {
   editing.form.fire('input');
   assert.equal(editing.store.read(original).values.original_amount, ' 90.');
   editing.window.fire('pagehide'); await tick();
-  const reopened = page(env, {values:{...values, target_choice:parent + ':99', original_currency:'USD', original_amount:'100'}});
+  const reopened = page(env, {values:{...values, target_with_expected_row_version:parent + ':99', original_currency:'USD', original_amount:'100'}});
   reopened.start(); await tick();
   assert.deepEqual(reopened.snapshot(), values, 'raw input, selected debt and its original version survive reopening');
-  assert.ok(reopened.fields.target_choice.options.some(option => option.value === parent + ':7'), 'missing stale option is retained');
+  assert.ok(reopened.fields.target_with_expected_row_version.options.some(option => option.value === parent + ':7'), 'missing stale option is retained');
   reopened.fields.original_amount.value = '90.00'; reopened.form.fire('input');
   const submitted = {...values, original_amount:'90.00'};
   assert.equal(reopened.form.fire('submit').defaultPrevented, false);
   assert.equal(reopened.store.read(original).phase, 'submitted');
   reopened.window.fire('pagehide'); await tick();
-  const retry = page(env, {canCreate:false, ref:'', values:{...values, target_choice:'', original_amount:''}});
+  const retry = page(env, {canCreate:false, ref:'', values:{...values, target_with_expected_row_version:'', original_amount:''}});
   retry.start(); await tick();
   assert.deepEqual(retry.snapshot(), submitted, 'unreadable or processed capture restores the exact original');
   assert.equal(retry.fields.idempotency_key.value, original);
-  for (const name of ['review_action', 'target_choice', 'original_currency']) {
+  for (const name of ['review_action', 'target_with_expected_row_version', 'original_currency']) {
     assert.equal(retry.fields[name].disabled, true);
     const mirror = retry.form.children.find(input => input.name === name);
     assert.equal(mirror.disabled, false, 'disabled select has a native POST carrier');
@@ -57,7 +57,7 @@ async function continuity() {
 async function rejectionAndBinding() {
   const env = environment(), conflict = page(env, {ref:original, result:'blocked', rejected:true});
   conflict.store.save(scope, original, 'submitted', values); conflict.start(); await tick();
-  assert.equal(conflict.fields.target_choice.disabled, true);
+  assert.equal(conflict.fields.target_with_expected_row_version.disabled, true);
   assert.equal(conflict.form.fire('submit').defaultPrevented, true, 'fresh page OCC cannot replace a rejected original');
   conflict.window.fire('pagehide'); await tick();
   const reopened = page(env, {rejected:true}); reopened.start(); await tick();
@@ -74,8 +74,8 @@ async function rejectionAndBinding() {
 }
 
 async function parentSubmission() {
-  const env = environment(), capture = page(env, {ref:original, values:{...values, target_choice:target + ':7'}});
-  capture.store.save(scope, original, 'submitted', {...values, target_choice:target + ':7'});
+  const env = environment(), capture = page(env, {ref:original, values:{...values, target_with_expected_row_version:target + ':7'}});
+  capture.store.save(scope, original, 'submitted', {...values, target_with_expected_row_version:target + ':7'});
   const debt = env.page(); debt.start(); await tick();
   debt.fields.amount_major.value = '20.00';
   assert.equal(debt.form.fire('submit').defaultPrevented, true, 'same parent cannot get a second fresh local fact while review is unresolved');

@@ -52,7 +52,7 @@ def test_installed_capture_review_retains_binding_money_and_version_through_lost
     assert page.status_code == 200, page.text
     headers = {"Cookie": f"{cookie}; {CSRF_COOKIE_NAME}={page.cookies.get(CSRF_COOKIE_NAME)}",
         "Origin": "http://127.0.0.1:8000"}
-    original = {**_form(page.text, action), "original_amount": "90.00", "target_choice": f"{debt_id}:{version}"}
+    original = {**_form(page.text, action), "original_amount": "90.00", "target_with_expected_row_version": f"{debt_id}:{version}"}
     scope = _installed_scope(installed_web, token)
     assert json.loads(original["origin_binding"]) == scope
     for axis in scope:

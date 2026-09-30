@@ -16,13 +16,12 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
 import org.junit.Test
 
 /** Explicit cloud-journey input boundary, never a replacement AppContainer or API. */
 class NotificationPaymentJourneyInputTest {
     @Test fun acceptControlledPaymentSamplesThroughTheInstalledApp() = runBlocking {
-        assumeTrue(InstrumentationRegistry.getArguments().getString("ticketboxPaymentJourney") == "isolated-cloud")
+        check(InstrumentationRegistry.getArguments().getString("ticketboxPaymentJourney") == "isolated-cloud")
         check(Build.PRODUCT.contains("sdk")) { "Payment journey requires its disposable emulator" }
         val context = ApplicationProvider.getApplicationContext<TicketboxApplication>()
         val container = context.container

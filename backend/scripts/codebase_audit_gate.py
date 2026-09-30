@@ -140,7 +140,7 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_carriers": 138,  # + Web budget archive with its captured expected row version.
-    "mutate_token_exempted": 129,
+    "mutate_token_exempted": 128,  # Standalone Web capture-dismiss route retired into the original review carrier.
     "mutate_token_reason_admin_single_writer": 10,
     "mutate_token_reason_append_only_fact": 3,
     "mutate_token_reason_batch_db_write": 17,
@@ -150,7 +150,7 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_reason_governance_action": 8,
     "mutate_token_reason_read_only_compute": 5,
     "mutate_token_reason_session_rotation": 8,
-    "mutate_token_reason_terminal_flag_flip": 34,
+    "mutate_token_reason_terminal_flag_flip": 33,
     "mutate_token_reason_upsert_bucket": 4,
 }
 STRICT_EQUALITY_BASELINE.update(load_current_test_count_baselines())

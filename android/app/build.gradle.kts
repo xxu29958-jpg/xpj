@@ -4,6 +4,8 @@ import java.util.concurrent.TimeUnit
 
 val ticketboxVersionCode = 10200000
 val ticketboxVersionName = "1.2.0"
+// Invoked explicitly by the isolated PG/Web/native journey, not the Connected suite.
+val ticketboxCloudJourneyFixture = "com.ticketbox.ui.navigation.NotificationPaymentJourneyInputTest"
 val ticketboxJavaLanguageVersion =
     rootProject.file(".java-version").readText().trim().toIntOrNull()
         ?: error("android/.java-version must contain one Java major version.")
@@ -157,6 +159,7 @@ android {
         versionCode = ticketboxVersionCode
         versionName = ticketboxVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunnerArguments["notClass"] = ticketboxCloudJourneyFixture
 
         resValue("string", "app_version_name", ticketboxVersionName)
         resValue("integer", "app_version_code", ticketboxVersionCode.toString())
@@ -811,6 +814,9 @@ fun captureTicketboxConnectedDiscovery(
         "-e",
         "log",
         "true",
+        "-e",
+        "notClass",
+        ticketboxCloudJourneyFixture,
         "com.ticketbox.test/androidx.test.runner.AndroidJUnitRunner",
     )
     val exitCode = try {

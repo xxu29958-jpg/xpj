@@ -132,7 +132,7 @@ def _web_confirm(
         data={
             "ledger_id": "owner",
             "draft_public_id": draft["public_id"], "origin_binding": "{}", "review_action": "confirm",
-            "target_choice": f"{debt['public_id']}:{debt['row_version'] if row_version is None else row_version}",
+            "target_with_expected_row_version": f"{debt['public_id']}:{debt['row_version'] if row_version is None else row_version}",
             "original_currency": draft["original_currency_code"],
             "original_amount": original_amount if original_amount is not None else str(Decimal(draft["original_amount_minor"]).scaleb(-2)),
             "idempotency_key": str(uuid4()) if idempotency_key is None else idempotency_key,

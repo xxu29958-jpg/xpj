@@ -6,10 +6,14 @@
   const voidNames = ["debt_public_id", "ledger_id", "origin_binding", "expected_row_version", "reason", "repayment_public_id"];
   const kindNames = ["debt_public_id", "ledger_id", "origin_binding", "expected_row_version", "debt_kind"];
   const fieldNames = {repayment:repaymentNames, "debt-void":voidNames, "repayment-void":voidNames,
-    "repayment-review":["draft_public_id", "ledger_id", "origin_binding", "review_action", "target_choice", "original_currency", "original_amount"],
+    "repayment-review":["draft_public_id", "ledger_id", "origin_binding", "review_action", "target_with_expected_row_version", "original_currency", "original_amount"],
     "debt-kind":kindNames, "split-change":["debt_public_id", "ledger_id", "origin_binding", "home_currency_code", "command",
       "proposal_public_id", "expected_row_version", "expected_return_row_version", "new_share_amount_major",
       "settlement_net_amount_major", "reason", "supersedes_proposal_public_id"]};
+  const voidLabels = ["确认作废", "继续核实原作废"];
+  const submitLabels = {repayment:["记一笔还款", "继续核实这笔还款"],
+    "debt-void":voidLabels, "repayment-void":voidLabels,
+    "debt-kind":["保存偿还方式", "继续核实原更正"], "repayment-review":["确认处理", "核实原处理"]};
   function initialize(form) {
   const surface = form.closest("[data-repayment-container]");
   if (!surface) return;
@@ -119,7 +123,7 @@
   function commandControls(editing) {
     if (!splitChange) {
       lockInputs(!editing || captureReview && !canCreate);
-      submit.textContent = captureReview ? (editing ? "确认处理" : "核实原处理") : kindCorrection ? (editing ? "保存偿还方式" : "继续核实原更正") : voidCommand ? (editing ? "确认作废" : "继续核实原作废") : editing ? "记一笔还款" : "继续核实这笔还款";
+      submit.textContent = submitLabels[namespace][editing ? 0 : 1];
       return canCreate;
     }
     const command = values().command, writable = command === "create";
@@ -154,15 +158,19 @@
       link.href = window.location.pathname + window.location.search + "#" + namespace + "-" + record.clientRef;
       const stateLabel = !drafts.matches(record.scope, scope) ? "旧身份，待核对" :
         record.phase === "submitted" ? "结果待确认" : record.phase === "blocked" ? "待核对" : "未提交";
-      const description = captureReview ? [record.values.review_action === "dismiss" ? "忽略通知" : "记为还款", record.values.original_currency, record.values.original_amount || "未填金额"] : kindCorrection ? [kindLabels[record.values.debt_kind] || record.values.debt_kind] : [record.values.home_currency_code,
-        voidCommand ? record.values.reason || "未填原因" : splitChange ? commandLabels[record.values.command] : record.values.amount_major || "未填金额",
-        voidCommand ? record.values.repayment_public_id || record.values.debt_public_id : splitChange ? record.values.new_share_amount_major : record.values.paid_at];
-      link.textContent = [...description, stateLabel].join(" · ");
+      link.textContent = [...describeOriginal(record.values), stateLabel].join(" · ");
       item.append(link);
       list.appendChild(item);
     });
     shelf.hidden = items.length === 0;
     return items;
+  }
+  function describeOriginal(saved) {
+    if (captureReview) return [saved.review_action === "dismiss" ? "忽略通知" : "记为还款", saved.original_currency, saved.original_amount || "未填金额"];
+    if (kindCorrection) return [kindLabels[saved.debt_kind] || saved.debt_kind];
+    if (voidCommand) return [saved.home_currency_code, saved.reason || "未填原因", saved.repayment_public_id || saved.debt_public_id];
+    if (splitChange) return [saved.home_currency_code, commandLabels[saved.command], saved.new_share_amount_major];
+    return [saved.home_currency_code, saved.amount_major || "未填金额", saved.paid_at];
   }
   function fragmentRef() {
     const prefix = "#" + namespace + "-", ref = window.location.hash.slice(prefix.length);
@@ -187,7 +195,7 @@
   }
   function anotherDebtSubmission() {
     function parent(saved, kind) {
-      return kind === "repayment-review" ? (saved.review_action === "confirm" ? saved.target_choice.split(":")[0] : "") : saved.debt_public_id;
+      return kind === "repayment-review" ? (saved.review_action === "confirm" ? saved.target_with_expected_row_version.split(":")[0] : "") : saved.debt_public_id;
     }
     const debt = parent(values(), namespace);
     if (!debt) return false;
@@ -302,6 +310,13 @@
     });
   }
 
+  function acknowledgesCommand(ack) {
+    if (typedCorrection && ack.resultPublicId !== target) return false;
+    if (captureReview) return ack.status === {confirm:"confirmed", dismiss:"dismissed"}[ack.values.review_action] &&
+      (ack.status !== "confirmed" || uuid.test(ack.repaymentPublicId));
+    if (kindCorrection) return ack.debtKind === ack.values.debt_kind;
+    return true;
+  }
   async function acknowledge() {
     const marker = surface.querySelector("[data-repayment-ack]");
     if (!marker) return;
@@ -309,10 +324,7 @@
     try {
       const ack = JSON.parse(marker.getAttribute("data-repayment-ack"));
       if (!uuid.test(ack.clientRef) || !uuid.test(splitChange || typedCorrection ? ack.resultPublicId : ack.repaymentPublicId) ||
-          (typedCorrection && ack.resultPublicId !== target) ||
-          (captureReview && (ack.status !== (ack.values.review_action === "confirm" ? "confirmed" : "dismissed") ||
-            (ack.status === "confirmed" && !uuid.test(ack.repaymentPublicId)))) ||
-          (kindCorrection && ack.debtKind !== ack.values.debt_kind) ||
+          !acknowledgesCommand(ack) ||
           !drafts.matches(ack.scope, scope) || !bound(ack.values)) throw Error("ack_mismatch");
       if (voidCommand) leaseKey = "ticketbox:" + namespace + "-lease:v1:" +
         JSON.stringify([...axes.map(axis => scope[axis]), target, ack.values.repayment_public_id]);

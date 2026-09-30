@@ -12,7 +12,7 @@ from app.routes._web_repayment_review import _review_error, review_confirmation
 def test_unchanged_original_preserves_known_home_amount_but_corrected_money_is_explicit() -> None:
     capture = SimpleNamespace(original_currency_code="CNY", original_amount_minor=10000,
         home_currency_code="USD", amount_cents=1400)
-    values = {"target_choice": "debt:7", "original_currency": "CNY", "original_amount": "100.00"}
+    values = {"target_with_expected_row_version": "debt:7", "original_currency": "CNY", "original_amount": "100.00"}
     unchanged = review_confirmation(values, capture)
     assert unchanged.original_currency is None and unchanged.original_amount is None
     assert "original_amount" not in unchanged.model_dump(exclude_unset=True)
@@ -26,7 +26,7 @@ def test_unchanged_original_preserves_known_home_amount_but_corrected_money_is_e
 def test_invalid_review_never_reinterprets_money(currency: str, amount: str) -> None:
     captured = SimpleNamespace(original_currency_code="CNY", original_amount_minor=10000)
     with pytest.raises(AppError):
-        review_confirmation({"target_choice": "debt:7", "original_currency": currency, "original_amount": amount}, captured)
+        review_confirmation({"target_with_expected_row_version": "debt:7", "original_currency": currency, "original_amount": amount}, captured)
 
 
 def test_reused_key_is_not_a_success_or_permission_to_replace_original() -> None:

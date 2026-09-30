@@ -27,7 +27,7 @@ from app.services.repayment_draft_command_service import confirm_repayment_draft
 
 REVIEW_FIELDS = (
     "draft_public_id", "ledger_id", "origin_binding", "review_action",
-    "target_choice", "original_currency", "original_amount",
+    "target_with_expected_row_version", "original_currency", "original_amount",
 )
 
 
@@ -37,7 +37,7 @@ def _initial_review_values(scope, selected_id, public_id, row, can_create):
         "draft_public_id": public_id, "ledger_id": selected_id,
         "origin_binding": json.dumps(scope, ensure_ascii=False, sort_keys=True),
         "review_action": "confirm",
-        "target_choice": f"{suggested.public_id}:{suggested.row_version}" if suggested else "",
+        "target_with_expected_row_version": f"{suggested.public_id}:{suggested.row_version}" if suggested else "",
         "original_currency": row.original_currency_code if row else "",
         "original_amount": _minor_amount_value(row.original_amount_minor, row.original_currency_code) if row else "",
         "idempotency_key": str(uuid4()) if can_create else "",
@@ -79,7 +79,7 @@ def render_review(request, db, *, options, selected_id, public_id, account_id,
 
 
 def review_confirmation(values, captured):
-    target, separator, token = values["target_choice"].rpartition(":")
+    target, separator, token = values["target_with_expected_row_version"].rpartition(":")
     expected = parse_form_row_version_token(token)
     if not separator or not target or expected is None or expected < 0:
         raise AppError("invalid_request", "请选择欠款并核对它的当前版本。", status_code=422)

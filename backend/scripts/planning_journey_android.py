@@ -134,7 +134,8 @@ class PlanningAndroid:
         def locate():
             matches = [node for node in self.tree().iter("node") if
                 node.attrib.get("checkable") == "true" and node.attrib.get("enabled") != "false" and
-                label in (node.attrib.get("text", "") + "\n" + node.attrib.get("content-desc", ""))]
+                any(label in (part.attrib.get("text", "") + "\n" + part.attrib.get("content-desc", ""))
+                    for part in node.iter("node"))]
             assert len(matches) <= 1, f"The native switch label is ambiguous: {label}"
             return matches
 
