@@ -186,6 +186,14 @@ class FinancialJourney:
 
     def native_refund_offline(self):
         native = self.native
+        # A Web command does not push a new list into this already-open native tab.
+        # Read the peer's accepted fact through the existing user-facing sync action.
+        native.domain_home("流水")
+        native.click("账本工具")
+        native.click("更新账本")
+        native.click("完成")
+        wait_for(lambda: native.has("WebFinal"), "Updating the native ledger did not read the peer correction")
+        native.capture("financial-ledger-after-explicit-peer-refresh")
         self.native_open()
         native.click("登记退款")
         native.fill("3.00", label="退回金额（CNY）")
