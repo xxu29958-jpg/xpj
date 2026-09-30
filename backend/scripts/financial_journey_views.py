@@ -26,11 +26,17 @@ def _configure_plans(j):
         j.expect(lambda value: len(value["goals"]) == 1, "The real consumer goal did not commit")
 
 
-def _original(j):
+def _original(j, *, expected_net):
     j.goto(f'/web/expenses/{j.facts()["id"]}/original')
     link = j.page.get_by_role("link", name="下载原图", exact=True)
-    response = j.page.request.get(j.base_url + link.get_attribute("href"))
-    assert response.ok and hashlib.sha256(response.body()).hexdigest() == j.original_digest, (
+    # The browser carries its Secure local session; an API client is not this consumer.
+    with j.page.expect_download(timeout=120000) as downloading:
+        link.click()
+    download = downloading.value
+    target = j.evidence / f"financial-original-after-{expected_net}.png"
+    download.save_as(target)
+    assert download.failure() is None
+    assert hashlib.sha256(target.read_bytes()).hexdigest() == j.original_digest, (
         "The authenticated original no longer matches its recorded bytes")
     j.page.get_by_role("button", name="打开实际原图", exact=True).click()
     image = j.page.locator("[data-original-reviewed-image]")
@@ -59,7 +65,7 @@ def consumers(j, *, expected_net):
         metric = j.page.locator(".quality-metric").filter(has=j.page.get_by_text(label, exact=True))
         assert metric.locator(".quality-metric-value").inner_text() == "0", label
     j.capture(f"quality-after-{expected_net}")
-    _original(j)
+    _original(j, expected_net=expected_net)
     assert j.facts() == state, "Reading downstream consumers mutated financial facts"
     native = j.native
     native.plan_home()
