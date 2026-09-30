@@ -64,6 +64,9 @@ class ReferenceJourney:
     def tag(self, name):
         return next(row for row in self.facts()["tags"] if row["name"] == name)
 
+    def rule(self, identity):
+        return next(row for row in self.facts()["rules"] if row["id"] == identity)
+
     def batch(self, expense_ids, field, value):
         self.goto("/web/confirmed")
         for identity in expense_ids:

@@ -5,20 +5,24 @@ from scripts.planning_journey_android import wait_for
 
 def organize_rules(j):
     initial_categories = [row["category"] for row in j.facts()["expenses"]]
-    category = create_rule(j, initial_categories)
-    resume_rule_edit(j, initial_categories)
+    original_rules = j.facts()["rules"]
+    category, rule = create_rule(j, initial_categories, original_rules)
+    resume_rule_edit(j, initial_categories, rule)
     preview_apply_and_rollback(j, initial_categories)
-    restore_rule_and_category(j, category)
+    restore_rule_and_category(j, category, rule)
+    assert [row for row in j.facts()["rules"] if row["id"] != rule["id"]] == original_rules, "The journey changed an existing rule"
 
 
-def create_rule(j, initial_categories):
+def create_rule(j, initial_categories, original_rules):
     page = j.page
     j.goto("/web/rules")
     create = j.form("/web/rules/create")
     create.locator('[name="keyword"]').fill("RefShop")
     create.locator('[name="category"]').fill("Library")
     create.get_by_role("button", name="添加规则", exact=True).click()
-    j.expect(lambda state: len(state["rules"]) == 1, "The actual Web rule was not retained")
+    j.expect(lambda state: len(state["rules"]) == len(original_rules) + 1, "The actual Web rule was not retained")
+    rule = next(row for row in j.facts()["rules"] if row["keyword"] == "RefShop")
+    assert rule["category"] == "Library" and rule["priority"] == 100 and not rule["deleted"]
     assert [row["category"] for row in j.facts()["expenses"]] == initial_categories
 
     category = next(row for row in j.facts()["categories"] if row["name"] == "Library")
@@ -27,37 +31,41 @@ def create_rule(j, initial_categories):
     assert "Library" in page.inner_text("main") and "规则" in page.inner_text("main")
     assert not next(row for row in j.facts()["categories"] if row["id"] == category["id"])["deleted"]
     j.capture("category-reference-blocks-delete")
-    return category
+    return category, rule
 
 
-def resume_rule_edit(j, initial_categories):
+def resume_rule_edit(j, initial_categories, rule):
     native = j.native
     j.native_open("自动规则")
-    native.reveal_any("RefShop")
+    # The real installation includes its default rules. Locate this new rule
+    # in that full list instead of treating it as the first/only database row.
+    native.reveal_any("RefShop", max_scrolls=16)
     j.native_row_action("RefShop", "分类规则操作")
     native.click("编辑")
+    native.reveal_any("编辑规则", toward_start=True, max_scrolls=16)
     native.fill("101", label="优先级")
     native.connection(j.port, online=False)
     try:
         native.click("保存规则")
-        wait_for(lambda: native.has("这份规则提交尚未确认"), "The original rule edit was not retained offline")
+        native.reveal_any("这份规则提交尚未确认", toward_start=True, max_scrolls=16)
         native.restart()
         j.native_open("自动规则")
         native.reveal_any("这份规则提交尚未确认")
         assert native.has("RefShop"), "The reopened submission lost its original rule"
         native.capture("reference-rule-offline-reopened")
-        assert j.facts()["rules"][0]["priority"] == 100
+        assert j.rule(rule["id"])["priority"] == 100
     finally:
         native.connection(j.port, online=True)
     if native.has("重试原提交"):
         native.click("重试原提交")
-    j.expect(lambda state: state["rules"][0]["priority"] == 101, "The original persisted rule edit did not resume")
-    assert len(j.facts()["rules"]) == 1 and [row["category"] for row in j.facts()["expenses"]] == initial_categories
+    j.expect(lambda state: any(row["id"] == rule["id"] and row["priority"] == 101 for row in state["rules"]),
+             "The original persisted rule edit did not resume")
+    assert [row["category"] for row in j.facts()["expenses"]] == initial_categories
 
 
 def preview_apply_and_rollback(j, initial_categories):
     native, page = j.native, j.page
-    native.reveal_any("已入账应用")
+    native.reveal_any("已入账应用", max_scrolls=16)
     native.click("预览")
     native.reveal_any("可更新 2 笔")
     assert not j.facts()["applications"] and not j.facts()["rule_changes"], "Preview wrote an application"
@@ -75,7 +83,7 @@ def preview_apply_and_rollback(j, initial_categories):
     j.batch([first], "category", "Manual")
     native.restart()
     j.native_open("自动规则")
-    native.reveal_any("回退")
+    native.reveal_any("回退", max_scrolls=16)
     native.click("回退")
     native.click_within("回退这次应用？", "回退")
     j.expect(lambda state: state["applications"][0]["status"] == "rollback_partial", "The actual native partial rollback did not finish")
@@ -86,11 +94,11 @@ def preview_apply_and_rollback(j, initial_categories):
     j.capture("rule-partial-rollback-from-native")
 
 
-def restore_rule_and_category(j, category):
+def restore_rule_and_category(j, category, rule):
     native, page = j.native, j.page
-    rule = j.facts()["rules"][0]
     j.confirm(j.form(f'/web/rules/{rule["id"]}/delete'))
-    j.expect(lambda state: state["rules"][0]["deleted"], "The Web rule delete did not commit")
+    j.expect(lambda state: any(row["id"] == rule["id"] and row["deleted"] for row in state["rules"]),
+             "The Web rule delete did not commit")
     j.goto("/web/categories")
     j.confirm(j.form(f'/web/categories/preferences/{category["id"]}/delete'))
     j.expect(lambda state: next(row for row in state["categories"] if row["id"] == category["id"])["deleted"],
@@ -102,7 +110,7 @@ def restore_rule_and_category(j, category):
         j.native_row_action(label, "恢复")
         native.click_within("恢复项目？", "恢复")
         wait_for(lambda label=label: not native.has(label), "The restored reference remained in the actual recycle bin")
-    assert not j.facts()["rules"][0]["deleted"]
+    assert not j.rule(rule["id"])["deleted"]
     assert not next(row for row in j.facts()["categories"] if row["id"] == category["id"])["deleted"]
     j.goto("/web/rules")
     assert "RefShop" in page.inner_text("main") and "部分回滚" in page.inner_text("main")

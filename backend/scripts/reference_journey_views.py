@@ -76,7 +76,7 @@ def appearances(j):
         for label, value, name in (("标签", "TripFinal", "tags"), ("商家", "RefPay", "merchants"),
                                     ("自动规则", "RefShop", "rules"), ("分类", "Library", "categories")):
             j.native_open(label)
-            native.reveal_any(value)
+            native.reveal_any(value, max_scrolls=16)
             native.capture(f"reference-{name}-{theme}")
 
 
