@@ -103,13 +103,14 @@ class CategoryRuleSubmissionConnectedTest {
         val state by model.uiState.collectAsStateWithLifecycle()
         TicketboxTheme(skin = AppSkin.Paper) {
             CategoryRulesScreen(CategoryRulesScreenState(
-                CategoryRulesRuleListState(state.categoryRules, state.categoryRulesLoading),
+                CategoryRulesRuleListState(state.categoryRules, state.categoryRulesLoading, state.categoryRulesLoadFailed),
                 CategoryRulesInteractionState(state.busy, false), CategoryRulesStatusState(state.message, state.messageTone),
-                CategoryRulesApplicationState(state.ruleApplications, state.ruleApplicationsLoading, state.confirmedRulesPreview),
+                CategoryRulesApplicationState(state.ruleApplications, state.ruleApplicationsLoading, state.confirmedRulesPreview,
+                    state.ruleApplicationsLoadFailed),
                 state.undoableRule, state.pendingSubmissions, state.selectedSubmissionId, state.submittedRevision, state.binding),
                 CategoryRulesScreenActions({}, CategoryRulesRuleActions(model::createCategoryRule, model::updateCategoryRule,
-                    model::toggleCategoryRule, model::deleteCategoryRule, model::recoverSubmission),
-                    CategoryRulesApplicationActions({}, {}, {}), CategoryRulesUndoActions({}, {})))
+                    model::toggleCategoryRule, model::deleteCategoryRule, model::recoverSubmission, { model.loadCategoryRules() }),
+                    CategoryRulesApplicationActions({}, {}, {}, { model.loadRuleApplications() }), CategoryRulesUndoActions({}, {})))
         }
     }
 }

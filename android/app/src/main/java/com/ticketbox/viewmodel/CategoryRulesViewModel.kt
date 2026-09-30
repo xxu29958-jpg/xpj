@@ -34,6 +34,8 @@ data class CategoryRulesUiState(
     val confirmedRulesPreview: RuleApplyConfirmedResult? = null,
     val categoryRulesLoading: Boolean = false,
     val ruleApplicationsLoading: Boolean = false,
+    val categoryRulesLoadFailed: Boolean = false,
+    val ruleApplicationsLoadFailed: Boolean = false,
     val busy: Boolean = false,
     val message: UiText? = null,
     val messageTone: MessageTone = MessageTone.Neutral,
@@ -45,6 +47,12 @@ data class CategoryRulesUiState(
     // Apply/rollback with actual changes — these rewrite the category on
     // confirmed expense rows, so the ledger must re-sync its rows too.
     val applicationRevision: Int = 0,
+)
+
+private fun CategoryRulesUiState.withRuleHistory(result: Result<List<RuleApplicationBatch>>): CategoryRulesUiState = copy(
+    ruleApplications = result.getOrDefault(emptyList()),
+    ruleApplicationsLoading = false,
+    ruleApplicationsLoadFailed = result.isFailure,
 )
 
 private fun CategoryRulesUiState.afterRuleApplication(result: RuleApplyConfirmedResult): CategoryRulesUiState = copy(
@@ -118,22 +126,18 @@ class CategoryRulesViewModel(
 
     fun loadCategoryRules(clearMessage: Boolean = true) {
         val origin = _uiState.value.binding ?: return
+        if (clearMessage && (_uiState.value.categoryRulesLoading || _uiState.value.busy)) return
         viewModelScope.launch {
+            if (ruleRepository.currentAccess()?.binding != origin) return@launch
             _uiState.update {
-                if (clearMessage) {
-                    it.copy(
-                        categoryRulesLoading = true,
-                        message = null,
-                        messageTone = MessageTone.Neutral,
-                    )
-                } else {
-                    it.copy(categoryRulesLoading = true)
-                }
+                it.copy(categoryRulesLoading = true, categoryRulesLoadFailed = false,
+                    message = if (clearMessage) null else it.message,
+                    messageTone = if (clearMessage) MessageTone.Neutral else it.messageTone)
             }
             ruleRepository.categoryRules()
                 .onSuccess { rules ->
                     if (ruleRepository.currentAccess()?.binding != origin) return@onSuccess
-                    _uiState.update { it.copy(categoryRulesLoading = false, categoryRules = rules) }
+                    _uiState.update { it.copy(categoryRulesLoading = false, categoryRulesLoadFailed = false, categoryRules = rules) }
                     acceptSubmissions(_uiState.value.pendingSubmissions)
                 }
                 .onFailure { error ->
@@ -141,6 +145,8 @@ class CategoryRulesViewModel(
                     _uiState.update {
                         it.copy(
                             categoryRulesLoading = false,
+                            categoryRulesLoadFailed = true,
+                            categoryRules = emptyList(),
                             message = error.toUiText(R.string.category_rules_load_failed),
                             messageTone = MessageTone.Danger,
                         )
@@ -151,35 +157,23 @@ class CategoryRulesViewModel(
 
     fun loadRuleApplications(clearMessage: Boolean = true) {
         val origin = _uiState.value.binding ?: return
+        if (clearMessage && (_uiState.value.ruleApplicationsLoading || _uiState.value.busy)) return
         viewModelScope.launch {
+            if (ruleRepository.currentAccess()?.binding != origin) return@launch
             _uiState.update {
-                if (clearMessage) {
-                    it.copy(
-                        ruleApplicationsLoading = true,
-                        message = null,
-                        messageTone = MessageTone.Neutral,
-                    )
-                } else {
-                    it.copy(ruleApplicationsLoading = true)
-                }
+                it.copy(ruleApplicationsLoading = true, ruleApplicationsLoadFailed = false,
+                    message = if (clearMessage) null else it.message,
+                    messageTone = if (clearMessage) MessageTone.Neutral else it.messageTone)
             }
-            ruleRepository.ruleApplications()
-                .onSuccess history@ { applications ->
-                            if (ruleRepository.currentAccess()?.binding != origin) return@history
-                    _uiState.update {
-                        it.copy(ruleApplicationsLoading = false, ruleApplications = applications)
-                    }
-                }
-                .onFailure { error ->
-                    if (ruleRepository.currentAccess()?.binding != origin) return@onFailure
-                    _uiState.update {
-                        it.copy(
-                            ruleApplicationsLoading = false,
-                            message = error.toUiText(R.string.category_rules_applications_load_failed),
-                            messageTone = MessageTone.Danger,
-                        )
-                    }
-                }
+            val result = ruleRepository.ruleApplications()
+            if (ruleRepository.currentAccess()?.binding != origin) return@launch
+            _uiState.update { state ->
+                val current = state.withRuleHistory(result)
+                result.exceptionOrNull()?.let { error -> current.copy(
+                    message = error.toUiText(R.string.category_rules_applications_load_failed),
+                    messageTone = MessageTone.Danger,
+                ) } ?: current
+            }
         }
     }
 
@@ -325,13 +319,9 @@ class CategoryRulesViewModel(
             ruleRepository.confirmApplyConfirmedRules(previewToken)
                 .onSuccess { result ->
                     if (ruleRepository.currentAccess()?.binding != origin) return@onSuccess
-                    ruleRepository.ruleApplications()
-                        .onSuccess history@ { applications ->
-                            if (ruleRepository.currentAccess()?.binding != origin) return@history
-                            _uiState.update { it.copy(ruleApplications = applications) }
-                        }
+                    val history = ruleRepository.ruleApplications()
                     if (ruleRepository.currentAccess()?.binding != origin) return@onSuccess
-                    _uiState.update { it.afterRuleApplication(result) }
+                    _uiState.update { it.withRuleHistory(history).afterRuleApplication(result) }
                 }
                 .onFailure { error ->
                     if (ruleRepository.currentAccess()?.binding != origin) return@onFailure
@@ -360,14 +350,10 @@ class CategoryRulesViewModel(
             ruleRepository.rollbackRuleApplication(application.publicId)
                 .onSuccess { rollback ->
                     if (ruleRepository.currentAccess()?.binding != origin) return@onSuccess
-                    ruleRepository.ruleApplications()
-                        .onSuccess history@ { applications ->
-                            if (ruleRepository.currentAccess()?.binding != origin) return@history
-                            _uiState.update { it.copy(ruleApplications = applications) }
-                        }
+                    val history = ruleRepository.ruleApplications()
                     if (ruleRepository.currentAccess()?.binding != origin) return@onSuccess
                     _uiState.update {
-                        it.copy(
+                        it.withRuleHistory(history).copy(
                             busy = false,
                             message = UiText.res(R.string.category_rules_rollback_done, rollback.changed, rollback.skipped),
                             messageTone = MessageTone.Success,

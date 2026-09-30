@@ -52,7 +52,12 @@ def resume_rule_edit(j, initial_categories, rule):
         j.native_open("自动规则")
         native.reveal_any("这份规则提交尚未确认")
         assert native.has("RefShop"), "The reopened submission lost its original rule"
+        native.reveal_any("重新读取规则")
+        assert native.has("规则暂时打不开"), "A failed rule read was presented as an empty dictionary"
+        native.reveal_any("重新读取应用记录")
+        assert native.has("应用记录暂时打不开"), "A failed history read was presented as an empty history"
         native.capture("reference-rule-offline-reopened")
+        native.reveal_any("这份规则提交尚未确认", toward_start=True)
         assert j.rule(rule["id"])["priority"] == 100
     finally:
         native.connection(j.port, online=True)
@@ -60,6 +65,11 @@ def resume_rule_edit(j, initial_categories, rule):
         native.click("重试原提交")
     j.expect(lambda state: any(row["id"] == rule["id"] and row["priority"] == 101 for row in state["rules"]),
              "The original persisted rule edit did not resume")
+    native.reveal_any("重新读取应用记录", max_scrolls=16)
+    native.click("重新读取应用记录")
+    native.reveal_any("还没有应用记录。")
+    assert not j.facts()["applications"], "Retrying a history read replayed an application"
+    native.capture("reference-rule-history-read-recovered")
     assert [row["category"] for row in j.facts()["expenses"]] == initial_categories
 
 
@@ -88,6 +98,7 @@ def preview_apply_and_rollback(j, initial_categories):
     native.click_within("回退这次应用？", "回退")
     j.expect(lambda state: state["applications"][0]["status"] == "rollback_partial", "The actual native partial rollback did not finish")
     assert [row["category"] for row in j.facts()["expenses"]] == ["Manual", "其他", "Library"]
+    native.reveal_any("部分回退", max_scrolls=16)
     native.capture("reference-rule-partial-rollback")
     j.goto("/web/rules")
     assert "部分回滚" in page.inner_text("main")
@@ -109,7 +120,8 @@ def restore_rule_and_category(j, category, rule):
         native.reveal_any(label)
         j.native_row_action(label, "恢复")
         native.click_within("恢复项目？", "恢复")
-        wait_for(lambda label=label: not native.has(label), "The restored reference remained in the actual recycle bin")
+        wait_for(lambda label=label: not any(node.get("text") == label for node in native.tree().iter("node")),
+                 "The restored reference row remained in the actual recycle bin")
     assert not j.rule(rule["id"])["deleted"]
     assert not next(row for row in j.facts()["categories"] if row["id"] == category["id"])["deleted"]
     j.goto("/web/rules")

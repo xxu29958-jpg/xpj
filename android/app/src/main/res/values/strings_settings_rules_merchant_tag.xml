@@ -13,6 +13,11 @@
     <string name="category_rules_section_history">最近应用记录</string>
     <string name="category_rules_loading_title">正在读取分类规则</string>
     <string name="category_rules_loading_body">会同步当前账本的规则列表。</string>
+    <string name="category_rules_read_failed_title">规则暂时打不开</string>
+    <string name="category_rules_read_failed_body">重新读取可查看当前结果，原输入和提交保持不变。</string>
+    <string name="category_rules_reload">重新读取规则</string>
+    <string name="category_rule_history_read_failed_title">应用记录暂时打不开</string>
+    <string name="category_rule_history_reload">重新读取应用记录</string>
     <string name="category_rules_create_prompt_body">按商家关键词自动建议分类。</string>
 
     <!-- CategoryRuleCard（SettingsCategoryComponents.kt）：单条规则卡片 -->
@@ -56,6 +61,8 @@
     <string name="category_rule_apply_preview_no_merchant">未填写商家</string>
     <string name="category_rule_apply_preview_mapping">%1$s → %2$s · %3$s</string>
     <string name="category_rule_apply_history_status_rolled_back">已回退</string>
+    <string name="category_rule_apply_history_status_partial">部分回退</string>
+    <string name="category_rule_apply_history_status_skipped">已跳过回退</string>
     <string name="category_rule_apply_history_status_applied">已应用</string>
     <string name="category_rule_apply_history_changed_count">%1$d 笔</string>
     <string name="category_rule_apply_history_scanned">扫描 %1$d 笔 · %2$s</string>

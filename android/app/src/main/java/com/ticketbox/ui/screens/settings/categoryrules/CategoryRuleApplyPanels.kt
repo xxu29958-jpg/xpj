@@ -173,11 +173,12 @@ private fun RuleApplicationRow(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(
-                    text = if (application.isRolledBack) {
-                        stringResource(R.string.category_rule_apply_history_status_rolled_back)
-                    } else {
-                        stringResource(R.string.category_rule_apply_history_status_applied)
-                    },
+                    text = stringResource(when {
+                        application.status == "rollback_partial" -> R.string.category_rule_apply_history_status_partial
+                        application.status == "rollback_skipped" -> R.string.category_rule_apply_history_status_skipped
+                        application.isRolledBack -> R.string.category_rule_apply_history_status_rolled_back
+                        else -> R.string.category_rule_apply_history_status_applied
+                    }),
                     style = MaterialTheme.typography.titleSmall,
                 )
                 Text(

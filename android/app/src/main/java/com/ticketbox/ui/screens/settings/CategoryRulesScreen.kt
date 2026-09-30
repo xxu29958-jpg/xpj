@@ -61,6 +61,7 @@ data class CategoryRulesScreenState(
 data class CategoryRulesRuleListState(
     val rules: List<CategoryRule>,
     val loading: Boolean,
+    val loadFailed: Boolean = false,
 )
 
 data class CategoryRulesInteractionState(
@@ -77,6 +78,7 @@ data class CategoryRulesApplicationState(
     val history: List<RuleApplicationBatch>,
     val loading: Boolean,
     val confirmedPreview: RuleApplyConfirmedResult?,
+    val loadFailed: Boolean = false,
 )
 
 data class CategoryRulesScreenActions(
@@ -92,12 +94,14 @@ data class CategoryRulesRuleActions(
     val onToggle: (CategoryRule) -> Unit,
     val onDelete: (CategoryRule) -> Unit,
     val onRecoverSubmission: (PendingCategoryRuleSubmission, Boolean) -> Unit,
+    val onReload: () -> Unit,
 )
 
 data class CategoryRulesApplicationActions(
     val onPreviewApplyConfirmedRules: () -> Unit,
     val onConfirmApplyConfirmedRules: () -> Unit,
     val onRollbackRuleApplication: (RuleApplicationBatch) -> Unit,
+    val onReload: () -> Unit,
 )
 
 data class CategoryRulesUndoActions(
@@ -140,7 +144,11 @@ fun CategoryRulesScreen(
     ManagementPageFrame(
         header = ManagementPageHeader(
             title = stringResource(R.string.category_rules_page_title),
-            subtitle = categoryRuleSummary(state.rules.rules),
+            subtitle = when {
+                state.rules.loading -> stringResource(R.string.category_rules_loading_title)
+                state.rules.loadFailed -> stringResource(R.string.category_rules_read_failed_title)
+                else -> categoryRuleSummary(state.rules.rules)
+            },
             chrome = chrome,
         ),
         onBack = actions.onBack,
@@ -166,18 +174,21 @@ fun CategoryRulesScreen(
 private data class CategoryRulesContentState(
     val rules: List<CategoryRule>,
     val rulesLoading: Boolean,
+    val rulesLoadFailed: Boolean,
     val busy: Boolean,
     val readOnly: Boolean,
     val applications: List<RuleApplicationBatch>,
     val applicationsLoading: Boolean,
+    val applicationsLoadFailed: Boolean,
     val confirmedPreview: RuleApplyConfirmedResult?,
     val undoableRule: CategoryRule?,
 )
 
 private fun CategoryRulesScreenState.contentState() = CategoryRulesContentState(
-    rules = rules.rules, rulesLoading = rules.loading, busy = interaction.busy,
+    rules = rules.rules, rulesLoading = rules.loading, rulesLoadFailed = rules.loadFailed, busy = interaction.busy,
     readOnly = interaction.readOnly, applications = applications.history,
     applicationsLoading = applications.loading, confirmedPreview = applications.confirmedPreview,
+    applicationsLoadFailed = applications.loadFailed,
     undoableRule = undoableRule,
 )
 
@@ -253,6 +264,7 @@ private fun CategoryRulesContent(
     RuleApplicationHistorySection(
         state = state,
         onRequestRollback = onRequestRollback,
+        onReload = actions.applications.onReload,
     )
 }
 
@@ -325,7 +337,13 @@ private fun CategoryRuleListBody(
     actions: CategoryRulesScreenActions,
     onRequestDelete: (CategoryRule) -> Unit,
 ) {
-    if (state.rules.isEmpty()) {
+    if (state.rulesLoadFailed) {
+        SettingsInlineEmpty(
+            title = stringResource(R.string.category_rules_read_failed_title),
+            body = stringResource(R.string.category_rules_read_failed_body),
+        )
+        TextButton(enabled = !state.busy, onClick = actions.rules.onReload) { Text(stringResource(R.string.category_rules_reload)) }
+    } else if (state.rules.isEmpty()) {
         SettingsListStateSlot(
             loading = state.rulesLoading,
             hasData = false,
@@ -394,9 +412,16 @@ private fun CategoryRuleEditorSlot(
 private fun RuleApplicationHistorySection(
     state: CategoryRulesContentState,
     onRequestRollback: (RuleApplicationBatch) -> Unit,
+    onReload: () -> Unit,
 ) {
     SettingsSection(title = stringResource(R.string.category_rules_section_history), icon = Icons.Filled.RestartAlt) {
-        if (state.applications.isEmpty()) {
+        if (state.applicationsLoadFailed) {
+            SettingsInlineEmpty(
+                title = stringResource(R.string.category_rule_history_read_failed_title),
+                body = stringResource(R.string.category_rules_read_failed_body),
+            )
+            TextButton(enabled = !state.busy, onClick = onReload) { Text(stringResource(R.string.category_rule_history_reload)) }
+        } else if (state.applications.isEmpty()) {
             SettingsListStateSlot(
                 loading = state.applicationsLoading,
                 hasData = false,
