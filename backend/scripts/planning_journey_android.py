@@ -282,8 +282,14 @@ class PlanningAndroid:
         for _ in range(5):
             if any(node.attrib.get("text") == "计划" for node in self.tree().iter("node")):
                 self.click("计划", bottom=True)
+            else:
+                self.back()
+            # A domain switch can restore its last secondary page. Only the
+            # actual root has both the Plan heading/tab and the account action.
+            nodes = list(self.tree().iter("node"))
+            if (sum(node.attrib.get("text") == "计划" for node in nodes) >= 2 and
+                    any(node.attrib.get("content-desc") == "打开账户与设置" for node in nodes)):
                 return
-            self.back()
         raise AssertionError("The real navigation did not return to the planning entry")
 
     def capture(self, name: str, redact: str | None = None):
