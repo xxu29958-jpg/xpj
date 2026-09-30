@@ -16,6 +16,7 @@ import com.ticketbox.domain.model.RepaymentDraft
 
 /** Read side of the confirmed-fact consumer; pending editing is intentionally absent. */
 interface ExpenseFactReadActions : ExpenseRootReadActions {
+    val factReadAccessDenials: kotlinx.coroutines.flow.Flow<SnapshotAccessDenial>
     /** Existing client timezone owner used by every ledger query/command. */
     fun currentTimezoneId(): String
     suspend fun categories(): Result<List<String>>
@@ -30,8 +31,9 @@ interface ExpenseFactReadActions : ExpenseRootReadActions {
         pageSize: Int = 50,
         /** null = 进入新服务端快照；翻页必须回传已保存的锚。 */
         snapshotRevision: Long? = null,
-    ): Result<ExpenseRevisionPage>
-    suspend fun fetchExpenseFactBundle(id: Long): Result<ExpenseFactBundle>
+        expectedBinding: LogicalSessionBinding? = null,
+    ): Result<ReadSnapshot<ExpenseRevisionPage>>
+    suspend fun fetchExpenseFactBundle(id: Long, expectedBinding: LogicalSessionBinding? = null): Result<ReadSnapshot<ExpenseFactBundle>>
 }
 
 /** Commands reachable from the confirmed-fact surface. */
@@ -40,18 +42,20 @@ interface ExpenseFactCommandActions {
     fun observeCorrections(): kotlinx.coroutines.flow.Flow<ExpenseCorrectionObservation>
     fun observeExpenseOutboxStatus(): kotlinx.coroutines.flow.Flow<OutboxStatus>
     suspend fun submitCorrection(expectedBinding: LogicalSessionBinding, expense: Expense,
-        correction: ExpenseCorrectionDraft): Result<Long>
+        correction: ExpenseCorrectionDraft, originalInput: ExpenseFactOriginalInput? = null): Result<Long>
     suspend fun recoverCorrection(expectedBinding: LogicalSessionBinding, rowId: Long, drop: Boolean): Result<Unit>
     suspend fun createExpenseOffsetAllowingOffline(
         expectedBinding: LogicalSessionBinding,
         expense: Expense,
         draft: ExpenseOffsetDraft,
+        originalInput: ExpenseFactOriginalInput? = null,
     ): Result<ExpenseOffsetMutationOutcome>
     suspend fun voidExpenseOffsetAllowingOffline(
         expectedBinding: LogicalSessionBinding,
         expense: Expense,
         offset: ExpenseOffsetFact,
         reason: String,
+        originalInput: ExpenseFactOriginalInput? = null,
     ): Result<ExpenseOffsetMutationOutcome>
 
     /**
@@ -70,4 +74,4 @@ interface ExpenseFactCommandActions {
 }
 
 /** Page-level port composed from independently bounded read and command responsibilities. */
-interface ExpenseFactActions : ExpenseFactReadActions, ExpenseFactCommandActions, BillSplitSourceActions
+interface ExpenseFactActions : ExpenseFactReadActions, ExpenseFactCommandActions, ExpenseFactInputActions, BillSplitSourceActions

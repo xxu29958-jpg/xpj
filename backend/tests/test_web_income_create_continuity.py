@@ -10,7 +10,7 @@ from app.database import SessionLocal
 from app.main import app
 from app.models import IncomePlanRevision, MonthlyIncomePlan
 from app.routes.web_app import _require_local
-from app.services import income_plan_service, spending_contract_service
+from app.services import income_plan_service, ledger_calendar_service
 from app.services.identity_service import authenticate_web_session_token
 from app.services.manual_expense_draft_presenter import manual_draft_scope
 from tests._local_web_identity_support import _connect_local_session, installed_web_setup
@@ -23,7 +23,7 @@ ACTION = "/web/income-plans/create"
 def income_form(client, monkeypatch):
     clock = {"month": "2026-09", "now": datetime(2026, 9, 5, tzinfo=UTC)}
     monkeypatch.setattr(income_plan_service, "now_utc", lambda: clock["now"])
-    monkeypatch.setattr(spending_contract_service, "current_month", lambda _tz: clock["month"])
+    monkeypatch.setattr(ledger_calendar_service, "now_utc", lambda: clock["now"])
     app.dependency_overrides[_require_local] = lambda: None
     try:
         page = client.get("/web/income-plans?ledger_id=owner")

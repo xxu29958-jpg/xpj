@@ -47,7 +47,7 @@ private fun ExpenseFactViewModel.verifyExpenseFromCache(afterRowVersion: Long?, 
         expenseLoadState = ExpenseDetailDataLoadState.Loading) }
     viewModelScope.launch {
         if (!isCurrentInitialRootRequest(binding, generation)) return@launch
-        val cached = repository.fetchExpenseFromLocalCache(expenseId).getOrNull()
+        val cached = repository.fetchExpenseFromLocalCache(expenseId, binding).getOrNull()
         if (!isCurrentInitialRootRequest(binding, generation)) return@launch
         val currentBinding = repository.observeCorrections().first().access?.binding
         if (currentBinding != binding || !isCurrentInitialRootRequest(binding, generation)) return@launch

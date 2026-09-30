@@ -86,6 +86,8 @@ private fun ExpenseFactViewModel.refreshWasAcknowledged(corrections: List<Pendin
 
 /** Retire facts, drafts and in-flight reads together when their original session changes. */
 private fun ExpenseFactViewModel.resetFactBinding() {
+    factInputLoadGeneration++
+    factInputSession = null
     correctionSplitMemberGeneration++
     correctionBaseline = null
     correctionBinding = null
@@ -100,7 +102,7 @@ private fun ExpenseFactViewModel.resetFactBinding() {
     splitsLoadGeneration++
     thumbnailLoadGeneration++
     fullImageLoadGeneration++
-    _uiState.value = ExpenseFactUiState(readOnly = true)
+    _uiState.value = ExpenseFactUiState(readOnly = true, factInputsReady = false)
 }
 
 private fun ExpenseFactViewModel.shouldRefreshAcknowledgedRoot(acknowledged: Boolean): Boolean {

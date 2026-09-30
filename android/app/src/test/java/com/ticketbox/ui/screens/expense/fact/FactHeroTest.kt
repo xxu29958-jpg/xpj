@@ -96,6 +96,14 @@ class FactHeroTest {
         )
     }
 
+    @Test
+    fun oldRefundSnapshotCannotLabelNewRootAsNet() {
+        val oldRefund = bundleOf(ExpenseLineageStatus.PartiallyRefunded)
+        val corrected = expense().copy(rowVersion = 2L, amountCents = 30000L)
+        assertEquals(FactHeroCaption.Gross, factHeroCaptionKind(corrected, oldRefund))
+        assertEquals(FactHeroCaption.Gross, factHeroCaptionKind(expense().copy(id = 2L), oldRefund))
+    }
+
     private fun expense(): Expense = Expense(
         id = 1L,
         publicId = "fact-hero-1",

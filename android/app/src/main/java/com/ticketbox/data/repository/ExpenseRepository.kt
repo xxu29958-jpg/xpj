@@ -28,6 +28,7 @@ import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.RepaymentDraft
 import com.ticketbox.domain.model.ServerSettings
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.filterNotNull
 
 /**
  * Compatibility facade for the existing Android repository entrypoint.
@@ -89,9 +90,12 @@ class ExpenseRepository internal constructor(
     private val statsRepository = ExpenseStatsRepositoryActions(core, ledgerRepository)
     private val searchRepository = ExpenseSearchRepositoryActions(core, pendingRepository, binding.settingsStore)
     private val detailRepository = ExpenseDetailRepository(core)
-    private val correctionRepository = ExpenseCorrectionRepository(core, offlineMutations.outbox,
+    private val factQueryReader = ExpenseFactQueryReader(core)
+    private val factInputs = ExpenseFactInputRepository(core)
+    override val factReadAccessDenials: Flow<SnapshotAccessDenial> = core.sessionCoordinator.snapshotAccessDenials.filterNotNull()
+    private val correctionRepository = ExpenseCorrectionRepository(core, factInputs, offlineMutations.outbox,
         offlineMutations.correctionAdapter, offlineMutations.legacyCorrectionAdapter)
-    private val offsetRepository = ExpenseOffsetRepository(core, correctionRepository)
+    private val offsetRepository = ExpenseOffsetRepository(core, correctionRepository, factInputs)
     private val billSplitRepository = ExpenseBillSplitRepository(core, debtQueryReader)
     private val backgroundTaskRepository = ExpenseBackgroundTaskRepository(core)
 
@@ -162,7 +166,8 @@ class ExpenseRepository internal constructor(
         page: Int,
         pageSize: Int,
         snapshotRevision: Long?,
-    ): Result<ExpenseRevisionPage> = correctionRepository.fetchRevisions(id, page, pageSize, snapshotRevision)
+        expectedBinding: LogicalSessionBinding?,
+    ): Result<ReadSnapshot<ExpenseRevisionPage>> = factQueryReader.revisions(id, page, pageSize, snapshotRevision, expectedBinding)
 
     override fun observeCorrections(): Flow<ExpenseCorrectionObservation> = correctionRepository.observe()
 
@@ -172,19 +177,25 @@ class ExpenseRepository internal constructor(
         correctionRepository.publishDelivered(row, expense)
 
     override suspend fun submitCorrection(expectedBinding: LogicalSessionBinding, expense: Expense,
-        correction: ExpenseCorrectionDraft): Result<Long> = correctionRepository.submit(expectedBinding, expense, correction)
+        correction: ExpenseCorrectionDraft, originalInput: ExpenseFactOriginalInput?): Result<Long> =
+        correctionRepository.submit(expectedBinding, expense, correction, originalInput)
+
+    override suspend fun loadFactInputs(binding: LogicalSessionBinding, id: Long) = factInputs.loadFactInputs(binding, id)
+    override suspend fun saveFactInput(expected: ExpenseFactOriginalInput?, input: ExpenseFactOriginalInput) = factInputs.saveFactInput(expected, input)
+    override suspend fun discardFactInput(binding: LogicalSessionBinding, input: ExpenseFactOriginalInput) = factInputs.discardFactInput(binding, input)
 
     override suspend fun recoverCorrection(expectedBinding: LogicalSessionBinding, rowId: Long, drop: Boolean): Result<Unit> =
         correctionRepository.recover(expectedBinding, rowId, drop)
 
-    override suspend fun fetchExpenseFactBundle(id: Long): Result<ExpenseFactBundle> =
-        offsetRepository.fetch(id)
+    override suspend fun fetchExpenseFactBundle(id: Long, expectedBinding: LogicalSessionBinding?): Result<ReadSnapshot<ExpenseFactBundle>> =
+        factQueryReader.bundle(id, expectedBinding)
 
     override suspend fun createExpenseOffsetAllowingOffline(
         expectedBinding: LogicalSessionBinding,
         expense: Expense,
         draft: ExpenseOffsetDraft,
-    ): Result<ExpenseOffsetMutationOutcome> = offsetRepository.createAllowingOffline(expectedBinding, expense, draft)
+        originalInput: ExpenseFactOriginalInput?,
+    ): Result<ExpenseOffsetMutationOutcome> = offsetRepository.createAllowingOffline(expectedBinding, expense, draft, originalInput)
 
     internal fun canReplayExpenseOffset(row: OutboxRow): Boolean =
         row.lastError != "offset_create_requires_review" && core.offsetCreateAdapter?.readSupportedOffsetCreate(row) != null
@@ -194,7 +205,8 @@ class ExpenseRepository internal constructor(
         expense: Expense,
         offset: ExpenseOffsetFact,
         reason: String,
-    ): Result<ExpenseOffsetMutationOutcome> = offsetRepository.voidAllowingOffline(expectedBinding, expense, offset, reason)
+        originalInput: ExpenseFactOriginalInput?,
+    ): Result<ExpenseOffsetMutationOutcome> = offsetRepository.voidAllowingOffline(expectedBinding, expense, offset, reason, originalInput)
 
 
     override fun observeExpenseCommands(): Flow<ExpenseCommandObservation> = pendingRepository.observeExpenseCommands()

@@ -12,6 +12,10 @@
   纯不变原子（取消/确定/关闭/加载中/重试）才进 common_*。保存/删除/编辑默认走 screen key。
 -->
 <resources xmlns:tools="http://schemas.android.com/tools" tools:locale="zh">
+    <string name="expense_fact_history_cached">显示上次读取的历史 · %1$s</string>
+    <string name="expense_fact_input_save_failed">原输入尚未保存，请重试后再离开。</string>
+    <string name="expense_fact_input_load_failed">原输入暂时未能读取，内容仍保留，请重试。</string>
+    <string name="expense_fact_input_review_required">连接身份已变化，原输入仍保留，请明确核对后再继续。</string>
     <string name="app_name">小票夹</string>
 
     <!-- 通用：跨屏复用的 UI 原子 -->
@@ -265,4 +269,22 @@
     <string name="split_agreement_submission_state_changed">原提交状态已变化，请重新核对。</string>
     <string name="split_agreement_submission_pending_review">原提交已保存，等待同步或核对。</string>
     <string name="split_agreement_submission_received">原提交已由服务端接收。</string>
+    <string name="expense_fact_inputs_title">未提交的原稿</string>
+    <string name="expense_fact_input_close">保留原稿并关闭</string>
+    <string name="expense_fact_void_review">请核对当前退回记录。仍然有效时可以保留原因继续；已经撤销的记录不能再次撤销，原稿可以明确放弃。</string>
+    <string name="expense_fact_input_resume">继续%1$s</string>
+    <string name="expense_fact_input_discard">放弃原稿</string>
+    <string name="expense_fact_input_discard_confirm">删除这份尚未提交的输入？已提交的操作和账单事实不受影响。</string>
+    <string name="expense_fact_input_retry">重试保存／读取原稿</string>
+    <string name="expense_fact_input_writing">正在保存本机原稿…</string>
+    <string name="expense_fact_input_saved">原稿已保存在本机，关闭后可继续。尚未提交。</string>
+    <string name="expense_correction_review_title">核对当前账单</string>
+    <string name="expense_correction_review_versions">原稿依据版本 %1$d；当前版本 %2$d</string>
+    <string name="expense_correction_review_scores">价值 %1$s · 后悔 %2$s</string>
+    <string name="expense_correction_review_explainer">下方保留原输入。继续核对会保留你改过的字段，未修改的字段采用当前值；保留修改过的金额时也保留原币。发生变化的明细和拆账请逐项选择，受保护的归属信息保持当前值。</string>
+    <string name="expense_correction_review_adopt">按以上选择继续核对</string>
+    <string name="expense_correction_review_current_rows">当前记录：\n%1$s</string>
+    <string name="expense_correction_review_original_rows">我的原输入：\n%1$s</string>
+    <string name="expense_correction_review_keep_rows">保留我的整组输入，替换当前记录</string>
+    <string name="expense_correction_review_use_current">采用当前记录，放弃这部分原输入</string>
 </resources>

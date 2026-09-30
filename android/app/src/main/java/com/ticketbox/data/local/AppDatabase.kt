@@ -9,8 +9,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.ticketbox.domain.model.FxContract
 
 @Database(
-    entities = [ExpenseEntity::class, PendingMutationEntity::class, ExpenseOffsetStreamEntity::class, StatsProjectionCacheEntity::class, GoalQueryCacheEntity::class, MonthlyArrangementCacheEntity::class, RepaymentReviewInputEntity::class],
-    version = 23,
+    entities = [ExpenseEntity::class, PendingMutationEntity::class, ExpenseOffsetStreamEntity::class, StatsProjectionCacheEntity::class, GoalQueryCacheEntity::class, MonthlyArrangementCacheEntity::class, RepaymentReviewInputEntity::class, ExpenseFactQueryCacheEntity::class, ExpenseFactInputEntity::class],
+    version = 24,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -578,6 +578,15 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) { MIGRATION_22_23_STATEMENTS.forEach(db::execSQL) }
         }
 
+        internal val MIGRATION_23_24_STATEMENTS = listOf(
+            "CREATE TABLE IF NOT EXISTS expense_fact_query_cache (bindingKey TEXT NOT NULL, ledgerId TEXT NOT NULL, expenseId INTEGER NOT NULL, queryKey TEXT NOT NULL, responseJson TEXT NOT NULL, fetchedAt TEXT NOT NULL, PRIMARY KEY(bindingKey, expenseId, queryKey))",
+            "CREATE INDEX IF NOT EXISTS index_expense_fact_query_cache_ledgerId ON expense_fact_query_cache (ledgerId)",
+            "CREATE TABLE IF NOT EXISTS expense_fact_inputs (ownerKey TEXT NOT NULL, ledgerId TEXT NOT NULL, expenseId INTEGER NOT NULL, formKey TEXT NOT NULL, bindingJson TEXT NOT NULL, originalKey TEXT NOT NULL, inputJson TEXT NOT NULL, PRIMARY KEY(ownerKey, ledgerId, expenseId, formKey))",
+        )
+        internal val Migration23To24 = object : Migration(23, 24) {
+            override fun migrate(db: SupportSQLiteDatabase) { MIGRATION_23_24_STATEMENTS.forEach(db::execSQL) }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -608,6 +617,7 @@ abstract class AppDatabase : RoomDatabase() {
                         Migration20To21,
                         Migration21To22,
                         Migration22To23,
+                        Migration23To24,
                     )
                     .build()
                     .also { instance = it }

@@ -59,6 +59,7 @@ fun ExpenseFactScreen(
         ),
     ) {
         AppStatusBanner(message = state.message, tone = state.messageTone)
+        FactInputContinuitySection(state, viewModel)
         FactCorrectionSubmissions(state, viewModel, onRepairCorrectionRate)
         if (state.expense == null) FactBillSplitSubmissions(state, viewModel)
         when {

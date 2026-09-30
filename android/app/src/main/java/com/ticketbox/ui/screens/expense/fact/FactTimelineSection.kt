@@ -93,6 +93,11 @@ private fun FactTimelineLoadedContent(
     onLoadOlder: () -> Unit,
 ) {
     if (state.revisions.isEmpty()) {
+        state.revisionsCachedAt?.let { at ->
+            TextButton(onClick = onRetryLoad) {
+                Text(stringResource(R.string.expense_fact_history_cached, com.ticketbox.ui.components.displayDateTime(at)))
+            }
+        }
         Text(
             text = stringResource(R.string.expense_fact_timeline_empty),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -101,6 +106,11 @@ private fun FactTimelineLoadedContent(
         return
     }
     // 已有 rows 的 page1 刷新失败：staleness 警告先于被信任内容，且不抢全局 command 消息位。
+    state.revisionsCachedAt?.let { at ->
+        TextButton(onClick = onRetryLoad) {
+            Text(stringResource(R.string.expense_fact_history_cached, com.ticketbox.ui.components.displayDateTime(at)))
+        }
+    }
     if (state.revisionsRefreshFailed) {
         TextButton(onClick = onRetryLoad) {
             Text(text = stringResource(R.string.expense_fact_timeline_refresh_failed))

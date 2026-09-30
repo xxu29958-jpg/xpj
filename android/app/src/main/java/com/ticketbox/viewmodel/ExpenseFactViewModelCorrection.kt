@@ -26,6 +26,11 @@ import kotlinx.coroutines.launch
 
 fun ExpenseFactViewModel.openCorrectionSheet() {
     if (blockReadOnlyWrite()) return
+    if (factInputUnavailable()) return
+    if (restoreCorrectionInput()) {
+        _uiState.update { it.copy(correction = it.correction.copy(open = true)) }
+        return
+    }
     val state = _uiState.value
     if (!state.canStartCorrection) return
     val expense = state.expense ?: return
@@ -38,11 +43,13 @@ fun ExpenseFactViewModel.openCorrectionSheet() {
     _uiState.update {
         it.copy(correction = initialCorrectionFormState(expense, zoneId))
     }
+    keepCorrectionInput()
 }
 
 fun ExpenseFactViewModel.closeCorrectionSheet() {
+    if (_uiState.value.correction.saving) return
     correctionSplitMemberGeneration++
-    _uiState.update { it.copy(correction = CorrectionFormState()) }
+    _uiState.update { it.copy(correction = it.correction.copy(open = false, itemsEditorOpen = false, splitEditorOpen = false)) }
 }
 
 /** 标量字段单一更新入口（屏幕七个动作共用；detekt 函数数门下的合并）。 */
@@ -83,9 +90,11 @@ fun ExpenseFactViewModel.updateCorrectionScore(field: CorrectionScoreField, valu
     }
 
 internal fun ExpenseFactViewModel.updateCorrection(transform: (CorrectionFormState) -> CorrectionFormState) {
+    if (!canEditFactInput("correction")) return
     _uiState.update {
         it.copy(correction = transform(it.correction).copy(submitError = null))
     }
+    keepCorrectionInput()
 }
 
 private fun ExpenseFactViewModel.rejectCorrection(@StringRes resId: Int): ExpenseCorrectionDraft? {
@@ -168,20 +177,23 @@ internal fun ExpenseFactViewModel.buildCorrectionDraftOrMessage(): ExpenseCorrec
 /** 提交按钮的可用性（屏幕用它做禁用态而不是错误说教）：reason 非空且不在保存中。 */
 fun ExpenseFactViewModel.canSubmitCorrection(): Boolean {
     val form = _uiState.value.correction
-    return form.open && !form.saving && form.reason.isNotBlank() && correctionContextError() == null
+    return form.open && !factInputOperationBusy() && form.reason.isNotBlank() && correctionContextError() == null
 }
 
 fun ExpenseFactViewModel.submitCorrection() {
-    if (blockReadOnlyWrite() || !_uiState.value.correction.open || _uiState.value.correction.saving) return
+    if (blockReadOnlyWrite() || !_uiState.value.correction.open || factInputOperationBusy()) return
     val expense = correctionBaseline ?: return
     val binding = correctionBinding ?: return
     val draft = buildCorrectionDraftOrMessage() ?: return
     val invalidatesAdvice = draft.changesAdvisorPayloadAgainst(expense)
-    updateCorrection { it.copy(saving = true) }
+    _uiState.update { it.copy(correction = it.correction.copy(saving = true)) }
     viewModelScope.launch {
         if (!requireCurrentCorrectionContext()) return@launch
-        repository.submitCorrection(binding, expense, draft)
+        val session = factInputSession ?: return@launch
+        val original = session.ready("correction")
+        original.fold(onSuccess = { repository.submitCorrection(binding, expense, draft, it) }, onFailure = { Result.failure(it) })
             .onSuccess {
+                session.forget("correction")
                 if (_uiState.value.correctionAccess?.binding != binding) return@onSuccess
                 _uiState.update { state -> state.copy(correction = CorrectionFormState(),
                     message = null,

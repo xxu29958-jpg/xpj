@@ -19,6 +19,32 @@ import org.junit.Test
  * suite (which never opens Room) cannot.
  */
 class AppDatabaseMigrationTest {
+    @Test fun migrate23To24PreservesTheFactAndOriginalCommandBesideSeparateInputAndQueryStores() {
+        val name = "migration-23-24-fact-continuity.db"
+        helper.createDatabase(name, 23).use { db ->
+            db.execSQL("""INSERT INTO expenses (id, ledgerId, serverId, publicId, amountCents, homeCurrencyCode,
+                originalCurrencyCode, fxStatus, category, source, duplicateStatus, status, createdAt, rowVersion)
+                VALUES (1, 'owner', 9, 'fact-original', 1234, 'CNY', 'CNY', 'ready', '其他', '手动记账', 'none',
+                    'confirmed', '2026-09-30T00:00:00Z', 7)""")
+            db.execSQL("""INSERT INTO pending_mutations (serverUrl, ledgerId, ownerKey, type, targetId, payload,
+                expectedRowVersion, status, retryCount, createdAt, idempotencyKey)
+                VALUES ('https://isolated.invalid', 'owner', 'original-owner', 'correct_expense', 'expense:9',
+                    '{"reason":"original"}', 7, 'pending', 2, '2026-09-30T00:00:00Z', 'original-key')""")
+        }
+        helper.runMigrationsAndValidate(name, 24, true, AppDatabase.Migration23To24).use { db ->
+            db.query("SELECT amountCents, rowVersion FROM expenses WHERE serverId = 9").use {
+                assertTrue(it.moveToFirst()); assertEquals(1234L, it.getLong(0)); assertEquals(7L, it.getLong(1))
+            }
+            db.query("SELECT payload, expectedRowVersion, idempotencyKey, status, retryCount FROM pending_mutations").use {
+                assertTrue(it.moveToFirst()); assertEquals("{\"reason\":\"original\"}", it.getString(0))
+                assertEquals(7L, it.getLong(1)); assertEquals("original-key", it.getString(2))
+                assertEquals("pending", it.getString(3)); assertEquals(2, it.getInt(4))
+            }
+            db.execSQL("INSERT INTO expense_fact_inputs VALUES ('original-owner','owner',9,'correction','binding','draft-key','raw')")
+            db.execSQL("INSERT INTO expense_fact_query_cache VALUES ('binding','owner',9,'bundle','history','2026-09-30T00:00:00Z')")
+        }
+    }
+
     @Test fun migrate22To23PreservesOriginalCommandsAndAddsOnlyReviewInputStorage() {
         val name = "migration-22-23-review.db"
         helper.createDatabase(name, 22).use { db ->
@@ -48,7 +74,7 @@ class AppDatabaseMigrationTest {
             """.trimIndent())
         }
         val room = androidx.room.Room.databaseBuilder(context, AppDatabase::class.java, name)
-            .addMigrations(AppDatabase.Migration21To22, AppDatabase.Migration22To23).build()
+            .addMigrations(AppDatabase.Migration21To22, AppDatabase.Migration22To23, AppDatabase.Migration23To24).build()
         try {
                 room.openHelper.readableDatabase.query("SELECT amountCents, homeCurrencyCode, rowVersion FROM expenses WHERE id = 1").use {
                     assertTrue(it.moveToFirst()); assertEquals(100, it.getInt(0)); assertEquals("JPY", it.getString(1)); assertEquals(7, it.getInt(2))

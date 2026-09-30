@@ -75,6 +75,10 @@ internal fun FactOffsetsSection(
         )
     }
     // command 不依赖 read model（Product Owner 裁决）：已知 confirmed root + 写权限即可。
+    state.factBundleCachedAt?.let { at ->
+        Text(stringResource(R.string.expense_fact_history_cached, displayDateTime(at)),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
     if (!state.readOnly && state.expense != null) {
         FactOffsetActions(state = state, viewModel = viewModel)
     }
@@ -112,7 +116,7 @@ private fun FactOffsetsLoaded(
     val homeDisplay = bundle.root.recordCurrencyDisplay()
     // W2-B: hero 已用同一 server bundle 表达净额/原始/已退回时，段内不再重复
     // 汇总表；bundle 未知（hero 为原始金额）时本表仍是唯一分解事实。
-    val heroShowsNet = factHeroShowsNet(state.factBundle)
+    val heroShowsNet = factHeroShowsNet(bundle.takeIf { it.matchesRoot(state.expense) })
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
@@ -271,7 +275,7 @@ private fun FactOffsetActions(
     // 只有当前 bundle 真实 Loaded，status 才构成 gate；Failed/Loading 时旧快照
     // 不得继续禁 command（eligibility 归服务端，remaining 只作预填/提示）。
     val status = state.factBundle
-        ?.takeIf { state.factBundleLoadState == ExpenseDetailDataLoadState.Loaded }
+        ?.takeIf { state.factBundleLoadState == ExpenseDetailDataLoadState.Loaded && it.matchesRoot(state.expense) }
         ?.financialSummary
         ?.status
     if (status == ExpenseLineageStatus.Reversed) {

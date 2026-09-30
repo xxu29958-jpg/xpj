@@ -13,7 +13,7 @@ import kotlinx.coroutines.launch
 
 fun ExpenseFactViewModel.openCorrectionItemsEditor() {
     if (!requireCurrentCorrectionContext() || !canEditCorrectionItems()) return
-    if (_uiState.value.correction.itemsTouched) {
+    if (_uiState.value.correction.itemsTouched || _uiState.value.correction.itemDraftsInitialized) {
         updateCorrection { it.copy(itemsEditorOpen = true) }
         return
     }
@@ -33,9 +33,10 @@ fun ExpenseFactViewModel.openCorrectionItemsEditor() {
             rawText = item.rawText,
             confidence = item.confidence,
             baselineAmountCents = item.amountCents,
+            sourcePublicId = item.publicId,
         )
     }
-    updateCorrection { it.copy(itemsEditorOpen = true, itemDrafts = drafts) }
+    updateCorrection { it.copy(itemsEditorOpen = true, itemDrafts = drafts, itemDraftsInitialized = true) }
 }
 
 fun ExpenseFactViewModel.updateCorrectionItemDraft(
@@ -74,7 +75,7 @@ fun ExpenseFactViewModel.dismissCorrectionItemsEditor() = updateCorrection {
 fun ExpenseFactViewModel.openCorrectionSplitsEditor() {
     if (!requireCurrentCorrectionContext() || !canEditCorrectionSplits()) return
     val generation = ++correctionSplitMemberGeneration
-    if (_uiState.value.correction.splitsTouched) {
+    if (_uiState.value.correction.splitsTouched || _uiState.value.correction.splitDraftsInitialized) {
         updateCorrection { it.copy(splitEditorOpen = true, splitMembersLoading = false) }
         return
     }
@@ -95,6 +96,7 @@ fun ExpenseFactViewModel.openCorrectionSplitsEditor() {
                             currentSplits = currentSplits,
                         ),
                         splitMembersLoading = false,
+                        splitDraftsInitialized = true,
                     )
                 }
             }

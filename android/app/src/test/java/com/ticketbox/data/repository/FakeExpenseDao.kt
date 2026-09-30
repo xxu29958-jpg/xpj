@@ -11,7 +11,8 @@ import kotlinx.coroutines.flow.map
 internal class FakeExpenseDao(
     private val events: MutableList<String> = mutableListOf(),
     private val monthlyCache: FakeMonthlyArrangementCacheDao = FakeMonthlyArrangementCacheDao(),
-) : ExpenseDao {
+) : ExpenseDao, com.ticketbox.data.local.ExpenseFactQueryCacheDao by com.ticketbox.data.local.ExpenseFactQueryCacheFake(),
+    com.ticketbox.data.local.ExpenseFactInputDao by com.ticketbox.data.local.ExpenseFactInputFake() {
     override suspend fun clearMonthlyReadSnapshots() = monthlyCache.clearReadSnapshots()
     override suspend fun clearMonthlyReadSnapshotsForBinding(bindingKey: String) = monthlyCache.clearReadSnapshots(bindingKey)
     override suspend fun monthlyReadSnapshotBindings() = monthlyCache.readSnapshotBindings()

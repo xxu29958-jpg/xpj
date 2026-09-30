@@ -25,7 +25,17 @@ internal class ExpenseDetailRepository(
 ) {
     suspend fun fetchExpense(id: Long, expectedBinding: LogicalSessionBinding?): Result<Expense> = core.errorHandler.safeCall {
         val bound = expectedBinding?.let(core.ledgerRequestGuard::bindExact) ?: core.ledgerRequestGuard.bind()
-        core.fetchAuthoritativeExpense(bound, id).toDomain()
+        val ticket = core.sessionCoordinator.beginSnapshotRead()
+        val expense = try { core.fetchAuthoritativeExpense(bound, id) } catch (error: retrofit2.HttpException) {
+            val failure = core.errorHandler.httpFailure(error)
+            val key = logicalBindingAdapter.toJson(bound.logicalBinding)
+            core.sessionCoordinator.rejectSnapshotAccess(bound, key, failure)
+            if (failure.httpStatusCode == 404) core.sessionCoordinator.acceptSnapshotRead(ticket, bound, false) {
+                core.expenseDao.retireExpenseFactRead(key, bound.ledgerId, id)
+            }
+            throw failure
+        }
+        core.sessionCoordinator.acceptSnapshotRead(ticket, bound, false) { expense.toDomain() }
     }
 
     /**
@@ -40,16 +50,17 @@ internal class ExpenseDetailRepository(
      * server id used by already-synced confirmed rows.
      */
     suspend fun fetchExpenseFromLocalCache(domainId: Long, expectedBinding: LogicalSessionBinding?): Result<Expense> = core.errorHandler.safeCall {
-        val bound = expectedBinding?.let(core.ledgerRequestGuard::bindExact)
-        val ledgerId = bound?.ledgerId ?: core.activeLedgerIdOrLegacy()
-        val cached = if (domainId > 0) {
-            core.expenseDao.findByServerId(ledgerId, domainId)
-        } else {
-            core.expenseDao.getConfirmed(ledgerId).firstOrNull { it.id == -domainId }
+        val bound = expectedBinding?.let(core.ledgerRequestGuard::bindExact) ?: core.ledgerRequestGuard.bind()
+        val ticket = core.sessionCoordinator.beginSnapshotRead()
+        core.sessionCoordinator.acceptSnapshotRead(ticket, bound, fromCache = true) {
+            val cached = if (domainId > 0) {
+                core.expenseDao.findByServerId(bound.ledgerId, domainId)
+            } else {
+                core.expenseDao.getConfirmed(bound.ledgerId).firstOrNull { it.id == -domainId }
+            }
+            cached?.takeIf { it.status == "pending" || it.status == "confirmed" }?.toDomain()
+                ?: throw RepositoryException("本地没有这笔账单，请联网后重试。")
         }
-        bound?.requireStillActive()
-        cached?.takeIf { it.status == "pending" || it.status == "confirmed" }?.toDomain()
-            ?: throw RepositoryException("本地没有这笔账单，请联网后重试。")
     }
 
     suspend fun fetchExpenseItems(id: Long): Result<ExpenseItems> = core.errorHandler.safeCall {

@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app.models import ApiIdempotencyKey, LedgerMember, RecurringItem
+from app.services import insights_service, recurring_item_command_service
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.time_service import now_utc
 
@@ -60,7 +61,9 @@ def _seed_candidate_item() -> RecurringItem:
         return item
 
 
-def test_manual_recurring_create_replays_same_resource_once(client: TestClient, *, identity) -> None:
+def test_manual_recurring_create_replays_same_resource_once(client: TestClient, *, identity, monkeypatch) -> None:
+    # Create inside the budget month whose fixed-expense contribution is asserted.
+    monkeypatch.setattr(recurring_item_command_service, "now_utc", lambda: datetime(2026, 9, 1, tzinfo=UTC))
     key = str(uuid4())
     payload = _manual_payload()
     before_budget = client.get(
@@ -124,6 +127,8 @@ def test_recurring_success_does_not_depend_on_post_commit_refresh(
     identity,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Keep these three observations inside the real candidate scan window.
+    monkeypatch.setattr(insights_service, "now_utc", lambda: datetime(2026, 6, 1, tzinfo=UTC))
     candidate_times = (
         datetime(2026, 3, 5, 12, 0, tzinfo=UTC),
         datetime(2026, 4, 5, 12, 0, tzinfo=UTC),

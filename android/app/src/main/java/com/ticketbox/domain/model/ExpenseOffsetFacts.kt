@@ -79,7 +79,11 @@ data class ExpenseFactBundle(
     val activeOffsets: List<ExpenseOffsetFact>,
     val recentHistory: List<ExpenseOffsetRevision>,
     val relationshipImpacts: ExpenseRelationshipImpacts,
-)
+) {
+    /** An older known history remains readable, but cannot describe a newer root's money. */
+    fun matchesRoot(expense: Expense?): Boolean = expense != null &&
+        root.id == expense.id && root.rowVersion == expense.rowVersion
+}
 
 enum class ExpenseOffsetIntentKind { Create, Void }
 

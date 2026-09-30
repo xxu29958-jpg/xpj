@@ -169,6 +169,27 @@ internal class ExpenseFactViewModelOffsetsTest : ExpenseFactViewModelTestBase() 
     }
 
     @Test
+    fun cachedOldCurrencyRefundRemainsHistoryButCannotPrefillNewCurrency() = edit { fake ->
+        val old = bundleOf(fake.baseExpense, remaining = 550L)
+        fake.stubBundle(old)
+        fake.factHistoryFromCache = true
+        fake.baseExpense = fake.baseExpense.copy(rowVersion = 2L, originalCurrencyCode = CurrencyCode.JPY,
+            originalCurrencyCodeRaw = "JPY", originalAmountMinor = 1000L)
+        val vm = viewModel(fake)
+        try {
+            assertEquals(old, vm.uiState.value.factBundle)
+            assertEquals(2L, vm.uiState.value.expense?.rowVersion)
+            vm.openOffsetSheet(StreamOffsetKind.Refund)
+            assertTrue(vm.uiState.value.offsetForm.open)
+            assertEquals("", vm.uiState.value.offsetForm.amountText)
+            assertEquals(CurrencyCode.JPY, vm.uiState.value.offsetForm.sourceExpense?.originalCurrencyCode)
+            assertEquals(0, fake.createOffsetCalls)
+        } finally {
+            vm.viewModelScope.coroutineContext.job.cancelAndJoin()
+        }
+    }
+
+    @Test
     fun `create enqueues amount above snapshot then explicit read adopts accepted fact`() = edit { fake ->
         // remaining=100 minor（预填 1.00）；用户改输 5.00 超出快照 —— 快照只预填/提示，
         // 不是 eligibility Owner，command 必须照常到达 repository。

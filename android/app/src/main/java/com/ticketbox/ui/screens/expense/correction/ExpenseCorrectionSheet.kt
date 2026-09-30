@@ -9,6 +9,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SheetValue
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -52,6 +54,8 @@ internal data class ExpenseCorrectionSheetActions(
     val onOpenItems: () -> Unit,
     val onOpenSplits: () -> Unit,
     val onRefreshFact: () -> Unit,
+    val onReview: (Boolean?, Boolean?) -> Unit,
+    val onRetryInputSave: () -> Unit,
     val onSubmit: () -> Unit,
     val onDismiss: () -> Unit,
 )
@@ -66,11 +70,14 @@ internal data class ExpenseCorrectionSheetActions(
 @Composable
 internal fun ExpenseCorrectionSheet(
     state: ExpenseFactUiState,
+    basis: com.ticketbox.domain.model.Expense,
     availability: ExpenseCorrectionAvailability,
     actions: ExpenseCorrectionSheetActions,
 ) {
     if (state.expense == null) return
-    ModalBottomSheet(onDismissRequest = actions.onDismiss) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true,
+        confirmValueChange = { target -> !state.correction.saving || target != SheetValue.Hidden })
+    ModalBottomSheet(onDismissRequest = actions.onDismiss, sheetState = sheetState) {
         ExpenseEditSheetScaffold(
             title = stringResource(R.string.expense_correction_sheet_title),
             subtitle = stringResource(R.string.expense_correction_sheet_subtitle),
@@ -94,10 +101,14 @@ internal fun ExpenseCorrectionSheet(
                         announceUpdates = true,
                     )
                 }
-                CorrectionReasonSection(state = state, actions = actions)
-                CorrectionCurrencySection(state = state, actions = actions)
-                CorrectionScalarSection(state = state, actions = actions)
-                CorrectionScoreSection(state = state, actions = actions)
+                com.ticketbox.ui.screens.expense.fact.FactInputSaveStatus(state, actions.onRetryInputSave)
+                availability.review?.let { CorrectionReviewPanel(it, state, actions.onReview, actions.onRefreshFact) }
+                val inputState = state.copy(expense = basis,
+                    correction = state.correction.copy(saving = state.correction.saving || !availability.canEditInput))
+                CorrectionReasonSection(state = inputState, actions = actions)
+                CorrectionCurrencySection(state = inputState, actions = actions)
+                CorrectionScalarSection(state = inputState, actions = actions)
+                CorrectionScoreSection(state = inputState, actions = actions)
                 CorrectionCollectionEntries(state, availability, actions)
                 AppSheetActionRow(
                     primary = AppSheetAction(
@@ -109,6 +120,8 @@ internal fun ExpenseCorrectionSheet(
                         enabled = availability.canSubmit,
                         onClick = actions.onSubmit,
                     ),
+                    secondary = AppSheetAction(text = stringResource(R.string.expense_fact_input_close),
+                        enabled = !state.correction.saving, onClick = actions.onDismiss),
                 )
             }
         }

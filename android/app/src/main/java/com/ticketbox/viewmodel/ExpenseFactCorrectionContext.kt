@@ -62,6 +62,8 @@ internal data class ExpenseCorrectionAvailability(
     val canEditItems: Boolean,
     val canEditSplits: Boolean,
     val contextError: UiText?,
+    val canEditInput: Boolean = true,
+    val review: FactCorrectionReview? = null,
 )
 
 internal fun ExpenseFactViewModel.correctionAvailability(): ExpenseCorrectionAvailability =
@@ -70,4 +72,6 @@ internal fun ExpenseFactViewModel.correctionAvailability(): ExpenseCorrectionAva
         canEditItems = canEditCorrectionItems(),
         canEditSplits = canEditCorrectionSplits(),
         contextError = correctionContextError(),
+        canEditInput = canEditFactInput("correction"),
+        review = correctionReview(),
     )

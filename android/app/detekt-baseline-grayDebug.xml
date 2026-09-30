@@ -76,7 +76,7 @@
     <ID>LongMethod:ThemeVisuals.kt:fun themeVisualsForSkin: ThemeVisuals</ID>
     <ID>TooManyFunctions:BudgetViewModel.kt:BudgetViewModel : ViewModel</ID>
     <ID>TooManyFunctions:CategoryRulesViewModel.kt:CategoryRulesViewModel : ViewModel</ID>
-    <ID>TooManyFunctions:ExpenseDao.kt:ExpenseDao : BudgetReadProtectionDao</ID>
+    <ID>TooManyFunctions:ExpenseDao.kt:ExpenseDao : BudgetReadProtectionDaoExpenseFactQueryCacheDaoExpenseFactInputDao</ID>
     <ID>TooManyFunctions:ExpenseDetailRepository.kt:ExpenseDetailRepository</ID>
     <ID>TooManyFunctions:ExpenseEditActions.kt:ExpenseEditActions : ExpenseRootReadActions</ID>
     <ID>TooManyFunctions:ExpenseEditV1Details.kt:com.ticketbox.ui.screens.expense.ExpenseEditV1Details.kt</ID>

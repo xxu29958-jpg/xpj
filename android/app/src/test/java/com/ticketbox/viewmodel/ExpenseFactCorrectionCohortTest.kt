@@ -204,6 +204,9 @@ internal class ExpenseFactCorrectionCohortTest : ExpenseFactViewModelTestBase() 
         )
         assertEquals(editedDrafts, vm.uiState.value.correction.splitDrafts)
         assertEquals(editedState, vm.uiState.value, "Obsolete success or failure must not change the current editor")
+        vm.discardFactInput("correction")
+        scope.advanceUntilIdle()
+        assertTrue(fake.originalInputs.isEmpty(), "Each independent response case starts after an explicit discard")
     }
 
     private fun ExpenseFactViewModel.assertCollectionEditorsUnavailable() {

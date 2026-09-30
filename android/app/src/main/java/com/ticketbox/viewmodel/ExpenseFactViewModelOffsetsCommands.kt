@@ -35,6 +35,7 @@ internal fun ExpenseFactViewModel.unsupportedOriginalCurrencyCode(): String? {
 fun ExpenseFactViewModel.submitOffset() {
     if (blockUnreadyFactWrite()) return
     val state = _uiState.value
+    if (!state.offsetForm.open || factInputOperationBusy()) return
     val expense = state.expense ?: return
     if (!state.offsetForm.matchesRoot(expense)) {
         _uiState.update { it.copy(offsetForm = it.offsetForm.copy(
@@ -43,13 +44,17 @@ fun ExpenseFactViewModel.submitOffset() {
     }
     val binding = state.correctionAccess?.binding ?: return
     val draft = buildOffsetDraftOrMessage() ?: return
+    val session = factInputSession ?: return
+    val inputKey = state.offsetForm.inputKey()
+    updateOffsetForm { it.copy(saving = true) }
     viewModelScope.launch {
         if (_uiState.value.correctionAccess?.binding != binding || blockUnreadyFactWrite(expense.rowVersion)) return@launch
-        updateOffsetForm { it.copy(saving = true) }
-        repository.createExpenseOffsetAllowingOffline(binding, expense, draft)
+        session.ready(inputKey).fold(onSuccess = { repository.createExpenseOffsetAllowingOffline(binding, expense, draft, it) },
+            onFailure = { Result.failure(it) })
             .onSuccess {
+                session.forget(inputKey)
                 if (_uiState.value.correctionAccess?.binding != binding) return@onSuccess
-                publishOffsetQueued()
+                publishOffsetQueued(isVoid = false)
             }
             .onFailure { error ->
                 if (_uiState.value.correctionAccess?.binding == binding) publishOffsetFailure(error, isVoid = false)
@@ -103,11 +108,11 @@ private fun ExpenseFactViewModel.rejectOffset(@StringRes resId: Int): ExpenseOff
 }
 
 /** Enqueue only acknowledges durable intent. Accepted facts arrive through the authoritative bundle reader. */
-internal fun ExpenseFactViewModel.publishOffsetQueued() {
+internal fun ExpenseFactViewModel.publishOffsetQueued(isVoid: Boolean) {
     _uiState.update {
         it.copy(
-            offsetForm = OffsetFormState(),
-            voidOffsetForm = VoidOffsetFormState(),
+            offsetForm = if (isVoid) it.offsetForm else OffsetFormState(),
+            voidOffsetForm = if (isVoid) VoidOffsetFormState() else it.voidOffsetForm,
             message = UiText.res(R.string.expense_offset_queued),
             messageTone = MessageTone.Info,
         )

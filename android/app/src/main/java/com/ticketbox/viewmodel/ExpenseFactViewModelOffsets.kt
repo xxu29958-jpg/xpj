@@ -67,6 +67,7 @@ data class VoidOffsetFormState(
  * 未调度的旧读不得拿到比 command response 更大的 generation（共同冻结）。
  */
 fun ExpenseFactViewModel.loadExpenseFactBundle() {
+    val binding = _uiState.value.correctionAccess?.binding ?: return
     val generation = ++factBundleLoadGeneration
     viewModelScope.launch {
         _uiState.update {
@@ -75,12 +76,18 @@ fun ExpenseFactViewModel.loadExpenseFactBundle() {
                 factBundleMessage = null,
             )
         }
-        repository.fetchExpenseFactBundle(expenseId)
-            .onSuccess { bundle ->
-                if (generation == factBundleLoadGeneration) adoptFactBundle(bundle)
+        repository.fetchExpenseFactBundle(expenseId, binding)
+            .onSuccess { snapshot ->
+                if (generation != factBundleLoadGeneration) return@onSuccess
+                if (snapshot.fromCache) _uiState.update {
+                    it.copy(factBundle = snapshot.value, factBundleLoadState = ExpenseDetailDataLoadState.Failed,
+                        factBundleCachedAt = snapshot.fetchedAt,
+                        factBundleMessage = UiText.res(R.string.expense_fact_offsets_stale))
+                } else adoptFactBundle(snapshot.value)
             }
             .onFailure { error ->
                 if (generation == factBundleLoadGeneration) {
+                    if (retireDeniedFactReads(error)) return@onFailure
                     _uiState.update {
                         it.copy(
                             factBundleLoadState = ExpenseDetailDataLoadState.Failed,
@@ -116,6 +123,7 @@ private fun ExpenseFactViewModel.adoptFactBundle(bundle: ExpenseFactBundle) {
                 factBundle = bundle,
                 factBundleLoadState = ExpenseDetailDataLoadState.Loaded,
                 factBundleMessage = null,
+                factBundleCachedAt = null,
             )
         }
     }
@@ -125,10 +133,17 @@ private fun ExpenseFactViewModel.adoptFactBundle(bundle: ExpenseFactBundle) {
     ) {
         loadBillSplitSent(onlyIfUnknown = true)
     }
+    if (adopted.factBundle === bundle && factInputSession == null && !adopted.factInputsReady) loadFactOriginalInputs()
 }
 
 fun ExpenseFactViewModel.openOffsetSheet(kind: StreamOffsetKind) {
+    if (blockReadOnlyWrite() || factInputUnavailable()) return
     if (blockUnreadyFactWrite()) return
+    val inputKey = if (kind.isMoneyEvent) "refund" else "reversal"
+    factInputSession?.draft(inputKey)?.let { draft ->
+        _uiState.update { it.copy(offsetForm = draft.offsetForm().copy(open = true)) }
+        return
+    }
     val expense = _uiState.value.expense ?: return
     // 与更正流同一口径（R13）：未知原币码 fail-closed，不在本端解析金额。
     val unsupported = unsupportedOriginalCurrencyCode()
@@ -143,7 +158,7 @@ fun ExpenseFactViewModel.openOffsetSheet(kind: StreamOffsetKind) {
     }
     // command 不依赖 read model（Product Owner 裁决）：bundle 缺席只意味着不预填
     // remaining，sheet 内明示「可退余额暂不可用」，登记照常可提交。
-    val summary = _uiState.value.factBundle?.financialSummary
+    val summary = _uiState.value.factBundle?.takeIf { it.matchesRoot(expense) }?.financialSummary
     val today = LocalDate.now(ZoneId.of(repository.currentTimezoneId())).toString()
     _uiState.update { state ->
         state.copy(
@@ -163,10 +178,12 @@ fun ExpenseFactViewModel.openOffsetSheet(kind: StreamOffsetKind) {
             ),
         )
     }
+    keepOffsetInput()
 }
 
 fun ExpenseFactViewModel.closeOffsetSheet() {
-    _uiState.update { it.copy(offsetForm = OffsetFormState()) }
+    if (_uiState.value.offsetForm.saving) return
+    _uiState.update { it.copy(offsetForm = it.offsetForm.copy(open = false)) }
 }
 
 /** A new reviewed draft; the old command is never rebased or silently reinterpreted. */
@@ -175,12 +192,11 @@ fun ExpenseFactViewModel.reviewOffsetDraft() {
     val state = _uiState.value
     val expense = state.expense ?: return
     val form = state.offsetForm
-    if (!form.open || form.saving || form.kind.isMoneyEvent && unsupportedOriginalCurrencyCode() != null) return
-    updateOffsetForm {
-        it.copy(sourceExpense = expense,
-            amountText = it.amountText.takeIf { form.sourceExpense?.originalCurrencyCode == expense.originalCurrencyCode }.orEmpty(),
-            amountError = null, dateError = null)
-    }
+    if (!form.open || factInputOperationBusy() || form.kind.isMoneyEvent && unsupportedOriginalCurrencyCode() != null) return
+    _uiState.update { it.copy(offsetForm = form.copy(sourceExpense = expense,
+        amountText = form.amountText.takeIf { form.sourceExpense?.originalCurrencyCode == expense.originalCurrencyCode }.orEmpty(),
+        amountError = null, dateError = null, submitError = null)) }
+    keepOffsetInput(review = true)
 }
 
 /** sheet 内分段切换：商家退款 ↔ 银行拒付（reversal 走独立入口，无分段）。 */
@@ -202,9 +218,11 @@ fun ExpenseFactViewModel.updateOffsetFormField(field: OffsetFormField, value: St
     }
 
 internal fun ExpenseFactViewModel.updateOffsetForm(transform: (OffsetFormState) -> OffsetFormState) {
+    if (!canEditFactInput(_uiState.value.offsetForm.inputKey())) return
     _uiState.update {
         it.copy(offsetForm = transform(it.offsetForm).copy(submitError = null))
     }
+    keepOffsetInput()
 }
 
 /**
@@ -215,8 +233,9 @@ fun ExpenseFactViewModel.canSubmitOffset(): Boolean {
     val state = _uiState.value
     val form = state.offsetForm
     if (state.readOnly || !state.authoritativeRootReady) return false
+    if (factInputSession?.original(form.inputKey())?.binding != state.correctionAccess?.binding) return false
     if (!form.matchesRoot(state.expense)) return false
-    if (!form.open || form.saving) return false
+    if (!form.open || factInputOperationBusy()) return false
     if (form.reason.isBlank() || form.accountingDate.isBlank()) return false
     return !form.kind.isMoneyEvent || form.amountText.isNotBlank()
 }

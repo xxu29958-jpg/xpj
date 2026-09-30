@@ -13,6 +13,7 @@ import com.ticketbox.viewmodel.loadExpenseFactBundle
 import com.ticketbox.viewmodel.loadExpenseRevisions
 import com.ticketbox.viewmodel.consumeOpenRepaymentDraftPublicId
 import com.ticketbox.viewmodel.expenseFactViewModelFactory
+import com.ticketbox.viewmodel.leaveFactPage
 
 internal data class ExpenseFactNavigation(val onOpenRepaymentDrafts: (String) -> Unit,
     val onRepairRate: com.ticketbox.ui.screens.expense.fact.CorrectionRateAction)
@@ -49,16 +50,15 @@ internal fun ExpenseFactRoute(
 
     FactRepaymentDraftOpenEffect(factState, factViewModel, related.onOpenRepaymentDrafts)
 
+    val leave = { factViewModel.leaveFactPage { onExit(factViewModel.consumeDoneAdviceInputsChanged()) } }
+    androidx.activity.compose.BackHandler { leave() }
+
     ExpenseFactScreen(
         state = factState,
         viewModel = factViewModel,
         originalContent = { OriginalAttachmentRoute(expenseId, screenFactory, factViewModel::refreshOriginalFact) },
         onRepairCorrectionRate = related.onRepairRate,
-        onBack = {
-            // 更正改变了金额/分类/时间等建议输入时，返回路径同步失效建议缓存
-            // （与编辑页 onCompleted 同一合同）。
-            onExit(factViewModel.consumeDoneAdviceInputsChanged())
-        },
+        onBack = leave,
     )
 }
 
