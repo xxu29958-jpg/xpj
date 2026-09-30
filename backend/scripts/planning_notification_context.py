@@ -73,8 +73,10 @@ def identity_changes(journey):
     native.plan_home()
     native.click("打开账户与设置")
     native.click("账本")
+    native.reveal_any("账本名称")
     native.fill(OTHER_LEDGER, label="账本名称")
-    native.click("新建账本")
+    # The section heading and its action share this label; the action is below.
+    native.click("新建账本", bottom=True)
     native.reveal_any("已新建账本")
     native.click_within(OTHER_LEDGER, "切换")
     native.reveal_any(f"已切换到「{OTHER_LEDGER}」")

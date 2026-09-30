@@ -124,11 +124,20 @@ class NotificationReminders:
         self.native.connection(self.j.port, online=False)
         digest = share_original(self.j)
         self.j.tap_notification(SERIES, expected="固定支出")
+        # A fresh active-only reminder query is not a previously read full list
+        # or occurrence. Keep the original target through its first offline read.
+        self.native.reveal_any("固定支出暂时打不开")
+        self.native.capture("notification-fixed-first-read-offline")
+        self.native.connection(self.j.port, online=True)
+        self.native.click("重试")
         self.native.reveal_any(SERIES)
         self.native.reveal_any(self.expected_date)
         self.native.capture("notification-original-fixed-occurrence")
         assert self.facts()["expected_date"] == self.expected_date, "Opening a reminder advanced the fixed-expense due date"
         assert len(self.facts()["expenses"]) == 1, "A reminder created an automatic payment"
+        self.native.connection(self.j.port, online=False)
+        self.native.back()
+        self.native.reveal_any("添加固定支出")
         self.native.back()
         self.native.reveal_any("重试上传")
         self.j.background_process_death()
