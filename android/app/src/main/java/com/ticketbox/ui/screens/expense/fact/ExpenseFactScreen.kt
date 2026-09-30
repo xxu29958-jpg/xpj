@@ -1,9 +1,16 @@
 package com.ticketbox.ui.screens.expense.fact
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
+import com.ticketbox.data.repository.PendingExpenseCorrection
 import com.ticketbox.domain.model.canCreateRepaymentDraft
 import com.ticketbox.domain.model.canInitiateBillSplit
 import com.ticketbox.ui.components.AppPageRole
@@ -85,18 +92,30 @@ fun ExpenseFactScreen(
 
 @Composable
 private fun FactCorrectionSubmissions(state: ExpenseFactUiState, viewModel: ExpenseFactViewModel, onRepairRate: CorrectionRateAction) {
-        state.corrections.forEach { pending ->
-            ExpenseCorrectionSubmissionCard(pending,
-                options = CorrectionSubmissionOptions(canModify = !state.readOnly, busy = state.correctionRecoveryBusy,
-                    refreshPending = state.expenseLoadState != ExpenseDetailDataLoadState.Loaded ||
-                        state.currentCorrectionItems == null ||
-                        state.currentCorrectionSplits == null ||
-                        state.revisionsLoadState != ExpenseDetailDataLoadState.Loaded ||
-                        state.factBundleLoadState != ExpenseDetailDataLoadState.Loaded),
-                actions = CorrectionSubmissionActions(recover = { drop -> viewModel.recoverCorrection(pending.row.id, drop) },
-                    reviewFact = viewModel::refreshCorrectionFact,
-                    repairRate = state.correctionAccess?.binding?.let { binding -> { gap -> onRepairRate(binding, gap) } }))
-        }
+    val (delivered, unresolved) = state.corrections.partition { it.delivered && !it.refreshRequired }
+    unresolved.forEach { FactCorrectionSubmission(it, state, viewModel, onRepairRate) }
+    if (delivered.isEmpty()) return
+    var expanded by rememberSaveable(state.correctionAccess?.binding) { mutableStateOf(false) }
+    TextButton(onClick = { expanded = !expanded }) {
+        Text(stringResource(if (expanded) R.string.correction_submissions_hide_delivered
+            else R.string.correction_submissions_show_delivered, delivered.size))
+    }
+    if (expanded) delivered.forEach { FactCorrectionSubmission(it, state, viewModel, onRepairRate) }
+}
+
+@Composable
+private fun FactCorrectionSubmission(pending: PendingExpenseCorrection, state: ExpenseFactUiState,
+    viewModel: ExpenseFactViewModel, onRepairRate: CorrectionRateAction) {
+    ExpenseCorrectionSubmissionCard(pending,
+        options = CorrectionSubmissionOptions(canModify = !state.readOnly, busy = state.correctionRecoveryBusy,
+            refreshPending = state.expenseLoadState != ExpenseDetailDataLoadState.Loaded ||
+                state.currentCorrectionItems == null ||
+                state.currentCorrectionSplits == null ||
+                state.revisionsLoadState != ExpenseDetailDataLoadState.Loaded ||
+                state.factBundleLoadState != ExpenseDetailDataLoadState.Loaded),
+        actions = CorrectionSubmissionActions(recover = { drop -> viewModel.recoverCorrection(pending.row.id, drop) },
+            reviewFact = viewModel::refreshCorrectionFact,
+            repairRate = state.correctionAccess?.binding?.let { binding -> { gap -> onRepairRate(binding, gap) } }))
 }
 
 /** Keep the original beside the split action; failed source reads still expose recovery. */

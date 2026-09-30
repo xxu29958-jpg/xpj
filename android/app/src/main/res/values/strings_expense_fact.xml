@@ -194,6 +194,8 @@
     <string name="expense_offset_history_correction">已更正</string>
     <string name="expense_offset_history_void">已撤销</string>
     <string name="correction_submission_title">原更正提交</string>
+    <string name="correction_submissions_show_delivered">查看已送达的更正（%1$d）</string>
+    <string name="correction_submissions_hide_delivered">收起已送达的更正（%1$d）</string>
     <string name="correction_submission_reason">原因：%1$s</string>
     <string name="correction_submission_details">查看提交内容</string>
     <string name="correction_submission_retry">重试原提交</string>
