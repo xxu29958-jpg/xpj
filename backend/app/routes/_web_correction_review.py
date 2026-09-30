@@ -4,11 +4,15 @@ from __future__ import annotations
 import json
 from uuid import uuid4
 
+from fastapi import Request
+from fastapi.responses import Response
+from sqlalchemy.orm import Session
+
 from app.routes._web_accounting_time import TIME_FIELDS
 from app.routes._web_correction_form import CorrectionFormData, correction_form_projection
 from app.routes._web_correction_page import web_correction_context
 from app.routes._web_correction_snapshot import ITEM_FIELDS, SPLIT_FIELDS, original_correction_basis, raw_string
-from app.routes.web_common import templates
+from app.routes.web_common import LedgerOption, templates
 
 
 def _row_values(rows: list[dict], fields: dict) -> list[dict]:
@@ -64,7 +68,8 @@ def _review_scalars(original: dict, basis: dict | None, current: dict, choice: s
     return result, False
 
 
-def correction_review_response(db, request, options, selected_id, expense_id, form: CorrectionFormData, submitted: dict):
+def correction_review_response(db: Session, request: Request, options: list[LedgerOption], selected_id: str,
+                               expense_id: int, form: CorrectionFormData, submitted: dict[str, str]) -> Response:
     ctx = web_correction_context(db, request, options, selected_id, expense_id, return_context=form.return_context)
     current = ctx["fact_current_basis"]
     basis = original_correction_basis(form.fact_basis, expense_id=expense_id)

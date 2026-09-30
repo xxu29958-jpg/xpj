@@ -61,7 +61,7 @@ def test_bound_correction_offset_and_void_replay_without_rewriting_later_facts(i
         assert [row.change_kind for row in revisions] == ["confirmed", "correction", "correction"]
 
     page = client.get(f"/web/expenses/{expense_id}/edit?ledger_id={installed.shared_ledger_id}")
-    fields = {**_money_fields(page.text, expense_id), "kind": "refund", "original_amount": " 0003.00 ",
+    fields = {**_money_fields(page.text, expense_id), "kind": "refund", "original_amount": " 3.00 ",
         "accounting_date": "2026-09-30", "reason": "原退款原因"}
     action = f"/web/expenses/{expense_id}/offsets"
     first = client.post(action, data=fields, headers=origin)

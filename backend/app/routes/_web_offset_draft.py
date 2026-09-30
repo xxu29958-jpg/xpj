@@ -3,14 +3,14 @@ from dataclasses import dataclass
 from uuid import uuid4
 
 from fastapi import Form, Request
-from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.models import ApiIdempotencyKey
 from app.routes._web_draft_binding import require_draft_binding, reviewed_draft_scope
-from app.schemas import ExpenseFactBundleResponse
+from app.schemas import ExpenseFactBundleResponse, ExpenseOffsetCreateRequest, ExpenseOffsetVoidRequest
 from app.services.expense_offset_lifecycle_service import claim_expense_offset_void
 from app.services.expense_offset_service import claim_expense_offset_command, expense_fact_bundle
+from app.services.idempotency import has_idempotency_key
 
 
 @dataclass(frozen=True)
@@ -34,7 +34,9 @@ def bind_offset_draft(db, request: Request, selected_id: str, metadata: OffsetDr
     return scope
 
 
-def prepare_offset_draft(db, *, selected_id, expense_id, draft, metadata, payload, actor_account_id, target_public_id=""):
+def prepare_offset_draft(db: Session, *, selected_id: str, expense_id: int, draft: dict[str, str],
+                         metadata: OffsetDraft, payload: ExpenseOffsetCreateRequest | ExpenseOffsetVoidRequest | None,
+                         actor_account_id: int, target_public_id: str = "") -> ExpenseFactBundleResponse | dict[str, object]:
     # This is the command owner's original claim, rolled back without a financial write.
     # A committed original returns its retained receipt before any new basis is prepared.
     if payload is not None:
@@ -44,8 +46,7 @@ def prepare_offset_draft(db, *, selected_id, expense_id, draft, metadata, payloa
             claim_expense_offset_command(**common))
         if isinstance(claimed, ExpenseFactBundleResponse):
             return claimed
-    elif db.scalar(select(ApiIdempotencyKey.id).where(ApiIdempotencyKey.tenant_id == selected_id,
-            ApiIdempotencyKey.idempotency_key == draft["idempotency_key"])) is not None:
+    elif has_idempotency_key(db, tenant_id=selected_id, idempotency_key=draft["idempotency_key"]):
         raise AppError("idempotency_key_reused", "这份原输入无法核实已有编号，请先核对原提交结果。", status_code=409)
     db.rollback()
     current = expense_fact_bundle(db, tenant_id=selected_id, expense_id=expense_id)

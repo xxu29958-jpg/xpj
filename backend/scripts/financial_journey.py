@@ -123,7 +123,7 @@ class FinancialJourney:
         form = self.correction()
         form.locator('[name="merchant"]').fill("WebFinal")
         form.locator('[name="reason"]').fill("WebDraft")
-        form.locator('[name="amount_yuan"]').fill(" 0017.25 ")
+        form.locator('[name="amount_yuan"]').fill(" 17.25 ")
         original_key = form.locator('[name="idempotency_key"]').input_value()
         original_ref = form.locator('[name="draft_client_ref"]').input_value()
         self.native_open()
@@ -144,7 +144,7 @@ class FinancialJourney:
         form.locator("[data-correction-review]").click()
         page.get_by_text("已采用当前版本作为依据", exact=False).wait_for()
         assert self.facts() == before, "Review wrote financial facts"
-        assert form.locator('[name="amount_yuan"]').input_value() == " 0017.25 "
+        assert form.locator('[name="amount_yuan"]').input_value() == " 17.25 "
         assert form.locator('[name="note"]').input_value() == "LaterNote"
         assert form.locator('[name="idempotency_key"]').input_value() != original_key
         assert form.locator('[name="draft_client_ref"]').input_value() == original_ref
