@@ -176,7 +176,12 @@ class FinancialJourney:
         committed = self.facts()
         self.capture(f"{family}-accepted-reply-lost")
         self.page.reload()
-        with self.page.expect_navigation(wait_until="domcontentloaded"):
+        destination = f'/web/expenses/{self.facts()["id"]}/edit'
+        return_anchor = "" if draft_family == "correction" else "fact-offsets"
+        # Restoring the draft updates browser history before the receipt navigates.
+        # Wait for the owner's accepted destination, not that same-document update.
+        with self.page.expect_navigation(wait_until="domcontentloaded", url=lambda url:
+                urlsplit(url).path == destination and urlsplit(url).fragment == return_anchor):
             form.locator(submit).click()
         self.page.unroute("**" + path, lose_first)
         assert len(sent) == 2 and sent[0] == sent[1], "Retry changed the original financial command"
