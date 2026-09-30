@@ -1,6 +1,9 @@
 package com.ticketbox.ui.navigation
 
+import com.ticketbox.initialLaunchRequests
 import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.notification.NotificationDestination
+import com.ticketbox.notification.NotificationTask
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -113,6 +116,31 @@ internal class LaunchShareHandoffTest {
         state.post(LaunchAction.OpenManualEntry)
         assertEquals(LaunchAction.OpenManualEntry, state.consume())
         assertEquals(first, state.pending)
+    }
+
+    @Test
+    fun notificationColdStartOpensTheClickedOriginalEvenWhenTheSavedQueueIsEmpty() {
+        val notification = LaunchIntentRequest.OpenNotification(
+            NotificationTask(binding(), NotificationDestination.Repayment("repayment-original")),
+        )
+        assertEquals(listOf(notification), initialLaunchRequests(emptyList(), notification))
+    }
+
+    @Test
+    fun notificationColdStartPreservesTheOriginalSharedSelectionAndDoesNotReacceptItsUri() {
+        val first = share("first", "original-image").selection.apply { freezeBinding(binding()) }
+        val restored = restoreLaunchRequest(first.savedFields()) as LaunchIntentRequest.ShareImages
+        val notification = LaunchIntentRequest.OpenNotification(
+            NotificationTask(binding(), NotificationDestination.Budget("2026-07")),
+        )
+        val pending = initialLaunchRequests(listOf(restored), notification)
+        assertEquals(listOf(notification, first), pending)
+        assertEquals(pending, initialLaunchRequests(pending, notification))
+        assertEquals(listOf(restored), remainingLaunchRequest(pending, notification))
+        assertEquals(binding(), restored.expectedBinding)
+        val parsedAgain = share("another-parse", "original-image").selection
+        assertEquals(listOf(restored), initialLaunchRequests(listOf(restored), parsedAgain))
+        assertTrue(initialLaunchRequests(emptyList(), parsedAgain).isEmpty())
     }
 
     private fun share(name: String, vararg uris: String) = LaunchAction.UploadSharedImages(

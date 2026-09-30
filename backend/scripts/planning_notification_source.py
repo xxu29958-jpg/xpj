@@ -30,7 +30,7 @@ class SystemPaymentSources:
     def post(self, source: str, sample: int):
         assert source in SOURCES
         output = self.native.adb("shell", "am", "broadcast", "-n", f"{source}/{RECEIVER}", "--ei", "sample", str(sample))
-        assert "Broadcast completed: result=0" in output, "The isolated source did not post through Android"
+        assert f"Broadcast completed: result={100 + sample}" in output, "The isolated receiver did not acknowledge its actual Android notification operation"
 
     def authorize_listener(self):
         native = self.native

@@ -16,7 +16,7 @@ public final class PaymentSampleReceiver extends BroadcastReceiver {
         NotificationManager manager = context.getSystemService(NotificationManager.class);
         if (sample == 4) {
             manager.cancelAll();
-            setResultCode(0);
+            setResultCode(100 + sample);
             return;
         }
         String body;
@@ -37,6 +37,6 @@ public final class PaymentSampleReceiver extends BroadcastReceiver {
             .setContentText(body)
             .setAutoCancel(true)
             .build());
-        setResultCode(0);
+        setResultCode(100 + sample);
     }
 }

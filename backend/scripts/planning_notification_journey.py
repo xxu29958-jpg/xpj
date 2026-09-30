@@ -62,6 +62,7 @@ class NotificationJourney:
     def tap_notification(self, amount, expected="还款采集"):
         self.native.adb("shell", "cmd", "statusbar", "expand-notifications")
         self.native.reveal_any(amount)
+        self.native.capture(f"notification-tap-{amount}")
         matches = [node for node in self.native.tree().iter("node") if amount in node.attrib.get("text", "")]
         assert len(matches) == 1, "The original system reminder must be distinguishable"
         self.native.tap(matches[0])
