@@ -931,7 +931,7 @@
 
     <!-- ADR-0049 §杠杆③ (slice 3a)：NLS 还款捕获复核箱 -->
     <string name="repayment_draft_topbar_back">返回</string>
-    <string name="repayment_draft_topbar_title">还款待确认</string>
+    <string name="repayment_draft_topbar_title">还款采集</string>
     <string name="repayment_draft_intro_body">从支付通知里捕获到的还款，先核对再对应到一笔欠款，绝不自动记账。</string>
     <string name="repayment_draft_captured_at">捕获于 %1$s</string>
     <string name="repayment_draft_confirm">对应欠款</string>

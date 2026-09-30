@@ -225,11 +225,14 @@ fun repaymentDraftInboxViewModelFactory(
     drafts: RepaymentDraftActions,
     debts: DebtActions,
     writes: com.ticketbox.data.repository.DebtWriteActions,
+    reviews: com.ticketbox.data.repository.RepaymentReviewActions,
     originalBinding: com.ticketbox.data.repository.LogicalSessionBinding? = null,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return RepaymentDraftInboxViewModel(drafts, debts, writes, originalBinding) as T
+        return RepaymentDraftInboxViewModel(drafts, debts, writes, reviews, originalBinding) as T
     }
+    override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T =
+        RepaymentDraftInboxViewModel(drafts, debts, writes, reviews, originalBinding, extras.createSavedStateHandle()) as T
 }
 
 fun createDebtGoalViewModelFactory(

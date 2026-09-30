@@ -6,7 +6,8 @@ import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.domain.model.Debt
 
 internal val DEBT_WRITE_TYPES = setOf(PendingMutationType.RecordDebtAdjustment, PendingMutationType.RecordDebtRepayment,
-    PendingMutationType.VoidDebt, PendingMutationType.VoidDebtRepayment, PendingMutationType.SetDebtKind)
+    PendingMutationType.VoidDebt, PendingMutationType.VoidDebtRepayment, PendingMutationType.SetDebtKind,
+    PendingMutationType.ConfirmRepaymentDraft)
 internal const val DEBT_VOID_ORIGINAL_REQUIRES_REVIEW = "debt_void_original_requires_review"
 internal const val DEBT_KIND_ORIGINAL_REQUIRES_REVIEW = "debt_kind_original_requires_review"
 

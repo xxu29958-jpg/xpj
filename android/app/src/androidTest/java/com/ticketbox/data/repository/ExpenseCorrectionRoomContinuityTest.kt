@@ -119,7 +119,7 @@ class ExpenseCorrectionRoomContinuityTest {
         compose.runOnIdle {
             global = outboxStatusViewModelFactory(fixture.outbox, graph.expenseRepository,
                 OutboxRecoveryRepositories(graph.debtCreationRepository, graph.recurringRepository.occurrences,
-                    graph.incomePlanRepository, graph.debtWriteRepository, graph.goalEditRepository, graph.budgetRepository, graph.recurringRepository, graph.ruleRepository)).create(OutboxStatusViewModel::class.java)
+                    graph.incomePlanRepository, graph.debtWriteRepository, graph.goalEditRepository, graph.budgetRepository, graph.recurringRepository, graph.ruleRepository, repaymentReviews = graph.repaymentReviewRepository)).create(OutboxStatusViewModel::class.java)
         }
         compose.setContent { TicketboxTheme(skin = AppSkin.Paper) {
             SyncStatusScreen(requireNotNull(global), {}, navigation = com.ticketbox.ui.screens.settings.SyncStatusNavigation({ opened = it }, {}, {}, {}, {}, {}, {}, {}, {}, onRepairCorrectionRate = { _, _ -> }))
@@ -186,7 +186,7 @@ class ExpenseCorrectionRoomContinuityTest {
         compose.runOnIdle {
             global = outboxStatusViewModelFactory(fixture.outbox, graph.expenseRepository,
                 OutboxRecoveryRepositories(graph.debtCreationRepository, graph.recurringRepository.occurrences,
-                    graph.incomePlanRepository, graph.debtWriteRepository, graph.goalEditRepository, graph.budgetRepository, graph.recurringRepository, graph.ruleRepository)).create(OutboxStatusViewModel::class.java)
+                    graph.incomePlanRepository, graph.debtWriteRepository, graph.goalEditRepository, graph.budgetRepository, graph.recurringRepository, graph.ruleRepository, repaymentReviews = graph.repaymentReviewRepository)).create(OutboxStatusViewModel::class.java)
         }
         compose.setContent { TicketboxTheme(skin = AppSkin.Paper) {
             SyncStatusScreen(requireNotNull(global), {}, navigation = com.ticketbox.ui.screens.settings.SyncStatusNavigation({}, {}, {}, {}, {}, {}, {}, {}, {}, onRepairCorrectionRate = { _, _ -> }))
@@ -239,7 +239,7 @@ class ExpenseCorrectionRoomContinuityTest {
         compose.runOnIdle {
             global = outboxStatusViewModelFactory(fixture.outbox, repository,
                 OutboxRecoveryRepositories(graph.debtCreationRepository, graph.recurringRepository.occurrences,
-                    graph.incomePlanRepository, graph.debtWriteRepository, graph.goalEditRepository, graph.budgetRepository, graph.recurringRepository, graph.ruleRepository)).create(OutboxStatusViewModel::class.java)
+                    graph.incomePlanRepository, graph.debtWriteRepository, graph.goalEditRepository, graph.budgetRepository, graph.recurringRepository, graph.ruleRepository, repaymentReviews = graph.repaymentReviewRepository)).create(OutboxStatusViewModel::class.java)
         }
         compose.setContent { TicketboxTheme(skin = AppSkin.Paper) {
             SyncStatusScreen(requireNotNull(global), {}, navigation = com.ticketbox.ui.screens.settings.SyncStatusNavigation({}, {}, {}, {}, {}, {}, {}, {}, {}, onRepairCorrectionRate = { _, _ -> }))
@@ -291,7 +291,7 @@ class ExpenseCorrectionRoomContinuityTest {
         compose.runOnIdle {
             global = outboxStatusViewModelFactory(fixture.outbox, graph.expenseRepository,
                 OutboxRecoveryRepositories(graph.debtCreationRepository, graph.recurringRepository.occurrences,
-                    graph.incomePlanRepository, graph.debtWriteRepository, graph.goalEditRepository, graph.budgetRepository, graph.recurringRepository, graph.ruleRepository)).create(OutboxStatusViewModel::class.java)
+                    graph.incomePlanRepository, graph.debtWriteRepository, graph.goalEditRepository, graph.budgetRepository, graph.recurringRepository, graph.ruleRepository, repaymentReviews = graph.repaymentReviewRepository)).create(OutboxStatusViewModel::class.java)
         }
         compose.setContent { TicketboxTheme(skin = AppSkin.Paper) {
             SyncStatusScreen(requireNotNull(global), {}, navigation = com.ticketbox.ui.screens.settings.SyncStatusNavigation({ opened = it }, {}, {}, {}, {}, {}, {}, {}, {}, onRepairCorrectionRate = { _, _ -> }))

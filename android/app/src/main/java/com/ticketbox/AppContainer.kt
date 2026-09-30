@@ -359,6 +359,10 @@ class AppContainer(context: Context) {
             com.ticketbox.data.repository.VoidDebtDispatcher(
                 outboxRequestGuard, outboxAdapters.debtVoidAdapter, outboxAdapters.debtVoidReceiptAdapter,
             ),
+            com.ticketbox.data.repository.ConfirmRepaymentDraftDispatcher(outboxRequestGuard,
+                outboxAdapters.repaymentReviewAdapter, outboxAdapters.repaymentDraftReceiptAdapter),
+            com.ticketbox.data.repository.DismissRepaymentDraftDispatcher(outboxRequestGuard,
+                outboxAdapters.repaymentDismissAdapter, outboxAdapters.repaymentDraftReceiptAdapter),
             com.ticketbox.data.repository.VoidDebtRepaymentDispatcher(
                 outboxRequestGuard, outboxAdapters.debtRepaymentVoidAdapter, outboxAdapters.debtVoidReceiptAdapter,
             ),
@@ -441,6 +445,7 @@ class AppContainer(context: Context) {
     val debtCreationRepository = repositories.debtCreationRepository
     val debtWriteRepository = repositories.debtWriteRepository
     val repaymentDraftRepository = repositories.repaymentDraftRepository
+    val repaymentReviewRepository = repositories.repaymentReviewRepository
     val reportsRepository = repositories.reportsRepository
     val goalEditRepository = repositories.goalEditRepository
     val ruleRepository = repositories.ruleRepository

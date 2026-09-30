@@ -171,7 +171,7 @@ class IncomePlanGlobalRecoveryTest {
     private fun globalFactory() = harness.screenFactory.let { factory -> outboxStatusViewModelFactory(
         factory.outboxRepository, factory.repository, OutboxRecoveryRepositories(factory.debtCreationRepository,
             factory.recurringRepository.occurrences, factory.incomePlanRepository, factory.debtWriteRepository,
-            factory.goalEditRepository, factory.budgetRepository, factory.recurringRepository, factory.ruleRepository)) }
+            factory.goalEditRepository, factory.budgetRepository, factory.recurringRepository, factory.ruleRepository, repaymentReviews = factory.repaymentReviewRepository)) }
 
     private fun routeModel(): IncomePlanViewModel = ViewModelProvider(requireNotNull(navigation.currentBackStackEntry),
         incomePlanViewModelFactory(harness.screenFactory.incomePlanRepository))[

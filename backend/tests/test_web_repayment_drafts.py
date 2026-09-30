@@ -1,19 +1,8 @@
-"""/web/repayment-drafts 还款捕获复核页 (ADR-0049 债务域 web 面 slice C3).
-
-列表 = account-scoped 隐私 (只列 viewer 自己创建的捕获) × 选定账本作用域 (每行可操作，
-确认走选定账本的可写权限与该账本候选债的 OCC 快照；跨账本捕获不进列表)。pending → 逐项
-确认表单组 (每个候选债一个表单，各带自己的 target_debt_public_id + expected_row_version
-隐藏字段——OCC 快照随目标走，无 JS 也提交不错版本；服务端建议项给徽标与主按钮层级)，
-每行每渲染一套幂等键；confirmed → 已记账 + 关联债；dismissed → 已忽略 沉降。视觉为
-新设计系统语言 (product-*)，不断言任何 main 旧视觉类。
-
-uses ``web_client`` (conftest) 绕过 /web loopback 门(同 test_web_debts);plain ``client``
-留门给 remote-403。本文件自包含 seed(经 /api 建草稿/债务 + ORM 直接 seed 成员/二账本),
-拆独立文件守 files_over_500(test_web_debts.py 已逼近 500)。
-"""
+"""Personal capture review: shared command semantics, original values and history."""
 
 from __future__ import annotations
 
+from decimal import Decimal
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -136,14 +125,17 @@ def _web_confirm(
     debt: dict,
     idempotency_key: str | None = None,
     row_version: int | str | None = None,
+    original_amount: str | None = None,
 ):
     return web_client.post(
-        f"/web/repayment-drafts/{draft['public_id']}/confirm",
+        f"/web/repayment-drafts/{draft['public_id']}/review",
         data={
             "ledger_id": "owner",
-            "target_debt_public_id": debt["public_id"],
-            "expected_row_version": str(debt["row_version"] if row_version is None else row_version),
-            "idempotency_key": idempotency_key or str(uuid4()),
+            "draft_public_id": draft["public_id"], "origin_binding": "{}", "review_action": "confirm",
+            "target_choice": f"{debt['public_id']}:{debt['row_version'] if row_version is None else row_version}",
+            "original_currency": draft["original_currency_code"],
+            "original_amount": original_amount if original_amount is not None else str(Decimal(draft["original_amount_minor"]).scaleb(-2)),
+            "idempotency_key": str(uuid4()) if idempotency_key is None else idempotency_key,
             "csrf_token": "test-client-bypasses-middleware-check",
         },
         follow_redirects=False,
@@ -152,9 +144,10 @@ def _web_confirm(
 
 def _web_dismiss(web_client: TestClient, *, draft: dict):
     return web_client.post(
-        f"/web/repayment-drafts/{draft['public_id']}/dismiss",
+        f"/web/repayment-drafts/{draft['public_id']}/review",
         data={
-            "ledger_id": "owner",
+            "ledger_id": "owner", "draft_public_id": draft["public_id"],
+            "origin_binding": "{}", "review_action": "dismiss", "idempotency_key": str(uuid4()),
             "csrf_token": "test-client-bypasses-middleware-check",
         },
         follow_redirects=False,
@@ -195,23 +188,19 @@ def test_pending_draft_renders_audit_row(web_client: TestClient, *, identity) ->
     assert "¥200.00" in html  # amount (home-currency, 20000 cents)
 
 
-def test_pending_with_matching_debt_renders_per_choice_form(web_client: TestClient, *, identity) -> None:
+def test_pending_opens_one_original_review_with_target_version(web_client: TestClient, *, identity) -> None:
     debt = _create_debt(web_client, identity.app_headers, label="花呗", principal_cents=50000)
-    _create_draft(web_client, identity.app_headers, merchant_label="花呗", amount_cents=20000)
-    html = _page(web_client)
-    # 建议保持中性 provenance (建议是建议不是事实)，建议项在表单组里拿徽标+主按钮。
-    assert "系统猜测对应:花呗" in html
-    assert "ra-badge" in html
-    # 逐项表单：OCC 快照随该候选自己的隐藏字段走 (无 JS 也提交不错版本)。
-    assert f'name="target_debt_public_id" value="{debt["public_id"]}"' in html
-    assert f'name="expected_row_version" value="{debt["row_version"]}"' in html
-    assert "花呗 · 剩余 ¥500.00" in html
-    assert 'name="idempotency_key"' in html  # 每行每渲染一套幂等键
-    assert 'name="csrf_token"' in html
-    assert "确认" in html
-    assert ">忽略</button>" in html
-    # 审计表头 (新设计系统的四列网格)。
-    assert "repayment-audit-head" in html
+    draft = _create_draft(web_client, identity.app_headers, merchant_label="花呗", amount_cents=20000)
+    listing = _page(web_client)
+    assert f'/web/repayment-drafts/{draft["public_id"]}?ledger_id=owner' in listing
+    assert 'name="idempotency_key"' not in listing
+    detail = web_client.get(f"/web/repayment-drafts/{draft['public_id']}?ledger_id=owner")
+    assert detail.status_code == 200
+    assert "系统猜测对应:花呗" in detail.text
+    assert f'value="{debt["public_id"]}:{debt["row_version"]}" selected' in detail.text
+    assert "花呗 · 剩余 ¥500.00" in detail.text
+    assert 'name="original_amount"' in detail.text
+    assert 'data-repayment-kind="repayment-review"' in detail.text
 
 
 def test_pending_without_match_shows_no_provenance(web_client: TestClient, *, identity) -> None:
@@ -222,17 +211,18 @@ def test_pending_without_match_shows_no_provenance(web_client: TestClient, *, id
     assert "系统猜测对应" not in html
 
 
-def test_pending_picker_excludes_a_debt_that_cannot_cover_the_draft(web_client: TestClient, *, identity) -> None:
-    # Feasibility: a Debt whose folded remaining can't cover the draft amount is not a
-    # target (would only fail as overpayment at confirm time).
-    _create_debt(web_client, identity.app_headers, label="额度不足的欠款", principal_cents=5000)
-    _create_draft(web_client, identity.app_headers, merchant_label="额度不足的欠款", amount_cents=10000)
-    html = _page(web_client)
-    assert "额度不足的欠款 · 剩余" not in html
-    # 诚实空目标态：不给死表单，给去建欠款的真实行动 + 保留忽略出口。
-    assert "当前账本没有可对应的欠款" in html
-    assert 'href="/web/debts?ledger_id=owner"' in html
-    assert ">忽略</button>" in html
+def test_review_can_correct_captured_money_before_remaining_check(web_client: TestClient, *, identity) -> None:
+    debt = _create_debt(web_client, identity.app_headers, label="可还 90 元的欠款", principal_cents=9000)
+    draft = _create_draft(web_client, identity.app_headers, merchant_label="原采集 100 元", amount_cents=10000)
+    detail = web_client.get(f"/web/repayment-drafts/{draft['public_id']}?ledger_id=owner")
+    assert "可还 90 元的欠款 · 剩余 ¥90.00" in detail.text
+    response = _web_confirm(web_client, draft=draft, debt=debt, original_amount="80.00")
+    assert response.status_code == 200, response.text
+    current = web_client.get(f"/api/debts/{debt['public_id']}", headers=identity.app_headers).json()
+    assert current["remaining_amount_cents"] == 1000
+    resolved = _drafts_via_api(web_client, identity.app_headers, "confirmed")[0]
+    assert resolved["original_amount_minor"] == 10000
+    assert f'/web/debts/{debt["public_id"]}?ledger_id=owner' in response.text
 
 
 # ── confirm: idempotent + OCC ────────────────────────────────────────────────
@@ -244,8 +234,8 @@ def test_confirm_is_occ_backed_and_idempotent(web_client: TestClient, *, identit
     first = _web_confirm(web_client, draft=draft, debt=debt, idempotency_key=key)
     replay = _web_confirm(web_client, draft=draft, debt=debt, idempotency_key=key)
 
-    assert first.status_code == 303
-    assert replay.status_code == 303  # 重放返回 canonical 结果，不再记第二笔
+    assert first.status_code == 200
+    assert replay.status_code == 200  # 重放返回 canonical 结果，不再记第二笔
     confirmed = _drafts_via_api(web_client, identity.app_headers, "confirmed")
     assert [item["public_id"] for item in confirmed] == [draft["public_id"]]
     current = web_client.get(f"/api/debts/{debt['public_id']}", headers=identity.app_headers)
@@ -253,7 +243,7 @@ def test_confirm_is_occ_backed_and_idempotent(web_client: TestClient, *, identit
     assert current.json()["remaining_amount_cents"] == 40000
 
 
-def test_confirm_malformed_token_rerenders_422_anchored_and_marks_attempted(
+def test_confirm_malformed_token_retains_the_original_key_and_choice(
     web_client: TestClient, *, identity
 ) -> None:
     debt = _create_debt(web_client, identity.app_headers, label="花呗-可选欠款", principal_cents=50000)
@@ -263,10 +253,10 @@ def test_confirm_malformed_token_rerenders_422_anchored_and_marks_attempted(
     response = _web_confirm(web_client, draft=draft, debt=debt, row_version="stale-token", idempotency_key=key)
 
     assert response.status_code == 422
-    assert "欠款信息已经失效，请刷新后重新选择。" in response.text
+    assert "请选择欠款并核对它的当前版本。" in response.text
     assert "花呗-保留行" in response.text  # 原地重渲染：捕获行还在
     assert 'role="alert"' in response.text  # 错误锚定到该 row (aria)
-    assert "（刚才选择）" in response.text  # 尝试过的选项被回填标记，不靠用户猜
+    assert f'value="{debt["public_id"]}:stale-token" selected' in response.text
     assert 'name="idempotency_key"' in response.text  # 表单立即可重试
     assert f'value="{key}"' in response.text  # 业务校验失败保留已提交键：重试仍命中同一 claim
     assert [item["public_id"] for item in _drafts_via_api(web_client, identity.app_headers, "pending")] == [
@@ -274,7 +264,7 @@ def test_confirm_malformed_token_rerenders_422_anchored_and_marks_attempted(
     ]
 
 
-def test_confirm_stale_row_version_redirects_with_error_and_stays_pending(
+def test_confirm_stale_row_version_retains_original_and_stays_pending(
     web_client: TestClient, *, identity
 ) -> None:
     # Well-formed but OUTDATED OCC snapshot: another repayment bumps the Debt's
@@ -288,8 +278,9 @@ def test_confirm_stale_row_version_redirects_with_error_and_stays_pending(
 
     response = _web_confirm(web_client, draft=draft, debt=debt, row_version=stale_version)
 
-    assert response.status_code == 303
-    assert "form_error=" in response.headers["location"]
+    assert response.status_code == 409
+    assert f'value="{debt["public_id"]}:{stale_version}" selected' in response.text
+    assert 'data-void-rejected="true"' in response.text
     assert [item["public_id"] for item in _drafts_via_api(web_client, identity.app_headers, "pending")] == [
         draft["public_id"]
     ]
@@ -300,17 +291,7 @@ def test_confirm_stale_row_version_redirects_with_error_and_stays_pending(
 def test_confirm_without_idempotency_key_rerenders_422(web_client: TestClient, *, identity) -> None:
     debt = _create_debt(web_client, identity.app_headers, principal_cents=50000)
     draft = _create_draft(web_client, identity.app_headers, merchant_label="缺键", amount_cents=10000)
-    resp = web_client.post(
-        f"/web/repayment-drafts/{draft['public_id']}/confirm",
-        data={
-            "ledger_id": "owner",
-            "target_debt_public_id": debt["public_id"],
-            "expected_row_version": str(debt["row_version"]),
-            "idempotency_key": "",
-            "csrf_token": "test-client-bypasses-middleware-check",
-        },
-        follow_redirects=False,
-    )
+    resp = _web_confirm(web_client, draft=draft, debt=debt, idempotency_key="")
     assert resp.status_code == 422
     assert "页面凭据缺失，请刷新后重新提交。" in resp.text
     assert [item["public_id"] for item in _drafts_via_api(web_client, identity.app_headers, "pending")] == [
@@ -325,8 +306,7 @@ def test_confirm_cannot_resolve_another_accounts_capture(web_client: TestClient,
 
     response = _web_confirm(web_client, draft=member_draft, debt=owner_debt)
 
-    assert response.status_code == 303
-    assert "form_error=" in response.headers["location"]
+    assert response.status_code == 404
     assert [item["public_id"] for item in _drafts_via_api(web_client, member, "pending")] == [
         member_draft["public_id"]
     ]
@@ -340,8 +320,7 @@ def test_selected_ledger_action_cannot_resolve_another_ledgers_draft(
 
     response = _web_confirm(web_client, draft=other_draft, debt=owner_debt)
 
-    assert response.status_code == 303
-    assert "form_error=" in response.headers["location"]
+    assert response.status_code == 404
     assert [item["public_id"] for item in _drafts_via_api(web_client, identity.gray_app_headers, "pending")] == [
         other_draft["public_id"]
     ]
@@ -369,7 +348,7 @@ def test_viewer_never_sees_the_action_form(web_client: TestClient, *, identity, 
     assert "只读角色可以查看还款捕获" in html
     assert "等待有写权限的成员处理" in html
     assert 'name="target_debt_public_id"' not in html
-    assert "确认" not in html.split("等待有写权限的成员处理")[0].split("repayment-audit-row")[-1]
+    assert "核对并处理" not in html
 
 
 # ── dismiss: replay-safe terminal flip ───────────────────────────────────────
@@ -380,8 +359,8 @@ def test_dismiss_is_repeat_safe_and_stays_in_audit_history(web_client: TestClien
     replay = _web_dismiss(web_client, draft=draft)
     html = _page(web_client)
 
-    assert first.status_code == 303
-    assert replay.status_code == 303  # 终态翻转幂等：重复忽略不报错
+    assert first.status_code == 200
+    assert replay.status_code == 200  # 终态翻转幂等：重复忽略不报错
     assert "白条-忽略" in html
     assert "已忽略" in html
     assert "is-receded" in html

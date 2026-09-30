@@ -39,6 +39,7 @@ internal fun DebtWriteIntentSummary(pending: PendingDebtWrite) {
     }
     pending.adjustment?.let { Text(it.request.reason) }
     pending.repayment?.let { Text(stringResource(R.string.debt_repayment_original_date, displayDateTime(it.request.paidAt))) }
+    RepaymentReviewIntentSummary(intent)
     pending.debtVoid?.let { Text(stringResource(R.string.debt_action_void_title)); Text(it.request.reason) }
     pending.kind?.let { Text(stringResource(R.string.debt_kind_pending_value, stringResource(debtKindLabelRes(it.request.debtKind)))) }
     pending.repaymentVoid?.let {
@@ -49,6 +50,13 @@ internal fun DebtWriteIntentSummary(pending: PendingDebtWrite) {
     if (pending.reductionRejected) Text(stringResource(R.string.debt_adjustment_reduction_rejected))
     if (pending.requiresReview) Text(stringResource(if (pending.legacyKindAccepted) R.string.debt_kind_original_requires_review
         else R.string.debt_void_original_requires_review))
+}
+
+@Composable
+private fun RepaymentReviewIntentSummary(intent: com.ticketbox.data.repository.DebtWriteIntent) {
+    val review = intent as? com.ticketbox.data.repository.RepaymentReviewPayload ?: return
+    Text(stringResource(R.string.repayment_review_confirm))
+    Text("${review.reviewedCurrency} ${review.reviewedAmount}")
 }
 
 @Composable

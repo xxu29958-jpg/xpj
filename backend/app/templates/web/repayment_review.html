@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% set product_body_domain = 'obligations' %}
+{% block title %}核对还款采集 · 小票夹{% endblock %}
+{% block page_scripts %}
+<script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/repayment-entry.js?v={{ asset_version }}"></script>
+{% endblock %}
+{% block content %}
+<header class="product-page-header">
+  <div class="product-page-heading">
+    <a class="product-eyebrow" href="/web/repayment-drafts?ledger_id={{ selected_ledger_id }}">往来 / 还款采集</a>
+    <h1 class="page-title page-title--compact">核对这笔还款</h1>
+    <p class="product-page-summary">核对金额和对应欠款后再记账。采集原文金额与本次填写分别保留。</p>
+  </div>
+</header>
+{% if read_error %}<p class="product-feedback" role="status">{{ read_error }}</p>{% endif %}
+{% if row %}
+<section class="product-panel product-panel--padded" aria-label="原采集与处理记录">
+  <span class="product-eyebrow">{{ row.source_label }} · {{ row.captured_label }}</span>
+  <h2>{{ row.merchant or '还款通知' }}</h2>
+  <p>采集金额 <strong>{{ row.amount_label }}</strong> · {{ row.status_label }}</p>
+  {% if row.conversion_pending %}<p class="hint">原币金额尚未换算；确认时按采集日期换算为 {{ row.home_currency_code }}。</p>{% endif %}
+  {% if row.provenance %}<p class="hint">{{ row.provenance }}。请核对后选择。</p>{% endif %}
+  {% if row.resolved_label %}<p>处理日期：{{ row.resolved_label }}</p>{% endif %}
+  {% if row.committed_debt_public_id %}<a href="/web/debts/{{ row.committed_debt_public_id }}?ledger_id={{ selected_ledger_id }}">{{ row.linked_line }} · 查看还款事实</a>{% endif %}
+</section>
+{% endif %}
+{% if not can_write %}<p class="product-feedback">当前角色只可查看；原输入保留，处理需要写权限。</p>{% endif %}
+<div data-repayment-container>
+  {% if review.ack %}<p class="product-feedback" role="status" data-repayment-ack="{{ review.ack | tojson | forceescape }}">{{ '原确认已接受，已记入一笔还款。' if review.ack.status == 'confirmed' else '原忽略已完成，没有新增还款。' }}<span data-repayment-ack-status></span></p>{% endif %}
+  <section class="product-panel product-panel--padded" data-repayment-panel{% if not review.visible %} hidden{% endif %}>
+    <h2>本次处理</h2>
+    <form class="debt-action-form" method="post" action="/web/repayment-drafts/{{ review.public_id }}/review" novalidate
+          data-repayment-kind="repayment-review" data-repayment-scope="{{ review.scope | tojson | forceescape }}"
+          data-repayment-target="{{ review.public_id }}" data-repayment-result="{{ review.result }}"
+          data-void-rejected="{{ 'true' if review.rejected else 'false' }}"
+          data-repayment-can-create="{{ 'true' if review.can_create else 'false' }}"
+          data-repayment-can-recover="{{ 'true' if review.can_recover else 'false' }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      {% for name in ['draft_public_id', 'ledger_id', 'origin_binding', 'idempotency_key'] %}<input type="hidden" name="{{ name }}" value="{{ review['values'][name] }}">{% endfor %}
+      {% if review.error %}<p class="product-feedback product-feedback--danger" role="alert">{{ review.error }}</p>{% endif %}
+      <label for="review-action">处理方式</label>
+      <select class="product-input" name="review_action" id="review-action">
+        {% for value, label in [('confirm', '记为还款'), ('dismiss', '忽略这条通知，不记账')] %}<option value="{{ value }}"{% if review['values']['review_action'] == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+      <label for="review-currency">本次还款币种</label>
+      <select class="product-input" name="original_currency" id="review-currency">
+        {% for code in currencies %}<option value="{{ code }}"{% if review['values']['original_currency'] == code %} selected{% endif %}>{{ code }}</option>{% endfor %}
+        {% if review['values']['original_currency'] not in currencies %}<option value="{{ review['values']['original_currency'] }}" selected>原币种：{{ review['values']['original_currency'] }}</option>{% endif %}
+      </select>
+      <label for="review-amount">本次还款金额</label>
+      <input class="product-input" id="review-amount" name="original_amount" inputmode="decimal" value="{{ review['values']['original_amount'] }}" autocomplete="off">
+      <label for="review-target">对应欠款</label>
+      <select class="product-input" name="target_choice" id="review-target">
+        <option value="">请选择欠款</option>
+        {% set selected = namespace(found=not review['values']['target_choice']) %}
+        {% for target in (row.targets if row and row.is_pending else []) %}
+        {% set choice = target.public_id ~ ':' ~ target.row_version %}
+        {% if choice == review['values']['target_choice'] %}{% set selected.found = true %}{% endif %}
+        <option value="{{ choice }}"{% if choice == review['values']['target_choice'] %} selected{% endif %}>{{ target.name }} · 剩余 {{ target.remaining_label }}{{ ' · 建议' if target.is_suggested else '' }}</option>
+        {% endfor %}
+        {% if not selected.found %}<option value="{{ review['values']['target_choice'] }}" selected>原选择（版本已变化，需核对）</option>{% endif %}
+      </select>
+      <p class="hint">忽略通知时无需选择欠款。输入保存在此浏览器，提交后会沿用同一份金额、选择和版本核实结果。</p>
+      {% if row and row.is_pending and not row.targets %}<p>当前账本没有可对应的欠款。<a href="/web/debts?ledger_id={{ selected_ledger_id }}">去「欠款」建一笔</a>，或忽略这条通知。</p>{% endif %}
+      <p data-repayment-status role="status" hidden></p>
+      <button class="product-button product-button--primary" type="submit" data-repayment-submit{% if not review.can_recover or review.rejected %} disabled{% endif %}>{{ '核实原处理' if review.result else '确认处理' }}</button>
+      <div data-void-rejection-review{% if not review.rejected %} hidden{% endif %}>
+        <p>这次处理没有接受。先核对当前记录，再结束这份原提交并重新填写。</p>
+        <button class="product-button product-button--quiet" type="button" data-void-finish-rejected>已核对，结束这次未接受的处理</button>
+        <a href="/web/repayment-drafts/{{ review.public_id }}?ledger_id={{ selected_ledger_id }}">读取当前记录并重新核对</a>
+      </div>
+    </form>
+  </section>
+  <section class="product-panel product-panel--padded" data-repayment-shelf hidden><h2>此浏览器保留的原处理</h2><ul data-repayment-list></ul></section>
+</div>
+{% endblock %}

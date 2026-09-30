@@ -50,7 +50,7 @@ class OutboxStatusViewModelTest {
         harness.outbox.markConflict(id, "state_conflict")
         val original = harness.outbox.observeStatus().first().conflicts.single()
         val vm = outboxStatusViewModelFactory(harness.outbox, harness.expenseRepository,
-            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtWrites, harness.goalEdits, harness.budgetSaves, harness.recurringItems, harness.rules))
+            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtWrites, harness.goalEdits, harness.budgetSaves, harness.recurringItems, harness.rules, repaymentReviews = com.ticketbox.data.repository.unusedRepaymentReviews()))
             .create(OutboxStatusViewModel::class.java)
         try {
             runCurrent()
@@ -73,7 +73,7 @@ class OutboxStatusViewModelTest {
         harness.outbox.markConflict(rowId, "state conflict")
         val row = harness.outbox.observeStatus().first { it.conflicts.isNotEmpty() }.conflicts.single()
         val vm = OutboxStatusViewModel(harness.outbox, harness.expenseRepository,
-            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtWrites, harness.goalEdits, harness.budgetSaves, harness.recurringItems, harness.rules))
+            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtWrites, harness.goalEdits, harness.budgetSaves, harness.recurringItems, harness.rules, repaymentReviews = com.ticketbox.data.repository.unusedRepaymentReviews()))
         runCurrent()
 
         vm.keepMine(row)
@@ -97,7 +97,7 @@ class OutboxStatusViewModelTest {
         harness.outbox.markFailed(id, "unsupported original intent")
         val row = harness.outbox.observeStatus().first().failed.single()
         val vm = outboxStatusViewModelFactory(harness.outbox, harness.expenseRepository,
-            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtWrites, harness.goalEdits, harness.budgetSaves, harness.recurringItems, harness.rules))
+            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtWrites, harness.goalEdits, harness.budgetSaves, harness.recurringItems, harness.rules, repaymentReviews = com.ticketbox.data.repository.unusedRepaymentReviews()))
             .create(OutboxStatusViewModel::class.java)
         vm.uiState.first { it.bindingReady && it.incomeSubmissions.containsKey(id) }
         vm.retry(row)
@@ -123,7 +123,7 @@ class OutboxStatusViewModelTest {
             harness.outbox.markFailed(id, if (supported) "debt_adjustment_negative_remaining" else "unsupported original intent")
             val original = harness.outbox.observeStatus().first().failed.single()
             val vm = outboxStatusViewModelFactory(harness.outbox, harness.expenseRepository,
-                OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtWrites, harness.goalEdits, harness.budgetSaves, harness.recurringItems, harness.rules))
+                OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtWrites, harness.goalEdits, harness.budgetSaves, harness.recurringItems, harness.rules, repaymentReviews = com.ticketbox.data.repository.unusedRepaymentReviews()))
                 .create(OutboxStatusViewModel::class.java)
             runCurrent()
             val described = assertNotNull(vm.uiState.value.debtWrites[id])
@@ -172,7 +172,7 @@ class OutboxStatusViewModelTest {
 
         // Open the global entry after persistence; no canonical Debt read or retry is needed.
         val vm = outboxStatusViewModelFactory(harness.outbox, harness.expenseRepository,
-            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtWrites, harness.goalEdits, harness.budgetSaves, harness.recurringItems, harness.rules))
+            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtWrites, harness.goalEdits, harness.budgetSaves, harness.recurringItems, harness.rules, repaymentReviews = com.ticketbox.data.repository.unusedRepaymentReviews()))
             .create(OutboxStatusViewModel::class.java)
         runCurrent()
 
@@ -218,7 +218,7 @@ class OutboxStatusViewModelTest {
         harness.outbox.markFailed(id, "upload_intent_unsupported")
         val original = harness.outbox.observeStatus().first().failed.single()
         val vm = OutboxStatusViewModel(harness.outbox, harness.expenseRepository,
-            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtWrites, harness.goalEdits, harness.budgetSaves, harness.recurringItems, harness.rules))
+            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtWrites, harness.goalEdits, harness.budgetSaves, harness.recurringItems, harness.rules, repaymentReviews = com.ticketbox.data.repository.unusedRepaymentReviews()))
         runCurrent()
 
         vm.retry(original)
@@ -245,7 +245,7 @@ class OutboxStatusViewModelTest {
         harness.outbox.markFailed(id, "目标参数已失效")
         val original = harness.outbox.observeStatus().first().failed.single()
         val vm = outboxStatusViewModelFactory(harness.outbox, harness.expenseRepository,
-            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtWrites, harness.goalEdits, harness.budgetSaves, harness.recurringItems, harness.rules))
+            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtWrites, harness.goalEdits, harness.budgetSaves, harness.recurringItems, harness.rules, repaymentReviews = com.ticketbox.data.repository.unusedRepaymentReviews()))
             .create(OutboxStatusViewModel::class.java)
         try {
             runCurrent()
@@ -275,7 +275,7 @@ class OutboxStatusViewModelTest {
         val original = harness.outbox.observeStatus().first().failed.single()
         val vm = outboxStatusViewModelFactory(harness.outbox, harness.expenseRepository,
             OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtWrites,
-                harness.goalEdits, harness.budgetSaves, harness.recurringItems, harness.rules)).create(OutboxStatusViewModel::class.java)
+                harness.goalEdits, harness.budgetSaves, harness.recurringItems, harness.rules, repaymentReviews = com.ticketbox.data.repository.unusedRepaymentReviews())).create(OutboxStatusViewModel::class.java)
         try {
             runCurrent()
             assertEquals("JPY", vm.uiState.value.goalCreations[id]?.request?.homeCurrencyCode)
@@ -313,7 +313,7 @@ class OutboxStatusViewModelTest {
         val original = harness.outbox.observeStatus().first().failed.single()
         val vm = outboxStatusViewModelFactory(harness.outbox, harness.expenseRepository,
             OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtWrites,
-                harness.goalEdits, harness.budgetSaves, harness.recurringItems, harness.rules)).create(OutboxStatusViewModel::class.java)
+                harness.goalEdits, harness.budgetSaves, harness.recurringItems, harness.rules, repaymentReviews = com.ticketbox.data.repository.unusedRepaymentReviews())).create(OutboxStatusViewModel::class.java)
         try {
             val ready = vm.uiState.first { it.recurringItems.containsKey(id) }
             assertTrue(ready.offersRetry(original))
@@ -342,7 +342,7 @@ class OutboxStatusViewModelTest {
         harness.outbox.markFailed(id, "budget_save_unverified")
         val original = harness.outbox.observeStatus().first().failed.single()
         val vm = outboxStatusViewModelFactory(harness.outbox, harness.expenseRepository,
-            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtWrites, harness.goalEdits, harness.budgetSaves, harness.recurringItems, harness.rules))
+            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtWrites, harness.goalEdits, harness.budgetSaves, harness.recurringItems, harness.rules, repaymentReviews = com.ticketbox.data.repository.unusedRepaymentReviews()))
             .create(OutboxStatusViewModel::class.java)
         try {
             runCurrent()

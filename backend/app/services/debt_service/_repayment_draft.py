@@ -324,6 +324,8 @@ class RepaymentDraftAuditRow:
     target_debts: tuple[RepaymentMatchCandidate, ...] = ()
     original_currency_code: str | None = None
     original_amount_minor: int | None = None
+    committed_debt_public_id: str | None = None
+    resolved_at: datetime | None = None
 
 
 def _debt_counterparty_labels(db: Session, public_ids: set[str]) -> dict[str, str | None]:
@@ -339,7 +341,7 @@ def _debt_counterparty_labels(db: Session, public_ids: set[str]) -> dict[str, st
 
 
 def list_repayment_draft_audit_for_account(
-    db: Session, *, account_id: int, tenant_id: str | None = None
+    db: Session, *, account_id: int, tenant_id: str | None = None, public_id: str | None = None
 ) -> list[RepaymentDraftAuditRow]:
     """Build the account-scoped repayment review and audit rows for Web.
 
@@ -352,6 +354,8 @@ def list_repayment_draft_audit_for_account(
     statement = select(RepaymentDraft).where(RepaymentDraft.created_by_account_id == account_id)
     if tenant_id is not None:
         statement = statement.where(RepaymentDraft.tenant_id == tenant_id)
+    if public_id is not None:
+        statement = statement.where(RepaymentDraft.public_id == public_id)
     drafts = list(
         db.scalars(
             statement.order_by(
@@ -405,8 +409,10 @@ def _repayment_audit_row(draft: RepaymentDraft, suggested_id: str | None, labels
         has_suggestion=suggested_id is not None,
         suggested_debt_label=labels.get(suggested_id) if suggested_id else None,
         public_id=draft.public_id,
+        committed_debt_public_id=committed_id,
+        resolved_at=draft.resolved_at,
         suggested_debt_public_id=suggested_id,
-        target_debts=tuple(candidate for candidate in candidates
-            if draft.amount_cents is None or candidate.remaining_amount_cents >= draft.amount_cents)
-            if draft.status == "pending" else (),
+        # Review can correct the captured amount. Suggestions remain amount-aware;
+        # the shared confirmation command checks the reviewed amount against remaining.
+        target_debts=tuple(candidates) if draft.status == "pending" else (),
     )

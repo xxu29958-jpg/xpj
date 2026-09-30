@@ -530,6 +530,8 @@ internal val syncStatusMutationLabelResources = mapOf(
     PendingMutationType.RecordDebtAdjustment to R.string.debt_action_adjustment_title,
     PendingMutationType.SplitAgreement to R.string.split_agreement_submission,
     PendingMutationType.RecordDebtRepayment to R.string.debt_action_repayment_title,
+    PendingMutationType.ConfirmRepaymentDraft to R.string.repayment_review_confirm,
+    PendingMutationType.DismissRepaymentDraft to R.string.repayment_review_dismiss_command,
     PendingMutationType.VoidDebt to R.string.debt_action_void_title,
     PendingMutationType.VoidDebtRepayment to R.string.debt_action_repayment_void_title,
     PendingMutationType.SetDebtKind to R.string.debt_kind_sheet_title,

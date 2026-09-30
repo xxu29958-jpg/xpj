@@ -180,6 +180,7 @@ class MainActivity : FragmentActivity() {
         debtCreationRepository = debtCreationRepository,
         debtWriteRepository = debtWriteRepository,
         repaymentDraftRepository = repaymentDraftRepository,
+        repaymentReviewRepository = repaymentReviewRepository,
         outboxRepository = outboxRepository,
         tagRepository = tagRepository,
         categoryPreferenceRepository = categoryPreferenceRepository,

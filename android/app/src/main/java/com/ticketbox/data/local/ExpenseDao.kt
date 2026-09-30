@@ -87,7 +87,7 @@ interface ExpenseDao : BudgetReadProtectionDao {
     )
 
     @Query("DELETE FROM stats_projection_cache WHERE bindingKey = :bindingKey " +
-        "AND kind IN ('debt_list', 'debt_detail', 'debt_activity', 'debt_agreement')")
+        "AND kind IN ('debt_list', 'debt_detail', 'debt_activity', 'debt_agreement', 'repayment_draft_list')")
     suspend fun clearDebtSnapshots(bindingKey: String)
 
     @Transaction

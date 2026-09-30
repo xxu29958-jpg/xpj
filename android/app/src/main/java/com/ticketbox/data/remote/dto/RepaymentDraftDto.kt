@@ -1,6 +1,7 @@
 package com.ticketbox.data.remote.dto
 
 import com.squareup.moshi.Json
+import com.squareup.moshi.JsonClass
 
 /**
  * ADR-0049 §杠杆③ (slice 3a) — Android contract for the NLS repayment-capture inbox.
@@ -10,6 +11,7 @@ import com.squareup.moshi.Json
  * Originals remain captured input; unknown converted home money is null. Status and committed
  * identities come from the server. Human review can submit distinct money without rewriting capture.
  */
+@JsonClass(generateAdapter = true)
 data class RepaymentDraftDto(
     @param:Json(name = "public_id")
     val publicId: String,
@@ -89,6 +91,7 @@ data class ExpenseRepaymentDraftCreateRequestDto(
 )
 
 /** Body for `POST /api/repayment-drafts/{id}/confirm`. */
+@JsonClass(generateAdapter = true)
 data class RepaymentDraftConfirmRequestDto(
     @param:Json(name = "target_debt_public_id")
     val targetDebtPublicId: String,

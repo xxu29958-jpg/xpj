@@ -6,6 +6,7 @@
   const voidNames = ["debt_public_id", "ledger_id", "origin_binding", "expected_row_version", "reason", "repayment_public_id"];
   const kindNames = ["debt_public_id", "ledger_id", "origin_binding", "expected_row_version", "debt_kind"];
   const fieldNames = {repayment:repaymentNames, "debt-void":voidNames, "repayment-void":voidNames,
+    "repayment-review":["draft_public_id", "ledger_id", "origin_binding", "review_action", "target_choice", "original_currency", "original_amount"],
     "debt-kind":kindNames, "split-change":["debt_public_id", "ledger_id", "origin_binding", "home_currency_code", "command",
       "proposal_public_id", "expected_row_version", "expected_return_row_version", "new_share_amount_major",
       "settlement_net_amount_major", "reason", "supersedes_proposal_public_id"]};
@@ -15,7 +16,9 @@
   const voidCommand = ["debt-void", "repayment-void"].includes(form.dataset.repaymentKind);
   const splitChange = form.dataset.repaymentKind === "split-change";
   const kindCorrection = form.dataset.repaymentKind === "debt-kind";
-  const typedCorrection = voidCommand || kindCorrection;
+  const captureReview = form.dataset.repaymentKind === "repayment-review";
+  const targetField = captureReview ? "draft_public_id" : "debt_public_id";
+  const typedCorrection = voidCommand || kindCorrection || captureReview;
   const namespace = Object.hasOwn(fieldNames, form.dataset.repaymentKind) ? form.dataset.repaymentKind : "repayment";
   const names = fieldNames[namespace];
   const kindLabels = {one_off:"一次结清", revolving:"循环往来", installment:"分期偿还", unspecified:"暂不指定"};
@@ -39,13 +42,12 @@
   const controls = names.map(name => form.elements.namedItem(name));
   const refInput = form.elements.namedItem("idempotency_key");
   const nativeRef = refInput.value, target = form.dataset.repaymentTarget;
-  const kindOriginalInput = kindCorrection ? document.createElement("input") : null;
-  if (kindOriginalInput) {
-    kindOriginalInput.type = "hidden";
-    kindOriginalInput.name = "debt_kind";
-    kindOriginalInput.disabled = true;
-    form.appendChild(kindOriginalInput);
-  }
+  const selectOriginals = new Map(controls.filter(control => control.tagName === "SELECT").map(control => {
+    const original = document.createElement("input");
+    original.type = "hidden"; original.name = control.name; original.disabled = true;
+    form.appendChild(original);
+    return [control, original];
+  }));
   const nativeValues = values(), canCreate = form.dataset.repaymentCanCreate === "true";
   const canRecover = form.dataset.repaymentCanRecover === "true";
   let allowedCommand = canCreate ? nativeValues : null;
@@ -63,26 +65,35 @@
     return names.every(name => typeof left[name] === "string" && left[name] === right[name]);
   }
   function bound(saved) {
-    return saved.debt_public_id === target && saved.ledger_id === scope.ledgerId &&
+    return saved[targetField] === target && saved.ledger_id === scope.ledgerId &&
       drafts.matches(JSON.parse(saved.origin_binding), scope);
   }
   function notice(message, state) {
     status.hidden = false;
-    status.textContent = kindCorrection ? message.replaceAll("还款", "偿还方式更正").replaceAll("金额、日期", "选择、版本") : voidCommand ? message.replaceAll("还款", "作废提交").replaceAll("金额、日期", "对象、原因") : splitChange ? message.replaceAll("还款", "约定操作") : message;
+    status.textContent = captureReview ? message.replaceAll("还款", "采集处理").replaceAll("欠款", "原采集") : kindCorrection ? message.replaceAll("还款", "偿还方式更正").replaceAll("金额、日期", "选择、版本") : voidCommand ? message.replaceAll("还款", "作废提交").replaceAll("金额、日期", "对象、原因") : splitChange ? message.replaceAll("还款", "约定操作") : message;
     form.dataset.repaymentState = state;
   }
   function lockInputs(locked) {
     controls.forEach(control => {
       control.readOnly = locked;
-      if (kindCorrection && control.tagName === "SELECT") {
+      const original = selectOriginals.get(control);
+      if (original) {
         control.disabled = locked;
-        kindOriginalInput.value = control.value;
-        kindOriginalInput.disabled = !locked;
+        original.value = control.value;
+        original.disabled = !locked;
       }
     });
   }
   function showValues(saved) {
-    controls.forEach(control => { control.value = saved[control.name]; });
+    controls.forEach(control => {
+      const value = saved[control.name];
+      if (control.tagName === "SELECT" && control.options && !Array.from(control.options).some(option => option.value === value)) {
+        const option = document.createElement("option");
+        option.value = value; option.textContent = "原选择（需核对）";
+        control.appendChild(option);
+      }
+      control.value = value;
+    });
     hints.forEach(control => { control.value = saved[control.name] ?? ""; });
     if (splitChange) {
       if (!commandLabels[saved.command]) throw Error("invalid_original_command");
@@ -107,8 +118,8 @@
   }
   function commandControls(editing) {
     if (!splitChange) {
-      lockInputs(!editing);
-      submit.textContent = kindCorrection ? (editing ? "保存偿还方式" : "继续核实原更正") : voidCommand ? (editing ? "确认作废" : "继续核实原作废") : editing ? "记一笔还款" : "继续核实这笔还款";
+      lockInputs(!editing || captureReview && !canCreate);
+      submit.textContent = captureReview ? (editing ? "确认处理" : "核实原处理") : kindCorrection ? (editing ? "保存偿还方式" : "继续核实原更正") : voidCommand ? (editing ? "确认作废" : "继续核实原作废") : editing ? "记一笔还款" : "继续核实这笔还款";
       return canCreate;
     }
     const command = values().command, writable = command === "create";
@@ -131,7 +142,7 @@
     if (replace) replace.hidden = !canReplace;
   }
   function records() {
-    return drafts.list(scope).filter(record => record.values.debt_public_id === target &&
+    return drafts.list(scope).filter(record => record.values[targetField] === target &&
       (!voidCommand || namespace !== "repayment-void" || !nativeValues.repayment_public_id ||
         record.values.repayment_public_id === nativeValues.repayment_public_id));
   }
@@ -143,7 +154,7 @@
       link.href = window.location.pathname + window.location.search + "#" + namespace + "-" + record.clientRef;
       const stateLabel = !drafts.matches(record.scope, scope) ? "旧身份，待核对" :
         record.phase === "submitted" ? "结果待确认" : record.phase === "blocked" ? "待核对" : "未提交";
-      const description = kindCorrection ? [kindLabels[record.values.debt_kind] || record.values.debt_kind] : [record.values.home_currency_code,
+      const description = captureReview ? [record.values.review_action === "dismiss" ? "忽略通知" : "记为还款", record.values.original_currency, record.values.original_amount || "未填金额"] : kindCorrection ? [kindLabels[record.values.debt_kind] || record.values.debt_kind] : [record.values.home_currency_code,
         voidCommand ? record.values.reason || "未填原因" : splitChange ? commandLabels[record.values.command] : record.values.amount_major || "未填金额",
         voidCommand ? record.values.repayment_public_id || record.values.debt_public_id : splitChange ? record.values.new_share_amount_major : record.values.paid_at];
       link.textContent = [...description, stateLabel].join(" · ");
@@ -175,10 +186,15 @@
     pointTo(currentRef);
   }
   function anotherDebtSubmission() {
-    return ["repayment", "debt-void", "repayment-void", "debt-kind"].some(kind => {
+    function parent(saved, kind) {
+      return kind === "repayment-review" ? (saved.review_action === "confirm" ? saved.target_choice.split(":")[0] : "") : saved.debt_public_id;
+    }
+    const debt = parent(values(), namespace);
+    if (!debt) return false;
+    return ["repayment", "debt-void", "repayment-void", "debt-kind", "repayment-review"].some(kind => {
       const store = window.TicketboxDraftStore.createStore({prefix:"ticketbox:" + kind + "-draft:v1:",
         fields:fieldNames[kind], validRef:uuid});
-      return store.list(scope).some(record => record.values.debt_public_id === target &&
+      return store.list(scope).some(record => parent(record.values, kind) === debt &&
         (kind !== namespace || record.clientRef !== currentRef) && record.phase !== "editing");
     });
   }
@@ -203,7 +219,7 @@
     }
     if (record) {
       if (drafts.matches(record.scope, scope) && bound(record.values)) return true;
-      if (drafts.matches(record.scope, scope, false) && record.values.debt_public_id === target) showValues(record.values);
+      if (drafts.matches(record.scope, scope, false) && record.values[targetField] === target) showValues(record.values);
       blocked("这是原身份的还款，仅供核对，不会转移到当前身份重新提交。");
       return false;
     }
@@ -294,6 +310,8 @@
       const ack = JSON.parse(marker.getAttribute("data-repayment-ack"));
       if (!uuid.test(ack.clientRef) || !uuid.test(splitChange || typedCorrection ? ack.resultPublicId : ack.repaymentPublicId) ||
           (typedCorrection && ack.resultPublicId !== target) ||
+          (captureReview && (ack.status !== (ack.values.review_action === "confirm" ? "confirmed" : "dismissed") ||
+            (ack.status === "confirmed" && !uuid.test(ack.repaymentPublicId)))) ||
           (kindCorrection && ack.debtKind !== ack.values.debt_kind) ||
           !drafts.matches(ack.scope, scope) || !bound(ack.values)) throw Error("ack_mismatch");
       if (voidCommand) leaseKey = "ticketbox:" + namespace + "-lease:v1:" +

@@ -8,7 +8,7 @@ on:
       group:
         description: Actual consumer group to exercise
         type: choice
-        options: [budget-recurring, income-goals, relationships, portable-downloads, backstage]
+        options: [budget-recurring, income-goals, relationships, portable-downloads, backstage, notifications]
         default: budget-recurring
   pull_request:
     branches: [main]
@@ -113,6 +113,10 @@ jobs:
       - name: Build the actual native app
         working-directory: android
         run: ./gradlew --no-daemon --max-workers=2 :app:assembleGrayDebug
+      - name: Build the notification journey input fixture
+        if: ${{ env.TICKETBOX_JOURNEY_GROUP == 'notifications' }}
+        working-directory: android
+        run: ./gradlew --no-daemon --max-workers=2 :app:assembleGrayDebugAndroidTest
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules

@@ -209,7 +209,8 @@ class BudgetOfflineReadingConnectedTest {
             goalEditRepository = graph.goalEditRepository, ruleRepository = graph.ruleRepository,
             incomePlanRepository = graph.incomePlanRepository, debtRepository = graph.debtRepository,
             debtCreationRepository = graph.debtCreationRepository, debtWriteRepository = graph.debtWriteRepository,
-            repaymentDraftRepository = graph.repaymentDraftRepository, outboxRepository = harness.fixture.outbox,
+            repaymentDraftRepository = graph.repaymentDraftRepository, repaymentReviewRepository = graph.repaymentReviewRepository,
+            outboxRepository = harness.fixture.outbox,
             tagRepository = graph.tagRepository, categoryPreferenceRepository = graph.categoryPreferenceRepository,
             ledgerCalendarRepository = harness.fixture.ledgerCalendarRepository,
         ), harness.screenFactory.viewModelFactories)

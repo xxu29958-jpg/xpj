@@ -21,7 +21,8 @@ REPAYMENT_FIELDS = (
 )
 
 
-def require_repayment_binding(request: Request, db: Session, *, values: dict, public_id: str) -> None:
+def require_repayment_binding(request: Request, db: Session, *, values: dict, public_id: str,
+                              target_field: str = "debt_public_id") -> None:
     scope = _web_debt_write.repayment_scope(request, db)
     try:
         original = json.loads(values["origin_binding"]) if values["origin_binding"] else {}
@@ -29,8 +30,8 @@ def require_repayment_binding(request: Request, db: Session, *, values: dict, pu
         raise AppError("session_binding_changed", "原提交的身份信息无法读取，输入仍保留。", status_code=409) from exc
     if original != scope or (scope and values["ledger_id"] != scope["ledgerId"]):
         raise AppError("session_binding_changed", "账号、账本或浏览器身份已变化。请回到原身份核对这次还款，原提交不会转移。", status_code=409)
-    if values["debt_public_id"] and values["debt_public_id"] != public_id:
-        raise AppError("debt_target_changed", "请回到原欠款核对这次还款。", status_code=409)
+    if (values[target_field] or target_field == "draft_public_id") and values[target_field] != public_id:
+        raise AppError("debt_target_changed", "请回到原记录核对这次还款。", status_code=409)
 
 
 def repayment_context(

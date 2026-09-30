@@ -43,10 +43,12 @@ internal val incomePlanSubmissionTypes = setOf(PendingMutationType.CreateIncomeP
 private val writerSubmissionTypes = setOf(
     PendingMutationType.UpdateGoal, PendingMutationType.CreateGoal, PendingMutationType.SaveMonthlyBudget,
     PendingMutationType.SaveManualExchangeRate, PendingMutationType.SaveMonthlyArrangement,
+    PendingMutationType.DismissRepaymentDraft,
 ) + recurringSubmissionTypes + categoryRuleSubmissionTypes + incomePlanSubmissionTypes
 private val originalSubmissionTypes = writerSubmissionTypes + PendingMutationType.CorrectExpense
 
 private val submissionFailureResources = mapOf(
+    PendingMutationType.DismissRepaymentDraft to R.string.repayment_draft_dismiss_failed,
     PendingMutationType.CreateIncomePlan to R.string.income_plan_submission_unavailable,
     PendingMutationType.UpdateIncomePlan to R.string.income_plan_submission_unavailable,
     PendingMutationType.UpdateGoal to R.string.spending_goal_recovery_unavailable,
@@ -262,6 +264,7 @@ class OutboxStatusViewModel(
             val result = when (row.type) {
                 PendingMutationType.CreateExpense -> expenseRepository.stopManualCreation(row)
                 PendingMutationType.CreateBillSplitInvitation -> expenseRepository.recoverBillSplitCreation(binding, row.id, drop)
+                PendingMutationType.DismissRepaymentDraft -> recoveries.repaymentReviews.recoverOriginal(binding, row, drop)
                 else -> recoveries.recoverPlanningSubmission(binding, row, drop)
                     ?: expenseRepository.recoverCorrection(binding, row.id, drop)
             }
@@ -440,6 +443,7 @@ data class OutboxRecoveryRepositories(
     val budgetSaves: com.ticketbox.data.repository.BudgetActions,
     val recurringItems: com.ticketbox.data.repository.RecurringManualMutationActions,
     val rules: com.ticketbox.data.repository.RuleRepository,
+    val repaymentReviews: com.ticketbox.data.repository.RepaymentReviewActions,
 )
 
 /** Route plan submissions to their existing command owner, including original-intent validation. */

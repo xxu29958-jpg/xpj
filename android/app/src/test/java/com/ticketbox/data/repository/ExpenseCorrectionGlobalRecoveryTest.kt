@@ -339,8 +339,7 @@ private class CorrectionRecoveryHarness : ExpensePendingRepositoryOutboxTestBase
             incomePlans = testIncomePlanRepository(binding.apiProvider, outbox, adapters.incomePlanSubmissionAdapter, adapters.incomePlanReceiptAdapter),
             debtWrites = DebtWriteRepository(binding.apiProvider, outbox, adapters),
             goalEdits = GoalEditRepository(binding.apiProvider, outbox, adapters.goalUpdateAdapter, adapters.goalReceiptAdapter, adapters.goalCreateAdapter),
-            budgetSaves = testBudgetRepository(binding.apiProvider, outbox),
-        )
+            budgetSaves = testBudgetRepository(binding.apiProvider, outbox), repaymentReviews = com.ticketbox.data.repository.unusedRepaymentReviews())
         val vm = outboxStatusViewModelFactory(outbox, repository, consumers).create(OutboxStatusViewModel::class.java)
         recoveryModels += vm
         return RecoveryFixture(repository, outbox, queue, cache, vm)

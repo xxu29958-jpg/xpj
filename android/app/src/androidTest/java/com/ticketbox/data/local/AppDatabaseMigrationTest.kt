@@ -19,6 +19,23 @@ import org.junit.Test
  * suite (which never opens Room) cannot.
  */
 class AppDatabaseMigrationTest {
+    @Test fun migrate22To23PreservesOriginalCommandsAndAddsOnlyReviewInputStorage() {
+        val name = "migration-22-23-review.db"
+        helper.createDatabase(name, 22).use { db ->
+            db.execSQL("""INSERT INTO pending_mutations (serverUrl, ledgerId, ownerKey, type, targetId, payload,
+                expectedRowVersion, status, retryCount, createdAt, idempotencyKey)
+                VALUES ('https://isolated.invalid', 'original-ledger', 'original-owner', 'record_debt_repayment',
+                'debt:original', '{"original":true}', 7, 'pending', 2, '2026-09-01T00:00:00Z', 'original-key')""")
+        }
+        helper.runMigrationsAndValidate(name, 23, true, AppDatabase.Migration22To23).use { db ->
+            db.query("SELECT payload, expectedRowVersion, idempotencyKey, status, retryCount FROM pending_mutations").use {
+                assertTrue(it.moveToFirst()); assertEquals("{\"original\":true}", it.getString(0))
+                assertEquals(7, it.getInt(1)); assertEquals("original-key", it.getString(2))
+                assertEquals("pending", it.getString(3)); assertEquals(2, it.getInt(4))
+            }
+        }
+    }
+
     @Test fun migrate21To22PreservesFinancialFactsAndAddsIsolatedArrangementCache() {
         val name = "migration-21-22-arrangement.db"
         val context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -31,7 +48,7 @@ class AppDatabaseMigrationTest {
             """.trimIndent())
         }
         val room = androidx.room.Room.databaseBuilder(context, AppDatabase::class.java, name)
-            .addMigrations(AppDatabase.Migration21To22).build()
+            .addMigrations(AppDatabase.Migration21To22, AppDatabase.Migration22To23).build()
         try {
                 room.openHelper.readableDatabase.query("SELECT amountCents, homeCurrencyCode, rowVersion FROM expenses WHERE id = 1").use {
                     assertTrue(it.moveToFirst()); assertEquals(100, it.getInt(0)); assertEquals("JPY", it.getString(1)); assertEquals(7, it.getInt(2))
