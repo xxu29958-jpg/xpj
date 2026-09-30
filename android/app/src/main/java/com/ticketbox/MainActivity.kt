@@ -218,7 +218,7 @@ class MainActivity : FragmentActivity() {
     }
 }
 
-/** Restore original selections while accepting the notification that starts this Activity. */
+/** A restored Activity receives its old task Intent; fresh deliveries enter onNewIntent. */
 internal fun initialLaunchRequests(
     restored: List<LaunchIntentRequest>?,
     incoming: LaunchIntentRequest?,
@@ -226,7 +226,6 @@ internal fun initialLaunchRequests(
     listOfNotNull(incoming)
 } else {
     when (incoming) {
-        is LaunchIntentRequest.OpenNotification -> mergeLaunchRequest(restored, incoming)
         // Invitation text keeps its existing OS-intent lifetime, outside saved state.
         is LaunchIntentRequest.JoinInvitation -> listOf(incoming) + restored
         else -> restored
