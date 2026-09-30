@@ -279,18 +279,21 @@ class PlanningAndroid:
         self.tap(node)
 
     def plan_home(self):
+        self.domain_home("计划")
+
+    def domain_home(self, label: str):
         for _ in range(5):
-            if any(node.attrib.get("text") == "计划" for node in self.tree().iter("node")):
-                self.click("计划", bottom=True)
+            if any(node.attrib.get("text") == label for node in self.tree().iter("node")):
+                self.click(label, bottom=True)
             else:
                 self.back()
             # A domain switch can restore its last secondary page. Only the
-            # actual root has both the Plan heading/tab and the account action.
+            # actual root has both its heading/tab and the account action.
             nodes = list(self.tree().iter("node"))
-            if (sum(node.attrib.get("text") == "计划" for node in nodes) >= 2 and
+            if (sum(node.attrib.get("text") == label for node in nodes) >= 2 and
                     any(node.attrib.get("content-desc") == "打开账户与设置" for node in nodes)):
                 return
-        raise AssertionError("The real navigation did not return to the planning entry")
+        raise AssertionError(f"The real navigation did not return to the {label} entry")
 
     def capture(self, name: str, redact: str | None = None):
         if self.bound or not self.pairing_code:

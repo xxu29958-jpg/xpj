@@ -202,17 +202,17 @@ class NotificationJourney:
                     paid = next(item["amount"] for item in self.facts()["payments"] if item["id"] == capture["repayment"])
                     assert f"{paid // 100}.{paid % 100:02}" in fact.inner_text(), "The original link did not display its actual accepted repayment"
                     self.capture(f"linked-repayment-{capture['original']}-{width}-{theme}")
-        for theme, label in (("paper", "晨纸"), ("midnight", "玄夜")):
+        for theme, label, description in (("paper", "晨纸", "温润米白 + 茶铜"), ("midnight", "玄夜", "深色玻璃 + 暖金")):
             self.native.plan_home()
             self.native.click("打开账户与设置")
             self.native.click("外观与主题")
-            self.native.click(label)
+            self.native.reveal_any(description)
+            self.native.click_within(description, label)
             self.native.plan_home()
             self.native.click("打开账户与设置")
             self.native.click("通知与提醒")
             self.native.capture("notification-preferences-" + theme)
-            self.native.plan_home()
-            self.native.click("往来", bottom=True)
+            self.native.domain_home("往来")
             self.native.click("还款复核")
             self.native.click("已处理 2")
             self.native.reveal_any("花呗")
