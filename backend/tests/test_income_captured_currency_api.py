@@ -10,7 +10,7 @@ from app.database import SessionLocal
 from app.main import app
 from app.models import IncomePlanRevision, MonthlyIncomePlan
 from app.routes.web_app import _require_local as _web_require_local
-from app.services import income_plan_service, spending_contract_service
+from app.services import income_plan_service, ledger_calendar_service
 from app.services.budget_advisor_service import read_budget_inputs
 from tests._web_native_form_support import hidden_post_forms
 
@@ -18,7 +18,7 @@ from tests._web_native_form_support import hidden_post_forms
 @pytest.fixture()
 def income_browser(client, monkeypatch):
     monkeypatch.setattr(income_plan_service, "now_utc", lambda: datetime(2026, 9, 9, tzinfo=UTC))
-    monkeypatch.setattr(spending_contract_service, "current_month", lambda _timezone: "2026-09")
+    monkeypatch.setattr(ledger_calendar_service, "now_utc", lambda: datetime(2026, 9, 9, tzinfo=UTC))
     app.dependency_overrides[_web_require_local] = lambda: None
     yield client
     app.dependency_overrides.pop(_web_require_local, None)
