@@ -33,7 +33,9 @@ def _original(j):
     assert response.ok and hashlib.sha256(response.body()).hexdigest() == j.original_digest, (
         "The authenticated original no longer matches its recorded bytes")
     j.page.get_by_role("button", name="打开实际原图", exact=True).click()
-    j.page.wait_for_function("(() => { const image = document.querySelector('[data-original-reviewed-image]'); return image && !image.hidden && image.complete && image.naturalWidth > 0; })()")
+    image = j.page.locator("[data-original-reviewed-image]")
+    wait_for(lambda: image.is_visible() and image.evaluate("image => image.complete && image.naturalWidth > 0"),
+        "The authenticated original did not render its actual image bytes")
     j.capture("original-after-financial-changes")
 
 
@@ -79,7 +81,8 @@ def appearances(j):
         j.goto(f"/web/expenses/{expense_id}/edit")
         page.locator("#appearance > summary").click()
         page.locator(f'#appearance [data-theme-mode="{theme}"]').click()
-        page.wait_for_function("theme => document.documentElement.dataset.theme === theme", arg=theme)
+        wait_for(lambda theme=theme: page.locator("html").get_attribute("data-theme") == theme,
+            "The actual financial page did not apply its selected theme")
         page.locator("#appearance > summary").click()
         for width in (1280, 390):
             page.set_viewport_size({"width": width, "height": 960})

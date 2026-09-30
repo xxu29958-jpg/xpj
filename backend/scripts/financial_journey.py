@@ -138,7 +138,8 @@ class FinancialJourney:
         wait_for(lambda: form.locator('[name="reason"]').input_value() == "WebDraft", "The Web original did not reopen")
         assert form.locator('[name="idempotency_key"]').input_value() == original_key
         form.locator("[data-correction-submit]").click()
-        page.wait_for_function("document.querySelector('[data-correction-draft-phase]').dataset.correctionDraftPhase === 'blocked'")
+        wait_for(lambda: form.get_attribute("data-correction-draft-phase") == "blocked",
+            "The stale Web correction did not retain its rejected original")
         assert self.facts() == before, "A stale correction wrote financial facts"
         self.capture("correction-stale-original")
         form.locator("[data-correction-review]").click()
@@ -156,6 +157,8 @@ class FinancialJourney:
 
     def lost_reply(self, form, submit, suffix, family):
         path = f'/web/expenses/{self.facts()["id"]}{suffix}'
+        draft_ref = form.locator('[name="draft_client_ref"]').input_value()
+        draft_family = "correction" if family == "correction" else "offset"
         sent = []
 
         def lose_first(route):
@@ -173,11 +176,13 @@ class FinancialJourney:
         committed = self.facts()
         self.capture(f"{family}-accepted-reply-lost")
         self.page.reload()
-        form.locator(submit).click()
-        self.page.wait_for_url("**/edit?*")
+        with self.page.expect_navigation(wait_until="domcontentloaded"):
+            form.locator(submit).click()
         self.page.unroute("**" + path, lose_first)
         assert len(sent) == 2 and sent[0] == sent[1], "Retry changed the original financial command"
         assert self.facts() == committed, "Replaying an accepted command wrote another fact"
+        assert self.page.evaluate("key => localStorage.getItem(key) === null",
+            f"ticketbox:{draft_family}-edit-draft:v1:{draft_ref}"), "The original receipt did not consume its exact local draft"
 
     def native_refund_offline(self):
         native = self.native
