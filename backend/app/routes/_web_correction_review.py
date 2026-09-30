@@ -41,9 +41,18 @@ def _review_rows(original, old, current, fields, choice):
     return original, True
 
 
+def _review_without_basis(original: dict, current: dict, choice: str) -> tuple[dict, bool]:
+    # A legacy form without its read basis cannot infer which fields the user changed.
+    if choice == "keep":
+        return {**current, **original}, False
+    if choice == "current":
+        return current, False
+    return original, True
+
+
 def _review_scalars(original: dict, basis: dict | None, current: dict, choice: str) -> tuple[dict, bool]:
     if basis is None:
-        return ({**current, **original} if choice == "keep" else current if choice == "current" else original), choice not in {"keep", "current"}
+        return _review_without_basis(original, current, choice)
     old = basis["values"]
     result = {**current, **{key: value for key, value in original.items() if key not in current}}
     groups = [("amount_yuan", "original_currency"), ("expense_time", *TIME_FIELDS)]

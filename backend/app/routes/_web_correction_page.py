@@ -32,6 +32,24 @@ from app.services.currency_common import currency_input_metadata, supported_curr
 _SPLIT_RECEIVED_FROZEN_FIELDS = ("amount_yuan", "merchant", "expense_time")
 
 
+def _retain_form_identity(ctx: dict, db: Session, request: Request, form_values: dict | None) -> None:
+    """Keep the original command and read basis separate from the current fact."""
+    original = form_values or {}
+    ctx["fact_current_version"] = ctx["current_expense"]["row_version"]
+    ctx["fact_draft_client_ref"] = original.get("draft_client_ref") or ctx["confirm_idempotency_key"]
+    ctx["fact_current_basis"] = correction_snapshot(ctx)
+    ctx["fact_basis"] = original.get("fact_basis", json.dumps(ctx["fact_current_basis"], ensure_ascii=False))
+    captured = original.get("draft_scope", "") if form_values is not None else None
+    ctx["fact_draft_scope"], ctx["fact_binding_required"] = rendered_draft_scope(db, request, captured)
+    if captured is not None:
+        ctx["captured_fact_scope"] = captured
+    # Presence, including an invalid blank, is part of the submitted intent.
+    if "expected_row_version" in original:
+        ctx["expense"]["row_version"] = original["expected_row_version"]
+    if "idempotency_key" in original:
+        ctx["confirm_idempotency_key"] = original["idempotency_key"]
+
+
 def web_correction_context(
     db: Session,
     request: Request,
@@ -72,21 +90,7 @@ def web_correction_context(
     ctx["correction_mode"] = True
     ctx["error"] = error
     ctx["reason_input"] = (form_values or {}).get("reason", "")
-    ctx["fact_current_version"] = ctx["current_expense"]["row_version"]
-    ctx["fact_draft_client_ref"] = (form_values or {}).get("draft_client_ref") or ctx["confirm_idempotency_key"]
-    ctx["fact_current_basis"] = correction_snapshot(ctx)
-    ctx["fact_basis"] = (form_values or {}).get("fact_basis", json.dumps(ctx["fact_current_basis"], ensure_ascii=False))
-    captured = form_values.get("draft_scope", "") if form_values is not None else None
-    ctx["fact_draft_scope"], ctx["fact_binding_required"] = rendered_draft_scope(db, request, captured)
-    if captured is not None:
-        ctx["captured_fact_scope"] = captured
-    if form_values is not None:
-        # A submitted correction keeps its identity, including invalid blanks.
-        # Only a new GET or an explicit conflict review prepares a fresh intent.
-        if "expected_row_version" in form_values:
-            ctx["expense"]["row_version"] = form_values["expected_row_version"]
-        if "idempotency_key" in form_values:
-            ctx["confirm_idempotency_key"] = form_values["idempotency_key"]
+    _retain_form_identity(ctx, db, request, form_values)
     ctx["frozen_scalars"] = (
         (*_SPLIT_RECEIVED_FROZEN_FIELDS, "original_currency") if ctx["expense"]["is_split_received"] else ()
     )

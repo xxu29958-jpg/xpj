@@ -140,6 +140,24 @@ def _fact_redirect(
         next_href=response.headers["location"]) or response
 
 
+def _retain_offset_form(ctx: dict, draft: dict, exc: AppError | None, *, form_name: str) -> None:
+    error = exc.error if exc else ""
+    native_result = draft.get("native_result", "")
+    if not native_result and exc:
+        native_result = draft_refusal_result(exc)
+    message = _CONFLICT_MESSAGE if error == "state_conflict" else exc.message if exc else ""
+    ctx[form_name].update(draft, open=True, error=message,
+        conflict=error == "state_conflict", native_result=native_result)
+
+
+def _retain_void_target(ctx: dict, draft: dict) -> None:
+    if any(row["public_id"] == draft["target_public_id"] for row in ctx["active_offsets"]):
+        return
+    ctx["error"] = _VOID_TARGET_GONE_MESSAGE
+    ctx["offset_retained_target"] = {"public_id": draft["target_public_id"], "active": False,
+        "kind_label": "原退回或冲销", "row_version": "", "void_idempotency_key": draft["idempotency_key"]}
+
+
 def _render_error(
     db: Session,
     request: Request,
@@ -164,38 +182,14 @@ def _render_error(
         expense_id,
         return_context=return_context,
     )
-    error = exc.error if exc else ""
-    message = _CONFLICT_MESSAGE if error == "state_conflict" else exc.message if exc else ""
-    if error == "exchange_rate_pending":
+    if exc and exc.error == "exchange_rate_pending":
         rate_recovery = rate_recovery_context(db, selected_id, exc.details)
     ctx.update(rate_recovery=rate_recovery, rate_recovery_action=f"/web/expenses/{expense_id}/offset-rate")
-    original = create_draft if create_draft is not None else void_draft
-    native_result = original.get("native_result", "") if original else ""
-    if not native_result and exc:
-        native_result = draft_refusal_result(exc)
     if create_draft is not None:
-        ctx["offset_form"].update(
-            create_draft,
-            open=True,
-            error=message,
-            conflict=error == "state_conflict",
-            native_result=native_result,
-        )
+        _retain_offset_form(ctx, create_draft, exc, form_name="offset_form")
     if void_draft is not None:
-        current = next(
-            (
-                row
-                for row in ctx["active_offsets"]
-                if row["public_id"] == void_draft["target_public_id"]
-            ),
-            None,
-        )
-        if current is None:
-            ctx["error"] = _VOID_TARGET_GONE_MESSAGE
-            ctx["offset_retained_target"] = {"public_id": void_draft["target_public_id"], "active": False,
-                "kind_label": "原退回或冲销", "row_version": "", "void_idempotency_key": void_draft["idempotency_key"]}
-        ctx["offset_void_form"].update(void_draft, open=True, error=message,
-            conflict=error == "state_conflict", native_result=native_result)
+        _retain_void_target(ctx, void_draft)
+        _retain_offset_form(ctx, void_draft, exc, form_name="offset_void_form")
     return templates.TemplateResponse(
         request=request,
         name="expense_fact.html",

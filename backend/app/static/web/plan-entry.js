@@ -86,18 +86,29 @@
     }
     function commandAllowed() { return canWrite && (!archived || phase !== "editing"); }
     function actionUnavailable() { return blocked || busy || accepted || (!held && !onlineOnly); }
-    function controls() {
-      const editing = fieldsEditable();
+    function reviewAvailable() {
+      if (!editsAllowed || blocked) return false;
+      return phase === "editing" ? !!definition.reviewWhileEditing : !definition.reviewRequiresRejection || reviewable;
+    }
+    function usesDisabled(input) { return input.tagName === "SELECT" || ["checkbox", "radio"].includes(input.type); }
+    function updateFields(editing) {
       [...form.elements].filter(input => names.includes(input.name) || definition.repeated?.includes(input.name)).forEach(input => {
-        if (input.tagName === "SELECT" || ["checkbox", "radio"].includes(input.type)) input.disabled = !editing || permanentDisabled.has(input);
+        if (usesDisabled(input)) input.disabled = !editing || permanentDisabled.has(input);
         else input.readOnly = !editing || permanentReadonly.has(input);
       });
       form.querySelectorAll("[data-plan-preview], [data-budget-add-more]").forEach(input => { input.disabled = !editing; });
+    }
+    function enableNativeValues() {
+      [...form.elements].forEach(input => {
+        if (usesDisabled(input)) input.disabled = permanentDisabled.has(input);
+      });
+    }
+    function controls() {
+      updateFields(fieldsEditable());
       submit.hidden = archived && phase === "editing";
       submit.disabled = !commandAllowed() || actionUnavailable();
       submit.textContent = phase === "editing" ? nativeLabel : "核实原" + taskLabel;
-      review.hidden = !editsAllowed || blocked || (phase === "editing" && !definition.reviewWhileEditing) ||
-        (phase !== "editing" && definition.reviewRequiresRejection && !reviewable);
+      review.hidden = !reviewAvailable();
       review.disabled = busy || accepted;
       discard.hidden = blocked || !retained;
       discard.disabled = busy || accepted || !held;
@@ -261,20 +272,15 @@
     });
     function allowNativeSubmission(submitter) {
       if (definition.relatedAction?.(submitter) && canWrite && held && !busy && !blocked) {
-        [...form.elements].forEach(input => {
-          if (input.tagName === "SELECT" || ["checkbox", "radio"].includes(input.type)) input.disabled = permanentDisabled.has(input);
-        });
+        enableNativeValues();
         return true;
       }
       if (submitter?.hasAttribute("data-plan-preview") && fieldsEditable() && !busy) {
         capture(); return true;
       }
       // The existing explicit review prepares a fresh form without submitting a plan.
-      if (submitter?.name === reviewName && editsAllowed && held && !busy && !blocked &&
-          (!definition.reviewRequiresRejection || reviewable || (definition.reviewWhileEditing && phase === "editing"))) {
-        [...form.elements].forEach(input => {
-          if (input.tagName === "SELECT" || ["checkbox", "radio"].includes(input.type)) input.disabled = permanentDisabled.has(input);
-        });
+      if (submitter?.name === reviewName && reviewAvailable() && held && !busy) {
+        enableNativeValues();
         return true;
       }
       return false;
@@ -315,23 +321,31 @@
       const preferred = records.find(record => record.phase !== "editing") || records[0];
       return {wanted, ref: nativeResult ? nativeRef : wanted || (!explicitNew && preferred ? preferred.clientRef : nativeRef)};
     }
-    function resumeDraft(record, nativeResult) {
-      const originalRejected = record && nativeResult === "rejected" &&
+    function applyNativeResult(record, nativeResult) {
+      if (!record) {
+        if (["blocked", "rejected"].includes(nativeResult)) {
+          phase = "blocked"; reviewable = nativeResult === "rejected";
+        }
+        return true;
+      }
+      const originalRejected = nativeResult === "rejected" &&
         field("idempotency_key").value === commandKey(record) &&
         store.matches(JSON.parse(field("draft_scope").value), record.scope);
-      if (record && nativeResult === "prepared" && (record.serverResult === "rejected" ||
+      if (nativeResult === "prepared" && (record.serverResult === "rejected" ||
           (definition.reviewWhileEditing && record.phase === "editing"))) {
         store.save(scope, ref, "editing", values(), "rejected");
         phase = "editing"; pointTo();
-      } else if (record) {
+      } else {
         if (!restore(record)) return false;
         if (originalRejected) {
           phase = "blocked"; reviewable = true;
           store.save(scope, ref, phase, record.values, "rejected");
         }
-      } else if (["blocked", "rejected"].includes(nativeResult)) {
-        phase = "blocked"; reviewable = nativeResult === "rejected";
       }
+      return true;
+    }
+    function resumeDraft(record, nativeResult) {
+      if (!applyNativeResult(record, nativeResult)) return false;
       if (!store.matches(JSON.parse(field("draft_scope").value), scope)) {
         stop("身份或账本已切换，原输入仍保留；请恢复原身份后继续。"); return false;
       }
