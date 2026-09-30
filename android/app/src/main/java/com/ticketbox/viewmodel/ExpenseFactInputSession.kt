@@ -3,6 +3,7 @@ package com.ticketbox.viewmodel
 import com.ticketbox.data.repository.ExpenseFactInputActions
 import com.ticketbox.data.repository.ExpenseFactOriginalInput
 import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.LocalRepositoryFailure
 import com.ticketbox.data.repository.RepositoryException
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
@@ -35,7 +36,7 @@ internal class ExpenseFactInputSession(
     fun keep(key: String, draft: ExpenseFactInputDraft, review: Boolean = false) {
         val previous = planned[key]
         if (!review && previous != null && previous.binding != binding) {
-            failures[key] = RepositoryException("连接身份已变化，原输入仍保留，请明确核对后再继续。")
+            failures[key] = RepositoryException("", localFailure = LocalRepositoryFailure.FactInputReviewRequired)
             onChanged()
             return
         }
@@ -62,13 +63,13 @@ internal class ExpenseFactInputSession(
         tail?.join()
         val input = planned[key]
         return if (input != null && saved[key] == input && input.binding == binding) Result.success(input)
-        else Result.failure(failures[key] ?: RepositoryException("原输入尚未保存，请重试保存后继续。"))
+        else Result.failure(failures[key] ?: RepositoryException("", localFailure = LocalRepositoryFailure.FactInputNotSaved))
     }
 
     suspend fun flush(): Result<Unit> {
         tail?.join()
         return if (planned == saved) Result.success(Unit)
-        else Result.failure(error ?: RepositoryException("原输入尚未保存，请重试保存后离开。"))
+        else Result.failure(error ?: RepositoryException("", localFailure = LocalRepositoryFailure.FactInputNotSaved))
     }
 
     fun retry() {

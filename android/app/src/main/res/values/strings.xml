@@ -14,7 +14,8 @@
 <resources xmlns:tools="http://schemas.android.com/tools" tools:locale="zh">
     <string name="expense_fact_history_cached">显示上次读取的历史 · %1$s</string>
     <string name="expense_fact_input_save_failed">原输入尚未保存，请重试后再离开。</string>
-    <string name="expense_fact_input_load_failed">原输入暂时未能读取，请重试。</string>
+    <string name="expense_fact_input_load_failed">原输入暂时未能读取，内容仍保留，请重试。</string>
+    <string name="expense_fact_input_review_required">连接身份已变化，原输入仍保留，请明确核对后再继续。</string>
     <string name="app_name">小票夹</string>
 
     <!-- 通用：跨屏复用的 UI 原子 -->

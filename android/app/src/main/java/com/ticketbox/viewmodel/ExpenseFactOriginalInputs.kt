@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
+import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.ExpenseOffsetFact
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.flow.update
@@ -26,12 +27,12 @@ internal fun ExpenseFactViewModel.loadFactOriginalInputs() {
                 factInputSession = session
                 restoreCorrectionInput()
                 _uiState.update { it.copy(factInputsReady = true, factInputKeys = session.keys) }
-            } catch (error: IllegalArgumentException) {
-                _uiState.update { it.copy(factInputError = error.toUiText(R.string.expense_fact_input_load_failed)) }
-            } catch (error: com.squareup.moshi.JsonDataException) {
-                _uiState.update { it.copy(factInputError = error.toUiText(R.string.expense_fact_input_load_failed)) }
-            } catch (error: com.squareup.moshi.JsonEncodingException) {
-                _uiState.update { it.copy(factInputError = error.toUiText(R.string.expense_fact_input_load_failed)) }
+            } catch (_: IllegalArgumentException) {
+                _uiState.update { it.copy(factInputError = UiText.res(R.string.expense_fact_input_load_failed)) }
+            } catch (_: com.squareup.moshi.JsonDataException) {
+                _uiState.update { it.copy(factInputError = UiText.res(R.string.expense_fact_input_load_failed)) }
+            } catch (_: com.squareup.moshi.JsonEncodingException) {
+                _uiState.update { it.copy(factInputError = UiText.res(R.string.expense_fact_input_load_failed)) }
             }
         }.onFailure { error ->
             _uiState.update { it.copy(factInputError = error.toUiText(R.string.expense_fact_input_load_failed)) }

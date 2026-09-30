@@ -57,6 +57,6 @@ internal object ExpenseFactInputCodec {
     fun encode(draft: ExpenseFactInputDraft): String = adapter.toJson(draft.copy(baseline = draft.baseline.copy(
         imagePath = null, thumbnailPath = null, fxTask = null)))
     fun decode(json: String, expenseId: Long): ExpenseFactInputDraft = requireNotNull(adapter.fromJson(json)).also {
-        require(it.version == 1 && it.baseline.id == expenseId) { "原输入版本暂不可读取，内容仍保留。" }
+        require(it.version == 1 && it.baseline.id == expenseId) { "Unrecognized financial input version or target" }
     }
 }

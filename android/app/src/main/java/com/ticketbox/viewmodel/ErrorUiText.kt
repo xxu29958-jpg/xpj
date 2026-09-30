@@ -39,6 +39,8 @@ private fun localFailureText(reason: LocalRepositoryFailure): UiText = UiText.re
     LocalRepositoryFailure.StatsProjectionUnverified -> R.string.stats_projection_unverified
     LocalRepositoryFailure.OriginalSourceUnavailable -> R.string.original_source_unavailable
     LocalRepositoryFailure.OriginalWriterRequired -> R.string.original_writer_required
+    LocalRepositoryFailure.FactInputReviewRequired -> R.string.expense_fact_input_review_required
+    LocalRepositoryFailure.FactInputNotSaved -> R.string.expense_fact_input_save_failed
 })
 
 @StringRes

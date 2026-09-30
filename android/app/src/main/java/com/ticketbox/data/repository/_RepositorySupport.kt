@@ -43,6 +43,8 @@ enum class LocalRepositoryFailure {
     StatsProjectionUnverified,
     OriginalSourceUnavailable,
     OriginalWriterRequired,
+    FactInputReviewRequired,
+    FactInputNotSaved,
 }
 
 data class RepositoryConflictDetails(
