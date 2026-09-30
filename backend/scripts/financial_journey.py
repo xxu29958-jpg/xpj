@@ -49,8 +49,13 @@ class FinancialJourney:
     def native_open(self):
         self.native.domain_home("流水")
         state = self.facts()
-        amount = f'¥{state["amount"] // 100}.{state["amount"] % 100:02d}'
-        self.native.click_within(amount, state["merchant"])
+        if state["offsets"]:
+            amount = f'¥{state["amount"] // 100}.{state["amount"] % 100:02d}'
+            self.native.click_within(amount, state["merchant"])
+        else:
+            # Keep the stale list used to exercise peer-change review. Refunds
+            # later share this merchant and require the original amount anchor.
+            self.native.click(state["merchant"])
         wait_for(lambda: self.native.has("账单详情"), "The native fact did not open")
 
     def correction(self):
