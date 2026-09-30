@@ -3,6 +3,7 @@
 from types import SimpleNamespace
 
 import pytest
+from fastapi import Request
 
 from app.errors import AppError
 
@@ -93,7 +94,8 @@ def test_offset_fact_authorizes_relationship_links_once(monkeypatch):
         return frozenset(public_ids - {"debt-49"})
 
     monkeypatch.setattr(links, "participant_accessible_debt_public_ids", authorize)
-    view = offset_fact.expense_offset_fact_view(object(), "source", 7, False, object())
+    view = offset_fact.expense_offset_fact_view(object(), "source", 7, False,
+        Request({"type": "http", "query_string": b"", "headers": []}))
     assert view["offset_relationship_impacts"]["accepted"] == accepted
     assert seen == [({f"debt-{index}" for index in range(50)}, "source", 3)]
     assert accepted[0]["debt_href"] == "/web/debts/debt-0?ledger_id=source"
@@ -122,7 +124,8 @@ def test_offset_fact_keeps_fact_when_optional_actor_cannot_be_resolved(monkeypat
     )
 
     view = offset_fact.expense_offset_fact_view(
-        object(), "loopback-visible", 7, False, object(),
+        object(), "loopback-visible", 7, False,
+        Request({"type": "http", "query_string": b"", "headers": []}),
     )
 
     assert view["offset_relationship_impacts"]["accepted"] == accepted

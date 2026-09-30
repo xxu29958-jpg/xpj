@@ -47,7 +47,7 @@ def test_bound_correction_offset_and_void_replay_without_rewriting_later_facts(i
     later = client.post(f"/api/expenses/{expense_id}/corrections",
         headers={**api_headers, "Idempotency-Key": str(uuid4())},
         json={"reason": "另一端核对", "merchant": "后来人工修改", "expected_row_version": version})
-    assert later.status_code == 200, later.text
+    assert later.status_code == 201, later.text
     replay = client.post(correction.action, data=correction.fields, headers=origin)
     assert replay.status_code == 200 and replay.json() == accepted.json()
     wrong_scope = json.loads(correction.one("draft_scope"))
@@ -56,7 +56,9 @@ def test_bound_correction_offset_and_void_replay_without_rewriting_later_facts(i
     assert refused.status_code == 409 and refused.json()["draft_result"] == "blocked", refused.text
     with SessionLocal() as db:
         assert db.get(Expense, expense_id).merchant == "后来人工修改"
-        assert db.scalar(select(func.count()).select_from(ExpenseRevision).where(ExpenseRevision.expense_id == expense_id)) == 2
+        revisions = db.scalars(select(ExpenseRevision).where(ExpenseRevision.expense_id == expense_id)
+            .order_by(ExpenseRevision.revision_number)).all()
+        assert [row.change_kind for row in revisions] == ["confirmed", "correction", "correction"]
 
     page = client.get(f"/web/expenses/{expense_id}/edit?ledger_id={installed.shared_ledger_id}")
     fields = {**_money_fields(page.text, expense_id), "kind": "refund", "original_amount": " 0003.00 ",

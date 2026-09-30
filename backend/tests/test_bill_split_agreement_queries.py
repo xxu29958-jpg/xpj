@@ -82,7 +82,10 @@ def test_source_impact_uses_latest_accepted_share_without_rewriting_invitation_o
     assert web["accepted"][0]["suggested_share_label"] == "¥20.00"
     assert web["accepted"][0]["debt_public_id"] == "original"
     rendered = templates.get_template("_fact_offsets.html").render(
-        expense={"id": 100}, offset_summary={"status": "partially_refunded"},
+        expense={"id": 100, "row_version": 1, "original_currency_code": "CNY"},
+        offset_summary={"status": "partially_refunded"},
+        offset_form={"open": False, "accounting_date": "2026-09-20"},
+        offset_currency_input={}, edit_return_fields={},
         offset_relationship_impacts=web, active_offsets=[], offset_recent_history=[], offset_can_write=False)
     assert "原份额 ¥40.00" in rendered
     assert "当前约定 " + web["accepted"][0]["current_share_label"] in rendered
