@@ -5,8 +5,8 @@
     [string]$Variant = "release",
     [switch]$SkipManifest,
     # release 变体默认拒绝 dirty 工作树(发包必须可追溯到一个干净 commit);
-    # 本机实验性构建可显式加 -AllowDirty。manifest 仍如实记录 dirty,
-    # 灰度验收(accept_gray_release.ps1)会再次硬性拒绝 dirty manifest。
+    # 本机实验性构建可显式加 -AllowDirty。manifest 仍如实记录 dirty。
+    # 此脚本只保留开发构建；Internal Beta 输入由 accept_gray_release.ps1 从云端取得。
     [switch]$AllowDirty
 )
 
@@ -212,7 +212,7 @@ if (-not $SkipManifest) {
         }
         notes = @(
             "Release 密钥和密码不写入 manifest。",
-            "manifest 只用于灰度发包核验，不包含 token。"
+            "开发构建记录，不包含 token；不得替代云端 exact Release 产物。"
         )
     }
 
@@ -220,6 +220,7 @@ if (-not $SkipManifest) {
 }
 
 Write-Host "$Variant APK 已生成：$apkPath"
+Write-Host "开发构建产物，不是 Internal Beta 资格。正式来源使用 accept_gray_release.ps1 核对云端原包。"
 Write-Host "版本：versionName=$versionName，versionCode=$versionCode"
 Write-Host "SHA256：$sha256"
 Write-Host "SHA256 文件：$shaPath"
