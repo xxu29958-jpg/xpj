@@ -51,3 +51,5 @@ PR artifact 仅供源资格检查。可签名的正式输入必须来自当前�
 ## 本次证据
 
 旧主干 `0f1ab283` 的 CI `36916612970`、CodeQL 和三个实际 Connected 均已通过，但实际 artifact 列表仅有两个 Debug APK；收集器在原运行上明确拒绝“未保留 Release 输入”。本机六项窄验证覆盖生产者/消费者字节绑定、异源/失败/PR 资格拒绝，以及签名元数据与应用载荷的区分；不把合成 ZIP 当作可安装 APK。最终源的真实云端 Release 产物、独立 main 及批准的持久证书签名仍待核准。
+
+候选 `9b7919b3` 的云端 Release job 已生成两种真实 APK，收集器实际下载 artifact `11193640550` 并核对 GitHub ZIP 摘要成功；manifest 正确区分 PR merge checkout 与原 source，故仍不能作为 main Release 输入。其 Backend contracts 因入口缺少仓库规定的 UTF-8 BOM 失败，当前恢复原编码标记；旧失败保留，修正源及 main 的资格仍待完成。
