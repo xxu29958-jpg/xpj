@@ -416,14 +416,22 @@ def test_owner_upload_links_create_reveals_once(local_client: TestClient, monkey
         _ = owner_console_service
 
 
-def test_owner_upload_links_warns_when_public_base_url_missing(
-    local_client: TestClient, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("public_base_url", (None, "api.zen70.cn"))
+def test_owner_upload_links_blocks_creation_until_endpoint_configured(
+    local_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    public_base_url: str | None,
 ) -> None:
+    import re
+
     from app import config as app_config
     from app.database import SessionLocal
     from app.models import UploadLink
 
-    monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
+    if public_base_url is None:
+        monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
+    else:
+        monkeypatch.setenv("PUBLIC_BASE_URL", public_base_url)
     app_config.get_settings.cache_clear()
     try:
         with SessionLocal() as db:
@@ -433,14 +441,18 @@ def test_owner_upload_links_warns_when_public_base_url_missing(
         with SessionLocal() as db:
             assert db.query(UploadLink).count() == count_before
         # Owner Console must neither mint a credential nor pretend to provide a usable URL.
-        assert "PUBLIC_BASE_URL" in resp.text
-        assert "未配置" in resp.text
+        warning = re.search(
+            r'<div class="alert alert-danger alert--accent-danger">(.*?)</div>',
+            resp.text,
+            flags=re.S,
+        )
+        assert warning is not None
+        assert "手机连接设置" in warning.group(1)
+        assert 'href="/owner/settings"' in warning.group(1)
         assert 'disabled aria-disabled="true"' in resp.text
-        # No https:// /u/ URL should be rendered when the env is missing.
-        import re
-
+        # A missing or invalid endpoint must not produce a usable credential URL.
         full_urls = re.findall(r"https?://[^\s\"<]+/u/[A-Za-z0-9_\-]+", resp.text)
-        assert full_urls == [], f"unexpected full URL when PUBLIC_BASE_URL empty: {full_urls[:1]}"
+        assert full_urls == [], f"unexpected full URL without a valid endpoint: {full_urls[:1]}"
     finally:
         app_config.get_settings.cache_clear()
 
@@ -674,22 +686,6 @@ def test_owner_upload_link_rotate_preserves_credential_without_phone_usable_endp
         assert "可供手机访问的 HTTPS 地址" in response.text
         with SessionLocal() as db:
             assert db.query(UploadLink).filter_by(public_id=public_id.group(1)).one().token_hash == token_hash
-    finally:
-        app_config.get_settings.cache_clear()
-
-
-def test_owner_upload_links_invalid_public_base_url_treated_as_empty(
-    local_client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from app import config as app_config
-
-    # Missing scheme is invalid and must be ignored (not used to compose URL).
-    monkeypatch.setenv("PUBLIC_BASE_URL", "api.zen70.cn")
-    app_config.get_settings.cache_clear()
-    try:
-        resp = local_client.post("/owner/upload-links")
-        assert resp.status_code == 200
-        assert "未配置" in resp.text
     finally:
         app_config.get_settings.cache_clear()
 
