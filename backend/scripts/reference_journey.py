@@ -34,7 +34,7 @@ class ReferenceJourney:
 
     def native_open(self, label):
         self.native.domain_home("流水")
-        self.native.click("账本工具")
+        self.native.click("筛选与工具")
         self.native.click("资料库")
         self.native.click(label)
 

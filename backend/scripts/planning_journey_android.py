@@ -259,7 +259,7 @@ class PlanningAndroid:
     def recycle_bin(self):
         self.plan_home()
         self.click("流水", bottom=True)
-        self.click("账本工具")
+        self.click("筛选与工具")
         self.click("资料库")
         self.click("回收站")
 
