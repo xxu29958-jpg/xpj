@@ -24,16 +24,16 @@ import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.MonthComparison
 import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.ui.components.AppAmountText
+import com.ticketbox.ui.components.AppAdaptiveMetricGrid
+import com.ticketbox.ui.components.AppAdaptiveMetricGridCompactMinWidth
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.AppTextHierarchy
-import com.ticketbox.ui.design.AppWindowWidthClass
-import com.ticketbox.ui.design.LocalAppAdaptiveLayoutPolicy
 import com.ticketbox.ui.design.LocalCurrencyDisplay
+import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.StatsSource
@@ -51,26 +51,22 @@ internal data class StatsOverviewHeaderModel(
 @Composable
 internal fun StatsOverviewCard(header: StatsOverviewHeaderModel) {
     val currencyDisplay = CurrencyDisplay.forRecord(header.stats.homeCurrencyCode)
-    val compactWindow = LocalAppAdaptiveLayoutPolicy.current.widthClass == AppWindowWidthClass.Compact
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
     ) {
         OverviewAmountHeader(header, currencyDisplay)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap),
-        ) {
-            CompactMetric(
+        AppAdaptiveMetricGrid(itemCount = 2, twoColumnMinWidth = AppAdaptiveMetricGridCompactMinWidth) { index, metricModifier ->
+            if (index == 0) CompactMetric(
                 label = stringResource(R.string.stats_overview_count_label),
                 value = stringResource(R.string.stats_overview_count_value, header.stats.count),
-                modifier = Modifier.weight(1f, fill = compactWindow),
+                modifier = metricModifier,
             )
-            CompactMetric(
+            else CompactMetric(
                 label = stringResource(R.string.stats_overview_recent7_label),
                 value = header.recent7DaysAmountCents?.let { formatDisplayAmount(it, currencyDisplay) }
                     ?: stringResource(R.string.stats_overview_recent7_unavailable),
-                modifier = Modifier.weight(1f, fill = compactWindow),
+                modifier = metricModifier,
             )
         }
     }
@@ -195,6 +191,7 @@ private fun MonthDeltaPill(
 ) {
     if (comparison.previousAmountCents == 0L) return
     val visuals = LocalThemeVisuals.current
+    val warning = LocalStateTokens.current.warn
     val delta = comparison.deltaAmountCents
     val (label, tint) = when {
         delta == 0L -> stringResource(R.string.stats_overview_delta_flat) to MaterialTheme.colorScheme.onSurfaceVariant
@@ -206,7 +203,7 @@ private fun MonthDeltaPill(
                 R.string.stats_overview_delta_up,
                 formatDisplayAmount(kotlin.math.abs(delta), currencyDisplay),
                 percent,
-            ) to visuals.warningTint
+            ) to warning.fg
         }
         else -> {
             val percent = comparison.percentChange?.let {
@@ -222,7 +219,7 @@ private fun MonthDeltaPill(
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(AppRadius.pill))
-            .background(tint.copy(alpha = AppAlpha.subtle))
+            .background(if (delta > 0L) warning.bg else tint.copy(alpha = AppAlpha.subtle))
             .padding(horizontal = AppSpacing.contentGap, vertical = AppSpacing.miniGap),
     ) {
         Text(
@@ -230,8 +227,6 @@ private fun MonthDeltaPill(
             color = tint,
             style = MaterialTheme.typography.labelSmall.tabularNum(),
             fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -253,13 +248,10 @@ private fun CompactMetric(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        Text(
+        AppAmountText(
             text = value,
             color = MaterialTheme.colorScheme.onSurface,
-            style = MaterialTheme.typography.titleMedium.tabularNum(),
-            fontWeight = AppTextHierarchy.body.weight,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            role = AppAmountRole.Compact,
         )
     }
 }

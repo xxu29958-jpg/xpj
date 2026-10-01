@@ -2,20 +2,18 @@ package com.ticketbox.ui.screens.stats
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.sp
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppAmountText
+import com.ticketbox.ui.components.AppAdaptiveAmountRowStyle
+import com.ticketbox.ui.components.AppAdaptiveEditAmountRow
+import com.ticketbox.ui.components.AppAdaptiveMetricGrid
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAmountRole
@@ -42,13 +40,12 @@ internal fun ReportsAnswerHeader(
 @Composable
 private fun ReportsAnswerTotal(model: ReportsAnswerModel) {
     val currencyDisplay = LocalCurrencyDisplay.current
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-        verticalAlignment = Alignment.Top,
+    AppAdaptiveEditAmountRow(
+        amount = model.totalAmountCents?.let { formatDisplayAmount(it, currencyDisplay) }
+            ?: stringResource(R.string.reports_amount_unavailable),
+        style = AppAdaptiveAmountRowStyle(role = AppAmountRole.Medium),
     ) {
         Column(
-            modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
         ) {
             Text(
@@ -64,50 +61,39 @@ private fun ReportsAnswerTotal(model: ReportsAnswerModel) {
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        AppAmountText(
-            text = model.totalAmountCents?.let { formatDisplayAmount(it, currencyDisplay) } ?: stringResource(R.string.reports_amount_unavailable),
-            color = MaterialTheme.colorScheme.onSurface,
-            role = AppAmountRole.Medium,
-            minFontSize = 18.sp,
-        )
     }
 }
 
 @Composable
 private fun ReportsAnswerMetrics(model: ReportsAnswerModel) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-    ) {
-        if (model.hasPreviousMonthComparison) {
+    AppAdaptiveMetricGrid(itemCount = if (model.hasYearOverYearComparison) 3 else 2) { index, metricModifier ->
+        if (index == 0 && model.hasPreviousMonthComparison) {
             ReportsAnswerMetric(
                 label = stringResource(R.string.stats_reports_answer_previous_label),
                 value = monthDeltaValue(model),
                 caption = monthDeltaCaption(model),
-                modifier = Modifier.weight(1f),
+                modifier = metricModifier,
             )
-        } else {
+        } else if (index == 0) {
             ReportsAnswerMetric(
                 label = stringResource(R.string.stats_reports_answer_current_label),
                 value = stringResource(R.string.stats_reports_answer_count_value, model.count),
                 caption = stringResource(if (model.monthDeltaAmountCents == null) R.string.reports_comparison_unavailable else R.string.stats_reports_answer_no_previous_caption),
-                modifier = Modifier.weight(1f),
+                modifier = metricModifier,
             )
-        }
-        if (model.hasYearOverYearComparison) {
+        } else if (index == 1 && model.hasYearOverYearComparison) {
             ReportsAnswerMetric(
                 label = stringResource(R.string.stats_reports_answer_yoy_label),
                 value = signedDeltaValue(model.yearOverYearDeltaAmountCents),
                 caption = displayMonthLabel(model.yearOverYearMonth),
-                modifier = Modifier.weight(1f),
+                modifier = metricModifier,
             )
-        }
-        ReportsAnswerMetric(
+        } else ReportsAnswerMetric(
             label = stringResource(R.string.stats_reports_answer_active_label),
             value = model.trendEvidence?.let { stringResource(R.string.stats_reports_answer_active_value, it.positiveBucketCount) }
                 ?: stringResource(R.string.reports_amount_unavailable),
             caption = model.trendEvidence?.let { peakCaption(it) } ?: stringResource(R.string.reports_comparison_unavailable),
-            modifier = Modifier.weight(1f),
+            modifier = metricModifier,
         )
     }
 }
@@ -130,25 +116,15 @@ private fun ReportsAnswerMetric(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        Text(
+        AppAmountText(
             text = value,
             color = MaterialTheme.colorScheme.onSurface,
-            style = MaterialTheme.typography.bodyMedium.tabularNum(),
-            fontWeight = AppTextHierarchy.body.weight,
-            autoSize = TextAutoSize.StepBased(
-                minFontSize = 11.sp,
-                maxFontSize = 14.sp,
-                stepSize = 1.sp,
-            ),
-            maxLines = 1,
-            overflow = TextOverflow.Clip,
+            role = AppAmountRole.Compact,
         )
         Text(
             text = caption,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelSmall.tabularNum(),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
         )
     }
 }

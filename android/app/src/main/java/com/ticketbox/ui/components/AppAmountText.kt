@@ -1,14 +1,16 @@
 package com.ticketbox.ui.components
 
 import androidx.compose.foundation.text.TextAutoSize
+import androidx.compose.foundation.text.modifiers.TextAutoSizeLayoutScope
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
 import com.ticketbox.ui.design.AppAmountRole
@@ -23,10 +25,10 @@ fun AppAmountText(
     minFontSize: TextUnit = role.autosizeMinFontSize,
 ) {
     val style = MaterialTheme.typography.titleLarge.asAmount(role)
-    AppAutosizedSingleLineText(
+    AppAutosizedAmountText(
         text = text,
         modifier = modifier,
-        spec = AppAutosizedSingleLineSpec(
+        spec = AppAmountTextSpec(
             color = color,
             style = style,
             minFontSize = minFontSize,
@@ -44,10 +46,10 @@ fun AppEndAlignedAmountText(
     minFontSize: TextUnit = role.autosizeMinFontSize,
 ) {
     val style = MaterialTheme.typography.titleLarge.asAmount(role)
-    AppAutosizedSingleLineText(
+    AppAutosizedAmountText(
         text = text,
         modifier = modifier,
-        spec = AppAutosizedSingleLineSpec(
+        spec = AppAmountTextSpec(
             color = color,
             style = style,
             minFontSize = minFontSize,
@@ -66,10 +68,10 @@ fun AppEndAlignedAmountStatusText(
     minFontSize: TextUnit = role.autosizeMinFontSize,
 ) {
     val style = MaterialTheme.typography.titleLarge.asAmount(role)
-    AppAutosizedSingleLineText(
+    AppAutosizedAmountText(
         text = text,
         modifier = modifier,
-        spec = AppAutosizedSingleLineSpec(
+        spec = AppAmountTextSpec(
             color = color,
             style = style,
             minFontSize = minFontSize,
@@ -79,7 +81,7 @@ fun AppEndAlignedAmountStatusText(
     )
 }
 
-private data class AppAutosizedSingleLineSpec(
+private data class AppAmountTextSpec(
     val color: Color,
     val style: TextStyle,
     val minFontSize: TextUnit,
@@ -88,25 +90,46 @@ private data class AppAutosizedSingleLineSpec(
 )
 
 @Composable
-private fun AppAutosizedSingleLineText(
+private fun AppAutosizedAmountText(
     text: String,
     modifier: Modifier,
-    spec: AppAutosizedSingleLineSpec,
+    spec: AppAmountTextSpec,
 ) {
     Text(
         text = text,
         modifier = modifier,
         color = spec.color,
         style = spec.style,
-        autoSize = TextAutoSize.StepBased(
+        autoSize = AmountAutoSize(
             minFontSize = spec.minFontSize,
             maxFontSize = spec.maxFontSize,
-            stepSize = 1.sp,
         ),
-        maxLines = 1,
-        overflow = TextOverflow.Clip,
         textAlign = spec.textAlign,
     )
+}
+
+/** Keep the existing one-line size ladder; amounts that exceed its floor can wrap in full. */
+private data class AmountAutoSize(
+    val minFontSize: TextUnit,
+    val maxFontSize: TextUnit,
+) : TextAutoSize {
+    override fun TextAutoSizeLayoutScope.getFontSize(constraints: Constraints, text: AnnotatedString): TextUnit {
+        var lower = 0
+        var upper = (maxFontSize.value - minFontSize.value).toInt()
+        var chosen = minFontSize
+        while (lower <= upper) {
+            val step = lower + (upper - lower) / 2
+            val candidate = (minFontSize.value + step).sp
+            val layout = performLayout(constraints, text, candidate)
+            if (layout.lineCount <= 1 && !layout.hasVisualOverflow) {
+                chosen = candidate
+                lower = step + 1
+            } else {
+                upper = step - 1
+            }
+        }
+        return chosen
+    }
 }
 
 internal val AppAmountRole.autosizeMinFontSize: TextUnit

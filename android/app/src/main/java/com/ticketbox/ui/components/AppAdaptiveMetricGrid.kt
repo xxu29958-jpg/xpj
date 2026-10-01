@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.design.AppAdaptiveBreakpoints
@@ -33,7 +34,7 @@ fun AppAdaptiveMetricGrid(
     item: @Composable (index: Int, modifier: Modifier) -> Unit,
 ) {
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
-        when (resolveAppAdaptiveMetricGridMode(maxWidth, twoColumnMinWidth)) {
+        when (resolveAppAdaptiveMetricGridMode(maxWidth, twoColumnMinWidth, LocalDensity.current.fontScale)) {
             AppAdaptiveMetricGridMode.SingleColumn -> AppAdaptiveMetricGridColumn(
                 itemCount = itemCount,
                 item = item,
@@ -90,8 +91,9 @@ private fun AppAdaptiveMetricGridTwoColumn(
 internal fun resolveAppAdaptiveMetricGridMode(
     maxWidth: Dp,
     twoColumnMinWidth: Dp = AppAdaptiveBreakpoints.mediumWidthMin,
+    fontScale: Float = 1f,
 ): AppAdaptiveMetricGridMode =
-    if (maxWidth < twoColumnMinWidth) {
+    if (maxWidth / fontScale.coerceAtLeast(1f) < twoColumnMinWidth) {
         AppAdaptiveMetricGridMode.SingleColumn
     } else {
         AppAdaptiveMetricGridMode.TwoColumn
