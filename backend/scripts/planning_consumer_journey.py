@@ -66,7 +66,8 @@ def _seed(group):
                 "budget-recurring": "预算与固定支出验证账本", "relationships": "往来来源验证账本",
                 "portable-downloads": "数据出口验证账本", "backstage": "后台识别验证账本",
                 "notifications": "通知原任务验证账本", "reference-library": "资料库联动验证账本",
-                "financial-facts": "财务事实联动验证账本", "original-maintenance": "原件维护验证账本"}[group], device_name="隔离浏览器")
+                "financial-facts": "财务事实联动验证账本", "original-maintenance": "原件维护验证账本",
+                "insights": "洞察核对验证账本"}[group], device_name="隔离浏览器")
         activate_test_currency_authority(db, "CNY")
         db.commit()
         return fixture
@@ -172,6 +173,9 @@ def _journey(page, native: PlanningAndroid, fixture, evidence: Path):
 
 
 def _run_group(args, page, native, fixture):
+    if args.group == "insights":
+        from scripts.insights_journey import InsightsJourney
+        return InsightsJourney(page, native, fixture, args.evidence, BASE_URL).run()
     if args.group == "original-maintenance":
         from scripts.original_maintenance_journey import OriginalMaintenanceJourney
         return OriginalMaintenanceJourney(page, native, fixture, args.evidence, BASE_URL, args.restart_backend).run()
@@ -270,7 +274,7 @@ def main() -> int:
     parser.add_argument("--serial", required=True)
     parser.add_argument("--apk", type=Path, required=True)
     parser.add_argument("--evidence", type=Path, required=True)
-    parser.add_argument("--group", choices=("income-goals", "budget-recurring", "relationships", "portable-downloads", "backstage", "notifications", "reference-library", "financial-facts", "original-maintenance"), default="income-goals")
+    parser.add_argument("--group", choices=("income-goals", "budget-recurring", "relationships", "portable-downloads", "backstage", "notifications", "reference-library", "financial-facts", "original-maintenance", "insights"), default="income-goals")
     args = parser.parse_args()
     if os.environ.get("GITHUB_ACTIONS") != "true":
         raise RuntimeError("Run this sustained PostgreSQL/native journey in the isolated cloud job")
