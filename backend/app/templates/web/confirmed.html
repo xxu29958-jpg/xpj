@@ -15,7 +15,7 @@
    - 热力图改离散 level-2/3/4 分桶 (无 inline 样式), 来源构成用原生 <progress>;
      二者是当前唯一 Web consumer, 保留为流水之后的「本月概况」次级区;
    - 批量更正保持一个 native form + 共享更正理由 + 两个语义分开的行动组
-     (批量改分类/批量改标签, 各带「只应用 X」说明), 无 JS 模式状态机;
+     (只改分类/只改标签), 无 JS 模式状态机;
      no-JS 可用性由 bulk-bar.js 的 data-bulk-enhanced 增强标记承接
      (未增强即保持原生可见; product 片禁止 body 内样式标签);
    - 分页走共享 product/_pagination.html; OCC 快照/幂等键/422 原页草稿与勾选
@@ -118,8 +118,10 @@
     {# 「选择本页全部」无法原生表达 (无表单语义可勾动兄弟 checkbox): 默认 hidden,
        仅在 bulk-bar.js 完成首次 refresh() 后解除。未增强时它不存在于可视/AX 树,
        不做只看不用的说谎控件; 逐行 checkbox 始终原生可提交。 #}
-    <input class="checkbox" id="check-all" type="checkbox" aria-label="选择本页全部账单" hidden>
-    <span>本页批处理</span>
+    <label class="check-cell">
+      <input class="checkbox" id="check-all" type="checkbox" aria-label="选择本页全部账单" hidden>
+      <span>全选本页</span>
+    </label>
     <span class="hint">勾选账单后，在页面底部统一更正分类或标签</span>
   </div>
     {% endif %}
@@ -140,7 +142,9 @@
   <div class="timeline-row lrow{% if can_write and e.entry_kind == 'expense' %} has-check{% endif %}">
         {% if can_write and e.entry_kind == 'expense' %}
     <div class="lrow-sel">
+      <label class="check-cell">
       <input class="checkbox row-check" type="checkbox" name="expense_snapshot" value="{{ e.id }}:{{ e.row_version }}" form="bulk-form" data-id="{{ e.id }}" data-row-version="{{ e.row_version }}" aria-label="选择账单：{{ e.merchant or '未填写商家' }} {{ e.amount_label or '金额未识别' }}"{% if e.id in selected_expense_ids %} checked{% endif %}>
+      </label>
     </div>
         {% endif %}
         {% if e.entry_kind == 'expense' %}
@@ -275,7 +279,9 @@
    此后仅 .on (有选中行) 时显示; 未增强 (无 JS / JS 未跑到) 时整条保持可用的
    原生形态 — fail-open, 计数/取消选择等增强态控件此时隐藏。不复制选择状态,
    也不用 body 内样式标签。 #}
-<form id="bulk-form" method="post" action="/web/confirmed/batch-update" class="bulk-bar confirmed-bulk-bar" data-bulk{% if flash_type == 'error' %} aria-describedby="confirmed-batch-feedback"{% endif %}>
+<form id="bulk-form" method="post" action="/web/confirmed/batch-update" class="bulk-bar" data-bulk{% if flash_type == 'error' %} aria-describedby="confirmed-batch-feedback"{% endif %}>
+  {# 更正理由不代表动作选择；无 JS 时需明确激活分类或标签按钮。 #}
+  <input type="submit" hidden disabled>
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
   <input type="hidden" name="home_currency_code" value="{{ home_currency_code }}">
@@ -284,24 +290,24 @@
   <input type="hidden" name="tag" value="{{ tag }}">
   <input type="hidden" name="page" value="{{ page }}">
   <input type="hidden" name="idempotency_key" value="{{ batch_idempotency_key }}">
-  <div class="bulk-meta">
-    <span class="count" data-bulk-count>0</span>
-    <span class="label">笔已选</span>
-    <button class="dt-btn" type="button" data-bulk-clear>取消选择</button>
-  </div>
-  <div class="bulk-reason">
-    <input type="text" name="reason" value="{{ batch_reason_input }}" maxlength="500" required placeholder="更正理由（必填，写入账单变更记录）" aria-label="批量更正理由">
-  </div>
-  <div class="bulk-group" role="group" aria-label="批量改分类">
-    <input type="text" name="category" value="{{ batch_category_input }}" maxlength="64" placeholder="新分类" aria-label="批量修改分类">
-    <button class="dt-btn" type="submit" name="action" value="set_category">批量改分类</button>
-    <span class="bulk-hint">只应用分类</span>
-  </div>
-  <div class="bulk-group" role="group" aria-label="批量改标签">
-    <input type="text" name="tags" value="{{ batch_tags_input }}" maxlength="500" placeholder="标签，逗号分隔" aria-label="批量修改标签">
-    <button class="dt-btn primary" type="submit" name="action" value="set_tags">批量改标签</button>
-    <span class="bulk-hint">只应用标签</span>
-  </div>
+  <span class="bulk-selection-status"><span class="count" data-bulk-count>0</span><span class="label">笔已选</span></span>
+  <button class="product-button" type="button" data-bulk-clear>取消选择</button>
+  <details class="bulk-editor"{% if flash_type == 'error' %} open{% endif %}>
+    <summary class="product-button">批量更正</summary>
+    <div class="bulk-editor-fields">
+      <label>更正理由（必填，写入变更记录）
+        <input type="text" name="reason" value="{{ batch_reason_input }}" maxlength="500" required aria-label="批量更正理由">
+      </label>
+      <div class="bulk-group" role="group" aria-label="批量改分类">
+        <label>新分类<input type="text" name="category" value="{{ batch_category_input }}" maxlength="64" aria-label="批量修改分类"></label>
+        <button class="product-button" type="submit" name="action" value="set_category">只改分类</button>
+      </div>
+      <div class="bulk-group" role="group" aria-label="批量改标签">
+        <label>标签<input type="text" name="tags" value="{{ batch_tags_input }}" maxlength="500" placeholder="多个标签用逗号分隔" aria-label="批量修改标签"></label>
+        <button class="product-button" type="submit" name="action" value="set_tags">只改标签</button>
+      </div>
+    </div>
+  </details>
 </form>
 {% endif %}
 {% endblock %}

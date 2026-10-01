@@ -11,6 +11,23 @@
     const all = document.getElementById("check-all");
     const checks = Array.from(document.querySelectorAll(".row-check"));
     const clearButton = form.querySelector("[data-bulk-clear]");
+    const editor = form.querySelector(".bulk-editor");
+
+    if (editor) {
+      editor.addEventListener("keydown", function (event) {
+        if (event.key === "Escape" && editor.open) {
+          event.preventDefault();
+          editor.open = false;
+          editor.querySelector("summary").focus();
+          return;
+        }
+        if (event.key !== "Enter" || event.isComposing || event.target.tagName !== "INPUT") return;
+        event.preventDefault();
+        const group = event.target.closest(".bulk-group");
+        const submitter = group && group.querySelector('button[type="submit"]');
+        if (submitter) submitter.click(); // Native validation/CSRF and this field's explicit command.
+      });
+    }
 
     // 批选不挂起行导航：checkbox 是选择的唯一 owner，行详情链接始终保留
     // 原生可访问/可导航（成熟列表同构；旧 exclusive-mode 的 aria-disabled /
@@ -39,6 +56,7 @@
       const entries = selectedEntries();
       counter.textContent = String(entries.length);
       form.classList.toggle("on", entries.length > 0);
+      if (editor && entries.length === 0) editor.open = false;
       checks.forEach(function (cb) {
         const checked = cb.checked;
         const row = cb.closest(".exp-row, .timeline-row");
@@ -325,7 +343,6 @@
     form.dataset.bulkEnhanced = "true";
     // 「选择本页全部」是 JS-only 能力, 模板侧默认 hidden: 只在增强完整落地后
     // 现身; 任何更早的初始化失败都让它保持隐藏, 不做可见但无用的说谎控件。
-    // (pending 的全选框无 hidden 属性, 此行对它为无操作。)
     if (all) all.hidden = false;
   };
 })(window, document);

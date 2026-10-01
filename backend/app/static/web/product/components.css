@@ -483,9 +483,13 @@ button[disabled] {
 
 .empty-state-cta,
 .product-state-action {
-    color: var(--brand-primary-strong);
     font-weight: var(--type-subtitle-weight);
     text-underline-offset: var(--space-1);
+}
+
+.empty-state-cta:not(.product-button),
+.product-state-action:not(.product-button) {
+    color: var(--brand-primary-strong);
 }
 
 .dt-form-grid,
@@ -746,12 +750,13 @@ body.product-shell .file-picker > input.file-picker-input:focus-visible {
     outline-offset: var(--space-1);
 }
 
-/* W1: 批量条浮为 tonal 悬浮条 (无描边); ≤64rem 抬到 fixed 底部 nav 之上。 */
+/* 两个列表共用选择条；原生 details 展开编辑，选择与提交仍归原表单。 */
 .bulk-bar {
     position: sticky;
     inset-block-end: var(--space-4);
     z-index: var(--z-sticky);
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: var(--space-3);
     margin-block-start: var(--space-5);
@@ -765,22 +770,64 @@ body.product-shell .file-picker > input.file-picker-input:focus-visible {
 @media (max-width: 64rem) {
     .bulk-bar {
         inset-block-end: calc(var(--mobile-nav-block-size) + env(safe-area-inset-bottom) + var(--space-3));
-        flex-wrap: wrap;
     }
 
-    /* 窄屏重排: 两个输入各占整行, 命令按钮均分一行, 不横向溢出。 */
-    .bulk-bar .bulk-field {
-        width: 100% !important;
-    }
-
-    .bulk-bar .product-button {
+    .bulk-bar > button[type="submit"] {
         flex: 1;
-        min-height: var(--target-min);
     }
+}
 
-    .bulk-bar .spacer {
-        display: none;
-    }
+.bulk-bar .product-button {
+    min-height: var(--target-min);
+    white-space: nowrap;
+}
+
+.bulk-selection-status {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--space-1);
+    white-space: nowrap;
+}
+
+.bulk-selection-status .count {
+    font-family: var(--font-numeric);
+    font-variant-numeric: tabular-nums;
+    font-weight: var(--type-title-weight);
+}
+
+.bulk-editor {
+    margin-inline-start: auto;
+}
+
+.bulk-editor-fields {
+    position: absolute;
+    inset-inline-end: 0;
+    inset-block-end: calc(100% + var(--space-2));
+    inline-size: min(100%, 36rem);
+    display: grid;
+    gap: var(--space-4);
+    max-block-size: min(50dvh, 24rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: var(--space-4);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-lg);
+    background: var(--surface-raised);
+    box-shadow: var(--shadow-raised);
+}
+
+.bulk-editor-fields label {
+    display: grid;
+    min-width: 0;
+    gap: var(--space-2);
+    font-size: var(--type-caption-size);
+}
+
+.bulk-group {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: var(--space-3);
 }
 
 /* no-JS fail-open (收件域收口片冻结): 未增强时批量条原生可见、表单可原生
@@ -794,10 +841,6 @@ body.product-shell .file-picker > input.file-picker-input:focus-visible {
 .bulk-bar:not([data-bulk-enhanced]) .bulk-selection-status,
 .bulk-bar:not([data-bulk-enhanced]) [data-bulk-clear] {
     display: none;
-}
-
-.bulk-field {
-    width: min(18rem, 22vw) !important;
 }
 
 /* S3-R2 (main 适配): drawer 族规则收窄到 product 新壳上下文。
@@ -1049,14 +1092,6 @@ body.product-shell .file-picker > input.file-picker-input:focus-visible {
         grid-template-columns: minmax(0, 1fr);
     }
 
-    .bulk-bar {
-        align-items: stretch;
-        flex-direction: column;
-    }
-
-    .bulk-field {
-        width: 100% !important;
-    }
 }
 
 @media (max-width: 40rem) {
