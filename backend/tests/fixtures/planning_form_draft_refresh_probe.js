@@ -18,7 +18,7 @@
     for (let attempt=0; attempt<160; attempt++) {
       const form=frame.contentDocument.querySelector('form[method="post"][action="'+spec.action+'"]');
       const submit=form?.querySelector('[data-'+spec.kind.split('-')[0]+'-submit]');
-      if (submit && !submit.disabled) return form;
+      if (submit && !submit.disabled && form.dataset[spec.kind.split('-')[0]+'DraftPhase'] === 'editing') return form;
       await pause(25);
     }
     throw Error('actual draft lease unavailable: '+spec.kind);
