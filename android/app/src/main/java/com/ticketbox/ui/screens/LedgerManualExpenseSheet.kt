@@ -5,9 +5,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.ime
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -18,7 +16,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.ui.screens.expense.toSavedJson
 import com.ticketbox.R
@@ -35,7 +32,6 @@ import com.ticketbox.ui.components.AppSheetAction
 import com.ticketbox.ui.components.AppSheetActionFeedback
 import com.ticketbox.ui.components.AppSheetActionFeedbackState
 import com.ticketbox.ui.components.AppSheetScaffold
-import com.ticketbox.ui.components.LocalAppImeVisible
 import com.ticketbox.ui.components.formatMinorAmountInput
 import com.ticketbox.ui.components.nowUtcIso
 import com.ticketbox.ui.components.parseMinorAmount
@@ -106,8 +102,6 @@ fun ManualExpenseSheet(
     var message by rememberSaveable { mutableStateOf<String?>(null) }
     val invalidAmountMessage = stringResource(R.string.ledger_manual_amount_invalid)
     val timeErrorMessage = time.error?.let { stringResource(it) }
-    val density = LocalDensity.current
-    val keyboardVisible = LocalAppImeVisible.current || WindowInsets.ime.getBottom(density) > 0
     LaunchedEffect(amountText, currency, merchant, category, note, timeForm) {
         onDraftChange?.invoke(
             ManualExpenseSheetDraft(
@@ -159,7 +153,15 @@ fun ManualExpenseSheet(
         AppSheetScaffold(
             title = stringResource(R.string.ledger_manual_sheet_title),
             subtitle = stringResource(R.string.ledger_manual_sheet_subtitle),
-            compact = keyboardVisible,
+            actions = {
+                ManualExpenseActionSlot(
+                    feedbackMessage = message ?: state.errorMessage,
+                    saving = state.saving,
+                    editable = state.editable,
+                    onDismiss = actions.onDismiss,
+                    onSubmit = ::submitDraft,
+                )
+            },
         ) {
             ExpenseCurrencyFields(
                     currency = currency,
@@ -176,7 +178,6 @@ fun ManualExpenseSheet(
                     supportingText = stringResource(R.string.ledger_manual_amount_supporting_text),
                 ),
             )
-            val feedbackMessage = message ?: state.errorMessage
             ExpenseEditTextField(
                 state = ExpenseEditTextFieldState(
                     label = stringResource(R.string.ledger_manual_merchant_label),
@@ -223,13 +224,6 @@ fun ManualExpenseSheet(
                 modifier = Modifier.fillMaxWidth(),
             )
             com.ticketbox.ui.screens.expense.ExpenseTimeEditor(timeForm, setTimeForm, fieldsEnabled)
-            ManualExpenseActionSlot(
-                feedbackMessage = feedbackMessage,
-                saving = state.saving,
-                editable = state.editable,
-                onDismiss = actions.onDismiss,
-                onSubmit = ::submitDraft,
-            )
         }
     }
 }

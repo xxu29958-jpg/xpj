@@ -71,7 +71,7 @@ private fun draftSignedCents(draft: EditableItem, display: CurrencyDisplay): Lon
 
 /**
  * PR-D items editor. A full-height [ModalBottomSheet] of editable line-item rows
- * with a pinned reconciliation footer (明细合计 / 账单金额 / 差额). Each row carries a name,
+ * with scrolling reconciliation (明细合计 / 账单金额 / 差额) and fixed task actions. Each row carries a name,
  * an amount (magnitude in yuan), a kind segmented control, and a delete action;
  * "添加项目" appends a blank row. Save is never blocked on a mismatch — a receipt
  * may legitimately not reconcile, so the difference is surfaced as quiet status.
@@ -87,6 +87,20 @@ fun ItemsEditorSheet(
         ExpenseEditSheetScaffold(
             title = stringResource(R.string.expense_edit_items_sheet_title),
             subtitle = stringResource(R.string.expense_edit_items_sheet_subtitle),
+            actions = {
+                ExpenseEditSheetActions(
+                    state = ExpenseEditSheetActionState(
+                        saving = state.saving,
+                        primaryEnabled = true,
+                        savingText = stringResource(R.string.expense_edit_items_saving_button),
+                        primaryText = stringResource(R.string.expense_edit_items_save_button),
+                    ),
+                    handlers = ExpenseEditSheetActionHandlers(
+                        onDismiss = actions.onDismiss,
+                        onSubmit = actions.onSave,
+                    ),
+                )
+            },
         ) {
             LazyColumn(
                 modifier = Modifier
@@ -115,18 +129,6 @@ fun ItemsEditorSheet(
                 drafts = state.drafts,
                 parentAmountCents = state.parentAmountCents,
                 display = state.display,
-            )
-            ExpenseEditSheetActions(
-                state = ExpenseEditSheetActionState(
-                    saving = state.saving,
-                    primaryEnabled = true,
-                    savingText = stringResource(R.string.expense_edit_items_saving_button),
-                    primaryText = stringResource(R.string.expense_edit_items_save_button),
-                ),
-                handlers = ExpenseEditSheetActionHandlers(
-                    onDismiss = actions.onDismiss,
-                    onSubmit = actions.onSave,
-                ),
             )
         }
     }

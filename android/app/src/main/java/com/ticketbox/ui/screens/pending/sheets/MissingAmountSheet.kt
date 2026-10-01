@@ -68,6 +68,27 @@ internal fun MissingAmountSheetContent(
         title = stringResource(R.string.pending_missing_amount_title),
         subtitle = stringResource(R.string.pending_missing_amount_hint),
         chrome = chrome,
+        actions = {
+            ReviewSheetActionFeedback(
+                chrome = chrome,
+                primary = AppSheetAction(
+                    text = if (saving) {
+                        stringResource(R.string.pending_missing_amount_processing)
+                    } else {
+                        stringResource(R.string.pending_missing_amount_save_and_confirm)
+                    },
+                    enabled = canSave,
+                    icon = Icons.Filled.Check,
+                    onClick = { originalMinor?.let(onSaveAndConfirm) },
+                ),
+                secondary = AppSheetAction(
+                    text = if (saving) stringResource(R.string.common_saving) else stringResource(R.string.pending_missing_amount_save_draft),
+                    enabled = canSave,
+                    icon = Icons.Filled.Save,
+                    onClick = { originalMinor?.let(onSaveDraft) },
+                ),
+            )
+        },
     ) {
         MissingAmountSuggestion(
             suggestedMinor = suggestedMinor,
@@ -106,26 +127,6 @@ internal fun MissingAmountSheetContent(
                 style = MaterialTheme.typography.bodySmall,
             )
         }
-
-        ReviewSheetActionFeedback(
-            chrome = chrome,
-            primary = AppSheetAction(
-                text = if (saving) {
-                    stringResource(R.string.pending_missing_amount_processing)
-                } else {
-                    stringResource(R.string.pending_missing_amount_save_and_confirm)
-                },
-                enabled = canSave,
-                icon = Icons.Filled.Check,
-                onClick = { originalMinor?.let(onSaveAndConfirm) },
-            ),
-            secondary = AppSheetAction(
-                text = if (saving) stringResource(R.string.common_saving) else stringResource(R.string.pending_missing_amount_save_draft),
-                enabled = canSave,
-                icon = Icons.Filled.Save,
-                onClick = { originalMinor?.let(onSaveDraft) },
-            ),
-        )
     }
 }
 

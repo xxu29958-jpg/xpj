@@ -52,7 +52,7 @@ class RecurringOccurrenceBusySheetTest {
         compose.waitUntil(10_000) { host.model.value?.uiState?.value?.canWrite == true }
         compose.onNodeWithTag("occurrence-payment-1").performScrollTo().performClick()
         val choice = requireNotNull(host.model.value?.uiState?.value?.choice)
-        compose.onNodeWithTag("occurrence-submit").performScrollTo().performClick()
+        compose.onNodeWithTag("occurrence-submit").performClick()
         compose.waitUntil(5_000) { entered.isCompleted }
         assertTrue(host.model.value?.uiState?.value?.saving == true)
         assertTrue(fixture.stored().isEmpty())

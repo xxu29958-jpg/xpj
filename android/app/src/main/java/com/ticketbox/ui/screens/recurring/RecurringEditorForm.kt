@@ -100,6 +100,7 @@ internal fun RecurringEditorForm(
     AppSheetScaffold(
         title = title,
         subtitle = stringResource(R.string.recurring_form_subtitle),
+        actions = { RecurringEditorActions(feedback, state, callbacks) },
     ) {
         callbacks.onHistory?.let { open ->
             androidx.compose.material3.TextButton(onClick = open, enabled = !state.awaiting) {
@@ -137,7 +138,6 @@ internal fun RecurringEditorForm(
         RecurringEditorFeedbackSlot(
             feedback = feedback,
             state = state,
-            callbacks = callbacks,
         )
     }
 }
@@ -185,10 +185,35 @@ private fun RecurringEditorAmountField(
 }
 
 @Composable
-private fun RecurringEditorFeedbackSlot(
+private fun RecurringEditorActions(
     feedback: RecurringEditorFeedback,
     state: RecurringEditorFormState,
     callbacks: RecurringEditorFormCallbacks,
+) {
+    AppSheetActionFeedback(
+        state = AppSheetActionFeedbackState(
+            validationMessage = feedback.errorText.takeIf {
+                feedback.conflict == null && feedback.conflictStatus == null
+            },
+        ),
+        primary = AppSheetAction(
+            text = state.primaryText,
+            icon = Icons.Filled.Check,
+            enabled = state.primaryEnabled,
+            onClick = callbacks.onSubmit,
+        ),
+        secondary = AppSheetAction(
+            text = stringResource(R.string.common_cancel),
+            enabled = !state.awaiting,
+            onClick = callbacks.onCancel,
+        ),
+    )
+}
+
+@Composable
+private fun RecurringEditorFeedbackSlot(
+    feedback: RecurringEditorFeedback,
+    state: RecurringEditorFormState,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap)) {
         feedback.conflict?.let { RecurringConflictBlock(model = it, onAction = feedback.onConflictAction) }
@@ -198,24 +223,6 @@ private fun RecurringEditorFeedbackSlot(
         if (feedback.overlaps.isNotEmpty() && state.currency != null) {
             RecurringOverlapComparisonSection(feedback.overlaps, state.currency)
         }
-        AppSheetActionFeedback(
-            state = AppSheetActionFeedbackState(
-                validationMessage = feedback.errorText.takeIf {
-                    feedback.conflict == null && feedback.conflictStatus == null
-                },
-            ),
-            primary = AppSheetAction(
-                text = state.primaryText,
-                icon = Icons.Filled.Check,
-                enabled = state.primaryEnabled,
-                onClick = callbacks.onSubmit,
-            ),
-            secondary = AppSheetAction(
-                text = stringResource(R.string.common_cancel),
-                enabled = !state.awaiting,
-                onClick = callbacks.onCancel,
-            ),
-        )
     }
 }
 

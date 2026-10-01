@@ -133,6 +133,22 @@ private fun ExpenseEditCategorySheet(
         AppSheetScaffold(
             title = stringResource(R.string.expense_edit_category_sheet_title),
             subtitle = stringResource(R.string.expense_edit_category_sheet_subtitle),
+            actions = {
+                AppSheetActionFeedback(
+                    primary = AppSheetAction(
+                        text = stringResource(R.string.common_confirm),
+                        enabled = customText.isNotBlank(),
+                        onClick = {
+                            actions.onCategoryChange(customText.trim())
+                            actions.onDismissSheet()
+                        },
+                    ),
+                    secondary = AppSheetAction(
+                        text = stringResource(R.string.common_cancel),
+                        onClick = actions.onDismissSheet,
+                    ),
+                )
+            },
         ) {
             if (state.categories.isNotEmpty()) {
                 AppCompactChips {
@@ -163,20 +179,6 @@ private fun ExpenseEditCategorySheet(
                 actions = AppTextInputActions(onValueChange = { customText = it }),
                 modifier = Modifier.fillMaxWidth(),
                 decorations = AppTextInputDecorations(),
-            )
-            AppSheetActionFeedback(
-                primary = AppSheetAction(
-                    text = stringResource(R.string.common_confirm),
-                    enabled = customText.isNotBlank(),
-                    onClick = {
-                        actions.onCategoryChange(customText.trim())
-                        actions.onDismissSheet()
-                    },
-                ),
-                secondary = AppSheetAction(
-                    text = stringResource(R.string.common_cancel),
-                    onClick = actions.onDismissSheet,
-                ),
             )
         }
     }

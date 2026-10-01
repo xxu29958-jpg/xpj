@@ -70,7 +70,7 @@ class IncomePlanRoomContinuityTest {
         compose.onNodeWithText("120.00").performScrollTo().assertIsDisplayed()
         var beforeAcceptance: Bundle? = null
         compose.runOnIdle { beforeAcceptance = requireNotNull(editorStateOwner).save() }
-        compose.onNodeWithText("保存").performScrollTo().performClick()
+        compose.onNodeWithText("保存").performClick()
         compose.waitUntil(10_000) { fixture.stored().size == 1 && editor.value?.state?.value?.session == null }
         val original = fixture.stored().single()
         assertEquals(0, fixture.network.calls.size)

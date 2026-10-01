@@ -93,7 +93,7 @@ class DebtCreateSheetContinuityTest {
         // System window updates can resize the viewport during capture. Locate Save in the
         // current viewport immediately before the user's touch, not before taking the preview.
         compose.onNode(hasText(context.getString(R.string.debt_create_save)) and hasClickAction())
-            .performScrollTo().assertIsDisplayed().assertIsEnabled().performTouchInput {
+            .assertIsDisplayed().assertIsEnabled().performTouchInput {
                 assertTrue("Save injection visibleSize=$visibleSize", width > 0 && height > 0)
                 click()
             }
@@ -127,7 +127,7 @@ class DebtCreateSheetContinuityTest {
     }
 }
 
-private class SheetCreationGate : DebtCreationActions {
+internal class SheetCreationGate : DebtCreationActions {
     private val access = LedgerAccessContext(
         LogicalSessionBinding("https://sheet.example.test", "ledger", "synthetic-owner", "session", "binding"), true,
     )
@@ -153,7 +153,7 @@ private class SheetCreationGate : DebtCreationActions {
     }
 }
 
-private fun sheetQueries(): DebtActions {
+internal fun sheetQueries(): DebtActions {
     val uncalled = Proxy.newProxyInstance(DebtActions::class.java.classLoader, arrayOf(DebtActions::class.java)) { _, method, _ ->
         error("Unexpected sheet fixture call: ${method.name}")
     } as DebtActions

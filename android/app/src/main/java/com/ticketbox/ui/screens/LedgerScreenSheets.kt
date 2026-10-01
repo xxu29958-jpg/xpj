@@ -184,7 +184,11 @@ private fun LedgerBulkEditHost(
     actions: LedgerScreenActions,
 ) {
     if (!chromeState.showBulkEdit || !state.selectionMode || state.readOnly) return
-    ModalBottomSheet(onDismissRequest = { chromeState.showBulkEdit = false }) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
+        onDismissRequest = { chromeState.showBulkEdit = false },
+        sheetState = sheetState,
+    ) {
         LedgerBulkEditSheet(
             state = LedgerBulkEditSheetState(
                 selectedCount = state.selectedCount,

@@ -4,14 +4,23 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
+import androidx.test.platform.app.InstrumentationRegistry
+import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseSourceValues
+import com.ticketbox.ui.RealKeyboard
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.PendingSheet
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 
@@ -26,9 +35,11 @@ import org.junit.Test
 class PendingExpandedReviewPaneLayoutTest {
     @get:Rule
     val composeRule = createComposeRule()
+    @get:Rule val keyboard = RealKeyboard()
 
     @Test
-    fun expandedReviewPaneMeasuresInsideBoundedSlot() {
+    fun expandedReviewPaneKeepsTheOriginalJpyDraftActionAboveTheKeyboard() {
+        val drafts = mutableListOf<Pair<Long, Long>>()
         composeRule.setContent {
             TicketboxTheme(skin = AppSkin.Default) {
                 Box(modifier = Modifier.width(420.dp).height(760.dp)) {
@@ -37,7 +48,7 @@ class PendingExpandedReviewPaneLayoutTest {
                             PendingSheet.MissingAmount(missingAmountExpense()),
                         ),
                         reviewState = reviewState(PendingSheet.MissingAmount(missingAmountExpense())),
-                        reviewActions = noopActions(),
+                        reviewActions = reviewActions { id, amount -> drafts += id to amount },
                         triageContent = {},
                     )
                 }
@@ -45,6 +56,12 @@ class PendingExpandedReviewPaneLayoutTest {
         }
 
         composeRule.onNodeWithText("补全金额").assertExists()
+        composeRule.onNode(hasSetTextAction()).performTouchInput { click() }.performTextInput("1234")
+        val save = InstrumentationRegistry.getInstrumentation().targetContext
+            .getString(R.string.pending_missing_amount_save_draft)
+        keyboard.assertActionAboveKeyboard(composeRule, save, "pending-pane-jpy-keyboard")
+        composeRule.onNodeWithText(save).performTouchInput { click() }
+        composeRule.runOnIdle { assertEquals(listOf(1L to 1234L), drafts) }
     }
 }
 
@@ -62,11 +79,11 @@ private fun reviewState(sheet: PendingSheet) = PendingReviewSheetHostState(
     statusMessage = null,
 )
 
-private fun noopActions() = PendingReviewSheetHostActions(
+private fun reviewActions(saveDraft: (Long, Long) -> Unit) = PendingReviewSheetHostActions(
     onSaveQuickCategory = { _, _ -> },
     onSaveQuickMerchant = { _, _ -> },
-    onSaveAmountDraft = { _, _ -> },
-    onSaveAmountAndConfirm = { _, _ -> },
+    onSaveAmountDraft = saveDraft,
+    onSaveAmountAndConfirm = { _, _ -> error("Saving a draft must not confirm the expense") },
     onSkipReviewField = {},
     onKeepBoth = {},
     onIgnoreCurrent = {},
@@ -78,6 +95,7 @@ private fun missingAmountExpense(): Expense = Expense(
     id = 1L,
     publicId = "pending-pane-1",
     amountCents = null,
+    originalCurrencyCode = CurrencyCode.JPY,
     merchant = "咖啡店",
     category = "餐饮",
     note = null,

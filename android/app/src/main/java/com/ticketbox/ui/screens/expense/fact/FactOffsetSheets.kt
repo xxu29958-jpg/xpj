@@ -109,6 +109,30 @@ private fun FactOffsetFormSheet(
                     R.string.expense_offset_sheet_subtitle_refund
                 },
             ),
+            actions = {
+                FactInputSaveStatus(state, viewModel::retryFactInputSave)
+                form.submitError?.let { AppStatusBanner(message = it, tone = MessageTone.Danger) }
+                AppSheetActionRow(
+                    primary = AppSheetAction(
+                        text = stringResource(
+                            if (form.saving) {
+                                R.string.expense_offset_saving
+                            } else if (reversal) {
+                                R.string.expense_offset_submit_reversal
+                            } else {
+                                R.string.expense_offset_submit_refund
+                            },
+                        ),
+                        enabled = viewModel.canSubmitOffset(),
+                        onClick = viewModel::submitOffset,
+                    ),
+                    secondary = AppSheetAction(
+                        text = stringResource(R.string.expense_fact_input_close),
+                        enabled = !form.saving,
+                        onClick = viewModel::closeOffsetSheet,
+                    ),
+                )
+            },
         ) {
             OffsetFormContent(state = state, viewModel = viewModel, reversal = reversal)
         }
@@ -126,8 +150,6 @@ private fun OffsetFormContent(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
     ) {
-        FactInputSaveStatus(state, viewModel::retryFactInputSave)
-        form.submitError?.let { AppStatusBanner(message = it, tone = MessageTone.Danger) }
         if (!form.matchesRoot(state.expense) || !viewModel.canEditFactInput(form.inputKey())) {
             OffsetDraftReview(state = state, viewModel = viewModel)
         }
@@ -146,26 +168,6 @@ private fun OffsetFormContent(
             OffsetAmountField(state = state, viewModel = viewModel)
         }
         OffsetTextFields(form = form, viewModel = viewModel)
-        AppSheetActionRow(
-            primary = AppSheetAction(
-                text = stringResource(
-                    if (form.saving) {
-                        R.string.expense_offset_saving
-                    } else if (reversal) {
-                        R.string.expense_offset_submit_reversal
-                    } else {
-                        R.string.expense_offset_submit_refund
-                    },
-                ),
-                enabled = viewModel.canSubmitOffset(),
-                onClick = viewModel::submitOffset,
-            ),
-            secondary = AppSheetAction(
-                text = stringResource(R.string.expense_fact_input_close),
-                enabled = !form.saving,
-                onClick = viewModel::closeOffsetSheet,
-            ),
-        )
     }
 }
 
@@ -303,25 +305,9 @@ private fun FactVoidOffsetSheet(
                 R.string.expense_offset_void_explainer,
                 offsetKindLabel(target.kind),
             ),
-        ) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-            ) {
+            actions = {
                 form.submitError?.let { AppStatusBanner(message = it, tone = MessageTone.Danger) }
                 FactInputSaveStatus(state, viewModel::retryFactInputSave)
-                if (!viewModel.canEditFactInput("void:${target.publicId}") ||
-                    state.factBundle?.activeOffsets?.none { it.publicId == target.publicId && it.rowVersion == target.rowVersion } == true) {
-                    Text(stringResource(R.string.expense_fact_void_review), style = MaterialTheme.typography.bodySmall)
-                    TextButton(onClick = viewModel::reviewVoidOffsetDraft,
-                        enabled = state.authoritativeRootReady && state.factBundleLoadState == ExpenseDetailDataLoadState.Loaded &&
-                            state.factBundle?.activeOffsets?.any { it.publicId == target.publicId } == true) {
-                        Text(stringResource(R.string.expense_correction_review_adopt))
-                    }
-                    TextButton(onClick = viewModel::loadExpenseFactBundle) { Text(stringResource(R.string.expense_fact_refresh_current)) }
-                }
-                VoidOffsetEcho(target = target)
-                VoidOffsetReasonInput(form = form, viewModel = viewModel)
                 AppSheetActionRow(
                     primary = AppSheetAction(
                         text = stringResource(
@@ -340,6 +326,24 @@ private fun FactVoidOffsetSheet(
                         onClick = viewModel::closeVoidOffsetSheet,
                     ),
                 )
+            },
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+            ) {
+                if (!viewModel.canEditFactInput("void:${target.publicId}") ||
+                    state.factBundle?.activeOffsets?.none { it.publicId == target.publicId && it.rowVersion == target.rowVersion } == true) {
+                    Text(stringResource(R.string.expense_fact_void_review), style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = viewModel::reviewVoidOffsetDraft,
+                        enabled = state.authoritativeRootReady && state.factBundleLoadState == ExpenseDetailDataLoadState.Loaded &&
+                            state.factBundle?.activeOffsets?.any { it.publicId == target.publicId } == true) {
+                        Text(stringResource(R.string.expense_correction_review_adopt))
+                    }
+                    TextButton(onClick = viewModel::loadExpenseFactBundle) { Text(stringResource(R.string.expense_fact_refresh_current)) }
+                }
+                VoidOffsetEcho(target = target)
+                VoidOffsetReasonInput(form = form, viewModel = viewModel)
             }
         }
     }

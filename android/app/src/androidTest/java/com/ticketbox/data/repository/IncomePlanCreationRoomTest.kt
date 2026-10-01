@@ -59,7 +59,7 @@ class IncomePlanCreationRoomTest {
         compose.onAllNodes(hasSetTextAction())[1].performScrollTo().performTextInput("1200")
         closeSoftKeyboard()
         compose.waitForIdle()
-        compose.onNodeWithText("保存").performScrollTo().performClick()
+        compose.onNodeWithText("保存").performClick()
         compose.waitUntil(10_000) { fixture.stored().size == 1 }
         val original = fixture.stored().single()
         assertEquals(0, fixture.network.creationCalls.size)
@@ -97,7 +97,7 @@ class IncomePlanCreationRoomTest {
         compose.waitForIdle()
         val oldDraft = requireNotNull(creator.value?.state?.value?.session)
         val beforeSave = compose.runOnIdle { requireNotNull(creatorOwner).save() }
-        compose.onNodeWithText("保存").performScrollTo().performClick()
+        compose.onNodeWithText("保存").performClick()
         compose.waitUntil(10_000) { fixture.stored().size == 1 && creator.value?.state?.value?.isSubmitting == true }
         val accepted = fixture.stored().single()
         assertEquals(oldDraft.creationKey, accepted["idempotencyKey"])
@@ -131,7 +131,7 @@ class IncomePlanCreationRoomTest {
         compose.onAllNodes(hasSetTextAction())[1].performScrollTo().performTextInput("120.00")
         closeSoftKeyboard()
         compose.waitForIdle()
-        compose.onNodeWithText("保存").performScrollTo().performClick()
+        compose.onNodeWithText("保存").performClick()
         compose.waitUntil(10_000) { fixture.stored().size == 1 && creator.value?.state?.value?.isSubmitting == true }
         val original = requireNotNull(creator.value?.state?.value?.session)
         fixture.network.loseResponse = false
@@ -152,11 +152,11 @@ class IncomePlanCreationRoomTest {
         installModels()
         compose.waitUntil(10_000) { creator.value?.state?.value?.session?.phase == IncomePlanCreationPhase.NeedsRecovery }
         compose.onNodeWithText("添加").performScrollTo().performClick()
-        compose.onNodeWithText("放弃草稿").performScrollTo().performClick()
+        compose.onNodeWithText("放弃草稿").performClick()
         compose.onNodeWithText("取消").performClick()
         compose.onNodeWithText("已保存的补贴").performScrollTo().assertTextEquals("已保存的补贴").assertIsNotEnabled()
         assertEquals(original.creationKey, creator.value?.state?.value?.session?.creationKey)
-        compose.onNodeWithText("放弃草稿").performScrollTo().performClick()
+        compose.onNodeWithText("放弃草稿").performClick()
         compose.onNodeWithText("确认放弃").performClick()
         compose.onNodeWithText("添加").performScrollTo().performClick()
         assertEquals("", compose.onAllNodes(hasSetTextAction())[0].fetchSemanticsNode().config[SemanticsProperties.EditableText].text)

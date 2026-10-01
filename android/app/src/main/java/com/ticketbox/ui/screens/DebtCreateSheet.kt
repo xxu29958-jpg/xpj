@@ -68,7 +68,36 @@ private fun DebtDraftForm(
     onCancel: () -> Unit,
 ) {
     val draft = state.addDraft
-    AppSheetScaffold(title = stringResource(R.string.debt_create_sheet_title)) {
+    AppSheetScaffold(
+        title = stringResource(R.string.debt_create_sheet_title),
+        actions = {
+            draft.validationError?.let { err ->
+                AppStatusBanner(message = err, tone = MessageTone.Danger)
+            }
+            // 空账本 fail closed（PR#255 R4 P1）：列表加载完成但币种仍无 record 级权威依据
+            // （空账本）时，说明创建为何禁用 —— 兜底 CNY 口径提交会放大零小数账本 100×。
+            // R1 用户可见重试：加载失败同样走到这里，refresh 重试保留草稿、不碰提交门。
+            DebtCreateCurrencyStatus(state = state, onRetry = viewModel::refresh)
+            AppSheetActionRow(
+                primary = AppSheetAction(
+                    text = if (state.isSubmitting) {
+                        stringResource(R.string.debt_create_submitting)
+                    } else {
+                        stringResource(R.string.debt_create_save)
+                    },
+                    onClick = onSubmit,
+                    // 账本币种未确认（初始/切换加载未成功）禁用创建：兜底 CNY 口径提交到
+                    // JPY/KRW 账本会放大 100×（PR#255 P1-3，VM submitDraft 另有同条件防线）。
+                    enabled = state.canModify && !state.isSubmitting && state.homeCurrencyResolved,
+                ),
+                secondary = AppSheetAction(
+                    text = stringResource(R.string.common_cancel),
+                    onClick = onCancel,
+                    enabled = !state.isSubmitting,
+                ),
+            )
+        },
+    ) {
         DebtDirectionField(selected = draft.direction, enabled = !state.isSubmitting, onSelect = viewModel::updateDraftDirection)
         AppTextInput(
             state = AppTextInputState(
@@ -97,31 +126,6 @@ private fun DebtDraftForm(
         DebtContextField(draft = draft, enabled = !state.isSubmitting, onValueChange = viewModel::updateDraftNote)
         DebtInstallmentCountField(kind = draft.kind, countInput = draft.installmentCountInput, enabled = !state.isSubmitting, onValueChange = viewModel::updateDraftInstallmentCount)
         DebtInstallmentPeriodField(kind = draft.kind, periodInput = draft.installmentPeriodInput, enabled = !state.isSubmitting, onValueChange = viewModel::updateDraftInstallmentPeriod)
-        draft.validationError?.let { err ->
-            AppStatusBanner(message = err, tone = MessageTone.Danger)
-        }
-        // 空账本 fail closed（PR#255 R4 P1）：列表加载完成但币种仍无 record 级权威依据
-        // （空账本）时，说明创建为何禁用 —— 兜底 CNY 口径提交会放大零小数账本 100×。
-        // R1 用户可见重试：加载失败同样走到这里，refresh 重试保留草稿、不碰提交门。
-        DebtCreateCurrencyStatus(state = state, onRetry = viewModel::refresh)
-        AppSheetActionRow(
-            primary = AppSheetAction(
-                text = if (state.isSubmitting) {
-                    stringResource(R.string.debt_create_submitting)
-                } else {
-                    stringResource(R.string.debt_create_save)
-                },
-                onClick = onSubmit,
-                // 账本币种未确认（初始/切换加载未成功）禁用创建：兜底 CNY 口径提交到
-                // JPY/KRW 账本会放大 100×（PR#255 P1-3，VM submitDraft 另有同条件防线）。
-                enabled = state.canModify && !state.isSubmitting && state.homeCurrencyResolved,
-            ),
-            secondary = AppSheetAction(
-                text = stringResource(R.string.common_cancel),
-                onClick = onCancel,
-                enabled = !state.isSubmitting,
-            ),
-        )
     }
 }
 

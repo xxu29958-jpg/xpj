@@ -71,6 +71,14 @@ internal fun LedgerToolsSheet(
     AppSheetScaffold(
         title = stringResource(R.string.ledger_tools_title),
         subtitle = stringResource(R.string.ledger_tools_subtitle),
+        actions = {
+            LedgerToolsFooter(
+                hasUserFilters = hasUserFilters,
+                showNoExport = ledger.items.isEmpty(),
+                onClearFilters = actions.onClearFilters,
+                onDismiss = actions.onDismiss,
+            )
+        },
     ) {
         // W2-B: 全局搜索已提为页头一级入口，sheet 内不再保留重复入口；
         // 本段只留当前列表的关键词筛选能力。
@@ -96,12 +104,6 @@ internal fun LedgerToolsSheet(
             onSync = actions.onSync,
             onExportCsv = actions.onExportCsv,
             onOpenLibrary = actions.onOpenLibrary,
-        )
-        LedgerToolsFooter(
-            hasUserFilters = hasUserFilters,
-            showNoExport = ledger.items.isEmpty(),
-            onClearFilters = actions.onClearFilters,
-            onDismiss = actions.onDismiss,
         )
     }
 }

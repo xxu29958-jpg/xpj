@@ -104,13 +104,13 @@ class IncomePlanDraftNavigationRoomTest {
         compose.onNodeWithText("00120.00").performScrollTo().assertIsDisplayed()
         closeSoftKeyboard()
         compose.waitForIdle()
-        compose.onNodeWithText("保存").performScrollTo().assertIsDisplayed().assertIsEnabled().performClick()
+        compose.onNodeWithText("保存").assertIsDisplayed().assertIsEnabled().performClick()
         assertTrue(income.stored().isEmpty())
         assertEquals("00120.00", originalEditor.state.value.session?.draft?.amountYuanInput)
         compose.onNodeWithText("00120.00").performScrollTo().performTextReplacement("120.00")
         closeSoftKeyboard()
         compose.waitForIdle()
-        compose.onNodeWithText("保存").performScrollTo().assertIsDisplayed().assertIsEnabled().performClick()
+        compose.onNodeWithText("保存").assertIsDisplayed().assertIsEnabled().performClick()
         compose.waitUntil(10_000) { income.stored().size == 1 && originalEditor.state.value.isSubmitting }
         val accepted = income.stored().single()
         compose.runOnIdle { assertTrue(inner.popBackStack()) }
@@ -118,7 +118,7 @@ class IncomePlanDraftNavigationRoomTest {
         enterIncome()
         assertSame(originalEditor, retainedEditor())
         assertTrue(originalEditor.state.value.isSubmitting)
-        compose.onNodeWithText(context.getString(R.string.income_plan_sheet_submitting)).performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText(context.getString(R.string.income_plan_sheet_submitting)).assertIsNotEnabled()
         acknowledge.complete(Unit)
         compose.waitUntil(10_000) { originalEditor.state.value.session == null && !originalEditor.state.value.isSubmitting }
         assertEquals(1, income.stored().size)
@@ -175,7 +175,7 @@ class IncomePlanDraftNavigationRoomTest {
             .performScrollTo().performClick()
         compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("十月临时稿")
         compose.onAllNodes(hasSetTextAction())[1].assertTextEquals("00120.00")
-        compose.onNodeWithText(context.getString(R.string.common_cancel)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.common_cancel)).performClick()
         compose.onNodeWithText(context.getString(R.string.income_plan_add_action_short))
             .performScrollTo().performClick()
         assertEquals("", compose.onAllNodes(hasSetTextAction())[0].fetchSemanticsNode().config[SemanticsProperties.EditableText].text)

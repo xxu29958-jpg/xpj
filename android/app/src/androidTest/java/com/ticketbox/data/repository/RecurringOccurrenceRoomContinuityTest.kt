@@ -76,8 +76,8 @@ class RecurringOccurrenceRoomContinuityTest {
         compose.onNodeWithTag("occurrence-payment-1").performScrollTo().performClick()
         val review = InstrumentationRegistry.getInstrumentation().targetContext.getString(
             com.ticketbox.R.string.occurrence_link_review, "房租付款", "JPY ¥12,345")
-        compose.onNodeWithText(review).performScrollTo().assertIsDisplayed()
-        compose.onNodeWithTag("occurrence-submit").performScrollTo().performClick()
+        compose.onNodeWithText(review).assertIsDisplayed()
+        compose.onNodeWithTag("occurrence-submit").performClick()
         compose.waitUntil(10_000) { fixture.stored().size == 1 }
         val original = fixture.stored().single()
         assertEquals(0, fixture.network.calls.size)
@@ -107,7 +107,7 @@ class RecurringOccurrenceRoomContinuityTest {
     private fun completeUndo() {
         compose.waitUntil(10_000) { host.model.value?.uiState?.value?.canWrite == true }
         compose.onNodeWithText("撤销本期关联").performScrollTo().performClick()
-        compose.onNodeWithTag("occurrence-submit").performScrollTo().performClick()
+        compose.onNodeWithTag("occurrence-submit").performClick()
         compose.waitUntil(10_000) { fixture.stored().size == 2 }
         assertEquals(1, runBlocking { fixture.drain() }.done)
         compose.waitUntil(10_000) { host.model.value?.uiState?.value?.occurrence?.state == "unfulfilled" }
@@ -367,8 +367,8 @@ class RecurringOccurrenceRoomContinuityTest {
         compose.onNodeWithTag("occurrence-payment-1").performScrollTo().performClick()
         val review = InstrumentationRegistry.getInstrumentation().targetContext.getString(
             com.ticketbox.R.string.occurrence_link_review, "房租付款", "JPY ¥12,345")
-        compose.onNodeWithText(review).performScrollTo().assertIsDisplayed()
-        compose.onNodeWithTag("occurrence-submit").performScrollTo().performClick()
+        compose.onNodeWithText(review).assertIsDisplayed()
+        compose.onNodeWithTag("occurrence-submit").performClick()
         compose.waitUntil(10_000) { fixture.stored().any { it["type"] == "set_recurring_occurrence_payment" } }
         assertEquals(1, runBlocking { fixture.drain() }.done)
         compose.waitUntil(10_000) {
@@ -911,8 +911,8 @@ class RecurringOccurrenceRoomContinuityTest {
         compose.onNodeWithTag("occurrence-payment-1").performScrollTo().performClick()
         val review = InstrumentationRegistry.getInstrumentation().targetContext.getString(
             com.ticketbox.R.string.occurrence_link_review, "房租付款", "JPY ¥12,345")
-        compose.onNodeWithText(review).performScrollTo().assertIsDisplayed()
-        compose.onNodeWithTag("occurrence-submit").performScrollTo().performClick()
+        compose.onNodeWithText(review).assertIsDisplayed()
+        compose.onNodeWithTag("occurrence-submit").performClick()
         compose.waitUntil(10_000) { fixture.stored().any { it["type"] == "set_recurring_occurrence_payment" } }
         assertEquals(1, runBlocking { fixture.drain() }.done)
         compose.waitUntil(10_000) {

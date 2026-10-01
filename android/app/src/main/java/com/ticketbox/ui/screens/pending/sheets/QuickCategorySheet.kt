@@ -40,6 +40,24 @@ internal fun QuickCategorySheetContent(
         title = stringResource(R.string.quick_category_sheet_title),
         subtitle = stringResource(R.string.quick_category_sheet_hint),
         chrome = chrome,
+        actions = {
+            ReviewSheetActionFeedback(
+                chrome = chrome,
+                primary = AppSheetAction(
+                    text = if (saving) stringResource(R.string.common_saving) else stringResource(R.string.quick_category_save_button),
+                    enabled = !saving && (custom.trim().isNotEmpty() || selected.isNotBlank()),
+                    onClick = {
+                        val choice = custom.trim().ifBlank { selected }.trim()
+                        if (choice.isNotEmpty()) onSave(choice)
+                    },
+                ),
+                secondary = AppSheetAction(
+                    text = stringResource(R.string.common_cancel),
+                    enabled = !saving,
+                    onClick = onDismiss,
+                ),
+            )
+        },
     ) {
         QuickCategoryOptions(
             options = options,
@@ -54,23 +72,6 @@ internal fun QuickCategorySheetContent(
             custom = custom,
             saving = saving,
             onCustomChange = { custom = it.take(20) },
-        )
-
-        ReviewSheetActionFeedback(
-            chrome = chrome,
-            primary = AppSheetAction(
-                text = if (saving) stringResource(R.string.common_saving) else stringResource(R.string.quick_category_save_button),
-                enabled = !saving && (custom.trim().isNotEmpty() || selected.isNotBlank()),
-                onClick = {
-                    val choice = custom.trim().ifBlank { selected }.trim()
-                    if (choice.isNotEmpty()) onSave(choice)
-                },
-            ),
-            secondary = AppSheetAction(
-                text = stringResource(R.string.common_cancel),
-                enabled = !saving,
-                onClick = onDismiss,
-            ),
         )
     }
 }
