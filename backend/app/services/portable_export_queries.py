@@ -10,12 +10,13 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-from sqlalchemy import Select, and_, case, func, or_, select, union
+from sqlalchemy import Select, and_, case, or_, select, union
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
 
 from app import models as m
 from app.database_model_registry import Base
+from app.services.original_reference_queries import original_receipt_references_query
 from app.services.permission_service import can_manage_members
 from app.tenants import AuthContext
 
@@ -455,44 +456,4 @@ def portable_original_history_query(auth: AuthContext) -> Select:
     old receipt's reference and digest remain independent of the current file.
     Paths from this query are never directly serialized into the portable records.
     """
-    receipt = _accepted_operations(auth).order_by(None).subquery("accepted_original_receipts")
-    body = case((receipt.c.resource_type == "expense_offset", receipt.c.response_body["root"]),
-        else_=receipt.c.response_body)
-    original_operations = ("verify_original", "replenish_original",
-        "retry_original_cleanup", "cancel_original_cleanup")
-    original_command = and_(receipt.c.resource_type == "expense",
-        body["operation"].as_string().in_(original_operations),
-        body["sha256"].as_string().is_not(None))
-    upload_receipt = receipt.c.resource_type == "upload_receipt"
-    producer_receipt = or_(upload_receipt, original_command)
-    expense_id = case((original_command, body["expense_id"].as_integer()),
-        else_=body["id"].as_integer())
-    expense_public_id = body["public_id"].as_string()
-    image_hash = case((original_command, body["sha256"].as_string()),
-        else_=body["image_hash"].as_string())
-    # Upload and original-command receipts deliberately persist identity rather
-    # than a storage path. Replenishment preserves that admitted digest, so the
-    # current reference is usable only while it still proves the same identity.
-    image_path = case((and_(producer_receipt, image_hash == m.Expense.image_hash), m.Expense.image_path),
-        (producer_receipt, None), else_=body["image_path"].as_string())
-    image_deleted_at = body["image_deleted_at"].as_string()
-    # Later retained receipts can prove an earlier reference was cleaned, even
-    # after replenishment moved the current attachment to another path.
-    historical_image_cleaned = func.max(case((image_deleted_at.is_not(None), 1), else_=0)).over(
-        partition_by=(expense_id, expense_public_id, image_path))
-    return select(
-        receipt.c.id.label("accepted_operation_id"), receipt.c.completed_at.label("accepted_at"),
-        expense_id.label("expense_id"), expense_public_id.label("expense_public_id"),
-        image_path.label("image_path"), image_hash.label("image_hash"),
-        image_deleted_at.label("image_deleted_at"), historical_image_cleaned.label("historical_image_cleaned"),
-        body["thumbnail_path"].as_string().label("thumbnail_path"),
-        body["thumbnail_deleted_at"].as_string().label("thumbnail_deleted_at"),
-        m.Expense.image_path.label("current_image_path"), m.Expense.thumbnail_path.label("current_thumbnail_path"),
-        m.Expense.image_deleted_at.label("current_image_deleted_at"),
-        m.Expense.thumbnail_deleted_at.label("current_thumbnail_deleted_at"),
-        m.Expense.attachment_cleanup_request, m.Expense.image_replenished_at,
-    ).select_from(receipt).outerjoin(m.Expense, and_(m.Expense.tenant_id == auth.ledger_id,
-        m.Expense.id == expense_id, m.Expense.public_id == expense_public_id)).where(
-            receipt.c.resource_type.in_(("expense", "expense_offset", "upload_receipt")),
-            expense_id.is_not(None),
-        ).order_by(receipt.c.id)
+    return original_receipt_references_query(_accepted_operations(auth), tenant_id=auth.ledger_id)

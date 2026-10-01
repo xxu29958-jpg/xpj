@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models import (
+    ApiIdempotencyKey,
     CategoryPreference,
     CategoryRule,
     Expense,
@@ -27,6 +28,7 @@ from app.services.file_service import (
     resolve_upload_path_for_tenant,
     upload_reference_for_path,
 )
+from app.services.original_reference_queries import historical_original_is_cleaned, original_receipt_references_query
 from app.services.soft_delete_policy import recycle_bin_retention_days
 from app.services.time_service import now_utc
 from app.tenants import DEFAULT_TENANT_ID
@@ -104,6 +106,13 @@ def _referenced_upload_paths(db: Session, tenant_id: str) -> set[str]:
             normalized = _normalize_upload_reference(reference, tenant_id)
             if normalized:
                 referenced.add(normalized)
+    history = original_receipt_references_query(select(ApiIdempotencyKey), tenant_id=tenant_id)
+    for original in db.execute(history).mappings():
+        if historical_original_is_cleaned(original):
+            continue
+        normalized = _normalize_upload_reference(original["image_path"], tenant_id)
+        if normalized:
+            referenced.add(normalized)
     return referenced
 
 
