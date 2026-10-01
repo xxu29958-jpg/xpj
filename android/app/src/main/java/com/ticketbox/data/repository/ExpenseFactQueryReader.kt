@@ -23,7 +23,8 @@ internal class ExpenseFactQueryReader(private val core: ExpenseRepositoryCore) {
     private val revisionsAdapter = moshi.adapter(ExpenseRevisionPageDto::class.java)
     private val bindingAdapter = moshi.adapter(LogicalSessionBinding::class.java)
     private val mutex = Mutex()
-    private val latest = mutableMapOf<String, Long>()
+    private data class AcceptedRead(val ticket: SnapshotReadTicket, val epoch: Any, val snapshot: ExpenseFactQueryCacheEntity)
+    private val acceptedReads = mutableMapOf<String, AcceptedRead>()
     private val resourceEpochs = mutableMapOf<String, Any>()
 
     suspend fun bundle(id: Long, binding: LogicalSessionBinding?): Result<ReadSnapshot<ExpenseFactBundle>> =
@@ -58,10 +59,7 @@ internal class ExpenseFactQueryReader(private val core: ExpenseRepositoryCore) {
         val resource = "$bindingKey|$id"
         val key = "$resource|${query.key}"
         val ticket = core.sessionCoordinator.beginSnapshotRead()
-        val epoch = mutex.withLock {
-            latest[key] = ticket.sequence
-            resourceEpochs.getOrPut(resource) { Any() }
-        }
+        val epoch = mutex.withLock { resourceEpochs.getOrPut(resource) { Any() } }
         val wire = try {
             bound.call { query.fetch(it) }
         } catch (error: HttpException) {
@@ -78,33 +76,44 @@ internal class ExpenseFactQueryReader(private val core: ExpenseRepositoryCore) {
             if (!error.isReadTransportUnavailable()) throw error
             return@safeCall core.sessionCoordinator.acceptSnapshotRead(ticket, bound, fromCache = true) {
                 mutex.withLock {
-                    requireCurrent(key, ticket, resource, epoch)
+                    requireCurrent(resource, epoch)
                     val saved = core.expenseDao.factSnapshot(bindingKey, id, query.key) ?: throw error
-                    val value = requireNotNull(query.adapter.fromJson(saved.responseJson))
-                    query.validate(value)
-                    ReadSnapshot(value, saved.fetchedAt, fromCache = true)
+                    savedRead(query, saved, fromCache = true)
                 }
             }
         }
         query.validate(wire)
         core.sessionCoordinator.acceptSnapshotRead(ticket, bound, fromCache = false) { cacheAllowed ->
             mutex.withLock {
-                requireCurrent(key, ticket, resource, epoch)
+                requireCurrent(resource, epoch)
+                val accepted = acceptedReads[key]?.takeIf { it.epoch === epoch &&
+                    it.ticket.generation == ticket.generation && it.ticket.sequence > ticket.sequence }
+                // Starting another GET does not retire this reader. If a newer GET already
+                // succeeded, share its complete snapshot without publishing the late response.
+                if (accepted != null) return@withLock savedRead(query, accepted.snapshot, fromCache = false)
                 val at = Instant.now().toString()
+                val saved = ExpenseFactQueryCacheEntity(bindingKey, bound.ledgerId, id,
+                    query.key, query.adapter.toJson(wire), at)
                 query.publish(wire, bound)
                 if (cacheAllowed) try {
-                    core.expenseDao.saveFactSnapshot(ExpenseFactQueryCacheEntity(bindingKey, bound.ledgerId, id,
-                        query.key, query.adapter.toJson(wire), at))
+                    core.expenseDao.saveFactSnapshot(saved)
                 } catch (_: SQLiteException) {
                     // Read freshness and authorization do not depend on cache availability.
                 }
+                acceptedReads[key] = AcceptedRead(ticket, epoch, saved)
                 ReadSnapshot(wire, at, fromCache = false)
             }
         }
     }
 
-    private fun requireCurrent(key: String, ticket: SnapshotReadTicket, resource: String, epoch: Any) {
-        if (latest[key] != ticket.sequence || resourceEpochs[resource] !== epoch) {
+    private fun <T> savedRead(query: FactQuery<T>, saved: ExpenseFactQueryCacheEntity, fromCache: Boolean): ReadSnapshot<T> {
+        val value = requireNotNull(query.adapter.fromJson(saved.responseJson))
+        query.validate(value)
+        return ReadSnapshot(value, saved.fetchedAt, fromCache)
+    }
+
+    private fun requireCurrent(resource: String, epoch: Any) {
+        if (resourceEpochs[resource] !== epoch) {
             throw RepositoryException("账单读取已更新，请重试。")
         }
     }
