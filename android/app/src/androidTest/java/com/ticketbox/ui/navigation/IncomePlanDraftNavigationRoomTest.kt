@@ -175,7 +175,7 @@ class IncomePlanDraftNavigationRoomTest {
             .performScrollTo().performClick()
         compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("十月临时稿")
         compose.onAllNodes(hasSetTextAction())[1].assertTextEquals("00120.00")
-        compose.onNodeWithText(context.getString(R.string.common_cancel)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.common_cancel)).performClick()
         compose.onNodeWithText(context.getString(R.string.income_plan_add_action_short))
             .performScrollTo().performClick()
         assertEquals("", compose.onAllNodes(hasSetTextAction())[0].fetchSemanticsNode().config[SemanticsProperties.EditableText].text)

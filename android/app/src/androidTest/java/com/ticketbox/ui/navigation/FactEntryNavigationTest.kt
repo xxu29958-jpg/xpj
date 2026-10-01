@@ -145,7 +145,7 @@ class FactEntryNavigationTest {
         compose.onNodeWithText("接收家人").performClick()
         compose.onNode(hasSetTextAction()).performTextReplacement("4")
         compose.onNodeWithText(context.getString(R.string.expense_edit_bill_split_sheet_send_button))
-            .performScrollTo().performClick()
+            .performClick()
         val waiting = context.getString(R.string.bill_split_submission_waiting)
         waitForText(waiting)
         compose.waitForIdle()
