@@ -262,7 +262,8 @@
     }
 
     .receipt-preview {
-        position: static;
+        position: relative;
+        inset-block-start: auto;
     }
 
     .product-inline-editor {
