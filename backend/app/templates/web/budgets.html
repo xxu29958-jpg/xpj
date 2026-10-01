@@ -35,7 +35,7 @@
     <p class="product-page-summary">{{ month }} · 本月预算与执行。</p>
   </div>
   {% if category_return_url %}<a class="product-button product-button--quiet" href="{{ category_return_url }}">返回分类继续移除</a>{% endif %}
-  <a class="btn-secondary" href="/web/budgets/history?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ month }}">修改记录</a>
+  <a class="product-button product-button--quiet" href="/web/budgets/history?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ month }}">修改记录</a>
 </header>
 
 {% if budget.configured and can_write %}

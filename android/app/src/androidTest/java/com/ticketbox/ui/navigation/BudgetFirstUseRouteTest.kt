@@ -1,10 +1,14 @@
 package com.ticketbox.ui.navigation
 
 import android.content.Context
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasSetTextAction
@@ -16,7 +20,12 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.unit.Density
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -118,8 +127,26 @@ class BudgetFirstUseRouteTest {
     }
 
     @Test fun historyOpensFromTheRealBudgetAndKeepsTheOriginalYenAndCategoriesAcrossPages() {
-        show()
-        compose.onNodeWithText(text(R.string.budget_history_title)).performScrollTo().performClick()
+        show(fontScale = 1.8f)
+        compose.onNode(hasScrollToIndexAction()).performScrollToIndex(0)
+        saveConsumerArtPreview("budget-header-large-font", requireNotNull(
+            InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        val headings = listOf(text(R.string.budget_header_title),
+            context.getString(R.string.budget_header_subtitle, transport.reads.first()))
+        for (heading in headings) {
+            val layouts = mutableListOf<TextLayoutResult>()
+            compose.onNodeWithText(heading, useUnmergedTree = true)
+                .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+            // String semantics rebuilds a MultiParagraph at the parent's max width, even
+            // when the rendered Text wraps its width. Check the visible lines, not that box.
+            assertTrue("The budget heading must remain readable: $heading; $layouts", layouts.isNotEmpty() && layouts.all { layout ->
+                !layout.didOverflowHeight && (0 until layout.lineCount).all { line ->
+                    !layout.isLineEllipsized(line) && layout.getLineLeft(line) >= 0f &&
+                        layout.getLineRight(line) <= layout.size.width
+                }
+            })
+        }
+        compose.onNodeWithText(text(R.string.budget_history_title)).performScrollTo().performTouchInput { click() }
         compose.waitUntil(5_000) { transport.historyCursors.size == 1 }
         compose.onNodeWithText(text(R.string.budget_history_edit)).assertIsDisplayed()
         compose.onNodeWithText(text(R.string.budget_history_more)).performScrollTo().performClick()
@@ -134,11 +161,14 @@ class BudgetFirstUseRouteTest {
         assertTrue(runBlocking { harness.fixture.pendingDao.allRows().isEmpty() })
     }
 
-    private fun show() {
+    private fun show(fontScale: Float = 1f) {
         compose.setContent {
-            if (mounted.value) TicketboxTheme(skin = AppSkin.Default) {
-                NavHost(rememberNavController(), startDestination = "budget") {
-                    composable("budget") { BudgetRoute(harness.screenFactory, onBack = {}) }
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale)) {
+                if (mounted.value) TicketboxTheme(skin = AppSkin.Default) {
+                    NavHost(rememberNavController(), startDestination = "budget") {
+                        composable("budget") { BudgetRoute(harness.screenFactory, onBack = {}) }
+                    }
                 }
             }
         }

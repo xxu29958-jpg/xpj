@@ -57,6 +57,8 @@ class IncomePlanCreationRoomTest {
         compose.onNodeWithText("添加").performScrollTo().performClick()
         compose.onAllNodes(hasSetTextAction())[0].performScrollTo().performTextInput("旅行补贴")
         compose.onAllNodes(hasSetTextAction())[1].performScrollTo().performTextInput("1200")
+        closeSoftKeyboard()
+        compose.waitForIdle()
         compose.onNodeWithText("保存").performScrollTo().performClick()
         compose.waitUntil(10_000) { fixture.stored().size == 1 }
         val original = fixture.stored().single()

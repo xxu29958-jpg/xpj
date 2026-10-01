@@ -61,19 +61,24 @@ fun AppSecondaryPageHeader(
     onBack: (() -> Unit)?,
     actions: @Composable (() -> Unit)? = null,
 ) {
-    Row(
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
     ) {
-        onBack?.let {
-            AppBackButton(text = backText, onClick = it)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            onBack?.let {
+                AppBackButton(text = backText, onClick = it)
+            }
+            AppSecondaryTitleText(
+                title = title,
+                subtitle = subtitle,
+                modifier = Modifier.weight(1f),
+            )
         }
-        AppSecondaryTitleText(
-            title = title,
-            subtitle = subtitle,
-            modifier = Modifier.weight(1f),
-        )
         actions?.invoke()
     }
 }

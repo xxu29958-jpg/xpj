@@ -12,6 +12,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -19,6 +20,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.navigation.compose.rememberNavController
 import androidx.test.core.app.ApplicationProvider
@@ -104,8 +106,8 @@ class BudgetOfflineReadingConnectedTest {
         compose.onNodeWithText("¥789").assertIsDisplayed()
         preview("budget-offline-plans")
         compose.onNodeWithTag("plan_destination_budget").performScrollTo().performClick()
-        compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("budget_total_amount"))
-            .fetchSemanticsNodes().isNotEmpty() }
+        // The pending-command summary can put the editor below the lazy viewport.
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("budget_total_amount"))
         // The original queued command locks editing; disabled fields retain text but have no SetText action.
         val originalAmount = SemanticsMatcher.keyIsDefined(SemanticsProperties.EditableText) and
             hasAnyAncestor(hasTestTag("budget_total_amount"))
@@ -113,20 +115,21 @@ class BudgetOfflineReadingConnectedTest {
             .fetchSemanticsNodes().isNotEmpty() }
         compose.onNode(originalAmount, useUnmergedTree = true).performScrollTo()
             .assertTextEquals("1200").assertIsNotEnabled()
-        compose.onNodeWithTag("budget-read-source").performScrollTo().assertIsDisplayed()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("budget-read-source"))
+        compose.onNodeWithTag("budget-read-source").assertIsDisplayed()
         assertNotNull("The online read must expose its actual read time", originalReadTime)
         assertEquals("Reopening must not manufacture a new fetch time", originalReadTime, readTime())
         assertTrue(sourceText().contains("离线"))
         preview("budget-offline-editor")
 
         compose.runOnIdle { harness.shell.selectPrimaryDomain(PrimaryDomain.Insights.key) }
-        compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("overview-module-budget"))
-            .fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithTag("overview-module-budget").performScrollTo().assertIsDisplayed()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("overview-module-budget"))
+        compose.onNodeWithTag("overview-module-budget").assertIsDisplayed()
         val remaining = context.getString(com.ticketbox.R.string.stats_budget_progress_remaining, "¥789")
         compose.waitUntil(5_000) { compose.onAllNodes(hasText(remaining)).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText(remaining).performScrollTo().assertIsDisplayed()
-        compose.onNodeWithTag("budget-read-source").performScrollTo().assertIsDisplayed()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("budget-read-source"))
+        compose.onNodeWithTag("budget-read-source").assertIsDisplayed()
         assertEquals("Insights must identify the same saved query", originalReadTime, readTime())
         assertTrue(sourceText().contains("离线"))
         assertEquals(originalIntent, harness.fixture.stored())

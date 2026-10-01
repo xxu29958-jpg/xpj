@@ -201,7 +201,7 @@ The production repair now exposes the existing decoder through a required creati
 
 Closure (2026-09-06): #370 candidate `ba74245419407c50f2b277355f8917d294540175` passed CI `33995880487`, CodeQL `33995880485` and actual Connected `33995880501` (109 tests, zero failures/skips). The exact artifact's failed-record list and selected-discard confirmation frames were viewed; one immutable-snapshot read-only review found no P1/P2 blocker. Normal protected squash merge produced `5791d176b3b5a739f3af29f9595c0ae4b28d60bd`, identical tree `6c7340af5302e1d54a4ebe7f8428c191716d1fee`. Independent main CI `33996503990`, CodeQL `33996503986` and Connected `33996503981` all succeeded, with all main product lanes executed and Connected again 109/109. Native Detekt had no findings but reported 33 analysis warnings; this is not a claim of error-free type analysis. These two frames do not close keyboard-visible interaction or the whole visual wave. The Owner requested the bounded repository-weight engineering map next, then return to capability completion; all Windows lifecycle HOLD boundaries remain unchanged.
 
-## 2026-10-01 列表选择与批量操作整组（OPEN）
+## 2026-10-01 列表选择与批量操作整组（CLOSED）
 
 事前范围：收件与流水是 `bulk-bar.js` / `.bulk-bar` 的全部两个消费者。收件保留确认入账、忽略/撤销、分类与商家；流水保留分类、标签、更正理由与历史。原生行 checkbox 仍是选择 Owner，原 form、CSRF、ledger、OCC、幂等键、权限及各 command Owner 保持原合同。Viewer 无写入口；无 JS 时逐行选择仍由 `expense_snapshot` 原生提交。编辑行与批选不能互相封锁。
 
@@ -216,3 +216,25 @@ Closure (2026-09-06): #370 candidate `ba74245419407c50f2b277355f8917d294540175` 
 同组键盘提交反例（源 `119b15e3`）：实际模板中，商家/标签字段按 Enter，无论有无 JS 都提交 `set_category`。现由共享编辑区把字段 Enter 交给所在动作组的原生按钮；更正理由和输入法确认不代选动作。原生表单以禁用且隐藏的默认 submit 控件阻止浏览器误选第一个命令，所有可见命令仍能用鼠标/触控或聚焦按钮后 Enter 原生提交。真实 Edge 的分类/商家/标签/理由 × JS/no-JS 十种探针通过，原选择快照保持；已有浏览器回归同时核对输入法组合事件、网络失败原生回退及原版本号，并退役仅搜脚本文字的旧测试。源端和主干云端资格继续 OPEN。
 
 源 `179b2378` 的真实 Edge、CodeQL 及其余 PG 分片通过；CI `36836784535` 的 ordinary 1/2 仅失败于 `test_web_confirmed_batch_markup` 仍逐字要求已退役 `dt-btn` 样式（该片 2,836 通过）。取消选择已由同一实际 Edge 回归及真实模板操作证明，现删除这条样式字符串断言，不改变生产行为或降低财务、权限、OCC、原生表单、历史回归。修正候选仍需自己的源资格与独立 main 资格。
+
+最终关闭：#485 源 `02a6dc35` 的 CI `36838941629`、CodeQL `36838941550` 通过；源 Connected `36838941542` 是范围跳过，不计设备实测。受保护合并为 `5d90b67e`，树与候选相同；独立 main CI `36840315509`、CodeQL `36840315466`、Connected `36840315762` 实际三片，以及真实 Web／Android 预算周期旅程 `36840635507` 全部通过。主干旅程原件的 checkout/source 都是 `5d90b67e`，实际预算 7 个修订、安排 3 个修订、周期定义 12 个修订，原跨月确认、显式关联、冲正、恢复预留、权限和明暗后置条件成立。本节以上待验证语句保留施工过程，最终状态以本段 CLOSED 为准；全产品 UI 与 RC 不随本组关闭。
+
+## 2026-10-01 次级任务入口与页头可用性整组（OPEN）
+
+事前范围与 Goal：基于已资格化 main `1561fb5e`，修正既有次级任务入口的触控与大字阅读。Web `btn-secondary` 在产品样式中没有定义；其全部四个 Web 消费者是预算修改记录入口、回本月预算、较早记录和最近记录。实际生产模板在 Edge 的 360/768/1440 下测得入口高 23.25px、两个分页链接高 19px。Owner 管理页的同名类有自己的样式，不属于这次替代。
+
+Android 由同一个 `AppSecondaryPageHeader` 承接的全部六种 actions 消费者为 Budget（状态与历史）、DebtList（记欠款与识别）、DebtGoal（创建／续稿）、IncomePlan（新建／原稿）、ExpenseEdit（当前状态）和 Recurring（只读状态）。其它次级页面没有 actions；主域内嵌 DebtList 不走这一页头。云端预算实际画面已显示标题、副标题被动作挤窄；当前 Row 给未加权动作优先宽度，欠款动作还请求 fillMaxWidth。先在既有预算真实路由／Room 历史测试和欠款创建续办测试中核对文本实际排版，再决定生产修正，不把源代码推断当作已执行反例。
+
+Allowed：原 Web 按钮与分页呈现、共享 Android 页头和直接消费者的必要布局调整。Forbidden：不改财务／历史／查询 Owner、权限、草稿、Outbox、月份、金额、命令和 Windows 边界；不造第二份导航或输入状态。退出门：两个原生反例实际执行，修正后预算 1.8 倍字号仍能读出标题与月份并触控打开原日元历史／分页；欠款标题可读且原创建／本地接受行为继续通过。核对六个动作消费者及无动作调用的兼容，实际明暗画面、Web 宽窄屏／键盘／原链接参数和 >=44px 目标，复用既有源及独立 main 门禁并作有界 review。此前已成立的业务整组不重开；本组不把未测全产品大字或实体设备声明为完成。
+
+两个已有原生测试的排版／触控核对已先行提交，实际云端结果待完成。Web 四个入口已迁到已有产品按钮和分页组件，真实 Edge 的 360/768/1440 实测均为 48px，链接账本／月份／cursor 保持；Android 生产页头尚未修改。列表批量操作 #485 在独立分支核准，不把该片云端结果替代本组。
+
+Web 当前本机证据（`ae6a95ba`）：两页真实模板／CSS／JS 在 360/768/1440、Paper/Midnight、正常与 200% 字号下没有横向溢出；实际动作文字由 14px 到 28px，目标至少 48px。键盘原生往返修改记录、较早记录、最近记录和本月预算，在 JS/no-JS 两种模式均保持原 ledger／month／cursor。50 条观测包含 48 个布局目标和两次完整原生往返，使用隔离合成数据，不声称认证业务写入。已检查正常和大字实际画面；预算原生路由与欠款原生创建的云端行为仍待返回。
+
+实际原生 RED：源 `8ab9a708` 的 CI `36839574903`、CodeQL `36839574984` 通过；Connected `36839574922` 的 3/3 分片 `110295273138` 实际执行 171 项，只失败预算标题在 1.8 倍字号下不可读与欠款标题不可读两处新核对，其余两个分片通过。两张实际原生画面已取回；不能把未走到的历史／欠款提交后置条件算作 RED 的成功。现仅调整共享页头，让返回／标题保有整行，既有动作在下方获得正常宽度。六种动作消费者原 callback／权限分支保留，没有动作内容时不产生额外布局项；原文字行数、返回逻辑和页面滚动 Owner 保持。依据 Compose 的 [Row weight 语义](https://developer.android.com/reference/kotlin/androidx/compose/foundation/layout/RowScope)，未加权动作原先优先占用宽度，标题只能取得余量。修正后需重新执行原两个完整旅程及现有门禁，并检查最终源的实际画面。
+
+原生修正源 `ac46d8d9` 的 CI／CodeQL 通过，但 Connected `36841736218` 仍停在两处新增排版断言。取回的当前真实画面已完整显示欠款标题及大字预算标题／月份；核对当前依赖 Compose Foundation 1.11.0 官方源码后，发现 String 的语义回读会按父级最大宽度重建 MultiParagraph，再配上原文本自身的窄尺寸，直接比较二者的 `hasVisualOverflow` 会把右侧空白算成截字。两处核对改为逐行真实左右边界、无省略和无高度溢出，保留原完整业务后置条件及失败布局诊断；不为满足错误检测而改生产文字宽度。修改后的源仍需自己的完整资格。
+
+同一 `ac46d8d9` 的其余设备分片也返回两个失败，均已单独核对：预算离线旅程在等待尚未进入 LazyColumn 视口的编辑区时超时，现使用已有实际滚动动作抵达原字段，再核对原 1200 日元、禁用状态、读取时间和意图字节；收入创建旅程在软件键盘开启时触点保存后没有得到本地回执，现与同文件另一完整创建旅程一致，先收起键盘再触控保存，原日元／跨月／回复丢失重放断言全部保留。它没有证明键盘开启的固定操作区，后者仍是预核准的下一组。该源真实 Web＋Android 默认集成旅程 `36841859551` 已通过，但不替代修订测试的最终源资格。
+
+修订源 `0607ba64` 的 CI `36844585240`、CodeQL `36844584866` 及实际 Connected `36844584671` 的 1/3、3/3 通过：两个页头排版断言及其原历史／欠款后置条件已成立。2/3 的 164 项仅失败预算离线旅程在读完原金额后定位已离开 lazy 视口的来源说明。现把该旅程预算页与洞察页余下的三处定位统一改为列表自身的 `performScrollToNode`，保留原金额、禁用状态、原读取时间及原意图字节断言。生产实现未变；修订后的完整源资格、最终画面与独立 main 资格继续 OPEN。
