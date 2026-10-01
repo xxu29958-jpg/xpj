@@ -59,7 +59,7 @@ class InsightsJourney:
             form.locator('[name="merchant"]').fill(merchant)
             form.locator('[name="category"]').fill(category)
             form.get_by_role("button", name="记下这笔支出", exact=True).click()
-            wait_for(lambda: any(row["merchant"] == merchant for row in self.facts()["expenses"]),
+            wait_for(lambda merchant=merchant: any(row["merchant"] == merchant for row in self.facts()["expenses"]),
                 "The actual manual entry did not create the report fact")
             row = next(row for row in self.facts()["expenses"] if row["merchant"] == merchant)
             self.goto(f'/web/expenses/{row["id"]}/correct')
@@ -67,7 +67,7 @@ class InsightsJourney:
             form.locator('[name="tags"]').fill(tag)
             form.locator('[name="reason"]').fill("ReportScope")
             form.locator("[data-correction-submit]").click()
-            wait_for(lambda: any(row["merchant"] == merchant and row["tags"] == tag
+            wait_for(lambda merchant=merchant, tag=tag: any(row["merchant"] == merchant and row["tags"] == tag
                 for row in self.facts()["expenses"]), "The actual correction did not retain the tag")
         state = self.facts()
         assert state["tagged_stats"]["total_amount_cents"] == 1600
@@ -144,7 +144,7 @@ class InsightsJourney:
         for theme in ("paper", "midnight"):
             page.locator("#appearance > summary").click()
             page.locator(f'#appearance [data-theme-mode="{theme}"]').click()
-            wait_for(lambda: page.locator("html").get_attribute("data-theme") == theme,
+            wait_for(lambda theme=theme: page.locator("html").get_attribute("data-theme") == theme,
                 "The actual report did not apply its selected appearance")
             page.locator("#appearance > summary").click()
             for width in (1280, 390):
