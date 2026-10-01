@@ -6,6 +6,7 @@ from PIL import Image, ImageDraw
 
 from scripts.insights_journey import InsightsJourney
 from scripts.planning_appearance_journey_native import native_appearance
+from scripts.planning_journey_android import wait_for
 
 
 def background_fixture(path):
@@ -62,7 +63,8 @@ class AppearanceJourney:
                 page.keyboard.press("Escape")
                 for domain in ("pending", "confirmed", "debts", "budgets", "overview"):
                     self.context.goto("/web/" + domain)
-                    page.wait_for_function("window.TicketboxBackground.applied() !== null")
+                    wait_for(lambda: page.evaluate("() => window.TicketboxBackground.applied() !== null"),
+                        "The saved Web background did not load")
                     assert page.evaluate("window.TicketboxBackground.applied().transform") == transform
                     assert page.locator("html").get_attribute("data-theme") == theme
                     self.context.capture(f"appearance-{domain}-{width}-{theme}")
@@ -71,17 +73,21 @@ class AppearanceJourney:
         page.keyboard.press("Escape")
         page.locator("dialog.bg-editor").wait_for(state="hidden")
         page.reload()
-        page.wait_for_function("window.TicketboxBackground.applied() !== null")
+        wait_for(lambda: page.evaluate("() => window.TicketboxBackground.applied() !== null"),
+            "Reload did not retain the applied background")
         assert page.evaluate("window.TicketboxBackground.applied().transform") == transform
         self.menu().locator('[data-theme-mode="system"]').click()
         page.keyboard.press("Escape")
         for scheme, theme in (("dark", "midnight"), ("light", "paper")):
             page.emulate_media(color_scheme=scheme)
-            page.wait_for_function("theme => document.documentElement.dataset.theme === theme", arg=theme)
+            wait_for(lambda theme=theme: page.locator("html").get_attribute("data-theme") == theme,
+                "The real Web consumer did not follow the system theme")
         self.menu().locator("[data-background-clear]").click()
-        page.wait_for_function("window.TicketboxBackground.applied() === null")
+        wait_for(lambda: page.evaluate("() => window.TicketboxBackground.applied() === null"),
+            "The actual background owner did not clear its saved image")
         page.reload()
-        page.wait_for_function("!document.documentElement.hasAttribute('data-user-bg')")
+        wait_for(lambda: page.locator("html").get_attribute("data-user-bg") is None,
+            "The cleared Web background returned after reload")
         self.context.capture("appearance-restored-theme")
         return transform
 
@@ -94,8 +100,9 @@ class AppearanceJourney:
         native = native_appearance(self.context, image, image_digest)
         assert self.context.facts() == before, "Appearance changed the confirmed financial facts"
         return {"verified_leg": "Actual Web and native local background import, unpublished draft cancellation, "
-                "apply, five-domain reads in both themes, original composition after restart, "
-                "system theme and restore default; confirmed facts unchanged",
+                "apply, built-in selection, five-domain reads in both themes and all three immersion modes, "
+                "original composition after restart, named motion controls, system theme and restore default; "
+                "confirmed facts unchanged",
             "financial_facts_unchanged": True, "expense_count": len(before["expenses"]),
             "synthetic_image_sha256": image_digest, "web_transform": transform, "native": native,
             "limits": "Appearance qualification only. Inbox, obligations and plans use their real empty states; "

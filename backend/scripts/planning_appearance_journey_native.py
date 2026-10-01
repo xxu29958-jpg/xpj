@@ -69,10 +69,47 @@ def pick_photo(native):
     wait_for(lambda: native.has("应用背景"), "The actual selected image did not open the editor")
 
 
+def read_domains(native, images):
+    for theme, label in (("paper", "温润米白 + 茶铜"), ("midnight", "深色玻璃 + 暖金")):
+        open_appearance(native)
+        native.click(label)
+        wait_for(lambda theme=theme: theme_mode(native) == theme, "The native theme choice was not persisted")
+        for mode, choice, description in (("atmosphere", "氛围", "背景更明显，适合首页和统计"),
+                ("balanced", "平衡", "默认推荐，兼顾好看和清晰"), ("focus", "专注", "弱化背景，适合长时间记账")):
+            open_appearance(native)
+            native.reveal_any("减少动效")
+            previous = saved_background(native)
+            native.click(choice, bottom=True)
+            wait_for(lambda description=description: native.has(description), "The immersion choice did not reach the UI")
+            wait_for(lambda previous=previous: saved_background(native) != previous, "The immersion choice was not persisted")
+            selected = saved_background(native)
+            for domain, slug in (("收件", "inbox"), ("流水", "ledger"), ("往来", "obligations"),
+                    ("计划", "plans"), ("洞察", "insights")):
+                native.domain_home(domain)
+                if domain == "流水":
+                    native.reveal_any("TaggedMeal")
+                native.capture(f"appearance-{slug}-{theme}-{mode}")
+            assert saved_background(native) == selected and private_images(native) == images
+        native.domain_home("流水")
+        native.reveal_any("TaggedMeal")
+        native.click("TaggedMeal")
+        native.click("更正这笔账单")
+        native.capture(f"appearance-correction-{theme}")
+        # No edit/submit: preserve all original financial facts and intentions.
+        native.back()
+    return saved_background(native)
+
+
 def native_appearance(j, path, image_digest):
     native = j.native
     prepare_photo(native, path)
     open_appearance(native)
+    native.click("背景图库")
+    native.click("茶雾")
+    native.click("应用背景")
+    wait_for(lambda: not native.has("应用背景"), "The built-in background did not publish")
+    native.reveal_any("内置背景", toward_start=True)
+    native.capture("appearance-builtin-applied")
     original = saved_background(native)
     pick_photo(native)
     native.click("放大")
@@ -87,30 +124,12 @@ def native_appearance(j, path, image_digest):
     native.click("右移")
     native.click("应用背景")
     wait_for(lambda: not native.has("应用背景"), "Apply did not return to appearance settings")
-    applied = saved_background(native)
-    assert applied != original
+    assert saved_background(native) != original
     images = private_images(native)
     assert len(images) == 1 and list(images.values()) == [image_digest], "The private image changed at import"
     native.reveal_any("自定义图片", toward_start=True)
     native.capture("appearance-custom-applied")
-    for theme, label in (("paper", "温润米白 + 茶铜"), ("midnight", "深色玻璃 + 暖金")):
-        open_appearance(native)
-        native.click(label)
-        wait_for(lambda theme=theme: theme_mode(native) == theme, "The native theme choice was not persisted")
-        for domain, slug in (("收件", "inbox"), ("流水", "ledger"), ("往来", "obligations"),
-                ("计划", "plans"), ("洞察", "insights")):
-            native.domain_home(domain)
-            if domain == "流水":
-                native.reveal_any("TaggedMeal")
-            native.capture(f"appearance-{slug}-{theme}")
-        native.domain_home("流水")
-        native.reveal_any("TaggedMeal")
-        native.click("TaggedMeal")
-        native.click("更正这笔账单")
-        native.capture(f"appearance-correction-{theme}")
-        # No edit/submit: preserve all original financial facts and intentions.
-        native.back()
-        assert saved_background(native) == applied and private_images(native) == images
+    applied = read_domains(native, images)
     native.restart()
     assert saved_background(native) == applied and private_images(native) == images
     open_appearance(native)
@@ -123,6 +142,12 @@ def native_appearance(j, path, image_digest):
     open_appearance(native)
     native.click("自动匹配系统明暗外观")
     wait_for(lambda: theme_mode(native) == "system", "The system-theme choice was not persisted")
+    native.set_switch("减少动效", True)
+    native.capture("appearance-reduce-motion")
+    native.set_switch("减少动效", False)
+    native.set_switch("视差动效", False)
+    native.set_switch("视差动效", True)
+    applied = saved_background(native)
     for night, label in (("yes", "dark"), ("no", "light")):
         native.adb("shell", "cmd", "uimode", "night", night)
         native.domain_home("流水")
