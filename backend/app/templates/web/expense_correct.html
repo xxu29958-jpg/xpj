@@ -1,6 +1,11 @@
 {% extends "base.html" %}
 {% set product_body_domain = 'transactions' %}
 {% block title %}更正账单 — 小票夹{% endblock %}
+{% block page_scripts %}
+<script src="/static/web/manual-drafts.js?v={{ asset_version }}" defer></script>
+<script src="/static/web/plan-entry.js?v={{ asset_version }}" defer></script>
+<script src="/static/web/financial-entry.js?v={{ asset_version }}" defer></script>
+{% endblock %}
 {% block content %}
 {% set form_prefix = 'correct-' ~ expense.id %}
 {# 显式更正意图（编排壳）—— reason 第一公民，标量/明细/拆账一次提交闭合；
@@ -19,16 +24,29 @@
 {% endif %}
 {% if conflict_current %}
 <div class="product-feedback product-feedback--warning" role="status">
-  当前权威值：商家 {{ conflict_current.merchant or '未填写' }}，金额 {{ conflict_current.amount_label or '待补' }}，分类 {% if conflict_current.needs_category %}待分类{% else %}{{ conflict_current.category }}{% endif %}。表单已载入最新基本信息，请核对明细和拆账，再重新填写这次想改的内容。
+  当前账单：商家 {{ conflict_current.merchant or '未填写' }}，金额 {{ conflict_current.amount_label or '待补' }}，分类 {% if conflict_current.needs_category %}待分类{% else %}{{ conflict_current.category }}{% endif %}。原输入仍保留；请先核对当前账单，再明确采用新的依据。
 </div>
 {% endif %}
 
-<form method="post" action="/web/expenses/{{ expense.id }}/corrections" class="correction-form">
+<section class="product-panel product-panel--padded" data-correction-draft-shelf hidden>
+  <h2 class="product-panel-title">保留的账单更正</h2><ul data-correction-draft-list></ul>
+</section>
+<form method="post" action="/web/expenses/{{ expense.id }}/corrections" class="correction-form"
+  {% if fact_draft_scope %}data-correction-draft-scope='{{ fact_draft_scope | tojson }}'{% endif %}
+  data-correction-plan-id="{{ expense.id }}" data-correction-current-version="{{ fact_current_version or expense.row_version }}"
+  data-correction-can-write="{{ 'true' if can_write else 'false' }}" data-correction-native-result="{{ fact_draft_result or '' }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+  <input type="hidden" name="expense_id" value="{{ expense.id }}">
+  <input type="hidden" name="draft_scope" value='{{ captured_fact_scope if captured_fact_scope is defined else (fact_draft_scope | tojson if fact_draft_scope else "") }}'>
+  <input type="hidden" name="fact_basis" value="{{ fact_basis or '' }}">
+  <input type="hidden" name="draft_client_ref" value="{{ fact_draft_client_ref or confirm_idempotency_key }}">
   <input type="hidden" name="expected_row_version" value="{{ expense.row_version }}">
   <input type="hidden" name="idempotency_key" value="{{ confirm_idempotency_key }}">
   {% for field_name, field_value in flow_return_fields.items() %}<input type="hidden" name="{{ field_name }}" value="{{ field_value }}">{% endfor %}
+  <div class="product-feedback" data-correction-draft-status role="status" hidden></div>
+  <p class="meta" data-correction-basis-note>原稿依据版本 {{ expense.row_version }}，金额按所选币种解释。</p>
+  {% include '_correction_review.html' %}
 
   {% include "_correction_reason.html" %}
   {% include "_correction_scalars.html" %}
@@ -39,7 +57,11 @@
 
   <div class="correction-actions">
     <p class="meta correction-actions-note">保存时只记录实际改动的字段与段落，并写入你的更正原因。</p>
-    <button type="submit" class="product-button product-button--primary">保存更正</button>
+    <button type="submit" class="product-button product-button--primary" data-correction-submit {% if not can_write %}disabled{% endif %}>保存更正</button>
+    <button type="submit" class="product-button product-button--quiet" data-correction-review name="review_latest" value="true" formnovalidate {% if not can_write %}disabled{% endif %}>核对当前账单</button>
+    <button type="button" class="product-button product-button--quiet" data-correction-discard hidden>放弃本地原稿</button>
+    <button type="button" class="product-button product-button--quiet" data-correction-original-result hidden>查看原提交详情／补汇率</button>
+    <p class="meta" data-correction-review-note>核对只准备表单，不保存账单；有变化的原输入仍会保留。</p>
     <a href="{{ fact_href }}" class="product-button product-button--quiet">返回账单详情</a>
   </div>
 </form>

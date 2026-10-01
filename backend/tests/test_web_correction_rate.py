@@ -107,12 +107,13 @@ def test_original_split_member_missing_from_current_options_keeps_its_selected_i
 def test_rate_rerender_cannot_replace_missing_original_identity_with_current_fact(monkeypatch):
     from app.routes import _web_correction_page as page
 
-    context = {"expense": {"row_version": 9, "merchant": "old submitted value",
+    context = {"expense": {"id": 1, "row_version": 9, "merchant": "old submitted value",
         "is_split_received": False, "original_currency_code": "USD"},
         "confirm_idempotency_key": "new-generated-key", "edit_return_fields": {}, "conflict_current": None}
+    context.update(current_expense=dict(context["expense"]), receipt_items={"rows": []}, split_rows={"rows": []})
     monkeypatch.setattr(page, "web_edit_context", Mock(return_value=context))
     monkeypatch.setattr(page, "require_runtime_home_currency_code", lambda _: "JPY")
-    result = page.web_correction_context(Mock(), object(), [], "original", 1,
+    result = page.web_correction_context(Mock(), SimpleNamespace(state=SimpleNamespace()), [], "original", 1,
         form_values={"expected_row_version": "", "idempotency_key": ""})
     assert result["expense"]["row_version"] == ""
     assert result["confirm_idempotency_key"] == ""

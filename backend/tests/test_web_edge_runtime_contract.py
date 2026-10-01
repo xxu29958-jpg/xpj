@@ -264,7 +264,8 @@ def test_income_create_original_form_draft_survives_refresh_in_real_edge(tmp_pat
     assert posts[2]["idempotency_key"] == "aa740c64-6e8d-45e8-80fd-5dd26a2f7126"
     assert posts[2]["label"] == "已核对后不再续办的计划" and posts[2]["amount_yuan"] == "80.00"
     assert probe["discarded"]["removed"] and probe["discarded"]["newFormAvailable"], probe
-    assert "不会撤销已发出的请求或已保存的计划" in probe["discarded"]["confirmation"], probe
+    assert "只移除本地原稿" in probe["discarded"]["confirmation"], probe
+    assert "不会撤销已发出的请求或保存结果" in probe["discarded"]["confirmation"], probe
 
 
 def test_drawer_fx_status_and_retry_keep_draft_until_explicit_load_in_real_edge(tmp_path: Path) -> None:

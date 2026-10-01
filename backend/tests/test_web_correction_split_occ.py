@@ -146,7 +146,9 @@ def test_web_correction_rejects_stale_split_rows_before_scalar_retry(
     assert conflict.status_code == 409, conflict.text
     note_position = conflict.text.index('name="note"')
     assert "并发后的备注" in conflict.text, conflict.text[note_position : note_position + 300]
-    assert "旧页面备注" not in conflict.text
+    assert '>旧页面备注</textarea>' in conflict.text
+    assert f'name="expected_row_version" value="{seeded["expense"]["row_version"]}"' in conflict.text
+    assert 'name="idempotency_key" value="web-split-occ-retry"' in conflict.text
 
     stale_form["expected_row_version"] = str(concurrent.json()["expense"]["row_version"])
     stale_retry = web_client.post(
@@ -215,8 +217,8 @@ def test_command_conflict_renders_split_replaced_after_parse(
     assert conflict.status_code == 409, conflict.text
     current = web_client.get(f"/api/expenses/{expense_id}/splits", headers=identity.app_headers)
     current_split = current.json()["splits"][0]
-    assert f'value="{current_split["public_id"]}"' in conflict.text
-    assert f'value="{old_split["public_id"]}"' not in conflict.text
+    assert f'name="split_public_id" value="{current_split["public_id"]}"' not in conflict.text
+    assert f'name="split_public_id" value="{old_split["public_id"]}"' in conflict.text
     assert "parse 后的最新拆账" in conflict.text
 
 

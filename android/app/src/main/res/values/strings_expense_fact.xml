@@ -139,7 +139,7 @@
     <string name="expense_offset_summary_refunded">已退回</string>
     <string name="expense_offset_summary_net">当前净额</string>
     <string name="expense_offset_summary_fx_difference">其中 %1$s 是汇率变动差额</string>
-    <string name="expense_offset_empty">还没有退回或冲销记录。</string>
+    <string name="expense_offset_empty">当前没有生效的退回或冲销。</string>
     <string name="expense_offset_kind_refund">商家退款</string>
     <string name="expense_offset_kind_chargeback">银行拒付</string>
     <string name="expense_offset_kind_reversal">冲销</string>
@@ -194,6 +194,8 @@
     <string name="expense_offset_history_correction">已更正</string>
     <string name="expense_offset_history_void">已撤销</string>
     <string name="correction_submission_title">原更正提交</string>
+    <string name="correction_submissions_show_delivered">查看已送达的更正（%1$d）</string>
+    <string name="correction_submissions_hide_delivered">收起已送达的更正（%1$d）</string>
     <string name="correction_submission_reason">原因：%1$s</string>
     <string name="correction_submission_details">查看提交内容</string>
     <string name="correction_submission_retry">重试原提交</string>

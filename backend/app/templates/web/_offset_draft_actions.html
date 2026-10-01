@@ -1,0 +1,7 @@
+<div class="offset-form-actions">
+  <button class="product-button product-button--primary" type="submit" data-offset-submit {% if not offset_can_write or recovery_only %}disabled{% endif %}>{{ offset_action_label }}</button>
+  <button class="product-button product-button--quiet" type="submit" name="review_latest" value="true" data-offset-review formnovalidate {% if not offset_can_write %}disabled{% endif %}>核对当前事实</button>
+  <button class="product-button product-button--quiet" type="button" data-offset-original-result hidden>查看原提交详情</button>
+  <button class="product-button product-button--quiet" type="button" data-offset-discard hidden>放弃本地原稿</button>
+  <p class="meta" data-offset-review-note>核对只准备表单；保存才会追加财务记录。</p>
+</div>

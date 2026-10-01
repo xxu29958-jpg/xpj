@@ -1,4 +1,4 @@
-/* Planning forms share draft leases and original command receipts. */
+/* Bound forms share draft leases and original command receipts. */
 (function (window, document) {
   "use strict";
   const definitions = {
@@ -37,17 +37,20 @@
     const submit = form.querySelector(definition.submitSelector || '[type="submit"]:not([name="review_new"]):not([name="review_latest"])');
     if (!submit) return;
     const nativeLabel = submit.textContent;
-    const nativeRef = form.elements.namedItem("idempotency_key").value;
+    const nativeRef = (definition.draftRefField && form.elements.namedItem(definition.draftRefField).value) || form.elements.namedItem("idempotency_key").value;
     const amount = form.elements.namedItem(definition.amount);
     const shelf = document.querySelector(selector("draft-shelf"));
     const review = form.querySelector(selector("review"));
     const discard = form.querySelector(selector("discard"));
+    const originalResult = form.querySelector(selector("original-result"));
     const permanentReadonly = new Set([...form.elements].filter(input => input.readOnly));
+    const permanentDisabled = new Set([...form.elements].filter(input => input.matches(":disabled")));
     let ref = nativeRef, phase = "editing", held = false, retained = false, busy = false, accepted = false;
     let release = null, onlineOnly = false, blocked = false, reviewable = false;
     let leaseVersion = 0;
 
     function field(name) { return form.elements.namedItem(name); }
+    function commandKey(record) { return definition.commandKeyField ? record.values[definition.commandKeyField] : ref; }
     function belongsToForm(record) { return !planId || record.values[definition.idField || "public_id"] === planId; }
     function freshHref() {
       if (definition.href) return definition.href(null, scope, form);
@@ -83,20 +86,36 @@
     }
     function commandAllowed() { return canWrite && (!archived || phase !== "editing"); }
     function actionUnavailable() { return blocked || busy || accepted || (!held && !onlineOnly); }
-    function controls() {
-      const editing = fieldsEditable();
+    function reviewAvailable() {
+      if (!editsAllowed || blocked) return false;
+      return phase === "editing" ? !!definition.reviewWhileEditing : !definition.reviewRequiresRejection || reviewable;
+    }
+    function usesDisabled(input) { return input.tagName === "SELECT" || ["checkbox", "radio"].includes(input.type); }
+    function updateFields(editing) {
       [...form.elements].filter(input => names.includes(input.name) || definition.repeated?.includes(input.name)).forEach(input => {
-        if (input.tagName === "SELECT" || input.type === "checkbox") input.disabled = !editing;
+        if (usesDisabled(input)) input.disabled = !editing || permanentDisabled.has(input);
         else input.readOnly = !editing || permanentReadonly.has(input);
       });
       form.querySelectorAll("[data-plan-preview], [data-budget-add-more]").forEach(input => { input.disabled = !editing; });
+    }
+    function enableNativeValues() {
+      [...form.elements].forEach(input => {
+        if (usesDisabled(input)) input.disabled = permanentDisabled.has(input);
+      });
+    }
+    function controls() {
+      updateFields(fieldsEditable());
       submit.hidden = archived && phase === "editing";
       submit.disabled = !commandAllowed() || actionUnavailable();
       submit.textContent = phase === "editing" ? nativeLabel : "核实原" + taskLabel;
-      review.hidden = !editsAllowed || blocked || phase === "editing" || (definition.reviewRequiresRejection && !reviewable);
+      review.hidden = !reviewAvailable();
       review.disabled = busy || accepted;
       discard.hidden = blocked || !retained;
       discard.disabled = busy || accepted || !held;
+      if (originalResult) {
+        originalResult.hidden = phase === "editing";
+        originalResult.disabled = !commandAllowed() || actionUnavailable();
+      }
       form.querySelector(selector("review-note")).hidden = review.hidden;
       form.dataset[family + "DraftPhase"] = phase;
     }
@@ -143,7 +162,12 @@
       return true;
     }
     function pointTo() {
-      const next = new URL(window.location.href);
+      // Reload must use the readable task address, including after a native review POST.
+      // The same address also retains a void target absent from the current active list.
+      const next = new URL(recordHref(store.read(ref)));
+      const current = new URL(window.location.href);
+      // A standard editor keeps its current read month beside the original intent month.
+      if (!definition.href && next.pathname === current.pathname) next.search = current.search;
       if (definition.idField === "month") next.searchParams.set("month", field("month").value);
       next.hash = anchor + ref;
       window.history.replaceState(null, "", next.href);
@@ -189,7 +213,7 @@
       else names.forEach(name => body.set(name, record.values[name]));
       body.set("csrf_token", field("csrf_token").value);
       body.set("draft_scope", JSON.stringify(record.scope));
-      body.set("idempotency_key", ref);
+      body.set("idempotency_key", commandKey(record));
       const response = await window.fetch(definition.action || form.action, {method: "POST", body, credentials: "same-origin",
         headers: {Accept: "application/json"}});
       const result = await response.json();
@@ -198,12 +222,12 @@
         phase = "blocked";
         reviewable = result.draft_result === "rejected";
         store.save(scope, ref, phase, record.values, result.draft_result === "rejected" ? "rejected" : "");
-        notice((result.message || "暂未确认提交结果。") + " 原稿仍保留，可沿原提交核实；需要修改时先核对已有计划。");
+        notice((result.message || "暂未确认提交结果。") + " 原稿仍保留，可沿原提交核实；需要修改时先核对当前记录。");
         return;
       }
       const next = receiptDestination(result, record);
       accepted = true;
-      if (!store.acknowledge(result.ack)) throw Error("original_not_acknowledged");
+      if (!store.acknowledge({...result.ack, clientRef: ref})) throw Error("original_not_acknowledged");
       notice(taskLabel + "已保存，正在返回…");
       window.location.assign(next.href);
     }
@@ -211,21 +235,36 @@
       const receiptMatches = definition.receiptMatches ? definition.receiptMatches(result.receipt, record.values) :
         result.receipt?.public_id && (!planId || result.receipt.public_id === planId);
       if (!receiptMatches ||
-          result.ack?.clientRef !== ref || !store.matches(result.ack.scope, scope)) {
+          result.ack?.clientRef !== commandKey(record) || !store.matches(result.ack.scope, scope)) {
         throw Error("unconfirmed_receipt");
       }
       const next = new URL(result.next, window.location.href);
       const categoryReturn = (isGoal || family === "budget") && planId && record.values.return_category && next.pathname === "/web/categories";
-      if (next.origin !== window.location.origin || (next.pathname !== listPath && !categoryReturn) ||
+      const destinationAllowed = definition.acceptsDestination ? definition.acceptsDestination(next, record.values) :
+        next.pathname === listPath || categoryReturn;
+      if (next.origin !== window.location.origin || !destinationAllowed ||
           next.searchParams.get("ledger_id") !== scope.ledgerId) throw Error("invalid_receipt_destination");
       return next;
     }
     form.addEventListener("input", capture);
     form.addEventListener("change", capture);
+    originalResult?.addEventListener("click", () => {
+      if (!commandAllowed() || actionUnavailable() || phase === "editing") return;
+      const record = store.read(ref), body = new window.FormData();
+      if (!record || !store.matches(record.scope, scope)) return;
+      definition.body(body, record.values);
+      body.set("csrf_token", field("csrf_token").value); body.set("draft_scope", JSON.stringify(record.scope));
+      body.set("idempotency_key", commandKey(record));
+      const native = document.createElement("form"); native.method = "post"; native.action = form.action;
+      for (const [name, value] of body) {
+        const input = document.createElement("input"); input.type = "hidden"; input.name = name; input.value = value; native.append(input);
+      }
+      document.body.append(native); busy = true; controls(); native.submit();
+    });
     discard.addEventListener("click", () => {
       if (!held || busy || accepted || blocked) return;
       const message = phase === "editing" ? "放弃此浏览器保留的未提交输入？" :
-        "请先核对已有" + taskLabel + "。此操作只移除本地原稿，不会撤销已发出的请求或已保存的计划。确认放弃原稿？";
+        "请先核对已有" + taskLabel + "。此操作只移除本地原稿，不会撤销已发出的请求或保存结果。确认放弃原稿？";
       if (!window.confirm(message)) return;
       try {
         const record = store.read(ref);
@@ -237,13 +276,16 @@
       } catch (_) { notice("原稿未能移除，请保留页面并检查浏览器存储。"); }
     });
     function allowNativeSubmission(submitter) {
+      if (definition.relatedAction?.(submitter) && canWrite && held && !busy && !blocked) {
+        enableNativeValues();
+        return true;
+      }
       if (submitter?.hasAttribute("data-plan-preview") && fieldsEditable() && !busy) {
         capture(); return true;
       }
       // The existing explicit review prepares a fresh form without submitting a plan.
-      if (submitter?.name === reviewName && editsAllowed && held && !busy && !blocked &&
-          (!definition.reviewRequiresRejection || reviewable)) {
-        [...form.elements].forEach(input => { if (input.tagName === "SELECT" || input.type === "checkbox") input.disabled = false; });
+      if (submitter?.name === reviewName && reviewAvailable() && held && !busy) {
+        enableNativeValues();
         return true;
       }
       return false;
@@ -267,12 +309,12 @@
       notice("此浏览器无法持久保留输入，仍可在本页在线提交；关闭或刷新前请先保存。");
     }
     function activationNotice(record) {
-      if (!canWrite) { notice(record ? "当前角色为只读，原稿仍保留；恢复编辑权限后可继续。" : "当前角色为只读，可核对已保存的计划。"); return; }
-      if (archived && phase === "editing") { notice(record ? "计划已归档，原输入仍保留；请先恢复计划再核对修改。" : "计划已归档，请先恢复计划再修改。"); return; }
+      if (!canWrite) { notice(record ? "当前角色为只读，原稿仍保留；恢复编辑权限后可继续。" : "当前角色为只读，可核对已保存的记录。"); return; }
+      if (archived && phase === "editing") { notice(definition.inactiveMessage || (record ? "计划已归档，原输入仍保留；请先恢复计划再核对修改。" : "计划已归档，请先恢复计划再修改。")); return; }
       if (record && phase !== "editing" && reviewable) {
-        notice("服务器已拒绝这次原提交，原输入仍保留。核对已保存的计划后，可保留输入继续修改。"); return;
+        notice("服务器已拒绝这次原提交，原输入仍保留。核对当前记录后，可保留输入继续修改。"); return;
       }
-      notice(record ? phase === "editing" ? "已恢复原" + taskLabel + "，保留原币种、月份和目标版本。" :
+      notice(record ? phase === "editing" ? "已恢复原" + taskLabel + "，保留原输入和版本依据。" :
         "原提交结果尚未确认。核实会沿用原内容和编号。" : "输入会保留在此浏览器，尚未提交。");
     }
     function selectDraft(records, nativeResult) {
@@ -284,20 +326,39 @@
       const preferred = records.find(record => record.phase !== "editing") || records[0];
       return {wanted, ref: nativeResult ? nativeRef : wanted || (!explicitNew && preferred ? preferred.clientRef : nativeRef)};
     }
-    function resumeDraft(record, nativeResult) {
-      if (record && nativeResult === "prepared" && record.serverResult === "rejected") {
+    function applyNativeResult(record, nativeResult) {
+      if (!record) {
+        if (["blocked", "rejected"].includes(nativeResult)) {
+          phase = "blocked"; reviewable = nativeResult === "rejected";
+        }
+        return true;
+      }
+      const originalRejected = nativeResult === "rejected" &&
+        field("idempotency_key").value === commandKey(record) &&
+        store.matches(JSON.parse(field("draft_scope").value), record.scope);
+      if (nativeResult === "prepared" && (record.serverResult === "rejected" ||
+          (definition.reviewWhileEditing && record.phase === "editing"))) {
         store.save(scope, ref, "editing", values(), "rejected");
         phase = "editing"; pointTo();
-      } else if (record) {
+      } else {
         if (!restore(record)) return false;
-      } else if (["blocked", "rejected"].includes(nativeResult)) {
-        phase = "blocked"; reviewable = nativeResult === "rejected";
+        if (originalRejected) {
+          phase = "blocked"; reviewable = true;
+          store.save(scope, ref, phase, record.values, "rejected");
+        }
       }
+      if (nativeResult) renderShelf();
+      return true;
+    }
+    function resumeDraft(record, nativeResult) {
+      if (!applyNativeResult(record, nativeResult)) return false;
       if (!store.matches(JSON.parse(field("draft_scope").value), scope)) {
         stop("身份或账本已切换，原输入仍保留；请恢复原身份后继续。"); return false;
       }
       if (!record && nativeResult) persist(phase, nativeResult === "rejected" ? "rejected" : "");
-      if (record && definition.multiple && form.closest("details")) form.closest("details").open = true;
+      if (record && definition.multiple && form.closest("details")) {
+        form.closest("details").hidden = false; form.closest("details").open = true;
+      }
       controls();
       activationNotice(record);
       return true;
@@ -319,7 +380,8 @@
           if (!record && (retained || (wanted && !nativeResult))) { stop("原稿已收起，请先核对" + taskLabel + "列表。"); return; }
           retained = !!record;
           held = true;
-          field("idempotency_key").value = ref;
+          if (!definition.commandKeyField) field("idempotency_key").value = ref;
+          if (definition.draftRefField) field(definition.draftRefField).value = ref;
           if (!resumeDraft(record, nativeResult)) return;
           return new Promise(resolve => { release = resolve; });
         }).catch(() => { if (!held) allowOnline(); else stop("原稿暂时无法恢复，请保留此页并检查浏览器存储。"); });

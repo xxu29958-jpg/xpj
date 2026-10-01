@@ -2,10 +2,9 @@
 idempotency claim/重放、``correct_expense`` 调用与共享 commit。
 
 幂等/OCC/权限的事实语义由后端服务拥有；本模块只做浏览器命令的执行编排：
-- 每次表单渲染发一把 key，双击/刷新重提交经 claim 重放为同一条 revision；
-- ``state_conflict`` → 调用方用冲突态重渲当前标量事实；行级意图只有在
-  predecessor identity 仍匹配时才可保留；
-- key 被别的意图占用（required/reused）→ 提示调用方换钥匙重试。
+- 首次表单准备命令 key，双击/刷新重提交经 claim 重放为同一条 revision；
+- 冲突保留完整原输入及原版本；显式核对当前事实后才准备新命令；
+- key 被别的意图占用时保留原稿，不自动轮换编号。
 
 不做：表单解析/diff（_web_correction_form）、页面渲染（_web_correction_page）。
 """
@@ -28,10 +27,7 @@ from app.services.expense_correction_service import (
 )
 from app.services.expense_revision_service import revision_by_idempotency_key
 
-CONFLICT_MSG = "这笔账单刚在其它端被修改，已载入最新基本信息；请核对明细和拆账，重新填写这次想改的内容后提交。"
-
-_ROTATE_IDEMPOTENCY_ERRORS = frozenset({"idempotency_key_required", "idempotency_key_reused"})
-
+CONFLICT_MSG = "这笔账单刚在其它端被修改，原输入仍保留；请核对当前账单，明确采用新依据后再提交。"
 
 @dataclass(frozen=True)
 class CorrectionCommandOutcome:
@@ -42,7 +38,6 @@ class CorrectionCommandOutcome:
     error_details: dict[str, object] | None = None
     error_status: int = 422
     conflict: bool = False
-    rotate_idempotency_key: bool = False
 
 
 @dataclass(frozen=True)
@@ -56,13 +51,12 @@ class ClaimedWebCorrection:
 
 def _command_error(exc: AppError) -> CorrectionCommandOutcome:
     if exc.error == "state_conflict":
-        return CorrectionCommandOutcome(error=CONFLICT_MSG, error_status=409, conflict=True)
+        return CorrectionCommandOutcome(error=CONFLICT_MSG, error_code=exc.error, error_status=409, conflict=True)
     return CorrectionCommandOutcome(
         error=exc.message,
         error_code=exc.error,
         error_details=exc.details,
         error_status=web_form_error_status(exc),
-        rotate_idempotency_key=exc.error in _ROTATE_IDEMPOTENCY_ERRORS,
     )
 
 

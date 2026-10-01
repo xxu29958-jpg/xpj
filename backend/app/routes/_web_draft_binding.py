@@ -35,7 +35,9 @@ def draft_refusal_result(exc: AppError) -> str:
     # These command-owner failures precede a financial commit. Access refusal
     # or an unknown/in-progress key says nothing about an earlier request.
     return "rejected" if exc.error in {"state_conflict", "budget_currency_conflict", "invalid_request",
-        "amount_invalid", "recurring_merchant_required"} else "blocked"
+        "amount_invalid", "recurring_merchant_required", "exchange_rate_pending",
+        "expense_refund_exceeds_remaining", "expense_refund_exists", "expense_reversal_active",
+        "expense_offset_not_active", "calendar_revision_conflict", "accounting_time_invalid"} else "blocked"
 
 
 def draft_error_response(request: Request, exc: AppError) -> JSONResponse | None:

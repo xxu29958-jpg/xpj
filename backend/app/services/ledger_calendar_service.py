@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
@@ -28,10 +29,15 @@ def current_calendar(db: Session, *, ledger_id: str) -> LedgerCalendarRevision |
 
 def current_ledger_month(db: Session, *, ledger_id: str) -> str:
     """Default a new read or intent from the ledger, never a display preference."""
+    return current_ledger_date(db, ledger_id=ledger_id).strftime("%Y-%m")
+
+
+def current_ledger_date(db: Session, *, ledger_id: str) -> date:
+    """Capture a new financial form's day without reinterpreting an existing intent."""
     rule = current_calendar(db, ledger_id=ledger_id)
     if rule is None:
         raise AppError("calendar_revision_conflict", "未找到当前账本的账务日历，请稍后重试。", status_code=409)
-    return now_utc().astimezone(ZoneInfo(rule.timezone_name)).strftime("%Y-%m")
+    return now_utc().astimezone(ZoneInfo(rule.timezone_name)).date()
 
 
 def adopt_ledger_calendar(

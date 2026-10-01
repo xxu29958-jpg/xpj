@@ -1,0 +1,19 @@
+{% set offset_task = row.public_id %}
+{% set recovery_only = not row.active %}
+{% set draft = offset_void_form if offset_void_form.open and offset_void_form.target_public_id == row.public_id else dict(void_reason='', idempotency_key=row.void_idempotency_key, expected_row_version=row.row_version) %}
+{% set offset_action_label = '确认撤销' %}
+<details class="offset-void"{% if draft.open %} open{% elif recovery_only %} hidden{% endif %}>
+  <summary>撤销{{ '原稿' if recovery_only else '' }}</summary>
+  <form class="offset-void-form" method="post" action="/web/expenses/{{ expense.id }}/offsets/{{ row.public_id }}/voids"
+    {% if offset_draft_scope %}data-offset-draft-scope='{{ offset_draft_scope | tojson }}'{% endif %}
+    data-offset-plan-id="{{ expense.id }}:{{ offset_task }}" data-offset-can-write="{{ 'true' if offset_can_write else 'false' }}"
+    data-offset-archived="{{ 'true' if recovery_only else 'false' }}" data-offset-native-result="{{ draft.native_result or '' }}">
+    {% include '_offset_draft_fields.html' %}
+    <input type="hidden" name="kind" value="void"><input type="hidden" name="original_amount" value="">
+    <p class="hint">{% if recovery_only %}当前有效记录中已无这条记录。原输入仍保留；请先核实原提交结果。{% else %}撤销后这条{{ row.kind_label }}不再生效；记录本身仍会保留在变更历史里。{% endif %}</p>
+    <div class="product-field"><label for="offset-void-reason-{{ row.public_id }}">撤销原因（必填）</label>
+      <input id="offset-void-reason-{{ row.public_id }}" class="product-input" type="text" name="void_reason" value="{{ draft.void_reason }}" required{% if not offset_can_write %} readonly{% endif %}>
+    </div>
+    {% include '_offset_draft_actions.html' %}
+  </form>
+</details>

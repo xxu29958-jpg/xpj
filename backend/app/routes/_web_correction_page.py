@@ -2,17 +2,21 @@
 
 与事实详情（_web_expense_fact）是两个页面责任：本模块只管
 ``expense_correct.html`` 的渲染上下文与失败重显 —— 保留可安全重试的提交值、
-行级错误、OCC 冲突态。冲突时标量值回到 current fact，只有已证明
-predecessor identity 未变的行级意图才由调用方保留。
+行级错误、OCC 冲突态。冲突保留原输入和版本，当前事实单独供核对；
+显式核对后由既有命令服务验证 predecessor identity。
 """
 
 from __future__ import annotations
+
+import json
 
 from fastapi import Request
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
+from app.routes._web_correction_snapshot import correction_snapshot
+from app.routes._web_draft_binding import rendered_draft_scope
 from app.routes._web_expense_helpers import web_edit_context
 from app.routes._web_expense_return_context import (
     ExpenseReturnContext,
@@ -26,6 +30,24 @@ from app.services.currency_common import currency_input_metadata, supported_curr
 
 # correction 表单一行可改的系统冻结字段（拆账接收票的协定冻结面，与旧编辑页一致）。
 _SPLIT_RECEIVED_FROZEN_FIELDS = ("amount_yuan", "merchant", "expense_time")
+
+
+def _retain_form_identity(ctx: dict, db: Session, request: Request, form_values: dict | None) -> None:
+    """Keep the original command and read basis separate from the current fact."""
+    original = form_values or {}
+    ctx["fact_current_version"] = ctx["current_expense"]["row_version"]
+    ctx["fact_draft_client_ref"] = original.get("draft_client_ref") or ctx["confirm_idempotency_key"]
+    ctx["fact_current_basis"] = correction_snapshot(ctx)
+    ctx["fact_basis"] = original.get("fact_basis", json.dumps(ctx["fact_current_basis"], ensure_ascii=False))
+    captured = original.get("draft_scope", "") if form_values is not None else None
+    ctx["fact_draft_scope"], ctx["fact_binding_required"] = rendered_draft_scope(db, request, captured)
+    if captured is not None:
+        ctx["captured_fact_scope"] = captured
+    # Presence, including an invalid blank, is part of the submitted intent.
+    if "expected_row_version" in original:
+        ctx["expense"]["row_version"] = original["expected_row_version"]
+    if "idempotency_key" in original:
+        ctx["confirm_idempotency_key"] = original["idempotency_key"]
 
 
 def web_correction_context(
@@ -68,17 +90,7 @@ def web_correction_context(
     ctx["correction_mode"] = True
     ctx["error"] = error
     ctx["reason_input"] = (form_values or {}).get("reason", "")
-    if conflict and ctx["conflict_current"] is not None:
-        # 冲突重渲必须带服务器最新 token；调用方同时负责不把过期标量值
-        # 与这把新 token 组合起来。
-        ctx["expense"]["row_version"] = ctx["conflict_current"]["row_version"]
-    if form_values is not None:
-        # A submitted correction keeps its identity, including invalid blanks.
-        # Only a new GET or an explicit conflict review prepares a fresh intent.
-        if not conflict and "expected_row_version" in form_values:
-            ctx["expense"]["row_version"] = form_values["expected_row_version"]
-        if "idempotency_key" in form_values:
-            ctx["confirm_idempotency_key"] = form_values["idempotency_key"]
+    _retain_form_identity(ctx, db, request, form_values)
     ctx["frozen_scalars"] = (
         (*_SPLIT_RECEIVED_FROZEN_FIELDS, "original_currency") if ctx["expense"]["is_split_received"] else ()
     )
@@ -117,6 +129,7 @@ def correction_form_error_response(
     split_form_rows: list[dict] | None = None,
     return_context: ExpenseReturnContext = ExpenseReturnContext(),
     rate_recovery: dict | None = None,
+    draft_result: str = "",
 ) -> Response:
     """更正表单的错误重渲（保留提交值/行级错误/冲突态）；行在提交与重读
     之间消失时退化为列表页 flash 重定向（与编辑页守卫同一语义）。"""
@@ -137,6 +150,9 @@ def correction_form_error_response(
             return_context=return_context,
         )
         ctx["rate_recovery"] = rate_recovery
+        ctx["fact_draft_result"] = draft_result
+        if conflict:
+            ctx.update(fact_review=ctx["fact_current_basis"], fact_review_required={}, fact_review_ready=False)
     except AppError as exc:
         return _web_redirect(
             resolve_return_to(return_context.return_to, "/web/confirmed"),

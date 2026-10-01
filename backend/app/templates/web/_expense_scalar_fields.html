@@ -8,11 +8,8 @@
 {% endif %}
 <div class="product-field">
   <label for="{{ form_prefix }}-amount-yuan">金额{% if not correction_mode %} ({{ expense.original_currency_code }}){% endif %}</label>
-  {# step 参与浏览器 constraint validation（非纯视觉提示）：correction 允许改币种，
-     初始渲染的 step 会在 JPY→USD 这类切换后误拦合法输入（或反向放行不诚实精度），
-     故更正模式用 step="any" 放行意图、由服务器按新币种 minor-unit 终验。
-     placeholder 的示例金额同样随币种陈旧，更正模式省略（指引由下方 meta 承担）。 #}
-  <input id="{{ form_prefix }}-amount-yuan" type="number" name="amount_yuan" value="{{ expense.original_amount_value }}" min="0" {% if correction_mode %}step="any" inputmode="decimal"{% else %}step="{{ expense_currency_input.amount_step }}" placeholder="例如 {{ expense_currency_input.amount_example }}" inputmode="{{ expense_currency_input.inputmode }}"{% endif %} {% if field_errors.get('amount_yuan') %}aria-invalid="true" aria-describedby="{{ form_prefix }}-amount-error"{% endif %} {% if not can_write or 'amount_yuan' in frozen_scalars %}disabled{% endif %}>
+  {# 保留未经解析的原金额；更正允许切换币种，精度由服务器按所选币种终验。 #}
+  <input id="{{ form_prefix }}-amount-yuan" type="text" name="amount_yuan" value="{{ expense.original_amount_value }}" {% if correction_mode %}inputmode="decimal"{% else %}placeholder="例如 {{ expense_currency_input.amount_example }}" inputmode="{{ expense_currency_input.inputmode }}"{% endif %} {% if field_errors.get('amount_yuan') %}aria-invalid="true" aria-describedby="{{ form_prefix }}-amount-error"{% endif %} {% if not can_write or 'amount_yuan' in frozen_scalars %}disabled{% endif %}>
   {% if field_errors.get('amount_yuan') %}<div id="{{ form_prefix }}-amount-error" class="field-error">{{ field_errors.get('amount_yuan') }}</div>{% endif %}
   {% if expense.fx_meta %}<div class="meta">{{ expense.fx_meta }}</div>{% endif %}
   {% if correction_mode %}<div class="meta">金额按上方所选币种解析；小数位由服务器按币种校验。</div>{% endif %}

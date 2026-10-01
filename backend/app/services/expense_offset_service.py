@@ -218,7 +218,7 @@ def _replayed_bundle(
     return ExpenseFactBundleResponse.model_validate(record.response_body)
 
 
-def _claim_offset_command(
+def claim_expense_offset_command(
     db: Session,
     *,
     tenant_id: str,
@@ -410,7 +410,7 @@ def create_expense_offset(
 ) -> ExpenseFactBundleResponse:
     """Create one offset fact and publish its immutable first revision."""
 
-    claim_or_replay = _claim_offset_command(
+    claim_or_replay = claim_expense_offset_command(
         db,
         tenant_id=tenant_id,
         expense_id=expense_id,

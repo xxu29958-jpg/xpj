@@ -332,9 +332,10 @@ fun expenseFactViewModelFactory(
     repository: ExpenseFactActions,
     preferLocalCache: Boolean = false,
     originalBinding: com.ticketbox.data.repository.LogicalSessionBinding? = null,
+    calendars: com.ticketbox.data.repository.LedgerCalendarReader? = null,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return ExpenseFactViewModel(expenseId, repository, preferLocalCache, originalBinding) as T
+        return ExpenseFactViewModel(expenseId, repository, preferLocalCache, originalBinding, calendars) as T
     }
 }
 

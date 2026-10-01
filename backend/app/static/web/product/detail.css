@@ -92,14 +92,6 @@
     display: none;
 }
 
-.receipt-img {
-    display: block;
-    width: 100%;
-    max-height: calc(var(--space-12) * 8);
-    border-radius: var(--radius-sm);
-    object-fit: contain;
-}
-
 .edit-form,
 .detail-sections form {
     display: grid;

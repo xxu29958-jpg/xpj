@@ -63,6 +63,7 @@ __all__ = [
     "fingerprint_request",
     "mark_idempotency_succeeded",
     "reject_idempotency_target_mismatch",
+    "has_idempotency_key",
 ]
 
 IDEMPOTENCY_STATUS_IN_PROGRESS = "in_progress"
@@ -236,6 +237,14 @@ def mark_idempotency_succeeded(
     row.response_body = response_body
     row.completed_at = now_utc()
     db.flush()
+
+
+def has_idempotency_key(db: Session, *, tenant_id: str, idempotency_key: str) -> bool:
+    """Tell a caller with an unparseable original body whether its key needs resolution."""
+    return db.scalar(select(ApiIdempotencyKey.id).where(
+        ApiIdempotencyKey.tenant_id == tenant_id,
+        ApiIdempotencyKey.idempotency_key == idempotency_key,
+    )) is not None
 
 
 def reject_idempotency_target_mismatch(

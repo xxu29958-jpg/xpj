@@ -1,0 +1,37 @@
+{% set offset_task = 'reversal' if reversal else 'money' %}
+{% set draft = offset_form if offset_form.open and ((offset_form.kind == 'reversal') == reversal) else dict(kind=('reversal' if reversal else 'refund'), original_amount=offset_summary.remaining_original_value, accounting_date=offset_form.accounting_date, reason='', expected_row_version=expense.row_version, original_currency_code=expense.original_currency_code, idempotency_key=(offset_reversal_key if reversal else offset_form.idempotency_key)) %}
+{% set recovery_only = not (offset_can_reverse if reversal else offset_can_create_refund) %}
+{% set offset_action_label = '确认冲销' if reversal else '登记' %}
+<details class="offset-action-panel{% if reversal %} offset-action-panel--danger{% endif %}" {% if not recovery_only %}id="offset-create-{{ 'reversal' if reversal else 'money' }}"{% endif %} {% if draft.open %}open{% elif recovery_only %}hidden{% endif %}>
+  <summary>{{ '冲销这笔账单' if reversal else '登记退款或拒付' }}{% if recovery_only %} · 原稿{% endif %}</summary>
+  <form class="offset-form" method="post" action="/web/expenses/{{ expense.id }}/offsets"
+    {% if offset_draft_scope %}data-offset-draft-scope='{{ offset_draft_scope | tojson }}'{% endif %}
+    data-offset-plan-id="{{ expense.id }}:{{ offset_task }}" data-offset-can-write="{{ 'true' if offset_can_write else 'false' }}"
+    data-offset-archived="{{ 'true' if recovery_only else 'false' }}" data-offset-native-result="{{ draft.native_result or '' }}">
+    {% include '_offset_draft_fields.html' %}
+    {% if recovery_only %}<p class="meta">当前事实不允许追加这项记录。原输入仍可查看；已提交的请求可沿原编号核实。</p>{% endif %}
+    {% if reversal %}
+    <input type="hidden" name="kind" value="reversal"><input type="hidden" name="original_amount" value="">
+    <p class="hint">冲销表示这笔账从一开始就不该算：整笔不再计入支出，无需填写金额；原账单和冲销记录都会保留。</p>
+    {% else %}
+    <div class="product-field"><span id="offset-kind-label">类型</span>
+      <div class="offset-kind-group" role="radiogroup" aria-labelledby="offset-kind-label">
+        <label><input type="radio" name="kind" value="refund"{% if draft.kind == 'refund' %} checked{% endif %}{% if not offset_can_write %} disabled{% endif %}> 商家退款</label>
+        <label><input type="radio" name="kind" value="chargeback"{% if draft.kind == 'chargeback' %} checked{% endif %}{% if not offset_can_write %} disabled{% endif %}> 银行拒付</label>
+      </div>
+    </div>
+    <div class="product-field"><label for="offset-amount">退回金额（{{ draft.original_currency_code or expense.original_currency_code }}）</label>
+      <input id="offset-amount" class="product-input" type="text" name="original_amount" value="{{ draft.original_amount }}" inputmode="{{ offset_currency_input.inputmode }}" placeholder="{{ offset_currency_input.amount_placeholder }}" required{% if not offset_can_write %} readonly{% endif %}>
+      <p class="hint">{{ offset_currency_input.amount_input_hint }}；当前可退约 {{ offset_summary.remaining_original_label }}，最终以保存结果为准。</p>
+    </div>
+    {% endif %}
+    <div class="product-field"><label for="offset-date-{{ offset_task }}">生效日期</label>
+      <input id="offset-date-{{ offset_task }}" class="product-input" type="{{ 'text' if draft.open else 'date' }}" name="accounting_date" value="{{ draft.accounting_date }}" placeholder="YYYY-MM-DD" required{% if not offset_can_write %} readonly{% endif %}>
+    </div>
+    <div class="product-field"><label for="offset-reason-{{ offset_task }}">原因（必填）</label>
+      <input id="offset-reason-{{ offset_task }}" class="product-input" type="text" name="reason" value="{{ draft.reason }}" required{% if not offset_can_write %} readonly{% endif %}>
+    </div>
+    {% include '_offset_draft_actions.html' %}
+    {% if draft.open and not reversal %}{% include '_fact_rate_recovery.html' %}{% endif %}
+  </form>
+</details>

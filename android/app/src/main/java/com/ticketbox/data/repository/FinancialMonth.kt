@@ -2,6 +2,7 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.data.remote.dto.LedgerCalendarDto
 import java.time.Clock
+import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
 
@@ -16,12 +17,21 @@ suspend fun LedgerCalendarReader?.newTaskMonth(
     binding: LogicalSessionBinding? = this?.currentBinding(),
     clock: Clock = Clock.systemDefaultZone(),
 ): String {
+    val capturedClock = Clock.fixed(clock.instant(), clock.zone)
+    // Keep the existing usable month default when no ledger rule has been read.
+    return YearMonth.from(newTaskDate(binding, capturedClock) ?: LocalDate.now(capturedClock)).toString()
+}
+
+/** A new date-only financial form uses a known ledger day; unknown rules need an explicit date. */
+suspend fun LedgerCalendarReader?.newTaskDate(
+    binding: LogicalSessionBinding? = this?.currentBinding(),
+    clock: Clock = Clock.systemDefaultZone(),
+): LocalDate? {
     val instant = clock.instant()
     val rule = if (this != null && binding != null && currentBinding() == binding) {
         cached(binding) ?: refresh(binding).getOrNull()
     } else null
     val zone = rule?.takeIf { it.ledgerId == binding?.ledgerId && this?.currentBinding() == binding }
-        ?.let { ZoneId.of(it.timezoneName) } ?: clock.zone
-    // No known rule (old server or offline cold start) preserves the previous usable default.
-    return YearMonth.from(instant.atZone(zone)).toString()
+        ?.let { ZoneId.of(it.timezoneName) }
+    return zone?.let { instant.atZone(it).toLocalDate() }
 }

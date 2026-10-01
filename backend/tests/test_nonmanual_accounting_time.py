@@ -168,7 +168,7 @@ def test_offset_date_only_and_accepted_replay_do_not_reinterpret_current_calenda
     values = expense_offset_service.offset_accounting_values(Mock(), tenant_id="target", accounting_date=date(2026, 4, 30))
     assert values["time_precision"] == "date_only" and values["user_local_date"] == date(2026, 4, 30)
     receipt = ExpenseFactBundleResponse.model_construct()
-    monkeypatch.setattr(expense_offset_service, "_claim_offset_command", lambda *_a, **_k: receipt)
+    monkeypatch.setattr(expense_offset_service, "claim_expense_offset_command", lambda *_a, **_k: receipt)
     monkeypatch.setattr(expense_offset_service, "offset_accounting_values", lambda *_a, **_k: pytest.fail("reinterpreted replay"))
     assert expense_offset_service.create_expense_offset(Mock(), tenant_id="target", expense_id=1,
         payload=ExpenseOffsetCreateRequest(kind="refund", original_amount_minor=1, accounting_date=date(2026, 4, 30),

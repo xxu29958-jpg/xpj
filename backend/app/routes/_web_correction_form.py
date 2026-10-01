@@ -57,8 +57,8 @@ from app.services.receipt_item_service import list_expense_items
 
 REASON_REQUIRED_MSG = "请说明这次更正的原因。"
 NO_CHANGES_MSG = "没有检测到需要保存的更正。"
-ITEM_SOURCES_STALE_MSG = "明细已在其它端变化，已载入最新明细；请重新调整后提交。"
-SPLIT_SOURCES_STALE_MSG = "拆账已在其它端变化，已载入最新拆账；请重新调整后提交。"
+ITEM_SOURCES_STALE_MSG = "明细已在其它端变化，原输入仍保留；请核对当前明细后提交。"
+SPLIT_SOURCES_STALE_MSG = "拆账已在其它端变化，原输入仍保留；请核对当前拆账后提交。"
 
 
 @dataclass(frozen=True)
@@ -93,6 +93,9 @@ class CorrectionFormData:
     idempotency_key: str
     return_context: ExpenseReturnContext
     time_fields: dict[str, str] | None = None
+    draft_scope: str = ""
+    fact_basis: str = ""
+    draft_client_ref: str = ""
 
 
 @dataclass
@@ -117,6 +120,9 @@ def web_correction_idempotency_body(form: CorrectionFormData) -> dict[str, objec
     submitted.pop("expected_row_version")
     submitted.pop("idempotency_key")
     submitted.pop("return_context")
+    submitted.pop("draft_scope")
+    submitted.pop("fact_basis")
+    submitted.pop("draft_client_ref")
     if submitted["time_fields"] is None:
         submitted.pop("time_fields")
     return {"web_form": submitted}
@@ -162,6 +168,9 @@ def correction_form_data(
     return_context: ExpenseReturnContext = Depends(expense_return_form_context),
     submitted_fields: frozenset[str] = Depends(_submitted_form_field_names),
     time_fields: dict[str, str] | None = Depends(accounting_time_form_fields),
+    draft_scope: str = Form(default=""),
+    fact_basis: str = Form(default=""),
+    draft_client_ref: str = Form(default=""),
 ) -> CorrectionFormData:
     """Bind FastAPI form fields without making the HTTP route a giant parser."""
 
@@ -194,6 +203,9 @@ def correction_form_data(
         idempotency_key=idempotency_key,
         return_context=return_context,
         time_fields=time_fields,
+        draft_scope=draft_scope,
+        fact_basis=fact_basis,
+        draft_client_ref=draft_client_ref,
     )
 
 
@@ -261,6 +273,9 @@ def _form_values_from(form: CorrectionFormData) -> dict[str, str]:
         "reason": form.reason,
         "expected_row_version": form.expected_row_version,
         "idempotency_key": form.idempotency_key,
+        "draft_scope": form.draft_scope,
+        "fact_basis": form.fact_basis,
+        "draft_client_ref": form.draft_client_ref,
         "amount_yuan": form.amount_yuan,
         "original_currency": form.original_currency,
         "merchant": form.merchant,

@@ -61,3 +61,25 @@ def test_report_ranked_expense_displays_saved_day_even_without_clock(monkeypatch
         timezone_name="America/Los_Angeles", presentation_currency_code="CNY",
         return_context=ExpenseReturnContext())
     assert view["top_expenses"][0]["expense_time"] == "2026-05-01"
+
+
+def test_new_web_refund_uses_selected_ledger_day_instead_of_server_display_zone(boundary, monkeypatch):
+    from fastapi import Request
+
+    from app.routes import _web_expense_offset_fact as offsets
+
+    db, auth = boundary
+    fixed_clock = Mock(wraps=datetime)
+    fixed_clock.now.return_value = time_service.now_utc()
+    monkeypatch.setattr(time_service, "datetime", fixed_clock)
+    bundle = SimpleNamespace(root=SimpleNamespace(original_currency_code="CNY", row_version=7),
+        financial_summary=SimpleNamespace(status="confirmed"))
+    monkeypatch.setattr(offsets, "expense_fact_bundle", lambda *_a, **_kw: bundle)
+    monkeypatch.setattr(offsets, "_summary_view", lambda _bundle: {})
+    monkeypatch.setattr(offsets, "_active_offset_rows", lambda _bundle: [])
+    monkeypatch.setattr(offsets, "_recent_history_rows", lambda _bundle: [])
+    monkeypatch.setattr(offsets, "_relationship_view", lambda _bundle: {"accepted": []})
+    monkeypatch.setattr(offsets, "browser_draft_scope", lambda *_a: None)
+    view = offsets.expense_offset_fact_view(db, auth.tenant_id, 7, True,
+        Request({"type": "http", "query_string": b"", "headers": []}))
+    assert view["offset_form"]["accounting_date"] == "2026-05-01"

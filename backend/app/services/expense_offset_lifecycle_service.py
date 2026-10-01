@@ -57,7 +57,7 @@ def _claim_correction(
     return _replayed_bundle(db, tenant_id=tenant_id, idempotency_key=idempotency_key)
 
 
-def _claim_void(
+def claim_expense_offset_void(
     db: Session,
     *,
     tenant_id: str,
@@ -356,7 +356,7 @@ def void_expense_offset(
     actor_device_name: str | None,
     idempotency_key: str | None,
 ) -> ExpenseFactBundleResponse:
-    claim_or_replay = _claim_void(
+    claim_or_replay = claim_expense_offset_void(
         db,
         tenant_id=tenant_id,
         expense_id=expense_id,

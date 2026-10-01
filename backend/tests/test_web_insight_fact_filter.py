@@ -260,8 +260,19 @@ def test_reports_fact_correction_keeps_original_month_through_422_409_and_succes
     assert {key: retained[key] for key in origin} == origin
     assert retained["ledger_id"] == "owner"
     assert "另一端更正商家" in conflict.text
+    assert retained["expected_row_version"] == data["expected_row_version"]
+    assert retained["idempotency_key"] == data["idempotency_key"]
     data.update(retained)
     data["merchant"] = "月报更正后的商家"
+    current = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()
+    prepared = web_client.post(action, data={**data, "review_latest": "true"}, follow_redirects=False)
+    assert prepared.status_code == 200, prepared.text
+    reviewed = _hidden_form(prepared.text, action)
+    assert {key: reviewed[key] for key in origin} == origin
+    assert reviewed["expected_row_version"] == str(current["row_version"])
+    assert reviewed["idempotency_key"] != data["idempotency_key"]
+    assert web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json() == current
+    data.update(reviewed)
     success = web_client.post(action, data=data, follow_redirects=False)
     assert success.status_code == 303, success.text
     _assert_query(success.headers["location"], fact_path, ledger_id="owner",

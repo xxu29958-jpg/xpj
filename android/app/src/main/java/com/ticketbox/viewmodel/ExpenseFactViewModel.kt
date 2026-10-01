@@ -170,6 +170,8 @@ class ExpenseFactViewModel(
     internal val repository: ExpenseFactActions,
     preferLocalCache: Boolean = false,
     internal val originalBinding: com.ticketbox.data.repository.LogicalSessionBinding? = null,
+    internal val calendars: com.ticketbox.data.repository.LedgerCalendarReader? = null,
+    internal val clock: java.time.Clock = java.time.Clock.systemDefaultZone(),
 ) : ViewModel() {
 
     internal var correctionOriginalItems: ExpenseItems? = null

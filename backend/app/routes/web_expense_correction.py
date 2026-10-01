@@ -11,7 +11,7 @@
 
 from __future__ import annotations
 
-from uuid import uuid4
+from dataclasses import replace
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, Response
@@ -38,6 +38,14 @@ from app.routes._web_correction_form import (
 from app.routes._web_correction_page import (
     correction_form_error_response,
     web_correction_context,
+)
+from app.routes._web_correction_review import correction_review_response
+from app.routes._web_draft_binding import (
+    draft_ack_response,
+    draft_error_response,
+    draft_refusal_result,
+    require_draft_binding,
+    reviewed_draft_scope,
 )
 from app.routes._web_expense_return_context import (
     ExpenseReturnContext,
@@ -71,14 +79,20 @@ def _fact_redirect(
     *,
     message: str,
     flash_type: str,
+    request: Request | None = None,
 ) -> Response:
-    return _web_redirect(
+    response = _web_redirect(
         f"/web/expenses/{expense_id}/edit",
         selected_id,
         msg=message,
         flash_type=flash_type,
         **edit_context_params(**form.return_context.as_kwargs()),
     )
+    if request is not None and flash_type == "success":
+        return draft_ack_response(request, draft_scope=form.draft_scope, idempotency_key=form.idempotency_key,
+            receipt={"expense_id": expense_id, "change_kind": "correction"},
+            next_href=response.headers["location"]) or response
+    return response
 
 
 @router.get("/expenses/{expense_id}/correct", response_class=HTMLResponse)
@@ -111,15 +125,6 @@ def web_correct_get(
             flash_type="error",
             **edit_context_params(**return_values),
         )
-    selected = next((opt for opt in options if opt.ledger_id == selected_id), None)
-    if selected is None or selected.role not in {"owner", "member"}:
-        return _web_redirect(
-            f"/web/expenses/{expense_id}/edit",
-            selected_id,
-            msg="当前角色为只读，无法更正账单。",
-            flash_type="error",
-            **edit_context_params(**return_values),
-        )
     ctx = web_correction_context(
         db,
         request,
@@ -146,7 +151,11 @@ def _correction_error_response(
     conflict: bool = False,
     form_values: dict[str, str] | None = None,
     rate_recovery: dict | None = None,
+    error_code: str | None = None,
 ) -> Response:
+    failure = AppError(error_code or ("server_error" if status_code >= 500 else "invalid_request"), message, status_code=status_code)
+    if response := draft_error_response(request, failure):
+        return response
     return correction_form_error_response(
         db,
         request,
@@ -158,10 +167,11 @@ def _correction_error_response(
         form_values=form_values if form_values is not None else parsed.form_values,
         field_errors=field_errors,
         conflict=conflict,
-        receipt_item_rows=None if parsed.item_sources_stale else parsed.item_form_rows,
-        split_form_rows=None if parsed.split_sources_stale else parsed.split_form_rows,
+        receipt_item_rows=parsed.item_form_rows,
+        split_form_rows=parsed.split_form_rows,
         return_context=form.return_context,
         rate_recovery=rate_recovery,
+        draft_result=draft_refusal_result(failure),
     )
 
 
@@ -188,12 +198,6 @@ def _claim_correction_submission(
     )
 
 
-def _current_scalar_form_values(values: dict[str, str]) -> dict[str, str]:
-    """Keep the user's explanation, but never pair stale scalars with a fresh CAS token."""
-
-    return {"reason": values.get("reason", ""), "idempotency_key": str(uuid4())}
-
-
 def _submission_error_response(
     db: Session,
     request: Request,
@@ -207,10 +211,6 @@ def _submission_error_response(
 ) -> Response | None:
     if claimed is not None and claimed.error is not None:
         values = parsed.form_values
-        if claimed.error.conflict:
-            values = _current_scalar_form_values(values)
-        elif claimed.error.rotate_idempotency_key:
-            values = {**values, "idempotency_key": str(uuid4())}
         message = claimed.error.error or "提交参数不正确，请检查后重试。"
         if claimed.error.conflict and (parsed.item_sources_stale or parsed.split_sources_stale):
             message = f"{message} {parsed.error}"
@@ -226,6 +226,7 @@ def _submission_error_response(
             status_code=claimed.error.error_status,
             conflict=claimed.error.conflict,
             form_values=values,
+            error_code=claimed.error.error_code,
         )
     if parsed.payload is None:
         if claimed is not None and claimed.claim is not None:
@@ -245,11 +246,7 @@ def _submission_error_response(
             status_code=parsed.error_status,
             field_errors=parsed.field_errors,
             conflict=source_conflict,
-            form_values=(
-                _current_scalar_form_values(parsed.form_values)
-                if source_conflict
-                else parsed.form_values
-            ),
+            form_values=parsed.form_values,
         )
     if claimed is not None and claimed.claim is not None:
         return None
@@ -282,18 +279,10 @@ def _command_failure_response(
         return None
     values = parsed.form_values
     message = command.error
-    if command.conflict:
-        values = _current_scalar_form_values(values)
-        if refresh_correction_source_flags(
-            db,
-            expense_id=expense_id,
-            selected_id=selected_id,
-            form=form,
-            outcome=parsed,
-        ):
-            message = f"{message} {parsed.error}"
-    elif command.rotate_idempotency_key:
-        values = {**values, "idempotency_key": str(uuid4())}
+    if command.conflict and refresh_correction_source_flags(
+        db, expense_id=expense_id, selected_id=selected_id, form=form, outcome=parsed,
+    ):
+        message = f"{message} {parsed.error}"
     field_errors = {"splits": message} if command.error_code == "expense_split_total_exceeds_parent" else None
     return _correction_error_response(
         db,
@@ -308,6 +297,7 @@ def _command_failure_response(
         field_errors=field_errors,
         conflict=command.conflict,
         form_values=values,
+        error_code=command.error_code,
         rate_recovery=(rate_recovery_context(db, selected_id, command.error_details)
             if command.error_code == "exchange_rate_pending" else None),
     )
@@ -354,6 +344,7 @@ def _handle_correction_post(
             form,
             message="已记录更正。",
             flash_type="success",
+            request=request,
         )
     parsed = parse_correction_form(db, expense=expense, selected_id=selected_id, form=form)
     validation_error = _submission_error_response(
@@ -395,6 +386,7 @@ def _handle_correction_post(
         form,
         message="已记录更正。",
         flash_type="success",
+        request=request,
     )
 
 
@@ -405,6 +397,7 @@ def web_correct_post(
     ledger_id: str = Form(default=""),
     form: CorrectionFormData = Depends(correction_form_data),
     original_fields: dict = Depends(correction_original_fields),
+    review_latest: bool = Form(default=False),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> Response:
@@ -415,6 +408,23 @@ def web_correct_post(
     if retained is not None:
         return retained
     _require_selected_ledger_write(options, selected_id)
+    form = replace(form, draft_scope=reviewed_draft_scope(db, request, form.draft_scope, review=review_latest))
+    try:
+        require_draft_binding(db, request, ledger_id=ledger_id, draft_scope=form.draft_scope, require_session=False)
+    except AppError as exc:
+        return _correction_error_response(db, request, options, selected_id, expense_id, form,
+            correction_form_projection(form), message=exc.message, status_code=exc.status_code, error_code=exc.error)
+    if review_latest:
+        _, claimed = _claim_correction_submission(db, request, selected_id=selected_id, expense_id=expense_id, form=form)
+        if claimed is not None and claimed.replayed:
+            return _fact_redirect(expense_id, selected_id, form, message="原更正已记录。", flash_type="success", request=request)
+        db.rollback()
+        if claimed is None or (claimed.error is not None and not claimed.error.conflict):
+            error = claimed.error if claimed else None
+            return _correction_error_response(db, request, options, selected_id, expense_id, form, correction_form_projection(form),
+                message=error.error if error else "原提交标识无法确认，请先核实原提交。", status_code=error.error_status if error else 422,
+                error_code=error.error_code if error else "idempotency_key_required")
+        return correction_review_response(db, request, options, selected_id, expense_id, form, original_fields)
     return _handle_correction_post(
         db,
         request,

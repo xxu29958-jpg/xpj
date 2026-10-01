@@ -46,7 +46,7 @@ def facts():
             "revisions": len(db.scalars(select(ExpenseRevision).where(ExpenseRevision.expense_id == expense.id)).all())}
 
 
-def attach_fixture_original(expense_id):
+def attach_fixture_original(expense_id, *, ledger_id=LEDGER):
     """Prepare a known historical attachment; financial commands still use the UI."""
     from PIL import Image
 
@@ -57,10 +57,11 @@ def attach_fixture_original(expense_id):
     source = BytesIO()
     Image.frombytes("RGB", (1024, 1024), pixels).save(source, format="PNG")
     content = source.getvalue()
-    saved = save_upload_bytes(content, tenant_id=LEDGER, filename="portable-fixture.png", content_type="image/png")
+    saved = save_upload_bytes(content, tenant_id=ledger_id, filename="portable-fixture.png", content_type="image/png")
     with SessionLocal() as db:
         authorize_currency_metadata_write(db)
         expense = db.get(Expense, expense_id)
+        assert expense.tenant_id == ledger_id
         expense.image_path, expense.image_hash = saved.relative_path, saved.image_hash
         db.commit()
     return hashlib.sha256(content).hexdigest()

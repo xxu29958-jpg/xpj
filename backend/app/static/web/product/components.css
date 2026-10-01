@@ -11,6 +11,14 @@ p {
     margin-block-start: 0;
 }
 
+.receipt-img {
+    display: block;
+    width: 100%;
+    max-height: calc(var(--space-12) * 8);
+    border-radius: var(--radius-sm);
+    object-fit: contain;
+}
+
 .page-header,
 .product-page-header {
     display: grid;

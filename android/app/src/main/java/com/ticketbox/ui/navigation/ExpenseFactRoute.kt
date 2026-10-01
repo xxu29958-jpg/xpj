@@ -37,6 +37,7 @@ internal fun ExpenseFactRoute(
             repository = screenFactory.repository,
             preferLocalCache = true,
             originalBinding = LocalNotificationTask.current?.binding,
+            calendars = screenFactory.repositories.ledgerCalendarRepository,
         ),
     )
     val factState by factViewModel.uiState.collectAsStateWithLifecycle()
