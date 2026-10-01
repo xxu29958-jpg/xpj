@@ -52,6 +52,7 @@ def free_port() -> int:
 
 def seed(password: str, data: Path) -> tuple[str, str]:
     from app.models import Account, Expense, Ledger
+    from tests._infra.currency import activate_test_currency_authority
 
     relative = "cold-copy-drill/2026/10/receipt.png"
     original = data / "attachments/originals" / relative
@@ -65,6 +66,7 @@ def seed(password: str, data: Path) -> tuple[str, str]:
                                       host="127.0.0.1", port=5432, database="ticketbox"))
     try:
         with Session(engine) as db:
+            activate_test_currency_authority(db, "CNY")
             account = Account(display_name="Cold copy fixture")
             db.add(account)
             db.flush()
@@ -86,6 +88,7 @@ def facts(password: str, port: int) -> dict:
         return {
             "draft": db.execute("SELECT public_id, amount_cents, original_amount_minor, image_hash, row_version, status FROM expenses WHERE tenant_id='cold-copy-drill'").fetchall(),
             "authority": db.execute("SELECT dataset_id, client_generation, restore_epoch, schema_revision FROM dataset_authority").fetchall(),
+            "currency": db.execute("SELECT state, home_currency_code, minor_unit_exponent, rounding_mode, binding_revision FROM installation_currency_bindings").fetchall(),
             "schema": db.execute("SELECT version_num FROM alembic_version").fetchall(),
             "roles": db.execute("SELECT rolname, rolsuper, rolcreatedb, rolcreaterole, rolcanlogin FROM pg_roles WHERE rolname LIKE 'ticketbox_%' ORDER BY rolname").fetchall(),
             "cluster": db.execute("SELECT system_identifier::text FROM pg_control_system()").fetchone(),
