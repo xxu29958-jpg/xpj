@@ -296,9 +296,11 @@ class PlanningAndroid:
         raise AssertionError(f"The real navigation did not return to the {label} entry")
 
     def capture(self, name: str, redact: str | None = None):
+        # UIAutomator waits for the current accessibility tree to settle. Read it
+        # before the pixels so the PNG cannot precede the transition in its XML.
+        root = self.tree()
         if self.bound or not self.pairing_code:
             (self.evidence / f"android-{name}.png").write_bytes(self.adb("exec-out", "screencap", "-p", binary=True))
-        root = self.tree()
         if self.pairing_code and not self.bound:
             for node in root.iter("node"):
                 if node.attrib.get("class") == "android.widget.EditText":

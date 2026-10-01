@@ -345,6 +345,7 @@ internal fun BackgroundSwitchLine(
             checked = checked,
             enabled = enabled,
             onCheckedChange = onCheckedChange,
+            contentDescription = title,
         )
     }
 }

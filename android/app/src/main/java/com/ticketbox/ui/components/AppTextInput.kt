@@ -128,7 +128,7 @@ private fun AppTextInputHeader(state: AppTextInputState) {
         state.trailingLabel?.let {
             Text(
                 text = it,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = AppAlpha.strong),
+                color = LocalThemeVisuals.current.textMeta,
                 style = MaterialTheme.typography.labelMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -167,7 +167,7 @@ private fun AppTextInputField(
                 if (showPlaceholder) {
                     Text(
                         text = state.placeholder,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = AppAlpha.medium),
+                        color = LocalThemeVisuals.current.textMeta,
                         style = if (state.emphasis == AppTextInputEmphasis.Amount) {
                             MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium)
                         } else {
