@@ -114,7 +114,15 @@
   function markRendered(container, chart) {
     var panel = container.closest('.reports-panel');
     if (panel) panel.classList.add('is-chart-rendered');
-    chartInstances.push(chart);
+    return chart;
+  }
+
+  function chartFor(container) {
+    var chart = chartInstances.find(function (item) { return item.getDom() === container; });
+    if (!chart) {
+      chart = window.echarts.init(container);
+      chartInstances.push(chart);
+    }
     return chart;
   }
 
@@ -126,7 +134,7 @@
     });
     if (!container || !hasData) return null;
 
-    var chart = window.echarts.init(container);
+    var chart = chartFor(container);
     var lineColor = colors.series[0];
     chart.setOption({
       color: colors.series,
@@ -196,7 +204,7 @@
     var metric = report.ranking_metric === 'count' ? 'count' : 'amount';
     if (metric === 'amount' && rows.some(function (row) { return row.amount_cents == null; })) return null;
     var reversedRows = rows.slice().reverse();
-    var chart = window.echarts.init(container);
+    var chart = chartFor(container);
     chart.setOption({
       color: colors.series,
       tooltip: Object.assign(baseTooltipColors(colors), {
@@ -260,7 +268,7 @@
     var rows = report && report.category_comparison ? report.category_comparison.slice(0, 8) : [];
     if (!container || !rows.length) return null;
 
-    var chart = window.echarts.init(container);
+    var chart = chartFor(container);
     chart.setOption({
       color: [colors.series[0], rgba(colors.series[2], 0.55), rgba(colors.series[4], 0.55)],
       legend: {
@@ -335,7 +343,7 @@
     return markRendered(container, chart);
   }
 
-  function bindExport(trendChart, colors) {
+  function bindExport(trendChart) {
     var button = document.getElementById('reports-export-png');
     var dialog = document.getElementById('reports-export-dialog');
     var image = document.getElementById('reports-export-image');
@@ -348,7 +356,7 @@
       var dataUrl = trendChart.getDataURL({
         type: 'png',
         pixelRatio: 2,
-        backgroundColor: colors.surface,
+        backgroundColor: palette().surface,
       });
       image.src = dataUrl;
       if (typeof dialog.showModal === 'function') {
@@ -373,15 +381,22 @@
     }
   }
 
-  function init() {
-    var report = parseReport();
-    if (!report) return;
+  function renderCharts(report) {
     var colors = palette();
     var trendChart = renderTrend(report, colors);
     renderMerchant(report, colors);
     renderCategory(report, colors);
-    bindExport(trendChart, colors);
+    return trendChart;
+  }
+
+  function init() {
+    var report = parseReport();
+    if (!report) return;
+    bindExport(renderCharts(report));
     bindResize();
+    new MutationObserver(function () { renderCharts(report); }).observe(root, {
+      attributes: true, attributeFilter: ['data-theme', 'data-accent'],
+    });
   }
 
   if (document.readyState === 'loading') {

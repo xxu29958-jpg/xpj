@@ -27,7 +27,7 @@
         };
       });
       const ink = app.readVar("--text-default");
-      const ink3 = app.readVar("--text-meta");
+      const axisLabel = app.readVar("--chart-axis-label");
       const ink4 = app.readVar("--text-faint");
       const accent = app.readVar("--brand-primary");
       const hairline = app.readVar("--border-card");
@@ -41,7 +41,7 @@
           textStyle: { color: app.readVar("--chart-tooltip-fg"), fontFamily: "Inter, 'Noto Sans SC'" },
           axisPointer: { lineStyle: { color: ink4, type: "dashed" } },
           formatter: function (params) {
-            const head = '<div style="font-size:11px;letter-spacing:.1em;color:' + ink3 + ';margin-bottom:4px">' +
+            const head = '<div style="font-size:11px;letter-spacing:.1em;margin-bottom:4px">' +
                          params[0].axisValue + "</div>";
             return head + params.map(function (p) {
               return '<div style="display:flex;justify-content:space-between;gap:14px;font-size:12px">' +
@@ -58,7 +58,7 @@
           data: labels,
           axisLine: { lineStyle: { color: hairline } },
           axisTick: { show: false },
-          axisLabel: { color: ink3, fontFamily: "Inter, 'Noto Sans SC'", fontSize: 11 },
+          axisLabel: { color: axisLabel, fontFamily: "Inter, 'Noto Sans SC'", fontSize: 11 },
         },
         yAxis: {
           type: "value",
@@ -66,7 +66,7 @@
           axisTick: { show: false },
           splitLine: { lineStyle: { color: hairline } },
           axisLabel: {
-            color: ink4, fontFamily: "Inter", fontSize: 11,
+            color: axisLabel, fontFamily: "Inter", fontSize: 11,
             formatter: function (v) { return v >= 1000 ? (v / 1000) + "k" : v; },
           },
         },

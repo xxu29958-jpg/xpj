@@ -22,20 +22,41 @@ const history = [{month:'2026-04', amount_cents:1200, budget_cents:1500},
 const attrs = {'data-home-currency':'JPY','data-home-currency-symbol':'¥','data-home-currency-minor-digits':'0'};
 const charts = {};
 const elements = {};
+const creations = {};
+const observers = [];
+let themeColor = '#123456';
+let exportClick;
+let exported;
 ['reports-trend-chart','reports-merchant-chart','reports-category-chart','chart-trend'].forEach(id => {
   elements[id] = {id, getAttribute: () => JSON.stringify(history), closest: () => ({classList:{add(){}}})};
 });
 elements['reports-overview-data'] = {textContent:JSON.stringify(report)};
+elements['reports-export-png'] = {addEventListener:(_event, listener) => {exportClick = listener;}};
+elements['reports-export-dialog'] = {showModal(){}};
+elements['reports-export-image'] = {};
 const document = {readyState:'complete', documentElement:{getAttribute:name => attrs[name]},
   getElementById:id => elements[id] || null};
-const echarts = {init:el => ({setOption:option => {charts[el.id] = option;}, resize(){}, getDom:() => el})};
-const window = {echarts, getComputedStyle:() => ({getPropertyValue:() => '#123456'}), addEventListener(){}};
+const echarts = {init:el => {
+  creations[el.id] = (creations[el.id] || 0) + 1;
+  return {setOption:option => {charts[el.id] = option;}, resize(){}, getDom:() => el,
+    getDataURL:options => {exported = options; return 'data:image/png;base64,preview';}};
+}};
+const window = {echarts, getComputedStyle:() => ({getPropertyValue:name =>
+  name === '--text-faint' ? '#111111' : themeColor}), addEventListener(){}};
 const context = {window, document, echarts, Intl, Number, BigInt, String, Math, URLSearchParams,
-  getComputedStyle:window.getComputedStyle, ResizeObserver:class {observe(){}}, MutationObserver:class {observe(){}}};
+  getComputedStyle:window.getComputedStyle, ResizeObserver:class {observe(){}},
+  MutationObserver:class {constructor(callback){observers.push(callback);} observe(){}}};
 for (const name of ['desktop/core.js','reports.js','desktop/trend-chart.js']) {
   vm.runInNewContext(fs.readFileSync(ROOT + '/' + name, 'utf8'), context);
 }
 window.TicketboxWeb.initTrendChart();
+const values = () => JSON.stringify(Object.fromEntries(Object.entries(charts).map(([id, option]) =>
+  [id, option.series.map(series => series.data.map(point =>
+    point && typeof point === 'object' ? point.value : point))])));
+const originalValues = values();
+themeColor = '#abcdef';
+observers.forEach(callback => callback([{attributeName:'data-theme'}]));
+exportClick();
 const trend = charts['reports-trend-chart'];
 const category = charts['reports-category-chart'];
 const months = charts['chart-trend'];
@@ -49,12 +70,15 @@ process.stdout.write(JSON.stringify({
   budgetValues:months.series[0].data.map(item => item.value),
   monthUnknown:months.tooltip.formatter([{axisValue:'5月', data:months.series[1].data[1], seriesName:'支出', color:'#000'}]),
   merchantValues:merchant ? merchant.series[0].data.map(item => item.value) : null,
+  themeLabels:Object.values(charts).flatMap(option => [option.xAxis.axisLabel.color, option.yAxis.axisLabel.color]),
+  financialValuesUnchanged:values() === originalValues,
+  creations, exportBackground:exported.backgroundColor,
 }));
 """
 
 
 @pytest.mark.parametrize("metric", ["amount", "count"])
-def test_actual_report_charts_do_not_plot_unknown_money_as_zero(metric):
+def test_actual_report_charts_preserve_money_when_the_existing_views_change_theme(metric):
     node = shutil.which("node")
     assert node is not None, "Node.js is required to verify the real chart consumers"
     root = Path(__file__).resolve().parents[1] / "app/static/web"
@@ -68,3 +92,7 @@ def test_actual_report_charts_do_not_plot_unknown_money_as_zero(metric):
     assert "待补汇率" in actual["categoryUnknown"] and "¥0" not in actual["categoryUnknown"]
     assert "1,200" in actual["weekKnown"] and "12.00" not in actual["weekKnown"]
     assert actual["merchantValues"] == ([2] if metric == "count" else None)
+    assert set(actual["themeLabels"]) == {"#abcdef"}, "Every chart must reread its theme colors"
+    assert actual["financialValuesUnchanged"], "Appearance must not reinterpret financial values"
+    assert set(actual["creations"].values()) == {1}, "Theme changes must reuse the displayed charts"
+    assert actual["exportBackground"] == "#abcdef", "PNG export must use the current appearance"

@@ -153,6 +153,10 @@ class InsightsJourney:
             for width in (1440, 768, 360):
                 page.set_viewport_size({"width": width, "height": 960})
                 self.capture(f"report-{theme}-{width}")
+        page.locator("#reports-export-png").click()
+        page.wait_for_function("document.querySelector('#reports-export-image').naturalWidth > 0")
+        page.locator("#reports-export-dialog").screenshot(path=self.evidence / "web-insights-png-midnight.png")
+        page.locator('#reports-export-dialog button[value="close"]').click()
 
     def run(self):
         self.prepare()

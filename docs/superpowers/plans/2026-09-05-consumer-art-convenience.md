@@ -241,7 +241,7 @@ Web 当前本机证据（`ae6a95ba`）：两页真实模板／CSS／JS 在 360/7
 
 收口结果：最终源 `acc754852b052020263f26bf54e15edb9dd04bd8` 的 CI `36847188078`、CodeQL `36847188040`、三个实际 Connected 分片 `36847188183` 及完整 Web／原生旅程 `36847221579` 通过；实际明暗画面和有界 review 已完成。#486 合并主干 `174fb0177c43be2730a3ea263b8c6206ef6293e8` 与源 tree 一致，独立 CI `36850074652`、CodeQL `36850074643`、实际 Connected 三分片 `36850074702` 和完整旅程 `36850131634` 全部通过。旅程产物 source/checkout 对应最终 main，预算 7 版、安排 3 版、周期定义 12 版及跨月关联／冲正／预留恢复成立。本组 CLOSED；上文待执行状态为施工历史，整体 P1/P2 和 exact RC 仍未完成。
 
-## 2026-10-01 键盘开启时的弹层任务操作整组（OPEN）
+## 2026-10-01 键盘开启时的弹层任务操作整组（CLOSED）
 
 事前核准：`AppSheetScaffold` 是现有弹层的滚动／键盘避让 Owner；需要在输入时完成原任务的 20 个消费者为 DebtCreate、DebtAction、MemberProposal、IncomePlanCreate、IncomePlanEditor、RecurringEditor、RecurringOccurrence（关联所选付款）、ManualExpense、LedgerBulkEdit（分类／标签两命令）、LedgerTools（当前列表搜索／筛选完成）、ExpenseEditCategory、ItemsEditor、SplitsEditor、BillSplitInvite、ExpenseCorrection、FactOffset、FactVoidOffset、MissingAmount、QuickCategory、QuickMerchant。ExpenseEditSheetScaffold 和 ReviewSheetScaffold 只是既有外壳，统一转交同一操作槽，不各造布局或写入 Owner。Budget/Income/Goal/Recurring 历史、MonthPicker、DebtKind、RepaymentDraftTarget、收件显示选项、确认/重复处理以及手工录入币种准备态已核对：无本组文本输入，保留其内容滚动。SpendingGoal／DebtGoal／ExpenseEdit 全屏表单已有 AppPageScaffold 的固定操作区，不迁入第二弹层机制。
 
