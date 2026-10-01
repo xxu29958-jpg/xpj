@@ -347,7 +347,7 @@ main qualification. Later product deliveries are not prerequisites for this PR.
 
 ## 2026-10-01 continuation: orphan inspection and explicit disposal
 
-This continuation is OPEN on main `bc20448534e92ba8c2cd25e8bb9c712380108153`.
+This continuation is CLOSED on main `7a0b99e430e18b593c1e57cfd48a56f8dee19e4a`.
 The already delivered per-bill inspection, replenishment, verification, cleanup
 continuation and portable outlet remain valid. This group covers orphan handling;
 Internal Beta cold-backup boundaries and the final product/device RC stay separate.
@@ -396,3 +396,20 @@ restart input, ownership denial and archived-ledger storage. Builds and CodeQL
 also passed. Its contract lane required the task routes' actual concurrency
 guards to be recorded and removal of a needless lint suppression; both are now
 corrected. Actual Owner/Android journey and final source/main remain pending.
+
+Final source `2c143486` passed CI `36816111958`, CodeQL `36816111947`,
+all three actual Connected lanes `36816111942`, the default planning journey
+and the full original journey `36816136836`. First main `2c733aca` independently
+passed those original/PG/device results, but its Desktop lane exposed a separate
+visible-window/process lifetime failure, reproduced and corrected in #483.
+Integrated main `7a0b99e4` passed CI `36820603774`, CodeQL `36820603779`, all
+three actual Connected lanes `36820603775` and original journey `36820643909`.
+That artifact's checkout/source SHAs match this main: 14 candidates settle as
+12 deleted, one permission failure and one changed file retained; after durable
+32/35 deletes and hard process termination, only the original three remain for
+continuation. Reply loss recovers the original accepted task through history;
+later files, original receipts, the 1234-cent bill and original SHA-256
+`93950c83617d21b8d9f945d90d3f20dc18e75ab3e6c4b3ea3dfeafb5d8fd3800`
+are preserved. Actual Owner wide/narrow and both themes, preview/history and
+Android observations are included. The promised group is closed; Beta cold
+retention, full-product experience and exact RC remain independent work.

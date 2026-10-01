@@ -262,6 +262,9 @@
       color: var(--muted);
     }
     .technical summary { padding: 14px 2px 8px; cursor: pointer; font-weight: 650; color: #4d5750; }
+    .cold-copy-guide { margin-top: 14px; font-size: 13px; line-height: 1.6; }
+    .cold-copy-guide summary { min-height: 44px; padding: 10px 0; cursor: pointer; color: var(--ink); }
+    .cold-copy-guide pre { white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px; background: var(--surface-subtle); font: 11.5px/1.6 var(--mono); }
     .technical-grid {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -398,10 +401,24 @@
       <article class="task-card" id="dataProtectionCard">
         <div class="task-icon" aria-hidden="true">▣</div>
         <div class="task-title">数据保护</div>
-        <div class="task-state" id="protectState">导出已确认流水，留存一份可迁移的数据副本。</div>
+        <div class="task-state" id="protectState">导出流水或含历史、关系与原件的账本包，留存业务副本。</div>
         <div class="task-actions">
           <button class="button button-primary owner-action" id="importExportAction" type="button" disabled onclick="openImportExport()">导入与导出</button>
         </div>
+        <details class="cold-copy-guide" id="coldCopyGuide">
+          <summary>停机冷备与恢复边界</summary>
+          <p>正式安装可由管理员留存整个数据库、原件、设置、安装身份与对应程序。先让各设备完成同步；手机和浏览器内尚未同步的意图不在宿主冷备中，请保留原设备。</p>
+          <p>在管理员 PowerShell 中执行。将示例目标改为安装目录之外、已有本地文件夹中的新文件；冷备期间各端暂时不能使用，保持两个服务停止。</p>
+          <pre>Stop-Service TicketboxBackend
+Stop-Service TicketboxPg
+&amp; "$env:ProgramFiles\Ticketbox\bin\lifecycle\TicketboxLifecycle.exe" cold-copy --output 'D:\我的备份\小票夹.tbxcold'</pre>
+          <p>命令返回成功后，再独立核验归档；只有两次均显示 <code>"ok": true</code> 才算本次完成。失败文件不能当作完整副本，重试请使用另一个新文件名。</p>
+          <pre>&amp; "$env:ProgramFiles\Ticketbox\bin\lifecycle\TicketboxLifecycle.exe" verify-cold-copy --source 'D:\我的备份\小票夹.tbxcold'
+Start-Service TicketboxPg
+Start-Service TicketboxBackend</pre>
+          <p>无论本次冷备是否成功，结束后都需按上面顺序恢复服务。保留已核验的副本，转存介质须保护访问权限。归档含私密数据和宿主凭据，请勿当作诊断包发送。</p>
+          <p>Internal Beta 目前支持冷备留存和内容核验，尚不支持把归档覆盖回原安装或在另一台主机接管。需要恢复时保留原安装与副本，等待单独核准的恢复路径；不要手工覆盖数据库或身份文件。</p>
+        </details>
       </article>
 
       <article class="task-card">
@@ -642,8 +659,8 @@
           ? "手机入口已配置，连接结果以手机实测为准。"
           : "当前仅本机可用，请先在设置中配置手机入口。")));
       $("protectState").textContent = s.runtime_mode === "installed"
-        ? "导出已确认流水，留存一份可迁移的数据副本。"
-        : "开发环境也可通过导入与导出迁移已确认流水。";
+        ? "导出流水或含历史、关系与原件的账本包，留存业务副本。"
+        : "开发环境也可导出流水与完整账本包。冷备工具仅适用于正式安装。";
       $("diagnosticState").textContent = s.diagnostic_bundle_file ? `最近导出：${s.diagnostic_bundle_file}` : "导出包不包含令牌、账本内容或原始日志。";
       renderPublicConnectivity(s.public_connectivity);
 

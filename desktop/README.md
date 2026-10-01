@@ -13,7 +13,7 @@ UI 只以 HKLM App Paths 动态发现并校验的 Edge `--app` 窗口打开；�
 
 2026-10-01 窗口关闭核准：主干 `2c733aca` 的实际 Windows 门禁观察到可见窗口已经关闭、浏览器进程仍存活，当前 Manager 把进程存活误当成窗口仍打开。本机同版 Edge 的普通路径通过；使用 Chromium 的隔离 keep-alive 测试开关后重现相同错误，未改变系统浏览器策略。该开关只用于稳定复现，不代表已经确定云端的具体后台触发条件。
 
-本次整组范围限于初次开窗、已验证的同用户 reopen、最后窗口关闭、宿主请求关闭及所属进程/profile 清理：以本会话进程实际拥有的窗口判定用户界面是否仍在，关窗后仍负责回收所属进程。沿现有 `EdgeAppWindow` 与 `ManagerWindowSession` 处理；实例证明、bootstrap、账本身份、BFF、财务数据和 Windows 服务生命周期保持各自责任。退出证据须覆盖普通与进程留存两种真实窗口路径、多窗口和宿主清理，并通过 exact source/main 的适用门禁；当前为 OPEN。
+本次整组范围限于初次开窗、已验证的同用户 reopen、最后窗口关闭、宿主请求关闭及所属进程/profile 清理：以本会话进程实际拥有的窗口判定用户界面是否仍在，关窗后仍负责回收所属进程。沿现有 `EdgeAppWindow` 与 `ManagerWindowSession` 处理；实例证明、bootstrap、账本身份、BFF、财务数据和 Windows 服务生命周期保持各自责任。普通／后台进程、多窗口及清理的真实回归通过；源 `54d7fad6` 及独立 main `7a0b99e4` 的适用 CI、CodeQL 与 Connected 均成功（源设备按范围跳过，main 三片实际执行），本片 CLOSED。
 
 实现用 `GetWindowThreadProcessId` 绑定所属 PID，以 `IsWindowVisible` 观察本会话已显示的窗口；所有窗口每轮都被观察，关闭后的对象继续保留至所属进程被回收。测试对照使用 Chromium [keep-alive-for-test](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/chrome/common/chrome_switches.h)；Windows [窗口可见性](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-iswindowvisible)与 Edge [后台进程](https://learn.microsoft.com/en-us/deployedge/microsoft-edge-policies/BackgroundModeEnabled)语义分别核对，不用网页 JavaScript 心跳代表宿主窗口。
 
@@ -82,7 +82,7 @@ scripts/               Manager provenance 与冻结构建入口
 - **服务边界清楚**:正式模式只观察 SCM 与安装身份，不从 Manager 停/启服务；崩溃恢复仍由已安装的 SCM/Shawl 策略负责。源码模式只监督自己启动的开发后端。
 - **GUI 生命周期不接管服务**:正式模式关闭最后一个 Edge 窗口只退出 Manager 主进程和本机控制面,不停止 SCM 服务;源码模式只清理自己创建的开发后端。
 - **单实例仍完整持窗**:第二次启动先用 challenge/HMAC 识别既有 owner,再让 owner 通过 authenticated reopen 创建和登记新窗口;第二个进程不直接留下无人跟踪的 Edge。
-- **业务权威不进 GUI**：绑定码、设备、UploadLink 与业务诊断仍由 loopback `/owner` 和后端服务生成；Manager 只打开精确任务页，不读取或写入数据库。数据保护卡只连接产品内 CSV 导入与已确认流水导出，不承诺或暴露仍处于 HOLD 的完整备份/恢复能力。
+- **业务权威不进 GUI**：绑定码、设备、UploadLink 与业务诊断仍由 loopback `/owner` 和后端服务生成；Manager 只打开精确任务页，不读取或写入数据库。数据保护卡复用产品内 CSV 和完整账本出口，并提供管理员停机冷备说明。GUI 不执行高权限冷备、启停服务或恢复；完整备份/恢复能力继续 HOLD。
 - **GUI 永不提权**:localhost 控制服务始终以普通用户运行；正式安装态没有提权 helper 或常驻高权限代理。
 - **控制面 loopback-only**:`TICKETBOX_MANAGER_HOST` 非 loopback(`0.0.0.0` / LAN IP)会在启动前被 `config.py` 拒绝——控制服务发 token + 收控制 POST,绝不绑到公网/局域网。
 - **CSRF-safe**:控制 POST 需 per-process token + 同源,跨站页面打不动。

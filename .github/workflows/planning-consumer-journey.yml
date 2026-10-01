@@ -8,8 +8,12 @@ on:
       group:
         description: Actual consumer group to exercise
         type: choice
-        options: [budget-recurring, income-goals, relationships, portable-downloads, backstage, notifications, reference-library, financial-facts, original-maintenance]
+        options: [budget-recurring, income-goals, relationships, portable-downloads, backstage, notifications, reference-library, financial-facts, original-maintenance, cold-copy]
         default: budget-recurring
+      installer_run_id:
+        description: For cold-copy only, the CI run containing this exact SHA's installer
+        required: false
+        type: string
   pull_request:
     branches: [main]
     paths:
@@ -29,13 +33,15 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
-  group: planning-consumers-${{ github.ref }}
+  group: planning-consumers-${{ github.ref }}-${{ inputs.group || 'budget-recurring' }}
   cancel-in-progress: true
 
 jobs:
   postgres_policy:
+    if: ${{ inputs.group != 'cold-copy' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -157,3 +163,43 @@ jobs:
         if: ${{ always() }}
         working-directory: ${{ runner.temp }}
         run: rm -f -- "$RUNNER_TEMP/planning.pgpass"
+
+  cold-copy:
+    name: Installed cold copy and separate PostgreSQL readability
+    if: ${{ inputs.group == 'cold-copy' }}
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11'
+      - name: Install qualification dependencies
+        run: python -m pip install -r backend/requirements-dev.txt
+      - name: Download only the exact candidate's installer
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INSTALLER_RUN_ID: ${{ inputs.installer_run_id }}
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          if ($env:INSTALLER_RUN_ID -notmatch '^\d+$') { throw 'Invalid run ID.' }
+          $actual = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:INSTALLER_RUN_ID" --jq '.head_sha'
+          if ($LASTEXITCODE -ne 0 -or $actual -cne $env:EXPECTED_SHA) { throw 'Installer source SHA mismatch.' }
+          gh run download $env:INSTALLER_RUN_ID --repo $env:GITHUB_REPOSITORY --name ticketbox-windows-installer --dir "$env:RUNNER_TEMP\cold-installer"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Operate the installed cold-copy command and read the separate PG copy
+        shell: powershell
+        run: |
+          $installers = @(Get-ChildItem -LiteralPath "$env:RUNNER_TEMP\cold-installer" -Filter 'Ticketbox-Setup-*.exe' -Recurse -File)
+          if ($installers.Count -ne 1) { throw 'Expected one exact installer.' }
+          python distribution/windows/qualification/cold_copy_drill.py --installer $installers[0].FullName --evidence "$env:RUNNER_TEMP\cold-copy-evidence"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload business results only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: cold-copy-business-result
+          path: ${{ runner.temp }}/cold-copy-evidence/business-result.json
+          if-no-files-found: error
