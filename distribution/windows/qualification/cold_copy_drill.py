@@ -105,15 +105,31 @@ def copied_cluster(archive_path: Path, evidence: Path, pg_bin: Path, password: s
     assert copied_data.resolve().is_relative_to(evidence.resolve())
     port = free_port()
     pg_ctl = str(pg_bin / "pg_ctl.exe")
+    log_offsets = {path: path.stat().st_size for path in copied_data.glob("log/*.log")}
     started = False
     try:
         run([pg_ctl, "start", "-D", str(copied_data), "-l", str(evidence / "copy-pg.log"),
              "-o", f"-p {port} -h 127.0.0.1", "-w", "-t", "60"], timeout=90)
         started = True
         return facts(password, port)
+    except Exception:
+        # Only this synthetic copy's newly appended startup output; no source logs or archive upload.
+        for log in (evidence / "copy-pg.log", *copied_data.glob("log/*.log")):
+            if log.is_file():
+                with log.open("rb") as stream:
+                    stream.seek(log_offsets.get(log, 0))
+                    diagnostic = stream.read()[-3000:].decode("utf-8", errors="replace")
+                if diagnostic:
+                    print("Separate test PostgreSQL startup: " + diagnostic.replace(password, "[redacted]"), flush=True)
+        raise
     finally:
         if started or (copied_data / "postmaster.pid").exists():
-            run([pg_ctl, "stop", "-D", str(copied_data), "-m", "fast", "-w", "-t", "60"], timeout=90)
+            try:
+                run([pg_ctl, "stop", "-D", str(copied_data), "-m", "fast", "-w", "-t", "60"], timeout=90)
+            except AssertionError as cleanup_error:
+                if started:
+                    raise
+                print(f"Separate test PostgreSQL failed-start cleanup: {cleanup_error}", flush=True)
 
 
 def interrupt_real_copy(lifecycle: Path, evidence: Path) -> None:
