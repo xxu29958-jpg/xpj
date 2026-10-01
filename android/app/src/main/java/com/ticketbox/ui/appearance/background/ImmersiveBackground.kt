@@ -310,11 +310,9 @@ private fun scrimRoleExtra(role: SurfaceRole): Float = when (role) {
 /**
  * 用户照片的亮度与内容不可预知（白底截图、夜景、带字图片都可能）：自定义图
  * 的 scrim 下限必须远高于内置渐变——内置渐变是为可读性调过的受控素材，照片不是。
- * 真实反例：midnight + 白色带字测试图，旧 scrim 0.30 让壁纸文字与正文互相干扰。
- *
- * 取值锚点（Balanced、白图）：midnight 0.74 → 白贡献 ≈ 0.62×0.26 ≈ 16% 灰，
- * 浅文对比充裕；paper 0.42 → 深文可读且照片可辨。上限 0.85 < 1：照片仍然在场，
- * 不盖回不透明，也不退化成「只能选清淡图」。三档保持 氛围<平衡<专注 的次序。
+ * 黑白照片的实际收件页曾让说明文字降到 Paper 1.44:1 / Midnight 3.66:1。
+ * 下限按最弱的语义正文色 textMeta 保护阅读；角色补充遮罩采用叠层合成，
+ * 避免直接相加后所有编辑/设置档位都封顶。照片始终可见，三档逐步弱化背景。
  */
 fun resolveCustomImageScrimAlpha(
     mode: ImmersionMode,
@@ -322,11 +320,11 @@ fun resolveCustomImageScrimAlpha(
     darkBackground: Boolean,
 ): Float {
     val base = when (mode) {
-        ImmersionMode.Atmosphere -> if (darkBackground) 0.62f else 0.30f
-        ImmersionMode.Balanced -> if (darkBackground) 0.74f else 0.42f
-        ImmersionMode.Focus -> if (darkBackground) 0.82f else 0.54f
+        ImmersionMode.Atmosphere -> if (darkBackground) 0.82f else 0.88f
+        ImmersionMode.Balanced -> if (darkBackground) 0.86f else 0.91f
+        ImmersionMode.Focus -> if (darkBackground) 0.90f else 0.94f
     }
-    return (base + scrimRoleExtra(role)).coerceIn(0.25f, 0.85f)
+    return base + (1f - base) * scrimRoleExtra(role)
 }
 
 fun resolveCardContainerAlpha(
@@ -396,10 +394,18 @@ fun resolveGlobalScrim(
     } else {
         Color.White.copy(alpha = scrimAlpha)
     }
-    val bottom = if (isDarkBackground) {
-        Color.Black.copy(alpha = (scrimAlpha + 0.12f).coerceAtMost(0.72f))
+    // The controlled-artwork cap must not weaken an arbitrary photo's reading floor.
+    val bottomAlphaLimit = if (backgroundVisible && settings.source == BackgroundSource.CustomImage) {
+        0.96f
+    } else if (isDarkBackground) {
+        0.72f
     } else {
-        Color(0xFFF7F8F4).copy(alpha = (scrimAlpha + 0.16f).coerceAtMost(0.78f))
+        0.78f
+    }
+    val bottom = if (isDarkBackground) {
+        Color.Black.copy(alpha = (scrimAlpha + 0.12f).coerceAtMost(bottomAlphaLimit))
+    } else {
+        Color(0xFFF7F8F4).copy(alpha = (scrimAlpha + 0.16f).coerceAtMost(bottomAlphaLimit))
     }
     return Brush.verticalGradient(
         colors = listOf(

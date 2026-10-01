@@ -94,6 +94,7 @@ def read_domains(native, images):
         native.reveal_any("TaggedMeal")
         native.click("TaggedMeal")
         native.click("更正这笔账单")
+        wait_for(lambda: native.has("保存更正"), "The actual correction form did not open")
         native.capture(f"appearance-correction-{theme}")
         # No edit/submit: preserve all original financial facts and intentions.
         native.back()
