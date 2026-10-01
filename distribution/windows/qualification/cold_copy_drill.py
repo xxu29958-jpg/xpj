@@ -112,16 +112,24 @@ def copied_cluster(archive_path: Path, evidence: Path, pg_bin: Path, password: s
     run(["icacls", str(copied_data), "/grant:r", f"*{reader_sid}:(OI)(CI)M", "/T"])
     port = free_port()
     pg_ctl = str(pg_bin / "pg_ctl.exe")
+    controller_log = evidence / "copy-pg-controller.log"
     log_offsets = {path: path.stat().st_size for path in copied_data.glob("log/*.log")}
     started = False
     try:
-        run([pg_ctl, "start", "-D", str(copied_data), "-l", str(evidence / "copy-pg.log"),
-             "-o", f"-p {port} -h 127.0.0.1", "-w", "-t", "60"], timeout=90)
+        print("Cold-copy drill: starting separate PostgreSQL", flush=True)
+        # PG inherits standard handles on Windows. A PIPE can remain open for
+        # the server's lifetime even after pg_ctl exits; wait only for pg_ctl.
+        with controller_log.open("wb") as output:
+            subprocess.run([pg_ctl, "start", "-D", str(copied_data), "-l", str(evidence / "copy-pg.log"),
+                            "-o", f"-p {port} -h 127.0.0.1", "-w", "-t", "60"],
+                           stdout=output, stderr=subprocess.STDOUT, check=True, timeout=90,
+                           creationflags=subprocess.CREATE_NO_WINDOW)
         started = True
+        print("Cold-copy drill: separate PostgreSQL is ready", flush=True)
         return facts(password, port)
     except Exception:
         # Only this synthetic copy's newly appended startup output; no source logs or archive upload.
-        for log in (evidence / "copy-pg.log", *copied_data.glob("log/*.log")):
+        for log in (controller_log, evidence / "copy-pg.log", *copied_data.glob("log/*.log")):
             if log.is_file():
                 with log.open("rb") as stream:
                     stream.seek(log_offsets.get(log, 0))
@@ -186,6 +194,7 @@ def qualify(installer: Path, evidence: Path) -> dict:
     password = (machine / "secrets/postgres.password").read_text().strip()
     relative, original_sha = seed(password, data)
     before = facts(password, 5432)
+    print("Cold-copy drill: installed fixture is readable", flush=True)
     live_target = evidence / "running-rejected.tbxcold"
     refused = json.loads(run([str(lifecycle), "cold-copy", "--output", str(live_target)], expected=2))
     assert refused["code"] == "cold_services_running"
@@ -208,6 +217,7 @@ def qualify(installer: Path, evidence: Path) -> dict:
         with zipfile.ZipFile(archive) as opened:
             assert opened.read("machine/installation.json") == binding_bytes
             assert hashlib.sha256(opened.read(f"data/attachments/originals/{relative}")).hexdigest() == original_sha
+        print("Cold-copy drill: frozen copy, interruption and byte checks passed", flush=True)
         copied = copied_cluster(archive, evidence, app / "postgresql/bin", password)
         assert copied == before, "copied PostgreSQL lost original identity, schema, roles or draft facts"
         assert copied["cluster"]["system_identifier"] == result["identity"]["postgres_system_identifier"]
@@ -216,6 +226,7 @@ def qualify(installer: Path, evidence: Path) -> dict:
     finally:
         services("Start")
     assert facts(password, 5432) == before, "source facts changed after reopening the original services"
+    print("Cold-copy drill: original services reopened with unchanged facts", flush=True)
     return {"checkout_sha": run(["git", "rev-parse", "HEAD"]).strip(), "setup_sha256": setup_sha,
             "lifecycle_sha256": hashlib.sha256(lifecycle.read_bytes()).hexdigest(),
             "cold_archive_sha256": archive_sha, "files": result["files"], "bytes": result["bytes"],
