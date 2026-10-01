@@ -252,37 +252,30 @@ private fun StatsControlsBlock(
 ) {
     val state = paneState.screenState
     val actions = paneActions.screenActions
-    when (controlsMode) {
-        StatsControlsMode.FiltersAndTabs -> Column(
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-        ) {
+    val overview = paneState.selectedTab == StatsTab.Overview
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+        if (controlsMode == StatsControlsMode.FiltersAndTabs) {
             StatsFilterControls(
                 state = state,
                 onOpenMonthPicker = paneActions.onOpenMonthPicker,
                 onTagChange = actions.filters.onTagChange,
             )
-            StatsViewsAndLayout(paneState, paneActions)
+        }
+        Column {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) {
+                    StatsViewTabs(selectedTab = paneState.selectedTab, onTabChange = paneActions.onTabChange)
+                }
+                if (overview) DashboardLayoutEditAction(paneState.overview.layout, actions.overview.layout)
+            }
+            if (overview) DashboardLayoutFeedback(paneState.overview.layout, actions.overview.layout)
+        }
+        if (controlsMode == StatsControlsMode.FiltersAndTabs) {
             StatsStatusMessages(
                 state = state,
                 selectedTab = paneState.selectedTab,
             )
         }
-
-        StatsControlsMode.Tabs -> StatsViewsAndLayout(paneState, paneActions)
-    }
-}
-
-@Composable
-private fun StatsViewsAndLayout(state: StatsAdaptivePaneState, actions: StatsAdaptivePaneActions) {
-    val overview = state.selectedTab == StatsTab.Overview
-    Column {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.weight(1f)) {
-                StatsViewTabs(selectedTab = state.selectedTab, onTabChange = actions.onTabChange)
-            }
-            if (overview) DashboardLayoutEditAction(state.overview.layout, actions.screenActions.overview.layout)
-        }
-        if (overview) DashboardLayoutFeedback(state.overview.layout, actions.screenActions.overview.layout)
     }
 }
 
