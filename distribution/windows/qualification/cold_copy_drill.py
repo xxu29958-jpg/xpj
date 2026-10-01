@@ -96,6 +96,8 @@ def facts(password: str, port: int) -> dict:
 
 
 def copied_cluster(archive_path: Path, evidence: Path, pg_bin: Path, password: str) -> dict:
+    from ticketbox_lifecycle.runtime.windows_security_native import current_process_user_sid
+
     extracted = evidence / "readability-copy"
     copied_data = extracted / "data/pgdata"
     with zipfile.ZipFile(archive_path) as archive:
@@ -103,6 +105,11 @@ def copied_cluster(archive_path: Path, evidence: Path, pg_bin: Path, password: s
             if name.startswith("data/pgdata/"):
                 archive.extract(name, extracted)
     assert copied_data.resolve().is_relative_to(evidence.resolve())
+    # pg_ctl drops Administrators from the child's token. Authorize only this
+    # test account on the disposable extracted copy, never on the source/archive.
+    reader_sid = current_process_user_sid()
+    assert reader_sid is not None
+    run(["icacls", str(copied_data), "/grant:r", f"*{reader_sid}:(OI)(CI)M", "/T"])
     port = free_port()
     pg_ctl = str(pg_bin / "pg_ctl.exe")
     log_offsets = {path: path.stat().st_size for path in copied_data.glob("log/*.log")}
