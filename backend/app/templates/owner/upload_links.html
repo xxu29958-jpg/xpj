@@ -140,10 +140,17 @@
     <li>动作 1：<strong>转换图像</strong>，格式选 JPEG。</li>
     <li>动作 2：<strong>URL</strong>，把本页上方<u>完整公网 URL</u>整段粘贴进去（含 <code>https://</code>，含 <code>?tz=Asia/Shanghai</code>）。可以点上方「复制完整 URL」按钮一键复制，或用 iPhone 相机扫上方二维码后长按横幅选「拷贝」（不要直接打开链接）。<u>不要</u>只复制 <code>/u/...</code> 相对路径，<u>不要</u>复制 <code>/u/***</code> 掩码，<u>不要</u>再手动拼接 <code>?tz=</code>。</li>
     <li>动作 3：<strong>获取 URL 内容</strong>。URL 选上一步「URL」；方法 POST；请求正文「文件」；文件选「转换后的图像」。</li>
-    <li>动作 4：<strong>获取词典值</strong>，从上一步「URL 内容」取键 <code>duplicate_status</code>。</li>
-    <li>动作 5：<strong>如果</strong>，条件「词典值 等于 <code>suspected</code>」→ 显示通知「已上传，但疑似重复票，记得去待确认里看一眼」；「否则」→ 显示通知「已上传到小票夹 ✓」。</li>
+    <li>动作 4：<strong>设置变量</strong>，把「URL 内容」保存为「上传响应」。后面的取值都选择这个变量作为词典。</li>
+    <li>分别添加两个<strong>获取词典值</strong>动作，从「上传响应」取 <code>message</code> 和 <code>public_id</code>；把输出分别命名为「回执消息」和「账单编号」。</li>
+    <li>添加<strong>如果</strong>，选择满足<strong>全部</strong>条件：「回执消息」等于 <code>uploaded</code>，并且「账单编号」有任何值。
+      <ul>
+        <li>条件满足时，再从「上传响应」取 <code>duplicate_status</code>。如果等于 <code>suspected</code>，显示通知「小票夹已收到图片，但疑似重复，请到收件核对」；否则显示「小票夹已收到图片，请到收件核对」。</li>
+        <li>外层「否则」显示通知「未确认收到，请保留图片并到收件核对」。</li>
+      </ul>
+    </li>
   </ol>
-  <p class="secret-note">小票夹 v0.3 起不再使用 <code>Upload-Token</code> 请求头；UploadLink URL 自身就是凭证。</p>
+  <p class="help-text">“已收到图片”表示服务器已接收，账单仍需人工核对。若「获取 URL 内容」报错中断，先保留原图并查看收件，确认结果后再决定是否重试。</p>
+  <p class="secret-note">UploadLink URL 自身就是上传凭证，无需另外填写 <code>Upload-Token</code>。回执判断和错误分支尚待 iPhone 实机核准。</p>
 </div>
 
 <div class="card card--accent-warn">
@@ -151,9 +158,9 @@
   <ol class="help-text steps-list">
     <li>iPhone 提示「无效的 URL」：URL 动作里粘贴的是 <code>/u/...</code> 相对路径或 <code>/u/***</code> 掩码，必须粘贴完整公网 URL（以 <code>https://</code> 开头）。</li>
     <li>URL 中 <code>?tz=</code> 出现两次：本页给出的完整 URL 已经带上时区参数，不要再手动拼一次。</li>
-    <li>未配置 <code>PUBLIC_BASE_URL</code>：请先在 Owner Console 的公网地址设置中保存 HTTPS 域名，再重新创建链接。</li>
-    <li>确认电脑端后端正在运行（任务栏中应有 Ticketbox 任务）。</li>
-    <li>确认 Cloudflare 域名当前可访问（用浏览器打开公网域名应能看到健康响应）。</li>
+    <li>页面提示未完成手机连接设置：先到<a class="text-link" href="/owner/settings">设置</a>保存手机可访问的 HTTPS 地址，再创建上传链接。</li>
+    <li>在电脑端的小票夹管理器中确认后端正在运行。</li>
+    <li>用手机浏览器检查公网域名下的 <code>/api/health</code>。健康响应只用于排查连接；上传结果以本次回执和收件记录为准。</li>
     <li>仍然失败时，可在请求头中添加 <code>User-Agent: TicketBox/1.0 iOS-Shortcut</code> 以便区分流量。</li>
   </ol>
 </div>
