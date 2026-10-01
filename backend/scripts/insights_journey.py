@@ -38,8 +38,8 @@ class InsightsJourney:
 
     def capture(self, name):
         # ECharts resizes on the next rendering frame after a viewport change.
-        self.page.wait_for_function("document.documentElement.scrollWidth <= innerWidth", timeout=3000)
-        assert not self.page.evaluate("document.documentElement.scrollWidth > innerWidth"), "Insights overflows"
+        wait_for(lambda: self.page.evaluate("document.documentElement.scrollWidth <= innerWidth"),
+            "Insights overflows", timeout=3)
         self.page.screenshot(path=self.evidence / f"web-insights-{name}.png", full_page=True)
 
     def prepare(self):
@@ -154,7 +154,8 @@ class InsightsJourney:
                 page.set_viewport_size({"width": width, "height": 960})
                 self.capture(f"report-{theme}-{width}")
         page.locator("#reports-export-png").click()
-        page.wait_for_function("document.querySelector('#reports-export-image').naturalWidth > 0")
+        wait_for(lambda: page.locator("#reports-export-image").evaluate("image => image.complete && image.naturalWidth > 0"),
+            "The actual report PNG did not render", timeout=5)
         page.locator("#reports-export-dialog").screenshot(path=self.evidence / "web-insights-png-midnight.png")
         page.locator('#reports-export-dialog button[value="close"]').click()
 
