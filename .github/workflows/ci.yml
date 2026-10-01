@@ -1222,7 +1222,27 @@ jobs:
 
       - name: Build release APKs
         # Two concurrent flavor compilers exhausted the shared 2560m Kotlin heap.
-        run: ./gradlew --no-daemon --max-workers=1 -Pkotlin.daemon.jvmargs=-Xmx4096m :app:assembleGrayRelease :app:assembleInternalRelease
+        run: ./gradlew --no-daemon --max-workers=1 -Pkotlin.daemon.jvmargs=-Xmx4096m :app:assembleGrayRelease :app:assembleInternalRelease :app:writeTicketboxBuildToolsVersion
+
+      - name: Bind unsigned release inputs to the cloud build
+        working-directory: .
+        env:
+          QUALIFIED_CHECKOUT: ${{ steps.qualification.outputs.sha }}
+          QUALIFIED_SOURCE: ${{ steps.qualification.outputs.source_sha }}
+        run: |
+          python -E -S backend/scripts/android_release_artifact.py \
+            --output android/app/build/ticketbox-release-inputs \
+            --checkout "$QUALIFIED_CHECKOUT" --source "$QUALIFIED_SOURCE" \
+            --repository "$GITHUB_REPOSITORY" --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" --server-url "$TICKETBOX_SERVER_URL"
+
+      - name: Upload unsigned release inputs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ticketbox-android-release-inputs-attempt-${{ github.run_attempt }}
+          path: android/app/build/ticketbox-release-inputs/
+          if-no-files-found: error
+          retention-days: 30
 
   android_sca:
     name: Android SCA

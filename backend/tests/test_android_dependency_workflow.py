@@ -142,11 +142,16 @@ def test_pr_scan_consumes_trusted_main_artifact_without_a_secret() -> None:
         ":app:assembleGrayDebug :app:assembleInternalDebug "
         ":app:writeTicketboxBuildToolsVersion"
     )
-    assert next(
+    release_command = next(
         step["run"]
         for step in release_apk["steps"]
         if step["name"] == "Build release APKs"
-    ).endswith(":app:assembleGrayRelease :app:assembleInternalRelease")
+    )
+    assert {
+        ":app:assembleGrayRelease",
+        ":app:assembleInternalRelease",
+        ":app:writeTicketboxBuildToolsVersion",
+    } <= set(release_command.split())
 
     aggregator = workflow["jobs"]["android"]
     assert aggregator["name"] == "Android"
