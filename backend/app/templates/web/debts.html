@@ -17,7 +17,7 @@
     <h1 class="page-title">欠款</h1>
     <p class="product-page-summary">家人之间的往来与外部欠款按方向和剩余排列，金额与手机 App 一致。打开任意一笔即可查看进度并记录还款。</p>
   </div>
-  {% if can_write %}
+  {% if can_write and (member_debts or external_debts) %}
   <a class="product-button product-button--primary" href="/web/debts/new?ledger_id={{ selected_ledger_id }}">新建欠款</a>
   {% endif %}
 </header>
