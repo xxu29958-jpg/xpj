@@ -33,6 +33,7 @@ import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalCurrencyDisplay
+import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.StatsSource
@@ -190,6 +191,7 @@ private fun MonthDeltaPill(
 ) {
     if (comparison.previousAmountCents == 0L) return
     val visuals = LocalThemeVisuals.current
+    val warning = LocalStateTokens.current.warn
     val delta = comparison.deltaAmountCents
     val (label, tint) = when {
         delta == 0L -> stringResource(R.string.stats_overview_delta_flat) to MaterialTheme.colorScheme.onSurfaceVariant
@@ -201,7 +203,7 @@ private fun MonthDeltaPill(
                 R.string.stats_overview_delta_up,
                 formatDisplayAmount(kotlin.math.abs(delta), currencyDisplay),
                 percent,
-            ) to visuals.warningTint
+            ) to warning.fg
         }
         else -> {
             val percent = comparison.percentChange?.let {
@@ -217,7 +219,7 @@ private fun MonthDeltaPill(
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(AppRadius.pill))
-            .background(tint.copy(alpha = AppAlpha.subtle))
+            .background(if (delta > 0L) warning.bg else tint.copy(alpha = AppAlpha.subtle))
             .padding(horizontal = AppSpacing.contentGap, vertical = AppSpacing.miniGap),
     ) {
         Text(
