@@ -68,7 +68,6 @@
 }
 
 html {
-    min-width: 20rem;
     min-height: 100%;
     background: var(--surface-app);
     color: var(--text-default);

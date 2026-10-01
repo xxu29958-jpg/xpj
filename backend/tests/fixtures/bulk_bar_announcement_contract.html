@@ -26,9 +26,17 @@
          href="#row-2-navigation">第二笔</a>
     </div>
     <form data-bulk action="/web/review/bulk">
+      <input type="submit" hidden disabled>
       <input type="hidden" name="ledger_id" value="owner">
       <span data-bulk-count>0</span>
       <button id="bulk-clear" type="button" data-bulk-clear>取消选择</button>
+      <details class="bulk-editor">
+        <summary>修改信息</summary>
+        <input name="reason" value="保留的理由">
+        <div class="bulk-group"><input name="category" value="保留的分类"><button type="submit" name="action" value="set_category">应用分类</button></div>
+        <div class="bulk-group"><input name="merchant" value="保留的商家"><button type="submit" name="action" value="set_merchant">应用商家</button></div>
+        <div class="bulk-group"><input name="tags" value="保留的标签"><button type="submit" name="action" value="set_tags">只改标签</button></div>
+      </details>
       <button id="bulk-submit" type="submit" name="action" value="confirm_ready">确认入账</button>
     </form>
   </main>
@@ -36,6 +44,7 @@
     let fetchCall = 0;
     window.fetch = async () => {
       fetchCall += 1;
+      if (fetchCall === 3) throw new TypeError("synthetic offline response");
       if (fetchCall === 1) {
         return {
           ok: true,
@@ -64,6 +73,27 @@
       const form = document.querySelector("[data-bulk]");
       const checkAll = document.getElementById("check-all");
       const submitter = document.getElementById("bulk-submit");
+      const fieldCommands = [];
+      let nativeFallback = null;
+      form.addEventListener("submit", (event) => {
+        if (event.submitter.value.startsWith("set_")) {
+          event.preventDefault();
+          fieldCommands.push(event.submitter.value);
+          return;
+        }
+        if (form.getAttribute("data-native-fallback") !== "1") return;
+        event.preventDefault(); // Observe the real native submit event without navigating this fixture.
+        const body = new FormData(form);
+        nativeFallback = {
+          action: form.getAttribute("action"),
+          command: event.submitter.value,
+          ids: body.getAll("expense_ids"),
+          versions: body.getAll("expected_row_version"),
+          ledger: body.get("ledger_id"),
+          category: body.get("category"),
+          enabled: !event.submitter.disabled
+        };
+      });
       const submit = () => form.dispatchEvent(new SubmitEvent("submit", {
         bubbles: true,
         cancelable: true,
@@ -91,6 +121,21 @@
       const firstRow = document.getElementById("row-1");
       const firstCheck = document.getElementById("check-1");
       firstCheck.click();
+      const editor = form.querySelector(".bulk-editor");
+      editor.open = true;
+      for (const input of editor.querySelectorAll("input")) {
+        input.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}));
+        input.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, isComposing: true, cancelable: true}));
+      }
+      editor.querySelector("input").focus();
+      editor.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}));
+      const editorEscape = {
+        closed: !editor.open,
+        focusReturned: document.activeElement === editor.querySelector("summary"),
+        category: new FormData(form).get("category"),
+        selected: firstCheck.checked
+      };
+      editor.open = true;
       const blockedClick = new MouseEvent("click", {bubbles: true, cancelable: true});
       const dispatchResult = firstRow.dispatchEvent(blockedClick);
       await wait();
@@ -107,6 +152,7 @@
       };
 
       document.getElementById("bulk-clear").click();
+      editorEscape.closedOnClear = !editor.open;
       const cleared = {
         ariaDisabled: firstRow.getAttribute("aria-disabled"),
         hasTabIndex: firstRow.hasAttribute("tabindex"),
@@ -125,12 +171,18 @@
       document.getElementById("check-2").click();
       submit();
       await wait();
+      const failure = capture();
+      submit();
+      await wait();
       window.__webConsumerProbe = {
         beforeEnhancement,
+        fieldCommands,
+        editorEscape,
         batchMode,
         cleared,
         successWithUndo,
-        failure: capture()
+        failure,
+        nativeFallback
       };
     })();
   </script>

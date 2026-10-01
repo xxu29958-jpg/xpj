@@ -14,7 +14,7 @@
 
 backend 中的 complete-dataset/restore 模块、历史 Windows 脚本、旧 ADR 和旧验收记录只作审计与演进输入；它们不是当前出货 Owner，也不进入 frozen runtime。单独 `pg_dump`、手工复制 uploads、`pg_restore --list`、CI green 或旧源码历史都不能冒充正式备份/恢复闭环。
 
-## 2026-10-01 Beta 冷备整组事前范围（OPEN）
+## 2026-10-01 Beta 冷备整组事前范围（CLOSED）
 
 Goal：在最终合同允许的 Internal Beta Host 范围内，提供管理员主动执行、停机留存和可重复读取核验的冷备，避免宿主成为唯一副本。基线 `7a0b99e4` 的安装命令只有 install/resume/inspect，尚无本组入口。完整备份／恢复 HOLD 不移交给本组。
 
@@ -30,3 +30,5 @@ Goal：在最终合同允许的 Internal Beta Host 范围内，提供管理员�
 实现限于现有受管 Windows 工具的冷备命令、归档读写、直接 Manager 说明与必要验证。没有新生命周期状态机、数据库表、服务、计划任务或恢复发布者。该归档含私密业务和宿主凭据，不是可发给支持人员的诊断包；转存介质应保留访问保护。它不包含 Windows 服务注册、用户凭据库或外部 Tunnel 配置，也不是系统镜像。完整 restore、repair、重装、升级和卸载继续 HOLD。
 
 平台依据：[PostgreSQL 17 文件系统备份](https://www.postgresql.org/docs/17/backup-file.html)要求完整集群且服务器停机；[CreateFileW](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew)提供独占新建和创建时安全描述符。源码、真实 PG、随包 EXE、完整安装恢复与最终 RC 分别资格化。
+
+整组收口：#484 最终源 `44a26fb0` 的 CI、CodeQL、三个实际 Connected 分片、默认多端旅程及安装版冷备旅程均通过。独立合并 main `1561fb5e4354829c2b65352b2b7d7ed2ed33a467` 的 CI `36836388461`、CodeQL `36836388518`、实际 Connected `36836388516`、默认多端旅程 `36836388464` 与冷备旅程 `36837903789` 也全部通过。主干自身 Setup SHA-256 为 `c93c8a7a88b71f0424a0809a99d273d5b4107e7c11b6326f954afeebe050250f`；实际随包 EXE 完成 4,743 文件／408,328,743 字节的复制和读回，验证运行中拒绝、中断残件拒绝、新私有归档、覆盖拒绝、独立 PG 副本读取及原服务重开后事实相同。1234 分草稿、币种绑定、schema、角色、dataset/cluster identity 和原件 SHA 已核对。当前手动冷备及读取核验可以使用；完整恢复和其他既定 HOLD 保持，最终全产品 RC 尚未完成。
