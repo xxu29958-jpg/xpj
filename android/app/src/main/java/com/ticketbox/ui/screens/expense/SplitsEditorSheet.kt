@@ -67,6 +67,23 @@ fun SplitsEditorSheet(
         ExpenseEditSheetScaffold(
             title = stringResource(R.string.expense_edit_splits_sheet_title),
             subtitle = stringResource(R.string.expense_edit_splits_sheet_subtitle),
+            actions = {
+                // ADR-0042 P1: never enable Save with an empty draft list — the roster
+                // hasn't loaded, and saving would send splits=[] which the backend
+                // replace turns into "delete all existing splits".
+                ExpenseEditSheetActions(
+                    state = ExpenseEditSheetActionState(
+                        saving = state.saving,
+                        primaryEnabled = state.drafts.isNotEmpty(),
+                        savingText = stringResource(R.string.expense_edit_splits_saving_button),
+                        primaryText = stringResource(R.string.expense_edit_splits_save_button),
+                    ),
+                    handlers = ExpenseEditSheetActionHandlers(
+                        onDismiss = actions.onDismiss,
+                        onSubmit = actions.onSave,
+                    ),
+                )
+            },
         ) {
             if (state.drafts.isEmpty()) {
                 // ADR-0042 P1: the roster loads async after the sheet opens. Until
@@ -109,21 +126,6 @@ fun SplitsEditorSheet(
                 drafts = state.drafts,
                 parentAmountCents = state.parentAmountCents,
                 display = state.display,
-            )
-            // ADR-0042 P1: never enable Save with an empty draft list — the roster
-            // hasn't loaded, and saving would send splits=[] which the backend
-            // replace turns into "delete all existing splits".
-            ExpenseEditSheetActions(
-                state = ExpenseEditSheetActionState(
-                    saving = state.saving,
-                    primaryEnabled = state.drafts.isNotEmpty(),
-                    savingText = stringResource(R.string.expense_edit_splits_saving_button),
-                    primaryText = stringResource(R.string.expense_edit_splits_save_button),
-                ),
-                handlers = ExpenseEditSheetActionHandlers(
-                    onDismiss = actions.onDismiss,
-                    onSubmit = actions.onSave,
-                ),
             )
         }
     }

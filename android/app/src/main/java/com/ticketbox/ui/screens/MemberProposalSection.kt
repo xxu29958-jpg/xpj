@@ -289,7 +289,30 @@ private fun ProposalForm(
     onCancel: () -> Unit,
 ) {
     val form = state.activeForm ?: return
-    AppSheetScaffold(title = stringResource(proposalFormTitleRes(form))) {
+    AppSheetScaffold(
+        title = stringResource(proposalFormTitleRes(form)),
+        actions = {
+            state.validationError?.let { err ->
+                AppStatusBanner(message = err, tone = MessageTone.Danger)
+            }
+            AppSheetActionRow(
+                primary = AppSheetAction(
+                    text = if (state.isSubmitting) {
+                        stringResource(R.string.debt_action_submitting)
+                    } else {
+                        stringResource(R.string.debt_action_submit)
+                    },
+                    onClick = onSubmit,
+                    enabled = !state.isSubmitting,
+                ),
+                secondary = AppSheetAction(
+                    text = stringResource(R.string.common_cancel),
+                    onClick = onCancel,
+                    enabled = !state.isSubmitting,
+                ),
+            )
+        },
+    ) {
         AppAmountInput(
             state = AppAmountInputState(
                 label = stringResource(R.string.debt_action_amount_label),
@@ -311,25 +334,6 @@ private fun ProposalForm(
                 modifier = Modifier.fillMaxWidth(),
             )
         }
-        state.validationError?.let { err ->
-            AppStatusBanner(message = err, tone = MessageTone.Danger)
-        }
-        AppSheetActionRow(
-            primary = AppSheetAction(
-                text = if (state.isSubmitting) {
-                    stringResource(R.string.debt_action_submitting)
-                } else {
-                    stringResource(R.string.debt_action_submit)
-                },
-                onClick = onSubmit,
-                enabled = !state.isSubmitting,
-            ),
-            secondary = AppSheetAction(
-                text = stringResource(R.string.common_cancel),
-                onClick = onCancel,
-                enabled = !state.isSubmitting,
-            ),
-        )
     }
 }
 

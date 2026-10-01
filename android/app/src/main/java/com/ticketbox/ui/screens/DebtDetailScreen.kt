@@ -395,7 +395,31 @@ private fun DebtActionForm(
     onCancel: () -> Unit,
 ) {
     val action = state.activeAction ?: return
-    AppSheetScaffold(title = stringResource(debtActionTitleRes(action))) {
+    AppSheetScaffold(
+        title = stringResource(debtActionTitleRes(action)),
+        actions = {
+            state.writeMessage?.let { message -> AppStatusBanner(message = message, tone = MessageTone.Info) }
+            state.validationError?.let { err ->
+                AppStatusBanner(message = err, tone = MessageTone.Danger)
+            }
+            AppSheetActionRow(
+                primary = AppSheetAction(
+                    text = if (state.isSubmitting) {
+                        stringResource(R.string.debt_action_submitting)
+                    } else {
+                        stringResource(R.string.debt_action_submit)
+                    },
+                    onClick = onSubmit,
+                    enabled = state.canWriteActions,
+                ),
+                secondary = AppSheetAction(
+                    text = stringResource(R.string.common_cancel),
+                    onClick = onCancel,
+                    enabled = !state.isSubmitting,
+                ),
+            )
+        },
+    ) {
         // 金额输入只属于还款/调整；整笔作废(Void)与单笔还款作废(RepaymentVoid)都不带金额。
         if (action == DebtAction.Repayment || action == DebtAction.Adjustment) {
             AppAmountInput(
@@ -433,26 +457,6 @@ private fun DebtActionForm(
         }
         DebtActionWarning(action)
         DebtActionReadFeedback(state, viewModel::refresh) { viewModel.updateActionInput(reviewLatest = true) }
-        state.writeMessage?.let { message -> AppStatusBanner(message = message, tone = MessageTone.Info) }
-        state.validationError?.let { err ->
-            AppStatusBanner(message = err, tone = MessageTone.Danger)
-        }
-        AppSheetActionRow(
-            primary = AppSheetAction(
-                text = if (state.isSubmitting) {
-                    stringResource(R.string.debt_action_submitting)
-                } else {
-                    stringResource(R.string.debt_action_submit)
-                },
-                onClick = onSubmit,
-                enabled = state.canWriteActions,
-            ),
-            secondary = AppSheetAction(
-                text = stringResource(R.string.common_cancel),
-                onClick = onCancel,
-                enabled = !state.isSubmitting,
-            ),
-        )
     }
 }
 

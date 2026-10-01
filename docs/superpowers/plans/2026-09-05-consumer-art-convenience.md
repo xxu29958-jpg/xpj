@@ -219,7 +219,7 @@ Closure (2026-09-06): #370 candidate `ba74245419407c50f2b277355f8917d294540175` 
 
 最终关闭：#485 源 `02a6dc35` 的 CI `36838941629`、CodeQL `36838941550` 通过；源 Connected `36838941542` 是范围跳过，不计设备实测。受保护合并为 `5d90b67e`，树与候选相同；独立 main CI `36840315509`、CodeQL `36840315466`、Connected `36840315762` 实际三片，以及真实 Web／Android 预算周期旅程 `36840635507` 全部通过。主干旅程原件的 checkout/source 都是 `5d90b67e`，实际预算 7 个修订、安排 3 个修订、周期定义 12 个修订，原跨月确认、显式关联、冲正、恢复预留、权限和明暗后置条件成立。本节以上待验证语句保留施工过程，最终状态以本段 CLOSED 为准；全产品 UI 与 RC 不随本组关闭。
 
-## 2026-10-01 次级任务入口与页头可用性整组（OPEN）
+## 2026-10-01 次级任务入口与页头可用性整组（CLOSED）
 
 事前范围与 Goal：基于已资格化 main `1561fb5e`，修正既有次级任务入口的触控与大字阅读。Web `btn-secondary` 在产品样式中没有定义；其全部四个 Web 消费者是预算修改记录入口、回本月预算、较早记录和最近记录。实际生产模板在 Edge 的 360/768/1440 下测得入口高 23.25px、两个分页链接高 19px。Owner 管理页的同名类有自己的样式，不属于这次替代。
 
@@ -239,6 +239,8 @@ Web 当前本机证据（`ae6a95ba`）：两页真实模板／CSS／JS 在 360/7
 
 修订源 `0607ba64` 的 CI `36844585240`、CodeQL `36844584866` 及实际 Connected `36844584671` 的 1/3、3/3 通过：两个页头排版断言及其原历史／欠款后置条件已成立。2/3 的 164 项仅失败预算离线旅程在读完原金额后定位已离开 lazy 视口的来源说明。现把该旅程预算页与洞察页余下的三处定位统一改为列表自身的 `performScrollToNode`，保留原金额、禁用状态、原读取时间及原意图字节断言。生产实现未变；修订后的完整源资格、最终画面与独立 main 资格继续 OPEN。
 
+收口结果：最终源 `acc754852b052020263f26bf54e15edb9dd04bd8` 的 CI `36847188078`、CodeQL `36847188040`、三个实际 Connected 分片 `36847188183` 及完整 Web／原生旅程 `36847221579` 通过；实际明暗画面和有界 review 已完成。#486 合并主干 `174fb0177c43be2730a3ea263b8c6206ef6293e8` 与源 tree 一致，独立 CI `36850074652`、CodeQL `36850074643`、实际 Connected 三分片 `36850074702` 和完整旅程 `36850131634` 全部通过。旅程产物 source/checkout 对应最终 main，预算 7 版、安排 3 版、周期定义 12 版及跨月关联／冲正／预留恢复成立。本组 CLOSED；上文待执行状态为施工历史，整体 P1/P2 和 exact RC 仍未完成。
+
 ## 2026-10-01 键盘开启时的弹层任务操作整组（OPEN）
 
 事前核准：`AppSheetScaffold` 是现有弹层的滚动／键盘避让 Owner；需要在输入时完成原任务的 20 个消费者为 DebtCreate、DebtAction、MemberProposal、IncomePlanCreate、IncomePlanEditor、RecurringEditor、RecurringOccurrence（关联所选付款）、ManualExpense、LedgerBulkEdit（分类／标签两命令）、LedgerTools（当前列表搜索／筛选完成）、ExpenseEditCategory、ItemsEditor、SplitsEditor、BillSplitInvite、ExpenseCorrection、FactOffset、FactVoidOffset、MissingAmount、QuickCategory、QuickMerchant。ExpenseEditSheetScaffold 和 ReviewSheetScaffold 只是既有外壳，统一转交同一操作槽，不各造布局或写入 Owner。Budget/Income/Goal/Recurring 历史、MonthPicker、DebtKind、RepaymentDraftTarget、收件显示选项、确认/重复处理以及手工录入币种准备态已核对：无本组文本输入，保留其内容滚动。SpendingGoal／DebtGoal／ExpenseEdit 全屏表单已有 AppPageScaffold 的固定操作区，不迁入第二弹层机制。
@@ -254,3 +256,5 @@ Done Checks：当前原生键盘反例实际失败后修共享机制；实际触
 宿主核对：手工录入与快补测试使用当前生产相同的完全展开 `ModalBottomSheet`，批量编辑按现有宿主保留默认部分展开，避免测试擅自给用户端没有的展开设置。宽屏快补还由既有 `PendingReviewPaneHost` 的有界面板承载，同一内容／操作槽需保留这一路径，复用现有面板交互回归。当前不改变提交中守卫或输入 Owner。
 
 原面板回归仅检查标题存在，现升级同一项为真实键盘下输入 1234 日元并直接触控「保存草稿」：必须只发出原票的 1234 minor 草稿回调，不能误触「保存并确认」。这补足有界常驻面板的实际操作证据，同时保留原测量／崩溃防线；仍待当前源执行。
+
+当前主干代码反例已实际执行：test-first `c2f2e835` 的 CI `36850517101`、CodeQL `36850516940` 通过；Connected `36850517056` 的 1/3 在真实 OS IME 确认可见后，欠款新建、手工记账及 8 行明细的保存不可见，三个产品 RED 及当前 PNG 已查看。另一个批量输入定位器把外置标签误当作 BasicTextField 文本，已改为准确的原输入节点，不把它算产品缺陷；商家失败续填、JPY 常驻面板及其余两个分片通过。当前实现将上述 20 个消费者的原动作迁到同一个 AppSheetScaffold 固定槽，保留无动作自然高度、有条件空槽、输入滚动及全部业务 guards；分类／标签仍分命令和确认。旧动作滚动定位随迁移调整，原财务与恢复后置条件保留。修正源及独立 main 资格待执行，本组继续 OPEN。

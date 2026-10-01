@@ -10,7 +10,6 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasSetTextAction
-import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -122,8 +121,8 @@ class SheetKeyboardTaskTest {
                 }
             }
         }
-        field(R.string.ledger_bulk_reason_label, "补记通勤用途")
-        field(R.string.expense_edit_category_field_label, "交通")
+        field(0, "补记通勤用途")
+        field(1, "交通")
         val categoryAction = context.getString(R.string.ledger_bulk_apply_category, 31)
         keyboard.assertActionAboveKeyboard(compose, categoryAction, "bulk-category-keyboard")
         compose.onNodeWithText(categoryAction).performTouchInput { click() }
@@ -132,7 +131,7 @@ class SheetKeyboardTaskTest {
             assertTrue(tags.isEmpty())
         }
         compose.onNode(isToggleable()).performScrollTo().performTouchInput { click() }
-        field(R.string.ledger_bulk_tags_label, "通勤")
+        field(2, "通勤")
         val tagsAction = context.getString(R.string.ledger_bulk_apply_tags, 31)
         keyboard.assertActionAboveKeyboard(compose, tagsAction, "bulk-tags-keyboard")
         compose.onNodeWithText(tagsAction).performTouchInput { click() }
@@ -145,8 +144,8 @@ class SheetKeyboardTaskTest {
         }
     }
 
-    private fun field(label: Int, value: String) {
-        compose.onNode(hasSetTextAction() and hasText(text(label)))
+    private fun field(index: Int, value: String) {
+        compose.onAllNodes(hasSetTextAction())[index]
             .performScrollTo().performTouchInput { click() }.performTextInput(value)
     }
 

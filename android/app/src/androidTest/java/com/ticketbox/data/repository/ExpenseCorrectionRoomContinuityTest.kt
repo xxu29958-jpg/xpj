@@ -58,7 +58,7 @@ class ExpenseCorrectionRoomContinuityTest {
         compose.onNodeWithText("更正这笔账单").performScrollTo().performClick()
         compose.onAllNodes(hasSetTextAction())[0].performScrollTo().performTextReplacement("  核对原小票  ")
         compose.onNode(hasSetTextAction() and hasText("10.00")).performScrollTo().performTextReplacement(" 00012.00 ")
-        compose.onNodeWithText("保留原稿并关闭").performScrollTo().performClick()
+        compose.onNodeWithText("保留原稿并关闭").performClick()
         compose.waitUntil(10_000) { model.value?.uiState?.value?.factInputWriting == false &&
             model.value?.uiState?.value?.correction?.open == false }
         val original = runBlocking {
@@ -73,7 +73,7 @@ class ExpenseCorrectionRoomContinuityTest {
         compose.onNodeWithText("继续更正账单").performScrollTo().performClick()
         compose.onNode(hasSetTextAction() and hasText("  核对原小票  ")).performScrollTo().assertIsDisplayed()
         compose.onNode(hasSetTextAction() and hasText(" 00012.00 ")).performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("保存更正").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("保存更正").assertIsNotEnabled()
         assertEquals(original, runBlocking {
             fixture.graph.expenseRepository.loadFactInputs(original.binding, original.expenseId).getOrThrow().single()
         })
@@ -93,7 +93,7 @@ class ExpenseCorrectionRoomContinuityTest {
         compose.onNodeWithText("更正这笔账单").performScrollTo().performClick()
         compose.onAllNodes(hasSetTextAction())[0].performScrollTo().performTextReplacement("核对原小票")
         compose.onNode(hasSetTextAction() and hasText("10.00")).performScrollTo().performTextReplacement("12.00")
-        compose.onNodeWithText("保存更正").performScrollTo().performClick()
+        compose.onNodeWithText("保存更正").performClick()
         compose.waitUntil(10_000) { fixture.stored().size == 1 && model.value?.uiState?.value?.corrections?.size == 1 &&
             model.value?.uiState?.value?.correction?.saving == false }
         val original = fixture.stored().single()

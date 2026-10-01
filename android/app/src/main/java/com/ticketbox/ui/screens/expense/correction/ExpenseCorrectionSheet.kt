@@ -81,19 +81,7 @@ internal fun ExpenseCorrectionSheet(
         ExpenseEditSheetScaffold(
             title = stringResource(R.string.expense_correction_sheet_title),
             subtitle = stringResource(R.string.expense_correction_sheet_subtitle),
-        ) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-            ) {
-                // direct 409 冲突：表单保留，banner 说明（VM 已刷新权威事实）。
-                state.correction.conflictMessage?.let { conflict ->
-                    AppStatusBanner(
-                        message = conflict,
-                        tone = MessageTone.Danger,
-                        announceUpdates = true,
-                    )
-                }
+            actions = {
                 (availability.contextError ?: state.correction.submitError)?.let { error ->
                     AppStatusBanner(
                         message = error,
@@ -102,14 +90,6 @@ internal fun ExpenseCorrectionSheet(
                     )
                 }
                 com.ticketbox.ui.screens.expense.fact.FactInputSaveStatus(state, actions.onRetryInputSave)
-                availability.review?.let { CorrectionReviewPanel(it, state, actions.onReview, actions.onRefreshFact) }
-                val inputState = state.copy(expense = basis,
-                    correction = state.correction.copy(saving = state.correction.saving || !availability.canEditInput))
-                CorrectionReasonSection(state = inputState, actions = actions)
-                CorrectionCurrencySection(state = inputState, actions = actions)
-                CorrectionScalarSection(state = inputState, actions = actions)
-                CorrectionScoreSection(state = inputState, actions = actions)
-                CorrectionCollectionEntries(state, availability, actions)
                 AppSheetActionRow(
                     primary = AppSheetAction(
                         text = if (state.correction.saving) {
@@ -123,6 +103,28 @@ internal fun ExpenseCorrectionSheet(
                     secondary = AppSheetAction(text = stringResource(R.string.expense_fact_input_close),
                         enabled = !state.correction.saving, onClick = actions.onDismiss),
                 )
+            },
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+            ) {
+                // direct 409 冲突：表单保留，banner 说明（VM 已刷新权威事实）。
+                state.correction.conflictMessage?.let { conflict ->
+                    AppStatusBanner(
+                        message = conflict,
+                        tone = MessageTone.Danger,
+                        announceUpdates = true,
+                    )
+                }
+                availability.review?.let { CorrectionReviewPanel(it, state, actions.onReview, actions.onRefreshFact) }
+                val inputState = state.copy(expense = basis,
+                    correction = state.correction.copy(saving = state.correction.saving || !availability.canEditInput))
+                CorrectionReasonSection(state = inputState, actions = actions)
+                CorrectionCurrencySection(state = inputState, actions = actions)
+                CorrectionScalarSection(state = inputState, actions = actions)
+                CorrectionScoreSection(state = inputState, actions = actions)
+                CorrectionCollectionEntries(state, availability, actions)
             }
         }
     }

@@ -143,7 +143,7 @@ class DebtAdjustmentRoomContinuityTest {
         // Finish text entry before hit-testing a button that moves with the IME insets.
         closeSoftKeyboard()
         compose.waitForIdle()
-        compose.onNodeWithText("保存").performScrollTo().assertIsDisplayed().assertIsEnabled()
+        compose.onNodeWithText("保存").assertIsDisplayed().assertIsEnabled()
             .performTouchInput { click() }
         compose.waitUntil(10_000) { fixture.stored().size == 1 && detail.value?.state?.value?.activeAction == null }
         val original = fixture.stored().single()

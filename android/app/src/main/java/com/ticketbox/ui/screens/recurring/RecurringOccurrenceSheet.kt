@@ -67,8 +67,14 @@ fun RecurringOccurrenceSheet(
 ) {
     val item = state.item ?: return
     AppBusyGuardedSheet(isSubmitting = state.saving, onDismiss = actions.onDismiss, skipPartiallyExpanded = true) {
-        AppSheetScaffold(title = item.merchant, subtitle = stringResource(R.string.occurrence_subtitle),
-            modifier = Modifier.fillMaxHeight()) {
+        AppSheetScaffold(
+            title = item.merchant,
+            subtitle = stringResource(R.string.occurrence_subtitle),
+            modifier = Modifier.fillMaxHeight(),
+            actions = if (state.occurrence != null && state.choice != null) {
+                { OccurrenceChoice(state, actions.onSubmit) }
+            } else null,
+        ) {
             OccurrencePeriodControls(state, actions)
             RecurringReadSource(state.fetchedAt, state.fromCache, state.loading)
             if (state.fromCache && state.requestedPeriod == "current") {
@@ -98,7 +104,6 @@ fun RecurringOccurrenceSheet(
                     origin = origin,
                     onRecord = actions.onRecordPayment,
                 )
-                OccurrenceChoice(state, actions.onSubmit)
                 if (state.canWrite) OccurrencePaymentPicker(state, actions.onChoose, preferredExpenseId)
             }
         }

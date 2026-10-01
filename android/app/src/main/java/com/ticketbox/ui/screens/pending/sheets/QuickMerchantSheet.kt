@@ -48,6 +48,21 @@ internal fun QuickMerchantSheetContent(
         title = stringResource(R.string.pending_quick_merchant_title),
         subtitle = stringResource(R.string.pending_quick_merchant_hint),
         chrome = chrome,
+        actions = {
+            ReviewSheetActionFeedback(
+                chrome = chrome,
+                primary = AppSheetAction(
+                    text = if (saving) stringResource(R.string.common_saving) else stringResource(R.string.pending_quick_merchant_save_button),
+                    enabled = !saving && saveEnabled,
+                    onClick = { onSave(cleaned) },
+                ),
+                secondary = AppSheetAction(
+                    text = stringResource(R.string.common_cancel),
+                    enabled = !saving,
+                    onClick = onDismiss,
+                ),
+            )
+        },
     ) {
         AppTextInput(
             state = AppTextInputState(
@@ -63,20 +78,6 @@ internal fun QuickMerchantSheetContent(
             focusRequester = focusRequester,
             decorations = AppTextInputDecorations(
                 supportingText = quickMerchantSupportingText(value, cleaned, noiseLike),
-            ),
-        )
-
-        ReviewSheetActionFeedback(
-            chrome = chrome,
-            primary = AppSheetAction(
-                text = if (saving) stringResource(R.string.common_saving) else stringResource(R.string.pending_quick_merchant_save_button),
-                enabled = !saving && saveEnabled,
-                onClick = { onSave(cleaned) },
-            ),
-            secondary = AppSheetAction(
-                text = stringResource(R.string.common_cancel),
-                enabled = !saving,
-                onClick = onDismiss,
             ),
         )
     }

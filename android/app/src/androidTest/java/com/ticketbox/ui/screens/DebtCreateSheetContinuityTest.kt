@@ -93,7 +93,7 @@ class DebtCreateSheetContinuityTest {
         // System window updates can resize the viewport during capture. Locate Save in the
         // current viewport immediately before the user's touch, not before taking the preview.
         compose.onNode(hasText(context.getString(R.string.debt_create_save)) and hasClickAction())
-            .performScrollTo().assertIsDisplayed().assertIsEnabled().performTouchInput {
+            .assertIsDisplayed().assertIsEnabled().performTouchInput {
                 assertTrue("Save injection visibleSize=$visibleSize", width > 0 && height > 0)
                 click()
             }

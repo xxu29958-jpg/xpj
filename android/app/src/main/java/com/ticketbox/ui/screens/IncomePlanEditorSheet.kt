@@ -69,7 +69,27 @@ private fun EditIncomePlanSheet(
     callbacks: IncomePlanEditSheetCallbacks,
 ) {
     val session = state.session ?: return
-    AppSheetScaffold(title = stringResource(R.string.income_plan_edit_sheet_title)) {
+    AppSheetScaffold(
+        title = stringResource(R.string.income_plan_edit_sheet_title),
+        actions = {
+            AppSheetActionRow(
+                primary = AppAction(
+                    text = if (state.isSubmitting) {
+                        stringResource(R.string.income_plan_sheet_submitting)
+                    } else {
+                        stringResource(R.string.income_plan_sheet_save)
+                    },
+                    onClick = callbacks.onSubmit,
+                    enabled = !state.isSubmitting && state.canModify && !state.succeeded,
+                ),
+                secondary = AppAction(
+                    text = stringResource(R.string.common_cancel),
+                    onClick = callbacks.onCancel,
+                    enabled = !state.isSubmitting,
+                ),
+            )
+        },
+    ) {
         if (!state.canModify) Text(stringResource(R.string.common_readonly_ledger))
         IncomePlanDraftForm(
             state = IncomePlanDraftFormState(
@@ -79,22 +99,6 @@ private fun EditIncomePlanSheet(
             ),
             fieldCallbacks = callbacks.fields,
             choiceCallbacks = callbacks.choices,
-        )
-        AppSheetActionRow(
-            primary = AppAction(
-                text = if (state.isSubmitting) {
-                    stringResource(R.string.income_plan_sheet_submitting)
-                } else {
-                    stringResource(R.string.income_plan_sheet_save)
-                },
-                onClick = callbacks.onSubmit,
-                enabled = !state.isSubmitting && state.canModify && !state.succeeded,
-            ),
-            secondary = AppAction(
-                text = stringResource(R.string.common_cancel),
-                onClick = callbacks.onCancel,
-                enabled = !state.isSubmitting,
-            ),
         )
         Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
             TextButton(onClick = callbacks.onArchive, enabled = !state.isSubmitting && state.canModify && !state.succeeded) {

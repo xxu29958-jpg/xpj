@@ -51,11 +51,11 @@ class MemberSettlementConnectedTest {
         compose.waitUntil(10_000) { proposals.state.value.pendingProposal != null }
         compose.onNodeWithText("收到啦，谢谢～").performScrollTo().performClick()
         compose.onAllNodes(hasSetTextAction())[0].performTextReplacement("450")
-        compose.onNodeWithText("保存").performScrollTo().performTouchInput { click() }
+        compose.onNodeWithText("保存").performTouchInput { click() }
         compose.waitUntil(10_000) { network.confirms.size == 1 && !proposals.state.value.isSubmitting }
         assertEquals("450", proposals.state.value.amountInput)
         assertNull(proposals.state.value.flashMessage)
-        compose.onNodeWithText("保存").performScrollTo().performTouchInput { click() }
+        compose.onNodeWithText("保存").performTouchInput { click() }
         compose.waitUntil(10_000) { detail.value?.state?.value?.debt?.rowVersion == 2L && history.state.value.total == 3 }
         assertEquals(2, network.confirms.size)
         assertEquals(network.confirms.first(), network.confirms.last())

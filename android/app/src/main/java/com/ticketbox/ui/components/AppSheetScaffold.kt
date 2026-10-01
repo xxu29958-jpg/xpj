@@ -23,6 +23,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import com.ticketbox.ui.design.AppAlpha
@@ -46,9 +47,10 @@ fun AppSheetScaffold(
     title: String,
     modifier: Modifier = Modifier,
     subtitle: String? = null,
-    compact: Boolean = LocalAppImeVisible.current,
+    actions: (@Composable ColumnScope.() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val compact = LocalAppImeVisible.current || WindowInsets.ime.getBottom(LocalDensity.current) > 0
     val verticalGap = if (compact) AppSpacing.smallGap else AppSpacing.compactGap
     val topPadding = if (compact) AppSpacing.smallGap else AppSpacing.compactGap
     val bottomPadding = if (compact) {
@@ -60,18 +62,34 @@ fun AppSheetScaffold(
         modifier = modifier
             .fillMaxWidth()
             .imePadding()
-            .windowInsetsPadding(WindowInsets.navigationBars.exclude(WindowInsets.ime))
-            .verticalScroll(rememberScrollState())
-            .padding(
-                start = AppSpacing.screenHorizontal,
-                top = topPadding,
-                end = AppSpacing.screenHorizontal,
-                bottom = bottomPadding,
-            ),
-        verticalArrangement = Arrangement.spacedBy(verticalGap),
+            .windowInsetsPadding(WindowInsets.navigationBars.exclude(WindowInsets.ime)),
     ) {
-        AppSheetHeader(title = title, subtitle = subtitle, compact = compact)
-        content()
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(if (actions != null) Modifier.weight(1f, fill = false) else Modifier)
+                .verticalScroll(rememberScrollState())
+                .padding(
+                    start = AppSpacing.screenHorizontal,
+                    top = topPadding,
+                    end = AppSpacing.screenHorizontal,
+                    bottom = if (actions == null) bottomPadding else verticalGap,
+                ),
+            verticalArrangement = Arrangement.spacedBy(verticalGap),
+        ) {
+            AppSheetHeader(title = title, subtitle = subtitle, compact = compact)
+            content()
+        }
+        if (actions != null) Column(
+            modifier = Modifier.fillMaxWidth()
+                .padding(
+                    start = AppSpacing.screenHorizontal,
+                    end = AppSpacing.screenHorizontal,
+                    bottom = bottomPadding,
+                ),
+            verticalArrangement = Arrangement.spacedBy(verticalGap),
+            content = actions,
+        )
     }
 }
 

@@ -46,12 +46,14 @@ internal fun ExpenseEditSheetScaffold(
     title: String,
     subtitle: String,
     modifier: Modifier = Modifier,
+    actions: (@Composable ColumnScope.() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     AppSheetScaffold(
         title = title,
         subtitle = subtitle,
         modifier = modifier,
+        actions = actions,
     ) {
         content()
     }

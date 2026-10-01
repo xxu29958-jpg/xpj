@@ -10,7 +10,6 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
@@ -146,7 +145,7 @@ class RecurringPaymentRouteRoomTest {
         drafts.remember(task)
         showRoute(task)
         waitForSheet()
-        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performClick()
         compose.waitUntil(10_000) { harness.fixture.stored().size == 1 }
         val original = harness.fixture.stored().single()
         val request = requireNotNull(readCreateRequest(requireNotNull(original["payload"])))
@@ -176,7 +175,7 @@ class RecurringPaymentRouteRoomTest {
         drafts.remember(august)
         showRoute(august)
         waitForSheet()
-        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performClick()
         compose.waitUntil(10_000) { harness.fixture.stored().size == 1 }
         compose.waitUntil(10_000) {
             compose.onAllNodes(hasText(context.getString(R.string.manual_submission_waiting))).fetchSemanticsNodes().isNotEmpty() ||
@@ -384,7 +383,7 @@ class RecurringPaymentRouteRoomTest {
         drafts.remember(task)
         showRoute(task)
         waitForSheet()
-        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performClick()
         waitForReview()
         compose.onNodeWithText(context.getString(R.string.recurring_payment_review_original)).assertIsDisplayed()
         compose.onNodeWithText("便利店").assertIsDisplayed()
@@ -428,7 +427,7 @@ class RecurringPaymentRouteRoomTest {
         drafts.remember(task)
         showRoute(task)
         waitForSheet()
-        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performClick()
         waitForReview()
         compose.onNodeWithText(context.getString(R.string.manual_submission_done)).assertIsDisplayed()
         compose.onNodeWithText(context.getString(R.string.manual_submission_unknown)).assertDoesNotExist()
@@ -452,7 +451,7 @@ class RecurringPaymentRouteRoomTest {
         drafts.remember(task)
         showRoute(task)
         waitForSheet()
-        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performClick()
         waitForReview()
         compose.onNodeWithText(context.getString(R.string.sync_status_failed_fallback)).assertIsDisplayed()
         compose.onNodeWithText(context.getString(R.string.manual_submission_waiting)).assertDoesNotExist()
@@ -467,7 +466,7 @@ class RecurringPaymentRouteRoomTest {
         drafts.remember(task)
         showRoute(task)
         waitForSheet()
-        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performClick()
         waitForReview()
         stopDisplayedRaw()
         compose.onNodeWithTag("recurring-payment-review-adopt:legacy-ref").performClick()
@@ -503,7 +502,7 @@ class RecurringPaymentRouteRoomTest {
         drafts.remember(task)
         showRoute(task)
         waitForSheet()
-        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performClick()
         waitForReview()
         compose.onNodeWithTag("recurring-payment-review-dismiss").performClick()
         compose.waitUntil(10_000) {
@@ -544,7 +543,7 @@ class RecurringPaymentRouteRoomTest {
         drafts.remember(task)
         showRoute(task)
         waitForSheet()
-        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performClick()
         compose.waitUntil(10_000) {
             compose.onAllNodes(hasText("本期付款命令冲突，请先处理重复提交。")).fetchSemanticsNodes().isNotEmpty()
         }
@@ -561,7 +560,7 @@ class RecurringPaymentRouteRoomTest {
         drafts.remember(task)
         showRoute(task)
         waitForSheet()
-        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performClick()
         waitForReview()
         runBlocking {
             assertEquals(
@@ -607,7 +606,7 @@ class RecurringPaymentRouteRoomTest {
         drafts.remember(task)
         showRoute(task)
         waitForSheet()
-        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performClick()
         waitForReview()
         compose.onNodeWithText("便利店").assertIsDisplayed()
         compose.onNodeWithText("CNY 88.00").assertIsDisplayed()
@@ -650,7 +649,7 @@ class RecurringPaymentRouteRoomTest {
         drafts.remember(task)
         showRoute(task)
         waitForSheet()
-        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performClick()
         waitForReview()
         compose.onNodeWithTag("recurring-payment-review-adopt:legacy-c").assertIsDisplayed()
         enqueueRaw(task, "legacy-d", "超市", CurrencyCode.JPY, 1500, "2026-08-15T12:00:00Z")
@@ -690,7 +689,7 @@ class RecurringPaymentRouteRoomTest {
         showRoute(localB.copy(occurrenceRowVersion = 3L))
         waitForSheet()
         compose.onNodeWithTag("recurring-payment-local-draft").assertIsDisplayed()
-        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performClick()
         compose.waitForIdle()
         compose.onNodeWithTag("recurring-payment-local-draft").assertIsDisplayed()
         compose.onNodeWithText(context.getString(R.string.ledger_manual_sheet_title)).assertExists()
@@ -731,7 +730,7 @@ class RecurringPaymentRouteRoomTest {
         )
         showRoute(localB)
         waitForSheet()
-        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performClick()
         compose.waitUntil(10_000) {
             compose.onAllNodes(hasText(context.getString(R.string.recurring_payment_generation_changed))).fetchSemanticsNodes().isNotEmpty()
         }
@@ -768,7 +767,7 @@ class RecurringPaymentRouteRoomTest {
             "origin-a", "房租", CurrencyCode.JPY, 1200, "2026-08-01T00:00:00Z",
             RecurringPaymentOrigin("rec-1", "2026-08", 7L),
         )
-        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performClick()
         compose.waitUntil(10_000) {
             compose.onAllNodes(hasText(context.getString(R.string.recurring_payment_generation_changed))).fetchSemanticsNodes().isNotEmpty()
         }
@@ -817,7 +816,7 @@ class RecurringPaymentRouteRoomTest {
             compose.onAllNodes(hasText(context.getString(R.string.recurring_payment_prior_generation_occupied)))
                 .fetchSemanticsNodes().isNotEmpty()
         }
-        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performClick()
         compose.waitUntil(10_000) {
             compose.onAllNodes(hasText(context.getString(R.string.recurring_payment_generation_changed)))
                 .fetchSemanticsNodes().isNotEmpty()
@@ -850,7 +849,7 @@ class RecurringPaymentRouteRoomTest {
         )
         showRoute(localB)
         waitForSheet()
-        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performClick()
         compose.waitUntil(10_000) { harness.fixture.stored().size == 1 }
         val stored = harness.fixture.stored().single()
         assertEquals("expense:local:current-b", stored["targetId"])
@@ -885,7 +884,7 @@ class RecurringPaymentRouteRoomTest {
         )
         showRoute(localB)
         waitForSheet()
-        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.ledger_manual_save_button)).performClick()
         compose.waitUntil(10_000) {
             compose.onAllNodes(hasText(context.getString(R.string.recurring_payment_generation_changed))).fetchSemanticsNodes().isNotEmpty()
         }

@@ -106,10 +106,15 @@ private fun AddIncomePlanSheet(
     val session = state.session ?: return
     val busy = state.isSubmitting || state.isRestoring
     val editable = session.phase == IncomePlanCreationPhase.Draft && state.canModify
-    AppSheetScaffold(title = stringResource(R.string.income_plan_sheet_title)) {
+    AppSheetScaffold(
+        title = stringResource(R.string.income_plan_sheet_title),
+        actions = {
+            state.flashMessage?.let { AppStatusBanner(message = it, tone = MessageTone.Info) }
+            session.admissionFailure?.let { AppStatusBanner(message = it.asUiText(), tone = MessageTone.Danger) }
+            IncomePlanCreationActions(state, viewModel, onDismiss)
+        },
+    ) {
         if (!state.canModify) Text(stringResource(R.string.common_readonly_ledger))
-        state.flashMessage?.let { AppStatusBanner(message = it, tone = MessageTone.Info) }
-        session.admissionFailure?.let { AppStatusBanner(message = it.asUiText(), tone = MessageTone.Danger) }
         IncomePlanDraftForm(
             state = IncomePlanDraftFormState(
                 draft = session.draft,
@@ -127,7 +132,6 @@ private fun AddIncomePlanSheet(
                 onFrequency = viewModel::updateDraftFrequency,
             ),
         )
-        IncomePlanCreationActions(state, viewModel, onDismiss)
     }
 }
 
