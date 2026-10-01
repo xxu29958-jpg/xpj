@@ -1,6 +1,7 @@
 package com.ticketbox.ui.screens
 
 import androidx.compose.runtime.remember
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -12,8 +13,10 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.lifecycle.viewModelScope
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
@@ -71,6 +74,13 @@ class DebtCreateSheetContinuityTest {
             }
         }
         compose.waitUntil(5_000) { ::viewModel.isInitialized && viewModel.state.value.homeCurrencyResolved }
+        capture("debt-secondary-header")
+        val headingLayouts = mutableListOf<TextLayoutResult>()
+        compose.onNodeWithText(context.getString(R.string.debt_list_topbar_title), useUnmergedTree = true)
+            .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(headingLayouts) }
+        assertTrue("The debt title must remain readable beside its task entries", headingLayouts.isNotEmpty() && headingLayouts.all {
+            !it.hasVisualOverflow && (0 until it.lineCount).none(it::isLineEllipsized)
+        })
         compose.onNodeWithText(context.getString(R.string.debt_list_add)).performClick()
         compose.onAllNodes(hasSetTextAction())[0].performTextInput("小王")
         compose.onAllNodes(hasSetTextAction())[1].performScrollTo().performClick().performTextInput("123.45")
