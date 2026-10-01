@@ -12,10 +12,12 @@ internal sealed interface LedgerDrillRequest {
      *
      * @property month 统计页当时的月份(`yyyy-MM`),落到账本月份筛选。
      * @property category 被点的分类,落到账本分类筛选。
+     * @property tag 统计页当时的标签；空值表示全部标签。
      */
     data class Category(
         val month: String,
         val category: String,
+        val tag: String = "",
     ) : LedgerDrillRequest
 
     /** Data Quality → Transactions with a visible, actionable client-side filter. */

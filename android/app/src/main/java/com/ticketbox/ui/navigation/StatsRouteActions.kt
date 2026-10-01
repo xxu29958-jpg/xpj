@@ -15,7 +15,6 @@ internal fun statsScreenActions(
     overview: OverviewInteractionActions,
     onRepair: (ReportRateContext) -> Unit,
 ): StatsScreenActions {
-    val month = monthly.uiState.value.month
     return StatsScreenActions(
         filters = StatsFilterActions(
             onMonthChange = monthly::setMonth,
@@ -28,8 +27,9 @@ internal fun statsScreenActions(
         },
         reports = StatsReportActions(
             onDrillToLedger = { category ->
+                val scope = monthly.uiState.value
                 shellState.ledgerDrill.post(
-                    LedgerDrillRequest.Category(month = month, category = category),
+                    LedgerDrillRequest.Category(month = scope.month, category = category, tag = scope.selectedTag),
                 )
                 shellState.openPrimaryDomainRoot(PrimaryDomain.Transactions)
             },

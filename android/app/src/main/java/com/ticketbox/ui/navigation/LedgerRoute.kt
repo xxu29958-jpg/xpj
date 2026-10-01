@@ -145,12 +145,12 @@ private fun ApplyPendingLedgerDrill(
     shellState: MainShellState,
     ledgerViewModel: LedgerViewModel,
 ) {
-    // §三报表钻取:消费统计页 post 的一次性(月, 分类)请求(取走即清,
+    // 消费统计页的月份、分类与标签范围（取走即清，
     // tab 过场重组不会重复覆盖用户随后手改的筛选)。
     LaunchedEffect(shellState.ledgerDrill.pending) {
         when (val request = shellState.ledgerDrill.consume()) {
             is LedgerDrillRequest.Category ->
-                ledgerViewModel.applyDrillFilter(month = request.month, category = request.category)
+                ledgerViewModel.applyDrillFilter(month = request.month, category = request.category, tag = request.tag)
             is LedgerDrillRequest.DataQuality ->
                 ledgerViewModel.applyDataQualityFilter(request.filter)
             null -> Unit

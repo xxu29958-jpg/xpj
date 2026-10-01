@@ -14,9 +14,9 @@ class LedgerDrillStateTest {
     @Test
     fun consumeTakesPendingRequestExactlyOnce() {
         val state = LedgerDrillState()
-        state.post(LedgerDrillRequest.Category(month = "2026-06", category = "餐饮"))
+        state.post(LedgerDrillRequest.Category(month = "2026-06", category = "餐饮", tag = "旅行"))
         assertEquals(
-            LedgerDrillRequest.Category(month = "2026-06", category = "餐饮"),
+            LedgerDrillRequest.Category(month = "2026-06", category = "餐饮", tag = "旅行"),
             state.consume(),
         )
         // 取走即清:tab 过场重组再 consume 拿不到旧值,不会重复覆盖用户手改的筛选。

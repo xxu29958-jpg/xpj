@@ -241,7 +241,7 @@ Web 当前本机证据（`ae6a95ba`）：两页真实模板／CSS／JS 在 360/7
 
 收口结果：最终源 `acc754852b052020263f26bf54e15edb9dd04bd8` 的 CI `36847188078`、CodeQL `36847188040`、三个实际 Connected 分片 `36847188183` 及完整 Web／原生旅程 `36847221579` 通过；实际明暗画面和有界 review 已完成。#486 合并主干 `174fb0177c43be2730a3ea263b8c6206ef6293e8` 与源 tree 一致，独立 CI `36850074652`、CodeQL `36850074643`、实际 Connected 三分片 `36850074702` 和完整旅程 `36850131634` 全部通过。旅程产物 source/checkout 对应最终 main，预算 7 版、安排 3 版、周期定义 12 版及跨月关联／冲正／预留恢复成立。本组 CLOSED；上文待执行状态为施工历史，整体 P1/P2 和 exact RC 仍未完成。
 
-## 2026-10-01 键盘开启时的弹层任务操作整组（OPEN）
+## 2026-10-01 键盘开启时的弹层任务操作整组（CLOSED）
 
 事前核准：`AppSheetScaffold` 是现有弹层的滚动／键盘避让 Owner；需要在输入时完成原任务的 20 个消费者为 DebtCreate、DebtAction、MemberProposal、IncomePlanCreate、IncomePlanEditor、RecurringEditor、RecurringOccurrence（关联所选付款）、ManualExpense、LedgerBulkEdit（分类／标签两命令）、LedgerTools（当前列表搜索／筛选完成）、ExpenseEditCategory、ItemsEditor、SplitsEditor、BillSplitInvite、ExpenseCorrection、FactOffset、FactVoidOffset、MissingAmount、QuickCategory、QuickMerchant。ExpenseEditSheetScaffold 和 ReviewSheetScaffold 只是既有外壳，统一转交同一操作槽，不各造布局或写入 Owner。Budget/Income/Goal/Recurring 历史、MonthPicker、DebtKind、RepaymentDraftTarget、收件显示选项、确认/重复处理以及手工录入币种准备态已核对：无本组文本输入，保留其内容滚动。SpendingGoal／DebtGoal／ExpenseEdit 全屏表单已有 AppPageScaffold 的固定操作区，不迁入第二弹层机制。
 
@@ -262,3 +262,5 @@ Done Checks：当前原生键盘反例实际失败后修共享机制；实际触
 修正候选 `ee04f890` 已通过原生编译并进入实际设备及集成旅程，但 Android fast `36855124442/110345947866` 明确拒绝两处新复杂度：DebtActionForm 62 行超过 60，RecurringOccurrenceSheet 分支 15 超过 14。现沿已有 DebtActionSheet／DebtActionForm 分开弹层操作与输入正文，期次既有动作函数返回可为空的操作槽；没有新状态、额外函数或门槛豁免，原条件与回调不变。完整源及主干资格仍须以修订后的 exact SHA 为准。
 
 `ee04f890` 的实际 Connected `36855124457` 已通过欠款／手工录入／明细三个原始 RED，但批量分类的按钮仍落在键盘内；当前 PNG 证实它是本组唯一仍允许半展开的输入宿主。现将 LedgerBulkEditHost 及对应实际 Composable 测试统一完全展开。另两项失败仅为已固定操作的旧滚动定位，移除该定位后保留 Room 回执与账务日期断言。截图曾早于系统键盘和主题绘制，现先同步 Compose 与系统窗口事件，再读取几何边界和原生全屏截图；最终明暗／键盘画面仍须实际查看，不能由文件名或语义断言替代。
+
+2026-10-01：键盘弹层整组 #487 CLOSED。最终源 `c6c06512` 与独立 main `79a220479a3651f25067508d0943d3a689e36c2d` 的 CI、CodeQL、三个实际 Connected 分片及收入、预算／固定支出、往来、财务四条完整消费者旅程均通过。主干四份业务产物已核对到同一 checkout／source 和 APK `5a85d3ce78d11aa115c48ba93e781f6d5db099f16dce1c19d47278aea2162f09`；原币、原输入、历史、权限、冲突、离线续办与实际键盘触控结果成立。共享操作区及批量完全展开已承接全部 20 个输入消费者。详细运行与实际反例见 [#487](https://github.com/xxu29958-jpg/xpj/pull/487)。本组关闭不代替五域整体体验、实体多端或 RC 核准。

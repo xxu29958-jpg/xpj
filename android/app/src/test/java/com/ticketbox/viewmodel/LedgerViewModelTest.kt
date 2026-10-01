@@ -207,6 +207,30 @@ class LedgerViewModelTest {
     }
 
     @Test
+    fun taggedCategoryDrillReplacesStaleFiltersAndKeepsOnlyTheReportFacts() = ledgerTest {
+        val fake = FakeLedgerActions(expenses = listOf(
+            expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "旅行餐饮", tags = "旅行"),
+            expense(id = 2, amountCents = 800, category = "餐饮", merchant = "日常餐饮", tags = "日常"),
+            expense(id = 3, amountCents = 400, category = "交通", merchant = "旅行交通", tags = "旅行"),
+        ))
+        val vm = LedgerViewModel(fake, CapabilityDebtActions())
+        advanceUntilIdle()
+        vm.applyDataQualityFilter(LedgerDataQualityFilter.ConfirmedWithoutImage)
+        vm.setTagFilter("日常")
+        vm.setQuery("旧搜索")
+
+        vm.applyDrillFilter(month = FIXTURE_MONTH, category = "餐饮", tag = "旅行")
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertEquals(listOf(1L), state.items.map { it.root.id })
+        assertEquals(mapOf<String?, Long?>("CNY" to 1200L), state.summary.amountsByCurrency)
+        assertEquals("旅行", state.filter.tagFilter)
+        assertEquals("", state.filter.query)
+        assertNull(state.filter.dataQualityFilter)
+    }
+
+    @Test
     fun exposesRecentMerchantsFromFullConfirmedCacheNewestFirst() = ledgerTest {
         val fake = FakeLedgerActions(
             expenses = listOf(
