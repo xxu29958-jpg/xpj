@@ -51,11 +51,13 @@ def _assert_inflight_upload_rechecks_revocation(
         tenant_id: str,
         *,
         max_size_bytes: int | None = None,
+        before_publish=None,
     ) -> tuple[SavedUpload, dict[str, int]]:
         saved = await original_save(
             request,
             tenant_id,
             max_size_bytes=max_size_bytes,
+            before_publish=before_publish,
         )
         file_saved.set()
         assert release_request.wait(timeout=5)

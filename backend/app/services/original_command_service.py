@@ -18,6 +18,7 @@ from app.schemas._original_attachment import (
     OriginalVerificationRequest,
 )
 from app.services.attachment_cleanup_service import read_cleanup_request, settle_cleanup_request
+from app.services.attachment_publication_lock import retain_publication
 from app.services.currency_binding_service import authorize_currency_metadata_write
 from app.services.expense_query import get_expense
 from app.services.file_service import delete_relative_upload, save_original_replenishment_bytes
@@ -178,7 +179,8 @@ def replenish_original(db: Session, *, expense_id: int, auth: AuthContext,
             raise AppError("original_review_conflict", status_code=409)
         _require_original_replenishment(expense)
         saved = save_original_replenishment_bytes(data, tenant_id=auth.tenant_id, expected_sha256=expected,
-            filename=filename, content_type=content_type)
+            filename=filename, content_type=content_type,
+            before_publish=lambda reference: retain_publication(db, reference))
         _retain_usable_thumbnail(expense)
         expense.image_path = saved.relative_path
         expense.image_perceptual_hash = saved.image_perceptual_hash

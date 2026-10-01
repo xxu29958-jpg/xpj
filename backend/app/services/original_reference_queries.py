@@ -1,10 +1,14 @@
 """Retained original references shared by export and orphan maintenance."""
 
 from collections.abc import Mapping
+from pathlib import Path
 
 from sqlalchemy import Select, and_, case, func, or_, select
+from sqlalchemy.orm import Session
 
 from app import models as m
+from app.services.attachment_cleanup_service import pending_cleanup_references
+from app.services.file_service import resolve_upload_path_for_tenant, upload_reference_for_path
 
 
 def original_receipt_references_query(receipt_query: Select, *, tenant_id: str) -> Select:
@@ -65,3 +69,61 @@ def historical_original_is_cleaned(row: Mapping[str, object]) -> bool:
     cleanup = row.get("attachment_cleanup_request")
     image = cleanup.get("image") if isinstance(cleanup, dict) else None
     return isinstance(image, dict) and image.get("reference") == source and image.get("outcome") == "deleted"
+
+
+def _relative_upload_path(path: Path) -> str | None:
+    try:
+        return upload_reference_for_path(path)
+    except RuntimeError:
+        return None
+
+
+def _normalize_upload_reference(relative_path: str | None, tenant_id: str) -> str | None:
+    if not relative_path:
+        return None
+    candidate = resolve_upload_path_for_tenant(relative_path, tenant_id)
+    if candidate is None:
+        return None
+    return _relative_upload_path(candidate)
+
+
+def referenced_upload_paths(db: Session, tenant_id: str) -> set[str]:
+    rows = db.execute(
+        select(
+            m.Expense.image_path,
+            m.Expense.thumbnail_path,
+            m.Expense.image_deleted_at,
+            m.Expense.thumbnail_deleted_at,
+            m.Expense.attachment_cleanup_request,
+        )
+        .where(m.Expense.tenant_id == tenant_id)
+        .where(
+            or_(
+                and_(m.Expense.image_path.is_not(None), m.Expense.image_deleted_at.is_(None)),
+                and_(m.Expense.thumbnail_path.is_not(None), m.Expense.thumbnail_deleted_at.is_(None)),
+                m.Expense.attachment_cleanup_request.is_not(None),
+            )
+        )
+    )
+    referenced: set[str] = set()
+    for image_path, thumbnail_path, image_deleted_at, thumbnail_deleted_at, cleanup_request in rows:
+        if image_deleted_at is None:
+            normalized_image = _normalize_upload_reference(image_path, tenant_id)
+            if normalized_image:
+                referenced.add(normalized_image)
+        if thumbnail_deleted_at is None:
+            normalized_thumbnail = _normalize_upload_reference(thumbnail_path, tenant_id)
+            if normalized_thumbnail:
+                referenced.add(normalized_thumbnail)
+        for reference in pending_cleanup_references(cleanup_request):
+            normalized = _normalize_upload_reference(reference, tenant_id)
+            if normalized:
+                referenced.add(normalized)
+    history = original_receipt_references_query(select(m.ApiIdempotencyKey), tenant_id=tenant_id)
+    for original in db.execute(history).mappings():
+        if historical_original_is_cleaned(original):
+            continue
+        normalized = _normalize_upload_reference(original["image_path"], tenant_id)
+        if normalized:
+            referenced.add(normalized)
+    return referenced

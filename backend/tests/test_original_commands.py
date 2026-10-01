@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from contextlib import nullcontext
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -32,6 +33,7 @@ def verification_case(monkeypatch, tmp_path):
         attachment_cleanup_request=None, image_replenished_at=None)
     auth = AuthContext(11, "account-eleven", "Owner", "owner", "Home", 12, "device-twelve", "Phone", "owner", "app")
     db = Mock()
+    db.no_autoflush = nullcontext()
     record = SimpleNamespace(id=8, response_body=None)
     claim = Mock(return_value=SimpleNamespace(kind=IdempotencyOutcomeKind.PROCEED, row=record))
     monkeypatch.setattr(commands, "claim_idempotency_key", claim)

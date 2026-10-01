@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import re
 import secrets
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from io import BytesIO
@@ -225,12 +226,13 @@ def save_upload_bytes(
     filename: str | None = None,
     content_type: str | None = None,
     max_size_bytes: int | None = None,
+    before_publish: Callable[[str], None] | None = None,
 ) -> SavedUpload:
     ext = _validated_upload_extension(
         data, filename=filename, content_type=content_type, max_size_bytes=max_size_bytes,
     )
     sanitized_data, ext = _sanitize_image_bytes(ext, data)
-    return _store_admitted_image(sanitized_data, tenant_id=tenant_id, ext=ext)
+    return _store_admitted_image(sanitized_data, tenant_id=tenant_id, ext=ext, before_publish=before_publish)
 
 
 def save_original_replenishment_bytes(
@@ -241,6 +243,7 @@ def save_original_replenishment_bytes(
     filename: str | None = None,
     content_type: str | None = None,
     max_size_bytes: int | None = None,
+    before_publish: Callable[[str], None] | None = None,
 ) -> SavedUpload:
     """Admit only the known original, then publish it under a new unique path.
 
@@ -259,10 +262,11 @@ def save_original_replenishment_bytes(
         admitted, ext = _sanitize_image_bytes(ext, data)
         if hashlib.sha256(admitted).hexdigest() != expected:
             raise AppError("image_replenishment_mismatch", status_code=409)
-    return _store_admitted_image(admitted, tenant_id=tenant_id, ext=ext)
+    return _store_admitted_image(admitted, tenant_id=tenant_id, ext=ext, before_publish=before_publish)
 
 
-def _store_admitted_image(data: bytes, *, tenant_id: str, ext: str) -> SavedUpload:
+def _store_admitted_image(data: bytes, *, tenant_id: str, ext: str,
+                          before_publish: Callable[[str], None] | None = None) -> SavedUpload:
     settings = get_settings()
     image_perceptual_hash = compute_image_perceptual_hash(data)
 
@@ -273,6 +277,9 @@ def _store_admitted_image(data: bytes, *, tenant_id: str, ext: str) -> SavedUplo
     filename = f"{secrets.token_hex(16)}.{ext}"
     target_path = target_dir / filename
     hasher = hashlib.sha256(data)
+    relative_path = upload_reference_for_path(target_path)
+    if before_publish is not None:
+        before_publish(relative_path)
 
     # Claim a fresh path before entering compensation. A collision must never
     # overwrite or delete an earlier upload's original.
@@ -284,7 +291,6 @@ def _store_admitted_image(data: bytes, *, tenant_id: str, ext: str) -> SavedUplo
         target_path.unlink(missing_ok=True)
         raise
 
-    relative_path = upload_reference_for_path(target_path)
     return SavedUpload(
         relative_path=relative_path,
         image_hash=hasher.hexdigest(),

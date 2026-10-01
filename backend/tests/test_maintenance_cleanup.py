@@ -114,7 +114,9 @@ def test_cleanup_rejected_images_keeps_db_retryable_when_unlink_fails(
     def fail_unlink(self):
         raise PermissionError("file is locked")
 
-    monkeypatch.setattr(cleanup_service.Path, "unlink", fail_unlink)
+    from app.services import orphan_upload_service
+
+    monkeypatch.setattr(orphan_upload_service.Path, "unlink", fail_unlink)
 
     response = client.post("/api/maintenance/cleanup-rejected", headers=identity.admin_headers)
     assert response.status_code == 200
