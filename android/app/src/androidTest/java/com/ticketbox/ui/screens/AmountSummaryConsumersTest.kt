@@ -25,6 +25,7 @@ import com.ticketbox.domain.model.BudgetMonthly
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.MONEY_MINOR_MAX
 import com.ticketbox.domain.model.MonthlyStats
+import com.ticketbox.domain.model.MonthComparison
 import com.ticketbox.domain.model.ReportGranularity
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.saveConsumerArtPreview
@@ -59,13 +60,14 @@ class AmountSummaryConsumersTest {
     }
 
     @Test fun overviewKeepsMonthlyAndRecentAmountsReadable() = verify(
-        "insights-totals", listOf(maximum, formatDisplayAmount(MONEY_MINOR_MAX - 100, currency)),
+        "insights-totals", listOf(maximum, formatDisplayAmount(MONEY_MINOR_MAX - 100, currency),
+            "比上月多 ${formatDisplayAmount(MONEY_MINOR_MAX - 100, currency)}"),
     ) {
         StatsOverviewCard(StatsOverviewHeaderModel(
             stats = MonthlyStats("CNY", month = "2026-10", totalAmountCents = MONEY_MINOR_MAX, count = 2, byCategory = emptyList()),
             statsSource = StatsSource.Backend,
             recent7DaysAmountCents = MONEY_MINOR_MAX - 100,
-            comparison = null,
+            comparison = MonthComparison("2026-10", "2026-09", MONEY_MINOR_MAX, 100, MONEY_MINOR_MAX - 100, null),
             comparisonHomeCurrencyCode = "CNY",
         ))
     }
