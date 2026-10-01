@@ -38,6 +38,7 @@
     var draft = null;
     var editorOpen = false;
     var busy = false;
+    var returnFocusTo = null;
 
     /* ── 导入：文件 → dataURL → Image 解码 → canvas 降采样 → 诚实编码 ── */
 
@@ -46,6 +47,24 @@
     fileInput.accept = "image/*";
     fileInput.hidden = true;
     document.body.appendChild(fileInput);
+    // The hidden picker belongs to the current disclosure; its synthetic click
+    // must not dismiss that disclosure before an import error can be shown.
+    fileInput.addEventListener("click", function (event) { event.stopPropagation(); });
+
+    function restoreEntryFocus() {
+      var target = returnFocusTo;
+      returnFocusTo = null;
+      var ancestor = target && target.parentElement;
+      while (ancestor) {
+        if (ancestor.tagName === "DETAILS" && !ancestor.open) target = ancestor.querySelector("summary");
+        ancestor = ancestor.parentElement;
+      }
+      if (!target || !target.getClientRects().length) {
+        target = Array.from(document.querySelectorAll("[data-appearance-trigger], #ledger-switcher > summary"))
+          .find(function (node) { return node.getClientRects().length > 0; });
+      }
+      if (target) target.focus({ preventScroll: true });
+    }
 
     function readFile(file) {
       return new Promise(function (resolve, reject) {
@@ -174,7 +193,7 @@
       setBusy(false);
       bg.preview(draft);
       // 原生 top-layer:焦点进入编辑面,Tab 不再掉到下层表单;关闭时
-      // 浏览器管理关闭后的焦点（原入口已隐藏时可能回到 BODY）。旧浏览器无 showModal 时退化为
+      // 关闭后回到原按钮或已收起的外观入口。旧浏览器无 showModal 时退化为
       // 普通 open 面板(功能可用,焦点隔离降级,诚实可接受)。
       if (typeof editor.showModal === "function") {
         editor.showModal();
@@ -192,6 +211,7 @@
       } else {
         editor.removeAttribute("open");
       }
+      restoreEntryFocus();
     }
 
     function cancelEditor() {
@@ -321,6 +341,7 @@
     document.querySelectorAll("[data-background-import]").forEach(function (button) {
       button.addEventListener("click", function () {
         popoverStatus("");
+        returnFocusTo = button;
         fileInput.click();
       });
     });
@@ -330,6 +351,7 @@
         var applied = bg.applied();
         if (!applied) return;
         popoverStatus("");
+        returnFocusTo = button;
         // 重新编辑当前背景：保留已应用 transform。
         openEditor({
           image: applied.image,
@@ -359,14 +381,16 @@
     fileInput.addEventListener("change", function () {
       var file = fileInput.files && fileInput.files[0];
       fileInput.value = "";
-      if (!file) return;
+      if (!file) { restoreEntryFocus(); return; }
       popoverStatus("");
       processFile(file).then(function (record) {
         openEditor(record);
       }).catch(function (error) {
         popoverStatus(error && error.tooLarge ? MSG_TOO_LARGE : MSG_IMPORT_FAILED);
+        restoreEntryFocus();
       });
     });
+    fileInput.addEventListener("cancel", restoreEntryFocus);
 
     // 与 bootstrap 的首读对齐后再同步按钮态（load 幂等：重读一次同一 record）。
     bg.load().then(syncButtons).catch(syncButtons);

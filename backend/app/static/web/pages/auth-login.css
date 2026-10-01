@@ -138,6 +138,11 @@ body {
     font-size: var(--type-subtitle-size);
 }
 
+.auth-field input::placeholder {
+    color: var(--text-meta);
+    opacity: 1;
+}
+
 .auth-field input:hover {
     border-color: var(--control-border-hover);
 }

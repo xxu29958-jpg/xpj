@@ -185,6 +185,11 @@ h1 {
     font: inherit;
 }
 
+.currency-change-reason textarea::placeholder {
+    color: var(--text-meta);
+    opacity: 1;
+}
+
 .currency-change-non-cny { display: none; }
 .currency-change-form:has(input[name="home_currency_code"]:checked:not([value="CNY"])) .currency-change-non-cny {
     display: block;
