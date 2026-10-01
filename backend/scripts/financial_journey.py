@@ -201,7 +201,7 @@ class FinancialJourney:
         # A Web command does not push a new list into this already-open native tab.
         # Read the peer's accepted fact through the existing user-facing sync action.
         native.domain_home("流水")
-        native.click("账本工具")
+        native.click("筛选与工具")
         native.click("更新账本")
         native.click("完成")
         wait_for(lambda: native.has("WebFinal"), "Updating the native ledger did not read the peer correction")

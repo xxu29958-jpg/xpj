@@ -4,24 +4,29 @@ import androidx.compose.material3.adaptive.layout.PaneScaffoldDirective
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.DeviceConfigurationOverride
 import androidx.compose.ui.test.ForcedSize
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
+import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.domain.model.DashboardCard
 import com.ticketbox.ui.screens.stats.DashboardLayoutActions
 import com.ticketbox.ui.screens.stats.OverviewModuleActions
@@ -67,7 +72,7 @@ class StatsAdaptiveExperienceTest {
         }
         for (size in listOf(360.dp to AppAdaptiveLayoutPolicy.Compact, 768.dp to medium, 1440.dp to expanded)) {
             composeRule.runOnIdle { viewport.value = size }
-            composeRule.onNode(hasText("自定义总览") and hasClickAction()).assertIsDisplayed()
+            composeRule.onNodeWithContentDescription("自定义总览").assertIsDisplayed()
             val tab = composeRule.onNode(hasText(context.getString(R.string.stats_tab_overview)) and hasClickAction())
                 .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
             val result = composeRule.onNodeWithText(context.getString(R.string.stats_overview_month_spend_label))
@@ -77,6 +82,9 @@ class StatsAdaptiveExperienceTest {
             assertTrue("Tabs must stay in the result column at ${size.first}", tab.left < result.right && tab.right > result.left)
             assertTrue("Filters precede the views they control", filter.bottom <= tab.top)
             assertTrue("Views precede their results", tab.bottom <= result.top)
+            if (size.first == 360.dp) {
+                saveConsumerArtPreview("insights-populated-paper", composeRule.onRoot().captureToImage().asAndroidBitmap())
+            }
         }
         composeRule.onNode(hasScrollToIndexAction())
             .performScrollToNode(hasTestTag("overview-module-recent_uploads"))
@@ -123,7 +131,7 @@ class StatsAdaptiveExperienceTest {
         composeRule.onNodeWithText(context.getString(R.string.components_month_picker_title)).assertIsDisplayed()
         composeRule.onNode(hasText(context.getString(R.string.components_month_picker_all_months)) and hasClickAction())
             .performClick()
-        composeRule.onNode(hasText("自定义总览") and hasClickAction()).performClick()
+        composeRule.onNodeWithContentDescription("自定义总览").performClick()
         val editor = composeRule.onNodeWithText(context.getString(R.string.dashboard_editor_title))
             .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         val save = composeRule.onNode(hasText(context.getString(R.string.dashboard_save)) and hasClickAction())

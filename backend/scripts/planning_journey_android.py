@@ -130,13 +130,34 @@ class PlanningAndroid:
 
     def set_switch(self, label: str, checked: bool):
         self.reveal_any(label)
+        scrolls = 0
 
         def locate():
-            matches = [node for node in self.tree().iter("node") if
+            nonlocal scrolls
+            root = self.tree()
+            matches = [node for node in root.iter("node") if
                 node.attrib.get("checkable") == "true" and node.attrib.get("enabled") != "false" and
                 any(label in (part.attrib.get("text", "") + "\n" + part.attrib.get("content-desc", ""))
                     for part in node.iter("node"))]
             assert len(matches) <= 1, f"The native switch label is ambiguous: {label}"
+            if matches:
+                parents = {child: parent for parent in root.iter() for child in parent}
+                viewport = parents.get(matches[0])
+                while viewport is not None and viewport.attrib.get("scrollable") != "true":
+                    viewport = parents.get(viewport)
+                if viewport is not None:
+                    left, top, right, bottom = self.bounds(viewport)
+                    _, switch_top, _, switch_bottom = self.bounds(matches[0])
+                    # A label can be visible while its switch is under the system gesture area.
+                    if switch_top < top or switch_bottom > bottom:
+                        assert scrolls < 4, f"The native switch remains clipped: {label}"
+                        start, end = top + (bottom - top) * 3 // 4, top + (bottom - top) // 4
+                        if switch_top < top:
+                            start, end = end, start
+                        self.adb("shell", "input", "swipe", str((left + right) // 2), str(start),
+                            str((left + right) // 2), str(end), "350")
+                        scrolls += 1
+                        return []
             return matches
 
         matches = wait_for(locate, f"The actual native switch is not named: {label}")
@@ -259,7 +280,7 @@ class PlanningAndroid:
     def recycle_bin(self):
         self.plan_home()
         self.click("流水", bottom=True)
-        self.click("账本工具")
+        self.click("筛选与工具")
         self.click("资料库")
         self.click("回收站")
 

@@ -45,11 +45,11 @@
   </div>
   {% endif %}
 </header>
-<div class="product-page-actions">
+<div class="ledger-view-actions">
   <a class="product-button product-button--quiet" href="/web/saved-views?ledger_id={{ selected_ledger_id }}">保存的视图</a>
   {% if can_write %}
   {% if save_view_error %}<p class="product-feedback" role="status">{{ save_view_error }}</p>{% else %}
-  <details class="product-panel product-panel--padded">
+  <details class="ledger-view-save">
     <summary>保存当前视图</summary>
     <p class="hint">当前账本的参与者都能查看；每次打开按这些条件读取最新账单。</p>
     <form method="post" action="/web/saved-views">
@@ -103,7 +103,7 @@
 {% endif %}
 
 <div class="confirmed-desk">
-<section class="product-panel ledger-stream" aria-label="已确认流水">
+<section class="ledger-stream{% if expenses %} product-panel{% endif %}" aria-label="已确认流水">
   {% if expenses %}
   {# 分组使用已存账务日期；未知日期单列，不从录入或确认时间补造。 #}
   {% set _groups = {} %}

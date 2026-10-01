@@ -27,6 +27,7 @@ import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.QuietOutlinedButton
+import com.ticketbox.ui.components.LocalAccountingDateReview
 import com.ticketbox.ui.components.buildAppTagFilterChoices
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
@@ -101,9 +102,7 @@ internal fun LedgerToolsSheet(
         LedgerDataTools(
             state = ledger,
             canExport = state.canExport,
-            onSync = actions.onSync,
-            onExportCsv = actions.onExportCsv,
-            onOpenLibrary = actions.onOpenLibrary,
+            actions = actions,
         )
     }
 }
@@ -220,18 +219,23 @@ private fun LedgerSearchTools(
 private fun LedgerDataTools(
     state: LedgerUiState,
     canExport: Boolean,
-    onSync: () -> Unit,
-    onExportCsv: () -> Unit,
-    onOpenLibrary: () -> Unit,
+    actions: LedgerToolsSheetActions,
 ) {
     LedgerToolSection(title = stringResource(R.string.ledger_tools_actions_title)) {
         LedgerInlineButton(
             text = stringResource(R.string.ledger_tools_library),
             modifier = Modifier.fillMaxWidth(),
             enabled = true,
-            onClick = onOpenLibrary,
+            onClick = actions.onOpenLibrary,
             icon = Icons.Default.Category,
         )
+        LocalAccountingDateReview.current?.let { review ->
+            QuietOutlinedButton(
+                text = stringResource(R.string.calendar_review_dates),
+                modifier = Modifier.fillMaxWidth(),
+                onClick = { actions.onDismiss(); review() },
+            )
+        }
         AppAdaptiveEqualControlRow(
             leading = { actionModifier ->
                 LedgerInlineButton(
@@ -242,7 +246,7 @@ private fun LedgerDataTools(
                     },
                     modifier = actionModifier,
                     enabled = canExport,
-                    onClick = onExportCsv,
+                    onClick = actions.onExportCsv,
                     icon = Icons.Default.FileDownload,
                 )
             },
@@ -255,7 +259,7 @@ private fun LedgerDataTools(
                     },
                     modifier = actionModifier,
                     enabled = !state.syncing,
-                    onClick = onSync,
+                    onClick = actions.onSync,
                     icon = Icons.Default.Sync,
                 )
             },

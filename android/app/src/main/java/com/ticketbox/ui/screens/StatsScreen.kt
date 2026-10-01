@@ -1,7 +1,9 @@
 package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.MaterialTheme
@@ -11,6 +13,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.MessageTone
@@ -41,7 +45,8 @@ import com.ticketbox.ui.design.LocalAppAdaptiveLayoutPolicy
 import com.ticketbox.ui.screens.stats.StatsFilterControls
 import com.ticketbox.ui.screens.stats.DashboardLayoutEditor
 import com.ticketbox.ui.screens.stats.DashboardLayoutEditorContent
-import com.ticketbox.ui.screens.stats.DashboardLayoutEntry
+import com.ticketbox.ui.screens.stats.DashboardLayoutEditAction
+import com.ticketbox.ui.screens.stats.DashboardLayoutFeedback
 import com.ticketbox.ui.screens.stats.OverviewInteractionActions
 import com.ticketbox.ui.screens.stats.OverviewModulesState
 import com.ticketbox.ui.screens.stats.StatsUnreadableState
@@ -247,33 +252,29 @@ private fun StatsControlsBlock(
 ) {
     val state = paneState.screenState
     val actions = paneActions.screenActions
-    when (controlsMode) {
-        StatsControlsMode.FiltersAndTabs -> Column(
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
-        ) {
+    val overview = paneState.selectedTab == StatsTab.Overview
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+        if (controlsMode == StatsControlsMode.FiltersAndTabs) {
             StatsFilterControls(
                 state = state,
                 onOpenMonthPicker = paneActions.onOpenMonthPicker,
                 onTagChange = actions.filters.onTagChange,
             )
-            StatsViewTabs(
-                selectedTab = paneState.selectedTab,
-                onTabChange = paneActions.onTabChange,
-            )
-            if (paneState.selectedTab == StatsTab.Overview) {
-                DashboardLayoutEntry(paneState.overview.layout, actions.overview.layout)
+        }
+        Column {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) {
+                    StatsViewTabs(selectedTab = paneState.selectedTab, onTabChange = paneActions.onTabChange)
+                }
+                if (overview) DashboardLayoutEditAction(paneState.overview.layout, actions.overview.layout)
             }
+            if (overview) DashboardLayoutFeedback(paneState.overview.layout, actions.overview.layout)
+        }
+        if (controlsMode == StatsControlsMode.FiltersAndTabs) {
             StatsStatusMessages(
                 state = state,
                 selectedTab = paneState.selectedTab,
             )
-        }
-
-        StatsControlsMode.Tabs -> Column {
-            StatsViewTabs(selectedTab = paneState.selectedTab, onTabChange = paneActions.onTabChange)
-            if (paneState.selectedTab == StatsTab.Overview) {
-                DashboardLayoutEntry(paneState.overview.layout, actions.overview.layout)
-            }
         }
     }
 }

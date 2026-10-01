@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Icon
@@ -58,13 +57,13 @@ fun AppDataAuthorityStrip(
     modifier: Modifier = Modifier,
 ) {
     val accent = when (tone) {
-        DataAuthorityTone.Backend -> MaterialTheme.colorScheme.primary
+        DataAuthorityTone.Backend -> MaterialTheme.colorScheme.onSurfaceVariant
         DataAuthorityTone.Refreshing -> MaterialTheme.colorScheme.secondary
         DataAuthorityTone.LocalCache -> MaterialTheme.colorScheme.tertiary
         DataAuthorityTone.ReadOnly -> MaterialTheme.colorScheme.onSurfaceVariant
     }
     val icon = when (tone) {
-        DataAuthorityTone.Backend -> Icons.Filled.CloudDone
+        DataAuthorityTone.Backend -> null
         DataAuthorityTone.Refreshing -> Icons.Filled.Sync
         DataAuthorityTone.LocalCache,
         DataAuthorityTone.ReadOnly,
@@ -102,7 +101,7 @@ private fun dataAuthorityBodyRes(
 private fun DataAuthorityStripContent(
     title: String,
     body: String,
-    icon: ImageVector,
+    icon: ImageVector?,
     accent: Color,
     modifier: Modifier = Modifier,
 ) {
@@ -126,12 +125,14 @@ private fun DataAuthorityStripContent(
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            modifier = Modifier.size(AppSpacing.compactGap),
-            tint = accent.copy(alpha = AppAlpha.heavy),
-        )
+        if (icon != null) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(AppSpacing.compactGap),
+                tint = accent.copy(alpha = AppAlpha.heavy),
+            )
+        }
         Text(
             text = line,
             modifier = Modifier.weight(1f),

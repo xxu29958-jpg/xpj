@@ -54,6 +54,33 @@
     overflow-wrap: anywhere;
 }
 
+.ledger-view-actions {
+    display: flex;
+    align-items: start;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-4);
+    margin-block-end: var(--space-2);
+}
+
+.ledger-view-save > summary {
+    min-height: var(--target-min);
+    padding: var(--space-3);
+    color: var(--text-muted);
+    cursor: pointer;
+}
+
+.ledger-view-save[open] {
+    flex-basis: 100%;
+    padding: var(--space-4);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-card);
+}
+
+.ledger-view-save[open] > summary {
+    margin: calc(-1 * var(--space-3));
+    margin-block-end: var(--space-3);
+}
+
 .ledger-stream {
     overflow: hidden;
     padding: 0;
@@ -62,7 +89,7 @@
 
 /* 票夹刻: coral 侧夹咬住票面右缘上段 — 品牌右侧夹的 CSS 形态 (装饰, 不接收事件,
    不进 AX 树; 与状态色正交, 状态仍走 state/goal 族) */
-.ledger-stream::before {
+.ledger-stream.product-panel::before {
     content: "";
     position: absolute;
     inset-block-start: var(--space-6);
@@ -356,11 +383,6 @@
     font-size: var(--type-caption-size);
     font-weight: var(--type-subtitle-weight);
     text-underline-offset: var(--space-1);
-}
-
-/* 空态嵌在流水 panel 内: 留出内边距, 避免虚线框贴住面板边框。 */
-.ledger-stream > .product-state {
-    margin: var(--space-4);
 }
 
 /* 同一个原生全选控件在各宽度保留带文字的触控目标。 */
