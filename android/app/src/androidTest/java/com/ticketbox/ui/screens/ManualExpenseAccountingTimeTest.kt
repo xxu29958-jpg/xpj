@@ -37,7 +37,7 @@ class ManualExpenseAccountingTimeTest {
         }
         compose.onNodeWithText("只记日期").performScrollTo().performClick()
         restoration.emulateSavedInstanceStateRestore()
-        compose.onNodeWithText("记入账本").performScrollTo().performClick()
+        compose.onNodeWithText("记入账本").performClick()
         compose.runOnIdle {
             assertEquals("date_only", submitted?.timeInput?.precision)
             assertEquals(2L, submitted?.timeInput?.calendarRevision)

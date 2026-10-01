@@ -110,7 +110,8 @@ class SheetKeyboardTaskTest {
         val tags = mutableListOf<Pair<String, String>>()
         compose.setContent {
             TicketboxTheme(skin = AppSkin.Paper) {
-                ModalBottomSheet(onDismissRequest = {}) {
+                ModalBottomSheet(onDismissRequest = {},
+                    sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
                     LedgerBulkEditSheet(
                         state = LedgerBulkEditSheetState(31, true, listOf("餐饮", "交通"), false),
                         actions = LedgerBulkEditSheetActions(

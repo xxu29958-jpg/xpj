@@ -92,7 +92,7 @@ class ManualCreationRouteRoomTest {
         amount.assertTextEquals("12")
         closeSoftKeyboard()
         compose.waitForIdle()
-        compose.onNodeWithText(saveLabel).performScrollTo().performClick()
+        compose.onNodeWithText(saveLabel).performClick()
         compose.waitUntil(5_000) { harness.fixture.stored().size == 1 }
         val original = harness.fixture.stored().single()
         val request = requireNotNull(OutboxAdapterGraph().manualCreateAdapter.fromJson(requireNotNull(original["payload"])))

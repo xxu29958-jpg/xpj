@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens.recurring
 
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -71,9 +72,7 @@ fun RecurringOccurrenceSheet(
             title = item.merchant,
             subtitle = stringResource(R.string.occurrence_subtitle),
             modifier = Modifier.fillMaxHeight(),
-            actions = if (state.occurrence != null && state.choice != null) {
-                { OccurrenceChoice(state, actions.onSubmit) }
-            } else null,
+            actions = occurrenceChoiceActions(state, actions.onSubmit),
         ) {
             OccurrencePeriodControls(state, actions)
             RecurringReadSource(state.fetchedAt, state.fromCache, state.loading)
@@ -197,15 +196,20 @@ private fun OccurrencePeriodControls(state: RecurringOccurrenceUiState, actions:
     if (state.loading) Text(stringResource(R.string.occurrence_loading))
 }
 
-@Composable
-private fun OccurrenceChoice(state: RecurringOccurrenceUiState, submit: () -> Unit) {
-    val choice = state.choice ?: return
-    val label = if (choice.request.action == "clear") stringResource(R.string.occurrence_clear_review)
-        else stringResource(R.string.occurrence_link_review, choice.paymentLabel.orEmpty(),
-            occurrencePaymentAmountText(choice.paymentAmountCents, choice.paymentCurrencyCode))
-    Text(label)
-    AppPrimaryButton(text = stringResource(R.string.occurrence_submit), icon = Icons.Filled.Check, onClick = submit,
-        enabled = state.canWrite, modifier = Modifier.fillMaxWidth().testTag("occurrence-submit"))
+private fun occurrenceChoiceActions(
+    state: RecurringOccurrenceUiState,
+    submit: () -> Unit,
+): (@Composable ColumnScope.() -> Unit)? {
+    val choice = state.choice ?: return null
+    if (state.occurrence == null) return null
+    return {
+        val label = if (choice.request.action == "clear") stringResource(R.string.occurrence_clear_review)
+            else stringResource(R.string.occurrence_link_review, choice.paymentLabel.orEmpty(),
+                occurrencePaymentAmountText(choice.paymentAmountCents, choice.paymentCurrencyCode))
+        Text(label)
+        AppPrimaryButton(text = stringResource(R.string.occurrence_submit), icon = Icons.Filled.Check, onClick = submit,
+            enabled = state.canWrite, modifier = Modifier.fillMaxWidth().testTag("occurrence-submit"))
+    }
 }
 
 @Composable

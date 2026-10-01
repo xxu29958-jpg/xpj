@@ -371,6 +371,7 @@ private fun DebtActionSheet(
     viewModel: DebtDetailViewModel,
     onClose: () -> Unit,
 ) {
+    val action = state.activeAction ?: return
     // VM 的 dismissAction 在提交中吞掉关闭；sheet 本体也必须否决 Hidden，
     // 否则 Back/下滑把失败草稿藏进不可见 modal（同 income-busy-hidden 反例）。
     AppBusyGuardedSheet(
@@ -378,12 +379,33 @@ private fun DebtActionSheet(
         onDismiss = onClose,
         skipPartiallyExpanded = true,
     ) {
-        DebtActionForm(
-            state = state,
-            viewModel = viewModel,
-            onSubmit = viewModel::submit,
-            onCancel = onClose,
-        )
+        AppSheetScaffold(
+            title = stringResource(debtActionTitleRes(action)),
+            actions = {
+                state.writeMessage?.let { message -> AppStatusBanner(message = message, tone = MessageTone.Info) }
+                state.validationError?.let { err ->
+                    AppStatusBanner(message = err, tone = MessageTone.Danger)
+                }
+                AppSheetActionRow(
+                    primary = AppSheetAction(
+                        text = if (state.isSubmitting) {
+                            stringResource(R.string.debt_action_submitting)
+                        } else {
+                            stringResource(R.string.debt_action_submit)
+                        },
+                        onClick = viewModel::submit,
+                        enabled = state.canWriteActions,
+                    ),
+                    secondary = AppSheetAction(
+                        text = stringResource(R.string.common_cancel),
+                        onClick = onClose,
+                        enabled = !state.isSubmitting,
+                    ),
+                )
+            },
+        ) {
+            DebtActionForm(state, viewModel, action)
+        }
     }
 }
 
@@ -391,73 +413,45 @@ private fun DebtActionSheet(
 private fun DebtActionForm(
     state: DebtDetailUiState,
     viewModel: DebtDetailViewModel,
-    onSubmit: () -> Unit,
-    onCancel: () -> Unit,
+    action: DebtAction,
 ) {
-    val action = state.activeAction ?: return
-    AppSheetScaffold(
-        title = stringResource(debtActionTitleRes(action)),
-        actions = {
-            state.writeMessage?.let { message -> AppStatusBanner(message = message, tone = MessageTone.Info) }
-            state.validationError?.let { err ->
-                AppStatusBanner(message = err, tone = MessageTone.Danger)
-            }
-            AppSheetActionRow(
-                primary = AppSheetAction(
-                    text = if (state.isSubmitting) {
-                        stringResource(R.string.debt_action_submitting)
-                    } else {
-                        stringResource(R.string.debt_action_submit)
-                    },
-                    onClick = onSubmit,
-                    enabled = state.canWriteActions,
-                ),
-                secondary = AppSheetAction(
-                    text = stringResource(R.string.common_cancel),
-                    onClick = onCancel,
-                    enabled = !state.isSubmitting,
-                ),
-            )
-        },
-    ) {
-        // 金额输入只属于还款/调整；整笔作废(Void)与单笔还款作废(RepaymentVoid)都不带金额。
-        if (action == DebtAction.Repayment || action == DebtAction.Adjustment) {
-            AppAmountInput(
-                state = AppAmountInputState(
-                    label = stringResource(debtActionAmountLabelRes(action)),
-                    // 显示与解析同源于 record 币种（state.amountInputCurrency），
-                    // 不读恒 Base 的环境 display（PR#255 P1）。
-                    currency = state.amountInputCurrency,
-                    value = state.amountInput,
-                    placeholder = stringResource(R.string.components_amount_input_placeholder),
-                    isError = state.validationError != null,
-                ),
-                actions = AppAmountInputActions(onValueChange = { viewModel.updateActionInput(amount = it) }),
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-        if (action == DebtAction.Adjustment) {
-            DebtAdjustmentSignChips(increase = state.adjustmentIncrease, onSelect = { viewModel.updateActionInput(adjustmentIncrease = it) })
-        }
-        // 单笔还款作废：选中还款的只读摘要确认作废对象，无金额输入。
-        if (action == DebtAction.RepaymentVoid) {
-            state.repaymentToVoid?.let { repayment ->
-                DebtRepaymentVoidTarget(repayment = repayment, homeCurrencyCode = (state.actionTarget ?: state.debt)?.homeCurrencyCode)
-            }
-        }
-        if (action != DebtAction.Repayment) {
-            AppTextInput(
-                state = AppTextInputState(
-                    label = stringResource(R.string.debt_action_reason_label),
-                    value = state.reasonInput,
-                ),
-                actions = AppTextInputActions(onValueChange = { viewModel.updateActionInput(reason = it) }),
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-        DebtActionWarning(action)
-        DebtActionReadFeedback(state, viewModel::refresh) { viewModel.updateActionInput(reviewLatest = true) }
+    // 金额输入只属于还款/调整；整笔作废(Void)与单笔还款作废(RepaymentVoid)都不带金额。
+    if (action == DebtAction.Repayment || action == DebtAction.Adjustment) {
+        AppAmountInput(
+            state = AppAmountInputState(
+                label = stringResource(debtActionAmountLabelRes(action)),
+                // 显示与解析同源于 record 币种（state.amountInputCurrency），
+                // 不读恒 Base 的环境 display（PR#255 P1）。
+                currency = state.amountInputCurrency,
+                value = state.amountInput,
+                placeholder = stringResource(R.string.components_amount_input_placeholder),
+                isError = state.validationError != null,
+            ),
+            actions = AppAmountInputActions(onValueChange = { viewModel.updateActionInput(amount = it) }),
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
+    if (action == DebtAction.Adjustment) {
+        DebtAdjustmentSignChips(increase = state.adjustmentIncrease, onSelect = { viewModel.updateActionInput(adjustmentIncrease = it) })
+    }
+    // 单笔还款作废：选中还款的只读摘要确认作废对象，无金额输入。
+    if (action == DebtAction.RepaymentVoid) {
+        state.repaymentToVoid?.let { repayment ->
+            DebtRepaymentVoidTarget(repayment = repayment, homeCurrencyCode = (state.actionTarget ?: state.debt)?.homeCurrencyCode)
+        }
+    }
+    if (action != DebtAction.Repayment) {
+        AppTextInput(
+            state = AppTextInputState(
+                label = stringResource(R.string.debt_action_reason_label),
+                value = state.reasonInput,
+            ),
+            actions = AppTextInputActions(onValueChange = { viewModel.updateActionInput(reason = it) }),
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+    DebtActionWarning(action)
+    DebtActionReadFeedback(state, viewModel::refresh) { viewModel.updateActionInput(reviewLatest = true) }
 }
 
 

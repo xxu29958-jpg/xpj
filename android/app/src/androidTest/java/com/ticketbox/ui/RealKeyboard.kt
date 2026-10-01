@@ -32,7 +32,10 @@ class RealKeyboard : ExternalResource() {
 
     fun assertActionAboveKeyboard(compose: ComposeTestRule, label: String, captureName: String) {
         compose.waitUntil(5_000) { compose.runOnIdle { keyboardWindow() != null } }
-        saveConsumerArtPreview(captureName, requireNotNull(instrumentation.uiAutomation.takeScreenshot()))
+        // Compose idle alone does not synchronize the separate OS keyboard window.
+        compose.waitForIdle()
+        instrumentation.uiAutomation.waitForIdle(500, 5_000)
+        compose.waitForIdle()
         // Never scroll to the action: it must remain reachable from the current editor.
         val action = compose.onNodeWithText(label).assertIsDisplayed()
         val bounds = action.fetchSemanticsNode().boundsInWindow
@@ -41,6 +44,7 @@ class RealKeyboard : ExternalResource() {
             val insets = requireNotNull(ViewCompat.getRootWindowInsets(window))
             window.height - insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
         }
+        saveConsumerArtPreview(captureName, requireNotNull(instrumentation.uiAutomation.takeScreenshot()))
         assertTrue("$label is above the visible OS keyboard", bounds.bottom <= keyboardTop)
         assertTrue("$label remains inside the viewport", bounds.top >= 0f && bounds.height > 0f)
     }
