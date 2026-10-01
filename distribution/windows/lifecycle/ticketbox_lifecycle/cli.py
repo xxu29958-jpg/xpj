@@ -26,7 +26,15 @@ from ticketbox_lifecycle.schemas import (
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="TicketboxLifecycle")
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] in {"cold-copy", "verify-cold-copy"}:
+        from ticketbox_lifecycle.cold_copy_cli import main as cold_main
+
+        return cold_main(argv)
+    parser = argparse.ArgumentParser(
+        prog="TicketboxLifecycle",
+        epilog="Beta retention: cold-copy --output <new.tbxcold>; verify-cold-copy --source <copy.tbxcold>.",
+    )
     parser.add_argument("command", choices=("install", "resume", "inspect"))
     parser.add_argument("--request", required=True)
     parser.add_argument("--result", required=True)
