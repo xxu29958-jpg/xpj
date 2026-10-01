@@ -60,12 +60,13 @@ class LedgerHeaderEntryTest {
             CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 1.8f)) {
                 TicketboxTheme(skin = AppSkin.Default) {
                     Box(Modifier.width(328.dp)) {
-                        LedgerHeader(LedgerUiState(items = listOf(ledgerHeaderConfirmedRow(1234567890L))))
+                        LedgerHeader(LedgerUiState(items = listOf(ledgerHeaderConfirmedRow(MONEY_MINOR_MAX))))
                     }
                 }
             }
         }
         val results = mutableListOf<TextLayoutResult>()
+        saveConsumerArtPreview("ledger-maximum-total-large-font", composeRule.onRoot().captureToImage().asAndroidBitmap())
         composeRule.onNode(hasText("¥", substring = true))
             .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(results) }
         assertTrue("Amount layout must be available", results.isNotEmpty())
