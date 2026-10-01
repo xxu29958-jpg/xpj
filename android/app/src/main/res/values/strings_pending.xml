@@ -49,7 +49,7 @@
     <string name="pending_top_title">待我处理</string>
     <string name="inbox_section_pending">待我处理</string>
     <string name="inbox_section_duplicates">疑似重复</string>
-    <string name="inbox_action_links_title">其他需处理</string>
+    <string name="inbox_action_links_title">其他任务</string>
     <string name="pending_top_subtitle_has_items">逐条核对后入账</string>
     <string name="pending_top_subtitle_count">%1$d 张待整理，确认后进入账本</string>
     <string name="pending_top_subtitle_empty">截图上传后逐条确认</string>

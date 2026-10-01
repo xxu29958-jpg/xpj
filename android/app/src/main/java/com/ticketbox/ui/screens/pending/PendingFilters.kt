@@ -9,10 +9,15 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -28,6 +33,7 @@ import com.ticketbox.domain.model.pendingPrimaryReviewAction
 import com.ticketbox.ui.components.AppCompactChips
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.design.AppAlpha
+import com.ticketbox.ui.design.AppIconSize
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 
@@ -62,21 +68,25 @@ internal fun InboxActionLinks(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelMedium,
         )
-        AppCompactChips {
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-            ) {
-                AppFilterChip(
-                    label = stringResource(R.string.relations_repayment_review),
-                    selected = false,
-                    onClick = onOpenRepaymentReview,
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+        ) {
+            TextButton(onClick = onOpenRepaymentReview) {
+                Text(stringResource(R.string.relations_repayment_review))
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    modifier = Modifier.size(AppIconSize.compact),
                 )
-                AppFilterChip(
-                    label = stringResource(R.string.stats_data_quality_entry_title),
-                    selected = false,
-                    onClick = onOpenDataQuality,
+            }
+            TextButton(onClick = onOpenDataQuality) {
+                Text(stringResource(R.string.stats_data_quality_entry_title))
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    modifier = Modifier.size(AppIconSize.compact),
                 )
             }
         }
