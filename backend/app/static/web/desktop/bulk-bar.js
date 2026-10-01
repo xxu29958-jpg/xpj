@@ -15,10 +15,17 @@
 
     if (editor) {
       editor.addEventListener("keydown", function (event) {
-        if (event.key !== "Escape" || !editor.open) return;
+        if (event.key === "Escape" && editor.open) {
+          event.preventDefault();
+          editor.open = false;
+          editor.querySelector("summary").focus();
+          return;
+        }
+        if (event.key !== "Enter" || event.isComposing || event.target.tagName !== "INPUT") return;
         event.preventDefault();
-        editor.open = false;
-        editor.querySelector("summary").focus();
+        const group = event.target.closest(".bulk-group");
+        const submitter = group && group.querySelector('button[type="submit"]');
+        if (submitter) submitter.click(); // Native validation/CSRF and this field's explicit command.
       });
     }
 

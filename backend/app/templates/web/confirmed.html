@@ -280,6 +280,8 @@
    原生形态 — fail-open, 计数/取消选择等增强态控件此时隐藏。不复制选择状态,
    也不用 body 内样式标签。 #}
 <form id="bulk-form" method="post" action="/web/confirmed/batch-update" class="bulk-bar" data-bulk{% if flash_type == 'error' %} aria-describedby="confirmed-batch-feedback"{% endif %}>
+  {# 更正理由不代表动作选择；无 JS 时需明确激活分类或标签按钮。 #}
+  <input type="submit" hidden disabled>
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
   <input type="hidden" name="home_currency_code" value="{{ home_currency_code }}">

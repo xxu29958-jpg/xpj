@@ -452,6 +452,7 @@ def test_bulk_async_feedback_has_announcement_semantics_in_real_edge(
         "selected": True,
         "closedOnClear": True,
     }
+    assert probe["fieldCommands"] == ["set_category", "set_merchant", "set_tags"]
     batch_mode = probe["batchMode"]
     assert batch_mode == {
         "enhanced": True,

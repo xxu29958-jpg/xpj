@@ -311,6 +311,8 @@
 
 {% if can_write and expenses %}
 <form id="bulk-form" method="post" action="/web/review/bulk" class="bulk-bar" data-bulk>
+  {# 无 JS 时也不能让字段内回车误选第一个批量命令；各按钮仍可原生提交。 #}
+  <input type="submit" hidden disabled>
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
   <input type="hidden" name="filter" value="{{ filter }}">
