@@ -77,6 +77,8 @@ def test_owner_inspects_previews_and_continues_only_frozen_unfinished_files(loca
     assert (result["deleted_files"], result["failed_files"], result["candidate_files"]) == (12, 1, 13)
     assert files[0].is_file() and late.is_file()
     assert "仍有文件待处理" in local_client.get(partial_location).text
+    original_inspection = local_client.get(location).text
+    assert "查看本次处置结果" in original_inspection and "删除本次候选文件" not in original_inspection
     assert _post(local_client, action, confirmed="true") == (partial_location, disposal_id)
     continued_location, child_id = _post(local_client, f"/owner/originals/tasks/{disposal_id}/continue")
     child = _task(child_id)

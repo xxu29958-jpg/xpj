@@ -389,3 +389,10 @@ corrected in the Owner candidate. Local narrow regressions passed 108 cases plus
 two actual archive/DTO privacy cases. Owner/task PostgreSQL cases and the actual
 wide/narrow, both-theme, partial failure and process-interruption journey remain
 unqualified until the next exact source and independent main runs. Group OPEN.
+
+First Owner candidate `69c30f7a` passed both ordinary and all four real PostgreSQL
+lanes, including local task replay, preview, partial continuation, persisted
+restart input, ownership denial and archived-ledger storage. Builds and CodeQL
+also passed. Its contract lane required the task routes' actual concurrency
+guards to be recorded and removal of a needless lint suppression; both are now
+corrected. Actual Owner/Android journey and final source/main remain pending.

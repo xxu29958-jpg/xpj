@@ -97,8 +97,9 @@ def _json_bytes(value: object) -> bytes:
 def _record(collection: str, row: Mapping[str, object]) -> dict[str, object]:
     result = dict(row)
     if collection == "background_task_observations" and result.get("task_type") in ORPHAN_TASK_TYPES:
-        summary = json.loads(str(result.get("result_summary_json") or "{}"))
-        result["result_summary_json"] = json.dumps(public_task_result(str(result["task_type"]), summary))
+        if result.get("result_summary_json") is not None:
+            summary = json.loads(str(result["result_summary_json"]))
+            result["result_summary_json"] = json.dumps(public_task_result(str(result["task_type"]), summary))
         return result
     if collection == "accepted_operations":
         return _receipt_record(result)

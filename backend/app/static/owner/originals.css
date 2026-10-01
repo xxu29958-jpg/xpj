@@ -37,6 +37,23 @@
 
 .original-maintenance select {
     max-width: 100%;
+    padding: 8px 12px;
+    color: var(--text-default);
+    background: var(--surface-card);
+    border: 1px solid var(--border-input);
+    border-radius: 6px;
+}
+
+.original-maintenance a:not(.btn) {
+    color: var(--brand-primary-strong);
+    text-underline-offset: 3px;
+}
+
+.original-maintenance nav a,
+.original-task-history a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
 }
 
 .original-maintenance .kv-grid dd {

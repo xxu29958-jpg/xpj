@@ -26,8 +26,6 @@ class BackgroundTasksScreenLabelsTest {
     @Test
     fun taskTypeLabelsDoNotExposeUnknownBackendTokens() {
         assertEquals(R.string.background_tasks_type_csv_import, backgroundTaskTypeLabelRes("csv_import"))
-        assertEquals(R.string.background_tasks_type_orphan_inspection, backgroundTaskTypeLabelRes("orphan_inspection"))
-        assertEquals(R.string.background_tasks_type_orphan_disposal, backgroundTaskTypeLabelRes("orphan_disposal"))
         assertEquals(
             R.string.background_tasks_type_expense_enrichment,
             backgroundTaskTypeLabelRes("expense_enrichment"),

@@ -426,6 +426,12 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /owner/ledgers/{ledger_id}/archive": Exempt("admin_single_writer", "owner_console", _LEDGER_ARCHIVE, "medium"),
     "POST /owner/ledgers/{ledger_id}/unarchive": Exempt("admin_single_writer", "owner_console", _LEDGER_ARCHIVE),
     "POST /owner/pairing": Exempt("create_row", "owner_console", ("pairing_codes",)),
+    # Inspection creates a read-only task. Disposal/continuation freezes exact
+    # candidates once per original parent; cancel only requests cooperative stop.
+    # Identity serialization, conditional task claims and per-file snapshot/ref
+    # checks guard this work; no mutable financial row or row-version token exists.
+    "POST /owner/originals/inspect": Exempt("enqueue_task", "maintenance", ("background_tasks",)),
+    "POST /owner/originals/tasks/{public_id}/{action}": Exempt("enqueue_task", "maintenance", ("background_tasks",), "high"),
     "POST /owner/settings/{settings_group}": Exempt("external_side_effect", "owner_console", ()),
     "POST /owner/upload-links": Exempt("create_row", "owner_console", _UPLOAD_LINKS),
     "POST /owner/upload-links/{public_id}/delete": Exempt("terminal_flag_flip", "owner_console", _UPLOAD_LINKS),

@@ -4,7 +4,7 @@ import os
 import time
 from pathlib import Path
 
-from app.main import app  # noqa: F401 - uvicorn loads this actual application
+from app.main import app as app
 from app.services import orphan_maintenance_tasks
 
 if os.environ.get("GITHUB_ACTIONS") != "true":

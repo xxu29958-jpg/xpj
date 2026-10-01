@@ -57,6 +57,30 @@ class OriginalMaintenanceJourney:
         public_id = self.submit("/owner/originals/inspect")
         return self.complete(public_id)
 
+    def submit_with_reply_loss(self, action):
+        accepted = []
+
+        def lose_reply(route):
+            response = route.fetch(max_redirects=0)
+            assert response.status == 303, "The original disposal was not accepted before reply loss"
+            accepted.append(parse_qs(urlsplit(response.headers["location"]).query)["task_id"][0])
+            route.abort("connectionclosed")
+
+        self.page.route("**" + action, lose_reply)
+        form = self.page.locator(f'form[action="{action}"]')
+        form.locator('[name="confirmed"]').check()
+        try:
+            with self.page.expect_request_failed(lambda request: request.method == "POST" and request.url.endswith(action)):
+                form.locator('button[type="submit"]').click(no_wait_after=True)
+        finally:
+            self.page.unroute("**" + action, lose_reply)
+        assert len(accepted) == 1
+        self.goto()
+        self.page.locator(".original-task-history a").first.click()
+        recovered = parse_qs(urlsplit(self.page.url).query)["task_id"][0]
+        assert recovered == accepted[0], "Reopening history did not recover the original accepted task"
+        return recovered
+
     def capture(self, name):
         assert not self.page.evaluate("document.documentElement.scrollWidth > innerWidth"), "Owner page overflows"
         self.page.screenshot(path=self.evidence / f"owner-originals-{name}.png", full_page=True)
@@ -123,7 +147,7 @@ class OriginalMaintenanceJourney:
         os.utime(files[1], (1_700_000_000, 1_700_000_000))
         files[0].parent.chmod(0o555)
         try:
-            public_id = self.submit(f"/owner/originals/tasks/{inspection['id']}/dispose")
+            public_id = self.submit_with_reply_loss(f"/owner/originals/tasks/{inspection['id']}/dispose")
             partial = self.complete(public_id)
         finally:
             files[0].parent.chmod(0o755)
@@ -169,8 +193,8 @@ class OriginalMaintenanceJourney:
         self.native.click("打开账户与设置", stable=True)
         self.native.click("后台任务", stable=True)
         wait_for(lambda: self.native.has("处置已核对文件"), "Native did not read the real disposal task")
-        assert self.native.has("检查未引用文件")
-        assert self.native.has("原件存储")
+        self.native.reveal_any("检查未引用文件")
+        self.native.reveal_any("原件存储")
         self.native.capture("original-maintenance-tasks")
 
     def run(self):
@@ -190,4 +214,4 @@ class OriginalMaintenanceJourney:
         assert hashlib.sha256(original.read_bytes()).hexdigest() == self.digest
         return {"partial_disposal": partial, "restart": interrupted, "retained_original_sha256": self.digest,
             "retained_amount_cents": self.baseline["amount"], "history_paginated": True,
-            "verified_leg": "Actual Owner inspection/preview/confirmation, filesystem partial failure, frozen continuation, process kill/restart, task history, both widths/themes and native task observations"}
+            "verified_leg": "Actual Owner inspection/preview/confirmation, accepted reply loss and history recovery, filesystem partial failure, frozen continuation, process kill/restart, paginated task history, both widths/themes and native task observations"}

@@ -72,6 +72,14 @@ def task_origin(task: BackgroundTask) -> dict:
     return {key: value for key, value in _input(task).items() if key in {"inspection_id", "continued_from"}}
 
 
+def disposal_for_inspection(db: Session, inspection: BackgroundTask) -> BackgroundTask | None:
+    return db.scalar(select(BackgroundTask).where(
+        BackgroundTask.public_id == str(uuid5(UUID(inspection.public_id), "dispose")),
+        BackgroundTask.tenant_id == inspection.tenant_id,
+        BackgroundTask.initiated_by_account_id == inspection.initiated_by_account_id,
+        BackgroundTask.task_type == DISPOSE_ORPHANS))
+
+
 def _start(db: Session, *, ledger_id: str, public_id: str, task_type: str, payload: dict) -> BackgroundTask:
     account_id = authorize_local_ledger(db, ledger_id, mutation=True)
     existing = db.scalar(select(BackgroundTask).where(BackgroundTask.public_id == public_id))

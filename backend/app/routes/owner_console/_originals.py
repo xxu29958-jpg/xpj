@@ -59,7 +59,7 @@ def owner_originals(request: Request, ledger_id: str | None = None, task_id: UUI
     choices = maintenance.maintenance_ledgers(db)
     selected = ledger_id or (choices[0].ledger_id if choices else None)
     context = {**_base(request, db), "choices": choices, "selected": selected, "task": None,
-        "tasks": [], "files": [], "client_ref": str(uuid4()), "page": page, "files_page": files_page}
+        "tasks": [], "files": [], "disposal": None, "client_ref": str(uuid4()), "page": page, "files_page": files_page}
     if selected is not None:
         rows = maintenance.list_maintenance_tasks(db, ledger_id=selected, offset=(page - 1) * PAGE_SIZE, limit=PAGE_SIZE + 1)
         context.update(tasks=[_task_vm(row) for row in rows[:PAGE_SIZE]],
@@ -68,6 +68,9 @@ def owner_originals(request: Request, ledger_id: str | None = None, task_id: UUI
         if task_id:
             task = maintenance.read_maintenance_task(db, str(task_id), ledger_id=selected)
             context["task"] = _task_vm(task)
+            if task.task_type == INSPECT_ORPHANS:
+                disposal = maintenance.disposal_for_inspection(db, task)
+                context["disposal"] = _task_vm(disposal) if disposal is not None else None
             candidates = maintenance.task_result(task).get("_candidates", [])
             start = (files_page - 1) * PAGE_SIZE
             context["files"] = [{"number": index + 1, "size": _bytes(item["size"]), "modified_at": item["modified_at"],

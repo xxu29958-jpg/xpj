@@ -6,7 +6,7 @@
   <h1>原件存储</h1>
   <p>查找已经超过保留缓冲时间、也没有被账单、历史回执或待完成清理任务引用的文件。先检查和核对，再明确处置。</p>
   {% if not choices %}
-  <div class="card"><h2>暂时没有可管理的账本</h2><p>完成本机拥有者设置后，可以在这里检查自己的原件存储。</p><a href="/owner">返回本机首页</a></div>
+  <div class="card"><h2>暂时没有可管理的账本</h2><p>请先在本机账本管理中核对拥有者和账本状态，再检查原件存储。</p><a href="/owner/ledgers">查看账本管理</a></div>
   {% else %}
   <section class="card" aria-label="检查范围">
     <form method="get" action="/owner/originals" class="original-maintenance-actions">
@@ -31,6 +31,10 @@
       <h2>{{ task.kind_label }}</h2><span class="badge badge-off">{{ task.status_label }}</span>
     </div>
     <p class="text-meta">开始于 {{ task.created_at | owner_datetime }}</p>
+    {% if disposal %}
+    <p>本次检查已确认处置。下方保留原候选记录，实际结果和未完成部分请回到原处置任务查看。</p>
+    <a class="btn btn-secondary" href="{{ disposal.href }}">查看本次处置结果</a>
+    {% endif %}
     {% if task.inspection_href or task.previous_task_href %}
     <nav class="original-maintenance-actions" aria-label="任务来源">
       {% if task.inspection_href %}<a href="{{ task.inspection_href }}">查看原检查范围</a>{% endif %}
@@ -60,12 +64,12 @@
     {% if task.result.unreadable_files %}<p role="status">有文件或目录未能检查。本次结果只包括已经成功核对的文件；请在存储恢复可用后重新检查。</p>{% endif %}
     {% if task.status == 'completed' and not task.result.candidate_files %}<p>本次没有需要处置的候选文件。</p>{% endif %}
     {% if files %}
-    <h3>核对候选文件</h3>
-    <p class="text-meta">每项都属于这次检查。不确定时先保留，检查本身不会删除。</p>
+    <h3>{{ '原候选记录' if disposal else '核对候选文件' }}</h3>
+    {% if not disposal %}<p class="text-meta">每项都属于这次检查。不确定时先保留，检查本身不会删除。</p>{% endif %}
     <div class="original-candidates">
       {% for file in files %}
       <article class="original-candidate">
-        <a href="{{ file.href }}" target="_blank" rel="noopener"><img src="{{ file.href }}" loading="lazy" alt="文件 {{ file.number }} 预览"><span>打开文件 {{ file.number }}</span></a>
+        {% if disposal %}<span>文件 {{ file.number }}</span>{% else %}<a href="{{ file.href }}" target="_blank" rel="noopener"><img src="{{ file.href }}" loading="lazy" alt="文件 {{ file.number }} 预览"><span>打开文件 {{ file.number }}</span></a>{% endif %}
         <p>{{ file.size }} · {{ file.modified_at | owner_datetime }}</p>
       </article>
       {% endfor %}
@@ -76,7 +80,7 @@
       {% if files_next_href %}<a href="{{ files_next_href }}">下一页文件</a>{% endif %}
     </nav>
     {% endif %}
-    {% if task.status == 'completed' and task.result.candidate_files %}
+    {% if task.status == 'completed' and task.result.candidate_files and not disposal %}
     <form method="post" action="/owner/originals/tasks/{{ task.public_id }}/dispose" class="original-disposal-confirm">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="ledger_id" value="{{ selected }}">
