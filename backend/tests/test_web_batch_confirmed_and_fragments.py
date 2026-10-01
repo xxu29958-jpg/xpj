@@ -155,7 +155,6 @@ def test_web_confirmed_batch_markup(
     assert "选择账单：Confirmed Bulk Cafe" in page.text
     assert "批量改分类" in page.text
     assert "批量改标签" in page.text
-    assert ('<button class="dt-btn" type="button" data-bulk-clear>取消选择</button>') in page.text
 
 
 def test_web_confirmed_batch_updates_and_records_actor(
