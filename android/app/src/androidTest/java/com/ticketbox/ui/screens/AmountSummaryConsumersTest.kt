@@ -122,8 +122,13 @@ class AmountSummaryConsumersTest {
                     nodes[index].performScrollTo()
                         .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(results) }
                     assertTrue("$name must lay out $amount", results.isNotEmpty())
-                    assertTrue("$name must show every digit and currency of $amount at large font", results.all { result ->
-                        !result.hasVisualOverflow && (0 until result.lineCount).none(result::isLineEllipsized)
+                    // String semantics can rebuild the paragraph at the parent's maximum
+                    // width. Its empty trailing space is not clipped text; inspect each line.
+                    assertTrue("$name must keep $amount readable at large font: $results", results.all { result ->
+                        !result.didOverflowHeight && (0 until result.lineCount).all { line ->
+                            !result.isLineEllipsized(line) && result.getLineLeft(line) >= 0f &&
+                                result.getLineRight(line) <= result.size.width
+                        }
                     })
                 }
             }
