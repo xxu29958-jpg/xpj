@@ -54,7 +54,8 @@ class InsightsJourney:
             self.goto("/web/expenses/new")
             form = page.locator('form[action="/web/expenses/new"]')
             form.locator('[name="amount_major"]').fill(amount)
-            form.locator("details.manual-expense-options > summary").click()
+            if not form.locator('[name="merchant"]').is_visible():
+                form.locator("details.manual-expense-options > summary").click()
             form.locator('[name="merchant"]').fill(merchant)
             form.locator('[name="category"]').fill(category)
             form.get_by_role("button", name="记下这笔支出", exact=True).click()
@@ -75,10 +76,20 @@ class InsightsJourney:
 
     def tagged_drill_and_return(self):
         native = self.native
+        native.domain_home("流水")
+        native.reveal_any("TaggedMeal")
+        # The report can read a peer's change while the existing ledger tab still has its old projection.
+        expense_id = self.facts()["expenses"][0]["id"]
+        self.goto(f"/web/expenses/{expense_id}/correct")
+        form = self.page.locator(f'form[action="/web/expenses/{expense_id}/corrections"]')
+        form.locator('[name="amount_yuan"]').fill("13.00")
+        form.locator('[name="reason"]').fill("PeerBeforeDrill")
+        form.locator("[data-correction-submit]").click()
+        wait_for(lambda: self.facts()["expenses"][0]["amount"] == 1300, "The peer change did not commit")
         native.domain_home("洞察")
         native.click("全部标签")
         native.click("#Travel")
-        native.reveal_any("16.00")
+        native.reveal_any("17.00")
         native.click("构成")
         native.reveal_any("餐饮")
         native.capture("insights-tagged-composition")
@@ -87,11 +98,12 @@ class InsightsJourney:
         native.capture("insights-tagged-drill")
         assert not native.has("OrdinaryMeal"), "Category drill discarded the report tag and included an unrelated bill"
         assert not native.has("TaggedRide"), "Category drill discarded the selected category"
+        wait_for(lambda: native.has("13.00"), "The drill kept an older ledger snapshot than its source report")
         native.click("TaggedMeal")
         native.click("更正这笔账单")
         native.fill("DrillAmount", label="更正原因（必填）")
-        native.reveal_any("12.00")
-        native.fill("15.00", previous="12.00")
+        native.reveal_any("13.00")
+        native.fill("15.00", previous="13.00")
         native.click("保存更正")
         wait_for(lambda: self.facts()["expenses"][0]["amount"] == 1500,
             "Correction from the drilled fact did not reach the existing fact owner")
