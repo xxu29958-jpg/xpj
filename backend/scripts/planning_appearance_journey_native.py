@@ -136,9 +136,11 @@ def native_appearance(j, path, image_digest):
     open_appearance(native)
     native.reveal_any("自定义图片")
     native.click("调整构图")
+    wait_for(lambda: native.has("应用背景"), "The saved composition did not reopen in its editor")
     native.capture("appearance-reopened-composition")
     native.click("左移")
     native.click("取消", bottom=True)
+    wait_for(lambda: not native.has("应用背景"), "Cancel did not leave the composition editor")
     assert saved_background(native) == applied and private_images(native) == images
     open_appearance(native)
     native.click("自动匹配系统明暗外观")
