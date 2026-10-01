@@ -72,14 +72,14 @@
           <input form="upload-link-limits-{{ link.public_id }}" type="number" min="0"
                  name="daily_byte_budget"
                  value="{{ link.daily_byte_budget if link.daily_byte_budget is not none else '' }}"
-                 placeholder="默认" class="w-9r">
+                 placeholder="默认" class="inline-input w-9r">
         </td>
         <td>
           <form id="upload-link-limits-{{ link.public_id }}" class="inline" method="post"
                 action="/owner/upload-links/{{ link.public_id }}/limits"></form>
           <input form="upload-link-limits-{{ link.public_id }}" type="number" min="0"
                  name="per_remote_min_interval_seconds"
-                 value="{{ link.per_remote_min_interval_seconds }}" class="w-6r">
+                 value="{{ link.per_remote_min_interval_seconds }}" class="inline-input w-6r">
           <button form="upload-link-limits-{{ link.public_id }}" type="submit" class="btn btn-secondary">保存</button>
           <span class="text-meta hint-under">一般不用改，默认即可</span>
         </td>

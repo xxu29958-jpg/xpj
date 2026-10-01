@@ -526,6 +526,12 @@ textarea {
     color: var(--text-default);
 }
 
+input::placeholder,
+textarea::placeholder {
+    color: var(--text-meta);
+    opacity: 1;
+}
+
 progress {
     overflow: hidden;
     border: 0;

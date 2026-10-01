@@ -77,6 +77,11 @@
     margin-left: var(--space-3);
     transition: border-color var(--motion-fast) var(--ease-standard);
 }
+.inline-input::placeholder {
+    color: var(--text-meta);
+    opacity: 1;
+}
+
 .inline-input:focus,
 .inline-select:focus {
     outline: none;
