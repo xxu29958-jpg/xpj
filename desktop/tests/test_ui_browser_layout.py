@@ -610,8 +610,16 @@ def test_manager_shutdown_state_closes_real_edge_app_window(tmp_path: Path) -> N
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows Edge app-window gate")
-def test_production_edge_process_tracks_the_visible_window_lifetime(tmp_path: Path) -> None:
+@pytest.mark.parametrize("keep_alive", [False, True], ids=["normal", "background-process"])
+def test_production_edge_tracks_the_visible_window_lifetime(tmp_path: Path, monkeypatch, keep_alive: bool) -> None:
     assert discover_edge_executable() is not None
+    popen = desktop_shell.subprocess.Popen
+
+    def launch(arguments, **kwargs):
+        # Chromium's test switch reproduces a background browser without changing OS policy.
+        return popen([*arguments, "--keep-alive-for-test"] if keep_alive else arguments, **kwargs)
+
+    monkeypatch.setattr(desktop_shell.subprocess, "Popen", launch)
     page = tmp_path / "close-window.html"
     page.write_text(
         "<!doctype html><title>Ticketbox lifetime loaded</title>"
@@ -620,12 +628,18 @@ def test_production_edge_process_tracks_the_visible_window_lifetime(tmp_path: Pa
         encoding="utf-8",
     )
 
-    window = desktop_shell.open_app_window(
-        page.as_uri(),
-        profile=tmp_path / "production-edge-profile",
-    )
+    opened: list[desktop_shell.EdgeAppWindow] = []
 
-    assert window is not None
+    def open_window(url: str, *, profile: Path) -> desktop_shell.EdgeAppWindow | None:
+        window = desktop_shell.open_app_window(url, profile=profile)
+        if window is not None:
+            opened.append(window)
+        return window
+
+    profile_root = tmp_path / "production-edge-session"
+    windows = ManagerWindowSession(page.as_uri(), profile_root, opener=open_window)
+    assert windows.open()
+    window = opened[0]
     observations: list[dict[str, object]] = []
     try:
         assert window.is_open()
@@ -637,6 +651,7 @@ def test_production_edge_process_tracks_the_visible_window_lifetime(tmp_path: Pa
         while time.monotonic() < deadline:
             snapshot = _edge_cdp.app_window_snapshot(window.process.pid, "Ticketbox lifetime")
             snapshot["processOpen"] = window.is_open()
+            snapshot["sessionOpen"] = windows.has_open_windows()
             if snapshot["stages"] and not document_seen:
                 document_seen = True
                 deadline = time.monotonic() + 10
@@ -647,10 +662,17 @@ def test_production_edge_process_tracks_the_visible_window_lifetime(tmp_path: Pa
             time.sleep(0.05)
         assert window.is_open() is False, observations
         assert any(row["stages"] for row in observations), observations
-        assert observations[-1]["ownedVisible"] == 0, observations
-        assert observations[-1]["otherProbeVisible"] == 0, observations
+        closed = _edge_cdp.app_window_snapshot(window.process.pid, "Ticketbox lifetime")
+        assert closed["ownedVisible"] == 0, observations
+        assert closed["otherProbeVisible"] == 0, observations
+        assert windows.has_open_windows() is False
+        if keep_alive:
+            assert window.process.poll() is None, "The real background-process counterexample was not exercised"
     finally:
-        window.close()
+        windows.shutdown()
+
+    assert window.process.poll() is not None, "The closed window's background process was abandoned"
+    assert not profile_root.exists()
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows Edge app-window gate")
@@ -705,6 +727,8 @@ def test_production_window_session_owns_every_reopened_edge_process(tmp_path: Pa
         time.sleep(1)
         assert len(opened) == 2
         assert all(window.is_open() for window in opened)
+        assert opened[0].close()
+        assert windows.has_open_windows() and opened[1].is_open()
         assert windows.close_all() is True
         assert all(not window.is_open() for window in opened)
     finally:

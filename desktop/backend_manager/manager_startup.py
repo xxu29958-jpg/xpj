@@ -75,7 +75,9 @@ class ManagerWindowSession:
             if window is None:
                 self._cancel_bootstrap(bootstrap_path)
                 return False
-            self._windows = [existing for existing in self._windows if existing.is_open()]
+            self._windows = [
+                existing for existing in self._windows if existing.is_open() or not existing.close()
+            ]
             self._windows.append(window)
             return True
 
@@ -85,8 +87,10 @@ class ManagerWindowSession:
 
     def has_open_windows(self) -> bool:
         with self._lock:
-            self._windows = [window for window in self._windows if window.is_open()]
-            return bool(self._windows)
+            # Observe every window, and retain closed windows until their processes
+            # are reaped by open/close_all. Background processes are still ours.
+            open_windows = [window.is_open() for window in self._windows]
+            return any(open_windows)
 
     def close_all(self) -> bool:
         with self._lock:

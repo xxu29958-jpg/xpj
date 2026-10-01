@@ -11,6 +11,12 @@ cd desktop
 
 UI 只以 HKLM App Paths 动态发现并校验的 Edge `--app` 窗口打开；每个 app-window 使用独立且不含秘密的 profile（`edge-session`），并通过 Edge 直启参数持有真实、可等待的浏览器进程，最后一个窗口关闭后 Manager 主进程退出。无合格 Edge 时 fail closed，不回退成无法跟踪生命周期的默认浏览器窗口，也不会从用户可写 `PATH` 解析浏览器。Owner 业务任务页仍交给用户默认浏览器打开。
 
+2026-10-01 窗口关闭核准：主干 `2c733aca` 的实际 Windows 门禁观察到可见窗口已经关闭、浏览器进程仍存活，当前 Manager 把进程存活误当成窗口仍打开。本机同版 Edge 的普通路径通过；使用 Chromium 的隔离 keep-alive 测试开关后重现相同错误，未改变系统浏览器策略。该开关只用于稳定复现，不代表已经确定云端的具体后台触发条件。
+
+本次整组范围限于初次开窗、已验证的同用户 reopen、最后窗口关闭、宿主请求关闭及所属进程/profile 清理：以本会话进程实际拥有的窗口判定用户界面是否仍在，关窗后仍负责回收所属进程。沿现有 `EdgeAppWindow` 与 `ManagerWindowSession` 处理；实例证明、bootstrap、账本身份、BFF、财务数据和 Windows 服务生命周期保持各自责任。退出证据须覆盖普通与进程留存两种真实窗口路径、多窗口和宿主清理，并通过 exact source/main 的适用门禁；当前为 OPEN。
+
+实现用 `GetWindowThreadProcessId` 绑定所属 PID，以 `IsWindowVisible` 观察本会话已显示的窗口；所有窗口每轮都被观察，关闭后的对象继续保留至所属进程被回收。测试对照使用 Chromium [keep-alive-for-test](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/chrome/common/chrome_switches.h)；Windows [窗口可见性](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-iswindowvisible)与 Edge [后台进程](https://learn.microsoft.com/en-us/deployedge/microsoft-edge-policies/BackgroundModeEnabled)语义分别核对，不用网页 JavaScript 心跳代表宿主窗口。
+
 默认窗口读取当前用户 ACL 限定的临时 bootstrap HTML，以 POST body 提交独立单次 token，建立 3 个 HttpOnly path-scoped Manager 会话 cookie 后进入干净 `/web`；临时文件在消费、取消或关闭时删除。instance proof、app token 与 control token 均不进入 URL、Edge 参数或 profile 路径。
 
 Manager BFF 只连接 `127.0.0.1`，从 WinCred 临时读取既有 app identity，在进程内注入 Bearer 与固定 `X-Ticketbox-Desktop-Bridge: v1`。它只代理 `/web/**` 和 Web/shared 静态资源，其他 `/api/**`、`/owner`、`/desktop`、认证页及歧义路径全部拒绝；浏览器侧敏感头（控制 token、伪造的 Authorization/Bridge 头、非 allowlist cookie）不会进入后端。Manager 不读数据库、不 iframe `/web`，也不复制账务真值。
@@ -85,4 +91,4 @@ scripts/               Manager provenance 与冻结构建入口
 - **生命周期不进 Manager**：Manager 不自动选择或提权运行安装包；repair、preserved reinstall、upgrade/downgrade 与 complete uninstall 保持 `HOLD`。
 - **零硬编码**:host/port/路径/URL 全来自 `config.py` 解析。
 
-测试：`cd desktop && ..\backend\.venv\Scripts\python.exe -m pytest tests/`。Windows 测试会通过本机 Edge DevTools 协议真实渲染 390×844 / 820×660 的正常与修复态，检查 overflow、控件交叠和可访问名称；还会直接调用生产 `open_app_window()` 验证用户关窗后进程退出，以及页面完全不响应时宿主仍能终止并回收 Edge。缺少 Edge 会使 Windows 门禁失败而不是静默跳过。ruff 配置复用 `desktop/pyproject.toml`。
+测试：`cd desktop && ..\backend\.venv\Scripts\python.exe -m pytest tests/`。Windows 测试会通过本机 Edge DevTools 协议真实渲染 390×844 / 820×660 的正常与修复态，检查 overflow、控件交叠和可访问名称；还会直接调用生产 `open_app_window()` 和窗口会话，验证普通／后台进程留存时的真实关窗、多窗口仍有一个打开及最后关闭后的进程/profile 回收，以及页面完全不响应时宿主仍能终止并回收 Edge。缺少 Edge 会使 Windows 门禁失败而不是静默跳过。ruff 配置复用 `desktop/pyproject.toml`。
