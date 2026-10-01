@@ -17,7 +17,7 @@
     <input type="hidden" name="expected_revision" value="{{ calendar.revision }}">
     <input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
     <label for="calendar-zone">地区时区</label>
-    <input id="calendar-zone" name="timezone_name" value="{{ submitted_timezone }}" list="calendar-zone-options" maxlength="128" required aria-describedby="calendar-zone-help">
+    <input id="calendar-zone" class="inline-input" name="timezone_name" value="{{ submitted_timezone }}" list="calendar-zone-options" maxlength="128" required aria-describedby="calendar-zone-help">
     <datalist id="calendar-zone-options">
       <option value="Asia/Shanghai"></option><option value="Asia/Hong_Kong"></option>
       <option value="Asia/Tokyo"></option><option value="Europe/London"></option>
