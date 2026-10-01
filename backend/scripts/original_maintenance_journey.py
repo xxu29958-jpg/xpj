@@ -70,7 +70,7 @@ class OriginalMaintenanceJourney:
         form = self.page.locator(f'form[action="{action}"]')
         form.locator('[name="confirmed"]').check()
         try:
-            with self.page.expect_request_failed(lambda request: request.method == "POST" and request.url.endswith(action)):
+            with self.page.expect_event("requestfailed", predicate=lambda request: request.method == "POST" and request.url.endswith(action)):
                 form.locator('button[type="submit"]').click(no_wait_after=True)
         finally:
             self.page.unroute("**" + action, lose_reply)
