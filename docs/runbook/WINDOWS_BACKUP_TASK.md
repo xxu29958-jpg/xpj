@@ -27,6 +27,6 @@ Goal：在最终合同允许的 Internal Beta Host 范围内，提供管理员�
 | 业务材料与恢复边界 | 保留原金额、schema、dataset/install identity、原件和凭据；手机／浏览器未同步 intent 不在宿主副本中，不能以冷备代替同步或清空设备。归档核验不代表正式恢复，当前无原安装覆盖、异机接管或 restore-epoch 发布命令。 |
 | Evidence | 小型真实文件失败／变化／中断／损坏反例；实际 Windows ACL、新文件拒绝和源不变；隔离的真实 Windows PG 冷副本可读取原业务行与集群身份，原件摘要一致；实际 Manager 说明；exact source／独立 main 既有门禁与随包 CLI 核验。日常安装和数据不参与演练。 |
 
-实现限于现有受管 Windows 工具的冷备命令、归档读写、直接 Manager 说明与必要验证。没有新生命周期状态机、数据库表、服务、计划任务或恢复发布者。该归档含私密业务和宿主凭据，不是可发给支持人员的诊断包；转存介质应保留访问保护。完整 restore、repair、重装、升级和卸载继续 HOLD。
+实现限于现有受管 Windows 工具的冷备命令、归档读写、直接 Manager 说明与必要验证。没有新生命周期状态机、数据库表、服务、计划任务或恢复发布者。该归档含私密业务和宿主凭据，不是可发给支持人员的诊断包；转存介质应保留访问保护。它不包含 Windows 服务注册、用户凭据库或外部 Tunnel 配置，也不是系统镜像。完整 restore、repair、重装、升级和卸载继续 HOLD。
 
 平台依据：[PostgreSQL 17 文件系统备份](https://www.postgresql.org/docs/17/backup-file.html)要求完整集群且服务器停机；[CreateFileW](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew)提供独占新建和创建时安全描述符。源码、真实 PG、随包 EXE、完整安装恢复与最终 RC 分别资格化。

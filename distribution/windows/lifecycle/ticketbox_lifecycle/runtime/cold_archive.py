@@ -62,26 +62,8 @@ def write_archive(
 def verify_archive(source: BinaryIO) -> dict[str, object]:
     """Read every byte without extracting files or running archived programs."""
     with zipfile.ZipFile(source) as archive:
-        names = archive.namelist()
-        if len(names) != len(set(names)) or MANIFEST not in names:
-            raise LifecycleError("cold_incomplete", "cold copy has no unique completion manifest")
-        manifest = json.loads(archive.read(MANIFEST))
-        if (
-            not isinstance(manifest, dict)
-            or manifest.get("schema") != SCHEMA
-            or manifest.get("complete") is not True
-            or not isinstance(manifest.get("identity"), dict)
-            or not isinstance(manifest.get("entries"), dict)
-        ):
-            raise LifecycleError("cold_incomplete", "cold copy completion manifest is invalid")
-        records = manifest["entries"]
-        if (
-            set(names) != set(records) | {MANIFEST}
-            or any(f"{root}/" not in records for root in COMPONENTS)
-            or not {name for name, entry in records.items() if isinstance(entry, dict)} >= _REQUIRED_FILES
-        ):
-            raise LifecycleError("cold_incomplete", "cold copy component set is incomplete")
-        for name, expected in records.items():
+        manifest = _read_manifest(archive)
+        for name, expected in manifest["entries"].items():
             if expected is None:
                 if not name.endswith("/") or archive.getinfo(name).file_size != 0:
                     raise LifecycleError("cold_corrupt", "cold copy directory entry is invalid")
@@ -91,6 +73,29 @@ def verify_archive(source: BinaryIO) -> dict[str, object]:
                 if observed != expected:
                     raise LifecycleError("cold_corrupt", "cold copy file checksum does not match")
     return _summary(manifest)
+
+
+def _read_manifest(archive: zipfile.ZipFile) -> dict[str, object]:
+    names = archive.namelist()
+    if len(names) != len(set(names)) or MANIFEST not in names:
+        raise LifecycleError("cold_incomplete", "cold copy has no unique completion manifest")
+    manifest = json.loads(archive.read(MANIFEST))
+    if (
+        not isinstance(manifest, dict)
+        or manifest.get("schema") != SCHEMA
+        or manifest.get("complete") is not True
+        or not isinstance(manifest.get("identity"), dict)
+        or not isinstance(manifest.get("entries"), dict)
+    ):
+        raise LifecycleError("cold_incomplete", "cold copy completion manifest is invalid")
+    records = manifest["entries"]
+    if (
+        set(names) != set(records) | {MANIFEST}
+        or any(f"{root}/" not in records for root in COMPONENTS)
+        or not _REQUIRED_FILES.issubset(records)
+    ):
+        raise LifecycleError("cold_incomplete", "cold copy component set is incomplete")
+    return manifest
 
 
 def _scan(roots: Mapping[str, Path]) -> dict[str, Path | None]:
