@@ -30,8 +30,9 @@
     /* 自定义背景遮罩（全局背景批）：用户照片亮度不可预知，同一固定层上叠
        --surface-app 基调 veil 保正文可读；reader/render owner 是
        appearance-bootstrap.js TicketboxBackground，消费点 shell.css /
-       auth-login.css 的 body::before。 */
-    --surface-user-veil: linear-gradient(rgba(245, 249, 246, 0.58), rgba(245, 249, 246, 0.58));
+       auth-login.css / currency-adoption.css 的 body::before。
+       全黑／全白合法图片下也须保住 meta 正文的 4.5:1，图片仍保留透明可见层。 */
+    --surface-user-veil: linear-gradient(rgba(245, 249, 246, 0.92), rgba(245, 249, 246, 0.92));
 
     /* Text — 暖墨四级, meta 级在暖纸/卡上保 ≥4.5:1, 最重 SemiBold 即止 */
     --text-default: #1a201c;
@@ -156,9 +157,8 @@
     --surface-raised: #252b26;
     --surface-nav: #161917;
     --surface-sunken: #212623;
-    /* 自定义背景遮罩（全局背景批）：同 paper 块注释；深色下文为浅色，
-       veil 略强一档。 */
-    --surface-user-veil: linear-gradient(rgba(17, 21, 18, 0.66), rgba(17, 21, 18, 0.66));
+    /* 自定义背景遮罩：同 paper 的阅读下限，使用深色基调。 */
+    --surface-user-veil: linear-gradient(rgba(17, 21, 18, 0.92), rgba(17, 21, 18, 0.92));
 
     /* Text */
     --text-default: #e9edea;
