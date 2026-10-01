@@ -115,20 +115,21 @@ class BudgetOfflineReadingConnectedTest {
             .fetchSemanticsNodes().isNotEmpty() }
         compose.onNode(originalAmount, useUnmergedTree = true).performScrollTo()
             .assertTextEquals("1200").assertIsNotEnabled()
-        compose.onNodeWithTag("budget-read-source").performScrollTo().assertIsDisplayed()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("budget-read-source"))
+        compose.onNodeWithTag("budget-read-source").assertIsDisplayed()
         assertNotNull("The online read must expose its actual read time", originalReadTime)
         assertEquals("Reopening must not manufacture a new fetch time", originalReadTime, readTime())
         assertTrue(sourceText().contains("离线"))
         preview("budget-offline-editor")
 
         compose.runOnIdle { harness.shell.selectPrimaryDomain(PrimaryDomain.Insights.key) }
-        compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("overview-module-budget"))
-            .fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithTag("overview-module-budget").performScrollTo().assertIsDisplayed()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("overview-module-budget"))
+        compose.onNodeWithTag("overview-module-budget").assertIsDisplayed()
         val remaining = context.getString(com.ticketbox.R.string.stats_budget_progress_remaining, "¥789")
         compose.waitUntil(5_000) { compose.onAllNodes(hasText(remaining)).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText(remaining).performScrollTo().assertIsDisplayed()
-        compose.onNodeWithTag("budget-read-source").performScrollTo().assertIsDisplayed()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("budget-read-source"))
+        compose.onNodeWithTag("budget-read-source").assertIsDisplayed()
         assertEquals("Insights must identify the same saved query", originalReadTime, readTime())
         assertTrue(sourceText().contains("离线"))
         assertEquals(originalIntent, harness.fixture.stored())

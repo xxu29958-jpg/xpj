@@ -237,6 +237,8 @@ Web 当前本机证据（`ae6a95ba`）：两页真实模板／CSS／JS 在 360/7
 
 同一 `ac46d8d9` 的其余设备分片也返回两个失败，均已单独核对：预算离线旅程在等待尚未进入 LazyColumn 视口的编辑区时超时，现使用已有实际滚动动作抵达原字段，再核对原 1200 日元、禁用状态、读取时间和意图字节；收入创建旅程在软件键盘开启时触点保存后没有得到本地回执，现与同文件另一完整创建旅程一致，先收起键盘再触控保存，原日元／跨月／回复丢失重放断言全部保留。它没有证明键盘开启的固定操作区，后者仍是预核准的下一组。该源真实 Web＋Android 默认集成旅程 `36841859551` 已通过，但不替代修订测试的最终源资格。
 
+修订源 `0607ba64` 的 CI `36844585240`、CodeQL `36844584866` 及实际 Connected `36844584671` 的 1/3、3/3 通过：两个页头排版断言及其原历史／欠款后置条件已成立。2/3 的 164 项仅失败预算离线旅程在读完原金额后定位已离开 lazy 视口的来源说明。现把该旅程预算页与洞察页余下的三处定位统一改为列表自身的 `performScrollToNode`，保留原金额、禁用状态、原读取时间及原意图字节断言。生产实现未变；修订后的完整源资格、最终画面与独立 main 资格继续 OPEN。
+
 ## 2026-10-01 键盘开启时的弹层任务操作整组（OPEN）
 
 事前核准：`AppSheetScaffold` 是现有弹层的滚动／键盘避让 Owner；需要在输入时完成原任务的 20 个消费者为 DebtCreate、DebtAction、MemberProposal、IncomePlanCreate、IncomePlanEditor、RecurringEditor、RecurringOccurrence（关联所选付款）、ManualExpense、LedgerBulkEdit（分类／标签两命令）、LedgerTools（当前列表搜索／筛选完成）、ExpenseEditCategory、ItemsEditor、SplitsEditor、BillSplitInvite、ExpenseCorrection、FactOffset、FactVoidOffset、MissingAmount、QuickCategory、QuickMerchant。ExpenseEditSheetScaffold 和 ReviewSheetScaffold 只是既有外壳，统一转交同一操作槽，不各造布局或写入 Owner。Budget/Income/Goal/Recurring 历史、MonthPicker、DebtKind、RepaymentDraftTarget、收件显示选项、确认/重复处理以及手工录入币种准备态已核对：无本组文本输入，保留其内容滚动。SpendingGoal／DebtGoal／ExpenseEdit 全屏表单已有 AppPageScaffold 的固定操作区，不迁入第二弹层机制。
