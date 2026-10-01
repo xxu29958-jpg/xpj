@@ -8,7 +8,7 @@
     <h1 class="page-title">预算修改记录</h1>
     <p class="product-page-summary">{{ month }} · 回看每次保存的安排；这里的金额不是当时的实际支出。</p>
   </div>
-  <a class="btn-secondary" href="/web/budgets?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ month }}">回到本月预算</a>
+  <a class="product-button product-button--quiet" href="/web/budgets?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ month }}">回到本月预算</a>
 </header>
 {% set labels = {'baseline': '开始保留记录', 'create': '建立预算', 'edit': '修改预算', 'archive': '移入回收站', 'restore': '恢复预算'} %}
 {% for entry in history.items %}
@@ -28,8 +28,12 @@
   {% else %}<p class="text-muted">未单独设置分类额度。</p>{% endif %}
 </section>
 {% else %}<section class="product-panel product-panel--padded"><p>这个月还没有保存过预算记录。</p></section>{% endfor %}
+{% if history.next_before_version or before_version %}
+<nav class="product-pagination" aria-label="预算修改记录分页">
 {% if history.next_before_version %}
-<a class="btn-secondary" href="/web/budgets/history?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ month }}&amp;before_version={{ history.next_before_version }}">更早的记录</a>
+<a class="product-button product-button--quiet" href="/web/budgets/history?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ month }}&amp;before_version={{ history.next_before_version }}">更早的记录</a>
 {% endif %}
-{% if before_version %}<a class="btn-secondary" href="/web/budgets/history?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ month }}">最近的记录</a>{% endif %}
+{% if before_version %}<a class="product-button product-button--quiet" href="/web/budgets/history?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ month }}">最近的记录</a>{% endif %}
+</nav>
+{% endif %}
 {% endblock %}
