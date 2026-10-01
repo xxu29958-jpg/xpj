@@ -21,6 +21,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 from app.errors import AppError
 from app.services.original_read_service import read_original_snapshot, recorded_original_digest
 from app.services.original_reference_queries import historical_original_is_cleaned
+from app.services.orphan_task_results import ORPHAN_TASK_TYPES, public_task_result
 from app.services.portable_export_queries import PORTABLE_COLLECTION_SCOPES
 
 MAX_EXPORT_BYTES = 2 * 1024 * 1024 * 1024
@@ -95,6 +96,10 @@ def _json_bytes(value: object) -> bytes:
 
 def _record(collection: str, row: Mapping[str, object]) -> dict[str, object]:
     result = dict(row)
+    if collection == "background_task_observations" and result.get("task_type") in ORPHAN_TASK_TYPES:
+        summary = json.loads(str(result.get("result_summary_json") or "{}"))
+        result["result_summary_json"] = json.dumps(public_task_result(str(result["task_type"]), summary))
+        return result
     if collection == "accepted_operations":
         return _receipt_record(result)
     if collection != "expenses":

@@ -113,8 +113,9 @@ def list_ledgers_for_account(db: Session, *, account_id: int) -> list[LedgerSumm
     return summaries
 
 
-def list_managed_ledgers_for_account(db: Session, *, account_id: int) -> list[LedgerSummary]:
-    """Return active ledgers where the account is the active owner.
+def list_managed_ledgers_for_account(db: Session, *, account_id: int,
+                                    include_archived: bool = False) -> list[LedgerSummary]:
+    """Return owned ledgers; local storage maintenance may include archived ones.
 
     Use this for management surfaces. Plain visibility is broader than
     authority: a member/viewer can see a ledger, but must not mint pairing
@@ -128,7 +129,7 @@ def list_managed_ledgers_for_account(db: Session, *, account_id: int) -> list[Le
             .where(LedgerMember.role == "owner")
             .where(LedgerMember.disabled_at.is_(None))
             .where(Ledger.owner_account_id == account_id)
-            .where(Ledger.archived_at.is_(None))
+            .where(True if include_archived else Ledger.archived_at.is_(None))
             .order_by(Ledger.id.asc())
         ).all()
     )

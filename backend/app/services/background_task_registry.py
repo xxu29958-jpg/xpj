@@ -64,6 +64,8 @@ def runtime_handler_registry() -> TaskHandlerRegistry:
     dependencies. Tests that need stubs use background_task_service's isolated
     ContextVar registry.
     """
+    from app.services.orphan_maintenance_tasks import run_orphan_disposal, run_orphan_inspection
+    from app.services.orphan_task_results import DISPOSE_ORPHANS, INSPECT_ORPHANS
     from app.services.pending_enrichment_task_service import (
         PENDING_EXPENSE_ENRICHMENT_TASK_TYPE,
         prepare_pending_enrichment_completion,
@@ -75,6 +77,8 @@ def runtime_handler_registry() -> TaskHandlerRegistry:
         {
             PENDING_EXPENSE_ENRICHMENT_TASK_TYPE: run_pending_expense_enrichment_task,
             PENDING_EXPENSE_FX_TASK_TYPE: run_pending_expense_fx_task,
+            INSPECT_ORPHANS: run_orphan_inspection,
+            DISPOSE_ORPHANS: run_orphan_disposal,
         },
         completions={PENDING_EXPENSE_ENRICHMENT_TASK_TYPE: prepare_pending_enrichment_completion},
     )

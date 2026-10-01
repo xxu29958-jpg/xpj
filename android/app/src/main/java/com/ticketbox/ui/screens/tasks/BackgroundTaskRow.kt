@@ -49,6 +49,10 @@ internal fun BackgroundTaskRow(
         BackgroundTaskProgress(task)
         BackgroundTaskMessage(task)
         BackgroundTaskError(task)
+        if (task.taskType == "orphan_inspection" || task.taskType == "orphan_disposal") {
+            Text(stringResource(R.string.background_tasks_original_maintenance_source),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         if (task.sourceExpenseId != null) {
             TextButton(onClick = onOpenSource) { Text(stringResource(R.string.background_tasks_open_source)) }
         } else if (task.taskType == "expense_enrichment") {

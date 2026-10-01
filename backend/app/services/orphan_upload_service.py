@@ -45,6 +45,10 @@ def _plain_path(path: Path, root: Path) -> bool:
     return True
 
 
+def _raise_scan_error(error: OSError) -> None:
+    raise error
+
+
 def _managed_files(settings, tenant_id: str) -> Iterator[Path]:
     root = settings.upload_dir.resolve()
     roots = [root / tenant_id]
@@ -53,7 +57,7 @@ def _managed_files(settings, tenant_id: str) -> Iterator[Path]:
     for scan_root in roots:
         if not scan_root.is_dir() or not _plain_path(scan_root, root):
             continue
-        for directory, children, names in os.walk(scan_root, followlinks=False):
+        for directory, children, names in os.walk(scan_root, followlinks=False, onerror=_raise_scan_error):
             children[:] = [name for name in children if _plain_path(Path(directory) / name, root)]
             for name in names:
                 path = Path(directory) / name
@@ -98,6 +102,22 @@ def _inspect_chunk(db: Session, tenant_id: str, paths: list[tuple[str, Path]], r
         result["candidate_bytes"] += candidate["size"]
 
 
+def _candidate_path(path: Path, *, tenant_id: str, referenced: set[str], cutoff: datetime, result: dict) -> tuple[str, Path] | None:
+    reference = upload_reference_for_path(path)
+    if resolve_upload_path_for_tenant(reference, tenant_id) is None:
+        return None
+    result["scanned_files"] += 1
+    if reference in referenced:
+        result["protected_files"] += 1
+        return None
+    try:
+        info = path.stat()
+    except OSError:
+        result["unreadable_files"] += 1
+        return None
+    return (reference, path) if datetime.fromtimestamp(info.st_mtime, UTC) <= cutoff else None
+
+
 def inspect_orphans(db: Session, tenant_id: str, *, settings,
                     checkpoint: Callable[[dict], None]) -> dict:
     """Checkpoint inspection only; no file is deleted by this operation."""
@@ -109,18 +129,9 @@ def inspect_orphans(db: Session, tenant_id: str, *, settings,
     pending = []
     try:
         for path in _managed_files(settings, tenant_id):
-            reference = upload_reference_for_path(path)
-            if resolve_upload_path_for_tenant(reference, tenant_id) is None:
-                continue
-            result["scanned_files"] += 1
-            try:
-                info = path.stat()
-                if reference in referenced:
-                    result["protected_files"] += 1
-                elif datetime.fromtimestamp(info.st_mtime, UTC) <= cutoff:
-                    pending.append((reference, path))
-            except OSError:
-                result["unreadable_files"] += 1
+            candidate = _candidate_path(path, tenant_id=tenant_id, referenced=referenced, cutoff=cutoff, result=result)
+            if candidate is not None:
+                pending.append(candidate)
             if result["scanned_files"] % CHUNK_SIZE == 0:
                 _inspect_chunk(db, tenant_id, pending, result, cutoff)
                 pending.clear()
@@ -130,6 +141,24 @@ def inspect_orphans(db: Session, tenant_id: str, *, settings,
     _inspect_chunk(db, tenant_id, pending, result, cutoff)
     checkpoint(result)
     return result
+
+
+def _dispose_claimed(candidate: dict, *, tenant_id: str, referenced: set[str]) -> str:
+    reference = candidate["reference"]
+    path = resolve_upload_path_for_tenant(reference, tenant_id)
+    if reference in referenced:
+        return "referenced"
+    if path is None or upload_reference_for_path(path) != reference:
+        return "changed"
+    try:
+        if _snapshot(path, reference) != candidate:
+            return "changed"
+        path.unlink()
+        return "deleted"
+    except FileNotFoundError:
+        return "absent"
+    except OSError:
+        return "failed"
 
 
 def dispose_chunk(db: Session, tenant_id: str, candidates: list[dict]) -> dict[str, str]:
@@ -144,23 +173,7 @@ def dispose_chunk(db: Session, tenant_id: str, candidates: list[dict]) -> dict[s
             outcomes[reference] = "busy"
     referenced = referenced_upload_paths(db, tenant_id)
     for candidate in claimed:
-        reference = candidate["reference"]
-        path = resolve_upload_path_for_tenant(reference, tenant_id)
-        if reference in referenced:
-            outcomes[reference] = "referenced"
-        elif path is None or upload_reference_for_path(path) != reference:
-            outcomes[reference] = "changed"
-        else:
-            try:
-                if _snapshot(path, reference) != candidate:
-                    outcomes[reference] = "changed"
-                    continue
-                path.unlink()
-                outcomes[reference] = "deleted"
-            except FileNotFoundError:
-                outcomes[reference] = "absent"
-            except OSError:
-                outcomes[reference] = "failed"
+        outcomes[candidate["reference"]] = _dispose_claimed(candidate, tenant_id=tenant_id, referenced=referenced)
     return outcomes
 
 

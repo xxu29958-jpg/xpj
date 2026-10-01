@@ -66,7 +66,7 @@ def _seed(group):
                 "budget-recurring": "预算与固定支出验证账本", "relationships": "往来来源验证账本",
                 "portable-downloads": "数据出口验证账本", "backstage": "后台识别验证账本",
                 "notifications": "通知原任务验证账本", "reference-library": "资料库联动验证账本",
-                "financial-facts": "财务事实联动验证账本"}[group], device_name="隔离浏览器")
+                "financial-facts": "财务事实联动验证账本", "original-maintenance": "原件维护验证账本"}[group], device_name="隔离浏览器")
         activate_test_currency_authority(db, "CNY")
         db.commit()
         return fixture
@@ -172,6 +172,9 @@ def _journey(page, native: PlanningAndroid, fixture, evidence: Path):
 
 
 def _run_group(args, page, native, fixture):
+    if args.group == "original-maintenance":
+        from scripts.original_maintenance_journey import OriginalMaintenanceJourney
+        return OriginalMaintenanceJourney(page, native, fixture, args.evidence, BASE_URL, args.restart_backend).run()
     if args.group == "financial-facts":
         from scripts.financial_journey import FinancialJourney
         return FinancialJourney(page, native, fixture, args.evidence, BASE_URL, args.restart_backend).run()
@@ -222,14 +225,15 @@ def _run_consumers(args, native, fixture):
     native.adb("install", "-r", str(args.apk.resolve()))
     native.adb("shell", "pm", "grant", "com.ticketbox", "android.permission.POST_NOTIFICATIONS")
     with (args.evidence / "server.log").open("w", encoding="utf-8") as server_log:
-        application = "scripts.portable_journey_transport:app" if args.group == "portable-downloads" else "app.main:app"
+        application = {"portable-downloads": "scripts.portable_journey_transport:app",
+            "original-maintenance": "scripts.original_maintenance_journey_transport:app"}.get(args.group, "app.main:app")
         server = subprocess.Popen([sys.executable, "-m", "uvicorn", application, "--host", "127.0.0.1",
             "--port", str(PORT), "--no-access-log"], stdout=server_log, stderr=subprocess.STDOUT)
 
-        def restart_backend():
+        def restart_backend(*, abrupt=False):
             nonlocal server
             # This process belongs to the isolated cloud journey, never the daily installation.
-            server.terminate()
+            server.kill() if abrupt else server.terminate()
             server.wait(timeout=20)
             server = subprocess.Popen([sys.executable, "-m", "uvicorn", application, "--host", "127.0.0.1",
                 "--port", str(PORT), "--no-access-log"], stdout=server_log, stderr=subprocess.STDOUT)
@@ -266,7 +270,7 @@ def main() -> int:
     parser.add_argument("--serial", required=True)
     parser.add_argument("--apk", type=Path, required=True)
     parser.add_argument("--evidence", type=Path, required=True)
-    parser.add_argument("--group", choices=("income-goals", "budget-recurring", "relationships", "portable-downloads", "backstage", "notifications", "reference-library", "financial-facts"), default="income-goals")
+    parser.add_argument("--group", choices=("income-goals", "budget-recurring", "relationships", "portable-downloads", "backstage", "notifications", "reference-library", "financial-facts", "original-maintenance"), default="income-goals")
     args = parser.parse_args()
     if os.environ.get("GITHUB_ACTIONS") != "true":
         raise RuntimeError("Run this sustained PostgreSQL/native journey in the isolated cloud job")

@@ -373,3 +373,19 @@ Before implementation, the whole exit includes:
 Changes are limited to those attachment/maintenance/task consumers and their
 necessary verification. Daily data, installation/binding changes and the existing
 Windows lifecycle HOLDs remain outside construction and test execution.
+
+PR #482 now implements this scope on integrated main `0e4932d9`: one retained
+reference query, publication leases, frozen file identities and Local Owner
+inspection/confirmation through the existing durable task owner. Continuations
+keep the original inspection and retry only unfinished candidates. Active and
+archived managed ledgers, private previews, paginated task/file history, generic
+Android task observations and portable result redaction are included. No new
+task table, financial writer or Android storage-management surface was added.
+
+Core candidate `aefd43b6` passed all four real-PostgreSQL lanes, including the
+retained receipt, in-flight upload and frozen disposal cases. Its ordinary lanes
+and contract lane exposed stale test references and nesting checks; those are
+corrected in the Owner candidate. Local narrow regressions passed 108 cases plus
+two actual archive/DTO privacy cases. Owner/task PostgreSQL cases and the actual
+wide/narrow, both-theme, partial failure and process-interruption journey remain
+unqualified until the next exact source and independent main runs. Group OPEN.

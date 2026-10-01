@@ -1855,6 +1855,25 @@
         "title": "Body_owner_calendar_post_owner_ledgers__ledger_id__calendar_post",
         "type": "object"
       },
+      "Body_owner_inspect_originals_owner_originals_inspect_post": {
+        "properties": {
+          "client_ref": {
+            "format": "uuid",
+            "title": "Client Ref",
+            "type": "string"
+          },
+          "ledger_id": {
+            "title": "Ledger Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ledger_id",
+          "client_ref"
+        ],
+        "title": "Body_owner_inspect_originals_owner_originals_inspect_post",
+        "type": "object"
+      },
       "Body_owner_learning_maintenance_dismiss_post_owner_learning_maintenance_dismiss_decision_post": {
         "properties": {
           "decision_public_id": {
@@ -1879,6 +1898,24 @@
           "name"
         ],
         "title": "Body_owner_ledgers_post_owner_ledgers_post",
+        "type": "object"
+      },
+      "Body_owner_original_action_owner_originals_tasks__public_id___action__post": {
+        "properties": {
+          "confirmed": {
+            "default": false,
+            "title": "Confirmed",
+            "type": "boolean"
+          },
+          "ledger_id": {
+            "title": "Ledger Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ledger_id"
+        ],
+        "title": "Body_owner_original_action_owner_originals_tasks__public_id___action__post",
         "type": "object"
       },
       "Body_owner_pairing_post_owner_pairing_post": {
@@ -44667,6 +44704,257 @@
           }
         },
         "summary": "Owner Ledger Unarchive Post",
+        "tags": [
+          "owner-console"
+        ]
+      }
+    },
+    "/owner/originals": {
+      "get": {
+        "operationId": "owner_originals_owner_originals_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ledger Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "task_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Task Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "files_page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Files Page",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Owner Originals",
+        "tags": [
+          "owner-console"
+        ]
+      }
+    },
+    "/owner/originals/inspect": {
+      "post": {
+        "operationId": "owner_inspect_originals_owner_originals_inspect_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_owner_inspect_originals_owner_originals_inspect_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Owner Inspect Originals",
+        "tags": [
+          "owner-console"
+        ]
+      }
+    },
+    "/owner/originals/tasks/{public_id}/files/{index}": {
+      "get": {
+        "operationId": "owner_orphan_preview_owner_originals_tasks__public_id__files__index__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "index",
+            "required": true,
+            "schema": {
+              "title": "Index",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": true,
+            "schema": {
+              "title": "Ledger Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Owner Orphan Preview",
+        "tags": [
+          "owner-console"
+        ]
+      }
+    },
+    "/owner/originals/tasks/{public_id}/{action}": {
+      "post": {
+        "operationId": "owner_original_action_owner_originals_tasks__public_id___action__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "action",
+            "required": true,
+            "schema": {
+              "enum": [
+                "dispose",
+                "continue",
+                "cancel"
+              ],
+              "title": "Action",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_owner_original_action_owner_originals_tasks__public_id___action__post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Owner Original Action",
         "tags": [
           "owner-console"
         ]

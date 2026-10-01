@@ -8,7 +8,7 @@ on:
       group:
         description: Actual consumer group to exercise
         type: choice
-        options: [budget-recurring, income-goals, relationships, portable-downloads, backstage, notifications, reference-library, financial-facts]
+        options: [budget-recurring, income-goals, relationships, portable-downloads, backstage, notifications, reference-library, financial-facts, original-maintenance]
         default: budget-recurring
   pull_request:
     branches: [main]
@@ -17,6 +17,7 @@ on:
       - backend/scripts/planning_*journey*.py
       - backend/scripts/reference_journey*.py
       - backend/scripts/financial_journey*.py
+      - backend/scripts/original_maintenance_journey*.py
   push:
     branches: [main]
     paths:
@@ -24,6 +25,7 @@ on:
       - backend/scripts/planning_*journey*.py
       - backend/scripts/reference_journey*.py
       - backend/scripts/financial_journey*.py
+      - backend/scripts/original_maintenance_journey*.py
 
 permissions:
   contents: read
