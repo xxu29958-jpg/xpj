@@ -37,6 +37,8 @@ class InsightsJourney:
         assert response.ok, f"The actual insights consumer failed: {path} ({response.status})"
 
     def capture(self, name):
+        # ECharts resizes on the next rendering frame after a viewport change.
+        self.page.wait_for_function("document.documentElement.scrollWidth <= innerWidth", timeout=3000)
         assert not self.page.evaluate("document.documentElement.scrollWidth > innerWidth"), "Insights overflows"
         self.page.screenshot(path=self.evidence / f"web-insights-{name}.png", full_page=True)
 
