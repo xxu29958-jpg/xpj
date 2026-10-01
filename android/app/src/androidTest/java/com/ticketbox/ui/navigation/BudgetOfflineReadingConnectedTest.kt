@@ -12,6 +12,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -19,6 +20,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.navigation.compose.rememberNavController
 import androidx.test.core.app.ApplicationProvider
@@ -104,8 +106,8 @@ class BudgetOfflineReadingConnectedTest {
         compose.onNodeWithText("¥789").assertIsDisplayed()
         preview("budget-offline-plans")
         compose.onNodeWithTag("plan_destination_budget").performScrollTo().performClick()
-        compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("budget_total_amount"))
-            .fetchSemanticsNodes().isNotEmpty() }
+        // The pending-command summary can put the editor below the lazy viewport.
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("budget_total_amount"))
         // The original queued command locks editing; disabled fields retain text but have no SetText action.
         val originalAmount = SemanticsMatcher.keyIsDefined(SemanticsProperties.EditableText) and
             hasAnyAncestor(hasTestTag("budget_total_amount"))
