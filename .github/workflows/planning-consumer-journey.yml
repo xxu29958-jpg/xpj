@@ -8,7 +8,7 @@ on:
       group:
         description: Actual consumer group to exercise
         type: choice
-        options: [budget-recurring, income-goals, relationships, portable-downloads, backstage, notifications, reference-library, financial-facts]
+        options: [budget-recurring, income-goals, relationships, portable-downloads, backstage, notifications, reference-library, financial-facts, original-maintenance]
         default: budget-recurring
   pull_request:
     branches: [main]
@@ -17,6 +17,7 @@ on:
       - backend/scripts/planning_*journey*.py
       - backend/scripts/reference_journey*.py
       - backend/scripts/financial_journey*.py
+      - backend/scripts/original_maintenance_journey*.py
   push:
     branches: [main]
     paths:
@@ -24,6 +25,7 @@ on:
       - backend/scripts/planning_*journey*.py
       - backend/scripts/reference_journey*.py
       - backend/scripts/financial_journey*.py
+      - backend/scripts/original_maintenance_journey*.py
 
 permissions:
   contents: read
@@ -100,6 +102,9 @@ jobs:
         run: |
           ./.ci-venv/bin/python -m pip install -r requirements-ocr.txt
           sudo apt-get install -y fonts-noto-cjk
+      - name: Install the sample receipt font for the original maintenance journey
+        if: ${{ env.TICKETBOX_JOURNEY_GROUP == 'original-maintenance' }}
+        run: sudo apt-get install -y fonts-noto-cjk
       - name: Prepare the existing sealed smoke database
         working-directory: backend
         env:

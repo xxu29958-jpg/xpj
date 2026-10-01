@@ -20,6 +20,8 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 from app.errors import AppError
 from app.services.original_read_service import read_original_snapshot, recorded_original_digest
+from app.services.original_reference_queries import historical_original_is_cleaned
+from app.services.orphan_task_results import ORPHAN_TASK_TYPES, public_task_result
 from app.services.portable_export_queries import PORTABLE_COLLECTION_SCOPES
 
 MAX_EXPORT_BYTES = 2 * 1024 * 1024 * 1024
@@ -94,6 +96,11 @@ def _json_bytes(value: object) -> bytes:
 
 def _record(collection: str, row: Mapping[str, object]) -> dict[str, object]:
     result = dict(row)
+    if collection == "background_task_observations" and result.get("task_type") in ORPHAN_TASK_TYPES:
+        if result.get("result_summary_json") is not None:
+            summary = json.loads(str(result["result_summary_json"]))
+            result["result_summary_json"] = json.dumps(public_task_result(str(result["task_type"]), summary))
+        return result
     if collection == "accepted_operations":
         return _receipt_record(result)
     if collection != "expenses":
@@ -232,17 +239,10 @@ def _observe_original(package: ZipFile, reference: dict[str, object], ledger_id:
 
 def _history_reference(row: Mapping[str, object]) -> dict[str, object]:
     source = row.get("image_path")
-    cleaned = row.get("image_deleted_at") is not None or bool(row.get("historical_image_cleaned"))
-    if source and source == row.get("current_image_path") and row.get("current_image_deleted_at") is not None:
-        cleaned = True
-    cleanup = row.get("attachment_cleanup_request")
-    image = cleanup.get("image") if isinstance(cleanup, dict) else None
-    if isinstance(image, dict) and image.get("reference") == source and image.get("outcome") == "deleted":
-        cleaned = True
     return {"reference_id": f"expense:{row['expense_id']}:accepted:{row['accepted_operation_id']}",
         "expense_id": row["expense_id"], "accepted_operation_id": row["accepted_operation_id"],
         "accepted_at": row.get("accepted_at"), "kind": "original", "source": source,
-        "expected_sha256": row.get("image_hash"), "cleaned": cleaned}
+        "expected_sha256": row.get("image_hash"), "cleaned": historical_original_is_cleaned(row)}
 
 
 def _write_originals(package: ZipFile, directory: Path, ledger_id: str,

@@ -130,6 +130,9 @@
     <string name="background_tasks_source_unavailable">原账单当前不可访问，请到收件或流水核对。</string>
     <string name="background_tasks_type_csv_import">CSV 导入</string>
     <string name="background_tasks_type_expense_enrichment">小票识别</string>
+    <string name="background_tasks_type_orphan_inspection">检查未引用文件</string>
+    <string name="background_tasks_type_orphan_disposal">处置已核对文件</string>
+    <string name="background_tasks_original_maintenance_source">在本机管理后台的「原件存储」查看明细或继续处理。</string>
     <string name="background_tasks_type_unknown">后台任务</string>
     <string name="background_tasks_status_queued">排队中</string>
     <string name="background_tasks_status_running">运行中</string>

@@ -213,8 +213,13 @@ def _thumbnail_cleanup_missing() -> list[str]:
             (
                 'execute_attachment_cleanup(db, expense, reason="after_confirm", settings_provider=get_settings)',
                 'execute_attachment_cleanup(db, expense, reason=f"{status}_retention", settings_provider=get_settings)',
-                "pending_cleanup_references(cleanup_request)",
+                "run_orphan_cleanup(db, tenant_id, settings=get_settings(), dry_run=dry_run)",
             ),
+        ),
+        *_require_tokens(
+            "retained original references for orphan protection",
+            _read("app/services/original_reference_queries.py"),
+            ("pending_cleanup_references(cleanup_request)", "def original_receipt_references_query("),
         ),
         *_require_tokens(
             "durable attachment cleanup serialization",

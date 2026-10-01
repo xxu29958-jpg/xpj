@@ -344,3 +344,55 @@ Four selected Android Connected cases also passed without skips; that selection
 does not satisfy or replace the existing full 61-case qualification minimum.
 Merge qualification remains CI/CodeQL/Connected on that candidate and independent
 main qualification. Later product deliveries are not prerequisites for this PR.
+
+## 2026-10-01 continuation: orphan inspection and explicit disposal
+
+This continuation is OPEN on main `bc20448534e92ba8c2cd25e8bb9c712380108153`.
+The already delivered per-bill inspection, replenishment, verification, cleanup
+continuation and portable outlet remain valid. This group covers orphan handling;
+Internal Beta cold-backup boundaries and the final product/device RC stay separate.
+
+The current maintenance API and source/test PowerShell helper already support a
+ledger-scoped dry run, grace period and deletion. They are not a qualified formal
+installation user entrance. A temporary-file probe using the existing SELECTs
+confirmed a mismatch: the portable historical-original query retains an accepted
+receipt's still-valid original, while orphan cleanup deletes those same bytes
+because it considers only the current Expense and pending cleanup references.
+This is local predicate/file evidence, not PostgreSQL transaction qualification.
+
+Before implementation, the whole exit includes:
+
+| Boundary / actual consumers | Required result |
+| --- | --- |
+| Current Expense, retained accepted receipts, pending attachment cleanup; portable history and maintenance | One attachment-reference interpretation protects retained evidence. Explicit cleanup evidence remains distinguishable from loss. Derived thumbnails retain their current separate lifecycle; no new financial fact, revision, attachment store or restore authority. |
+| Upload/UploadLink/Web admission, same-bill replenishment, thumbnail publication and orphan disposal | Verify the publication/delete ordering, grace and ledger/path boundary before exposing disposal. In-flight or newly referenced bytes cannot be deleted based on an earlier scan. Preserve existing upload intent and receipt recovery. |
+| Local Owner entrance, selected managed ledger, existing maintenance service/API and source helper | Actual inspection, candidate explanation and explicit disposal, including empty/blocked/partial-failure results. Reuse the current file and maintenance owners; do not expose raw host paths or credentials, silently select another ledger, or add an Android storage-management duplicate. |
+| Existing background task persistence and all task-result consumers | If execution needs a long task, retain the inspected candidate set and the original accepted task. Reopening, lost replies and partial-failure continuation must not silently include newly discovered files. Public task projections must not expose private storage references. |
+| Actual user journey and exit evidence | Real PostgreSQL/reference and publication races; current/original receipt bytes, intentional cleanup, another ledger and recent files; repeated/unknown results and restart; real Owner wide/narrow and both themes; existing original/export consumers and exact source/main qualification. A core predicate fix alone does not close this group. |
+
+Changes are limited to those attachment/maintenance/task consumers and their
+necessary verification. Daily data, installation/binding changes and the existing
+Windows lifecycle HOLDs remain outside construction and test execution.
+
+PR #482 now implements this scope on integrated main `0e4932d9`: one retained
+reference query, publication leases, frozen file identities and Local Owner
+inspection/confirmation through the existing durable task owner. Continuations
+keep the original inspection and retry only unfinished candidates. Active and
+archived managed ledgers, private previews, paginated task/file history, generic
+Android task observations and portable result redaction are included. No new
+task table, financial writer or Android storage-management surface was added.
+
+Core candidate `aefd43b6` passed all four real-PostgreSQL lanes, including the
+retained receipt, in-flight upload and frozen disposal cases. Its ordinary lanes
+and contract lane exposed stale test references and nesting checks; those are
+corrected in the Owner candidate. Local narrow regressions passed 108 cases plus
+two actual archive/DTO privacy cases. Owner/task PostgreSQL cases and the actual
+wide/narrow, both-theme, partial failure and process-interruption journey remain
+unqualified until the next exact source and independent main runs. Group OPEN.
+
+First Owner candidate `69c30f7a` passed both ordinary and all four real PostgreSQL
+lanes, including local task replay, preview, partial continuation, persisted
+restart input, ownership denial and archived-ledger storage. Builds and CodeQL
+also passed. Its contract lane required the task routes' actual concurrency
+guards to be recorded and removal of a needless lint suppression; both are now
+corrected. Actual Owner/Android journey and final source/main remain pending.

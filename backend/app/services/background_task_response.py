@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.models import BackgroundTask, Expense
 from app.services._json_types import JsonObject
+from app.services.orphan_task_results import ORPHAN_TASK_TYPES, public_task_result
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +64,7 @@ def _to_response_dict(task: BackgroundTask, *, source_expense_id: int | None) ->
         try:
             decoded = json.loads(task.result_summary_json)
             if isinstance(decoded, dict):
-                result_summary = cast(JsonObject, decoded)
+                result_summary = cast(JsonObject, public_task_result(task.task_type, decoded))
         except json.JSONDecodeError:
             logger.warning(
                 "background_task %s has malformed result_summary_json", task.id
@@ -76,7 +77,8 @@ def _to_response_dict(task: BackgroundTask, *, source_expense_id: int | None) ->
         "progress_total": task.progress_total,
         "progress_message": task.progress_message,
         "error_code": task.error_code,
-        "error_message": task.error_message,
+        "error_message": ("原件维护尚未完成，请在本机原件存储中查看并继续。"
+            if task.error_message and task.task_type in ORPHAN_TASK_TYPES else task.error_message),
         "result_summary": result_summary,
         "created_at": task.created_at,
         "started_at": task.started_at,

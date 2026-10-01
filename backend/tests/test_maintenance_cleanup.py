@@ -6,6 +6,7 @@ import os
 import re
 from dataclasses import replace
 from datetime import timedelta
+from pathlib import Path
 
 from api_contract_helpers import reject_expense_api
 from fastapi.testclient import TestClient
@@ -114,7 +115,7 @@ def test_cleanup_rejected_images_keeps_db_retryable_when_unlink_fails(
     def fail_unlink(self):
         raise PermissionError("file is locked")
 
-    monkeypatch.setattr(cleanup_service.Path, "unlink", fail_unlink)
+    monkeypatch.setattr(Path, "unlink", fail_unlink)
 
     response = client.post("/api/maintenance/cleanup-rejected", headers=identity.admin_headers)
     assert response.status_code == 200
@@ -231,7 +232,7 @@ def test_cleanup_orphans_continues_when_single_file_unlink_fails(
     def fail_unlink(self, *args, **kwargs):
         raise PermissionError("file is locked")
 
-    monkeypatch.setattr(cleanup_service.Path, "unlink", fail_unlink)
+    monkeypatch.setattr(Path, "unlink", fail_unlink)
 
     response = client.post("/api/maintenance/cleanup-orphans?dry_run=false", headers=identity.admin_headers)
     assert response.status_code == 200

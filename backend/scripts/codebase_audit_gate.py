@@ -140,12 +140,12 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_carriers": 138,  # + Web budget archive with its captured expected row version.
-    "mutate_token_exempted": 128,  # Standalone Web capture-dismiss route retired into the original review carrier.
+    "mutate_token_exempted": 130,  # + two Local Owner admissions to durable original-maintenance tasks.
     "mutate_token_reason_admin_single_writer": 10,
     "mutate_token_reason_append_only_fact": 3,
     "mutate_token_reason_batch_db_write": 17,
     "mutate_token_reason_create_row": 37,
-    "mutate_token_reason_enqueue_task": 0,
+    "mutate_token_reason_enqueue_task": 2,
     "mutate_token_reason_external_side_effect": 3,
     "mutate_token_reason_governance_action": 8,
     "mutate_token_reason_read_only_compute": 5,
@@ -181,6 +181,11 @@ BASELINE_RATCHET_DOWN: frozenset[str] = frozenset(
     }
 )
 _MUTATE_TOKEN_EXEMPTION_ADMISSIONS = (
+    # ADR-0030/0038 enqueue_task; TICKETBOX_ORIGINAL_INTEGRITY_CONTRACT continuation.
+    # Two new Local Owner task admissions have no predecessor financial row:
+    # original UUID receipts + conditional task claims + exact file/ref checks
+    # own their concurrency. All 138 existing OCC carriers remain protected.
+    ("0e4932d933bec3d2d5618d736d61359360cd7884", 128, 130),
     # ADR-0038 create_row: one new ledger-shared saved-query creation. The
     # service enforces unique names + actor/key receipts; edit/delete keep OCC.
     ("8e5529e49434c7d0650172cf7fc40668446627e2", 128, 129),

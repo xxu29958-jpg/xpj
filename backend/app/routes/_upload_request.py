@@ -18,6 +18,7 @@ from starlette.formparsers import MultiPartException
 from app.config import get_settings
 from app.errors import AppError
 from app.schemas import UploadResponse
+from app.services.attachment_publication_lock import retain_publication
 from app.services.expense_service import stage_pending_expense
 from app.services.file_service import (
     SavedUpload,
@@ -179,10 +180,11 @@ def _save_content(
     tenant_id: str,
     timing_ms: dict[str, int],
     max_size_bytes: int | None,
+    before_publish: Callable[[str], None] | None = None,
 ) -> SavedUpload:
     started_at = perf_counter()
     saved = save_upload_bytes(content.data, tenant_id=tenant_id, filename=content.filename,
-        content_type=content.content_type, max_size_bytes=max_size_bytes)
+        content_type=content.content_type, max_size_bytes=max_size_bytes, before_publish=before_publish)
     timing_ms["file_save_ms"] = elapsed_ms(started_at)
     return saved
 
@@ -192,10 +194,11 @@ async def save_request_upload(
     tenant_id: str,
     *,
     max_size_bytes: int | None = None,
+    before_publish: Callable[[str], None] | None = None,
 ) -> tuple[SavedUpload, dict[str, int]]:
     """Preserve the file-saved / pre-commit boundary for existing consumers."""
     content, timing_ms = await read_request_upload(request, max_size_bytes=max_size_bytes)
-    return _save_content(content, tenant_id, timing_ms, max_size_bytes), timing_ms
+    return _save_content(content, tenant_id, timing_ms, max_size_bytes, before_publish), timing_ms
 
 
 def _upload_fingerprint(content: UploadContent, intent: _UploadIntent) -> str:
@@ -220,7 +223,8 @@ async def _prepare_request_upload(
     intent: _UploadIntent | None,
 ) -> UploadResponse | tuple[SavedUpload, dict[str, int], ApiIdempotencyKey | None]:
     if intent is None:
-        saved, timing = await save_request_upload(request, tenant_id, max_size_bytes=max_size_bytes)
+        saved, timing = await save_request_upload(request, tenant_id, max_size_bytes=max_size_bytes,
+            before_publish=lambda reference: retain_publication(db, reference))
         return saved, timing, None
     content, timing = await read_request_upload(request, max_size_bytes=max_size_bytes)
     claim = claim_idempotency_key(
@@ -233,7 +237,8 @@ async def _prepare_request_upload(
         raise AppError("idempotency_key_reused", status_code=422)
     if claim.kind is IdempotencyOutcomeKind.HIT:
         return UploadResponse.model_validate(claim.row.response_body)
-    return _save_content(content, tenant_id, timing, max_size_bytes), timing, claim.row
+    return _save_content(content, tenant_id, timing, max_size_bytes,
+        lambda reference: retain_publication(db, reference)), timing, claim.row
 
 
 def upload_response(

@@ -8,6 +8,7 @@ from app.errors import AppError
 from app.models import Expense
 from app.services import thumb_service
 from app.services.attachment_cleanup_service import cleanup_request_covers_source
+from app.services.attachment_publication_lock import retain_publication
 
 
 def claim_staged_thumbnail(
@@ -54,11 +55,12 @@ def publish_claimed_thumbnail(
     """Publish, then prove this attempt still owns the live Expense reference.
 
     The durable reference is committed by the caller before this function.
-    Publication is lock-free; the post-publication row lock serializes the
-    ownership proof with cleanup. A losing attempt can delete only its own
+    The publication lease excludes orphan disposal; the post-publication row
+    lock serializes ownership proof with cleanup. A losing attempt deletes only its own
     unique final, never another attempt's file.
     """
 
+    retain_publication(db, staged.final_reference)
     thumb_service.publish_staged_thumbnail_attempt(staged)
     db.refresh(expense, with_for_update=True)
     try:

@@ -1,5 +1,6 @@
 """Real files and explicit commit snapshots; no PostgreSQL fixtures are used."""
 
+from contextlib import nullcontext
 from copy import deepcopy
 from datetime import timedelta
 from pathlib import Path
@@ -20,6 +21,7 @@ from app.services import cleanup_service, file_service, thumb_service
 from app.services import expense_review_command_service as review
 from app.services.expense_service import _update
 from app.services.expense_service._thumbnail_publication import claim_staged_thumbnail, publish_claimed_thumbnail
+from app.services.original_reference_queries import referenced_upload_paths
 from app.services.time_service import now_utc
 
 
@@ -43,6 +45,7 @@ def cleanup_case(tmp_path, monkeypatch):
               "attachment_cleanup_request", "image_replenished_at", "row_version", "fact_revision", "updated_at")
     durable = {field: deepcopy(getattr(expense, field)) for field in fields}
     db = Mock(spec=Session)
+    db.no_autoflush = nullcontext()
     db.scalars.return_value = [expense]
     case = SimpleNamespace(expense=expense, db=db, durable=durable, settings=settings, original=original,
                            thumbnail=thumbnail, commits=0, reject_commit=None, lose_ack=None, before_commit=None)
@@ -269,8 +272,11 @@ def test_disabled_policy_never_admits_a_new_request(cleanup_case):
 def test_orphan_gc_retains_frozen_pending_paths_after_replenishment(cleanup_case):
     case = cleanup_case
     request = _accept_only(case)
-    case.db.execute.return_value = [("uploads/owner/new.png", None, None, None, request.model_dump(mode="json"))]
-    paths = cleanup_service._referenced_upload_paths(case.db, "owner")
+    case.db.execute.side_effect = [
+        [("uploads/owner/new.png", None, None, None, request.model_dump(mode="json"))],
+        SimpleNamespace(mappings=lambda: []),
+    ]
+    paths = referenced_upload_paths(case.db, "owner")
     assert set(paths) == {"uploads/owner/new.png", request.image.reference, request.thumbnail.reference}
 
 

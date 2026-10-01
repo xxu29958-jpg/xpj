@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
-from pathlib import Path
+from datetime import datetime, timedelta
 
 from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.orm import Session
@@ -18,18 +17,13 @@ from app.models import (
     TagMutationUndoGroup,
     TagMutationUndoItem,
 )
-from app.services.attachment_cleanup_service import execute_attachment_cleanup, pending_cleanup_references
+from app.services.attachment_cleanup_service import execute_attachment_cleanup
 from app.services.currency_binding_service import (
     authorize_currency_metadata_write,
 )
-from app.services.file_service import (
-    ALLOWED_EXTENSIONS,
-    resolve_upload_path_for_tenant,
-    upload_reference_for_path,
-)
+from app.services.orphan_upload_service import OrphanCleanupResult, run_orphan_cleanup
 from app.services.soft_delete_policy import recycle_bin_retention_days
 from app.services.time_service import now_utc
-from app.tenants import DEFAULT_TENANT_ID
 
 
 @dataclass(frozen=True)
@@ -39,77 +33,6 @@ class CleanupResult:
     scanned: int
     deleted_images: int
     deleted_thumbnails: int
-
-
-@dataclass(frozen=True)
-class OrphanCleanupResult:
-    dry_run: bool
-    grace_hours: int
-    scanned_files: int
-    orphan_files: int
-    deleted_files: int
-    orphan_bytes: int
-    deleted_bytes: int
-
-
-def _resolve_relative_file(relative_path: str | None, tenant_id: str) -> Path | None:
-    return resolve_upload_path_for_tenant(relative_path, tenant_id)
-
-
-def _relative_upload_path(path: Path) -> str | None:
-    try:
-        return upload_reference_for_path(path)
-    except RuntimeError:
-        return None
-
-
-def _normalize_upload_reference(relative_path: str | None, tenant_id: str) -> str | None:
-    if not relative_path:
-        return None
-    candidate = resolve_upload_path_for_tenant(relative_path, tenant_id)
-    if candidate is None:
-        return None
-    return _relative_upload_path(candidate)
-
-
-def _referenced_upload_paths(db: Session, tenant_id: str) -> set[str]:
-    rows = db.execute(
-        select(
-            Expense.image_path,
-            Expense.thumbnail_path,
-            Expense.image_deleted_at,
-            Expense.thumbnail_deleted_at,
-            Expense.attachment_cleanup_request,
-        )
-        .where(Expense.tenant_id == tenant_id)
-        .where(
-            or_(
-                and_(Expense.image_path.is_not(None), Expense.image_deleted_at.is_(None)),
-                and_(Expense.thumbnail_path.is_not(None), Expense.thumbnail_deleted_at.is_(None)),
-                Expense.attachment_cleanup_request.is_not(None),
-            )
-        )
-    )
-    referenced: set[str] = set()
-    for image_path, thumbnail_path, image_deleted_at, thumbnail_deleted_at, cleanup_request in rows:
-        if image_deleted_at is None:
-            normalized_image = _normalize_upload_reference(image_path, tenant_id)
-            if normalized_image:
-                referenced.add(normalized_image)
-        if thumbnail_deleted_at is None:
-            normalized_thumbnail = _normalize_upload_reference(thumbnail_path, tenant_id)
-            if normalized_thumbnail:
-                referenced.add(normalized_thumbnail)
-        for reference in pending_cleanup_references(cleanup_request):
-            normalized = _normalize_upload_reference(reference, tenant_id)
-            if normalized:
-                referenced.add(normalized)
-    return referenced
-
-
-def _is_supported_upload_file(path: Path) -> bool:
-    suffix = path.suffix.lower().removeprefix(".")
-    return suffix in ALLOWED_EXTENSIONS or suffix == "jpg"
 
 
 def cleanup_after_confirm(db: Session, expense: Expense) -> bool:
@@ -152,76 +75,7 @@ def cleanup_rejected_images(db: Session, tenant_id: str) -> CleanupResult:
 
 
 def cleanup_orphan_uploads(db: Session, tenant_id: str, *, dry_run: bool = True) -> OrphanCleanupResult:
-    settings = get_settings()
-    tenant_upload_dir = (settings.upload_dir / tenant_id).resolve()
-    referenced = _referenced_upload_paths(db, tenant_id)
-    cutoff = now_utc() - timedelta(hours=max(settings.orphan_upload_grace_hours, 0))
-
-    scanned_files = 0
-    orphan_files = 0
-    deleted_files = 0
-    orphan_bytes = 0
-    deleted_bytes = 0
-
-    scan_roots = [tenant_upload_dir] if tenant_upload_dir.exists() else []
-    if tenant_id == DEFAULT_TENANT_ID and settings.upload_dir.exists():
-        scan_roots.append(settings.upload_dir.resolve())
-
-    if not scan_roots:
-        return OrphanCleanupResult(
-            dry_run=dry_run,
-            grace_hours=settings.orphan_upload_grace_hours,
-            scanned_files=0,
-            orphan_files=0,
-            deleted_files=0,
-            orphan_bytes=0,
-            deleted_bytes=0,
-        )
-
-    seen: set[str] = set()
-    for root in scan_roots:
-        for path in root.rglob("*"):
-            try:
-                if not path.is_file() or not _is_supported_upload_file(path):
-                    continue
-                relative_path = _relative_upload_path(path)
-                if relative_path is None or relative_path in seen:
-                    continue
-                if _resolve_relative_file(relative_path, tenant_id) is None:
-                    continue
-                stat = path.stat()
-            except OSError:
-                continue
-
-            seen.add(relative_path)
-            scanned_files += 1
-            if relative_path in referenced:
-                continue
-
-            modified_at = datetime.fromtimestamp(stat.st_mtime, UTC)
-            if modified_at > cutoff:
-                continue
-
-            size = stat.st_size
-            orphan_files += 1
-            orphan_bytes += size
-            if not dry_run:
-                try:
-                    path.unlink(missing_ok=True)
-                except OSError:
-                    continue
-                deleted_files += 1
-                deleted_bytes += size
-
-    return OrphanCleanupResult(
-        dry_run=dry_run,
-        grace_hours=settings.orphan_upload_grace_hours,
-        scanned_files=scanned_files,
-        orphan_files=orphan_files,
-        deleted_files=deleted_files,
-        orphan_bytes=orphan_bytes,
-        deleted_bytes=deleted_bytes,
-    )
+    return run_orphan_cleanup(db, tenant_id, settings=get_settings(), dry_run=dry_run)
 
 
 def purge_expired_soft_deleted_merchant_aliases(
