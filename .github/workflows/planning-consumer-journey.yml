@@ -8,7 +8,7 @@ on:
       group:
         description: Actual consumer group to exercise
         type: choice
-        options: [budget-recurring, income-goals, relationships, portable-downloads, backstage, notifications, reference-library, financial-facts, original-maintenance, insights, cold-copy]
+        options: [budget-recurring, income-goals, relationships, portable-downloads, backstage, notifications, reference-library, financial-facts, original-maintenance, insights, appearance, cold-copy]
         default: budget-recurring
       installer_run_id:
         description: For cold-copy only, the CI run containing this exact SHA's installer
