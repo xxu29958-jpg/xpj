@@ -78,8 +78,13 @@ class DebtCreateSheetContinuityTest {
         val headingLayouts = mutableListOf<TextLayoutResult>()
         compose.onNodeWithText(context.getString(R.string.debt_list_topbar_title), useUnmergedTree = true)
             .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(headingLayouts) }
-        assertTrue("The debt title must remain readable beside its task entries", headingLayouts.isNotEmpty() && headingLayouts.all {
-            !it.hasVisualOverflow && (0 until it.lineCount).none(it::isLineEllipsized)
+        // String semantics uses the parent's max width for MultiParagraph. Its empty
+        // trailing space must not be mistaken for clipped title glyphs.
+        assertTrue("The debt title must remain readable beside its task entries: $headingLayouts", headingLayouts.isNotEmpty() && headingLayouts.all { layout ->
+            !layout.didOverflowHeight && (0 until layout.lineCount).all { line ->
+                !layout.isLineEllipsized(line) && layout.getLineLeft(line) >= 0f &&
+                    layout.getLineRight(line) <= layout.size.width
+            }
         })
         compose.onNodeWithText(context.getString(R.string.debt_list_add)).performClick()
         compose.onAllNodes(hasSetTextAction())[0].performTextInput("小王")

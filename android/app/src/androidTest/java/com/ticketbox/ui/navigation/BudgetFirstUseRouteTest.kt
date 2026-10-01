@@ -137,8 +137,13 @@ class BudgetFirstUseRouteTest {
             val layouts = mutableListOf<TextLayoutResult>()
             compose.onNodeWithText(heading, useUnmergedTree = true)
                 .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
-            assertTrue("The budget heading must remain readable: $heading", layouts.isNotEmpty() && layouts.all {
-                !it.hasVisualOverflow && (0 until it.lineCount).none(it::isLineEllipsized)
+            // String semantics rebuilds a MultiParagraph at the parent's max width, even
+            // when the rendered Text wraps its width. Check the visible lines, not that box.
+            assertTrue("The budget heading must remain readable: $heading; $layouts", layouts.isNotEmpty() && layouts.all { layout ->
+                !layout.didOverflowHeight && (0 until layout.lineCount).all { line ->
+                    !layout.isLineEllipsized(line) && layout.getLineLeft(line) >= 0f &&
+                        layout.getLineRight(line) <= layout.size.width
+                }
             })
         }
         compose.onNodeWithText(text(R.string.budget_history_title)).performScrollTo().performTouchInput { click() }
