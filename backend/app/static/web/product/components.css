@@ -274,6 +274,30 @@ button[disabled] {
     padding: var(--space-6);
 }
 
+.money-context {
+    margin-block-end: var(--space-4);
+    color: var(--text-muted);
+    border-block-end: 1px solid var(--border-card);
+}
+
+.money-context > summary {
+    min-height: var(--target-min);
+    padding-block: var(--space-3);
+    cursor: pointer;
+}
+
+.money-context-body {
+    padding-block-end: var(--space-4);
+}
+
+.money-context--attention {
+    padding-inline: var(--space-4);
+    border: 1px solid var(--state-warn-border);
+    border-radius: var(--radius-sm);
+    background: var(--state-warn-bg);
+    color: var(--text-default);
+}
+
 .dt-card--static:hover {
     transform: none;
 }

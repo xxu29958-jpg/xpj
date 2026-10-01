@@ -140,16 +140,11 @@ private fun LedgerInlineFilters(
                     selected = activeFilterCount > 0,
                     modifier = Modifier.weight(1f),
                 )
-                // W2-B: 搜索提为头部一级入口；「工具」文字链接退役为图标入口。
+                // 全局搜索保持独立；当前列表筛选与工具共用前一个入口。
                 LedgerChromeIconButton(
                     icon = Icons.Filled.Search,
                     description = stringResource(R.string.global_search_header_title),
                     onClick = actions.onOpenSearch,
-                )
-                LedgerChromeIconButton(
-                    icon = Icons.Filled.Tune,
-                    description = stringResource(R.string.ledger_tools_title),
-                    onClick = actions.onOpenTools,
                 )
             }
             // 单一记一笔槽位：仅 Header 槽在此渲染；空态槽由空态卡承担，Viewer 无入口。
@@ -177,16 +172,11 @@ private fun LedgerInlineFilters(
                     ),
                     modifier = Modifier.weight(1f),
                 )
-                // W2-B: 搜索提为头部一级入口；「工具」文字链接退役为图标入口。
+                // 全局搜索保持独立；当前列表筛选与工具共用前一个入口。
                 LedgerChromeIconButton(
                     icon = Icons.Filled.Search,
                     description = stringResource(R.string.global_search_header_title),
                     onClick = actions.onOpenSearch,
-                )
-                LedgerChromeIconButton(
-                    icon = Icons.Filled.Tune,
-                    description = stringResource(R.string.ledger_tools_title),
-                    onClick = actions.onOpenTools,
                 )
             }
             Row(
@@ -417,14 +407,12 @@ private fun LedgerFilterToolButton(
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (selected) {
-            Icon(
-                imageVector = Icons.Filled.Check,
-                contentDescription = null,
-                tint = labelColor,
-                modifier = Modifier.size(LedgerFilterLayout.CompactIconSize),
-            )
-        }
+        Icon(
+            imageVector = if (selected) Icons.Filled.Check else Icons.Filled.Tune,
+            contentDescription = null,
+            tint = labelColor,
+            modifier = Modifier.size(LedgerFilterLayout.CompactIconSize),
+        )
         Text(
             text = label,
             color = labelColor,

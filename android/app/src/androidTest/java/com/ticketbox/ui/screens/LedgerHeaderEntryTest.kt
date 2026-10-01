@@ -17,6 +17,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
@@ -28,6 +29,7 @@ import com.ticketbox.domain.model.ExpenseLineageStatus
 import com.ticketbox.domain.model.ExpenseSourceValues
 import com.ticketbox.domain.model.MONEY_MINOR_MAX
 import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.components.LocalAccountingDateReview
 import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.ui.screens.ledger.LedgerExpenseItemActions
 import com.ticketbox.ui.screens.ledger.LedgerExpenseItemState
@@ -46,7 +48,7 @@ import org.junit.Test
  * - 空态单一 CTA（有筛选=重置筛选；无筛选=记一笔），不再有常驻「更新账本」按钮
  *   （刷新由下拉刷新 + 头部新鲜度行 + 工具内的同步承担，能力不退化）；
  * - 搜索从工具 sheet 提为头部一级入口；
- * - 「工具」文字链接退役为图标入口；
+ * - 筛选与工具共用一个可见入口；
  * - Viewer 的只读权限行与新鲜度缓存条同时可见（正交，互不掩盖）。
  */
 class LedgerHeaderEntryTest {
@@ -110,6 +112,7 @@ class LedgerHeaderEntryTest {
         render(LedgerUiState(items = listOf(ledgerHeaderConfirmedRow()), syncedInCurrentSession = true))
 
         assertRecordCtaCount(1)
+        saveConsumerArtPreview("ledger-populated-paper", composeRule.onRoot().captureToImage().asAndroidBitmap())
     }
 
     @Test
@@ -156,11 +159,18 @@ class LedgerHeaderEntryTest {
     }
 
     @Test
-    fun toolsEntryIsIconButtonNotTextLink() {
-        render(LedgerUiState(items = listOf(ledgerHeaderConfirmedRow()), syncedInCurrentSession = true))
+    fun filterEntryOpensTheExistingSearchAndViewTools() {
+        var reviewed = false
+        render(LedgerUiState(items = listOf(ledgerHeaderConfirmedRow()), syncedInCurrentSession = true),
+            onReviewDates = { reviewed = true })
 
-        composeRule.onAllNodesWithText("工具").assertCountEquals(0)
-        composeRule.onNodeWithContentDescription("账本工具").assertExists()
+        composeRule.onNodeWithText("筛选与工具").performClick()
+        composeRule.onNodeWithText("账本工具").assertIsDisplayed()
+        composeRule.onNodeWithText("筛选关键词").assertIsDisplayed()
+        composeRule.onNodeWithText("显示方式").assertExists()
+        composeRule.onNodeWithText("核对账务日期").performScrollTo().performClick()
+        assertTrue(reviewed)
+        composeRule.onNodeWithText("账本工具").assertDoesNotExist()
     }
 
     private fun assertRecordCtaCount(expected: Int) {
@@ -169,10 +179,13 @@ class LedgerHeaderEntryTest {
         org.junit.Assert.assertEquals(expected, total)
     }
 
-    private fun render(state: LedgerUiState, actions: LedgerScreenActions = LedgerScreenActions()) {
+    private fun render(state: LedgerUiState, actions: LedgerScreenActions = LedgerScreenActions(),
+                       onReviewDates: (() -> Unit)? = null) {
         composeRule.setContent {
             TicketboxTheme(skin = AppSkin.Default) {
-                LedgerScreen(state = state, actions = actions)
+                CompositionLocalProvider(LocalAccountingDateReview provides onReviewDates) {
+                    LedgerScreen(state = state, actions = actions)
+                }
             }
         }
     }

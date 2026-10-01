@@ -27,6 +27,7 @@ import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.QuietOutlinedButton
+import com.ticketbox.ui.components.LocalAccountingDateReview
 import com.ticketbox.ui.components.buildAppTagFilterChoices
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
@@ -104,6 +105,7 @@ internal fun LedgerToolsSheet(
             onSync = actions.onSync,
             onExportCsv = actions.onExportCsv,
             onOpenLibrary = actions.onOpenLibrary,
+            onDismiss = actions.onDismiss,
         )
     }
 }
@@ -223,6 +225,7 @@ private fun LedgerDataTools(
     onSync: () -> Unit,
     onExportCsv: () -> Unit,
     onOpenLibrary: () -> Unit,
+    onDismiss: () -> Unit,
 ) {
     LedgerToolSection(title = stringResource(R.string.ledger_tools_actions_title)) {
         LedgerInlineButton(
@@ -232,6 +235,13 @@ private fun LedgerDataTools(
             onClick = onOpenLibrary,
             icon = Icons.Default.Category,
         )
+        LocalAccountingDateReview.current?.let { review ->
+            QuietOutlinedButton(
+                text = stringResource(R.string.calendar_review_dates),
+                modifier = Modifier.fillMaxWidth(),
+                onClick = { onDismiss(); review() },
+            )
+        }
         AppAdaptiveEqualControlRow(
             leading = { actionModifier ->
                 LedgerInlineButton(

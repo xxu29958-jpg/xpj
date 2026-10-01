@@ -66,7 +66,7 @@
     <string name="ledger_inline_month_prev">上一个月</string>
     <string name="ledger_inline_month_next">下一个月</string>
     <string name="ledger_inline_category_all">全部分类</string>
-    <string name="ledger_inline_filter">筛选</string>
+    <string name="ledger_inline_filter">筛选与工具</string>
     <string name="ledger_inline_filter_count">筛选 · %1$d 项</string>
     <string name="ledger_inline_searched">已搜索</string>
     <string name="ledger_inline_search_note">搜索备注</string>

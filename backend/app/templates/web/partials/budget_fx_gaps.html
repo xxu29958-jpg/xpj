@@ -1,11 +1,10 @@
 {% set rate_context = money_task if money_task is defined else {'ledger_id': selected_ledger_id, 'month': month, 'home_currency_code': currency_input.currency_code, 'savings_target_yuan': savings_target_yuan, 'reserved_buffer_yuan': reserved_buffer_yuan} %}
 {% if expected_row_version is defined and idempotency_key is defined %}{% set _ = rate_context.update({'arrangement_version': expected_row_version, 'arrangement_key': idempotency_key}) %}{% endif %}
 {% if arrangement_currency_input is defined %}{% set _ = rate_context.update({'arrangement_currency_code': arrangement_currency_input.currency_code}) %}{% endif %}
-<section class="product-panel product-panel--padded" aria-label="金额换算">
-  <div class="product-panel-header">
-    <h2 class="product-panel-title">金额换算</h2>
-    <a class="product-button product-button--quiet" href="/web/budget-advise/rates?{{ rate_context|urlencode }}">人工汇率</a>
-  </div>
+{% set needs_rate_review = missing_rates or (money_incomplete is defined and money_incomplete) %}
+<details class="money-context{% if needs_rate_review %} money-context--attention{% endif %}" aria-label="金额换算"{% if needs_rate_review %} open{% endif %}>
+  <summary>{% if needs_rate_review %}换算信息待核对{% else %}金额换算{% if rate_context.home_currency_code %} · {{ rate_context.home_currency_code }}{% endif %}{% endif %}</summary>
+  <div class="money-context-body">
   {% if missing_rates %}
   <p>以下换算还缺信息。原记录的金额和币种保持不变，补齐后再显示完整合计。</p>
   {% for gap in missing_rates %}
@@ -23,4 +22,6 @@
   {% else %}
   <p class="meta">按记录的币种和日期折算为 {{ rate_context.home_currency_code }}。已填写的人工汇率可在这里查看和纠正。</p>
   {% endif %}
-</section>
+  <a class="product-button product-button--quiet" href="/web/budget-advise/rates?{{ rate_context|urlencode }}">人工汇率</a>
+  </div>
+</details>

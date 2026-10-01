@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -49,11 +50,15 @@ data class OverviewInteractionActions(
 )
 
 @Composable
-internal fun DashboardLayoutEntry(state: DashboardLayoutUiState, actions: DashboardLayoutActions) {
+internal fun DashboardLayoutEditAction(state: DashboardLayoutUiState, actions: DashboardLayoutActions) {
+    IconButton(onClick = actions.onEdit, enabled = state.cards != null && state.canModify && !state.saving) {
+        Icon(Icons.Filled.Tune, contentDescription = stringResource(R.string.dashboard_customize))
+    }
+}
+
+@Composable
+internal fun DashboardLayoutFeedback(state: DashboardLayoutUiState, actions: DashboardLayoutActions) {
     Column {
-        TextButton(onClick = actions.onEdit, enabled = state.cards != null && state.canModify && !state.saving) {
-            Text(stringResource(R.string.dashboard_customize))
-        }
         if (state.cards != null && !state.canModify) {
             Text(stringResource(R.string.dashboard_readonly), style = MaterialTheme.typography.bodySmall)
         }
