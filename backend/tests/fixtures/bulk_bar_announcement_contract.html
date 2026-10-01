@@ -40,6 +40,7 @@
     let fetchCall = 0;
     window.fetch = async () => {
       fetchCall += 1;
+      if (fetchCall === 3) throw new TypeError("synthetic offline response");
       if (fetchCall === 1) {
         return {
           ok: true,
@@ -68,6 +69,21 @@
       const form = document.querySelector("[data-bulk]");
       const checkAll = document.getElementById("check-all");
       const submitter = document.getElementById("bulk-submit");
+      let nativeFallback = null;
+      form.addEventListener("submit", (event) => {
+        if (form.getAttribute("data-native-fallback") !== "1") return;
+        event.preventDefault(); // Observe the real native submit event without navigating this fixture.
+        const body = new FormData(form);
+        nativeFallback = {
+          action: form.getAttribute("action"),
+          command: event.submitter.value,
+          ids: body.getAll("expense_ids"),
+          versions: body.getAll("expected_row_version"),
+          ledger: body.get("ledger_id"),
+          category: body.get("category"),
+          enabled: !event.submitter.disabled
+        };
+      });
       const submit = () => form.dispatchEvent(new SubmitEvent("submit", {
         bubbles: true,
         cancelable: true,
@@ -141,13 +157,17 @@
       document.getElementById("check-2").click();
       submit();
       await wait();
+      const failure = capture();
+      submit();
+      await wait();
       window.__webConsumerProbe = {
         beforeEnhancement,
         editorEscape,
         batchMode,
         cleared,
         successWithUndo,
-        failure: capture()
+        failure,
+        nativeFallback
       };
     })();
   </script>

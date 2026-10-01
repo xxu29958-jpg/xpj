@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from html.parser import HTMLParser
-from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -432,17 +431,3 @@ def test_web_bulk_set_category_ignores_fragment_and_redirects(web_client: TestCl
     assert "removed_ids" not in resp.text  # gate is behaviour-pinned, not just 200-vs-303
     detail = web_client.get(f"/web/expenses/{eid}/edit?ledger_id=owner")
     assert "餐饮" in detail.text
-
-
-def test_bulk_bar_js_has_fetch_partial_mechanism() -> None:
-    """The /web fetch-JS has no browser test in the suite (like drawer.js), so a
-    content-assertion is the regression floor: pin the markers of the fetch+partial
-    path so ripping it out (silent regression to full-page reload) reds here."""
-    js_path = Path(__file__).resolve().parents[1] / "app/static/web/desktop/bulk-bar.js"
-    js = js_path.read_text(encoding="utf-8")
-    assert 'body.append("fragment", "1");' in js
-    assert "function removalKind" in js
-    assert "removed_ids" in js
-    assert "undo_items" in js
-    assert "/web/pending/batch-undo" in js
-    assert "data-native-fallback" in js  # offline → native full-page fallback

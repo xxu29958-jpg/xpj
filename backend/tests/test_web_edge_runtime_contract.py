@@ -489,6 +489,15 @@ def test_bulk_async_feedback_has_announcement_semantics_in_real_edge(
     assert failure["live"] == "assertive"
     assert failure["atomic"] == "true"
     assert failure["message"] == "批量操作失败，请重试。"
+    assert probe["nativeFallback"] == {
+        "action": "/web/review/bulk",
+        "command": "confirm_ready",
+        "ids": ["2"],
+        "versions": ["12"],
+        "ledger": "owner",
+        "category": "保留的分类",
+        "enabled": True,
+    }
     _assert_bulk_queue_exhaustion_reloads_authoritative_page(tmp_path)
 
 
