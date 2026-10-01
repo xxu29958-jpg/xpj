@@ -395,7 +395,7 @@ fun resolveGlobalScrim(
         Color.White.copy(alpha = scrimAlpha)
     }
     // The controlled-artwork cap must not weaken an arbitrary photo's reading floor.
-    val bottomAlphaLimit = if (backgroundVisible && settings.source == BackgroundSource.CustomImage) {
+    val bottomAlphaLimit = if (settings.source == BackgroundSource.CustomImage) {
         0.96f
     } else if (isDarkBackground) {
         0.72f
