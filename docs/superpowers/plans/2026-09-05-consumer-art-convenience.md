@@ -236,3 +236,13 @@ Web 当前本机证据（`ae6a95ba`）：两页真实模板／CSS／JS 在 360/7
 原生修正源 `ac46d8d9` 的 CI／CodeQL 通过，但 Connected `36841736218` 仍停在两处新增排版断言。取回的当前真实画面已完整显示欠款标题及大字预算标题／月份；核对当前依赖 Compose Foundation 1.11.0 官方源码后，发现 String 的语义回读会按父级最大宽度重建 MultiParagraph，再配上原文本自身的窄尺寸，直接比较二者的 `hasVisualOverflow` 会把右侧空白算成截字。两处核对改为逐行真实左右边界、无省略和无高度溢出，保留原完整业务后置条件及失败布局诊断；不为满足错误检测而改生产文字宽度。修改后的源仍需自己的完整资格。
 
 同一 `ac46d8d9` 的其余设备分片也返回两个失败，均已单独核对：预算离线旅程在等待尚未进入 LazyColumn 视口的编辑区时超时，现使用已有实际滚动动作抵达原字段，再核对原 1200 日元、禁用状态、读取时间和意图字节；收入创建旅程在软件键盘开启时触点保存后没有得到本地回执，现与同文件另一完整创建旅程一致，先收起键盘再触控保存，原日元／跨月／回复丢失重放断言全部保留。它没有证明键盘开启的固定操作区，后者仍是预核准的下一组。该源真实 Web＋Android 默认集成旅程 `36841859551` 已通过，但不替代修订测试的最终源资格。
+
+## 2026-10-01 键盘开启时的弹层任务操作整组（OPEN）
+
+事前核准：`AppSheetScaffold` 是现有弹层的滚动／键盘避让 Owner；需要在输入时完成原任务的 20 个消费者为 DebtCreate、DebtAction、MemberProposal、IncomePlanCreate、IncomePlanEditor、RecurringEditor、RecurringOccurrence（关联所选付款）、ManualExpense、LedgerBulkEdit（分类／标签两命令）、LedgerTools（当前列表搜索／筛选完成）、ExpenseEditCategory、ItemsEditor、SplitsEditor、BillSplitInvite、ExpenseCorrection、FactOffset、FactVoidOffset、MissingAmount、QuickCategory、QuickMerchant。ExpenseEditSheetScaffold 和 ReviewSheetScaffold 只是既有外壳，统一转交同一操作槽，不各造布局或写入 Owner。Budget/Income/Goal/Recurring 历史、MonthPicker、DebtKind、RepaymentDraftTarget、收件显示选项、确认/重复处理以及手工录入币种准备态已核对：无本组文本输入，保留其内容滚动。SpendingGoal／DebtGoal／ExpenseEdit 全屏表单已有 AppPageScaffold 的固定操作区，不迁入第二弹层机制。
+
+Goal／Allowed：输入与长列表继续在原弹层滚动，当前原提交／取消／错误或续办反馈在键盘上方可达；在现有 AppSheetScaffold 提供固定操作槽，迁入上述全部适用消费者并删除各自滚动尾部操作实例。分类／标签仍是两个不同命令，标签覆盖确认及必填理由保持。范围只覆盖呈现和直接受影响交互测试；不改金融字段、币种、身份、权限、OCC、幂等、草稿持久化、Outbox、回执、提交期间守卫或 Window/安装数据。只读弹层和有条件为空的操作槽不得留下大块占位。
+
+当前反例依据与 Evidence：旧 #372 的 `2be942a9` 在真实 OS IME 开启时看不到欠款保存，已有画面及执行证据保留；旧分支及其未发布 follow-up 均未覆盖。现从 #486 候选 `0607ba64` 隔离准备，将原键盘测试适配当前欠款读取依赖，先在当前代码重新运行，不把历史结果当作本次 RED。#486 中收入 Room 旅程的键盘开启保存无回执也保留为未完成的交互信号，不靠该测试收起键盘宣称本组关闭。
+
+Done Checks：当前原生键盘反例实际失败后修共享机制；实际触控验证输入、校验失败续填、原值提交、本地接受及 Paper/Midnight，确认键盘确实可见且按钮在其上方，不能用滚动到按钮替代固定可达。对长表单、短快补、嵌套明细列表及两种批量命令核准原动作和输入；复用已有 Room／冲突／身份／恢复旅程与 exact 源、独立主干门禁。被迁出操作不再要求滚动祖先的旧测试交互按原意调整，财务后置条件保留。保留整组失败和未执行边界；整体 UI、实体多端和最终 RC 不由本组替代。
