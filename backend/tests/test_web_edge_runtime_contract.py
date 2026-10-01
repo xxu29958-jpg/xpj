@@ -445,6 +445,13 @@ def test_bulk_async_feedback_has_announcement_semantics_in_real_edge(
         "checkAllHidden": True,
         "enhanced": False,
     }
+    assert probe["editorEscape"] == {
+        "closed": True,
+        "focusReturned": True,
+        "category": "保留的分类",
+        "selected": True,
+        "closedOnClear": True,
+    }
     batch_mode = probe["batchMode"]
     assert batch_mode == {
         "enhanced": True,

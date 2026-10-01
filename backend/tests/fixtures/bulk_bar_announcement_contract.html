@@ -29,6 +29,10 @@
       <input type="hidden" name="ledger_id" value="owner">
       <span data-bulk-count>0</span>
       <button id="bulk-clear" type="button" data-bulk-clear>取消选择</button>
+      <details class="bulk-editor">
+        <summary>修改信息</summary>
+        <input name="category" value="保留的分类">
+      </details>
       <button id="bulk-submit" type="submit" name="action" value="confirm_ready">确认入账</button>
     </form>
   </main>
@@ -91,6 +95,17 @@
       const firstRow = document.getElementById("row-1");
       const firstCheck = document.getElementById("check-1");
       firstCheck.click();
+      const editor = form.querySelector(".bulk-editor");
+      editor.open = true;
+      editor.querySelector("input").focus();
+      editor.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}));
+      const editorEscape = {
+        closed: !editor.open,
+        focusReturned: document.activeElement === editor.querySelector("summary"),
+        category: new FormData(form).get("category"),
+        selected: firstCheck.checked
+      };
+      editor.open = true;
       const blockedClick = new MouseEvent("click", {bubbles: true, cancelable: true});
       const dispatchResult = firstRow.dispatchEvent(blockedClick);
       await wait();
@@ -107,6 +122,7 @@
       };
 
       document.getElementById("bulk-clear").click();
+      editorEscape.closedOnClear = !editor.open;
       const cleared = {
         ariaDisabled: firstRow.getAttribute("aria-disabled"),
         hasTabIndex: firstRow.hasAttribute("tabindex"),
@@ -127,6 +143,7 @@
       await wait();
       window.__webConsumerProbe = {
         beforeEnhancement,
+        editorEscape,
         batchMode,
         cleared,
         successWithUndo,

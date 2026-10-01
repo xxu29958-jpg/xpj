@@ -159,7 +159,8 @@
       {% if can_write %}
       {# K3 check-cell: label 包裹提供 hit area (coarse 44px), 原生 toggle 不变。 #}
       <label class="check-cell">
-        <input class="checkbox" id="check-all" type="checkbox" aria-label="选择全部账单">
+        <input class="checkbox" id="check-all" type="checkbox" aria-label="选择本页全部账单" hidden>
+        <span class="select-all-label">全选本页</span>
       </label>
       {% endif %}
     </div>
@@ -318,11 +319,19 @@
   <span class="bulk-selection-status"><span class="count" data-bulk-count>0</span><span class="label">笔已选</span></span>
   {# main 保留 (矿无): 一键清空选择并把焦点还回第一个已选行 (批选可达性合同)。 #}
   <button class="product-button" type="button" data-bulk-clear>取消选择</button>
-  <div class="spacer"></div>
-  <input class="bulk-field" type="text" name="category" maxlength="64" placeholder="统一分类" aria-label="批量设置分类">
-  <button class="product-button" type="submit" name="action" value="set_category">应用分类</button>
-  <input class="bulk-field" type="text" name="merchant" maxlength="120" placeholder="统一商家" aria-label="批量设置商家">
-  <button class="product-button" type="submit" name="action" value="set_merchant">应用商家</button>
+  <details class="bulk-editor">
+    <summary class="product-button">修改信息</summary>
+    <div class="bulk-editor-fields">
+      <div class="bulk-group" role="group" aria-label="批量改分类">
+        <label>统一分类<input type="text" name="category" maxlength="64" placeholder="填写分类" aria-label="批量设置分类"></label>
+        <button class="product-button" type="submit" name="action" value="set_category">应用分类</button>
+      </div>
+      <div class="bulk-group" role="group" aria-label="批量改商家">
+        <label>统一商家<input type="text" name="merchant" maxlength="120" placeholder="填写商家" aria-label="批量设置商家"></label>
+        <button class="product-button" type="submit" name="action" value="set_merchant">应用商家</button>
+      </div>
+    </div>
+  </details>
   <button class="product-button product-button--danger"
           type="submit"
           formaction="/web/pending/batch-reject"

@@ -322,7 +322,7 @@ def test_inbox_pending_rows_keep_checkbox_outside_row_link(web_client: TestClien
     select_all = re.search(r'<input class="checkbox" id="check-all"[^>]*>', head_html)
     assert select_all is not None
     assert 'type="checkbox"' in select_all.group(0)
-    assert 'aria-label="选择全部账单"' in select_all.group(0)
+    assert 'aria-label="选择本页全部账单"' in select_all.group(0)
     assert head_html.count('aria-hidden="true"') == 6  # 六个纯展示列标签
 
     # 批量条在(data-bulk), 且保留 main 的 OCC 隐藏字段装配与取消选择按钮。
