@@ -1,5 +1,8 @@
 package com.ticketbox.ui.screens
 
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -21,7 +24,6 @@ import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseSourceValues
 import com.ticketbox.ui.RealKeyboard
-import com.ticketbox.ui.components.AppBusyGuardedSheet
 import com.ticketbox.ui.screens.expense.ItemsEditorSheet
 import com.ticketbox.ui.screens.expense.ItemsEditorSheetActions
 import com.ticketbox.ui.screens.expense.ItemsEditorSheetState
@@ -38,6 +40,7 @@ import org.junit.Rule
 import org.junit.Test
 
 /** Actual short, nested-list and multi-command consumers of the shared sheet. */
+@OptIn(ExperimentalMaterial3Api::class)
 class SheetKeyboardTaskTest {
     @get:Rule val compose = createComposeRule()
     @get:Rule val keyboard = RealKeyboard()
@@ -49,7 +52,8 @@ class SheetKeyboardTaskTest {
         val failure = "刚才没有保存，请保留原输入再试。"
         compose.setContent {
             TicketboxTheme(skin = AppSkin.Midnight) {
-                AppBusyGuardedSheet(isSubmitting = saving, onDismiss = {}, skipPartiallyExpanded = true) {
+                ModalBottomSheet(onDismissRequest = {},
+                    sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
                     QuickMerchantSheetContent(
                         expense = pendingExpense(),
                         chrome = ReviewSheetChrome(saving, 31, failure, onSkip = {}),
@@ -107,7 +111,7 @@ class SheetKeyboardTaskTest {
         val tags = mutableListOf<Pair<String, String>>()
         compose.setContent {
             TicketboxTheme(skin = AppSkin.Paper) {
-                AppBusyGuardedSheet(isSubmitting = false, onDismiss = {}, skipPartiallyExpanded = true) {
+                ModalBottomSheet(onDismissRequest = {}) {
                     LedgerBulkEditSheet(
                         state = LedgerBulkEditSheetState(31, true, listOf("餐饮", "交通"), false),
                         actions = LedgerBulkEditSheetActions(

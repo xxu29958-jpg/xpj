@@ -1,6 +1,9 @@
 package com.ticketbox.ui.screens
 
 import android.content.Context
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasSetTextAction
@@ -21,6 +24,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 
+@OptIn(ExperimentalMaterial3Api::class)
 class ManualExpenseDefaultChangeTest {
     @get:Rule val compose = createComposeRule()
     @get:Rule val keyboard = RealKeyboard()
@@ -33,10 +37,15 @@ class ManualExpenseDefaultChangeTest {
         val submitted = mutableListOf<ExpenseDraft>()
         compose.setContent {
             TicketboxTheme(skin = AppSkin.Default) {
-                if (visible.value) ManualExpenseSheet(
-                    state = ManualExpenseSheetState(emptyList(), saving = false, initialCurrency = defaultCurrency.value),
-                    actions = ManualExpenseSheetActions(onCreate = { submitted += it }, onDismiss = {}),
-                )
+                if (visible.value) {
+                    ModalBottomSheet(onDismissRequest = {},
+                        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+                        ManualExpenseSheet(
+                            state = ManualExpenseSheetState(emptyList(), saving = false, initialCurrency = defaultCurrency.value),
+                            actions = ManualExpenseSheetActions(onCreate = { submitted += it }, onDismiss = {}),
+                        )
+                    }
+                }
             }
         }
         enterAmount()
