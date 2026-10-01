@@ -39,7 +39,7 @@
     </p>
     {% endif %}
   </div>
-  {% if can_write and request.state.web_session_auth %}
+  {% if can_write and request.state.web_session_auth and (expenses or tag or filter in ['missing_category', 'missing_accounting_date']) %}
   <div class="product-page-actions">
     <a class="product-button product-button--primary" href="/web/expenses/new">手动记一笔</a>
   </div>
