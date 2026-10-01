@@ -5,7 +5,7 @@ from __future__ import annotations
 import contextlib
 import os
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from backend_manager.runtime import RuntimeControlError
@@ -67,12 +67,19 @@ def discover_edge_executable() -> str | None:
 
 @dataclass
 class EdgeAppWindow:
-    """One dedicated Edge browser process owned by the Manager session."""
+    """Visible windows and cleanup of one dedicated Manager browser process."""
 
     process: subprocess.Popen
+    _saw_window: bool = field(default=False, init=False, repr=False)
 
     def is_open(self) -> bool:
-        return self.process.poll() is None
+        if self.process.poll() is not None:
+            return False
+        visible = _has_visible_window(self.process.pid)
+        self._saw_window = self._saw_window or visible
+        # Before the first native window appears, the launched process is still starting.
+        # Once shown, closing the window ends the UI even if Edge stays in background.
+        return visible or not self._saw_window
 
     def close(self, *, timeout: float = 5.0) -> bool:
         if self.process.poll() is not None:
@@ -89,6 +96,34 @@ class EdgeAppWindow:
         with contextlib.suppress(OSError, subprocess.TimeoutExpired):
             self.process.wait(timeout=timeout)
         return self.process.poll() is not None
+
+
+def _has_visible_window(process_id: int) -> bool:
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    user32.EnumWindows.argtypes = (callback_type, wintypes.LPARAM)
+    user32.EnumWindows.restype = wintypes.BOOL
+    user32.IsWindowVisible.argtypes = (wintypes.HWND,)
+    user32.IsWindowVisible.restype = wintypes.BOOL
+    user32.GetWindowThreadProcessId.argtypes = (wintypes.HWND, ctypes.POINTER(wintypes.DWORD))
+    user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+    visible = False
+
+    @callback_type
+    def observe(handle, _context):
+        nonlocal visible
+        owner = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(handle, ctypes.byref(owner))
+        if owner.value == process_id and user32.IsWindowVisible(handle):
+            visible = True
+        return True
+
+    if not user32.EnumWindows(observe, 0):
+        raise ctypes.WinError(ctypes.get_last_error())
+    return visible
 
 
 def open_app_window(url: str, *, profile: Path) -> EdgeAppWindow | None:
