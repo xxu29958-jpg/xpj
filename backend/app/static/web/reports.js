@@ -106,7 +106,7 @@
     return {
       backgroundColor: colors.tooltipBg,
       borderWidth: 0,
-      textStyle: { color: colors.tooltipFg, fontSize: 12 },
+      textStyle: { color: colors.tooltipFg, fontSize: 12, fontFamily: cssVar('--font-numeric', 'sans-serif') },
       extraCssText: 'box-shadow:0 8px 24px rgba(0,0,0,.22);border-radius:8px;',
     };
   }
@@ -137,6 +137,7 @@
     var chart = chartFor(container);
     var lineColor = colors.series[0];
     chart.setOption({
+      textStyle: { fontFamily: cssVar('--font-numeric', 'sans-serif') },
       color: colors.series,
       tooltip: Object.assign(baseTooltipColors(colors), {
         trigger: 'axis',
@@ -206,6 +207,7 @@
     var reversedRows = rows.slice().reverse();
     var chart = chartFor(container);
     chart.setOption({
+      textStyle: { fontFamily: cssVar('--font-numeric', 'sans-serif') },
       color: colors.series,
       tooltip: Object.assign(baseTooltipColors(colors), {
         trigger: 'axis',
@@ -270,6 +272,7 @@
 
     var chart = chartFor(container);
     chart.setOption({
+      textStyle: { fontFamily: cssVar('--font-numeric', 'sans-serif') },
       color: [colors.series[0], rgba(colors.series[2], 0.55), rgba(colors.series[4], 0.55)],
       legend: {
         data: ['本月', '上月', '去年同月'],
@@ -392,10 +395,16 @@
   function init() {
     var report = parseReport();
     if (!report) return;
-    bindExport(renderCharts(report));
-    bindResize();
-    new MutationObserver(function () { renderCharts(report); }).observe(root, {
-      attributes: true, attributeFilter: ['data-theme', 'data-accent'],
+    var fontText = '0123456789.,%−-万本月上月去年同月' + app.homeCurrencySymbol() +
+      (report.trend || []).map(function (point) { return point.label; }).join('') +
+      (report.merchant_ranking || []).slice(0, 8).map(function (row) { return row.merchant; }).join('') +
+      (report.category_comparison || []).slice(0, 8).map(function (row) { return row.category; }).join('');
+    app.withChartFonts(fontText, function () {
+      bindExport(renderCharts(report));
+      bindResize();
+      new MutationObserver(function () { renderCharts(report); }).observe(root, {
+        attributes: true, attributeFilter: ['data-theme', 'data-accent'],
+      });
     });
   }
 

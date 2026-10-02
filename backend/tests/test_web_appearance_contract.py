@@ -119,6 +119,7 @@ result.brand = {{ src: branded.brand.attrs.src }};
 
 // 5) 两个真实 canvas consumer 原地跟随主题/强调色，不新建实例、不改金额。
 const live = makeContext({{}});
+vm.runInNewContext(fs.readFileSync(__CORE__, "utf8"), live.context);
 vm.runInNewContext(fs.readFileSync(__THEME__, "utf8"), live.context);
 const liveApp = live.context.window.TicketboxWeb;
 liveApp.readVar = name => [live.attrs["data-theme"] || "paper", live.attrs["data-accent"] || "evergreen", name].join(":");
@@ -157,6 +158,7 @@ process.stdout.write(JSON.stringify(result));
 def _contract_script(bootstrap: Path, theme: Path) -> str:
     return (
         _NODE_CONTRACT.replace("__BOOTSTRAP__", json.dumps(str(bootstrap)))
+        .replace("__CORE__", json.dumps(str(theme.with_name("core.js"))))
         .replace("__THEME__", json.dumps(str(theme)))
         .replace("__DONUT__", json.dumps(str(theme.with_name("category-donut.js"))))
         .replace("__TREND__", json.dumps(str(theme.with_name("trend-chart.js"))))
