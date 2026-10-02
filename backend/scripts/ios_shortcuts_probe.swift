@@ -198,8 +198,16 @@ final class ShortcutProbe: XCTestCase {
         app.buttons["Done"].tap()
         app.buttons["Back"].tap()
         captureText(app, "Saved shortcut library before sharing")
+        // Run-Workflow excludes content whose source app is Shortcuts. Start
+        // the real Photos intake from Home, not directly from the editor app.
+        XCUIDevice.shared.press(.home)
+        let home = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        captureText(home, "Home screen before Photos intake")
+        let photosIcon = home.icons["Photos"]
+        XCTAssertTrue(photosIcon.waitForExistence(timeout: 10))
+        photosIcon.tap()
         let photos = XCUIApplication(bundleIdentifier: "com.apple.mobileslideshow")
-        photos.launch()
+        XCTAssertEqual(photos.state, .runningForeground)
         captureText(photos, "System Photos entry for shortcut discovery")
         for _ in 0..<2 {
             let introduction = photos.buttons["Continue"]
