@@ -44,26 +44,21 @@ final class ShortcutProbe: XCTestCase {
         create.tap()
         XCTAssertEqual(app.state, .runningForeground)
         print("SHORTCUTS_EDITOR_UI_TREE_BEGIN\n\(app.debugDescription)\nSHORTCUTS_EDITOR_UI_TREE_END")
-        let web = app.buttons["Web"]
-        XCTAssertTrue(web.waitForExistence(timeout: 10))
-        let categories = app.scrollViews.containing(.button, identifier: "Web").firstMatch
-        for _ in 0..<4 {
-            if web.isHittable { break }
-            categories.swipeLeft()
-        }
-        XCTAssertTrue(web.isHittable)
-        web.tap()
+        let search = app.searchFields["Search Actions"]
+        XCTAssertTrue(search.waitForExistence(timeout: 10))
+        search.tap()
+        search.typeText("Get Contents of URL")
         let action = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Get Contents of URL")).firstMatch
         // A fresh simulator starts its full ToolKit index after the editor is already visible.
         // Wait for the real action, not merely the app or category to be present.
         let foundAction = action.waitForExistence(timeout: 240)
-        print("SHORTCUTS_WEB_CATEGORY_UI_TREE_BEGIN\n\(app.debugDescription)\nSHORTCUTS_WEB_CATEGORY_UI_TREE_END")
+        print("SHORTCUTS_ACTION_SEARCH_UI_TREE_BEGIN\n\(app.debugDescription)\nSHORTCUTS_ACTION_SEARCH_UI_TREE_END")
         let categoryTree = XCTAttachment(string: app.debugDescription)
-        categoryTree.name = "Observed Web action category"
+        categoryTree.name = "Observed exact action search"
         categoryTree.lifetime = .keepAlways
         add(categoryTree)
         let categoryScreen = XCTAttachment(screenshot: app.screenshot())
-        categoryScreen.name = "Observed Web action category"
+        categoryScreen.name = "Observed exact action search"
         categoryScreen.lifetime = .keepAlways
         add(categoryScreen)
         XCTAssertTrue(foundAction)
