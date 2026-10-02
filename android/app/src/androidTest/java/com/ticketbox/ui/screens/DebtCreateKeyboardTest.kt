@@ -5,6 +5,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollTo
@@ -50,7 +51,7 @@ class DebtCreateKeyboardTest {
         }
         compose.waitUntil(5_000) { ::viewModel.isInitialized && viewModel.state.value.homeCurrencyResolved }
         compose.onNodeWithText(text(R.string.debt_list_add)).performTouchInput { click() }
-        val counterparty = compose.onAllNodes(hasSetTextAction())[0]
+        val counterparty = compose.onNode(hasSetTextAction() and hasText(text(R.string.debt_create_label_counterparty)))
         counterparty.performScrollTo().performTouchInput { click() }
         counterparty.performTextInput("小王")
         assertSaveAboveKeyboard("debt-create-keyboard-paper")
@@ -62,11 +63,11 @@ class DebtCreateKeyboardTest {
         }
         assertSaveAboveKeyboard("debt-create-keyboard-validation")
 
-        val amount = compose.onAllNodes(hasSetTextAction())[1]
+        val amount = compose.onNode(hasSetTextAction() and hasText(text(R.string.debt_create_label_amount)))
         amount.performScrollTo().performTouchInput { click() }
         amount.performTextInput("123.45")
         assertSaveAboveKeyboard("debt-create-keyboard-amount")
-        val note = compose.onAllNodes(hasSetTextAction())[2]
+        val note = compose.onNode(hasSetTextAction() and hasText(text(R.string.debt_create_label_note)))
         note.performScrollTo().performTouchInput { click() }
         note.performTextInput("出差垫付车费，等本月报销到账后归还")
         compose.runOnIdle { skin.value = AppSkin.Midnight }

@@ -95,7 +95,6 @@ fun AppTextInput(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
-        AppTextInputHeader(state)
         AppTextInputField(
             state = state,
             actions = actions,
@@ -160,22 +159,25 @@ private fun AppTextInputField(
         keyboardActions = actions.keyboardActions,
         textStyle = appTextInputTextStyle(state),
         decorationBox = { innerTextField ->
-            AppTextInputFrame(state = state, focused = focusState.focused, decorations = decorations) {
-                val showPlaceholder = state.value.isEmpty() &&
-                    state.placeholder.isNotBlank() &&
-                    !(focusState.focused && state.emphasis == AppTextInputEmphasis.Amount)
-                if (showPlaceholder) {
-                    Text(
-                        text = state.placeholder,
-                        color = LocalThemeVisuals.current.textMeta,
-                        style = if (state.emphasis == AppTextInputEmphasis.Amount) {
-                            MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium)
-                        } else {
-                            appTextInputTextStyle(state)
-                        },
-                    )
+            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
+                AppTextInputHeader(state)
+                AppTextInputFrame(state = state, focused = focusState.focused, decorations = decorations) {
+                    val showPlaceholder = state.value.isEmpty() &&
+                        state.placeholder.isNotBlank() &&
+                        !(focusState.focused && state.emphasis == AppTextInputEmphasis.Amount)
+                    if (showPlaceholder) {
+                        Text(
+                            text = state.placeholder,
+                            color = LocalThemeVisuals.current.textMeta,
+                            style = if (state.emphasis == AppTextInputEmphasis.Amount) {
+                                MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium)
+                            } else {
+                                appTextInputTextStyle(state)
+                            },
+                        )
+                    }
+                    innerTextField()
                 }
-                innerTextField()
             }
         },
     )
@@ -191,6 +193,7 @@ private fun AppTextInputFrame(
     val shape = RoundedCornerShape(AppRadius.extraSmall)
     val verticalPadding = if (state.singleLine) AppSpacing.contentGap else AppSpacing.compactGap
     val borderColor = appTextInputBorderColor(state, focused)
+    val borderWidth = if (focused && state.enabled) 2.dp else 1.dp
     val baseModifier = Modifier
         .fillMaxWidth()
         .heightIn(min = appTextInputMinHeight(state))
@@ -198,12 +201,12 @@ private fun AppTextInputFrame(
         .background(appTextInputBackgroundColor(state))
     val framedModifier = if (state.emphasis == AppTextInputEmphasis.Amount) {
         baseModifier.drawBehind {
-            val stroke = 1.dp.toPx()
+            val stroke = borderWidth.toPx()
             val y = size.height - stroke / 2
             drawLine(color = borderColor, start = Offset(0f, y), end = Offset(size.width, y), strokeWidth = stroke)
         }
     } else {
-        baseModifier.border(1.dp, borderColor, shape)
+        baseModifier.border(borderWidth, borderColor, shape)
     }
     val contentAlignment = if (state.singleLine) Alignment.CenterStart else Alignment.TopStart
     val contentModifier = framedModifier
@@ -243,9 +246,10 @@ private fun appTextInputMinHeight(state: AppTextInputState) = when {
 private fun appTextInputBorderColor(state: AppTextInputState, focused: Boolean): Color {
     val visuals = LocalThemeVisuals.current
     return when {
-        state.isError -> MaterialTheme.colorScheme.error.copy(alpha = AppAlpha.heavy)
-        focused -> visuals.focusRing.copy(alpha = AppAlpha.heavy)
-        else -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft)
+        !state.enabled -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft)
+        state.isError -> MaterialTheme.colorScheme.error
+        focused -> visuals.focusRing
+        else -> MaterialTheme.colorScheme.outline
     }
 }
 
@@ -254,7 +258,7 @@ private fun appTextInputBackgroundColor(state: AppTextInputState): Color {
     val visuals = LocalThemeVisuals.current
     if (state.emphasis == AppTextInputEmphasis.Amount && state.enabled) return Color.Transparent
     return if (state.enabled) {
-        visuals.surfaceSunken.copy(alpha = AppAlpha.faint)
+        visuals.surfaceSunken
     } else {
         visuals.surfaceSunken.copy(alpha = AppAlpha.soft)
     }
