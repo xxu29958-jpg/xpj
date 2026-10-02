@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import com.ticketbox.R
 import com.ticketbox.ui.design.AppAlpha
@@ -73,6 +74,7 @@ fun AppDataAuthorityStrip(
         body = body,
         icon = icon,
         accent = accent,
+        emphasizeTitle = tone != DataAuthorityTone.Backend,
         modifier = modifier,
     )
 }
@@ -102,6 +104,7 @@ private fun DataAuthorityStripContent(
     body: String,
     icon: ImageVector?,
     accent: Color,
+    emphasizeTitle: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val separator = stringResource(R.string.components_data_authority_separator)
@@ -109,7 +112,7 @@ private fun DataAuthorityStripContent(
         withStyle(
             SpanStyle(
                 color = accent,
-                fontWeight = AppTextHierarchy.body.weight,
+                fontWeight = if (emphasizeTitle) AppTextHierarchy.body.weight else FontWeight.Normal,
             ),
         ) {
             append(title)

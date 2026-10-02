@@ -5,7 +5,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppAdaptivePaneScaffold
 import com.ticketbox.ui.components.AppAdaptivePanePurpose
@@ -148,7 +147,5 @@ private fun PlanProductHeader(
         ),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         style = MaterialTheme.typography.bodyMedium,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
     )
 }
