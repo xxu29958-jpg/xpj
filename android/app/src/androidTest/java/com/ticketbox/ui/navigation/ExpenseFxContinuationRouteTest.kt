@@ -6,7 +6,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsEnabled
-import androidx.compose.ui.test.assertTextEquals
+import com.ticketbox.ui.assertEditableTextEquals
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isEnabled
@@ -111,10 +111,10 @@ class ExpenseFxContinuationRouteTest {
         compose.onNodeWithText(context.getString(R.string.expense_fx_refresh)).performScrollTo().performClick()
         val load = context.getString(R.string.expense_fx_load_review)
         compose.waitUntil(5_000) { compose.onAllNodes(hasText(load) and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
-        compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("12.34")
+        compose.onAllNodes(hasSetTextAction())[0].assertEditableTextEquals("12.34")
         compose.onNodeWithText(load).assertIsEnabled().performScrollTo().performClick()
         compose.onNodeWithText("保留填写").performClick()
-        compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("12.34")
+        compose.onAllNodes(hasSetTextAction())[0].assertEditableTextEquals("12.34")
         assertEquals(1, reads)
         assertEquals(0, confirmed)
         val pendingReview = CompletableDeferred<Unit>()
@@ -129,7 +129,7 @@ class ExpenseFxContinuationRouteTest {
         compose.waitUntil(5_000) {
             compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isNotEmpty()
         }
-        compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("10.00")
+        compose.onAllNodes(hasSetTextAction())[0].assertEditableTextEquals("10.00")
         assertEquals(0, confirmed)
         compose.onNodeWithText("2026-09-11", substring = true).performScrollTo().assertExists()
     }
@@ -166,7 +166,7 @@ class ExpenseFxContinuationRouteTest {
         }
         val original = vm.uiState.value.expense
         val originalCommands = harness.fixture.stored()
-        compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("10.00")
+        compose.onAllNodes(hasSetTextAction())[0].assertEditableTextEquals("10.00")
         compose.onAllNodes(hasSetTextAction())[0].performTextReplacement("12.34")
         closeSoftKeyboard()
         compose.runOnIdle { failRead = true }
@@ -174,7 +174,7 @@ class ExpenseFxContinuationRouteTest {
         compose.onNodeWithText("替换并载入").performClick()
         compose.waitUntil(5_000) { reads == 2 && !vm.uiState.value.fx.loading }
         assertEquals(original, vm.uiState.value.expense)
-        compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("12.34")
+        compose.onAllNodes(hasSetTextAction())[0].assertEditableTextEquals("12.34")
         assertEquals(originalCommands, harness.fixture.stored())
         assertEquals(0, confirmed)
 
@@ -184,7 +184,7 @@ class ExpenseFxContinuationRouteTest {
         compose.waitUntil(5_000) { reads == 3 && !vm.uiState.value.fx.loading }
         compose.waitForIdle()
         assertEquals(original, vm.uiState.value.expense)
-        compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("10.00")
+        compose.onAllNodes(hasSetTextAction())[0].assertEditableTextEquals("10.00")
         assertEquals(originalCommands, harness.fixture.stored())
         assertEquals(emptyList<Long>(), retryVersions)
         assertEquals(0, confirmed)
@@ -214,7 +214,7 @@ class ExpenseFxContinuationRouteTest {
         assertEquals(original, vm.uiState.value.expense)
         assertEquals(originalCommands, harness.fixture.stored())
         assertEquals(1, reads)
-        compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("12.34")
+        compose.onAllNodes(hasSetTextAction())[0].assertEditableTextEquals("12.34")
 
         val load = context.getString(R.string.expense_fx_load_review)
         compose.onNodeWithText(load).assertExists()
@@ -222,14 +222,14 @@ class ExpenseFxContinuationRouteTest {
         compose.onNodeWithText("保留填写").performClick()
         assertEquals(1, reads)
         assertEquals(original, vm.uiState.value.expense)
-        compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("12.34")
+        compose.onAllNodes(hasSetTextAction())[0].assertEditableTextEquals("12.34")
         compose.onNodeWithText(load).performScrollTo().performClick()
         compose.onNodeWithText("替换并载入").performClick()
         compose.waitUntil(5_000) { vm.uiState.value.expense?.rowVersion == 2L && !vm.uiState.value.fx.loading }
         assertEquals(2, reads)
         assertEquals("ready", vm.uiState.value.expense?.fxStatus)
         assertEquals(7000L, vm.uiState.value.expense?.amountCents)
-        compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("10.00")
+        compose.onAllNodes(hasSetTextAction())[0].assertEditableTextEquals("10.00")
         compose.onNodeWithText(context.getString(R.string.expense_fx_retry)).assertDoesNotExist()
         assertEquals(originalCommands, harness.fixture.stored())
         assertEquals(emptyList<Long>(), retryVersions)

@@ -9,7 +9,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.SemanticsMatcher
-import androidx.compose.ui.test.assertTextEquals
+import com.ticketbox.ui.assertEditableTextEquals
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -105,18 +105,18 @@ class DebtGoalDraftNavigationRoomTest {
         assertSame(originalOwner, creationOwner())
         compose.onNodeWithText(context.getString(R.string.goal_draft_continue)).performClick()
         compose.waitUntil(10_000) { !originalOwner.state.value.isLoadingDebts && originalOwner.state.value.candidates.isEmpty() }
-        compose.onNode(hasSetTextAction()).assertTextEquals("  原还债任务  ")
+        compose.onNode(hasSetTextAction()).assertEditableTextEquals("  原还债任务  ")
         assertEquals(originalKey, originalOwner.state.value.creationKey)
         assertEquals(setOf(originalDebt.publicId), originalOwner.state.value.unavailableSelectedDebtIds)
         compose.onNodeWithText(context.getString(R.string.debt_goal_create_save)).assertIsNotEnabled()
         assertTrue(harness.fixture.stored().isEmpty())
         compose.onNodeWithText(context.getString(R.string.debt_goal_create_remove_unavailable)).performScrollTo().performClick()
         assertTrue(originalOwner.state.value.selectedDebtIds.isEmpty())
-        compose.onNode(hasSetTextAction()).assertTextEquals("  原还债任务  ")
+        compose.onNode(hasSetTextAction()).assertEditableTextEquals("  原还债任务  ")
 
         compose.onNodeWithText(context.getString(R.string.goal_draft_discard)).performScrollTo().performClick()
         compose.onNodeWithText(context.getString(R.string.common_cancel)).performClick()
-        compose.onNode(hasSetTextAction()).assertTextEquals("  原还债任务  ")
+        compose.onNode(hasSetTextAction()).assertEditableTextEquals("  原还债任务  ")
         compose.runOnIdle { debtAvailable = true }
         compose.onNodeWithText(context.getString(R.string.goal_draft_discard)).performScrollTo().performClick()
         compose.onNodeWithText(context.getString(R.string.goal_draft_discard_confirm)).performClick()

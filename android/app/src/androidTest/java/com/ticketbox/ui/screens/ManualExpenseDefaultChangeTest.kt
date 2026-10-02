@@ -5,7 +5,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.test.assertTextEquals
+import com.ticketbox.ui.assertEditableTextEquals
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -77,7 +77,7 @@ class ManualExpenseDefaultChangeTest {
         val amount = compose.onAllNodes(hasSetTextAction())[0]
         amount.performScrollTo().performTouchInput { click() }
         amount.performTextInput("12")
-        amount.assertTextEquals("12")
+        amount.assertEditableTextEquals("12")
     }
 
     private fun save(captureName: String) {
