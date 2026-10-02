@@ -2,6 +2,7 @@ package com.ticketbox.ui.screens.stats
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
@@ -9,6 +10,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -130,15 +132,17 @@ private fun OverviewLinkedModule(
     }
     StatsInsightSurface {
         Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-            Text(card.title, style = MaterialTheme.typography.titleMedium)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(card.title, modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                TextButton(onClick = content.third) { Text(stringResource(content.second)) }
+            }
             if (state.selectedTag.isNotBlank()) {
                 Text(stringResource(R.string.dashboard_ledger_scope), style = MaterialTheme.typography.bodySmall)
             }
-            Text(content.first, style = MaterialTheme.typography.bodyLarge)
+            Text(content.first, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (card.key == DASHBOARD_CARD_GOALS && state.selectedTag.isBlank()) {
                 com.ticketbox.ui.screens.plan.GoalReadSource(state.reportGoalsFetchedAt, state.reportGoalsFromCache)
             }
-            TextButton(onClick = content.third) { Text(stringResource(content.second)) }
         }
     }
 }

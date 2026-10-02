@@ -7,6 +7,8 @@
 }
 
 .insight-hero-value {
+    min-width: 0;
+    overflow-wrap: anywhere;
     color: var(--text-default);
     font-family: var(--font-numeric);
     font-size: var(--type-display-size);
@@ -14,15 +16,48 @@
     font-weight: var(--type-display-weight);
 }
 
+.insight-hero-value--long {
+    font-size: var(--type-headline-size);
+}
+
 .insight-hero-value small {
     color: var(--text-muted);
     font-size: var(--type-title-size);
 }
 
-.insight-stat {
+.insight-brief {
     display: grid;
-    align-content: space-between;
-    gap: var(--space-5);
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-content: start;
+    align-items: baseline;
+    gap: var(--space-2) var(--space-4);
+    padding-block: var(--space-4);
+    border-block-end: 1px solid var(--border-card);
+}
+
+.insight-brief-title {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-3);
+}
+
+.insight-brief-value {
+    font-size: var(--type-title-size);
+}
+
+.insight-brief-detail {
+    grid-column: 1 / -1;
+    margin: 0;
+}
+
+.insight-grid a.product-panel-subtitle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: var(--target-min);
+    min-width: var(--target-min);
+    padding-inline: var(--space-2);
 }
 
 .insight-stat-value,
@@ -32,11 +67,27 @@
     font-weight: var(--type-headline-weight);
 }
 
-.insight-grid,
 .dash-grid {
     display: grid;
     grid-template-columns: repeat(12, minmax(0, 1fr));
     gap: var(--space-5);
+}
+
+.insight-grid {
+    display: grid;
+    gap: var(--space-8);
+}
+
+.insight-lane {
+    display: grid;
+    gap: var(--space-4);
+}
+
+.insight-lane-content {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-5);
+    align-items: start;
 }
 
 .insight-onboarding,
@@ -44,12 +95,10 @@
     margin-block-end: var(--space-6);
 }
 
-.insight-grid > *,
 .dash-grid > * {
     grid-column: span 4;
 }
 
-.insight-grid > .is-wide,
 .dash-grid > .col-8,
 .dash-grid > .col-7 {
     grid-column: span 8;
@@ -61,9 +110,9 @@
 
 .insight-module {
     display: grid;
+    container-type: inline-size;
     align-content: start;
     gap: var(--space-5);
-    min-height: calc(var(--space-12) * 2.5);
 }
 
 .insight-module-foot {
@@ -102,9 +151,15 @@
     min-height: calc(var(--space-12) * 3);
 }
 
-.product-state--compact {
-    min-height: var(--space-12);
-    padding: var(--space-5);
+@container (max-width: 26rem) {
+    .insight-category-layout {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+.insight-empty {
+    display: grid;
+    gap: var(--space-2);
 }
 
 .insight-list,
@@ -539,9 +594,7 @@
 }
 
 @media (max-width: 64rem) {
-    .insight-grid > *,
     .dash-grid > *,
-    .insight-grid > .is-wide,
     .dash-grid > .col-8,
     .dash-grid > .col-7,
     .dash-grid > .col-5 {
@@ -562,14 +615,12 @@
 }
 
 @media (max-width: 40rem) {
-    .insight-grid,
+    .insight-lane-content,
     .dash-grid {
         grid-template-columns: minmax(0, 1fr);
     }
 
-    .insight-grid > *,
     .dash-grid > *,
-    .insight-grid > .is-wide,
     .dash-grid > .col-8,
     .dash-grid > .col-7,
     .dash-grid > .col-5 {
@@ -635,19 +686,13 @@
         display: none;
     }
 
-    .insight-category-layout {
-        grid-template-columns: minmax(0, 1fr);
-    }
-
     .report-chart,
     .report-chart--tall {
         min-height: calc(var(--space-12) * 4);
     }
 }
 
-/* ── 总览页 (W3: 自 pages/overview.css 并入, 原文件整删) ──────────────────
-   泳道头 hairline 分隔 / 页头右轨状态行与行动组。product-panel/product-progress/
-   cluster/pill-row/product-state-action 通用件以 components.css 为准, 不再重复定义。 */
+/* 总览沿用共享页头；每组保留持久化模块顺序与清楚的阅读边界。 */
 .insight-lane-heading {
     display: flex;
     grid-column: 1 / -1;
@@ -656,10 +701,6 @@
     gap: var(--space-4);
     padding-block: var(--space-3);
     border-block-end: 1px solid var(--border-card); /* 1px 发丝分界 */
-}
-
-.insight-lane-heading:not(:first-child) {
-    margin-block-start: var(--space-4);
 }
 
 .insight-lane-heading h2,
@@ -678,12 +719,6 @@
     font-size: var(--type-caption-size);
 }
 
-.ov-side {
-    display: grid;
-    justify-items: end;
-    gap: var(--space-2);
-}
-
 .ov-status {
     margin: 0;
     color: var(--text-muted);
@@ -696,17 +731,5 @@
         align-items: flex-start;
         flex-direction: column;
         grid-column: 1;
-    }
-
-    .ov-side {
-        justify-items: start;
-    }
-}
-
-/* 窄屏页头 (照 recycle-bin 720px 范式): 状态行与行动组整行下移到标题下方,
-   避免标题被右轨挤压折行。 */
-@media (max-width: 720px) {
-    .product-page-header:has(> .ov-side) {
-        grid-template-columns: minmax(0, 1fr);
     }
 }
