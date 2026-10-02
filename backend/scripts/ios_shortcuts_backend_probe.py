@@ -186,6 +186,19 @@ def run_with_upload_backend(command: list[str], *, output: Path, root: Path):
                     finally:
                         (output / "ui-control.log").write_text(raw_log.read_text().replace(upload_key, "REDACTED_UPLOAD_KEY"))
                     observed = export_redacted_text(root, output, upload_key)
+                    if completed.returncode:
+                        device_id = json.loads((output / "environment.json").read_text())["device_id"]
+                        share_logs = subprocess.run([
+                            "xcrun", "simctl", "spawn", device_id, "log", "show", "--last", "5m",
+                            "--style", "compact", "--info", "--predicate",
+                            'process == "Shortcuts" OR process == "MobileSlideShow" OR '
+                            'eventMessage CONTAINS "Run-Workflow"',
+                        ], capture_output=True, text=True, timeout=45)
+                        diagnostic = (share_logs.stdout + share_logs.stderr).replace(upload_key, "REDACTED_UPLOAD_KEY")
+                        (output / "photos-share-services.log").write_text(diagnostic[-240000:])
+                        (output / "photos-share-services.json").write_text(json.dumps({
+                            "exit_code": share_logs.returncode, "scope": "last-five-minutes-system-share-services",
+                        }, indent=2))
                     with SessionLocal() as db:
                         rows = db.scalars(select(Expense)).all()
                         result["expenses_after_probe"] = len(rows)
