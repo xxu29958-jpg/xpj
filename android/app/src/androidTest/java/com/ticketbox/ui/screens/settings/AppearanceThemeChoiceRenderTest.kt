@@ -74,10 +74,15 @@ class AppearanceThemeChoiceRenderTest {
                         .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
                     assertTrue("The complete theme choice must be rendered", layouts.isNotEmpty())
                     layouts.forEach { layout ->
-                        assertFalse("$theme/$mode: $text must fit ${layout.size}; " +
-                            "constraints=${layout.layoutInput.constraints}, lines=${layout.lineCount}", layout.hasVisualOverflow)
+                        // String semantics rebuilds a paragraph at the parent's maximum width.
+                        // Check the visible lines against the rendered size, as in the budget header check.
+                        assertFalse("$theme/$mode: $text must fit its height", layout.didOverflowHeight)
+                        assertEquals("The complete theme text must be laid out", text.length,
+                            layout.getLineEnd(layout.lineCount - 1))
                         for (line in 0 until layout.lineCount) {
                             assertFalse("Theme descriptions must not be ellipsized", layout.isLineEllipsized(line))
+                            assertTrue("$theme/$mode: $text line $line must fit ${layout.size.width}px",
+                                layout.getLineLeft(line) >= 0f && layout.getLineRight(line) <= layout.size.width)
                         }
                     }
                 }
