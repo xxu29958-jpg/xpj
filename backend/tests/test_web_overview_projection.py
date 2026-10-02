@@ -1,8 +1,11 @@
 """Browser overview preserves the projection owner's currency and unknown amounts."""
 
+import re
 from datetime import date
+from html import unescape
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from jinja2 import ChoiceLoader, DictLoader, Environment, FileSystemLoader, StrictUndefined
@@ -98,7 +101,7 @@ def test_actual_overview_template_exposes_unknown_and_original_recovery():
     cards = {"home_currency_code": "JPY", "month": "2026-08", "total_amount_cents": None,
         "delta_amount_cents": None, "delta_direction": "unavailable", "previous_total_amount_cents": 1200,
         "confirmed_count": 2, "pending_count": 0, "budget_top": [], "budget_remaining_cents": None,
-        "budget_home_currency_code": "CNY"}
+        "budget_home_currency_code": "CNY", "budget_configured": False}
     env = Environment(autoescape=True, undefined=StrictUndefined, loader=ChoiceLoader([
         DictLoader({"base.html": "{% block content %}{% endblock %}"}),
         FileSystemLoader(Path(__file__).parents[1] / "app/templates/web"),
@@ -106,7 +109,7 @@ def test_actual_overview_template_exposes_unknown_and_original_recovery():
     html = env.get_template("overview.html").render(cards=cards, selected_ledger_id="family", q="?ledger_id=family",
         can_write=True, has_any_expense=True, overview_load_charts=False, category_chart_available=False,
         category_share=[{"name": "餐饮", "amount_label": "待补齐换算信息", "amount_cents": None}],
-        overview_cards=[{"key": "monthly_spend"}, {"key": "reports"}],
+        overview_cards=[{"key": "monthly_spend"}, {"key": "budget"}, {"key": "reports"}],
         money_task={"ledger_id": "family", "month": "2026-08", "home_currency_code": "JPY", "return_to": "overview"},
         missing_rates=[ProjectionGap("CNY", "JPY", date(2026, 8, 4))], flash_message="",
         **_overview_amount_views(cards))
@@ -115,3 +118,8 @@ def test_actual_overview_template_exposes_unknown_and_original_recovery():
     assert "与上月持平" not in html and "None" not in html
     assert "return_to=overview" in html and "home_currency_code=JPY" in html
     assert "month=2026-08" in html and "rate_date=2026-08-04" in html
+    budget_link = re.search(r'data-overview-card="budget">.*?href="([^"]+)"', html, re.S)
+    assert budget_link is not None
+    budget_url = urlsplit(unescape(budget_link.group(1)))
+    assert budget_url.path == "/web/budgets"
+    assert parse_qs(budget_url.query) == {"ledger_id": ["family"], "month": ["2026-08"]}

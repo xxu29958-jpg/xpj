@@ -1,5 +1,6 @@
 """Follow report scopes into actual facts, correct them, and return to the report."""
 
+from datetime import date, timedelta
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 from sqlalchemy import select
@@ -166,6 +167,21 @@ class InsightsJourney:
                 self.capture(f"overview-default-{theme}-{width}")
         assert self.facts() == before, "Overview customization changed financial facts"
 
+    def overview_budget_entry(self):
+        page = self.page
+        before = self.facts()
+        month_start = date.fromisoformat(before["month"] + "-01")
+        historical = (month_start - timedelta(days=1)).strftime("%Y-%m")
+        self.goto(f"/web/overview?month={historical}")
+        page.locator('[data-overview-card="budget"]').get_by_role("link", name="管理", exact=True).click()
+        page.wait_for_url("**/web/budgets?**")
+        assert page.get_by_role("heading", name="月度预算", exact=True).is_visible()
+        form = page.locator('form[action="/web/budgets/save"]')
+        assert form.locator('input[name="month"]').input_value() == historical
+        assert form.locator('input[name="ledger_id"]').input_value() == self.fixture.ledger_id
+        self.capture("overview-historical-budget")
+        assert self.facts() == before, "Opening the selected month's budget changed financial facts"
+
     def web_report_return(self):
         page = self.page
         state = self.facts()
@@ -205,6 +221,7 @@ class InsightsJourney:
     def run(self):
         self.prepare()
         self.overview_layout()
+        self.overview_budget_entry()
         self.tagged_drill_and_return()
         self.web_report_return()
         state = self.facts()
@@ -215,5 +232,5 @@ class InsightsJourney:
         state["verified_leg"] = ("Actual tagged and unfiltered native category drills, original fact correction, "
             "return with retained scope and refreshed summary, Web report drill/correction/return with original "
             "month/currency/granularity/ranking/category, persisted Web overview order/hiding/reload/default reset, "
-            "wide/narrow appearances and unchanged unrelated facts")
+            "selected historical month into the actual budget editor, wide/narrow appearances and unchanged unrelated facts")
         return state
