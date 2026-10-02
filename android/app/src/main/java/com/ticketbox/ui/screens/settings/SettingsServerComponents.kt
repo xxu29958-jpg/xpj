@@ -95,7 +95,7 @@ import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppPageScrollableColumn
-import com.ticketbox.ui.components.QuietOutlinedButton
+import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.formatAmountInput
@@ -240,7 +240,7 @@ internal fun AccountStatusCard(
                 modifier = Modifier.padding(top = AppSpacing.tinyGap),
                 horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
             ) {
-                QuietOutlinedButton(
+                AppSecondaryButton(
                     text = if (busy) {
                         stringResource(R.string.settings_account_button_busy)
                     } else {

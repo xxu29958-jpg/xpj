@@ -59,7 +59,7 @@ import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
 import com.ticketbox.ui.components.AppAdaptiveEditActionMode
 import com.ticketbox.ui.components.AppAdaptiveTrailingActionRow
 import com.ticketbox.ui.components.AppStatusBanner
-import com.ticketbox.ui.components.QuietOutlinedButton
+import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.ledgerRoleLabelText
 import com.ticketbox.ui.design.AppAlpha
@@ -157,7 +157,7 @@ fun FamilyMembersScreen(
                     }
                 }
                 AppAdaptiveTrailingActionRow {
-                    QuietOutlinedButton(
+                    AppSecondaryButton(
                         text = if (state.loading) {
                             stringResource(R.string.family_members_refresh_loading)
                         } else if (canManageMembers) {
@@ -394,17 +394,17 @@ private fun CreatedInviteActions(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
             ) {
-                QuietOutlinedButton(
+                AppSecondaryButton(
                     text = stringResource(R.string.family_members_invite_copy),
                     modifier = Modifier.fillMaxWidth(),
                     onClick = onCopy,
                 )
-                QuietOutlinedButton(
+                AppSecondaryButton(
                     text = stringResource(R.string.family_members_invite_share),
                     modifier = Modifier.fillMaxWidth(),
                     onClick = onShare,
                 )
-                QuietOutlinedButton(
+                AppSecondaryButton(
                     text = stringResource(R.string.family_members_invite_dismiss),
                     modifier = Modifier.fillMaxWidth(),
                     onClick = onDismissResult,
@@ -416,9 +416,9 @@ private fun CreatedInviteActions(
                 horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                QuietOutlinedButton(text = stringResource(R.string.family_members_invite_copy), onClick = onCopy)
-                QuietOutlinedButton(text = stringResource(R.string.family_members_invite_share), onClick = onShare)
-                QuietOutlinedButton(
+                AppSecondaryButton(text = stringResource(R.string.family_members_invite_copy), onClick = onCopy)
+                AppSecondaryButton(text = stringResource(R.string.family_members_invite_share), onClick = onShare)
+                AppSecondaryButton(
                     text = stringResource(R.string.family_members_invite_dismiss),
                     onClick = onDismissResult,
                 )

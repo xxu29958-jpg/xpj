@@ -20,7 +20,7 @@ import com.ticketbox.domain.model.RuleApplyConfirmedResult
 import com.ticketbox.domain.model.RuleApplyPreviewItem
 import com.ticketbox.ui.components.AppAction
 import com.ticketbox.ui.components.AppActionRow
-import com.ticketbox.ui.components.QuietOutlinedButton
+import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
@@ -203,7 +203,7 @@ private fun RuleApplicationRow(
                 )
             }
             if (!readOnly && !application.isRolledBack) {
-                QuietOutlinedButton(
+                AppSecondaryButton(
                     text = stringResource(R.string.category_rule_apply_history_rollback_button),
                     enabled = !busy,
                     onClick = onRollback,

@@ -53,7 +53,7 @@ import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryRefreshState
 import com.ticketbox.ui.components.AppSecondaryScrollableContent
 import com.ticketbox.ui.components.AppStatusBanner
-import com.ticketbox.ui.components.QuietOutlinedButton
+import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
@@ -266,7 +266,7 @@ private fun InboxRow(
         row.receivedBill?.let { received ->
             Text(stringResource(R.string.bill_split_received_ledger, received.ledgerName),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            QuietOutlinedButton(text = stringResource(R.string.bill_split_open_received), enabled = chrome.actionsEnabled,
+            AppSecondaryButton(text = stringResource(R.string.bill_split_open_received), enabled = chrome.actionsEnabled,
                 onClick = { chrome.access?.binding?.let { chrome.navigation.openBill(it, received.expenseId, received.ledgerId) } })
         }
         if (row.status == BillSplitStatusValues.INVITED && !locallyExpired) {
@@ -296,7 +296,7 @@ private fun BillSplitInboxActions(
         // and let a multi-ledger member PICK the target instead of hard-wiring the first writable one.
         when {
             candidates.isEmpty() -> Unit
-            candidates.size == 1 -> QuietOutlinedButton(
+            candidates.size == 1 -> AppSecondaryButton(
                 text = stringResource(R.string.bill_split_inbox_accept, candidates.single().name),
                 modifier = actionModifier,
                 enabled = enabled,
@@ -322,7 +322,7 @@ private fun BillSplitInboxActions(
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
             ) {
                 acceptAction(Modifier.fillMaxWidth())
-                QuietOutlinedButton(
+                AppSecondaryButton(
                     text = stringResource(R.string.bill_split_inbox_reject),
                     enabled = enabled,
                     modifier = Modifier.fillMaxWidth(),
@@ -335,7 +335,7 @@ private fun BillSplitInboxActions(
                 horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap, Alignment.End),
             ) {
                 acceptAction(Modifier)
-                QuietOutlinedButton(
+                AppSecondaryButton(
                     text = stringResource(R.string.bill_split_inbox_reject),
                     enabled = enabled,
                     onClick = { onReject(row.publicId) },
@@ -393,11 +393,11 @@ private fun SentRow(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )
-        QuietOutlinedButton(text = stringResource(R.string.bill_split_open_source), enabled = chrome.actionsEnabled,
+        AppSecondaryButton(text = stringResource(R.string.bill_split_open_source), enabled = chrome.actionsEnabled,
             onClick = { chrome.access?.binding?.let { chrome.navigation.openBill(it, row.senderExpenseId, it.ledgerId) } })
         if (presented == BillSplitStatusValues.INVITED && chrome.access?.canModify == true) {
             AppAdaptiveTrailingActionRow {
-                QuietOutlinedButton(
+                AppSecondaryButton(
                     text = stringResource(R.string.bill_split_sent_cancel),
                     modifier = it,
                     enabled = chrome.actionsEnabled,
@@ -445,7 +445,7 @@ private fun AcceptTargetPicker(
 ) {
     var expanded by remember { mutableStateOf(false) }
     Box(modifier = modifier) {
-        QuietOutlinedButton(
+        AppSecondaryButton(
             text = stringResource(R.string.bill_split_accept_picker_title),
             modifier = Modifier.fillMaxWidth(),
             enabled = enabled,

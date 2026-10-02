@@ -25,7 +25,7 @@ import com.ticketbox.domain.model.DebtRepayment
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppSectionGroup
 import com.ticketbox.ui.components.AppStatusBanner
-import com.ticketbox.ui.components.QuietOutlinedButton
+import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.displayDate
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
@@ -68,7 +68,7 @@ internal fun DebtActivitySection(
         DebtReadSource(history.fetchedAt, history.fromCache, history.isLoading)
         history.error?.let { error ->
             AppStatusBanner(message = error, tone = MessageTone.Danger)
-            QuietOutlinedButton(
+            AppSecondaryButton(
                 text = stringResource(R.string.common_retry),
                 onClick = callbacks.onRetry,
             )
@@ -161,7 +161,7 @@ internal fun DebtActivityRepayment(
             }
         }
         if (voidAllowed) {
-            QuietOutlinedButton(text = stringResource(R.string.debt_repayment_void_action), onClick = onVoid)
+            AppSecondaryButton(text = stringResource(R.string.debt_repayment_void_action), onClick = onVoid)
         }
     }
 }
@@ -190,7 +190,7 @@ private fun DebtActivityPager(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
-        QuietOutlinedButton(
+        AppSecondaryButton(
             text = stringResource(R.string.debt_repayment_history_newer),
             enabled = history.hasPrevious && !history.isLoading,
             onClick = { onLoadPage(history.page - 1) },
@@ -201,7 +201,7 @@ private fun DebtActivityPager(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(1f),
         )
-        QuietOutlinedButton(
+        AppSecondaryButton(
             text = stringResource(R.string.debt_repayment_history_older),
             enabled = history.hasNext && !history.isLoading,
             onClick = { onLoadPage(history.page + 1) },

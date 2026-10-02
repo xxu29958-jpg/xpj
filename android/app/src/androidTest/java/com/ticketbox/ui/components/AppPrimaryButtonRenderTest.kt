@@ -1,31 +1,46 @@
 package com.ticketbox.ui.components
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.ui.design.LocalThemeVisuals
+import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.ui.theme.TicketboxTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -93,6 +108,59 @@ class AppPrimaryButtonRenderTest {
         composeRule.onNodeWithTag(BUTTON_TAG).assertIsEnabled().performClick()
         composeRule.waitForIdle()
         assertEquals(1, harness.clicks)
+    }
+
+    @Test
+    fun pairedActionsKeepTheirCompleteLabelsAtLargeFont() {
+        val skin = mutableStateOf(AppSkin.Paper)
+        val primaryLabel = "确认并保存账单"
+        val secondaryLabel = "核对当前事实后重新拟定"
+        var primaryClicks = 0
+        var secondaryClicks = 0
+        var controlFontSize = TextUnit.Unspecified
+        composeRule.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 1.8f)) {
+                TicketboxTheme(skin = skin.value) {
+                    controlFontSize = MaterialTheme.typography.labelLarge.fontSize
+                    Row(Modifier.width(328.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        AppSecondaryButton(
+                            text = secondaryLabel, modifier = Modifier.weight(1f).testTag("secondary"),
+                            onClick = { secondaryClicks++ },
+                        )
+                        AppPrimaryButton(
+                            text = primaryLabel, icon = Icons.Filled.Check,
+                            modifier = Modifier.weight(1f).testTag(BUTTON_TAG),
+                            onClick = { primaryClicks++ },
+                        )
+                    }
+                }
+            }
+        }
+        for (theme in listOf(AppSkin.Paper, AppSkin.Midnight)) {
+            composeRule.runOnIdle { skin.value = theme }
+            for (label in listOf(primaryLabel, secondaryLabel)) {
+                val layouts = mutableListOf<TextLayoutResult>()
+                composeRule.onNodeWithText(label, useUnmergedTree = true)
+                    .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+                assertTrue("The complete action must be rendered", layouts.isNotEmpty())
+                for (layout in layouts) {
+                    assertEquals("Action text must respect the user's text size",
+                        controlFontSize, layout.layoutInput.style.fontSize)
+                    assertFalse("The action label must fit its height", layout.didOverflowHeight)
+                    for (line in 0 until layout.lineCount) {
+                        assertFalse("Action words must not be ellipsized", layout.isLineEllipsized(line))
+                        assertTrue(layout.getLineLeft(line) >= 0f && layout.getLineRight(line) <= layout.size.width)
+                    }
+                }
+            }
+            saveConsumerArtPreview("paired-actions-${theme.name}-large-font",
+                composeRule.onRoot().captureToImage().asAndroidBitmap())
+            composeRule.onNodeWithTag(BUTTON_TAG).assertIsEnabled().performClick()
+            composeRule.onNodeWithTag("secondary").assertIsEnabled().performClick()
+        }
+        assertEquals(2, primaryClicks)
+        assertEquals(2, secondaryClicks)
     }
 
     private fun assertContainerFilled(stage: String, harness: Harness) {

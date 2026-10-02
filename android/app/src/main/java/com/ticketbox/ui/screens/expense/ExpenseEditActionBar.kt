@@ -30,7 +30,7 @@ import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppOutlinedButtonOptions
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.LocalAppImeVisible
-import com.ticketbox.ui.components.QuietOutlinedButton
+import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.forTone
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
@@ -220,7 +220,7 @@ private fun ExpenseEditActionForwardRow(
             )
         }
         if (state.allowSave) {
-            QuietOutlinedButton(
+            AppSecondaryButton(
                 modifier = Modifier.weight(if (state.allowConfirm) 0.92f else 1f),
                 text = if (state.saving) {
                     stringResource(R.string.expense_edit_primary_saving_button)
@@ -303,7 +303,7 @@ private fun RowScope.CompactOutlinedAction(
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
-    QuietOutlinedButton(
+    AppSecondaryButton(
         modifier = Modifier.weight(weight).defaultMinSize(minHeight = 48.dp),
         text = text,
         enabled = enabled,

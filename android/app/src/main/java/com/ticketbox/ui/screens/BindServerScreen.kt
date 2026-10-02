@@ -33,7 +33,7 @@ import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.PageRole
-import com.ticketbox.ui.components.QuietOutlinedButton
+import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.design.AppAdaptiveContentWidth
 import com.ticketbox.ui.design.AppSpacing
 
@@ -136,14 +136,14 @@ fun BindServerScreen(
                 modifier = Modifier.fillMaxWidth(),
                 onClick = submitBind,
             )
-            QuietOutlinedButton(
+            AppSecondaryButton(
                 text = stringResource(R.string.bind_server_button_join_with_invitation),
                 enabled = !loading,
                 modifier = Modifier.fillMaxWidth(),
                 onClick = actions.onJoinWithInvitation,
             )
             if (hasPendingEnrollment) {
-                QuietOutlinedButton(
+                AppSecondaryButton(
                     text = stringResource(R.string.bind_server_button_abandon_pending),
                     enabled = !loading,
                     modifier = Modifier.fillMaxWidth(),

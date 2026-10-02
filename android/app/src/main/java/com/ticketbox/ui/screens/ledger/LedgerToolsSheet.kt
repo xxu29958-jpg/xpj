@@ -26,7 +26,7 @@ import com.ticketbox.ui.components.AppSegmentedItem
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
-import com.ticketbox.ui.components.QuietOutlinedButton
+import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.LocalAccountingDateReview
 import com.ticketbox.ui.components.buildAppTagFilterChoices
 import com.ticketbox.ui.design.AppSpacing
@@ -230,7 +230,7 @@ private fun LedgerDataTools(
             icon = Icons.Default.Category,
         )
         LocalAccountingDateReview.current?.let { review ->
-            QuietOutlinedButton(
+            AppSecondaryButton(
                 text = stringResource(R.string.calendar_review_dates),
                 modifier = Modifier.fillMaxWidth(),
                 onClick = { actions.onDismiss(); review() },
@@ -285,7 +285,7 @@ private fun LedgerToolsFooter(
         if (hasUserFilters) {
             AppAdaptiveEqualControlRow(
                 leading = { actionModifier ->
-                    QuietOutlinedButton(
+                    AppSecondaryButton(
                         text = stringResource(R.string.ledger_tools_clear_filters),
                         modifier = actionModifier,
                         onClick = onClearFilters,

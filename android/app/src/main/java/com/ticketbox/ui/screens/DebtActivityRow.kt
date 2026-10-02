@@ -21,7 +21,7 @@ import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.MemberProposalStatuses
 import com.ticketbox.domain.model.MemberRepaymentProposal
 import com.ticketbox.ui.components.AppListRow
-import com.ticketbox.ui.components.QuietOutlinedButton
+import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.displayDateTime
 import com.ticketbox.ui.components.displayDate
 import com.ticketbox.ui.components.formatDisplayAmount
@@ -87,7 +87,7 @@ private fun DebtActivityProposal(proposal: MemberRepaymentProposal, resolved: Bo
             Text(stringResource(R.string.debt_activity_confirmed_amount, formatDisplayAmount(it, display)))
         }
         proposal.committedRepaymentPublicId?.let { repaymentId ->
-            QuietOutlinedButton(text = stringResource(R.string.debt_activity_open_repayment), onClick = { openRepayment(repaymentId) })
+            AppSecondaryButton(text = stringResource(R.string.debt_activity_open_repayment), onClick = { openRepayment(repaymentId) })
         }
     } else {
         Text(stringResource(R.string.debt_activity_proposal_expires, displayDateTime(proposal.expiresAt)),

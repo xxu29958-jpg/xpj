@@ -19,7 +19,7 @@ import androidx.annotation.StringRes
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.ui.components.AppSectionHeader
-import com.ticketbox.ui.components.QuietOutlinedButton
+import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.design.AppSpacing
@@ -140,7 +140,7 @@ private fun FactTimelineOlderAction(
         }
         return
     }
-    QuietOutlinedButton(
+    AppSecondaryButton(
         text = stringResource(
             R.string.expense_fact_timeline_load_older,
             (state.revisionsTotal - state.revisions.size).coerceAtLeast(0),
@@ -166,7 +166,7 @@ private fun FactTimelineExpansionAction(
         )
         else -> stringResource(R.string.expense_fact_timeline_expand, state.revisionsTotal)
     }
-    QuietOutlinedButton(text = text, onClick = onToggleExpanded)
+    AppSecondaryButton(text = text, onClick = onToggleExpanded)
 }
 
 @Composable

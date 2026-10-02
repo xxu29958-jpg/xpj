@@ -18,7 +18,7 @@ import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.ui.components.AppAsyncImage
 import com.ticketbox.ui.components.AppAsyncImageLayout
 import com.ticketbox.ui.components.AppAsyncImagePresentation
-import com.ticketbox.ui.components.QuietOutlinedButton
+import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.design.AppSpacing
 
 // 小票缩略图 / 大图尺寸：沿用原 EditDraftPreviewCard 的口径（竖向票据 3:4 缩略、420dp 大图）。
@@ -99,7 +99,7 @@ private fun ExpenseEvidenceActions(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
-        if (!state.originalTaskAvailable) QuietOutlinedButton(
+        if (!state.originalTaskAvailable) AppSecondaryButton(
             text = when {
                 state.imageLoading -> stringResource(R.string.expense_edit_preview_image_button_loading)
                 state.showLargeImage -> stringResource(R.string.expense_edit_preview_image_button_collapse)
@@ -109,7 +109,7 @@ private fun ExpenseEvidenceActions(
             onClick = actions.onToggleLargeImage,
         )
         if (!state.readOnly) {
-            QuietOutlinedButton(
+            AppSecondaryButton(
                 text = if (state.ocrRunning) {
                     stringResource(R.string.expense_edit_preview_recognize_running_button)
                 } else {
