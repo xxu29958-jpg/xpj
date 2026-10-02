@@ -51,8 +51,8 @@ internal fun BudgetSummarySection(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
     ) {
         com.ticketbox.ui.components.AccountingDateNotice(budget?.undatedExpenseCount)
-        BudgetSummaryStatus(configuredBudget)
         if (configuredBudget == null) {
+            BudgetSummaryStatus(null)
             BudgetSummaryPlaceholder(loading)
             return@BudgetOpenSection
         }
@@ -61,6 +61,7 @@ internal fun BudgetSummarySection(
             currencyDisplay = currencyDisplay,
         )
         configuredBudget.spentProgress?.let { BudgetProgressBar(progress = it) }
+        BudgetSummaryStatus(configuredBudget)
         com.ticketbox.ui.components.CurrencyReferenceDates(configuredBudget.referenceRates)
         if (configuredBudget.missingCurrencyCodes.isNotEmpty()) {
             Text(stringResource(R.string.budget_missing_conversion, configuredBudget.missingCurrencyCodes.joinToString("、")))

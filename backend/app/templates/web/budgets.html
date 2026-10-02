@@ -38,21 +38,6 @@
   <a class="product-button product-button--quiet" href="/web/budgets/history?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ month }}">修改记录</a>
 </header>
 
-{% if budget.configured and can_write %}
-<details class="product-panel product-panel--padded">
-  <summary>管理本月预算</summary>
-  <p>移入回收站后，本月不再启用这份预算。已确认支出、分类额度和修改记录保留，可在回收站恢复。未提交的填写仍保留。</p>
-  <form method="post" action="/web/budgets/archive" data-confirm="将 {{ month }} 的预算移入回收站？原支出和修改记录保留。">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-    <input type="hidden" name="month" value="{{ month }}">
-    <input type="hidden" name="expected_row_version" value="{{ budget_archive_version }}">
-    <input type="hidden" name="draft_scope" value="{{ (budget_archive_scope | tojson if budget_archive_scope else '') | forceescape }}">
-    <button class="product-button product-button--quiet" type="submit">将本月预算移入回收站</button>
-  </form>
-</details>
-{% endif %}
-
 {% if message %}<div class="product-feedback" role="status">{{ message }}</div>{% endif %}
 {% if budget.missing_currency_codes %}
 <div class="product-feedback" role="status">部分汇总待补齐汇率或币种：{{ budget.missing_currency_codes | join('、') }}。原预算和分类金额保持不变。</div>
@@ -274,5 +259,19 @@
     </table>
   </div>
 </section>
+{% endif %}
+{% if budget.configured and can_write %}
+<details class="product-panel product-panel--padded">
+  <summary>管理本月预算</summary>
+  <p>移入回收站后，本月不再启用这份预算。已确认支出、分类额度和修改记录保留，可在回收站恢复。未提交的填写仍保留。</p>
+  <form method="post" action="/web/budgets/archive" data-confirm="将 {{ month }} 的预算移入回收站？原支出和修改记录保留。">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <input type="hidden" name="month" value="{{ month }}">
+    <input type="hidden" name="expected_row_version" value="{{ budget_archive_version }}">
+    <input type="hidden" name="draft_scope" value="{{ (budget_archive_scope | tojson if budget_archive_scope else '') | forceescape }}">
+    <button class="product-button product-button--quiet" type="submit">将本月预算移入回收站</button>
+  </form>
+</details>
 {% endif %}
 {% endblock %}
