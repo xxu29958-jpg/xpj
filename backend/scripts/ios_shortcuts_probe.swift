@@ -196,6 +196,7 @@ final class ShortcutProbe: XCTestCase {
         captureText(app, "Shortcut sharing details enabled")
         XCTAssertEqual(sharing.value as? String, "1")
         app.buttons["Done"].tap()
+        try configureShareImages(app)
         app.buttons["Back"].tap()
         captureText(app, "Saved shortcut library before sharing")
         // Run-Workflow excludes content whose source app is Shortcuts. Start
@@ -264,6 +265,33 @@ final class ShortcutProbe: XCTestCase {
         }
         XCTAssertTrue(shortcut.exists && shortcut.isHittable)
         // Entry discovery only: its body still uses Clipboard. Do not run or claim the share-input journey yet.
+    }
+
+    @MainActor private func configureShareImages(_ app: XCUIApplication) throws {
+        // The captured input row says "Receive , Apps and 18 more, from , Share Sheet".
+        // Apple documents opening its input chip, clearing the types, then enabling Images.
+        let input = app.otherElements.matching(NSPredicate(format: "label BEGINSWITH %@", "Receive ,")).firstMatch
+        XCTAssertTrue(input.waitForExistence(timeout: 10))
+        input.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25)).tap()
+        captureText(app, "Available share input types")
+        let clear = app.buttons["Clear"]
+        XCTAssertTrue(clear.waitForExistence(timeout: 10))
+        clear.tap()
+        let images = app.switches["Images"]
+        for _ in 0..<3 {
+            if images.exists && images.isHittable { break }
+            app.swipeUp()
+        }
+        captureText(app, "Share input types before choosing Images")
+        XCTAssertTrue(images.exists && images.isHittable)
+        if images.value as? String != "1" {
+            let toggle = images.switches.firstMatch
+            if toggle.exists { toggle.tap() } else { images.tap() }
+        }
+        XCTAssertEqual(images.value as? String, "1")
+        captureText(app, "Images selected for Photos sharing")
+        app.buttons["Done"].tap()
+        captureText(app, "Shortcut limited to image input")
     }
 
     @MainActor private func captureText(_ app: XCUIApplication, _ name: String) {

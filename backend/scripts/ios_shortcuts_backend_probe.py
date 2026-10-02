@@ -191,7 +191,8 @@ def run_with_upload_backend(command: list[str], *, output: Path, root: Path):
                         share_logs = subprocess.run([
                             "xcrun", "simctl", "spawn", device_id, "log", "show", "--last", "5m",
                             "--style", "compact", "--info", "--predicate",
-                            'process == "Shortcuts" OR process == "MobileSlideShow" OR '
+                            'subsystem == "com.apple.sharing" OR subsystem CONTAINS "Workflow" OR '
+                            'process == "siriactionsd" OR process == "linkd" OR '
                             'eventMessage CONTAINS "Run-Workflow"',
                         ], capture_output=True, text=True, timeout=45)
                         diagnostic = (share_logs.stdout + share_logs.stderr).replace(upload_key, "REDACTED_UPLOAD_KEY")
