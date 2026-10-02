@@ -70,7 +70,7 @@ jobs:
               print(json.dumps(result, ensure_ascii=False, indent=2))
           raise SystemExit(0 if result["shortcuts_installed"] and result["shortcuts_launched"] else 1)
           PY
-      - name: Open the real Shortcuts editor through XCTest
+      - name: Add the real URL upload action through XCTest
         shell: bash
         run: |
           python3 - <<'PY'
@@ -87,7 +87,7 @@ jobs:
           schemes.mkdir(parents=True)
           (root / "Probe.swift").write_text('''import XCTest
           final class ShortcutProbe: XCTestCase {
-              @MainActor func testSystemShortcutsEditorCanBeOpened() {
+              @MainActor func testSystemUploadActionCanBeAdded() {
                   continueAfterFailure = false
                   let app = XCUIApplication(bundleIdentifier: "com.apple.shortcuts")
                   app.launch()
@@ -98,12 +98,21 @@ jobs:
                   create.tap()
                   XCTAssertEqual(app.state, .runningForeground)
                   print("SHORTCUTS_EDITOR_UI_TREE_BEGIN\\n\\(app.debugDescription)\\nSHORTCUTS_EDITOR_UI_TREE_END")
+                  let search = app.searchFields["Search Actions"]
+                  XCTAssertTrue(search.waitForExistence(timeout: 10))
+                  search.tap()
+                  search.typeText("Get Contents of URL")
+                  let action = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Get Contents of URL")).firstMatch
+                  XCTAssertTrue(action.waitForExistence(timeout: 10))
+                  print("SHORTCUTS_SEARCH_UI_TREE_BEGIN\\n\\(app.debugDescription)\\nSHORTCUTS_SEARCH_UI_TREE_END")
+                  action.tap()
+                  print("SHORTCUTS_URL_ACTION_UI_TREE_BEGIN\\n\\(app.debugDescription)\\nSHORTCUTS_URL_ACTION_UI_TREE_END")
                   let tree = XCTAttachment(string: app.debugDescription)
-                  tree.name = "New shortcut editor accessibility tree"
+                  tree.name = "URL action editor accessibility tree"
                   tree.lifetime = .keepAlways
                   add(tree)
                   let screen = XCTAttachment(screenshot: app.screenshot())
-                  screen.name = "New shortcut editor controlled by XCTest"
+                  screen.name = "URL action added through XCTest"
                   screen.lifetime = .keepAlways
                   add(screen)
               }
