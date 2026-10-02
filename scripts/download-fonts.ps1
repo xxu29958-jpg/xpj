@@ -1,4 +1,4 @@
-# Regenerate the local Web font bundle. Run from any directory; generated assets
+﻿# Regenerate the local Web font bundle. Run from any directory; generated assets
 # are committed and served locally, with no runtime request to Google Fonts.
 param([string]$Proxy)
 
