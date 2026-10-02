@@ -480,7 +480,7 @@ private fun SyncStatusRecoveryActions(
                     onClick = primary.onClick,
                 )
                 AppOutlinedButton(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.align(Alignment.End),
                     onClick = danger.onClick,
                     options = AppOutlinedButtonOptions(enabled = danger.enabled, danger = true),
                 ) {
