@@ -9,7 +9,9 @@ final class ShortcutProbe: XCTestCase {
         captureText(photos, "Photos before library readiness")
         let deadline = Date().addingTimeInterval(180)
         let library = photos.buttons["Library"]
-        while Date() < deadline && !library.exists {
+        // The library is already in the accessibility tree behind What's New.
+        // Only a hittable tab proves the introduction no longer covers it.
+        while Date() < deadline && !(library.exists && library.isHittable) {
             let introduction = photos.buttons["Continue"]
             if introduction.exists && introduction.isHittable {
                 captureText(photos, "Photos introduction")
