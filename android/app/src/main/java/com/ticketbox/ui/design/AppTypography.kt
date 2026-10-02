@@ -17,7 +17,7 @@ data class AppTextRole(
  * 页面和组件不得重新拼装局部数值。
  */
 object AppTypeScale {
-    val amountHero = AppTextRole(34.sp, 38.sp, FontWeight.ExtraBold, (-0.5).sp)
+    val amountHero = AppTextRole(34.sp, 38.sp, FontWeight.SemiBold, (-0.5).sp)
     val pageHero = AppTextRole(28.sp, 32.sp, FontWeight.Bold, (-0.25).sp)
     val pageTitle = AppTextRole(24.sp, 32.sp, FontWeight.Bold)
     val headline = AppTextRole(22.sp, 28.sp, FontWeight.Bold)
@@ -90,7 +90,7 @@ fun TextStyle.tabularNum(): TextStyle = copy(fontFeatureSettings = "tnum")
  * 金额排版"角色"——把两类强调金额的字号 / 字重 / 行高锁成命名档位。
  *
  * 金额收成三档单源：
- *   - [Hero]   —— 每屏唯一的焦点数字（月度总支出等），34sp ExtraBold。
+ *   - [Hero]   —— 每屏唯一的焦点数字（月度总支出等），34sp SemiBold。
  *   - [Medium] —— 卡片 / 列表里的次级金额，22sp Bold。
  *   - [Compact] —— 密集列表 / 明细行里的金额，15sp Medium。
  *

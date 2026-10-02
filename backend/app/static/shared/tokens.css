@@ -274,7 +274,7 @@
      * owner.css 的 system stack、Android Material3 FontFamily）,shared 层只统一
      * 字号/行高/字重的语义阶梯。
      *
-     *  display  34/1.12/800  —— 焦点金额(每屏 ≤1 处),对齐 Android AppTypography.amountLarge
+     *  display  34/1.12/600  —— 焦点金额(每屏 ≤1 处),对齐 Android AppTypography.amountLarge
      *  hero     28/1.15/700  —— 页面主标题,每屏 1 处
      *  headline 22/1.25/700  —— 区块大标题、h1
      *  title    18/1.30/600  —— 卡片/section 标题,对齐 AppTextHierarchy.heading
@@ -283,7 +283,7 @@
      *  caption  12/1.40/400  —— 辅助文字(meta/时间/标签),对齐 AppTextHierarchy.caption
      *  meta     10/1.30/500  —— uppercase eyebrow 文字,letter-spacing 0.18em
      */
-    --type-display-size: 34px;   --type-display-line: 1.12; --type-display-weight: 800;
+    --type-display-size: 34px;   --type-display-line: 1.12; --type-display-weight: 600;
     --type-hero-size: 28px;      --type-hero-line: 1.15;    --type-hero-weight: 700;
     --type-headline-size: 22px;  --type-headline-line: 1.25; --type-headline-weight: 700;
     --type-title-size: 18px;     --type-title-line: 1.30;   --type-title-weight: 600;
