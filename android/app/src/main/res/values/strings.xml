@@ -235,7 +235,7 @@
     <string name="split_agreement_share_facts">原份额 %1$s · 当前约定 %2$s</string>
     <string name="split_agreement_payment_facts">原接收方已付 %1$s · 原发送方已返 %2$s</string>
     <string name="split_agreement_forgiveness_facts">原往来已免除 %1$s · 返还已免除 %2$s</string>
-    <string name="split_agreement_current_settlement">当前结算：%1$s</string>
+    <string name="split_agreement_current_settlement">当前结算</string>
     <string name="split_agreement_private_records_notice">新约定不修改双方私有流水；商家退款与双方实际返款分别核对。</string>
     <string name="split_agreement_open_original_debt">查看原往来与还款</string>
     <string name="split_agreement_open_return_debt">查看返还、还款与免除</string>
@@ -259,6 +259,8 @@
     <string name="split_agreement_submission_waiting">原提交等待同步，请勿重复发起。</string>
     <string name="split_agreement_retry_submission">重试原提交</string>
     <string name="split_agreement_end_submission">结束这次本地提交</string>
+    <string name="split_agreement_submissions_title">待处理的原提交</string>
+    <string name="split_agreement_discussion_title">商议新约定</string>
     <string name="split_agreement_error_invalid_share">请填写有效的新份额。</string>
     <string name="split_agreement_error_load_failed">新约定暂时无法读取，请重试。</string>
     <string name="split_agreement_retained_draft">原输入已保留。联网重新核对双方约定后，再明确确认并提交。</string>
