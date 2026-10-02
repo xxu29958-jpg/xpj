@@ -199,6 +199,18 @@ final class ShortcutProbe: XCTestCase {
         try configureShareImages(app)
         app.buttons["Back"].tap()
         captureText(app, "Saved shortcut library before sharing")
+        let libraryBack = app.navigationBars.buttons["Library"]
+        XCTAssertTrue(libraryBack.waitForExistence(timeout: 10))
+        libraryBack.tap()
+        captureText(app, "Shortcut library categories after enabling image sharing")
+        let shareCollection = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label == %@", "Share Sheet")).firstMatch
+        if shareCollection.exists && shareCollection.isHittable {
+            shareCollection.tap()
+            captureText(app, "Saved workflows in the Share Sheet collection")
+            let saved = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Get Contents of URL")).firstMatch
+            XCTAssertTrue(saved.waitForExistence(timeout: 10))
+        }
         // Run-Workflow excludes content whose source app is Shortcuts. Start
         // the real Photos intake from Home, not directly from the editor app.
         XCUIDevice.shared.press(.home)
@@ -249,6 +261,17 @@ final class ShortcutProbe: XCTestCase {
         for _ in 0..<3 {
             if shortcut.exists && shortcut.isHittable { break }
             activities.swipeUp()
+        }
+        // Share extension activation succeeded in the previous run, but the
+        // workflow was absent after the initial scan. Observe readiness explicitly.
+        if !shortcut.exists {
+            _ = shortcut.waitForExistence(timeout: 120)
+            captureText(photos, "Share actions after waiting for workflow discovery")
+            activities.swipeDown()
+            for _ in 0..<3 {
+                if shortcut.exists && shortcut.isHittable { break }
+                activities.swipeUp()
+            }
         }
         captureText(photos, "Configured shortcut in the Photos share sheet")
         if !(shortcut.exists && shortcut.isHittable) {

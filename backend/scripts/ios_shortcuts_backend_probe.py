@@ -192,6 +192,9 @@ def run_with_upload_backend(command: list[str], *, output: Path, root: Path):
                             "xcrun", "simctl", "spawn", device_id, "log", "show", "--last", "5m",
                             "--style", "compact", "--info", "--predicate",
                             'subsystem == "com.apple.sharing" OR subsystem CONTAINS "Workflow" OR '
+                            'subsystem BEGINSWITH "com.apple.shortcuts" OR '
+                            '(process == "MobileSlideShow" AND (eventMessage CONTAINS[c] "shortcut" '
+                            'OR eventMessage CONTAINS[c] "workflow")) OR '
                             'process == "siriactionsd" OR process == "linkd" OR '
                             'eventMessage CONTAINS "Run-Workflow"',
                         ], capture_output=True, text=True, timeout=45)
