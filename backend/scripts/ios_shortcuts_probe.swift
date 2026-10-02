@@ -206,10 +206,21 @@ final class ShortcutProbe: XCTestCase {
         }
         let library = photos.buttons["Library"]
         if library.exists && library.isHittable { library.tap() }
-        let photo = photos.images.matching(NSPredicate(format: "label BEGINSWITH %@", "Photo,")).firstMatch
-        let photoExists = photo.waitForExistence(timeout: 10)
+        let libraryPhotos = photos.images.matching(NSPredicate(format: "label BEGINSWITH %@", "Photo,"))
+        let deadline = Date().addingTimeInterval(10)
+        var visiblePhoto: XCUIElement?
+        while Date() < deadline {
+            visiblePhoto = libraryPhotos.allElementsBoundByIndex.first { $0.isHittable }
+            if visiblePhoto != nil { break }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        }
         captureText(photos, "Simulator Photos library for shortcut discovery")
-        XCTAssertTrue(photoExists)
+        // Photos is foreground and contains only the simulator's stock library, never the upload URL.
+        let libraryImage = XCTAttachment(screenshot: photos.screenshot())
+        libraryImage.name = "Simulator Photos library for shortcut discovery"
+        libraryImage.lifetime = .keepAlways
+        add(libraryImage)
+        let photo = try XCTUnwrap(visiblePhoto, "A visible simulator photo must be selectable")
         photo.tap()
         let share = photos.buttons["Share"]
         XCTAssertTrue(share.waitForExistence(timeout: 10))
