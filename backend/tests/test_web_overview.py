@@ -108,7 +108,7 @@ def test_overview_empty_ledger_shows_onboarding(web_client: TestClient) -> None:
     assert 'href="/web/pending?ledger_id=owner"' in body
     assert 'href="/web/import?ledger_id=owner"' in body
     # 零数据模块也给出口径说明而非空白。
-    assert "尚未设置预算" in body
+    assert "尚未设置额度" in body
     assert "还没有分类结构" in body
 
 

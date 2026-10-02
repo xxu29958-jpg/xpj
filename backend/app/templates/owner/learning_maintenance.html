@@ -108,7 +108,7 @@
       <tbody>
       {% for decision in active_decisions %}
         <tr>
-          <td><code>{{ decision.created_at.isoformat() if decision.created_at else '—' }}</code></td>
+          <td class="text-meta" title="{{ decision.created_at.isoformat() if decision.created_at else '' }}">{{ decision.created_at|owner_datetime }}</td>
           <td><code>{{ decision.decision_type }}</code></td>
           <td><code>{{ decision.algorithm_version }}</code></td>
           <td>
