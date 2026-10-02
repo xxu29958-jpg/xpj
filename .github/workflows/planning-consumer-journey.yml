@@ -105,103 +105,7 @@ jobs:
           project = root / "ShortcutProbe.xcodeproj"
           schemes = project / "xcshareddata" / "xcschemes"
           schemes.mkdir(parents=True)
-          (root / "Probe.swift").write_text('''import XCTest
-          final class ShortcutProbe: XCTestCase {
-              @MainActor func testSystemUploadActionCanBeAdded() {
-                  continueAfterFailure = false
-                  let app = XCUIApplication(bundleIdentifier: "com.apple.shortcuts")
-                  // Keep the system app and its action catalog alive from the environment step.
-                  app.activate()
-                  XCTAssertEqual(app.state, .runningForeground)
-                  print("SHORTCUTS_UI_TREE_BEGIN\\n\\(app.debugDescription)\\nSHORTCUTS_UI_TREE_END")
-                  let create = app.buttons.matching(NSPredicate(format: "label == %@ OR label == %@", "Create Shortcut", "add")).firstMatch
-                  XCTAssertTrue(create.waitForExistence(timeout: 10))
-                  create.tap()
-                  XCTAssertEqual(app.state, .runningForeground)
-                  print("SHORTCUTS_EDITOR_UI_TREE_BEGIN\\n\\(app.debugDescription)\\nSHORTCUTS_EDITOR_UI_TREE_END")
-                  let web = app.buttons["Web"]
-                  XCTAssertTrue(web.waitForExistence(timeout: 10))
-                  let categories = app.scrollViews.containing(.button, identifier: "Web").firstMatch
-                  for _ in 0..<4 {
-                      if web.isHittable { break }
-                      categories.swipeLeft()
-                  }
-                  XCTAssertTrue(web.isHittable)
-                  web.tap()
-                  let action = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Get Contents of URL")).firstMatch
-                  // A fresh simulator starts its full ToolKit index after the editor is already visible.
-                  // Wait for the real action, not merely the app or category to be present.
-                  let foundAction = action.waitForExistence(timeout: 240)
-                  print("SHORTCUTS_WEB_CATEGORY_UI_TREE_BEGIN\\n\\(app.debugDescription)\\nSHORTCUTS_WEB_CATEGORY_UI_TREE_END")
-                  let categoryTree = XCTAttachment(string: app.debugDescription)
-                  categoryTree.name = "Observed Web action category"
-                  categoryTree.lifetime = .keepAlways
-                  add(categoryTree)
-                  let categoryScreen = XCTAttachment(screenshot: app.screenshot())
-                  categoryScreen.name = "Observed Web action category"
-                  categoryScreen.lifetime = .keepAlways
-                  add(categoryScreen)
-                  XCTAssertTrue(foundAction)
-                  action.tap()
-                  print("SHORTCUTS_URL_ACTION_UI_TREE_BEGIN\\n\\(app.debugDescription)\\nSHORTCUTS_URL_ACTION_UI_TREE_END")
-                  let tree = XCTAttachment(string: app.debugDescription)
-                  tree.name = "URL action editor accessibility tree"
-                  tree.lifetime = .keepAlways
-                  add(tree)
-                  let screen = XCTAttachment(screenshot: app.screenshot())
-                  screen.name = "URL action added through XCTest"
-                  screen.lifetime = .keepAlways
-                  add(screen)
-                  let request = app.otherElements.matching(NSPredicate(format: "label == %@", "Get contents of , URL")).firstMatch
-                  XCTAssertTrue(request.waitForExistence(timeout: 10))
-                  // The system's accessibility element groups the URL chip and disclosure control.
-                  // This point is the blue disclosure in the captured iPhone 17 Pro action row.
-                  request.coordinate(withNormalizedOffset: CGVector(dx: 0.725, dy: 0.5)).tap()
-                  let optionsTree = XCTAttachment(string: app.debugDescription)
-                  optionsTree.name = "URL request options accessibility tree"
-                  optionsTree.lifetime = .keepAlways
-                  add(optionsTree)
-                  let optionsScreen = XCTAttachment(screenshot: app.screenshot())
-                  optionsScreen.name = "URL request options"
-                  optionsScreen.lifetime = .keepAlways
-                  add(optionsScreen)
-                  XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "Method")).firstMatch.waitForExistence(timeout: 10))
-                  app.buttons["GET"].tap()
-                  let post = app.buttons["POST"]
-                  XCTAssertTrue(post.waitForExistence(timeout: 10))
-                  post.tap()
-                  let postTree = XCTAttachment(string: app.debugDescription)
-                  postTree.name = "POST request body choices accessibility tree"
-                  postTree.lifetime = .keepAlways
-                  add(postTree)
-                  let bodyType = app.buttons.matching(NSPredicate(format: "label == %@ OR label == %@", "JSON", "Form")).firstMatch
-                  XCTAssertTrue(bodyType.waitForExistence(timeout: 10))
-                  bodyType.tap()
-                  let file = app.buttons["File"]
-                  XCTAssertTrue(file.waitForExistence(timeout: 10))
-                  file.tap()
-                  XCTAssertTrue(app.buttons["POST"].exists)
-                  XCTAssertTrue(app.buttons["File"].exists)
-                  let fileTree = XCTAttachment(string: app.debugDescription)
-                  fileTree.name = "POST file request accessibility tree"
-                  fileTree.lifetime = .keepAlways
-                  add(fileTree)
-                  let fileScreen = XCTAttachment(screenshot: app.screenshot())
-                  fileScreen.name = "POST file request configured through the system UI"
-                  fileScreen.lifetime = .keepAlways
-                  add(fileScreen)
-                  app.buttons["Choose Variable"].tap()
-                  let inputTree = XCTAttachment(string: app.debugDescription)
-                  inputTree.name = "Available system file inputs"
-                  inputTree.lifetime = .keepAlways
-                  add(inputTree)
-                  let inputScreen = XCTAttachment(screenshot: app.screenshot())
-                  inputScreen.name = "Available system file inputs"
-                  inputScreen.lifetime = .keepAlways
-                  add(inputScreen)
-              }
-          }
-          ''')
+          (root / "Probe.swift").write_text(pathlib.Path("backend/scripts/ios_shortcuts_probe.swift").read_text())
           (project / "project.pbxproj").write_text('''// !$*UTF8*$!
           {
             archiveVersion = 1;
@@ -233,63 +137,13 @@ jobs:
           ''')
           command = ["xcodebuild", "test", "-project", str(project), "-scheme", "ShortcutProbe",
                      "-destination", "id=" + environment["device_id"], "-parallel-testing-enabled", "NO",
-                     "-derivedDataPath", str(root / "DerivedData"), "-resultBundlePath", str(output / "ui-control.xcresult")]
-          with (output / "ui-control.log").open("w") as log:
-              completed = run_with_upload_backend(command, output=output, log=log)
-          subprocess.run(["xcrun", "xcresulttool", "export", "attachments", "--path", str(output / "ui-control.xcresult"),
-                          "--output-path", str(output / "attachments")], check=True)
-          (output / "ui-control-result.json").write_text(json.dumps({"scope": "environment-only", "xctest_exit_code": completed.returncode}, indent=2))
+                     "-derivedDataPath", str(root / "DerivedData"), "-resultBundlePath", str(root / "ui-control.xcresult")]
+          completed = run_with_upload_backend(command, output=output, root=root)
+          (output / "ui-control-result.json").write_text(json.dumps({"scope": "isolated-system-file-upload", "xctest_exit_code": completed.returncode}, indent=2))
           print("XCTest exit code:", completed.returncode)
           if completed.returncode:
               print("\n".join((output / "ui-control.log").read_text().splitlines()[-60:]))
           raise SystemExit(completed.returncode)
-          PY
-      - name: Inspect system action metadata and indexing owners
-        if: always()
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          import json
-          import pathlib
-          import subprocess
-
-          output = pathlib.Path("ios-shortcuts-environment").resolve()
-          environment = json.loads((output / "environment.json").read_text())
-          device = environment.get("device_id")
-          if not device:
-              raise SystemExit("No booted iPhone was recorded for metadata inspection")
-          prefix = ["xcrun", "simctl", "spawn", device]
-          predicate = ('(subsystem CONTAINS[c] "toolkit" OR subsystem CONTAINS[c] "appintent" '
-                       'OR subsystem CONTAINS[c] "workflow" OR subsystem CONTAINS[c] "shortcuts" '
-                       'OR process CONTAINS[c] "intent" OR process CONTAINS[c] "toolkit") '
-                       'AND NOT subsystem BEGINSWITH "com.apple.dt."')
-          results = {}
-          for name, command in (
-              ("simulator-services.log", prefix + ["launchctl", "list"]),
-              ("action-indexing.log", prefix + ["log", "show", "--last", "10m", "--style", "compact",
-                                               "--info", "--debug", "--predicate", predicate]),
-          ):
-              with (output / name).open("w") as log:
-                  try:
-                      result = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, timeout=60, check=False)
-                      results[name] = {"exit_code": result.returncode}
-                  except subprocess.TimeoutExpired:
-                      results[name] = {"timed_out": True}
-          bundle = environment.get("runtime", {}).get("bundlePath")
-          resources = {}
-          if bundle:
-              frameworks = pathlib.Path(bundle) / "Contents/Resources/RuntimeRoot/System/Library/PrivateFrameworks"
-              for framework in ("WorkflowKit.framework", "ToolKit.framework", "AppIntentsServices.framework"):
-                  path = frameworks / framework
-                  resources[framework] = {"exists": path.exists(), "files": [
-                      {"path": str(file.relative_to(path)), "bytes": file.stat().st_size}
-                      for file in sorted(path.rglob("*")) if file.is_file() and file.suffix in
-                      {".plist", ".json", ".intentdefinition", ".actionsdata"}
-                  ] if path.exists() else []}
-          (output / "action-metadata.json").write_text(json.dumps({
-              "scope": "read-only-environment-diagnostics", "commands": results, "resources": resources,
-          }, indent=2))
-          print(json.dumps({"diagnostic_commands": results, "resource_frameworks": list(resources)}, indent=2))
           PY
       - name: Preserve the observed environment
         if: always()

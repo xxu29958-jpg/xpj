@@ -7,6 +7,9 @@ stay in the runner's private temporary directory, outside uploaded evidence.
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import io
 import json
 import os
 import secrets
@@ -17,6 +20,7 @@ import time
 import urllib.error
 import urllib.request
 import uuid
+import xml.etree.ElementTree as ET
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -62,7 +66,46 @@ def isolated_postgres(private: Path):
                     stdout=setup_log, stderr=subprocess.STDOUT, check=True, timeout=60)
 
 
-def run_with_upload_backend(command: list[str], *, output: Path, log):
+def configure_shortcut(root: Path, upload_url: str, output: Path) -> str:
+    from PIL import Image, ImageDraw
+
+    receipt = Image.new("RGB", (720, 960), "#faf7ef")
+    drawing = ImageDraw.Draw(receipt)
+    drawing.text((60, 100), "TICKETBOX / ISOLATED IOS UPLOAD\nLunch  CNY 12.34\nKeep pending for human review.",
+        fill="#18231f", font_size=28, spacing=18)
+    buffer = io.BytesIO()
+    receipt.save(buffer, format="JPEG", quality=90)
+    jpeg = buffer.getvalue()
+    (output / "input-receipt.jpg").write_bytes(jpeg)
+    scheme = root / "ShortcutProbe.xcodeproj/xcshareddata/xcschemes/ShortcutProbe.xcscheme"
+    document = ET.parse(scheme)
+    variables = ET.SubElement(document.find("TestAction"), "EnvironmentVariables")
+    for key, value in {"TICKETBOX_TEST_UPLOAD_URL": upload_url,
+            "TICKETBOX_TEST_IMAGE": base64.b64encode(jpeg).decode("ascii")}.items():
+        ET.SubElement(variables, "EnvironmentVariable", key=key, value=value, isEnabled="YES")
+    # The scheme and runner bundles remain in RUNNER_TEMP, never in uploaded evidence.
+    document.write(scheme, encoding="utf-8", xml_declaration=True)
+    scheme.chmod(0o600)
+    return hashlib.sha256(jpeg).hexdigest()
+
+
+def export_redacted_text(root: Path, output: Path, upload_key: str) -> str:
+    raw = root / "private-attachments"
+    subprocess.run(["xcrun", "xcresulttool", "export", "attachments", "--path", str(root / "ui-control.xcresult"),
+        "--output-path", str(raw)], check=True, capture_output=True)
+    public = output / "attachments"
+    public.mkdir()
+    texts = []
+    for attachment in raw.glob("*.txt"):
+        text = attachment.read_text().replace(upload_key, "REDACTED_UPLOAD_KEY")
+        (public / attachment.name).write_text(text)
+        texts.append(text)
+    # Do not export automatic failure screenshots or raw xcresult bundles: they may display the URL.
+    (public / "manifest.json").write_text((raw / "manifest.json").read_text().replace(upload_key, "REDACTED_UPLOAD_KEY"))
+    return "\n".join(texts)
+
+
+def run_with_upload_backend(command: list[str], *, output: Path, root: Path):
     if os.environ.get("GITHUB_ACTIONS") != "true" or sys.platform != "darwin":
         raise RuntimeError("This probe requires its disposable macOS cloud runner")
     os.environ["XPJ_EXTRA_LOOPBACK_HOSTS"] = "127.0.0.1:18880"
@@ -76,11 +119,12 @@ def run_with_upload_backend(command: list[str], *, output: Path, log):
         os.environ["UPLOAD_DIR"] = str(private / "data" / "uploads")
         with dedicated_test_database_lease(database_url, expected_database=TEST_POSTGRES_CONTRACT.smoke_database,
                 reset=True, cluster_identity=os.environ["XPJ_TEST_CLUSTER_IDENTITY"], passfile=os.environ["PGPASSFILE"]):
-            from sqlalchemy import func, select
+            from sqlalchemy import select
 
             from app.database import SessionLocal, init_db
             from app.models import Expense, Ledger
             from app.services.admin_service import create_upload_link
+            from app.services.file_service import resolve_upload_path_for_tenant
             from app.services.identity_service import bootstrap_installation_owner
             from tests._infra.currency import activate_test_currency_authority
 
@@ -94,11 +138,8 @@ def run_with_upload_backend(command: list[str], *, output: Path, log):
                 ledger = db.scalar(select(Ledger).where(Ledger.ledger_id == fixture.ledger_id))
                 link, secret = create_upload_link(db, ledger_id=fixture.ledger_id,
                     admin_account_id=ledger.owner_account_id, default_timezone="Asia/Shanghai", auth=None)
-            descriptor = os.open(private / "upload-input.json", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-            with os.fdopen(descriptor, "w") as handle:
-                json.dump({"url": BASE_URL + secret.upload_url_path}, handle)
-            # Deliberately keep this input out of screenshots, logs, and artifacts.
-            os.environ["TICKETBOX_IOS_PRIVATE_INPUT"] = str(private / "upload-input.json")
+            upload_key = secret.upload_url_path.split("/u/", 1)[1].split("?", 1)[0]
+            input_digest = configure_shortcut(root, BASE_URL + secret.upload_url_path, output)
             with (private / "server.log").open("w") as server_log:
                 server = subprocess.Popen([sys.executable, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1",
                     "--port", "18880", "--no-access-log"], cwd=Path(__file__).resolve().parents[1],
@@ -117,14 +158,35 @@ def run_with_upload_backend(command: list[str], *, output: Path, log):
                         time.sleep(0.5)
                     if not ready:
                         raise RuntimeError("The isolated real upload backend did not become ready")
-                    result = {"scope": "backend-preparation-only", "source_sha": os.environ["GITHUB_SHA"],
+                    result = {"scope": "isolated-system-file-upload", "source_sha": os.environ["GITHUB_SHA"],
                         "backend_reachable": True, "ledger_id": fixture.ledger_id,
-                        "upload_link_public_id": link.public_id, "actual_upload_verified": False}
+                        "upload_link_public_id": link.public_id, "actual_upload_verified": False,
+                        "input_sha256": input_digest, "share_sheet_and_receipt_branches_verified": False}
                     (output / "upload-backend.json").write_text(json.dumps(result, indent=2))
-                    completed = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, timeout=600)
+                    raw_log = private / "ui-control.log"
+                    try:
+                        with raw_log.open("w") as log:
+                            completed = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, timeout=600)
+                    finally:
+                        (output / "ui-control.log").write_text(raw_log.read_text().replace(upload_key, "REDACTED_UPLOAD_KEY"))
+                    observed = export_redacted_text(root, output, upload_key)
                     with SessionLocal() as db:
-                        result["expenses_after_probe"] = db.scalar(select(func.count()).select_from(Expense))
+                        rows = db.scalars(select(Expense)).all()
+                        result["expenses_after_probe"] = len(rows)
+                        result["uploads"] = []
+                        for expense in rows:
+                            original = resolve_upload_path_for_tenant(expense.image_path, expense.tenant_id)
+                            original_digest = hashlib.sha256(original.read_bytes()).hexdigest() if original and original.is_file() else None
+                            result["uploads"].append({"public_id": expense.public_id, "ledger_id": expense.tenant_id,
+                                "status": expense.status, "image_hash": expense.image_hash, "original_sha256": original_digest,
+                                "receipt_visible": expense.public_id in observed})
+                    result["actual_upload_verified"] = completed.returncode == 0 and len(rows) == 1 and all(
+                        row["ledger_id"] == fixture.ledger_id and row["status"] == "pending" and row["receipt_visible"]
+                        and row["image_hash"] == row["original_sha256"] and row["original_sha256"] is not None
+                        for row in result["uploads"])
                     (output / "upload-backend.json").write_text(json.dumps(result, indent=2))
+                    if completed.returncode == 0 and not result["actual_upload_verified"]:
+                        raise AssertionError("The system upload did not preserve one pending original and its visible receipt")
                     return completed
                 finally:
                     server.terminate()
