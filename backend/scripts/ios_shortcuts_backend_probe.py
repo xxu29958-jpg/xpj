@@ -90,13 +90,16 @@ def export_redacted_text(root: Path, output: Path, upload_key: str) -> str:
         text = attachment.read_text().replace(upload_key, "REDACTED_UPLOAD_KEY")
         (public / attachment.name).write_text(text)
         texts.append(text)
-    # Export only the explicitly captured stock Photos library, which never displays the upload URL.
+    # Export only explicitly captured stock Photos screens, which never display the upload URL.
     for test_case in json.loads((raw / "manifest.json").read_text()):
         for attachment in test_case["attachments"]:
             name = attachment["exportedFileName"]
             if (attachment["suggestedHumanReadableName"].startswith("Simulator Photos library for shortcut discovery_")
                     and name.endswith(".png")):
                 (output / "photos-share-library.png").write_bytes((raw / name).read_bytes())
+            if (attachment["suggestedHumanReadableName"].startswith("Photos available share actions_")
+                    and name.endswith(".png")):
+                (output / "photos-share-actions.png").write_bytes((raw / name).read_bytes())
     # Do not export automatic failure screenshots or raw xcresult bundles: they may display the URL.
     (public / "manifest.json").write_text((raw / "manifest.json").read_text().replace(upload_key, "REDACTED_UPLOAD_KEY"))
     return "\n".join(texts)

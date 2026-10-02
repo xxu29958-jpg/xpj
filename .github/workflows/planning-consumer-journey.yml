@@ -26,6 +26,7 @@ jobs:
           import os
           import pathlib
           import platform
+          import plistlib
           import subprocess
           import time
 
@@ -67,6 +68,15 @@ jobs:
               subprocess.run(["xcrun", "simctl", "bootstatus", device_id, "-b"], check=True, capture_output=True, timeout=600)
               container = subprocess.run(["xcrun", "simctl", "get_app_container", device_id, "com.apple.shortcuts", "app"], capture_output=True, text=True)
               result["shortcuts_installed"] = container.returncode == 0
+              result["shortcuts_extensions"] = []
+              if container.returncode == 0:
+                  for info_path in pathlib.Path(container.stdout.strip()).glob("PlugIns/*.appex/Info.plist"):
+                      with info_path.open("rb") as source:
+                          info = plistlib.load(source)
+                      result["shortcuts_extensions"].append({
+                          "bundle": info.get("CFBundleIdentifier"),
+                          "extension_point": info.get("NSExtension", {}).get("NSExtensionPointIdentifier"),
+                      })
               launch = subprocess.run(["xcrun", "simctl", "launch", device_id, "com.apple.shortcuts"], capture_output=True, text=True)
               result["shortcuts_launched"] = launch.returncode == 0
               if launch.returncode:

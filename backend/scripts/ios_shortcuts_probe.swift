@@ -197,6 +197,7 @@ final class ShortcutProbe: XCTestCase {
         XCTAssertEqual(sharing.value as? String, "1")
         app.buttons["Done"].tap()
         app.buttons["Back"].tap()
+        captureText(app, "Saved shortcut library before sharing")
         let photos = XCUIApplication(bundleIdentifier: "com.apple.mobileslideshow")
         photos.launch()
         captureText(photos, "System Photos entry for shortcut discovery")
@@ -225,12 +226,27 @@ final class ShortcutProbe: XCTestCase {
         captureText(photos, "Selected stock photo before sharing")
         XCTAssertTrue(shareAppeared)
         share.tap()
-        let shortcut = photos.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Get Contents of URL")).firstMatch
+        let activities = photos.collectionViews["activityCollectionView"]
+        XCTAssertTrue(activities.waitForExistence(timeout: 10))
+        // The observed share actions are collection cells, not buttons.
+        let shortcut = activities.cells.matching(NSPredicate(format: "label CONTAINS %@", "Get Contents of URL")).firstMatch
         for _ in 0..<3 {
             if shortcut.exists && shortcut.isHittable { break }
-            photos.swipeUp()
+            activities.swipeUp()
         }
         captureText(photos, "Configured shortcut in the Photos share sheet")
+        if !(shortcut.exists && shortcut.isHittable) {
+            let editActions = photos.buttons["Edit Actions"]
+            XCTAssertTrue(editActions.waitForExistence(timeout: 10))
+            editActions.tap()
+            captureText(photos, "Photos available share actions")
+            let actionsImage = XCTAttachment(screenshot: photos.screenshot())
+            actionsImage.name = "Photos available share actions"
+            actionsImage.lifetime = .keepAlways
+            add(actionsImage)
+            XCTFail("The saved shortcut is absent from the Photos share sheet; inspect its available actions")
+            return
+        }
         XCTAssertTrue(shortcut.exists && shortcut.isHittable)
         // Entry discovery only: its body still uses Clipboard. Do not run or claim the share-input journey yet.
     }
