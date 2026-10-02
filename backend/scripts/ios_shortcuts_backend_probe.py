@@ -20,7 +20,6 @@ import time
 import urllib.error
 import urllib.request
 import uuid
-import xml.etree.ElementTree as ET
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -66,7 +65,7 @@ def isolated_postgres(private: Path):
                     stdout=setup_log, stderr=subprocess.STDOUT, check=True, timeout=60)
 
 
-def configure_shortcut(root: Path, upload_url: str, output: Path) -> str:
+def prepare_image_input(output: Path) -> tuple[str, str]:
     from PIL import Image, ImageDraw
 
     receipt = Image.new("RGB", (720, 960), "#faf7ef")
@@ -77,16 +76,7 @@ def configure_shortcut(root: Path, upload_url: str, output: Path) -> str:
     receipt.save(buffer, format="JPEG", quality=90)
     jpeg = buffer.getvalue()
     (output / "input-receipt.jpg").write_bytes(jpeg)
-    scheme = root / "ShortcutProbe.xcodeproj/xcshareddata/xcschemes/ShortcutProbe.xcscheme"
-    document = ET.parse(scheme)
-    variables = ET.SubElement(document.find("TestAction"), "EnvironmentVariables")
-    for key, value in {"TICKETBOX_TEST_UPLOAD_URL": upload_url,
-            "TICKETBOX_TEST_IMAGE": base64.b64encode(jpeg).decode("ascii")}.items():
-        ET.SubElement(variables, "EnvironmentVariable", key=key, value=value, isEnabled="YES")
-    # The scheme and runner bundles remain in RUNNER_TEMP, never in uploaded evidence.
-    document.write(scheme, encoding="utf-8", xml_declaration=True)
-    scheme.chmod(0o600)
-    return hashlib.sha256(jpeg).hexdigest()
+    return hashlib.sha256(jpeg).hexdigest(), base64.b64encode(jpeg).decode("ascii")
 
 
 def export_redacted_text(root: Path, output: Path, upload_key: str) -> str:
@@ -139,7 +129,10 @@ def run_with_upload_backend(command: list[str], *, output: Path, root: Path):
                 link, secret = create_upload_link(db, ledger_id=fixture.ledger_id,
                     admin_account_id=ledger.owner_account_id, default_timezone="Asia/Shanghai", auth=None)
             upload_key = secret.upload_url_path.split("/u/", 1)[1].split("?", 1)[0]
-            input_digest = configure_shortcut(root, BASE_URL + secret.upload_url_path, output)
+            input_digest, image_input = prepare_image_input(output)
+            # xcodebuild forwards TEST_RUNNER_ variables to the test process without the prefix.
+            runner_environment = dict(os.environ, TEST_RUNNER_TICKETBOX_TEST_UPLOAD_URL=BASE_URL + secret.upload_url_path,
+                TEST_RUNNER_TICKETBOX_TEST_IMAGE=image_input)
             with (private / "server.log").open("w") as server_log:
                 server = subprocess.Popen([sys.executable, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1",
                     "--port", "18880", "--no-access-log"], cwd=Path(__file__).resolve().parents[1],
@@ -166,7 +159,8 @@ def run_with_upload_backend(command: list[str], *, output: Path, root: Path):
                     raw_log = private / "ui-control.log"
                     try:
                         with raw_log.open("w") as log:
-                            completed = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, timeout=600)
+                            completed = subprocess.run(command, env=runner_environment,
+                                stdout=log, stderr=subprocess.STDOUT, timeout=600)
                     finally:
                         (output / "ui-control.log").write_text(raw_log.read_text().replace(upload_key, "REDACTED_UPLOAD_KEY"))
                     observed = export_redacted_text(root, output, upload_key)

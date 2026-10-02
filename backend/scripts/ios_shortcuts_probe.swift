@@ -2,8 +2,12 @@ import XCTest
 import UIKit
 import UniformTypeIdentifiers
 final class ShortcutProbe: XCTestCase {
-    @MainActor func testSystemFileUploadPersistsAndReturnsReceipt() {
+    @MainActor func testSystemFileUploadPersistsAndReturnsReceipt() throws {
         continueAfterFailure = false
+        let environment = ProcessInfo.processInfo.environment
+        let url = try XCTUnwrap(environment["TICKETBOX_TEST_UPLOAD_URL"], "Missing isolated upload input")
+        let imageInput = try XCTUnwrap(environment["TICKETBOX_TEST_IMAGE"], "Missing receipt image input")
+        let jpeg = try XCTUnwrap(Data(base64Encoded: imageInput), "Invalid receipt image input")
         let app = XCUIApplication(bundleIdentifier: "com.apple.shortcuts")
         // Keep the system app and its action catalog alive from the environment step.
         app.activate()
@@ -104,10 +108,8 @@ final class ShortcutProbe: XCTestCase {
         let fieldExists = field.waitForExistence(timeout: 10)
         captureText(app, "URL input before configuration")
         XCTAssertTrue(fieldExists)
-        let url = ProcessInfo.processInfo.environment["TICKETBOX_TEST_UPLOAD_URL"]!
         field.typeText(url + "\n")
         captureText(app, "URL configured for the isolated upload")
-        let jpeg = Data(base64Encoded: ProcessInfo.processInfo.environment["TICKETBOX_TEST_IMAGE"]!)!
         UIPasteboard.general.setData(jpeg, forPasteboardType: UTType.jpeg.identifier)
         let play = app.buttons["play"]
         XCTAssertTrue(play.waitForExistence(timeout: 10))
