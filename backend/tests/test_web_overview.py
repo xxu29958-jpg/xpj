@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from datetime import timedelta
 from pathlib import Path
 from uuid import uuid4
 
@@ -19,9 +20,9 @@ from sqlalchemy import select
 
 from app.config import get_settings
 from app.database import SessionLocal
-from app.models import LedgerMember
+from app.models import Expense, LedgerMember
 from app.routes import web_common
-from app.services.time_service import current_month
+from app.services.time_service import current_month, now_utc
 
 WEB_CARD_KEYS = [
     "monthly_spend",
@@ -332,8 +333,14 @@ def test_category_donut_escapes_tooltip_name_and_prefers_amount_major() -> None:
 
 
 def test_overview_recent_count_is_confirmed_only(web_client: TestClient, *, identity) -> None:
-    """PR #253 R2: overview 最近新增 = confirmed-only (与 /web/confirmed 目标页一致)。"""
+    """最近创建且已入账；旧记录今天确认也不能变成最近新增。"""
     _seed_confirmed_expense(web_client, identity=identity, amount_cents=8800, merchant="海底捞", category="餐饮")
+    _seed_confirmed_expense(web_client, identity=identity, amount_cents=1200, merchant="旧记录今天确认", category="餐饮")
+    with SessionLocal() as db:
+        old = db.scalar(select(Expense).where(Expense.tenant_id == "owner", Expense.merchant == "旧记录今天确认"))
+        old.created_at = now_utc() - timedelta(days=8)
+        old.confirmed_at = now_utc()
+        db.commit()
     # 再投一笔 pending (不计入 confirmed 口径)。
     png = (
         b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
@@ -355,7 +362,8 @@ def test_overview_recent_count_is_confirmed_only(web_client: TestClient, *, iden
     assert resp.status_code == 200
     card = re.search(r'data-overview-card="recent_uploads">.*?</article>', resp.text, re.S)
     assert card is not None
-    assert "过去 7 天 · 已入账" in card.group(0)
+    assert "最近新增" in card.group(0)
+    assert "过去 7 天新增 · 已入账" in card.group(0)
 
 
 def test_dashboard_month_uses_ledger_rule_with_a_separate_display_timezone(monkeypatch: pytest.MonkeyPatch) -> None:
