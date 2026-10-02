@@ -1,12 +1,8 @@
 {% extends "base.html" %}
 {% block title %}总览 · 洞察 · 小票夹{% endblock %}
 
-{# 218-D S2 洞察域首页 (移植自产品矿 /web/overview, 适配 main 现状):
-   数据全走 _dashboard_data_payload 既有口径; 页面级样式已并入
-   product/domains/insights.css (W3 洞察片: 本页泳道头/右轨/窄屏页头规则迁入,
-   原 pages/overview.css 整文件退役; product-panel 族通用件以 components.css 为准);
-   分类环图复用 main 既有 echarts + category-donut.js (desktop.js boot 自动 init),
-   且只在 reports 卡可见且有分类数据时才下载 (PR #253 P2-3)。 #}
+{# 查询金额与模块顺序由 _dashboard_data_payload 提供；视图不再二次分组重排。
+   分类图仅在对应模块可见且具有可绘制的数据时加载。 #}
 
 {% block page_scripts %}
 {% if overview_load_charts %}
@@ -16,12 +12,15 @@
 {% endblock %}
 
 {% block content %}
-<header class="product-page-header">
+<header class="product-page-header insight-page-header">
   <div class="product-page-heading">
     <h1 class="page-title" id="overview-title">本月概览</h1>
     <p class="ov-status" role="status">
       {% if has_any_expense %}
-        {{ cards.month }} · {{ cards.confirmed_count }} 笔已入账 · {{ cards.pending_count }} 笔待处理
+        {{ cards.month }} · {{ cards.confirmed_count }} 笔已入账
+        {% if cards.pending_count %}
+        · <a href="/web/pending?ledger_id={{ selected_ledger_id }}">{{ cards.pending_count }} 笔待整理</a>
+        {% endif %}
       {% else %}
         当前账本还没有可分析的流水
       {% endif %}
@@ -53,7 +52,7 @@
 </section>
 {% endif %}
 
-{% if overview_lanes | length == 0 %}
+{% if overview_cards | length == 0 %}
 <div class="product-state">
   <div class="product-state-title">总览暂时没有可见模块</div>
   <div class="product-state-body">重新启用一个模块后，这里会继续显示对应的账面概况。</div>
@@ -65,23 +64,14 @@
   {% endif %}
 </div>
 {% else %}
-{# 泳道归属固定 (信息架构), 组内卡片按模块设置持久化的 position 渲染 (PR #253
-   P2-1); 卡片全隐藏的泳道整组不出 (P2-2)。 #}
-<section class="insight-grid" aria-label="本月任务与事实">
-  {% for lane in overview_lanes %}
-  <div class="insight-lane">
-  <header class="insight-lane-heading">
-    <h2>{{ lane.title }}</h2>
-    <p>{{ lane.summary }}</p>
-  </header>
-  <div class="insight-lane-content">
-  {% for item in lane.cards %}
+<section class="insight-grid" aria-label="本月概况">
+  {% for item in overview_cards %}
   {% if item.key == 'monthly_spend' %}
   <article class="product-panel product-panel--padded insight-hero"
            data-overview-card="monthly_spend">
     <div class="product-panel-header">
       <div>
-        <div class="product-eyebrow">本月支出</div>
+        <h2 class="product-eyebrow">本月支出</h2>
         <div class="product-panel-subtitle">{{ cards.month }} · 已入账</div>
       </div>
       <a class="product-panel-subtitle"
@@ -111,10 +101,10 @@
   <article class="insight-brief"
            data-overview-card="pending">
     <div>
-      <div class="insight-brief-title"><span class="product-panel-title">待整理</span><strong class="insight-brief-value num">{{ cards.pending_count }}</strong></div>
-      <div class="product-panel-subtitle">需要进入账面的新记录</div>
+      <div class="insight-brief-title"><h2 class="product-panel-title">待整理</h2><strong class="insight-brief-value num">{{ cards.pending_count }}</strong></div>
+      <div class="product-panel-subtitle">{{ '核对后计入账面' if cards.pending_count else '没有待整理的记录' }}</div>
     </div>
-    <a class="product-panel-subtitle" href="/web/pending?ledger_id={{ selected_ledger_id }}">{{ '去处理' if can_write else '查看' }}</a>
+    <a class="product-panel-subtitle" href="/web/pending?ledger_id={{ selected_ledger_id }}">{{ '去处理' if can_write and cards.pending_count else '查看收件' }}</a>
     {% if cards.needs_amount_count or cards.needs_merchant_count or cards.suspected_duplicate_count %}
     <div class="pill-row insight-brief-detail">
       {% if cards.needs_amount_count %}<span class="product-status product-status--warning">缺金额 {{ cards.needs_amount_count }}</span>{% endif %}
@@ -125,11 +115,11 @@
   </article>
 
   {% elif item.key == 'budget' %}
-  <article class="product-panel product-panel--padded insight-module"
+  <article class="product-panel product-panel--padded insight-module{% if not cards.budget_configured %} insight-module--empty{% endif %}"
            data-overview-card="budget">
     <div class="product-panel-header">
       <div>
-        <div class="product-panel-title">预算余量</div>
+        <h2 class="product-panel-title">预算余量</h2>
         <div class="product-panel-subtitle">{{ cards.month }}</div>
       </div>
       <a class="product-panel-subtitle" href="/web/budgets?ledger_id={{ selected_ledger_id }}">管理</a>
@@ -163,18 +153,17 @@
     {% endif %}
     {% else %}
     <div class="insight-empty">
-      <div class="product-state-title">还没有预算基线</div>
-      <div class="product-state-body">设置本月总额后，总览会持续显示余量和超支。</div>
+      <div class="product-state-body">尚未设置预算。设置本月额度后，可查看剩余额度和超支。</div>
     </div>
     {% endif %}
   </article>
 
   {% elif item.key == 'reports' %}
-  <article class="product-panel product-panel--padded insight-module"
+  <article class="product-panel product-panel--padded insight-module{% if not category_share %} insight-module--empty{% endif %}"
            data-overview-card="reports">
     <div class="product-panel-header">
       <div>
-        <div class="product-panel-title">分类结构</div>
+        <h2 class="product-panel-title">分类结构</h2>
         <div class="product-panel-subtitle">本月已入账支出的主要去向</div>
       </div>
       <a class="product-panel-subtitle"
@@ -198,18 +187,17 @@
     </div>
     {% else %}
     <div class="insight-empty">
-      <div class="product-state-title">还没有分类结构</div>
-      <div class="product-state-body">有流水入账并完成分类后，这里会显示主要支出去向。</div>
+      <div class="product-state-body">还没有分类结构。流水入账并完成分类后，可查看主要支出去向。</div>
     </div>
     {% endif %}
   </article>
 
   {% elif item.key == 'goals' %}
-  <article class="product-panel product-panel--padded insight-module"
+  <article class="product-panel product-panel--padded insight-module{% if not cards.goals_count %} insight-module--empty{% endif %}"
            data-overview-card="goals">
     <div class="product-panel-header">
       <div>
-        <div class="product-panel-title">目标</div>
+        <h2 class="product-panel-title">目标</h2>
         <div class="product-panel-subtitle">{{ cards.goals_count }} 条生效中</div>
       </div>
       <a class="product-panel-subtitle" href="/web/goals?ledger_id={{ selected_ledger_id }}">管理</a>
@@ -239,24 +227,25 @@
   <article class="insight-brief"
            data-overview-card="recurring">
     <div>
-      <div class="insight-brief-title"><span class="product-panel-title">固定支出</span><strong class="insight-brief-value num">{{ cards.recurring_active_count }}</strong></div>
-      <div class="product-panel-subtitle">正式计划</div>
+      <div class="insight-brief-title"><h2 class="product-panel-title">固定支出</h2><strong class="insight-brief-value num">{{ cards.recurring_active_count }}</strong></div>
+      <div class="product-panel-subtitle">{{ '生效中的计划' if cards.recurring_active_count else '当前没有生效计划' }}</div>
     </div>
     <a class="product-panel-subtitle" href="/web/recurring?ledger_id={{ selected_ledger_id }}">管理</a>
+    {% if cards.recurring_paused_count or cards.recurring_candidate_count %}
     <p class="text-muted insight-brief-detail">
       {% if cards.recurring_paused_count %}暂停 {{ cards.recurring_paused_count }} 条 · {% endif %}
       {{ cards.recurring_candidate_count }} 个候选待确认
     </p>
+    {% endif %}
   </article>
 
   {% elif item.key == 'recent_uploads' %}
   <article class="insight-brief"
            data-overview-card="recent_uploads">
     <div>
-      <div class="insight-brief-title"><span class="product-panel-title">最近新增</span><strong class="insight-brief-value num">{{ cards.recent_confirmed_count }}</strong></div>
-      <div class="product-panel-subtitle">过去 7 天 · 已入账</div>
+      <div class="insight-brief-title"><h2 class="product-panel-title">最近新增</h2><strong class="insight-brief-value num">{{ cards.recent_confirmed_count }}</strong></div>
       {# 所有入账来源均计入，链接也只读取已确认流水。 #}
-      <div class="product-panel-subtitle">全部入账来源</div>
+      <div class="product-panel-subtitle">过去 7 天新增 · 已入账</div>
     </div>
     <a class="product-panel-subtitle" href="/web/confirmed?ledger_id={{ selected_ledger_id }}">查看</a>
   </article>
@@ -265,7 +254,7 @@
   <article class="insight-brief"
            data-overview-card="backup_status">
     <div>
-      <div class="product-panel-title">备份状态</div>
+      <h2 class="product-panel-title">备份状态</h2>
       {% if cards.backup_age_status == 'future' %}
       <div class="product-status product-status--warning">备份发布时间晚于当前系统时间</div>
       {% elif cards.backup_available %}
@@ -280,14 +269,11 @@
   <article class="insight-brief"
            data-overview-card="device_status">
     <div>
-      <div class="insight-brief-title"><span class="product-panel-title">连接设备</span><strong class="insight-brief-value num">{{ cards.active_device_count }}</strong></div>
+      <div class="insight-brief-title"><h2 class="product-panel-title">连接设备</h2><strong class="insight-brief-value num">{{ cards.active_device_count }}</strong></div>
       <div class="product-panel-subtitle">当前账本有效设备</div>
     </div>
   </article>
   {% endif %}
-  {% endfor %}
-  </div>
-  </div>
   {% endfor %}
 </section>
 {% endif %}

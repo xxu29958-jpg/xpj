@@ -75,19 +75,13 @@
 
 .insight-grid {
     display: grid;
-    gap: var(--space-8);
-}
-
-.insight-lane {
-    display: grid;
-    gap: var(--space-4);
-}
-
-.insight-lane-content {
-    display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--space-5);
     align-items: start;
+}
+
+.insight-grid h2 {
+    margin: 0;
 }
 
 .insight-onboarding,
@@ -113,6 +107,16 @@
     container-type: inline-size;
     align-content: start;
     gap: var(--space-5);
+}
+
+.insight-module--empty {
+    padding: var(--space-4) 0;
+    border: 0;
+    border-block-end: 1px solid var(--border-card);
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    gap: var(--space-2);
 }
 
 .insight-module-foot {
@@ -615,7 +619,7 @@
 }
 
 @media (max-width: 40rem) {
-    .insight-lane-content,
+    .insight-grid,
     .dash-grid {
         grid-template-columns: minmax(0, 1fr);
     }
@@ -692,31 +696,10 @@
     }
 }
 
-/* 总览沿用共享页头；每组保留持久化模块顺序与清楚的阅读边界。 */
-.insight-lane-heading {
-    display: flex;
-    grid-column: 1 / -1;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: var(--space-4);
-    padding-block: var(--space-3);
-    border-block-end: 1px solid var(--border-card); /* 1px 发丝分界 */
-}
-
-.insight-lane-heading h2,
-.insight-lane-heading p {
-    margin: 0;
-}
-
-.insight-lane-heading h2 {
-    color: var(--text-default);
-    font-size: var(--type-title-size);
-    line-height: var(--type-title-line);
-}
-
-.insight-lane-heading p {
-    color: var(--text-meta);
-    font-size: var(--type-caption-size);
+/* 总览只有一个分析入口，窄屏也可与标题同行。 */
+.insight-page-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
 }
 
 .ov-status {
@@ -726,10 +709,10 @@
     line-height: var(--type-caption-line);
 }
 
-@media (max-width: 40rem) {
-    .insight-lane-heading {
-        align-items: flex-start;
-        flex-direction: column;
-        grid-column: 1;
-    }
+.ov-status a {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--target-min);
+    color: var(--brand-primary-strong);
+    text-underline-offset: var(--space-1);
 }

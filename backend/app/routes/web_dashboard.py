@@ -29,29 +29,6 @@ from app.services.expense_service import ledger_has_any_expense
 
 router = APIRouter(prefix="/web", tags=["web"])
 
-# 泳道归属是信息架构 (哪些事实属于同一组), 持久化 position 是组内顺序
-# (PR #253 P2-1/P2-2): 组内卡片按用户保存的顺序渲染, 空泳道整组不出。
-_OVERVIEW_LANE_SPECS: tuple[tuple[str, str, frozenset[str]], ...] = (
-    ("需处理", "优先处理会影响账面可信度的记录", frozenset({"pending", "recent_uploads"})),
-    (
-        "本月事实",
-        "已入账金额、结构与基础状态",
-        frozenset({"monthly_spend", "reports", "backup_status", "device_status"}),
-    ),
-    ("计划状态", "预算、目标和固定支出的执行情况", frozenset({"budget", "goals", "recurring"})),
-)
-
-
-def _overview_lanes(visible_cards: list[dict]) -> list[dict]:
-    """Group persisted-order visible cards into lanes; drop empty lanes."""
-    lanes = []
-    for title, summary, keys in _OVERVIEW_LANE_SPECS:
-        cards = [item for item in visible_cards if item["key"] in keys]
-        if cards:
-            lanes.append({"title": title, "summary": summary, "cards": cards})
-    return lanes
-
-
 def _overview_amount_views(cards: dict) -> dict:
     """Display the accepted query projection, including unavailable amounts."""
     currency_code = cards["home_currency_code"]
@@ -115,7 +92,7 @@ def web_overview(
     ctx["cards"] = cards
     ctx["category_share"] = category_share
     ctx["has_any_expense"] = ledger_has_any_expense(db, selected_id)
-    ctx["overview_lanes"] = _overview_lanes(visible_cards)
+    ctx["overview_cards"] = visible_cards
     ctx.update(projected_money_context(cards["home_currency_code"]), **_overview_amount_views(cards))
     ctx.update(missing_rates=cards["missing_rates"], flash_message=msg or "",
         money_incomplete=cards["total_amount_cents"] is None or cards["previous_total_amount_cents"] is None,
