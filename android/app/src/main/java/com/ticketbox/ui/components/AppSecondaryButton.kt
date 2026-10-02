@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
+import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppIconSize
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
@@ -39,7 +40,7 @@ fun AppSecondaryButton(
             containerColor = visuals.surfaceSunken,
             contentColor = visuals.textDefault,
             disabledContainerColor = visuals.surfaceSunken,
-            disabledContentColor = visuals.textMuted.copy(alpha = 0.48f),
+            disabledContentColor = visuals.textMuted.copy(alpha = AppAlpha.medium),
         ),
     ) {
         leadingIcon?.let {
