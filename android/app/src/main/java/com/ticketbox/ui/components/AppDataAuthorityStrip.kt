@@ -15,7 +15,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
@@ -73,8 +72,10 @@ fun AppDataAuthorityStrip(
         title = title,
         body = body,
         icon = icon,
-        accent = accent,
-        emphasizeTitle = tone != DataAuthorityTone.Backend,
+        titleStyle = SpanStyle(
+            color = accent,
+            fontWeight = if (tone == DataAuthorityTone.Backend) FontWeight.Normal else AppTextHierarchy.body.weight,
+        ),
         modifier = modifier,
     )
 }
@@ -103,18 +104,12 @@ private fun DataAuthorityStripContent(
     title: String,
     body: String,
     icon: ImageVector?,
-    accent: Color,
-    emphasizeTitle: Boolean,
+    titleStyle: SpanStyle,
     modifier: Modifier = Modifier,
 ) {
     val separator = stringResource(R.string.components_data_authority_separator)
     val line = buildAnnotatedString {
-        withStyle(
-            SpanStyle(
-                color = accent,
-                fontWeight = if (emphasizeTitle) AppTextHierarchy.body.weight else FontWeight.Normal,
-            ),
-        ) {
+        withStyle(titleStyle) {
             append(title)
         }
         append(separator)
@@ -132,7 +127,7 @@ private fun DataAuthorityStripContent(
                 imageVector = icon,
                 contentDescription = null,
                 modifier = Modifier.size(AppSpacing.compactGap),
-                tint = accent.copy(alpha = AppAlpha.heavy),
+                tint = titleStyle.color.copy(alpha = AppAlpha.heavy),
             )
         }
         Text(
