@@ -51,6 +51,7 @@ class BackstageJourney:
         self.page.locator(f'input[name="ledger_id"][value="{self.ledger_id}"]').check()
         self.page.locator('form[action="/web/auth/local"] button[type="submit"]').click()
         self.page.wait_for_url("**/web/pending*")
+        self.native.bind(self.fixture.pairing_code, self.port)
         self.native.domain_home("收件")
         wait_for(lambda: self.native.has("还没有待处理的小票"), "The native empty inbox did not settle")
         self.native.capture("inbox-empty")
@@ -130,7 +131,6 @@ class BackstageJourney:
             result.close()
 
     def task_read_recovery(self):
-        self.native.bind(self.fixture.pairing_code, self.port)
         self.open_tasks()
         self.native.capture("backstage-task-from-web")
         self.native.connection(self.port, online=False)
