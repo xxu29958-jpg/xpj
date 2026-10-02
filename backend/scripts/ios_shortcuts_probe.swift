@@ -185,7 +185,14 @@ final class ShortcutProbe: XCTestCase {
         captureText(app, "Shortcut sharing details before enabling")
         let sharing = app.switches["Show in Share Sheet"]
         XCTAssertTrue(sharing.waitForExistence(timeout: 10))
-        if sharing.value as? String != "1" { sharing.tap() }
+        if sharing.value as? String != "1" {
+            // The observed labelled AX row contains a separate switch control.
+            // Tapping the row's label leaves its value unchanged.
+            let toggle = sharing.switches.firstMatch
+            XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+            XCTAssertTrue(toggle.isHittable)
+            toggle.tap()
+        }
         captureText(app, "Shortcut sharing details enabled")
         XCTAssertEqual(sharing.value as? String, "1")
         app.buttons["Done"].tap()
