@@ -90,7 +90,8 @@ jobs:
               @MainActor func testSystemUploadActionCanBeAdded() {
                   continueAfterFailure = false
                   let app = XCUIApplication(bundleIdentifier: "com.apple.shortcuts")
-                  app.launch()
+                  // Keep the system app and its action catalog alive from the environment step.
+                  app.activate()
                   XCTAssertEqual(app.state, .runningForeground)
                   print("SHORTCUTS_UI_TREE_BEGIN\\n\\(app.debugDescription)\\nSHORTCUTS_UI_TREE_END")
                   let create = app.buttons.matching(NSPredicate(format: "label == %@ OR label == %@", "Create Shortcut", "add")).firstMatch
