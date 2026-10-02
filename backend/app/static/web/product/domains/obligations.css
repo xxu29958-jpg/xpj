@@ -563,6 +563,12 @@
     gap: var(--space-6);
 }
 
+.split-settlement-fields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-4);
+}
+
 .debt-form-actions {
     display: flex;
     justify-content: flex-start;
@@ -963,6 +969,10 @@
 /* ===== 窄屏 ===== */
 
 @media (max-width: 48rem) {
+    .split-settlement-fields {
+        grid-template-columns: 1fr;
+    }
+
     .family-invite-form,
     .family-member,
     .family-invitation,

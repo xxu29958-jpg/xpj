@@ -44,6 +44,7 @@
   const nativeRejected = form.dataset.voidRejected === "true";
   let knownRejected = false;
   const controls = names.map(name => form.elements.namedItem(name));
+  const settlementField = splitChange && window.TicketboxSplitSettlement ? window.TicketboxSplitSettlement(form) : null;
   const refInput = form.elements.namedItem("idempotency_key");
   const nativeRef = refInput.value, target = form.dataset.repaymentTarget;
   const selectOriginals = new Map(controls.filter(control => control.tagName === "SELECT").map(control => {
@@ -87,6 +88,7 @@
         original.disabled = !locked;
       }
     });
+    settlementField?.sync();
   }
   function showValues(saved) {
     controls.forEach(control => {
@@ -99,6 +101,7 @@
       control.value = value;
     });
     hints.forEach(control => { control.value = saved[control.name] ?? ""; });
+    settlementField?.sync();
     if (splitChange) {
       if (!commandLabels[saved.command]) throw Error("invalid_original_command");
       const base = "/web/debts/" + encodeURIComponent(saved.debt_public_id) + "/split-changes";
@@ -345,7 +348,8 @@
 
   form.addEventListener("input", function (event) {
     if (!held || phase !== "editing") return;
-    if (settlementExplicit && event.target?.name === "settlement_net_amount_major") settlementExplicit.value = "true";
+    const settlementEdited = settlementField?.edit(event.target) || event.target?.name === "settlement_net_amount_major";
+    if (settlementExplicit && settlementEdited) settlementExplicit.value = "true";
     try { persist("editing"); notice("输入已保留，尚未提交。", "editing"); }
     catch (_) { notice("最新输入未能保留。请勿关闭本页，恢复存储后再提交。", "storage-error"); }
   });
