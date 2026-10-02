@@ -19,6 +19,7 @@ import com.ticketbox.data.repository.PendingExpenseCorrection
 import com.ticketbox.data.repository.PendingDebtWrite
 import com.ticketbox.data.repository.PendingIncomePlanSubmission
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.OutboxStatusUiState
 
 @Composable
@@ -134,36 +135,21 @@ internal fun SyncStatusOverviewSection(status: OutboxStatus, corrections: List<P
         icon = Icons.Filled.Sync,
     ) {
         SettingsOpenPanel(
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
         ) {
-            SettingsMetricGrid(
-                metrics = listOf(
-                    SettingsMetricData(
-                        label = stringResource(R.string.sync_status_overview_queued_label),
-                        value = overview.queuedCount.toString(),
-                        caption = stringResource(R.string.sync_status_overview_queued_caption),
-                    ),
-                    SettingsMetricData(
-                        label = stringResource(R.string.sync_status_overview_conflicts_label),
-                        value = overview.conflictCount.toString(),
-                        caption = stringResource(R.string.sync_status_overview_conflicts_caption),
-                    ),
-                    SettingsMetricData(
-                        label = stringResource(R.string.sync_status_overview_failed_label),
-                        value = overview.failedCount.toString(),
-                        caption = stringResource(R.string.sync_status_overview_failed_caption),
-                    ),
-                    SettingsMetricData(
-                        label = stringResource(R.string.sync_status_overview_quarantined_label),
-                        value = overview.quarantinedCount.toString(),
-                        caption = stringResource(R.string.sync_status_overview_quarantined_caption),
-                    ),
-                ),
-            )
             Text(
                 text = overviewCaption(overview),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                text = listOf(
+                    "${stringResource(R.string.sync_status_overview_queued_label)} ${overview.queuedCount}",
+                    "${stringResource(R.string.sync_status_overview_conflicts_label)} ${overview.conflictCount}",
+                    "${stringResource(R.string.sync_status_overview_failed_label)} ${overview.failedCount}",
+                    "${stringResource(R.string.sync_status_overview_quarantined_label)} ${overview.quarantinedCount}",
+                ).joinToString(" · "),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodySmall.tabularNum(),
             )
         }
     }

@@ -1,29 +1,35 @@
 # Web fonts
 
-`/web` 桌面账本（v0.10）使用本地自托管 webfont。Android 与 `/owner` 仍走系统中文字体栈，与本目录无关。
+`/web` 产品页、连接入口与币种设置使用同一份本地自托管字体定义 `fonts.css`。Android 与 `/owner` 使用系统字体，与本目录无关。
 
 ## 字体清单
 
 | 字体 | 用途 | 权重 |
 |---|---|---|
-| Noto Sans SC | 中文正文与界面 | 400 / 500 / 700 / 900 |
-| Newsreader | 期刊感大标题衬线（仅拉丁字符） | 400 / 500 / 400 italic |
-| Inter | tabular 数字、英文标签 | 400 / 500 / 600 |
+| Noto Sans SC（Ticketbox Sans） | 中文正文与界面 | variable 400–800 |
+| Inter（Ticketbox Figures） | tabular 数字、英文标签 | variable 400–800 |
 
 ## 下载
 
 ```powershell
 pwsh scripts/download-fonts.ps1
+# 本机网络需要代理时，可传 -Proxy http://127.0.0.1:7897
 ```
 
-脚本调 Google Fonts CSS API 获取最新 woff2 子集，存到本目录。文件名规范化为 `Family-Weight[Italic].woff2`。Noto Sans SC 按 unicode-range 切片，脚本只保留桌面账本当前引用的中文主子集文件；缺失字形由系统中文字体栈兜底。
+脚本从 Google Fonts CSS API 获取两族字体的完整分片集合，保留每片的 `unicode-range` 与连续字重范围。字体文件以内容 SHA-256 的前 16 位命名，生成的 CSS 只引用本地文件，浏览器按页面实际用字加载需要的分片。
 
-## 设计决策依据
+不能再只选择包含 `U+4E00` 的一个分片：此前该文件只有 277 个字形，连“小票夹”“预算”等常用界面文字都依赖系统补字，导致同页中文混排。多个不同字重的文件名也不能代替可变字体范围声明。
 
-设计稿要求「期刊式衬线大标题」（Newsreader）+「Inter tabular 数字」，系统字体无法替代。`Noto Sans SC` 引入是为了在 Windows / Mac / Linux 上保持中文权重 500/700/900 的一致渲染（PingFang SC 只在 Mac/iOS 预装，YaHei 在 Windows 上没有 Black weight）。
+洞察与分析的五个画布图表同样消费共享字体变量；按图表实际标签先加载相应字形，再进行首次绘制，避免把字体未就绪时的回退测量留在画布内。字体加载失败时仍绘制数据。
 
-依据工程规范第 15 章「新增依赖必须可靠 / 活跃 / 官方推荐或事实标准生态」——Google Fonts 三族均满足，引入合规。仅限 `/web` 加载，不影响 Android（系统栈）或 `/owner` 控制台（系统栈）。
+重新生成后，应核对实际字形覆盖、浏览器字体来源、真实页面换行及字体请求；移除已被替代且没有消费者的旧文件。本目录不保留已经退出当前产品样式的 Newsreader。
+
+## 来源与许可
+
+- [Google Fonts CSS API](https://developers.google.com/fonts/docs/css2)
+- [Noto Sans SC](https://github.com/google/fonts/tree/main/ofl/notosanssc)，许可见 `NotoSansSC-OFL.txt`。
+- [Inter](https://github.com/google/fonts/tree/main/ofl/inter)，许可见 `Inter-OFL.txt`。
 
 ## 离线运行
 
-字体进 git，运行时不走外网。`/web` 在断网状态下仍可正常渲染。
+字体与 CSS 随应用打包，运行时不访问 Google。访问本地后端无需外网即可加载字库；字体自身不包含的字符继续使用浏览器系统字体。

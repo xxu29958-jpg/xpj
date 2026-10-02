@@ -114,6 +114,14 @@
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   };
 
+  // Canvas keeps its first text measurements; load the chart's actual glyphs
+  // before drawing. A missing font must still leave the financial chart usable.
+  app.withChartFonts = function withChartFonts(text, render) {
+    if (!document.fonts) { render(); return; }
+    const family = app.readVar("--font-numeric") || "sans-serif";
+    document.fonts.load("12px " + family, text).then(render, render);
+  };
+
   // 原生 <details> 披露的共享便利层: 点外部 / Escape 关闭并把焦点还回
   // trigger。开合状态由 <details open> 原生持有 (无 JS 可用), 本层只做增强。
   // 两个真实 consumer: 外观 popover (theme.js) 与「我」账户面板

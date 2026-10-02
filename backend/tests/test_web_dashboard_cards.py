@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from _web_native_form_support import hidden_post_forms
 from fastapi.testclient import TestClient
@@ -97,18 +99,12 @@ def test_web_dashboard_uses_saved_card_layout_and_reset(web_client: TestClient) 
     assert saved.status_code == 303, saved.text
     assert "ledger_id=owner" in saved.headers["location"]
 
-    # 218-D S4: /web 根改向收件域后, 卡片布局的 HTML 承接面是 /web/overview
-    # (S2 泳道: 泳道归属固定, 组内卡片按持久化 position 渲染, 全隐藏卡不出)。
-    # 顺序断言因此落在同泳道内 (goals/budget/recurring 同属「计划状态」)。
+    # 保存的完整顺序必须进入真实总览，不能被页面分组再次打散。
     overview = web_client.get("/web/overview?ledger_id=owner")
     assert overview.status_code == 200
-    assert overview.text.index('data-overview-card="goals"') < overview.text.index(
-        'data-overview-card="budget"'
-    )
-    assert overview.text.index('data-overview-card="budget"') < overview.text.index(
-        'data-overview-card="recurring"'
-    )
-    assert 'data-overview-card="reports"' not in overview.text
+    assert re.findall(r'data-overview-card="([^"]+)"', overview.text) == [
+        key for key in custom_order if key != "reports"
+    ]
 
     with SessionLocal() as db:
         payload = web_common._dashboard_data_payload(db, "owner")
@@ -142,11 +138,7 @@ def test_web_dashboard_uses_saved_card_layout_and_reset(web_client: TestClient) 
 
     reset_overview = web_client.get("/web/overview?ledger_id=owner")
     assert reset_overview.status_code == 200
-    # 默认序在同泳道 (「本月事实」) 内恢复: monthly_spend 在 reports 前。
-    assert reset_overview.text.index('data-overview-card="monthly_spend"') < reset_overview.text.index(
-        'data-overview-card="reports"'
-    )
-    assert 'data-overview-card="reports"' in reset_overview.text
+    assert re.findall(r'data-overview-card="([^"]+)"', reset_overview.text) == WEB_CARD_KEYS
 
 
 def test_web_dashboard_cards_viewer_can_read_but_not_save(web_client: TestClient) -> None:
@@ -238,5 +230,5 @@ def test_web_overview_first_day_shows_entry_links_until_first_expense(
     after = web_client.get("/web/overview?ledger_id=owner")
     assert after.status_code == 200
     after_body = after.text
-    assert "1 笔待处理" in after_body
+    assert '<a href="/web/pending?ledger_id=owner">1 笔待整理</a>' in after_body
     assert "先录入第一笔流水" not in after_body

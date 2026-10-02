@@ -38,7 +38,7 @@
           trigger: "axis",
           backgroundColor: app.readVar("--chart-tooltip-bg"),
           borderColor: app.readVar("--chart-tooltip-border"),
-          textStyle: { color: app.readVar("--chart-tooltip-fg"), fontFamily: "Inter, 'Noto Sans SC'" },
+          textStyle: { color: app.readVar("--chart-tooltip-fg"), fontFamily: app.readVar("--font-numeric") },
           axisPointer: { lineStyle: { color: ink4, type: "dashed" } },
           formatter: function (params) {
             const head = '<div style="font-size:11px;letter-spacing:.1em;margin-bottom:4px">' +
@@ -58,7 +58,7 @@
           data: labels,
           axisLine: { lineStyle: { color: hairline } },
           axisTick: { show: false },
-          axisLabel: { color: axisLabel, fontFamily: "Inter, 'Noto Sans SC'", fontSize: 11 },
+          axisLabel: { color: axisLabel, fontFamily: app.readVar("--font-numeric"), fontSize: 11 },
         },
         yAxis: {
           type: "value",
@@ -66,7 +66,7 @@
           axisTick: { show: false },
           splitLine: { lineStyle: { color: hairline } },
           axisLabel: {
-            color: axisLabel, fontFamily: "Inter", fontSize: 11,
+            color: axisLabel, fontFamily: app.readVar("--font-numeric"), fontSize: 11,
             formatter: function (v) { return v >= 1000 ? (v / 1000) + "k" : v; },
           },
         },
@@ -99,11 +99,13 @@
         ],
       };
     }
-    chart.setOption(build());
-    new ResizeObserver(function () { chart.resize(); }).observe(el);
-    // Canvas does not inherit changed CSS colors. Reproject the same data/instance.
-    new MutationObserver(function () { chart.setOption(build()); }).observe(document.documentElement, {
-      attributes: true, attributeFilter: ["data-theme", "data-accent"],
+    app.withChartFonts("0123456789.,%−-k月" + app.homeCurrencySymbol(), function () {
+      chart.setOption(build());
+      // Canvas does not inherit changed CSS colors. Reproject the same data/instance.
+      new MutationObserver(function () { chart.setOption(build()); }).observe(document.documentElement, {
+        attributes: true, attributeFilter: ["data-theme", "data-accent"],
+      });
     });
+    new ResizeObserver(function () { chart.resize(); }).observe(el);
   };
 })(window, document);

@@ -123,6 +123,49 @@ class InsightsJourney:
         assert native.has("OrdinaryMeal"), "An unfiltered category drill retained an earlier report tag"
         native.capture("insights-unfiltered-drill")
 
+    def overview_layout(self):
+        page = self.page
+        before = self.facts()
+        self.goto("/web/dashboard/cards")
+        default_order = page.locator("[data-dashboard-card-row]").evaluate_all(
+            "rows => rows.map(row => row.dataset.dashboardCardRow)")
+        custom_order = ["goals", "monthly_spend", "pending"] + [
+            key for key in default_order if key not in {"goals", "monthly_spend", "pending"}]
+        for position, key in enumerate(custom_order):
+            row = page.locator(f'[data-dashboard-card-row="{key}"]')
+            row.locator("[data-card-position]").fill(str(position))
+            row.locator('[name="visible_key"]').set_checked(key != "reports")
+        page.locator('#dashboard-cards-form button[type="submit"]').click()
+        page.wait_for_url("**/web/dashboard/cards?*msg=*")
+        page.get_by_role("link", name="返回总览", exact=True).click()
+        expected = [key for key in custom_order if key != "reports"]
+        assert page.locator("[data-overview-card]").evaluate_all(
+            "cards => cards.map(card => card.dataset.overviewCard)") == expected
+        page.reload()
+        assert page.locator("[data-overview-card]").evaluate_all(
+            "cards => cards.map(card => card.dataset.overviewCard)") == expected
+        self.capture("overview-saved-layout")
+        self.goto("/web/dashboard/cards")
+        page.locator('form[action="/web/dashboard/cards/reset"] button[type="submit"]').click()
+        page.wait_for_url("**/web/dashboard/cards?*msg=*")
+        page.get_by_role("link", name="返回总览", exact=True).click()
+        assert page.locator("[data-overview-card]").evaluate_all(
+            "cards => cards.map(card => card.dataset.overviewCard)") == default_order
+        for theme in ("paper", "midnight"):
+            page.set_viewport_size({"width": 1280, "height": 800})
+            page.locator("#appearance > summary").click()
+            page.locator(f'#appearance [data-theme-mode="{theme}"]').click()
+            wait_for(lambda theme=theme: page.locator("html").get_attribute("data-theme") == theme,
+                "The overview did not apply the selected appearance")
+            page.locator("#appearance > summary").click()
+            for width in (1280, 360):
+                page.set_viewport_size({"width": width, "height": 800})
+                page.evaluate("document.fonts.ready")
+                amount = page.locator(".insight-hero-value").bounding_box()
+                assert amount and amount["y"] + amount["height"] < 600, amount
+                self.capture(f"overview-default-{theme}-{width}")
+        assert self.facts() == before, "Overview customization changed financial facts"
+
     def web_report_return(self):
         page = self.page
         state = self.facts()
@@ -161,6 +204,7 @@ class InsightsJourney:
 
     def run(self):
         self.prepare()
+        self.overview_layout()
         self.tagged_drill_and_return()
         self.web_report_return()
         state = self.facts()
@@ -170,5 +214,6 @@ class InsightsJourney:
         assert state["revision_reasons"].count("DrillAmount") == state["revision_reasons"].count("ReportReturn") == 1
         state["verified_leg"] = ("Actual tagged and unfiltered native category drills, original fact correction, "
             "return with retained scope and refreshed summary, Web report drill/correction/return with original "
-            "month/currency/granularity/ranking/category, wide/narrow appearances and unchanged unrelated facts")
+            "month/currency/granularity/ranking/category, persisted Web overview order/hiding/reload/default reset, "
+            "wide/narrow appearances and unchanged unrelated facts")
         return state

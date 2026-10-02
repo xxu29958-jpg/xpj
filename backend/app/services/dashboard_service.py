@@ -36,7 +36,7 @@ DEFAULT_DASHBOARD_CARDS: dict[DashboardSurface, tuple[DashboardCardDefinition, .
         DashboardCardDefinition("goals", "目标"),
         DashboardCardDefinition("recurring", "固定支出"),
         DashboardCardDefinition("pending", "待确认"),
-        DashboardCardDefinition("recent_uploads", "最近上传"),
+        DashboardCardDefinition("recent_uploads", "最近新增"),
         DashboardCardDefinition("backup_status", "备份状态"),
         DashboardCardDefinition("device_status", "设备状态"),
     ),

@@ -92,7 +92,7 @@ def test_overview_assembles_original_month_and_one_display_home(monkeypatch):
 
 
 def test_actual_overview_template_exposes_unknown_and_original_recovery():
-    from app.routes.web_dashboard import _overview_amount_views, _overview_lanes
+    from app.routes.web_dashboard import _overview_amount_views
     from app.services.money_projection_service import ProjectionGap
 
     cards = {"home_currency_code": "JPY", "month": "2026-08", "total_amount_cents": None,
@@ -106,7 +106,7 @@ def test_actual_overview_template_exposes_unknown_and_original_recovery():
     html = env.get_template("overview.html").render(cards=cards, selected_ledger_id="family", q="?ledger_id=family",
         can_write=True, has_any_expense=True, overview_load_charts=False, category_chart_available=False,
         category_share=[{"name": "餐饮", "amount_label": "待补齐换算信息", "amount_cents": None}],
-        overview_lanes=_overview_lanes([{"key": "monthly_spend"}, {"key": "reports"}]),
+        overview_cards=[{"key": "monthly_spend"}, {"key": "reports"}],
         money_task={"ledger_id": "family", "month": "2026-08", "home_currency_code": "JPY", "return_to": "overview"},
         missing_rates=[ProjectionGap("CNY", "JPY", date(2026, 8, 4))], flash_message="",
         **_overview_amount_views(cards))
