@@ -6,6 +6,22 @@ from scripts.backstage_journey_facts import synthetic_receipt
 from scripts.planning_journey_android import wait_for
 
 
+def native_inbox_filters(j):
+    before = j.facts()
+    j.native.restart()
+    j.native.domain_home("收件")
+    wait_for(lambda: j.native.has("全部 1"), "The inbox did not reread the Web-uploaded pending bill")
+    j.native.capture("inbox-pending")
+    j.native.click_counted_tab("疑似重复")
+    empty = "没有符合「疑似重复」的待确认账单"
+    wait_for(lambda: j.native.has(empty), "The zero-match filter did not explain its empty result")
+    j.native.capture("inbox-filter-empty")
+    j.native.click_counted_tab("全部")
+    wait_for(lambda: not j.native.has(empty) and j.native.has("18.51"),
+             "The user could not return from the empty filter to the original pending bill")
+    assert j.facts() == before, "Browsing inbox filters changed the original bill or upload task"
+
+
 def share_synthetic_receipt(j):
     path = j.evidence / "synthetic-receipt-native.png"
     digest = synthetic_receipt(path, amount="23.45", date_text="2025年1月12日")

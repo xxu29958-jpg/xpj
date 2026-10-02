@@ -15,7 +15,7 @@
 .inbox-upload-form {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
+    align-items: end;
     flex: 1 1 26rem;
     min-width: 0;
     max-width: 42rem;

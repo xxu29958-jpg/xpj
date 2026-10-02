@@ -742,8 +742,11 @@ textarea:focus {
    consumer: 收件上传。specificity 借 body.product-shell 盖过通用
    input:not(...) 规则, 不动 legacy import 页, 不用 !important。 */
 .file-picker {
-    display: inline-flex;
+    display: grid;
+    gap: var(--space-2);
     min-width: min(100%, calc(var(--space-12) * 4));
+    color: var(--text-muted);
+    font-size: var(--type-caption-size);
 }
 
 body.product-shell .file-picker > input.file-picker-input {
