@@ -136,6 +136,20 @@ jobs:
                   screen.name = "URL action added through XCTest"
                   screen.lifetime = .keepAlways
                   add(screen)
+                  let request = app.otherElements.matching(NSPredicate(format: "label == %@", "Get contents of , URL")).firstMatch
+                  XCTAssertTrue(request.waitForExistence(timeout: 10))
+                  // The system's accessibility element groups the URL chip and disclosure control.
+                  // This point is the blue disclosure in the captured iPhone 17 Pro action row.
+                  request.coordinate(withNormalizedOffset: CGVector(dx: 0.725, dy: 0.5)).tap()
+                  let optionsTree = XCTAttachment(string: app.debugDescription)
+                  optionsTree.name = "URL request options accessibility tree"
+                  optionsTree.lifetime = .keepAlways
+                  add(optionsTree)
+                  let optionsScreen = XCTAttachment(screenshot: app.screenshot())
+                  optionsScreen.name = "URL request options"
+                  optionsScreen.lifetime = .keepAlways
+                  add(optionsScreen)
+                  XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "Method")).firstMatch.waitForExistence(timeout: 10))
               }
           }
           ''')
