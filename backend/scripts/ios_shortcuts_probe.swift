@@ -100,12 +100,16 @@ final class ShortcutProbe: XCTestCase {
         add(inputScreen)
         app.buttons["Clipboard"].tap()
         // The URL chip is inside the observed merged action row.
-        request.coordinate(withNormalizedOffset: CGVector(dx: 0.595, dy: 0.5)).tap()
         // This token editor exposes a focused URL keyboard, not a TextField/TextView AX node.
         let keyboard = app.keyboards.firstMatch
-        let keyboardExists = keyboard.waitForExistence(timeout: 10)
+        // An observed first tap left the token unchanged after choosing Clipboard.
+        // Retry that same harmless selection only while its keyboard is absent.
+        for _ in 0..<2 {
+            request.coordinate(withNormalizedOffset: CGVector(dx: 0.595, dy: 0.5)).tap()
+            if keyboard.waitForExistence(timeout: 5) { break }
+        }
         captureText(app, "URL input before configuration")
-        XCTAssertTrue(keyboardExists)
+        XCTAssertTrue(keyboard.exists)
         // The system token editor does not expose keyboard focus to XCTest typing.
         // Paste through its native editing menu, as an Owner pastes the full UploadLink.
         UIPasteboard.general.string = url
