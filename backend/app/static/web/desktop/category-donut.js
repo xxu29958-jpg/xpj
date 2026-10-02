@@ -24,14 +24,13 @@
         app.readVar("--chart-series-6"),
       ];
       const ink = app.readVar("--text-default");
-      const ink3 = app.readVar("--text-meta");
       return {
         animation: false,
         tooltip: {
           trigger: "item",
           backgroundColor: app.readVar("--chart-tooltip-bg"),
           borderColor: app.readVar("--chart-tooltip-border"),
-          textStyle: { color: app.readVar("--chart-tooltip-fg"), fontFamily: "'Noto Sans SC', Inter" },
+          textStyle: { color: app.readVar("--chart-tooltip-fg"), fontFamily: app.readVar("--font-numeric") },
           formatter: function (p) {
             // PR #253 P1-2: 分类名是用户/导入可控文本, 进 HTML tooltip 前必须转义。
             // 金额文案只消费服务器生成的精确 label；value 仅供几何。
@@ -46,13 +45,13 @@
           center: ["50%", "55%"],
           avoidLabelOverlap: false,
           itemStyle: { borderColor: app.readVar("--surface-card"), borderWidth: 2 },
-          label: { show: false },
+          label: { show: false, position: "center" },
           labelLine: { show: false },
           emphasis: {
             scale: true, scaleSize: 4,
             label: {
-              show: true, position: "center", color: ink,
-              fontFamily: "Newsreader, 'Source Han Serif SC', serif", fontSize: 22,
+              show: true, color: ink,
+              fontFamily: app.readVar("--font-numeric"), fontSize: 22,
               formatter: function (p) {
                 // 纯文本拼接, 不用 ECharts rich-text DSL: 分类名里的 "}"/"{x|" 元字符
                 // 会被当成样式段解析而破坏中心排版 (canvas 无 XSS, 但排版注入同样
@@ -73,19 +72,17 @@
             };
           }),
         }],
-        graphic: {
-          type: "text", left: "center", top: "44%",
-          style: { text: "合计", fill: ink3, fontFamily: "'Noto Sans SC', Inter", fontSize: 11 },
-          z: 0,
-        },
       };
     }
-    chart.setOption(build());
-    new ResizeObserver(function () { chart.resize(); }).observe(el);
-    // Canvas does not inherit changed CSS colors. Reproject the same data/instance.
-    new MutationObserver(function () { chart.setOption(build()); }).observe(document.documentElement, {
-      attributes: true, attributeFilter: ["data-theme", "data-accent"],
+    const fontText = "0123456789.,%−-" + data.slice(0, 6).map(function (d) { return d.name + d.amount_label; }).join("");
+    app.withChartFonts(fontText, function () {
+      chart.setOption(build());
+      // Canvas does not inherit changed CSS colors. Reproject the same data/instance.
+      new MutationObserver(function () { chart.setOption(build()); }).observe(document.documentElement, {
+        attributes: true, attributeFilter: ["data-theme", "data-accent"],
+      });
     });
+    new ResizeObserver(function () { chart.resize(); }).observe(el);
 
     // 把环图 legend dots 的颜色也按 chart-series 涂上
     document.querySelectorAll(".chart-legend-0").forEach(function (n) { n.style.background = app.readVar("--chart-series-1"); });
