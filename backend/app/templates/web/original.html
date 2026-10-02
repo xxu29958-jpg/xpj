@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from '_history_time.html' import saved_time %}
 {% block title %}账单原件 · 小票夹{% endblock %}
 {% block page_scripts %}{% include "_attachment_scripts.html" %}<script defer src="/static/web/originals.js?v={{ asset_version }}"></script>{% endblock %}
 {% block content %}
@@ -9,7 +10,7 @@
 </header>
 {% if message %}<p class="product-feedback" role="status">{{ message }}</p>{% endif %}
 <section class="product-panel product-panel--padded">
-  <h2>{{ labels[original.state] }}</h2><p>检查时间：<time>{{ original.checked_at.isoformat() }}</time>。此结果只说明本次读取，不代表文件将来始终可用。</p>
+  <h2>{{ labels[original.state] }}</h2><p>检查时间：{{ saved_time(original.checked_at) }}。此结果只说明本次读取，不代表文件将来始终可用。</p>
   <p>金额、账务日期及历史仍保留。缩略图是预览副本，不能证明原件完整。</p>
   {% if original.state == 'none' %}<p>手动账单可以没有原件，无需补回。</p>{% endif %}
   {% if original.state in ['missing','corrupt','cleaned'] %}<p>请选择同一张已存原件或可归一为它的原始图片。不同内容不会替换账单，也不会新建账单。</p>{% endif %}
@@ -40,7 +41,7 @@
 <section class="product-panel product-panel--padded">
 {{ intent_form('verify', '确认所见原件', original.state == 'unverified') }}
 {{ intent_form('replenish', '补回到这笔账单', original.expected_sha256 and original.state in ['missing','corrupt','cleaned','unreadable'], true) }}
-{% if original.cleanup %}<h2>尚未结束的清理</h2><p>请求时间 {{ original.cleanup.requested_at.isoformat() }}。原图：{{ original.cleanup.image or '不涉及' }}；缩略图：{{ original.cleanup.thumbnail or '不涉及' }}。</p>
+{% if original.cleanup %}<h2>尚未结束的清理</h2><p>请求时间 {{ saved_time(original.cleanup.requested_at) }}。原图：{{ original.cleanup.image or '不涉及' }}；缩略图：{{ original.cleanup.thumbnail or '不涉及' }}。</p>
 {% if not original.cleanup.policy_enabled %}<p>当前清理策略已关闭；保留原请求，可取消剩余工作。</p>{% endif %}{% endif %}
 {{ intent_form('cleanup/retry', '继续原清理请求', original.cleanup and original.cleanup.policy_enabled) }}
 {{ intent_form('cleanup/cancel', '取消尚未执行的清理', original.cleanup) }}

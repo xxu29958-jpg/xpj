@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from '_history_time.html' import saved_time %}
 {% set product_body_domain = 'plans' %}
 {% block title %}本期固定支出 · 小票夹{% endblock %}
 {% macro command_fields(action, key, expense=None, revision=None) %}
@@ -29,7 +30,7 @@
   <h2 class="product-panel-title">本期首次关联所据定义</h2>
   {% if occurrence.recorded_definition %}
   {% set definition = occurrence.recorded_definition %}{% set snapshot = definition.snapshot %}
-  <p>版本 {{ definition.series_row_version }} · 记录保存时间 <time datetime="{{ definition.recorded_at|to_iso }}">{{ definition.recorded_at|to_iso }}</time></p>
+  <p>版本 {{ definition.series_row_version }} · 记录保存时间 {{ saved_time(definition.recorded_at) }}</p>
   <p><strong>{{ snapshot.merchant }}</strong> · {{ snapshot.home_currency_code or '' }} {{ recorded_definition_amount }} · {{ '月度' if snapshot.frequency == 'monthly' else snapshot.frequency }}</p>
   <p>计划日期 {{ snapshot.next_expected_date or '未设置' }} · {{ {'active':'活跃', 'paused':'暂停', 'archived':'已归档'}[snapshot.status] }}</p>
   <p class="hint">这是首次记录本期付款关联时所据的定义，不代表该账务月生效的计划。解除或重新关联付款后，这份依据仍保留。</p>
