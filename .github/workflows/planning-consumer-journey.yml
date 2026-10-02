@@ -150,6 +150,30 @@ jobs:
                   optionsScreen.lifetime = .keepAlways
                   add(optionsScreen)
                   XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "Method")).firstMatch.waitForExistence(timeout: 10))
+                  app.buttons["GET"].tap()
+                  let post = app.buttons["POST"]
+                  XCTAssertTrue(post.waitForExistence(timeout: 10))
+                  post.tap()
+                  let postTree = XCTAttachment(string: app.debugDescription)
+                  postTree.name = "POST request body choices accessibility tree"
+                  postTree.lifetime = .keepAlways
+                  add(postTree)
+                  let bodyType = app.buttons.matching(NSPredicate(format: "label == %@ OR label == %@", "JSON", "Form")).firstMatch
+                  XCTAssertTrue(bodyType.waitForExistence(timeout: 10))
+                  bodyType.tap()
+                  let file = app.buttons["File"]
+                  XCTAssertTrue(file.waitForExistence(timeout: 10))
+                  file.tap()
+                  XCTAssertTrue(app.buttons["POST"].exists)
+                  XCTAssertTrue(app.buttons["File"].exists)
+                  let fileTree = XCTAttachment(string: app.debugDescription)
+                  fileTree.name = "POST file request accessibility tree"
+                  fileTree.lifetime = .keepAlways
+                  add(fileTree)
+                  let fileScreen = XCTAttachment(screenshot: app.screenshot())
+                  fileScreen.name = "POST file request configured through the system UI"
+                  fileScreen.lifetime = .keepAlways
+                  add(fileScreen)
               }
           }
           ''')
