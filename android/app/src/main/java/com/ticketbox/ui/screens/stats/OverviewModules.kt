@@ -4,8 +4,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -67,12 +69,17 @@ internal fun LazyListScope.overviewModuleItems(
                 DASHBOARD_CARD_MONTHLY_SPEND -> OverviewMonthModule(state)
                 DASHBOARD_CARD_REPORTS -> OverviewReportsModule(state, onTrend, hasMonthlySummary)
                 DASHBOARD_CARD_BUDGET -> {
-                    if (state.selectedTag.isNotBlank()) Text(stringResource(R.string.dashboard_ledger_scope))
+                    if (state.selectedTag.isNotBlank()) Text(
+                        stringResource(R.string.dashboard_ledger_scope),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     BudgetReadSource(state.budgetFetchedAt, state.budgetFromCache)
                     StatsMetricGrid(state.budgetProgress, state.budgetProgressStatus, actions.onBudget)
                 }
-                DASHBOARD_CARD_RECENT_UPLOADS -> StatsInsightSurface {
-                    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+                DASHBOARD_CARD_RECENT_UPLOADS -> {
+                    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+                        modifier = Modifier.padding(vertical = AppSpacing.smallGap)) {
                         if (state.selectedTag.isNotBlank()) {
                             Text(stringResource(R.string.dashboard_ledger_scope), style = MaterialTheme.typography.bodySmall)
                         }
@@ -141,20 +148,25 @@ private fun OverviewLinkedModule(
         DASHBOARD_CARD_RECURRING -> Triple(recurringSummary(recurring), R.string.dashboard_recurring_action, actions.onRecurring)
         else -> return
     }
-    StatsInsightSurface {
-        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(card.title, modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-                TextButton(onClick = content.third) { Text(stringResource(content.second)) }
-            }
-            if (state.selectedTag.isNotBlank()) {
-                Text(stringResource(R.string.dashboard_ledger_scope), style = MaterialTheme.typography.bodySmall)
-            }
-            Text(content.first, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (card.key == DASHBOARD_CARD_GOALS && state.selectedTag.isBlank()) {
-                com.ticketbox.ui.screens.plan.GoalReadSource(state.reportGoalsFetchedAt, state.reportGoalsFromCache)
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(vertical = AppSpacing.smallGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(card.title, modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+            TextButton(onClick = content.third) {
+                Text(stringResource(content.second), style = MaterialTheme.typography.labelMedium)
             }
         }
+        if (state.selectedTag.isNotBlank() && card.key != DASHBOARD_CARD_GOALS) {
+            Text(stringResource(R.string.dashboard_ledger_scope), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Text(content.first, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (card.key == DASHBOARD_CARD_GOALS && state.selectedTag.isBlank()) {
+            com.ticketbox.ui.screens.plan.GoalReadSource(state.reportGoalsFetchedAt, state.reportGoalsFromCache)
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     }
 }
 
