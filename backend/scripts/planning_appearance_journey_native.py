@@ -70,10 +70,11 @@ def pick_photo(native):
 
 
 def read_domains(native, images):
-    for theme, label in (("paper", "温润米白 + 茶铜"), ("midnight", "深色玻璃 + 暖金")):
+    for theme, label in (("paper", "浅色纸面 · 深绿点缀"), ("midnight", "柔和深色 · 浅绿点缀")):
         open_appearance(native)
         native.click(label)
         wait_for(lambda theme=theme: theme_mode(native) == theme, "The native theme choice was not persisted")
+        native.capture("appearance-settings-" + theme)
         for mode, choice, description in (("atmosphere", "氛围", "背景更明显，适合首页和统计"),
                 ("balanced", "平衡", "默认推荐，兼顾好看和清晰"), ("focus", "专注", "弱化背景，适合长时间记账")):
             open_appearance(native)
@@ -105,11 +106,12 @@ def native_appearance(j, path, image_digest):
     native = j.native
     prepare_photo(native, path)
     open_appearance(native)
+    native.capture("appearance-settings-default")
     native.click("背景图库")
     native.click("茶雾")
     native.click("应用背景")
     wait_for(lambda: not native.has("应用背景"), "The built-in background did not publish")
-    native.reveal_any("内置背景", toward_start=True)
+    native.reveal_any("茶雾", toward_start=True)
     native.capture("appearance-builtin-applied")
     original = saved_background(native)
     pick_photo(native)

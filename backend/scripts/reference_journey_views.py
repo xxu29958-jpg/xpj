@@ -72,7 +72,7 @@ def appearances(j):
         native.plan_home()
         native.click("打开账户与设置")
         native.click("外观与主题")
-        native.click("温润米白 + 茶铜" if theme == "paper" else "深色玻璃 + 暖金")
+        native.click("浅色纸面 · 深绿点缀" if theme == "paper" else "柔和深色 · 浅绿点缀")
         for label, value, name in (("标签", "TripFinal", "tags"), ("商家", "RefPay", "merchants"),
                                     ("自动规则", "RefShop", "rules"), ("分类", "Library", "categories")):
             j.native_open(label)

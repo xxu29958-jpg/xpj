@@ -103,7 +103,7 @@ def appearances(j):
         native.plan_home()
         native.click("打开账户与设置")
         native.click("外观与主题")
-        native.click("温润米白 + 茶铜" if theme == "paper" else "深色玻璃 + 暖金")
+        native.click("浅色纸面 · 深绿点缀" if theme == "paper" else "柔和深色 · 浅绿点缀")
         j.native_open()
         native.capture("financial-fact-" + theme)
         native.reveal_any("查看已送达的更正（2）", toward_start=True)
