@@ -122,7 +122,7 @@
         <h2 class="product-panel-title">预算余量</h2>
         <div class="product-panel-subtitle">{{ cards.month }}</div>
       </div>
-      <a class="product-panel-subtitle" href="/web/budgets?ledger_id={{ selected_ledger_id }}">管理</a>
+      <a class="product-panel-subtitle" href="/web/budgets?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ cards.month|urlencode }}">管理</a>
     </div>
     {% if cards.budget_configured %}
     <div class="insight-stat-value num{% if cards.budget_is_over %} text-danger{% endif %}">

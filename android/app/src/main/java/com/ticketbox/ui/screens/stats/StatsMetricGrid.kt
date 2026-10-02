@@ -7,12 +7,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -24,7 +25,6 @@ import com.ticketbox.domain.model.BudgetProgress
 import com.ticketbox.domain.model.BudgetProgressStatus
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.moneyPercent
-import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppRadius
@@ -40,15 +40,10 @@ internal fun StatsMetricGrid(
 ) {
     val currencyDisplay = CurrencyDisplay.forRecord(budget?.homeCurrencyCode ?: "UNKNOWN")
 
-    StatsInsightSurface {
-        if (budget != null) {
-            BudgetProgressSection(budget, currencyDisplay)
-        } else {
-            BudgetStatusSection(
-                budgetStatus = budgetStatus,
-                onOpenBudget = onOpenBudget,
-            )
-        }
+    if (budget != null) {
+        StatsInsightSurface { BudgetProgressSection(budget, currencyDisplay, onOpenBudget) }
+    } else {
+        BudgetStatusSection(budgetStatus = budgetStatus, onOpenBudget = onOpenBudget)
     }
 }
 
@@ -58,13 +53,16 @@ private fun BudgetStatusSection(
     onOpenBudget: () -> Unit,
 ) {
     val copy = budgetStatusCopy(budgetStatus)
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
+    Column(
+        modifier = Modifier.padding(vertical = AppSpacing.smallGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
                 Text(
                     text = stringResource(R.string.stats_budget_progress_title),
                     style = MaterialTheme.typography.titleMedium,
@@ -76,30 +74,19 @@ private fun BudgetStatusSection(
                     style = MaterialTheme.typography.labelSmall,
                 )
             }
-            Text(
-                text = stringResource(copy.badge),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.labelMedium,
-                maxLines = 1,
-            )
+            TextButton(onClick = onOpenBudget) { Text(stringResource(copy.action)) }
         }
         Text(
             text = stringResource(copy.body),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodyMedium,
         )
-        AppPrimaryButton(
-            text = stringResource(copy.action),
-            icon = Icons.Filled.Tune,
-            modifier = Modifier.fillMaxWidth(),
-            onClick = onOpenBudget,
-        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     }
 }
 
 private data class BudgetStatusCopy(
     val status: Int,
-    val badge: Int,
     val body: Int,
     val action: Int,
 )
@@ -108,25 +95,21 @@ private fun budgetStatusCopy(budgetStatus: BudgetProgressStatus): BudgetStatusCo
     when (budgetStatus) {
         BudgetProgressStatus.ConfiguredWithoutProgress -> BudgetStatusCopy(
             status = R.string.stats_budget_progress_unavailable_status,
-            badge = R.string.stats_budget_progress_configured,
             body = R.string.stats_budget_progress_unavailable_body,
             action = R.string.stats_budget_open_action,
         )
         BudgetProgressStatus.Unknown -> BudgetStatusCopy(
             status = R.string.stats_budget_unknown_status,
-            badge = R.string.stats_budget_unknown_badge,
             body = R.string.stats_budget_unknown_body,
             action = R.string.stats_budget_open_action,
         )
         BudgetProgressStatus.Progress -> BudgetStatusCopy(
             status = R.string.stats_budget_progress_configured,
-            badge = R.string.stats_budget_progress_configured,
             body = R.string.stats_budget_progress_hint,
             action = R.string.stats_budget_open_action,
         )
         BudgetProgressStatus.Unconfigured -> BudgetStatusCopy(
             status = R.string.stats_budget_empty_status,
-            badge = R.string.stats_budget_empty_badge,
             body = R.string.stats_budget_empty_body,
             action = R.string.stats_budget_empty_action,
         )
@@ -136,6 +119,7 @@ private fun budgetStatusCopy(budgetStatus: BudgetProgressStatus): BudgetStatusCo
 private fun BudgetProgressSection(
     budget: BudgetProgress,
     currencyDisplay: CurrencyDisplay,
+    onOpenBudget: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
         Row(
@@ -180,6 +164,7 @@ private fun BudgetProgressSection(
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        TextButton(onClick = onOpenBudget) { Text(stringResource(R.string.stats_budget_open_action)) }
     }
 }
 
