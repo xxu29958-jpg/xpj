@@ -169,8 +169,8 @@ jobs:
           command = ["xcodebuild", "test", "-project", str(project), "-scheme", "ShortcutProbe",
                      "-destination", "id=" + environment["device_id"], "-parallel-testing-enabled", "NO",
                      "-derivedDataPath", str(root / "DerivedData"), "-resultBundlePath", str(root / "ui-control.xcresult")]
-          # Launch success was followed by a blank Photos window and addmedia timeout.
-          # Wait through the public app UI before import, while no upload credential exists.
+          # The library tab exists behind the Photos introduction. Dismiss that public UI
+          # before discovering the share entry, while no upload credential exists.
           photo_command = command[:-1] + [str(root / "photo-readiness.xcresult"),
               "-only-testing:ShortcutProbe/ShortcutProbe/testPhotosLibraryBecomesUsable"]
           try:

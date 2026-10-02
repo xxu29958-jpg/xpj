@@ -197,7 +197,7 @@ final class ShortcutProbe: XCTestCase {
         app.buttons["Back"].tap()
         let photos = XCUIApplication(bundleIdentifier: "com.apple.mobileslideshow")
         photos.launch()
-        captureText(photos, "Photos initial entry with the isolated receipt")
+        captureText(photos, "System Photos entry for shortcut discovery")
         for _ in 0..<2 {
             let introduction = photos.buttons["Continue"]
             if introduction.exists && introduction.isHittable { introduction.tap() } else { break }
@@ -206,7 +206,7 @@ final class ShortcutProbe: XCTestCase {
         if library.exists && library.isHittable { library.tap() }
         let photo = photos.images.matching(NSPredicate(format: "label BEGINSWITH %@", "Photo,")).firstMatch
         let photoExists = photo.waitForExistence(timeout: 10)
-        captureText(photos, "Photos library containing the imported receipt")
+        captureText(photos, "Simulator Photos library for shortcut discovery")
         XCTAssertTrue(photoExists)
         photo.tap()
         let share = photos.buttons["Share"]
