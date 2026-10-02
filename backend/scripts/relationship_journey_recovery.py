@@ -15,6 +15,9 @@ class RelationshipRecovery:
     def native_original(self):
         j, native = self.j, self.j.native
         j.open_native(returned=True)
+        native.reveal_any("商议新约定")
+        native.capture("relationship-start-new-agreement")
+        native.click("商议新约定")
         native.reveal_any("新约定份额")
         native.fill("12.00", label="新约定份额（CNY）")
         native.reveal_any(SETTLEMENT)
@@ -67,11 +70,8 @@ class RelationshipRecovery:
         assert {k: v for k, v in restored.items() if k != "csrf_token"} == {
             k: v for k, v in original.items() if k != "csrf_token"}, "Lost reply changed the original acceptance"
         j.capture("acceptance-lost-reply-original")
-        form.locator("[data-repayment-submit]").click()
-        page.locator("[data-repayment-ack]").wait_for()
+        j.submit_web(form)
         assert len(j.facts()["changes"]) == before + 1
-        wait_for(lambda: page.evaluate("ref => localStorage.getItem('ticketbox:split-change-draft:v1:' + ref) === null",
-            original["idempotency_key"]), "The matching original acceptance receipt did not close the draft")
 
     def crossed_versions(self):
         j = self.j
@@ -99,10 +99,10 @@ class RelationshipRecovery:
         assert corrected["expected_return_row_version"] != original["expected_return_row_version"]
         assert corrected["settlement_net_amount_major"] == "-1.00" and corrected["new_share_amount_major"] == "14.00"
         assert j.facts()["pending_id"] is None, "Review submitted a new agreement without the user's command"
-        blocked.locator("[data-repayment-submit]").click()
+        j.submit_web(blocked, receiver=True)
         wait_for(lambda: j.facts()["pending_id"], "The corrected explicit command was not submitted")
         accepted = j.agreement_form(command="accept")
-        accepted.locator("[data-repayment-submit]").click()
+        j.submit_web(accepted)
         j.expect("agreed_share", 1400)
         j.expect("settlement", -100)
 
@@ -115,11 +115,11 @@ class RelationshipRecovery:
         form = j.receiver.locator('[data-repayment-kind="split-change"]')
         assert form.locator('[name="supersedes_proposal_public_id"]').input_value() == previous
         form.locator('[name="reason"]').fill("双方另拟的提议")
-        form.locator("[data-repayment-submit]").click()
+        j.submit_web(form, receiver=True)
         wait_for(lambda: j.facts()["pending_id"] not in (None, previous), "The explicit replacement did not supersede the proposal")
         assert next(row for row in j.facts()["proposals"] if row["public_id"] == previous)["status"] == "superseded"
         form = j.agreement_form(receiver=True, command="withdraw")
-        form.locator("[data-repayment-submit]").click()
+        j.submit_web(form, receiver=True)
         j.expect("pending_id", None)
         j.propose_web("14.00", "-1.00", "由原生拒绝的一份提议")
         j.native.restart()
@@ -133,7 +133,7 @@ class RelationshipRecovery:
         for index in range(17):
             j.propose_web("14.00", "-1.00", f"保留原历史的撤回 {index + 1}")
             form = j.agreement_form(command="withdraw")
-            form.locator("[data-repayment-submit]").click()
+            j.submit_web(form)
             j.expect("pending_id", None)
         assert len(j.facts()["changes"]) == 3 and j.facts()["settlement"] == -100
 

@@ -11,7 +11,12 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -38,7 +43,14 @@ internal fun SplitAgreementSection(
     onOpenDebt: (String) -> Unit,
 ) {
     AppSectionGroup {
-        Text(stringResource(R.string.split_agreement_title), style = MaterialTheme.typography.titleMedium)
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+            Text(stringResource(R.string.split_agreement_title), modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleMedium)
+            TextButton(onClick = model::refresh, enabled = !state.loading) {
+                Text(stringResource(R.string.split_agreement_refresh))
+            }
+        }
         state.error?.let { Text(it.asString(), color = MaterialTheme.colorScheme.error) }
         if (state.loading) Text(stringResource(R.string.split_agreement_loading))
         DebtReadSource(state.fetchedAt, state.fromCache, state.loading, testTag = "split-agreement-read-source")
@@ -49,23 +61,30 @@ internal fun SplitAgreementSection(
             Text(it.asString(), style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        QuietOutlinedButton(text = stringResource(R.string.split_agreement_refresh),
-            onClick = model::refresh, enabled = !state.loading)
         SplitAgreementSubmissions(state, model)
-        if (state.agreement?.viewerIsParty == true || state.agreement == null && state.hasDraft) {
-            Column(modifier = Modifier.padding(top = AppSpacing.cardGap),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap)) {
-                Text(stringResource(R.string.split_agreement_discussion_title),
-                    style = MaterialTheme.typography.titleMedium)
-                val agreement = state.agreement
-                val display = CurrencyDisplay.forRecord(agreement?.homeCurrencyCode ?: state.draftCurrencyCode ?: "UNKNOWN")
-                if (agreement != null) {
-                    SplitAgreementProposal(state, model, display)
-                } else {
-                    Text(stringResource(R.string.split_agreement_retained_draft))
-                    SplitAgreementForm(state, model, display)
-                }
-            }
+        SplitAgreementDiscussion(state, model)
+    }
+}
+
+@Composable
+private fun SplitAgreementDiscussion(state: SplitAgreementUiState, model: SplitAgreementViewModel) {
+    val agreement = state.agreement
+    if (agreement?.viewerIsParty != true && !(agreement == null && state.hasDraft)) return
+    var editorRequested by remember(state.task) { mutableStateOf(false) }
+    if (!editorRequested && !state.hasDraft && agreement?.pendingProposal == null) {
+        QuietOutlinedButton(text = stringResource(R.string.split_agreement_discussion_title),
+            onClick = { editorRequested = true }, enabled = state.canModify && !state.busy)
+        return
+    }
+    Column(modifier = Modifier.padding(top = AppSpacing.cardGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap)) {
+        Text(stringResource(R.string.split_agreement_discussion_title), style = MaterialTheme.typography.titleMedium)
+        val display = CurrencyDisplay.forRecord(agreement?.homeCurrencyCode ?: state.draftCurrencyCode ?: "UNKNOWN")
+        if (agreement != null) {
+            SplitAgreementProposal(state, model, display)
+        } else {
+            Text(stringResource(R.string.split_agreement_retained_draft))
+            SplitAgreementForm(state, model, display)
         }
     }
 }
@@ -146,12 +165,14 @@ private fun SplitAgreementFacts(state: SplitAgreementUiState, display: CurrencyD
     Text(stringResource(R.string.split_agreement_private_records_notice),
         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     if (agreement.originalDebt.publicId != state.task?.debtPublicId) {
-        QuietOutlinedButton(text = stringResource(R.string.split_agreement_open_original_debt),
-            onClick = { onOpenDebt(agreement.originalDebt.publicId) })
+        TextButton(onClick = { onOpenDebt(agreement.originalDebt.publicId) }) {
+            Text(stringResource(R.string.split_agreement_open_original_debt))
+        }
     }
     agreement.returnDebt?.takeIf { it.publicId != state.task?.debtPublicId }?.let { debt ->
-        QuietOutlinedButton(text = stringResource(R.string.split_agreement_open_return_debt),
-            onClick = { onOpenDebt(debt.publicId) })
+        TextButton(onClick = { onOpenDebt(debt.publicId) }) {
+            Text(stringResource(R.string.split_agreement_open_return_debt))
+        }
     }
     if (agreement.pendingRepaymentDebtPublicIds.isNotEmpty()) {
         Text(stringResource(R.string.split_agreement_pending_repayments))

@@ -88,7 +88,6 @@ internal fun DebtDetailContent(
             proposalState = readableProposalState,
             bodyState = bodyState,
         )
-        item { DebtReadSource(state.fetchedAt, state.fromCache, state.isLoading) }
         if (state.pendingWrites.isNotEmpty()) item {
             DebtPendingWrites(state.pendingWrites.filter {
                 it.isVoid || it.kind != null || it.row.status != com.ticketbox.data.local.PendingMutationStatus.Done ||
@@ -121,6 +120,7 @@ private fun LazyListScope.debtDetailBodyItems(
         }
         DebtDetailBodyState.Content -> state.debt?.let { loaded ->
             panels.splitAgreement?.let { section -> item { section() } }
+            item { DebtReadSource(state.fetchedAt, state.fromCache, state.isLoading) }
             if (loaded.isMember) {
                 debtDetailMemberItems(
                     debt = loaded,

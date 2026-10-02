@@ -10,6 +10,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -155,7 +156,11 @@ class SplitAgreementDraftConnectedTest {
         fixture.session = fixture.session.copy(identity = fixture.session.identity.copy(role = "viewer"))
         showForm(readOnly = true)
         compose.waitUntil(10_000) { model.value?.state?.value?.agreement != null && model.value?.state?.value?.loading == false }
-        compose.onNodeWithText("20.00").performScrollTo().assertIsDisplayed().assertIsNotEnabled()
+        compose.onNodeWithText(context.getString(R.string.split_agreement_share_facts, "¥40.00", "¥20.00"))
+            .performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.split_agreement_discussion_title))
+            .performScrollTo().assertIsDisplayed().assertIsNotEnabled()
+        compose.onAllNodes(hasSetTextAction()).assertCountEquals(0)
         assertTrue(fixture.stored().isEmpty())
     }
 
@@ -229,6 +234,8 @@ class SplitAgreementDraftConnectedTest {
 
     private fun edit(share: String, settlement: String, reason: String) {
         compose.waitUntil(10_000) { model.value?.state?.value?.previewReady == true }
+        compose.onAllNodes(hasSetTextAction()).assertCountEquals(0)
+        compose.onNodeWithText(context.getString(R.string.split_agreement_discussion_title)).performScrollTo().performClick()
         listOf(share, settlement, reason).forEachIndexed { index, value ->
             compose.onAllNodes(hasSetTextAction())[index].performScrollTo().performTextReplacement(value)
             closeSoftKeyboard()

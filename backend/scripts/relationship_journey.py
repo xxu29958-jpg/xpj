@@ -1,5 +1,6 @@
 """Bilateral relationships exercised through the shipping Web and native consumers."""
 
+import json
 from contextlib import closing
 from datetime import date
 from urllib.parse import urlsplit
@@ -160,8 +161,20 @@ class RelationshipJourney:
         page.wait_for_load_state()
         form = page.locator('[data-repayment-kind="split-change"]')
         assert form.locator('[name="settlement_net_amount_major"]').input_value() == settlement
-        form.locator("[data-repayment-submit]").click()
+        self.submit_web(form, receiver=receiver)
         wait_for(lambda: self.facts()["pending_id"], "The actual split proposal was not committed")
+
+    def submit_web(self, form, *, receiver=False):
+        page = self.receiver if receiver else self.page
+        client_ref = form.locator('[name="idempotency_key"]').input_value()
+        form.locator("[data-repayment-submit]").click()
+        receipt = page.locator("[data-repayment-ack]")
+        receipt.wait_for()
+        assert json.loads(receipt.get_attribute("data-repayment-ack"))["clientRef"] == client_ref
+        # A committed database fact can precede the browser receiving its reply.
+        # Continue only after this consumer has closed the matching original task.
+        page.wait_for_function("ref => localStorage.getItem('ticketbox:split-change-draft:v1:' + ref) === null",
+            arg=client_ref)
 
     def settle_return(self):
         returned = self.facts()["return_id"]
