@@ -2,6 +2,30 @@ import XCTest
 import UIKit
 import UniformTypeIdentifiers
 final class ShortcutProbe: XCTestCase {
+    @MainActor func testPhotosLibraryBecomesUsable() throws {
+        continueAfterFailure = false
+        let photos = XCUIApplication(bundleIdentifier: "com.apple.mobileslideshow")
+        photos.activate()
+        captureText(photos, "Photos before library readiness")
+        let deadline = Date().addingTimeInterval(180)
+        let library = photos.buttons["Library"]
+        while Date() < deadline && !library.exists {
+            let introduction = photos.buttons["Continue"]
+            if introduction.exists && introduction.isHittable {
+                captureText(photos, "Photos introduction")
+                introduction.tap()
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(1))
+        }
+        captureText(photos, "Photos after waiting for its library")
+        let screen = XCTAttachment(screenshot: photos.screenshot())
+        screen.name = "Photos library readiness before credentials exist"
+        screen.lifetime = .keepAlways
+        add(screen)
+        XCTAssertTrue(library.exists && library.isHittable, "Photos must expose its real library before media import")
+        library.tap()
+    }
+
     @MainActor func testSystemFileUploadPersistsAndReturnsReceipt() throws {
         continueAfterFailure = false
         let environment = ProcessInfo.processInfo.environment

@@ -82,7 +82,7 @@ jobs:
               result["photos_launched"] = photos.returncode == 0
               if photos.returncode:
                   raise RuntimeError("The system Photos app did not launch: " + photos.stderr[-1600:])
-              subprocess.run(["xcrun", "simctl", "io", device_id, "screenshot", str(output / "photos-ready.png")], check=True, capture_output=True, timeout=20)
+              subprocess.run(["xcrun", "simctl", "io", device_id, "screenshot", str(output / "photos-launched.png")], check=True, capture_output=True, timeout=20)
           except Exception as error:
               result["error"] = str(error)
               if "device_id" in result:
@@ -169,6 +169,19 @@ jobs:
           command = ["xcodebuild", "test", "-project", str(project), "-scheme", "ShortcutProbe",
                      "-destination", "id=" + environment["device_id"], "-parallel-testing-enabled", "NO",
                      "-derivedDataPath", str(root / "DerivedData"), "-resultBundlePath", str(root / "ui-control.xcresult")]
+          # Launch success was followed by a blank Photos window and addmedia timeout.
+          # Wait through the public app UI before import, while no upload credential exists.
+          photo_command = command[:-1] + [str(root / "photo-readiness.xcresult"),
+              "-only-testing:ShortcutProbe/ShortcutProbe/testPhotosLibraryBecomesUsable"]
+          try:
+              with (output / "photo-readiness.log").open("w") as log:
+                  photo_result = subprocess.run(photo_command, stdout=log, stderr=subprocess.STDOUT, timeout=360)
+          finally:
+              subprocess.run(["xcrun", "xcresulttool", "export", "attachments", "--path", str(root / "photo-readiness.xcresult"),
+                  "--output-path", str(output / "photo-readiness")], capture_output=True, check=False)
+          if photo_result.returncode:
+              raise RuntimeError("The actual Photos library did not become usable; see its UI evidence")
+          command += ["-only-testing:ShortcutProbe/ShortcutProbe/testSystemFileUploadPersistsAndReturnsReceipt"]
           completed = run_with_upload_backend(command, output=output, root=root)
           (output / "ui-control-result.json").write_text(json.dumps({"scope": "isolated-system-file-upload", "xctest_exit_code": completed.returncode}, indent=2))
           print("XCTest exit code:", completed.returncode)
