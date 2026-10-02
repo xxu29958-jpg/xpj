@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from '_history_time.html' import saved_time %}
 {% set page_title = '收入计划修改记录' %}
 {% set product_body_domain = 'plans' %}
 {% block title %}收入计划修改记录 · 小票夹{% endblock %}
@@ -16,15 +17,19 @@
 {% set labels = {'baseline': '开始保留记录', 'create': '建立计划', 'edit': '修改计划', 'archive': '归档计划', 'restore': '恢复计划'} %}
 {% for entry in history.items %}
 {% set snapshot = entry.snapshot %}
-<section class="product-panel product-panel--padded" aria-label="{{ labels[entry.change_kind] }} · 版本 {{ entry.row_version }}">
+<section class="product-panel product-panel--padded plan-history-record" aria-label="{{ labels[entry.change_kind] }} · 版本 {{ entry.row_version }}">
   <div class="product-panel-header"><h2 class="product-panel-title">{{ labels[entry.change_kind] }}</h2><span class="product-status">版本 {{ entry.row_version }}</span></div>
-  <p class="text-muted">记录保存时间 <time datetime="{{ entry.recorded_at|to_iso }}">{{ entry.recorded_at|to_iso }}</time></p>
+  <p class="text-muted">记录保存时间 {{ saved_time(entry.recorded_at) }}</p>
   {% if entry.change_kind == 'baseline' %}<p class="product-feedback" role="status">这是开始保留记录时已知的计划；更早的修改及发生时间未知。</p>{% endif %}
-  <p><strong>{{ snapshot.label }}</strong> · {{ source_type_labels.get(snapshot.source_type, snapshot.source_type) }}</p>
-  <p>预计金额 {% if snapshot.home_currency_code %}{{ snapshot.home_currency_code }} {{ minor_amount_value(snapshot.amount_cents, snapshot.home_currency_code) }}{% else %}{{ snapshot.amount_cents }} 最小单位（原币种未记录）{% endif %}</p>
-  <p>{% if snapshot.frequency == 'one_time' %}单次预计 {{ snapshot.income_month }}{% else %}每月固定{% endif %} · {{ snapshot.pay_day }} 号（短月取月末）</p>
-  <p>变更所用月份 {{ entry.intent_month or '未知' }} · 预测重算起月 {{ entry.effective_month or '未知' }}</p>
-  <p>{{ '已归档' if snapshot.status == 'archived' else '在用' }}</p>
+  <dl class="plan-history-details">
+    <dt>计划名称</dt><dd><strong>{{ snapshot.label }}</strong></dd>
+    <dt>预计金额</dt><dd class="plan-history-amount">{% if snapshot.home_currency_code %}{{ snapshot.home_currency_code }} {{ minor_amount_value(snapshot.amount_cents, snapshot.home_currency_code) }}{% else %}{{ snapshot.amount_cents }} 最小单位（原币种未记录）{% endif %}</dd>
+    <dt>收入来源</dt><dd>{{ source_type_labels.get(snapshot.source_type, snapshot.source_type) }}</dd>
+    <dt>预计日期</dt><dd>{% if snapshot.frequency == 'one_time' %}单次预计 {{ snapshot.income_month }}{% else %}每月固定{% endif %} · {{ snapshot.pay_day }} 号（短月取月末）</dd>
+    <dt>变更所用月份</dt><dd>{{ entry.intent_month or '未知' }}</dd>
+    <dt>预测重算起月</dt><dd>{{ entry.effective_month or '未知' }}</dd>
+    <dt>状态</dt><dd>{{ '已归档' if snapshot.status == 'archived' else '在用' }}</dd>
+  </dl>
 </section>
 {% else %}<p class="product-feedback" role="status">没有可回看的记录，更早的修改及发生时间未知。</p>{% endfor %}
 <div class="budget-actions">

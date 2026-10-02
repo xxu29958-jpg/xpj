@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from '_history_time.html' import saved_time %}
 {% set page_title = '安排修改记录' %}
 {% set product_body_domain = 'plans' %}
 {% block title %}安排修改记录 · 小票夹{% endblock %}
@@ -16,7 +17,7 @@
   <div class="product-table-wrap"><table class="product-table">
     <thead><tr><th scope="col">保存时间</th><th scope="col">版本</th><th scope="col">原币种</th><th scope="col">计划储蓄</th><th scope="col">备用金</th></tr></thead>
     <tbody>{% for item in history.items %}<tr>
-      <td>{{ item.recorded_at|to_iso }}</td><td>{{ item.row_version }}</td><td>{{ item.home_currency_code }}</td>
+      <td>{{ saved_time(item.recorded_at) }}</td><td>{{ item.row_version }}</td><td>{{ item.home_currency_code }}</td>
       <td class="amount">{{ arrangement_amount(item.savings_target_cents, item.home_currency_code) }}</td>
       <td class="amount">{{ arrangement_amount(item.reserved_buffer_cents, item.home_currency_code) }}</td>
     </tr>{% endfor %}</tbody>

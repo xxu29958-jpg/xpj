@@ -1,9 +1,6 @@
 package com.ticketbox.ui.screens.plan
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -15,11 +12,12 @@ import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.GoalRevision
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppBusyGuardedSheet
+import com.ticketbox.ui.components.AppHistoryRecord
 import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.components.displayDateTime
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.components.formatDisplayAmount
-import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.GoalHistoryState
 
 @Composable
@@ -47,18 +45,19 @@ internal fun GoalHistorySheet(state: GoalHistoryState, onRetry: () -> Unit, onMo
 @Composable
 private fun GoalHistoryEntry(entry: GoalRevision) {
     val plan = entry.snapshot
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        HorizontalDivider()
+    AppHistoryRecord(
+        title = stringResource(R.string.goal_history_version, entry.rowVersion, stringResource(historyKind(entry.changeKind))),
+        recordedAt = stringResource(R.string.goal_history_recorded_at, displayDateTime(entry.recordedAt)),
+    ) {
         Text(plan.name, style = MaterialTheme.typography.titleMedium)
-        Text(stringResource(R.string.goal_history_version, entry.rowVersion, stringResource(historyKind(entry.changeKind))),
-            style = MaterialTheme.typography.bodySmall)
-        Text(stringResource(R.string.goal_history_recorded_at, displayDateTime(entry.recordedAt)), style = MaterialTheme.typography.bodySmall)
+        Text(if (plan.homeCurrencyCode == null) stringResource(R.string.budget_history_unknown_money,
+            plan.targetAmountCents.toString()) else formatDisplayAmount(plan.targetAmountCents,
+            CurrencyDisplay.forRecord(plan.homeCurrencyCode)), style = MaterialTheme.typography.titleMedium.tabularNum())
+        plan.homeCurrencyCode?.let { Text(it, style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant) }
         if (entry.changeKind == "baseline") Text(stringResource(R.string.budget_history_baseline_note))
         Text(stringResource(R.string.spending_goal_detail_subtitle, displayMonthLabel(plan.month.orEmpty()),
             plan.category ?: stringResource(R.string.spending_goal_scope_all)))
-        Text(if (plan.homeCurrencyCode == null) stringResource(R.string.budget_history_unknown_money,
-            plan.targetAmountCents.toString()) else formatDisplayAmount(plan.targetAmountCents,
-            CurrencyDisplay.forRecord(plan.homeCurrencyCode)))
         Text(stringResource(if (plan.status == "archived") R.string.goal_history_archived else R.string.goal_history_active))
     }
 }

@@ -57,12 +57,14 @@ def test_recorded_money_never_uses_the_current_ledger_currency_or_guesses_unknow
 
 
 def test_web_history_renders_saved_arrangements_and_escaped_category_without_requiring_javascript():
-    from jinja2 import DictLoader
+    from jinja2 import ChoiceLoader, DictLoader
 
     from app.routes.web_common import templates
     from app.schemas._budget_history import BudgetHistoryResponse, BudgetRevisionResponse, BudgetSnapshot
 
-    env = templates.env.overlay(loader=DictLoader({"base.html": "{% block content %}{% endblock %}"}))
+    env = templates.env.overlay(loader=ChoiceLoader([
+        DictLoader({"base.html": "{% block content %}{% endblock %}"}), templates.env.loader,
+    ]))
     source = templates.env.loader.get_source(templates.env, "budget_history.html")[0]
     history = BudgetHistoryResponse(ledger_id="owner", month="2026-09", next_before_version=4,
         items=[BudgetRevisionResponse(row_version=4, change_kind="baseline", recorded_at=datetime.now(UTC),
@@ -71,6 +73,6 @@ def test_web_history_renders_saved_arrangements_and_escaped_category_without_req
                 category_budgets=[{"category": "<script>evil</script>", "amount_cents": 300}]))])
     rendered = env.from_string(source).render(history=history, month="2026-09", selected_ledger_id="owner",
         before_version=None, history_money=_history_money, request=SimpleNamespace())
-    assert "¥1,200" in rendered and "更早的修改没有记录" in rendered and "已归档" in rendered
+    assert "¥1,200" in rendered and "JPY" in rendered and "更早的修改没有记录" in rendered and "已归档" in rendered
     assert "&lt;script&gt;evil&lt;/script&gt;" in rendered and "<script>evil</script>" not in rendered
     assert "before_version=4" in rendered
