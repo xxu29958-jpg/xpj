@@ -45,9 +45,9 @@ jobs:
               runtimes = json.loads(read("xcrun", "simctl", "list", "runtimes", "--json"))["runtimes"]
               ios = [r for r in runtimes if r.get("isAvailable") and ".iOS-" in r["identifier"]]
               result["available_ios_runtimes"] = [{key: r.get(key) for key in ("identifier", "version", "buildversion")} for r in ios]
-              comparison = [r for r in ios if r["version"].startswith("26.4")]
+              comparison = [r for r in ios if r["version"].startswith("26.5")]
               if not comparison:
-                  raise RuntimeError("The iOS 26.4 comparison runtime is unavailable")
+                  raise RuntimeError("The iOS 26.5 comparison runtime is unavailable")
               runtime = comparison[0]
               result["runtime"] = {key: runtime.get(key) for key in ("identifier", "version", "buildversion", "bundlePath")}
               devices = json.loads(read("xcrun", "simctl", "list", "devices", "available", "--json"))["devices"]
@@ -76,6 +76,7 @@ jobs:
                       result["shortcuts_extensions"].append({
                           "bundle": info.get("CFBundleIdentifier"),
                           "extension_point": info.get("NSExtension", {}).get("NSExtensionPointIdentifier"),
+                          "activation_rule": info.get("NSExtension", {}).get("NSExtensionAttributes", {}).get("NSExtensionActivationRule"),
                       })
               launch = subprocess.run(["xcrun", "simctl", "launch", device_id, "com.apple.shortcuts"], capture_output=True, text=True)
               result["shortcuts_launched"] = launch.returncode == 0
