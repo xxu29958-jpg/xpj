@@ -1,5 +1,6 @@
 """Income history must be reachable from the actual active and archived rows."""
 
+from html.parser import HTMLParser
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -46,8 +47,14 @@ def test_history_renders_original_definition_and_unknown_months_without_mutation
     }])
     body = environment.get_template("income_history.html").render(history=history, selected_ledger_id="household",
         limit=2, before_version=4, minor_amount_value=lambda amount, code: str(amount))
+    text = []
+    parser = HTMLParser()
+    parser.handle_data = text.append
+    parser.feed(body)
+    readable = " ".join(" ".join(text).split())
     assert "&lt;原工资预测&gt;" in body and "单次预计 2026-11" in body
-    assert "更早的修改及发生时间未知" in body and "变更所用月份 未知" in body
+    assert "更早的修改及发生时间未知" in readable and "变更所用月份 未知" in readable
+    assert "预测重算起月 未知" in readable
     assert ("JPY 1200" if currency else "1200 最小单位（原币种未记录）") in body
     assert "before_version=3" in body and "最近的记录" in body
     assert 'method="post"' not in body

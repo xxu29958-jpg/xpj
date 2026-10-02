@@ -17,13 +17,13 @@
 {% set labels = {'baseline':'开始保留记录', 'create':'建立固定支出', 'edit':'修改固定支出', 'pause':'暂停', 'resume':'恢复活跃', 'archive':'移入回收站', 'restore':'恢复固定支出'} %}
 {% for entry in history.items %}
 {% set snapshot = entry.snapshot %}
-<section class="product-panel product-panel--padded" aria-label="{{ labels[entry.change_kind] }} · 版本 {{ entry.row_version }}">
+<section class="product-panel product-panel--padded plan-history-record" aria-label="{{ labels[entry.change_kind] }} · 版本 {{ entry.row_version }}">
   <div class="product-panel-header"><h2 class="product-panel-title">{{ labels[entry.change_kind] }}</h2><span class="product-status">版本 {{ entry.row_version }}</span></div>
   <p class="text-muted">记录保存时间 {{ saved_time(entry.recorded_at) }}</p>
   {% if entry.change_kind == 'baseline' %}<p class="product-feedback">这是开始保留记录时的已有定义，更早的修改及发生时间未知；上方时间是保存这份记录的时间。</p>{% endif %}
-  <dl>
-    <dt>名称</dt><dd>{{ snapshot.merchant }}</dd>
-    <dt>金额</dt><dd>{{ history_money(snapshot.baseline_amount_cents, snapshot.home_currency_code) }}</dd>
+  <dl class="plan-history-details">
+    <dt>名称</dt><dd><strong>{{ snapshot.merchant }}</strong></dd>
+    <dt>金额</dt><dd class="plan-history-amount">{{ history_money(snapshot.baseline_amount_cents, snapshot.home_currency_code) }}</dd>
     <dt>频率</dt><dd>{{ '月度' if snapshot.frequency == 'monthly' else snapshot.frequency }}</dd>
     <dt>计划日期</dt><dd>{{ snapshot.next_expected_date or '未设置日期' }}</dd>
     <dt>状态</dt><dd>{{ {'active':'活跃', 'paused':'暂停', 'archived':'已归档'}[snapshot.status] }}</dd>
