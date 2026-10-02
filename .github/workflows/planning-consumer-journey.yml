@@ -35,9 +35,11 @@ jobs:
               result["xcode"] = read("xcodebuild", "-version")
               runtimes = json.loads(read("xcrun", "simctl", "list", "runtimes", "--json"))["runtimes"]
               ios = [r for r in runtimes if r.get("isAvailable") and ".iOS-" in r["identifier"]]
-              if not ios:
-                  raise RuntimeError("No available iOS simulator runtime")
-              runtime = max(ios, key=lambda r: tuple(map(int, r["version"].split("."))))
+              result["available_ios_runtimes"] = [{key: r.get(key) for key in ("identifier", "version", "buildversion")} for r in ios]
+              comparison = [r for r in ios if r["version"].startswith("26.4")]
+              if not comparison:
+                  raise RuntimeError("The iOS 26.4 comparison runtime is unavailable")
+              runtime = comparison[0]
               result["runtime"] = {key: runtime.get(key) for key in ("identifier", "version", "buildversion")}
               devices = json.loads(read("xcrun", "simctl", "list", "devices", "available", "--json"))["devices"]
               phones = [d for d in devices.get(runtime["identifier"], []) if d["name"].startswith("iPhone")]
