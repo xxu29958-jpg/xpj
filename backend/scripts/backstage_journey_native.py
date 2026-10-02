@@ -19,7 +19,32 @@ def native_inbox_filters(j):
     j.native.click_counted_tab("全部")
     wait_for(lambda: not j.native.has(empty) and j.native.has("18.51"),
              "The user could not return from the empty filter to the original pending bill")
-    assert j.facts() == before, "Browsing inbox filters changed the original bill or upload task"
+    for action, destination in (("还款复核", "还款采集"), ("数据质量", "检查当前账本的待确认、分类完整性与凭证状态。")):
+        j.native.click("收件工具")
+        j.native.capture("inbox-tools")
+        j.native.click(action)
+        wait_for(lambda destination=destination: j.native.has(destination),
+                 "The inbox tool did not open its existing consumer")
+        j.native.domain_home("收件")
+        wait_for(lambda: j.native.has("18.51"), "Returning from an inbox tool lost the pending bill")
+    previous_scale = j.native.adb("shell", "settings", "get", "system", "font_scale").strip()
+    try:
+        j.native.adb("shell", "settings", "put", "system", "font_scale", "1.8")
+        j.native.restart()
+        j.native.domain_home("收件")
+        wait_for(lambda: j.native.has("上传小票") and j.native.has("收件工具"),
+                 "Large text hid an inbox header action")
+        j.native.capture("inbox-large-text")
+        j.native.click("收件工具")
+        j.native.click("完成")
+    finally:
+        if previous_scale == "null":
+            j.native.adb("shell", "settings", "delete", "system", "font_scale")
+        else:
+            j.native.adb("shell", "settings", "put", "system", "font_scale", previous_scale)
+        j.native.restart()
+        j.native.domain_home("收件")
+    assert j.facts() == before, "Browsing inbox filters and tools changed the original bill or upload task"
 
 
 def share_synthetic_receipt(j):

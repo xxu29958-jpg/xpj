@@ -3,6 +3,7 @@ package com.ticketbox.ui.screens.pending
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -24,6 +25,8 @@ internal fun PendingToolsSheet(
     displayMode: PendingDisplayMode,
     onDisplayModeChange: (PendingDisplayMode) -> Unit,
     onRefresh: () -> Unit,
+    onOpenRepaymentReview: () -> Unit,
+    onOpenDataQuality: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     AppSheetScaffold(
@@ -42,6 +45,11 @@ internal fun PendingToolsSheet(
                 label = stringResource(R.string.pending_tools_density_comfortable),
             )
         }
+        HorizontalDivider()
+        InboxActionLinks(
+            onOpenRepaymentReview = onOpenRepaymentReview,
+            onOpenDataQuality = onOpenDataQuality,
+        )
         Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
             AppSecondaryButton(
                 text = if (loading) {

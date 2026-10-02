@@ -287,6 +287,20 @@
     font-size: var(--type-caption-size);
 }
 
+@media (max-width: 48rem) {
+    .inbox-filters .product-segments {
+        min-inline-size: 0;
+        max-inline-size: 100%;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        padding-block: var(--space-1);
+    }
+
+    .inbox-filters .filter-tab {
+        flex-shrink: 0;
+    }
+}
+
 @media (max-width: 72rem) {
     .exp-head,
     .exp-row {
