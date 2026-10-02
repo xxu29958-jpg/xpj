@@ -225,10 +225,6 @@
     <string name="sync_status_overview_conflicts_label">需确认</string>
     <string name="sync_status_overview_failed_label">失败</string>
     <string name="sync_status_overview_quarantined_label">已隔离</string>
-    <string name="sync_status_overview_queued_caption">自动上传</string>
-    <string name="sync_status_overview_conflicts_caption">选择版本</string>
-    <string name="sync_status_overview_failed_caption">重试或移除</string>
-    <string name="sync_status_overview_quarantined_caption">已停止发送</string>
     <string name="sync_status_overview_caption_quarantined">有 %1$d 笔旧操作已隔离，不会自动发送。</string>
     <string name="sync_status_overview_caption_needs_action">有 %1$d 笔需要处理，请在下方核对并选择后续操作。</string>
     <string name="sync_status_overview_caption_review_required">%1$d 笔旧提交需要核对当前事实，送达情况尚未确认。</string>
