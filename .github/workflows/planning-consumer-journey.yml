@@ -10,8 +10,14 @@ permissions:
 jobs:
   shortcuts_environment:
     runs-on: macos-26
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
+      - name: Checkout the actual backend
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - name: Set up the backend Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11'
       - name: Inspect and launch the system iPhone Shortcuts app
         shell: bash
         run: |
@@ -74,14 +80,24 @@ jobs:
               print(json.dumps(result, ensure_ascii=False, indent=2))
           raise SystemExit(0 if result["shortcuts_installed"] and result["shortcuts_launched"] else 1)
           PY
-      - name: Browse the real URL upload action through XCTest
+      - name: Install the isolated backend dependencies
         shell: bash
         run: |
-          python3 - <<'PY'
+          python -m venv backend/.ci-venv
+          backend/.ci-venv/bin/python -m pip install -r backend/requirements-dev.txt
+          brew install postgresql@17
+      - name: Browse the real URL upload action with the isolated backend ready
+        shell: bash
+        run: |
+          backend/.ci-venv/bin/python - <<'PY'
           import json
           import os
           import pathlib
           import subprocess
+          import sys
+
+          sys.path.insert(0, str(pathlib.Path("backend").resolve()))
+          from scripts.ios_shortcuts_backend_probe import run_with_upload_backend
 
           output = pathlib.Path("ios-shortcuts-environment").resolve()
           environment = json.loads((output / "environment.json").read_text())
@@ -174,6 +190,15 @@ jobs:
                   fileScreen.name = "POST file request configured through the system UI"
                   fileScreen.lifetime = .keepAlways
                   add(fileScreen)
+                  app.buttons["Choose Variable"].tap()
+                  let inputTree = XCTAttachment(string: app.debugDescription)
+                  inputTree.name = "Available system file inputs"
+                  inputTree.lifetime = .keepAlways
+                  add(inputTree)
+                  let inputScreen = XCTAttachment(screenshot: app.screenshot())
+                  inputScreen.name = "Available system file inputs"
+                  inputScreen.lifetime = .keepAlways
+                  add(inputScreen)
               }
           }
           ''')
@@ -210,7 +235,7 @@ jobs:
                      "-destination", "id=" + environment["device_id"], "-parallel-testing-enabled", "NO",
                      "-derivedDataPath", str(root / "DerivedData"), "-resultBundlePath", str(output / "ui-control.xcresult")]
           with (output / "ui-control.log").open("w") as log:
-              completed = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, timeout=600)
+              completed = run_with_upload_backend(command, output=output, log=log)
           subprocess.run(["xcrun", "xcresulttool", "export", "attachments", "--path", str(output / "ui-control.xcresult"),
                           "--output-path", str(output / "attachments")], check=True)
           (output / "ui-control-result.json").write_text(json.dumps({"scope": "environment-only", "xctest_exit_code": completed.returncode}, indent=2))
