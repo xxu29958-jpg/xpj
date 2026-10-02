@@ -1,0 +1,4 @@
+{% macro saved_time(value) -%}
+{% set iso = value|to_iso %}
+<time datetime="{{ iso }}" title="{{ iso }}">{{ iso[:10] }} {{ iso[11:19] }} UTC</time>
+{%- endmacro %}

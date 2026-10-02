@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from '_history_time.html' import saved_time %}
 {% set page_title = '预算修改记录' %}
 {% set product_body_domain = 'plans' %}
 {% block title %}预算修改记录 · 小票夹{% endblock %}
@@ -15,7 +16,7 @@
 {% set snapshot = entry.snapshot %}
 <section class="product-panel product-panel--padded" aria-label="{{ labels[entry.change_kind] }}">
   <h2>{{ labels[entry.change_kind] }}</h2>
-  <p class="text-muted"><time datetime="{{ entry.recorded_at | to_iso }}">{{ entry.recorded_at | to_iso }}</time>{% if snapshot.archived %} · 已归档{% endif %}</p>
+  <p class="text-muted">{{ saved_time(entry.recorded_at) }}{% if snapshot.archived %} · 已归档{% endif %}</p>
   {% if entry.change_kind == 'baseline' %}<p>这是开始保留修改记录时的已有安排，更早的修改没有记录。</p>{% endif %}
   <dl>
     <dt>总预算</dt><dd>{{ history_money(snapshot.total_amount_cents, snapshot.home_currency_code) }}</dd>
