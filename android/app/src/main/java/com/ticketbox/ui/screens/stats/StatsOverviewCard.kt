@@ -56,18 +56,20 @@ internal fun StatsOverviewCard(header: StatsOverviewHeaderModel) {
         verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
     ) {
         OverviewAmountHeader(header, currencyDisplay)
-        AppAdaptiveMetricGrid(itemCount = 2, twoColumnMinWidth = AppAdaptiveMetricGridCompactMinWidth) { index, metricModifier ->
-            if (index == 0) CompactMetric(
-                label = stringResource(R.string.stats_overview_count_label),
-                value = stringResource(R.string.stats_overview_count_value, header.stats.count),
-                modifier = metricModifier,
-            )
-            else CompactMetric(
-                label = stringResource(R.string.stats_overview_recent7_label),
-                value = header.recent7DaysAmountCents?.let { formatDisplayAmount(it, currencyDisplay) }
-                    ?: stringResource(R.string.stats_overview_recent7_unavailable),
-                modifier = metricModifier,
-            )
+        if (header.tagScope == null) {
+            AppAdaptiveMetricGrid(itemCount = 2, twoColumnMinWidth = AppAdaptiveMetricGridCompactMinWidth) { index, metricModifier ->
+                if (index == 0) CompactMetric(
+                    label = stringResource(R.string.stats_overview_count_label),
+                    value = stringResource(R.string.stats_overview_count_value, header.stats.count),
+                    modifier = metricModifier,
+                )
+                else CompactMetric(
+                    label = stringResource(R.string.stats_overview_recent7_label),
+                    value = header.recent7DaysAmountCents?.let { formatDisplayAmount(it, currencyDisplay) }
+                        ?: stringResource(R.string.stats_overview_recent7_unavailable),
+                    modifier = metricModifier,
+                )
+            }
         }
     }
 }

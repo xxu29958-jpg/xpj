@@ -61,11 +61,12 @@ class StatsAdaptiveExperienceTest {
     @Test
     fun flatWindowsKeepFiltersAndTabsWithTheirResults() {
         val viewport = mutableStateOf(360.dp to AppAdaptiveLayoutPolicy.Compact)
+        val currentOverview = mutableStateOf(overview)
         composeRule.setContent {
             DeviceConfigurationOverride(DeviceConfigurationOverride.ForcedSize(DpSize(viewport.value.first, 900.dp))) {
                 TicketboxTheme(skin = AppSkin.Default) {
                     CompositionLocalProvider(LocalAppAdaptiveLayoutPolicy provides viewport.value.second) {
-                        StatsScreen(state = readableStats, actions = actions(), overview = overview)
+                        StatsScreen(state = readableStats, actions = actions(), overview = currentOverview.value)
                     }
                 }
             }
@@ -90,6 +91,23 @@ class StatsAdaptiveExperienceTest {
             .performScrollToNode(hasTestTag("overview-module-recent_uploads"))
         composeRule.onNodeWithText(context.getString(R.string.dashboard_ledger_scope), useUnmergedTree = true)
             .assertIsDisplayed()
+
+        // Hiding the monthly module must retain the tag's facts in the independently visible reports module.
+        composeRule.runOnIdle {
+            viewport.value = 360.dp to AppAdaptiveLayoutPolicy.Compact
+            currentOverview.value = overview.copy(layout = overview.layout.copy(
+                cards = requireNotNull(overview.layout.cards).map {
+                    if (it.key == "monthly_spend") it.copy(visible = false) else it
+                },
+            ))
+        }
+        composeRule.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("overview-module-reports"))
+        composeRule.onNodeWithText("¥123.90").assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.stats_tag_scope_confirmed_caption, 2)).assertIsDisplayed()
+        saveConsumerArtPreview("insights-tag-report-only-paper", composeRule.onRoot().captureToImage().asAndroidBitmap())
+        composeRule.onNodeWithText(context.getString(R.string.dashboard_reports_action)).performClick()
+        composeRule.onNode(hasText(context.getString(R.string.stats_tab_trend)) and hasClickAction()).assertIsSelected()
+        composeRule.onNodeWithText("¥123.90").assertIsDisplayed()
     }
 
     @Test
