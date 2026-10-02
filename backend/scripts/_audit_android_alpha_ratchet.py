@@ -91,7 +91,8 @@ EXEMPT_FILES = (
 # Global-background retirement removes 12 of the previous 92 sites;
 # unchanged Ledger surfaces remain included in the residual.
 # Visual-ledger migration retires four remaining inline divider alphas.
-BASELINE = 76
+# Compact appearance choices retire nine literals from the old preview cards.
+BASELINE = 67
 
 # ``.copy(alpha = <number>)`` — number is a decimal/int float literal (optional
 # trailing ``f``). Identifier args (AppAlpha.heavy / resolvedAlpha) are NOT

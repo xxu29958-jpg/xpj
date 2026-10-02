@@ -136,7 +136,7 @@ def appearances(j):
                     assert "当前约定份额" in page.inner_text("main") and "¥14.00" in page.inner_text("main")
                     j.capture(f"{'receiver' if receiver else 'sender'}-{name}-{width}-{theme}", receiver=receiver)
     native = j.native
-    for theme, name in (("温润米白 + 茶铜", "paper"), ("深色玻璃 + 暖金", "midnight")):
+    for theme, name in (("浅色纸面 · 深绿点缀", "paper"), ("柔和深色 · 浅绿点缀", "midnight")):
         open_appearance(native)
         native.click(theme)
         wait_for(lambda name=name: theme_mode(native) == name, "The native relationship appearance was not persisted")
