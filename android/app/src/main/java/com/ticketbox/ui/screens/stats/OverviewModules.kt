@@ -55,16 +55,17 @@ internal fun LazyListScope.overviewModuleItems(
     if (cards == null) {
         // Until the preference can be read, retain the readable pre-personalization overview.
         item { OverviewMonthModule(state) }
-        item { OverviewReportsModule(state, onTrend) }
+        item { OverviewReportsModule(state, onTrend, hasMonthlySummary = true) }
         return
     }
     val visible = visibleDashboardCards(cards)
+    val hasMonthlySummary = visible.any { it.key == DASHBOARD_CARD_MONTHLY_SPEND }
     if (visible.isEmpty()) item { Text(stringResource(R.string.dashboard_all_hidden)) }
     items(visible, key = DashboardCard::key) { card ->
         Column(modifier = Modifier.testTag("overview-module-${card.key}")) {
             when (card.key) {
                 DASHBOARD_CARD_MONTHLY_SPEND -> OverviewMonthModule(state)
-                DASHBOARD_CARD_REPORTS -> OverviewReportsModule(state, onTrend)
+                DASHBOARD_CARD_REPORTS -> OverviewReportsModule(state, onTrend, hasMonthlySummary)
                 DASHBOARD_CARD_BUDGET -> {
                     if (state.selectedTag.isNotBlank()) Text(stringResource(R.string.dashboard_ledger_scope))
                     BudgetReadSource(state.budgetFetchedAt, state.budgetFromCache)
@@ -99,18 +100,28 @@ private fun OverviewMonthModule(state: StatsUiState) {
 }
 
 @Composable
-private fun OverviewReportsModule(state: StatsUiState, onTrend: () -> Unit) {
+private fun OverviewReportsModule(state: StatsUiState, onTrend: () -> Unit, hasMonthlySummary: Boolean) {
+    if (hasMonthlySummary && state.selectedTag.isNotBlank() && state.stats != null) {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.stats_tag_scope_title), modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleMedium)
+            TextButton(onClick = onTrend) { Text(stringResource(R.string.dashboard_reports_action)) }
+        }
+        return
+    }
     StatsInsightSurface {
         Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-            Text(stringResource(R.string.stats_overview_rhythm_title), style = MaterialTheme.typography.titleMedium)
             if (state.selectedTag.isNotBlank() && state.stats != null) {
                 TagScopeInsight(state.stats, state.selectedTag, state.statsSource)
-            } else if (state.reportsOverview != null) {
-                HeroSpendTrend(state.reportsOverview.trend, com.ticketbox.domain.model.CurrencyDisplay.forRecord(state.reportsOverview.homeCurrencyCode))
             } else {
-                Text(stringResource(
-                    if (state.reportsLoading) R.string.dashboard_summary_loading else R.string.stats_reports_unavailable_body,
-                ))
+                Text(stringResource(R.string.stats_overview_rhythm_title), style = MaterialTheme.typography.titleMedium)
+                if (state.reportsOverview != null) {
+                    HeroSpendTrend(state.reportsOverview.trend, com.ticketbox.domain.model.CurrencyDisplay.forRecord(state.reportsOverview.homeCurrencyCode))
+                } else {
+                    Text(stringResource(
+                        if (state.reportsLoading) R.string.dashboard_summary_loading else R.string.stats_reports_unavailable_body,
+                    ))
+                }
             }
             TextButton(onClick = onTrend) { Text(stringResource(R.string.dashboard_reports_action)) }
         }

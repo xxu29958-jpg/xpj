@@ -11,18 +11,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
 import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.ui.components.AppAmountText
 import com.ticketbox.ui.components.displayMonthLabel
-import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
-import com.ticketbox.ui.design.LocalCurrencyDisplay
-import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.StatsSource
 
 internal data class TagScopeInsightModel(
@@ -60,22 +56,8 @@ internal fun TagScopeInsight(
     val model = remember(stats, selectedTag) {
         tagScopeInsightModel(stats = stats, selectedTag = selectedTag)
     } ?: return
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-    ) {
-        TagScopeHeader(model = model, statsSource = statsSource)
-        TagScopeMetrics(model = model)
-    }
-}
-
-@Composable
-private fun TagScopeHeader(
-    model: TagScopeInsightModel,
-    statsSource: StatsSource,
-) {
     val currencyDisplay = com.ticketbox.domain.model.CurrencyDisplay.forRecord(model.homeCurrencyCode)
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -119,48 +101,6 @@ private fun TagScopeHeader(
             },
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
-        )
-    }
-}
-
-@Composable
-private fun TagScopeMetrics(model: TagScopeInsightModel) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingTight),
-    ) {
-        TagScopeMetric(
-            label = stringResource(R.string.stats_tag_scope_month_count_label),
-            value = stringResource(R.string.stats_overview_count_value, model.count),
-            modifier = Modifier.weight(1f),
-        )
-    }
-}
-
-@Composable
-private fun TagScopeMetric(
-    label: String,
-    value: String,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
-    ) {
-        Text(
-            text = label,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelSmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text(
-            text = value,
-            color = MaterialTheme.colorScheme.onSurface,
-            style = MaterialTheme.typography.titleMedium.tabularNum(),
-            fontWeight = AppTextHierarchy.body.weight,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
         )
     }
 }
