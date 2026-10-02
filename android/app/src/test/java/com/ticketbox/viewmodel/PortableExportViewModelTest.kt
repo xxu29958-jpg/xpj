@@ -14,9 +14,10 @@ import java.io.OutputStream
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.job
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -36,7 +37,13 @@ class PortableExportViewModelTest {
     private val dispatcher = StandardTestDispatcher()
     private val models = mutableListOf<PortableExportViewModel>()
     @BeforeTest fun setup() { Dispatchers.setMain(dispatcher) }
-    @AfterTest fun close() { models.forEach { it.viewModelScope.cancel() }; Dispatchers.resetMain() }
+    @AfterTest fun close() = runTest(dispatcher) {
+        try {
+            models.forEach { it.viewModelScope.coroutineContext.job.cancelAndJoin() }
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
     private fun model(exports: ExportActions) = PortableExportViewModel(exports).also { models += it }
 
     @Test fun chosenLedgerIsFrozenUntilTheSystemPickerReturnsAndSavedMeansComplete() = runTest(dispatcher) {
