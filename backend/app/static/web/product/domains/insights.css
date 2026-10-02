@@ -51,10 +51,12 @@
     margin: 0;
 }
 
-.insight-brief > a {
+.insight-grid a.product-panel-subtitle {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     min-height: var(--target-min);
+    min-width: var(--target-min);
     padding-inline: var(--space-2);
 }
 
