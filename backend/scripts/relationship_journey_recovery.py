@@ -15,6 +15,9 @@ class RelationshipRecovery:
     def native_original(self):
         j, native = self.j, self.j.native
         j.open_native(returned=True)
+        native.reveal_any("商议新约定")
+        native.capture("relationship-start-new-agreement")
+        native.click("商议新约定")
         native.reveal_any("新约定份额")
         native.fill("12.00", label="新约定份额（CNY）")
         native.reveal_any(SETTLEMENT)

@@ -134,14 +134,15 @@ def appearances(j):
                     assert "当前约定份额" in page.inner_text("main") and "¥14.00" in page.inner_text("main")
                     j.capture(f"{'receiver' if receiver else 'sender'}-{name}-{width}-{theme}", receiver=receiver)
     native = j.native
-    native.plan_home()
-    native.click("打开账户与设置")
-    native.click("外观与主题")
-    native.click("玄夜")
-    for returned in (False, True):
-        j.open_native(returned=returned)
-        native_current_share(native, "14.00")
-        native.capture("relationship-" + ("return" if returned else "original") + "-midnight")
+    for theme, name in (("晨纸", "paper"), ("玄夜", "midnight")):
+        native.plan_home()
+        native.click("打开账户与设置")
+        native.click("外观与主题")
+        native.click(theme)
+        for returned in (False, True):
+            j.open_native(returned=returned)
+            native_current_share(native, "14.00")
+            native.capture("relationship-" + ("return" if returned else "original") + "-" + name)
 
 
 def native_read_recovery(j):

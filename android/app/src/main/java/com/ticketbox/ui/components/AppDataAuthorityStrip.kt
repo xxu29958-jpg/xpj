@@ -20,7 +20,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import com.ticketbox.R
 import com.ticketbox.ui.design.AppAlpha
@@ -123,7 +122,7 @@ private fun DataAuthorityStripContent(
             .fillMaxWidth()
             .padding(horizontal = AppSpacing.miniGap, vertical = AppSpacing.tinyGap),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = Alignment.Top,
     ) {
         if (icon != null) {
             Icon(
@@ -138,8 +137,6 @@ private fun DataAuthorityStripContent(
             modifier = Modifier.weight(1f),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
         )
     }
 }
