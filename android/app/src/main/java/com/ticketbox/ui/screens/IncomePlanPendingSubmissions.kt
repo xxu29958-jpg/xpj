@@ -2,8 +2,10 @@ package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -19,6 +21,7 @@ import com.ticketbox.data.repository.PendingIncomePlanSubmission
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.IncomeFrequency
 import com.ticketbox.domain.model.IncomeSourceType
+import com.ticketbox.ui.components.AppContentCard
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 
@@ -64,20 +67,26 @@ private fun IncomePlanPendingSubmission(pending: PendingIncomePlanSubmission, ca
     recover: (PendingIncomePlanSubmission, Boolean) -> Unit) {
     var confirmDrop by remember(pending.row.id) { mutableStateOf(false) }
     val dropLabel = stringResource(if (pending.requiresReview) R.string.income_plan_submission_stop_record else R.string.income_plan_edit_drop)
-    HorizontalDivider()
-    Text(stringResource(when {
-        pending.requiresReview -> R.string.income_plan_submission_review
-        !pending.hasSupportedIntent -> R.string.income_plan_edit_unsupported
-        pending.isConfirmed -> R.string.income_plan_submission_done
-        pending.row.status in setOf(PendingMutationStatus.Pending, PendingMutationStatus.InFlight) -> R.string.income_plan_edit_waiting
-        else -> R.string.income_plan_edit_attention
-    }))
-    IncomePlanIntentSummary(pending)
-    if (pending.row.status == PendingMutationStatus.Conflict) Text(stringResource(R.string.income_plan_edit_conflict))
-    if (pending.canRetry && canModify) TextButton(onClick = { recover(pending, false) }) {
-        Text(stringResource(R.string.income_plan_edit_retry))
+    AppContentCard {
+        Text(stringResource(when {
+            pending.requiresReview -> R.string.income_plan_submission_review
+            !pending.hasSupportedIntent -> R.string.income_plan_edit_unsupported
+            pending.isConfirmed -> R.string.income_plan_submission_done
+            pending.row.status in setOf(PendingMutationStatus.Pending, PendingMutationStatus.InFlight) -> R.string.income_plan_edit_waiting
+            else -> R.string.income_plan_edit_attention
+        }), style = MaterialTheme.typography.titleSmall)
+        ProvideTextStyle(MaterialTheme.typography.bodyMedium) {
+            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) { IncomePlanIntentSummary(pending) }
+        }
+        if (pending.row.status == PendingMutationStatus.Conflict) Text(stringResource(R.string.income_plan_edit_conflict),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+            if (pending.canRetry && canModify) TextButton(onClick = { recover(pending, false) }) {
+                Text(stringResource(R.string.income_plan_edit_retry))
+            }
+            if (pending.canDrop) TextButton(onClick = { confirmDrop = true }) { Text(dropLabel) }
+        }
     }
-    if (pending.canDrop) TextButton(onClick = { confirmDrop = true }) { Text(dropLabel) }
     if (confirmDrop) AlertDialog(onDismissRequest = { confirmDrop = false },
         title = { Text(dropLabel) },
         text = { Column { IncomePlanIntentSummary(pending); Text(stringResource(if (pending.requiresReview)

@@ -21,6 +21,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
 import com.ticketbox.data.repository.IncomePlanDraft
 import com.ticketbox.domain.model.AppSkin
@@ -29,6 +30,7 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.IncomeSourceType
 import com.ticketbox.ui.design.LocalCurrencyDisplay
+import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.ui.screens.settings.SyncStatusNavigation
 import com.ticketbox.ui.screens.settings.SyncStatusScreen
 import com.ticketbox.ui.theme.TicketboxTheme
@@ -98,6 +100,9 @@ class IncomePlanGlobalRecoveryTest {
         assertEquals(original, harness.fixture.stored().single())
         compose.onNodeWithText(open).performScrollTo().performClick()
         waitForText("原日元收入 · 2026-09")
+        compose.waitForIdle()
+        saveConsumerArtPreview("income-original-submission", requireNotNull(
+            InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
         compose.runOnIdle {
             assertEquals(requireNotNull(original["id"]).toLong(), routeModel().state.value.selectedSubmissionId)
             assertEquals(original["id"], navigation.currentBackStackEntry?.arguments?.getString("submission"))
