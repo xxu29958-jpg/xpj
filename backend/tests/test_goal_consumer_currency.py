@@ -40,7 +40,7 @@ def test_overview_goal_uses_captured_currency_and_keeps_unknown_progress():
 def test_overview_template_has_no_fake_percent_or_bar_for_unknown_goal():
     html = _render("overview.html", cards={"goals_count": 1, "goals_top": [
         {"name": "待汇率目标", "percent": None, "state": "unavailable"}]},
-        overview_lanes=[{"cards": [{"key": "goals"}]}], selected_ledger_id="owner",
+        overview_cards=[{"key": "goals"}], selected_ledger_id="owner",
         currency_input=currency_input_metadata("CNY"))
     assert "暂不可计算" in html
     assert "None%" not in html

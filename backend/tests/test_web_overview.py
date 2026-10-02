@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from datetime import timedelta
 from pathlib import Path
 from uuid import uuid4
 
@@ -19,9 +20,9 @@ from sqlalchemy import select
 
 from app.config import get_settings
 from app.database import SessionLocal
-from app.models import LedgerMember
+from app.models import Expense, LedgerMember
 from app.routes import web_common
-from app.services.time_service import current_month
+from app.services.time_service import current_month, now_utc
 
 WEB_CARD_KEYS = [
     "monthly_spend",
@@ -67,7 +68,7 @@ def _demote_owner_ledger_to_viewer() -> None:
         db.commit()
 
 
-def test_overview_renders_hero_lanes_and_modules(web_client: TestClient, *, identity) -> None:
+def test_overview_renders_amount_and_visible_modules(web_client: TestClient, *, identity) -> None:
     _seed_confirmed_expense(web_client, identity=identity, amount_cents=8800, merchant="海底捞", category="餐饮")
     _seed_budget(web_client, identity=identity)
     _seed_goal(web_client, identity=identity)
@@ -89,9 +90,7 @@ def test_overview_renders_hero_lanes_and_modules(web_client: TestClient, *, iden
     # 分类清单行走 minor_amount_label (符号+分组完整串)。
     assert "¥88.00" in body
 
-    # 三泳道结构 + 预算/目标进度。
-    for lane in ["需处理", "本月事实", "计划状态"]:
-        assert lane in body
+    assert re.findall(r'data-overview-card="([^"]+)"', body) == WEB_CARD_KEYS
     assert "预算余量" in body
     assert "餐饮" in body
     assert "餐饮月度上限" in body
@@ -109,7 +108,7 @@ def test_overview_empty_ledger_shows_onboarding(web_client: TestClient) -> None:
     assert 'href="/web/pending?ledger_id=owner"' in body
     assert 'href="/web/import?ledger_id=owner"' in body
     # 零数据模块也给出口径说明而非空白。
-    assert "还没有预算基线" in body
+    assert "尚未设置预算" in body
     assert "还没有分类结构" in body
 
 
@@ -238,28 +237,25 @@ def test_overview_viewer_all_cards_hidden_gets_readonly_guidance(web_client: Tes
 
 
 def test_overview_cards_render_in_persisted_order(web_client: TestClient) -> None:
-    """PR #253 P2-1: 泳道内卡片顺序跟随模块设置的持久化 position。"""
-    custom_order = ["recent_uploads", "pending"] + [
-        key for key in WEB_CARD_KEYS if key not in {"recent_uploads", "pending"}
+    """预算、月金额、收件跨原分组排序，整页遵守用户保存的布局。"""
+    custom_order = ["budget", "monthly_spend", "recent_uploads", "pending"] + [
+        key for key in WEB_CARD_KEYS if key not in {"budget", "monthly_spend", "recent_uploads", "pending"}
     ]
     _save_card_layout(web_client, ordered_keys=custom_order)
 
     resp = web_client.get("/web/overview?ledger_id=owner")
     assert resp.status_code == 200
-    assert resp.text.index('data-overview-card="recent_uploads"') < resp.text.index(
-        'data-overview-card="pending"'
-    )
+    assert re.findall(r'data-overview-card="([^"]+)"', resp.text) == custom_order
 
 
-def test_overview_lane_hidden_when_all_its_cards_hidden(web_client: TestClient) -> None:
-    """PR #253 P2-2: 卡片全隐藏的泳道连标题一起不出。"""
+def test_overview_omits_hidden_modules_without_reordering_the_rest(web_client: TestClient) -> None:
     _save_card_layout(web_client, ordered_keys=WEB_CARD_KEYS, hidden={"pending", "recent_uploads"})
 
     resp = web_client.get("/web/overview?ledger_id=owner")
     assert resp.status_code == 200
-    assert "需处理" not in resp.text
-    assert "本月事实" in resp.text
-    assert "计划状态" in resp.text
+    assert re.findall(r'data-overview-card="([^"]+)"', resp.text) == [
+        key for key in WEB_CARD_KEYS if key not in {"pending", "recent_uploads"}
+    ]
 
 
 def test_overview_viewer_empty_ledger_gets_readonly_onboarding(web_client: TestClient) -> None:
@@ -337,8 +333,14 @@ def test_category_donut_escapes_tooltip_name_and_prefers_amount_major() -> None:
 
 
 def test_overview_recent_count_is_confirmed_only(web_client: TestClient, *, identity) -> None:
-    """PR #253 R2: overview 最近新增 = confirmed-only (与 /web/confirmed 目标页一致)。"""
+    """最近创建且已入账；旧记录今天确认也不能变成最近新增。"""
     _seed_confirmed_expense(web_client, identity=identity, amount_cents=8800, merchant="海底捞", category="餐饮")
+    _seed_confirmed_expense(web_client, identity=identity, amount_cents=1200, merchant="旧记录今天确认", category="餐饮")
+    with SessionLocal() as db:
+        old = db.scalar(select(Expense).where(Expense.tenant_id == "owner", Expense.merchant == "旧记录今天确认"))
+        old.created_at = now_utc() - timedelta(days=8)
+        old.confirmed_at = now_utc()
+        db.commit()
     # 再投一笔 pending (不计入 confirmed 口径)。
     png = (
         b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
@@ -360,7 +362,8 @@ def test_overview_recent_count_is_confirmed_only(web_client: TestClient, *, iden
     assert resp.status_code == 200
     card = re.search(r'data-overview-card="recent_uploads">.*?</article>', resp.text, re.S)
     assert card is not None
-    assert "过去 7 天 · 已入账" in card.group(0)
+    assert "最近新增" in card.group(0)
+    assert "过去 7 天新增 · 已入账" in card.group(0)
 
 
 def test_dashboard_month_uses_ledger_rule_with_a_separate_display_timezone(monkeypatch: pytest.MonkeyPatch) -> None:
