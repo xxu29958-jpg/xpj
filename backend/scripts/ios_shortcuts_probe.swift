@@ -207,23 +207,23 @@ final class ShortcutProbe: XCTestCase {
         let library = photos.buttons["Library"]
         if library.exists && library.isHittable { library.tap() }
         let libraryPhotos = photos.images.matching(NSPredicate(format: "label BEGINSWITH %@", "Photo,"))
-        let deadline = Date().addingTimeInterval(10)
-        var visiblePhoto: XCUIElement?
-        while Date() < deadline {
-            visiblePhoto = libraryPhotos.allElementsBoundByIndex.first { $0.isHittable }
-            if visiblePhoto != nil { break }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
-        }
+        let photo = libraryPhotos.firstMatch
+        XCTAssertTrue(photo.waitForExistence(timeout: 10))
         captureText(photos, "Simulator Photos library for shortcut discovery")
         // Photos is foreground and contains only the simulator's stock library, never the upload URL.
         let libraryImage = XCTAttachment(screenshot: photos.screenshot())
         libraryImage.name = "Simulator Photos library for shortcut discovery"
         libraryImage.lifetime = .keepAlways
         add(libraryImage)
-        let photo = try XCTUnwrap(visiblePhoto, "A visible simulator photo must be selectable")
-        photo.tap()
+        // The observed stock thumbnails are visible with correct AX frames, but
+        // this simulator cannot compute their hit points. Tap the observed frame
+        // through the public coordinate API and require the real viewer below.
+        XCTAssertTrue(photos.frame.contains(CGPoint(x: photo.frame.midX, y: photo.frame.midY)))
+        photo.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         let share = photos.buttons["Share"]
-        XCTAssertTrue(share.waitForExistence(timeout: 10))
+        let shareAppeared = share.waitForExistence(timeout: 10)
+        captureText(photos, "Selected stock photo before sharing")
+        XCTAssertTrue(shareAppeared)
         share.tap()
         let shortcut = photos.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Get Contents of URL")).firstMatch
         for _ in 0..<3 {
