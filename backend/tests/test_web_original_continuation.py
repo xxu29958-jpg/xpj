@@ -146,17 +146,16 @@ def test_replenishment_passes_exact_file_to_owner_and_refuses_changed_scope_befo
 
 def test_original_page_does_not_adopt_health_digest_as_user_review(monkeypatch) -> None:
     from datetime import datetime
-    from pathlib import Path
 
     from fastapi.templating import Jinja2Templates
-    from jinja2 import ChoiceLoader, DictLoader, FileSystemLoader
+    from jinja2 import ChoiceLoader, DictLoader
 
     from app.schemas._original_attachment import OriginalHealthResponse
     app = _app(web_originals, monkeypatch)
     monkeypatch.setattr("app.services.manual_expense_draft_presenter.manual_draft_scope", lambda *_a: SCOPE)
-    templates = Jinja2Templates(directory=Path(__file__).parents[1] / "app/templates/web")
-    templates.env.loader = ChoiceLoader([DictLoader({"base.html": "{% block content %}{% endblock %}"}),
-        FileSystemLoader(Path(__file__).parents[1] / "app/templates/web")])
+    templates = Jinja2Templates(env=web_originals.templates.env.overlay(loader=ChoiceLoader([
+        DictLoader({"base.html": "{% block content %}{% endblock %}"}), web_originals.templates.env.loader,
+    ])))
     monkeypatch.setattr(web_originals, "templates", templates)
     monkeypatch.setattr(web_originals, "_base_ctx", lambda request, **_: {"request": request, "can_write": True,
                                                                       "selected_ledger_id": "owner"})

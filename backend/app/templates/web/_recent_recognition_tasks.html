@@ -1,3 +1,4 @@
+{% from '_history_time.html' import saved_time %}
 <details class="product-panel product-panel--padded" id="recognition">
   <summary>近期上传识别{% if recent_recognition_tasks %} · {{ recent_recognition_tasks|length }} 条{% endif %}</summary>
   <p class="text-muted">当前账号在这个账本最近 10 次上传识别的记录。之后手动补全或重试不会改写这些记录；账单现在的内容请打开原单查看。</p>
@@ -7,7 +8,7 @@
     {% for task in recent_recognition_tasks %}
     {% set state = task.recognition_state|default('failed') %}
     <li data-recognition-task-id="{{ task.public_id }}">
-      <p><strong>{{ '结果无法核对' if task.status == 'completed' and state == 'failed' else statuses.get(task.status, '状态未知') }}</strong> · <time datetime="{{ task.created_at|to_iso }}">{{ task.created_at|to_iso }}</time></p>
+      <p><strong>{{ '结果无法核对' if task.status == 'completed' and state == 'failed' else statuses.get(task.status, '状态未知') }}</strong> · {{ saved_time(task.created_at) }}</p>
       {% if task.status == 'completed' and state == 'failed' %}
       <p>当次结果缺失或无法解释，不能判断识别是否成功；请查看原单当前内容。</p>
       {% elif task.status == 'completed' %}
