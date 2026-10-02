@@ -205,6 +205,13 @@ final class ShortcutProbe: XCTestCase {
         captureText(home, "Home screen before Photos intake")
         let photosIcon = home.icons["Photos"]
         XCTAssertTrue(photosIcon.waitForExistence(timeout: 10))
+        // The captured Home state is page 2 of 2; Photos exists on page 1
+        // with a zero frame until that page is brought into view.
+        if home.pageIndicators["Page control"].value as? String == "Page 2 of 2" {
+            home.swipeRight()
+        }
+        captureText(home, "Home screen with the Photos icon visible")
+        XCTAssertTrue(photosIcon.isHittable)
         photosIcon.tap()
         let photos = XCUIApplication(bundleIdentifier: "com.apple.mobileslideshow")
         XCTAssertEqual(photos.state, .runningForeground)
