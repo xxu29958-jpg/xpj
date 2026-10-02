@@ -70,7 +70,7 @@ jobs:
               print(json.dumps(result, ensure_ascii=False, indent=2))
           raise SystemExit(0 if result["shortcuts_installed"] and result["shortcuts_launched"] else 1)
           PY
-      - name: Verify XCTest can inspect the system Shortcuts interface
+      - name: Open the real Shortcuts editor through XCTest
         shell: bash
         run: |
           python3 - <<'PY'
@@ -87,18 +87,23 @@ jobs:
           schemes.mkdir(parents=True)
           (root / "Probe.swift").write_text('''import XCTest
           final class ShortcutProbe: XCTestCase {
-              @MainActor func testSystemShortcutsCanBeInspected() {
+              @MainActor func testSystemShortcutsEditorCanBeOpened() {
                   continueAfterFailure = false
                   let app = XCUIApplication(bundleIdentifier: "com.apple.shortcuts")
                   app.launch()
                   XCTAssertEqual(app.state, .runningForeground)
                   print("SHORTCUTS_UI_TREE_BEGIN\\n\\(app.debugDescription)\\nSHORTCUTS_UI_TREE_END")
+                  let create = app.buttons["add"]
+                  XCTAssertTrue(create.waitForExistence(timeout: 10))
+                  create.tap()
+                  XCTAssertEqual(app.state, .runningForeground)
+                  print("SHORTCUTS_EDITOR_UI_TREE_BEGIN\\n\\(app.debugDescription)\\nSHORTCUTS_EDITOR_UI_TREE_END")
                   let tree = XCTAttachment(string: app.debugDescription)
-                  tree.name = "Shortcuts accessibility tree"
+                  tree.name = "New shortcut editor accessibility tree"
                   tree.lifetime = .keepAlways
                   add(tree)
                   let screen = XCTAttachment(screenshot: app.screenshot())
-                  screen.name = "Shortcuts controlled by XCTest"
+                  screen.name = "New shortcut editor controlled by XCTest"
                   screen.lifetime = .keepAlways
                   add(screen)
               }
@@ -138,6 +143,8 @@ jobs:
                      "-derivedDataPath", str(root / "DerivedData"), "-resultBundlePath", str(output / "ui-control.xcresult")]
           with (output / "ui-control.log").open("w") as log:
               completed = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, timeout=600)
+          subprocess.run(["xcrun", "xcresulttool", "export", "attachments", "--path", str(output / "ui-control.xcresult"),
+                          "--output-path", str(output / "attachments")], check=True)
           (output / "ui-control-result.json").write_text(json.dumps({"scope": "environment-only", "xctest_exit_code": completed.returncode}, indent=2))
           print("XCTest exit code:", completed.returncode)
           if completed.returncode:
