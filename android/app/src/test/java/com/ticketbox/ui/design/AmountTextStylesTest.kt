@@ -21,7 +21,7 @@ class AmountTextStylesTest {
         assertEquals(34.sp, style.fontSize)
         assertEquals(38.sp, style.lineHeight)
         assertEquals(0.sp, style.letterSpacing)
-        assertEquals(FontWeight.ExtraBold, style.fontWeight)
+        assertEquals(FontWeight.SemiBold, style.fontWeight)
     }
 
     @Test

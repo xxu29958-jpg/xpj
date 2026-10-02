@@ -158,15 +158,11 @@
 
 @media (min-width: 64rem) {
     .insight-hero {
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-        align-items: center;
+        grid-template-columns: fit-content(24rem) minmax(0, 1fr);
+        align-items: baseline;
     }
 
-    .insight-hero-value {
-        text-align: end;
-    }
-
-    .insight-hero > .insight-module-foot {
+    .insight-hero > .product-panel-header {
         grid-column: 1 / -1;
     }
 
