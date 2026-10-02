@@ -2,8 +2,7 @@
 
 .insight-hero {
     display: grid;
-    align-content: space-between;
-    min-height: calc(var(--space-12) * 3);
+    gap: var(--space-4);
 }
 
 .insight-hero-value {
@@ -75,7 +74,7 @@
 
 .insight-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr);
     gap: var(--space-5);
     align-items: start;
 }
@@ -152,7 +151,30 @@
 
 .insight-category-chart {
     width: 100%;
+    max-width: 18rem;
     min-height: calc(var(--space-12) * 3);
+    justify-self: center;
+}
+
+@media (min-width: 64rem) {
+    .insight-hero {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        align-items: center;
+    }
+
+    .insight-hero-value {
+        text-align: end;
+    }
+
+    .insight-hero > .insight-module-foot {
+        grid-column: 1 / -1;
+    }
+
+    .insight-module--empty {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+        align-items: center;
+        gap: var(--space-6);
+    }
 }
 
 @container (max-width: 26rem) {
@@ -619,7 +641,6 @@
 }
 
 @media (max-width: 40rem) {
-    .insight-grid,
     .dash-grid {
         grid-template-columns: minmax(0, 1fr);
     }

@@ -140,6 +140,15 @@ class BudgetRecoveryNavigationRouteTest {
     }
 
     @Test fun insightsHistoricalMonthBudgetActionKeepsTheSelectedMonth() {
+        verifyInsightsHistoricalMonthBudgetAction(configured = false)
+    }
+
+    @Test fun configuredInsightsBudgetStillOpensTheSelectedHistoricalMonth() {
+        verifyInsightsHistoricalMonthBudgetAction(configured = true)
+    }
+
+    private fun verifyInsightsHistoricalMonthBudgetAction(configured: Boolean) {
+        transport.budgetConfigured = configured
         show()
         compose.runOnIdle { harness.shell.selectPrimaryDomain(PrimaryDomain.Insights.key) }
         val monthLabel = context.getString(R.string.components_month_label,
@@ -152,7 +161,7 @@ class BudgetRecoveryNavigationRouteTest {
         waitForText(historicalLabel)
         compose.onNode(hasText(historicalLabel) and hasClickAction()).performScrollTo().performClick()
         compose.waitUntil(5_000) { transport.budgetReads.lastOrNull() == originalMonth }
-        val action = context.getString(R.string.stats_budget_empty_action)
+        val action = context.getString(if (configured) R.string.stats_budget_open_action else R.string.stats_budget_empty_action)
         waitForText(action)
         val readsBeforeOpen = transport.budgetReads.size
 
@@ -222,6 +231,7 @@ class BudgetRecoveryNavigationRouteTest {
 }
 
 internal class BudgetNavigationTransport(private val currentMonth: String, private val originalMonth: String) {
+    var budgetConfigured = false
     var backupReads = 0
     val budgetReads = CopyOnWriteArrayList<String>()
     val arrangementReads = CopyOnWriteArrayList<String>()
@@ -253,10 +263,11 @@ internal class BudgetNavigationTransport(private val currentMonth: String, priva
 
         override suspend fun monthlyBudget(month: String, timezone: String?): BudgetMonthlyDto {
             budgetReads += month
-            return BudgetMonthlyDto(ledgerId = "correction-ledger", month = month, configured = false,
-                homeCurrencyCode = "CNY", rowVersion = null, totalAmountCents = 0, rolloverAmountCents = 0,
-                fixedAmountCents = 0, nonMonthlyAmountCents = 0, flexBudgetCents = 0, spentAmountCents = 0,
-                excludedAmountCents = 0, remainingAmountCents = 0, overspentAmountCents = 0,
+            val amount = if (budgetConfigured) 10000L else 0L
+            return BudgetMonthlyDto(ledgerId = "correction-ledger", month = month, configured = budgetConfigured,
+                homeCurrencyCode = "CNY", rowVersion = if (budgetConfigured) 1 else null, totalAmountCents = amount, rolloverAmountCents = 0,
+                fixedAmountCents = 0, nonMonthlyAmountCents = 0, flexBudgetCents = amount, spentAmountCents = 0,
+                excludedAmountCents = 0, remainingAmountCents = amount, overspentAmountCents = 0,
                 excludedCategories = emptyList(), excludedBreakdown = emptyList(), categoryBudgets = emptyList(),
                 updatedAt = null)
         }
