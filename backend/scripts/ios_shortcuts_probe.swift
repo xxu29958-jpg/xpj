@@ -131,8 +131,12 @@ final class ShortcutProbe: XCTestCase {
         while Date() < deadline {
             for surface in [app, springboard] {
                 for label in ["Allow Paste", "Allow Once", "Allow"] {
-                    let permission = surface.alerts.buttons[label]
-                    if permission.exists && permission.isHittable { permission.tap() }
+                    // Shortcuts can render consent in a sheet rather than an AX Alert.
+                    let permission = surface.buttons[label]
+                    if permission.exists && permission.isHittable {
+                        captureText(surface, "System consent before upload")
+                        permission.tap()
+                    }
                 }
             }
             let state = app.debugDescription
@@ -143,6 +147,7 @@ final class ShortcutProbe: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(1))
         }
         captureText(app, "Actual upload result in Shortcuts")
+        captureText(springboard, "System surface after the upload attempt")
         XCTAssertTrue(receiptVisible, "The actual system action must expose the upload receipt")
     }
 
