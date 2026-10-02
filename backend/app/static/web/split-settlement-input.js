@@ -3,6 +3,7 @@
   "use strict";
   window.TicketboxSplitSettlement = function (form) {
     const raw = form.elements.namedItem("settlement_net_amount_major");
+    if (!raw) return null;
     const fallback = form.querySelector("[data-split-settlement-raw]");
     const controls = form.querySelector("[data-split-settlement-controls]");
     const direction = form.querySelector("[data-split-settlement-direction]");

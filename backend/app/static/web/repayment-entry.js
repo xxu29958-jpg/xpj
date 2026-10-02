@@ -14,7 +14,7 @@
   const submitLabels = {repayment:["记一笔还款", "继续核实这笔还款"],
     "debt-void":voidLabels, "repayment-void":voidLabels,
     "debt-kind":["保存偿还方式", "继续核实原更正"], "repayment-review":["确认处理", "核实原处理"]};
-  function initialize(form) {
+  function initialize(form, settlementField) {
   const surface = form.closest("[data-repayment-container]");
   if (!surface) return;
   const voidCommand = ["debt-void", "repayment-void"].includes(form.dataset.repaymentKind);
@@ -44,7 +44,6 @@
   const nativeRejected = form.dataset.voidRejected === "true";
   let knownRejected = false;
   const controls = names.map(name => form.elements.namedItem(name));
-  const settlementField = splitChange && window.TicketboxSplitSettlement ? window.TicketboxSplitSettlement(form) : null;
   const refInput = form.elements.namedItem("idempotency_key");
   const nativeRef = refInput.value, target = form.dataset.repaymentTarget;
   const selectOriginals = new Map(controls.filter(control => control.tagName === "SELECT").map(control => {
@@ -466,5 +465,8 @@
     resume();
   } catch (_) { blocked("当前无法安全保留还款原提交。请保留输入，检查身份和浏览器存储后再试。"); }
   }
-  document.querySelectorAll("[data-repayment-scope]").forEach(initialize);
+  document.querySelectorAll("[data-repayment-scope]").forEach(form => {
+    const settlementField = window.TicketboxSplitSettlement ? window.TicketboxSplitSettlement(form) : null;
+    initialize(form, settlementField);
+  });
 })(window, document);
