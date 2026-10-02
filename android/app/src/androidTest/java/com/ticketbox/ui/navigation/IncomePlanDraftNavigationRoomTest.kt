@@ -8,7 +8,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
-import androidx.compose.ui.test.assertTextEquals
+import com.ticketbox.ui.assertEditableTextEquals
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasAnyAncestor
@@ -145,8 +145,8 @@ class IncomePlanDraftNavigationRoomTest {
             .performScrollTo().performClick()
 
         val originalMonth = context.getString(R.string.components_month_label, "2026", "10")
-        compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("十月临时稿")
-        compose.onAllNodes(hasSetTextAction())[1].assertTextEquals("00120.00")
+        compose.onAllNodes(hasSetTextAction())[0].assertEditableTextEquals("十月临时稿")
+        compose.onAllNodes(hasSetTextAction())[1].assertEditableTextEquals("00120.00")
         compose.onNodeWithText(originalMonth).assertExists()
         compose.onNodeWithText(context.getString(R.string.income_plan_source_bonus)).assertIsSelected()
         compose.onNodeWithText("¥ CNY").assertExists()
@@ -162,8 +162,8 @@ class IncomePlanDraftNavigationRoomTest {
         compose.onNodeWithText(context.getString(R.string.income_plan_add_action_short))
             .performScrollTo().performClick()
 
-        compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("十月临时稿")
-        compose.onAllNodes(hasSetTextAction())[1].assertTextEquals("00120.00")
+        compose.onAllNodes(hasSetTextAction())[0].assertEditableTextEquals("十月临时稿")
+        compose.onAllNodes(hasSetTextAction())[1].assertEditableTextEquals("00120.00")
         compose.onNodeWithText(originalMonth).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText(context.getString(R.string.income_plan_source_bonus)).assertIsSelected()
         compose.onNodeWithText("¥ CNY").performScrollTo().assertIsDisplayed()
@@ -173,8 +173,8 @@ class IncomePlanDraftNavigationRoomTest {
         compose.waitForIdle()
         compose.onNodeWithText(context.getString(R.string.income_plan_add_action_short))
             .performScrollTo().performClick()
-        compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("十月临时稿")
-        compose.onAllNodes(hasSetTextAction())[1].assertTextEquals("00120.00")
+        compose.onAllNodes(hasSetTextAction())[0].assertEditableTextEquals("十月临时稿")
+        compose.onAllNodes(hasSetTextAction())[1].assertEditableTextEquals("00120.00")
         compose.onNodeWithText(context.getString(R.string.common_cancel)).performClick()
         compose.onNodeWithText(context.getString(R.string.income_plan_add_action_short))
             .performScrollTo().performClick()
@@ -219,7 +219,7 @@ class IncomePlanDraftNavigationRoomTest {
         pressBack()
         compose.waitForIdle()
         compose.onNodeWithText(context.getString(R.string.income_plan_add_action_short)).performScrollTo().performClick()
-        compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("尚未提交的原稿")
+        compose.onAllNodes(hasSetTextAction())[0].assertEditableTextEquals("尚未提交的原稿")
         assertTrue(income.stored().isEmpty())
         assertTrue(income.network.creationCalls.isEmpty())
         assertTrue(income.network.calls.isEmpty())

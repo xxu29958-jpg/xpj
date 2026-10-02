@@ -6,7 +6,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertTextEquals
+import com.ticketbox.ui.assertEditableTextEquals
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasTestTag
@@ -67,7 +67,7 @@ class NotificationOriginalTaskNavigationTest {
         compose.onNodeWithContentDescription(context.getString(R.string.budget_back_to_stats)).performClick()
         waitForMonth("2026-07")
         compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("budget_total_amount")))
-            .performScrollTo().assertTextEquals("321.09")
+            .performScrollTo().assertEditableTextEquals("321.09")
         assertEquals("A notification may not turn raw form input into a queued command", 0,
             kotlinx.coroutines.runBlocking { harness.fixture.stored().size })
     }

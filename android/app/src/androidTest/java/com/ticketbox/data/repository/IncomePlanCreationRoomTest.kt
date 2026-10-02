@@ -5,7 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
-import androidx.compose.ui.test.assertTextEquals
+import com.ticketbox.ui.assertEditableTextEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.hasSetTextAction
@@ -154,7 +154,7 @@ class IncomePlanCreationRoomTest {
         compose.onNodeWithText("添加").performScrollTo().performClick()
         compose.onNodeWithText("放弃草稿").performClick()
         compose.onNodeWithText("取消").performClick()
-        compose.onNodeWithText("已保存的补贴").performScrollTo().assertTextEquals("已保存的补贴").assertIsNotEnabled()
+        compose.onNodeWithText("已保存的补贴").performScrollTo().assertEditableTextEquals("已保存的补贴").assertIsNotEnabled()
         assertEquals(original.creationKey, creator.value?.state?.value?.session?.creationKey)
         compose.onNodeWithText("放弃草稿").performClick()
         compose.onNodeWithText("确认放弃").performClick()

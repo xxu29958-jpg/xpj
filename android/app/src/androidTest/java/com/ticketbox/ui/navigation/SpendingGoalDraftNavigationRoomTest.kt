@@ -4,7 +4,7 @@ import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.test.assertTextEquals
+import com.ticketbox.ui.assertEditableTextEquals
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -82,16 +82,16 @@ class SpendingGoalDraftNavigationRoomTest {
         assertNotSame(entry, compose.runOnIdle { inner.currentBackStackEntry })
         assertSame(originalOwner, creationOwner())
         compose.onNodeWithText(context.getString(R.string.goal_draft_continue)).performClick()
-        compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("  旅行原稿  ")
-        compose.onAllNodes(hasSetTextAction())[1].assertTextEquals("00120.00")
-        compose.onAllNodes(hasSetTextAction())[2].assertTextEquals("出行")
+        compose.onAllNodes(hasSetTextAction())[0].assertEditableTextEquals("  旅行原稿  ")
+        compose.onAllNodes(hasSetTextAction())[1].assertEditableTextEquals("00120.00")
+        compose.onAllNodes(hasSetTextAction())[2].assertEditableTextEquals("出行")
         assertEquals(original.month, originalOwner.state.value.month)
         assertEquals(original.ledgerCurrency, originalOwner.state.value.ledgerCurrency)
         assertEquals(original.creationKey, originalOwner.state.value.creationKey)
         assertTrue(harness.fixture.stored().isEmpty())
         compose.onNodeWithText(context.getString(R.string.goal_draft_discard)).performScrollTo().performClick()
         compose.onNodeWithText(context.getString(R.string.common_cancel)).performClick()
-        compose.onAllNodes(hasSetTextAction())[0].assertTextEquals("  旅行原稿  ")
+        compose.onAllNodes(hasSetTextAction())[0].assertEditableTextEquals("  旅行原稿  ")
         compose.onNodeWithText(context.getString(R.string.goal_draft_discard)).performScrollTo().performClick()
         compose.onNodeWithText(context.getString(R.string.goal_draft_discard_confirm)).performClick()
         compose.onNodeWithText(context.getString(R.string.spending_goals_create_action)).performClick()

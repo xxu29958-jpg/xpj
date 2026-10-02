@@ -4,7 +4,7 @@ import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertTextEquals
+import com.ticketbox.ui.assertEditableTextEquals
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
@@ -89,7 +89,7 @@ class ManualCreationRouteRoomTest {
         compose.waitUntil(5_000) { compose.onAllNodes(hasText(saveLabel)).fetchSemanticsNodes().isNotEmpty() }
         val amount = compose.onAllNodes(hasSetTextAction())[0]
         amount.performTextInput("12")
-        amount.assertTextEquals("12")
+        amount.assertEditableTextEquals("12")
         closeSoftKeyboard()
         compose.waitForIdle()
         compose.onNodeWithText(saveLabel).performClick()
