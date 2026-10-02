@@ -15,7 +15,7 @@
     <string name="appearance_background_pick_image">从相册选择</string>
     <string name="appearance_background_edit_composition">调整构图</string>
     <string name="appearance_background_restore_theme">恢复主题背景</string>
-    <string name="appearance_background_local_hint">自定义图只存在本机。想回到松雾、港湾等主题氛围时，点「恢复主题背景」即可切回。</string>
+    <string name="appearance_background_local_hint">自定义图片仅保存在本机，可随时恢复主题背景。</string>
     <string name="appearance_section_immersion_title">沉浸强度</string>
     <string name="appearance_parallax_title">视差动效</string>
     <string name="appearance_parallax_subtitle">背景轻微参与层次变化</string>
@@ -23,7 +23,7 @@
     <string name="appearance_reduce_motion_subtitle">关闭背景动效，保持录入稳定</string>
 
     <!-- SettingsAppearanceComponents：皮肤卡 / 沉浸预览组件 -->
-    <string name="appearance_mood_preview_caption">背景只参与氛围</string>
+    <string name="appearance_mood_preview_caption">背景预览</string>
     <string name="appearance_skin_name_paper">晨纸</string>
     <string name="appearance_skin_name_midnight">玄夜</string>
     <string name="appearance_theme_mode_name_system">跟随系统</string>

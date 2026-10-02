@@ -96,10 +96,12 @@ fun AppearanceScreen(
             SettingsOpenPanel(
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
             ) {
-                    ThemeMoodPreview(
-                        settings = appearance.backgroundSettings,
-                        skin = preferences.currentSkin,
-                    )
+                    if (appearance.backgroundSettings.source != BackgroundSource.ThemeDefault) {
+                        ThemeMoodPreview(
+                            settings = appearance.backgroundSettings,
+                            skin = preferences.currentSkin,
+                        )
+                    }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
