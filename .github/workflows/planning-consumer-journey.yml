@@ -70,7 +70,7 @@ jobs:
               print(json.dumps(result, ensure_ascii=False, indent=2))
           raise SystemExit(0 if result["shortcuts_installed"] and result["shortcuts_launched"] else 1)
           PY
-      - name: Add the real URL upload action through XCTest
+      - name: Browse the real URL upload action through XCTest
         shell: bash
         run: |
           python3 - <<'PY'
@@ -98,20 +98,27 @@ jobs:
                   create.tap()
                   XCTAssertEqual(app.state, .runningForeground)
                   print("SHORTCUTS_EDITOR_UI_TREE_BEGIN\\n\\(app.debugDescription)\\nSHORTCUTS_EDITOR_UI_TREE_END")
-                  let search = app.searchFields["Search Actions"]
-                  XCTAssertTrue(search.waitForExistence(timeout: 10))
-                  search.tap()
-                  let keyboardTip = app.staticTexts["Speed up your typing by sliding your finger across the letters to compose a word."]
-                  if keyboardTip.waitForExistence(timeout: 2) {
-                      app.buttons["Continue"].tap()
+                  let web = app.buttons["Web"]
+                  XCTAssertTrue(web.waitForExistence(timeout: 10))
+                  let categories = app.scrollViews.containing(.button, identifier: "Web").firstMatch
+                  for _ in 0..<4 {
+                      if web.isHittable { break }
+                      categories.swipeLeft()
                   }
-                  search.typeText("Get Contents of URL")
-                  if app.keyboards.buttons["Search"].exists {
-                      app.keyboards.buttons["Search"].tap()
-                  }
+                  XCTAssertTrue(web.isHittable)
+                  web.tap()
                   let action = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Get Contents of URL")).firstMatch
-                  XCTAssertTrue(action.waitForExistence(timeout: 10))
-                  print("SHORTCUTS_SEARCH_UI_TREE_BEGIN\\n\\(app.debugDescription)\\nSHORTCUTS_SEARCH_UI_TREE_END")
+                  let foundAction = action.waitForExistence(timeout: 10)
+                  print("SHORTCUTS_WEB_CATEGORY_UI_TREE_BEGIN\\n\\(app.debugDescription)\\nSHORTCUTS_WEB_CATEGORY_UI_TREE_END")
+                  let categoryTree = XCTAttachment(string: app.debugDescription)
+                  categoryTree.name = "Observed Web action category"
+                  categoryTree.lifetime = .keepAlways
+                  add(categoryTree)
+                  let categoryScreen = XCTAttachment(screenshot: app.screenshot())
+                  categoryScreen.name = "Observed Web action category"
+                  categoryScreen.lifetime = .keepAlways
+                  add(categoryScreen)
+                  XCTAssertTrue(foundAction)
                   action.tap()
                   print("SHORTCUTS_URL_ACTION_UI_TREE_BEGIN\\n\\(app.debugDescription)\\nSHORTCUTS_URL_ACTION_UI_TREE_END")
                   let tree = XCTAttachment(string: app.debugDescription)
@@ -159,6 +166,14 @@ jobs:
                      "-derivedDataPath", str(root / "DerivedData"), "-resultBundlePath", str(output / "ui-control.xcresult")]
           with (output / "ui-control.log").open("w") as log:
               completed = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, timeout=600)
+          if completed.returncode:
+              with (output / "shortcuts-system.log").open("w") as log:
+                  try:
+                      subprocess.run(["xcrun", "simctl", "spawn", environment["device_id"], "log", "show", "--last", "5m", "--style", "compact",
+                                      "--predicate", '(process == "Shortcuts" OR process == "shortcutsd") AND (eventMessage CONTAINS[c] "action" OR eventMessage CONTAINS[c] "error" OR eventMessage CONTAINS[c] "catalog")'],
+                                     stdout=log, stderr=subprocess.STDOUT, timeout=40, check=False)
+                  except subprocess.TimeoutExpired:
+                      log.write("\nDiagnostic log collection reached its time limit.\n")
           subprocess.run(["xcrun", "xcresulttool", "export", "attachments", "--path", str(output / "ui-control.xcresult"),
                           "--output-path", str(output / "attachments")], check=True)
           (output / "ui-control-result.json").write_text(json.dumps({"scope": "environment-only", "xctest_exit_code": completed.returncode}, indent=2))
