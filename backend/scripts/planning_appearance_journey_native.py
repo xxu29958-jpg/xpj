@@ -102,6 +102,28 @@ def read_domains(native, images):
     return saved_background(native)
 
 
+def planning_large_text(native):
+    original_scale = native.adb("shell", "settings", "get", "system", "font_scale").strip()
+    try:
+        native.adb("shell", "settings", "put", "system", "font_scale", "1.8")
+        for night, label in (("no", "paper"), ("yes", "midnight")):
+            native.adb("shell", "cmd", "uimode", "night", night)
+            native.restart()
+            native.domain_home("计划")
+            wait_for(lambda: native.has("已读取预算"), "The large-text plan overview did not load its actual budget")
+            native.capture(f"appearance-plans-{label}-large-font-top")
+            native.reveal_any("收入计划")
+            native.scroll_viewport(list(native.tree().iter("node")), toward_start=False)
+            native.capture(f"appearance-plans-{label}-large-font-bottom")
+    finally:
+        if original_scale == "null":
+            native.adb("shell", "settings", "delete", "system", "font_scale")
+        else:
+            native.adb("shell", "settings", "put", "system", "font_scale", original_scale)
+        native.adb("shell", "cmd", "uimode", "night", "no")
+        native.restart()
+
+
 def native_appearance(j, path, image_digest):
     native = j.native
     prepare_photo(native, path)
@@ -167,6 +189,7 @@ def native_appearance(j, path, image_digest):
     native.reveal_any("跟随主题")
     native.capture("appearance-restored-theme-after-restart")
     assert not private_images(native) and saved_background(native) != applied
+    planning_large_text(native)
     return {"unpublished_cancel": True, "original_image_sha256": image_digest,
         "applied_preferences_sha256": applied, "restart_retained": True,
         "edit_cancel_retained": True, "restored_theme_after_restart": True}

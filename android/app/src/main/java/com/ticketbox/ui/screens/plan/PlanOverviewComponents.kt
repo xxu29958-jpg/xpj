@@ -29,7 +29,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
 import com.ticketbox.domain.model.BudgetMonthly
 import com.ticketbox.ui.asString
@@ -63,9 +62,6 @@ internal fun PlanBudgetSection(
     actions: PlanBudgetNavigationActions,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        PlanSectionTitle(stringResource(R.string.plan_section_month))
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.medium))
-        BudgetReadSource(state.fetchedAt, state.fromCache, state.loading)
         val budget = state.budget?.takeIf { it.configured }
         if (budget == null) {
             PlanDestinationRow(
@@ -76,6 +72,7 @@ internal fun PlanBudgetSection(
                     testTag = PlanDestinationTestTags.Budget,
                     onClick = actions.onOpenBudget,
                 ),
+                supportingContent = { BudgetReadSource(state.fetchedAt, state.fromCache, state.loading) },
             )
         } else {
             PlanConfiguredBudget(
@@ -136,6 +133,7 @@ private fun PlanConfiguredBudget(
             PlanRowChevron(modifier = Modifier.align(Alignment.CenterVertically))
         }
         PlanBudgetProgress(budget, currency)
+        BudgetReadSource(state.fetchedAt, state.fromCache, state.loading)
         state.loadError?.let {
             Text(
                 text = it.asString(),
@@ -210,9 +208,11 @@ internal fun PlanFixedArrangementsSection(
                 testTag = PlanDestinationTestTags.Recurring,
                 onClick = onOpenRecurring,
             ),
-        )
-        com.ticketbox.ui.screens.recurring.RecurringReadSource(
-            recurring.itemsFetchedAt, recurring.itemsFromCache, recurring.loading,
+            supportingContent = {
+                com.ticketbox.ui.screens.recurring.RecurringReadSource(
+                    recurring.itemsFetchedAt, recurring.itemsFromCache, recurring.loading,
+                )
+            },
         )
         PlanDestinationRow(
             model = PlanRowModel(
@@ -222,8 +222,8 @@ internal fun PlanFixedArrangementsSection(
                 testTag = PlanDestinationTestTags.IncomePlans,
                 onClick = onOpenIncomePlans,
             ),
+            supportingContent = { com.ticketbox.ui.screens.IncomeReadSource(income.fetchedAt, income.fromCache) },
         )
-        com.ticketbox.ui.screens.IncomeReadSource(income.fetchedAt, income.fromCache)
     }
 }
 
@@ -232,9 +232,9 @@ private fun PlanSectionTitle(title: String) {
     Text(
         text = title,
         modifier = Modifier.padding(bottom = AppSpacing.smallGap),
-        color = MaterialTheme.colorScheme.onSurface,
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        style = MaterialTheme.typography.bodyMedium,
+        fontWeight = FontWeight.Medium,
     )
 }
 
@@ -242,6 +242,7 @@ private fun PlanSectionTitle(title: String) {
 private fun PlanDestinationRow(
     model: PlanRowModel,
     showDivider: Boolean = true,
+    supportingContent: (@Composable () -> Unit)? = null,
 ) {
     AppListRow(
         modifier = Modifier.testTag(model.testTag),
@@ -262,18 +263,14 @@ private fun PlanDestinationRow(
             Text(
                 text = model.title,
                 color = MaterialTheme.colorScheme.onSurface,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.titleMedium,
             )
             Text(
                 text = model.subtitle,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
             )
+            supportingContent?.invoke()
         }
         Spacer(modifier = Modifier.width(AppSpacing.smallGap))
         PlanRowChevron(
