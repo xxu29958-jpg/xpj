@@ -101,7 +101,14 @@ jobs:
                   let search = app.searchFields["Search Actions"]
                   XCTAssertTrue(search.waitForExistence(timeout: 10))
                   search.tap()
+                  let keyboardTip = app.staticTexts["Speed up your typing by sliding your finger across the letters to compose a word."]
+                  if keyboardTip.waitForExistence(timeout: 2) {
+                      app.buttons["Continue"].tap()
+                  }
                   search.typeText("Get Contents of URL")
+                  if app.keyboards.buttons["Search"].exists {
+                      app.keyboards.buttons["Search"].tap()
+                  }
                   let action = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Get Contents of URL")).firstMatch
                   XCTAssertTrue(action.waitForExistence(timeout: 10))
                   print("SHORTCUTS_SEARCH_UI_TREE_BEGIN\\n\\(app.debugDescription)\\nSHORTCUTS_SEARCH_UI_TREE_END")
