@@ -113,7 +113,9 @@ jobs:
                   XCTAssertTrue(web.isHittable)
                   web.tap()
                   let action = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Get Contents of URL")).firstMatch
-                  let foundAction = action.waitForExistence(timeout: 10)
+                  // A fresh simulator starts its full ToolKit index after the editor is already visible.
+                  // Wait for the real action, not merely the app or category to be present.
+                  let foundAction = action.waitForExistence(timeout: 240)
                   print("SHORTCUTS_WEB_CATEGORY_UI_TREE_BEGIN\\n\\(app.debugDescription)\\nSHORTCUTS_WEB_CATEGORY_UI_TREE_END")
                   let categoryTree = XCTAttachment(string: app.debugDescription)
                   categoryTree.name = "Observed Web action category"
