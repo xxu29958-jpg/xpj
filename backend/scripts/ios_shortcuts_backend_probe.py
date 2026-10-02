@@ -142,17 +142,29 @@ def run_with_upload_backend(command: list[str], *, output: Path, root: Path):
                     stdout=server_log, stderr=subprocess.STDOUT)
                 try:
                     ready = False
+                    health_error = None
                     deadline = time.monotonic() + 60
                     while time.monotonic() < deadline and server.poll() is None:
                         try:
                             with urllib.request.urlopen(BASE_URL + "/api/health", timeout=2) as response:
                                 ready = response.status == 200
-                        except (OSError, urllib.error.URLError):
-                            pass
+                        except (OSError, urllib.error.URLError) as error:
+                            health_error = type(error).__name__
                         if ready:
                             break
                         time.sleep(0.5)
                     if not ready:
+                        server_log.flush()
+                        diagnostic = (private / "server.log").read_text()
+                        credentials = [upload_key, database_url, *(os.environ[key] for key in
+                            ("UPLOAD_TOKEN", "APP_TOKEN", "ADMIN_TOKEN", "XPJ_TEST_APPLICATION_PASSWORD"))]
+                        for credential in credentials:
+                            diagnostic = diagnostic.replace(credential, "REDACTED_CREDENTIAL")
+                        diagnostic = diagnostic.replace(str(private), "ISOLATED_DATA")
+                        (output / "backend-startup.log").write_text(diagnostic[-24000:])
+                        (output / "backend-startup.json").write_text(json.dumps({
+                            "process_exit_code": server.poll(), "last_health_error": health_error,
+                            "backend_reachable": False}, indent=2))
                         raise RuntimeError("The isolated real upload backend did not become ready")
                     result = {"scope": "isolated-system-file-upload", "source_sha": os.environ["GITHUB_SHA"],
                         "backend_reachable": True, "ledger_id": fixture.ledger_id,
@@ -178,7 +190,7 @@ def run_with_upload_backend(command: list[str], *, output: Path, root: Path):
                                 "status": expense.status, "image_hash": expense.image_hash, "original_sha256": original_digest,
                                 "receipt_visible": expense.public_id in observed})
                     result["photos_share_entry_verified"] = completed.returncode == 0
-                    result["actual_upload_verified"] = completed.returncode == 0 and len(rows) == 1 and all(
+                    result["actual_upload_verified"] = len(rows) == 1 and all(
                         row["ledger_id"] == fixture.ledger_id and row["status"] == "pending" and row["receipt_visible"]
                         and row["image_hash"] == row["original_sha256"] and row["original_sha256"] is not None
                         for row in result["uploads"])
