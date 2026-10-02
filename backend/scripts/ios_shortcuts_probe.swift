@@ -101,15 +101,15 @@ final class ShortcutProbe: XCTestCase {
         app.buttons["Clipboard"].tap()
         // The URL chip is inside the observed merged action row.
         request.coordinate(withNormalizedOffset: CGVector(dx: 0.595, dy: 0.5)).tap()
-        let fields = app.descendants(matching: .any).matching(NSPredicate(
-            format: "elementType == %d OR elementType == %d",
-            XCUIElement.ElementType.textField.rawValue, XCUIElement.ElementType.textView.rawValue))
-        let field = fields.firstMatch
-        let fieldExists = field.waitForExistence(timeout: 10)
+        // This token editor exposes a focused URL keyboard, not a TextField/TextView AX node.
+        let keyboard = app.keyboards.firstMatch
+        let keyboardExists = keyboard.waitForExistence(timeout: 10)
         captureText(app, "URL input before configuration")
-        XCTAssertTrue(fieldExists)
-        field.typeText(url + "\n")
+        XCTAssertTrue(keyboardExists)
+        app.typeText(url)
+        keyboard.buttons["Done"].tap()
         captureText(app, "URL configured for the isolated upload")
+        XCTAssertTrue(app.debugDescription.contains(url))
         UIPasteboard.general.setData(jpeg, forPasteboardType: UTType.jpeg.identifier)
         let play = app.buttons["play"]
         XCTAssertTrue(play.waitForExistence(timeout: 10))
