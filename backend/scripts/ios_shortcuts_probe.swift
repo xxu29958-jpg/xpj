@@ -106,7 +106,17 @@ final class ShortcutProbe: XCTestCase {
         let keyboardExists = keyboard.waitForExistence(timeout: 10)
         captureText(app, "URL input before configuration")
         XCTAssertTrue(keyboardExists)
-        app.typeText(url)
+        // The system token editor does not expose keyboard focus to XCTest typing.
+        // Paste through its native editing menu, as an Owner pastes the full UploadLink.
+        UIPasteboard.general.string = url
+        request.coordinate(withNormalizedOffset: CGVector(dx: 0.595, dy: 0.5)).press(forDuration: 1.2)
+        let paste = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Paste")).firstMatch
+        let pasteExists = paste.waitForExistence(timeout: 10)
+        captureText(app, "System paste menu for the upload address")
+        XCTAssertTrue(pasteExists)
+        paste.tap()
+        let pastePermission = app.alerts.buttons["Allow Paste"]
+        if pastePermission.waitForExistence(timeout: 3) { pastePermission.tap() }
         keyboard.buttons["Done"].tap()
         captureText(app, "URL configured for the isolated upload")
         XCTAssertTrue(app.debugDescription.contains(url))
