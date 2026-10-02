@@ -101,8 +101,6 @@ internal fun PendingTop(
                     },
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
                 )
             }
             trailingAction?.invoke()

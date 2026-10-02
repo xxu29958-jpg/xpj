@@ -4,19 +4,16 @@ import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.Icon
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -25,7 +22,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import com.ticketbox.R
@@ -192,16 +188,17 @@ private fun PendingUploadGuide() {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PendingEmptyActions(
     state: EmptyPendingStateModel,
     onToggleGuide: () -> Unit,
     onRefresh: () -> Unit,
 ) {
-    Row(
+    FlowRow(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap, Alignment.CenterHorizontally),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
         if (!state.readOnly) {
             PendingInlineAction(
@@ -210,14 +207,12 @@ private fun PendingEmptyActions(
                 } else {
                     stringResource(R.string.pending_empty_guide_expand)
                 },
-                icon = Icons.Filled.Info,
                 enabled = !state.loading,
                 onClick = onToggleGuide,
             )
         }
         PendingInlineAction(
             text = stringResource(R.string.pending_empty_refresh_button),
-            icon = Icons.Filled.Refresh,
             enabled = !state.uploading && !state.loading,
             onClick = onRefresh,
         )
@@ -227,26 +222,21 @@ private fun PendingEmptyActions(
 @Composable
 private fun PendingInlineAction(
     text: String,
-    icon: ImageVector,
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
     TextButton(
         enabled = enabled,
         onClick = onClick,
+        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant),
         contentPadding = PaddingValues(
             horizontal = AppSpacing.smallGap,
             vertical = AppSpacing.tinyGap,
         ),
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-        )
-        Spacer(modifier = Modifier.width(AppSpacing.tinyGap))
         Text(
             text = text,
-            fontWeight = AppTextHierarchy.heading.weight,
+            style = MaterialTheme.typography.bodyMedium,
         )
     }
 }

@@ -51,11 +51,21 @@ class BackstageJourney:
         self.page.locator(f'input[name="ledger_id"][value="{self.ledger_id}"]').check()
         self.page.locator('form[action="/web/auth/local"] button[type="submit"]').click()
         self.page.wait_for_url("**/web/pending*")
+        self.native.bind(self.fixture.pairing_code, self.port)
+        self.native.domain_home("收件")
+        wait_for(lambda: self.native.has("还没有待处理的小票"), "The native empty inbox did not settle")
+        self.native.capture("inbox-empty")
+        self.capture("inbox-empty")
         self.configure_ocr()
         original = self.evidence / "synthetic-receipt-web.png"
         digest = synthetic_receipt(original)
         form = self.page.locator("#capture")
-        form.locator('[name="file"]').set_input_files(original)
+        before_selection = self.facts()
+        with self.page.expect_file_chooser() as picker:
+            form.get_by_label("选择小票图片", exact=True).click()
+        picker.value.set_files(original)
+        self.capture("inbox-selected-original")
+        assert self.facts() == before_selection, "Selecting a file must not upload or create financial facts"
         form.get_by_role("button", name="上传小票", exact=True).click()
         wait_for(lambda: len(self.facts()["tasks"]) == 1, "The Web upload did not create its durable task")
         wait_for(lambda: self.facts()["tasks"][0]["status"] in ("completed", "failed"),
@@ -121,7 +131,6 @@ class BackstageJourney:
             result.close()
 
     def task_read_recovery(self):
-        self.native.bind(self.fixture.pairing_code, self.port)
         self.open_tasks()
         self.native.capture("backstage-task-from-web")
         self.native.connection(self.port, online=False)
@@ -213,10 +222,11 @@ class BackstageJourney:
     def run(self):
         from scripts.backstage_journey_advisor import advisor_consumers
         from scripts.backstage_journey_fx import fx_consumers
-        from scripts.backstage_journey_native import native_upload_and_ocr
+        from scripts.backstage_journey_native import native_inbox_filters, native_upload_and_ocr
         from scripts.backstage_journey_ocr_recovery import drawer_lost_ocr_reply
 
         self.upload_web()
+        native_inbox_filters(self)
         self.owner_results_navigation()
         self.task_read_recovery()
         self.retry_web()

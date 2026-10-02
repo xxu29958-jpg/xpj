@@ -9,12 +9,9 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -33,7 +30,6 @@ import com.ticketbox.domain.model.pendingPrimaryReviewAction
 import com.ticketbox.ui.components.AppCompactChips
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.design.AppAlpha
-import com.ticketbox.ui.design.AppIconSize
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 
@@ -51,44 +47,23 @@ enum class NeedsReviewFilter(@param:StringRes val labelRes: Int) {
     ReadyToConfirm(R.string.pending_filter_label_ready_to_confirm),
 }
 
-internal enum class InboxSection(@param:StringRes val labelRes: Int) {
-    Pending(R.string.inbox_section_pending),
-    Duplicates(R.string.inbox_section_duplicates),
-}
-
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun InboxActionLinks(
     onOpenRepaymentReview: () -> Unit,
     onOpenDataQuality: () -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
-        Text(
-            text = stringResource(R.string.inbox_action_links_title),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelMedium,
-        )
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-        ) {
-            TextButton(onClick = onOpenRepaymentReview) {
-                Text(stringResource(R.string.relations_repayment_review))
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = null,
-                    modifier = Modifier.size(AppIconSize.compact),
-                )
-            }
-            TextButton(onClick = onOpenDataQuality) {
-                Text(stringResource(R.string.stats_data_quality_entry_title))
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = null,
-                    modifier = Modifier.size(AppIconSize.compact),
-                )
-            }
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+    ) {
+        val colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant)
+        TextButton(onClick = onOpenRepaymentReview, colors = colors) {
+            Text(stringResource(R.string.relations_repayment_review), style = MaterialTheme.typography.bodyMedium)
+        }
+        TextButton(onClick = onOpenDataQuality, colors = colors) {
+            Text(stringResource(R.string.stats_data_quality_entry_title), style = MaterialTheme.typography.bodyMedium)
         }
     }
 }
@@ -108,49 +83,16 @@ internal fun visibleNeedsReviewFilters(
     counts: PendingQueueCounts,
     selected: NeedsReviewFilter,
 ): List<NeedsReviewFilter> {
-    val visible = mutableListOf(NeedsReviewFilter.All)
+    val visible = mutableListOf(NeedsReviewFilter.All, NeedsReviewFilter.Duplicate)
     pendingSignalFilters.forEach { filter ->
         if (counts.countFor(filter) > 0) {
             visible += filter
         }
     }
-    if (selected != NeedsReviewFilter.Duplicate && selected !in visible) {
+    if (selected !in visible) {
         visible += selected
     }
     return visible
-}
-
-internal fun shouldShowNeedsReviewFilterBar(
-    counts: PendingQueueCounts,
-    selected: NeedsReviewFilter,
-): Boolean {
-    if (counts.all <= 0) return false
-    if (selected == NeedsReviewFilter.Duplicate) return false
-    if (selected != NeedsReviewFilter.All) return true
-    return !counts.hasSingleCompleteSignal
-}
-
-@Composable
-internal fun InboxSectionNavigation(
-    selected: InboxSection,
-    onSelect: (InboxSection) -> Unit,
-) {
-    AppCompactChips {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
-        ) {
-            InboxSection.entries.forEach { section ->
-                AppFilterChip(
-                    label = stringResource(section.labelRes),
-                    selected = section == selected,
-                    onClick = { onSelect(section) },
-                )
-            }
-        }
-    }
 }
 
 internal fun applyNeedsReviewFilter(items: List<Expense>, filter: NeedsReviewFilter): List<Expense> {
@@ -208,14 +150,6 @@ private fun PendingQueueCounts.countFor(filter: NeedsReviewFilter): Int = when (
     NeedsReviewFilter.Duplicate -> duplicate
     NeedsReviewFilter.ReadyToConfirm -> readyToConfirm
 }
-
-private val PendingQueueCounts.hasSingleCompleteSignal: Boolean
-    get() {
-        val total = all.coerceAtLeast(0)
-        val visibleSignalCount = pendingSignalFilters.count { countFor(it) > 0 }
-        return visibleSignalCount == 0 ||
-            visibleSignalCount == 1 && pendingSignalFilters.any { countFor(it) == total }
-    }
 
 private val pendingSignalFilters = listOf(
     NeedsReviewFilter.NeedsAmount,

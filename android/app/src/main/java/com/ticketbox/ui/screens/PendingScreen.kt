@@ -43,9 +43,7 @@ import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalAppAdaptiveLayoutPolicy
 import com.ticketbox.ui.screens.pending.EmptyPendingState
 import com.ticketbox.ui.screens.pending.EmptyPendingStateModel
-import com.ticketbox.ui.screens.pending.InboxSection
 import com.ticketbox.ui.screens.pending.InboxActionLinks
-import com.ticketbox.ui.screens.pending.InboxSectionNavigation
 import com.ticketbox.ui.screens.pending.NeedsReviewEmptyFilterCard
 import com.ticketbox.ui.screens.pending.NeedsReviewFilter
 import com.ticketbox.ui.screens.pending.NeedsReviewFilterBar
@@ -86,7 +84,6 @@ import com.ticketbox.domain.model.pendingPrimaryReviewAction
 import com.ticketbox.domain.model.pendingMerchantPresentation
 import com.ticketbox.domain.model.pendingNeedsCategory
 import com.ticketbox.ui.screens.pending.pendingListBodyState
-import com.ticketbox.ui.screens.pending.shouldShowNeedsReviewFilterBar
 import com.ticketbox.viewmodel.PendingUiState
 import com.ticketbox.viewmodel.PendingUploadOriginalUi
 
@@ -164,8 +161,6 @@ fun PendingScreen(
         },
         readOnly = readOnly,
         bulkRunning = state.bulkConfirm.running,
-        showNeedsReviewFilter = bodyState == PendingListBodyState.Content &&
-            shouldShowNeedsReviewFilterBar(queueCounts, needsReviewFilter),
     )
     val triagePaneActions = PendingTriagePaneActions(
         onSelectFilter = { needsReviewFilter = it },
@@ -284,7 +279,7 @@ fun PendingScreen(
                 ),
                 listState = listState,
             ) {
-                item {
+                if (bodyState != PendingListBodyState.Empty) item {
                     PendingTop(
                         state = PendingTopState(
                             counts = queueCounts,
@@ -491,7 +486,6 @@ private data class PendingTriagePaneState(
     val queueEvidence: PendingQueueEvidence,
     val readOnly: Boolean,
     val bulkRunning: Boolean,
-    val showNeedsReviewFilter: Boolean,
 )
 
 private data class PendingTriagePaneActions(
@@ -531,40 +525,20 @@ private fun PendingTriagePane(
             bulkRunning = state.bulkRunning,
             onOpenBulkConfirm = actions.onOpenBulkConfirm,
         )
-        InboxSectionNavigation(
-            selected = if (state.selectedFilter == NeedsReviewFilter.Duplicate) {
-                InboxSection.Duplicates
-            } else {
-                InboxSection.Pending
-            },
-            onSelect = { section ->
-                actions.onSelectFilter(
-                    when (section) {
-                        InboxSection.Pending -> NeedsReviewFilter.All
-                        InboxSection.Duplicates -> NeedsReviewFilter.Duplicate
-                    },
-                )
-            },
-        )
-        InboxActionLinks(
-            onOpenRepaymentReview = actions.onOpenRepaymentReview,
-            onOpenDataQuality = actions.onOpenDataQuality,
-        )
         if (state.authorityTone != DataAuthorityTone.Backend) {
             AppDataAuthorityStrip(
                 tone = state.authorityTone,
                 localCacheBodyRes = R.string.components_data_authority_pending_cache_body,
             )
         }
-        if (state.showNeedsReviewFilter) {
-            NeedsReviewFilterBar(
-                state = NeedsReviewFilterBarState(
-                    selected = state.selectedFilter,
-                    counts = state.counts,
-                ),
-                onSelect = actions.onSelectFilter,
-            )
-        }
+        NeedsReviewFilterBar(
+            state = NeedsReviewFilterBarState(selected = state.selectedFilter, counts = state.counts),
+            onSelect = actions.onSelectFilter,
+        )
+        InboxActionLinks(
+            onOpenRepaymentReview = actions.onOpenRepaymentReview,
+            onOpenDataQuality = actions.onOpenDataQuality,
+        )
     }
 }
 
