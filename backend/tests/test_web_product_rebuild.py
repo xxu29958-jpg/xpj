@@ -356,16 +356,21 @@ def test_product_shell_owns_month_picker_styles(web_client: TestClient) -> None:
     assert "height: var(--space-9)" in css.text
 
 
-def test_product_shell_self_hosts_consumer_figure_font(web_client: TestClient) -> None:
-    css = web_client.get("/static/web/product/shell.css")
-
+def test_product_shell_self_hosts_consumer_fonts(web_client: TestClient) -> None:
+    page = web_client.get("/web/confirmed?ledger_id=owner")
+    assert page.status_code == 200
+    assert "/static/web/fonts/fonts.css" in page.text
+    css = web_client.get("/static/web/fonts/fonts.css")
     assert css.status_code == 200
-    assert 'font-family: "Ticketbox Figures"' in css.text
-    assert 'url("../fonts/Inter-Regular.woff2")' in css.text
-    assert re.search(
-        r'--font-numeric:\s*"Ticketbox Figures",\s*"Ticketbox Sans",\s*sans-serif',
-        css.text,
-    )
+    assert "font-family: 'Ticketbox Sans'" in css.text
+    assert "font-family: 'Ticketbox Figures'" in css.text
+    sources = re.findall(r"src:\s*url\(([^)]+)\)", css.text)
+    assert sources
+    for source in sources:
+        assert re.fullmatch(r"[A-Za-z0-9-]+\.woff2", source), source
+        font = web_client.get(f"/static/web/fonts/{source}")
+        assert font.status_code == 200, source
+        assert font.content.startswith(b"wOF2"), source
 
 
 def test_primary_mutations_keep_real_csrf_and_occ_contracts(
