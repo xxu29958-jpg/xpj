@@ -108,9 +108,6 @@ private fun BudgetScreenContent(
             item { AppStatusBanner(message = error, tone = MessageTone.Info) }
         }
         item { BudgetReadSource(state.fetchedAt, state.fromCache, state.loading) }
-        if (state.saves.isNotEmpty()) {
-            item { BudgetPendingSaves(state.saves, state.canModify, actions.onRecoverSave) }
-        }
         item {
             BudgetSummarySection(
                 budget = state.budget,
@@ -119,6 +116,9 @@ private fun BudgetScreenContent(
                 currencyDisplay = currencyDisplay,
                 onRetry = actions.onRefresh,
             )
+        }
+        if (state.saves.isNotEmpty()) {
+            item { BudgetPendingSaves(state.saves, state.canModify, actions.onRecoverSave) }
         }
         item {
             BudgetEditorSection(
