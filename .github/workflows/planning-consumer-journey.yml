@@ -19,13 +19,15 @@ jobs:
           import json
           import os
           import pathlib
+          import platform
           import subprocess
           import time
 
           output = pathlib.Path("ios-shortcuts-environment")
           output.mkdir()
           result = {"scope": "environment-only", "source_sha": os.environ["GITHUB_SHA"],
-                    "runner_image": os.environ.get("ImageVersion"), "shortcuts_installed": False,
+                    "runner_image": os.environ.get("ImageVersion"), "host_architecture": platform.machine(),
+                    "shortcuts_installed": False,
                     "shortcuts_launched": False}
 
           def read(*args):
@@ -40,7 +42,7 @@ jobs:
               if not comparison:
                   raise RuntimeError("The iOS 26.4 comparison runtime is unavailable")
               runtime = comparison[0]
-              result["runtime"] = {key: runtime.get(key) for key in ("identifier", "version", "buildversion")}
+              result["runtime"] = {key: runtime.get(key) for key in ("identifier", "version", "buildversion", "bundlePath")}
               devices = json.loads(read("xcrun", "simctl", "list", "devices", "available", "--json"))["devices"]
               phones = [d for d in devices.get(runtime["identifier"], []) if d["name"].startswith("iPhone")]
               if phones:
@@ -169,14 +171,6 @@ jobs:
                      "-derivedDataPath", str(root / "DerivedData"), "-resultBundlePath", str(output / "ui-control.xcresult")]
           with (output / "ui-control.log").open("w") as log:
               completed = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, timeout=600)
-          if completed.returncode:
-              with (output / "shortcuts-system.log").open("w") as log:
-                  try:
-                      subprocess.run(["xcrun", "simctl", "spawn", environment["device_id"], "log", "show", "--last", "5m", "--style", "compact",
-                                      "--predicate", '(process == "Shortcuts" OR process == "shortcutsd") AND (eventMessage CONTAINS[c] "action" OR eventMessage CONTAINS[c] "error" OR eventMessage CONTAINS[c] "catalog")'],
-                                     stdout=log, stderr=subprocess.STDOUT, timeout=40, check=False)
-                  except subprocess.TimeoutExpired:
-                      log.write("\nDiagnostic log collection reached its time limit.\n")
           subprocess.run(["xcrun", "xcresulttool", "export", "attachments", "--path", str(output / "ui-control.xcresult"),
                           "--output-path", str(output / "attachments")], check=True)
           (output / "ui-control-result.json").write_text(json.dumps({"scope": "environment-only", "xctest_exit_code": completed.returncode}, indent=2))
@@ -184,6 +178,53 @@ jobs:
           if completed.returncode:
               print("\n".join((output / "ui-control.log").read_text().splitlines()[-60:]))
           raise SystemExit(completed.returncode)
+          PY
+      - name: Inspect system action metadata and indexing owners
+        if: always()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import pathlib
+          import subprocess
+
+          output = pathlib.Path("ios-shortcuts-environment").resolve()
+          environment = json.loads((output / "environment.json").read_text())
+          device = environment.get("device_id")
+          if not device:
+              raise SystemExit("No booted iPhone was recorded for metadata inspection")
+          prefix = ["xcrun", "simctl", "spawn", device]
+          predicate = ('(subsystem CONTAINS[c] "toolkit" OR subsystem CONTAINS[c] "appintent" '
+                       'OR subsystem CONTAINS[c] "workflow" OR subsystem CONTAINS[c] "shortcuts" '
+                       'OR process CONTAINS[c] "intent" OR process CONTAINS[c] "toolkit") '
+                       'AND NOT subsystem BEGINSWITH "com.apple.dt."')
+          results = {}
+          for name, command in (
+              ("simulator-services.log", prefix + ["launchctl", "list"]),
+              ("action-indexing.log", prefix + ["log", "show", "--last", "10m", "--style", "compact",
+                                               "--info", "--debug", "--predicate", predicate]),
+          ):
+              with (output / name).open("w") as log:
+                  try:
+                      result = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, timeout=60, check=False)
+                      results[name] = {"exit_code": result.returncode}
+                  except subprocess.TimeoutExpired:
+                      results[name] = {"timed_out": True}
+          bundle = environment.get("runtime", {}).get("bundlePath")
+          resources = {}
+          if bundle:
+              frameworks = pathlib.Path(bundle) / "Contents/Resources/RuntimeRoot/System/Library/PrivateFrameworks"
+              for framework in ("WorkflowKit.framework", "ToolKit.framework", "AppIntentsServices.framework"):
+                  path = frameworks / framework
+                  resources[framework] = {"exists": path.exists(), "files": [
+                      {"path": str(file.relative_to(path)), "bytes": file.stat().st_size}
+                      for file in sorted(path.rglob("*")) if file.is_file() and file.suffix in
+                      {".plist", ".json", ".intentdefinition", ".actionsdata"}
+                  ] if path.exists() else []}
+          (output / "action-metadata.json").write_text(json.dumps({
+              "scope": "read-only-environment-diagnostics", "commands": results, "resources": resources,
+          }, indent=2))
+          print(json.dumps({"diagnostic_commands": results, "resource_frameworks": list(resources)}, indent=2))
           PY
       - name: Preserve the observed environment
         if: always()
