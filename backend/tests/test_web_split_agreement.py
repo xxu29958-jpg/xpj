@@ -342,7 +342,8 @@ def test_currency_mismatch_explains_refusal_and_keeps_original_submission(native
 
 
 @pytest.mark.parametrize("scenario", ["preview", "command_replacement", "ack_and_repayment",
-                                      "pending_retained_draft", "replacement_context", "explicit_settlement_and_legacy_submission"])
+                                      "pending_retained_draft", "replacement_context", "explicit_settlement_and_legacy_submission",
+                                      "direction_and_original_recovery"])
 def test_split_original_browser_submission(scenario):
     import shutil
     import subprocess

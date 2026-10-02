@@ -7,6 +7,45 @@ const values = {debt_public_id:target, ledger_id:'ledger', origin_binding:JSON.s
   reason:'商家部分退款，双方重新约定', supersedes_proposal_public_id:''};
 const options = {splitChange:true, fieldNames:Object.keys(values), draftPrefix:'ticketbox:split-change-draft:v1:', values};
 const cases = {
+  async direction_and_original_recovery() {
+    const env = environment(), page = env.page(options);
+    page.fields.settlement_explicit = {name:'settlement_explicit', value:'false'};
+    page.start(); await tick();
+    assert.equal(page.settlement.controls.hidden, false, 'Users must choose a direction without encoding a signed amount');
+    assert.equal(page.settlement.direction.value, 'return');
+    assert.equal(page.settlement.amount.value, '10.00');
+    assert.equal(page.fields.settlement_net_amount_major.value, '-10.00');
+    page.settlement.direction.value = 'pay';
+    page.form.fire('input', {target:page.settlement.direction});
+    assert.equal(page.store.read(fresh).values.settlement_net_amount_major, '10.00');
+    page.settlement.direction.value = 'return';
+    page.form.fire('input', {target:page.settlement.direction});
+    page.settlement.amount.value = '';
+    page.form.fire('input', {target:page.settlement.amount});
+    assert.equal(page.store.read(fresh).values.settlement_net_amount_major, '-', 'An unfinished return keeps its direction');
+    page.window.fire('pagehide'); await tick();
+    const restored = env.page(options);
+    restored.fields.settlement_explicit = {name:'settlement_explicit', value:'false'};
+    restored.start(); await tick();
+    assert.equal(restored.settlement.direction.value, 'return');
+    assert.equal(restored.settlement.amount.value, '');
+    restored.settlement.amount.value = '0012.3400';
+    restored.form.fire('input', {target:restored.settlement.amount});
+    assert.equal(restored.store.read(fresh).values.settlement_net_amount_major, '-0012.3400');
+    assert.equal(restored.store.read(fresh).values.settlement_explicit, 'true');
+    assert.equal(restored.form.fire('submit').defaultPrevented, false);
+    const submitted = {...restored.store.read(fresh).values};
+    restored.window.fire('pagehide'); await tick();
+    const recover = env.page({...options, values:{...values, settlement_net_amount_major:'90.00'}});
+    recover.fields.settlement_explicit = {name:'settlement_explicit', value:'false'};
+    recover.start(); await tick();
+    assert.equal(recover.settlement.direction.value, 'return');
+    assert.equal(recover.settlement.amount.value, '0012.3400');
+    assert.equal(recover.settlement.direction.disabled, true);
+    assert.equal(recover.settlement.amount.readOnly, true);
+    assert.equal(recover.form.fire('submit').defaultPrevented, false);
+    assert.deepEqual({...recover.store.read(fresh).values}, submitted, 'Retry retains the signed amount, both versions and command identity');
+  },
   async explicit_settlement_and_legacy_submission() {
     const env = environment(), page = env.page(options);
     page.fields.settlement_explicit = {name:'settlement_explicit', value:'false'};

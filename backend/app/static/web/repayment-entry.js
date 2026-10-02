@@ -14,7 +14,7 @@
   const submitLabels = {repayment:["记一笔还款", "继续核实这笔还款"],
     "debt-void":voidLabels, "repayment-void":voidLabels,
     "debt-kind":["保存偿还方式", "继续核实原更正"], "repayment-review":["确认处理", "核实原处理"]};
-  function initialize(form) {
+  function initialize(form, settlementField) {
   const surface = form.closest("[data-repayment-container]");
   if (!surface) return;
   const voidCommand = ["debt-void", "repayment-void"].includes(form.dataset.repaymentKind);
@@ -87,6 +87,7 @@
         original.disabled = !locked;
       }
     });
+    settlementField?.sync();
   }
   function showValues(saved) {
     controls.forEach(control => {
@@ -99,6 +100,7 @@
       control.value = value;
     });
     hints.forEach(control => { control.value = saved[control.name] ?? ""; });
+    settlementField?.sync();
     if (splitChange) {
       if (!commandLabels[saved.command]) throw Error("invalid_original_command");
       const base = "/web/debts/" + encodeURIComponent(saved.debt_public_id) + "/split-changes";
@@ -345,7 +347,8 @@
 
   form.addEventListener("input", function (event) {
     if (!held || phase !== "editing") return;
-    if (settlementExplicit && event.target?.name === "settlement_net_amount_major") settlementExplicit.value = "true";
+    const settlementEdited = settlementField?.edit(event.target) || event.target?.name === "settlement_net_amount_major";
+    if (settlementExplicit && settlementEdited) settlementExplicit.value = "true";
     try { persist("editing"); notice("输入已保留，尚未提交。", "editing"); }
     catch (_) { notice("最新输入未能保留。请勿关闭本页，恢复存储后再提交。", "storage-error"); }
   });
@@ -462,5 +465,8 @@
     resume();
   } catch (_) { blocked("当前无法安全保留还款原提交。请保留输入，检查身份和浏览器存储后再试。"); }
   }
-  document.querySelectorAll("[data-repayment-scope]").forEach(initialize);
+  document.querySelectorAll("[data-repayment-scope]").forEach(form => {
+    const settlementField = window.TicketboxSplitSettlement ? window.TicketboxSplitSettlement(form) : null;
+    initialize(form, settlementField);
+  });
 })(window, document);

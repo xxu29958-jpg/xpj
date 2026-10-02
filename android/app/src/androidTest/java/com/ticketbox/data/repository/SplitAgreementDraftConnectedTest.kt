@@ -10,6 +10,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.isToggleable
@@ -96,7 +97,9 @@ class SplitAgreementDraftConnectedTest {
         install(saved, original.publicId)
         compose.waitUntil(10_000) { model.value?.state?.value?.fromCache == true && model.value?.state?.value?.loading == false }
         compose.onNodeWithText("12.00").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("-3.00").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("3.00").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.split_agreement_direction_return)).performScrollTo().assertIsSelected()
+        assertEquals("-3.00", requireNotNull(model.value).state.value.settlementInput)
         compose.onNodeWithText("双方明确返还三元").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText(context.getString(R.string.split_agreement_propose)).performScrollTo().assertIsNotEnabled()
         assertTrue(fixture.stored().isEmpty())
@@ -119,7 +122,8 @@ class SplitAgreementDraftConnectedTest {
         compose.waitUntil(10_000) { model.value?.state?.value?.rows?.size == 1 && model.value?.state?.value?.fromCache == true }
         assertEquals(admitted, fixture.stored().single())
         compose.onNodeWithText("12.00").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("-3.00").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("3.00").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.split_agreement_direction_return)).performScrollTo().assertIsSelected()
         assertFalse(requireNotNull(model.value).state.value.confirmed)
         compose.onNodeWithText(context.getString(R.string.split_agreement_propose)).performScrollTo().assertIsNotEnabled()
         assertTrue(requireNotNull(model.value).state.value.busy)
@@ -129,7 +133,7 @@ class SplitAgreementDraftConnectedTest {
     @Test fun bothLegsKeepTheirOwnRawFormThroughAndroidRegistryRestore() {
         install(null, original.publicId)
         showForm()
-        edit("12.00", "-3.00", "原往来尚未发出")
+        edit("12.00", "3.00", "原往来尚未发出")
         compose.onNodeWithText(context.getString(R.string.split_agreement_open_return_debt)).performScrollTo().performClick()
         compose.waitUntil(10_000) { model.value?.state?.value?.task?.debtPublicId == returned.publicId &&
             model.value?.state?.value?.previewReady == true }
@@ -138,13 +142,17 @@ class SplitAgreementDraftConnectedTest {
         install(saved, returned.publicId)
         compose.waitUntil(10_000) { model.value?.state?.value?.previewReady == true }
         compose.onNodeWithText("13.00").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("-2.00").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("2.00").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.split_agreement_direction_return)).performScrollTo().assertIsSelected()
+        assertEquals("-2.00", requireNotNull(model.value).state.value.settlementInput)
         compose.onNodeWithText("返还入口尚未发出").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText(context.getString(R.string.split_agreement_open_original_debt)).performScrollTo().performClick()
         compose.waitUntil(10_000) { model.value?.state?.value?.task?.debtPublicId == original.publicId &&
             model.value?.state?.value?.previewReady == true }
         compose.onNodeWithText("12.00").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("-3.00").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("3.00").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.split_agreement_direction_pay)).performScrollTo().assertIsSelected()
+        assertEquals("3.00", requireNotNull(model.value).state.value.settlementInput)
         compose.onNodeWithText("原往来尚未发出").performScrollTo().assertIsDisplayed()
         assertTrue(fixture.stored().isEmpty())
         assertEquals(0, fixture.scheduleCalls)
@@ -210,7 +218,8 @@ class SplitAgreementDraftConnectedTest {
         assertEquals(null, requireNotNull(model.value).state.value.agreement)
         assertFalse(requireNotNull(model.value).state.value.previewReady)
         compose.onNodeWithText("12.00").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("-3.00").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("3.00").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.split_agreement_direction_return)).performScrollTo().assertIsSelected()
         compose.onNodeWithText("尚未发出的原稿").performScrollTo().assertIsDisplayed()
         assertTrue(fixture.stored().isEmpty())
     }
@@ -236,7 +245,9 @@ class SplitAgreementDraftConnectedTest {
         compose.waitUntil(10_000) { model.value?.state?.value?.previewReady == true }
         compose.onAllNodes(hasSetTextAction()).assertCountEquals(0)
         compose.onNodeWithText(context.getString(R.string.split_agreement_discussion_title)).performScrollTo().performClick()
-        listOf(share, settlement, reason).forEachIndexed { index, value ->
+        val direction = if (settlement.startsWith("-")) R.string.split_agreement_direction_return else R.string.split_agreement_direction_pay
+        compose.onNodeWithText(context.getString(direction)).performScrollTo().performClick()
+        listOf(share, settlement.removePrefix("-"), reason).forEachIndexed { index, value ->
             compose.onAllNodes(hasSetTextAction())[index].performScrollTo().performTextReplacement(value)
             closeSoftKeyboard()
             compose.waitForIdle()

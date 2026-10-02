@@ -105,8 +105,8 @@ private fun SplitAgreementForm(state: SplitAgreementUiState, model: SplitAgreeme
         agreement?.preview?.cashBasedSettlementNetAmountCents?.takeIf { state.previewReady }?.let {
             Text(stringResource(R.string.split_agreement_cash_reference, splitSettlementLabel(it, display)))
         }
-        AppTextInput(AppTextInputState(stringResource(R.string.split_agreement_settlement_input), state.settlementInput,
-            enabled = state.canModify && !state.busy), AppTextInputActions(onValueChange = { model.editDraft(settlement = it) }))
+        SplitSettlementInput(state.settlementInput, currency, enabled = state.canModify && !state.busy,
+            onValueChange = { model.editDraft(settlement = it) })
         AppTextInput(AppTextInputState(stringResource(R.string.split_agreement_reason_input), state.reason,
             enabled = state.canModify && !state.busy, singleLine = false),
             AppTextInputActions(onValueChange = { model.editDraft(reason = it) }))

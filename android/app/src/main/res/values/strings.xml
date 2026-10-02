@@ -221,7 +221,11 @@
     <string name="split_agreement_preview">预览新份额的结算</string>
     <string name="split_agreement_explicit_settlement_warning">已有免除或特别结算约定：默认保留当前待结算，请双方明确确认。参考值不自动恢复已免除金额。</string>
     <string name="split_agreement_cash_reference">按实际付款计算的参考：%1$s</string>
-    <string name="split_agreement_settlement_input">最终待结算（正数由原接收方付，负数由原发送方返）</string>
+    <string name="split_agreement_settlement_input">最终待结算金额（%1$s）</string>
+    <string name="split_agreement_settlement_direction">结算方向</string>
+    <string name="split_agreement_direction_pay">原承担方付款</string>
+    <string name="split_agreement_direction_return">原垫付方返还</string>
+    <string name="split_agreement_settlement_help">填 0 表示无需结算；此处仅约定结果，不会记录实际付款。</string>
     <string name="split_agreement_reason_input">原因</string>
     <string name="split_agreement_propose">提出新约定</string>
     <string name="split_agreement_replace">提出替代约定</string>
@@ -229,11 +233,11 @@
     <string name="split_agreement_replacement_notice">这次提交会原子替代当前待处理提议。请重新核对份额、已付／已返、免除和最终结算。</string>
     <string name="split_agreement_cancel_replacement">取消替代编辑</string>
     <string name="split_agreement_confirmation">我已核对份额、已付／已返与免除，并确认本次结算方向和金额。</string>
-    <string name="split_agreement_settlement_receiver_pays">原接收方仍需付 %1$s</string>
-    <string name="split_agreement_settlement_sender_returns">原发送方需返 %1$s</string>
+    <string name="split_agreement_settlement_receiver_pays">原承担方仍需付 %1$s</string>
+    <string name="split_agreement_settlement_sender_returns">原垫付方需返 %1$s</string>
     <string name="split_agreement_settlement_clear">无需再付或返</string>
     <string name="split_agreement_share_facts">原份额 %1$s · 当前约定 %2$s</string>
-    <string name="split_agreement_payment_facts">原接收方已付 %1$s · 原发送方已返 %2$s</string>
+    <string name="split_agreement_payment_facts">原承担方已付 %1$s · 原垫付方已返 %2$s</string>
     <string name="split_agreement_forgiveness_facts">原往来已免除 %1$s · 返还已免除 %2$s</string>
     <string name="split_agreement_current_settlement">当前结算</string>
     <string name="split_agreement_private_records_notice">新约定不修改双方私有流水；商家退款与双方实际返款分别核对。</string>

@@ -111,7 +111,7 @@ def role_boundaries(j):
                 reader.goto(f"{j.public_url}/web/debts/{public_id}/split-agreement?ledger_id={j.identity.receiver_ledger}")
                 assert "新约定仅由双方本人提出和处理" in reader.inner_text("main")
                 assert not reader.locator("[data-repayment-submit]").is_visible()
-                assert reader.locator(".product-page-title").inner_text() == "拆账新约定"
+                assert reader.get_by_role("heading", level=1).inner_text() == "拆账新约定"
                 reader.screenshot(path=j.evidence / f"web-relationship-{role}-{public_id}.png", full_page=True)
 
 

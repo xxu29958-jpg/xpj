@@ -9,7 +9,7 @@ from scripts.planning_journey_android import wait_for
 from scripts.relationship_journey_facts import facts, pairing_code, seed_identities
 
 CONFIRM = "我已核对份额、已付／已返与免除，并确认本次结算方向和金额。"
-SETTLEMENT = "最终待结算（正数由原接收方付，负数由原发送方返）"
+SETTLEMENT = "最终待结算金额（CNY）"
 
 
 class RelationshipJourney:
@@ -154,7 +154,7 @@ class RelationshipJourney:
     def propose_web(self, share, settlement, reason, *, receiver=False, returned=False):
         form = self.agreement_form(receiver=receiver, returned=returned)
         form.locator('[name="new_share_amount_major"]').fill(share)
-        form.locator('[name="settlement_net_amount_major"]').fill(settlement)
+        self.fill_settlement(form, settlement)
         form.locator('[name="reason"]').fill(reason)
         form.locator("[data-repayment-preview]").click()
         page = self.receiver if receiver else self.page
@@ -163,6 +163,12 @@ class RelationshipJourney:
         assert form.locator('[name="settlement_net_amount_major"]').input_value() == settlement
         self.submit_web(form, receiver=receiver)
         wait_for(lambda: self.facts()["pending_id"], "The actual split proposal was not committed")
+
+    @staticmethod
+    def fill_settlement(form, settlement):
+        form.locator("[data-split-settlement-direction]").select_option("return" if settlement.startswith("-") else "pay")
+        form.locator("[data-split-settlement-amount]").fill(settlement.removeprefix("-"))
+        assert form.locator('[name="settlement_net_amount_major"]').input_value() == settlement
 
     def submit_web(self, form, *, receiver=False):
         page = self.receiver if receiver else self.page

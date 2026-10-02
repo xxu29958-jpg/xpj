@@ -65,6 +65,7 @@ function environment() {
     const status = element({hidden:true}), submit = element(), panel = element({hidden:options.canCreate === false});
     const replace = options.replacement ? element({hidden:true}) : null, label = element();
     const preview = options.splitChange ? element() : null;
+    const settlement = {raw:element(), controls:element({hidden:true}), direction:element(), amount:element()};
     const finishRejected = options.rejected || ["debt-void", "repayment-void"].includes(options.kind) ? element() : null;
     const finishReview = options.result === "accepted-review" ? element() : null;
     const list = element(), shelf = element({hidden:true, querySelector:() => list});
@@ -79,6 +80,8 @@ function environment() {
       elements:{namedItem:name => fields[name]},
       querySelector:selector => ({'[data-repayment-submit]':submit, '[data-repayment-status]':status,
         '[data-void-finish-rejected]':finishRejected, '[data-void-finish-review]':finishReview, '[data-repayment-replace]':replace, '[data-repayment-preview]':preview,
+        '[data-split-settlement-raw]':settlement.raw, '[data-split-settlement-controls]':settlement.controls,
+        '[data-split-settlement-direction]':settlement.direction, '[data-split-settlement-amount]':settlement.amount,
         'label[for="debt-repay-amount"]':label})[selector] || null});
     const selectors = {'[data-repayment-scope]':form, '[data-repayment-panel]':panel,
       '[data-repayment-shelf]':shelf, '[data-repayment-list]':list,
@@ -92,10 +95,14 @@ function environment() {
     vm.runInNewContext(fs.readFileSync(process.argv[2], 'utf8'), {window});
     const store = window.TicketboxDraftStore.createStore({prefix:draftPrefix, fields:fieldNames,
       validRef:/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i});
-    const start = () => vm.runInNewContext(fs.readFileSync(process.argv[3], 'utf8'), {window, document});
+    const start = () => {
+      if (options.splitChange) vm.runInNewContext(fs.readFileSync(require('node:path').join(
+        require('node:path').dirname(process.argv[3]), 'split-settlement-input.js'), 'utf8'), {window});
+      vm.runInNewContext(fs.readFileSync(process.argv[3], 'utf8'), {window, document});
+    };
     windows.push(window);
     return {window, form, fields, status, submit, panel, shelf, list, ackStatus, store, start, replace, label, preview, finishReview, finishRejected,
-      document, snapshot:() => Object.fromEntries(fieldNames.map(name => [name, fields[name].value]))};
+      document, settlement, snapshot:() => Object.fromEntries(fieldNames.map(name => [name, fields[name].value]))};
   }
   return {entries, faults, requests, occupied, page,
     storageEvent() { windows.forEach(window => window.fire('storage')); }};

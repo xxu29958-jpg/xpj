@@ -3,13 +3,14 @@
 {% block title %}拆账新约定 · 小票夹{% endblock %}
 {% block page_scripts %}
 <script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/split-settlement-input.js?v={{ asset_version }}"></script>
 <script defer src="/static/web/repayment-entry.js?v={{ asset_version }}"></script>
 {% endblock %}
 {% block content %}
 <div data-repayment-container>
 <header class="product-page-header"><div>
   <a class="product-link" href="/web/debts/{{ change.public_id }}?ledger_id={{ selected_ledger_id }}">返回往来详情</a>
-  <h1 class="product-page-title">拆账新约定</h1>
+  <h1 class="page-title">拆账新约定</h1>
   <p class="product-page-summary">先核对已经发生的钱，再共同决定新的承担和待结算金额。</p>
 </div></header>
 {% if change.ack %}
@@ -68,9 +69,20 @@
     <p class="product-feedback">已有免除或另行结算约定。建议保留当前待结算，请明确填写双方本次要接受的结果；不会自动撤回以前的免除。</p>
     {% if agreement.reference_label %}<p class="hint">仅按实际付返款计算的参考：{{ agreement.reference_label }}。此参考不是追讨或返款命令。</p>{% endif %}
     {% endif %}{% endif %}
-    <div class="product-field"><label for="split-settlement">本次最终待结算（{{ change['values'].home_currency_code }}）</label>
+    <div class="product-field" data-split-settlement-raw><label for="split-settlement">本次最终待结算（{{ change['values'].home_currency_code }}）</label>
       <input id="split-settlement" class="product-input" name="settlement_net_amount_major" value="{{ change['values'].settlement_net_amount_major }}" inputmode="decimal" required{% if change['values'].command != 'create' %} readonly{% endif %}>
       <p class="hint">正数＝原承担方还需付；负数＝原垫付方需要返还；0＝两边无待结算。不是本次新增付款或退款金额。</p>
+    </div>
+    <div class="split-settlement-fields" data-split-settlement-controls hidden>
+      <div class="product-field"><label for="split-settlement-direction">结算方向</label>
+        <select id="split-settlement-direction" class="product-input" data-split-settlement-direction>
+          <option value="pay">原承担方付款</option><option value="return">原垫付方返还</option>
+        </select>
+      </div>
+      <div class="product-field"><label for="split-settlement-amount">最终待结算金额（{{ change['values'].home_currency_code }}）</label>
+        <input id="split-settlement-amount" class="product-input" inputmode="decimal" data-split-settlement-amount aria-describedby="split-settlement-help">
+        <p id="split-settlement-help" class="hint">填 0 表示无需结算；此处仅约定结果，不会记录实际付款。</p>
+      </div>
     </div>
     <div class="product-field"><label for="split-reason">为什么改约定</label>
       <textarea id="split-reason" class="product-input" name="reason" maxlength="500" required{% if change['values'].command != 'create' %} readonly{% endif %}>{{ change['values'].reason }}</textarea>
