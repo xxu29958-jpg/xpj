@@ -82,6 +82,27 @@ jobs:
               subprocess.run(["xcrun", "simctl", "io", device_id, "screenshot", str(output / "shortcuts.png")], check=True, capture_output=True)
           except Exception as error:
               result["error"] = str(error)
+              if "device_id" in result:
+                  # This step runs before any upload credential is created or pasted.
+                  # Preserve the actual Photos startup state after the observed launch/import stalls.
+                  predicate = 'process CONTAINS[c] "photo" OR process == "MobileSlideShow" OR eventMessage CONTAINS "com.apple.mobileslideshow"'
+                  diagnostics = {
+                      "photos-startup.png": ["xcrun", "simctl", "io", result["device_id"], "screenshot", str(output / "photos-startup.png")],
+                      "photos-startup.log": ["xcrun", "simctl", "spawn", result["device_id"], "log", "show", "--last", "3m", "--style", "compact", "--predicate", predicate],
+                      "photos-services.log": ["xcrun", "simctl", "spawn", result["device_id"], "launchctl", "list"],
+                  }
+                  result["startup_diagnostics"] = {}
+                  for filename, arguments in diagnostics.items():
+                      try:
+                          captured = subprocess.run(arguments, capture_output=True, text=True, timeout=20)
+                          result["startup_diagnostics"][filename] = {"exit_code": captured.returncode, "stderr": captured.stderr[-1600:]}
+                          if filename.endswith(".log"):
+                              content = captured.stdout
+                              if filename == "photos-services.log":
+                                  content = "\n".join(line for line in content.splitlines() if "photo" in line.lower())
+                              (output / filename).write_text(content[-100000:])
+                      except subprocess.TimeoutExpired:
+                          result["startup_diagnostics"][filename] = {"timed_out": True}
           finally:
               (output / "environment.json").write_text(json.dumps(result, ensure_ascii=False, indent=2))
               print(json.dumps(result, ensure_ascii=False, indent=2))
