@@ -130,6 +130,9 @@ def run_with_upload_backend(command: list[str], *, output: Path, root: Path):
                     admin_account_id=ledger.owner_account_id, default_timezone="Asia/Shanghai", auth=None)
             upload_key = secret.upload_url_path.split("/u/", 1)[1].split("?", 1)[0]
             input_digest, image_input = prepare_image_input(output)
+            device_id = json.loads((output / "environment.json").read_text())["device_id"]
+            subprocess.run(["xcrun", "simctl", "addmedia", device_id, str(output / "input-receipt.jpg")],
+                check=True, capture_output=True, timeout=30)
             # xcodebuild forwards TEST_RUNNER_ variables to the test process without the prefix.
             runner_environment = dict(os.environ, TEST_RUNNER_TICKETBOX_TEST_UPLOAD_URL=BASE_URL + secret.upload_url_path,
                 TEST_RUNNER_TICKETBOX_TEST_IMAGE=image_input)
@@ -174,6 +177,7 @@ def run_with_upload_backend(command: list[str], *, output: Path, root: Path):
                             result["uploads"].append({"public_id": expense.public_id, "ledger_id": expense.tenant_id,
                                 "status": expense.status, "image_hash": expense.image_hash, "original_sha256": original_digest,
                                 "receipt_visible": expense.public_id in observed})
+                    result["photos_share_entry_verified"] = completed.returncode == 0
                     result["actual_upload_verified"] = completed.returncode == 0 and len(rows) == 1 and all(
                         row["ledger_id"] == fixture.ledger_id and row["status"] == "pending" and row["receipt_visible"]
                         and row["image_hash"] == row["original_sha256"] and row["original_sha256"] is not None

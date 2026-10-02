@@ -153,6 +153,47 @@ final class ShortcutProbe: XCTestCase {
         captureText(app, "Actual upload result in Shortcuts")
         captureText(springboard, "System surface after the upload attempt")
         XCTAssertTrue(receiptVisible, "The actual system action must expose the upload receipt")
+        try inspectPhotosShareEntry(app)
+    }
+
+    @MainActor private func inspectPhotosShareEntry(_ app: XCUIApplication) throws {
+        // Public Details UI documented by Apple; the info control was observed in this editor.
+        let info = app.buttons["info"]
+        XCTAssertTrue(info.waitForExistence(timeout: 10))
+        info.tap()
+        captureText(app, "Shortcut sharing details before enabling")
+        let sharing = app.switches["Show in Share Sheet"]
+        XCTAssertTrue(sharing.waitForExistence(timeout: 10))
+        if sharing.value as? String != "1" { sharing.tap() }
+        captureText(app, "Shortcut sharing details enabled")
+        XCTAssertEqual(sharing.value as? String, "1")
+        app.buttons["Done"].tap()
+        app.buttons["Back"].tap()
+        let photos = XCUIApplication(bundleIdentifier: "com.apple.mobileslideshow")
+        photos.launch()
+        captureText(photos, "Photos initial entry with the isolated receipt")
+        for _ in 0..<2 {
+            let introduction = photos.buttons["Continue"]
+            if introduction.exists && introduction.isHittable { introduction.tap() } else { break }
+        }
+        let library = photos.buttons["Library"]
+        if library.exists && library.isHittable { library.tap() }
+        let photo = photos.images.matching(NSPredicate(format: "label BEGINSWITH %@", "Photo,")).firstMatch
+        let photoExists = photo.waitForExistence(timeout: 10)
+        captureText(photos, "Photos library containing the imported receipt")
+        XCTAssertTrue(photoExists)
+        photo.tap()
+        let share = photos.buttons["Share"]
+        XCTAssertTrue(share.waitForExistence(timeout: 10))
+        share.tap()
+        let shortcut = photos.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Get Contents of URL")).firstMatch
+        for _ in 0..<3 {
+            if shortcut.exists && shortcut.isHittable { break }
+            photos.swipeUp()
+        }
+        captureText(photos, "Configured shortcut in the Photos share sheet")
+        XCTAssertTrue(shortcut.exists && shortcut.isHittable)
+        // Entry discovery only: its body still uses Clipboard. Do not run or claim the share-input journey yet.
     }
 
     @MainActor private func captureText(_ app: XCUIApplication, _ name: String) {
