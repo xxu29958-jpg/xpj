@@ -3,9 +3,14 @@ package com.ticketbox.data.repository
 import android.content.Context
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodes
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.lifecycle.viewModelScope
@@ -106,6 +111,10 @@ class SpendingGoalHistoryRoomConnectedTest {
         compose.onNodeWithText("创建时的计划").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("计划定义", substring = true).assertExists()
         compose.onNodeWithText("旧版已有计划").assertDoesNotExist()
+        compose.onAllNodes(hasText("JPY") and hasAnyAncestor(isDialog())).assertCountEquals(4)
+        compose.onAllNodes(hasText("¥1,200") and hasAnyAncestor(isDialog())).assertCountEquals(4)
+        com.ticketbox.ui.saveConsumerArtPreview("goal-history-original-yen", requireNotNull(
+            androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
         assertEquals(listOf(null, "3"), historyRequests().map { it.queryParameter("before_version") })
         assertEquals(4L, current.value?.state?.value?.goal?.rowVersion)
     }

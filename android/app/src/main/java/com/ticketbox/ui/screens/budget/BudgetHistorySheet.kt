@@ -1,8 +1,5 @@
 package com.ticketbox.ui.screens.budget
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -14,10 +11,11 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.BudgetRevision
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.components.AppBusyGuardedSheet
+import com.ticketbox.ui.components.AppHistoryRecord
 import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.components.displayDateTime
-import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.BudgetHistoryState
 
 @Composable
@@ -50,14 +48,13 @@ fun BudgetHistorySheet(state: BudgetHistoryState, onRetry: () -> Unit, onMore: (
 @Composable
 private fun BudgetHistoryEntry(entry: BudgetRevision) {
     val snapshot = entry.snapshot
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        HorizontalDivider()
-        Text(stringResource(historyTitle(entry.changeKind)), style = MaterialTheme.typography.titleMedium)
-        Text(displayDateTime(entry.recordedAt), style = MaterialTheme.typography.bodySmall)
-        snapshot.homeCurrencyCode?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+    AppHistoryRecord(title = stringResource(historyTitle(entry.changeKind)), recordedAt = displayDateTime(entry.recordedAt)) {
+        Text(stringResource(R.string.budget_history_total, historyAmount(snapshot.totalAmountCents, snapshot.homeCurrencyCode)),
+            style = MaterialTheme.typography.titleMedium.tabularNum())
+        snapshot.homeCurrencyCode?.let { Text(it, style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant) }
         if (entry.changeKind == "baseline") Text(stringResource(R.string.budget_history_baseline_note))
         if (snapshot.archived) Text(stringResource(R.string.budget_history_archived))
-        Text(stringResource(R.string.budget_history_total, historyAmount(snapshot.totalAmountCents, snapshot.homeCurrencyCode)))
         Text(stringResource(R.string.budget_history_rollover, historyAmount(snapshot.rolloverAmountCents, snapshot.homeCurrencyCode)))
         Text(stringResource(R.string.budget_history_reserved, historyAmount(snapshot.nonMonthlyAmountCents, snapshot.homeCurrencyCode)))
         Text(stringResource(R.string.budget_history_excluded, snapshot.excludedCategories.joinToString("、")

@@ -1,8 +1,5 @@
 package com.ticketbox.ui.screens.recurring
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -12,9 +9,10 @@ import com.ticketbox.R
 import com.ticketbox.data.remote.dto.RecurringDefinitionDto
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppBusyGuardedSheet
+import com.ticketbox.ui.components.AppHistoryRecord
 import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.components.displayDateTime
-import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.tabularNum
 import com.ticketbox.viewmodel.RecurringHistoryState
 
 @Composable
@@ -25,12 +23,11 @@ internal fun RecurringHistorySheet(state: RecurringHistoryState, retry: () -> Un
             if (state.fromCache) Text(stringResource(R.string.recurring_history_read_cached,
                 displayDateTime(state.fetchedAt)))
             state.items.forEach { entry ->
-                Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-                    HorizontalDivider()
-                    Text(stringResource(R.string.recurring_history_version, entry.rowVersion,
-                        stringResource(recurringHistoryKind(entry.changeKind))), style = MaterialTheme.typography.bodySmall)
-                    Text(stringResource(R.string.recurring_history_saved_at, displayDateTime(entry.recordedAt)),
-                        style = MaterialTheme.typography.bodySmall)
+                AppHistoryRecord(
+                    title = stringResource(R.string.recurring_history_version, entry.rowVersion,
+                        stringResource(recurringHistoryKind(entry.changeKind))),
+                    recordedAt = stringResource(R.string.recurring_history_saved_at, displayDateTime(entry.recordedAt)),
+                ) {
                     if (entry.changeKind == "baseline") Text(stringResource(R.string.budget_history_baseline_note))
                     RecurringDefinitionContent(entry.snapshot)
                 }
@@ -53,7 +50,8 @@ internal fun RecurringHistorySheet(state: RecurringHistoryState, retry: () -> Un
 internal fun RecurringDefinitionContent(plan: RecurringDefinitionDto) {
     Text(plan.merchant, style = MaterialTheme.typography.titleMedium)
     Text(stringResource(R.string.recurring_history_monthly_amount,
-        recurringRecordedAmountText(plan.baselineAmountCents, plan.homeCurrencyCode)))
+        recurringRecordedAmountText(plan.baselineAmountCents, plan.homeCurrencyCode)),
+        style = MaterialTheme.typography.titleMedium.tabularNum())
     Text(stringResource(R.string.recurring_history_anchor,
         plan.nextExpectedDate?.let(::recurringDisplayDate) ?: stringResource(R.string.occurrence_no_reminder)))
     Text(stringResource(when (plan.status) {
