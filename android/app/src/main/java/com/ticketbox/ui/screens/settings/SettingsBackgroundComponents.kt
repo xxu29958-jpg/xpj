@@ -91,7 +91,7 @@ import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppPageScrollableColumn
 import com.ticketbox.ui.components.AppSwitch
-import com.ticketbox.ui.components.QuietOutlinedButton
+import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.SettingsEntryCard
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount

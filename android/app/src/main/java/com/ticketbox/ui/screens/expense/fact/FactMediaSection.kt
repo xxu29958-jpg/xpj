@@ -13,7 +13,7 @@ import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppAsyncImage
-import com.ticketbox.ui.components.QuietOutlinedButton
+import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.SkeletonBlock
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.ExpenseDetailDataLoadState
@@ -84,7 +84,7 @@ internal fun FactMediaSection(
 private fun FactOriginalImageAction(state: ExpenseFactUiState, onLoadFullImage: () -> Unit) {
     val expense = state.expense ?: return
     if (!expense.hasImage || expense.imageDeletedAt != null || state.fullImage != null) return
-    QuietOutlinedButton(
+    AppSecondaryButton(
         text = if (state.imageLoading) {
             stringResource(R.string.expense_edit_large_image_loading)
         } else {

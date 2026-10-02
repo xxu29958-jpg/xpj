@@ -29,7 +29,7 @@ import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppAdaptiveContentActionRow
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppStatusBanner
-import com.ticketbox.ui.components.QuietOutlinedButton
+import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.LedgerListLoadState
@@ -143,7 +143,7 @@ private fun LedgerListSection(
                 activeLedgerId = activeLedgerId,
                 onSwitch = onSwitch,
             )
-            QuietOutlinedButton(
+            AppSecondaryButton(
                 text = if (state.loading) {
                     stringResource(R.string.ledger_switcher_refresh_loading)
                 } else {
@@ -221,7 +221,7 @@ private fun LedgerRow(
                 LedgerRowContent(ledger = ledger, isActive = false)
             },
         ) { actionModifier ->
-            QuietOutlinedButton(
+            AppSecondaryButton(
                 text = stringResource(R.string.ledger_switcher_row_switch_button),
                 modifier = actionModifier,
                 enabled = !loading,

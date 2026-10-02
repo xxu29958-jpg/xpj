@@ -44,7 +44,7 @@ import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
-import com.ticketbox.ui.components.QuietOutlinedButton
+import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.tabularNum
@@ -289,7 +289,7 @@ private fun DebtActionButtons(onAction: (DebtAction) -> Unit, amountActionsEnabl
                         icon = Icons.Filled.Check,
                         onClick = { onAction(DebtAction.Repayment) },
                     )
-                    QuietOutlinedButton(
+                    AppSecondaryButton(
                         text = stringResource(R.string.debt_action_adjustment_title),
                         onClick = { onAction(DebtAction.Adjustment) },
                     )
@@ -323,7 +323,7 @@ private fun DebtActionButtonsStacked(onAction: (DebtAction) -> Unit, amountActio
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
             ) {
-                QuietOutlinedButton(
+                AppSecondaryButton(
                     text = stringResource(R.string.debt_action_adjustment_title),
                     modifier = Modifier.weight(1f),
                     onClick = { onAction(DebtAction.Adjustment) },

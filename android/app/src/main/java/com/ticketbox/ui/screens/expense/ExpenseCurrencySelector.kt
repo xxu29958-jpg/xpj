@@ -21,7 +21,7 @@ import com.ticketbox.domain.model.FxContract
 import com.ticketbox.ui.components.AppCompactChips
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppFilterChipOptions
-import com.ticketbox.ui.components.QuietOutlinedButton
+import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 
@@ -81,7 +81,7 @@ private fun CurrencySummaryRow(
                 fontWeight = AppTextHierarchy.body.weight,
             )
         }
-        QuietOutlinedButton(
+        AppSecondaryButton(
             text = if (expanded) {
                 stringResource(R.string.expense_edit_currency_collapse_button)
             } else {

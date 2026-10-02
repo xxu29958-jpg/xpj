@@ -23,7 +23,7 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppStatusBanner
-import com.ticketbox.ui.components.QuietOutlinedButton
+import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.displayDateTime
 import com.ticketbox.ui.components.ledgerRoleLabelText
 import com.ticketbox.ui.design.AppAlpha
@@ -161,7 +161,7 @@ private fun JoinInvitationForm(
                 actions = actions,
             )
             if (state.canContinueInBrowser) {
-                QuietOutlinedButton(
+                AppSecondaryButton(
                     text = stringResource(R.string.join_family_ledger_continue_in_browser),
                     modifier = Modifier.fillMaxWidth(),
                     onClick = actions.onContinueInBrowser,

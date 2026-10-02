@@ -172,7 +172,7 @@ private fun SheetSecondaryAction(
     action: AppAction,
     modifier: Modifier,
 ) {
-    QuietOutlinedButton(
+    AppSecondaryButton(
         text = action.text,
         modifier = modifier,
         enabled = action.enabled,

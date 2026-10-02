@@ -16,7 +16,7 @@ import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppAdaptiveContentActionRow
 import com.ticketbox.ui.components.AppCompactChips
-import com.ticketbox.ui.components.QuietOutlinedButton
+import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.design.AppSpacing
 
 internal const val TAG_TAGS_FIELD = "expense-edit-tags-field"
@@ -139,7 +139,7 @@ private fun ExpenseEditMoreHeader(
             }
         },
         action = { actionModifier ->
-            QuietOutlinedButton(
+            AppSecondaryButton(
                 text = if (moreExpanded) {
                     stringResource(R.string.expense_edit_more_collapse_button)
                 } else {
@@ -256,7 +256,7 @@ private fun ExpenseEditScoreChipRow(
                 style = MaterialTheme.typography.labelMedium,
             )
             if (model.enabled && modified) {
-                QuietOutlinedButton(
+                AppSecondaryButton(
                     text = stringResource(R.string.expense_edit_undo_change_button),
                     onClick = onUndo,
                 )
@@ -287,7 +287,7 @@ private fun ExpenseEditMoreOcrActions(
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
-        QuietOutlinedButton(
+        AppSecondaryButton(
             text = if (state.rawTextExpanded) {
                 stringResource(R.string.expense_edit_more_raw_text_collapse_button)
             } else {
@@ -296,7 +296,7 @@ private fun ExpenseEditMoreOcrActions(
             onClick = actions.onToggleRawText,
         )
         if (!state.readOnly && state.canRecognize) {
-            QuietOutlinedButton(
+            AppSecondaryButton(
                 text = if (state.ocrRunning) {
                     stringResource(R.string.expense_edit_more_recognize_running_button)
                 } else {
@@ -308,7 +308,7 @@ private fun ExpenseEditMoreOcrActions(
         }
     }
     if (!state.readOnly && state.canRecognize) {
-        QuietOutlinedButton(
+        AppSecondaryButton(
             text = stringResource(R.string.expense_edit_more_recognize_paste_button),
             modifier = Modifier.fillMaxWidth(),
             enabled = !state.ocrRunning && !state.saving,

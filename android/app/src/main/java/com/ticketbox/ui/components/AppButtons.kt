@@ -13,14 +13,11 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.defaultMinSize
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ButtonDefaults
@@ -40,13 +37,11 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.ticketbox.ui.design.AppIconSize
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalThemeVisuals
 
 private const val ControlBorderIdleAlpha = 0.46f
@@ -82,7 +77,7 @@ fun AppPrimaryButton(
     )
     Box(
         modifier = modifier
-            .height(AppSpacing.controlMinHeight)
+            .heightIn(min = AppSpacing.controlMinHeight)
             .clip(shape)
             .background(visuals.primary)
             .border(
@@ -94,6 +89,7 @@ fun AppPrimaryButton(
         contentAlignment = Alignment.Center,
     ) {
         Row(
+            modifier = Modifier.padding(horizontal = AppSpacing.compactGap, vertical = AppSpacing.smallGap),
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -106,10 +102,8 @@ fun AppPrimaryButton(
             Text(
                 text = text,
                 color = contentColor,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = AppTextHierarchy.heading.weight,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.labelLarge,
+                textAlign = TextAlign.Center,
             )
         }
     }
@@ -166,41 +160,6 @@ fun AppBackButton(
                 modifier = Modifier.size(AppIconSize.standard),
             )
         }
-    }
-}
-
-@Composable
-fun QuietOutlinedButton(
-    text: String,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    leadingIcon: ImageVector? = null,
-    onClick: () -> Unit,
-) {
-    AppOutlinedButton(
-        modifier = modifier.defaultMinSize(minHeight = AppSpacing.controlMinHeight),
-        options = AppOutlinedButtonOptions(
-            enabled = enabled,
-            contentPadding = PaddingValues(
-                horizontal = AppSpacing.compactGap,
-                vertical = AppSpacing.miniGap,
-            ),
-        ),
-        onClick = onClick,
-    ) {
-        leadingIcon?.let {
-            Icon(it, contentDescription = null, modifier = Modifier.size(AppIconSize.compact))
-            Box(modifier = Modifier.width(AppSpacing.smallGap))
-        }
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelLarge,
-            autoSize = TextAutoSize.StepBased(minFontSize = 11.sp, maxFontSize = 14.sp, stepSize = 1.sp),
-            fontWeight = AppTextHierarchy.heading.weight,
-            maxLines = 1,
-            softWrap = false,
-            overflow = TextOverflow.Ellipsis,
-        )
     }
 }
 

@@ -35,7 +35,7 @@ import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
-import com.ticketbox.ui.components.QuietOutlinedButton
+import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.expense.ExpenseEditCategoryField
 
@@ -125,7 +125,7 @@ private fun LedgerSelectionActions(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         val buttonModifier = if (stacked) Modifier.weight(1f) else Modifier
-        QuietOutlinedButton(
+        AppSecondaryButton(
             text = stringResource(R.string.ledger_selection_select_all),
             enabled = !state.applying,
             modifier = buttonModifier,

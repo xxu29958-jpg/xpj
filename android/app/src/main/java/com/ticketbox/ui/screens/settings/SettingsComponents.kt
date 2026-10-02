@@ -90,7 +90,7 @@ import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryPageSlots
 import com.ticketbox.ui.components.AppSecondaryScrollableColumn
-import com.ticketbox.ui.components.QuietOutlinedButton
+import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
@@ -228,7 +228,7 @@ internal fun BackgroundActionButton(
     leadingIcon: ImageVector? = null,
     onClick: () -> Unit,
 ) {
-    QuietOutlinedButton(
+    AppSecondaryButton(
         text = text,
         modifier = modifier,
         enabled = enabled,

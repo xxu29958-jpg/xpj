@@ -29,7 +29,7 @@ import com.ticketbox.ui.components.AppSectionGroup
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
-import com.ticketbox.ui.components.QuietOutlinedButton
+import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.tabularNum
@@ -72,7 +72,7 @@ private fun SplitAgreementDiscussion(state: SplitAgreementUiState, model: SplitA
     if (agreement?.viewerIsParty != true && !(agreement == null && state.hasDraft)) return
     var editorRequested by remember(state.task) { mutableStateOf(false) }
     if (!editorRequested && !state.hasDraft && agreement?.pendingProposal == null) {
-        QuietOutlinedButton(text = stringResource(R.string.split_agreement_discussion_title),
+        AppSecondaryButton(text = stringResource(R.string.split_agreement_discussion_title),
             onClick = { editorRequested = true }, enabled = state.canModify && !state.busy)
         return
     }
@@ -96,7 +96,7 @@ private fun SplitAgreementForm(state: SplitAgreementUiState, model: SplitAgreeme
     AppTextInput(AppTextInputState(stringResource(R.string.split_agreement_share_input, currency),
         state.shareInput, enabled = state.canModify && !state.busy),
         AppTextInputActions(onValueChange = { model.editDraft(share = it) }))
-    QuietOutlinedButton(text = stringResource(R.string.split_agreement_preview),
+    AppSecondaryButton(text = stringResource(R.string.split_agreement_preview),
         onClick = model::refresh, enabled = !state.busy && !state.loading)
     if (state.previewReady || state.hasDraft) {
         if (state.previewReady && agreement?.preview?.requiresExplicitSettlement == true) {
@@ -178,7 +178,7 @@ private fun SplitAgreementFacts(state: SplitAgreementUiState, display: CurrencyD
         Text(stringResource(R.string.split_agreement_pending_repayments))
         agreement.pendingRepaymentDebtPublicIds.forEach { id ->
             if (id == state.task?.debtPublicId) Text(stringResource(R.string.split_agreement_current_debt_pending))
-            else QuietOutlinedButton(text = stringResource(R.string.split_agreement_process_declaration,
+            else AppSecondaryButton(text = stringResource(R.string.split_agreement_process_declaration,
                 stringResource(if (id == agreement.originalDebt.publicId) {
                     R.string.split_agreement_original_debt
                 } else {
@@ -205,7 +205,7 @@ private fun SplitAgreementProposal(state: SplitAgreementUiState, model: SplitAgr
         if (state.replacingProposalPublicId == proposal.publicId) {
             Text(stringResource(R.string.split_agreement_replacement_notice))
             SplitAgreementForm(state, model, display)
-            QuietOutlinedButton(text = stringResource(R.string.split_agreement_cancel_replacement),
+            AppSecondaryButton(text = stringResource(R.string.split_agreement_cancel_replacement),
                 onClick = model::cancelReplacement, enabled = state.canModify && !state.busy)
         } else {
             if (!proposal.proposedByYou) {
@@ -216,13 +216,13 @@ private fun SplitAgreementProposal(state: SplitAgreementUiState, model: SplitAgr
                     enabled = state.commandsEnabled && state.previewReady && state.confirmed &&
                         agreement.pendingRepaymentDebtPublicIds.isEmpty())
             }
-            QuietOutlinedButton(text = stringResource(if (proposal.proposedByYou) {
+            AppSecondaryButton(text = stringResource(if (proposal.proposedByYou) {
                 R.string.split_agreement_withdraw
             } else {
                 R.string.split_agreement_reject
             }),
                 onClick = { model.resolve(false) }, enabled = state.commandsEnabled)
-            QuietOutlinedButton(text = stringResource(R.string.split_agreement_replace),
+            AppSecondaryButton(text = stringResource(R.string.split_agreement_replace),
                 onClick = model::beginReplacement, enabled = state.commandsEnabled && agreement.viewerIsParty)
         }
     } ?: SplitAgreementForm(state, model, display)
@@ -259,7 +259,7 @@ private fun SplitAgreementSubmissions(state: SplitAgreementUiState, model: Split
                     onClick = { model.recover(row, false) }, enabled = state.canModify)
             }
             if (row.status in setOf(PendingMutationStatus.Failed, PendingMutationStatus.Conflict)) {
-                QuietOutlinedButton(text = stringResource(R.string.split_agreement_end_submission),
+                AppSecondaryButton(text = stringResource(R.string.split_agreement_end_submission),
                     modifier = Modifier.align(Alignment.End),
                     onClick = { model.recover(row, true) })
             }
