@@ -230,5 +230,5 @@ def test_web_overview_first_day_shows_entry_links_until_first_expense(
     after = web_client.get("/web/overview?ledger_id=owner")
     assert after.status_code == 200
     after_body = after.text
-    assert "1 笔待处理" in after_body
+    assert '<a href="/web/pending?ledger_id=owner">1 笔待整理</a>' in after_body
     assert "先录入第一笔流水" not in after_body
