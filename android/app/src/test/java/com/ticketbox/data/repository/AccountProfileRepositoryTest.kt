@@ -42,6 +42,19 @@ class AccountProfileRepositoryTest {
     }
 
     @Test
+    fun nameReplyPreservesARoleProjectionThatChangedWhileTheRequestWasPending() = runTest {
+        val h = Harness()
+        h.beforeReply = {
+            val current = requireNotNull(h.session.sessionStore.currentSession())
+            h.session.sessionStore.replaceForFixture(current.copy(identity = current.identity.copy(role = "member")))
+        }
+        h.repository.rename(requireNotNull(h.repository.currentBinding()), "新名称", "我").getOrThrow()
+        val current = requireNotNull(h.session.sessionStore.currentSession())
+        assertEquals("member", current.identity.role)
+        assertEquals("新名称", current.identity.accountName)
+    }
+
+    @Test
     fun offlineFailureKeepsDraftAndOnlyAnAcknowledgedRetryShowsSaved() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {

@@ -40,7 +40,10 @@ class AccountProfileRepository(
         val bound = guard.bindExact(binding)
         val dto = send(bound)
         require(dto.accountPublicId == bound.outboxBinding.owner?.accountPublicId) { "账号已变化，请重新打开账号设置。" }
-        if (!coordinator.refreshAccountNameIfCurrent(snapshot, dto.accountPublicId, dto.displayName)) {
+        val applied = coordinator.applyTransitionIfCurrent(snapshot) { current ->
+            LedgerSessionTransition(LocalSessionChange.RefreshProjection, current.copy(accountName = dto.displayName))
+        }
+        if (!applied) {
             throw RepositoryException("登录状态已变化，请重新打开账号设置。")
         }
         AccountProfile(dto.accountPublicId, dto.displayName)

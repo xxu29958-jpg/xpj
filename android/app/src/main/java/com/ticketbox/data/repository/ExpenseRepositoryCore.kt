@@ -194,7 +194,7 @@ internal class ExpenseRepositoryCore(
         val devicePublicId = check.devicePublicId.requireSessionProtocolId("设备身份")
         val applied = sessionCoordinator.applyTransitionIfCurrent(
             expectedSnapshot = expectedSnapshot,
-            transition = LedgerSessionTransition(
+            transition = { current -> LedgerSessionTransition(
                 change = LocalSessionChange.RefreshProjection,
                 serverId = serverId,
                 dataGeneration = dataGeneration,
@@ -206,9 +206,9 @@ internal class ExpenseRepositoryCore(
                     ledgerName = check.ledgerName,
                     deviceName = check.deviceName,
                     role = check.role,
-                    boundAt = apiProvider.currentSession()?.identity?.boundAt ?: Instant.now().toString(),
+                    boundAt = current.boundAt,
                 ),
-            ),
+            ) },
         )
         if (!applied) throw RepositoryException(LedgerRequestGuard.LEDGER_CHANGED_MESSAGE)
     }
@@ -224,19 +224,19 @@ internal class ExpenseRepositoryCore(
         if (settings.ledgerId != null && settings.ledgerId != expected) return
         sessionCoordinator.applyTransitionIfCurrent(
             expectedSnapshot = expectedSnapshot,
-            transition = LedgerSessionTransition(
+            transition = { current -> LedgerSessionTransition(
                 change = LocalSessionChange.RefreshProjection,
                 identity = LedgerSessionIdentity(
-                    accountPublicId = apiProvider.currentSession()?.identity?.accountPublicId,
-                    devicePublicId = apiProvider.currentSession()?.identity?.devicePublicId,
+                    accountPublicId = current.accountPublicId,
+                    devicePublicId = current.devicePublicId,
                     accountName = settings.accountName,
                     ledgerId = ledgerId,
                     ledgerName = settings.ledgerName,
                     deviceName = settings.deviceName,
                     role = settings.role,
-                    boundAt = apiProvider.currentSession()?.identity?.boundAt ?: Instant.now().toString(),
+                    boundAt = current.boundAt,
                 ),
-            ),
+            ) },
         )
     }
 

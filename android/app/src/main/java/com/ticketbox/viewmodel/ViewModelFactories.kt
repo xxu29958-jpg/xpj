@@ -357,11 +357,11 @@ fun familyMembersViewModelFactory(
     }
 }
 
-@Suppress("UNCHECKED_CAST")
 fun accountProfileViewModelFactory(
     repository: com.ticketbox.data.repository.AccountProfileActions,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
-    override fun <T : ViewModel> create(modelClass: Class<T>): T = AccountProfileViewModel(repository) as T
+    override fun <T : ViewModel> create(modelClass: Class<T>): T =
+        requireNotNull(modelClass.cast(AccountProfileViewModel(repository)))
 }
 
 @Suppress("UNCHECKED_CAST")

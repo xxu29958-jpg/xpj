@@ -151,23 +151,6 @@ class LocalLedgerSessionCoordinator(
 
     fun currentSnapshot(): LedgerSessionSnapshot = sessionStore.currentSession().toSnapshot()
 
-    internal suspend fun refreshAccountNameIfCurrent(
-        expectedSnapshot: LedgerSessionSnapshot,
-        accountPublicId: String,
-        name: String,
-    ): Boolean = mutex.withLock {
-        if (!currentSnapshot().hasSameLogicalBinding(expectedSnapshot)) return@withLock false
-        val current = sessionStore.currentSession() ?: return@withLock false
-        if (current.identity.accountPublicId != accountPublicId) return@withLock false
-        // Copy the other current labels under the existing session lock. A name
-        // refresh cannot restore stale roles, credentials or ledger selections.
-        applyTransitionLocked(
-            LedgerSessionTransition(LocalSessionChange.RefreshProjection,
-                current.identity.toLedgerSessionIdentity().copy(accountName = name)),
-            clearOutbox = false,
-        )
-    }
-
     suspend fun applyTransition(transition: LedgerSessionTransition) {
         mutex.withLock {
             check(applyTransitionLocked(transition = transition, clearOutbox = false)) {
@@ -178,10 +161,13 @@ class LocalLedgerSessionCoordinator(
 
     suspend fun applyTransitionIfCurrent(
         expectedSnapshot: LedgerSessionSnapshot,
-        transition: LedgerSessionTransition,
+        transition: (LedgerSessionIdentity) -> LedgerSessionTransition,
     ): Boolean = mutex.withLock {
         if (!currentSnapshot().hasSameLogicalBinding(expectedSnapshot)) return@withLock false
-        applyTransitionLocked(transition = transition, clearOutbox = false)
+        val current = sessionStore.currentSession() ?: return@withLock false
+        // Resolve field updates against the current identity while holding the
+        // same lock as persistence; a name edit must not restore an older role.
+        applyTransitionLocked(transition = transition(current.identity.toLedgerSessionIdentity()), clearOutbox = false)
     }
 
     internal suspend fun clearSession() {
