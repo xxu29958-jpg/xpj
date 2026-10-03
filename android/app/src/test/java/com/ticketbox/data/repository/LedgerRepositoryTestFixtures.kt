@@ -7,27 +7,6 @@ import com.ticketbox.data.local.PersistedLedgerIdentity
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
-import com.ticketbox.data.remote.dto.AuthCheckDto
-import com.ticketbox.data.remote.dto.BudgetMonthlyDto
-import com.ticketbox.data.remote.dto.BudgetMonthlyUpdateRequestDto
-import com.ticketbox.data.remote.dto.CategoriesDto
-import com.ticketbox.data.remote.dto.CategoryRuleDto
-import com.ticketbox.data.remote.dto.CategoryRuleRequest
-import com.ticketbox.data.remote.dto.DashboardCardsResponseDto
-import com.ticketbox.data.remote.dto.DashboardCardsUpdateRequestDto
-import com.ticketbox.data.remote.dto.ExpenseDto
-import com.ticketbox.data.remote.dto.ExpenseFactBundleDto
-import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
-import com.ticketbox.data.remote.dto.ExpenseItemsResponseDto
-import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
-import com.ticketbox.data.remote.dto.ExpenseSplitsResponseDto
-import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
-import com.ticketbox.data.remote.dto.ExpenseOffsetCreateRequestDto
-import com.ticketbox.data.remote.dto.ExpenseOffsetVoidRequestDto
-import com.ticketbox.data.remote.dto.GoalCreateRequestDto
-import com.ticketbox.data.remote.dto.GoalDto
-import com.ticketbox.data.remote.dto.GoalListResponseDto
-import com.ticketbox.data.remote.dto.GoalUpdateRequestDto
 import com.ticketbox.data.remote.dto.InvitationAcceptRequestDto
 import com.ticketbox.data.remote.dto.InvitationAcceptResponseDto
 import com.ticketbox.data.remote.dto.InvitationPreviewRequestDto
@@ -40,37 +19,14 @@ import com.ticketbox.data.remote.dto.LedgerMemberDto
 import com.ticketbox.data.remote.dto.LedgerMemberListResponseDto
 import com.ticketbox.data.remote.dto.LedgerMemberRoleUpdateRequestDto
 import com.ticketbox.data.remote.dto.LedgerSwitchResponseDto
-import com.ticketbox.data.remote.dto.LifestyleStatsDto
-import com.ticketbox.data.remote.dto.MerchantAliasDto
-import com.ticketbox.data.remote.dto.MerchantAliasListDto
-import com.ticketbox.data.remote.dto.MerchantAliasRequest
-import com.ticketbox.data.remote.dto.MonthlyStatsDto
-import com.ticketbox.data.remote.dto.MonthsDto
 import com.ticketbox.data.remote.dto.OwnerTransferResponseDto
-import com.ticketbox.data.remote.dto.PaginatedExpensesDto
-import com.ticketbox.data.remote.dto.PairRequestDto
-import com.ticketbox.data.remote.dto.PairResponseDto
-import com.ticketbox.data.remote.dto.RecurringCandidateConfirmRequestDto
 import com.ticketbox.data.remote.dto.RecurringItemDto
-import com.ticketbox.data.remote.dto.RecurringItemListResponseDto
-import com.ticketbox.data.remote.dto.RefreshSessionResponseDto
-import com.ticketbox.data.remote.dto.ReportsOverviewDto
-import com.ticketbox.data.remote.dto.RuntimeCompatibilityDto
-import com.ticketbox.data.remote.dto.RuleApplicationListDto
-import com.ticketbox.data.remote.dto.RuleApplicationRollbackDto
-import com.ticketbox.data.remote.dto.RuleApplyConfirmedRequestDto
-import com.ticketbox.data.remote.dto.RuleApplyConfirmedResponseDto
-import com.ticketbox.data.remote.dto.ServerSettingsDto
-import com.ticketbox.data.remote.dto.StatusDto
-import com.ticketbox.data.remote.dto.TagsDto
 import com.ticketbox.security.LocalSessionIdentity
-import com.ticketbox.data.remote.dto.UploadResponseDto
 import com.ticketbox.domain.model.BackgroundSettings
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import okhttp3.MultipartBody
 import okhttp3.ResponseBody
-import retrofit2.Response
 
 internal class LedgerStubApiFactory(
     private val service: ApiService,
@@ -118,9 +74,15 @@ internal data class LedgerStubApiState(
     var createInvitationError: Throwable? = null,
 )
 
+// Keep only configured ledger behavior here; every other API call fails immediately.
+private val unsupportedLedgerApi = java.lang.reflect.Proxy.newProxyInstance(
+    ApiService::class.java.classLoader,
+    arrayOf(ApiService::class.java),
+) { _, _, _ -> error("Unexpected API call") } as ApiService
+
 internal class StubApi(
     private val state: LedgerStubApiState = LedgerStubApiState(),
-) : ApiService {
+) : ApiService by unsupportedLedgerApi {
     override suspend fun portableExportLedgers(): LedgerListResponseDto = error("Portable export not configured")
     override fun portableExport(ledgerId: String, download: com.ticketbox.data.remote.PortableDownloadRequest): retrofit2.Call<ResponseBody> =
         error("Portable export not configured")
@@ -301,405 +263,11 @@ internal class StubApi(
         }
     }
 
-    override suspend fun pairDevice(request: PairRequestDto): PairResponseDto = ledgerUnsupported()
-    override suspend fun refreshSession(
-        request: com.ticketbox.data.remote.dto.RefreshSessionRequestDto,
-    ): RefreshSessionResponseDto = ledgerUnsupported()
-    override suspend fun checkAuth(): AuthCheckDto = ledgerUnsupported()
-    override suspend fun runtimeCompatibility(): RuntimeCompatibilityDto = ledgerUnsupported()
-    override suspend fun privateStatus(): com.ticketbox.data.remote.dto.StatusPrivateDto = ledgerUnsupported()
-    override suspend fun pendingExpenses(): List<ExpenseDto> = ledgerUnsupported()
-    override suspend fun confirmedExpenses(
-        query: Map<String, String>,
-    ): PaginatedExpensesDto = ledgerUnsupported()
-    override suspend fun categories(): CategoriesDto = ledgerUnsupported()
-    override suspend fun categoryPreferences(): com.ticketbox.data.remote.dto.CategoryPreferenceListResponseDto =
-        ledgerUnsupported()
-    override suspend fun deleteCategoryPreference(
-        publicId: String,
-        request: com.ticketbox.data.remote.dto.CategoryPreferenceTokenRequestDto,
-    ): com.ticketbox.data.remote.dto.CategoryPreferenceDto = ledgerUnsupported()
-    override suspend fun tags(): TagsDto = ledgerUnsupported()
-    override suspend fun listManagedTags(): com.ticketbox.data.remote.dto.TagManagementListDto = ledgerUnsupported()
-    override suspend fun renameTag(publicId: String, request: com.ticketbox.data.remote.dto.TagRenameRequest): com.ticketbox.data.remote.dto.TagDetailDto = ledgerUnsupported()
-    override suspend fun deleteTag(publicId: String, request: com.ticketbox.data.remote.dto.TagDeleteRequest): com.ticketbox.data.remote.dto.TagMutationDto = ledgerUnsupported()
-    override suspend fun mergeTag(publicId: String, request: com.ticketbox.data.remote.dto.TagMergeRequest): com.ticketbox.data.remote.dto.TagMutationDto = ledgerUnsupported()
-    override suspend fun undoTagMutation(mutationPublicId: String, request: com.ticketbox.data.remote.dto.TagUndoRequest): com.ticketbox.data.remote.dto.TagUndoDto = ledgerUnsupported()
-    override suspend fun months(timezone: String?): MonthsDto = ledgerUnsupported()
-    override suspend fun exportCsv(month: String?, category: String?, tag: String?, timezone: String?): Response<ResponseBody> = ledgerUnsupported()
-    override suspend fun createManualExpense(request: com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto): ExpenseDto = ledgerUnsupported()
-    override suspend fun createNotificationDraft(
-        request: com.ticketbox.data.remote.dto.NotificationDraftRequestDto,
-    ): ExpenseDto = ledgerUnsupported()
-    override suspend fun uploadScreenshot(
-        file: MultipartBody.Part,
-        timezone: String?,
-        idempotencyKey: String?,
-    ): UploadResponseDto = ledgerUnsupported()
-    override suspend fun expense(id: Long): ExpenseDto = ledgerUnsupported()
-    override suspend fun expenseFx(id: Long): com.ticketbox.data.remote.dto.BackgroundTaskDto? = ledgerUnsupported()
-    override suspend fun retryExpenseFx(
-        id: Long,
-        request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
-    ): com.ticketbox.data.remote.dto.BackgroundTaskDto = ledgerUnsupported()
-    override suspend fun updateExpense(
-        id: String,
-        request: ExpenseUpdateRequest,
-        idempotencyKey: String?,
-    ): ExpenseDto = ledgerUnsupported()
-    override suspend fun correctExpense(
-        id: String,
-        request: com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto,
-        idempotencyKey: String?,
-    ): com.ticketbox.data.remote.dto.ExpenseCorrectionResponseDto = ledgerUnsupported()
-
-    override suspend fun expenseFactBundle(id: String): ExpenseFactBundleDto = ledgerUnsupported()
-
-    override suspend fun createExpenseOffset(
-        id: String,
-        request: ExpenseOffsetCreateRequestDto,
-        idempotencyKey: String,
-    ): ExpenseFactBundleDto = ledgerUnsupported()
-
-    override suspend fun voidExpenseOffset(
-        id: String,
-        offsetPublicId: String,
-        request: ExpenseOffsetVoidRequestDto,
-        idempotencyKey: String,
-    ): ExpenseFactBundleDto = ledgerUnsupported()
-    override suspend fun expenseRevisions(
-        id: Long,
-        page: Int,
-        pageSize: Int,
-        snapshotRevision: Long?,
-    ): com.ticketbox.data.remote.dto.ExpenseRevisionPageDto = ledgerUnsupported()
-    override suspend fun updateConfirmedBatch(
-        idempotencyKey: String,
-        request: com.ticketbox.data.remote.dto.ConfirmedExpenseBatchUpdateRequestDto,
-    ): com.ticketbox.data.remote.dto.ConfirmedExpenseBatchUpdateResponseDto = ledgerUnsupported()
-    override suspend fun createRepaymentDraftFromExpense(
-        id: String,
-        request: com.ticketbox.data.remote.dto.ExpenseRepaymentDraftCreateRequestDto,
-    ): com.ticketbox.data.remote.dto.RepaymentDraftDto = ledgerUnsupported()
-    override suspend fun expenseItems(id: Long): ExpenseItemsResponseDto = ledgerUnsupported()
-    override suspend fun replaceExpenseItems(
-        id: String,
-        request: ExpenseItemReplaceRequestDto,
-        idempotencyKey: String?,
-    ): ExpenseItemsResponseDto = ledgerUnsupported()
-    override suspend fun acknowledgeExpenseItemsMismatch(
-        id: String,
-        request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
-        idempotencyKey: String?,
-    ): ExpenseItemsResponseDto = ledgerUnsupported()
-    override suspend fun createBillSplitInvitation(
-        id: Long,
-        request: com.ticketbox.data.remote.dto.BillSplitInviteRequestDto,
-        idempotencyKey: String,
-    ): com.ticketbox.data.remote.dto.BillSplitSentDto = ledgerUnsupported()
-    override suspend fun listBillSplitInbox(
-        status: String?,
-    ): com.ticketbox.data.remote.dto.BillSplitInboxListResponseDto = ledgerUnsupported()
-    override suspend fun listBillSplitSent(): com.ticketbox.data.remote.dto.BillSplitSentListResponseDto = ledgerUnsupported()
-    override suspend fun acceptBillSplitInvitation(
-        publicId: String,
-        request: com.ticketbox.data.remote.dto.BillSplitAcceptRequestDto,
-    ): com.ticketbox.data.remote.dto.BillSplitInboxDto = ledgerUnsupported()
-    override suspend fun rejectBillSplitInvitation(publicId: String): com.ticketbox.data.remote.dto.BillSplitInboxDto = ledgerUnsupported()
-    override suspend fun cancelBillSplitInvitation(publicId: String): com.ticketbox.data.remote.dto.BillSplitSentDto = ledgerUnsupported()
-    override suspend fun expenseSplits(id: Long): ExpenseSplitsResponseDto = ledgerUnsupported()
-    override suspend fun replaceExpenseSplits(
-        id: String,
-        request: ExpenseSplitReplaceRequestDto,
-        idempotencyKey: String?,
-    ): ExpenseSplitsResponseDto = ledgerUnsupported()
-    override suspend fun confirmExpense(
-        id: String,
-        request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
-        idempotencyKey: String?,
-    ): ExpenseDto = ledgerUnsupported()
-    override suspend fun rejectExpense(
-        id: String,
-        request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
-        idempotencyKey: String?,
-    ): ExpenseDto = ledgerUnsupported()
-    override suspend fun undoExpense(
-        id: Long,
-        request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
-        idempotencyKey: String,
-    ): ExpenseDto = ledgerUnsupported()
-    override suspend fun retryOcr(
-        id: String,
-        request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
-        idempotencyKey: String?,
-    ): ExpenseDto = ledgerUnsupported()
-    override suspend fun recognizeText(
-        id: String,
-        request: com.ticketbox.data.remote.dto.ExpenseRecognizeTextRequestDto,
-        idempotencyKey: String?,
-    ): ExpenseDto = ledgerUnsupported()
-    override suspend fun acceptPendingSuggestion(
-        id: Long,
-        decisionPublicId: String,
-    ): StatusDto = ledgerUnsupported()
-    override suspend fun rejectPendingSuggestion(
-        id: Long,
-        decisionPublicId: String,
-    ): StatusDto = ledgerUnsupported()
-    override suspend fun markNotDuplicate(
-        id: String,
-        request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
-        idempotencyKey: String?,
-    ): ExpenseDto = ledgerUnsupported()
-    override suspend fun expenseImage(id: Long): Response<ResponseBody> = ledgerUnsupported()
-    override suspend fun expenseThumbnail(id: Long): Response<ResponseBody> = ledgerUnsupported()
-    override suspend fun duplicates(): List<ExpenseDto> = ledgerUnsupported()
-    override suspend fun categoryRules(): List<CategoryRuleDto> = ledgerUnsupported()
-    override suspend fun createCategoryRule(request: CategoryRuleRequest, idempotencyKey: String): CategoryRuleDto = ledgerUnsupported()
-    override suspend fun updateCategoryRule(
-        id: Long,
-        request: com.ticketbox.data.remote.dto.CategoryRuleUpdateRequest,
-        idempotencyKey: String?,
-    ): CategoryRuleDto = ledgerUnsupported()
-    override suspend fun deleteCategoryRule(
-        id: Long,
-        request: com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest,
-        idempotencyKey: String?,
-    ): StatusDto = ledgerUnsupported()
-    override suspend fun merchantCatalog(includeHidden: Boolean): com.ticketbox.data.remote.dto.MerchantCatalogListDto = ledgerUnsupported()
-    override suspend fun createMerchantCatalog(
-        request: com.ticketbox.data.remote.dto.MerchantCatalogCreateRequest,
-    ): com.ticketbox.data.remote.dto.MerchantCatalogDto = ledgerUnsupported()
-    override suspend fun updateMerchantCatalog(
-        publicId: String,
-        request: com.ticketbox.data.remote.dto.MerchantCatalogUpdateRequest,
-        idempotencyKey: String?,
-    ): com.ticketbox.data.remote.dto.MerchantCatalogDto = ledgerUnsupported()
-    override suspend fun deleteMerchantCatalog(
-        publicId: String,
-        request: com.ticketbox.data.remote.dto.MerchantCatalogDeleteRequest,
-        idempotencyKey: String?,
-    ): com.ticketbox.data.remote.dto.MerchantCatalogDto = ledgerUnsupported()
-    override suspend fun mergeMerchantCatalog(
-        sourcePublicId: String,
-        request: com.ticketbox.data.remote.dto.MerchantCatalogMergeRequest,
-    ): com.ticketbox.data.remote.dto.MerchantCatalogMergeDto = ledgerUnsupported()
-    override suspend fun merchantAliases(): MerchantAliasListDto = ledgerUnsupported()
-    override suspend fun createMerchantAlias(request: MerchantAliasRequest): MerchantAliasDto = ledgerUnsupported()
-    override suspend fun updateMerchantAlias(
-        publicId: String,
-        request: com.ticketbox.data.remote.dto.MerchantAliasUpdateRequest,
-        idempotencyKey: String?,
-    ): MerchantAliasDto = ledgerUnsupported()
-    override suspend fun deleteMerchantAlias(
-        publicId: String,
-        request: com.ticketbox.data.remote.dto.MerchantAliasDeleteRequest,
-        idempotencyKey: String?,
-    ): StatusDto = ledgerUnsupported()
-    override suspend fun undoMerchantAlias(publicId: String): MerchantAliasDto = ledgerUnsupported()
-    override suspend fun undoCategoryRule(id: Long): com.ticketbox.data.remote.dto.CategoryRuleDto = ledgerUnsupported()
-    override suspend fun ruleApplications(limit: Int): RuleApplicationListDto = ledgerUnsupported()
-    override suspend fun rollbackRuleApplication(publicId: String): RuleApplicationRollbackDto = ledgerUnsupported()
-    override suspend fun applyConfirmedRules(
-        request: RuleApplyConfirmedRequestDto,
-        limit: Int,
-        maxScan: Int,
-    ): RuleApplyConfirmedResponseDto = ledgerUnsupported()
-    override suspend fun serverSettings(): ServerSettingsDto = ledgerUnsupported()
-
-    override suspend fun accountProfile(): com.ticketbox.data.remote.dto.AccountProfileDto = ledgerUnsupported()
-    override suspend fun renameAccountProfile(request: com.ticketbox.data.remote.dto.AccountProfileRenameDto):
-        com.ticketbox.data.remote.dto.AccountProfileDto = ledgerUnsupported()
-    override suspend fun monthlyStats(month: String?, tag: String?, timezone: String?, homeCurrencyCode: String?): MonthlyStatsDto = ledgerUnsupported()
-    override suspend fun lifestyleStats(month: String?, timezone: String?, homeCurrencyCode: String?): LifestyleStatsDto = ledgerUnsupported()
-    override suspend fun reportsOverview(
-        query: Map<String, String>,
-    ): ReportsOverviewDto = ledgerUnsupported()
-    override suspend fun reportsOverviewCsv(
-        query: Map<String, String>,
-    ): Response<ResponseBody> = ledgerUnsupported()
-    override suspend fun goals(
-        month: String?,
-        includeArchived: Boolean,
-        goalType: String?,
-        timezone: String?,
-    ): GoalListResponseDto = ledgerUnsupported()
-    override suspend fun createGoal(request: GoalCreateRequestDto, timezone: String?, idempotencyKey: String?): GoalDto = ledgerUnsupported()
     override suspend fun goalHistory(publicId: String, limit: Int, beforeVersion: Long?):
         com.ticketbox.data.remote.dto.GoalHistoryResponseDto = error("Unexpected goal definition history")
-    override suspend fun goal(publicId: String, timezone: String?): GoalDto = ledgerUnsupported()
-    override suspend fun updateGoal(
-        publicId: String,
-        request: GoalUpdateRequestDto,
-        idempotencyKey: String?,
-        timezone: String?,
-    ): GoalDto = ledgerUnsupported()
-    override suspend fun archiveGoal(publicId: String, timezone: String?): GoalDto = ledgerUnsupported()
-    override suspend fun replaceGoalDebtLinks(
-        publicId: String,
-        request: com.ticketbox.data.remote.dto.DebtGoalLinksReplaceRequestDto,
-        idempotencyKey: String?,
-        timezone: String?,
-    ): GoalDto = ledgerUnsupported()
-    override suspend fun acknowledgeGoalIntegrityReview(
-        publicId: String,
-        request: com.ticketbox.data.remote.dto.DebtGoalIntegrityReviewRequestDto,
-        idempotencyKey: String?,
-        timezone: String?,
-    ): GoalDto = ledgerUnsupported()
-    override suspend fun setGoalTargetDate(
-        publicId: String,
-        request: com.ticketbox.data.remote.dto.DebtGoalTargetDateRequestDto,
-        idempotencyKey: String?,
-        timezone: String?,
-    ): GoalDto = ledgerUnsupported()
-    override suspend fun debts(lens: String?): com.ticketbox.data.remote.dto.DebtListResponseDto = ledgerUnsupported()
-    override suspend fun debtReceivables(): com.ticketbox.data.remote.dto.DebtListResponseDto = ledgerUnsupported()
-    override suspend fun createDebt(
-        request: com.ticketbox.data.remote.dto.DebtCreateRequestDto,
-        idempotencyKey: String?,
-    ): com.ticketbox.data.remote.dto.DebtDto = ledgerUnsupported()
-    override suspend fun parseDebtBill(
-        file: MultipartBody.Part,
-    ): com.ticketbox.data.remote.dto.DebtBillParseResponseDto = ledgerUnsupported()
-    override suspend fun splitAgreement(publicId: String, newShareAmountCents: Long?): com.ticketbox.data.remote.dto.BillSplitAgreementDto = ledgerUnsupported()
-    override suspend fun createSplitChangeProposal(publicId: String, request: com.ticketbox.data.remote.dto.BillSplitChangeCreateRequestDto, idempotencyKey: String?): com.ticketbox.data.remote.dto.BillSplitChangeProposalDto = ledgerUnsupported()
-    override suspend fun acceptSplitChangeProposal(publicId: String, proposalPublicId: String, request: com.ticketbox.data.remote.dto.BillSplitChangeAcceptRequestDto, idempotencyKey: String?): com.ticketbox.data.remote.dto.BillSplitAgreementDto = ledgerUnsupported()
-    override suspend fun rejectSplitChangeProposal(publicId: String, proposalPublicId: String, request: com.ticketbox.data.remote.dto.BillSplitChangeEmptyRequestDto, idempotencyKey: String?): com.ticketbox.data.remote.dto.BillSplitChangeProposalDto = ledgerUnsupported()
-    override suspend fun withdrawSplitChangeProposal(publicId: String, proposalPublicId: String, request: com.ticketbox.data.remote.dto.BillSplitChangeEmptyRequestDto, idempotencyKey: String?): com.ticketbox.data.remote.dto.BillSplitChangeProposalDto = ledgerUnsupported()
 
-    override suspend fun debt(publicId: String): com.ticketbox.data.remote.dto.DebtDto = ledgerUnsupported()
-    override suspend fun debtActivity(publicId: String, page: Int, focusRepayment: String?): com.ticketbox.data.remote.dto.DebtActivityListDto = ledgerUnsupported()
-    override suspend fun debtRepayments(publicId: String, page: Int): com.ticketbox.data.remote.dto.RepaymentFactListDto = ledgerUnsupported()
-    override suspend fun voidDebtRepayment(
-        publicId: String,
-        request: com.ticketbox.data.remote.dto.RepaymentVoidCreateRequestDto,
-        idempotencyKey: String?,
-    ): com.ticketbox.data.remote.dto.DebtDto = ledgerUnsupported()
-    override suspend fun recordDebtRepayment(
-        publicId: String,
-        request: com.ticketbox.data.remote.dto.RepaymentCreateRequestDto,
-        idempotencyKey: String?,
-    ): com.ticketbox.data.remote.dto.DebtRepaymentReceiptDto = ledgerUnsupported()
-    override suspend fun recordDebtAdjustment(
-        publicId: String,
-        request: com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto,
-        idempotencyKey: String?,
-    ): com.ticketbox.data.remote.dto.DebtDto = ledgerUnsupported()
-    override suspend fun voidDebt(
-        publicId: String,
-        request: com.ticketbox.data.remote.dto.DebtVoidCreateRequestDto,
-        idempotencyKey: String?,
-    ): com.ticketbox.data.remote.dto.DebtDto = ledgerUnsupported()
-    override suspend fun setDebtKind(
-        publicId: String,
-        request: com.ticketbox.data.remote.dto.DebtKindSetRequestDto,
-        idempotencyKey: String?,
-    ): com.ticketbox.data.remote.dto.DebtDto = ledgerUnsupported()
-    override suspend fun forgiveDebt(
-        publicId: String,
-        request: com.ticketbox.data.remote.dto.DebtForgiveCreateRequestDto,
-        idempotencyKey: String?,
-    ): com.ticketbox.data.remote.dto.DebtDto = ledgerUnsupported()
-    override suspend fun repaymentProposals(
-        publicId: String,
-    ): com.ticketbox.data.remote.dto.MemberRepaymentProposalListResponseDto = ledgerUnsupported()
-    override suspend fun createRepaymentProposal(
-        publicId: String,
-        request: com.ticketbox.data.remote.dto.MemberRepaymentProposalCreateRequestDto,
-        idempotencyKey: String?,
-    ): com.ticketbox.data.remote.dto.MemberRepaymentProposalDto = ledgerUnsupported()
-    override suspend fun withdrawRepaymentProposal(
-        publicId: String,
-        proposalPublicId: String,
-        request: com.ticketbox.data.remote.dto.MemberRepaymentProposalWithdrawRequestDto,
-        idempotencyKey: String?,
-    ): com.ticketbox.data.remote.dto.MemberRepaymentProposalDto = ledgerUnsupported()
-    override suspend fun confirmRepaymentProposal(
-        publicId: String,
-        proposalPublicId: String,
-        request: com.ticketbox.data.remote.dto.MemberRepaymentProposalConfirmRequestDto,
-        idempotencyKey: String?,
-    ): com.ticketbox.data.remote.dto.DebtDto = ledgerUnsupported()
-    override suspend fun rejectRepaymentProposal(
-        publicId: String,
-        proposalPublicId: String,
-        request: com.ticketbox.data.remote.dto.MemberRepaymentProposalRejectRequestDto,
-        idempotencyKey: String?,
-    ): com.ticketbox.data.remote.dto.MemberRepaymentProposalDto = ledgerUnsupported()
-    override suspend fun repaymentDraft(publicId: String): com.ticketbox.data.remote.dto.RepaymentDraftDto = ledgerUnsupported()
-    override suspend fun repaymentDrafts(
-        status: String?,
-    ): com.ticketbox.data.remote.dto.RepaymentDraftListResponseDto = ledgerUnsupported()
-    override suspend fun createRepaymentDraft(
-        request: com.ticketbox.data.remote.dto.RepaymentDraftCreateRequestDto,
-    ): com.ticketbox.data.remote.dto.RepaymentDraftDto = ledgerUnsupported()
-    override suspend fun confirmRepaymentDraft(
-        publicId: String,
-        request: com.ticketbox.data.remote.dto.RepaymentDraftConfirmRequestDto,
-        idempotencyKey: String?,
-    ): com.ticketbox.data.remote.dto.RepaymentDraftDto = ledgerUnsupported()
-    override suspend fun dismissRepaymentDraft(
-        publicId: String,
-        request: com.ticketbox.data.remote.dto.RepaymentDraftDismissRequestDto,
-    ): com.ticketbox.data.remote.dto.RepaymentDraftDto = ledgerUnsupported()
-    override suspend fun dashboardCards(surface: String): DashboardCardsResponseDto = ledgerUnsupported()
-    override suspend fun updateDashboardCards(
-        request: DashboardCardsUpdateRequestDto,
-        surface: String,
-    ): DashboardCardsResponseDto = ledgerUnsupported()
-    override suspend fun archiveMonthlyBudget(month: String, request: com.ticketbox.data.remote.dto.BudgetMonthlyArchiveRequestDto): com.ticketbox.data.remote.dto.BudgetMonthlyArchiveResponseDto = ledgerUnsupported()
-    override suspend fun monthlyBudget(month: String, timezone: String?): BudgetMonthlyDto = ledgerUnsupported()
-    override suspend fun budgetHistory(month: String, beforeVersion: Long?): com.ticketbox.data.remote.dto.BudgetHistoryDto = ledgerUnsupported()
-    override suspend fun updateMonthlyBudget(
-        month: String,
-        request: BudgetMonthlyUpdateRequestDto,
-        timezone: String?,
-        idempotencyKey: String?,
-    ): BudgetMonthlyDto = ledgerUnsupported()
-    override suspend fun listIncomePlans(status: String): com.ticketbox.data.remote.dto.IncomePlanListResponseDto = ledgerUnsupported()
-    override suspend fun incomePlanHistory(publicId: String, limit: Int, beforeVersion: Long?): com.ticketbox.data.remote.dto.IncomeHistoryResponseDto = ledgerUnsupported()
-    override suspend fun createIncomePlan(request: com.ticketbox.data.remote.dto.IncomePlanCreateRequestDto, idempotencyKey: String): com.ticketbox.data.remote.dto.IncomePlanDto = ledgerUnsupported()
-    override suspend fun updateIncomePlan(publicId: String, request: com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto, idempotencyKey: String?): com.ticketbox.data.remote.dto.IncomePlanDto = ledgerUnsupported()
-    override suspend fun archiveIncomePlan(publicId: String, request: com.ticketbox.data.remote.dto.IncomePlanTokenRequestDto): com.ticketbox.data.remote.dto.IncomePlanDto = ledgerUnsupported()
-    override suspend fun restoreIncomePlan(publicId: String, request: com.ticketbox.data.remote.dto.IncomePlanTokenRequestDto): com.ticketbox.data.remote.dto.IncomePlanDto = ledgerUnsupported()
-    override suspend fun budgetDiscretionary(savingsTargetCents: Long, reservedBufferCents: Long): com.ticketbox.data.remote.dto.DiscretionaryResponseDto = ledgerUnsupported()
-    override suspend fun exchangeRates(currencyCode: String?, homeCurrencyCode: String?, rateDate: String?, limit: Int): com.ticketbox.data.remote.dto.ExchangeRateListDto = ledgerUnsupported()
-    override suspend fun saveExchangeRate(currencyCode: String, rateDate: String, request: com.ticketbox.data.remote.dto.ExchangeRateRequestDto, idempotencyKey: String): com.ticketbox.data.remote.dto.ExchangeRateDto = ledgerUnsupported()
-    override suspend fun monthlyArrangement(month: String): com.ticketbox.data.remote.dto.MonthlyArrangementResponseDto = ledgerUnsupported()
-    override suspend fun saveMonthlyArrangement(month: String, request: com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest, idempotencyKey: String): com.ticketbox.data.remote.dto.MonthlyArrangementDto = ledgerUnsupported()
-    override suspend fun monthlyArrangementHistory(month: String, beforeVersion: Long?, limit: Int): com.ticketbox.data.remote.dto.MonthlyArrangementHistoryDto = ledgerUnsupported()
-    override suspend fun trialBudgetAdviceInputs(month: String, timezone: String?, arrangement: Map<String, String>): com.ticketbox.data.remote.dto.BudgetAdviceInputsDto = ledgerUnsupported()
-    override suspend fun budgetAdviceInputs(month: String, timezone: String?, homeCurrencyCode: String?): com.ticketbox.data.remote.dto.BudgetAdviceInputsDto = ledgerUnsupported()
-    override suspend fun budgetAdvise(request: com.ticketbox.data.remote.dto.BudgetAdviseRequestDto): com.ticketbox.data.remote.dto.BudgetAdviseResponseDto = ledgerUnsupported()
-    override suspend fun recurringCandidates(timezone: String?): com.ticketbox.data.remote.dto.RecurringCandidatesResponseDto = ledgerUnsupported()
     override suspend fun recurringHistory(publicId: String, limit: Int, beforeVersion: Long?):
         com.ticketbox.data.remote.dto.RecurringHistoryPageDto = error("Unexpected recurring definition history")
-    override suspend fun recurringItems(
-        status: String?,
-        includeArchived: Boolean,
-        month: String?,
-        timezone: String?,
-    ): RecurringItemListResponseDto = ledgerUnsupported()
-    override suspend fun confirmRecurringCandidate(
-        request: RecurringCandidateConfirmRequestDto,
-        timezone: String?,
-    ): RecurringItemDto = ledgerUnsupported()
-    override suspend fun pauseRecurringItem(publicId: String, request: com.ticketbox.data.remote.dto.RecurringItemTokenRequest): RecurringItemDto = ledgerUnsupported()
-    override suspend fun resumeRecurringItem(publicId: String, request: com.ticketbox.data.remote.dto.RecurringItemTokenRequest): RecurringItemDto = ledgerUnsupported()
-    override suspend fun archiveRecurringItem(publicId: String): RecurringItemDto = ledgerUnsupported()
-    override suspend fun dataQualitySummary(): com.ticketbox.data.remote.dto.DataQualitySummaryDto = ledgerUnsupported()
-
-    override suspend fun listBackgroundTasks(): com.ticketbox.data.remote.dto.BackgroundTaskListResponseDto =
-        ledgerUnsupported()
-
-    override suspend fun getBackgroundTask(
-        publicId: String,
-    ): com.ticketbox.data.remote.dto.BackgroundTaskDto = ledgerUnsupported()
-
-    override suspend fun cancelBackgroundTask(
-        publicId: String,
-    ): com.ticketbox.data.remote.dto.BackgroundTaskDto = ledgerUnsupported()
 
     // issue #65 slice 6b: device routes (records call + returns configured result).
     override suspend fun ledgerDevices(
@@ -955,8 +523,6 @@ internal class LedgerFakeDao : ExpenseDao, com.ticketbox.data.local.ExpenseFactQ
     private fun flowFor(ledgerId: String): MutableStateFlow<List<ExpenseEntity>> =
         flows.getOrPut(ledgerId) { MutableStateFlow(emptyList()) }
 }
-
-internal fun ledgerUnsupported(): Nothing = error("Unexpected API call")
 
 internal fun ledgerEntity(id: Long, ledgerId: String, serverId: Long): ExpenseEntity = ExpenseEntity(
     id = id,
